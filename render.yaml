@@ -1,0 +1,96 @@
+# Satoshi's Council — Render Blueprint
+# https://render.com/docs/blueprint-spec
+#
+# Services used:
+#   1) Web Service  — FastAPI + Round Table UI (always-on analysis loop)
+#   2) Cron Job     — 3:00 AM America/Chicago huddle trigger + keep-alive pings
+#   3) Persistent Disk — SQLite + brain + huddle logs survive deploys
+#
+# Plan: Starter (or higher). Free tier sleeps and kills the live council.
+
+services:
+  - type: web
+    name: satoshi-council
+    runtime: python
+    plan: starter
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    # workers=1 required — analysis loop is in-process
+    startCommand: PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*' --timeout-keep-alive 75
+    healthCheckPath: /health
+    disk:
+      name: council-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 2
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////opt/render/project/src/data/council.db
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: BEAST_MODE
+        value: "true"
+      - key: ANALYSIS_INTERVAL
+        value: "2"
+      - key: ANALYSIS_INTERVAL_HOT
+        value: "1.2"
+      - key: ANALYSIS_INTERVAL_FLAT
+        value: "4"
+      - key: HTTP_TIMEOUT
+        value: "6"
+      - key: KLINE_LIMIT
+        value: "90"
+      - key: KALSHI_ORDERBOOK_EVERY
+        value: "2"
+      - key: SLOW_METRICS_TTL
+        value: "25"
+      - key: DUAL_SPOT
+        value: "true"
+      - key: PARALLEL_AGENTS
+        value: "true"
+      # Optional: set in Render Dashboard → Environment for private Kalshi keys
+      # - key: KALSHI_API_KEY
+      #   sync: false
+      # - key: KALSHI_PRIVATE_KEY_PATH
+      #   sync: false
+
+  # Nightly huddle + keep-alive (Starter doesn't sleep, but Cron guarantees 3 AM CT run)
+  - type: cron
+    name: satoshi-council-huddle
+    runtime: python
+    plan: starter
+    schedule: "5 8 * * *"   # 08:05 UTC ≈ 3:05 AM CDT (America/Chicago daylight)
+    buildCommand: pip install -r requirements.txt httpx
+    startCommand: python deploy/cron_huddle.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: COUNCIL_URL
+        fromService:
+          name: satoshi-council
+          type: web
+          property: host
+      # If host property not available on your plan, set COUNCIL_URL manually:
+      # value: https://satoshi-council.onrender.com
+
+  # Optional keep-warm every 10 minutes (useful if you ever drop to Free)
+  - type: cron
+    name: satoshi-council-keepalive
+    runtime: python
+    plan: starter
+    schedule: "*/10 * * * *"
+    buildCommand: pip install httpx
+    startCommand: python deploy/cron_keepalive.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: COUNCIL_URL
+        fromService:
+          name: satoshi-council
+          type: web
+          property: host
