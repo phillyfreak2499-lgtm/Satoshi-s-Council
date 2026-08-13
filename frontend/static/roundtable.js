@@ -4123,11 +4123,11 @@ function drawCandleChart() {
 })();
 
   // ——— Hive easter egg (subtle, for true fans) ———
-  (function initHiveEgg() {
+  (function initHive-egg() {
     function wire() {
       const btn = document.getElementById("hive-egg");
-      const egg = document.getElementById("hive-egg");
-      const close = document.getElementById("hive-eggClose");
+      const egg = document.getElementById("hiveegg");
+      const close = document.getElementById("hiveeggClose");
       if (!btn || !egg) return;
       const open = () => {
         egg.classList.remove("hidden");
