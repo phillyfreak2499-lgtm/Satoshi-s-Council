@@ -4125,9 +4125,9 @@ function drawCandleChart() {
   // ——— Hive easter egg (subtle, for true fans) ———
   (function initHiveEgg() {
     function wire() {
-      const btn = document.getElementById("hiveEgg");
-      const egg = document.getElementById("hiveEgg");
-      const close = document.getElementById("hiveEggClose");
+      const btn = document.getElementById("hive-Egg");
+      const egg = document.getElementById("hive-Egg");
+      const close = document.getElementById("hive-EggClose");
       if (!btn || !egg) return;
       const open = () => {
         egg.classList.remove("hidden");
