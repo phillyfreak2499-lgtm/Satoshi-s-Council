@@ -9,6 +9,123 @@
     console.error("roundtable canvas missing");
   }
   const ctx = canvas ? canvas.getContext("2d") : null;
+
+  /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
+  const ADMIN_PASSWORD = "5152622439";
+  const ADMIN_KEY = "council_admin_unlocked";
+  function isAdminUnlocked() {
+    try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+  }
+  function setAdminUnlocked(on) {
+    try { localStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+  }
+  let pendingAdminCb = null;
+  function requestAdminUnlock(cb) {
+    if (isAdminUnlocked()) { if (typeof cb === "function") cb(); return; }
+    pendingAdminCb = typeof cb === "function" ? cb : null;
+    const gate = document.getElementById("adminGate");
+    const input = document.getElementById("adminInput");
+    const err = document.getElementById("adminError");
+    if (err) { err.classList.add("hidden"); err.textContent = "Wrong password"; }
+    if (input) input.value = "";
+    if (gate) gate.classList.remove("hidden");
+    setTimeout(() => { try { input && input.focus(); } catch (e) {} }, 40);
+  }
+  function closeAdminGate(ok) {
+    const gate = document.getElementById("adminGate");
+    if (gate) gate.classList.add("hidden");
+    const cb = pendingAdminCb;
+    pendingAdminCb = null;
+    if (ok && typeof cb === "function") cb();
+  }
+  function wireAdminGate() {
+    const submit = document.getElementById("adminSubmit");
+    const cancel = document.getElementById("adminCancel");
+    const input = document.getElementById("adminInput");
+    const err = document.getElementById("adminError");
+    if (!submit) return;
+    if (submit.__wired) return;
+    submit.__wired = true;
+    const tryUnlock = () => {
+      const val = (input && input.value) || "";
+      if (val === ADMIN_PASSWORD) {
+        setAdminUnlocked(true);
+        if (err) err.classList.add("hidden");
+        closeAdminGate(true);
+      } else {
+        if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
+      }
+    };
+    submit.addEventListener("click", tryUnlock);
+    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+    if (cancel && !cancel.__wired) {
+      cancel.__wired = true;
+      cancel.addEventListener("click", () => closeAdminGate(false));
+    }
+  }
+  async function adminFetch(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
+    return fetch(url, opts);
+  }
+  function wireAdminTools() {
+    const st = () => document.getElementById("adminToolsStatus");
+    const clearHit = document.getElementById("btnClearHitRate");
+    const clearLog = document.getElementById("btnClearLifeLog");
+    const exportBtn = document.getElementById("btnExportExcel");
+    if (clearHit && !clearHit.__wired) {
+      clearHit.__wired = true;
+      clearHit.addEventListener("click", () => {
+        requestAdminUnlock(async () => {
+          if (!confirm("Clear hit-rate counters? Training weights will NOT be deleted.")) return;
+          try {
+            const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
+            const data = await r.json();
+            if (st()) st().textContent = data.ok ? ("Hit rate cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
+          } catch (e) {
+            if (st()) st().textContent = "Clear failed: " + e;
+          }
+        });
+      });
+    }
+    if (clearLog && !clearLog.__wired) {
+      clearLog.__wired = true;
+      clearLog.addEventListener("click", () => {
+        requestAdminUnlock(async () => {
+          if (!confirm("Clear lifetime log display? Training weights will NOT be deleted.")) return;
+          try {
+            const r = await adminFetch("/api/admin/clear-life-log", { method: "POST" });
+            const data = await r.json();
+            if (st()) st().textContent = data.ok ? ("Life log cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
+            const log = document.getElementById("callLog");
+            if (log) log.innerHTML = '<div class="call-empty">LIFETIME LOG CLEARED<br/>New settled calls will appear here</div>';
+          } catch (e) {
+            if (st()) st().textContent = "Clear failed: " + e;
+          }
+        });
+      });
+    }
+    if (exportBtn && !exportBtn.__wired) {
+      exportBtn.__wired = true;
+      exportBtn.addEventListener("click", () => {
+        requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/admin/export.xlsx?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-log.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          if (st()) st().textContent = "Excel download started…";
+        });
+      });
+    }
+  }
+  // Expose for any late handlers
+  window.isAdminUnlocked = isAdminUnlocked;
+  window.requestAdminUnlock = requestAdminUnlock;
+  window.ADMIN_PASSWORD = ADMIN_PASSWORD;
+
+
   const overlay = document.getElementById("dashboardOverlay");
   const modeBtn = document.getElementById("modeToggle");
   const statusDot = document.getElementById("statusDot");
@@ -1821,6 +1938,20 @@
     if (hrTotal) hrTotal.textContent = String(total);
     if (hrPending) hrPending.textContent = String(pending);
 
+    // Path tally: avg peak favorable move on wins (peak − entry Kalshi %)
+    const hrPathAvg = document.getElementById("hrPathAvg");
+    const hrEntryAvg = document.getElementById("hrEntryAvg");
+    const pathWins = acc && (acc.avg_path_wins != null ? acc.avg_path_wins
+      : (acc.path_tally && acc.path_tally.avg_wins));
+    const entryAvg = acc && (acc.avg_entry_pct != null ? acc.avg_entry_pct
+      : (acc.path_tally && acc.path_tally.avg_entry));
+    if (hrPathAvg) {
+      hrPathAvg.textContent = pathWins != null ? ((pathWins >= 0 ? "+" : "") + Number(pathWins).toFixed(1) + " pts") : "—";
+    }
+    if (hrEntryAvg) {
+      hrEntryAvg.textContent = entryAvg != null ? (Number(entryAvg).toFixed(1) + "%") : "—";
+    }
+
     const l20 = acc && acc.last_20;
     const l50 = acc && acc.last_50;
     if (hrL20) {
@@ -1861,12 +1992,24 @@
 
       openRows.forEach(r => {
         const tick = (r.ticker || "").replace(/^KXBTC15M-?/i, "") || "—";
+        const entry = r.entry_side_pct != null ? Number(r.entry_side_pct) : (r.open_price != null ? Number(r.open_price) : null);
+        const peak = r.peak_side_pct != null ? Number(r.peak_side_pct) : (r.exit_price != null ? Number(r.exit_price) : null);
+        let pathPts = r.path_move_pct != null ? Number(r.path_move_pct) : null;
+        if (pathPts == null && entry != null && peak != null) pathPts = Math.max(0, peak - entry);
+        let pathLine = "";
+        if (entry != null) {
+          const eStr = entry.toFixed(1) + "%";
+          const pStr = peak != null ? peak.toFixed(1) + "%" : eStr;
+          const mStr = pathPts != null ? ("+" + pathPts.toFixed(1) + " pts") : "live";
+          pathLine = `<span class="call-path">${eStr} → ${pStr} · ${mStr}</span>`;
+        }
         parts.push(`<div class="call-row open">
           <span class="mark pend">●</span>
           <span class="call-dir">${displayDir(r.direction) || "—"}</span>
           <span class="call-out">OPEN</span>
           <span class="call-out">${r.confidence != null ? r.confidence + "%" : ""}</span>
           <span class="call-tick">${tick}</span>
+          ${pathLine}
         </div>`);
       });
 
@@ -1879,12 +2022,24 @@
             })
           : "";
         const tick = (r.ticker || "").replace(/^KXBTC15M-?/i, "") || "—";
+        const entry = r.entry_side_pct != null ? Number(r.entry_side_pct) : (r.open_price != null ? Number(r.open_price) : null);
+        const peak = r.peak_side_pct != null ? Number(r.peak_side_pct) : (r.exit_price != null ? Number(r.exit_price) : null);
+        let pathPts = r.path_move_pct != null ? Number(r.path_move_pct) : null;
+        if (pathPts == null && entry != null && peak != null) pathPts = Math.max(0, peak - entry);
+        let pathLine = "";
+        if (entry != null || pathPts != null) {
+          const eStr = entry != null ? entry.toFixed(1) + "%" : "—";
+          const pStr = peak != null ? peak.toFixed(1) + "%" : "—";
+          const mStr = pathPts != null ? ((pathPts >= 0 ? "+" : "") + pathPts.toFixed(1) + " pts") : "—";
+          pathLine = `<span class="call-path ${ok ? "" : "miss"}">${eStr} → ${pStr} · ${mStr}</span>`;
+        }
         parts.push(`<div class="call-row">
           <span class="mark ${ok ? "ok" : "bad"}">${ok ? "✓" : "✗"}</span>
           <span class="call-dir">${displayDir(r.direction) || "—"}</span>
           <span class="call-out">→ ${r.outcome || "—"}</span>
           <span class="call-out">${when}</span>
           <span class="call-tick">${tick}</span>
+          ${pathLine}
         </div>`);
       });
 
@@ -2880,9 +3035,24 @@ function drawCandleChart() {
 
   function setMode(next) {
     // Settings requires admin unlock for this browser session
-    if (next === "settings" && !isAdminUnlocked()) {
-      requestAdminUnlock(() => setMode("settings"));
-      return;
+    if (next === "settings") {
+      const unlocked = (typeof isAdminUnlocked === "function") ? isAdminUnlocked() : false;
+      if (!unlocked) {
+        if (typeof requestAdminUnlock === "function") {
+          requestAdminUnlock(() => setMode("settings"));
+        } else {
+          const pw = prompt("Admin password");
+          if (pw === "5152622439") {
+            try { localStorage.setItem("council_admin_unlocked", "1"); } catch (e) {}
+            // fall through
+          } else {
+            alert("Wrong password");
+            return;
+          }
+          if (pw !== "5152622439") return;
+        }
+        if (!(typeof isAdminUnlocked === "function" && isAdminUnlocked())) return;
+      }
     }
     mode = next;
     modeTabs.forEach(btn => {
@@ -3812,6 +3982,7 @@ function drawCandleChart() {
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    try { wireAdminGate(); wireAdminTools(); } catch (e) { console.warn("admin wire", e); }
     const btn = document.getElementById("btnSaveSettings");
     if (btn) btn.addEventListener("click", collectAndSaveSettings);
     const rst = document.getElementById("btnResetSettings");
