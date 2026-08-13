@@ -108,8 +108,8 @@
     </header>
 
     <main id="mainTable">
-      <!-- LEFT: Hit-rate + Call log + Debate -->
-      <aside id="debatePanel" class="side-panel side-left debate-focus" aria-label="Council debate log">
+      <!-- LEFT: Lifetime accuracy + settled log -->
+      <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
         <div class="panel-head">
           <span class="panel-title">LIFETIME</span>
           <span class="panel-sub" id="callLogMeta">0/0 · —</span>
@@ -131,20 +131,23 @@
           <span>L50 <b id="hrL50">—</b></span>
           <span id="hrVerdict" class="hr-verdict">COLLECTING</span>
         </div>
+        <div id="hrPath" class="hr-path" title="Average peak Kalshi move on winning calls (peak − entry)">
+          <span class="hr-path-lab">AVG PATH</span>
+          <b id="hrPathAvg">—</b>
+          <span class="hr-path-sub">on wins</span>
+          <span class="hr-path-sep">·</span>
+          <span class="hr-path-lab">ENTRY</span>
+          <b id="hrEntryAvg">—</b>
+        </div>
         <div class="panel-head panel-head-sub">
           <span class="panel-title">LIFETIME LOG</span>
           <span class="panel-sub" id="logCount">all settled</span>
         </div>
         <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
-        <div class="panel-head panel-head-debate">
-          <span class="panel-title">DEBATE LOG</span>
-          <span class="panel-sub">Council floor · live</span>
-        </div>
-        <div id="debateLog" class="debate-log debate-log-main"></div>
       </aside>
 
       <!-- CENTER: Round table -->
-      <div id="tableStage" class="table-stage">
+<div id="tableStage" class="table-stage">
         <canvas id="roundtable" width="1100" height="780"></canvas>
         <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
           <div id="lightsaberBar" class="lightsaber-bar">
@@ -155,8 +158,17 @@
         <div id="dashboardOverlay" class="hidden"></div>
       </div>
 
-      <!-- RIGHT: Hierarchy ranks — bots climb toward Satoshi by being right -->
-      <aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only" aria-label="Bot hierarchy">
+      <!-- RIGHT: Debate Log (main content focus) -->
+      <aside id="debatePanel" class="side-panel side-right debate-focus" aria-label="Council debate log">
+        <div class="panel-head panel-head-debate">
+          <span class="panel-title">DEBATE LOG</span>
+          <span class="panel-sub">Council floor · live</span>
+        </div>
+        <div id="debateLog" class="debate-log debate-log-main"></div>
+      </aside>
+
+
+<aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only" aria-label="Bot hierarchy">
         <div class="panel-head">
           <span class="panel-title">HIERARCHY</span>
           <span class="panel-sub" id="hierarchyMeta">rank by record</span>
@@ -410,26 +422,28 @@
       </div>
     </section>
 
-    <!-- Floating 7-segment style FLOOR COUNT (always on Table / Floor) -->
+    <!-- Large floating 7-segment FLOOR counter — elevated, independent -->
     <div id="floorLed" class="led-float led-floor" aria-label="Floor bot choice count">
-      <div class="led-bezel">
+      <div class="led-bezel led-bezel-lg">
         <div class="led-label">FLOOR</div>
-        <div class="led-grid">
-          <div class="led-cell">
-            <span class="led-tag up">UP</span>
-            <span id="ledUp" class="led-digits">00</span>
+        <div class="led-row-lg">
+          <div class="led-seg up">
+            <span class="led-tag">UP</span>
+            <span id="ledUp" class="led-digits led-digits-lg">05</span>
           </div>
-          <div class="led-cell">
-            <span class="led-tag down">DN</span>
-            <span id="ledDown" class="led-digits">00</span>
+          <div class="led-seg down">
+            <span class="led-tag">DN</span>
+            <span id="ledDown" class="led-digits led-digits-lg">02</span>
           </div>
-          <div class="led-cell">
-            <span class="led-tag wait">WT</span>
-            <span id="ledWait" class="led-digits">00</span>
+        </div>
+        <div class="led-row-lg">
+          <div class="led-seg wait">
+            <span class="led-tag">WT</span>
+            <span id="ledWait" class="led-digits led-digits-lg">15</span>
           </div>
-          <div class="led-cell">
-            <span class="led-tag hold">HD</span>
-            <span id="ledHold" class="led-digits">00</span>
+          <div class="led-seg hold">
+            <span class="led-tag">HD</span>
+            <span id="ledHold" class="led-digits led-digits-lg">00</span>
           </div>
         </div>
         <div class="led-foot" id="ledQuorum">Q —</div>
