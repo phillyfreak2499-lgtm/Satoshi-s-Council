@@ -2712,7 +2712,7 @@ function drawCandleChart() {
       }
     }
 
-    // Left-panel BOT CHOICE COUNT
+    // Left-panel BOT CHOICE COUNT (legacy hooks if present)
     const setB = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
     setB("bccUp", up); setB("bccDown", down); setB("bccWait", wait); setB("bccHold", hold); setB("bccSwap", swap);
     const setBar = (id, n) => {
@@ -2724,6 +2724,22 @@ function drawCandleChart() {
     if (swapRow) swapRow.classList.toggle("hidden", !swap);
     const meta = document.getElementById("botChoiceMeta");
     if (meta) meta.textContent = up + "↑ · " + down + "↓ · " + wait + " wait";
+
+    // Floating 7-segment FLOOR LED
+    const pad2 = (n) => String(Math.max(0, n | 0)).padStart(2, "0");
+    setB("ledUp", pad2(up));
+    setB("ledDown", pad2(down));
+    setB("ledWait", pad2(wait));
+    setB("ledHold", pad2(hold));
+    const ledQ = document.getElementById("ledQuorum");
+    if (ledQ) {
+      const q = (state && state.quorum) || (state && state.learning && state.learning.quorum) || {};
+      if (q.best_size != null) {
+        ledQ.textContent = "Q " + q.best_size + (q.best_size_wr != null ? " · " + Math.round(q.best_size_wr * 100) + "%" : "");
+      } else {
+        ledQ.textContent = "Q learning";
+      }
+    }
   }
 
 
@@ -2873,6 +2889,12 @@ function drawCandleChart() {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
     document.body.classList.toggle("floor-mode", mode === "floor");
+    // Hierarchy only on ranks / dashboard
+    document.body.classList.toggle("show-hierarchy", mode === "ranks" || mode === "dashboard");
+    // Mode class for LED visibility rules
+    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
+      document.body.classList.toggle("mode-" + m, mode === m);
+    });
     const botsView = document.getElementById("botsView");
     const ranksView = document.getElementById("ranksView");
     const settingsView = document.getElementById("settingsView");
@@ -2931,23 +2953,33 @@ function drawCandleChart() {
       const dnp = m.down_pct != null ? m.down_pct : m.no_price != null ? m.no_price : null;
       dnEl.textContent = dnp != null ? (Number(dnp) <= 1 ? (Number(dnp) * 100).toFixed(1) : Number(dnp).toFixed(1)) + "%" : "—";
     }
-    if (timEl) {
+    if (timEl || document.getElementById("ledWindowTime")) {
       let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
       if (secs == null && m.close_time) {
         secs = Math.max(0, Math.floor((new Date(m.close_time) - Date.now()) / 1000));
       }
+      let display = "--:--";
       if (secs != null && !isNaN(secs)) {
         const s = Math.max(0, Math.floor(Number(secs)));
         const mm = String(Math.floor(s / 60)).padStart(2, "0");
         const ss = String(s % 60).padStart(2, "0");
-        timEl.textContent = mm + ":" + ss;
+        display = mm + ":" + ss;
       } else {
-        // Fallback: seconds to next 15m UTC bucket
         const now = Date.now();
         const bucket = 15 * 60 * 1000;
         const left = bucket - (now % bucket);
         const s = Math.floor(left / 1000);
-        timEl.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+        display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+      }
+      if (timEl) timEl.textContent = display;
+      const ledT = document.getElementById("ledWindowTime");
+      if (ledT) ledT.textContent = display;
+      const ledSub = document.getElementById("ledWindowSub");
+      if (ledSub) {
+        const sNum = secs != null && !isNaN(secs) ? Math.max(0, Math.floor(Number(secs))) : null;
+        if (sNum != null && sNum <= 60) ledSub.textContent = "FINAL MINUTE";
+        else if (sNum != null && sNum <= 180) ledSub.textContent = "LATE WINDOW";
+        else ledSub.textContent = "until close";
       }
     }
 
