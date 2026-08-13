@@ -94,7 +94,6 @@
           <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
           <button id="tabBots" class="mode-tab" data-mode="bots" title="What each bot does">Bots</button>
           <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Live ranks & hit counts">Ranks</button>
-          <button id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
           <button id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
           <button id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         </div>
@@ -137,6 +136,17 @@
           <span class="panel-sub" id="logCount">all settled</span>
         </div>
         <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
+        <div class="panel-head panel-head-sub">
+          <span class="panel-title">BOT CHOICE COUNT</span>
+          <span class="panel-sub" id="botChoiceMeta">live floor</span>
+        </div>
+        <div id="botChoiceCount" class="bot-choice-count" aria-label="How many bots vote each way">
+          <div class="bcc-row"><span class="bcc-dot up"></span><span class="bcc-lab">UP</span><b id="bccUp">0</b><div class="bcc-bar"><i id="bccUpBar" class="up"></i></div></div>
+          <div class="bcc-row"><span class="bcc-dot down"></span><span class="bcc-lab">DOWN</span><b id="bccDown">0</b><div class="bcc-bar"><i id="bccDownBar" class="down"></i></div></div>
+          <div class="bcc-row"><span class="bcc-dot wait"></span><span class="bcc-lab">WAIT</span><b id="bccWait">0</b><div class="bcc-bar"><i id="bccWaitBar" class="wait"></i></div></div>
+          <div class="bcc-row"><span class="bcc-dot hold"></span><span class="bcc-lab">HOLD</span><b id="bccHold">0</b><div class="bcc-bar"><i id="bccHoldBar" class="hold"></i></div></div>
+          <div class="bcc-row swap-row hidden" id="bccSwapRow"><span class="bcc-dot swap"></span><span class="bcc-lab">SWAP</span><b id="bccSwap">0</b></div>
+        </div>
         <div class="panel-head panel-head-sub">
           <span class="panel-title">DEBATE</span>
           <span class="panel-sub">Council floor</span>
@@ -194,13 +204,15 @@
           <label class="set-check"><input type="checkbox" id="teamLoopToggle" checked /> Team loops on table</label>
         </div>
         <div class="settings-grid">
-          <div class="set-row"><span>Analysis cycle</span><strong id="setInterval">—</strong></div>
-          <div class="set-row"><span>Hot cycle</span><strong id="setHot">—</strong></div>
-          <div class="set-row"><span>Flat cycle</span><strong id="setFlat">—</strong></div>
-          <div class="set-row"><span>Dual spot</span><strong id="setDual">—</strong></div>
-          <div class="set-row"><span>Parallel agents</span><strong id="setParallel">—</strong></div>
-          <div class="set-row"><span>UI poll</span><strong id="setPoll">—</strong></div>
+          <div class="set-row"><span>Analysis cycle (s)</span><input type="number" step="0.1" min="0.5" max="30" id="setIntervalInput" style="width:72px" /></div>
+          <div class="set-row"><span>Hot cycle (s)</span><input type="number" step="0.1" min="0.4" max="15" id="setHotInput" style="width:72px" /></div>
+          <div class="set-row"><span>Flat cycle (s)</span><input type="number" step="0.1" min="1" max="60" id="setFlatInput" style="width:72px" /></div>
+          <div class="set-row"><span>Dual spot</span><label class="set-check"><input type="checkbox" id="setDualInput" /></label></div>
+          <div class="set-row"><span>Parallel agents</span><label class="set-check"><input type="checkbox" id="setParallelInput" /></label></div>
+          <div class="set-row"><span>UI poll (ms)</span><input type="number" step="50" min="300" max="10000" id="setPollInput" style="width:72px" /></div>
         </div>
+        <!-- legacy readouts kept for compatibility -->
+        <div class="hidden"><strong id="setInterval">—</strong><strong id="setHot">—</strong><strong id="setFlat">—</strong><strong id="setDual">—</strong><strong id="setParallel">—</strong><strong id="setPoll">—</strong></div>
         
         
         <div class="settings-grid-advanced">
@@ -310,6 +322,18 @@
           <span id="settingsSaveStatus" class="settings-foot"></span>
         </div>
 
+
+        <div class="beast-card settings-card" id="adminToolsCard">
+          <div class="beast-title">ADMIN TOOLS</div>
+          <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities.</p>
+          <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
+            <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate</button>
+            <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
+            <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
+          </div>
+          <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
+        </div>
+
 <div class="brain-card" id="brainCard">
           <div class="beast-title">LEARNING BRAIN</div>
           <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
@@ -359,40 +383,7 @@
       </div>
     </section>
 
-    <!-- Paper trading journal -->
-    <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
-      <div class="info-hero">
-        <h2>PAPER TRACKER</h2>
-        <p>Manual trade log — your bets, not Satoshi. Enter side, stake, and what you got back. Totals use <b>America/Chicago</b>.</p>
-      </div>
-
-      <div class="paper-entry" id="paperEntry">
-        <div class="pe-sides">
-          <button type="button" class="pe-side up active" data-side="UP" id="peSideUp">UP</button>
-          <button type="button" class="pe-side down" data-side="DOWN" id="peSideDown">DOWN</button>
-        </div>
-        <div class="pe-fields">
-          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" /></label>
-          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="0" placeholder="0 if lost" /></label>
-          <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
-        </div>
-        <div class="pe-preview">P&amp;L: <strong id="pePnl">-$25.00</strong></div>
-        <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
-      </div>
-
-      <div class="paper-summary" id="paperSummary"></div>
-      <div class="paper-cal-tabs">
-        <button type="button" class="paper-cal-btn active" data-cal="daily">Daily</button>
-        <button type="button" class="paper-cal-btn" data-cal="weekly">Weekly</button>
-        <button type="button" class="paper-cal-btn" data-cal="monthly">Monthly</button>
-        <button type="button" class="paper-cal-btn" data-cal="yearly">Yearly</button>
-      </div>
-      <div id="paperCalendar" class="paper-calendar"></div>
-      <div class="panel-head" style="margin-top:16px"><span class="panel-title">TRADES</span><span class="panel-sub" id="paperCallMeta">—</span></div>
-      <div id="paperCalls" class="paper-calls"></div>
-    </section>
-
-    <!-- Charts tab: full wall of useful views -->
+<!-- Charts tab: full wall of useful views -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
       <div class="charts-grid">
         <article class="chart-card chart-wide">
@@ -463,6 +454,21 @@
       <button type="button" class="hive-egg-close" id="hiveEggClose" aria-label="Close">×</button>
       <img src="/hive-egg.png" alt="" class="hive-egg-img" />
     </div>
+
+
+  <!-- Admin password modal (Settings / destructive actions) -->
+  <div id="adminGate" class="admin-gate hidden" role="dialog" aria-modal="true" aria-label="Admin password">
+    <div class="admin-card">
+      <div class="admin-title">ADMIN</div>
+      <div class="admin-sub">Enter admin password to unlock Settings</div>
+      <input type="password" id="adminInput" class="password-input" placeholder="Admin password" autocomplete="off" />
+      <div class="admin-actions">
+        <button type="button" id="adminCancel" class="gate-btn gate-btn-ghost">Cancel</button>
+        <button type="button" id="adminSubmit" class="gate-btn gate-btn-summon">Unlock</button>
+      </div>
+      <p id="adminError" class="password-error hidden">Wrong password</p>
+    </div>
+  </div>
 
 </body>
 </html>
