@@ -2876,3 +2876,173 @@ footer, #marketStrip, .window-timer {
   margin-top: 12px;
   justify-content: flex-end;
 }
+
+
+/* ===== MAIN TABLE: Debate focus, hierarchy ranks-only ===== */
+#mainTable {
+  grid-template-columns: minmax(280px, 340px) 1fr !important;
+  grid-template-areas: "debate table" !important;
+}
+#hierarchyPanel.hierarchy-ranks-only {
+  display: none !important;
+}
+/* Show hierarchy when body is in ranks or dashboard context */
+body.show-hierarchy #mainTable {
+  grid-template-columns: minmax(260px, 320px) 1fr minmax(240px, 300px) !important;
+  grid-template-areas: "debate table hierarchy" !important;
+}
+body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.panel-head-debate .panel-title {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: #7ec8ff;
+}
+.debate-log-main {
+  flex: 1 1 auto;
+  min-height: 220px;
+  max-height: none;
+}
+
+/* ===== Floating 7-segment LED counters ===== */
+.led-float {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  filter: drop-shadow(0 0 18px rgba(0, 255, 255, 0.25));
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.led-floor {
+  left: 18px;
+  bottom: 88px;
+}
+.led-window {
+  right: 18px;
+  bottom: 88px;
+  opacity: 0.55;
+}
+/* Table mode: floor LED visible, window LED subtle */
+body:not(.floor-mode) .led-window {
+  opacity: 0.4;
+  transform: scale(0.92);
+}
+/* Floor mode: both LEDs large, centered-ish on sides, pure floating */
+body.floor-mode .led-floor {
+  left: 4vw;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%) scale(1.25);
+  opacity: 1;
+}
+body.floor-mode .led-window {
+  right: 4vw;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%) scale(1.25);
+  opacity: 1;
+}
+body.floor-mode .led-float {
+  z-index: 50;
+}
+
+.led-bezel {
+  background: linear-gradient(160deg, rgba(6, 12, 24, 0.92), rgba(2, 6, 14, 0.96));
+  border: 1px solid rgba(0, 255, 255, 0.35);
+  border-radius: 12px;
+  padding: 12px 16px 10px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6) inset,
+    0 0 24px rgba(0, 255, 255, 0.18),
+    0 8px 32px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  min-width: 160px;
+}
+.led-label {
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: rgba(0, 255, 255, 0.7);
+  text-align: center;
+  margin-bottom: 8px;
+  text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+}
+.led-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.led-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.led-tag {
+  font-family: Orbitron, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  opacity: 0.85;
+}
+.led-tag.up { color: #39ff14; text-shadow: 0 0 6px #39ff14; }
+.led-tag.down { color: #ff3b5c; text-shadow: 0 0 6px #ff3b5c; }
+.led-tag.wait { color: #8b9bb4; text-shadow: 0 0 4px #8b9bb4; }
+.led-tag.hold { color: #ffcc33; text-shadow: 0 0 6px #ffcc33; }
+
+.led-digits {
+  font-family: "Share Tech Mono", "Courier New", Orbitron, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #00fff0;
+  text-shadow:
+    0 0 4px #00fff0,
+    0 0 12px rgba(0, 255, 240, 0.7),
+    0 0 24px rgba(0, 255, 240, 0.35);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  /* faux 7-segment depth */
+  background: linear-gradient(180deg, #00fff0 0%, #00c8d4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 6px rgba(0, 255, 240, 0.55));
+}
+.led-time {
+  font-size: 42px;
+  text-align: center;
+  letter-spacing: 0.12em;
+  margin: 4px 0 2px;
+}
+.led-foot {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 255, 255, 0.45);
+  font-family: Orbitron, monospace;
+}
+
+/* Hide LEDs on non-table views */
+body.mode-bots .led-float,
+body.mode-ranks .led-float,
+body.mode-charts .led-float,
+body.mode-settings .led-float,
+body.mode-dashboard .led-float {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+@media (max-width: 900px) {
+  .led-floor { left: 8px; bottom: 72px; transform: scale(0.85); transform-origin: bottom left; }
+  .led-window { right: 8px; bottom: 72px; transform: scale(0.85); transform-origin: bottom right; }
+  body.floor-mode .led-floor,
+  body.floor-mode .led-window {
+    transform: translateY(-50%) scale(1.05);
+  }
+  .led-digits { font-size: 22px; }
+  .led-time { font-size: 32px; }
+}
