@@ -2734,3 +2734,145 @@ footer, #marketStrip, .window-timer {
   to { opacity: 1; transform: scale(1); }
 }
 
+
+
+/* ===== Bot Choice Count (left panel) ===== */
+.bot-choice-count {
+  padding: 8px 10px 10px;
+  margin: 0 0 6px;
+  background: rgba(8, 12, 28, 0.65);
+  border: 1px solid rgba(120, 180, 255, 0.12);
+  border-radius: 8px;
+}
+.bcc-row {
+  display: grid;
+  grid-template-columns: 14px 48px 28px 1fr;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: #c8d6f0;
+}
+.bcc-row b { font-variant-numeric: tabular-nums; color: #e8f0ff; }
+.bcc-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+.bcc-dot.up { background: #39ff14; color: #39ff14; }
+.bcc-dot.down { background: #ff3b5c; color: #ff3b5c; }
+.bcc-dot.wait { background: #8b9bb4; color: #8b9bb4; }
+.bcc-dot.hold { background: #ffcc33; color: #ffcc33; }
+.bcc-dot.swap { background: #c44dff; color: #c44dff; }
+.bcc-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bcc-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  transition: width 0.35s ease;
+}
+.bcc-bar i.up { background: linear-gradient(90deg, #1aff6e, #39ff14); }
+.bcc-bar i.down { background: linear-gradient(90deg, #ff1a4a, #ff3b5c); }
+.bcc-bar i.wait { background: linear-gradient(90deg, #5a6a80, #8b9bb4); }
+.bcc-bar i.hold { background: linear-gradient(90deg, #d4a017, #ffcc33); }
+
+/* ===== Clearer debate entries ===== */
+.debate-round {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(140, 180, 255, 0.55);
+  margin: 10px 0 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(100, 140, 220, 0.15);
+}
+.debate-entry {
+  padding: 6px 8px;
+  margin: 4px 0;
+  border-left: 2px solid rgba(120,160,255,0.25);
+  background: rgba(10, 14, 30, 0.4);
+  border-radius: 0 6px 6px 0;
+}
+.debate-entry .who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+.debate-entry .who b {
+  color: #e8f4ff;
+  font-weight: 600;
+}
+.dir-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  background: rgba(0,0,0,0.25);
+}
+.debate-entry .said {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #a8b8d0;
+}
+.feat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.feat-chip {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(80, 120, 200, 0.15);
+  color: #8eb4ff;
+  border: 1px solid rgba(100, 150, 255, 0.2);
+}
+
+/* ===== Admin gate modal ===== */
+.admin-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 14, 0.78);
+  backdrop-filter: blur(6px);
+}
+.admin-gate.hidden { display: none; }
+.admin-card {
+  width: min(360px, 92vw);
+  padding: 22px 24px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, #0e1428, #0a0e1c);
+  border: 1px solid rgba(120, 160, 255, 0.25);
+  box-shadow: 0 0 40px rgba(80, 120, 255, 0.15);
+}
+.admin-title {
+  font-family: Orbitron, sans-serif;
+  letter-spacing: 0.18em;
+  font-size: 14px;
+  color: #9ec5ff;
+  margin-bottom: 4px;
+}
+.admin-sub {
+  font-size: 12px;
+  color: #7a8aaa;
+  margin-bottom: 12px;
+}
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
