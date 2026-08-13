@@ -119,7 +119,8 @@ class AdaptiveLearner:
             wr = (c + 2) / (n + 4)
             weight = float(self.weights.get(name, settings.BASE_WEIGHTS.get(name, 0.1)))
             # Hierarchy score: win-rate dominates; weight breaks ties
-            score = wr * 100.0 + weight * 8.0 + c * 0.15
+            # WR-first hierarchy; volume of rights is a light tie-break only
+            score = wr * 120.0 + weight * 6.0 + min(c, 200) * 0.05
             rows.append({
                 "agent": name,
                 "display_name": display_name(name),
@@ -197,6 +198,14 @@ class AdaptiveLearner:
                 # Soft mute only when not enough samples yet for full fade
                 if n >= mute_n and n < int(getattr(settings, "FADE_MIN_N", 20)) and wr is not None and wr < mute_wr:
                     factor *= mute_f
+                # High directional WR boost — rare but accurate bots punch above rank volume
+                # when they actually vote UP/DOWN (WAIT is never graded into WR).
+                if wr is not None and n >= 25 and wr >= 0.80:
+                    # 80% → ~1.25x, 90%+ → ~1.55x, capped
+                    boost = 1.0 + min(0.55, (wr - 0.80) * 2.5 + 0.15)
+                    factor = min(1.35, factor * boost)
+                elif wr is not None and n >= 15 and wr >= 0.85:
+                    factor = min(1.25, factor * 1.20)
         return round(max(0.02, factor), 4)
 
     def snapshot(self) -> Dict[str, Any]:
