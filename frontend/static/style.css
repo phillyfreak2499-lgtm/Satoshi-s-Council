@@ -2219,6 +2219,7 @@ body.beast-mode .zt-watermark {
 body.floor-mode header,
 body.floor-mode footer,
 body.floor-mode #debatePanel,
+body.floor-mode #lifetimePanel,
 body.floor-mode #hierarchyPanel,
 body.floor-mode .color-tally,
 body.floor-mode #huddleBanner {
@@ -2878,26 +2879,28 @@ footer, #marketStrip, .window-timer {
 }
 
 
-/* ===== MAIN TABLE: Debate focus, hierarchy ranks-only =====
-   CRITICAL: never collapse #tableStage — canvas + bots live there.
+/* ===== MAIN TABLE: LEFT lifetime · CENTER table · RIGHT debate =====
+   Hierarchy is ranks-only. Never collapse #tableStage.
 */
 #mainTable {
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) !important;
-  grid-template-areas: "debate table" !important;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(280px, 360px) !important;
+  grid-template-areas: "lifetime table debate" !important;
 }
+#lifetimePanel { grid-area: lifetime !important; }
+#debatePanel { grid-area: debate !important; }
 #hierarchyPanel.hierarchy-ranks-only {
-  /* Keep out of layout on Table/Floor — do NOT use content that steals space */
   display: none !important;
 }
 body.show-hierarchy #mainTable {
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(220px, 280px) !important;
-  grid-template-areas: "debate table hierarchy" !important;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 300px) !important;
+  grid-template-areas: "lifetime table hierarchy" !important;
 }
 body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   display: flex !important;
   flex-direction: column;
 }
-/* Hard-guarantee the round table canvas stage is visible and has size */
+body.show-hierarchy #debatePanel { display: none !important; }
+
 #mainTable #tableStage,
 #mainTable .table-stage {
   grid-area: table !important;
@@ -2925,147 +2928,213 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   color: #7ec8ff;
 }
 .debate-log-main {
+  flex: 1 1 auto !important;
+  min-height: 280px;
+  max-height: none !important;
+}
+
+.panel-head-debate .panel-title {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: #7ec8ff;
+}
+.debate-log-main {
   flex: 1 1 auto;
   min-height: 220px;
   max-height: none;
 }
 
-/* ===== Floating 7-segment LED counters ===== */
+
+/* ===== Large floating 7-segment FLOOR + WINDOW LEDs ===== */
 .led-float {
-  position: fixed;
-  z-index: 40;
+  position: fixed !important;
+  z-index: 45 !important;
   pointer-events: none;
-  filter: drop-shadow(0 0 18px rgba(0, 255, 255, 0.25));
+  filter: drop-shadow(0 0 22px rgba(0, 255, 255, 0.35));
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
+/* FLOOR — bottom-left, elevated above footer, not inside side panels */
 .led-floor {
-  left: 18px;
-  bottom: 88px;
+  left: 20px !important;
+  bottom: 78px !important;
+  top: auto !important;
 }
+/* 15M WINDOW — bottom-right, matching twin */
 .led-window {
-  right: 18px;
-  bottom: 88px;
-  opacity: 0.55;
-}
-/* Table mode: floor LED visible, window LED subtle */
-body:not(.floor-mode) .led-window {
-  opacity: 0.4;
-  transform: scale(0.92);
-}
-/* Floor mode: both LEDs large, centered-ish on sides, pure floating */
-body.floor-mode .led-floor {
-  left: 4vw;
-  top: 50%;
-  bottom: auto;
-  transform: translateY(-50%) scale(1.25);
-  opacity: 1;
-}
-body.floor-mode .led-window {
-  right: 4vw;
-  top: 50%;
-  bottom: auto;
-  transform: translateY(-50%) scale(1.25);
-  opacity: 1;
-}
-body.floor-mode .led-float {
-  z-index: 50;
+  right: 20px !important;
+  bottom: 78px !important;
+  top: auto !important;
+  opacity: 1 !important;
 }
 
 .led-bezel {
-  background: linear-gradient(160deg, rgba(6, 12, 24, 0.92), rgba(2, 6, 14, 0.96));
-  border: 1px solid rgba(0, 255, 255, 0.35);
-  border-radius: 12px;
-  padding: 12px 16px 10px;
+  background: linear-gradient(165deg, rgba(4, 10, 22, 0.94), rgba(2, 6, 14, 0.98));
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  border-radius: 14px;
+  padding: 14px 18px 12px;
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.6) inset,
-    0 0 24px rgba(0, 255, 255, 0.18),
-    0 8px 32px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  min-width: 160px;
+    0 0 0 1px rgba(0, 0, 0, 0.7) inset,
+    0 0 28px rgba(0, 255, 255, 0.22),
+    0 12px 36px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+}
+.led-bezel-lg {
+  min-width: 200px;
+  padding: 16px 20px 14px;
 }
 .led-label {
   font-family: Orbitron, Rajdhani, monospace;
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  color: rgba(0, 255, 255, 0.7);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: rgba(0, 255, 240, 0.75);
   text-align: center;
+  margin-bottom: 10px;
+  text-shadow: 0 0 10px rgba(0, 255, 240, 0.55);
+}
+.led-row-lg {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
   margin-bottom: 8px;
-  text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
 }
-.led-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-}
-.led-cell {
+.led-seg {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  min-width: 72px;
 }
 .led-tag {
   font-family: Orbitron, monospace;
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  opacity: 0.85;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  opacity: 0.9;
 }
-.led-tag.up { color: #39ff14; text-shadow: 0 0 6px #39ff14; }
-.led-tag.down { color: #ff3b5c; text-shadow: 0 0 6px #ff3b5c; }
-.led-tag.wait { color: #8b9bb4; text-shadow: 0 0 4px #8b9bb4; }
-.led-tag.hold { color: #ffcc33; text-shadow: 0 0 6px #ffcc33; }
+.led-seg.up .led-tag { color: #39ff14; text-shadow: 0 0 8px #39ff14; }
+.led-seg.down .led-tag { color: #ff3b5c; text-shadow: 0 0 8px #ff3b5c; }
+.led-seg.wait .led-tag { color: #9aa8c0; text-shadow: 0 0 6px #9aa8c0; }
+.led-seg.hold .led-tag { color: #ffcc33; text-shadow: 0 0 8px #ffcc33; }
 
+/* 7-segment digital clock look */
 .led-digits {
   font-family: "Share Tech Mono", "Courier New", Orbitron, monospace;
-  font-size: 28px;
+  font-size: 36px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #00fff0;
-  text-shadow:
-    0 0 4px #00fff0,
-    0 0 12px rgba(0, 255, 240, 0.7),
-    0 0 24px rgba(0, 255, 240, 0.35);
+  letter-spacing: 0.12em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  /* faux 7-segment depth */
-  background: linear-gradient(180deg, #00fff0 0%, #00c8d4 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 6px rgba(0, 255, 240, 0.55));
+  color: #00fff0;
+  text-shadow:
+    0 0 2px #00fff0,
+    0 0 8px rgba(0, 255, 240, 0.9),
+    0 0 18px rgba(0, 255, 240, 0.45),
+    0 0 32px rgba(0, 255, 240, 0.25);
+}
+.led-digits-lg {
+  font-size: 42px;
+  letter-spacing: 0.14em;
 }
 .led-time {
-  font-size: 42px;
+  font-size: 48px !important;
   text-align: center;
-  letter-spacing: 0.12em;
-  margin: 4px 0 2px;
+  letter-spacing: 0.16em;
+  margin: 2px 0 4px;
 }
 .led-foot {
-  margin-top: 8px;
+  margin-top: 6px;
   text-align: center;
   font-size: 10px;
-  letter-spacing: 0.08em;
-  color: rgba(0, 255, 255, 0.45);
+  letter-spacing: 0.1em;
+  color: rgba(0, 255, 255, 0.5);
   font-family: Orbitron, monospace;
+}
+
+/* Floor / screensaver mode — both LEDs large, mid-height on sides */
+body.floor-mode .led-floor {
+  left: 3vw !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) scale(1.35);
+  opacity: 1;
+  z-index: 55;
+}
+body.floor-mode .led-window {
+  right: 3vw !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) scale(1.35);
+  opacity: 1;
+  z-index: 55;
 }
 
 /* Hide LEDs on non-table views */
 body.mode-bots .led-float,
 body.mode-ranks .led-float,
 body.mode-charts .led-float,
-body.mode-settings .led-float,
-body.mode-dashboard .led-float {
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
+body.mode-settings .led-float {
+  opacity: 0 !important;
+  visibility: hidden !important;
 }
 
 @media (max-width: 900px) {
-  .led-floor { left: 8px; bottom: 72px; transform: scale(0.85); transform-origin: bottom left; }
-  .led-window { right: 8px; bottom: 72px; transform: scale(0.85); transform-origin: bottom right; }
-  body.floor-mode .led-floor,
-  body.floor-mode .led-window {
-    transform: translateY(-50%) scale(1.05);
+  #mainTable {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 1fr auto !important;
+    grid-template-areas: "lifetime" "table" "debate" !important;
   }
-  .led-digits { font-size: 22px; }
-  .led-time { font-size: 32px; }
+  .led-digits, .led-digits-lg { font-size: 28px; }
+  .led-time { font-size: 36px !important; }
+  .led-floor { left: 8px !important; bottom: 70px !important; transform: scale(0.85); transform-origin: bottom left; }
+  .led-window { right: 8px !important; bottom: 70px !important; transform: scale(0.85); transform-origin: bottom right; }
 }
+
+/* FINAL LAYOUT LOCK — left lifetime, center table, right debate */
+#mainTable {
+  display: grid !important;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(280px, 360px) !important;
+  grid-template-areas: "lifetime table debate" !important;
+}
+#lifetimePanel { grid-area: lifetime !important; display: flex !important; flex-direction: column !important; }
+#debatePanel { grid-area: debate !important; display: flex !important; flex-direction: column !important; }
+#tableStage, .table-stage { grid-area: table !important; }
+#hierarchyPanel.hierarchy-ranks-only { display: none !important; }
+body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only { display: flex !important; flex-direction: column !important; }
+body.show-hierarchy #debatePanel { display: none !important; }
+body.floor-mode #lifetimePanel,
+body.floor-mode #debatePanel,
+body.floor-mode #hierarchyPanel { display: none !important; }
+
+/* Path average on hit tracker */
+.hr-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin: 8px 12px 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 255, 240, 0.04);
+  border: 1px solid rgba(0, 255, 240, 0.18);
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(180, 210, 230, 0.7);
+}
+.hr-path b {
+  font-size: 14px;
+  color: #00fff0;
+  text-shadow: 0 0 8px rgba(0, 255, 240, 0.45);
+  letter-spacing: 0.04em;
+}
+.hr-path-lab { opacity: 0.7; }
+.hr-path-sub { opacity: 0.55; font-size: 9px; }
+.hr-path-sep { opacity: 0.35; }
+.call-path {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(0, 255, 240, 0.7);
+  margin-top: 2px;
+  font-family: "Share Tech Mono", monospace;
+}
+.call-path.miss { color: rgba(255, 90, 110, 0.75); }
