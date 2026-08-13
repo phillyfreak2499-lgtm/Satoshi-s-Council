@@ -6,7 +6,7 @@
   <title>Satoshi’s Council / ZT</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
 <body class="gate-locked">
 
@@ -109,7 +109,7 @@
 
     <main id="mainTable">
       <!-- LEFT: Hit-rate + Call log + Debate -->
-      <aside id="debatePanel" class="side-panel side-left" aria-label="Council debate log">
+      <aside id="debatePanel" class="side-panel side-left debate-focus" aria-label="Council debate log">
         <div class="panel-head">
           <span class="panel-title">LIFETIME</span>
           <span class="panel-sub" id="callLogMeta">0/0 · —</span>
@@ -136,22 +136,17 @@
           <span class="panel-sub" id="logCount">all settled</span>
         </div>
         <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
-        <div class="panel-head panel-head-sub">
-          <span class="panel-title">BOT CHOICE COUNT</span>
-          <span class="panel-sub" id="botChoiceMeta">live floor</span>
-        </div>
-        <div id="botChoiceCount" class="bot-choice-count" aria-label="How many bots vote each way">
-          <div class="bcc-row"><span class="bcc-dot up"></span><span class="bcc-lab">UP</span><b id="bccUp">0</b><div class="bcc-bar"><i id="bccUpBar" class="up"></i></div></div>
+</div>
           <div class="bcc-row"><span class="bcc-dot down"></span><span class="bcc-lab">DOWN</span><b id="bccDown">0</b><div class="bcc-bar"><i id="bccDownBar" class="down"></i></div></div>
           <div class="bcc-row"><span class="bcc-dot wait"></span><span class="bcc-lab">WAIT</span><b id="bccWait">0</b><div class="bcc-bar"><i id="bccWaitBar" class="wait"></i></div></div>
           <div class="bcc-row"><span class="bcc-dot hold"></span><span class="bcc-lab">HOLD</span><b id="bccHold">0</b><div class="bcc-bar"><i id="bccHoldBar" class="hold"></i></div></div>
           <div class="bcc-row swap-row hidden" id="bccSwapRow"><span class="bcc-dot swap"></span><span class="bcc-lab">SWAP</span><b id="bccSwap">0</b></div>
         </div>
-        <div class="panel-head panel-head-sub">
-          <span class="panel-title">DEBATE</span>
-          <span class="panel-sub">Council floor</span>
+        <div class="panel-head panel-head-debate">
+          <span class="panel-title">DEBATE LOG</span>
+          <span class="panel-sub">Council floor · live</span>
         </div>
-        <div id="debateLog" class="debate-log"></div>
+        <div id="debateLog" class="debate-log debate-log-main"></div>
       </aside>
 
       <!-- CENTER: Round table -->
@@ -167,7 +162,7 @@
       </div>
 
       <!-- RIGHT: Hierarchy ranks — bots climb toward Satoshi by being right -->
-      <aside id="hierarchyPanel" class="side-panel side-right" aria-label="Bot hierarchy">
+      <aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only" aria-label="Bot hierarchy">
         <div class="panel-head">
           <span class="panel-title">HIERARCHY</span>
           <span class="panel-sub" id="hierarchyMeta">rank by record</span>
@@ -421,12 +416,44 @@
       </div>
     </section>
 
-    <div id="colorTally" class="color-tally color-tally-mid" aria-label="Bot color counts">
-      <div class="ct-title">FLOOR</div>
-      <div class="ct-row"><span class="ct-dot up"></span><span class="ct-lab">UP</span><b id="ctUp">0</b></div>
-      <div class="ct-row"><span class="ct-dot down"></span><span class="ct-lab">DOWN</span><b id="ctDown">0</b></div>
-      <div class="ct-row"><span class="ct-dot wait"></span><span class="ct-lab">WAIT</span><b id="ctWait">0</b></div>
-      <div class="ct-quorum" id="ctQuorum" title="Historical winning quorum size">Q —</div>
+    <!-- Floating 7-segment style FLOOR COUNT (always on Table / Floor) -->
+    <div id="floorLed" class="led-float led-floor" aria-label="Floor bot choice count">
+      <div class="led-bezel">
+        <div class="led-label">FLOOR</div>
+        <div class="led-grid">
+          <div class="led-cell">
+            <span class="led-tag up">UP</span>
+            <span id="ledUp" class="led-digits">00</span>
+          </div>
+          <div class="led-cell">
+            <span class="led-tag down">DN</span>
+            <span id="ledDown" class="led-digits">00</span>
+          </div>
+          <div class="led-cell">
+            <span class="led-tag wait">WT</span>
+            <span id="ledWait" class="led-digits">00</span>
+          </div>
+          <div class="led-cell">
+            <span class="led-tag hold">HD</span>
+            <span id="ledHold" class="led-digits">00</span>
+          </div>
+        </div>
+        <div class="led-foot" id="ledQuorum">Q —</div>
+      </div>
+    </div>
+
+    <!-- Floating 7-segment 15m WINDOW timer (prominent in Floor mode) -->
+    <div id="windowLed" class="led-float led-window" aria-label="15 minute window countdown">
+      <div class="led-bezel">
+        <div class="led-label">15M WINDOW</div>
+        <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+        <div class="led-foot" id="ledWindowSub">until close</div>
+      </div>
+    </div>
+
+    <!-- Hidden legacy tally hooks so old JS still binds without visual clutter -->
+    <div id="colorTally" class="color-tally hidden" aria-hidden="true">
+      <b id="ctUp">0</b><b id="ctDown">0</b><b id="ctWait">0</b><span id="ctQuorum"></span>
     </div>
     <footer>
       <div id="finalDecision">
