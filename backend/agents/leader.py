@@ -496,6 +496,72 @@ class Leader:
             if pair_bits:
                 summary += " · " + ", ".join(pair_bits[:1])
 
+
+        # --- Path-aware confidence (zero new data) ---
+        # Use remaining time + current Kalshi mid vs lean to raise/lower confidence.
+        # More path room left + mid already moving our way → boost.
+        # Little room left or adverse mid → dampen or WAIT.
+        if firm and lean in ("UP", "DOWN") and direction not in ("WAIT",):
+            up_mid = None
+            if regime_features:
+                try:
+                    up_mid = regime_features.get("up_pct")
+                    if up_mid is not None:
+                        up_mid = float(up_mid)
+                        if up_mid <= 1.5:  # probability form
+                            up_mid *= 100.0
+                except Exception:
+                    up_mid = None
+
+            path_notes = []
+            # Remaining path room (minutes)
+            if mins_left is not None:
+                if mins_left >= 8:
+                    conf = min(94, conf + 3)
+                    path_notes.append("path-room+")
+                elif mins_left <= 3.5:
+                    conf = max(48, conf - 8)
+                    path_notes.append("path-room-")
+                    # Very late with weak score → demote to WAIT
+                    if abs_score < threshold * 1.15 and mins_left <= 2.5:
+                        direction = "WAIT"
+                        firm = False
+                        conf = max(conf, 72)
+                        summary = f"Path-aware: too late for clean scalp ({mins_left:.1f}m left)"
+                        lean = None
+                        path_notes.append("late-kill")
+
+            # Current Kalshi mid vs lean direction
+            if up_mid is not None and lean in ("UP", "DOWN") and direction not in ("WAIT",):
+                # How much has the side already moved toward us from 50?
+                if lean == "UP":
+                    progress = up_mid - 50.0  # positive = already going our way
+                else:
+                    progress = 50.0 - up_mid
+                features_progress = progress
+                # Already 8+ pts in our favor with time left → high confidence path continuation
+                if progress >= 8 and mins_left is not None and mins_left >= 4:
+                    conf = min(95, conf + 6)
+                    path_notes.append(f"path-progress +{progress:.0f}")
+                elif progress >= 4:
+                    conf = min(93, conf + 3)
+                    path_notes.append(f"path-progress +{progress:.0f}")
+                elif progress <= -6:
+                    # Adverse path — mid moved against us
+                    conf = max(48, conf - 12)
+                    path_notes.append(f"adverse-path {progress:.0f}")
+                    if progress <= -10 and abs_score < threshold * 1.25:
+                        direction = "WAIT"
+                        firm = False
+                        conf = max(conf, 70)
+                        summary = f"Path-aware: adverse mid ({up_mid:.0f}¢) vs {lean} lean"
+                        lean = None
+                        path_notes.append("adverse-kill")
+
+            if path_notes and direction not in ("WAIT",):
+                summary += " · " + ", ".join(path_notes[:3])
+
+
         # Guardian caution (does not force WAIT — only trims confidence)
         guardian = next((s for s in signals if s.agent_name == "guardian"), None)
         if guardian and guardian.confidence > 70 and guardian.direction == "WAIT":
