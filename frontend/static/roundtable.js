@@ -177,7 +177,7 @@
 
   async function fetchSettings() {
     try {
-      const r = await fetch(API + "/api/settings");
+      const r = await fetch(API_BASE + "/api/settings");
       if (!r.ok) return null;
       return await r.json();
     } catch (e) {
@@ -187,7 +187,7 @@
 
   async function setBeastMode(on) {
     try {
-      const r = await fetch(API + "/api/settings", {
+      const r = await fetch(API_BASE + "/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ beast_mode: !!on }),
@@ -4125,7 +4125,7 @@ function drawCandleChart() {
 // ——— Hive easter egg (subtle, for true fans) ———
 (function initHiveEgg() {
   function wire() {
-    const btn = document.getElementById("hive-egg");
+    const btn = document.getElementById("hiveBtn");
     const egg = document.getElementById("hiveEgg");
     const close = document.getElementById("hiveEggClose");
     
