@@ -3,6 +3,7 @@ SQLite PerformanceStore – signal history, agent stats, weight history.
 Async via aiosqlite / SQLAlchemy.
 """
 from __future__ import annotations
+from pathlib import Path
 
 import json
 from datetime import datetime, timezone
@@ -571,6 +572,16 @@ class PerformanceStore:
                     .order_by(WindowCall.id.asc())
                 )
             ).scalars().all()
+            # Optional soft-clear: only count settles after hit_rate_reset mark
+            try:
+                hr_mark = await self._reset_mark("hit_rate")
+                if hr_mark:
+                    settled = [
+                        r for r in settled
+                        if (r.settled_at or r.called_at or "") >= hr_mark
+                    ]
+            except Exception:
+                pass
             pending = (
                 await session.execute(
                     select(func.count(WindowCall.id)).where(WindowCall.actual_outcome.is_(None))
@@ -748,6 +759,17 @@ class PerformanceStore:
                     .limit(limit)
                 )
             ).scalars().all()
+            # Soft-clear life log display after admin clear
+            try:
+                ll_mark = await self._reset_mark("life_log")
+                if ll_mark:
+                    rows = [
+                        r for r in rows
+                        if (r.settled_at or r.called_at or "") >= ll_mark
+                    ]
+                    total = len(rows)  # approximate for cleared view
+            except Exception:
+                pass
         acc = await self.get_accuracy()
         return {
             "total": total,
@@ -1274,6 +1296,129 @@ class PerformanceStore:
 
     async def close(self):
         await self.engine.dispose()
+
+
+    async def clear_hit_rate(self) -> Dict[str, Any]:
+        """
+        Reset accuracy counters derived from settled window_calls by marking
+        them as 'archived' for hit-rate purposes WITHOUT deleting training rows.
+        Implementation: move settled outcomes into a soft-reset by recording a
+        hit_rate_reset watermark. Actual deletion of display counters only —
+        AdaptiveLearner weights / pair affinities are untouched.
+        """
+        from datetime import datetime, timezone
+        mark = datetime.now(timezone.utc).isoformat()
+        # Soft approach: set a meta key; get_accuracy will only count settled after mark
+        # Also hard-clear: null out correct/actual for display? Better: keep data but
+        # store reset cursor so get_accuracy filters.
+        try:
+            DATA = Path(getattr(settings, "DATA_DIR", None) or "./data")
+            DATA.mkdir(parents=True, exist_ok=True)
+            (DATA / "hit_rate_reset.json").write_text(
+                json.dumps({"reset_at": mark, "cleared": "hit_rate"}), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"clear_hit_rate mark failed: {e}")
+        # Recompute so UI updates immediately
+        acc = await self.get_accuracy()
+        return {"ok": True, "reset_at": mark, "accuracy": acc}
+
+    async def clear_life_log(self) -> Dict[str, Any]:
+        """
+        Clear the display history for Lifetime Log panel.
+        Does NOT wipe training weights. Sets a life_log_reset watermark so
+        get_lifetime_log / accuracy.log return empty until new settles arrive.
+        """
+        from datetime import datetime, timezone
+        mark = datetime.now(timezone.utc).isoformat()
+        try:
+            DATA = Path(getattr(settings, "DATA_DIR", None) or "./data")
+            DATA.mkdir(parents=True, exist_ok=True)
+            (DATA / "life_log_reset.json").write_text(
+                json.dumps({"reset_at": mark, "cleared": "life_log"}), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"clear_life_log mark failed: {e}")
+        return {"ok": True, "reset_at": mark}
+
+    async def _reset_mark(self, kind: str) -> str | None:
+        """Return ISO reset timestamp if a clear was requested for kind."""
+        try:
+            DATA = Path(getattr(settings, "DATA_DIR", None) or "./data")
+            p = DATA / ("hit_rate_reset.json" if kind == "hit_rate" else "life_log_reset.json")
+            if not p.exists():
+                return None
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            return raw.get("reset_at")
+        except Exception:
+            return None
+
+    async def export_excel_bytes(self) -> bytes:
+        """Build an .xlsx of settled life log + hit rate summary + agent snapshot."""
+        from io import BytesIO
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+        except ImportError:
+            # Fallback CSV zip-like single sheet via pure python if openpyxl missing
+            raise RuntimeError("openpyxl is required for Excel export")
+
+        wb = Workbook()
+        # Sheet 1: Life log
+        ws = wb.active
+        ws.title = "Life Log"
+        headers = [
+            "id", "ticker", "direction", "outcome", "correct", "confidence",
+            "path_move_pct", "settle_reason", "regime_key", "called_at",
+            "settled_at", "entry_side_pct", "peak_side_pct", "paper_pnl",
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1a1a2e")
+
+        life = await self.get_lifetime_log(limit=2000, offset=0)
+        rows = (life.get("log") or life.get("rows") or []) if isinstance(life, dict) else []
+        for r in rows:
+            ws.append([
+                r.get("id"), r.get("ticker"), r.get("direction"), r.get("outcome") or r.get("actual_outcome"),
+                r.get("correct"), r.get("confidence"), r.get("path_move_pct"), r.get("settle_reason"),
+                r.get("regime_key"), r.get("called_at"), r.get("settled_at"),
+                r.get("entry_side_pct") or r.get("open_price"), r.get("peak_side_pct"),
+                r.get("paper_pnl"),
+            ])
+
+        # Sheet 2: Hit rate
+        ws2 = wb.create_sheet("Hit Rate")
+        acc = await self.get_accuracy()
+        ws2.append(["metric", "value"])
+        for k in ("correct", "wrong", "total", "accuracy_pct", "pending", "streak", "wrong_streak", "verdict"):
+            ws2.append([k, acc.get(k)])
+        l20 = acc.get("last_20") or {}
+        l50 = acc.get("last_50") or {}
+        ws2.append(["last_20_pct", l20.get("accuracy_pct")])
+        ws2.append(["last_50_pct", l50.get("accuracy_pct")])
+
+        # Sheet 3: agents from last accuracy agent_stats if available
+        try:
+            stats = await self.update_agent_stats()
+            ws3 = wb.create_sheet("Agents")
+            ws3.append(["agent", "correct", "wrong", "total", "win_rate"])
+            if isinstance(stats, dict):
+                for name, st in sorted(stats.items()):
+                    if not isinstance(st, dict):
+                        continue
+                    ws3.append([
+                        name, st.get("correct"), st.get("wrong"),
+                        st.get("total") or st.get("n"), st.get("win_rate"),
+                    ])
+        except Exception:
+            pass
+
+        buf = BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
 
     async def update_agent_stats(self, limit: int = 200) -> Dict[str, Any]:
         """Compute rolling win-rate and simple Brier for directional signals."""
