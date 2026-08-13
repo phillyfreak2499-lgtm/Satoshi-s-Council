@@ -305,6 +305,83 @@ async def learning():
     return council.learner.snapshot()
 
 
+
+
+# ── Admin (password-gated from UI; soft check on destructive ops) ─────
+ADMIN_PASSWORD = "5152622439"
+
+
+def _admin_ok(request: Request) -> bool:
+    """Accept password via header X-Council-Admin or query ?admin=."""
+    try:
+        hdr = request.headers.get("X-Council-Admin") or ""
+        q = request.query_params.get("admin") or ""
+        return hdr == ADMIN_PASSWORD or q == ADMIN_PASSWORD
+    except Exception:
+        return False
+
+
+@app.post("/api/admin/clear-hit-rate")
+async def admin_clear_hit_rate(request: Request):
+    """Reset hit-rate counters display. Does NOT wipe AdaptiveLearner weights."""
+    if not _admin_ok(request):
+        return {"ok": False, "error": "admin password required"}
+    try:
+        result = await council.store.clear_hit_rate()
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/admin/clear-life-log")
+async def admin_clear_life_log(request: Request):
+    """Clear lifetime log display history. Training weights preserved."""
+    if not _admin_ok(request):
+        return {"ok": False, "error": "admin password required"}
+    try:
+        result = await council.store.clear_life_log()
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/admin/export.xlsx")
+async def admin_export_xlsx(request: Request):
+    """Download settled life log + hit rate + agent snapshot as Excel."""
+    if not _admin_ok(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "admin password required"}, status_code=401)
+    try:
+        data = await council.store.export_excel_bytes()
+        from datetime import datetime, timezone
+        from fastapi.responses import Response
+        fname = f"satoshi-council-log-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.xlsx"
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{fname}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/admin/verify")
+async def admin_verify(request: Request):
+    """UI calls this to check the settings password without mutating state."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    pw = (body or {}).get("password") or ""
+    ok = pw == ADMIN_PASSWORD
+    return {"ok": ok}
+
+
+
 # ── Static UI (single Render web service) ─────────────────────────────
 if STATIC_DIR.is_dir():
     @app.get("/")
