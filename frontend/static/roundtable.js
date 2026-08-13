@@ -293,7 +293,315 @@
     noise.start(now);
   }
 
+
+  /** Short purple mist burst when a new 15m market opens (~5s). */
+  /**
+   * Professional volumetric purple mist — particle physics.
+   * Soft billows + micro-sparks + ground fog, ~5s cinematic burst on new market.
+   */
+  function playNewMarketMist() {
+    try {
+      // Stop any prior run
+      if (window.__mistCtrl && typeof window.__mistCtrl.stop === "function") {
+        try { window.__mistCtrl.stop(); } catch (e) {}
+      }
+
+      let wrap = document.getElementById("marketMist");
+      if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.id = "marketMist";
+        wrap.className = "market-mist";
+        wrap.innerHTML = '<canvas id="marketMistCanvas"></canvas>';
+        document.body.appendChild(wrap);
+      }
+      let canvas = document.getElementById("marketMistCanvas");
+      if (!canvas) {
+        canvas = document.createElement("canvas");
+        canvas.id = "marketMistCanvas";
+        wrap.innerHTML = "";
+        wrap.appendChild(canvas);
+      }
+      wrap.classList.add("active");
+      wrap.classList.remove("fade");
+
+      const ctx = canvas.getContext("2d", { alpha: true });
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let w = 0, h = 0;
+      function resize() {
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      resize();
+
+      // --- Particle system ---
+      // Layers: 0 ground fog, 1 mid billows, 2 high wisps, 3 sparkle motes
+      const blobs = [];
+      const motes = [];
+      const DURATION = 5200;
+      const FADE_START = 2800;
+      const t0 = performance.now();
+      let raf = 0;
+      let running = true;
+
+      function spawnBlob(layer) {
+        const ground = layer === 0;
+        const high = layer === 2;
+        return {
+          layer,
+          x: Math.random() * w,
+          y: ground ? h * (0.55 + Math.random() * 0.5)
+                    : high ? h * Math.random() * 0.5
+                    : h * (0.2 + Math.random() * 0.65),
+          // radius in px
+          r: ground ? (90 + Math.random() * 160)
+                    : high ? (50 + Math.random() * 110)
+                    : (70 + Math.random() * 140),
+          vx: (Math.random() - 0.5) * (ground ? 18 : 32),
+          vy: ground ? -(8 + Math.random() * 14) : (Math.random() - 0.5) * 22,
+          // turbulence seeds
+          seed: Math.random() * 1000,
+          phase: Math.random() * Math.PI * 2,
+          breath: 0.55 + Math.random() * 0.9,
+          // color in purple/magenta range
+          hue: high ? 270 + Math.random() * 28 : 285 + Math.random() * 32,
+          sat: ground ? 58 + Math.random() * 22 : 48 + Math.random() * 28,
+          lit: ground ? 26 + Math.random() * 18 : 34 + Math.random() * 22,
+          baseA: ground ? 0.16 + Math.random() * 0.12 : high ? 0.06 + Math.random() * 0.07 : 0.1 + Math.random() * 0.11,
+        };
+      }
+      function spawnMote() {
+        return {
+          x: Math.random() * w,
+          y: h * (0.15 + Math.random() * 0.75),
+          r: 0.6 + Math.random() * 1.8,
+          vx: (Math.random() - 0.5) * 40,
+          vy: -(12 + Math.random() * 40),
+          life: 0.4 + Math.random() * 1.2,
+          age: 0,
+          hue: 290 + Math.random() * 40,
+        };
+      }
+
+      for (let i = 0; i < 18; i++) blobs.push(spawnBlob(0));
+      for (let i = 0; i < 22; i++) blobs.push(spawnBlob(1));
+      for (let i = 0; i < 14; i++) blobs.push(spawnBlob(2));
+      for (let i = 0; i < 50; i++) motes.push(spawnMote());
+
+      // Cheap multi-octave turbulence (no noise lib)
+      function turb(x, y, t, seed) {
+        return Math.sin(x * 0.004 + t * 0.55 + seed)
+             + Math.sin(y * 0.005 - t * 0.4 + seed * 1.3) * 0.7
+             + Math.sin((x + y) * 0.003 + t * 0.8 + seed * 0.5) * 0.5;
+      }
+      // Wind shear: horizontal wind strengthens with height (atmospheric profile)
+      // height01 = 0 at floor, 1 at top of screen
+      function windShear(height01, t) {
+        const base = 28 + Math.sin(t * 0.35) * 10;       // slow shifting wind
+        const shear = height01 * height01;               // quadratic shear aloft
+        const gust = Math.sin(t * 1.7 + height01 * 4) * 12 * height01;
+        return base * shear + gust;
+      }
+
+      let lastTs = t0;
+      function frame(now) {
+        if (!running) return;
+        const elapsed = now - t0;
+        const t = elapsed / 1000;
+        // clamp dt so tab-throttling doesn't explode physics
+        let dt = Math.min(0.033, Math.max(0.008, (now - lastTs) / 1000));
+        lastTs = now;
+
+        // envelope: ramp in 0.55s, hold, fade after FADE_START
+        let env = 1;
+        if (elapsed < 550) env = elapsed / 550;
+        else if (elapsed > FADE_START) env = Math.max(0, 1 - (elapsed - FADE_START) / (DURATION - FADE_START));
+        env = Math.min(1, Math.max(0, env));
+
+        ctx.clearRect(0, 0, w, h);
+
+        // --- Volumetric lighting (cheap, no raymarch) ---
+        // Key light sits upper-center; shafts + in-scatter glow only
+        const lx = w * 0.5 + Math.sin(t * 0.25) * w * 0.04;
+        const ly = h * 0.18;
+        // Soft god-ray cones (additive)
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        for (let i = 0; i < 5; i++) {
+          const ang = -0.55 + i * 0.28 + Math.sin(t * 0.4 + i) * 0.04;
+          const len = h * (0.7 + (i % 2) * 0.12);
+          const tipX = lx + Math.sin(ang) * len;
+          const tipY = ly + Math.cos(ang) * len * 0.15 + len;
+          const shaft = ctx.createLinearGradient(lx, ly, tipX, tipY);
+          const a0 = (0.07 - i * 0.008) * env;
+          shaft.addColorStop(0, `rgba(190, 120, 255, ${a0})`);
+          shaft.addColorStop(0.45, `rgba(140, 60, 210, ${a0 * 0.35})`);
+          shaft.addColorStop(1, "rgba(40, 0, 80, 0)");
+          ctx.fillStyle = shaft;
+          ctx.beginPath();
+          // narrow triangle shaft
+          const spread = 36 + i * 10;
+          ctx.moveTo(lx, ly);
+          ctx.lineTo(tipX - spread, tipY);
+          ctx.lineTo(tipX + spread, tipY);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // Bright core at light source
+        const core = ctx.createRadialGradient(lx, ly, 0, lx, ly, Math.min(w, h) * 0.22);
+        core.addColorStop(0, `rgba(230, 190, 255, ${0.2 * env})`);
+        core.addColorStop(0.35, `rgba(160, 80, 220, ${0.1 * env})`);
+        core.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(lx, ly, Math.min(w, h) * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Deep purple underglow pool (floor bounce light)
+        const pool = ctx.createRadialGradient(w * 0.5, h * 0.78, 0, w * 0.5, h * 0.75, Math.max(w, h) * 0.65);
+        pool.addColorStop(0, `rgba(120, 30, 160, ${0.2 * env})`);
+        pool.addColorStop(0.45, `rgba(60, 12, 90, ${0.1 * env})`);
+        pool.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = pool;
+        ctx.fillRect(0, 0, w, h);
+
+        // Soft vignette
+        const vig = ctx.createRadialGradient(w * 0.5, h * 0.5, Math.min(w, h) * 0.28, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
+        vig.addColorStop(0, "rgba(0,0,0,0)");
+        vig.addColorStop(1, `rgba(4, 0, 10, ${0.42 * env})`);
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, w, h);
+
+        // Billow particles — wind shear + buoyancy + turbulence
+        for (const b of blobs) {
+          const height01 = 1 - Math.max(0, Math.min(1, b.y / h));
+          const shear = windShear(height01, t);
+          const n = turb(b.x, b.y, t, b.seed);
+          // accelerate toward shear wind (stronger aloft), add turb
+          b.vx += ((shear - b.vx) * 0.55 + n * 14) * dt;
+          b.vy += (n * 0.7 - 10 - height01 * 6) * dt; // buoyancy stronger high
+          b.vx *= (1 - 0.45 * dt);
+          b.vy *= (1 - 0.4 * dt);
+          b.x += b.vx * dt * 55;
+          b.y += b.vy * dt * 55;
+          if (b.x < -b.r) b.x = w + b.r;
+          if (b.x > w + b.r) b.x = -b.r;
+          if (b.y < -b.r) b.y = h + b.r * 0.25;
+          if (b.y > h + b.r) b.y = h * 0.55;
+
+          const breath = 1 + Math.sin(t * b.breath + b.phase) * 0.12;
+          const rr = b.r * breath;
+          // volumetric lighting: brighten particles nearer the light shaft
+          const dx = (b.x - lx) / w;
+          const dy = (b.y - ly) / h;
+          const distL = Math.sqrt(dx * dx + dy * dy);
+          const light = Math.max(0, 1 - distL * 1.6);
+          const a = b.baseA * env * (0.85 + 0.15 * Math.sin(t * 1.2 + b.phase));
+          const litBoost = b.lit + light * 18;
+          const satBoost = Math.min(90, b.sat + light * 12);
+          const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, rr);
+          g.addColorStop(0, `hsla(${b.hue}, ${satBoost}%, ${litBoost + 14}%, ${a * (1 + light * 0.5)})`);
+          g.addColorStop(0.42, `hsla(${b.hue}, ${b.sat}%, ${litBoost}%, ${a * 0.42})`);
+          g.addColorStop(1, `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, 0)`);
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, rr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Micro mote sparks — also feel shear aloft
+        ctx.globalCompositeOperation = "lighter";
+        for (const m of motes) {
+          m.age += dt;
+          const height01 = 1 - Math.max(0, Math.min(1, m.y / h));
+          const shear = windShear(height01, t);
+          const n = turb(m.x, m.y, t, m.x * 0.01);
+          m.vx += ((shear * 0.7 - m.vx) * 0.4 + n * 20) * dt;
+          m.vy += (-22 + n * 10) * dt;
+          m.x += m.vx * dt * 50;
+          m.y += m.vy * dt * 50;
+          if (m.age > m.life || m.y < -10) {
+            m.x = Math.random() * w;
+            m.y = h * (0.4 + Math.random() * 0.55);
+            m.age = 0;
+            m.life = 0.5 + Math.random() * 1.3;
+            m.vx = (Math.random() - 0.5) * 40;
+            m.vy = -(12 + Math.random() * 36);
+          }
+          const lifeA = 1 - m.age / m.life;
+          // brighter near light
+          const dx = (m.x - lx) / w;
+          const dy = (m.y - ly) / h;
+          const light = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) * 1.8);
+          const a = lifeA * env * (0.45 + light * 0.4);
+          ctx.fillStyle = `hsla(${m.hue}, 85%, ${65 + light * 20}%, ${a})`;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, m.r * (1 + light * 0.5), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
+
+        // Ground fog sheets (sheared horizontally)
+        ctx.save();
+        for (let i = 0; i < 4; i++) {
+          const y = h * (0.58 + i * 0.1) + Math.sin(t * 0.7 + i) * 16;
+          const a = (0.04 + i * 0.014) * env;
+          const band = ctx.createLinearGradient(0, y - 36, 0, y + 48);
+          band.addColorStop(0, "rgba(0,0,0,0)");
+          band.addColorStop(0.4, `rgba(130, 40, 180, ${a})`);
+          band.addColorStop(0.6, `rgba(80, 20, 120, ${a * 0.7})`);
+          band.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = band;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          const shearOff = windShear(0.15 + i * 0.05, t) * 0.35;
+          for (let x = 0; x <= w; x += 32) {
+            const yy = y + Math.sin((x + shearOff) * 0.01 + t * 0.9 + i) * 11
+                         + Math.sin(x * 0.022 + t * 1.2) * 5;
+            ctx.lineTo(x, yy);
+          }
+          ctx.lineTo(w, y + 50);
+          ctx.lineTo(0, y + 50);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+
+        if (elapsed < DURATION) {
+          raf = requestAnimationFrame(frame);
+        } else {
+          running = false;
+          wrap.classList.remove("active");
+          ctx.clearRect(0, 0, w, h);
+        }
+      }
+
+      raf = requestAnimationFrame(frame);
+      window.__mistCtrl = {
+        stop() {
+          running = false;
+          cancelAnimationFrame(raf);
+          wrap.classList.remove("active");
+          try { ctx.clearRect(0, 0, w, h); } catch (e) {}
+        }
+      };
+      // hard safety stop
+      clearTimeout(window.__mistTimer2);
+      window.__mistTimer2 = setTimeout(() => {
+        if (window.__mistCtrl) window.__mistCtrl.stop();
+      }, DURATION + 200);
+    } catch (e) {
+      console.warn("mist physics failed", e);
+    }
+  }
+
   function windowKeyFromState(s) {
+
     const m = (s && s.market) || {};
     if (m.kalshi_ticker) return String(m.kalshi_ticker);
     if (m.close_time) return String(m.close_time);
@@ -320,6 +628,7 @@
         lastWindowKey = key;
         lastClockBucket = bucket;
         playMarketBell();
+        playNewMarketMist();
         return;
       }
     }
@@ -332,6 +641,7 @@
     if (bucket !== lastClockBucket) {
       lastClockBucket = bucket;
       playMarketBell();
+      playNewMarketMist();
     }
   }
 
@@ -518,6 +828,8 @@
     cheap: "CHEAP",
     spotlag: "VEL",
     exhaust: "EXHAUST",
+    news: "WIRE",
+    liq: "CASCADE",
     guardian: "WARDEN",
     law: "LAW",
     leader: "SATOSHI",
@@ -631,6 +943,113 @@
     if (dir === "DOWN_HOLD") return "1/4 DOWN HOLD";
     return dir || "WAIT";
   }
+
+
+  // ——— Bot seat logos (circular, color outline follows call) ———
+  const BOT_ICON_FILES = {
+    candle: "/bots/wick.png",
+    volume: "/bots/pulse.png",
+    momentum: "/bots/drift.png",
+    orderflow: "/bots/tape.png",
+    funding: "/bots/carry.png",
+    regime: "/bots/orbit.png",
+    volatility: "/bots/volt.png",
+    oi_pressure: "/bots/chain.png",
+    streak: "/bots/streak.png",
+    odds: "/bots/odds.png",
+    strike: "/bots/strike.png",
+    session_tod: "/bots/clock.png",
+    whale: "/bots/whale.png",
+    quorum: "/bots/quorum.png",
+    panic: "/bots/fade.png",
+    cheap: "/bots/cheap.png",
+    spotlag: "/bots/vel.png",
+    exhaust: "/bots/exhaust.png",
+    news: "/bots/wire.png",
+    liq: "/bots/cascade.png",
+    guardian: "/bots/warden.png",
+    law: "/bots/law.png",
+  };
+  const botIconCache = {}; // name -> HTMLImageElement | null
+  let botIconsReady = false;
+
+  function preloadBotIcons() {
+    const keys = Object.keys(BOT_ICON_FILES);
+    let left = keys.length;
+    if (!left) { botIconsReady = true; return; }
+    keys.forEach((k) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => {
+        botIconCache[k] = img;
+        left -= 1;
+        if (left <= 0) botIconsReady = true;
+      };
+      img.onerror = () => {
+        botIconCache[k] = null;
+        left -= 1;
+        if (left <= 0) botIconsReady = true;
+      };
+      img.src = BOT_ICON_FILES[k];
+    });
+  }
+  preloadBotIcons();
+
+  /** Draw circular bot logo with direction-colored ring outline. */
+  function drawBotIcon(name, x, y, r, dirColor, conf) {
+    const img = botIconCache[name];
+    const ringR = r + 2;
+    // Dark plate behind
+    ctx.beginPath();
+    ctx.arc(x, y, ringR + 1, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(4, 8, 16, 0.95)";
+    ctx.fill();
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.clip();
+      const d = r * 2;
+      ctx.drawImage(img, x - r, y - r, d, d);
+      ctx.restore();
+
+      // Soft color wash on outline only: draw a thin inner rim in call color
+      // (logo stays mostly original; ring + soft edge take the signal color)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, r - 0.5, 0, Math.PI * 2);
+      ctx.strokeStyle = dirColor;
+      ctx.globalAlpha = 0.35 + Math.min(0.45, (conf || 0) / 200);
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // fallback core while loading
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = dirColor;
+      ctx.fill();
+    }
+
+    // Outer signal ring (the "outline turns the color")
+    ctx.beginPath();
+    ctx.arc(x, y, ringR + 1, 0, Math.PI * 2);
+    ctx.strokeStyle = dirColor;
+    ctx.lineWidth = 2.4;
+    ctx.shadowColor = dirColor;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Thin ceremonial gold trim outside
+    ctx.beginPath();
+    ctx.arc(x, y, ringR + 3.5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.28)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
 
   function colorFor(dir, conf) {
     if (dir === "UP") {
@@ -1078,7 +1497,7 @@
       return true;
     });
 
-    // Rim hexagonal nodes
+    // Rim bot seats — custom logos, outline color = call direction
     const now = performance.now();
     const isGlitch = now < glitchUntil;
 
@@ -1086,8 +1505,9 @@
       const pos = positions[name];
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
-      const pulse = 1 + 0.09 * Math.sin(time * 0.0045 + i * 1.1);
-      const r = (agent.confidence > 55 ? 15 : 11) * pulse;
+      const pulse = 1 + 0.06 * Math.sin(time * 0.0045 + i * 1.1);
+      // Slightly larger seats so logos read cleanly
+      const r = (agent.confidence > 55 ? 18 : 15) * pulse;
       const col = colorFor(agent.direction, agent.confidence);
       const sc = strongColor(agent.direction);
 
@@ -1097,33 +1517,13 @@
       ctx.fillStyle = col.replace(/[\d.]+\)$/, "0.12)");
       ctx.fill();
 
-      // Armor hex plate
-      drawHex(pos.x, pos.y, r + 2);
-      ctx.fillStyle = "rgba(6, 12, 22, 0.92)";
-      ctx.fill();
-      ctx.strokeStyle = sc;
-      ctx.lineWidth = 2.2;
-      ctx.shadowColor = sc;
-      ctx.shadowBlur = 14;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Thin gold edge (ceremonial trim)
-      drawHex(pos.x, pos.y, r + 4);
-      ctx.strokeStyle = "rgba(240, 193, 74, 0.22)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Inner core
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, r * 0.55, 0, Math.PI * 2);
-      ctx.fillStyle = col;
-      ctx.fill();
+      // Logo + colored outline
+      drawBotIcon(name, pos.x, pos.y, r, sc, agent.confidence || 0);
 
       // Occasional glitch offset
       if (isGlitch && Math.random() < 0.3) {
         ctx.fillStyle = MAGENTA;
-        ctx.globalAlpha = 0.4;
+        ctx.globalAlpha = 0.35;
         ctx.fillRect(pos.x - r, pos.y - 2, r * 2, 3);
         ctx.globalAlpha = 1;
       }
@@ -3505,28 +3905,60 @@ function drawCandleChart() {
   }
 
   // Lightsaber from Chair confidence
-  window.updateLightsaber = function updateLightsaber(state) {
+    window.updateLightsaber = function updateLightsaber(state) {
     const bar = document.getElementById("lightsaberBar");
     const lab = document.getElementById("lightsaberLabel");
-    if (!bar) return;
-    const d = (state && state.decision) || {};
-    const dir = (d.direction || "WAIT").toUpperCase();
-    const conf = Number(d.confidence || 0);
-    const pct = Math.max(0, Math.min(100, conf));
-    lab && (lab.textContent = pct + "%");
+    if (!bar || !lab) return;
+    const conf = Math.max(0, Math.min(100, Number((state && state.decision && state.decision.confidence) || (state && state.confidence) || 0)));
+    const dir = String((state && state.decision && state.decision.direction) || (state && state.direction) || "WAIT").toUpperCase();
+    const pct = conf;
+    lab.textContent = pct + "%";
+    // Height scales with confidence
+    bar.style.height = Math.max(28, Math.round(40 + pct * 1.1)) + "px";
+
+    bar.classList.remove("red", "up", "lit", "wait-blade");
     if (dir === "UP" || dir === "UP_HOLD") {
-      bar.classList.remove("red");
-      bar.style.background = `linear-gradient(to top, #1e293b 0%, #1e293b ${100 - pct}%, #22c55e ${100 - pct}%, #4ade80 100%)`;
-      bar.style.boxShadow = "0 0 14px rgba(34,197,94,0.55)";
-    } else if (dir === "DOWN" || dir === "DOWN_HOLD") {
+      bar.classList.add("up", "lit");
+      bar.style.background = "";
+    } else if (dir === "DOWN" || dir === "DOWN_HOLD" || dir === "SWAP") {
       bar.classList.add("red");
-      bar.style.background = `linear-gradient(to bottom, #1e293b 0%, #1e293b ${100 - pct}%, #ef4444 ${100 - pct}%, #f87171 100%)`;
-      bar.style.boxShadow = "0 0 14px rgba(239,68,68,0.55)";
+      bar.style.background = "";
     } else {
-      bar.classList.remove("red");
-      bar.style.background = "linear-gradient(to top, #1e293b, #334155)";
-      bar.style.boxShadow = "none";
+      bar.classList.add("wait-blade");
+      bar.style.background = "";
     }
+
+    // Kylo Ren unstable sparks — denser when high confidence / directional
+    try {
+      let sparks = document.getElementById("lightsaberSparks");
+      if (!sparks) {
+        sparks = document.createElement("div");
+        sparks.id = "lightsaberSparks";
+        sparks.className = "lightsaber-sparks";
+        bar.appendChild(sparks);
+      }
+      // throttle particle spawn
+      const now = Date.now();
+      if (!window.__lsSparkAt) window.__lsSparkAt = 0;
+      const interval = dir === "WAIT" ? 220 : 90;
+      if (now - window.__lsSparkAt < interval) return;
+      window.__lsSparkAt = now;
+      const n = dir === "WAIT" ? 1 : (pct > 70 ? 3 : 2);
+      for (let i = 0; i < n; i++) {
+        const s = document.createElement("span");
+        s.className = "ls-spark";
+        const y = 8 + Math.random() * 84; // along blade
+        const side = Math.random() < 0.5 ? -1 : 1;
+        s.style.left = "50%";
+        s.style.top = y + "%";
+        s.style.setProperty("--sx", (side * (6 + Math.random() * 16)) + "px");
+        s.style.setProperty("--sy", (-8 - Math.random() * 18) + "px");
+        sparks.appendChild(s);
+        setTimeout(() => { try { s.remove(); } catch (e) {} }, 600);
+      }
+      // keep DOM light
+      while (sparks.children.length > 18) sparks.removeChild(sparks.firstChild);
+    } catch (e) {}
   }
 
   // Cha-ching / warning on graded outcomes
@@ -3689,3 +4121,40 @@ function drawCandleChart() {
   // Also expose
   window.playSummonVideoThenReveal = playSummonVideoThenReveal;
 })();
+
+  // ——— Hive easter egg (subtle, for true fans) ———
+  (function initHiveEgg() {
+    function wire() {
+      const btn = document.getElementById("hiveBtn");
+      const egg = document.getElementById("hiveEgg");
+      const close = document.getElementById("hiveEggClose");
+      if (!btn || !egg) return;
+      const open = () => {
+        egg.classList.remove("hidden");
+        document.body.classList.add("hive-open");
+      };
+      const shut = () => {
+        egg.classList.add("hidden");
+        document.body.classList.remove("hive-open");
+      };
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        open();
+      });
+      if (close) close.addEventListener("click", shut);
+      egg.addEventListener("click", (e) => {
+        if (e.target === egg) shut();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !egg.classList.contains("hidden")) shut();
+      });
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", wire);
+    } else {
+      wire();
+    }
+  })();
+
+
