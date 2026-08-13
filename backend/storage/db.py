@@ -611,6 +611,35 @@ class PerformanceStore:
         wrong = total - correct
         accuracy_pct = round(100.0 * correct / total, 1) if total else None
 
+        # Path tallies: entry Kalshi % and favorable peak move (peak − entry)
+        def _path_pts(r):
+            if r.path_move_pct is not None:
+                return float(r.path_move_pct)
+            if r.open_price is not None and r.exit_price is not None:
+                return max(0.0, float(r.exit_price) - float(r.open_price))
+            return None
+
+        def _entry_pts(r):
+            return float(r.open_price) if r.open_price is not None else None
+
+        win_paths = [_path_pts(r) for r in settled if r.correct == 1 and _path_pts(r) is not None]
+        lose_paths = [_path_pts(r) for r in settled if r.correct != 1 and _path_pts(r) is not None]
+        all_paths = [_path_pts(r) for r in settled if _path_pts(r) is not None]
+        entries = [_entry_pts(r) for r in settled if _entry_pts(r) is not None]
+        win_entries = [_entry_pts(r) for r in settled if r.correct == 1 and _entry_pts(r) is not None]
+
+        def _avg(xs):
+            return round(sum(xs) / len(xs), 2) if xs else None
+
+        avg_path_all = _avg(all_paths)
+        avg_path_wins = _avg(win_paths)
+        avg_path_losses = _avg(lose_paths)
+        avg_entry_pct = _avg(entries)
+        avg_entry_wins = _avg(win_entries)
+        # Best / worst path on wins for context
+        max_path_win = round(max(win_paths), 2) if win_paths else None
+        min_path_win = round(min(win_paths), 2) if win_paths else None
+
         # Shadow book: paper EV in Kalshi percentage-points
         # Win: +path_move (or win_pct target); Miss: -win_pct (assumed stop at expiry)
         shadow_pts = 0.0
@@ -699,11 +728,32 @@ class PerformanceStore:
             "total": total,
             "wrong": wrong,
             "accuracy_pct": accuracy_pct,
+            "avg_path_pts": avg_path_all,
+            "avg_path_wins": avg_path_wins,
+            "avg_path_losses": avg_path_losses,
+            "avg_entry_pct": avg_entry_pct,
+            "avg_entry_wins": avg_entry_wins,
+            "max_path_win": max_path_win,
+            "min_path_win": min_path_win,
+            "path_tally": {
+                "avg_all": avg_path_all,
+                "avg_wins": avg_path_wins,
+                "avg_losses": avg_path_losses,
+                "avg_entry": avg_entry_pct,
+                "avg_entry_wins": avg_entry_wins,
+                "max_win": max_path_win,
+                "min_win": min_path_win,
+                "n_with_path": len(all_paths),
+                "n_wins_with_path": len(win_paths),
+                "rule": "path_pts = peak favorable Kalshi side % − entry % while call was live",
+            },
             "lifetime": {
                 "correct": correct,
                 "total": total,
                 "wrong": wrong,
                 "accuracy_pct": accuracy_pct,
+                "avg_path_wins": avg_path_wins,
+                "avg_entry_pct": avg_entry_pct,
                 "first_settled_at": first_at,
                 "last_settled_at": last_at,
             },
