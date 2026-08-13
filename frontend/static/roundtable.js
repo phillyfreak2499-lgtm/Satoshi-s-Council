@@ -2909,8 +2909,15 @@ function drawCandleChart() {
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
-    if (mode === "floor") {
-      try { resizeRoundtable(); drawArt(); } catch (e) {}
+    // Always redraw the round table when main view is visible (bots live on canvas)
+    if (showMain) {
+      try {
+        requestAnimationFrame(() => {
+          try { resizeRoundtable(); drawArt(); } catch (e) {}
+        });
+      } catch (e) {
+        try { resizeRoundtable(); drawArt(); } catch (e2) {}
+      }
     }
     if (mode === "dashboard") renderDashboard();
     if (mode === "bots") renderBotsGuide();
