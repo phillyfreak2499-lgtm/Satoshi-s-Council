@@ -49,6 +49,7 @@
 
   <!-- Startup gate: Tutorial or Summon -->
   <div id="app">
+    <div id="ztWatermark" class="zt-watermark" aria-hidden="true"></div>
     <div class="floor-hint" id="floorHint">FLOOR · ESC or TABLE to exit</div>
     <!-- watermark removed; clean logo lives in header -->
     <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
@@ -64,6 +65,11 @@
         <div class="credit-inner">Created by <b>Zachery Teas</b></div>
       </div>
       <div class="controls">
+        <button type="button" id="hiveBtn" class="hive-btn" title="" aria-label="…">
+          <svg class="hive-svg" viewBox="0 0 32 32" width="16" height="16" aria-hidden="true">
+            <path fill="currentColor" d="M16 3l3.2 4.2h-6.4L16 3zm-7.5 5.5h15l2.5 4H6l2.5-4zm-3.2 5.5h21.4l2.3 3.8H3l2.3-3.8zm-1.5 5.3h24.4L28 23H4l-.2-3.7zM6.5 24.5h19L16 29.5l-9.5-5z"/>
+          </svg>
+        </button>
         <div id="huddleBadge" class="huddle-badge" title="Nightly 3–4 AM CT cool-down review">
           <span class="huddle-label">HUDDLE</span>
           <span id="huddleStatus" class="huddle-status">—</span>
@@ -102,10 +108,6 @@
       </div>
     </header>
 
-    <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
-      <div id="lightsaberBar" class="lightsaber-bar"></div>
-      <div id="lightsaberLabel" class="lightsaber-label">0%</div>
-    </div>
     <main id="mainTable">
       <!-- LEFT: Hit-rate + Call log + Debate -->
       <aside id="debatePanel" class="side-panel side-left" aria-label="Council debate log">
@@ -145,6 +147,12 @@
       <!-- CENTER: Round table -->
       <div id="tableStage" class="table-stage">
         <canvas id="roundtable" width="1100" height="780"></canvas>
+        <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
+          <div id="lightsaberBar" class="lightsaber-bar">
+            <div class="lightsaber-sparks" id="lightsaberSparks"></div>
+          </div>
+          <div id="lightsaberLabel" class="lightsaber-label">0%</div>
+        </div>
         <div id="dashboardOverlay" class="hidden"></div>
       </div>
 
@@ -449,5 +457,12 @@
   </div>
 
   <script src="/roundtable.js"></script>
+
+    <!-- Hidden hive easter egg -->
+    <div id="hiveEgg" class="hive-egg hidden" role="dialog" aria-modal="true" aria-label="Hidden">
+      <button type="button" class="hive-egg-close" id="hiveEggClose" aria-label="Close">×</button>
+      <img src="/hive-egg.png" alt="" class="hive-egg-img" />
+    </div>
+
 </body>
 </html>
