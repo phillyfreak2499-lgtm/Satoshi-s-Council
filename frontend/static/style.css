@@ -2878,22 +2878,45 @@ footer, #marketStrip, .window-timer {
 }
 
 
-/* ===== MAIN TABLE: Debate focus, hierarchy ranks-only ===== */
+/* ===== MAIN TABLE: Debate focus, hierarchy ranks-only =====
+   CRITICAL: never collapse #tableStage — canvas + bots live there.
+*/
 #mainTable {
-  grid-template-columns: minmax(280px, 340px) 1fr !important;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) !important;
   grid-template-areas: "debate table" !important;
 }
 #hierarchyPanel.hierarchy-ranks-only {
+  /* Keep out of layout on Table/Floor — do NOT use content that steals space */
   display: none !important;
 }
-/* Show hierarchy when body is in ranks or dashboard context */
 body.show-hierarchy #mainTable {
-  grid-template-columns: minmax(260px, 320px) 1fr minmax(240px, 300px) !important;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(220px, 280px) !important;
   grid-template-areas: "debate table hierarchy" !important;
 }
 body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   display: flex !important;
   flex-direction: column;
+}
+/* Hard-guarantee the round table canvas stage is visible and has size */
+#mainTable #tableStage,
+#mainTable .table-stage {
+  grid-area: table !important;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  min-width: 0 !important;
+  min-height: 420px !important;
+  height: 100% !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+#mainTable #roundtable {
+  display: block !important;
+  visibility: visible !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
 }
 
 .panel-head-debate .panel-title {
