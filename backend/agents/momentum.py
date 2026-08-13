@@ -31,7 +31,7 @@ class MomentumSpecialist(BaseSpecialist):
 
         candles = market_data.get("candles") or []
         if len(candles) < 25:
-            return AgentSignal(self.name, "WAIT", 30, "Insufficient data for momentum", self.category)
+            return AgentSignal(self.name, "WAIT", 30, "Need more bars before volume edge data for momentum", self.category)
 
         closes = np.array([c["close"] for c in candles], dtype=float)
         r = rsi(closes, 14)
@@ -43,27 +43,27 @@ class MomentumSpecialist(BaseSpecialist):
 
         direction = "WAIT"
         conf = 40
-        reason = "Momentum neutral"
+        reason = f"RSI {r:.0f} mid-range — no edge, WAIT"
 
         if r > 68 and macd > 0:
             direction = "UP"
             conf = min(80, 50 + int((r - 50) * 0.8))
-            reason = f"RSI {r:.0f} overbought but positive MACD bias"
+            reason = f"RSI {r:.0f} hot but MACD still green — momentum not exhausted yet"
         elif r < 32 and macd < 0:
             direction = "DOWN"
             conf = min(80, 50 + int((50 - r) * 0.8))
-            reason = f"RSI {r:.0f} oversold with negative MACD"
+            reason = f"RSI {r:.0f} washed out + MACD red — downside momentum live"
         elif r > 55 and macd > 0.0003:
             direction = "UP"
             conf = 60
-            reason = "Positive short-term momentum"
+            reason = f"RSI {r:.0f} + MACD lift — short-term drift UP"
         elif r < 45 and macd < -0.0003:
             direction = "DOWN"
             conf = 60
-            reason = "Negative short-term momentum"
+            reason = f"RSI {r:.0f} + MACD drag — short-term drift DOWN"
         else:
             conf = 45
-            reason = f"RSI {r:.0f} – no strong edge"
+            reason = f"RSI {r:.0f} mid-range — no edge, WAIT"
 
         features = {"rsi_14": round(r, 1), "macd_approx": round(macd, 6)}
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)

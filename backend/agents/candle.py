@@ -35,7 +35,7 @@ class CandlePatternSpecialist(BaseSpecialist):
         # Simple heuristics
         direction = "WAIT"
         conf = 40
-        reason = "No clear pattern"
+        reason = "Chop / mixed wicks — no clean pattern, sitting WAIT"
 
         # Recent momentum bias
         ret_5 = (closes[-1] - closes[-6]) / closes[-6] if len(closes) > 5 else 0
@@ -45,19 +45,19 @@ class CandlePatternSpecialist(BaseSpecialist):
         if last["close"] > last["open"] and body_ratio > 0.65 and ret_5 > 0.0008:
             direction = "UP"
             conf = min(85, 55 + int(abs(ret_5) * 8000))
-            reason = "Strong bullish close + short-term momentum"
+            reason = f"Bullish engulf body {body_ratio:.0%} · 5m +{ret_5*100:.2f}% — hunting continuation"
         elif last["close"] < last["open"] and body_ratio > 0.65 and ret_5 < -0.0008:
             direction = "DOWN"
             conf = min(85, 55 + int(abs(ret_5) * 8000))
-            reason = "Strong bearish close + short-term momentum"
+            reason = f"Bearish body {body_ratio:.0%} · 5m {ret_5*100:.2f}% — pressure still on"
         elif ret_15 > 0.0025 and ret_5 > 0:
             direction = "UP"
             conf = 62
-            reason = "Continuation of 15m uptrend"
+            reason = f"15m trend +{ret_15*100:.2f}% still intact — riding the path"
         elif ret_15 < -0.0025 and ret_5 < 0:
             direction = "DOWN"
             conf = 62
-            reason = "Continuation of 15m downtrend"
+            reason = f"15m trend {ret_15*100:.2f}% still intact — riding the dump"
         else:
             # Near local S/R
             recent_high = highs[-15:].max()
@@ -65,11 +65,11 @@ class CandlePatternSpecialist(BaseSpecialist):
             if last["close"] > recent_high * 0.999:
                 direction = "UP"
                 conf = 58
-                reason = "Breaking local high"
+                reason = "Break of local high — breakout attempt, watching follow-through"
             elif last["close"] < recent_low * 1.001:
                 direction = "DOWN"
                 conf = 58
-                reason = "Breaking local low"
+                reason = "Break of local low — breakdown attempt, watching follow-through"
 
         features = {
             "body_ratio": round(body_ratio, 3),
