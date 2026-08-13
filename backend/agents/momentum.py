@@ -31,7 +31,7 @@ class MomentumSpecialist(BaseSpecialist):
 
         candles = market_data.get("candles") or []
         if len(candles) < 25:
-            return AgentSignal(self.name, "WAIT", 30, "Need more bars before volume edge data for momentum", self.category)
+            return AgentSignal(self.name, "WAIT", 30, "Insufficient data for momentum", self.category)
 
         closes = np.array([c["close"] for c in candles], dtype=float)
         r = rsi(closes, 14)
@@ -43,7 +43,7 @@ class MomentumSpecialist(BaseSpecialist):
 
         direction = "WAIT"
         conf = 40
-        reason = f"RSI {r:.0f} mid-range — no edge, WAIT"
+        reason = "Momentum neutral"
 
         if r > 68 and macd > 0:
             direction = "UP"
