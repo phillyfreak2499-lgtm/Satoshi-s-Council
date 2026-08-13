@@ -1,0 +1,23 @@
+BOT LOGOS ONLY — Safe remaining patch
+=====================================
+
+You already uploaded:
+  index.html, style.css, roundtable.js, hive-egg.png, zt-logo, zt-watermark
+
+This zip ONLY adds the missing bot logos.
+It does NOT overwrite any of the files you already uploaded.
+
+HOW TO APPLY (GitHub):
+
+1. Go to frontend/static/ folder
+2. Click Add file → Create new file
+3. Type this as the filename:  bots/.gitkeep
+4. Click Commit changes
+   (This creates the empty bots folder)
+
+5. Click into the new bots folder
+6. Click Add file → Upload files
+7. Drag ALL the .png files from this zip's bots/ folder
+8. Commit changes
+
+That's it. Render will redeploy. No other files needed.
