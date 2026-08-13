@@ -4122,39 +4122,45 @@ function drawCandleChart() {
   window.playSummonVideoThenReveal = playSummonVideoThenReveal;
 })();
 
-  // ——— Hive easter egg (subtle, for true fans) ———
-  (function initHive-egg() {
-    function wire() {
-      const btn = document.getElementById("hive-egg");
-      const egg = document.getElementById("hiveegg");
-      const close = document.getElementById("hiveeggClose");
-      if (!btn || !egg) return;
-      const open = () => {
-        egg.classList.remove("hidden");
-        document.body.classList.add("hive-open");
-      };
-      const shut = () => {
-        egg.classList.add("hidden");
-        document.body.classList.remove("hive-open");
-      };
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        open();
-      });
-      if (close) close.addEventListener("click", shut);
-      egg.addEventListener("click", (e) => {
-        if (e.target === egg) shut();
-      });
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && !egg.classList.contains("hidden")) shut();
-      });
-    }
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", wire);
-    } else {
-      wire();
-    }
-  })();
+// ——— Hive easter egg (subtle, for true fans) ———
+(function initHiveEgg() {
+  function wire() {
+    const btn = document.getElementById("hive-egg");
+    const egg = document.getElementById("hiveEgg");
+    const close = document.getElementById("hiveEggClose");
+    
+    if (!btn || !egg) return;
 
+    const open = () => {
+      egg.classList.remove("hidden");
+      document.body.classList.add("hive-open");
+    };
 
+    const shut = () => {
+      egg.classList.add("hidden");
+      document.body.classList.remove("hive-open");
+    };
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      open();
+    });
+
+    if (close) close.addEventListener("click", shut);
+
+    egg.addEventListener("click", (e) => {
+      if (e.target === egg) shut();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !egg.classList.contains("hidden")) shut();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wire);
+  } else {
+    wire();
+  }
+})();
