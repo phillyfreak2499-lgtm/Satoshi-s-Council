@@ -142,6 +142,13 @@
     if (U.watermark_opacity != null) {
       document.documentElement.style.setProperty("--zt-watermark-opacity", U.watermark_opacity);
     }
+    // Timing / analysis profile fields
+    set("setIntervalInput", s.analysis_interval);
+    set("setHotInput", s.analysis_interval_hot);
+    set("setFlatInput", s.analysis_interval_flat);
+    set("setPollInput", s.ui_poll_ms);
+    chk("setDualInput", s.dual_spot);
+    chk("setParallelInput", s.parallel_agents);
     const blurb = document.getElementById("beastBlurb");
     if (blurb) blurb.textContent = s.blurb || "";
     const stats = document.getElementById("beastStats");
@@ -1897,32 +1904,50 @@
       return;
     }
 
-    // Newest arguments first; keep a short rolling history so it reads as debate
+    // Newest round first; keep rolling history so it reads like a real debate
     const stamp = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "";
     const lines = agents
-      .filter(a => a.agent_name !== "leader")
+      .filter(a => a.agent_name !== "leader" && a.agent_name !== "law")
       .map(a => {
         const who = labelOf(a);
-        const dir = lawLocked() ? "LOCKED" : (a.direction || "WAIT");
+        const rawDir = a.direction || "WAIT";
+        const dir = lawLocked() ? "LOCKED" : rawDir;
         const said = (a.reasoning || "").trim() || `${dir} at ${a.confidence}%`;
-        return { who, dir, conf: a.confidence, said, stamp };
+        // Feature chips from agent features (keep short)
+        const feats = a.features || {};
+        const chips = [];
+        if (feats.rsi_14 != null) chips.push("RSI " + feats.rsi_14);
+        if (feats.body_ratio != null) chips.push("body " + Math.round(feats.body_ratio * 100) + "%");
+        if (feats.ret_5 != null) chips.push("5m " + (feats.ret_5 * 100).toFixed(2) + "%");
+        if (feats.vol_spike != null) chips.push("vol x" + feats.vol_spike);
+        if (feats.funding != null) chips.push("fund " + feats.funding);
+        if (feats.yes_mid != null) chips.push("mid " + feats.yes_mid);
+        return { who, dir, conf: a.confidence, said, stamp, chips: chips.slice(0, 3) };
       });
 
-    // Prepend this round if content changed
     const fingerprint = lines.map(l => l.who + l.dir + l.said).join("|");
     if (!debateHistory.length || debateHistory[0]._fp !== fingerprint) {
-      const batch = lines.map(l => ({ ...l, _fp: fingerprint }));
-      debateHistory = batch.concat(debateHistory).slice(0, 40);
+      // Group as a round header + entries
+      const batch = [{ _round: true, stamp, _fp: fingerprint }].concat(
+        lines.map(l => ({ ...l, _fp: fingerprint }))
+      );
+      debateHistory = batch.concat(debateHistory).slice(0, 60);
     }
 
-    debateLog.innerHTML = debateHistory.map(e => `
+    debateLog.innerHTML = debateHistory.map(e => {
+      if (e._round) {
+        return `<div class="debate-round">ROUND · ${e.stamp || ""}</div>`;
+      }
+      const chips = (e.chips || []).map(c => `<span class="feat-chip">${c}</span>`).join("");
+      return `
       <div class="debate-entry dir-${e.dir}">
-        <div class="who">${e.who}
-          <span class="dir-tag" style="color:${strongColor(e.dir)}">${e.dir} ${e.conf != null ? e.conf + "%" : ""}</span>
+        <div class="who"><b>${e.who}</b>
+          <span class="dir-badge dir-${e.dir}" style="color:${strongColor(e.dir)};border-color:${strongColor(e.dir)}55">${e.dir}${e.conf != null ? " " + e.conf + "%" : ""}</span>
         </div>
         <div class="said">${e.said}</div>
-      </div>
-    `).join("");
+        ${chips ? `<div class="feat-chips">${chips}</div>` : ""}
+      </div>`;
+    }).join("");
   }
 
   function resizeCandleChart() {
@@ -2652,23 +2677,28 @@ function drawCandleChart() {
 
   function updateColorTally(state) {
     const cc = (state && state.color_counts) || {};
-    // Fallback: count from agents array
-    let up = cc.UP, down = cc.DOWN, wait = cc.WAIT;
+    let up = cc.UP, down = cc.DOWN, wait = cc.WAIT, hold = cc.HOLD || 0, swap = cc.SWAP || 0;
     if (up == null && state && state.agents) {
-      up = down = wait = 0;
+      up = down = wait = hold = swap = 0;
       state.agents.forEach(a => {
-        if (a.direction === "UP") up++;
-        else if (a.direction === "DOWN") down++;
+        const d = a.direction || "WAIT";
+        if (d === "UP") up++;
+        else if (d === "DOWN") down++;
+        else if (d === "UP_HOLD" || d === "DOWN_HOLD") hold++;
+        else if (d === "SWAP") swap++;
         else wait++;
       });
     }
+    up = up || 0; down = down || 0; wait = wait || 0; hold = hold || 0; swap = swap || 0;
+    const total = Math.max(1, up + down + wait + hold + swap);
+
     const elU = document.getElementById("ctUp");
     const elD = document.getElementById("ctDown");
     const elW = document.getElementById("ctWait");
     const elQ = document.getElementById("ctQuorum");
-    if (elU) elU.textContent = up != null ? up : "0";
-    if (elD) elD.textContent = down != null ? down : "0";
-    if (elW) elW.textContent = wait != null ? wait : "0";
+    if (elU) elU.textContent = String(up);
+    if (elD) elD.textContent = String(down);
+    if (elW) elW.textContent = String(wait);
     if (elQ) {
       const q = (state && state.quorum) || (state && state.learning && state.learning.quorum) || {};
       const best = q.best_size;
@@ -2681,6 +2711,19 @@ function drawCandleChart() {
         elQ.textContent = "Q learning…";
       }
     }
+
+    // Left-panel BOT CHOICE COUNT
+    const setB = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
+    setB("bccUp", up); setB("bccDown", down); setB("bccWait", wait); setB("bccHold", hold); setB("bccSwap", swap);
+    const setBar = (id, n) => {
+      const el = document.getElementById(id);
+      if (el) el.style.width = Math.round((n / total) * 100) + "%";
+    };
+    setBar("bccUpBar", up); setBar("bccDownBar", down); setBar("bccWaitBar", wait); setBar("bccHoldBar", hold);
+    const swapRow = document.getElementById("bccSwapRow");
+    if (swapRow) swapRow.classList.toggle("hidden", !swap);
+    const meta = document.getElementById("botChoiceMeta");
+    if (meta) meta.textContent = up + "↑ · " + down + "↓ · " + wait + " wait";
   }
 
 
@@ -2820,6 +2863,11 @@ function drawCandleChart() {
 
 
   function setMode(next) {
+    // Settings requires admin unlock for this browser session
+    if (next === "settings" && !isAdminUnlocked()) {
+      requestAdminUnlock(() => setMode("settings"));
+      return;
+    }
     mode = next;
     modeTabs.forEach(btn => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
@@ -2827,18 +2875,15 @@ function drawCandleChart() {
     document.body.classList.toggle("floor-mode", mode === "floor");
     const botsView = document.getElementById("botsView");
     const ranksView = document.getElementById("ranksView");
-    const paperView = document.getElementById("paperView");
     const settingsView = document.getElementById("settingsView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
-    const showPaper = mode === "paper";
     const showSettings = mode === "settings";
     const showMain = mode === "art" || mode === "dashboard" || mode === "floor";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
-    if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
@@ -2848,9 +2893,6 @@ function drawCandleChart() {
     if (mode === "dashboard") renderDashboard();
     if (mode === "bots") renderBotsGuide();
     if (mode === "ranks") renderRanksBoard();
-    if (mode === "paper") {
-      fetchPaper().then(() => renderPaper());
-    }
     if (mode === "settings") {
       fetchSettings().then(applySettingsSnapshot);
     }
@@ -3666,8 +3708,17 @@ function drawCandleChart() {
       const el = document.getElementById(id);
       return el ? !!el.checked : true;
     };
+    const profileKey = (document.getElementById("beastToggle") && document.getElementById("beastToggle").checked) ? "beast" : "normal";
     const body = {
       beast_mode: !!(document.getElementById("beastToggle") && document.getElementById("beastToggle").checked),
+      [profileKey]: {
+        analysis_interval: num("setIntervalInput", 1.5),
+        analysis_interval_hot: num("setHotInput", 1.0),
+        analysis_interval_flat: num("setFlatInput", 3.0),
+        ui_poll_ms: num("setPollInput", 800),
+        dual_spot: on("setDualInput"),
+        parallel_agents: on("setParallelInput"),
+      },
       learning: {
         path_win_pct: num("setPathWin", 7),
         hold_fraction: num("setHoldFrac", 0.35),
@@ -4162,5 +4213,142 @@ function drawCandleChart() {
     document.addEventListener("DOMContentLoaded", wire);
   } else {
     wire();
+  }
+})();
+
+
+
+/* ===== ADMIN PASSWORD + SELECTIVE CLEARS + EXCEL ===== */
+(function () {
+  const ADMIN_PASSWORD = "5152622439";
+  const ADMIN_KEY = "council_admin_unlocked";
+
+  window.isAdminUnlocked = function isAdminUnlocked() {
+    try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+  };
+  function setAdminUnlocked(on) {
+    try { localStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+  }
+
+  let pendingAdminCb = null;
+
+  window.requestAdminUnlock = function requestAdminUnlock(cb) {
+    if (isAdminUnlocked()) { if (cb) cb(); return; }
+    pendingAdminCb = cb || null;
+    const gate = document.getElementById("adminGate");
+    const input = document.getElementById("adminInput");
+    const err = document.getElementById("adminError");
+    if (err) err.classList.add("hidden");
+    if (input) { input.value = ""; }
+    if (gate) gate.classList.remove("hidden");
+    setTimeout(() => { try { input && input.focus(); } catch (e) {} }, 50);
+  };
+
+  function closeAdminGate(ok) {
+    const gate = document.getElementById("adminGate");
+    if (gate) gate.classList.add("hidden");
+    const cb = pendingAdminCb;
+    pendingAdminCb = null;
+    if (ok && cb) cb();
+  }
+
+  function wireAdminGate() {
+    const submit = document.getElementById("adminSubmit");
+    const cancel = document.getElementById("adminCancel");
+    const input = document.getElementById("adminInput");
+    const err = document.getElementById("adminError");
+    if (submit && !submit.__wired) {
+      submit.__wired = true;
+      const tryUnlock = () => {
+        const val = (input && input.value) || "";
+        if (val === ADMIN_PASSWORD) {
+          setAdminUnlocked(true);
+          if (err) err.classList.add("hidden");
+          closeAdminGate(true);
+        } else {
+          if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
+        }
+      };
+      submit.addEventListener("click", tryUnlock);
+      if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+    }
+    if (cancel && !cancel.__wired) {
+      cancel.__wired = true;
+      cancel.addEventListener("click", () => closeAdminGate(false));
+    }
+  }
+
+  async function adminFetch(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
+    return fetch(url, opts);
+  }
+
+  function wireAdminTools() {
+    const st = () => document.getElementById("adminToolsStatus");
+    const clearHit = document.getElementById("btnClearHitRate");
+    const clearLog = document.getElementById("btnClearLifeLog");
+    const exportBtn = document.getElementById("btnExportExcel");
+
+    if (clearHit && !clearHit.__wired) {
+      clearHit.__wired = true;
+      clearHit.addEventListener("click", () => {
+        requestAdminUnlock(async () => {
+          if (!confirm("Clear hit-rate counters? Training weights will NOT be deleted.")) return;
+          try {
+            const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
+            const data = await r.json();
+            if (st()) st().textContent = data.ok ? "Hit rate cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
+            // Refresh UI accuracy display
+            try {
+              const s = await (await fetch("/api/state")).json();
+              if (window.state !== undefined) { /* poll will refresh */ }
+            } catch (e) {}
+          } catch (e) {
+            if (st()) st().textContent = "Clear failed: " + e;
+          }
+        });
+      });
+    }
+    if (clearLog && !clearLog.__wired) {
+      clearLog.__wired = true;
+      clearLog.addEventListener("click", () => {
+        requestAdminUnlock(async () => {
+          if (!confirm("Clear lifetime log display? Training weights will NOT be deleted.")) return;
+          try {
+            const r = await adminFetch("/api/admin/clear-life-log", { method: "POST" });
+            const data = await r.json();
+            if (st()) st().textContent = data.ok ? "Life log cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
+            const log = document.getElementById("callLog");
+            if (log) log.innerHTML = `<div class="call-empty">LIFETIME LOG CLEARED<br/>New settled calls will appear here</div>`;
+          } catch (e) {
+            if (st()) st().textContent = "Clear failed: " + e;
+          }
+        });
+      });
+    }
+    if (exportBtn && !exportBtn.__wired) {
+      exportBtn.__wired = true;
+      exportBtn.addEventListener("click", () => {
+        requestAdminUnlock(() => {
+          // Trigger download with admin header via hidden form-like navigation
+          const a = document.createElement("a");
+          a.href = "/api/admin/export.xlsx?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-log.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          if (st()) st().textContent = "Excel download started…";
+        });
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    wireAdminGate();
+    wireAdminTools();
+  });
+  if (document.readyState !== "loading") {
+    setTimeout(() => { wireAdminGate(); wireAdminTools(); }, 200);
   }
 })();
