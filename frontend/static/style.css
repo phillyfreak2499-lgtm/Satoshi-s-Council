@@ -27,7 +27,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Rajdhani', 'Inter', system-ui, sans-serif;
-  min-height: min(80vh, 506px);
+  min-height: min(85vh, 540px);
   overflow: hidden;
   background-image:
     radial-gradient(ellipse at 50% 30%, rgba(0, 40, 70, 0.35) 0%, transparent 55%),
@@ -45,7 +45,7 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  height: min(80vh, 506px);
+  height: min(85vh, 540px);
   position: relative;
 }
 
@@ -1750,8 +1750,8 @@ body:not(.gate-locked) #app {
 }
 .summon-video-wrap.hidden { display: none !important; }
 .summon-video {
-  width: min(88vw, 900px);
-  height: min(80vh, 506px);
+  width: min(90vw, 960px);
+  height: min(85vh, 540px);
   object-fit: contain;
   background: #000;
 }
@@ -2350,11 +2350,17 @@ body.floor-mode.law-lock .floor-hint { color: rgba(255, 140, 40, 0.75); }
 .credit-popup.hidden { display: none; }
 
 .color-tally-mid {
-  right: auto !important;
-  left: 52% !important;
-  transform: translateX(-50%);
-  bottom: 14px !important;
+  /* bottom-right, clear of footer timer and debate log */
+  right: 18px !important;
+  left: auto !important;
+  transform: none !important;
+  bottom: 78px !important;   /* above footer market strip */
   z-index: 40;
+}
+.color-tally {
+  right: 18px !important;
+  left: auto !important;
+  bottom: 78px !important;
 }
 
 .password-gate {
@@ -2455,3 +2461,276 @@ body.gate-locked #app { visibility: hidden; }
   mix-blend-mode: screen;
 }
 .summon-gate.fade-out { opacity: 0; transition: opacity 0.9s ease; pointer-events: none; }
+
+/* ===== SUMMON VIDEO FULLSCREEN + PURPLE MIST ===== */
+.summon-video-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: #05010a;
+}
+.summon-video-wrap.active {
+  display: flex !important;
+}
+.summon-video-wrap video,
+#summonVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.summon-fog-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 70%, rgba(120, 40, 180, 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse at 30% 40%, rgba(90, 20, 140, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 50%, rgba(140, 50, 200, 0.3) 0%, transparent 45%),
+    linear-gradient(180deg, rgba(10, 2, 20, 0.2) 0%, rgba(40, 10, 70, 0.45) 60%, rgba(5, 1, 10, 0.7) 100%);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  z-index: 2;
+}
+body.gate-revealing #app {
+  visibility: hidden;
+}
+body:not(.gate-locked):not(.gate-revealing) #app {
+  visibility: visible;
+}
+.summon-gate.summoning .gate-inner {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+/* ===== LIGHTSABER + TALLY LAYOUT FIX + KYLO PARTICLES ===== */
+.color-tally,
+.color-tally-mid {
+  right: 18px !important;
+  left: auto !important;
+  transform: none !important;
+  bottom: 78px !important; /* above footer / timer */
+  z-index: 40 !important;
+}
+
+/* Lightsaber: right edge of CENTER table stage — never over debate log */
+.lightsaber-wrap {
+  position: absolute !important;
+  left: auto !important;
+  right: 10px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 12 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 6px !important;
+  pointer-events: none !important;
+  width: 28px !important;
+}
+/* Parent must be relative — table stage is */
+#tableStage .lightsaber-wrap,
+.table-stage .lightsaber-wrap {
+  position: absolute !important;
+}
+
+.lightsaber-bar {
+  position: relative !important;
+  width: 8px !important;
+  height: 120px !important;
+  border-radius: 4px !important;
+  background: linear-gradient(to top, #1e293b, #334155) !important;
+  box-shadow: 0 0 8px rgba(0,0,0,0.4) !important;
+  transition: height 0.35s ease, background 0.35s ease, box-shadow 0.35s ease !important;
+  overflow: visible !important;
+}
+.lightsaber-bar.up,
+.lightsaber-bar:not(.red).lit {
+  background: linear-gradient(to top, #064e3b, #22c55e 40%, #86efac 100%) !important;
+  box-shadow:
+    0 0 12px rgba(34, 197, 94, 0.7),
+    0 0 28px rgba(34, 197, 94, 0.35),
+    0 0 48px rgba(34, 197, 94, 0.2) !important;
+  animation: kyloHumGreen 0.08s steps(2) infinite !important;
+}
+.lightsaber-bar.red {
+  background: linear-gradient(to top, #7f1d1d, #ef4444 45%, #fca5a5 100%) !important;
+  box-shadow:
+    0 0 14px rgba(239, 68, 68, 0.85),
+    0 0 32px rgba(239, 68, 68, 0.45),
+    0 0 56px rgba(220, 38, 38, 0.25) !important;
+  animation: kyloHumRed 0.07s steps(2) infinite !important;
+}
+.lightsaber-bar.wait-blade {
+  background: linear-gradient(to top, #0e7490, #22d3ee 50%, #a5f3fc 100%) !important;
+  box-shadow:
+    0 0 12px rgba(34, 211, 238, 0.7),
+    0 0 28px rgba(34, 211, 238, 0.35) !important;
+  animation: kyloHumCyan 0.09s steps(2) infinite !important;
+}
+
+@keyframes kyloHumGreen {
+  0% { filter: brightness(1) saturate(1.1); transform: translateX(0); }
+  50% { filter: brightness(1.25) saturate(1.3); transform: translateX(0.4px); }
+  100% { filter: brightness(0.95) saturate(1); transform: translateX(-0.3px); }
+}
+@keyframes kyloHumRed {
+  0% { filter: brightness(1) saturate(1.2); transform: translateX(0); }
+  33% { filter: brightness(1.35) saturate(1.4); transform: translateX(0.6px); }
+  66% { filter: brightness(0.9) saturate(1.1); transform: translateX(-0.5px); }
+  100% { filter: brightness(1.15) saturate(1.25); transform: translateX(0.2px); }
+}
+@keyframes kyloHumCyan {
+  0% { filter: brightness(1); transform: translateX(0); }
+  50% { filter: brightness(1.2); transform: translateX(0.3px); }
+  100% { filter: brightness(0.95); transform: translateX(-0.2px); }
+}
+
+/* Kylo-style unstable particle sparks */
+.lightsaber-sparks {
+  position: absolute;
+  inset: -8px -14px;
+  pointer-events: none;
+  overflow: visible;
+}
+.ls-spark {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+  opacity: 0;
+  animation: lsSparkFly 0.55s ease-out forwards;
+}
+.lightsaber-bar.red .ls-spark { color: #ff6b6b; background: #fecaca; }
+.lightsaber-bar.up .ls-spark,
+.lightsaber-bar.lit .ls-spark { color: #4ade80; background: #bbf7d0; }
+.lightsaber-bar.wait-blade .ls-spark { color: #22d3ee; background: #a5f3fc; }
+
+@keyframes lsSparkFly {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--sx, 8px), var(--sy, -12px)) scale(0.2); }
+}
+
+.lightsaber-label {
+  font-size: 10px !important;
+  color: #94a3b8 !important;
+  font-family: Orbitron, sans-serif !important;
+  text-shadow: 0 0 6px rgba(0,0,0,0.8);
+  white-space: nowrap;
+}
+
+/* Ensure table stage is positioning context for lightsaber */
+#tableStage,
+.table-stage {
+  position: relative !important;
+}
+
+/* Footer timer must stay readable above anything */
+footer, #marketStrip, .window-timer {
+  z-index: 45 !important;
+  position: relative;
+}
+
+/* ===== MARKET MIST CANVAS (particle physics) ===== */
+.market-mist {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  display: none;
+  opacity: 1;
+}
+.market-mist.active {
+  display: block;
+}
+.market-mist canvas,
+#marketMistCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ===== Subtle hive (easter egg) ===== */
+.hive-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(240, 193, 74, 0.28);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.25s ease, transform 0.2s ease, text-shadow 0.25s ease;
+  line-height: 0;
+}
+.hive-btn:hover {
+  color: rgba(240, 193, 74, 0.55);
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.25);
+  transform: scale(1.08);
+}
+.hive-btn:active { transform: scale(0.96); }
+.hive-svg { display: block; opacity: 0.9; }
+
+.hive-egg {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background:
+    radial-gradient(ellipse at center, rgba(8, 20, 40, 0.55) 0%, rgba(2, 4, 10, 0.92) 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: hiveEggIn 0.45s ease-out;
+}
+.hive-egg-img {
+  background: transparent !important;
+  box-shadow: 0 0 80px rgba(40, 140, 255, 0.22) !important;
+}
+.hive-egg.hidden { display: none; }
+.hive-egg-img {
+  max-width: min(920px, 94vw);
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 0 60px rgba(0, 160, 255, 0.25), 0 20px 60px rgba(0,0,0,0.6);
+  animation: hiveImgIn 0.55s ease-out;
+}
+.hive-egg-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  background: rgba(6, 12, 22, 0.85);
+  color: #e2e8f0;
+  font-size: 24px;
+  line-height: 1;
+  border-radius: 10px;
+  cursor: pointer;
+  z-index: 1;
+}
+.hive-egg-close:hover {
+  border-color: rgba(240, 193, 74, 0.55);
+  color: #f0c14a;
+}
+@keyframes hiveEggIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes hiveImgIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
