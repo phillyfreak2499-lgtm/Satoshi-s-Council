@@ -313,6 +313,13 @@ if STATIC_DIR.is_dir():
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    # Bot portraits — currently nested under bots/bots/ (upload layout). Prefer flatten later.
+    bots_dir = STATIC_DIR / "bots" / "bots"
+    if not bots_dir.is_dir():
+        bots_dir = STATIC_DIR / "bots"  # fallback if user flattens
+    if bots_dir.is_dir():
+        app.mount("/bots", StaticFiles(directory=str(bots_dir)), name="bots")
+
     # Flat asset paths used by static/index.html (style.css, roundtable.js)
     @app.get("/style.css")
     async def style_css():
@@ -393,6 +400,15 @@ if STATIC_DIR.is_dir():
     @app.get("/chair-wait.jpg")
     async def chair_wait():
         return FileResponse(STATIC_DIR / "chair-wait.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/hive-egg.png")
+    async def hive_egg_png():
+        path = STATIC_DIR / "hive-egg.png"
+        if not path.exists():
+            from fastapi.responses import Response
+            return Response(status_code=404)
+        return FileResponse(path, media_type="image/png",
                             headers={"Cache-Control": "public, max-age=86400"})
 
 
