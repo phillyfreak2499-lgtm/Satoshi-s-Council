@@ -1393,8 +1393,8 @@
     // Table is reserved for the single GOAL CONTRACT call.
     try {
       const d = (state && state.decision) || {};
-      const lc = d.locked_call || {};
-      const locked = !!(lc.locked || d.window_locked || d.locked_dir);
+      const lc = d.locked_call || state.locked_call || {};
+      const locked = !!(lc && lc.locked && lc.direction);
       const lockDir = (lc.direction || d.locked_dir || d.entry_dir || "").toUpperCase();
       if (locked && (lockDir === "UP" || lockDir === "DOWN")) {
         const conf = lc.confidence || d.confidence || 0;
@@ -1758,8 +1758,11 @@
     });
 
     // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
-    const leaderDir = state.decision?.direction || "WAIT";
-    const leaderConf = state.decision?.confidence || 0;
+    // Prefer locked_call so portrait matches the LOCKED plaque after the single call
+    const _lc = (state.locked_call || (state.decision && state.decision.locked_call) || null);
+    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN") );
+    const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
+    const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const leaderPulse = 1 + 0.04 * Math.sin(time * 0.0035);
     const lr = 72 * leaderPulse; // portrait radius — large center knight
     const scL = strongColor(leaderDir);
@@ -1865,8 +1868,8 @@
         // ===== CLEAR LOCKED CALL plate for follower bots (GOAL: one call @ best odds) =====
     {
       const lc = state.locked_call || (state.decision && state.decision.locked_call) || {};
-      const isLocked = !!(lc.locked || lc.irreversible || lc.direction);
-      const showDir = (lc.direction || leaderDir || "WAIT").toUpperCase();
+      const isLocked = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
+      const showDir = (isLocked ? lc.direction : (leaderDir || "WAIT")).toUpperCase();
       const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
       const entryOdds = lc.entry_odds_pct;
       const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
@@ -3208,25 +3211,27 @@ function drawCandleChart() {
     else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
     const d = state.decision || {};
     const prevDir = decisionDir.textContent;
-    const rawDir = d.direction || "WAIT";
-    decisionDir.textContent = lawLocked() ? "LOCKED" : (d.display_direction || displayDir(rawDir));
+    // Prefer locked_call so the strip matches the plaque / portrait after the single call
+    const lc = state.locked_call || d.locked_call || null;
+    const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
+    const rawDir = hasLock ? lc.direction : (d.direction || "WAIT");
+    decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + lc.direction) : (d.display_direction || displayDir(rawDir)));
     decisionDir.className = "dir " + rawDir;
     // Status strip: phase + lock badge
     try {
       const sum = String(d.summary || "");
       let phase = "hold";
-      if (/\bENTRY\b/i.test(sum)) phase = "entry";
-      else if (/\bFINAL\b/i.test(sum)) phase = "final";
-      else if (/\bMID\b/i.test(sum)) phase = "mid";
-      else if (/Lock held/i.test(sum)) phase = "hold";
+      if (/\bENTRY\b/i.test(sum) || (hasLock && lc.phase === "entry")) phase = "entry";
+      else if (/\bFINAL\b/i.test(sum) || (hasLock && lc.phase === "final")) phase = "final";
+      else if (/\bMID\b/i.test(sum) || (hasLock && lc.phase === "mid")) phase = "mid";
+      else if (/Lock held/i.test(sum) || hasLock) phase = "hold";
       if (decisionPhase) {
         decisionPhase.textContent = phase === "hold" ? "HELD" : phase.toUpperCase();
         decisionPhase.className = "decision-phase phase-" + phase;
       }
       if (decisionLock) {
-        const locked = /Lock held|no new call|hard-lock/i.test(sum);
-        decisionLock.textContent = /Lock held|no new call/i.test(sum) ? "🔒 LOCKED" : (phase === "entry" ? "NEW ENTRY" : "");
-        decisionLock.className = "decision-lock" + (/Lock held|no new call/i.test(sum) ? " is-locked" : "");
+        decisionLock.textContent = hasLock ? "🔒 LOCKED" : (phase === "entry" ? "NEW ENTRY" : "");
+        decisionLock.className = "decision-lock" + (hasLock ? " is-locked" : "");
       }
     } catch (e) { /* non-fatal */ }
 
