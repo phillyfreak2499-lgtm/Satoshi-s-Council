@@ -5071,3 +5071,22 @@ body.mode-floor .floor-hint {
     padding-top: 8px !important;
   }
 }
+
+/* ===== DESK-CODE + ADMIN GATES (cold visit) ===== */
+body.gate-locked #app,
+body.gate-revealing #app,
+body:has(#passwordGate:not(.hidden)) #app {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.password-gate {
+  z-index: 100002 !important;
+}
+#adminToolsCard,
+#brainCard {
+  display: none !important;
+}
+body.admin-unlocked.mode-settings #adminToolsCard,
+body.admin-unlocked.mode-settings #brainCard {
+  display: block !important;
+}

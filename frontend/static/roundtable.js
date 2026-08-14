@@ -17,11 +17,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
   const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
+  // Session-only. A cold visit must NOT start admin-unlocked from leftover localStorage.
+  try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  document.body.classList.remove("admin-unlocked");
+  document.body.setAttribute("data-password-protected", "true");
   function isAdminUnlocked() {
-    try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
   }
   function setAdminUnlocked(on) {
-    try { localStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    document.body.classList.toggle("admin-unlocked", !!on);
   }
   let pendingAdminCb = null;
   function requestAdminUnlock(cb) {
@@ -149,6 +155,24 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         });
       });
     }
+    const brainBtn = document.getElementById("btnBrainExport");
+    if (brainBtn && !brainBtn.__wired) {
+      brainBtn.__wired = true;
+      brainBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-brain.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          const bs = document.getElementById("brainStatus");
+          if (bs) bs.textContent = "Brain download started…";
+        });
+      });
+    }
   }
   // Expose for any late handlers
   window.isAdminUnlocked = isAdminUnlocked;
@@ -238,13 +262,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
 
-  // Gate disabled — enter table immediately
-  try {
-    localStorage.setItem("council_entered", "1");
-    document.body.classList.remove("gate-locked", "gate-revealing");
-    const g = document.getElementById("summonGate");
-    if (g) g.remove();
-  } catch (e) {}
+  // Desk-code gate stays up on a cold visit. Do not strip gate-locked here.
+  document.body.classList.add("gate-locked");
+  document.body.classList.remove("admin-unlocked");
 
   let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 800;
   let beastMode = localStorage.getItem("council_beast") !== "0";
@@ -4216,11 +4236,17 @@ function drawCandleChart() {
     file.addEventListener("change", async () => {
       const f = file.files && file.files[0];
       if (!f) return;
+      if (!isAdminUnlocked()) {
+        if (status) status.textContent = "Admin password required";
+        file.value = "";
+        requestAdminUnlock(() => { try { file.click(); } catch (e) {} });
+        return;
+      }
       if (status) status.textContent = "Importing " + f.name + "…";
       try {
         const text = await f.text();
         const brain = JSON.parse(text);
-        const res = await fetch("/api/brain/import", {
+        const res = await adminFetch("/api/brain/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ brain, mode: "merge" }),
@@ -5008,7 +5034,9 @@ function drawCandleChart() {
     const gate = document.getElementById("summonGate");
     if (!gate) return;
     // Returning visitors: short skip option still available; show gate once per session unless skip preferred
-    const quiet = localStorage.getItem("council_skip_gate") === "1";
+    const quiet = (function () {
+      try { return sessionStorage.getItem("council_skip_gate") === "1"; } catch (e) { return false; }
+    })();
     if (quiet) {
       dismissGate(false);
       return;
@@ -5030,14 +5058,14 @@ function drawCandleChart() {
       btnSkip.addEventListener("click", () => {
         ensureAudio();
         playSfxClick();
-        localStorage.setItem("council_skip_gate", "1");
+        try { sessionStorage.setItem("council_skip_gate", "1"); } catch (e) {}
         if (fog) fog.stop();
         dismissGate(false);
       });
     }
   }
 
-  initSummonGate();
+  // Do not init summon / dismiss to Table before the desk-code gate.
   try { wireFocusAndHelp(); } catch (e) { console.warn('focus wire', e); }
 
   
@@ -5446,8 +5474,18 @@ function drawCandleChart() {
     }, { capture: true, passive: true });
   }
 
-  // Default desk: Table with ETH focus
-  setMode("art");
+  // Default desk after unlock is Table + ETH. Cold visit stays on the desk-code gate.
+  function hasDeskAuth() {
+    try { return sessionStorage.getItem("council_auth_ok") === "1"; } catch (e) { return false; }
+  }
+  if (hasDeskAuth()) {
+    setMode("art");
+  } else {
+    document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked", "mode-art", "floor-mode");
+    const pg = document.getElementById("passwordGate");
+    if (pg) pg.classList.remove("hidden");
+  }
   try { syncAutoBetVisibility(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);
@@ -5644,6 +5682,8 @@ function drawCandleChart() {
   function showAppAfterAuth() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.add("hidden");
+    document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked");
     // Play intro video full-screen, then reveal summon gate
     playZtIntroThenSummonGate();
   }
@@ -5667,7 +5707,9 @@ function drawCandleChart() {
     const finish = () => {
       wrap.classList.remove("active");
       if (vid) { try { vid.pause(); vid.currentTime = 0; } catch (e) {} }
-      document.body.classList.remove("gate-locked");
+      // Keep the desk hidden until Summon / Tutorial is dismissed.
+      document.body.classList.add("gate-locked");
+      document.body.classList.remove("admin-unlocked");
       const sg = document.getElementById("summonGate");
       if (sg) {
         sg.classList.remove("hidden");
@@ -5698,7 +5740,8 @@ function drawCandleChart() {
   function revealSummonGateOnly() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.add("hidden");
-    document.body.classList.remove("gate-locked");
+    document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked");
     const sg = document.getElementById("summonGate");
     if (sg) sg.classList.remove("hidden");
     try { initSummonGate(); } catch (e) { console.warn(e); }
@@ -5706,8 +5749,11 @@ function drawCandleChart() {
   }
 
   function initPasswordGate() {
-    // Returning visitors: skip password + intro video, go to summon gate
-    if (localStorage.getItem(passKey) === "1") {
+    // Cold visit / new tab: leftover localStorage must not skip the desk code.
+    try { localStorage.removeItem(passKey); } catch (e) {}
+    let sessionOk = false;
+    try { sessionOk = sessionStorage.getItem(passKey) === "1"; } catch (e) { sessionOk = false; }
+    if (sessionOk) {
       revealSummonGateOnly();
       return;
     }
@@ -5718,10 +5764,13 @@ function drawCandleChart() {
     if (!pg) return;
     pg.classList.remove("hidden");
     document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked");
+    document.body.setAttribute("data-password-protected", "true");
     const tryUnlock = () => {
       const v = (input && input.value) || "";
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
-        localStorage.setItem(passKey, "1");
+        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+        try { localStorage.removeItem(passKey); } catch (e) {}
         if (err) err.classList.add("hidden");
         // Fresh password entry → intro video → summon gate
         showAppAfterAuth();
@@ -6053,10 +6102,12 @@ function drawCandleChart() {
   const ADMIN_KEY = "council_admin_unlocked";
 
   window.isAdminUnlocked = function isAdminUnlocked() {
-    try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
   };
   function setAdminUnlocked(on) {
-    try { localStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    document.body.classList.toggle("admin-unlocked", !!on);
   }
 
   let pendingAdminCb = null;
@@ -6180,6 +6231,24 @@ function drawCandleChart() {
           a.click();
           a.remove();
           if (st()) st().textContent = "Excel download started…";
+        });
+      });
+    }
+    const brainBtn = document.getElementById("btnBrainExport");
+    if (brainBtn && !brainBtn.__wired) {
+      brainBtn.__wired = true;
+      brainBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-brain.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          const bs = document.getElementById("brainStatus");
+          if (bs) bs.textContent = "Brain download started…";
         });
       });
     }

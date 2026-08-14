@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
-<body class="gate-locked">
+<body class="gate-locked" data-password-protected="true">
 
   <!-- Password gate -->
   <div id="passwordGate" class="password-gate">
@@ -381,7 +381,7 @@
           <div class="beast-title">LEARNING BRAIN</div>
           <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
           <div class="brain-actions">
-            <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="/api/brain/export" download>Download brain.json</a>
+            <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="#" role="button">Download brain.json</a>
             <label class="gate-btn gate-btn-ghost brain-upload">
               Upload brain.json
               <input type="file" id="brainFile" accept="application/json,.json" hidden />

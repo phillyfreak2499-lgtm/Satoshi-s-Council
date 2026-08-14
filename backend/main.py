@@ -267,11 +267,15 @@ async def toggle_beast(request: Request):
 
 
 @app.get("/api/brain/export")
-async def brain_export():
+async def brain_export(request: Request):
     """
     Download full learning brain: weights, coalitions, regime stats,
     lifetime window calls, accuracy summary. Re-upload into any new instance.
+    Admin password required — desk access code is not enough.
     """
+    if not _admin_ok(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "admin password required"}, status_code=401)
     import json
     from datetime import datetime, timezone
     from fastapi.responses import Response
@@ -306,6 +310,8 @@ async def brain_import(request: Request):
     Restores adaptive weights/coalitions and merges window call history.
     Body: raw JSON (the export file) OR { "brain": {...}, "mode": "merge"|"replace" }
     """
+    if not _admin_ok(request):
+        return {"ok": False, "error": "admin password required"}
     try:
         body = await request.json()
     except Exception:
