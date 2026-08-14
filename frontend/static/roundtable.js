@@ -133,6 +133,8 @@
   const decisionDir = document.getElementById("decisionDir");
   const decisionConf = document.getElementById("decisionConf");
   const decisionSummary = document.getElementById("decisionSummary");
+  const decisionPhase = document.getElementById("decisionPhase");
+  const decisionLock = document.getElementById("decisionLock");
   const btcPrice = document.getElementById("btcPrice");
   const fundingEl = document.getElementById("funding");
   const kalshiTicker = document.getElementById("kalshiTicker");
@@ -3113,6 +3115,25 @@ function drawCandleChart() {
     const rawDir = d.direction || "WAIT";
     decisionDir.textContent = lawLocked() ? "LOCKED" : (d.display_direction || displayDir(rawDir));
     decisionDir.className = "dir " + rawDir;
+    // Status strip: phase + lock badge
+    try {
+      const sum = String(d.summary || "");
+      let phase = "hold";
+      if (/\bENTRY\b/i.test(sum)) phase = "entry";
+      else if (/\bFINAL\b/i.test(sum)) phase = "final";
+      else if (/\bMID\b/i.test(sum)) phase = "mid";
+      else if (/Lock held/i.test(sum)) phase = "hold";
+      if (decisionPhase) {
+        decisionPhase.textContent = phase === "hold" ? "HELD" : phase.toUpperCase();
+        decisionPhase.className = "decision-phase phase-" + phase;
+      }
+      if (decisionLock) {
+        const locked = /Lock held|no new call|hard-lock/i.test(sum);
+        decisionLock.textContent = /Lock held|no new call/i.test(sum) ? "🔒 LOCKED" : (phase === "entry" ? "NEW ENTRY" : "");
+        decisionLock.className = "decision-lock" + (/Lock held|no new call/i.test(sum) ? " is-locked" : "");
+      }
+    } catch (e) { /* non-fatal */ }
+
     decisionConf.textContent = (d.confidence != null ? d.confidence + "%" : "—");
     decisionSummary.textContent = d.summary || "";
     if (d.regime_key) {
