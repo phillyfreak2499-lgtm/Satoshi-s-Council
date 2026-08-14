@@ -501,7 +501,7 @@ main {
   display: grid;
   /* Named areas — debate is always LEFT, candles always RIGHT */
   grid-template-columns: minmax(220px, 280px) 1fr minmax(220px, 300px);
-  grid-template-areas: "debate table hierarchy";
+  grid-template-areas: "table hierarchy";
   gap: 0;
   min-height: 0;
   overflow: hidden;
@@ -659,7 +659,6 @@ main {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(140px, 22vh) 1fr minmax(160px, 26vh);
     grid-template-areas:
-      "debate"
       "table"
       "hierarchy";
   }
@@ -2078,7 +2077,7 @@ html, body {
   min-height: 0 !important;
   display: grid !important;
   grid-template-columns: minmax(200px, 260px) 1fr minmax(200px, 280px) !important;
-  grid-template-areas: "debate table hierarchy" !important;
+  grid-template-areas: "table hierarchy" !important;
 }
 #mainTable.hidden { display: none !important; }
 #debatePanel { grid-area: debate !important; }
