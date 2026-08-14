@@ -3306,3 +3306,8 @@ body:not(.floor-mode) .floor-money-rain {
   text-overflow: ellipsis;
   max-width: min(52vw, 640px);
 }
+
+/* Dual BTC/ETH vote strip in footer */
+.dual-vote-strip { color: #9ec8e0; font-size: 12px; letter-spacing: 0.03em; }
+.dual-vote-strip b { color: #d8f0ff; font-weight: 700; }
+.dual-focus-banner { background: rgba(0,20,40,0.6); }
