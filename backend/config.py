@@ -175,6 +175,13 @@ class Settings(BaseSettings):
     # Soft preferred band — still allow up to MAX but raise bar outside preferred
     PREFERRED_ENTRY_ODDS_MIN: float = 40.0
     PREFERRED_ENTRY_ODDS_MAX: float = 65.0
+    # Next-layer edge gates
+    ANTI_CHASE_PTS: float = 4.0          # if side mid jumped this many ¢ recently → WAIT
+    ANTI_CHASE_LOOKBACK_S: float = 180.0
+    MAX_SPREAD_CENTS: float = 5.0        # no ENTRY if bid-ask wider than this
+    TWO_STAGE_HOLD_S: float = 12.0       # lean must hold this long before hard LOCK
+    DUAL_CORRELATION_VETO: bool = True   # demote weaker table when both lean same weakly
+
     # Hourly timing (minutes left)
     HOURLY_HARD_EARLY_MIN: float = 45.0   # very early → strong WAIT
     HOURLY_EARLY_MIN: float = 35.0

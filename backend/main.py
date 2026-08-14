@@ -350,6 +350,49 @@ def _admin_ok(request: Request) -> bool:
         return False
 
 
+
+@app.get("/api/journal/locks.csv")
+async def journal_locks_csv(asset: str | None = None, limit: int = 200):
+    """Finish-only lock journal for offline review."""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+    rows = await council.store.recent_settled_calls(limit=min(500, max(20, limit)))
+    # filter finish-only + optional asset
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["id","asset","direction","entry_odds","outcome","result","settle_reason","strike","close_time","called_at"])
+    for r in rows:
+        reason = r.get("settle_reason") or ""
+        if reason not in ("finish_match", "finish_miss") and r.get("correct") is None:
+            # still include settled directional with outcome
+            if not r.get("outcome"):
+                continue
+        a = (r.get("asset") or "").lower()
+        if asset and a and a != asset.lower():
+            continue
+        direction = r.get("direction") or r.get("call_direction") or ""
+        outcome = r.get("outcome") or ""
+        ok = reason == "finish_match" or (direction and outcome and str(direction).upper() == str(outcome).upper())
+        w.writerow([
+            r.get("id"),
+            a,
+            direction,
+            r.get("entry_odds_pct") or r.get("open_price"),
+            outcome,
+            "RIGHT" if ok else "WRONG",
+            reason,
+            r.get("kalshi_target"),
+            r.get("close_time"),
+            r.get("called_at"),
+        ])
+    out.seek(0)
+    return StreamingResponse(
+        iter([out.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=lock-journal.csv"},
+    )
+
 @app.post("/api/admin/clear-hit-rate")
 async def admin_clear_hit_rate(request: Request):
     """Reset hit-rate counters display. Does NOT wipe AdaptiveLearner weights."""

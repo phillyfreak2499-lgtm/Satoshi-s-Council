@@ -3407,11 +3407,11 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 }
 
 /* Hour remaining ring around center timer */
-#windowLed {
+#ledWindow, #windowLed {
   position: relative;
   --hour-frac: 1;
 }
-#windowLed::before {
+#ledWindow::before, #windowLed::before {
   content: "";
   position: absolute;
   inset: -6px;
@@ -3427,4 +3427,74 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
   mask-composite: exclude;
   pointer-events: none;
   opacity: 0.9;
+}
+
+/* Health dots */
+.health-dots { display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.hdot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #556; box-shadow: 0 0 6px rgba(0,0,0,0.4);
+  display: inline-block;
+}
+.hdot.ok { background: #2ee56d; box-shadow: 0 0 8px rgba(46,229,109,0.7); }
+.hdot.cache { background: #f0c24b; box-shadow: 0 0 8px rgba(240,194,75,0.55); }
+.hdot.bad { background: #ff3b5c; box-shadow: 0 0 8px rgba(255,59,92,0.6); }
+
+.regime-chip {
+  font-family: Share Tech Mono, monospace;
+  font-size: 10px;
+  color: #9ec8e8;
+  border: 1px solid rgba(0,232,255,0.25);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  opacity: 0.85;
+}
+.quiet-btn.active {
+  color: #ffe7a0 !important;
+  border-color: rgba(240,193,74,0.7) !important;
+}
+body.quiet-mode .bot-label,
+body.quiet-mode #tabBots,
+body.quiet-mode #tabDashboard { opacity: 0.35; }
+body.quiet-mode canvas { filter: saturate(0.92); }
+
+.kalshi-banner {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+  z-index: 90; background: rgba(40,30,10,0.92);
+  border: 1px solid rgba(240,193,74,0.45);
+  color: #f0d78a; font: 600 12px Rajdhani, sans-serif;
+  padding: 6px 14px; border-radius: 8px;
+  pointer-events: none;
+}
+.settle-review {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  z-index: 90; min-width: 280px; max-width: 90vw;
+  background: rgba(8,14,24,0.94);
+  border: 1px solid rgba(0,232,255,0.35);
+  color: #d7ecff; font: 600 13px Rajdhani, sans-serif;
+  padding: 10px 16px; border-radius: 10px;
+  text-align: center; box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+.settle-review.right { border-color: rgba(46,229,109,0.55); color: #b6ffd0; }
+.settle-review.wrong { border-color: rgba(255,59,92,0.55); color: #ffc0cb; }
+
+.hour-timeline {
+  position: fixed; top: 108px; left: 50%; transform: translateX(-50%);
+  z-index: 40; display: flex; align-items: center; gap: 8px;
+  width: min(320px, 70vw); pointer-events: none;
+  font: 600 9px Share Tech Mono, monospace; color: rgba(180,200,220,0.7);
+}
+.hour-timeline .ht-bar {
+  flex: 1; height: 4px; background: rgba(40,55,75,0.8); border-radius: 4px;
+  position: relative; overflow: visible;
+}
+.hour-timeline #htProgress {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 50%; background: linear-gradient(90deg, rgba(0,232,255,0.7), rgba(240,193,74,0.65));
+  border-radius: 4px;
+}
+.hour-timeline .ht-lock {
+  position: absolute; top: -4px; width: 10px; height: 10px; margin-left: -5px;
+  background: #f0c24b; border-radius: 50%; box-shadow: 0 0 8px rgba(240,193,74,0.8);
 }

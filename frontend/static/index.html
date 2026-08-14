@@ -89,8 +89,15 @@
           <span id="lawStatus" class="law-status">OK</span>
         </div>
         <div class="mode-tabs" role="tablist" aria-label="View mode">
-          <button type="button" id="focusBtc" class="mode-tab focus-tab focus-active" title="Focus Bitcoin / Satoshi">BTC</button>
-          <button type="button" id="focusEth" class="mode-tab focus-tab" title="Focus Ethereum / Vitalik">ETH</button>
+          <button type="button" id="focusBtc" class="focus-tab focus-active" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
+          <button type="button" id="focusEth" class="focus-tab" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
+          <span id="focusTableBadge" class="focus-table-badge">BTC · SATOSHI</span>
+          <span id="healthDots" class="health-dots" title="Quote health BTC / ETH">
+            <i id="healthBtc" class="hdot" title="BTC"></i>
+            <i id="healthEth" class="hdot" title="ETH"></i>
+          </span>
+          <span id="regimeChip" class="regime-chip" title="Session regime">—</span>
+          <button type="button" id="btnQuiet" class="mode-tab quiet-btn" title="Quiet mode — chairs only">Quiet</button>
           <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
           <button id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
           <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
@@ -98,6 +105,7 @@
           <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
           <button id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
           <button id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
+          <button type="button" id="btnJournal" class="mode-tab" title="Download finish-only lock journal CSV">Journal</button>
           <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
         </div>
         <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="ZT — play cinematic (also unlocks after 5 wins in a row)" aria-label="Play ZT cinematic">
@@ -151,6 +159,13 @@
 
       <!-- CENTER: Round table -->
 <div id="tableStage" class="table-stage">
+        <div id="kalshiBanner" class="kalshi-banner" hidden>Quote thin — holding last good</div>
+        <div id="hourTimeline" class="hour-timeline" title="Hour micro-timeline">
+          <span class="ht-mark">open</span>
+          <span class="ht-bar"><i id="htProgress"></i><i id="htLock" class="ht-lock" hidden></i></span>
+          <span class="ht-mark">close</span>
+        </div>
+        <div id="settleReview" class="settle-review" hidden></div>
         <canvas id="roundtable" width="1100" height="780"></canvas>
         <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
           <div id="lightsaberBar" class="lightsaber-bar">

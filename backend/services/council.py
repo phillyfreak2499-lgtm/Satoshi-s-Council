@@ -1,3 +1,4 @@
+import time
 """
 Council orchestrator – wires pipeline, agents, leader, store, and continuous loop.
 Includes nested sub-council micro-bots behind each specialist.
@@ -399,10 +400,6 @@ class Council:
             ml = parse_mins_left(close_t or market_data.get("close_time"))
             if ml is not None:
                 regime_features["mins_left"] = ml
-            # Stable hourly window id — ATM ticker hops must not clear the lock
-            ct_id = close_time or close_t or market_data.get("close_time")
-            if ct_id:
-                regime_features["close_time"] = ct_id
             # Bid-ask spread in cents for Chair gate
             try:
                 bid = market_data.get("kalshi_yes_bid")
@@ -493,6 +490,30 @@ class Council:
 
         # Attach Kalshi target so settlement grades against floor_strike
         decision["kalshi_target"] = market_data.get("kalshi_floor_strike")
+        # Shadow book: would a stricter 45–60¢ band have locked?
+        try:
+            from backend.config import settings as _s
+            so = None
+            lean = decision.get("direction")
+            if lean in ("UP", "DOWN") and up_pct is not None:
+                so = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
+            strict_lo, strict_hi = 45.0, 60.0
+            in_strict = so is not None and strict_lo <= so <= strict_hi
+            would = bool(
+                decision.get("window_locked") or (decision.get("locked_call") or {}).get("locked")
+            ) and in_strict
+            self._shadow_book.append({
+                "t": time.time(),
+                "asset": self.asset,
+                "live_dir": decision.get("direction"),
+                "live_odds": so,
+                "would_strict_lock": would,
+                "in_strict_band": in_strict,
+            })
+            self._shadow_book = self._shadow_book[-80:]
+        except Exception:
+            pass
+
 
         signal_id = await self.store.log_signal(
             decision,
@@ -586,6 +607,22 @@ class Council:
             "dual_spot": bool(runtime_settings.get("dual_spot", True)),
             "sub_council_count": sum(len(s.subs or []) for s in signals),
             "accuracy": accuracy,
+            "shadow_book": list(self._shadow_book[-12:]),
+            "last_settle_review": self._last_settle_review,
+            "health": {
+                "kalshi": bool(market_data.get("kalshi_healthy", market_data.get("healthy", True))),
+                "quote_age_s": (time.time() - float(market_data["kalshi_fetched_at"]))
+                    if market_data.get("kalshi_fetched_at") else None,
+                "from_cache": bool(market_data.get("from_shared_cache") or market_data.get("last_good")),
+                "asset": self.asset,
+            },
+            "regime_key": (regime_features.get("regime_key") if isinstance(regime_features, dict) else None),
+            "lock_timeline": {
+                "close_time": close_time,
+                "locked_at": getattr(self.leader, "_entry_at", None) or getattr(self.leader, "_locked_at", None),
+                "mins_left": (regime_features.get("mins_left") if isinstance(regime_features, dict) else None),
+            },
+
             "law": law_status,
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),

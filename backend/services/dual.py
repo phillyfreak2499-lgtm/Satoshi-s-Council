@@ -98,6 +98,48 @@ class DualOrchestrator:
             except Exception:
                 pass
 
+
+    def _correlation_veto(self) -> None:
+        """If both tables lean the same side weakly, demote the weaker to WAIT (no lock yet)."""
+        from backend.config import settings
+        if not getattr(settings, "DUAL_CORRELATION_VETO", True):
+            return
+        if not self.eth:
+            return
+        b = (self.btc.latest_state or {}).get("decision") or {}
+        e = (self.eth.latest_state or {}).get("decision") or {}
+        bd = (b.get("direction") or "").upper()
+        ed = (e.get("direction") or "").upper()
+        # Only veto pre-lock leans / directional not yet irreversible
+        bl = (b.get("locked_call") or {}).get("locked") or b.get("window_locked")
+        el = (e.get("locked_call") or {}).get("locked") or e.get("window_locked")
+        if bl or el:
+            return
+        sides = {bd, ed}
+        if "UP" not in sides and "DOWN" not in sides:
+            return
+        if bd not in ("UP", "DOWN") or ed not in ("UP", "DOWN"):
+            return
+        if bd != ed:
+            return
+        bc = int(b.get("confidence") or 0)
+        ec = int(e.get("confidence") or 0)
+        # Demote weaker confidence table's displayed decision note
+        weaker = self.eth if ec <= bc else self.btc
+        st = weaker.latest_state or {}
+        d = dict(st.get("decision") or {})
+        if d.get("window_locked"):
+            return
+        d["direction"] = "WAIT"
+        d["summary"] = (
+            f"WAIT · dual correlation veto — both tables leaned {bd}; "
+            f"weaker table stands down · " + str(d.get("summary") or "")
+        )
+        d["correlation_veto"] = True
+        st["decision"] = d
+        weaker.latest_state = st
+        logger.info(f"Correlation veto: demoted {weaker.asset} ({bd} weak dual lean)")
+
     async def _loop(self):
         import random
         while self.running:
@@ -109,6 +151,10 @@ class DualOrchestrator:
                     await c.analyze_once()
                 except Exception as e:
                     logger.exception(f"Dual analysis error ({c.asset}): {e}")
+            try:
+                self._correlation_veto()
+            except Exception as e:
+                logger.debug(f"correlation veto skip: {e}")
                 # Jitter between tables so Kalshi calls don't stampede
                 try:
                     await asyncio.sleep(0.15 + random.random() * 0.35)

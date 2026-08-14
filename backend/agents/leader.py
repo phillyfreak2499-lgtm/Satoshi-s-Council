@@ -64,6 +64,12 @@ class Leader:
         self._final_conf: int = 0
         self._final_at: float = 0.0
         self._revisions_used: int = 0
+        # Two-stage lean → lock
+        self._lean_pending_dir: Optional[str] = None
+        self._lean_pending_since: float = 0.0
+        self._lean_pending_conf: int = 0
+        # Anti-chase: recent side-odds samples (ts, side_odds for UP as up_pct)
+        self._odds_hist: list = []
 
     def _normalize_weights(self) -> None:
         total = sum(self.weights.values()) or 1.0
@@ -89,6 +95,10 @@ class Leader:
         self._final_conf = 0
         self._final_at = 0.0
         self._revisions_used = 0
+        self._lean_pending_dir = None
+        self._lean_pending_since = 0.0
+        self._lean_pending_conf = 0
+        self._odds_hist = []
 
     def _active_dir(self) -> Optional[str]:
         return self._final_dir or self._mid_dir or self._entry_dir or self._locked_dir
@@ -906,6 +916,8 @@ class Leader:
         # Hold even if ticker is briefly missing this cycle.
         # ══════════════════════════════════════════════════════════════
         if self._entry_dir or self._active_dir():
+            self._lean_pending_dir = None
+            self._lean_pending_since = 0.0
             active = self._active_dir()
             direction = active  # type: ignore[assignment]
             lean = active
@@ -999,17 +1011,86 @@ class Leader:
                         f"WAIT · early hour ({ml:.0f}m left) — patience · {summary}"
                     )
                 else:
-                    lock_dir = lean
-                    self._set_window_lock(
-                        ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
-                    )
-                    call_phase = "entry"
-                    direction = lock_dir  # type: ignore[assignment]
-                    odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
-                    summary = (
-                        f"LOCKED {lock_dir}{odds_str} · ONE CALL · FOLLOW THIS · "
-                        f"{GOAL_CONTRACT_SHORT} · {summary}"
-                    )
+                    import time as _t2
+                    # --- Spread gate ---
+                    spread = None
+                    try:
+                        if regime_features and regime_features.get("spread_cents") is not None:
+                            spread = float(regime_features["spread_cents"])
+                    except (TypeError, ValueError):
+                        spread = None
+                    max_spread = float(getattr(settings, "MAX_SPREAD_CENTS", 5.0))
+                    if spread is not None and spread > max_spread:
+                        direction = "WAIT"
+                        lean = None
+                        firm = False
+                        conf = max(int(conf), 68)
+                        summary = (
+                            f"WAIT · spread {spread:.1f}¢ > {max_spread:.0f}¢ — no lock · {summary}"
+                        )
+                    else:
+                        # --- Anti-chase: side mid jumped toward lean recently ---
+                        chased = False
+                        try:
+                            now = _t2.time()
+                            look = float(getattr(settings, "ANTI_CHASE_LOOKBACK_S", 180.0))
+                            thr_pts = float(getattr(settings, "ANTI_CHASE_PTS", 4.0))
+                            if side_odds is not None:
+                                self._odds_hist.append((now, float(side_odds), lean))
+                                self._odds_hist = [h for h in self._odds_hist if now - h[0] <= look]
+                                old = [h for h in self._odds_hist if h[2] == lean and now - h[0] >= min(30.0, look * 0.3)]
+                                if old:
+                                    oldest = old[0][1]
+                                    delta = float(side_odds) - float(oldest)
+                                    # chasing = price of our side rose hard (less edge)
+                                    if delta >= thr_pts:
+                                        chased = True
+                        except Exception:
+                            chased = False
+                        if chased:
+                            direction = "WAIT"
+                            lean = None
+                            firm = False
+                            conf = max(int(conf), 70)
+                            summary = (
+                                f"WAIT · anti-chase — side already ran {thr_pts:.0f}¢+ · {summary}"
+                            )
+                        else:
+                            # --- Two-stage: lean must hold TWO_STAGE_HOLD_S before hard LOCK ---
+                            hold_s = float(getattr(settings, "TWO_STAGE_HOLD_S", 12.0))
+                            now = _t2.time()
+                            if self._lean_pending_dir != lean:
+                                self._lean_pending_dir = lean
+                                self._lean_pending_since = now
+                                self._lean_pending_conf = int(conf)
+                                direction = "WAIT"
+                                firm = False
+                                conf = max(int(conf), 65)
+                                summary = (
+                                    f"LEAN {lean} · holding {hold_s:.0f}s before lock · {summary}"
+                                )
+                            elif (now - float(self._lean_pending_since or now)) < hold_s:
+                                left = hold_s - (now - float(self._lean_pending_since))
+                                direction = "WAIT"
+                                firm = False
+                                conf = max(int(conf), 65)
+                                summary = (
+                                    f"LEAN {lean} · {left:.0f}s to lock · {summary}"
+                                )
+                            else:
+                                lock_dir = lean
+                                self._set_window_lock(
+                                    ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
+                                )
+                                self._lean_pending_dir = None
+                                self._lean_pending_since = 0.0
+                                call_phase = "entry"
+                                direction = lock_dir  # type: ignore[assignment]
+                                odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
+                                summary = (
+                                    f"LOCKED {lock_dir}{odds_str} · ONE CALL · FOLLOW THIS · "
+                                    f"{GOAL_CONTRACT_SHORT} · {summary}"
+                                )
 
         elif direction == "SWAP" and not (self._entry_dir or self._active_dir()):
             # SWAP with no lock → WAIT (no flip noise)
