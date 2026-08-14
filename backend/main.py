@@ -583,6 +583,18 @@ if STATIC_DIR.is_dir():
         return FileResponse(path, media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/council-mark.png")
+    async def council_mark():
+        path = STATIC_DIR / "council-mark.png"
+        if not path.exists():
+            path = STATIC_DIR / "zt-logo.jpg"
+        if not path.exists():
+            from fastapi.responses import Response
+            return Response(status_code=404)
+        media = "image/png" if path.suffix == ".png" else "image/jpeg"
+        return FileResponse(path, media_type=media,
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/zt-watermark.jpg")
     async def zt_watermark():
         path = STATIC_DIR / "zt-watermark.jpg"

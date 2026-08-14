@@ -1786,7 +1786,7 @@ body:not(.gate-locked) #app {
   color: #ffd56a;
 }
 
-/* ZT logo — upper controls, gold cyber mark */
+/* Council mark — upper controls, gold hex seal */
 .zt-logo-btn {
   display: inline-flex;
   align-items: center;
@@ -2198,7 +2198,7 @@ body:not(.gate-locked) #app {
 }
 .paper-call-row .del-trade:hover { color: #ff2d55; }
 
-/* ZT watermark — behind table, non-interactive */
+/* Council watermark — behind table, non-interactive */
 .zt-watermark {
   position: fixed;
   left: 50%;
@@ -2220,6 +2220,7 @@ body.beast-mode .zt-watermark {
   height: 28px;
   object-fit: contain;
   display: block;
+  background: #02040a;
 }
 .zt-logo-btn {
   padding: 4px !important;
@@ -2379,7 +2380,7 @@ body.admin-unlocked.mode-settings #autoBetCard {
   border-radius: 8px; overflow: hidden; line-height: 0;
   box-shadow: 0 0 12px rgba(120, 200, 255, 0.25);
 }
-.zt-header-logo img { display: block; border-radius: 8px; }
+.zt-header-logo img { display: block; border-radius: 8px; object-fit: contain; background: #02040a; }
 .credit-popup {
   position: fixed; top: 58px; left: 16px; z-index: 5000;
   background: rgba(8,12,22,0.95); border: 1px solid #3b82f6;
@@ -3967,7 +3968,7 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
 }
 .celebrate-fallback[hidden] { display: none !important; }
 
-/* ZT cinematic must cover Charts and every other view */
+/* Cinematic must cover Charts and every other view */
 #celebrateVideoWrap,
 #celebrateVideoWrap.active {
   z-index: 10080 !important;
@@ -4651,4 +4652,283 @@ body.mode-settings #settingsView #adminToolsCard {
     max-height: none !important;
     overflow: visible !important;
   }
+}
+
+/* ===== LIVE QA — exclusive tabs, docked 1H WINDOW, ticker, Paper ===== */
+#app > header .mode-tab[data-mode] {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+body.mode-art #app > header #tabScreensaver,
+body.mode-art #app > header #tabScreensaver.active,
+body.mode-floor #app > header #tabFloor,
+body.mode-floor #app > header #tabFloor.active,
+body.mode-dashboard #app > header #tabDashboard,
+body.mode-dashboard #app > header #tabDashboard.active,
+body.mode-bots #app > header #tabBots,
+body.mode-bots #app > header #tabBots.active,
+body.mode-ranks #app > header #tabRanks,
+body.mode-ranks #app > header #tabRanks.active,
+body.mode-charts #app > header #tabCharts,
+body.mode-charts #app > header #tabCharts.active,
+body.mode-paper #app > header #tabPaper,
+body.mode-paper #app > header #tabPaper.active,
+body.mode-settings #app > header #tabSettings,
+body.mode-settings #app > header #tabSettings.active {
+  color: var(--blade) !important;
+  border-color: rgba(0, 232, 255, 0.5) !important;
+  background: rgba(0, 232, 255, 0.08) !important;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+}
+body.beast-mode.mode-art #app > header #tabScreensaver,
+body.beast-mode.mode-floor #app > header #tabFloor,
+body.beast-mode.mode-dashboard #app > header #tabDashboard,
+body.beast-mode.mode-bots #app > header #tabBots,
+body.beast-mode.mode-ranks #app > header #tabRanks,
+body.beast-mode.mode-charts #app > header #tabCharts,
+body.beast-mode.mode-paper #app > header #tabPaper,
+body.beast-mode.mode-settings #app > header #tabSettings {
+  border-color: rgba(240, 193, 74, 0.7) !important;
+  color: #ffe49a !important;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.4) !important;
+}
+#app > header #tabPaper {
+  display: inline-flex !important;
+}
+
+#app > header { order: 1; }
+#windowLed,
+#windowLed.led-window,
+#windowLed.led-float,
+body.mode-art #windowLed,
+body.mode-art #windowLed.led-window,
+body.mode-art #windowLed.led-float,
+body.floor-mode #windowLed,
+body.floor-mode #windowLed.led-window,
+body.mode-floor #windowLed,
+body.mode-floor #windowLed.led-window {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  float: none !important;
+  inset: auto !important;
+  order: 2 !important;
+  z-index: 4 !important;
+  margin: 4px auto 0 !important;
+  width: max-content !important;
+  max-width: calc(100% - 16px) !important;
+  pointer-events: none !important;
+}
+body.mode-dashboard #windowLed,
+body.mode-dashboard #windowLed.led-window,
+body.mode-dashboard #windowLed.led-float,
+body.mode-bots #windowLed,
+body.mode-ranks #windowLed,
+body.mode-paper #windowLed,
+body.mode-charts #windowLed,
+body.mode-settings #windowLed {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#mainTable,
+#settingsView,
+#botsView,
+#ranksView,
+#paperView,
+#chartsView { order: 3; }
+#app > footer { order: 10; }
+body.mode-art #lifetimePanel {
+  padding-top: 8px !important;
+}
+
+@media (min-width: 481px) {
+  #app > footer #marketStrip,
+  #marketStrip {
+    flex-wrap: nowrap !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+  }
+  #app > footer #marketStrip > span,
+  #marketStrip > span {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+  }
+  #btcPrice, #ethPrice, #windowTimer, #liveUpPct, #liveDownPct {
+    display: inline-block;
+    min-width: 4.2ch;
+  }
+}
+
+/* ===== GAME HUD — Floor / Table visual pack ===== */
+.gate-mark {
+  display: block;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 14px;
+  object-fit: contain;
+  background: #02040a;
+  border-radius: 12px;
+  box-shadow: 0 0 22px rgba(0, 232, 255, 0.22), 0 0 18px rgba(240, 193, 74, 0.18);
+}
+.password-card .gate-mark { width: 72px; height: 72px; }
+
+body.floor-mode #starfield,
+body.mode-floor #starfield {
+  display: block !important;
+  z-index: 0 !important;
+}
+body.floor-mode #app,
+body.mode-floor #app,
+body.floor-mode #mainTable,
+body.mode-floor #mainTable,
+body.floor-mode #tableStage,
+body.mode-floor #tableStage,
+body.floor-mode .table-stage,
+body.mode-floor .table-stage {
+  background: transparent !important;
+}
+body.floor-mode #roundtable,
+body.mode-floor #roundtable {
+  background: transparent !important;
+}
+
+.rivalry-strip {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  pointer-events: none;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(4, 8, 16, 0.78);
+  border: 1px solid rgba(240, 193, 74, 0.45);
+  box-shadow: 0 0 22px rgba(0, 232, 255, 0.18);
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  color: #f0d78a;
+  white-space: nowrap;
+}
+body.floor-mode .rivalry-strip:not([hidden]),
+body.mode-floor .rivalry-strip:not([hidden]) {
+  display: flex !important;
+}
+.rivalry-strip .rival-vs {
+  color: #00e8ff;
+  font-size: 11px;
+}
+.rivalry-strip .rival-trash {
+  color: #9ec8e0;
+  font-family: Rajdhani, sans-serif;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hour-slam {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(240, 193, 74, 0.28), transparent 55%);
+}
+body.hour-slam .hour-slam {
+  display: block;
+  animation: hourSlamFlash 0.9s ease-out forwards;
+}
+@keyframes hourSlamFlash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+#debatePanel.signal-feed {
+  min-width: 0;
+  overflow: hidden;
+}
+body.mode-art #debatePanel.signal-feed {
+  display: flex !important;
+}
+body.show-hierarchy #debatePanel.signal-feed,
+body.floor-mode #debatePanel.signal-feed,
+body.mode-floor #debatePanel.signal-feed {
+  display: none !important;
+}
+.signal-chair {
+  margin: 8px 10px 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  background: rgba(0, 20, 36, 0.55);
+}
+.signal-chair-dir {
+  font-family: Orbitron, monospace;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  color: #7fe9ff;
+}
+.signal-chair-dir.UP { color: #39ff14; }
+.signal-chair-dir.DOWN { color: #ff2d55; }
+.signal-chair-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(180, 210, 230, 0.8);
+  font-family: Share Tech Mono, monospace;
+}
+.signal-feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 10px 12px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.signal-feed-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px 8px;
+  padding: 7px 4px;
+  border-bottom: 1px solid rgba(0, 232, 255, 0.08);
+  font-size: 12px;
+}
+.signal-feed-list .sf-name {
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #c8e8ff;
+}
+.signal-feed-list .sf-dir {
+  font-weight: 700;
+  font-size: 10px;
+}
+.signal-feed-list .sf-dir.UP { color: #39ff14; }
+.signal-feed-list .sf-dir.DOWN { color: #ff2d55; }
+.signal-feed-list .sf-dir.WAIT { color: #00e8ff; }
+.signal-feed-list .sf-shout {
+  grid-column: 1 / -1;
+  color: rgba(190, 210, 225, 0.82);
+  line-height: 1.35;
+}
+
+body.majority-up.floor-mode::before {
+  background: radial-gradient(ellipse at 50% 55%, rgba(20, 90, 30, 0.28), transparent 60%) !important;
+}
+body.majority-down.floor-mode::before {
+  background: radial-gradient(ellipse at 50% 55%, rgba(90, 10, 22, 0.30), transparent 60%) !important;
+}
+body.majority-wait.floor-mode::before {
+  background: radial-gradient(ellipse at 50% 55%, rgba(10, 40, 90, 0.28), transparent 60%) !important;
 }

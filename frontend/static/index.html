@@ -17,6 +17,7 @@
   <!-- Password gate -->
   <div id="passwordGate" class="password-gate">
     <div class="password-card">
+      <img class="gate-mark" src="/zt-logo.jpg" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
       <div class="password-sub">Enter access code</div>
       <input type="password" id="passwordInput" class="password-input" placeholder="Password" autocomplete="current-password" />
@@ -29,6 +30,7 @@
   <div id="summonGate" class="summon-gate hidden">
     <canvas id="gateFog" class="gate-fog"></canvas>
     <div id="gateInner" class="gate-inner">
+      <img class="gate-mark" src="/zt-logo.jpg" alt="" width="88" height="88" />
       <div class="gate-brand">SATOSHI’S COUNCIL</div>
       <div class="gate-actions">
         <button type="button" id="btnTutorial" class="gate-btn gate-btn-ghost">Tutorial</button>
@@ -55,13 +57,20 @@
   <div id="app">
     <div id="ztWatermark" class="zt-watermark" aria-hidden="true"></div>
     <div class="floor-hint" id="floorHint">FLOOR · ESC or TABLE to exit</div>
+    <div id="rivalryStrip" class="rivalry-strip" hidden>
+      <span id="rivalSat">SATOSHI 0–0</span>
+      <b class="rival-vs">VS</b>
+      <span id="rivalVit">0–0 VITALIK</span>
+      <span id="rivalTrash" class="rival-trash"></span>
+    </div>
+    <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
     <!-- watermark removed; clean logo lives in header -->
     <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
     <header>
       <div class="header-row">
         <div class="logo">
           <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="Satoshi’s Council">
-            <img src="/zt-logo.jpg" alt="Satoshi’s Council" width="36" height="36" />
+            <img src="/zt-logo.jpg" alt="" width="36" height="36" />
           </button>
           <span class="title">SATOSHI’S COUNCIL</span>
           <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
@@ -170,6 +179,17 @@
       </div>
 
 
+<aside id="debatePanel" class="side-panel side-right signal-feed" aria-label="Signal feed">
+        <div class="panel-head">
+          <span class="panel-title">SIGNAL FEED</span>
+          <span class="panel-sub" id="signalFeedMeta">live shouts</span>
+        </div>
+        <div id="signalChair" class="signal-chair">
+          <div class="signal-chair-dir" id="signalChairDir">WAIT</div>
+          <div class="signal-chair-meta" id="signalChairMeta">P(finish) — · EV — · — left</div>
+        </div>
+        <ol id="signalFeed" class="signal-feed-list" aria-live="polite"></ol>
+      </aside>
 <aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only" aria-label="Bot hierarchy">
         <div class="panel-head">
           <span class="panel-title">HIERARCHY</span>

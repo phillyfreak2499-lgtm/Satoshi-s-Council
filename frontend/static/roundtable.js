@@ -196,7 +196,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : "http://127.0.0.1:8000");
   // Poll faster than analysis interval so UI stays live after each cycle
 
-  // Chair portrait (eye color by direction) — armored ZT knight
+  // Chair portrait (eye color by direction) — armored knight
   const chairImages = {
     UP: new Image(),
     DOWN: new Image(),
@@ -422,6 +422,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   applySettingsSnapshot._real = true;
   window.applySettingsSnapshot = applySettingsSnapshot;
 
+  function syncExclusiveBodyMode(next) {
+    const drop = [];
+    Array.prototype.forEach.call(document.body.classList, function (c) {
+      if (c === "floor-mode" || (c.length > 5 && c.indexOf("mode-") === 0)) drop.push(c);
+    });
+    drop.forEach(function (c) { document.body.classList.remove(c); });
+    if (next) document.body.classList.add("mode-" + next);
+    document.body.classList.toggle("floor-mode", next === "floor");
+  }
+  function syncExclusiveTabActive(next) {
+    document.querySelectorAll(".mode-tab").forEach((btn) => {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp" || !btn.dataset.mode) {
+        btn.classList.remove("active");
+        if (btn.hasAttribute("aria-selected")) btn.setAttribute("aria-selected", "false");
+        return;
+      }
+      const on = btn.dataset.mode === next;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+
   function stayOnSettings() {
     const sv = document.getElementById("settingsView");
     const showing = !!(sv && !sv.classList.contains("hidden"));
@@ -431,9 +453,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return;
     }
     if (sv) sv.classList.remove("hidden");
-    document.body.classList.add("mode-settings");
-    document.body.classList.remove("mode-floor", "floor-mode", "mode-art");
-    document.body.classList.remove("mode-dashboard", "mode-bots", "mode-ranks", "mode-paper", "mode-charts");
+    syncExclusiveBodyMode("settings");
+    syncExclusiveTabActive("settings");
   }
 
   async function fetchSettings() {
@@ -545,7 +566,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let animId = null;
   let time = 0;
   let glitchUntil = 0;
-  let debateHistory = []; // REMOVED — debate log disabled for dual CPU room
+  let hourSlamUntil = 0;
+  let debateHistory = [];
+  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
@@ -945,6 +968,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (key !== lastWindowKey) {
         lastWindowKey = key;
         lastClockBucket = bucket;
+        try { triggerHourSlam(); } catch (e) {}
         // Skip-window: previous chair was WAIT → awkward silence; else market bell
         try {
           const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
@@ -968,6 +992,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     if (bucket !== lastClockBucket) {
       lastClockBucket = bucket;
+      try { triggerHourSlam(); } catch (e) {}
       playMarketBell();
       playNewMarketMist();
     }
@@ -1464,6 +1489,218 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.closePath();
   }
 
+  function triggerHourSlam() {
+    hourSlamUntil = Date.now() + 1100;
+    document.body.classList.add("hour-slam");
+    const el = document.getElementById("hourSlam");
+    if (el) {
+      el.hidden = false;
+      el.setAttribute("aria-hidden", "false");
+    }
+    setTimeout(() => {
+      document.body.classList.remove("hour-slam");
+      if (el) {
+        el.hidden = true;
+        el.setAttribute("aria-hidden", "true");
+      }
+    }, 1100);
+  }
+
+  function secondsLeftOf(m) {
+    if (!m) return null;
+    let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
+    if (secs == null && m.close_time) {
+      secs = (new Date(m.close_time) - Date.now()) / 1000;
+    }
+    if (secs == null || isNaN(secs)) {
+      const bucket = 3600;
+      secs = bucket - ((Date.now() / 1000) % bucket);
+    }
+    return Math.max(0, Number(secs));
+  }
+
+  function hourFillFrac(m) {
+    const secs = secondsLeftOf(m);
+    if (secs == null) return 0.5;
+    return 1 - Math.max(0, Math.min(1, secs / 3600));
+  }
+
+  function majorityDirOf(agents) {
+    let up = 0, down = 0, wait = 0;
+    (agents || []).forEach((a) => {
+      if (!a || a.agent_name === "leader") return;
+      const d = String(a.direction || "WAIT").toUpperCase();
+      if (d === "UP" || d === "UP_HOLD") up++;
+      else if (d === "DOWN" || d === "DOWN_HOLD") down++;
+      else wait++;
+    });
+    if (up > down && up >= wait) return "UP";
+    if (down > up && down >= wait) return "DOWN";
+    return "WAIT";
+  }
+
+  function spokeEnd(x0, y0, x1, y1, stopR) {
+    const dx = x0 - x1, dy = y0 - y1;
+    const dist = Math.hypot(dx, dy) || 1;
+    const r = Math.min(stopR, dist - 2);
+    return { x: x1 + (dx / dist) * r, y: y1 + (dy / dist) * r };
+  }
+
+  function drawMajorityHaze(cx, cy, r, dir) {
+    const g = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r * 2.15);
+    if (dir === "UP") {
+      g.addColorStop(0, "rgba(30, 110, 40, 0.42)");
+      g.addColorStop(0.55, "rgba(20, 70, 28, 0.12)");
+    } else if (dir === "DOWN") {
+      g.addColorStop(0, "rgba(110, 16, 28, 0.44)");
+      g.addColorStop(0.55, "rgba(70, 8, 18, 0.12)");
+    } else {
+      g.addColorStop(0, "rgba(16, 48, 110, 0.40)");
+      g.addColorStop(0.55, "rgba(8, 24, 70, 0.12)");
+    }
+    g.addColorStop(1, "rgba(2, 4, 10, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 2.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawHourRing(cx, cy, r, frac, color) {
+    const start = -Math.PI / 2;
+    const fill = Math.max(0.02, Math.min(1, frac));
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(180, 210, 230, 0.14)";
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, start + Math.PI * 2 * fill);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineCap = "butt";
+  }
+
+  function drawPacketSpoke(x0, y0, x1, y1, color, conf, agree) {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.2 + Math.min(0.5, (conf || 0) / 180);
+    ctx.lineWidth = agree ? 2.6 : 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (reduceMotion || soundMuted) return;
+    const dx = x1 - x0, dy = y1 - y0;
+    const speed = agree ? 0.0024 : 0.00115;
+    const n = agree ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const t = ((time * speed) + i / n) % 1;
+      ctx.beginPath();
+      ctx.arc(x0 + dx * t, y0 + dy * t, agree ? 3.3 : 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  function drawGameBot(name, x, y, r, dir, conf, faceAng, phase) {
+    const breathe = reduceMotion ? 1 : (1 + 0.08 * Math.sin(time * 0.0042 + (phase || 0)));
+    const rr = r * breathe;
+    const sc = strongColor(dir);
+    ctx.save();
+    ctx.translate(x, y);
+    if (faceAng != null) ctx.rotate(faceAng + Math.PI / 2);
+    drawHex(0, 0, rr + 7);
+    ctx.fillStyle = "rgba(4, 8, 16, 0.94)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.55)";
+    ctx.lineWidth = 1.7;
+    ctx.stroke();
+    drawHex(0, 0, rr + 3.5);
+    ctx.strokeStyle = sc;
+    ctx.lineWidth = 2.6;
+    ctx.shadowColor = sc;
+    ctx.shadowBlur = 14;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    try {
+      drawBotIcon(name, x, y, rr, sc, conf || 0);
+    } catch (e) {
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fillStyle = sc;
+      ctx.fill();
+    }
+  }
+
+  function drawHourSlamRings(cx, cy, r) {
+    if (Date.now() >= hourSlamUntil || reduceMotion) return;
+    const a = Math.max(0, (hourSlamUntil - Date.now()) / 1100);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.95)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + (1 - a) * 70, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.7 + (1 - a) * 110, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function accRecord(acc) {
+    const c = (acc && acc.correct) || 0;
+    const w = (acc && acc.wrong) != null ? acc.wrong : Math.max(0, ((acc && acc.total) || 0) - c);
+    return { c, w };
+  }
+
+  function updateRivalryStrip() {
+    const strip = document.getElementById("rivalryStrip");
+    if (!strip) return;
+    const onFloor = mode === "floor";
+    strip.hidden = !onFloor;
+    if (!onFloor) return;
+    const btc = accRecord((tableState("bitcoin") || state || {}).accuracy);
+    const eth = accRecord((tableState("ethereum") || {}).accuracy);
+    const sat = document.getElementById("rivalSat");
+    const vit = document.getElementById("rivalVit");
+    const trash = document.getElementById("rivalTrash");
+    if (sat) sat.textContent = "SATOSHI " + btc.c + "–" + btc.w;
+    if (vit) vit.textContent = eth.c + "–" + eth.w + " VITALIK";
+    let line = "Split night. Neither chair blinks.";
+    if (btc.c > eth.c) line = "Satoshi is printing. Vitalik is watching.";
+    else if (eth.c > btc.c) line = "Vitalik took the night. Satoshi can chase.";
+    else if (btc.w < eth.w && (btc.c + btc.w + eth.c + eth.w) > 0) line = "Fewer scars on the BTC table.";
+    else if (eth.w < btc.w && (btc.c + btc.w + eth.c + eth.w) > 0) line = "ETH table is cleaner tonight.";
+    if (trash) trash.textContent = line;
+  }
+
+  function containPortrait(img, cx, cy, r) {
+    if (!img || !img.complete || !img.naturalWidth) return false;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const side = r * 2;
+    const scale = Math.min(side / iw, side / ih);
+    const dw = iw * scale, dh = ih * scale;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.restore();
+    return true;
+  }
+
 
   function resizeRoundtable() {
     if (!canvas) return;
@@ -1539,28 +1776,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function drawDualFloor(w, h) {
-    ctx.fillStyle = "#02040a";
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
     ctx.fillRect(0, 0, w, h);
 
     const mid = w / 2;
-    // subtle divider
-    ctx.strokeStyle = "rgba(0, 220, 255, 0.18)";
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.22)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(mid, h * 0.05);
-    ctx.lineTo(mid, h * 0.95);
+    ctx.moveTo(mid, h * 0.08);
+    ctx.lineTo(mid, h * 0.92);
     ctx.stroke();
 
-    // Left = Bitcoin / Satoshi, Right = Ethereum / Vitalik
-    // Each side: chair + FULL specialist bot ring
-    drawTableWithBots(w * 0.25, h * 0.50, Math.min(w, h) * 0.18, "bitcoin", "SATOSHI · BTC", focusTable === "bitcoin");
-    drawTableWithBots(w * 0.75, h * 0.50, Math.min(w, h) * 0.18, "ethereum", "VITALIK · ETH", focusTable === "ethereum");
+    const tableR = Math.min(w, h) * 0.26;
+    drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", "SATOSHI · BTC", focusTable === "bitcoin");
+    drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", "VITALIK · ETH", focusTable === "ethereum");
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
     if (focused == null) focused = true;
     ctx.save();
-    if (!focused) ctx.globalAlpha = 0.38;
+    if (!focused) ctx.globalAlpha = 0.42;
 
     const st = tableState(which) || {};
     const d = st.decision || {};
@@ -1570,12 +1806,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
     const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader");
-
+    const maj = majorityDirOf(agents);
     const gold = "rgba(240, 193, 74, 0.95)";
-    const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.45)" : "rgba(0, 220, 255, 0.45)");
-    const pr = radius * 0.48; // portrait radius
-    const portraitY = cy - 4;
-    const ringR = radius * 1.55;
+    const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
+    const pr = radius * 0.58;
+    const portraitY = cy - 2;
+    const ringR = radius * 1.48;
+    const orbit = reduceMotion ? 0 : time * 0.00014;
+    drawMajorityHaze(cx, cy, radius, maj);
+    drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
+    drawHourSlamRings(cx, cy, radius);
 
     // Outer table rings (under everything)
     ctx.beginPath();
@@ -1589,56 +1829,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Spokes FIRST — drawn under the leader photo; stop at portrait rim
     const n = Math.max(agents.length, 1);
+    const chairLean = String(dir || "WAIT").toUpperCase();
     const botPts = [];
     agents.forEach((a, i) => {
-      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
       const x = cx + Math.cos(ang) * ringR;
       const y = cy + Math.sin(ang) * ringR;
       const adir = String(a.direction || "WAIT").toUpperCase();
-      let col = "rgba(160,180,200,0.85)";
+      let col = "rgba(0,232,255,0.95)";
       if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
       if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
       const confA = Number(a.confidence) || 50;
-      // endpoint on portrait rim (not through the face)
-      const dx = x - cx, dy = y - portraitY;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const stopR = pr + 2;
-      const ix = cx + (dx / dist) * stopR;
-      const iy = portraitY + (dy / dist) * stopR;
-      const spokeAlpha = 0.2 + Math.min(0.5, confA / 100 * 0.45);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ix, iy);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 2.2;
-      ctx.globalAlpha = (focused ? 1 : 0.5) * spokeAlpha * 0.35;
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 8;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ix, iy);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 1.2;
-      ctx.globalAlpha = (focused ? 1 : 0.5) * spokeAlpha;
-      ctx.stroke();
-      ctx.globalAlpha = focused ? 1 : 0.38;
-      botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?" });
+      const end = spokeEnd(x, y, cx, portraitY, pr + 3);
+      const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
+      drawPacketSpoke(x, y, end.x, end.y, col, confA, agree);
+      ctx.globalAlpha = focused ? 1 : 0.42;
+      botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?", ang, adir });
     });
 
-    // Leader portrait ON TOP of spokes
     const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
-    if (img && img.complete && img.naturalWidth) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(img, cx - pr, portraitY - pr, pr * 2, pr * 2);
-      ctx.restore();
-    } else {
+    if (!containPortrait(img, cx, portraitY, pr)) {
       ctx.beginPath();
       ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
       ctx.fillStyle = "#0a1220";
@@ -1711,26 +1922,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, cy + pr + 30);
     }
 
-    // Bot icons on top of spokes
     if (!botPts.length) {
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(160,180,200,0.55)";
       ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
     } else {
-      botPts.forEach((bp) => {
-        try {
-          drawBotIcon(bp.name, bp.x, bp.y, 14, bp.col, bp.confA);
-        } catch (e) {
-          ctx.beginPath();
-          ctx.arc(bp.x, bp.y, 9, 0, Math.PI * 2);
-          ctx.fillStyle = bp.col;
-          ctx.fill();
-        }
-        const tag = (bp.a.display_name || bp.a.callsign || bp.name || "?").toString().slice(0, 7);
-        ctx.font = "600 8px Share Tech Mono, monospace";
-        ctx.fillStyle = "rgba(200,220,240,0.85)";
+      botPts.forEach((bp, i) => {
+        const face = locked ? Math.atan2(portraitY - bp.y, cx - bp.x) : bp.ang;
+        drawGameBot(bp.name, bp.x, bp.y, 22, bp.adir, bp.confA, face, i);
+        const tag = labelOf(bp.a) || (bp.name || "?").toString();
+        ctx.font = "700 10px Orbitron, monospace";
+        ctx.fillStyle = "rgba(220,235,250,0.95)";
         ctx.textAlign = "center";
-        ctx.fillText(tag, bp.x, bp.y + 20);
+        ctx.fillText(String(tag).slice(0, 8), bp.x, bp.y + 34);
       });
     }
 
@@ -1868,20 +2072,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {}
 
     const cx = w / 2, cy = h / 2;
-    const radius = Math.min(w, h) * (mode === "floor" ? 0.42 : 0.34);
+    const radius = Math.min(w, h) * (mode === "floor" ? 0.40 : 0.32);
 
-    // Deep void forge
-    ctx.fillStyle = "#02040a";
-    ctx.fillRect(0, 0, w, h);
+    if (mode === "floor") {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      ctx.fillStyle = "#02040a";
+      ctx.fillRect(0, 0, w, h);
+    }
 
-    // Blade-forge haze: cyan core + blood edge + gold halo
-    const haze = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius * 2.0);
-    haze.addColorStop(0, "rgba(0, 50, 90, 0.5)");
-    haze.addColorStop(0.35, "rgba(40, 10, 50, 0.22)");
-    haze.addColorStop(0.7, "rgba(60, 20, 0, 0.08)");
-    haze.addColorStop(1, "rgba(2, 4, 10, 0)");
-    ctx.fillStyle = haze;
-    ctx.fillRect(0, 0, w, h);
+    const preAgents = (state && state.agents) || [];
+    const maj = majorityDirOf(preAgents);
+    drawMajorityHaze(cx, cy, radius, maj);
+    try {
+      document.body.classList.remove("majority-up", "majority-down", "majority-wait");
+      document.body.classList.add(maj === "UP" ? "majority-up" : maj === "DOWN" ? "majority-down" : "majority-wait");
+      document.documentElement.style.setProperty("--hour-frac", String(hourFillFrac((state && state.market) || {})));
+    } catch (e) {}
+    drawHourRing(cx, cy, radius + 36, hourFillFrac((state && state.market) || {}), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
+    drawHourSlamRings(cx, cy, radius);
 
     // Digital rain (katana-edge cyan)
     ctx.font = "10px monospace";
@@ -1996,12 +2207,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) { /* keep drawing */ }
 
     if (!state || !state.agents) {
-      // still draw rain + rings while waiting
+      try { if (typeof __prevState !== "undefined" && __prevState) state = __prevState; } catch (e) {}
       return;
     }
 
-    // Specialists ONLY on Floor mode — Table is Chair + LOCKED plaque only
-    if (mode === "floor") {
+    // Specialists on Floor and Table — packet lines + game-unit seats
+    if (mode === "floor" || mode === "art") {
     const agents = state.agents.filter(a => a.agent_name !== "leader");
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
@@ -2027,7 +2238,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
-      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + (reduceMotion ? 0 : time * 0.00014);
       // Subtle hierarchy: top-3 sit a hair closer to the Chair (still one ring)
       const rk = item.rank;
       // Stay fully on the floor ring — no inward hierarchy pull onto the table
@@ -2176,43 +2387,21 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
 
-    // Spokes into CHAIR — color-matched to each rim bot (looks only)
     const chairCore = { x: cx, y: cy };
+    const chairStop = Math.min(w, h) * (mode === "floor" ? 0.16 : 0.20) + 6;
+    const chairLean = String((state.decision && state.decision.direction) || "WAIT").toUpperCase();
     order.forEach((name, i) => {
       const pos = positions[name];
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       const conf = Number(agent.confidence) || 0;
       const sc = lawLocked() ? "rgba(255, 120, 20, 0.95)" : strongColor(agent.direction);
-      // alpha scales with confidence so weak votes stay soft
-      const alpha = 0.18 + Math.min(0.55, conf / 100 * 0.55);
-      const pulse = 0.85 + 0.15 * Math.sin(time * 0.003 + i * 0.9);
-
-      // soft outer glow line
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-      ctx.lineTo(chairCore.x, chairCore.y);
-      ctx.strokeStyle = sc;
-      ctx.lineWidth = 3.2 * pulse;
-      ctx.globalAlpha = alpha * 0.35;
-      ctx.shadowColor = sc;
-      ctx.shadowBlur = 12;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // crisp core spoke
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-      ctx.lineTo(chairCore.x, chairCore.y);
-      ctx.strokeStyle = sc;
-      ctx.lineWidth = 1.4 * pulse;
-      ctx.globalAlpha = alpha;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      // occasional energy particles riding the spoke toward CHAIR
-      if (Math.random() < 0.04 + conf / 100 * 0.06) {
-        spawnParticles(pos, chairCore, sc);
+      const adir = String(agent.direction || "WAIT").toUpperCase();
+      const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
+      const end = spokeEnd(pos.x, pos.y, chairCore.x, chairCore.y, chairStop);
+      drawPacketSpoke(pos.x, pos.y, end.x, end.y, sc, conf, agree);
+      if (!reduceMotion && !soundMuted && Math.random() < 0.03 + conf / 100 * 0.05) {
+        spawnParticles(pos, end, sc);
       }
     });
 
@@ -2246,20 +2435,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       ctx.globalAlpha = floorAlpha;
-      const pulse = 1 + 0.06 * Math.sin(time * 0.0045 + i * 1.1);
-      // Slightly larger seats so logos read cleanly
-      const r = (agent.confidence > 55 ? 18 : 15) * pulse;
+      const r = mode === "floor" ? 24 : 20;
       const col = colorFor(agent.direction, agent.confidence);
       const sc = strongColor(agent.direction);
-
-      // Outer bloom
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, r + 14, 0, Math.PI * 2);
-      ctx.fillStyle = col.replace(/[\d.]+\)$/, "0.12)");
-      ctx.fill();
-
-      // Logo + colored outline
-      drawBotIcon(name, pos.x, pos.y, r, sc, agent.confidence || 0);
+      const face = floorLocked ? Math.atan2(cy - pos.y, cx - pos.x) : pos.angle;
+      drawGameBot(name, pos.x, pos.y, r, agent.direction, agent.confidence || 0, face, i);
 
       // Occasional glitch offset
       if (isGlitch && Math.random() < 0.3) {
@@ -2328,8 +2508,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN") );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
-    const leaderPulse = 1 + 0.04 * Math.sin(time * 0.0035);
-    const lr = 72 * leaderPulse; // portrait radius — large center knight
+    const leaderPulse = reduceMotion ? 1 : (1 + 0.03 * Math.sin(time * 0.0035));
+    const lr = Math.min(w, h) * (mode === "floor" ? 0.16 : 0.205) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
       leaderDir === "UP" || leaderDir === "UP_HOLD" ? "rgba(0, 255, 100, 0.85)" :
@@ -2370,29 +2550,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // Clip circle + draw armored portrait
     const portrait = (focusTable === "ethereum") ? vitalikPortraitFor(leaderDir) : chairPortraitFor(leaderDir);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, lr, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    if (portrait && portrait.complete && portrait.naturalWidth > 0) {
-      // cover-fit portrait in circle (favor face/upper armor)
-      const iw = portrait.naturalWidth;
-      const ih = portrait.naturalHeight;
-      const side = lr * 2;
-      const scale = Math.max(side / iw, side / ih) * 1.15;
-      const dw = iw * scale;
-      const dh = ih * scale;
-      // bias upward so helmet/eyes stay centered in the circle
-      ctx.drawImage(portrait, cx - dw / 2, cy - dh * 0.38, dw, dh);
-    } else {
-      // fallback core while image loads
+    if (!containPortrait(portrait, cx, cy, lr)) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, lr, 0, Math.PI * 2);
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
-      ctx.fillRect(cx - lr, cy - lr, lr * 2, lr * 2);
+      ctx.fill();
     }
-    ctx.restore();
 
     // Eye glow ring pulse (extra emphasis on call color)
     ctx.beginPath();
@@ -2418,7 +2582,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(240, 193, 74, 0.55)";
     ctx.shadowBlur = 8;
-    ctx.fillText("SATOSHI", cx, cy + lr + 16);
+    ctx.fillText(focusTable === "ethereum" ? "VITALIK" : "SATOSHI", cx, cy + lr + 16);
     ctx.shadowBlur = 0;
     ctx.font = "700 13px Orbitron, sans-serif";
     ctx.fillStyle = "#ffffff";
@@ -2757,8 +2921,51 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function updateDebate() {
-    // Debate log removed — saves DOM work and memory on dual tables
-    return;
+    const list = document.getElementById("signalFeed");
+    const meta = document.getElementById("signalFeedMeta");
+    const dirEl = document.getElementById("signalChairDir");
+    const metaEl = document.getElementById("signalChairMeta");
+    if (!list) return;
+    const view = (typeof getViewState === "function" ? getViewState() : state) || state || {};
+    const d = view.decision || {};
+    const lc = view.locked_call || d.locked_call || {};
+    const locked = !!(lc && lc.locked && lc.direction);
+    const dir = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
+    const conf = locked ? (lc.confidence || d.confidence) : d.confidence;
+    const m = view.market || {};
+    const secs = secondsLeftOf(m);
+    const mm = secs != null ? String(Math.floor(secs / 60)).padStart(2, "0") : "--";
+    const ss = secs != null ? String(Math.floor(secs % 60)).padStart(2, "0") : "--";
+    const pFinish = conf != null ? (Number(conf) + "%") : "—";
+    const ev = (lc && lc.ev_cents != null) ? (Math.round(lc.ev_cents) + "¢")
+      : (d.ev_cents != null) ? (Math.round(d.ev_cents) + "¢")
+      : (lc && lc.entry_odds_pct != null) ? (Math.round(lc.entry_odds_pct) + "¢")
+      : "—";
+    if (dirEl) {
+      dirEl.textContent = (locked ? "LOCKED " : "") + dir;
+      dirEl.className = "signal-chair-dir " + dir.replace("_HOLD", "");
+    }
+    if (metaEl) metaEl.textContent = "P(finish) " + pFinish + " · EV " + ev + " · " + mm + ":" + ss + " left";
+    const agents = (view.agents || []).filter((a) => a && a.agent_name && a.agent_name !== "leader");
+    const shouts = agents
+      .map((a) => ({
+        name: labelOf(a),
+        dir: String(a.direction || "WAIT").toUpperCase(),
+        conf: a.confidence,
+        shout: String(a.reasoning || a.reason || a.summary || "").trim(),
+      }))
+      .filter((s) => s.shout)
+      .slice(0, 8);
+    if (meta) meta.textContent = shouts.length ? (shouts.length + " shouts") : "awaiting";
+    if (!shouts.length) {
+      list.innerHTML = '<li class="sf-empty">No specialist shouts this tick</li>';
+      return;
+    }
+    list.innerHTML = shouts.map((s) => {
+      const lean = s.dir.replace("_HOLD", "");
+      const safe = String(s.shout).replace(/[<>]/g, "");
+      return '<li><span class="sf-name">' + s.name + '</span><span class="sf-dir ' + lean + '">' + lean + '</span><span>' + (s.conf != null ? s.conf + "%" : "") + '</span><span class="sf-shout">' + safe + '</span></li>';
+    }).join("");
   }
 
   function resizeCandleChart() {
@@ -3773,24 +3980,9 @@ function drawCandleChart() {
     }
     const prevMode = mode;
     mode = next;
-    // Body class first — CSS tab lock uses body.mode-* as source of truth
-    document.body.classList.toggle("floor-mode", mode === "floor");
-    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
-      document.body.classList.toggle("mode-" + m, mode === m);
-    });
-    document.querySelectorAll(".mode-tab").forEach((btn) => {
-      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") {
-        btn.classList.remove("active");
-        return;
-      }
-      if (!btn.dataset.mode) {
-        btn.classList.remove("active");
-        return;
-      }
-      const on = btn.dataset.mode === mode;
-      btn.classList.toggle("active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
-    });
+    // Exactly one mode-* class and one .active pill — leftover ranks+charts lit two tabs
+    syncExclusiveBodyMode(mode);
+    syncExclusiveTabActive(mode);
     try {
       if (typeof window.__floorMusicOnMode === "function") {
         window.__floorMusicOnMode(mode === "floor");
@@ -3966,6 +4158,7 @@ function drawCandleChart() {
     try { syncChartPairTitle(); } catch (e) {}
     updateColorTally(state);
     updateDebate();
+    try { updateRivalryStrip(); } catch (e) {}
     if (!deskCinematicOn()) drawCandleChart();
     renderHierarchy();
     recordSeriesFromState(state);
@@ -4424,7 +4617,7 @@ function drawCandleChart() {
     localStorage.setItem("council_entered", "1");
     function after() {
       try {
-        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("art");
+        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("floor");
       } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
@@ -4816,7 +5009,7 @@ function drawCandleChart() {
   try { wireFocusAndHelp(); } catch (e) { console.warn('focus wire', e); }
 
   
-  // ——— ZT celebrate cinematic (logo click + 5-win streak) ———
+  // ——— Celebrate cinematic (logo click + 5-win streak) ———
   let lastCelebratedStreak = 0; // fire once per streak milestone
 
 
@@ -5221,8 +5414,8 @@ function drawCandleChart() {
     }, { capture: true, passive: true });
   }
 
-  // Force clean Table view — hide any stacked info panels
-  setMode("art");
+  // Auto-enter Floor — game HUD first
+  setMode("floor");
   try { syncAutoBetVisibility(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);
@@ -5419,7 +5612,7 @@ function drawCandleChart() {
   function showAppAfterAuth() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.add("hidden");
-    // Play ZT intro video full-screen, then reveal summon gate
+    // Play intro video full-screen, then reveal summon gate
     playZtIntroThenSummonGate();
   }
 
@@ -5498,7 +5691,7 @@ function drawCandleChart() {
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
         localStorage.setItem(passKey, "1");
         if (err) err.classList.add("hidden");
-        // Fresh password entry → ZT intro video → summon gate
+        // Fresh password entry → intro video → summon gate
         showAppAfterAuth();
       } else {
         if (err) err.classList.remove("hidden");
@@ -5535,7 +5728,7 @@ function drawCandleChart() {
     function resize() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      stars = Array.from({ length: 160 }, () => ({
+      stars = Array.from({ length: 240 }, () => ({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         z: Math.random() * 2 + 0.2,
@@ -5545,7 +5738,7 @@ function drawCandleChart() {
     resize();
     window.addEventListener("resize", resize);
     function tick() {
-      if (!document.body.classList.contains("mode-floor")) {
+      if (!document.body.classList.contains("mode-floor") && !document.body.classList.contains("floor-mode")) {
         requestAnimationFrame(tick);
         return;
       }
@@ -5989,7 +6182,10 @@ function drawCandleChart() {
   let idx = 0;
   let audio = null;
   let active = false;
-  let muted = localStorage.getItem(MUTE_KEY) === "1";
+  let muted = localStorage.getItem(MUTE_KEY) !== "0";
+  if (localStorage.getItem(MUTE_KEY) == null) {
+    try { localStorage.setItem(MUTE_KEY, "1"); } catch (e) {}
+  }
   let vol = Number(localStorage.getItem(VOL_KEY));
   if (!(vol >= 0 && vol <= 1)) vol = 0.28;
 
