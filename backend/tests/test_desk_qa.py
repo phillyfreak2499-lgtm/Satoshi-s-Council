@@ -85,14 +85,13 @@ class PaperPnlPrefillTests(unittest.TestCase):
 
 class FloorOneHDockTests(unittest.TestCase):
     def test_window_led_lives_inside_header_after_tabs(self):
-        header_end = HTML.find("</header>")
-        tabs = HTML.find('class="mode-tabs"')
+        panel = HTML.find('id="lifetimePanel"')
         led = HTML.find('id="windowLed"')
         main = HTML.find('id="mainTable"')
-        self.assertGreater(led, tabs)
-        self.assertGreater(header_end, led)
-        self.assertGreater(main, header_end)
+        self.assertGreater(led, panel)
+        self.assertGreater(led, main)
         self.assertEqual(len(re.findall(r'id="windowLed"', HTML)), 1)
+        self.assertIn("function dockWindowLed", JS)
 
     def test_css_docks_floor_in_flow(self):
         self.assertIn("body.floor-mode #app > header #windowLed", CSS)

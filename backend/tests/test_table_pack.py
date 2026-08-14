@@ -57,6 +57,32 @@ class TableFeedTests(unittest.TestCase):
         self.assertIn("sfPacketIn", CSS)
 
 
+class TableLeftHudTests(unittest.TestCase):
+    def test_left_column_has_tape_why_fight_storm(self):
+        self.assertIn('id="lockTapeList"', HTML)
+        self.assertIn('id="whyLockLine"', HTML)
+        self.assertIn('id="dualFightStrip"', HTML)
+        self.assertIn('id="seatStormTableBtn"', HTML)
+        self.assertIn("START SEAT STORM", HTML)
+        self.assertIn("function paintTableHud", JS)
+        self.assertIn("function whyThisLockLine", JS)
+        self.assertIn("No Chair lock this hour", JS)
+        self.assertIn("No Chair lock this hour", HTML)
+        self.assertNotIn("LIFETIME LOG EMPTY", JS)
+        self.assertIn('class="lifetime-log-block idle"', HTML)
+        self.assertIn('logBlock.classList.add("idle")', JS)
+        self.assertIn("Never auto-starts", JS)
+
+    def test_one_h_docks_in_left_column(self):
+        panel = HTML.find('id="lifetimePanel"')
+        led = HTML.find('id="windowLed"')
+        self.assertGreater(led, panel)
+        self.assertIn("body.mode-art #lifetimePanel #windowLed", CSS)
+        self.assertIn("html body.mode-art #lifetimePanel #windowLed.led-float.led-window", CSS)
+        self.assertIn("#lifetimePanel .lock-tape-card", CSS)
+        self.assertIn("function dockWindowLed", JS)
+
+
 class PriorityPacksStillPresentTests(unittest.TestCase):
     def test_gates_still_cold(self):
         self.assertRegex(HTML, r'<body class="gate-locked"')

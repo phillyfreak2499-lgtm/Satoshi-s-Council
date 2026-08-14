@@ -3778,7 +3778,7 @@ body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5
   margin: 8px 0 8px 8px;
 }
 body.mode-art #lifetimePanel {
-  padding-top: 92px;
+  padding-top: 8px;
   padding-bottom: 12px;
 }
 #hierarchyPanel,
@@ -4875,6 +4875,8 @@ body.mode-settings #windowLed {
 #app > footer { order: 10; }
 body.mode-art #lifetimePanel {
   padding-top: 8px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
 }
 
 @media (min-width: 481px) {
@@ -5642,7 +5644,7 @@ body.show-hierarchy #debatePanel {
   box-shadow: 0 0 18px rgba(240, 193, 74, 0.18);
 }
 .seat-storm-prompt { bottom: max(88px, env(safe-area-inset-bottom, 16px)); left: 50%; transform: translateX(-50%); }
-.seat-storm-table-btn { top: max(64px, env(safe-area-inset-top, 12px)); right: max(12px, env(safe-area-inset-right, 12px)); font-size: 10px; padding: 8px 12px; }
+.seat-storm-table-btn { top: auto; right: auto; font-size: 10px; padding: 8px 12px; }
 .seat-storm-prompt.hidden,
 .seat-storm-prompt[hidden],
 .seat-storm-table-btn.hidden,
@@ -5898,4 +5900,110 @@ html body #app > header .huddle-badge .huddle-label {
     margin: 6px auto 8px !important;
     order: 3 !important;
   }
+}
+
+/* ===== TABLE LEFT HUD — 1H at top of column, tape fills the void ===== */
+html body.mode-art #lifetimePanel #windowLed.led-float.led-window,
+body.mode-art #lifetimePanel #windowLed,
+body.mode-art #lifetimePanel #windowLed.led-window,
+body.mode-art #lifetimePanel #windowLed.led-float {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
+  transform: none !important;
+  display: block !important;
+  margin: 0 0 10px !important;
+  width: 100% !important;
+  max-width: none !important;
+  z-index: 2 !important;
+}
+#lifetimePanel .hud-card {
+  flex: 0 0 auto;
+  margin: 0 8px 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: linear-gradient(145deg, rgba(8, 14, 26, 0.95), rgba(3, 6, 14, 0.96));
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+#lifetimePanel .lock-tape-card {
+  flex: 1 1 auto;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#lifetimePanel .lifetime-log-block:not(.idle) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#lifetimePanel .hud-card-head {
+  display: flex;
+  justify-content: space-between;
+  font-family: Orbitron, monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+#lifetimePanel .hud-meta { color: var(--muted); letter-spacing: 0.04em; }
+.lock-tape-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 88px;
+  max-height: none;
+  overflow-y: auto;
+  font-family: Share Tech Mono, monospace;
+  font-size: 0.68rem;
+  color: #c0e8ff;
+}
+.lock-tape-empty { color: rgba(140, 160, 180, 0.85); padding: 6px 0; }
+.lock-tape-row {
+  display: grid;
+  grid-template-columns: 32px 40px 40px 48px 1fr;
+  gap: 6px;
+  padding: 3px 0;
+}
+.lock-tape-row.open { color: var(--gold); }
+.lock-tape-row .lt-side.up { color: var(--jade); }
+.lock-tape-row .lt-side.down { color: var(--blood); }
+.why-lock-line {
+  margin: 0;
+  font-family: Orbitron, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: #f0d78a;
+}
+.dual-fight-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  font-family: Orbitron, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: #c8e8ff;
+}
+.dual-fight-strip.agree { color: var(--jade); }
+.dual-fight-strip.fight { color: var(--blood); }
+.lifetime-log-block.idle { display: none !important; }
+#lifetimePanel #seatStormTableBtn.seat-storm-table-btn {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  transform: none !important;
+  width: calc(100% - 16px);
+  margin: 0 8px 10px;
+  justify-content: center;
+}
+body.mode-art #lifetimePanel #seatStormTableBtn.seat-storm-table-btn:not(.hidden):not([hidden]) {
+  display: inline-flex !important;
 }

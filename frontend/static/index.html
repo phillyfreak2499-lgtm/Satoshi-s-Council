@@ -82,7 +82,6 @@
     <div class="floor-hint" id="floorHint">FLOOR</div>
     <button type="button" id="floorExitBtn" class="floor-exit-btn" hidden>TABLE</button>
     <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden aria-label="Start Seat Storm">KILL TIME / PLAY</button>
-    <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden aria-label="Start Seat Storm">KILL TIME / PLAY</button>
     <div id="seatStormPlay" class="seat-storm-play hidden" hidden aria-hidden="true">
       <div class="ss-hud">
         <span class="ss-title">SEAT STORM</span>
@@ -163,20 +162,19 @@
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
       </div>
-      <!-- Inside header, after tabs, so a wrapped 390 nav cannot cover it. -->
-      <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
-        <div class="led-bezel">
-          <div class="led-label">1H WINDOW</div>
-          <div id="ledWindowTime" class="led-digits led-time">--:--</div>
-          <div class="led-foot" id="ledWindowSub">until close</div>
-          <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
-        </div>
-      </div>
     </header>
 
     <main id="mainTable">
-      <!-- LEFT: Lifetime accuracy + settled log -->
+      <!-- LEFT: 1H + game HUD (tape / why-lock / dual / storm). Not over the nav. -->
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
+        <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
+          <div class="led-bezel">
+            <div class="led-label">1H WINDOW</div>
+            <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+            <div class="led-foot" id="ledWindowSub">until close</div>
+            <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
+          </div>
+        </div>
         <div class="panel-head">
           <span class="panel-title">LIFETIME</span>
           <span class="panel-sub" id="callLogMeta">0/0 · —</span>
@@ -206,11 +204,32 @@
           <span class="hr-path-lab">ENTRY</span>
           <b id="hrEntryAvg">—</b>
         </div>
-        <div class="panel-head panel-head-sub">
-          <span class="panel-title">LIFETIME LOG</span>
-          <span class="panel-sub" id="logCount">all settled</span>
+        <section id="lockTapeCard" class="hud-card lock-tape-card" aria-label="Last locks tape">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
+          <ol id="lockTapeList" class="lock-tape-list" aria-live="polite">
+            <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>
+          </ol>
+        </section>
+        <section id="whyLockCard" class="hud-card why-lock-card hidden" aria-label="Why this lock">
+          <header class="hud-card-head"><span>WHY THIS LOCK</span></header>
+          <p id="whyLockLine" class="why-lock-line">—</p>
+        </section>
+        <section id="dualFightCard" class="hud-card dual-fight-card" aria-label="BTC versus ETH">
+          <header class="hud-card-head"><span>BTC · ETH</span><span class="hud-meta" id="dualFightMeta">—</span></header>
+          <div id="dualFightStrip" class="dual-fight-strip">
+            <span id="dualFightBtc">BTC —</span>
+            <span id="dualFightVs" class="dual-fight-vs">·</span>
+            <span id="dualFightEth">ETH —</span>
+          </div>
+        </section>
+        <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden aria-label="Start Seat Storm">START SEAT STORM</button>
+        <div id="lifetimeLogBlock" class="lifetime-log-block idle">
+          <div class="panel-head panel-head-sub">
+            <span class="panel-title">LIFETIME LOG</span>
+            <span class="panel-sub" id="logCount">all settled</span>
+          </div>
+          <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
         </div>
-        <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
       </aside>
 
       <!-- CENTER: Round table -->

@@ -2948,20 +2948,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`);
       });
 
+      const logBlock = document.getElementById("lifetimeLogBlock");
       if (!parts.length) {
         if (hydrating && !hasLogKey) {
           if (callLogEl.dataset.hydrated === "1") {
             // Keep the last painted log — cold payload is not a wipe
           } else {
-            callLogEl.innerHTML = `<div class="call-empty">Loading lifetime log…<br/>Hydrating from disk — not a reset</div>`;
+            callLogEl.innerHTML = "";
+            if (logBlock) logBlock.classList.add("idle");
           }
         } else {
-          callLogEl.innerHTML = `<div class="call-empty">LIFETIME LOG EMPTY<br/>UP / DOWN / 1/4 HOLD path-calls accumulate here<br/>Persists across sessions</div>`;
+          // 0/0: tape/baseline fills the column — do not leave a tall empty log void.
+          callLogEl.innerHTML = "";
           callLogEl.dataset.hydrated = "";
+          if (logBlock) logBlock.classList.add("idle");
         }
       } else {
         callLogEl.dataset.hydrated = "1";
         callLogEl.innerHTML = parts.join("");
+        if (logBlock) logBlock.classList.remove("idle");
       }
     }
   }
@@ -3807,6 +3812,133 @@ function drawCandleChart() {
     });
   }
 
+  function windowLabelOf(r, ts) {
+    const close = (r && (r.close_time || r.window_close)) || (ts && ts.market && ts.market.close_time);
+    const ms = parseStampMs(close);
+    if (ms != null) {
+      return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    const tick = String((r && r.ticker) || (ts && ts.market && ts.market.kalshi_ticker) || "");
+    const m = tick.match(/(\d{2})(\d{2})(?!.*\d)/);
+    if (m) return m[1] + ":" + m[2];
+    return "1H";
+  }
+
+  function tableLean(ts) {
+    const lc = pairLock(ts);
+    if (lc) {
+      return { side: sideFromLockRow(lc), locked: true, conf: lc.confidence };
+    }
+    const d = (ts && ts.decision) || {};
+    const raw = String(d.direction || "WAIT").toUpperCase();
+    const side = raw.includes("UP") ? "UP" : (raw.includes("DOWN") ? "DOWN" : "WAIT");
+    return { side, locked: false, conf: d.confidence };
+  }
+
+  function whyThisLockLine(ts) {
+    const lc = pairLock(ts);
+    if (!lc) return null;
+    const side = sideFromLockRow(lc);
+    const conf = lc.confidence != null ? lc.confidence : "—";
+    const agents = ((ts && ts.agents) || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && a.agent_name !== "law");
+    const allies = agents
+      .filter(a => {
+        const d = String(a.direction || "").toUpperCase();
+        return side === "UP" ? d.includes("UP") : (side === "DOWN" ? d.includes("DOWN") : false);
+      })
+      .sort((a, b) => (Number(b.confidence) || 0) - (Number(a.confidence) || 0));
+    const seats = allies.slice(0, 2).map(a => (AGENT_LABELS && AGENT_LABELS[a.agent_name]) || a.agent_name);
+    return { side, conf, seats };
+  }
+
+  function dockWindowLed() {
+    const led = document.getElementById("windowLed");
+    if (!led) return;
+    if (mode === "floor") {
+      const header = document.querySelector("#app > header");
+      const tabs = header && header.querySelector(".mode-tabs");
+      if (tabs && tabs.parentNode && led.previousElementSibling !== tabs) {
+        tabs.parentNode.insertBefore(led, tabs.nextSibling);
+      }
+    } else {
+      const col = document.getElementById("lifetimePanel");
+      if (col && col.firstElementChild !== led) col.insertBefore(led, col.firstChild);
+    }
+  }
+
+  function paintTableHud() {
+    const list = document.getElementById("lockTapeList");
+    const meta = document.getElementById("lockTapeMeta");
+    const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
+    if (list) {
+      if (!locks.length) {
+        list.innerHTML = '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>';
+      } else {
+        list.innerHTML = locks.slice(0, 8).map(p => {
+          const result = p.status === "OPEN"
+            ? "OPEN"
+            : (p.grade || p.outcome || "SETTLED");
+          const conf = p.conf != null ? (p.conf + "%") : "—";
+          const win = p.window || "1H";
+          return `<li class="lock-tape-row ${p.status === "OPEN" ? "open" : "settled"}">`
+            + `<span class="lt-pair">${p.pair}</span>`
+            + `<span class="lt-side ${p.side === "UP" ? "up" : "down"}">${p.side}</span>`
+            + `<span class="lt-conf">${conf}</span>`
+            + `<span class="lt-win">${win}</span>`
+            + `<span class="lt-res">${result}</span>`
+            + `</li>`;
+        }).join("");
+      }
+    }
+    if (meta) meta.textContent = locks.length ? (locks.length + " printed") : "baseline";
+
+    const whyCard = document.getElementById("whyLockCard");
+    const whyLine = document.getElementById("whyLockLine");
+    const focused = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    let why = whyThisLockLine(focused);
+    if (!why) {
+      const other = focusTable === "ethereum" ? "bitcoin" : "ethereum";
+      why = whyThisLockLine((typeof tableState === "function" ? tableState(other) : null) || {});
+    }
+    if (whyCard && whyLine) {
+      if (why) {
+        whyCard.classList.remove("hidden");
+        const seats = (why.seats && why.seats.length)
+          ? why.seats.join(" + ")
+          : "council majority";
+        whyLine.textContent = `${why.side} · ${why.conf}% · ${seats}`;
+      } else {
+        whyCard.classList.add("hidden");
+        whyLine.textContent = "—";
+      }
+    }
+
+    const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
+    const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
+    const btcEl = document.getElementById("dualFightBtc");
+    const ethEl = document.getElementById("dualFightEth");
+    const vsEl = document.getElementById("dualFightVs");
+    const fightMeta = document.getElementById("dualFightMeta");
+    const strip = document.getElementById("dualFightStrip");
+    function leanTxt(tag, lean) {
+      const lock = lean.locked ? "LOCK " : "";
+      const conf = lean.conf != null ? (" " + lean.conf + "%") : "";
+      return tag + " " + lock + lean.side + conf;
+    }
+    if (btcEl) btcEl.textContent = leanTxt("BTC", b);
+    if (ethEl) ethEl.textContent = leanTxt("ETH", e);
+    let verdict = "HOLD";
+    if (b.side === "UP" && e.side === "UP") verdict = "AGREE UP";
+    else if (b.side === "DOWN" && e.side === "DOWN") verdict = "AGREE DOWN";
+    else if ((b.side === "UP" && e.side === "DOWN") || (b.side === "DOWN" && e.side === "UP")) verdict = "FIGHT";
+    if (vsEl) vsEl.textContent = verdict === "FIGHT" ? "⚔" : (verdict.indexOf("AGREE") === 0 ? "✓" : "·");
+    if (fightMeta) fightMeta.textContent = verdict;
+    if (strip) {
+      strip.classList.toggle("agree", verdict.indexOf("AGREE") === 0);
+      strip.classList.toggle("fight", verdict === "FIGHT");
+    }
+  }
+
   function collectChairLocks() {
     const items = [];
     const seen = new Set();
@@ -3826,6 +3958,8 @@ function drawCandleChart() {
         side: sideFromLockRow(r),
         t: r.called_at || r.locked_at,
         status: "OPEN",
+        conf: r.confidence,
+        window: windowLabelOf(r),
         id: r.id,
         ticker: r.ticker,
       }));
@@ -3836,6 +3970,8 @@ function drawCandleChart() {
         status: "SETTLED",
         outcome: r.outcome || r.y_finish,
         grade: r.correct === true ? "HIT" : (r.correct === false ? "MISS" : ""),
+        conf: r.confidence,
+        window: windowLabelOf(r),
         id: r.id,
         ticker: r.ticker,
       }));
@@ -3850,6 +3986,8 @@ function drawCandleChart() {
           side: sideFromLockRow(lc),
           t: lc.locked_at,
           status: "OPEN",
+          conf: lc.confidence,
+          window: windowLabelOf(lc, ts),
           ticker: lc.ticker,
           id: "live:" + pair + ":" + (lc.ticker || lc.locked_at || ""),
         });
@@ -4501,6 +4639,7 @@ function drawCandleChart() {
     if (followerView) followerView.classList.toggle("hidden", !showFollower);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
+    try { dockWindowLed(); } catch (e) {}
     // Always redraw the round table when main view is visible (bots live on canvas)
     if (showMain) {
       try {
@@ -4649,6 +4788,7 @@ function drawCandleChart() {
 
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
+    try { paintTableHud(); } catch (e) {}
     updateLaw(state.law);
     if (!deskCinematicOn()) updateHuddle(state.huddle);
     try { syncChartPairTitle(); } catch (e) {}
@@ -6369,6 +6509,8 @@ function drawCandleChart() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.remove("hidden");
   }
+  try { dockWindowLed(); } catch (e) {}
+  try { paintTableHud(); } catch (e) {}
   try { syncAutoBetVisibility(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);
