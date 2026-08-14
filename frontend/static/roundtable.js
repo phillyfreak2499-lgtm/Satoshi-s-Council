@@ -304,6 +304,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function applySettingsSnapshot(s, opts) {
     if (!s) return;
     opts = opts || {};
+    // Poll / beast POST must not paint over in-progress Settings edits.
+    // Save, Reset, and first open pass localToggles or force.
+    if (typeof mode !== "undefined" && mode === "settings" && !opts.localToggles && !opts.force) {
+      lastSettingsSnap = s;
+      return;
+    }
     lastSettingsSnap = s;
     const loops = document.getElementById("teamLoopToggle");
     const loopsWas = loops ? !!loops.checked : null;
@@ -459,7 +465,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
       if (r.ok) {
         const s = await r.json();
-        applySettingsSnapshot(s);
+        if (mode === "settings") {
+          lastSettingsSnap = s;
+          applyBeastChrome(!!on);
+        } else {
+          applySettingsSnapshot(s);
+        }
         if (loops) loops.checked = loopsWas;
         if (sfx) sfx.checked = sfxWas;
         teamLoopsOn = loopsWas;
@@ -3752,6 +3763,7 @@ function drawCandleChart() {
         return;
       }
     }
+    const prevMode = mode;
     mode = next;
     // Body class first — CSS tab lock uses body.mode-* as source of truth
     document.body.classList.toggle("floor-mode", mode === "floor");
@@ -3811,7 +3823,7 @@ function drawCandleChart() {
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
-    if (mode === "settings") {
+    if (mode === "settings" && prevMode !== "settings") {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
@@ -3839,8 +3851,10 @@ function drawCandleChart() {
         if (__savedDual != null) state.dual = __savedDual;
       }
     }
-    if (state.system_settings) applySettingsSnapshot(state.system_settings);
-    else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
+    if (mode !== "settings") {
+      if (state.system_settings) applySettingsSnapshot(state.system_settings);
+      else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
+    }
     const d = state.decision || {};
     const prevDir = decisionDir.textContent;
     // Prefer locked_call so the strip matches the plaque / portrait after the single call
@@ -4044,6 +4058,7 @@ function drawCandleChart() {
   if (!document.__modeTabsDelegated) {
     document.__modeTabsDelegated = true;
     document.addEventListener("click", (e) => {
+      if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
       if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") return;
       e.preventDefault();
@@ -5006,6 +5021,8 @@ function drawCandleChart() {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
+      if (document.body.classList.contains("mode-settings")) return;
       playCelebrateVideo("manual");
     }, true);
   }
@@ -5183,6 +5200,12 @@ function drawCandleChart() {
       e.stopPropagation();
     }, true);
     settingsViewEl.addEventListener("keyup", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
     }, true);
     settingsViewEl.addEventListener("wheel", (e) => {
@@ -5765,6 +5788,9 @@ function drawCandleChart() {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
+      if (document.body.classList.contains("mode-settings")) return;
+      if (e.currentTarget !== btn) return;
       open();
     });
 

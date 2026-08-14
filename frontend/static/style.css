@@ -4302,3 +4302,95 @@ body.mode-settings #windowLed {
   white-space: pre-wrap;
   overflow: visible;
 }
+
+/* ===== SETTINGS HIT-ZONE + ROOM LOCK =====
+   Leftover BOTS/CHARTS/RANKS / hive / logo hit boxes must not sit on
+   SOUND & UI. Panel scrolls in the space under the header, not through it. */
+#hiveBtn.hive-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  padding: 4px !important;
+  margin-left: 6px !important;
+  overflow: hidden !important;
+  flex: 0 0 28px !important;
+}
+#hiveEgg.hidden,
+.hive-egg.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.mode-settings #app > header {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  pointer-events: none !important;
+}
+body.mode-settings #app > header .mode-tab,
+body.mode-settings #app > header .focus-tab,
+body.mode-settings #app > header .beast-badge,
+body.mode-settings #app > header #beastBadge,
+body.mode-settings #app > header #soundToggle,
+body.mode-settings #app > header #tabSettings {
+  pointer-events: auto !important;
+}
+body.mode-settings #hiveBtn,
+body.mode-settings #ztLogoBtn,
+body.mode-settings #ztHeaderLogo {
+  pointer-events: none !important;
+}
+
+body.mode-settings #mainTable,
+body.mode-settings #mainTable *,
+body.mode-settings #botsView,
+body.mode-settings #ranksView,
+body.mode-settings #chartsView,
+body.mode-settings #paperView,
+body.mode-settings #dashboardOverlay,
+body.mode-settings #openChartsBtn,
+body.mode-settings #hierarchyPanel {
+  pointer-events: none !important;
+}
+
+body.mode-settings #settingsView:not(.hidden),
+body.mode-settings #settingsView.info-view:not(.hidden) {
+  display: block !important;
+  visibility: visible !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 90 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  isolation: isolate !important;
+  pointer-events: auto !important;
+  padding: 10px 16px 28px !important;
+}
+body.mode-settings #settingsView .settings-panel {
+  position: relative !important;
+  z-index: 2 !important;
+  pointer-events: auto !important;
+  margin: 4px auto 36px !important;
+  max-width: min(920px, calc(100% - 12px)) !important;
+  padding-bottom: 40px !important;
+}
+body.mode-settings #settingsView .set-check,
+body.mode-settings #settingsView .set-field,
+body.mode-settings #settingsView input,
+body.mode-settings #settingsView label,
+body.mode-settings #settingsView button,
+body.mode-settings #settingsView select,
+body.mode-settings #settingsView #adminToolsCard {
+  position: relative !important;
+  z-index: 3 !important;
+  pointer-events: auto !important;
+}
