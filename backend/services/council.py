@@ -479,6 +479,7 @@ class Council:
             kalshi_target=market_data.get("kalshi_floor_strike"),
             up_pct=up_pct,
             down_pct=down_pct,
+            asset=self.asset,
         )
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
