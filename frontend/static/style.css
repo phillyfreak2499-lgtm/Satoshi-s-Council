@@ -1742,8 +1742,10 @@ body:not(.gate-locked) #app {
 .tut-tip {
   font-size: 12px;
   color: #6a8a9a;
-  margin: -8px 0 14px;
+  margin: 0 0 14px;
   font-style: italic;
+  position: relative;
+  display: block;
 }
 
 /* Full-viewport summon cinematic */
@@ -4130,4 +4132,116 @@ body.mode-ranks #tabRanks.active {
 /* Cinematic is an overlay only — never take over layout / resize the desk */
 body.zt-cinematic #celebrateVideoWrap:not(.hidden) {
   z-index: 10080 !important;
+}
+
+/* ===== DESK LIST LOCK — timer / header / tutorial (final) ===== */
+#windowLed::before,
+#windowLed::after,
+#ledWindow::before,
+#ledWindow::after,
+.led-window::before,
+.led-window::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  animation: none !important;
+  opacity: 0 !important;
+}
+#windowLed,
+#windowLed.led-window,
+#windowLed.led-float,
+body.floor-mode .led-window,
+body.mode-floor .led-window,
+body.mode-art .led-window {
+  position: fixed !important;
+  left: 16px !important;
+  right: auto !important;
+  top: 110px !important;
+  bottom: auto !important;
+  transform: none !important;
+  z-index: 35 !important;
+}
+body.floor-mode #windowLed,
+body.floor-mode #windowLed.led-window,
+body.mode-floor #windowLed {
+  top: 40px !important;
+  left: 14px !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 70 !important;
+}
+body.mode-art #windowLed,
+body.mode-art #windowLed.led-window {
+  top: 110px !important;
+  left: 16px !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+body:not(.mode-art):not(.floor-mode):not(.mode-floor) #windowLed,
+body.mode-dashboard #windowLed,
+body.mode-dashboard #windowLed.led-window,
+body.mode-dashboard .led-window,
+body.mode-bots #windowLed,
+body.mode-ranks #windowLed,
+body.mode-paper #windowLed,
+body.mode-charts #windowLed,
+body.mode-settings #windowLed {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#app > header,
+#app > header.top-bar {
+  overflow: visible !important;
+  clip-path: none !important;
+  flex-wrap: nowrap !important;
+  flex-direction: column !important;
+}
+#app > header .header-row {
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+}
+#app > header .controls {
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+#beastBadge,
+#app > header .beast-badge,
+#app > header #beastBadge {
+  flex: 0 0 auto !important;
+  overflow: visible !important;
+  max-width: none !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+#helpTutorialOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 20000 !important;
+}
+#helpTutorialOverlay .tut-card {
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: min(560px, 92vw) !important;
+  max-height: min(80vh, 680px) !important;
+  overflow: auto !important;
+  position: relative !important;
+}
+#helpTutorialOverlay .tut-body,
+#helpTutorialOverlay .tut-tip,
+#helpTutorialOverlay .tut-bots {
+  position: relative !important;
+  margin-top: 0 !important;
+  margin-bottom: 12px !important;
+  white-space: pre-wrap;
+  overflow: visible;
 }

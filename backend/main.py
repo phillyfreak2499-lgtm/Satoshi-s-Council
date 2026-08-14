@@ -532,7 +532,7 @@ if STATIC_DIR.is_dir():
             return FileResponse(svg, media_type="image/svg+xml",
                                 headers={"Cache-Control": "public, max-age=86400"})
         from fastapi.responses import Response
-        return Response(status_code=404)
+        return Response(content=b"", media_type="image/x-icon", status_code=200)
 
     @app.get("/favicon.svg")
     async def favicon_svg():

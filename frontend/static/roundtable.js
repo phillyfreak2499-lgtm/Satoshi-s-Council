@@ -3,6 +3,10 @@
  * Screensaver Mode: High-tech cyberpunk knight / samurai Round Table
  * Dashboard Mode: armor-plate neon HUD cards
  */
+window.applySettingsSnapshot = window.applySettingsSnapshot || function applySettingsSnapshotStub() {};
+if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
+  window.applySettingsSnapshot._stub = true;
+}
 (() => {
   const canvas = document.getElementById("roundtable");
   if (!canvas) {
@@ -39,6 +43,10 @@
     pendingAdminCb = null;
     window.__pendingAdminUnlock = null;
     if (ok && typeof cb === "function") cb();
+    if (ok && window.__openSettingsAfterAdmin && typeof setMode === "function") {
+      window.__openSettingsAfterAdmin = false;
+      setMode("settings");
+    }
     try { syncAutoBetVisibility(); } catch (e) {}
   }
 
@@ -72,7 +80,14 @@
       }
     };
     submit.addEventListener("click", tryUnlock);
-    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+    if (input && !input.__hotkeysSwallowed) {
+      input.__hotkeysSwallowed = true;
+      input.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.key === "Enter") tryUnlock();
+      }, true);
+    }
     if (cancel && !cancel.__wired) {
       cancel.__wired = true;
       cancel.addEventListener("click", () => closeAdminGate(false));
@@ -265,7 +280,7 @@
 
   function applySettingsSnapshot(s) {
     if (!s) return;
-    applyBeastChrome(!!s.beast_mode);
+    if (typeof s.beast_mode === "boolean") applyBeastChrome(s.beast_mode);
     const L = s.learning || {};
     const T = s.trading || {};
     const H = s.huddle || {};
@@ -321,11 +336,16 @@
     set("setPollInput", s.ui_poll_ms);
     chk("setDualInput", s.dual_spot);
     chk("setParallelInput", s.parallel_agents);
+    const beastOn = (typeof s.beast_mode === "boolean") ? s.beast_mode : beastMode;
     const blurb = document.getElementById("beastBlurb");
-    if (blurb) blurb.textContent = s.blurb || "";
+    if (blurb && (s.blurb || typeof s.beast_mode === "boolean")) {
+      blurb.textContent = s.blurb || (beastOn
+        ? "Max refresh · dual spot · parallel seats · premium HUD"
+        : "Balanced cadence · single spot · power-friendly");
+    }
     const stats = document.getElementById("beastStats");
     if (stats) {
-      stats.textContent = s.beast_mode
+      stats.textContent = beastOn
         ? `Profile BEAST · cycle ${s.analysis_interval}s · hot ${s.analysis_interval_hot}s · dual-spot ${s.dual_spot ? "ON" : "OFF"}`
         : `Profile STANDARD · cycle ${s.analysis_interval}s · dual-spot ${s.dual_spot ? "ON" : "OFF"}`;
     }
@@ -353,6 +373,7 @@
       }
     }
   }
+  applySettingsSnapshot._real = true;
   window.applySettingsSnapshot = applySettingsSnapshot;
 
   async function fetchSettings() {
@@ -392,6 +413,7 @@
   let mode = "art"; // art | dashboard | charts
   let state = null;
   let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "bitcoin"; })();
+  try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableState(which) {
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -982,6 +1004,7 @@
         loops.addEventListener("click", (e) => e.stopPropagation());
         loops.addEventListener("change", (e) => {
           e.stopPropagation();
+          e.stopImmediatePropagation();
           teamLoopsOn = !!loops.checked;
           localStorage.setItem("council_team_loops", teamLoopsOn ? "1" : "0");
         });
@@ -2967,7 +2990,11 @@ function drawCandleChart() {
 
   function syncChartPairTitle() {
     const pairTitle = document.getElementById("chartPairTitle");
-    if (pairTitle) pairTitle.textContent = (focusTable === "ethereum") ? "ETH · 1m" : "BTC · 1m";
+    const focus = (typeof focusTable === "string" && focusTable)
+      || (document.body && document.body.dataset.focusTable)
+      || "bitcoin";
+    const eth = focus === "ethereum" || focus === "eth";
+    if (pairTitle) pairTitle.textContent = eth ? "ETH · 1m" : "BTC · 1m";
   }
 
   function drawChartBtc() {
@@ -3668,7 +3695,7 @@ function drawCandleChart() {
       fetchPaper().then(() => renderPaper());
     }
     if (mode === "settings") {
-      fetchSettings().then(applySettingsSnapshot);
+      fetchSettings().then((s) => { if (s) applySettingsSnapshot(s); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
@@ -3797,6 +3824,7 @@ function drawCandleChart() {
     updateAccuracy(state.accuracy);
     updateLaw(state.law);
     if (!deskCinematicOn()) updateHuddle(state.huddle);
+    try { syncChartPairTitle(); } catch (e) {}
     updateColorTally(state);
     updateDebate();
     if (!deskCinematicOn()) drawCandleChart();
@@ -3953,18 +3981,18 @@ function drawCandleChart() {
     const a = document.activeElement;
     const typing = (el) => {
       if (!el) return false;
-      const tag = el.tagName || "";
+      const tag = (el.tagName || "").toUpperCase();
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!el.isContentEditable;
     };
     if (typing(t) || typing(a)) return true;
+    if (t && t.closest && (t.closest("#adminGate") || t.closest("#settingsView") || t.closest("#passwordGate"))) return true;
     const admin = document.getElementById("adminGate");
     if (admin && !admin.classList.contains("hidden")) return true;
     const pass = document.getElementById("passwordGate");
     if (pass && !pass.classList.contains("hidden")) return true;
-    if (mode === "settings") {
-      const k = e && e.key;
-      if (k === "0" || k === "1" || k === "2" || k === "3" || k === "4" || k === "5" || k === "6" || k === "7") return true;
-    }
+    const sv = document.getElementById("settingsView");
+    if (sv && !sv.classList.contains("hidden")) return true;
+    if (mode === "settings") return true;
     return false;
   }
 
@@ -4255,7 +4283,9 @@ function drawCandleChart() {
     document.body.classList.remove("gate-locked", "gate-revealing");
     localStorage.setItem("council_entered", "1");
     function after() {
-      try { if (mode !== "settings") setMode("art"); } catch (e) {}
+      try {
+        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("art");
+      } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
     }
@@ -4419,9 +4449,10 @@ function drawCandleChart() {
 
     const q = (name) => {
       if (!root) return null;
-      return root.querySelector('[data-tut="' + name + '"]')
-        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1))
-        || document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
+      const local = root.querySelector('[data-tut="' + name + '"]')
+        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1));
+      if (local || standalone) return local;
+      return document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
     };
 
     const inner = document.getElementById("gateInner");
@@ -4912,10 +4943,9 @@ function drawCandleChart() {
             body: JSON.stringify(body),
           });
       const s = await r.json();
-      const applySnap = window.applySettingsSnapshot || applySettingsSnapshot;
-      if (typeof applySnap !== "function") {
-        throw new ReferenceError("applySettingsSnapshot is not defined");
-      }
+      const applySnap = (typeof window.applySettingsSnapshot === "function")
+        ? window.applySettingsSnapshot
+        : function () {};
       applySnap(s);
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
@@ -4956,8 +4986,7 @@ function drawCandleChart() {
           });
         }
         const s2 = await (await fetch("/api/settings")).json();
-        const applySnap = window.applySettingsSnapshot || applySettingsSnapshot;
-        if (typeof applySnap === "function") applySnap(s2);
+        if (typeof window.applySettingsSnapshot === "function") window.applySettingsSnapshot(s2);
         const st = document.getElementById("settingsSaveStatus");
         if (st) st.textContent = "Defaults restored";
       } catch (e) {}
@@ -5033,7 +5062,7 @@ function drawCandleChart() {
     const tog = document.getElementById("beastToggle");
     if (tog && s.beast_mode != null) tog.checked = !!s.beast_mode;
   }
-  if (typeof window.applySettingsSnapshot !== "function") {
+  if (typeof window.applySettingsSnapshot !== "function" || window.applySettingsSnapshot._stub) {
     window.applySettingsSnapshot = paintSettingsSnapshot;
   }
 
@@ -5559,8 +5588,8 @@ function drawCandleChart() {
     const cb = pendingAdminCb || window.__pendingAdminUnlock;
     pendingAdminCb = null;
     window.__pendingAdminUnlock = null;
-    if (ok && cb) cb();
-    else if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
+    if (ok && typeof cb === "function") cb();
+    if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
       window.__openSettingsAfterAdmin = false;
       window.setMode("settings");
     }
@@ -5584,7 +5613,14 @@ function drawCandleChart() {
         }
       };
       submit.addEventListener("click", tryUnlock);
-      if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+      if (input && !input.__hotkeysSwallowed) {
+        input.__hotkeysSwallowed = true;
+        input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (e.key === "Enter") tryUnlock();
+        }, true);
+      }
     }
     if (cancel && !cancel.__wired) {
       cancel.__wired = true;
