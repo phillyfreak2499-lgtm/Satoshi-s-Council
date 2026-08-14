@@ -1,3 +1,17 @@
+# One-Call / Best-Odds Protocol (2026-08-14)
+
+Implemented:
+- MAX_CALLS_PER_WINDOW = 1 (hard, irreversible)
+- MAX_ENTRY_ODDS_PCT = 80.0 — only lock if chosen side mid < 80¢
+- GOAL_CONTRACT in base.py + leader summaries + DOCTRINE.md
+- locked_call object on decision /api/state for follower bots
+- UI: specialist bots moved to outer FLOOR ring; table reserved for Chair + LOCKED plaque with “FOLLOW” label
+- Clear visual lock plate under Chair portrait
+
+See DOCTRINE.md for the full operating rules.
+
+---
+
 # Deep chat-vs-code audit (2026-08-12)
 
 ## Critical bug fixed earlier
