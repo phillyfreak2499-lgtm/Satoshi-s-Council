@@ -5350,3 +5350,70 @@ body.mode-settings #openChartsBtn {
     z-index: 80 !important;
   }
 }
+
+/* ===== FLOOR 1H — in-flow under nav (beats leftover fixed top:40px) ===== */
+#app > header {
+  order: 1 !important;
+  position: relative !important;
+  z-index: 80 !important;
+  flex-shrink: 0 !important;
+}
+#app > #windowLed {
+  order: 2 !important;
+}
+#app > #mainTable,
+#app > #settingsView,
+#app > #botsView,
+#app > #ranksView,
+#app > #paperView,
+#app > #chartsView {
+  order: 3 !important;
+}
+#app > footer { order: 10 !important; }
+
+body.floor-mode #app > #windowLed,
+body.floor-mode #app > #windowLed.led-window,
+body.floor-mode #app > #windowLed.led-float,
+body.mode-floor #app > #windowLed,
+body.mode-floor #app > #windowLed.led-window,
+body.mode-floor #app > #windowLed.led-float,
+body.mode-art #app > #windowLed,
+body.mode-art #app > #windowLed.led-window,
+body.mode-art #app > #windowLed.led-float {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
+  transform: none !important;
+  float: none !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 4 !important;
+  margin: 6px auto 8px !important;
+  width: max-content !important;
+  max-width: calc(100% - 16px) !important;
+  pointer-events: none !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+body.floor-mode #app > #windowLed .led-foot,
+body.mode-floor #app > #windowLed .led-foot,
+body.mode-art #app > #windowLed .led-foot {
+  display: block !important;
+  visibility: visible !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+body.floor-mode #app > header,
+body.mode-floor #app > header {
+  position: relative !important;
+  z-index: 80 !important;
+  overflow: visible !important;
+}
+body:not(.mode-art):not(.floor-mode):not(.mode-floor) #app > #windowLed {
+  display: none !important;
+  visibility: hidden !important;
+}

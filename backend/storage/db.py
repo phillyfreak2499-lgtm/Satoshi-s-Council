@@ -1004,6 +1004,7 @@ class PerformanceStore:
                 "entry_side_pct": r.open_price,
                 "path_move_pct": r.path_move_pct,
                 "confidence": r.confidence,
+                "asset": (r.asset or ticker_asset(r.ticker)),
             })
 
         def bucket_sum(pred):
@@ -1084,6 +1085,44 @@ class PerformanceStore:
             },
             "calls": calls[:300],
             "open": [c for c in calls if c["status"] == "open"][:20],
+        }
+
+    async def paper_summary_by_asset(self, asset: str | None = None) -> Dict[str, Any]:
+        """Finish-graded auto paper only. Open locks do not invent a −$25 P&L."""
+        journal = await self.get_paper_journal()
+        calls = list(journal.get("calls") or [])
+        want = (asset or "").strip().lower() or None
+        if want in ("bitcoin",):
+            want = "btc"
+        if want in ("ethereum",):
+            want = "eth"
+        if want:
+            filtered = []
+            for c in calls:
+                inferred = ticker_asset(c.get("ticker"))
+                row_a = (c.get("asset") or inferred or "").lower()
+                if inferred and inferred != want:
+                    continue
+                if row_a and row_a != want:
+                    continue
+                if not inferred and not row_a:
+                    continue
+                filtered.append(c)
+            calls = filtered
+        settled = [
+            c for c in calls
+            if c.get("status") in ("win", "loss") and c.get("pnl") is not None
+        ]
+        wins = sum(1 for c in settled if c.get("correct") is True)
+        losses = sum(1 for c in settled if c.get("correct") is False)
+        pnl = round(sum(float(c.get("pnl") or 0) for c in settled), 2)
+        return {
+            "asset": want,
+            "wins": wins,
+            "losses": losses,
+            "pnl": pnl if settled else 0.0,
+            "recent": settled[:20],
+            "open": [c for c in calls if c.get("status") == "open"][:20],
         }
 
 

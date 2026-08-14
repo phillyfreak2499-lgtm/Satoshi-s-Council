@@ -241,26 +241,56 @@ def _settings_for_client(request: Request) -> dict:
     return snap
 
 
-@app.get("/api/settings")
-async def get_settings(request: Request):
-    return _settings_for_client(request)
-
-
-@app.post("/api/settings")
-async def post_settings(request: Request):
-    """Update system settings. Accepts beast_mode + learning/trading/huddle/ui sections."""
+async def _read_json_obj(request: Request) -> dict:
     try:
         body = await request.json()
     except Exception:
         body = {}
-    if not isinstance(body, dict):
-        body = {}
-    # Auto-bet setup is admin-only. Desk access code is not enough.
+    return body if isinstance(body, dict) else {}
+
+
+def _settings_payload(request: Request, extra: dict | None = None) -> dict:
+    snap = dict(_settings_for_client(request))
+    snap["ok"] = True
+    if extra:
+        snap.update(extra)
+    return snap
+
+
+async def _apply_settings_body(request: Request) -> dict:
+    """Persist Settings tab PATCH. Always JSON — never index.html."""
+    body = await _read_json_obj(request)
+    if body.get("reset") is True or body.get("reset_defaults") is True:
+        runtime_settings.reset_to_defaults()
+        return _settings_payload(request, {"reset": True})
     if "auto_bet" in body and not _admin_ok(request):
         body = dict(body)
         body.pop("auto_bet", None)
     runtime_settings.apply_patch(body)
-    return _settings_for_client(request)
+    return _settings_payload(request)
+
+
+@app.get("/api/settings")
+@app.get("/api/settings/")
+async def get_settings(request: Request):
+    return _settings_payload(request)
+
+
+@app.post("/api/settings")
+@app.post("/api/settings/")
+@app.post("/api/settings/save")
+@app.post("/api/settings/save/")
+async def post_settings(request: Request):
+    """Update system settings. Accepts beast_mode + learning/trading/huddle/ui sections."""
+    return await _apply_settings_body(request)
+
+
+@app.post("/api/settings/reset")
+@app.post("/api/settings/reset/")
+async def reset_settings(request: Request):
+    """Factory defaults. Always JSON."""
+    runtime_settings.reset_to_defaults()
+    return _settings_payload(request, {"reset": True})
 
 
 @app.post("/api/settings/beast")
@@ -784,6 +814,13 @@ async def follower_audit(request: Request, limit: int = 80):
         return Response(status_code=404)
     return {"ok": True, "events": follower_gate.audit.recent(limit)}
 
+
+
+@app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def api_unknown(rest: str):
+    """Unknown /api/* must stay JSON. A miss must never fall through to index.html."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"ok": False, "error": "not found", "path": f"/api/{rest}"}, status_code=404)
 
 
 # ── Static UI (single Render web service) ─────────────────────────────

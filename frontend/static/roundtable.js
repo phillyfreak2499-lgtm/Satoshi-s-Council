@@ -510,13 +510,38 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     syncExclusiveTabActive("settings");
   }
 
+  async function readSettingsJson(r) {
+    const ct = String((r && r.headers && r.headers.get("content-type")) || "").toLowerCase();
+    if (!ct.includes("json")) {
+      throw new Error("settings route returned HTML, not JSON");
+    }
+    return r.json();
+  }
+
+  async function postSettingsJson(body, path) {
+    const url = path || "/api/settings/save";
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    if (typeof isAdminUnlocked === "function" && isAdminUnlocked() && body && body.auto_bet) {
+      headers["X-Council-Admin"] = ADMIN_PASSWORD;
+    }
+    const r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body || {}),
+    });
+    const s = await readSettingsJson(r);
+    if (!r.ok && !s) throw new Error("HTTP " + r.status);
+    return s;
+  }
+
   async function fetchSettings() {
     try {
-      const r = isAdminUnlocked()
-        ? await adminFetch(API_BASE + "/api/settings")
-        : await fetch(API_BASE + "/api/settings");
+      const r = await fetch("/api/settings", { headers: { Accept: "application/json" } });
       if (!r.ok) return null;
-      return await r.json();
+      return await readSettingsJson(r);
     } catch (e) {
       return null;
     }
@@ -532,13 +557,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (sfx) sfx.checked = sfxWas;
     paintBeastProfileLine(lastSettingsSnap);
     try {
-      const r = await fetch(API_BASE + "/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ beast_mode: !!on }),
-      });
-      if (r.ok) {
-        const s = await r.json();
+      const s = await postSettingsJson({ beast_mode: !!on }, "/api/settings/save");
+      if (s) {
         if (mode === "settings") {
           lastSettingsSnap = s;
           applyBeastChrome(!!on);
@@ -3768,14 +3788,19 @@ function drawCandleChart() {
     const retRaw = retEl ? String(retEl.value).trim() : "";
     const el = document.getElementById("pePnl");
     if (!el) return;
-    // Empty "got back" is a scratch preview, not a ghost −$25 loss.
+    // No fill yet — do not pre-fill a fake −$25 from stake minus empty got-back.
     if (retRaw === "") {
-      el.textContent = "$0.00";
+      el.textContent = "—";
       el.className = "";
       return;
     }
     const ret = Number(retRaw);
-    const pnl = (Number.isFinite(ret) ? ret : 0) - stake;
+    if (!Number.isFinite(ret)) {
+      el.textContent = "—";
+      el.className = "";
+      return;
+    }
+    const pnl = ret - (Number.isFinite(stake) ? stake : 0);
     el.textContent = (pnl >= 0 ? "+" : "") + "$" + pnl.toFixed(2);
     el.className = pnl > 0 ? "pos" : (pnl < 0 ? "neg" : "");
   }
@@ -3878,7 +3903,7 @@ function drawCandleChart() {
         const data = await r.json();
         if (data.ok) {
           paperData = data.journal || paperData;
-          if (ret) ret.value = "0";
+          if (ret) ret.value = "";
           paperPnlPreview();
           renderPaper();
         } else {
@@ -5402,18 +5427,7 @@ function drawCandleChart() {
     }
     const st = document.getElementById("settingsSaveStatus");
     try {
-      const r = isAdminUnlocked()
-        ? await adminFetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          })
-        : await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-      const s = await r.json();
+      const s = await postSettingsJson(body, "/api/settings/save");
       const applySnap = (typeof window.applySettingsSnapshot === "function")
         ? window.applySettingsSnapshot
         : function () {};
@@ -5426,6 +5440,7 @@ function drawCandleChart() {
     }
   }
   window.collectAndSaveSettings = collectAndSaveSettings;
+  window.postSettingsJson = postSettingsJson;
 
   try { wireAdminGate(); wireAdminTools(); wireBrain(); wireFollowerGate(); } catch (e) { console.warn("admin/brain wire", e); }
   document.addEventListener("DOMContentLoaded", () => {
@@ -5447,14 +5462,7 @@ function drawCandleChart() {
       return;
     }
     try {
-      const resetFn = isAdminUnlocked() ? adminFetch : fetch;
-      const r = await resetFn(API_BASE + "/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true }),
-      });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const s = await r.json();
+      const s = await postSettingsJson({ reset: true }, "/api/settings/reset");
       callSfxOn = true;
       teamLoopsOn = true;
       try { localStorage.setItem("council_call_sfx", "1"); } catch (e) {}
@@ -5649,12 +5657,19 @@ function drawCandleChart() {
     };
     const st = document.getElementById("settingsSaveStatus");
     try {
-      const r = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const s = await r.json();
+      const poster = (typeof window.postSettingsJson === "function")
+        ? window.postSettingsJson
+        : async function (payload) {
+            const r = await fetch("/api/settings/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify(payload || {}),
+            });
+            const ct = String((r.headers.get("content-type") || "")).toLowerCase();
+            if (!ct.includes("json")) throw new Error("settings route returned HTML, not JSON");
+            return r.json();
+          };
+      const s = await poster(body, "/api/settings/save");
       window.applySettingsSnapshot(s, { localToggles: true });
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
@@ -5684,11 +5699,21 @@ function drawCandleChart() {
         return;
       }
       if (!confirm("Restore Settings defaults?\n\nCall voice turns back on.")) return;
-      fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true }),
-      }).then((r) => r.json()).then((s) => {
+      const poster = (typeof window.postSettingsJson === "function")
+        ? window.postSettingsJson
+        : null;
+      const req = poster
+        ? poster({ reset: true }, "/api/settings/reset")
+        : fetch("/api/settings/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ reset: true }),
+          }).then((r) => {
+            const ct = String((r.headers.get("content-type") || "")).toLowerCase();
+            if (!ct.includes("json")) throw new Error("settings route returned HTML, not JSON");
+            return r.json();
+          });
+      req.then((s) => {
         const sfx = document.getElementById("callSfxToggle");
         if (sfx) sfx.checked = true;
         try { localStorage.setItem("council_call_sfx", "1"); } catch (err) {}

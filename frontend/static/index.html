@@ -128,6 +128,16 @@
       </div>
     </header>
 
+    <!-- Docked under the nav so Floor tabs never cover “until close / BTC · ETH”. -->
+    <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
+      <div class="led-bezel">
+        <div class="led-label">1H WINDOW</div>
+        <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+        <div class="led-foot" id="ledWindowSub">until close</div>
+        <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
+      </div>
+    </div>
+
     <main id="mainTable">
       <!-- LEFT: Lifetime accuracy + settled log -->
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
@@ -440,10 +450,10 @@
         </div>
         <div class="pe-fields">
           <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" /></label>
-          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="" placeholder="0 if lost" /></label>
+          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="" placeholder="enter after fill" /></label>
           <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
         </div>
-        <div class="pe-preview">P&amp;L: <strong id="pePnl">$0.00</strong></div>
+        <div class="pe-preview">P&amp;L: <strong id="pePnl">—</strong></div>
         <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
       </div>
 
@@ -522,16 +532,6 @@
           </div>
         </div>
         <div class="led-foot" id="ledQuorum">Q —</div>
-      </div>
-    </div>
-
-    <!-- Digit timer only — hour ring stays removed. Not inside the dashboard card grid. -->
-    <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
-      <div class="led-bezel">
-        <div class="led-label">1H WINDOW</div>
-        <div id="ledWindowTime" class="led-digits led-time">--:--</div>
-        <div class="led-foot" id="ledWindowSub">until close</div>
-        <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
       </div>
     </div>
 
