@@ -58,25 +58,36 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    """Render health check — include loop freshness so probes detect a stuck worker."""
-    state = council.get_state()
-    ts = state.get("timestamp")
-    age = None
-    if ts:
+    """Render health check — dual-aware freshness for BTC + ETH tables."""
+    from datetime import datetime, timezone
+
+    def _age(ts):
+        if not ts:
+            return None
         try:
-            # ISO timestamp from council
-            from datetime import datetime, timezone
-            t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            age = max(0.0, (datetime.now(timezone.utc) - t).total_seconds())
+            tt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            return max(0.0, (datetime.now(timezone.utc) - tt).total_seconds())
         except Exception:
-            age = None
-    healthy = council.running and (age is None or age < max(90.0, settings.ANALYSIS_INTERVAL * 8))
-    # Always HTTP 200 so Render doesn't recycle during brief stalls; status field shows health
+            return None
+
+    state = council.get_state()
+    btc = (state.get("tables") or {}).get("bitcoin") or state.get("btc") or state
+    eth = (state.get("tables") or {}).get("ethereum") or state.get("eth")
+    age = _age(state.get("timestamp"))
+    btc_age = _age((btc or {}).get("timestamp"))
+    eth_age = _age((eth or {}).get("timestamp")) if eth else None
+    max_age = max(90.0, float(getattr(settings, "ANALYSIS_INTERVAL", 4.5)) * 10)
+    healthy = bool(council.running) and (age is None or age < max_age)
     return {
         "status": "ok" if healthy else "degraded",
         "service": settings.APP_NAME,
         "running": council.running,
+        "dual": bool(state.get("dual")),
         "state_age_s": round(age, 1) if age is not None else None,
+        "btc_age_s": round(btc_age, 1) if btc_age is not None else None,
+        "eth_age_s": round(eth_age, 1) if eth_age is not None else None,
+        "kalshi_btc_ok": bool(((btc or {}).get("health") or {}).get("kalshi", True)),
+        "kalshi_eth_ok": bool(((eth or {}).get("health") or {}).get("kalshi", True)) if eth else None,
         "analysis_interval_s": settings.ANALYSIS_INTERVAL,
         "fetch_ms": (state.get("health") or {}).get("last_fetch_ms"),
     }
