@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Satoshi’s Council</title>
+  <meta name="description" content="Satoshi’s Council" />
+  <meta property="og:title" content="Satoshi’s Council" />
+  <meta property="og:description" content="Satoshi’s Council" />
+  <meta property="og:image" content="/council-mark.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
@@ -33,7 +39,7 @@
   <!-- Password gate -->
   <div id="passwordGate" class="password-gate">
     <div class="password-card">
-      <img class="gate-mark" src="/zt-logo.jpg" alt="" width="72" height="72" />
+      <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
       <div class="password-sub">Enter access code</div>
       <input type="password" id="passwordInput" class="password-input" placeholder="Password" autocomplete="current-password" />
@@ -46,7 +52,7 @@
   <div id="summonGate" class="summon-gate hidden">
     <canvas id="gateFog" class="gate-fog"></canvas>
     <div id="gateInner" class="gate-inner">
-      <img class="gate-mark" src="/zt-logo.jpg" alt="" width="88" height="88" />
+      <img class="gate-mark" src="/council-mark.png" alt="" width="88" height="88" />
       <div class="gate-brand">SATOSHI’S COUNCIL</div>
       <div class="gate-actions">
         <button type="button" id="btnTutorial" class="gate-btn gate-btn-ghost">Tutorial</button>
@@ -86,8 +92,8 @@
     <header>
       <div class="header-row">
         <div class="logo">
-          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="Satoshi’s Council">
-            <img src="/zt-logo.jpg" alt="" width="36" height="36" />
+          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Satoshi’s Council" aria-label="Satoshi’s Council">
+            <img src="/council-mark.png" alt="" width="36" height="36" />
           </button>
           <span class="title">SATOSHI’S COUNCIL</span>
           <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
@@ -120,7 +126,7 @@
             <span id="lawStatus" class="law-status">OK</span>
           </div>
           <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="Play cinematic (also unlocks after 5 wins in a row)" aria-label="Play cinematic">
-            <img src="/zt-logo.jpg" alt="" width="28" height="28" />
+            <img src="/council-mark.png" alt="" width="28" height="28" />
           </button>
           <button type="button" id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
           <button type="button" id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>

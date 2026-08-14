@@ -946,7 +946,7 @@ if STATIC_DIR.is_dir():
             return Response(status_code=404)
         media = "image/png" if path.suffix == ".png" else "image/jpeg"
         return FileResponse(path, media_type=media,
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers={"Cache-Control": "no-store"})
 
     @app.get("/zt-watermark.jpg")
     async def zt_watermark():
