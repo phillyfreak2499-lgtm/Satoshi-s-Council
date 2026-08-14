@@ -1,77 +1,119 @@
 """
-Regime & Time Specialist.
-Tracks hour-of-day, day-of-week, volatility regime.
-Outputs aggressiveness multiplier for the Leader.
+ORBIT – Regime Watch.
+
+True job: classify the multi-window environment and set aggressiveness.
+Not a directional voter most of the time — a gatekeeper.
+
+Looks across:
+  - session / time-of-day pocket
+  - realized vol & ATR percentile over recent windows
+  - consecutive window direction streaks (trend day vs mean-revert day)
+  - current window phase
+
+In quiet / low-vol regimes: raises the directional bar for the whole council.
+In expansion / high-vol: allows more directional risk.
 """
 from __future__ import annotations
-from typing import Any, Dict
-from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
-import numpy as np
 
 
 class RegimeSpecialist(BaseSpecialist):
     name = "regime"
     category = "regime"
-    base_weight = settings.BASE_WEIGHTS["regime"]
+    base_weight = settings.BASE_WEIGHTS.get("regime", 0.08)
 
     async def get_signal(self, market_data: Dict[str, Any]) -> AgentSignal:
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted by Guardian", self.category, muted=True)
 
-        now = datetime.now(timezone.utc)
-        hour = now.hour
-        dow = now.weekday()  # 0=Mon
+        phase = self.phase(market_data)
+        wm = market_data.get("wm") or {}
+        atr = _f(market_data.get("atr_pct"))
+        volp = _f(market_data.get("volume_percentile"))
+        rv = _f(market_data.get("realized_vol"))
+        streak_dir, streak_n = self.streak(market_data)
+        mean_rev = self.mean_reversion_bias(market_data)
+        prior_hr = self.prior_hit_rate(market_data, 12)
 
-        candles = market_data.get("candles") or []
-        vol_regime = "normal"
-        atr_pct = 0.0
-        if len(candles) >= 20:
-            highs = np.array([c["high"] for c in candles[-20:]])
-            lows = np.array([c["low"] for c in candles[-20:]])
-            closes = np.array([c["close"] for c in candles[-20:]])
-            tr = np.maximum(highs[1:] - lows[1:], np.abs(highs[1:] - closes[:-1]))
-            atr = tr.mean()
-            atr_pct = atr / closes[-1] if closes[-1] else 0
-            if atr_pct > settings.HIGH_VOL_THRESHOLD:
-                vol_regime = "high"
-            elif atr_pct < settings.HIGH_VOL_THRESHOLD * 0.4:
-                vol_regime = "low"
+        # Session tag from existing regime key machinery if present
+        regime_key = (market_data.get("regime_key")
+                      or (market_data.get("regime_context") or {}).get("key")
+                      or "UNKNOWN")
 
-        # Aggressiveness: 0.6 (very cautious) → 1.3 (more aggressive)
-        aggressiveness = 1.0
-        reason_parts = []
+        quiet = self.is_quiet(market_data)
+        if atr is not None and atr < 0.10:
+            quiet = True
+        if volp is not None and volp < 20:
+            quiet = True
 
-        if hour in settings.LOW_EDGE_HOURS_UTC:
-            aggressiveness *= 0.75
-            reason_parts.append(f"low-edge hour {hour} UTC")
-        if vol_regime == "high":
-            aggressiveness *= 0.85
-            reason_parts.append("high-vol regime")
-        elif vol_regime == "low":
-            aggressiveness *= 1.1
-            reason_parts.append("low-vol regime")
-        if dow >= 5:  # weekend
-            aggressiveness *= 0.9
-            reason_parts.append("weekend")
+        # Aggressiveness 0..1 — consumed by Chair / other bots via features
+        aggressiveness = 0.55
+        notes = []
 
-        aggressiveness = max(0.55, min(1.35, aggressiveness))
+        if quiet:
+            aggressiveness = 0.28
+            notes.append("quiet tape — raise bar")
+        elif atr is not None and atr > 0.35:
+            aggressiveness = 0.78
+            notes.append(f"expanded ATR {atr:.2f}%")
+        elif volp is not None and volp > 75:
+            aggressiveness = 0.70
+            notes.append(f"high volume pctile {volp:.0f}")
 
-        # Regime specialist rarely votes strong direction; mostly modulates
-        direction = "WAIT"
-        conf = 50
-        if aggressiveness < 0.8:
-            conf = 65
-            reason = "Raise WAIT threshold – " + (", ".join(reason_parts) or "cautious regime")
-        else:
-            reason = "Normal regime – " + (", ".join(reason_parts) or "standard conditions")
+        # Multi-window: strong streak → trend-day bias (don't fight)
+        if streak_n >= 4 and streak_dir in ("UP", "DOWN"):
+            aggressiveness = min(0.85, aggressiveness + 0.12)
+            notes.append(f"trend day {streak_dir}×{streak_n}")
+        elif mean_rev and streak_n >= 3:
+            notes.append(f"mean-rev setup vs {streak_dir}×{streak_n}")
+
+        # Council recent skill
+        if prior_hr is not None:
+            if prior_hr < 0.45:
+                aggressiveness = max(0.20, aggressiveness - 0.15)
+                notes.append(f"council cold {prior_hr:.0%}")
+            elif prior_hr > 0.62:
+                aggressiveness = min(0.90, aggressiveness + 0.08)
+                notes.append(f"council hot {prior_hr:.0%}")
 
         features = {
-            "hour_utc": hour,
-            "dow": dow,
-            "vol_regime": vol_regime,
-            "atr_pct": round(float(atr_pct), 5),
+            "regime_key": regime_key,
             "aggressiveness": round(aggressiveness, 3),
+            "quiet": quiet,
+            "atr_pct": atr,
+            "volume_percentile": volp,
+            "realized_vol": rv,
+            "streak_dir": streak_dir,
+            "streak_n": streak_n,
+            "mean_rev_bias": mean_rev,
+            "prior_hit_rate": prior_hr,
+            "phase": phase,
+            "horizon": "entry" if phase == "entry" else "revision",
         }
+
+        # Regime rarely votes direction; when it does, it's multi-window structure
+        direction = "WAIT"
+        conf = 55
+        if mean_rev and phase == "entry" and not quiet:
+            direction = mean_rev
+            conf = 58
+            notes.append(f"entry lean mean-rev {mean_rev}")
+        elif streak_n >= 5 and streak_dir and phase == "entry" and aggressiveness > 0.6:
+            direction = streak_dir
+            conf = 60
+            notes.append(f"entry ride streak {streak_dir}")
+
+        reason = self.annotate_reason(
+            market_data,
+            f"Regime {regime_key} · agg {aggressiveness:.2f} · " + ("; ".join(notes) if notes else "neutral"),
+        )
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
+
+
+def _f(v) -> Optional[float]:
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
