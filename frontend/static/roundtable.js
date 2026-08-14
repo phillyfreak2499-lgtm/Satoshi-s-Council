@@ -349,6 +349,7 @@
       }
     }
   }
+  window.applySettingsSnapshot = applySettingsSnapshot;
 
   async function fetchSettings() {
     try {
@@ -4868,12 +4869,17 @@ function drawCandleChart() {
             body: JSON.stringify(body),
           });
       const s = await r.json();
-      applySettingsSnapshot(s);
+      const applySnap = window.applySettingsSnapshot || applySettingsSnapshot;
+      if (typeof applySnap !== "function") {
+        throw new ReferenceError("applySettingsSnapshot is not defined");
+      }
+      applySnap(s);
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
       if (st) st.textContent = "Save failed: " + e;
     }
   }
+  window.collectAndSaveSettings = collectAndSaveSettings;
 
   try { wireAdminGate(); wireAdminTools(); wireBrain(); } catch (e) { console.warn("admin/brain wire", e); }
   document.addEventListener("DOMContentLoaded", () => {
@@ -4907,7 +4913,8 @@ function drawCandleChart() {
           });
         }
         const s2 = await (await fetch("/api/settings")).json();
-        applySettingsSnapshot(s2);
+        const applySnap = window.applySettingsSnapshot || applySettingsSnapshot;
+        if (typeof applySnap === "function") applySnap(s2);
         const st = document.getElementById("settingsSaveStatus");
         if (st) st.textContent = "Defaults restored";
       } catch (e) {}
@@ -4926,7 +4933,148 @@ function drawCandleChart() {
 })();
 
 
+/* Settings Save fallback: persist + paint even if the desk IIFE did not export applySettingsSnapshot */
+(function wireSettingsSaveFallback() {
+  function paintSettingsSnapshot(s) {
+    if (!s) return;
+    const L = s.learning || {};
+    const T = s.trading || {};
+    const H = s.huddle || {};
+    const U = s.ui || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    set("setPathWin", L.path_win_pct);
+    set("setHoldFrac", L.hold_fraction);
+    set("setNearBar", L.near_certain_bar);
+    set("setFadeMinN", L.fade_min_n);
+    set("setFadeWr", L.fade_wr_threshold);
+    set("setFadeCap", L.fade_max_weight_share);
+    set("setAntiMin", L.anti_min_tries);
+    set("setAntiWr", L.anti_win_rate);
+    set("setAntiCap", L.anti_max_bonus);
+    set("setMinConf", T.min_confluence);
+    set("setMinDirConf", T.min_directional_conf);
+    set("setTopN", T.top_n_agreement);
+    set("setColdN", L.cold_start_samples);
+    set("setCalN", L.calibrate_samples);
+    set("setExpN", L.exploit_samples);
+    set("setLawWrongs", T.law_lock_after_wrongs);
+    set("setLawWindows", T.law_lock_windows);
+    set("setLawShadow", T.law_shadow_early_unlock_rights);
+    chk("setHuddleOn", H.enabled !== false);
+    set("setHuddleHour", H.hour_ct);
+    set("setHuddleDur", H.duration_minutes);
+    set("setHuddleRebuild", H.rebuild_limit);
+    chk("setSoundOn", U.sound_enabled !== false);
+    chk("setSoundUp", U.sound_up !== false);
+    chk("setSoundDown", U.sound_down !== false);
+    chk("setSoundSwap", U.sound_swap !== false);
+    chk("setSoundBell", U.sound_bell !== false);
+    chk("setBeamGlow", U.beam_glow !== false);
+    set("setWatermark", U.watermark_opacity);
+    const AB = s.auto_bet || {};
+    if (s.auto_bet) {
+      chk("setAutoBetOn", AB.enabled);
+      const modeEl = document.getElementById("setAutoBetMode");
+      if (modeEl && AB.mode) modeEl.value = AB.mode;
+      set("setAutoBetSize", AB.size);
+      chk("setAutoBetBtc", AB.btc !== false);
+      chk("setAutoBetEth", AB.eth !== false);
+    }
+    set("setIntervalInput", s.analysis_interval);
+    set("setHotInput", s.analysis_interval_hot);
+    set("setFlatInput", s.analysis_interval_flat);
+    set("setPollInput", s.ui_poll_ms);
+    chk("setDualInput", s.dual_spot);
+    chk("setParallelInput", s.parallel_agents);
+    const tog = document.getElementById("beastToggle");
+    if (tog && s.beast_mode != null) tog.checked = !!s.beast_mode;
+  }
+  if (typeof window.applySettingsSnapshot !== "function") {
+    window.applySettingsSnapshot = paintSettingsSnapshot;
+  }
 
+  async function fallbackCollectAndSave() {
+    if (typeof window.collectAndSaveSettings === "function") {
+      return window.collectAndSaveSettings();
+    }
+    const num = (id, d) => {
+      const el = document.getElementById(id);
+      if (!el || el.value === "") return d;
+      const v = Number(el.value);
+      return Number.isFinite(v) ? v : d;
+    };
+    const on = (id) => {
+      const el = document.getElementById(id);
+      return el ? !!el.checked : true;
+    };
+    const body = {
+      beast_mode: !!(document.getElementById("beastToggle") && document.getElementById("beastToggle").checked),
+      learning: {
+        path_win_pct: num("setPathWin", 7),
+        hold_fraction: num("setHoldFrac", 0.35),
+        near_certain_bar: num("setNearBar", 90),
+        fade_min_n: num("setFadeMinN", 20),
+        fade_wr_threshold: num("setFadeWr", 0.42),
+        fade_max_weight_share: num("setFadeCap", 0.18),
+        anti_min_tries: num("setAntiMin", 15),
+        anti_win_rate: num("setAntiWr", 0.62),
+        anti_max_bonus: num("setAntiCap", 0.12),
+        cold_start_samples: num("setColdN", 15),
+        calibrate_samples: num("setCalN", 20),
+        exploit_samples: num("setExpN", 80),
+      },
+      trading: {
+        min_confluence: num("setMinConf", 0.42),
+        min_directional_conf: num("setMinDirConf", 50),
+        top_n_agreement: num("setTopN", 3),
+        law_lock_after_wrongs: num("setLawWrongs", 2),
+        law_lock_windows: num("setLawWindows", 1),
+        law_shadow_early_unlock_rights: num("setLawShadow", 1),
+      },
+      huddle: {
+        enabled: on("setHuddleOn"),
+        hour_ct: num("setHuddleHour", 3),
+        duration_minutes: num("setHuddleDur", 15),
+        rebuild_limit: num("setHuddleRebuild", 400),
+      },
+      ui: {
+        sound_enabled: on("setSoundOn"),
+        sound_up: on("setSoundUp"),
+        sound_down: on("setSoundDown"),
+        sound_swap: on("setSoundSwap"),
+        sound_bell: on("setSoundBell"),
+        beam_glow: on("setBeamGlow"),
+        watermark_opacity: num("setWatermark", 0.18),
+      },
+    };
+    const st = document.getElementById("settingsSaveStatus");
+    try {
+      const r = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const s = await r.json();
+      window.applySettingsSnapshot(s);
+      if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
+    } catch (e) {
+      if (st) st.textContent = "Save failed: " + e;
+    }
+  }
+
+  function bindSave() {
+    const btn = document.getElementById("btnSaveSettings");
+    if (!btn || btn.__wired) return;
+    btn.__wired = true;
+    btn.addEventListener("click", fallbackCollectAndSave);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindSave);
+  } else {
+    bindSave();
+  }
+})();
 
 /* ===== LIVE UPDATE PATCH ===== */
 (function () {
