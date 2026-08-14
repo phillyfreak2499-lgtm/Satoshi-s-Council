@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     ANALYSIS_INTERVAL: float = 4.0          # fallback / single-table
     ANALYSIS_INTERVAL_BTC: float = 4.5
     ANALYSIS_INTERVAL_ETH: float = 4.5
+    # Adaptive cadence (quality > frequency)
+    ADAPTIVE_INTERVAL: bool = True
+    ANALYSIS_INTERVAL_QUIET: float = 7.0   # both WAIT + calm
+    ANALYSIS_INTERVAL_ACTIVE: float = 4.0  # near lock / late hour
+
     HTTP_TIMEOUT: float = 4.0
     KLINE_LIMIT: int = 90
     ANALYSIS_INTERVAL_FLAT: float = 6.0

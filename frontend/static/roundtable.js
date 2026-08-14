@@ -1490,6 +1490,33 @@
       ctx.fillStyle = "#f0d78a";
       const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
       ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, cy + pr + 30);
+
+      try {
+        const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
+        if (q != null) {
+          ctx.font = "600 9px Share Tech Mono, monospace";
+          ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
+          ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
+        }
+      } catch (e) {}
+      try {
+        const key = which === "ethereum" ? "ethereum" : "bitcoin";
+        const sfx = sealFX[key];
+        if (sfx && sfx.until > Date.now() && !reduceMotion) {
+          const a = Math.max(0, (sfx.until - Date.now()) / 1100);
+          ctx.save();
+          ctx.globalAlpha = Math.min(0.95, a + 0.2);
+          ctx.strokeStyle = typeof gold !== "undefined" ? gold : "#f0c24b";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(cx, (typeof portraitY !== "undefined" ? portraitY : cy), (typeof pr !== "undefined" ? pr : 40) + 6 + (1 - a) * 12, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.font = "800 10px Orbitron, monospace";
+          ctx.fillStyle = "#f0c24b";
+          ctx.fillText("SEALED", cx, (typeof portraitY !== "undefined" ? portraitY : cy));
+          ctx.restore();
+        }
+      } catch (e) {}
     } else {
       ctx.fillStyle = "#a8c0d8";
       ctx.fillText(dir, cx, cy + pr + 16);
@@ -1527,7 +1554,16 @@
     ctx.font = "600 9px Share Tech Mono, monospace";
     ctx.fillStyle = focused ? "rgba(180,200,220,0.75)" : "rgba(140,160,180,0.45)";
     ctx.textAlign = "center";
-    ctx.fillText(String(series).slice(0, 18) + (strike != null ? (" · " + strike) : ""), cx, cy + ringR + 28);
+    try {
+      let ladder = String(series).slice(0, 18) + (strike != null ? (" · " + strike) : "");
+      if (strike != null && isFinite(Number(strike))) {
+        const s = Number(strike);
+        const step = s >= 1000 ? 1000 : (s >= 100 ? 50 : 5);
+        ladder = Math.round(s - step) + " · " + Math.round(s) + " · " + Math.round(s + step);
+      }
+      ctx.fillText(ladder, cx, cy + ringR + 28);
+    } catch (e) { ctx.fillText(String(series), cx, cy + ringR + 28); }
+
     ctx.restore();
   }
 
@@ -1582,6 +1618,33 @@
       ctx.fillStyle = "#d8f0ff";
       const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
       ctx.fillText(conf + "%" + oddsTxt + " · FOLLOW THIS", cx, cy + pr + 34);
+
+      try {
+        const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
+        if (q != null) {
+          ctx.font = "600 9px Share Tech Mono, monospace";
+          ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
+          ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
+        }
+      } catch (e) {}
+      try {
+        const key = which === "ethereum" ? "ethereum" : "bitcoin";
+        const sfx = sealFX[key];
+        if (sfx && sfx.until > Date.now() && !reduceMotion) {
+          const a = Math.max(0, (sfx.until - Date.now()) / 1100);
+          ctx.save();
+          ctx.globalAlpha = Math.min(0.95, a + 0.2);
+          ctx.strokeStyle = typeof gold !== "undefined" ? gold : "#f0c24b";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(cx, (typeof portraitY !== "undefined" ? portraitY : cy), (typeof pr !== "undefined" ? pr : 40) + 6 + (1 - a) * 12, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.font = "800 10px Orbitron, monospace";
+          ctx.fillStyle = "#f0c24b";
+          ctx.fillText("SEALED", cx, (typeof portraitY !== "undefined" ? portraitY : cy));
+          ctx.restore();
+        }
+      } catch (e) {}
     } else {
       ctx.fillStyle = "#a8c0d8";
       ctx.fillText(dir === "WAIT" ? "WAIT" : String(dir), cx, cy + pr + 18);
@@ -1605,6 +1668,7 @@
     // Dual Floor: two chairs side-by-side
     if (mode === "floor" && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
+      try { drawTrailFX(ctx); } catch(e) {}
       return;
     }
 

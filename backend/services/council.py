@@ -1,10 +1,10 @@
+import time
 """
 Council orchestrator – wires pipeline, agents, leader, store, and continuous loop.
 Includes nested sub-council micro-bots behind each specialist.
 """
 from __future__ import annotations
 import asyncio
-import time
 from typing import Any, Dict, List
 from datetime import datetime, timezone
 from loguru import logger
@@ -111,8 +111,6 @@ class Council:
         self._task: asyncio.Task | None = None
         self.running = False
         self._last_learned_ids: set = set()
-        self._shadow_book: list = []
-        self._last_settle_review = None
         self.huddle = NightlyHuddle()
 
     async def start(self):
@@ -188,7 +186,47 @@ class Council:
             delay = max(0.2, interval - elapsed)
             await asyncio.sleep(delay)
 
+
+    async def _restore_open_lock(self) -> None:
+        """Persist one-call integrity across process restart."""
+        if getattr(self, "_lock_restored", False):
+            return
+        self._lock_restored = True
+        try:
+            if self.leader._entry_dir or self.leader._active_dir():
+                return
+            acc = await self.store.get_accuracy(asset=self.asset)
+            opens = acc.get("open_log") or []
+            if not isinstance(opens, list):
+                return
+            for row in opens:
+                if not isinstance(row, dict):
+                    continue
+                direction = row.get("direction") or ""
+                side = "UP" if direction in ("UP", "UP_HOLD") else ("DOWN" if direction in ("DOWN", "DOWN_HOLD") else None)
+                if side not in ("UP", "DOWN"):
+                    continue
+                ticker = row.get("ticker") or ""
+                conf = int(row.get("confidence") or 70)
+                up = row.get("entry_side_pct") or row.get("open_price")
+                self.leader._set_window_lock(
+                    ticker, side, conf, 0.0, up_pct=up, call_phase="entry"
+                )
+                if row.get("close_time"):
+                    self.leader._locked_window = str(row["close_time"])
+                logger.info(
+                    f"[{self.asset}/{self.leader_name}] Restored open lock {side} "
+                    f"ticker={ticker}"
+                )
+                break
+        except Exception as e:
+            logger.debug(f"lock restore skip ({self.asset}): {e}")
+
     async def analyze_once(self) -> Dict[str, Any]:
+        try:
+            await self._restore_open_lock()
+        except Exception:
+            pass
         # Refresh edge stats before synthesis so WAIT bar tracks lifetime log
         try:
             self.leader.update_edge_from_accuracy(await self.store.get_accuracy(asset=self.asset))
@@ -402,10 +440,6 @@ class Council:
             ml = parse_mins_left(close_t or market_data.get("close_time"))
             if ml is not None:
                 regime_features["mins_left"] = ml
-            # Stable hourly window id — ATM ticker hops must not clear the lock
-            ct_id = close_time or close_t or market_data.get("close_time")
-            if ct_id:
-                regime_features["close_time"] = ct_id
             # Bid-ask spread in cents for Chair gate
             try:
                 bid = market_data.get("kalshi_yes_bid")
@@ -496,6 +530,34 @@ class Council:
 
         # Attach Kalshi target so settlement grades against floor_strike
         decision["kalshi_target"] = market_data.get("kalshi_floor_strike")
+
+        # Lock quality score (0–100): confluence × odds band × spread
+        try:
+            conf = float(decision.get("confidence") or 0)
+            up = up_pct
+            lean = decision.get("direction")
+            so = None
+            if lean in ("UP", "DOWN") and up is not None:
+                so = float(up) if lean == "UP" else (100.0 - float(up))
+            band = 1.0
+            if so is not None:
+                if 40 <= so <= 65:
+                    band = 1.0
+                elif 35 <= so <= 75:
+                    band = 0.85
+                else:
+                    band = 0.65
+            spread = (regime_features or {}).get("spread_cents") if isinstance(regime_features, dict) else None
+            sp = 1.0
+            if spread is not None:
+                sp = max(0.5, 1.0 - (float(spread) / 12.0))
+            q = int(max(0, min(100, conf * band * sp)))
+            decision["quality_score"] = q
+            if decision.get("locked_call") and isinstance(decision["locked_call"], dict):
+                decision["locked_call"]["quality_score"] = q
+        except Exception:
+            pass
+
         # Shadow book: would a stricter 45–60¢ band have locked?
         try:
             from backend.config import settings as _s
@@ -553,6 +615,7 @@ class Council:
                 "lean": decision.get("lean"),  # underlying UP/DOWN when direction is SWAP/HOLD
                 "call_phase": decision.get("call_phase"),
                 "locked_call": decision.get("locked_call"),  # clear follower-readable lock
+                "quality_score": decision.get("quality_score"),
                 "display_direction": (
                     "1/4 UP HOLD" if decision["direction"] == "UP_HOLD"
                     else "1/4 DOWN HOLD" if decision["direction"] == "DOWN_HOLD"
@@ -661,30 +724,27 @@ class Council:
         """
         recent = await self.store.recent_settled_calls(limit=40)
         learned = 0
+        FINISH = {"finish_match", "finish_miss"}
         for row in reversed(recent):  # chronological
             rid = row.get("id")
             if rid is None or rid in self._last_learned_ids:
                 continue
+            settle_reason = row.get("settle_reason") or ""
             outcome = row.get("outcome")
+            # Never train on VOID / path-era / unresolved
+            if outcome in ("VOID", None, "") or settle_reason not in FINISH:
+                self._last_learned_ids.add(rid)
+                continue
             votes = row.get("agent_votes") or {}
             if outcome in ("UP", "DOWN") and votes:
                 reg = row.get("regime") or row.get("regime_key")
                 if not reg:
                     reg = regime_from_call(row.get("called_at"), row.get("close_time"))
-                # Reduced learning credit for near_certain freebies (entry already extreme)
-                credit = 1.0
-                settle_reason = row.get("settle_reason") or ""
-                open_px = row.get("open_price")
-                near_bar = float(getattr(settings, "NEAR_CERTAIN_ENTRY_BAR", 88.0))
-                near_credit = float(getattr(settings, "NEAR_CERTAIN_LEARN_CREDIT", 0.25))
-                try:
-                    if settle_reason == "near_certain" and open_px is not None and float(open_px) >= near_bar:
-                        credit = near_credit
-                except Exception:
-                    pass
-                self.learner.learn_from_settled(votes, outcome, regime=reg, credit=credit)
+                self.learner.learn_from_settled(votes, outcome, regime=reg, credit=1.0)
                 learned += 1
             self._last_learned_ids.add(rid)
+            if learned >= 5:
+                break
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:
             keep = set(sorted(self._last_learned_ids)[-300:])

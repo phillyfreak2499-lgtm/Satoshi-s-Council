@@ -3503,3 +3503,39 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
     object-fit: contain !important;
   }
 }
+
+
+/* ===== Hour aurora + focus spotlight + reduced motion ===== */
+body.floor-mode::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 40, 80, calc(0.12 + (1 - var(--hour-frac, 0.5)) * 0.08)) 0%,
+    transparent 35%,
+    rgba(80, 30, 10, calc(0.05 + (1 - var(--hour-frac, 0.5)) * 0.18)) 100%
+  );
+  transition: background 1.2s ease;
+}
+body.floor-mode #roundtable {
+  position: relative;
+  z-index: 1;
+}
+body[data-focus-table="bitcoin"] .floor-eth-dim,
+body[data-focus-table="ethereum"] .floor-btc-dim {
+  filter: brightness(0.55) saturate(0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summon-video-wrap video,
+  .celebrate-video-wrap video,
+  .floor-money-rain video { animation: none !important; }
+  body.floor-mode::before { transition: none; }
+  .hdot { box-shadow: none !important; }
+}
+body.reduce-motion .floor-money-rain { display: none !important; }
+body.reduce-motion #ledWindow::before,
+body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5; }

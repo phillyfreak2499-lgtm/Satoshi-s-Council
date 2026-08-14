@@ -166,6 +166,25 @@ class DualOrchestrator:
                 float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.5)),
                 4.0,  # dual hard floor — protects rate limits
             )
+            if getattr(settings, "ADAPTIVE_INTERVAL", True):
+                try:
+                    active = False
+                    for c in self._councils():
+                        st = c.latest_state or {}
+                        d = st.get("decision") or {}
+                        lc = d.get("locked_call") or st.get("locked_call") or {}
+                        ml = (st.get("lock_timeline") or {}).get("mins_left")
+                        dir_ = (d.get("direction") or "WAIT").upper()
+                        if lc.get("locked") or dir_ in ("UP", "DOWN") or (d.get("summary") or "").startswith("LEAN"):
+                            active = True
+                        if ml is not None and float(ml) <= 20:
+                            active = True
+                    if active:
+                        interval = float(getattr(settings, "ANALYSIS_INTERVAL_ACTIVE", 4.0))
+                    else:
+                        interval = max(interval, float(getattr(settings, "ANALYSIS_INTERVAL_QUIET", 7.0)))
+                except Exception:
+                    pass
             if getattr(settings, "BEAST_MODE", False):
                 interval = max(3.5, interval * 0.9)  # still calm under BEAST
             sleep_for = max(0.8, interval - elapsed)
