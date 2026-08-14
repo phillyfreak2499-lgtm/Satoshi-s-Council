@@ -417,7 +417,7 @@
     </section>
 
     <!-- Large floating 7-segment FLOOR counter — elevated, independent -->
-    <div id="floorLed" class="led-float led-floor" aria-label="Floor bot choice count">
+    <div id="floorLed" class="led-float led-floor hidden" aria-hidden="true" style="display:none!important" aria-label="Floor bot choice count (removed)">
       <div class="led-bezel led-bezel-lg">
         <div class="led-label">FLOOR</div>
         <div class="led-row-lg">
@@ -469,6 +469,8 @@
       <div id="marketStrip">
         <span>BTC <b id="btcPrice">—</b></span>
         <span>ETH <b id="ethPrice">—</b></span>
+        <span id="ethDecisionStrip" class="eth-decision-strip">ETH <b id="ethDir">—</b> <b id="ethConf"></b></span>
+        <span id="btcDecisionStrip" class="btc-decision-strip">BTC <b id="btcDir">—</b> <b id="btcConf"></b></span>
         <span class="odds-live">UP <b id="liveUpPct">—</b></span>
         <span class="odds-live down">DOWN <b id="liveDownPct">—</b></span>
         <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
