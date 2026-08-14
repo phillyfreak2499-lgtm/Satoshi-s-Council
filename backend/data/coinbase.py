@@ -12,7 +12,8 @@ from backend.config import settings
 class CoinbaseClient:
     BASE = "https://api.exchange.coinbase.com"
 
-    def __init__(self):
+    def __init__(self, product_id: str | None = None):
+        self.product_id = product_id or "BTC-USD"
         timeout = httpx.Timeout(float(getattr(settings, "HTTP_TIMEOUT", 4.0)), connect=3.0)
         self.client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
         self.last_price: Optional[float] = None
@@ -22,7 +23,7 @@ class CoinbaseClient:
 
     async def get_spot(self) -> Dict[str, Any]:
         try:
-            r = await self.client.get(f"{self.BASE}/products/BTC-USD/ticker")
+            r = await self.client.get(f"{self.BASE}/products/{self.product_id}/ticker")
             r.raise_for_status()
             data = r.json()
             price = float(data.get("price") or data.get("last") or 0)
