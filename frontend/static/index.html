@@ -464,11 +464,13 @@
       <b id="ctUp">0</b><b id="ctDown">0</b><b id="ctWait">0</b><span id="ctQuorum"></span>
     </div>
     <footer>
-      <div id="finalDecision">
+      <div id="finalDecision" class="status-strip" aria-live="polite">
         <span class="label">COUNCIL</span>
+        <span id="decisionPhase" class="decision-phase phase-entry">—</span>
         <span id="decisionDir" class="dir WAIT">WAIT</span>
-        <span id="decisionConf">—</span>
-        <span id="decisionSummary"></span>
+        <span id="decisionConf" class="decision-conf">—</span>
+        <span id="decisionLock" class="decision-lock"></span>
+        <span id="decisionSummary" class="decision-summary"></span>
       </div>
       <div id="marketStrip">
         <span>BTC <b id="btcPrice">—</b></span>
