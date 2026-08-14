@@ -1530,6 +1530,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
 
+  function isPhoneDesk() {
+    try {
+      return !!(window.matchMedia && window.matchMedia("(max-width: 480px)").matches);
+    } catch (e) {
+      return window.innerWidth <= 480;
+    }
+  }
+
   function drawDualFloor(w, h) {
     ctx.fillStyle = "#02040a";
     ctx.fillRect(0, 0, w, h);
@@ -1843,8 +1851,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     resizeRoundtable();
     const w = canvas.width, h = canvas.height;
 
-    // Dual Floor: two chairs side-by-side
-    if (mode === "floor" && typeof isDualMode === "function" && isDualMode()) {
+    // Dual Floor: two chairs side-by-side — phone is one focused table
+    if (mode === "floor" && !isPhoneDesk() && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
       try { drawTrailFX(ctx); } catch(e) {}
       return;

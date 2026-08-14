@@ -4393,3 +4393,262 @@ body.mode-settings #settingsView #adminToolsCard {
   z-index: 3 !important;
   pointer-events: auto !important;
 }
+
+/* ===== PHONE 390 — layer on current desk, do not replace it ===== */
+@media (max-width: 480px) {
+  html, body {
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+  #app {
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    padding-left: env(safe-area-inset-left, 0px) !important;
+    padding-right: env(safe-area-inset-right, 0px) !important;
+  }
+
+  #app > header {
+    order: 1;
+    flex: 0 0 auto !important;
+    position: relative !important;
+    z-index: 20 !important;
+    overflow: visible !important;
+  }
+  #app > header .header-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  #app > header .mode-tabs {
+    order: 2;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 6px !important;
+    padding: 4px 6px !important;
+  }
+  #app > header .mode-tab,
+  #app > header .focus-tab,
+  #app > header #soundToggle,
+  #app > header .beast-badge,
+  #app > header #beastBadge {
+    flex: 0 0 auto !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    padding: 10px 12px !important;
+    font-size: 0.68rem !important;
+    line-height: 1.1 !important;
+  }
+  #app > header .zt-logo-btn,
+  #app > header .zt-header-logo {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  #windowLed,
+  #windowLed.led-window,
+  #windowLed.led-float,
+  body.mode-art #windowLed,
+  body.mode-art #windowLed.led-window,
+  body.floor-mode #windowLed,
+  body.floor-mode #windowLed.led-window,
+  body.mode-floor #windowLed,
+  body.mode-floor #windowLed.led-window {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    order: 2;
+    z-index: 6 !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    margin: 6px auto 0 !important;
+    width: fit-content !important;
+    max-width: calc(100vw - 24px) !important;
+    pointer-events: none !important;
+  }
+  body.mode-dashboard #windowLed,
+  body.mode-bots #windowLed,
+  body.mode-ranks #windowLed,
+  body.mode-paper #windowLed,
+  body.mode-charts #windowLed,
+  body.mode-settings #windowLed {
+    display: none !important;
+  }
+
+  #mainTable,
+  #settingsView,
+  #botsView,
+  #ranksView,
+  #paperView,
+  #chartsView {
+    order: 3;
+  }
+  #app > footer {
+    order: 10;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+  #app > footer #finalDecision,
+  #app > footer #finalDecision.status-strip {
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+  }
+
+  #mainTable {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+  #tableStage,
+  #mainTable #tableStage,
+  #mainTable .table-stage {
+    order: 1;
+    width: 100% !important;
+    min-height: min(68dvh, 520px) !important;
+    height: min(68dvh, 520px) !important;
+    max-height: none !important;
+  }
+  #lifetimePanel {
+    order: 2;
+    display: flex !important;
+    padding-top: 8px !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  body.mode-art #lifetimePanel {
+    padding-top: 8px !important;
+  }
+  #debatePanel,
+  #hierarchyPanel,
+  body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
+    display: none !important;
+  }
+
+  body.floor-mode #app > header,
+  body.mode-floor #app > header {
+    display: flex !important;
+  }
+  body.floor-mode #app > header .header-row,
+  body.mode-floor #app > header .header-row {
+    display: none !important;
+  }
+  body.floor-mode #app > header .mode-tabs,
+  body.mode-floor #app > header .mode-tabs {
+    display: flex !important;
+  }
+  body.floor-mode #app > footer,
+  body.mode-floor #app > footer {
+    display: flex !important;
+  }
+  body.floor-mode #mainTable,
+  body.floor-mode #tableStage,
+  body.floor-mode .table-stage,
+  body.mode-floor #mainTable,
+  body.mode-floor #tableStage {
+    height: auto !important;
+    min-height: min(72dvh, 560px) !important;
+    max-height: none !important;
+  }
+  body.floor-mode #lifetimePanel,
+  body.mode-floor #lifetimePanel {
+    display: none !important;
+  }
+
+  body.mode-settings #settingsView:not(.hidden),
+  body.mode-settings #settingsView.info-view:not(.hidden) {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    z-index: 80 !important;
+    padding: 8px 12px 32px !important;
+  }
+  body.mode-settings #app > header {
+    pointer-events: none !important;
+    z-index: 4 !important;
+  }
+  body.mode-settings #app > header .mode-tab,
+  body.mode-settings #app > header .focus-tab,
+  body.mode-settings #app > header #tabSettings {
+    pointer-events: auto !important;
+  }
+  body.mode-settings #settingsView .set-check {
+    min-height: 44px !important;
+    pointer-events: auto !important;
+    z-index: 20 !important;
+  }
+  body.mode-settings #settingsView .set-check input[type="checkbox"] {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    pointer-events: auto !important;
+  }
+
+  .password-gate,
+  .summon-gate,
+  #adminGate.admin-gate {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: max(20px, env(safe-area-inset-top, 20px)) 16px max(20px, env(safe-area-inset-bottom, 20px)) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+  }
+  .password-card,
+  .gate-inner,
+  .tut-card,
+  .admin-card {
+    margin: auto !important;
+    position: relative !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    width: min(360px, 92vw) !important;
+    max-width: 92vw !important;
+  }
+
+  .lightsaber-wrap {
+    top: auto !important;
+    bottom: auto !important;
+    left: 8px !important;
+    transform: none !important;
+    width: 10px !important;
+    height: 120px !important;
+  }
+
+  .info-view:not(.hidden),
+  .charts-view:not(.hidden) {
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
