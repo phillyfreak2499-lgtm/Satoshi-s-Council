@@ -870,13 +870,20 @@
     }));
     seatList.sort((a, b) => a.rank - b.rank || String(a.name).localeCompare(String(b.name)));
 
-    const ringR = radius * 0.92; // classic round-table radius
+    // GOAL visual: specialists sit on the FLOOR (outside table), not on the table seats.
+    // Table surface is reserved for the Chair + locked call plaque.
+    const onFloor = true; // always keep bots off the table seats
+    const ringR = onFloor
+      ? radius * (mode === "floor" ? 1.18 : 1.22)  // outer floor ring
+      : radius * 0.92;
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
       const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
-      // Subtle hierarchy: top-3 sit a hair closer to the Chair (still one ring)
+      // Hierarchy still pulls stronger bots slightly inward, but all stay outside table
       const rk = item.rank;
-      const pull = rk <= 1 ? 0.88 : rk <= 3 ? 0.92 : rk <= 7 ? 0.96 : 1.0;
+      const pull = onFloor
+        ? (rk <= 1 ? 0.94 : rk <= 3 ? 0.96 : rk <= 7 ? 0.98 : 1.0)
+        : (rk <= 1 ? 0.88 : rk <= 3 ? 0.92 : rk <= 7 ? 0.96 : 1.0);
       const rSeat = ringR * pull;
       positions[item.name] = {
         x: cx + Math.cos(angle) * rSeat,
@@ -887,6 +894,7 @@
         clockwiseLabel: i + 1, // 1..N around the ring
         rSeat,
         tier: rk <= 3 ? 0 : rk <= 7 ? 1 : 2,
+        onFloor: true,
       };
     });
 
@@ -1177,9 +1185,13 @@
       ctx.fillText(lawLocked() ? "LOCKED" : `${showDir} ${agent.confidence}%`, pos.x, pos.y + r + (title ? 41 : 30));
     });
 
-    // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
-    const leaderDir = state.decision?.direction || "WAIT";
-    const leaderConf = state.decision?.confidence || 0;
+    // ===== Central Leader – CHAIR + LOCKED CALL plaque (GOAL CONTRACT) =====
+    // Prefer locked_call object when present so follower bots + humans see one clear signal
+    const lc = state.decision?.locked_call || null;
+    const isLocked = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
+    const leaderDir = isLocked ? lc.direction : (state.decision?.direction || "WAIT");
+    const leaderConf = isLocked ? (lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
+    const entryOdds = isLocked && lc.entry_odds_pct != null ? Number(lc.entry_odds_pct) : null;
     const leaderPulse = 1 + 0.04 * Math.sin(time * 0.0035);
     const lr = 72 * leaderPulse; // portrait radius — large center knight
     const scL = strongColor(leaderDir);
@@ -1263,24 +1275,54 @@
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Labels under portrait (don't cover the face)
-    ctx.font = "700 11px Orbitron, sans-serif";
-    ctx.fillStyle = GOLD;
+    // Labels under portrait (don't cover the face) — locked call is the hero
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(240, 193, 74, 0.55)";
-    ctx.shadowBlur = 8;
-    ctx.fillText("SATOSHI", cx, cy + lr + 16);
-    ctx.shadowBlur = 0;
-    ctx.font = "700 13px Orbitron, sans-serif";
-    ctx.fillStyle = "#ffffff";
-    ctx.shadowColor = scL;
-    ctx.shadowBlur = 12;
-    ctx.fillText(leaderDir, cx, cy + lr + 32);
-    ctx.shadowBlur = 0;
-    ctx.font = "11px Orbitron, sans-serif";
-    ctx.fillStyle = "#e8f4ff";
-    ctx.fillText(leaderConf + "%", cx, cy + lr + 46);
+    if (isLocked) {
+      // Big LOCKED badge
+      ctx.font = "800 12px Orbitron, sans-serif";
+      ctx.fillStyle = "#ffb020";
+      ctx.shadowColor = "rgba(255, 160, 0, 0.9)";
+      ctx.shadowBlur = 14;
+      ctx.fillText("LOCKED · ONE CALL", cx, cy + lr + 14);
+      ctx.shadowBlur = 0;
+      ctx.font = "800 18px Orbitron, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = scL;
+      ctx.shadowBlur = 16;
+      ctx.fillText(leaderDir, cx, cy + lr + 34);
+      ctx.shadowBlur = 0;
+      ctx.font = "700 12px Orbitron, sans-serif";
+      ctx.fillStyle = "#e8f4ff";
+      const oddsTxt = entryOdds != null ? ` · ${Math.round(entryOdds)}¢` : "";
+      ctx.fillText(`${leaderConf}%${oddsTxt}`, cx, cy + lr + 52);
+      ctx.font = "700 10px Orbitron, sans-serif";
+      ctx.fillStyle = "rgba(0, 232, 255, 0.95)";
+      ctx.fillText("FOLLOW THIS · IRREVERSIBLE", cx, cy + lr + 68);
+      // small goal line
+      ctx.font = "600 9px Rajdhani, Inter, sans-serif";
+      ctx.fillStyle = "rgba(180, 210, 255, 0.75)";
+      ctx.fillText("GOAL · 1 window-end guess @ best odds (<80%)", cx, cy + lr + 84);
+    } else {
+      ctx.font = "700 11px Orbitron, sans-serif";
+      ctx.fillStyle = GOLD;
+      ctx.shadowColor = "rgba(240, 193, 74, 0.55)";
+      ctx.shadowBlur = 8;
+      ctx.fillText("SATOSHI", cx, cy + lr + 16);
+      ctx.shadowBlur = 0;
+      ctx.font = "700 13px Orbitron, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = scL;
+      ctx.shadowBlur = 12;
+      ctx.fillText(leaderDir, cx, cy + lr + 32);
+      ctx.shadowBlur = 0;
+      ctx.font = "11px Orbitron, sans-serif";
+      ctx.fillStyle = "#e8f4ff";
+      ctx.fillText(leaderConf + "%", cx, cy + lr + 46);
+      ctx.font = "600 9px Rajdhani, Inter, sans-serif";
+      ctx.fillStyle = "rgba(180, 210, 255, 0.65)";
+      ctx.fillText("GOAL · 1 window-end guess @ best odds (<80%)", cx, cy + lr + 62);
+    }
 
     // Scanline overlay on canvas itself (subtle)
     ctx.fillStyle = "rgba(0, 0, 0, 0.04)";
