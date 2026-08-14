@@ -3313,21 +3313,15 @@ body:not(.floor-mode) .floor-money-rain {
 .dual-focus-banner { background: rgba(0,20,40,0.6); }
 
 
-/* TIMER CENTERED — middle of screen bottom (not corner) */
+/* TIMER must not sit on the card grid. Centered placement retired. */
 .led-window,
 body.floor-mode .led-window,
 body.mode-art .led-window {
-  left: 50% !important;
+  left: 16px !important;
   right: auto !important;
-  bottom: 88px !important;
+  bottom: 92px !important;
   top: auto !important;
-  transform: translateX(-50%) !important;
-  opacity: 1 !important;
-  z-index: 50 !important;
-}
-body.floor-mode .led-window {
-  bottom: 96px !important;
-  transform: translateX(-50%) scale(1.15) !important;
+  transform: none !important;
 }
 
 /* Floor bot count LED removed */
@@ -3728,4 +3722,126 @@ body.floor-mode .floor-music-btn {
   header .live-clock { font-size: 11px; margin-left: 8px; }
   header .accuracy-badge .acc-detail { display: none; }
   header #lastUpdate { display: none; }
+}
+
+/* ===== QA LOCK @ 1280×800 — cards, ticker, hierarchy rail ===== */
+#windowLed,
+#windowLed.led-window,
+#windowLed.led-float {
+  position: fixed !important;
+  left: 16px !important;
+  right: auto !important;
+  bottom: 92px !important;
+  top: auto !important;
+  transform: none !important;
+  z-index: 35 !important;
+}
+body.floor-mode #windowLed,
+body.floor-mode #windowLed.led-window {
+  left: 16px !important;
+  bottom: 24px !important;
+  transform: none !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+body.mode-art #windowLed,
+body.mode-art #windowLed.led-window {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+body.mode-dashboard #windowLed,
+body.mode-dashboard #windowLed.led-window,
+body.mode-dashboard #windowLed.led-float,
+body.mode-bots #windowLed,
+body.mode-bots #windowLed.led-window,
+body.mode-ranks #windowLed,
+body.mode-paper #windowLed,
+body.mode-charts #windowLed,
+body.mode-settings #windowLed {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#dashboardOverlay {
+  align-content: flex-start !important;
+  justify-content: flex-start !important;
+  overflow: auto !important;
+  padding: 12px 12px 20px !important;
+  pointer-events: auto;
+}
+#botsView.info-view:not(.hidden) {
+  padding-bottom: 28px;
+}
+.bot-blurb {
+  overflow: visible;
+  white-space: normal;
+}
+
+footer {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  flex-shrink: 0 !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  clip-path: none !important;
+  padding: 8px 14px 10px !important;
+  gap: 6px;
+}
+#finalDecision.status-strip,
+#finalDecision {
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+#decisionSummary,
+#finalDecision #decisionSummary {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  max-width: none !important;
+  flex: 1 1 100% !important;
+}
+#marketStrip {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  gap: 6px 12px !important;
+  overflow: visible !important;
+}
+
+body.show-hierarchy #mainTable {
+  min-height: 0 !important;
+}
+body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  margin: 8px 18px 8px 0 !important;
+}
+#hierarchyPanel .hierarchy-hint {
+  flex: 0 0 auto;
+}
+#hierarchyPanel .hierarchy-list,
+#hierarchyList.hierarchy-list {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 8px !important;
+}
+#hierarchyPanel .open-charts-btn,
+#openChartsBtn.open-charts-btn {
+  flex: 0 0 auto !important;
+  margin: 8px 10px 12px !important;
+  position: relative;
+  z-index: 3;
 }

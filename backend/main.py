@@ -482,6 +482,40 @@ if STATIC_DIR.is_dir():
             headers={"Cache-Control": "no-cache"},
         )
 
+    @app.get("/app.js")
+    async def app_js_stub():
+        path = STATIC_DIR / "app.js"
+        if not path.exists():
+            from fastapi.responses import Response
+            return Response("// desk UI is /roundtable.js\n", media_type="application/javascript")
+        return FileResponse(
+            path,
+            media_type="application/javascript",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/favicon.ico")
+    async def favicon_ico():
+        ico = STATIC_DIR / "favicon.ico"
+        svg = STATIC_DIR / "favicon.svg"
+        if ico.exists():
+            return FileResponse(ico, media_type="image/x-icon",
+                                headers={"Cache-Control": "public, max-age=86400"})
+        if svg.exists():
+            return FileResponse(svg, media_type="image/svg+xml",
+                                headers={"Cache-Control": "public, max-age=86400"})
+        from fastapi.responses import Response
+        return Response(status_code=404)
+
+    @app.get("/favicon.svg")
+    async def favicon_svg():
+        path = STATIC_DIR / "favicon.svg"
+        if not path.exists():
+            from fastapi.responses import Response
+            return Response(status_code=404)
+        return FileResponse(path, media_type="image/svg+xml",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/summon-council.mp4")
     async def summon_video():
         from fastapi.responses import Response

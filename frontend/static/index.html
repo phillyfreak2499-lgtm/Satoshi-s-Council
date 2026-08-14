@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Satoshi’s Council / ZT</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="stylesheet" href="/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -163,15 +165,6 @@
           <div id="lightsaberLabel" class="lightsaber-label">0%</div>
         </div>
         <div id="dashboardOverlay" class="hidden"></div>
-        <!-- Digit timer only — hour ring stays removed. Lives on the table so it cannot cover the header or hierarchy. -->
-        <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
-          <div class="led-bezel">
-            <div class="led-label">1H WINDOW</div>
-            <div id="ledWindowTime" class="led-digits led-time">--:--</div>
-            <div class="led-foot" id="ledWindowSub">until close</div>
-            <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
-          </div>
-        </div>
       </div>
 
 
@@ -487,6 +480,16 @@
           </div>
         </div>
         <div class="led-foot" id="ledQuorum">Q —</div>
+      </div>
+    </div>
+
+    <!-- Digit timer only — hour ring stays removed. Not inside the dashboard card grid. -->
+    <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
+      <div class="led-bezel">
+        <div class="led-label">1H WINDOW</div>
+        <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+        <div class="led-foot" id="ledWindowSub">until close</div>
+        <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
       </div>
     </div>
 
