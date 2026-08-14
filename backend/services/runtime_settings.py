@@ -74,6 +74,13 @@ DEFAULTS: Dict[str, Any] = {
         "law_lock_after_wrongs": 2,
         "law_lock_windows": 1,
         "law_shadow_early_unlock_rights": 1,
+        "window_lock_enabled": True,
+        "hysteresis_band": 14.0,
+        "flip_min_conf_delta": 18.0,
+        "conf_weight_power": 1.4,
+        "quiet_min_directional_conf": 80.0,
+        "quiet_atr_pct": 0.12,
+        "quiet_volume_percentile": 25.0,
     },
     # --- Huddle ---
     "huddle": {
