@@ -38,9 +38,79 @@ class Leader:
         self.wait_calls: int = 0
         self.directional_calls: int = 0
 
+        # Per-window lock (one firm decision per Kalshi ticker)
+        self._locked_ticker: Optional[str] = None
+        self._locked_dir: Optional[str] = None  # UP | DOWN
+        self._locked_conf: int = 0
+        self._locked_score: float = 0.0
+        self._locked_at: float = 0.0
+
     def _normalize_weights(self) -> None:
         total = sum(self.weights.values()) or 1.0
         self.weights = {k: v / total for k, v in self.weights.items()}
+
+
+    def _clear_window_lock(self) -> None:
+        self._locked_ticker = None
+        self._locked_dir = None
+        self._locked_conf = 0
+        self._locked_score = 0.0
+        self._locked_at = 0.0
+
+    def _set_window_lock(self, ticker: str, direction: str, conf: int, score: float) -> None:
+        """Lock the Chair to one firm side for this ticker."""
+        if direction in ("UP", "UP_HOLD"):
+            side = "UP"
+        elif direction in ("DOWN", "DOWN_HOLD"):
+            side = "DOWN"
+        else:
+            return
+        if not ticker:
+            return
+        import time
+        self._locked_ticker = ticker
+        self._locked_dir = side
+        self._locked_conf = int(conf)
+        self._locked_score = float(score)
+        self._locked_at = time.time()
+
+    def _lock_blocks_opposite(
+        self,
+        ticker: str | None,
+        lean: str | None,
+        conf: int,
+        score: float,
+    ) -> tuple:
+        """Return (blocked, reason). Opposite side blocked unless hysteresis clears."""
+        if not getattr(settings, "WINDOW_LOCK_ENABLED", True):
+            return False, ""
+        if not ticker or not lean or lean not in ("UP", "DOWN"):
+            return False, ""
+        if self._locked_ticker != ticker or not self._locked_dir:
+            return False, ""
+        if lean == self._locked_dir:
+            return False, ""
+
+        hysteresis = float(getattr(settings, "HYSTERESIS_BAND", 14))
+        min_delta = float(getattr(settings, "FLIP_MIN_CONF_DELTA", 18))
+        min_gap = float(getattr(settings, "FLIP_MIN_GAP_SEC", 90.0))
+
+        import time
+        age = time.time() - (self._locked_at or 0.0)
+        conf_ok = conf >= (self._locked_conf + hysteresis)
+        delta_ok = conf >= (self._locked_conf + min_delta)
+        gap_ok = age >= min_gap
+        score_ok = abs(score - self._locked_score) >= 0.28
+
+        if conf_ok and delta_ok and gap_ok and score_ok:
+            return False, ""
+
+        return True, (
+            f"window-lock {self._locked_dir} "
+            f"(need +{hysteresis:.0f} conf / Δ{min_delta:.0f}, "
+            f"have conf {conf} vs locked {self._locked_conf})"
+        )
+
 
     def update_edge_from_accuracy(self, accuracy: Dict[str, Any] | None) -> None:
         """Feed lifetime log stats so confluence bar can loosen or tighten."""
@@ -208,12 +278,15 @@ class Leader:
 
             # Hierarchy gate + conditional fade (invert chronic losers)
             w = base_w * getattr(s, "health_score", 1.0) * listen
+            # Confidence-weighted vote (power curve so 90% >> 55%)
+            power = float(getattr(settings, "CONF_WEIGHT_POWER", 1.4))
+            conf_w = (max(0.0, min(100.0, float(s.confidence or 0))) / 100.0) ** power
             signed = 0.0
             d = (s.direction or "WAIT").upper()
             if d in ("UP", "UP_HOLD"):
-                signed = s.confidence / 100.0
+                signed = conf_w
             elif d in ("DOWN", "DOWN_HOLD"):
-                signed = -s.confidence / 100.0
+                signed = -conf_w
             effective_dir = d
             if invert and signed != 0.0:
                 signed = -signed
@@ -381,6 +454,23 @@ class Leader:
         bars = self.adaptive_thresholds()
         threshold = bars["confluence"] / aggressiveness
         dir_conf_bar = bars["dir_conf"]
+
+        # Quiet / low-vol hard gate — raise the bar when edge is thin
+        quiet = False
+        if regime_features:
+            try:
+                atr_pct = regime_features.get("atr_pct") or regime_features.get("realized_vol")
+                vol_pctile = regime_features.get("volume_percentile")
+                if atr_pct is not None and float(atr_pct) < float(getattr(settings, "QUIET_ATR_PCT", 0.12)):
+                    quiet = True
+                if vol_pctile is not None and float(vol_pctile) < float(getattr(settings, "QUIET_VOLUME_PERCENTILE", 25)):
+                    quiet = True
+            except Exception:
+                pass
+        quiet_floor = float(getattr(settings, "QUIET_MIN_DIRECTIONAL_CONF", 80))
+        if quiet:
+            dir_conf_bar = max(dir_conf_bar, quiet_floor)
+            gate_notes.append(f"quiet-mode conf≥{quiet_floor:.0f}")
 
         direction: Direction = "WAIT"
         conf = settings.WAIT_DEFAULT_CONFIDENCE
@@ -562,6 +652,36 @@ class Leader:
                 summary += " · " + ", ".join(path_notes[:3])
 
 
+        # --- Per-window lock (one firm decision per ticker) ---
+        ticker = None
+        if regime_features:
+            ticker = regime_features.get("ticker") or regime_features.get("market_ticker")
+
+        # New ticker → clear previous lock
+        if ticker and self._locked_ticker and ticker != self._locked_ticker:
+            self._clear_window_lock()
+
+        if firm and lean in ("UP", "DOWN") and direction not in ("WAIT",):
+            blocked, lock_reason = self._lock_blocks_opposite(ticker, lean, conf, score)
+            if blocked:
+                if self._locked_dir:
+                    direction = self._locked_dir  # type: ignore[assignment]
+                    lean = self._locked_dir
+                    conf = max(55, min(int(conf), int(self._locked_conf)))
+                    firm = True
+                    summary = f"Window lock held {self._locked_dir} · {lock_reason}"
+                    if gate_notes:
+                        summary += " · " + ", ".join(gate_notes[:2])
+                else:
+                    direction = "WAIT"
+                    firm = False
+                    lean = None
+                    conf = max(int(conf), 70)
+                    summary = f"Flip blocked by window lock · {lock_reason}"
+            else:
+                if direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+                    self._set_window_lock(ticker or "", direction, conf, score)
+
         # Guardian caution (does not force WAIT — only trims confidence)
         guardian = next((s for s in signals if s.agent_name == "guardian"), None)
         if guardian and guardian.confidence > 70 and guardian.direction == "WAIT":
@@ -602,6 +722,8 @@ class Leader:
             "top_agree": bool(locals().get("top_agree", False)),
             "top_conflict": bool(locals().get("top_conflict", False)),
             "lean": lean,  # underlying UP/DOWN when direction is SWAP
+            "window_locked": bool(self._locked_ticker and self._locked_dir),
+            "locked_dir": self._locked_dir,
             "agent_details": details,
             "weights": {k: round(v, 3) for k, v in self.weights.items()},
             "learning": self.learner.snapshot(),
