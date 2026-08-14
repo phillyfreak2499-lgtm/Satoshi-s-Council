@@ -1,23 +1,37 @@
 """
-Unified data pipeline with graceful fallbacks. Owned conceptually by Guardian.
-Binance + Kalshi fetched in parallel for lowest end-to-end latency.
+Unified data pipeline with graceful fallbacks.
+Parameterized per asset (BTC / ETH) for dual-table mode.
 """
 from __future__ import annotations
 import asyncio
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from loguru import logger
 from backend.data.binance import BinanceClient
 from backend.data.kalshi import KalshiClient
 from backend.data.coinbase import CoinbaseClient
 from backend.services.runtime_settings import runtime_settings
+from backend.config import settings
 
 
 class DataPipeline:
-    def __init__(self):
-        self.binance = BinanceClient()
-        self.kalshi = KalshiClient()
-        self.coinbase = CoinbaseClient()
+    def __init__(
+        self,
+        symbol: Optional[str] = None,
+        series_ticker: Optional[str] = None,
+        coinbase_product: Optional[str] = None,
+        asset: str = "btc",
+    ):
+        self.asset = (asset or "btc").lower()
+        self.symbol = symbol or (settings.SYMBOL_ETH if self.asset == "eth" else settings.SYMBOL_BTC)
+        self.series_ticker = series_ticker or (
+            settings.SERIES_ETH if self.asset == "eth" else settings.SERIES_BTC
+        )
+        if coinbase_product is None:
+            coinbase_product = "ETH-USD" if self.asset == "eth" else "BTC-USD"
+        self.binance = BinanceClient(symbol=self.symbol)
+        self.kalshi = KalshiClient(series_ticker=self.series_ticker)
+        self.coinbase = CoinbaseClient(product_id=coinbase_product)
         self.last_good: Dict[str, Any] = {}
         self.health = {
             "binance": True,
@@ -36,10 +50,9 @@ class DataPipeline:
         t0 = time.perf_counter()
         self._cycle += 1
 
-        # Parallel primary sources — Binance + Kalshi (+ Coinbase if DUAL_SPOT)
-        from backend.config import settings
         tasks = [
             self.binance.get_snapshot(),
+            # kalshi needs spot for ATM pick — fetch binance first path via gather then refine
             self.kalshi.get_current_market_state(cycle=self._cycle),
         ]
         dual = bool(runtime_settings.get("dual_spot", True))
@@ -50,13 +63,29 @@ class DataPipeline:
         coinbase_data = results[2] if dual else {"source": "coinbase", "healthy": False, "price": None}
 
         if isinstance(binance_data, Exception):
-            logger.error(f"Binance gather error: {binance_data}")
+            logger.error(f"Binance gather error ({self.asset}): {binance_data}")
             binance_data = {"source": "binance", "healthy": False, "error": str(binance_data)}
         if isinstance(kalshi_data, Exception):
-            logger.error(f"Kalshi gather error: {kalshi_data}")
+            logger.error(f"Kalshi gather error ({self.asset}): {kalshi_data}")
             kalshi_data = {"source": "kalshi", "healthy": False, "error": str(kalshi_data)}
         if isinstance(coinbase_data, Exception):
             coinbase_data = {"source": "coinbase", "healthy": False, "error": str(coinbase_data)}
+
+        # Re-pick Kalshi ATM strike with live spot when possible
+        spot = None
+        try:
+            spot = binance_data.get("current_price") or binance_data.get("mark_price")
+            if spot:
+                spot = float(spot)
+        except Exception:
+            spot = None
+        if spot and kalshi_data.get("healthy"):
+            try:
+                kalshi_data = await self.kalshi.get_current_market_state(
+                    cycle=self._cycle, spot_price=spot
+                )
+            except Exception as e:
+                logger.debug(f"Kalshi ATM re-pick skipped: {e}")
 
         self.health["binance"] = bool(binance_data.get("healthy", False))
         self.health["kalshi"] = bool(kalshi_data.get("healthy", False))
@@ -66,11 +95,14 @@ class DataPipeline:
         self.health["last_error"] = binance_data.get("error") or kalshi_data.get("error")
 
         if not self.health["binance"] and not self.health["kalshi"]:
-            logger.error("Both primary sources unhealthy – returning last good snapshot")
-            stale = {**self.last_good, "stale": True, "health": dict(self.health)}
+            logger.error(f"Both primary sources unhealthy ({self.asset}) – last good")
+            stale = {**self.last_good, "stale": True, "health": dict(self.health), "asset": self.asset}
             return stale
 
         snapshot = {
+            "asset": self.asset,
+            "symbol": self.symbol,
+            "series_ticker": self.series_ticker,
             "binance": binance_data,
             "kalshi": kalshi_data,
             "candles": binance_data.get("candles", []),
@@ -88,19 +120,17 @@ class DataPipeline:
             "kalshi_floor_strike": kalshi_data.get("floor_strike"),
             "kalshi_cap_strike": kalshi_data.get("cap_strike"),
             "kalshi_title": kalshi_data.get("title"),
+            "kalshi_ticker": kalshi_data.get("ticker"),
             "health": dict(self.health),
             "stale": False,
             "fetched_at": time.time(),
             "fetch_ms": elapsed_ms,
         }
 
-        # Dual-spot consensus: average healthy CEX prints when both alive
         try:
             bp = snapshot.get("binance_price")
             cp = snapshot.get("coinbase_price")
             if bp and cp and float(bp) > 0 and float(cp) > 0:
-                # If they diverge >0.15%, prefer Binance futures mark for Kalshi-style
-                # but still publish mid for VEL/exhaust
                 mid = (float(bp) + float(cp)) / 2.0
                 divergence_bps = abs(float(bp) - float(cp)) / float(bp) * 10000.0
                 snapshot["spot_divergence_bps"] = round(divergence_bps, 2)
@@ -108,7 +138,7 @@ class DataPipeline:
                 if divergence_bps < 25:
                     snapshot["current_price"] = mid
                 else:
-                    snapshot["current_price"] = float(bp)  # stick to primary on dislocation
+                    snapshot["current_price"] = float(bp)
             elif cp and float(cp) > 0 and not bp:
                 snapshot["current_price"] = float(cp)
         except Exception:
