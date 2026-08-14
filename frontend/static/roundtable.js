@@ -4979,8 +4979,8 @@ function drawCandleChart() {
     if (ztBtn) {
       ztBtn.classList.toggle("streak-hot", streak >= 3);
       ztBtn.title = streak >= 5
-        ? `ZT · ${streak} win streak! Click to replay cinematic`
-        : `ZT cinematic · win streak ${streak}/5 for auto play`;
+        ? `${streak} win streak! Click to replay cinematic`
+        : `Cinematic · win streak ${streak}/5 for auto play`;
     }
     // 5+ win streak → fullscreen close-up money video (once per milestone)
     if (streak >= 5 && streak % 5 === 0 && streak !== lastCelebratedStreak) {
