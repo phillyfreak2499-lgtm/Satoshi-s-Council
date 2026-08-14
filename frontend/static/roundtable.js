@@ -22,11 +22,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
   try { localStorage.removeItem(DESK_KEY); } catch (e) {}
   try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(DESK_KEY); } catch (e) {}
+  window.__deskUnlockedThisPage = false;
+  window.__adminUnlockedThisPage = false;
   document.body.classList.add("gate-locked");
   document.body.classList.remove("admin-unlocked", "follower-unlocked");
   document.body.setAttribute("data-password-protected", "true");
   function hasDeskAuth() {
-    try { return sessionStorage.getItem(DESK_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(DESK_KEY) === "1" && !!window.__deskUnlockedThisPage; } catch (e) { return !!window.__deskUnlockedThisPage; }
   }
   function isAdminUnlocked() {
     try { return sessionStorage.getItem(ADMIN_KEY) === "1" && !!window.__adminUnlockedThisPage; } catch (e) { return !!window.__adminUnlockedThisPage; }
@@ -623,14 +626,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return null;
   }
   function isDualMode() {
-    return !!(state && (state.dual || (state.tables && (state.tables.ethereum || state.tables.bitcoin))));
+    return !!(state && (
+      state.dual ||
+      (state.tables && (state.tables.ethereum || state.tables.bitcoin)) ||
+      (state.btc && state.eth)
+    ));
   }
   /** Focused view of dual state — NEVER mutates state.tables */
   function getViewState() {
     if (!state) return null;
-    if (!isDualMode()) return state;
     const focused = tableState(focusTable);
-    if (!focused) return state;
+    if (!focused) {
+      return Object.assign({}, state, { _focusTable: focusTable });
+    }
     const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
     return Object.assign({}, state, {
       decision: focused.decision || {},
@@ -2679,7 +2687,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function renderDashboard() {
-    const view = (typeof getViewState === "function" ? getViewState() : null) || state;
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || {};
+    const view = Object.assign({}, (typeof getViewState === "function" ? getViewState() : null) || state || {}, ts, { _focusTable: focusTable });
     if (!view || !Array.isArray(view.agents)) {
       overlay.innerHTML = "";
       return;
@@ -2688,9 +2697,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const records = learning.records || {};
     const topPairs = learning.top_pairs || [];
     const weights = view.weights || learning.weights || {};
-    const focusName = (view._focusTable === "ethereum" || focusTable === "ethereum")
-      ? "ETH · Vitalik"
-      : "BTC · Satoshi";
+    const focusName = focusTable === "ethereum" ? "ETH · Vitalik" : "BTC · Satoshi";
 
     const pairCard = topPairs.length
       ? `<div class="agent-card pair-card">
@@ -2738,7 +2745,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`;
     }).join("");
 
-    overlay.innerHTML = pairCard + agentCards;
+    overlay.innerHTML = `<div class="dash-focus-banner">${focusName}</div>` + pairCard + agentCards;
   }
 
   function updateLaw(law) {
@@ -3878,7 +3885,8 @@ function drawCandleChart() {
     if (list) list.classList.remove("empty");
     const pts = locks.slice(0, 16).reverse();
     const pad = { l: 8, r: 8, t: 14, b: 12 };
-    const slot = (w - pad.l - pad.r) / pts.length;
+    const slot = (w - pad.l - pad.r) / Math.max(pts.length, 1);
+    const barW = Math.min(10, Math.max(3, slot * 0.35));
     pts.forEach((p, i) => {
       const col = p.side === "UP" ? "#39ff14" : (p.side === "DOWN" ? "#ff2d55" : "#8aa0b8");
       const x = pad.l + i * slot + slot / 2;
@@ -3886,11 +3894,11 @@ function drawCandleChart() {
       ctx.globalAlpha = p.status === "OPEN" ? 0.9 : 0.55;
       if (p.status === "OPEN") {
         ctx.fillStyle = col;
-        ctx.fillRect(x - slot * 0.28, h - pad.b - barH, Math.max(3, slot * 0.56), barH);
+        ctx.fillRect(x - barW / 2, h - pad.b - barH, barW, barH);
       } else {
         ctx.strokeStyle = col;
         ctx.lineWidth = 1.4;
-        ctx.strokeRect(x - slot * 0.28, h - pad.b - barH, Math.max(3, slot * 0.56), barH);
+        ctx.strokeRect(x - barW / 2, h - pad.b - barH, barW, barH);
       }
       ctx.globalAlpha = 1;
       ctx.fillStyle = col;
@@ -4136,7 +4144,7 @@ function drawCandleChart() {
         '<span class="dir-live ' + dir + '">' + dir + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
         '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span class="listen-col">' + listen + '</span>' +
         '<span class="hide-sm">' + (r.weight != null ? Number(r.weight).toFixed(3) : "—") + '</span></div>';
-    }).join("") || '<div class="rank-row">No rank data yet.</div>';
+    }).join("") || '<div class="rank-empty">No rank data yet.</div>';
     table.innerHTML = head + body;
     if (notesEl) {
       const notes = (state && state.learning && state.learning.notes) || [];
@@ -4324,11 +4332,15 @@ function drawCandleChart() {
       "<div class='paper-card'><div class='pc-label'>" + lab + "</div>" +
       "<div class='pc-val'>" + val + "</div>" +
       (sub ? "<div class='pc-sub'>" + sub + "</div>" : "") + "</div>";
+    const tradesN = Number(s.trades || 0);
+    const pnlStr = tradesN
+      ? ((Number(s.pnl || 0) >= 0 ? "+" : "") + "$" + Number(s.pnl || 0).toFixed(2))
+      : "—";
     sumEl.innerHTML =
-      card("TRADES", s.trades ?? 0, (s.wins || 0) + "W / " + (s.losses || 0) + "L") +
-      card("STAKED", "$" + Number(s.stake || 0).toFixed(2), "total risked") +
-      card("RETURNED", "$" + Number(s.returned || 0).toFixed(2), "cashed out") +
-      card("P&L", (Number(s.pnl || 0) >= 0 ? "+" : "") + "$" + Number(s.pnl || 0).toFixed(2), "net");
+      card("TRADES", tradesN, (s.wins || 0) + "W / " + (s.losses || 0) + "L") +
+      card("STAKED", tradesN ? ("$" + Number(s.stake || 0).toFixed(2)) : "—", "total risked") +
+      card("RETURNED", tradesN ? ("$" + Number(s.returned || 0).toFixed(2)) : "—", "cashed out") +
+      card("P&L", pnlStr, "net");
 
     const cal = (d.calendar && d.calendar[paperCalMode]) || [];
     if (calEl) {
@@ -4387,7 +4399,11 @@ function drawCandleChart() {
     if (up) up.addEventListener("click", () => setSide("UP"));
     if (down) down.addEventListener("click", () => setSide("DOWN"));
     if (stake) stake.addEventListener("input", paperPnlPreview);
-    if (ret) ret.addEventListener("input", paperPnlPreview);
+    if (ret) {
+      ret.setAttribute("autocomplete", "off");
+      if (!ret.dataset.user) ret.value = "";
+      ret.addEventListener("input", () => { ret.dataset.user = "1"; paperPnlPreview(); });
+    }
     paperPnlPreview();
     submit.addEventListener("click", async () => {
       const body = {
@@ -4525,7 +4541,7 @@ function drawCandleChart() {
     const __savedBtc = state.btc;
     const __savedEth = state.eth;
     const __savedDual = state.dual;
-    if (typeof getViewState === "function" && isDualMode()) {
+    if (typeof getViewState === "function") {
       const view = getViewState();
       if (view) {
         state = view;
@@ -6347,12 +6363,7 @@ function drawCandleChart() {
   }
 
   // Default desk after unlock is Table + ETH. Cold visit stays on the desk-code gate.
-  function hasDeskAuth() {
-    try { return sessionStorage.getItem("council_auth_ok") === "1"; } catch (e) { return false; }
-  }
-  if (hasDeskAuth()) {
-    setMode("art");
-  } else {
+  if (!hasDeskAuth()) {
     document.body.classList.add("gate-locked");
     document.body.classList.remove("admin-unlocked", "mode-art", "floor-mode");
     const pg = document.getElementById("passwordGate");
@@ -6638,18 +6649,14 @@ function drawCandleChart() {
   }
 
   function initPasswordGate() {
-    // Never skip the desk code from localStorage. Cold tab / hard refresh
-    // must see the access overlay. Same-tab session only.
+    // Never skip the desk code from leftover storage. Cold tab / hard refresh
+    // must see the access overlay. A leftover unlocked session is not the public default.
     try { localStorage.removeItem(passKey); } catch (e) {}
+    try { sessionStorage.removeItem(passKey); } catch (e) {}
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    window.__deskUnlockedThisPage = false;
     document.body.classList.remove("admin-unlocked");
-    let sessionOk = false;
-    try { sessionOk = sessionStorage.getItem(passKey) === "1"; } catch (e) { sessionOk = false; }
-    if (sessionOk) {
-      revealSummonGateOnly();
-      return;
-    }
     const pg = document.getElementById("passwordGate");
     const input = document.getElementById("passwordInput");
     const btn = document.getElementById("passwordSubmit");
@@ -6664,6 +6671,7 @@ function drawCandleChart() {
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
         try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
         try { localStorage.removeItem(passKey); } catch (e) {}
+        window.__deskUnlockedThisPage = true;
         if (err) err.classList.add("hidden");
         // Fresh password entry → intro video → summon gate
         showAppAfterAuth();

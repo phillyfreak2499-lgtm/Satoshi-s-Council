@@ -2282,8 +2282,8 @@ body.beast-mode .zt-watermark {
   padding: 4px !important;
 }
 
-/* Immersive FLOOR view — table only, screensaver style */
-body.floor-mode header,
+/* Immersive FLOOR view — table only, screensaver style.
+   Keep the header (tabs + 1H + Bell/music) so the window LED is not clipped. */
 body.floor-mode footer,
 body.floor-mode #debatePanel,
 body.floor-mode #lifetimePanel,
@@ -3839,11 +3839,11 @@ body:not(.floor-mode) .floor-music-btn {
 }
 body.floor-mode .floor-music-btn {
   display: inline-flex !important;
-  position: fixed !important;
-  top: 12px;
+  position: static !important;
+  top: auto !important;
   left: auto !important;
-  right: 14px;
-  z-index: 70;
+  right: auto !important;
+  z-index: 4;
   opacity: 1;
 }
 
@@ -5818,4 +5818,84 @@ html body.mode-art #app > header #windowLed.led-float.led-window {
   transform: none !important;
   display: block !important;
   margin: 6px auto 8px !important;
+}
+
+/* Floor header stays up so 1H docks under the tab row at 1280 and 390 */
+html body.floor-mode #app > header,
+html body.mode-floor #app > header {
+  display: flex !important;
+  visibility: visible !important;
+  flex-direction: column !important;
+  overflow: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Floor music sits in header controls — never over Bell */
+html body.floor-mode #floorMusicBtn.floor-music-btn,
+html body.mode-floor #floorMusicBtn.floor-music-btn {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  inset: auto !important;
+  display: inline-flex !important;
+  margin-left: 8px;
+}
+
+/* HUDDLE pill — do not truncate the label */
+html body #app > header .huddle-badge {
+  flex-shrink: 0 !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+html body #app > header .huddle-badge .huddle-label {
+  display: inline !important;
+  white-space: nowrap !important;
+}
+
+/* Ranks empty line stays one sentence */
+.rank-empty {
+  grid-column: 1 / -1;
+  display: block;
+  padding: 16px 12px;
+  white-space: normal;
+  letter-spacing: 0.04em;
+  color: rgba(160, 200, 230, 0.75);
+}
+
+/* Settings FADE title does not wrap mid-phrase */
+.beast-title.fade-title,
+#settingsView .fade-title {
+  white-space: nowrap;
+}
+
+/* Dashboard focus banner */
+.dash-focus-banner {
+  grid-column: 1 / -1;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.14em;
+  color: #f0c14a;
+  padding: 8px 4px 4px;
+}
+
+/* Council hex mark — gold seal, no ZT monogram */
+.zt-header-logo img,
+.zt-logo-btn img,
+.gate-mark {
+  filter: drop-shadow(0 0 10px rgba(240, 193, 74, 0.45));
+}
+
+@media (max-width: 480px) {
+  html body.floor-mode #app > header #windowLed.led-float.led-window,
+  html body.mode-floor #app > header #windowLed.led-float.led-window,
+  html body.mode-art #app > header #windowLed.led-float.led-window {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    margin: 6px auto 8px !important;
+    order: 3 !important;
+  }
 }

@@ -159,6 +159,8 @@ class NoRegressionTests(unittest.TestCase):
         self.assertNotRegex(HTML, r"<body[^>]*admin-unlocked")
         self.assertIn("Never start admin-unlocked", HTML)
         self.assertIn('sessionStorage.removeItem("council_admin_unlocked")', HTML)
+        self.assertIn('sessionStorage.removeItem("council_auth_ok")', HTML)
+        self.assertIn("Password-protected private desk", HTML)
 
     def test_settings_save_still_json(self):
         self.assertIn("/api/settings/save", JS)

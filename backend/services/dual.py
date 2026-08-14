@@ -228,7 +228,11 @@ class DualOrchestrator:
                 try:
                     await c.analyze_once()
                 except Exception as e:
-                    logger.exception(f"Dual analysis error ({c.asset}): {e}")
+                    name = type(e).__name__
+                    if name in ("HTTPStatusError", "TimeoutException", "ConnectError", "ReadTimeout", "RuntimeError"):
+                        logger.warning(f"Dual analysis flap ({c.asset}): {name} — desk stays up")
+                    else:
+                        logger.warning(f"Dual analysis error ({c.asset}): {name}: {e}")
                     try:
                         await c.settle_due_windows()
                     except Exception as se:

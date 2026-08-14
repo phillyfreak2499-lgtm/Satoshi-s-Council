@@ -17,8 +17,10 @@ import asyncio
 # Serialize Kalshi HTTP across BTC+ETH clients (one in-flight fetch family at a time)
 _KALSHI_LOCK = asyncio.Lock()
 _KALSHI_LAST: float = 0.0
-_KALSHI_MIN_GAP = 0.35  # seconds between series fetches
+_KALSHI_MIN_GAP = 0.55  # seconds between series fetches
 _FAIL_QUIET_S = 180.0
+_BACKOFF_S = 12.0
+_kalshi_backoff_until: float = 0.0
 
 
 class KalshiClient:
@@ -37,18 +39,35 @@ class KalshiClient:
         await self.client.aclose()
 
     def _note_fail(self, where: str, err: BaseException) -> None:
+        global _kalshi_backoff_until
         now = time.time()
         name = type(err).__name__
+        code = getattr(err, "response", None)
+        status = getattr(code, "status_code", None) if code is not None else None
+        if status in (429, 500, 502, 503, 504) or name in ("TimeoutException", "ConnectError", "ReadTimeout"):
+            _kalshi_backoff_until = max(_kalshi_backoff_until, now + _BACKOFF_S)
         if now - self._last_fail_log >= _FAIL_QUIET_S:
+            extra = f" HTTP {status}" if status else ""
             logger.warning(
-                f"Kalshi {where} flap ({self.series_ticker}): {name} — keeping last quotes"
+                f"Kalshi {where} flap ({self.series_ticker}): {name}{extra} — keeping last quotes"
             )
             self._last_fail_log = now
         else:
             logger.debug(f"Kalshi {where} flap ({self.series_ticker}): {name}")
 
+    def _in_backoff(self) -> bool:
+        return time.time() < float(_kalshi_backoff_until or 0)
+
     async def _get_json(self, url: str, params: Optional[dict] = None) -> Dict[str, Any]:
+        if self._in_backoff():
+            raise RuntimeError("kalshi_backoff")
         r = await self.client.get(url, params=params)
+        if r.status_code in (429, 500, 502, 503, 504):
+            exc = httpx.HTTPStatusError(
+                f"Kalshi {r.status_code}", request=r.request, response=r
+            )
+            self._note_fail("http", exc)
+            raise exc
         r.raise_for_status()
         data = r.json()
         return data if isinstance(data, dict) else {}
@@ -66,7 +85,8 @@ class KalshiClient:
                 "limit": 200,
             }
             last_err: Optional[BaseException] = None
-            for attempt in range(2):
+            attempts = 1 if self._in_backoff() else 2
+            for attempt in range(attempts):
                 try:
                     data = await self._get_json(url, params)
                     _KALSHI_LAST = time.time()
@@ -76,8 +96,10 @@ class KalshiClient:
                     return markets if isinstance(markets, list) else []
                 except Exception as e:
                     last_err = e
-                    if attempt == 0:
-                        await asyncio.sleep(0.35)
+                    if attempt == 0 and not self._in_backoff():
+                        await asyncio.sleep(0.45)
+                    else:
+                        break
             if last_err is not None:
                 self._note_fail("markets", last_err)
             return list(self._last_markets or [])
@@ -174,6 +196,11 @@ class KalshiClient:
     async def get_current_market_state(
         self, cycle: int = 0, spot_price: Optional[float] = None
     ) -> Dict[str, Any]:
+        if self._in_backoff() and self._last_good:
+            stale = dict(self._last_good)
+            stale["stale"] = True
+            stale["healthy"] = True
+            return stale
         try:
             markets = await self.get_open_markets()
             if not markets:

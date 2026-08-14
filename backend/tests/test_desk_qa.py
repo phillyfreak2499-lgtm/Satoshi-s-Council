@@ -43,6 +43,7 @@ class GateColdVisitTests(unittest.TestCase):
         self.assertIn("Enter access code", HTML)
         self.assertIn("Never start admin-unlocked", HTML)
         self.assertIn('sessionStorage.removeItem("council_admin_unlocked")', HTML)
+        self.assertIn('sessionStorage.removeItem("council_auth_ok")', HTML)
 
     def test_admin_tools_are_not_in_the_live_tree(self):
         live = HTML.split('<template id="adminDeskTemplate">')[0]
@@ -55,10 +56,14 @@ class GateColdVisitTests(unittest.TestCase):
         self.assertIn('localStorage.removeItem(passKey)', JS)
         self.assertIn('localStorage.removeItem(ADMIN_KEY)', JS)
         self.assertIn("sessionStorage.removeItem(ADMIN_KEY)", JS)
-        self.assertIn("sessionStorage.getItem(passKey)", JS)
+        self.assertIn("sessionStorage.removeItem(passKey)", JS)
+        self.assertIn("sessionStorage.removeItem(DESK_KEY)", JS)
+        self.assertIn("sessionStorage.getItem(DESK_KEY)", JS)
         self.assertIn("requestAdminUnlock", JS)
         self.assertIn("if (!hasDeskAuth())", JS)
         self.assertIn("__adminUnlockedThisPage", JS)
+        self.assertIn("__deskUnlockedThisPage", JS)
+        self.assertIn("leftover unlocked session is not the public default", JS)
         self.assertNotIn("localStorage.setItem(passKey", JS)
         self.assertNotIn("localStorage.setItem(ADMIN_KEY", JS)
         self.assertNotIn("localStorage.getItem(passKey)", JS)
@@ -75,6 +80,7 @@ class PaperPnlPrefillTests(unittest.TestCase):
         self.assertIn("do not pre-fill a fake", JS)
         self.assertIn('el.textContent = "—";', JS)
         self.assertIn('if (ret) ret.value = "";', JS)
+        self.assertIn('autocomplete="off"', HTML)
 
 
 class FloorOneHDockTests(unittest.TestCase):
@@ -115,6 +121,27 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("function markSeatTick", JS)
         self.assertIn('id="signalChairLast"', HTML)
         self.assertIn("const pr = radius * 0.80", JS)
+
+    def test_dashboard_follows_eth_focus(self):
+        self.assertIn('focusName = focusTable === "ethereum" ? "ETH · Vitalik"', JS)
+        self.assertIn("dash-focus-banner", JS)
+        self.assertIn("state.btc && state.eth", JS)
+
+    def test_ranks_empty_does_not_grid_wrap(self):
+        self.assertIn('class="rank-empty">No rank data yet.', JS)
+        self.assertIn(".rank-empty", CSS)
+
+    def test_floor_header_stays_up_for_1h(self):
+        self.assertIn("html body.floor-mode #app > header", CSS)
+        self.assertIn("position: static !important;", CSS)
+        self.assertNotIn("top: 40px", CSS)
+
+    def test_kalshi_backs_off_on_502(self):
+        kalshi = (ROOT / "backend" / "data" / "kalshi.py").read_text(encoding="utf-8")
+        self.assertIn("_BACKOFF_S", kalshi)
+        self.assertIn("kalshi_backoff", kalshi)
+        self.assertIn("502", kalshi)
+        self.assertNotIn("logger.exception", (ROOT / "backend" / "services" / "dual.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

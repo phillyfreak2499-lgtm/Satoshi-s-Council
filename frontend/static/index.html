@@ -19,6 +19,7 @@
   /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
   (function () {
     try { localStorage.removeItem("council_auth_ok"); } catch (e) {}
+    try { sessionStorage.removeItem("council_auth_ok"); } catch (e) {}
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     document.documentElement.classList.add("gate-locked");
@@ -300,7 +301,7 @@
           </div>
 
           <div class="beast-card settings-card">
-            <div class="beast-title">FADE (invert chronic losers)</div>
+            <div class="beast-title fade-title">FADE — invert chronic losers</div>
             <label class="set-field">Min graded samples
               <input type="number" step="1" min="5" max="100" id="setFadeMinN" />
             </label>
@@ -463,8 +464,8 @@
           <button type="button" class="pe-side down" data-side="DOWN" id="peSideDown">DOWN</button>
         </div>
         <div class="pe-fields">
-          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" /></label>
-          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="" placeholder="enter after fill" /></label>
+          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" autocomplete="off" /></label>
+          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="" placeholder="enter after fill" autocomplete="off" /></label>
           <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
         </div>
         <div class="pe-preview">P&amp;L: <strong id="pePnl">—</strong></div>
