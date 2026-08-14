@@ -1,7 +1,7 @@
 """
 Satoshi’s Council – Configuration
-Central config for weights, thresholds, endpoints, learning parameters.
-Tuned for live 15m Kalshi windows + Render single-web-service deploy.
+Dual-table hourly: Bitcoin (Satoshi) + Ethereum (Vitalik).
+Tuned for Render ~2 CPU / 4 GB — responsive dual without thrashing.
 """
 from pydantic_settings import BaseSettings
 from typing import Dict
@@ -15,28 +15,36 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # Data sources
+    # Dual-table flags
+    ENABLE_ETH_TABLE: bool = True
+    DUAL_SEQUENTIAL: bool = True  # analyze BTC then ETH (recommended)
+
+    # Data sources — hourly Kalshi series
     BINANCE_FUTURES_BASE: str = "https://fapi.binance.com"
     KALSHI_BASE: str = "https://external-api.kalshi.com/trade-api/v2"
-    SERIES_TICKER: str = "KXBTC15M"
+    # Legacy single-table defaults (BTC)
+    SERIES_TICKER: str = "KXBTCD"
     SYMBOL: str = "BTCUSDT"
+    # Explicit per-table
+    SERIES_BTC: str = "KXBTCD"
+    SERIES_ETH: str = "KXETHD"
+    SYMBOL_BTC: str = "BTCUSDT"
+    SYMBOL_ETH: str = "ETHUSDT"
 
-    # Polling / analysis cadence (seconds) — live-first defaults
-    # Analysis every 8s keeps Chair within ~1 candle of the tape on Render Starter
-    ANALYSIS_INTERVAL: float = 1.5  # BEAST default target cycle
-    # HTTP client timeouts (seconds) — fail fast, rotate base
+    # Polling / analysis cadence — dual hourly on 2 CPU / 4 GB
+    ANALYSIS_INTERVAL: float = 4.0          # fallback / single-table
+    ANALYSIS_INTERVAL_BTC: float = 4.0
+    ANALYSIS_INTERVAL_ETH: float = 4.0
     HTTP_TIMEOUT: float = 4.0
-    # Candle depth: enough for agents, light for Render bandwidth
     KLINE_LIMIT: int = 90
-    ANALYSIS_INTERVAL_FLAT: float = 3.0
-    ANALYSIS_INTERVAL_HOT: float = 1.0
-    BEAST_MODE: bool = True
+    ANALYSIS_INTERVAL_FLAT: float = 6.0
+    ANALYSIS_INTERVAL_HOT: float = 3.0
+    BEAST_MODE: bool = False                # dual default: balanced, not max burn
     DUAL_SPOT: bool = True
     PARALLEL_AGENTS: bool = True
-    # Skip orderbook on every tick (heavy); refresh every N cycles
-    KALSHI_ORDERBOOK_EVERY: int = 3
-    # Funding/OI change slowly — reuse between full fetches
-    SLOW_METRICS_TTL: float = 20.0  # BEAST: refresh funding/OI faster
+    PARALLEL_AGENT_LIMIT: int = 5           # cap concurrency per table
+    KALSHI_ORDERBOOK_EVERY: int = 4
+    SLOW_METRICS_TTL: float = 45.0
 
     # Agent base weights (sum ~1.0, Leader normalizes). Expanded roster for 15m factors.
     BASE_WEIGHTS: Dict[str, float] = {
@@ -140,7 +148,7 @@ class Settings(BaseSettings):
     EXHAUST_YES_LOW: float = 32.0
     # Chair gates from research — time-in-window is highest-ROI accuracy lever
     LATE_WINDOW_MIN: float = 2.8          # last ~3 min: force high bar / mostly WAIT
-    EARLY_WINDOW_MIN: float = 13.2        # first ~90s of 15m window: force high bar
+    EARLY_WINDOW_MIN: float = 55.0        # first ~5m of hourly window: force high bar
     HARD_EARLY_MIN: float = 13.7          # > this mins left → near-hard WAIT (noise)
     HARD_LATE_MIN: float = 2.2           # < this mins left → near-hard WAIT (no path left)
     MID_WINDOW_BOOST: float = 0.10        # stronger loosen in 4–10m sweet spot
@@ -159,7 +167,7 @@ class Settings(BaseSettings):
     # Hard cap graded window_calls per ticker. Strict one-call discipline (GOAL CONTRACT).
     # Same-side refresh does not count as a new call; opposite revisions are disabled when =1.
     MAX_CALLS_PER_WINDOW: int = 1
-    CALL_MAX_AGE_SEC: float = 15 * 60
+    CALL_MAX_AGE_SEC: float = 60 * 60  # hourly window
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
     MAX_ENTRY_ODDS_PCT: float = 80.0
