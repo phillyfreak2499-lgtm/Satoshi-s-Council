@@ -1469,6 +1469,15 @@ body:not(.beast-mode) .beast-title { color: #8a9bb0; }
   color: #9eb0c0;
   font-family: monospace;
 }
+.settings-row-extra {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+.settings-row-extra .set-check {
+  position: relative;
+  z-index: 2;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -23,6 +23,7 @@
   function requestAdminUnlock(cb) {
     if (isAdminUnlocked()) { if (typeof cb === "function") cb(); return; }
     pendingAdminCb = typeof cb === "function" ? cb : null;
+    window.__pendingAdminUnlock = pendingAdminCb;
     const gate = document.getElementById("adminGate");
     const input = document.getElementById("adminInput");
     const err = document.getElementById("adminError");
@@ -34,8 +35,9 @@
   function closeAdminGate(ok) {
     const gate = document.getElementById("adminGate");
     if (gate) gate.classList.add("hidden");
-    const cb = pendingAdminCb;
+    const cb = pendingAdminCb || window.__pendingAdminUnlock;
     pendingAdminCb = null;
+    window.__pendingAdminUnlock = null;
     if (ok && typeof cb === "function") cb();
     try { syncAutoBetVisibility(); } catch (e) {}
   }
@@ -229,8 +231,10 @@
   let beastMode = localStorage.getItem("council_beast") !== "0";
   let pollTimer = null;
 
+  let applyingBeastChrome = false;
   function applyBeastChrome(on) {
     beastMode = !!on;
+    applyingBeastChrome = true;
     document.body.classList.toggle("beast-mode", beastMode);
     const badge = document.getElementById("beastBadge");
     if (badge) {
@@ -242,6 +246,17 @@
     const tog = document.getElementById("beastToggle");
     if (tog) tog.checked = beastMode;
     localStorage.setItem("council_beast", beastMode ? "1" : "0");
+    const stats = document.getElementById("beastStats");
+    if (stats) {
+      stats.textContent = beastMode ? "Profile BEAST" : "Profile STANDARD";
+    }
+    const blurb = document.getElementById("beastBlurb");
+    if (blurb) {
+      blurb.textContent = beastMode
+        ? "Max refresh · dual spot · parallel seats · premium HUD"
+        : "Balanced cadence · single spot · power-friendly";
+    }
+    applyingBeastChrome = false;
   }
 
   function applySettingsSnapshot(s) {
@@ -348,6 +363,7 @@
   }
 
   async function setBeastMode(on) {
+    applyBeastChrome(on);
     try {
       const r = await fetch(API_BASE + "/api/settings", {
         method: "POST",
@@ -946,7 +962,9 @@
       sfx.checked = callSfxOn;
       if (!sfx.__wired) {
         sfx.__wired = true;
-        sfx.addEventListener("change", () => {
+        sfx.addEventListener("click", (e) => e.stopPropagation());
+        sfx.addEventListener("change", (e) => {
+          e.stopPropagation();
           callSfxOn = !!sfx.checked;
           localStorage.setItem("council_call_sfx", callSfxOn ? "1" : "0");
         });
@@ -956,7 +974,9 @@
       loops.checked = teamLoopsOn;
       if (!loops.__wired) {
         loops.__wired = true;
-        loops.addEventListener("change", () => {
+        loops.addEventListener("click", (e) => e.stopPropagation());
+        loops.addEventListener("change", (e) => {
+          e.stopPropagation();
           teamLoopsOn = !!loops.checked;
           localStorage.setItem("council_team_loops", teamLoopsOn ? "1" : "0");
         });
@@ -3556,20 +3576,14 @@ function drawCandleChart() {
     if (next === "settings") {
       const unlocked = (typeof isAdminUnlocked === "function") ? isAdminUnlocked() : false;
       if (!unlocked) {
+        window.__openSettingsAfterAdmin = true;
         if (typeof requestAdminUnlock === "function") {
-          requestAdminUnlock(() => setMode("settings"));
-        } else {
-          const pw = prompt("Admin password");
-          if (pw === "5152622439") {
-            try { localStorage.setItem("council_admin_unlocked", "1"); } catch (e) {}
-            // fall through
-          } else {
-            alert("Wrong password");
-            return;
-          }
-          if (pw !== "5152622439") return;
+          requestAdminUnlock(() => {
+            window.__openSettingsAfterAdmin = false;
+            setMode("settings");
+          });
         }
-        if (!(typeof isAdminUnlocked === "function" && isAdminUnlocked())) return;
+        return;
       }
     }
     mode = next;
@@ -3761,7 +3775,6 @@ function drawCandleChart() {
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
-      fetchSettings().then(applySettingsSnapshot);
     }
     if (mode === "charts") drawCharts();
 
@@ -3846,7 +3859,11 @@ function drawCandleChart() {
   }
   modeTabs.forEach(btn => {
     if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
-    btn.addEventListener("click", () => setMode(btn.dataset.mode));
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setMode(btn.dataset.mode);
+    });
   });
   if (!document.__modeTabsDelegated) {
     document.__modeTabsDelegated = true;
@@ -3897,7 +3914,28 @@ function drawCandleChart() {
     }
   }, 1000);
 
+  function deskHotkeysBlocked(e) {
+    const t = (e && e.target) || document.activeElement;
+    const a = document.activeElement;
+    const typing = (el) => {
+      if (!el) return false;
+      const tag = el.tagName || "";
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!el.isContentEditable;
+    };
+    if (typing(t) || typing(a)) return true;
+    const admin = document.getElementById("adminGate");
+    if (admin && !admin.classList.contains("hidden")) return true;
+    const pass = document.getElementById("passwordGate");
+    if (pass && !pass.classList.contains("hidden")) return true;
+    if (mode === "settings") {
+      const k = e && e.key;
+      if (k === "0" || k === "1" || k === "2" || k === "3" || k === "4" || k === "5" || k === "6" || k === "7") return true;
+    }
+    return false;
+  }
+
   document.addEventListener("keydown", (e) => {
+    if (deskHotkeysBlocked(e)) return;
     if (e.key === "m" || e.key === "M") {
       // cycle Screensaver → Dashboard → Charts
       const order = ["art", "dashboard", "bots", "ranks", "paper", "charts", "settings"];
@@ -3929,7 +3967,6 @@ function drawCandleChart() {
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
-      fetchSettings().then(applySettingsSnapshot);
     }
     if (mode === "charts") drawCharts();
   });
@@ -4183,7 +4220,7 @@ function drawCandleChart() {
     document.body.classList.remove("gate-locked", "gate-revealing");
     localStorage.setItem("council_entered", "1");
     function after() {
-      try { setMode("art"); } catch (e) {}
+      try { if (mode !== "settings") setMode("art"); } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
     }
@@ -4722,7 +4759,10 @@ function drawCandleChart() {
   }
   const beastToggle = document.getElementById("beastToggle");
   if (beastToggle) {
-    beastToggle.addEventListener("change", () => setBeastMode(beastToggle.checked));
+    beastToggle.addEventListener("change", () => {
+      if (applyingBeastChrome) return;
+      setBeastMode(beastToggle.checked);
+    });
   }
   applyBeastChrome(beastMode);
   fetchSettings().then((s) => {
@@ -4836,6 +4876,9 @@ function drawCandleChart() {
   }
 
   try { wireAdminGate(); wireAdminTools(); wireBrain(); } catch (e) { console.warn("admin/brain wire", e); }
+  document.addEventListener("DOMContentLoaded", () => {
+    try { wireAdminGate(); wireAdminTools(); } catch (e) {}
+  });
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   if (btnSaveSettings && !btnSaveSettings.__wired) {
     btnSaveSettings.__wired = true;
@@ -5319,9 +5362,14 @@ function drawCandleChart() {
   function closeAdminGate(ok) {
     const gate = document.getElementById("adminGate");
     if (gate) gate.classList.add("hidden");
-    const cb = pendingAdminCb;
+    const cb = pendingAdminCb || window.__pendingAdminUnlock;
     pendingAdminCb = null;
+    window.__pendingAdminUnlock = null;
     if (ok && cb) cb();
+    else if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
+      window.__openSettingsAfterAdmin = false;
+      window.setMode("settings");
+    }
   }
 
   function wireAdminGate() {
