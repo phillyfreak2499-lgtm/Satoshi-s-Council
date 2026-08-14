@@ -274,8 +274,11 @@ class PerformanceStore:
     ):
         """
         Open a path-graded scalp call (full or 1/4 HOLD).
-        Multiple calls per 15m window are allowed. WAIT never recorded.
-        Grades on Kalshi odds path — not full-window BTC settlement.
+
+        Circuit breaker: max MAX_CALLS_PER_WINDOW (default 3) graded rows
+        per ticker per window — matches Chair ENTRY + MID + FINAL budget.
+        Same-side refresh of an open call does NOT consume a new slot.
+        WAIT never recorded. Grades on Kalshi odds path.
         """
         side = self._grade_side(direction)
         if side is None:
@@ -287,12 +290,16 @@ class PerformanceStore:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat()
         win_pts = self._win_pts(direction)
+        max_per_window = int(getattr(settings, "MAX_CALLS_PER_WINDOW", 3))
 
         async with self.Session() as session:
-            # Active open call (newest unsettled)
+            # Active open call for THIS ticker (newest unsettled)
             result = await session.execute(
                 select(WindowCall)
-                .where(WindowCall.actual_outcome.is_(None))
+                .where(
+                    WindowCall.actual_outcome.is_(None),
+                    WindowCall.ticker == ticker,
+                )
                 .order_by(WindowCall.id.desc())
                 .limit(1)
             )
@@ -386,6 +393,31 @@ class PerformanceStore:
                             return
                     except Exception:
                         pass
+
+            # --- Circuit breaker: max graded calls per ticker / window ---
+            # Count rows for this ticker tied to the same close_time (or recent if unknown).
+            try:
+                if close_time:
+                    cnt_q = await session.execute(
+                        select(func.count(WindowCall.id)).where(
+                            WindowCall.ticker == ticker,
+                            WindowCall.close_time == close_time,
+                        )
+                    )
+                else:
+                    # Fallback: all calls for this ticker in the last ~20 minutes
+                    cnt_q = await session.execute(
+                        select(func.count(WindowCall.id)).where(
+                            WindowCall.ticker == ticker,
+                        )
+                    )
+                n_calls = int(cnt_q.scalar_one() or 0)
+                # If we just flipped an active call, that settled row still counts
+                if n_calls >= max_per_window:
+                    await session.commit()
+                    return
+            except Exception:
+                pass
 
             stake = self._default_stake(direction)
             session.add(WindowCall(
