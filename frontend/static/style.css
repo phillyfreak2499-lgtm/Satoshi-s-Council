@@ -5585,6 +5585,115 @@ body.show-hierarchy #debatePanel {
   }
 }
 
+/* ===== SEAT STORM — lock-wait mini, no orders ===== */
+.seat-storm-prompt,
+.seat-storm-table-btn {
+  position: fixed;
+  z-index: 88;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(240, 193, 74, 0.55);
+  background: rgba(8, 10, 18, 0.92);
+  color: #f0c14a;
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: 0 0 18px rgba(240, 193, 74, 0.18);
+}
+.seat-storm-prompt { bottom: max(88px, env(safe-area-inset-bottom, 16px)); left: 50%; transform: translateX(-50%); }
+.seat-storm-table-btn { top: max(64px, env(safe-area-inset-top, 12px)); right: max(12px, env(safe-area-inset-right, 12px)); font-size: 10px; padding: 8px 12px; }
+.seat-storm-prompt.hidden,
+.seat-storm-prompt[hidden],
+.seat-storm-table-btn.hidden,
+.seat-storm-table-btn[hidden],
+.seat-storm-play.hidden,
+.seat-storm-play[hidden] { display: none !important; }
+body.mode-floor .seat-storm-prompt:not(.hidden):not([hidden]),
+body.floor-mode .seat-storm-prompt:not(.hidden):not([hidden]) { display: inline-flex !important; align-items: center; }
+body.mode-art .seat-storm-table-btn:not(.hidden):not([hidden]) { display: inline-flex !important; align-items: center; }
+.seat-storm-play {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+  pointer-events: auto;
+}
+.seat-storm-play:not(.hidden):not([hidden]) { display: flex !important; }
+.ss-hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.12em;
+  color: #c8e8ff;
+}
+.ss-title { color: #f0c14a; font-size: 14px; text-shadow: 0 0 12px rgba(240, 193, 74, 0.45); }
+.ss-streak { color: #39ff14; font-size: 22px; }
+.ss-best, .ss-clock, .ss-pair { font-size: 12px; color: #7fe9ff; }
+.ss-exit {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 14px;
+  border: 1px solid rgba(0, 232, 255, 0.45);
+  background: rgba(4, 12, 22, 0.9);
+  color: #7fe9ff;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.ss-ring {
+  position: relative;
+  width: min(78vw, 440px);
+  height: min(78vw, 440px);
+}
+.ss-seat {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -28px 0 0 -28px;
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  background: rgba(6, 12, 22, 0.92);
+  color: #8aa8c0;
+  font-family: Orbitron, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.ss-seat.ss-lit {
+  color: #02040a;
+  background: #39ff14;
+  border-color: #39ff14;
+  box-shadow: 0 0 22px rgba(57, 255, 20, 0.65);
+}
+.ss-seat.ss-miss {
+  background: #ff2d55;
+  color: #fff;
+  border-color: #ff2d55;
+}
+.ss-status {
+  margin-top: 10px;
+  font-family: Share Tech Mono, monospace;
+  color: rgba(180, 210, 230, 0.8);
+  letter-spacing: 0.06em;
+}
+@media (max-width: 480px) {
+  .ss-seat { width: 56px; height: 56px; min-width: 44px; min-height: 44px; margin: -28px 0 0 -28px; font-size: 8px; }
+  .ss-ring { width: min(92vw, 360px); height: min(92vw, 360px); }
+}
+
 /* ===== CHARTS HUD — real canvas height, both pairs, 390 scroll ===== */
 body.mode-charts #chartsView.charts-view:not(.hidden) {
   display: block !important;

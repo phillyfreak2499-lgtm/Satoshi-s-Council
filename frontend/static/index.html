@@ -80,6 +80,20 @@
     <div id="ztWatermark" class="zt-watermark" aria-hidden="true"></div>
     <div class="floor-hint" id="floorHint">FLOOR</div>
     <button type="button" id="floorExitBtn" class="floor-exit-btn" hidden>TABLE</button>
+    <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden>KILL TIME</button>
+    <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden>KILL TIME</button>
+    <div id="seatStormPlay" class="seat-storm-play hidden" hidden aria-hidden="true">
+      <div class="ss-hud">
+        <span class="ss-title">SEAT STORM</span>
+        <span id="ssStreak" class="ss-streak">0</span>
+        <span id="ssBest" class="ss-best">BEST 0</span>
+        <span id="ssClock" class="ss-clock">0:40</span>
+        <span id="ssPair" class="ss-pair">ETH</span>
+        <button type="button" id="ssExit" class="ss-exit">BACK TO DESK</button>
+      </div>
+      <div id="ssRing" class="ss-ring" role="group" aria-label="Seat Storm ring"></div>
+      <p id="ssStatus" class="ss-status">Tap the lit seat</p>
+    </div>
     <div id="rivalryStrip" class="rivalry-strip" hidden>
       <span id="rivalSat">SATOSHI 0–0</span>
       <b class="rival-vs">VS</b>

@@ -4348,6 +4348,11 @@ function drawCandleChart() {
     if (next === "follower" && !document.body.classList.contains("follower-unlocked")) {
       return;
     }
+    try {
+      if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
+        stopSeatStorm("desk");
+      }
+    } catch (e) {}
     const prevMode = mode;
     mode = next;
     // Exactly one mode-* class and one .active pill — leftover ranks+charts lit two tabs
@@ -4555,6 +4560,8 @@ function drawCandleChart() {
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
 
+    try { syncSeatStorm(); } catch (e) {}
+
     // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
 
@@ -4733,6 +4740,11 @@ function drawCandleChart() {
     }
     if (e.key === "b" || e.key === "B") soundToggle && soundToggle.click();
     if (e.key === "Escape") {
+      if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
+        e.preventDefault();
+        stopSeatStorm("esc");
+        return;
+      }
       if (typeof window.__dismissLeaderClick === "function" && window.__dismissLeaderClick()) {
         e.preventDefault();
         return;
@@ -5689,6 +5701,300 @@ function drawCandleChart() {
       y: (ev.clientY - rect.top) * (sz.h / rect.height),
     };
   }
+  /* Seat Storm — pass-time after a Chair lock. Never opens Follower. Never sends Kalshi orders. Paper/live unaffected. */
+  const SS_SEATS = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "STREAK", "ODDS", "STRIKE"];
+  const SS_DURATION_MS = 40000;
+  const SS_LAST_N_SEC = 180;
+  const SS_BEST_KEY = "council_seat_storm_best";
+  const ss = {
+    playing: false,
+    seats: [],
+    lit: -1,
+    litUntil: 0,
+    streak: 0,
+    best: 0,
+    endsAt: 0,
+    raf: 0,
+    startedAt: 0,
+    _last: -1,
+  };
+
+  function isSeatStormPlaying() { return !!ss.playing; }
+
+  function ssReadBest() {
+    try { return Math.max(0, parseInt(sessionStorage.getItem(SS_BEST_KEY) || "0", 10) || 0); }
+    catch (_) { return 0; }
+  }
+  function ssWriteBest(n) {
+    ss.best = Math.max(0, n | 0);
+    try { sessionStorage.setItem(SS_BEST_KEY, String(ss.best)); } catch (_) {}
+  }
+
+  function ssReveal(el, on) {
+    if (!el) return;
+    el.hidden = !on;
+    el.classList.toggle("hidden", !on);
+    el.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+
+  function ssDeskSick() {
+    const s = state || {};
+    if (s.sick_feed) return true;
+    const bags = [s.health];
+    const b = typeof tableState === "function" ? tableState("bitcoin") : null;
+    const e = typeof tableState === "function" ? tableState("ethereum") : null;
+    if (b && b.health) bags.push(b.health);
+    if (e && e.health) bags.push(e.health);
+    return bags.some((h) => {
+      if (!h) return false;
+      const spotOk = !!(h.binance || h.coinbase || h.spot);
+      const kalshiDead = h.kalshi === false;
+      return !spotOk && kalshiDead;
+    });
+  }
+
+  function ssLockOf(t) {
+    if (!t) return null;
+    return t.locked_call || (t.decision && t.decision.locked_call) || null;
+  }
+
+  function ssWatchTables() {
+    if (!state) return [];
+    if (typeof isPhoneDesk === "function" && isPhoneDesk()) {
+      const t = (typeof tableState === "function" ? tableState(focusTable) : null) || state;
+      return t ? [t] : [];
+    }
+    const out = [];
+    const b = typeof tableState === "function" ? tableState("bitcoin") : null;
+    const e = typeof tableState === "function" ? tableState("ethereum") : null;
+    if (b) out.push(b);
+    if (e) out.push(e);
+    if (!out.length) out.push(state);
+    return out;
+  }
+
+  function ssLockedAndWaiting() {
+    return ssWatchTables().some((t) => {
+      const lc = ssLockOf(t);
+      if (!lc || !lc.locked) return false;
+      const d = String(lc.direction || "").toUpperCase();
+      if (d !== "UP" && d !== "DOWN") return false;
+      return secondsLeftOf(t.market) > SS_LAST_N_SEC;
+    });
+  }
+
+  function ssCanOffer() {
+    if (!hasDeskAuth()) return false;
+    if (ss.playing) return false;
+    if (lawLocked()) return false;
+    if (ssDeskSick()) return false;
+    if (!ssLockedAndWaiting()) return false;
+    return true;
+  }
+
+  function ssHitWindowMs() {
+    return Math.max(550, 1100 - ss.streak * 45);
+  }
+
+  function ssSfx(kind) {
+    if (soundMuted || !callSfxOn) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      if (kind === "hit") o.frequency.value = 880 + Math.min(ss.streak, 12) * 40;
+      else if (kind === "miss") o.frequency.value = 140;
+      else o.frequency.value = 220;
+      g.gain.value = 0.045;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + (kind === "hit" ? 0.07 : 0.12));
+    } catch (_) {}
+  }
+
+  function ssPaintHud() {
+    const st = document.getElementById("ssStreak");
+    const be = document.getElementById("ssBest");
+    const cl = document.getElementById("ssClock");
+    const pair = document.getElementById("ssPair");
+    if (st) st.textContent = String(ss.streak);
+    if (be) be.textContent = "BEST " + ss.best;
+    if (cl) {
+      const left = ss.playing ? Math.max(0, Math.ceil((ss.endsAt - Date.now()) / 1000)) : 0;
+      cl.textContent = "0:" + String(left).padStart(2, "0");
+    }
+    if (pair) pair.textContent = focusTable === "bitcoin" ? "BTC" : "ETH";
+  }
+
+  function ssClearLit() {
+    ss.seats.forEach((el) => el.classList.remove("ss-lit", "ss-miss"));
+    ss.lit = -1;
+    ss.litUntil = 0;
+  }
+
+  function ssPickSeat() {
+    if (!ss.playing || !ss.seats.length) return;
+    ssClearLit();
+    let idx = Math.floor(Math.random() * ss.seats.length);
+    if (ss.seats.length > 1 && ss._last === idx) idx = (idx + 1) % ss.seats.length;
+    ss._last = idx;
+    ss.lit = idx;
+    ss.litUntil = Date.now() + ssHitWindowMs();
+    ss.seats[idx].classList.add("ss-lit");
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "TAP THE LIT SEAT";
+  }
+
+  function ssMiss() {
+    if (!ss.playing) return;
+    const el = ss.seats[ss.lit];
+    if (el) {
+      el.classList.remove("ss-lit");
+      el.classList.add("ss-miss");
+      setTimeout(() => el.classList.remove("ss-miss"), 180);
+    }
+    ss.streak = 0;
+    ss.lit = -1;
+    ss.litUntil = 0;
+    ssSfx("miss");
+    ssPaintHud();
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "MISS — STREAK BROKE";
+    setTimeout(() => { if (ss.playing) ssPickSeat(); }, 220);
+  }
+
+  function ssHit(idx) {
+    if (!ss.playing || idx !== ss.lit) {
+      if (ss.playing && ss.lit >= 0) ssMiss();
+      return;
+    }
+    ss.streak += 1;
+    if (ss.streak > ss.best) ssWriteBest(ss.streak);
+    ssSfx("hit");
+    ssClearLit();
+    ssPaintHud();
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "HIT · STREAK " + ss.streak;
+    setTimeout(() => { if (ss.playing) ssPickSeat(); }, 90);
+  }
+
+  function ssTick() {
+    if (!ss.playing) return;
+    if (lawLocked() || ssDeskSick()) { stopSeatStorm("blocked"); return; }
+    if (!ssLockedAndWaiting()) { stopSeatStorm("close"); return; }
+    if (Date.now() >= ss.endsAt) { stopSeatStorm("time"); return; }
+    if (ss.lit >= 0 && Date.now() >= ss.litUntil) ssMiss();
+    ssPaintHud();
+    ss.raf = requestAnimationFrame(ssTick);
+  }
+
+  function ssBuildRing() {
+    const ring = document.getElementById("ssRing");
+    if (!ring) return;
+    ring.innerHTML = "";
+    ss.seats = [];
+    const n = SS_SEATS.length;
+    SS_SEATS.forEach((name, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ss-seat";
+      btn.textContent = name;
+      btn.setAttribute("aria-label", "Seat " + name);
+      const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const r = 38;
+      btn.style.left = (50 + r * Math.cos(ang)) + "%";
+      btn.style.top = (50 + r * Math.sin(ang)) + "%";
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ssHit(i);
+      });
+      ring.appendChild(btn);
+      ss.seats.push(btn);
+    });
+  }
+
+  function startSeatStorm() {
+    if (!ssCanOffer()) return;
+    if (lawLocked() || ssDeskSick()) return;
+    ss.best = ssReadBest();
+    ss.streak = 0;
+    ss.playing = true;
+    ss.startedAt = Date.now();
+    ss.endsAt = ss.startedAt + SS_DURATION_MS;
+    ss._last = -1;
+    ssReveal(document.getElementById("seatStormPlay"), true);
+    ssBuildRing();
+    ssPaintHud();
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "TAP THE LIT SEAT";
+    syncSeatStorm();
+    ssPickSeat();
+    cancelAnimationFrame(ss.raf);
+    ss.raf = requestAnimationFrame(ssTick);
+  }
+
+  function stopSeatStorm(reason) {
+    ss.playing = false;
+    cancelAnimationFrame(ss.raf);
+    ss.raf = 0;
+    ssClearLit();
+    ssReveal(document.getElementById("seatStormPlay"), false);
+    const status = document.getElementById("ssStatus");
+    if (status) {
+      if (reason === "close") status.textContent = "WINDOW CLOSING — WATCH THE FINISH";
+      else if (reason === "time") status.textContent = "ROUND OVER";
+      else status.textContent = "";
+    }
+    ssPaintHud();
+    syncSeatStorm();
+  }
+
+  function syncSeatStorm() {
+    if (ss.playing && (lawLocked() || ssDeskSick() || !ssLockedAndWaiting())) {
+      stopSeatStorm(lawLocked() || ssDeskSick() ? "blocked" : "close");
+      return;
+    }
+    const offer = ssCanOffer();
+    ssReveal(document.getElementById("seatStormPrompt"), !!(offer && mode === "floor"));
+    ssReveal(document.getElementById("seatStormTableBtn"), !!(offer && mode === "art"));
+  }
+
+  function initSeatStorm() {
+    ss.best = ssReadBest();
+    const prompt = document.getElementById("seatStormPrompt");
+    const tableBtn = document.getElementById("seatStormTableBtn");
+    const exit = document.getElementById("ssExit");
+    if (prompt && !prompt.__ssWired) {
+      prompt.__ssWired = true;
+      prompt.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startSeatStorm();
+      });
+    }
+    if (tableBtn && !tableBtn.__ssWired) {
+      tableBtn.__ssWired = true;
+      tableBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startSeatStorm();
+      });
+    }
+    if (exit && !exit.__ssWired) {
+      exit.__ssWired = true;
+      exit.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        stopSeatStorm("desk");
+      });
+    }
+    syncSeatStorm();
+  }
+
   function wireFloorChairClicks() {
     if (!canvas || canvas.__chairClickWired) return;
     canvas.__chairClickWired = true;
@@ -5711,6 +6017,7 @@ function drawCandleChart() {
     });
   }
   wireFloorChairClicks();
+  initSeatStorm();
 
   function checkWinStreakCelebrate(acc) {
     if (!acc) return;
