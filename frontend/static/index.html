@@ -89,7 +89,9 @@
           <span id="lawStatus" class="law-status">OK</span>
         </div>
         <div class="mode-tabs" role="tablist" aria-label="View mode">
-          <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — table only">Floor</button>
+          <button type="button" id="focusBtc" class="mode-tab active" title="Focus Bitcoin / Satoshi">BTC</button>
+          <button type="button" id="focusEth" class="mode-tab" title="Focus Ethereum / Vitalik">ETH</button>
+          <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
           <button id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
           <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
           <button id="tabBots" class="mode-tab" data-mode="bots" title="What each bot does">Bots</button>
@@ -102,7 +104,7 @@
           <img src="/zt-logo.jpg" alt="ZT" width="28" height="28" />
         </button>
         <button id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
-        <button id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>
+        <!-- audio removed -->
         <span id="statusDot" class="dot"></span>
         <span id="lastUpdate">—</span>
       </div>
