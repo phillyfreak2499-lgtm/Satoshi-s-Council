@@ -94,8 +94,8 @@
           <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
           <button id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
           <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
-          <button id="tabBots" class="mode-tab" data-mode="bots" title="What each bot does">Bots</button>
-          <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Live ranks & hit counts">Ranks</button>
+          <button id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
+          <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
           <button id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
           <button id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
           <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -303,7 +303,7 @@
             <label class="set-check"><input type="checkbox" id="setSoundUp" /> UP call</label>
             <label class="set-check"><input type="checkbox" id="setSoundDown" /> DOWN call</label>
             <label class="set-check"><input type="checkbox" id="setSoundSwap" /> SWAP call</label>
-            <label class="set-check"><input type="checkbox" id="setSoundBell" /> 15m bell</label>
+            <label class="set-check"><input type="checkbox" id="setSoundBell" /> Window bell</label>
             <label class="set-check"><input type="checkbox" id="setBeamGlow" /> Agreement beam glow</label>
             <label class="set-field">Watermark opacity (0–1)
               <input type="number" step="0.05" min="0" max="0.6" id="setWatermark" />
@@ -444,10 +444,10 @@
       </div>
     </div>
 
-    <!-- Floating 7-segment 15m WINDOW timer (prominent in Floor mode) -->
-    <div id="windowLed" class="led-float led-window" aria-label="15 minute window countdown">
+    <!-- Floating 7-segment HOURLY WINDOW timer -->
+    <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
       <div class="led-bezel">
-        <div class="led-label">15M WINDOW</div>
+        <div class="led-label">1H WINDOW</div>
         <div id="ledWindowTime" class="led-digits led-time">--:--</div>
         <div class="led-foot" id="ledWindowSub">until close</div>
       </div>
@@ -468,12 +468,14 @@
       </div>
       <div id="marketStrip">
         <span>BTC <b id="btcPrice">—</b></span>
+        <span>ETH <b id="ethPrice">—</b></span>
         <span class="odds-live">UP <b id="liveUpPct">—</b></span>
         <span class="odds-live down">DOWN <b id="liveDownPct">—</b></span>
         <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
+        <span id="dualVoteStrip" class="dual-vote-strip">BTC <b id="btcVotes">—</b> · ETH <b id="ethVotes">—</b></span>
         <span>Funding <b id="funding">—</b></span>
         <span>Kalshi <b id="kalshiTicker">—</b></span>
-        <span class="acc-strip">Record <b id="accuracyStrip">0/0 · —</b></span>
+        <span class="acc-strip">BTC <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
       </div>
     </footer>
   </div>
