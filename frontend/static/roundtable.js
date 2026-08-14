@@ -379,10 +379,10 @@
   let glitchUntil = 0;
   let debateHistory = []; // REMOVED — debate log disabled for dual CPU room
 
-  // Market-open bell — one ring per new 15m window
+  // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
   let lastWindowKey = null;       // kalshi ticker or close_time
-  let lastClockBucket = null;     // fallback: floor(unix / 900)
+  let lastClockBucket = null;     // fallback: floor(unix / 3600)
   let audioCtx = null;
   let bellArmed = false;          // need a user gesture before AudioContext
 
@@ -444,7 +444,7 @@
   }
 
 
-  /** Short purple mist burst when a new 15m market opens (~5s). */
+  /** Short purple mist burst when a new hourly market opens (~5s). */
   /**
    * Professional volumetric purple mist — particle physics.
    * Soft billows + micro-sparks + ground fog, ~5s cinematic burst on new market.
@@ -759,8 +759,8 @@
   }
 
   function clockBucket(date = new Date()) {
-    // 15-minute UTC buckets aligned to clock
-    return Math.floor(date.getTime() / (15 * 60 * 1000));
+    // hourly UTC buckets aligned to clock
+    return Math.floor(date.getTime() / (60 * 60 * 1000));
   }
 
   function maybeRingForNewWindow(s) {
@@ -1454,7 +1454,7 @@
       ctx.stroke();
       // icon
       try {
-        drawBotIcon(name, x, y, 11, col, confA);
+        drawBotIcon(name, x, y, 14, col, confA);
       } catch (e) {
         ctx.beginPath();
         ctx.arc(x, y, 9, 0, Math.PI * 2);
@@ -2350,7 +2350,7 @@
       const parts = [];
 
       openRows.forEach(r => {
-        const tick = (r.ticker || "").replace(/^KXBTC15M-?/i, "") || "—";
+        const tick = (r.ticker || "").replace(/^KX(BTC|ETH)(D|15M)-?/i, "") || "—";
         const entry = r.entry_side_pct != null ? Number(r.entry_side_pct) : (r.open_price != null ? Number(r.open_price) : null);
         const peak = r.peak_side_pct != null ? Number(r.peak_side_pct) : (r.exit_price != null ? Number(r.exit_price) : null);
         let pathPts = r.path_move_pct != null ? Number(r.path_move_pct) : null;
@@ -2380,7 +2380,7 @@
               hour: "2-digit", minute: "2-digit",
             })
           : "";
-        const tick = (r.ticker || "").replace(/^KXBTC15M-?/i, "") || "—";
+        const tick = (r.ticker || "").replace(/^KX(BTC|ETH)(D|15M)-?/i, "") || "—";
         const entry = r.entry_side_pct != null ? Number(r.entry_side_pct) : (r.open_price != null ? Number(r.open_price) : null);
         const peak = r.peak_side_pct != null ? Number(r.peak_side_pct) : (r.exit_price != null ? Number(r.exit_price) : null);
         let pathPts = r.path_move_pct != null ? Number(r.path_move_pct) : null;
@@ -2982,7 +2982,7 @@ function drawCandleChart() {
 
 
   const BOT_GUIDE = {
-    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for 15m direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
+    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for hourly direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
     volume: { blurb: "Relative volume spikes and dry-ups vs price. Confirms moves when volume agrees.", subs: "SPIKE · DRYUP" },
     momentum: { blurb: "RSI + MACD-style short momentum. Continuation and soft mean-revert when stretched.", subs: "RSI · MACD" },
     orderflow: { blurb: "Taker pressure and book imbalance proxies + Kalshi mid lean.", subs: "BOOK · TAKER" },
@@ -2996,7 +2996,7 @@ function drawCandleChart() {
     session_tod: { blurb: "UTC session (Asia/Europe/US) priors, weekend dampening, early vs late window.", subs: "SESS · WINDOW" },
     whale: { blurb: "Whale-tape proxy: volume spikes, range expansion, taker aggression.", subs: "SPIKE · TAKER" },
     quorum: { blurb: "Counts how many seats lean each way and learns which headcount + combinations are usually right. Competes for rank.", subs: "SIZE · COMBO · FLOOR" },
-    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public 15m backtests.", subs: "30S · 60S · THR" },
+    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public hourly backtests.", subs: "30S · 60S · THR" },
     cheap: { blurb: "Value seat: lean the soft side when YES or NO is ≤42¢ — recovery toward fair, not chase expensive continuation.", subs: "YES · NO · BAND" },
     spotlag: { blurb: "Binance spot velocity in bps. Kalshi often lags CEX by seconds — follow hard spot bursts in the lag window.", subs: "30S · 60S · 3M" },
     exhaust: { blurb: "After a large 1h BTC run near high/low, if 5m flips against and Kalshi is still extreme, fade continuation.", subs: "1H · 5M · YES" },
@@ -3009,13 +3009,22 @@ function drawCandleChart() {
   function renderBotsGuide() {
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
-    const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
+    // Prefer focused table agents/hierarchy when dual
+    let src = state;
+    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
+      src = tableState(focusTable) || state;
+    }
+    const focusLabel = (focusTable === "ethereum") ? "ETHEREUM · VITALIK TABLE" : "BITCOIN · SATOSHI TABLE";
+    const hier = (src && src.hierarchy) || (src && src.learning && src.learning.hierarchy) || [];
     const rankMap = {};
     hier.forEach(r => { rankMap[r.agent] = r; });
-    const agents = (state && state.agents) || [];
+    const agents = (src && src.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    grid.innerHTML = Object.keys(BOT_GUIDE).map(key => {
+    const banner = '<div class="dual-focus-banner" style="grid-column:1/-1;padding:10px 14px;margin-bottom:8px;border:1px solid rgba(0,220,255,0.25);border-radius:8px;font:700 13px Orbitron,monospace;color:' +
+      (focusTable === "ethereum" ? "#9dffc0" : "#7fe9ff") + '">BOTS · ' + focusLabel +
+      ' · use BTC/ETH tabs to switch · ' + agents.length + ' specialists voting</div>';
+    grid.innerHTML = banner + Object.keys(BOT_GUIDE).map(key => {
       const g = BOT_GUIDE[key];
       const r = rankMap[key] || {};
       const ag = byName[key] || {};
@@ -3043,18 +3052,29 @@ function drawCandleChart() {
     const phaseEl = document.getElementById("ranksPhase");
     const notesEl = document.getElementById("learnNotes");
     if (!table) return;
-    const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
-    const agents = (state && state.agents) || [];
+    let src = state;
+    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
+      src = tableState(focusTable) || state;
+    }
+    if (phaseEl) {
+      phaseEl.textContent = (focusTable === "ethereum" ? "ETH · Vitalik" : "BTC · Satoshi") + " ranks";
+    }
+    const hier = (src && src.hierarchy) || (src && src.learning && src.learning.hierarchy) || [];
+    const agents = (src && src.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    const acc = (state && state.accuracy) || {};
+    const acc = (src && src.accuracy) || (state && state.accuracy) || {};
     const n = acc.total || 0;
-    const thr = state && state.decision && state.decision.threshold_used;
-    const edge = state && state.decision && state.decision.edge_score;
+    const thr = (src && src.decision && src.decision.threshold_used != null)
+      ? src.decision.threshold_used
+      : (state && state.decision && state.decision.threshold_used);
+    const edge = (src && src.decision && src.decision.edge_score != null)
+      ? src.decision.edge_score
+      : (state && state.decision && state.decision.edge_score);
     const phase = n < 15
       ? ("COLD START · " + n + " settled — Chair is loose so the council can learn. Threshold " + (thr != null ? Number(thr).toFixed(2) : "—") + ".")
       : ("LEARNED · " + n + " settled · hit " + (acc.accuracy_pct != null ? acc.accuracy_pct + "%" : "—") + " · edge score " + (edge != null ? edge : "—") + " · thr " + (thr != null ? Number(thr).toFixed(2) : "—") + ".");
-    if (phaseEl) phaseEl.textContent = phase;
+    if (phaseEl) phaseEl.textContent = ((focusTable === "ethereum") ? "ETH · " : "BTC · ") + phase;
     const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span>LISTEN</span><span class="hide-sm">WT</span></div>';
     const rows = hier.filter(r => r.agent !== "law");
     const body = rows.map(r => {
@@ -3140,21 +3160,51 @@ function drawCandleChart() {
   }
 
 
+  function countVotes(agents) {
+    let up = 0, down = 0, wait = 0, hold = 0, swap = 0;
+    (agents || []).forEach(a => {
+      const d = (a && a.direction) || "WAIT";
+      if (d === "UP") up++;
+      else if (d === "DOWN") down++;
+      else if (d === "UP_HOLD" || d === "DOWN_HOLD") hold++;
+      else if (d === "SWAP") swap++;
+      else wait++;
+    });
+    return { up, down, wait, hold, swap };
+  }
+
   function updateColorTally(state) {
     const cc = (state && state.color_counts) || {};
     let up = cc.UP, down = cc.DOWN, wait = cc.WAIT, hold = cc.HOLD || 0, swap = cc.SWAP || 0;
     if (up == null && state && state.agents) {
-      up = down = wait = hold = swap = 0;
-      state.agents.forEach(a => {
-        const d = a.direction || "WAIT";
-        if (d === "UP") up++;
-        else if (d === "DOWN") down++;
-        else if (d === "UP_HOLD" || d === "DOWN_HOLD") hold++;
-        else if (d === "SWAP") swap++;
-        else wait++;
-      });
+      const c = countVotes(state.agents);
+      up = c.up; down = c.down; wait = c.wait; hold = c.hold; swap = c.swap;
     }
     up = up || 0; down = down || 0; wait = wait || 0; hold = hold || 0; swap = swap || 0;
+
+    // Dual vote strip: BTC + ETH specialist counts
+    try {
+      const btcSt = (typeof tableState === "function" ? tableState("bitcoin") : null) || state;
+      const ethSt = (typeof tableState === "function" ? tableState("ethereum") : null);
+      const b = countVotes((btcSt && btcSt.agents) || state.agents || []);
+      const e = countVotes((ethSt && ethSt.agents) || []);
+      const bv = document.getElementById("btcVotes");
+      const ev = document.getElementById("ethVotes");
+      if (bv) bv.textContent = "↑" + b.up + " ↓" + b.down + " ·" + b.wait;
+      if (ev) ev.textContent = ethSt
+        ? ("↑" + e.up + " ↓" + e.down + " ·" + e.wait)
+        : "—";
+      const ethPx = document.getElementById("ethPrice");
+      if (ethPx) {
+        const px = ethSt && ethSt.market && ethSt.market.price;
+        ethPx.textContent = px != null ? Number(px).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
+      }
+      const accEth = document.getElementById("accuracyStripEth");
+      if (accEth) {
+        const a = (ethSt && ethSt.accuracy) || {};
+        accEth.textContent = (a.label || ((a.correct || 0) + "/" + (a.total || 0)));
+      }
+    } catch (err) {}
     const total = Math.max(1, up + down + wait + hold + swap);
 
     const elU = document.getElementById("ctUp");
@@ -3496,7 +3546,7 @@ function drawCandleChart() {
         display = mm + ":" + ss;
       } else {
         const now = Date.now();
-        const bucket = 15 * 60 * 1000;
+        const bucket = 60 * 60 * 1000;
         const left = bucket - (now % bucket);
         const s = Math.floor(left / 1000);
         display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
@@ -3532,7 +3582,7 @@ function drawCandleChart() {
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
 
-    // Market-open bell when a new 15m window/contract appears
+    // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
 
     // Trigger brief glitch when decision changes
@@ -3714,7 +3764,7 @@ function drawCandleChart() {
   const TUTORIAL_SLIDES = [
     {
       title: "WHAT IS THIS?",
-      body: "Satoshi’s Council is a living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).\n\nEach bot has one job — candles, volume, odds, panic, cheap side, etc. The Chair (Satoshi) listens harder to bots that have been right, then locks exactly ONE high-quality paper call per window: UP or DOWN — or WAIT if there is no edge.\n\nThis is a research co-pilot and training table. It does not place real orders.",
+      body: "Satoshi’s Council is a dual Round Table: Bitcoin (Satoshi) + Ethereum (Vitalik) on Kalshi hourly markets (KXBTCD / KXETHD).\n\nEach bot has one job — candles, volume, odds, panic, cheap side, etc. The Chair (Satoshi) listens harder to bots that have been right, then locks exactly ONE high-quality paper call per window: UP or DOWN — or WAIT if there is no edge.\n\nThis is a research co-pilot and training table. It does not place real orders.",
       tip: "Think war room, not magic indicator. Quality over quantity.",
       bots: null,
     },
@@ -3744,7 +3794,7 @@ function drawCandleChart() {
     },
     {
       title: "CORE vs EDGE BOTS",
-      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on what public 15m data has favored: panic fades, cheap odds, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the floor show how they are voting live.",
+      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on what public hourly data has favored: panic fades, cheap odds, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the floor show how they are voting live.",
       tip: "Open the Bots tab anytime for the full field guide.",
       bots: "core",
     },
