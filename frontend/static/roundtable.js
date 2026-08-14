@@ -515,7 +515,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | dashboard | charts
   let state = null;
-  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "bitcoin"; })();
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableState(which) {
     if (!state) return null;
@@ -1715,8 +1715,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
-      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function cssCanvasSize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const sx = (ctx && ctx.getTransform) ? (ctx.getTransform().a || dpr) : dpr;
+    return {
+      w: canvas.width / (sx || 1) || parseFloat(canvas.style.width) || 320,
+      h: canvas.height / (sx || 1) || parseFloat(canvas.style.height) || 320,
+    };
   }
   function lawLocked() {
     const law = (state && state.law) || {};
@@ -1773,6 +1781,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {
       return window.innerWidth <= 480;
     }
+  }
+  function floorIsSingle() {
+    if (isPhoneDesk()) return true;
+    const stage = document.getElementById("tableStage");
+    const cssW = (stage && stage.clientWidth) || window.innerWidth || 0;
+    return cssW < 720;
+  }
+  function syncFloorExitBtn() {
+    const btn = document.getElementById("floorExitBtn");
+    if (!btn) return;
+    const on = mode === "floor";
+    btn.hidden = !on;
+    btn.setAttribute("aria-hidden", on ? "false" : "true");
   }
 
   function drawDualFloor(w, h) {
@@ -2053,10 +2074,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function drawArt() {
     if (!ctx || !canvas) return;
     resizeRoundtable();
-    const w = canvas.width, h = canvas.height;
+    const sz = cssCanvasSize();
+    const w = sz.w, h = sz.h;
 
-    // Dual Floor: two chairs side-by-side — phone is one focused table
-    if (mode === "floor" && !isPhoneDesk() && typeof isDualMode === "function" && isDualMode()) {
+    // Dual Floor only when the stage is wide enough — phone is always one table
+    if (mode === "floor" && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
       try { drawTrailFX(ctx); } catch(e) {}
       return;
@@ -2435,7 +2457,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       ctx.globalAlpha = floorAlpha;
-      const r = mode === "floor" ? 24 : 20;
+      const r = (isPhoneDesk() || mode === "floor") ? 24 : 20;
       const col = colorFor(agent.direction, agent.confidence);
       const sc = strongColor(agent.direction);
       const face = floorLocked ? Math.atan2(cy - pos.y, cx - pos.x) : pos.angle;
@@ -3983,6 +4005,7 @@ function drawCandleChart() {
     // Exactly one mode-* class and one .active pill — leftover ranks+charts lit two tabs
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
+    try { syncFloorExitBtn(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
         window.__floorMusicOnMode(mode === "floor");
@@ -4617,7 +4640,7 @@ function drawCandleChart() {
     localStorage.setItem("council_entered", "1");
     function after() {
       try {
-        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("floor");
+        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("art");
       } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
@@ -4950,6 +4973,15 @@ function drawCandleChart() {
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
     applyFocusChrome();
+    const floorExit = document.getElementById("floorExitBtn");
+    if (floorExit && !floorExit.__wired) {
+      floorExit.__wired = true;
+      floorExit.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMode("art");
+      });
+    }
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
@@ -5414,8 +5446,8 @@ function drawCandleChart() {
     }, { capture: true, passive: true });
   }
 
-  // Auto-enter Floor — game HUD first
-  setMode("floor");
+  // Default desk: Table with ETH focus
+  setMode("art");
   try { syncAutoBetVisibility(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);

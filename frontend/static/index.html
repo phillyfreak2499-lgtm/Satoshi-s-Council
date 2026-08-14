@@ -56,7 +56,8 @@
   <!-- Startup gate: Tutorial or Summon -->
   <div id="app">
     <div id="ztWatermark" class="zt-watermark" aria-hidden="true"></div>
-    <div class="floor-hint" id="floorHint">FLOOR · ESC or TABLE to exit</div>
+    <div class="floor-hint" id="floorHint">FLOOR</div>
+    <button type="button" id="floorExitBtn" class="floor-exit-btn" hidden>TABLE</button>
     <div id="rivalryStrip" class="rivalry-strip" hidden>
       <span id="rivalSat">SATOSHI 0–0</span>
       <b class="rival-vs">VS</b>
@@ -112,9 +113,9 @@
         </div>
       </div>
       <div class="mode-tabs" role="tablist" aria-label="View mode">
-        <button type="button" id="focusBtc" class="focus-tab focus-active" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
-        <button type="button" id="focusEth" class="focus-tab" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
-        <span id="focusTableBadge" class="focus-table-badge" title="Floor shows both tables">BTC · SATOSHI</span>
+        <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
+        <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
+        <span id="focusTableBadge" class="focus-table-badge" title="Focused table">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>

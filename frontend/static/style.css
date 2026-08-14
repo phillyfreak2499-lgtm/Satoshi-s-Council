@@ -4932,3 +4932,142 @@ body.majority-down.floor-mode::before {
 body.majority-wait.floor-mode::before {
   background: radial-gradient(ellipse at 50% 55%, rgba(10, 40, 90, 0.28), transparent 60%) !important;
 }
+
+/* Floor exit — always tappable, phones have no Esc */
+.floor-exit-btn {
+  display: none;
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top, 10px));
+  left: max(10px, env(safe-area-inset-left, 10px));
+  z-index: 90;
+  min-height: 44px;
+  min-width: 72px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 232, 255, 0.55);
+  background: rgba(4, 12, 22, 0.92);
+  color: #7fe9ff;
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  pointer-events: auto;
+  cursor: pointer;
+}
+body.floor-mode .floor-exit-btn:not([hidden]),
+body.mode-floor .floor-exit-btn:not([hidden]) {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+body.floor-mode .floor-hint,
+body.mode-floor .floor-hint {
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: max(12px, env(safe-area-inset-right, 12px));
+  left: auto;
+  pointer-events: none;
+}
+
+/* 1H WINDOW — 2-ID dock beats leftover position:fixed */
+#app #windowLed,
+#app #windowLed.led-window,
+#app #windowLed.led-float,
+#tableStage #windowLed,
+#tableStage #windowLed.led-window {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
+  transform: none !important;
+  float: none !important;
+  z-index: 3 !important;
+}
+
+@media (max-width: 480px) {
+  /* Compress LAW / HIT / HUDDLE so they don't eat the desk */
+  #app > header .huddle-badge,
+  #app > header .accuracy-badge,
+  #app > header .law-badge {
+    min-width: 0 !important;
+    padding: 2px 6px !important;
+    gap: 4px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+  }
+  #app > header .huddle-label,
+  #app > header .accuracy-badge .acc-label,
+  #app > header .law-badge .law-label,
+  #app > header .accuracy-badge .acc-col-right,
+  #app > header .accuracy-badge .acc-detail,
+  #app > header .huddle-badge .huddle-status,
+  #app > header #lastUpdate,
+  #app > header .live-clock,
+  #app > header .hive-btn {
+    display: none !important;
+  }
+  #app > header .accuracy-badge .acc-pct,
+  #app > header .law-badge .law-status {
+    font-size: 11px !important;
+    line-height: 1 !important;
+  }
+  #app > header .controls {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    gap: 4px !important;
+    max-width: 100% !important;
+  }
+  #app > header .header-row {
+    flex-wrap: wrap !important;
+  }
+
+  /* Floor on phone: one table + visible nav / TABLE back */
+  body.floor-mode header,
+  body.floor-mode #app > header,
+  body.mode-floor #app > header,
+  body.floor-mode #app > header.top-bar {
+    display: flex !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 80 !important;
+    flex-direction: column !important;
+  }
+  body.floor-mode #app > header .header-row,
+  body.mode-floor #app > header .header-row {
+    display: none !important;
+  }
+  body.floor-mode #app > header .mode-tabs,
+  body.mode-floor #app > header .mode-tabs {
+    display: flex !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 81 !important;
+  }
+  body.floor-mode #app > footer,
+  body.mode-floor #app > footer {
+    display: flex !important;
+  }
+  body.floor-mode .rivalry-strip:not([hidden]),
+  body.mode-floor .rivalry-strip:not([hidden]) {
+    top: auto !important;
+    bottom: max(56px, env(safe-area-inset-bottom, 56px));
+    max-width: calc(100vw - 16px);
+    flex-wrap: wrap;
+    white-space: normal;
+    justify-content: center;
+  }
+
+  #app #windowLed,
+  #app #windowLed.led-window,
+  body.mode-art #app #windowLed {
+    position: relative !important;
+    order: 2 !important;
+    margin: 4px auto 0 !important;
+    display: block !important;
+    visibility: visible !important;
+    z-index: 3 !important;
+  }
+  body.mode-art #lifetimePanel {
+    padding-top: 8px !important;
+  }
+}
