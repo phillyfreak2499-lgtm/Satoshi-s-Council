@@ -1531,41 +1531,7 @@
     }
   }
 
-  function updateDebate() {
-    if (!debateLog) return;
-    const agents = (state && state.agents) || [];
-    if (!agents.length) {
-      debateLog.innerHTML = `<div class="debate-empty">AWAITING SEATS…</div>`;
-      return;
-    }
-
-    // Newest arguments first; keep a short rolling history so it reads as debate
-    const stamp = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "";
-    const lines = agents
-      .filter(a => a.agent_name !== "leader")
-      .map(a => {
-        const who = labelOf(a);
-        const dir = lawLocked() ? "LOCKED" : (a.direction || "WAIT");
-        const said = (a.reasoning || "").trim() || `${dir} at ${a.confidence}%`;
-        return { who, dir, conf: a.confidence, said, stamp };
-      });
-
-    // Prepend this round if content changed
-    const fingerprint = lines.map(l => l.who + l.dir + l.said).join("|");
-    if (!debateHistory.length || debateHistory[0]._fp !== fingerprint) {
-      const batch = lines.map(l => ({ ...l, _fp: fingerprint }));
-      debateHistory = batch.concat(debateHistory).slice(0, 40);
-    }
-
-    debateLog.innerHTML = debateHistory.map(e => `
-      <div class="debate-entry dir-${e.dir}">
-        <div class="who">${e.who}
-          <span class="dir-tag" style="color:${strongColor(e.dir)}">${e.dir} ${e.conf != null ? e.conf + "%" : ""}</span>
-        </div>
-        <div class="said">${e.said}</div>
-      </div>
-    `).join("");
-  }
+  function updateDebate() { return; }
 
   function resizeCandleChart() {
     if (!candleCanvas || !candleCanvas.parentElement) return;
