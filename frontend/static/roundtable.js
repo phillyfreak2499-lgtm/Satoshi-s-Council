@@ -355,7 +355,25 @@
     return null;
   }
   function isDualMode() {
-    return !!(state && (state.dual || (state.tables && state.tables.ethereum)));
+    return !!(state && (state.dual || (state.tables && (state.tables.ethereum || state.tables.bitcoin))));
+  }
+  /** Focused view of dual state — NEVER mutates state.tables */
+  function getViewState() {
+    if (!state) return null;
+    if (!isDualMode()) return state;
+    const focused = tableState(focusTable);
+    if (!focused) return state;
+    const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
+    return Object.assign({}, state, {
+      decision: focused.decision || state.decision,
+      locked_call: lc || state.locked_call,
+      agents: focused.agents || state.agents,
+      market: focused.market || state.market,
+      accuracy: focused.accuracy || state.accuracy,
+      hierarchy: focused.hierarchy || state.hierarchy,
+      learning: focused.learning || state.learning,
+      _focusTable: focusTable,
+    });
   }
 
 
@@ -1590,19 +1608,14 @@
       return;
     }
 
-    // Focused table overlay for single/table view
-    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
-      const focused = tableState(focusTable);
-      if (focused) {
-        state = Object.assign({}, state, {
-          decision: focused.decision || state.decision,
-          locked_call: focused.locked_call || (focused.decision && focused.decision.locked_call) || state.locked_call,
-          agents: focused.agents || state.agents,
-          market: focused.market || state.market,
-          accuracy: focused.accuracy || state.accuracy,
-        });
+    // Snapshot focused table — temporary swap, restored at end of drawArt
+    const __prevState = state;
+    try {
+      if (typeof getViewState === "function") {
+        const view = getViewState();
+        if (view) state = view;
       }
-    }
+    } catch (e) {}
 
     const cx = w / 2, cy = h / 2;
     const radius = Math.min(w, h) * (mode === "floor" ? 0.42 : 0.34);
@@ -2213,6 +2226,7 @@
     for (let y = 0; y < h; y += 3) {
       ctx.fillRect(0, y, w, 1);
     }
+    try { if (typeof __prevState !== 'undefined' && __prevState) state = __prevState; } catch (e) {}
   }
 
   function renderDashboard() {
@@ -3492,18 +3506,20 @@ function drawCandleChart() {
 
   function updateUI() {
     if (!state) return;
-    // Prefer focused table when dual API is present
-    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
-      const focused = tableState(focusTable);
-      if (focused) {
-        state = Object.assign({}, state, {
-          decision: focused.decision || state.decision,
-          locked_call: focused.locked_call || (focused.decision && focused.decision.locked_call) || state.locked_call,
-          agents: focused.agents || state.agents,
-          accuracy: focused.accuracy || state.accuracy,
-          market: focused.market || state.market,
-          hierarchy: focused.hierarchy || state.hierarchy,
-        });
+    // Prefer focused table when dual API is present (read-only view — keep tables intact)
+    const __savedTables = state.tables;
+    const __savedBtc = state.btc;
+    const __savedEth = state.eth;
+    const __savedDual = state.dual;
+    if (typeof getViewState === "function" && isDualMode()) {
+      const view = getViewState();
+      if (view) {
+        state = view;
+        // restore dual roots so next focus switch still works
+        if (__savedTables) state.tables = __savedTables;
+        if (__savedBtc) state.btc = __savedBtc;
+        if (__savedEth) state.eth = __savedEth;
+        if (__savedDual != null) state.dual = __savedDual;
       }
     }
     if (state.system_settings) applySettingsSnapshot(state.system_settings);
@@ -4292,67 +4308,64 @@ function drawCandleChart() {
   }
 
 
-  // BTC / ETH focus — MUST run even when summon gate is skipped (returning visitors)
+  // BTC / ETH focus — exclusive, always wired (even if summon gate skipped)
   function wireFocusAndHelp() {
-    if (window.__focusWired) return;
-    window.__focusWired = true;
     const focusBtc = document.getElementById("focusBtc");
     const focusEth = document.getElementById("focusEth");
-    function setFocusTable(which) {
-      focusTable = which === "ethereum" ? "ethereum" : "bitcoin";
-      document.body.dataset.focusTable = focusTable;
-      try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+    if (!focusBtc && !focusEth) return;
+
+    function applyFocusChrome() {
+      const isEth = focusTable === "ethereum";
+      document.body.dataset.focusTable = isEth ? "ethereum" : "bitcoin";
       if (focusBtc) {
-        focusBtc.classList.toggle("focus-active", focusTable === "bitcoin");
-        focusBtc.classList.remove("active");
+        focusBtc.classList.remove("active", "mode-tab");
+        if (isEth) focusBtc.classList.remove("focus-active");
+        else focusBtc.classList.add("focus-active");
       }
       if (focusEth) {
-        focusEth.classList.toggle("focus-active", focusTable === "ethereum");
-        focusEth.classList.remove("active");
+        focusEth.classList.remove("active", "mode-tab");
+        if (isEth) focusEth.classList.add("focus-active");
+        else focusEth.classList.remove("focus-active");
       }
-      // Force table chrome label
-      try {
-        const badge = document.getElementById("focusTableBadge");
-        if (badge) badge.textContent = focusTable === "ethereum" ? "ETH · VITALIK" : "BTC · SATOSHI";
-      } catch (e) {}
-      try { updateUI(); } catch (e) {}
-      try { drawArt(); } catch (e) {}
+      const badge = document.getElementById("focusTableBadge");
+      if (badge) badge.textContent = isEth ? "ETH · VITALIK" : "BTC · SATOSHI";
+    }
+
+    function setFocusTable(which) {
+      focusTable = (which === "ethereum" || which === "eth") ? "ethereum" : "bitcoin";
+      try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+      applyFocusChrome();
+      try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
+      try { drawArt(); } catch (e) { console.warn("focus drawArt", e); }
       try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
-      try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
+      try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;
-    if (focusBtc) {
-      focusBtc.onclick = (e) => {
+
+    function bind(btn, which) {
+      if (!btn || btn.__focusBound) return;
+      btn.__focusBound = true;
+      btn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        setFocusTable("bitcoin");
-      };
+        e.stopImmediatePropagation();
+        setFocusTable(which);
+      }, true); // capture — beat any mode-tab handler
     }
-    if (focusEth) {
-      focusEth.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setFocusTable("ethereum");
-      };
-    }
-    try { setFocusTable(focusTable || "bitcoin"); } catch (e) {}
+    bind(focusBtc, "bitcoin");
+    bind(focusEth, "ethereum");
+    applyFocusChrome();
 
     const btnHelp = document.getElementById("btnHelp");
     if (btnHelp && !btnHelp.__wired) {
       btnHelp.__wired = true;
       btnHelp.addEventListener("click", () => { try { ensureAudio(); openTutorial(true); } catch (e) {} });
     }
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
-        const tag = (e.target && e.target.tagName) || "";
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        try { ensureAudio(); openTutorial(true); } catch (err) {}
-      }
-    });
   }
+  // Allow re-wire after DOM patches
+  window.__focusWired = false;
 
   function initSummonGate_DISABLED_OLD(){ try{ document.getElementById('summonGate')?.remove(); document.body.classList.remove('gate-locked'); }catch(e){} return; }
   function initSummonGate() {
