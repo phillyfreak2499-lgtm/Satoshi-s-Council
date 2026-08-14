@@ -227,6 +227,42 @@ class Leader:
             f"have conf {conf} vs locked {locked_conf}, age {age:.0f}s)"
         ), None
 
+    def _build_locked_call(self) -> Optional[Dict[str, Any]]:
+        """Clean follower-readable lock object. None when no lock is active."""
+        active = self._active_dir()
+        if not active or not (self._entry_dir or self._locked_dir):
+            return None
+        entry_odds = None
+        if self._entry_up_pct is not None:
+            if active == "UP":
+                entry_odds = float(self._entry_up_pct)
+            elif active == "DOWN":
+                entry_odds = 100.0 - float(self._entry_up_pct)
+        locked_at = self._entry_at or self._locked_at or None
+        locked_at_iso = None
+        if locked_at:
+            try:
+                from datetime import datetime, timezone
+                locked_at_iso = datetime.fromtimestamp(float(locked_at), tz=timezone.utc).isoformat()
+            except Exception:
+                locked_at_iso = str(locked_at)
+        return {
+            "locked": True,
+            "direction": active,
+            "confidence": int(self._active_conf()),
+            "entry_odds_pct": entry_odds,
+            "entry_up_pct": self._entry_up_pct,
+            "locked_at": locked_at_iso or locked_at,
+            "phase": (
+                "final" if self._final_dir else
+                "mid" if self._mid_dir else
+                "entry"
+            ),
+            "irreversible": int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1) <= 1,
+            "ticker": self._locked_ticker,
+            "goal": GOAL_CONTRACT_SHORT,
+        }
+
     def update_edge_from_accuracy(self, accuracy: Dict[str, Any] | None) -> None:
         """Feed lifetime log stats so confluence bar can loosen or tighten."""
         if not accuracy:
@@ -816,39 +852,15 @@ class Leader:
         # Only FULL UP/DOWN can open or revise a graded call — not HOLD/WAIT/SWAP
         is_full_dir = direction in ("UP", "DOWN") and lean in ("UP", "DOWN") and firm
 
-        if is_full_dir and ticker:
-            # Compute chosen-side market odds (¢)
-            side_odds = None
-            if up_pct is not None:
-                if lean == "UP":
-                    side_odds = float(up_pct)
-                else:
-                    side_odds = 100.0 - float(up_pct)
+        # Compute chosen-side market odds (¢) when we have a lean
+        side_odds = None
+        if lean in ("UP", "DOWN") and up_pct is not None:
+            side_odds = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
 
-            # GOAL: refuse lock when chosen side is already ≥ MAX_ENTRY_ODDS_PCT
-            if side_odds is not None and side_odds >= max_odds:
-                refused_side = lean
-                direction = "WAIT"
-                lean = None
-                firm = False
-                conf = max(int(conf), 72)
-                summary = (
-                    f"WAIT · GOAL CONTRACT · {refused_side} already {side_odds:.0f}¢ "
-                    f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
-                )
-                # do not set any lock
-            elif not self._entry_dir:
-                # First firm full call = ENTRY (only once per ticker when MAX_CALLS=1)
-                self._set_window_lock(ticker, direction, conf, score, up_pct=up_pct, call_phase="entry")
-                call_phase = "entry"
-                odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
-                summary = (
-                    f"LOCKED {lean}{odds_str} · ONE CALL · FOLLOW THIS · "
-                    f"{GOAL_CONTRACT_SHORT} · {summary}"
-                )
-            else:
+        if is_full_dir and ticker:
+            if self._entry_dir or self._active_dir():
+                # ── Already locked: hold / block opposite. Never re-apply odds gate. ──
                 active = self._active_dir()
-                # Same side → hold, do not open another graded call
                 if lean == active:
                     direction = active  # type: ignore[assignment]
                     lean = active
@@ -856,9 +868,8 @@ class Leader:
                     summary = f"Lock held {active} · irreversible · no new call"
                     if gate_notes:
                         summary += " · " + ", ".join(gate_notes[:2])
-                    call_phase = None  # not a new graded event
+                    call_phase = None
                 else:
-                    # Opposite side — blocked under one-call policy
                     blocked, lock_reason, allowed_phase = self._lock_blocks_opposite(
                         ticker, lean, conf, score, mins_left=mins_left
                     )
@@ -880,13 +891,35 @@ class Leader:
                         )
                         call_phase = phase_to_use
                         summary = f"{phase_to_use.upper()} revise → {lean} · {summary}"
+            else:
+                # ── No lock yet: apply GOAL CONTRACT odds gate, then open single lock ──
+                if side_odds is not None and side_odds >= max_odds:
+                    refused_side = lean
+                    direction = "WAIT"
+                    lean = None
+                    firm = False
+                    conf = max(int(conf), 72)
+                    summary = (
+                        f"WAIT · GOAL CONTRACT · {refused_side} already {side_odds:.0f}¢ "
+                        f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
+                    )
+                else:
+                    # Open the one irreversible ENTRY lock
+                    self._set_window_lock(
+                        ticker, direction, conf, score, up_pct=up_pct, call_phase="entry"
+                    )
+                    call_phase = "entry"
+                    odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
+                    summary = (
+                        f"LOCKED {lean}{odds_str} · ONE CALL · FOLLOW THIS · "
+                        f"{GOAL_CONTRACT_SHORT} · {summary}"
+                    )
         elif self._active_dir() and direction in ("UP_HOLD", "DOWN_HOLD", "WAIT", "SWAP"):
             # Soft outcomes while a lock is live — surface the held call
             active = self._active_dir()
             if active and direction == "WAIT":
                 summary = f"Lock held {active} · irreversible · {summary}"
             elif active and direction in ("UP_HOLD", "DOWN_HOLD"):
-                # Demote HOLDs to held full side display when lock exists
                 hold_side = "UP" if direction == "UP_HOLD" else "DOWN"
                 if hold_side == active:
                     direction = active  # type: ignore[assignment]
@@ -936,26 +969,8 @@ class Leader:
             "entry_up_pct": self._entry_up_pct,
             "revisions_used": int(getattr(self, "_revisions_used", 0) or 0),
             "call_phase": locals().get("call_phase"),
-            # Follower-bot ready: one clear locked call object (GOAL CONTRACT)
-            "locked_call": {
-                "locked": bool(self._entry_dir or self._locked_dir or self._active_dir()),
-                "direction": self._active_dir(),
-                "confidence": int(self._active_conf()),
-                "entry_odds_pct": (
-                    float(self._entry_up_pct) if (self._active_dir() == "UP" and self._entry_up_pct is not None)
-                    else (100.0 - float(self._entry_up_pct) if (self._active_dir() == "DOWN" and self._entry_up_pct is not None) else None)
-                ),
-                "entry_up_pct": self._entry_up_pct,
-                "locked_at": getattr(self, "_locked_at", None) or getattr(self, "_entry_at", None),
-                "phase": (
-                    "final" if self._final_dir else
-                    "mid" if self._mid_dir else
-                    "entry" if self._entry_dir else None
-                ),
-                "irreversible": True,
-                "ticker": self._locked_ticker,
-                "goal": "one high-quality directional guess on how the window ends at the best odds (<80%)",
-            },
+            # Follower-bot ready: only present when a real lock exists
+            "locked_call": self._build_locked_call(),
             "agent_details": details,
             "weights": {k: round(v, 3) for k, v in self.weights.items()},
             "learning": self.learner.snapshot(),
@@ -975,6 +990,7 @@ class Leader:
             "threshold_used": settings.MIN_CONFLUENCE_SCORE,
             "pair_bonus": 0.0,
             "pair_notes": [],
+            "locked_call": self._build_locked_call(),
             "agent_details": [],
             "weights": {k: round(v, 3) for k, v in self.weights.items()},
             "learning": self.learner.snapshot(),
