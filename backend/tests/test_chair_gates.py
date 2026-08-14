@@ -9,13 +9,21 @@ from backend.agents.chair_gates import (
     book_too_thin,
     clamp_p_finish,
     compute_ev_cents,
+    dead_book_reason,
+    early_lock_blocked,
+    estimate_p_finish,
+    eth_fades_btc_impulse,
     ev_gate_blocks,
     finish_outcome,
+    kalshi_taker_fee_cents,
+    late_spot_decisive,
     official_window_due,
     pick_settle_spot,
     odds_band_key,
     parse_book_depth,
+    playable_yes_mid,
     time_ev_hurdles,
+    build_btc_lead,
 )
 from backend.agents.leader import Leader
 from backend.config import settings
@@ -31,9 +39,19 @@ class ClampAndEvTests(unittest.TestCase):
         self.assertEqual(clamp_p_finish(None), 0.01)
 
     def test_ev_cents_formula(self):
-        # 100*0.70 − 50 − 2 = 18
-        self.assertAlmostEqual(compute_ev_cents(0.70, 50.0, 4.0), 18.0)
-        self.assertAlmostEqual(compute_ev_cents(0.55, 52.0, 2.0), 2.0)
+        # Paper-fill at ask: 100*P − ask − fee − half-spread
+        self.assertAlmostEqual(compute_ev_cents(0.70, 50.0, 4.0, fee_cents=0.0), 18.0)
+        self.assertAlmostEqual(kalshi_taker_fee_cents(50.0), 1.75)
+        self.assertAlmostEqual(compute_ev_cents(0.70, 50.0, 4.0), 16.25)
+
+    def test_estimate_p_finish_shrinks_cold_91(self):
+        # 91% Chair on a cold book is not P(finish)
+        p = estimate_p_finish(91, 0)
+        self.assertLessEqual(p, 0.62)
+        self.assertGreater(p, 0.50)
+        warm = estimate_p_finish(91, 80)
+        self.assertLessEqual(warm, 0.80)
+        self.assertGreater(warm, p)
 
     def test_ev_gate_wait(self):
         self.assertTrue(ev_gate_blocks(0.50, 10.0, 0.55, 3.0))
@@ -140,21 +158,40 @@ class OddsBandCalibTests(unittest.TestCase):
 class LeaderPriceEdgeTests(unittest.TestCase):
     def test_price_edge_middle_and_late(self):
         chair = Leader()
+        chair.edge["total"] = 80
         mid = chair._price_edge(
             70, "UP", 50.0,
-            {"spread_cents": 4.0, "mins_left": 30, "window_minutes": 60},
+            {"spread_cents": 4.0, "mins_left": 30, "window_minutes": 60, "settled_n": 80},
         )
-        self.assertAlmostEqual(mid["p_finish"], 0.70)
-        self.assertAlmostEqual(mid["ev_cents"], 18.0)
+        # shrink 0.85: 0.50 + 0.20*0.85 = 0.67; EV = 67 − 50 − 1.75 − 2 = 13.25
+        self.assertAlmostEqual(mid["p_finish"], 0.67)
+        self.assertAlmostEqual(mid["ev_cents"], 13.25)
         self.assertEqual(mid["phase"], "middle")
         self.assertFalse(ev_gate_blocks(mid["p_finish"], mid["ev_cents"], mid["min_p"], mid["min_ev"]))
 
         late = chair._price_edge(
             60, "UP", 55.0,
-            {"spread_cents": 2.0, "mins_left": 10, "window_minutes": 60},
+            {"spread_cents": 2.0, "mins_left": 10, "window_minutes": 60, "settled_n": 80},
         )
         self.assertEqual(late["phase"], "late")
         self.assertTrue(ev_gate_blocks(late["p_finish"], late["ev_cents"], late["min_p"], late["min_ev"]))
+
+    def test_price_edge_uses_yes_ask_not_mid(self):
+        chair = Leader()
+        chair.edge["total"] = 80
+        edge = chair._price_edge(
+            70, "UP", 48.0,
+            {
+                "spread_cents": 4.0,
+                "mins_left": 30,
+                "window_minutes": 60,
+                "settled_n": 80,
+                "yes_ask": 52.0,
+                "yes_bid": 48.0,
+            },
+        )
+        # fill at 52¢ ask, not 48¢ mid
+        self.assertAlmostEqual(edge["ev_cents"], compute_ev_cents(0.67, 52.0, 4.0))
 
     def test_wait_keeps_priced_edge_on_state(self):
         chair = Leader()

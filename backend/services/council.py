@@ -41,7 +41,12 @@ from backend.config import settings
 from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
-from backend.agents.chair_gates import parse_book_depth, pick_settle_spot, window_minutes_from_times
+from backend.agents.chair_gates import (
+    odds_to_cents,
+    parse_book_depth,
+    pick_settle_spot,
+    window_minutes_from_times,
+)
 
 
 class Council:
@@ -115,7 +120,12 @@ class Council:
         self._shadow_book: list = []
         self._last_settle_review = None
         self._last_spot: float | None = None
+        self._btc_lead: Dict[str, Any] | None = None
         self.huddle = NightlyHuddle()
+
+    def attach_btc_lead(self, lead: Dict[str, Any] | None) -> None:
+        """Vitalik input: Satoshi move / lock / hour spot delta."""
+        self._btc_lead = lead if isinstance(lead, dict) else None
 
     async def start(self):
         await self.store.init()
@@ -311,6 +321,8 @@ class Council:
             logger.debug(f"Huddle cycle: {e}")
 
         market_data = await self.pipeline.fetch()
+        if self._btc_lead:
+            market_data["btc_lead"] = self._btc_lead
         # Multi-window memory: tick update + inject snapshot for specialists
         try:
             km = market_data.get("kalshi_market") or {}
@@ -549,6 +561,34 @@ class Council:
                 regime_features["up_pct"] = up_pct
             if down_pct is not None:
                 regime_features["down_pct"] = down_pct
+            # Paper-fill at the real ask + playable mid band
+            yb = odds_to_cents(market_data.get("kalshi_yes_bid"))
+            ya = odds_to_cents(market_data.get("kalshi_yes_ask"))
+            if yb is not None:
+                regime_features["yes_bid"] = yb
+            if ya is not None:
+                regime_features["yes_ask"] = ya
+            if yb is not None:
+                regime_features["no_ask"] = 100.0 - yb
+            if yb is not None and ya is not None:
+                regime_features["yes_mid"] = (yb + ya) / 2.0
+            elif up_pct is not None:
+                regime_features["yes_mid"] = float(up_pct)
+            spot = market_data.get("current_price") or market_data.get("spot_price")
+            try:
+                if spot is not None and float(spot) > 0:
+                    regime_features["spot_price"] = float(spot)
+                    regime_features["current_price"] = float(spot)
+            except (TypeError, ValueError):
+                pass
+            regime_features["asset"] = self.asset
+            try:
+                regime_features["settled_n"] = int((self.leader.edge or {}).get("total") or 0)
+            except (TypeError, ValueError):
+                regime_features["settled_n"] = 0
+            lead = market_data.get("btc_lead") or self._btc_lead
+            if isinstance(lead, dict):
+                regime_features["btc_lead"] = lead
         except Exception:
             pass
 
@@ -743,7 +783,6 @@ class Council:
                     for c in (market_data.get("candles") or [])[-60:]
                 ],
             },
-            "health": market_data.get("health"),
             "fetch_ms": market_data.get("fetch_ms"),
             "fetched_at": market_data.get("fetched_at"),
             "signal_id": signal_id,
@@ -762,7 +801,16 @@ class Council:
             "shadow_book": list(self._shadow_book[-12:]),
             "last_settle_review": self._last_settle_review,
             "health": {
-                "kalshi": bool(market_data.get("kalshi_healthy", market_data.get("healthy", True))),
+                **(market_data.get("health") or {}),
+                "kalshi": bool((market_data.get("health") or {}).get(
+                    "kalshi",
+                    market_data.get("kalshi_healthy", market_data.get("healthy", True)),
+                )),
+                "binance": bool((market_data.get("health") or {}).get("binance", False)),
+                "coinbase": bool((market_data.get("health") or {}).get("coinbase", False)),
+                "coinglass": bool((market_data.get("health") or {}).get("coinglass", False)),
+                "spot_source": (market_data.get("health") or {}).get("spot_source")
+                    or market_data.get("spot_source"),
                 "quote_age_s": (time.time() - float(market_data["kalshi_fetched_at"]))
                     if market_data.get("kalshi_fetched_at") else None,
                 "from_cache": bool(market_data.get("from_shared_cache") or market_data.get("last_good")),

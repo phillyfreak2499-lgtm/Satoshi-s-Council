@@ -58,6 +58,8 @@ services:
       #   sync: false
       # - key: KALSHI_PRIVATE_KEY_PATH
       #   sync: false
+      # CoinGlass: Secret File named COINGLASS_API_KEY (same pattern as kalshi.pem).
+      # App reads env first, else /etc/secrets/COINGLASS_API_KEY. Never commit the key.
 
   # Nightly huddle + keep-alive (Starter doesn't sleep, but Cron guarantees 3 AM CT run)
   - type: cron

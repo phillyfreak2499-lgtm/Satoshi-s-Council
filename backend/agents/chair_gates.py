@@ -10,8 +10,21 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 
+def odds_to_cents(raw: Any) -> Optional[float]:
+    """Kalshi yes/no as 0–100¢. Dollars (0–1) are scaled."""
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if v <= 1.0:
+        v *= 100.0
+    return max(0.0, min(100.0, v))
+
+
 def clamp_p_finish(conf: Any) -> float:
-    """p_finish = clamp(Chair conf / 100, 0.01, 0.99)."""
+    """Raw Chair conf → 0.01–0.99. Do not use as P(finish) until calibrated."""
     try:
         raw = float(conf) / 100.0
     except (TypeError, ValueError):
@@ -19,19 +32,58 @@ def clamp_p_finish(conf: Any) -> float:
     return max(0.01, min(0.99, raw))
 
 
+def estimate_p_finish(conf: Any, settled_n: int = 0) -> float:
+    """
+    Shrink Chair confidence toward a coin-flip until enough finish-graded hours.
+    91% Chair on a cold book is the lesson — that is not P(finish).
+    """
+    raw = clamp_p_finish(conf)
+    try:
+        n = int(settled_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    cold_n, warm_n = 15, 40
+    try:
+        from backend.config import settings
+        cold_n = int(getattr(settings, "P_FINISH_COLD_N", 15))
+        warm_n = int(getattr(settings, "P_FINISH_WARM_N", 40))
+    except Exception:
+        pass
+    if n < cold_n:
+        shrink, cap = 0.30, 0.62
+    elif n < warm_n:
+        shrink, cap = 0.55, 0.70
+    else:
+        shrink, cap = 0.85, 0.80
+    p = 0.50 + (raw - 0.50) * float(shrink)
+    return max(0.01, min(float(cap), p))
+
+
+def kalshi_taker_fee_cents(ask_cents: Any) -> float:
+    """Kalshi-style taker fee ≈ 7¢ * p * (1-p), in cents."""
+    px = odds_to_cents(ask_cents)
+    if px is None:
+        return 1.75
+    p = px / 100.0
+    return max(0.0, 7.0 * p * (1.0 - p))
+
+
 def compute_ev_cents(
     p_finish: float,
-    side_mid: float,
+    side_ask: float,
     spread_cents: float | None = None,
+    fee_cents: float | None = None,
 ) -> float:
-    """ev_cents = 100*p_finish − chosen-side mid − half_spread."""
+    """Paper-fill at ask: 100*P(finish) − ask − fees − half-spread."""
     half = 0.0
     try:
         if spread_cents is not None:
             half = max(0.0, float(spread_cents) / 2.0)
     except (TypeError, ValueError):
         half = 0.0
-    return float(100.0 * float(p_finish) - float(side_mid) - half)
+    ask = float(side_ask)
+    fee = float(fee_cents) if fee_cents is not None else kalshi_taker_fee_cents(ask)
+    return float(100.0 * float(p_finish) - ask - fee - half)
 
 
 def ev_gate_blocks(p_finish: float, ev_cents: float, min_p: float, min_ev: float) -> bool:
@@ -195,6 +247,92 @@ def parse_book_depth(orderbook: Any) -> Dict[str, Any]:
     }
 
 
+def playable_yes_mid(yes_mid: Any, lo: float = 20.0, hi: float = 80.0) -> bool:
+    """Only play hours where YES mid is roughly 20–80¢."""
+    mid = odds_to_cents(yes_mid)
+    if mid is None:
+        return False
+    return float(lo) <= mid <= float(hi)
+
+
+def early_lock_blocked(
+    mins_left: Any,
+    window_minutes: Any = 60.0,
+    no_lock_mins: float = 10.0,
+) -> bool:
+    """No lock in the first `no_lock_mins` of the official hour."""
+    try:
+        ml = float(mins_left)
+        dur = float(window_minutes) if window_minutes else 60.0
+    except (TypeError, ValueError):
+        return False
+    elapsed = dur - ml
+    return elapsed < float(no_lock_mins)
+
+
+def late_spot_decisive(
+    spot: Any,
+    strike: Any,
+    mins_left: Any,
+    hourly_vol_pct: float = 0.40,
+    k: float = 1.0,
+) -> bool:
+    """
+    Last-15 lock only if spot vs strike already beats remaining vol.
+    Missing spot/strike → not decisive (WAIT).
+    """
+    try:
+        px = float(spot)
+        k0 = float(strike)
+        ml = float(mins_left)
+    except (TypeError, ValueError):
+        return False
+    if px <= 0 or k0 <= 0 or ml < 0:
+        return False
+    remaining = max(1.0 / 60.0, min(1.0, ml / 60.0))
+    expected = float(hourly_vol_pct) / 100.0 * (remaining ** 0.5)
+    gap = abs(px - k0) / k0
+    return gap >= float(k) * expected
+
+
+def dead_book_reason(
+    depth: Dict[str, Any] | None,
+    side: str | None,
+    yes_mid: Any = None,
+    max_side: float = 80.0,
+) -> Optional[str]:
+    """
+    Skip dead hours: chosen side ≥80¢, mid outside 20–80, or one-sided book
+    (yes_depth 0 / NO at 99¢).
+    """
+    mid = odds_to_cents(yes_mid)
+    if mid is not None and not playable_yes_mid(mid):
+        return f"YES mid {mid:.0f}¢ outside 20–80¢"
+    if side not in ("UP", "DOWN"):
+        return None
+    if mid is not None:
+        side_mid = mid if side == "UP" else (100.0 - mid)
+        if side_mid >= float(max_side):
+            return f"{side} already {side_mid:.0f}¢"
+    if not depth:
+        return None
+    yes_depth = float(depth.get("yes_depth") or 0.0)
+    no_depth = float(depth.get("no_depth") or 0.0)
+    yes_bid = odds_to_cents(depth.get("yes_bid_px"))
+    no_bid = odds_to_cents(depth.get("no_bid_px"))
+    if side == "UP" and yes_depth <= 0:
+        return "one-sided book · yes_depth 0"
+    if side == "DOWN" and no_depth <= 0:
+        return "one-sided book · no_depth 0"
+    if side == "UP" and no_bid is not None and no_bid >= 99.0:
+        return "one-sided book · NO at 99¢"
+    if side == "DOWN" and yes_bid is not None and yes_bid >= 99.0:
+        return "one-sided book · YES at 99¢"
+    if side == "UP" and yes_bid is not None and yes_bid <= 1.0:
+        return "one-sided book · YES ≤1¢"
+    return None
+
+
 def book_too_thin(
     depth: Dict[str, Any] | None,
     side: str | None,
@@ -279,6 +417,100 @@ def band_tighten(
         out["p_add"] = float(p_add)
         out["ev_add"] = float(ev_add)
     return out
+
+
+def normalize_side(direction: Any) -> str:
+    d = str(direction or "WAIT").upper()
+    if d in ("UP", "UP_HOLD"):
+        return "UP"
+    if d in ("DOWN", "DOWN_HOLD"):
+        return "DOWN"
+    return "WAIT"
+
+
+def hour_spot_delta_pct(
+    candles: Any,
+    price: Any,
+    now: datetime | None = None,
+) -> Optional[float]:
+    """Hour-open → now, in percent. Missing open/price → None."""
+    try:
+        px = float(price)
+    except (TypeError, ValueError):
+        return None
+    if px <= 0:
+        return None
+    stamp = now or datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    hour_ms = int(stamp.replace(minute=0, second=0, microsecond=0).timestamp() * 1000)
+    open_px = None
+    for c in candles or []:
+        if not isinstance(c, dict):
+            continue
+        t = c.get("t") if c.get("t") is not None else c.get("open_time")
+        o = c.get("o") if c.get("o") is not None else c.get("open")
+        try:
+            t_ms = int(t)
+            o_px = float(o)
+        except (TypeError, ValueError):
+            continue
+        if t_ms >= hour_ms and o_px > 0:
+            open_px = o_px
+            break
+    if open_px is None or open_px <= 0:
+        return None
+    return (px - open_px) / open_px * 100.0
+
+
+def build_btc_lead(
+    direction: Any,
+    locked: bool = False,
+    candles: Any = None,
+    price: Any = None,
+    impulse_pct: float = 0.15,
+    strong_pct: float = 0.25,
+    now: datetime | None = None,
+) -> Dict[str, Any]:
+    """Satoshi snapshot for Vitalik: side, lock, hour spot delta, impulse."""
+    side = normalize_side(direction)
+    delta = hour_spot_delta_pct(candles, price, now=now)
+    try:
+        impulse_thr = float(impulse_pct)
+        strong_thr = float(strong_pct)
+    except (TypeError, ValueError):
+        impulse_thr, strong_thr = 0.15, 0.25
+    if side not in ("UP", "DOWN") and delta is not None:
+        if delta >= impulse_thr:
+            side = "UP"
+        elif delta <= -impulse_thr:
+            side = "DOWN"
+    impulse = bool(
+        side in ("UP", "DOWN")
+        and (locked or (delta is not None and abs(delta) >= impulse_thr))
+    )
+    strong = bool(
+        side in ("UP", "DOWN")
+        and (locked or (delta is not None and abs(delta) >= strong_thr))
+    )
+    return {
+        "direction": side,
+        "locked": bool(locked),
+        "spot_delta_pct": None if delta is None else round(float(delta), 4),
+        "impulse": impulse,
+        "strong": strong,
+    }
+
+
+def eth_fades_btc_impulse(lean: Any, btc_lead: Any) -> bool:
+    """True when ETH would lock opposite a same-hour BTC impulse."""
+    if not isinstance(btc_lead, dict) or not btc_lead.get("impulse"):
+        return False
+    bd = normalize_side(btc_lead.get("direction"))
+    side = normalize_side(lean)
+    if side not in ("UP", "DOWN") or bd not in ("UP", "DOWN"):
+        return False
+    return side != bd
 
 
 def official_window_due(close_time: Any, now: datetime | None = None) -> bool:

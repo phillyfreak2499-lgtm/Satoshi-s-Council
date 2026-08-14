@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from loguru import logger
 from backend.config import settings
 from backend.services.council import Council
+from backend.agents.chair_gates import build_btc_lead
 
 DUAL_FLOOR_S = 2.0
 BEAST_FLOOR_S = 1.2
@@ -130,6 +131,31 @@ class DualOrchestrator:
                 pass
 
 
+    def snapshot_btc_lead(self) -> Dict[str, Any]:
+        """Satoshi lock / lean / hour spot delta for Vitalik."""
+        st = self.btc.latest_state or {}
+        d = st.get("decision") or {}
+        lc = d.get("locked_call") or st.get("locked_call") or {}
+        raw_dir = lc.get("direction") or d.get("lean") or d.get("direction") or "WAIT"
+        locked = bool(lc.get("locked") or d.get("window_locked"))
+        market = st.get("market") or {}
+        return build_btc_lead(
+            direction=raw_dir,
+            locked=locked,
+            candles=market.get("candles") or [],
+            price=market.get("price"),
+            impulse_pct=float(getattr(settings, "BTC_LEAD_IMPULSE_PCT", 0.15)),
+            strong_pct=float(getattr(settings, "BTC_LEAD_STRONG_PCT", 0.25)),
+        )
+
+    def _feed_btc_lead(self) -> None:
+        if not self.eth:
+            return
+        try:
+            self.eth.attach_btc_lead(self.snapshot_btc_lead())
+        except Exception as e:
+            logger.debug(f"btc-lead inject skip: {e}")
+
     def _correlation_veto(self) -> None:
         """If both tables lean the same side weakly, demote the weaker to WAIT (no lock yet)."""
         from backend.config import settings
@@ -201,6 +227,8 @@ class DualOrchestrator:
                         await c.settle_due_windows()
                     except Exception as se:
                         logger.debug(f"Dual settle-after-error skip ({c.asset}): {se}")
+                if c.asset == "btc":
+                    self._feed_btc_lead()
                 # Jitter between tables so Kalshi calls don't stampede
                 if i < len(councils) - 1:
                     try:
@@ -259,6 +287,7 @@ class DualOrchestrator:
 
     async def analyze_once(self) -> Dict[str, Any]:
         await self.btc.analyze_once()
+        self._feed_btc_lead()
         if self.eth:
             await self.eth.analyze_once()
         return self.get_state()

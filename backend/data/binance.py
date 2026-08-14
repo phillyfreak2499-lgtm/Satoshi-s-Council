@@ -16,15 +16,87 @@ from backend.services.runtime_settings import runtime_settings
 _FUTURES_COOLDOWN = 3600.0
 
 
+def coinbase_product_for_symbol(symbol: str | None) -> str:
+    """Coinbase kline/ticker product. ETHUSDT → ETH-USD, else BTC-USD."""
+    s = (symbol or "").upper()
+    if s.startswith("ETH"):
+        return "ETH-USD"
+    return "BTC-USD"
+
+
+def spot_source_from_base(base: str | None) -> str:
+    text = str(base or "").lower()
+    if "binance.vision" in text:
+        return "vision"
+    if "binance.us" in text:
+        return "binance.us"
+    if "coinbase" in text:
+        return "coinbase"
+    if "binance.com" in text:
+        return "binance.com"
+    return "unknown"
+
+
+def snapshot_from_parts(
+    candles: list,
+    premium: dict | None,
+    oi: dict | None,
+    spot_source: str | None = None,
+) -> Dict[str, Any]:
+    """Mark spot healthy from candles+price. Futures funding/OI may be empty."""
+    premium = premium if isinstance(premium, dict) else {}
+    oi = oi if isinstance(oi, dict) else {}
+    price = 0.0
+    if candles:
+        try:
+            price = float(candles[-1]["close"])
+        except (TypeError, ValueError, KeyError, IndexError):
+            price = 0.0
+    if price <= 0 and premium.get("mark_price"):
+        try:
+            price = float(premium["mark_price"])
+        except (TypeError, ValueError):
+            price = 0.0
+    funding = None
+    if premium.get("last_funding_rate") is not None:
+        try:
+            funding = float(premium["last_funding_rate"])
+        except (TypeError, ValueError):
+            funding = None
+    open_interest = None
+    if oi.get("open_interest") is not None:
+        try:
+            open_interest = float(oi["open_interest"])
+        except (TypeError, ValueError):
+            open_interest = None
+    healthy = bool(candles) and price > 0
+    return {
+        "source": "binance",
+        "candles": candles or [],
+        "price": price,
+        "current_price": price,
+        "mark_price": float(premium.get("mark_price") or price or 0),
+        "funding": funding,
+        "funding_rate": funding,
+        "open_interest": open_interest if open_interest is not None else 0.0,
+        "premium": premium or {},
+        "oi": oi or {},
+        "healthy": healthy,
+        "spot_source": spot_source,
+    }
+
+
 class BinanceClient:
     def __init__(self, symbol: str | None = None):
         from backend.config import settings
         self.symbol = symbol or getattr(settings, 'SYMBOL', 'BTCUSDT')
+        # Prefer vision (worldwide) then .us; .com last — Oregon often 451/403
         self.spot_bases = [
             "https://data-api.binance.vision",
-            "https://api.binance.com",
             "https://api.binance.us",
+            "https://api.binance.com",
         ]
+        self._last_spot_source: str | None = None
         self.futures_bases = [
             "https://fapi.binance.com",
         ]
@@ -86,12 +158,14 @@ class BinanceClient:
                         "taker_buy_base": float(row[9]) if len(row) > 9 else float(row[5]) * 0.5,
                         "taker_buy_quote": float(row[10]) if len(row) > 10 else 0.0,
                     })
+                self._last_spot_source = spot_source_from_base(base)
                 return candles
             except Exception as e:
                 last_err = e
-        # Coinbase fallback (US-friendly)
+        # Coinbase fallback (US-friendly) — product from symbol, not BTC-only
         try:
-            url = "https://api.exchange.coinbase.com/products/BTC-USD/candles"
+            product = coinbase_product_for_symbol(self.symbol)
+            url = f"https://api.exchange.coinbase.com/products/{product}/candles"
             raw = await self._get_json(url, {"granularity": 60})
             candles = []
             for row in reversed(raw[:limit]):
@@ -106,10 +180,12 @@ class BinanceClient:
                     "close_time": int(t) * 1000 + 59999,
                     "taker_buy_base": float(vol) * 0.5,
                 })
-            logger.info("klines via Coinbase fallback")
+            self._last_spot_source = "coinbase"
+            logger.info(f"klines via Coinbase fallback ({product})")
             return candles
         except Exception as e:
             logger.error(f"klines failed: {last_err}; coinbase: {e}")
+            self._last_spot_source = None
             return []
 
     async def get_premium_index(self) -> Dict[str, Any]:
@@ -188,31 +264,12 @@ class BinanceClient:
                     self._slow_cache["oi"] = oi
                 self._slow_cache_at = now
 
-            price = 0.0
-            if candles:
-                price = float(candles[-1]["close"])
-            elif isinstance(premium, dict) and premium.get("mark_price"):
-                price = float(premium["mark_price"])
-
-            return {
-                "source": "binance",
-                "candles": candles or [],
-                "price": price,
-                "mark_price": float((premium or {}).get("mark_price") or price or 0),
-                "funding": float((premium or {}).get("last_funding_rate") or 0),
-                "open_interest": float((oi or {}).get("open_interest") or 0),
-                "premium": premium or {},
-                "oi": oi or {},
-            }
+            return snapshot_from_parts(
+                candles or [],
+                premium if isinstance(premium, dict) else {},
+                oi if isinstance(oi, dict) else {},
+                getattr(self, "_last_spot_source", None),
+            )
         except Exception as e:
             logger.error(f"get_snapshot failed: {e}")
-            return {
-                "source": "binance",
-                "candles": [],
-                "price": 0.0,
-                "mark_price": 0.0,
-                "funding": 0.0,
-                "open_interest": 0.0,
-                "premium": {},
-                "oi": {},
-            }
+            return snapshot_from_parts([], {}, {}, None)

@@ -189,6 +189,20 @@ class Settings(BaseSettings):
     # P(finish) + EV gate (paper pricing only — never a live order)
     MIN_P_FINISH: float = 0.55
     MIN_EV_CENTS: float = 3.0
+    # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
+    EARLY_NO_LOCK_MINS: float = 10.0
+    PLAYABLE_MID_MIN: float = 20.0
+    PLAYABLE_MID_MAX: float = 80.0
+    LATE_HOURLY_VOL_PCT: float = 0.40
+    P_FINISH_COLD_N: int = 15
+    P_FINISH_WARM_N: int = 40
+    BTC_LEAD_IMPULSE_PCT: float = 0.15
+    BTC_LEAD_STRONG_PCT: float = 0.25
+    # CoinGlass v4 — key from env or /etc/secrets/COINGLASS_API_KEY (never in git)
+    COINGLASS_BASE: str = "https://open-api-v4.coinglass.com"
+    COINGLASS_EXCHANGE: str = "Binance"
+    COINGLASS_INTERVAL: str = "30m"
+    COINGLASS_TTL: float = 60.0
     # Top-of-book depth: known thin size → WAIT (spread still hard-gated above)
     MIN_BOOK_SIZE: float = 5.0
     # Time-to-expiry EV hurdles (hourly official window)
@@ -209,7 +223,7 @@ class Settings(BaseSettings):
     HOURLY_LATE_MIN: float = 20.0
     HOURLY_HARD_LATE_MIN: float = 8.0
     # ETH uses a thinner specialist set
-    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale"
+    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq"
 
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80

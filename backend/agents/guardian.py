@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
+from backend.data.spot_health import spot_feed_ok
 from loguru import logger
 
 
@@ -26,7 +27,7 @@ class GuardianBot(BaseSpecialist):
     def update_health(self, pipeline_health: Dict[str, bool], agent_signals: List[AgentSignal]):
         """Called by the orchestrator after each cycle."""
         self.agent_health = {s.agent_name: 1.0 if not s.muted else 0.2 for s in agent_signals}
-        if not pipeline_health.get("binance", True):
+        if not pipeline_health.get("binance", True) and not pipeline_health.get("coinbase", False):
             self.last_errors.append("Binance feed degraded")
         if not pipeline_health.get("kalshi", True):
             self.last_errors.append("Kalshi feed degraded")
@@ -39,7 +40,7 @@ class GuardianBot(BaseSpecialist):
         entry = self.entry_dir(market_data)
 
         health = market_data.get("health") or {}
-        binance_ok = health.get("binance", True)
+        binance_ok = bool(health.get("binance", True)) or spot_feed_ok(health, market_data)
         kalshi_ok = health.get("kalshi", True)
 
         features = {

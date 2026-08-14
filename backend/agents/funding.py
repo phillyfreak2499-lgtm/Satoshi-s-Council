@@ -101,6 +101,21 @@ class FundingSpecialist(BaseSpecialist):
         streak_dir, streak_n = self.streak(market_data)
         mean_rev = self.mean_reversion_bias(market_data)
 
+        hist = market_data.get("funding_history") or []
+        if hist and len(self._fund_hist) < 3:
+            for t, v in hist[-20:]:
+                try:
+                    self._fund_hist.append((float(t), float(v)))
+                except (TypeError, ValueError):
+                    continue
+        oi_hist = market_data.get("oi_history") or []
+        if oi_hist and len(self._oi_hist) < 3:
+            for t, v in oi_hist[-20:]:
+                try:
+                    self._oi_hist.append((float(t), float(v)))
+                except (TypeError, ValueError):
+                    continue
+
         funding = market_data.get("funding_rate")
         oi = market_data.get("open_interest")
 
