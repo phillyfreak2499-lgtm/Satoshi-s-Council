@@ -2906,13 +2906,20 @@ function drawCandleChart() {
     }
   }
 
+  function syncChartPairTitle() {
+    const pairTitle = document.getElementById("chartPairTitle");
+    if (pairTitle) pairTitle.textContent = (focusTable === "ethereum") ? "ETH · 1m" : "BTC · 1m";
+  }
+
   function drawChartBtc() {
+    syncChartPairTitle();
     const canvas = document.getElementById("chartBtc");
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    const market = (state && state.market) || {};
+    const view = (typeof getViewState === "function" ? getViewState() : null) || state || {};
+    const market = (view && view.market) || (state && state.market) || {};
     const candles = (market.candles || []).slice(-60);
     const target = Number(market.kalshi_target);
     const price = Number(market.price);
@@ -2970,6 +2977,7 @@ function drawCandleChart() {
         ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
         : "—";
     }
+    syncChartPairTitle();
   }
 
   function drawChartVolume() {
@@ -3594,6 +3602,7 @@ function drawCandleChart() {
       fetchSettings().then(applySettingsSnapshot);
     }
     if (mode === "charts") {
+      try { syncChartPairTitle(); } catch (e) {}
       requestAnimationFrame(() => { drawCharts(); });
     }
   }
@@ -3880,6 +3889,13 @@ function drawCandleChart() {
     if (e.key === "6") setMode("charts");
     if (e.key === "7") setMode("settings");
     if (e.key === "x" || e.key === "X") setBeastMode(!beastMode);
+    if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+        e.preventDefault();
+        try { openTutorial(true); } catch (err) {}
+      }
+    }
   });
 
   window.addEventListener("resize", () => {
@@ -4267,61 +4283,73 @@ function drawCandleChart() {
   function openTutorial(fromHelp) {
     ensureAudio();
     playSfxClick();
-    const gateAlive = !!document.getElementById("summonGate");
+    const gateAlive = !!document.getElementById("summonGate") && !fromHelp;
     const fromGate = gateAlive && !fromHelp;
 
-    // If gate is gone (already inside the app), build a standalone overlay
-    let tut = document.getElementById("gateTutorial");
+    // Desk help always gets its own veil so tutorial text cannot sit on the HUD.
+    // Unique IDs — never write into leftover #gateTutorial nodes under #summonGate.
     let standalone = false;
-    if (!tut) {
+    let root = null;
+    if (fromHelp || !document.getElementById("summonGate")) {
       standalone = true;
+      try { document.getElementById("helpTutorialOverlay")?.remove(); } catch (e) {}
       const overlay = document.createElement("div");
       overlay.id = "helpTutorialOverlay";
-      overlay.className = "summon-gate";
-      overlay.style.zIndex = "9999";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-label", "Council tutorial");
       overlay.innerHTML = `
-        <div class="gate-tutorial" id="gateTutorial" style="display:flex">
+        <div class="gate-tutorial" style="display:flex">
           <div class="tut-card">
-            <div class="tut-step"><span id="tutStep">1</span> / <span id="tutTotal">9</span></div>
-            <h2 id="tutTitle">Welcome</h2>
-            <p id="tutBody"></p>
-            <p id="tutTip" class="tut-tip"></p>
-            <div id="tutBots" class="tut-bots" style="display:none"></div>
+            <div class="tut-step"><span data-tut="step">1</span> / <span data-tut="total">9</span></div>
+            <h2 class="tut-title" data-tut="title">Welcome</h2>
+            <p class="tut-body" data-tut="body"></p>
+            <p class="tut-tip" data-tut="tip"></p>
+            <div class="tut-bots" data-tut="bots" style="display:none"></div>
             <div class="tut-actions">
-              <button type="button" id="tutBack" class="gate-btn gate-btn-ghost">Back</button>
-              <button type="button" id="tutSkip" class="gate-btn gate-btn-ghost">Close</button>
-              <button type="button" id="tutNext" class="gate-btn gate-btn-summon">Next</button>
+              <button type="button" data-tut="back" class="gate-btn gate-btn-ghost">Back</button>
+              <button type="button" data-tut="skip" class="gate-btn gate-btn-ghost">Close</button>
+              <button type="button" data-tut="next" class="gate-btn gate-btn-summon">Next</button>
             </div>
           </div>
         </div>`;
       document.body.appendChild(overlay);
-      tut = document.getElementById("gateTutorial");
+      root = overlay;
+    } else {
+      root = document.getElementById("gateTutorial") || document.getElementById("summonGate");
     }
 
+    const q = (name) => {
+      if (!root) return null;
+      return root.querySelector('[data-tut="' + name + '"]')
+        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1))
+        || document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
+    };
+
     const inner = document.getElementById("gateInner");
-    if (inner) inner.classList.add("hidden");
-    if (tut) {
-      tut.classList.remove("hidden");
-      tut.style.display = "flex";
+    if (inner && !standalone) inner.classList.add("hidden");
+    if (root && !standalone) {
+      root.classList.remove("hidden");
+      root.style.display = "flex";
     }
 
     let step = 0;
     const total = TUTORIAL_SLIDES.length;
-    const title = document.getElementById("tutTitle");
-    const body = document.getElementById("tutBody");
-    const botsEl = document.getElementById("tutBots");
-    const stepEl = document.getElementById("tutStep");
-    const totalEl = document.getElementById("tutTotal");
-    const next = document.getElementById("tutNext");
-    const back = document.getElementById("tutBack");
-    const skip = document.getElementById("tutSkip");
+    const title = q("title") || document.getElementById("tutTitle");
+    const body = q("body") || document.getElementById("tutBody");
+    const botsEl = q("bots") || document.getElementById("tutBots");
+    const stepEl = q("step") || document.getElementById("tutStep");
+    const totalEl = q("total") || document.getElementById("tutTotal");
+    const next = q("next") || document.getElementById("tutNext");
+    const back = q("back") || document.getElementById("tutBack");
+    const skip = q("skip") || document.getElementById("tutSkip");
     if (totalEl) totalEl.textContent = String(total);
 
-    let tipEl = document.getElementById("tutTip");
+    let tipEl = q("tip") || document.getElementById("tutTip");
     if (!tipEl && body && body.parentNode) {
       tipEl = document.createElement("p");
-      tipEl.id = "tutTip";
       tipEl.className = "tut-tip";
+      tipEl.setAttribute("data-tut", "tip");
       body.parentNode.insertBefore(tipEl, botsEl || body.nextSibling);
     }
 
@@ -4430,6 +4458,7 @@ function drawCandleChart() {
       }
       const badge = document.getElementById("focusTableBadge");
       if (badge) badge.textContent = isEth ? "ETH · VITALIK" : "BTC · SATOSHI";
+      try { syncChartPairTitle(); } catch (e) {}
     }
 
     function setFocusTable(which) {
@@ -4441,6 +4470,7 @@ function drawCandleChart() {
       try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
+      try { if (mode === "charts") drawCharts(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;
@@ -4534,28 +4564,37 @@ function drawCandleChart() {
   }
 
   function playCelebrateVideo(reason) {
-    if (celebratePlaying) return;
     const wrap = document.getElementById("celebrateVideoWrap");
     const vid = document.getElementById("celebrateVideo");
     const skipBtn = document.getElementById("celebrateVideoSkip");
+    const fallback = document.getElementById("celebrateFallback");
     if (!wrap || !vid) return;
-    // Don't interrupt summon intro
+    if (celebratePlaying) {
+      wrap.classList.remove("hidden");
+      wrap.classList.add("active");
+      wrap.setAttribute("aria-hidden", "false");
+      return;
+    }
     const gate = document.getElementById("summonGate");
     if (gate && document.body.classList.contains("gate-locked")) return;
 
     celebratePlaying = true;
     ensureAudio();
     wrap.classList.remove("hidden");
+    wrap.classList.add("active");
     fitVideoToScreen(vid);
     wrap.setAttribute("aria-hidden", "false");
-    vid.currentTime = 0;
+    if (fallback) fallback.hidden = true;
+    try { vid.currentTime = 0; } catch (e) {}
     vid.muted = !!soundMuted;
 
     const cleanup = () => {
       celebratePlaying = false;
       try { vid.pause(); } catch (e) {}
       wrap.classList.add("hidden");
+      wrap.classList.remove("active");
       wrap.setAttribute("aria-hidden", "true");
+      if (fallback) fallback.hidden = true;
       try {
         if (document.fullscreenElement) document.exitFullscreen();
       } catch (e) {}
@@ -4565,6 +4604,13 @@ function drawCandleChart() {
     vid.addEventListener("ended", onEnded);
     if (skipBtn) skipBtn.onclick = () => cleanup();
 
+    const keepOverlay = () => {
+      wrap.classList.remove("hidden");
+      wrap.classList.add("active");
+      wrap.setAttribute("aria-hidden", "false");
+      if (fallback) fallback.hidden = false;
+    };
+
     const goFs = () => {
       const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.msRequestFullscreen;
       if (req) {
@@ -4572,27 +4618,51 @@ function drawCandleChart() {
       }
     };
 
+    const sources = ["/zt-celebrate.mp4", "/zt-intro.mp4", "/summon-council.mp4"];
+    let srcIdx = 0;
     const tryPlay = () => {
       const p = vid.play();
       if (p && p.then) {
         p.then(() => {
+          if (fallback) fallback.hidden = true;
           goFs();
           if (!soundMuted) {
             try { vid.muted = false; } catch (e) {}
           }
         }).catch(() => {
           vid.muted = true;
-          vid.play().then(goFs).catch(() => cleanup());
+          const p2 = vid.play();
+          if (p2 && p2.then) {
+            p2.then(() => {
+              if (fallback) fallback.hidden = true;
+              goFs();
+            }).catch(advanceSrc);
+          } else {
+            advanceSrc();
+          }
         });
       } else {
         goFs();
       }
+    };
+    const advanceSrc = () => {
+      srcIdx += 1;
+      if (srcIdx < sources.length) {
+        try {
+          vid.src = sources[srcIdx];
+          vid.load();
+        } catch (e) {}
+        tryPlay();
+        return;
+      }
+      keepOverlay();
     };
     tryPlay();
     if (reason === "streak") {
       try { playSfxReveal(); } catch (e) {}
     }
   }
+  window.playCelebrateVideo = playCelebrateVideo;
 
   function checkWinStreakCelebrate(acc) {
     if (!acc) return;
@@ -4633,15 +4703,18 @@ function drawCandleChart() {
     if (s) applySettingsSnapshot(s);
   });
 
-  const ztCine = document.getElementById("ztLogoBtn");
-  if (ztCine && !ztCine.__cineWired) {
-    ztCine.__cineWired = true;
-    ztCine.addEventListener("click", (e) => {
+  function wireZtCinematic(btn) {
+    if (!btn || btn.__cineWired) return;
+    btn.__cineWired = true;
+    btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       playCelebrateVideo("manual");
-    });
+    }, true);
   }
+  wireZtCinematic(document.getElementById("ztLogoBtn"));
+  wireZtCinematic(document.getElementById("ztHeaderLogo"));
 
   async function collectAndSaveSettings() {
     const num = (id, d) => {

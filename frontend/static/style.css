@@ -3541,7 +3541,7 @@ body.reduce-motion #ledWindow::before,
 body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5; }
 
 /* ===== DESK FIT @ 1280 — keep overlay look, stop clip / overlap ===== */
-header {
+#app > header {
   display: flex !important;
   flex-direction: column !important;
   align-items: stretch !important;
@@ -3554,10 +3554,10 @@ header {
   z-index: 120 !important;
   pointer-events: auto !important;
 }
-header .mode-tab,
-header .focus-tab,
-header .controls button,
-header .beast-badge,
+#app > header .mode-tab,
+#app > header .focus-tab,
+#app > header .controls button,
+#app > header .beast-badge,
 #soundToggle {
   pointer-events: auto !important;
   position: relative;
@@ -3570,17 +3570,17 @@ header .beast-badge,
   gap: 10px 14px;
   min-width: 0;
 }
-header .logo {
+#app > header .logo {
   flex: 0 1 auto;
   min-width: 0;
   gap: 8px;
 }
-header .logo .title {
+#app > header .logo .title {
   font-size: 0.84rem;
   letter-spacing: 0.12em;
   white-space: nowrap;
 }
-header .controls {
+#app > header .controls {
   flex: 1 1 auto;
   display: flex !important;
   flex-wrap: nowrap !important;
@@ -3589,7 +3589,7 @@ header .controls {
   gap: 6px !important;
   min-width: 0;
 }
-header .mode-tabs {
+#app > header .mode-tabs {
   display: flex !important;
   flex-wrap: nowrap !important;
   align-items: center;
@@ -3600,8 +3600,8 @@ header .mode-tabs {
   overflow-y: hidden;
   padding: 3px 4px;
 }
-header .mode-tab,
-header .focus-tab,
+#app > header .mode-tab,
+#app > header .focus-tab,
 #soundToggle {
   flex: 0 0 auto;
   padding: 5px 8px !important;
@@ -3609,32 +3609,32 @@ header .focus-tab,
   letter-spacing: 0.06em !important;
   white-space: nowrap;
 }
-header .focus-tab {
+#app > header .focus-tab {
   min-width: 2.8rem;
 }
-header .focus-table-badge {
+#app > header .focus-table-badge {
   flex: 0 0 auto;
   margin-left: 2px;
   font-size: 10px;
   white-space: nowrap;
 }
-header .accuracy-badge {
+#app > header .accuracy-badge {
   min-width: 0;
   padding: 4px 8px;
 }
-header .huddle-badge {
+#app > header .huddle-badge {
   min-width: 0;
   padding: 3px 8px;
 }
-header .law-badge {
+#app > header .law-badge {
   padding: 4px 8px;
 }
-header .beast-badge {
+#app > header .beast-badge {
   flex: 0 0 auto;
   padding: 5px 10px;
   font-size: 10px;
 }
-header #lastUpdate {
+#app > header #lastUpdate {
   max-width: 7.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3650,7 +3650,8 @@ header #lastUpdate {
   margin: 8px 0 8px 8px;
 }
 body.mode-art #lifetimePanel {
-  padding-bottom: 124px;
+  padding-top: 92px;
+  padding-bottom: 12px;
 }
 #hierarchyPanel,
 body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
@@ -3711,8 +3712,9 @@ body:not(.floor-mode) .floor-music-btn {
 body.floor-mode .floor-music-btn {
   display: inline-flex !important;
   position: fixed !important;
-  top: 36px;
-  left: 14px;
+  top: 12px;
+  left: auto !important;
+  right: 14px;
   z-index: 70;
   opacity: 1;
 }
@@ -3738,18 +3740,26 @@ body.floor-mode .floor-music-btn {
 }
 body.floor-mode #windowLed,
 body.floor-mode #windowLed.led-window {
-  left: 16px !important;
-  bottom: 24px !important;
+  /* Top-left corner — bottom ring seats (ODDS / STRIKE / CLOCK) stay clear. */
+  top: 40px !important;
+  left: 14px !important;
+  right: auto !important;
+  bottom: auto !important;
   transform: none !important;
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
+  z-index: 70 !important;
 }
 body.mode-art #windowLed,
 body.mode-art #windowLed.led-window {
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
+  /* Top of the lifetime rail — never the table ring or footer. */
+  top: 110px !important;
+  bottom: auto !important;
+  left: 16px !important;
 }
 body.mode-dashboard #windowLed,
 body.mode-dashboard #windowLed.led-window,
@@ -3844,4 +3854,79 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   margin: 8px 10px 12px !important;
   position: relative;
   z-index: 3;
+}
+
+/* Compact digit timer so the left-rail chip does not eat the lifetime card */
+#windowLed .led-time { font-size: 28px !important; }
+#windowLed .led-bezel { padding: 8px 12px 6px; }
+#windowLed .led-label { font-size: 9px; margin-bottom: 4px; }
+
+/* Help tutorial — full-desk veil, card stays in its box */
+#helpTutorialOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 20000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px !important;
+  background: rgba(2, 4, 10, 0.92) !important;
+  overflow: auto !important;
+}
+#helpTutorialOverlay .gate-tutorial,
+#helpTutorialOverlay .tut-card {
+  position: relative !important;
+  max-width: min(560px, 92vw) !important;
+  max-height: min(80vh, 680px) !important;
+  overflow: auto !important;
+  margin: 0 auto !important;
+  background: rgba(8, 12, 22, 0.98) !important;
+}
+#helpTutorialOverlay .tut-title,
+#helpTutorialOverlay h2 {
+  font-family: Orbitron, monospace;
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  margin: 0 0 12px;
+  color: #e8f4ff;
+}
+#helpTutorialOverlay .tut-body,
+#helpTutorialOverlay #tutBody,
+#helpTutorialOverlay [data-tut="body"] {
+  white-space: pre-wrap;
+  overflow: visible;
+  color: #9eb0c0;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 0 16px;
+}
+
+.celebrate-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Orbitron, sans-serif;
+  font-size: clamp(22px, 4vw, 42px);
+  letter-spacing: 0.18em;
+  color: #f0c14a;
+  text-shadow: 0 0 24px rgba(240, 193, 74, 0.45);
+  pointer-events: none;
+  z-index: 1;
+}
+.celebrate-fallback[hidden] { display: none !important; }
+
+/* ZT cinematic must cover Charts and every other view */
+#celebrateVideoWrap,
+#celebrateVideoWrap.active {
+  z-index: 10080 !important;
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+#celebrateVideoWrap.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
