@@ -879,14 +879,37 @@ class Leader:
             lean = active
             firm = True
             conf = max(int(conf), self._active_conf())
-            summary = f"Lock held {active} · irreversible · one call · {summary}"
+            summary = f"Lock held {active} · irreversible · one call · specialists monitoring"
             if gate_notes:
                 summary += " · " + ", ".join(gate_notes[:2])
             call_phase = None
 
         elif is_directional and ticker:
             # No lock yet → try to open the single ENTRY lock
-            if side_odds is not None and side_odds >= max_odds:
+            # Fresh-quote gate: never ENTRY on stale / unhealthy Kalshi
+            import time as _time
+            stale_mkt = bool(regime_features.get("stale")) if regime_features else False
+            kalshi_ok = True if not regime_features else bool(regime_features.get("kalshi_healthy", True))
+            fetched_at = regime_features.get("kalshi_fetched_at") if regime_features else None
+            age_s = None
+            try:
+                if fetched_at is not None:
+                    age_s = max(0.0, _time.time() - float(fetched_at))
+            except (TypeError, ValueError):
+                age_s = None
+            max_age = float(getattr(settings, "KALSHI_MAX_QUOTE_AGE_S", 25.0))
+            quote_stale = (age_s is not None and age_s > max_age) or stale_mkt or (not kalshi_ok)
+
+            if quote_stale:
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 70)
+                age_txt = f"{age_s:.0f}s old" if age_s is not None else "stale"
+                summary = (
+                    f"WAIT · fresh quote required ({age_txt}) — no lock on stale Kalshi · {summary}"
+                )
+            elif side_odds is not None and side_odds >= max_odds:
                 refused_side = lean
                 direction = "WAIT"
                 lean = None
