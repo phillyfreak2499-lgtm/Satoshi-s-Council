@@ -168,7 +168,7 @@ class Council:
     async def analyze_once(self) -> Dict[str, Any]:
         # Refresh edge stats before synthesis so WAIT bar tracks lifetime log
         try:
-            self.leader.update_edge_from_accuracy(await self.store.get_accuracy())
+            self.leader.update_edge_from_accuracy(await self.store.get_accuracy(asset=self.asset))
         except Exception:
             pass
 
@@ -452,7 +452,7 @@ class Council:
             down_pct=down_pct,
         )
 
-        accuracy = await self.store.get_accuracy()
+        accuracy = await self.store.get_accuracy(asset=self.asset)
         # Feed lifetime edge into Chair so WAIT bar loosens as hit-rate proves out
         self.leader.update_edge_from_accuracy(accuracy)
         law_status = self.law.status()
@@ -544,8 +544,9 @@ class Council:
         }
         self.latest_state = state
         logger.info(
-            f"Council: {decision['direction']} ({decision['confidence']}%) – "
-            f"{decision['summary']} [subs={state['sub_council_count']}] "
+            f"[{self.asset}/{self.leader_name}] Council: {decision['direction']} "
+            f"({decision['confidence']}%) – {decision['summary']} "
+            f"[subs={state['sub_council_count']}] "
             f"acc={accuracy.get('label')} law_lock={law_status.get('lockdown_remaining')}"
         )
         return state
