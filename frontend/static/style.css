@@ -2368,7 +2368,7 @@ body.floor-mode.law-lock .floor-hint { color: rgba(255, 140, 40, 0.75); }
   display: flex; align-items: center; justify-content: center;
   background: radial-gradient(ellipse at center, #1a1040 0%, #050510 70%);
 }
-.password-gate.hidden { display: none; }
+.password-gate.hidden { display: none !important; pointer-events: none !important; }
 .password-card {
   background: rgba(12,16,28,0.92); border: 1px solid #4c1d95;
   border-radius: 16px; padding: 28px 32px; width: min(360px, 92vw);
@@ -3432,17 +3432,23 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 }
 .summon-video-wrap.hidden,
 .celebrate-video-wrap.hidden,
-#celebrateVideoWrap.hidden {
-  display: none !important;
-}
-.summon-video-wrap:not(.active):not(.hidden) {
-  /* keep inactive summon off-screen until activated */
-}
+#celebrateVideoWrap.hidden,
+#summonVideoWrap:not(.active),
+#summonVideoWrap.hidden,
 .summon-video-wrap:not(.active) {
   display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
 }
-.summon-video-wrap.active {
+#summonVideoWrap:not(.active) video,
+#summonVideoWrap.hidden video {
+  pointer-events: none !important;
+}
+.summon-video-wrap.active,
+#summonVideoWrap.active {
   display: flex !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
 }
 
 .summon-video-wrap video,
@@ -3550,7 +3556,18 @@ header {
   padding: 8px 14px 7px !important;
   overflow: visible !important;
   clip-path: none !important;
-  z-index: 60;
+  position: relative !important;
+  z-index: 120 !important;
+  pointer-events: auto !important;
+}
+header .mode-tab,
+header .focus-tab,
+header .controls button,
+header .beast-badge,
+#soundToggle {
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 2;
 }
 .header-row {
   display: flex;
@@ -3638,27 +3655,35 @@ header #lastUpdate {
 #lifetimePanel {
   margin: 8px 0 8px 8px;
 }
+body.mode-art #lifetimePanel {
+  padding-bottom: 124px;
+}
 #hierarchyPanel,
 body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
-  margin: 8px 12px 8px 0 !important;
+  margin: 8px 18px 8px 0 !important;
 }
 
 /* Digit timer docks to the table stage corner — never lower-center overlay.
    Hour ring stays gone (no ::before conic). */
+#windowLed.led-window,
 #tableStage #windowLed.led-window,
 #tableStage .led-window,
-body.floor-mode #tableStage #windowLed.led-window,
-body.mode-art #tableStage #windowLed.led-window,
+body.floor-mode #windowLed.led-window,
+body.mode-art #windowLed.led-window,
 body.floor-mode .led-window,
 body.mode-art .led-window {
-  position: absolute !important;
-  left: 10px !important;
+  position: fixed !important;
+  left: 16px !important;
   right: auto !important;
-  bottom: 10px !important;
+  bottom: 92px !important;
   top: auto !important;
   transform: none !important;
-  z-index: 12 !important;
+  z-index: 40 !important;
   pointer-events: none;
+}
+body.floor-mode #windowLed.led-window {
+  bottom: 24px !important;
+  left: 16px !important;
 }
 #windowLed::before,
 #windowLed::after,

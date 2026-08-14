@@ -2612,7 +2612,7 @@
       const listen = r.listen != null ? Math.round(r.listen * 100) : 100;
       const muted = listen < 40;
       const faded = !!(r.faded || r.invert);
-      const antiPairs = (state.learning && state.learning.top_anti_pairs) || [];
+      const antiPairs = (state && state.learning && state.learning.top_anti_pairs) || [];
       const isAntiWinner = antiPairs.some(p => p.winner === r.agent);
       const isAntiLoser = antiPairs.some(p => p.loser === r.agent);
       const top = (r.rank || idx + 1) <= 3;
@@ -3813,6 +3813,14 @@ function drawCandleChart() {
     if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
     btn.addEventListener("click", () => setMode(btn.dataset.mode));
   });
+  if (!document.__modeTabsDelegated) {
+    document.__modeTabsDelegated = true;
+    document.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
+      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth") return;
+      setMode(btn.dataset.mode);
+    });
+  }
   wirePaperEntry();
   document.querySelectorAll(".paper-cal-btn").forEach(btn => {
     btn.addEventListener("click", () => {
