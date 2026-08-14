@@ -1105,12 +1105,15 @@ class PerformanceStore:
             logger.warning(f"prune_old_window_calls: {e}")
             return 0
 
-    async def recent_settled_calls(self, limit: int = 20) -> List[Dict[str, Any]]:
+    async def recent_settled_calls(self, limit: int = 20, asset: str | None = None) -> List[Dict[str, Any]]:
         """Newest-first settled window calls, with agent votes when available."""
         async with self.Session() as session:
+            filters = [WindowCall.actual_outcome.isnot(None)]
+            if asset:
+                filters.append(WindowCall.asset == asset.lower())
             result = await session.execute(
                 select(WindowCall)
-                .where(WindowCall.actual_outcome.isnot(None))
+                .where(*filters)
                 .order_by(WindowCall.id.desc())
                 .limit(limit)
             )

@@ -297,6 +297,18 @@ def official_window_due(close_time: Any, now: datetime | None = None) -> bool:
     return stamp >= ct
 
 
+def pick_settle_spot(current: Any, last: Any = None) -> Optional[float]:
+    """Prefer this cycle's spot; fall back to the last good print. Never use 0."""
+    for cand in (current, last):
+        try:
+            px = float(cand)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return None
+
+
 def finish_outcome(spot: Any, strike: Any) -> Optional[str]:
     """UP if spot > exact strike, DOWN if spot < strike. Tie is unresolved."""
     try:

@@ -12,6 +12,7 @@ from backend.agents.chair_gates import (
     ev_gate_blocks,
     finish_outcome,
     official_window_due,
+    pick_settle_spot,
     odds_band_key,
     parse_book_depth,
     time_ev_hurdles,
@@ -98,6 +99,13 @@ class WindowStrikeTests(unittest.TestCase):
         self.assertEqual(finish_outcome(99_900, 100_000), "DOWN")
         self.assertIsNone(finish_outcome(100_000, 100_000))
         self.assertIsNone(finish_outcome(None, 100_000))
+
+    def test_pick_settle_spot_skips_zero_and_uses_last(self):
+        self.assertEqual(pick_settle_spot(100_100, None), 100_100)
+        self.assertEqual(pick_settle_spot(0, 99_900), 99_900)
+        self.assertEqual(pick_settle_spot(None, 99_900), 99_900)
+        self.assertIsNone(pick_settle_spot(0, None))
+        self.assertIsNone(pick_settle_spot("bad", None))
 
 
 class OddsBandCalibTests(unittest.TestCase):

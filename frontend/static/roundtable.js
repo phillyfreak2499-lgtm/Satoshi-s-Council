@@ -1707,6 +1707,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
+    rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
     ctx.beginPath();
     ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
@@ -1902,8 +1903,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillText(px, cx, cy + radius + 8);
   }
 
+  let chairHits = [];
+  function rememberChairHit(x, y, r, which) {
+    if (mode !== "floor") return;
+    chairHits.push({
+      x: x,
+      y: y,
+      r: Math.max(28, (r || 40) + 12),
+      which: which || "bitcoin",
+    });
+  }
+  function chairHitAt(x, y) {
+    for (let i = chairHits.length - 1; i >= 0; i--) {
+      const h = chairHits[i];
+      const dx = x - h.x;
+      const dy = y - h.y;
+      if (dx * dx + dy * dy <= h.r * h.r) return h;
+    }
+    return null;
+  }
+
   function drawArt() {
     if (!ctx || !canvas) return;
+    chairHits = [];
     resizeRoundtable();
     const sz = cssCanvasSize();
     const w = sz.w, h = sz.h;
@@ -2418,6 +2440,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
       ctx.fill();
     }
+    rememberChairHit(cx, cy, lr, focusTable === "ethereum" ? "ethereum" : "bitcoin");
 
     // Eye glow ring pulse (extra emphasis on call color)
     ctx.beginPath();
@@ -3539,7 +3562,7 @@ function drawCandleChart() {
       ? ("COLD START · " + n + " settled — Chair is loose so the council can learn. Threshold " + (thr != null ? Number(thr).toFixed(2) : "—") + ".")
       : ("LEARNED · " + n + " settled · hit " + (acc.accuracy_pct != null ? acc.accuracy_pct + "%" : "—") + " · edge score " + (edge != null ? edge : "—") + " · thr " + (thr != null ? Number(thr).toFixed(2) : "—") + ".");
     if (phaseEl) phaseEl.textContent = phase;
-    const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span>LISTEN</span><span class="hide-sm">WT</span></div>';
+    const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span class="listen-col">LISTEN</span><span class="hide-sm">WT</span></div>';
     const rows = hier.filter(r => r.agent !== "law");
     const body = rows.map(r => {
       const ag = byName[r.agent] || {};
@@ -3555,7 +3578,7 @@ function drawCandleChart() {
       return '<div class="rank-row ' + (top ? "top " : "") + (muted ? "muted-rank" : "") + '" role="row">' +
         '<span class="rk">#' + r.rank + '</span><span class="nm">' + name + '</span>' +
         '<span class="dir-live ' + dir + '">' + dir + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
-        '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span>' + listen + '</span>' +
+        '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span class="listen-col">' + listen + '</span>' +
         '<span class="hide-sm">' + (r.weight != null ? Number(r.weight).toFixed(3) : "—") + '</span></div>';
     }).join("") || '<div class="rank-row">No rank data yet.</div>';
     table.innerHTML = head + body;
@@ -4218,7 +4241,13 @@ function drawCandleChart() {
       setMode(order[(i + 1) % order.length]);
     }
     if (e.key === "b" || e.key === "B") soundToggle && soundToggle.click();
-    if (e.key === "Escape" && mode === "floor") setMode("art");
+    if (e.key === "Escape") {
+      if (typeof window.__dismissLeaderClick === "function" && window.__dismissLeaderClick()) {
+        e.preventDefault();
+        return;
+      }
+      if (mode === "floor") setMode("art");
+    }
     if (e.key === "0") setMode("floor");
     if (e.key === "1") setMode("art");
     if (e.key === "2") setMode("dashboard");
@@ -5064,6 +5093,133 @@ function drawCandleChart() {
   }
   window.playCelebrateVideo = playCelebrateVideo;
 
+  let leaderClickPlaying = false;
+  function playLeaderClickVideo() {
+    const wrap = document.getElementById("leaderClickWrap");
+    const vid = document.getElementById("leaderClickVideo");
+    const skipBtn = document.getElementById("leaderClickSkip");
+    const fallback = document.getElementById("leaderClickFallback");
+    if (!wrap || !vid) return;
+    if (leaderClickPlaying || celebratePlaying) return;
+    if (document.body.classList.contains("gate-locked")) return;
+
+    leaderClickPlaying = true;
+    document.body.classList.add("zt-cinematic");
+    ensureAudio();
+    wrap.classList.remove("hidden");
+    wrap.classList.add("active");
+    wrap.setAttribute("aria-hidden", "false");
+    if (fallback) {
+      fallback.hidden = false;
+      fallback.textContent = "";
+    }
+    fitVideoToScreen(vid);
+    vid.muted = !!soundMuted;
+    vid.playsInline = true;
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+    try { vid.currentTime = 0; } catch (e) {}
+    try {
+      if (typeof window.__floorMusicDuckHold === "function") window.__floorMusicDuckHold();
+    } catch (e) {}
+
+    const cleanup = () => {
+      if (!leaderClickPlaying) return false;
+      leaderClickPlaying = false;
+      document.body.classList.remove("zt-cinematic");
+      try { vid.pause(); } catch (e) {}
+      try { vid.currentTime = 0; } catch (e) {}
+      wrap.classList.add("hidden");
+      wrap.classList.remove("active");
+      wrap.setAttribute("aria-hidden", "true");
+      if (fallback) fallback.hidden = true;
+      try {
+        if (typeof window.__floorMusicUnduck === "function") window.__floorMusicUnduck();
+      } catch (e) {}
+      return true;
+    };
+    window.__dismissLeaderClick = function () {
+      if (!leaderClickPlaying) return false;
+      cleanup();
+      return true;
+    };
+
+    const onEnded = () => cleanup();
+    vid.onended = onEnded;
+    if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
+    wrap.onclick = () => cleanup();
+
+    const sources = ["/leader-click.mp4", "/static/leader-click.mp4"];
+    let srcIdx = 0;
+    const playReady = () => {
+      if (!leaderClickPlaying) return;
+      const p = vid.play();
+      if (p && p.then) {
+        p.then(() => {
+          if (fallback) fallback.hidden = true;
+          if (!soundMuted) {
+            try { vid.muted = false; } catch (e) {}
+          }
+        }).catch(() => {
+          vid.muted = true;
+          const p2 = vid.play();
+          if (p2 && p2.then) p2.catch(() => {});
+        });
+      }
+    };
+    const tryNext = () => {
+      if (!leaderClickPlaying) return;
+      if (srcIdx >= sources.length) {
+        if (fallback) fallback.hidden = false;
+        return;
+      }
+      const url = sources[srcIdx++];
+      vid.onerror = tryNext;
+      vid.oncanplay = playReady;
+      vid.src = url;
+      try { vid.load(); } catch (e) { tryNext(); }
+    };
+    if (vid.readyState >= 2 && vid.currentSrc) {
+      playReady();
+    } else {
+      tryNext();
+    }
+  }
+  window.playLeaderClickVideo = playLeaderClickVideo;
+
+  function canvasCssPoint(ev) {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const sz = cssCanvasSize();
+    return {
+      x: (ev.clientX - rect.left) * (sz.w / rect.width),
+      y: (ev.clientY - rect.top) * (sz.h / rect.height),
+    };
+  }
+  function wireFloorChairClicks() {
+    if (!canvas || canvas.__chairClickWired) return;
+    canvas.__chairClickWired = true;
+    canvas.addEventListener("pointermove", (e) => {
+      if (mode !== "floor" || leaderClickPlaying) {
+        canvas.classList.remove("chair-hot");
+        return;
+      }
+      const pt = canvasCssPoint(e);
+      canvas.classList.toggle("chair-hot", !!(pt && chairHitAt(pt.x, pt.y)));
+    });
+    canvas.addEventListener("click", (e) => {
+      if (mode !== "floor" || leaderClickPlaying || celebratePlaying) return;
+      if (document.body.classList.contains("gate-locked")) return;
+      const pt = canvasCssPoint(e);
+      if (!pt || !chairHitAt(pt.x, pt.y)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      playLeaderClickVideo();
+    });
+  }
+  wireFloorChairClicks();
+
   function checkWinStreakCelebrate(acc) {
     if (!acc) return;
     const streak = Number(acc.streak) || 0;
@@ -5135,9 +5291,9 @@ function drawCandleChart() {
     const body = {
       beast_mode: !!(document.getElementById("beastToggle") && document.getElementById("beastToggle").checked),
       [profileKey]: {
-        analysis_interval: num("setIntervalInput", 1.5),
-        analysis_interval_hot: num("setHotInput", 1.0),
-        analysis_interval_flat: num("setFlatInput", 3.0),
+        analysis_interval: num("setIntervalInput", profileKey === "beast" ? 1.2 : 2.0),
+        analysis_interval_hot: num("setHotInput", profileKey === "beast" ? 1.0 : 1.5),
+        analysis_interval_flat: num("setFlatInput", profileKey === "beast" ? 2.5 : 3.5),
         ui_poll_ms: num("setPollInput", 800),
         dual_spot: on("setDualInput"),
         parallel_agents: on("setParallelInput"),
@@ -6179,6 +6335,16 @@ function drawCandleChart() {
         try { audio.volume = vol; } catch (e) {}
       }
     }, hold);
+  };
+
+  window.__floorMusicDuckHold = function () {
+    if (!audio || muted || !active) return;
+    try { audio.volume = Math.min(vol, 0.04); } catch (e) {}
+  };
+  window.__floorMusicUnduck = function () {
+    if (audio && !muted) {
+      try { audio.volume = vol; } catch (e) {}
+    }
   };
 
   window.__floorMusicToggleMute = function () {

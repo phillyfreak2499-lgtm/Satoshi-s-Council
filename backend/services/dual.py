@@ -10,6 +10,33 @@ from loguru import logger
 from backend.config import settings
 from backend.services.council import Council
 
+DUAL_FLOOR_S = 2.0
+BEAST_FLOOR_S = 1.2
+
+
+def compute_dual_interval(
+    *,
+    beast: bool = False,
+    active: bool = False,
+    profile: Dict[str, Any] | None = None,
+    adaptive: bool = True,
+) -> float:
+    """Shared dual cadence. Normal floor 2s; BEAST can run at 1.2s."""
+    prof = profile or {}
+    base = float(prof.get("analysis_interval") or getattr(settings, "ANALYSIS_INTERVAL", 2.0))
+    hot = float(prof.get("analysis_interval_hot") or getattr(settings, "ANALYSIS_INTERVAL_HOT", 1.5))
+    flat = float(prof.get("analysis_interval_flat") or getattr(settings, "ANALYSIS_INTERVAL_FLAT", 3.5))
+    floor = BEAST_FLOOR_S if beast else DUAL_FLOOR_S
+    interval = max(base, floor)
+    if adaptive:
+        if active:
+            interval = max(hot, floor)
+        else:
+            interval = max(interval, flat)
+    if beast:
+        interval = max(BEAST_FLOOR_S, interval * 0.9)
+    return interval
+
 
 class DualOrchestrator:
     def __init__(self):
@@ -144,54 +171,66 @@ class DualOrchestrator:
         weaker.latest_state = st
         logger.info(f"Correlation veto: demoted {weaker.asset} ({bd} weak dual lean)")
 
+    def _tables_active(self) -> bool:
+        for c in self._councils():
+            st = c.latest_state or {}
+            d = st.get("decision") or {}
+            lc = d.get("locked_call") or st.get("locked_call") or {}
+            ml = (st.get("lock_timeline") or {}).get("mins_left")
+            dir_ = (d.get("direction") or "WAIT").upper()
+            if lc.get("locked") or dir_ in ("UP", "DOWN") or (d.get("summary") or "").startswith("LEAN"):
+                return True
+            if ml is not None and float(ml) <= 20:
+                return True
+        return False
+
     async def _loop(self):
         import random
+        from backend.services.runtime_settings import runtime_settings
         while self.running:
             t0 = asyncio.get_event_loop().time()
-            for c in self._councils():
+            councils = self._councils()
+            for i, c in enumerate(councils):
                 if not self.running:
                     break
                 try:
                     await c.analyze_once()
                 except Exception as e:
                     logger.exception(f"Dual analysis error ({c.asset}): {e}")
+                    try:
+                        await c.settle_due_windows()
+                    except Exception as se:
+                        logger.debug(f"Dual settle-after-error skip ({c.asset}): {se}")
+                # Jitter between tables so Kalshi calls don't stampede
+                if i < len(councils) - 1:
+                    try:
+                        await asyncio.sleep(0.15 + random.random() * 0.35)
+                    except asyncio.CancelledError:
+                        return
             try:
                 self._correlation_veto()
             except Exception as e:
                 logger.debug(f"correlation veto skip: {e}")
-                # Jitter between tables so Kalshi calls don't stampede
-                try:
-                    await asyncio.sleep(0.15 + random.random() * 0.35)
-                except asyncio.CancelledError:
-                    break
             elapsed = asyncio.get_event_loop().time() - t0
-            interval = max(
-                float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.5)),
-                float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.5)),
-                4.0,  # dual hard floor — protects rate limits
-            )
+            try:
+                prof = runtime_settings.profile()
+                beast = bool(runtime_settings.beast_mode or getattr(settings, "BEAST_MODE", False))
+            except Exception:
+                prof = {}
+                beast = bool(getattr(settings, "BEAST_MODE", False))
+            active = False
             if getattr(settings, "ADAPTIVE_INTERVAL", True):
                 try:
-                    active = False
-                    for c in self._councils():
-                        st = c.latest_state or {}
-                        d = st.get("decision") or {}
-                        lc = d.get("locked_call") or st.get("locked_call") or {}
-                        ml = (st.get("lock_timeline") or {}).get("mins_left")
-                        dir_ = (d.get("direction") or "WAIT").upper()
-                        if lc.get("locked") or dir_ in ("UP", "DOWN") or (d.get("summary") or "").startswith("LEAN"):
-                            active = True
-                        if ml is not None and float(ml) <= 20:
-                            active = True
-                    if active:
-                        interval = float(getattr(settings, "ANALYSIS_INTERVAL_ACTIVE", 4.0))
-                    else:
-                        interval = max(interval, float(getattr(settings, "ANALYSIS_INTERVAL_QUIET", 7.0)))
+                    active = self._tables_active()
                 except Exception:
-                    pass
-            if getattr(settings, "BEAST_MODE", False):
-                interval = max(3.5, interval * 0.9)  # still calm under BEAST
-            sleep_for = max(0.8, interval - elapsed)
+                    active = False
+            interval = compute_dual_interval(
+                beast=beast,
+                active=active,
+                profile=prof,
+                adaptive=bool(getattr(settings, "ADAPTIVE_INTERVAL", True)),
+            )
+            sleep_for = max(0.4, interval - elapsed)
             try:
                 await asyncio.sleep(sleep_for)
             except asyncio.CancelledError:

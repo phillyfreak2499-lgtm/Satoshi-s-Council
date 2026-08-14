@@ -32,18 +32,18 @@ class Settings(BaseSettings):
     SYMBOL_ETH: str = "ETHUSDT"
 
     # Polling / analysis cadence — dual hourly on 2 CPU / 4 GB
-    ANALYSIS_INTERVAL: float = 4.0          # fallback / single-table
-    ANALYSIS_INTERVAL_BTC: float = 4.5
-    ANALYSIS_INTERVAL_ETH: float = 4.5
+    ANALYSIS_INTERVAL: float = 2.0          # fallback / single-table
+    ANALYSIS_INTERVAL_BTC: float = 2.0
+    ANALYSIS_INTERVAL_ETH: float = 2.0
     # Adaptive cadence (quality > frequency)
     ADAPTIVE_INTERVAL: bool = True
-    ANALYSIS_INTERVAL_QUIET: float = 7.0   # both WAIT + calm
-    ANALYSIS_INTERVAL_ACTIVE: float = 4.0  # near lock / late hour
+    ANALYSIS_INTERVAL_QUIET: float = 3.5   # both WAIT + calm
+    ANALYSIS_INTERVAL_ACTIVE: float = 2.0  # near lock / late hour
 
     HTTP_TIMEOUT: float = 4.0
     KLINE_LIMIT: int = 90
-    ANALYSIS_INTERVAL_FLAT: float = 6.0
-    ANALYSIS_INTERVAL_HOT: float = 3.0
+    ANALYSIS_INTERVAL_FLAT: float = 3.5
+    ANALYSIS_INTERVAL_HOT: float = 1.5
     BEAST_MODE: bool = False                # dual default: balanced, not max burn
     DUAL_SPOT: bool = True
     PARALLEL_AGENTS: bool = True

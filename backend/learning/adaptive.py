@@ -1119,7 +1119,9 @@ class AdaptiveLearner:
         Safe to call on startup.
         """
         try:
-            recent = await store.recent_settled_calls(limit=limit)
+            recent = await store.recent_settled_calls(
+                limit=limit, asset=getattr(self, "asset", None)
+            )
         except Exception as e:
             logger.debug(f"Adaptive rebuild skip: {e}")
             return 0

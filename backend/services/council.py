@@ -41,7 +41,7 @@ from backend.config import settings
 from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
-from backend.agents.chair_gates import parse_book_depth, window_minutes_from_times
+from backend.agents.chair_gates import parse_book_depth, pick_settle_spot, window_minutes_from_times
 
 
 class Council:
@@ -114,6 +114,7 @@ class Council:
         self._last_learned_ids: set = set()
         self._shadow_book: list = []
         self._last_settle_review = None
+        self._last_spot: float | None = None
         self.huddle = NightlyHuddle()
 
     async def start(self):
@@ -122,7 +123,7 @@ class Council:
         try:
             rows = []
             if hasattr(self.store, "recent_settled_calls"):
-                rows = await self.store.recent_settled_calls(24)
+                rows = await self.store.recent_settled_calls(24, asset=self.asset)
             elif hasattr(self.store, "get_recent_settled"):
                 rows = await self.store.get_recent_settled(24)
             if rows:
@@ -174,11 +175,11 @@ class Council:
             try:
                 prof = runtime_settings.profile()
                 if self.asset == "eth":
-                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.0))
+                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 2.0))
                 elif self.asset == "btc":
-                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.0))
+                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 2.0))
                 else:
-                    interval = float(prof.get("analysis_interval", getattr(settings, "ANALYSIS_INTERVAL", 4.0)))
+                    interval = float(prof.get("analysis_interval", getattr(settings, "ANALYSIS_INTERVAL", 2.0)))
                 st = self.latest_state or {}
                 mkt = st.get("market") or {}
                 dec = (st.get("decision") or {}).get("direction")
@@ -195,6 +196,65 @@ class Council:
             delay = max(0.2, interval - elapsed)
             await asyncio.sleep(delay)
 
+    def _usable_spot(self, price: Any = None) -> float | None:
+        """Cache the last good print; settle with it when this cycle's spot is missing."""
+        spot = pick_settle_spot(price, getattr(self, "_last_spot", None))
+        if spot is None:
+            st = self.latest_state or {}
+            mkt = st.get("market") or {}
+            spot = pick_settle_spot(mkt.get("current_price") or mkt.get("price"), None)
+        if spot is not None:
+            self._last_spot = spot
+        return spot
+
+    async def settle_due_windows(
+        self,
+        current_price: Any = None,
+        up_pct: Any = None,
+        down_pct: Any = None,
+        floor_strike: Any = None,
+        close_time: Any = None,
+    ) -> int:
+        """
+        Finish-only settle + learn. Safe to call after analyze_once fails.
+        Uses last known spot when this cycle's price is missing or <= 0.
+        """
+        st = self.latest_state or {}
+        mkt = st.get("market") or {}
+        price = self._usable_spot(current_price if current_price is not None else mkt.get("current_price") or mkt.get("price"))
+        if up_pct is None:
+            up_pct = mkt.get("up_pct")
+        if down_pct is None:
+            down_pct = mkt.get("down_pct")
+        if floor_strike is None:
+            floor_strike = mkt.get("kalshi_floor_strike") or mkt.get("floor_strike")
+        if close_time is None:
+            close_time = mkt.get("close_time")
+        settled_n = 0
+        try:
+            settled_n = await self.store.settle_expired_calls(
+                current_price=price,
+                up_pct=up_pct,
+                down_pct=down_pct,
+                floor_strike=floor_strike,
+                asset=self.asset,
+            )
+            try:
+                due = False
+                if close_time:
+                    ct_ = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
+                    due = datetime.now(timezone.utc) >= ct_
+                if due and hasattr(self.leader, "_clear_window_lock"):
+                    self.leader._clear_window_lock()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"Settle skip: {e}")
+        try:
+            await self._learn_from_new_settlements()
+        except Exception as e:
+            logger.debug(f"Adaptive learn skip: {e}")
+        return settled_n
 
     async def _restore_open_lock(self) -> None:
         """Persist one-call integrity across process restart."""
@@ -297,7 +357,9 @@ class Council:
         if isinstance(km, dict):
             ticker = km.get("ticker")
             close_time = km.get("close_time")
-        entry_price = market_data.get("current_price")
+        entry_price = self._usable_spot(market_data.get("current_price"))
+        if entry_price is not None:
+            market_data["current_price"] = entry_price
 
         # Kalshi odds (0-100) for path grading
         def _odds_pct(raw):
@@ -325,32 +387,13 @@ class Council:
             market_data["down_pct"] = down_pct
 
         # Finish-only settle for THIS asset only (never grade ETH with BTC price)
-        try:
-            await self.store.settle_expired_calls(
-                current_price=entry_price,
-                up_pct=up_pct,
-                down_pct=down_pct,
-                floor_strike=market_data.get("kalshi_floor_strike"),
-                asset=self.asset,
-            )
-            try:
-                from datetime import datetime, timezone
-                due = False
-                if close_time:
-                    ct_ = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
-                    due = datetime.now(timezone.utc) >= ct_
-                if due and hasattr(self.leader, "_clear_window_lock"):
-                    self.leader._clear_window_lock()
-            except Exception:
-                pass
-        except Exception as e:
-            logger.debug(f"Settle skip: {e}")
-
-        # Teach the learner from any newly settled windows
-        try:
-            await self._learn_from_new_settlements()
-        except Exception as e:
-            logger.debug(f"Adaptive learn skip: {e}")
+        await self.settle_due_windows(
+            current_price=entry_price,
+            up_pct=up_pct,
+            down_pct=down_pct,
+            floor_strike=market_data.get("kalshi_floor_strike"),
+            close_time=close_time,
+        )
 
         # LAW evaluates streak / may trigger lockdown + find-out fixes
         try:
@@ -762,7 +805,7 @@ class Council:
         Grade agent votes on any settled windows we haven't learned from yet.
         Drives continuous weight drift + pair affinity.
         """
-        recent = await self.store.recent_settled_calls(limit=40)
+        recent = await self.store.recent_settled_calls(limit=40, asset=self.asset)
         learned = 0
         FINISH = {"finish_match", "finish_miss"}
         for row in reversed(recent):  # chronological

@@ -580,6 +580,10 @@ if STATIC_DIR.is_dir():
     async def zt_intro_video():
         return _video_response(_first_video("zt-intro.mp4", "money-closeup.mp4"))
 
+    @app.get("/leader-click.mp4")
+    async def leader_click_video():
+        return _video_response(_first_video("leader-click.mp4"))
+
     @app.get("/zt-logo.jpg")
     async def zt_logo():
         path = STATIC_DIR / "zt-logo.jpg"
