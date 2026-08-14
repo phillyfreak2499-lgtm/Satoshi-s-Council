@@ -1,6 +1,14 @@
 """
-Order Flow & Liquidity Specialist.
-Prioritizes Kalshi book imbalance + BOOK DYNAMICS (rate of change of imbalance).
+TAPE – Order Flow & Liquidity Specialist.
+
+Real job: read the Kalshi book as a multi-horizon story, not a single snapshot.
+
+- Live imbalance + rate of change of imbalance (book dynamics)
+- Persistent pressure across the current window path
+- Multi-window: does one side of the book keep winning recent settles?
+
+ENTRY: Is book pressure persistent enough to bet the whole 15m window?
+MID/FINAL: Has the book flipped against the entry thesis hard enough to revise?
 """
 from __future__ import annotations
 import time
@@ -69,168 +77,178 @@ def kalshi_book_imbalance(orderbook: Dict[str, Any] | None) -> Dict[str, Any]:
 class OrderFlowSpecialist(BaseSpecialist):
     name = "orderflow"
     category = "orderflow"
-    base_weight = settings.BASE_WEIGHTS.get("orderflow", 0.08)
+    base_weight = settings.BASE_WEIGHTS.get("orderflow", 0.11)
 
     def __init__(self):
         super().__init__()
-        # Book dynamics: (ts, signal_imbalance)
-        self._imb_hist: Deque[Tuple[float, float]] = deque(maxlen=40)
+        # (ts, imbalance) history for dynamics
+        self._imb_hist: Deque[Tuple[float, float]] = deque(maxlen=120)
+        # Rolling sign of imbalance within the current window
+        self._window_sign_hist: Deque[int] = deque(maxlen=60)
 
-    def _book_delta(self, signal_imb: float) -> Dict[str, float]:
-        """Rate of change of book imbalance over ~30s and ~60s."""
+    def _dynamics(self, imb: float) -> Dict[str, float]:
         now = time.time()
-        self._imb_hist.append((now, signal_imb))
-        out = {"d30": 0.0, "d60": 0.0, "samples": float(len(self._imb_hist))}
+        self._imb_hist.append((now, imb))
+        # prune > 3 minutes
+        cutoff = now - 180
+        while self._imb_hist and self._imb_hist[0][0] < cutoff:
+            self._imb_hist.popleft()
+
+        out = {"delta_30s": 0.0, "delta_90s": 0.0, "persist": 0.0}
         if len(self._imb_hist) < 3:
             return out
-        for key, secs in (("d30", 30.0), ("d60", 60.0)):
-            target = now - secs
-            # find sample closest to target
-            older = min(self._imb_hist, key=lambda x: abs(x[0] - target))
-            if abs(older[0] - target) <= secs * 0.6:
-                out[key] = round(signal_imb - older[1], 4)
+
+        def _at(age: float) -> Optional[float]:
+            target = now - age
+            best = None
+            best_dt = 1e9
+            for t, v in self._imb_hist:
+                dt = abs(t - target)
+                if dt < best_dt:
+                    best_dt = dt
+                    best = v
+            return best if best_dt < age * 0.6 else None
+
+        v30 = _at(30)
+        v90 = _at(90)
+        if v30 is not None:
+            out["delta_30s"] = round(imb - v30, 4)
+        if v90 is not None:
+            out["delta_90s"] = round(imb - v90, 4)
+
+        # Persistence: fraction of recent samples with same sign as current
+        sign = 1 if imb > 0.02 else (-1 if imb < -0.02 else 0)
+        self._window_sign_hist.append(sign)
+        if sign != 0 and len(self._window_sign_hist) >= 8:
+            same = sum(1 for s in self._window_sign_hist if s == sign)
+            out["persist"] = round(same / len(self._window_sign_hist), 3)
         return out
 
     async def get_signal(self, market_data: Dict[str, Any]) -> AgentSignal:
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted by Guardian", self.category, muted=True)
 
-        kalshi = market_data.get("kalshi") or {}
+        phase = self.phase(market_data)
+        quiet = self.is_quiet(market_data)
+        floor = self.quiet_confidence_floor(market_data, base=54)
+        path = self.path_move(market_data)
+        entry = self.entry_dir(market_data)
+        streak_dir, streak_n = self.streak(market_data)
+        mean_rev = self.mean_reversion_bias(market_data)
+
         orderbook = (
             market_data.get("kalshi_orderbook")
-            or kalshi.get("orderbook")
             or market_data.get("orderbook")
-            or {}
+            or (market_data.get("kalshi_market") or {}).get("orderbook")
         )
-        candles = market_data.get("candles") or market_data.get("klines") or []
+        book = kalshi_book_imbalance(orderbook)
+        imb = float(book.get("imbalance") or 0.0)
+        top_imb = float(book.get("top_n_imbalance") or 0.0)
+        dyn = self._dynamics(imb)
+
+        features = {
+            **book,
+            **dyn,
+            "phase": phase,
+            "horizon": "entry" if phase == "entry" else "revision",
+            "path_move": path,
+            "entry_dir": entry,
+            "streak_n": streak_n,
+            "quiet": quiet,
+            "subs": [
+                {"name": "IMB", "detail": f"{imb:+.2f}"},
+                {"name": "TOP", "detail": f"{top_imb:+.2f}"},
+                {"name": "d30", "detail": f"{dyn['delta_30s']:+.3f}"},
+                {"name": "PER", "detail": f"{dyn['persist']:.0%}"},
+            ],
+        }
+
+        if not book.get("ok"):
+            return AgentSignal(
+                self.name, "WAIT", 35,
+                self.annotate_reason(market_data, "no usable Kalshi book"),
+                self.category, features=features,
+            )
+
+        # Local lean from book
+        local_dir = None
+        local_conf = 0
+        notes = []
+
+        strong = abs(imb) >= 0.18 or abs(top_imb) >= 0.22
+        building = (imb > 0 and dyn["delta_30s"] > 0.03) or (imb < 0 and dyn["delta_30s"] < -0.03)
+        persistent = dyn["persist"] >= 0.65
+
+        if strong and imb > 0:
+            local_dir = "UP"
+            local_conf = min(86, 56 + int(abs(imb) * 80) + (8 if building else 0) + (6 if persistent else 0))
+            notes.append(f"YES book pressure {imb:+.2f}")
+            if building:
+                notes.append("building")
+            if persistent:
+                notes.append(f"persist {dyn['persist']:.0%}")
+        elif strong and imb < 0:
+            local_dir = "DOWN"
+            local_conf = min(86, 56 + int(abs(imb) * 80) + (8 if building else 0) + (6 if persistent else 0))
+            notes.append(f"NO book pressure {imb:+.2f}")
+            if building:
+                notes.append("building")
+            if persistent:
+                notes.append(f"persist {dyn['persist']:.0%}")
+        elif abs(imb) >= 0.10:
+            local_dir = "UP" if imb > 0 else "DOWN"
+            local_conf = 54
+            notes.append(f"mild book lean {imb:+.2f}")
+        else:
+            notes.append(f"book balanced {imb:+.2f}")
 
         direction = "WAIT"
-        conf = 40
-        reason_parts: List[str] = []
-        features: Dict[str, Any] = {}
+        conf = 48
 
-        # ── 1) Static book imbalance ────────────────────────────────────
-        book = kalshi_book_imbalance(orderbook if isinstance(orderbook, dict) else {})
-        features.update({f"book_{k}": v for k, v in book.items()})
-
-        thr = float(getattr(settings, "BOOK_IMBALANCE_THRESHOLD", 0.18))
-        strong = float(getattr(settings, "BOOK_IMBALANCE_STRONG", 0.32))
-        signal_imb = 0.0
-
-        if book["ok"]:
-            signal_imb = book["top_n_imbalance"] if abs(book["top_n_imbalance"]) >= abs(book["imbalance"]) * 0.7 else book["imbalance"]
-            features["book_signal_imb"] = round(signal_imb, 4)
-
-            if signal_imb >= strong:
-                direction = "UP"
-                conf = min(82, 58 + int(signal_imb * 50))
-                reason_parts.append(f"YES book heavy +{signal_imb:.0%}")
-            elif signal_imb <= -strong:
-                direction = "DOWN"
-                conf = min(82, 58 + int(abs(signal_imb) * 50))
-                reason_parts.append(f"NO book heavy {signal_imb:.0%}")
-            elif signal_imb >= thr:
-                direction = "UP"
-                conf = min(70, 50 + int(signal_imb * 40))
-                reason_parts.append(f"YES imbalance +{signal_imb:.0%}")
-            elif signal_imb <= -thr:
-                direction = "DOWN"
-                conf = min(70, 50 + int(abs(signal_imb) * 40))
-                reason_parts.append(f"NO imbalance {signal_imb:.0%}")
+        if phase == "entry":
+            if local_dir and (strong or (building and persistent)):
+                direction, conf = local_dir, local_conf
+                # Multi-window reinforcement
+                if mean_rev == local_dir:
+                    conf = min(90, conf + 6)
+                    notes.append("mean-rev agrees")
+                if streak_dir == local_dir and streak_n >= 3:
+                    conf = min(90, conf + 5)
+                    notes.append(f"streak {streak_dir}×{streak_n}")
+                if streak_dir and streak_dir != local_dir and streak_n >= 4 and not persistent:
+                    conf = max(50, conf - 10)
+                    notes.append("fighting streak without persist")
+            elif local_dir and not quiet:
+                direction, conf = local_dir, max(52, local_conf - 4)
             else:
-                reason_parts.append(f"book balanced ({signal_imb:+.0%})")
-
-        # ── 2) BOOK DYNAMICS (rate of change) ───────────────────────────
-        dyn = self._book_delta(signal_imb if book["ok"] else 0.0)
-        features["book_d30"] = dyn["d30"]
-        features["book_d60"] = dyn["d60"]
-        dyn_thr = float(getattr(settings, "BOOK_DYNAMICS_THRESHOLD", 0.12))
-        dyn_strong = float(getattr(settings, "BOOK_DYNAMICS_STRONG", 0.22))
-
-        # Prefer 30s delta for short-horizon
-        d = dyn["d30"] if abs(dyn["d30"]) >= abs(dyn["d60"]) * 0.5 else dyn["d60"]
-        if abs(d) >= dyn_thr:
-            if d >= dyn_strong:
-                if direction != "DOWN":
-                    direction = "UP"
-                    conf = min(88, max(conf, 62) + int(d * 40))
+                notes.append("no whole-window book edge")
+        else:
+            # Revision vs entry
+            if entry in ("UP", "DOWN") and local_dir:
+                adverse = local_dir != entry and (strong or persistent)
+                supportive = local_dir == entry and (strong or persistent or building)
+                if adverse and path is not None and abs(path) >= 4.0:
+                    direction, conf = local_dir, max(local_conf, 64)
+                    notes.append(f"book flipped vs entry {entry} (path {path:+.1f})")
+                elif supportive:
+                    direction, conf = entry, max(local_conf, 58)
+                    notes.append(f"book still with entry {entry}")
+                elif local_dir == entry:
+                    direction, conf = entry, 55
+                    notes.append(f"soft support for entry {entry}")
                 else:
-                    conf = max(30, conf - 12)  # dynamics fights static lean
-                reason_parts.append(f"book filling YES fast (+{d:.0%}/30s)")
-            elif d <= -dyn_strong:
-                if direction != "UP":
-                    direction = "DOWN"
-                    conf = min(88, max(conf, 62) + int(abs(d) * 40))
-                else:
-                    conf = max(30, conf - 12)
-                reason_parts.append(f"book filling NO fast ({d:.0%}/30s)")
-            elif d >= dyn_thr:
-                if direction == "WAIT":
-                    direction, conf = "UP", 58
-                elif direction == "UP":
-                    conf = min(85, conf + 6)
-                reason_parts.append(f"YES book building (+{d:.0%})")
-            elif d <= -dyn_thr:
-                if direction == "WAIT":
-                    direction, conf = "DOWN", 58
-                elif direction == "DOWN":
-                    conf = min(85, conf + 6)
-                reason_parts.append(f"NO book building ({d:.0%})")
+                    direction, conf = entry, 53
+                    notes.append(f"hold entry {entry} — book not decisive")
+            elif local_dir:
+                direction, conf = local_dir, local_conf
+            else:
+                notes.append("no revision edge from book")
 
-        # ── 3) Spread / mid fallback ────────────────────────────────────
-        yes_bid = kalshi.get("yes_bid") or market_data.get("kalshi_yes_bid")
-        yes_ask = kalshi.get("yes_ask") or market_data.get("kalshi_yes_ask")
-        try:
-            if yes_bid is not None and yes_ask is not None:
-                yb, ya = float(yes_bid), float(yes_ask)
-                if yb > 1.5:
-                    yb, ya = yb / 100.0, ya / 100.0
-                mid = (yb + ya) / 2.0
-                spread = max(0.0, ya - yb)
-                features["kalshi_mid"] = round(mid, 4)
-                features["kalshi_spread"] = round(spread, 4)
-                max_spread = float(getattr(settings, "SPREAD_MAX_CENTS", 6.0)) / 100.0
-                if spread > max_spread:
-                    conf = max(30, conf - 15)
-                    reason_parts.append(f"wide spread {spread:.0%}")
-                elif not book["ok"]:
-                    if mid > 0.62:
-                        direction = "UP"
-                        conf = max(conf, min(72, 48 + int((mid - 0.5) * 70)))
-                        reason_parts.append(f"mid {mid:.2f} UP")
-                    elif mid < 0.38:
-                        direction = "DOWN"
-                        conf = max(conf, min(72, 48 + int((0.5 - mid) * 70)))
-                        reason_parts.append(f"mid {mid:.2f} DOWN")
-        except Exception:
-            pass
+        if quiet and direction != "WAIT":
+            conf = min(conf, floor)
+            if conf < floor:
+                direction, conf = "WAIT", floor
+                notes.append("quiet gate")
 
-        # ── 4) Taker confirmation ───────────────────────────────────────
-        if len(candles) >= 10:
-            recent = candles[-8:]
-            taker_buy = 0.0
-            total_vol = 0.0
-            for c in recent:
-                try:
-                    taker_buy += float(c.get("taker_buy_base") or c.get("taker_buy_base_asset_volume") or 0)
-                    total_vol += float(c.get("volume") or c.get("v") or 0)
-                except Exception:
-                    pass
-            if total_vol > 0:
-                ratio = taker_buy / total_vol
-                features["taker_buy_ratio"] = round(ratio, 3)
-                if ratio > 0.62 and direction != "DOWN":
-                    if direction == "WAIT":
-                        direction, conf = "UP", 55
-                    else:
-                        conf = min(85, conf + 6)
-                    reason_parts.append("buy aggression")
-                elif ratio < 0.38 and direction != "UP":
-                    if direction == "WAIT":
-                        direction, conf = "DOWN", 55
-                    else:
-                        conf = min(85, conf + 6)
-                    reason_parts.append("sell aggression")
-
-        reason = " · ".join(reason_parts) if reason_parts else "Order flow neutral"
+        reason = self.annotate_reason(market_data, " · ".join(notes) if notes else "orderflow neutral")
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
