@@ -77,7 +77,7 @@
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Clear hit-rate counters? Training weights will NOT be deleted.")) return;
+          if (!confirm("Reset hit-rate to start a clean FINISH-ONLY era? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
@@ -379,7 +379,7 @@
   let glitchUntil = 0;
   let debateHistory = []; // REMOVED — debate log disabled for dual CPU room
 
-  // Market-open bell — one ring per new 15m window
+  // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
   let lastWindowKey = null;       // kalshi ticker or close_time
   let lastClockBucket = null;     // fallback: floor(unix / 900)
@@ -444,7 +444,7 @@
   }
 
 
-  /** Short purple mist burst when a new 15m market opens (~5s). */
+  /** Short purple mist burst when a new hourly market opens (~5s). */
   /**
    * Professional volumetric purple mist — particle physics.
    * Soft billows + micro-sparks + ground fog, ~5s cinematic burst on new market.
@@ -759,8 +759,8 @@
   }
 
   function clockBucket(date = new Date()) {
-    // 15-minute UTC buckets aligned to clock
-    return Math.floor(date.getTime() / (15 * 60 * 1000));
+    // Hourly UTC buckets aligned to clock
+    return Math.floor(date.getTime() / (60 * 60 * 1000));
   }
 
   function maybeRingForNewWindow(s) {
@@ -2320,11 +2320,14 @@
     const streak = (acc && acc.streak) || 0;
     const label = (acc && acc.label) || (pct != null ? `${correct}/${total} · ${pct}%` : `${correct}/${total} · —`);
     const pctText = pct != null ? `${pct}%` : "—";
-    const verdict = (acc && acc.verdict) || "COLLECTING";
+    let verdict = (acc && acc.verdict) || "COLLECTING";
+    if (!total) verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
 
     if (accuracyPct) accuracyPct.textContent = pctText;
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
-    if (detailEl) detailEl.textContent = `${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : "");
+    if (detailEl) detailEl.textContent = (!total)
+      ? ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""))
+      : (`${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : ""));
     if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
     checkWinStreakCelebrate(acc);
     if (callLogMeta) callLogMeta.textContent = label;
@@ -3025,7 +3028,7 @@ function drawCandleChart() {
 
 
   const BOT_GUIDE = {
-    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for 15m direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
+    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for hourly direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
     volume: { blurb: "Relative volume spikes and dry-ups vs price. Confirms moves when volume agrees.", subs: "SPIKE · DRYUP" },
     momentum: { blurb: "RSI + MACD-style short momentum. Continuation and soft mean-revert when stretched.", subs: "RSI · MACD" },
     orderflow: { blurb: "Taker pressure and book imbalance proxies + Kalshi mid lean.", subs: "BOOK · TAKER" },
@@ -3039,7 +3042,7 @@ function drawCandleChart() {
     session_tod: { blurb: "UTC session (Asia/Europe/US) priors, weekend dampening, early vs late window.", subs: "SESS · WINDOW" },
     whale: { blurb: "Whale-tape proxy: volume spikes, range expansion, taker aggression.", subs: "SPIKE · TAKER" },
     quorum: { blurb: "Counts how many seats lean each way and learns which headcount + combinations are usually right. Competes for rank.", subs: "SIZE · COMBO · FLOOR" },
-    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public 15m backtests.", subs: "30S · 60S · THR" },
+    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public hourly backtests.", subs: "30S · 60S · THR" },
     cheap: { blurb: "Value seat: lean the soft side when YES or NO is ≤42¢ — recovery toward fair, not chase expensive continuation.", subs: "YES · NO · BAND" },
     spotlag: { blurb: "Binance spot velocity in bps. Kalshi often lags CEX by seconds — follow hard spot bursts in the lag window.", subs: "30S · 60S · 3M" },
     exhaust: { blurb: "After a large 1h BTC run near high/low, if 5m flips against and Kalshi is still extreme, fade continuation.", subs: "1H · 5M · YES" },
@@ -3620,7 +3623,7 @@ function drawCandleChart() {
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
 
-    // Market-open bell when a new 15m window/contract appears
+    // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
 
     // Trigger brief glitch when decision changes
@@ -3803,13 +3806,13 @@ function drawCandleChart() {
   const TUTORIAL_SLIDES = [
     {
       title: "WHAT IS THIS?",
-      body: "Satoshi’s Council is a living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).\n\nEach bot has one job — candles, volume, odds, panic, cheap side, etc. The Chair (Satoshi) listens harder to bots that have been right, then locks exactly ONE high-quality paper call per window: UP or DOWN — or WAIT if there is no edge.\n\nThis is a research co-pilot and training table. It does not place real orders.",
+      body: "Satoshi’s Council is a dual Round Table: Satoshi chairs Bitcoin hourly markets (KXBTCD) and Vitalik chairs Ethereum hourly markets (KXETHD).\n\nEach specialist bot has one job — candles, volume, odds, panic, cheap side, etc. Each Chair locks exactly ONE high-quality paper call per hourly window: UP or DOWN — or WAIT if there is no edge.\n\nUse BTC / ETH to focus Table, Ranks, and hit rate. Floor shows both tables. Research co-pilot only — no real orders.",
       tip: "Think war room, not magic indicator. Quality over quantity.",
       bots: null,
     },
     {
       title: "THE ONE-CALL RULE",
-      body: "GOAL CONTRACT (non-negotiable):\n\n• Exactly one directional guess per 15-minute window on how the window ends (BTC open → close).\n• Taken only at the best available odds.\n• Once the Chair locks the call, it is irreversible for that window.\n• WAIT is always preferred over a low-edge or noisy call.\n\nOne excellent guess beats three mediocre ones.",
+      body: "GOAL CONTRACT (non-negotiable):\n\n• Exactly one directional guess per hourly window on how that hour ends.\n• Taken only at the best available odds (side under 80¢).\n• Once the Chair locks the call, it is irreversible for that window.\n• WAIT is always preferred over a low-edge or noisy call.\n\nOne excellent guess beats three mediocre ones. BTC and ETH each get their own lock.",
       tip: "Look for the big LOCKED plaque in the center of the table — that is the single decision a follower can trust.",
       bots: null,
     },
@@ -3833,13 +3836,13 @@ function drawCandleChart() {
     },
     {
       title: "CORE vs EDGE BOTS",
-      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on what public 15m data has favored: panic fades, cheap odds, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the floor show how they are voting live.",
+      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on tape, cheap odds, panic fades, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the Floor show how they are voting live on each table.",
       tip: "Open the Bots tab anytime for the full field guide.",
       bots: "core",
     },
     {
       title: "SCORING & PAPER",
-      body: "Calls are graded on Kalshi odds path, not just the final BTC print.\n\n• Full UP/DOWN: needs a solid move your way after entry.\n• Near 90%+ at entry is treated as locked-in.\n• Paper P&L is path-scaled (like a scalp), not a full binary fantasy.\n\nOpen the Paper tab for wins, losses, hit rate, and tallies.",
+      body: "Hit rate is FINISH-ONLY.\n\nA call counts RIGHT only when the hourly window has closed and the final outcome matches the lock (UP or DOWN).\n\nPath moves and near-certain mid-window spikes do NOT count.\nLifetime may show 0/0 until the first hours settle — that is expected.\n\nSettings → Clear hit-rate starts a clean finish-only era (weights kept).",
       tip: "Track average entry odds of locks — lower is usually better value.",
       bots: null,
     },
@@ -5088,7 +5091,7 @@ function drawCandleChart() {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Clear hit-rate counters? Training weights will NOT be deleted.")) return;
+          if (!confirm("Reset hit-rate to start a clean FINISH-ONLY era? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
