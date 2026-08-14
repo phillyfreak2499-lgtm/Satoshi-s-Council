@@ -346,10 +346,6 @@
   let mode = "art"; // art | dashboard | charts
   let state = null;
   let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "bitcoin"; })();
-  // Settle flash: { bitcoin: {result:"RIGHT"|"WRONG", until: ts}, ethereum: {...} }
-  const settleFlash = { bitcoin: null, ethereum: null };
-  let _lastSettledIds = { bitcoin: new Set(), ethereum: new Set() };
-
   function tableState(which) {
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -359,7 +355,25 @@
     return null;
   }
   function isDualMode() {
-    return !!(state && (state.dual || (state.tables && state.tables.ethereum)));
+    return !!(state && (state.dual || (state.tables && (state.tables.ethereum || state.tables.bitcoin))));
+  }
+  /** Focused view of dual state — NEVER mutates state.tables */
+  function getViewState() {
+    if (!state) return null;
+    if (!isDualMode()) return state;
+    const focused = tableState(focusTable);
+    if (!focused) return state;
+    const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
+    return Object.assign({}, state, {
+      decision: focused.decision || state.decision,
+      locked_call: lc || state.locked_call,
+      agents: focused.agents || state.agents,
+      market: focused.market || state.market,
+      accuracy: focused.accuracy || state.accuracy,
+      hierarchy: focused.hierarchy || state.hierarchy,
+      learning: focused.learning || state.learning,
+      _focusTable: focusTable,
+    });
   }
 
 
@@ -1357,26 +1371,6 @@
     drawTableWithBots(w * 0.75, h * 0.50, Math.min(w, h) * 0.18, "ethereum", "VITALIK · ETH", focusTable === "ethereum");
   }
 
-
-  function drawHourArc(ctx, cx, cy, r, minsLeft, windowMins) {
-    if (minsLeft == null || !isFinite(minsLeft)) return;
-    const total = windowMins || 60;
-    const frac = Math.max(0, Math.min(1, minsLeft / total));
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac), false);
-    ctx.strokeStyle = "rgba(0, 232, 255, 0.55)";
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, -Math.PI / 2 + Math.PI * 2 * (1 - frac), -Math.PI / 2 + Math.PI * 2, false);
-    ctx.strokeStyle = "rgba(80, 100, 120, 0.35)";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.restore();
-  }
-
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
     if (focused == null) focused = true;
     ctx.save();
@@ -1464,56 +1458,23 @@
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
-    // Gold pulse ring when locked; confidence scales glow
+    // Gold ring when locked / focused, else direction color
     ctx.beginPath();
     ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
-    const confN = Number(conf) || 50;
-    const pulse = locked ? (0.55 + 0.45 * Math.sin(Date.now() / 420)) : 1;
     if (locked) {
       ctx.strokeStyle = gold;
-      ctx.lineWidth = 2.6 + pulse * 1.4;
+      ctx.lineWidth = 3.2;
       ctx.shadowColor = gold;
-      ctx.shadowBlur = 10 + pulse * 12 + confN * 0.08;
-      ctx.globalAlpha = (focused ? 1 : 0.55) * (0.75 + pulse * 0.25);
+      ctx.shadowBlur = 14;
     } else if (focused) {
       ctx.strokeStyle = which === "ethereum" ? "rgba(120,255,160,0.9)" : "rgba(0,220,255,0.9)";
       ctx.lineWidth = 2.8;
-      ctx.globalAlpha = 1;
     } else {
       ctx.strokeStyle = "rgba(200,220,255,0.35)";
       ctx.lineWidth = 2;
-      ctx.globalAlpha = focused ? 1 : 0.38;
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = focused ? 1 : 0.38;
-
-    // Eye-glow disk under portrait intensity by confidence
-    if (img && img.complete && img.naturalWidth && (locked || dir === "UP" || dir === "DOWN")) {
-      const glow = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,120," : (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255,40,70," : "rgba(200,220,255,";
-      const ga = Math.min(0.35, 0.08 + confN / 350) * (focused ? 1 : 0.4);
-      ctx.beginPath();
-      ctx.arc(cx, portraitY, pr * 0.92, 0, Math.PI * 2);
-      ctx.fillStyle = glow + ga + ")";
-      ctx.fill();
-    }
-
-    // Settle RIGHT/WRONG flash
-    const flash = settleFlash[which === "ethereum" ? "ethereum" : "bitcoin"];
-    if (flash && flash.until > Date.now()) {
-      const ok = flash.result === "RIGHT";
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = ok ? "rgba(0,255,120,0.2)" : "rgba(255,40,70,0.22)";
-      ctx.beginPath();
-      ctx.arc(cx, portraitY, pr + 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.font = "800 14px Orbitron, monospace";
-      ctx.fillStyle = ok ? "#39ff14" : "#ff2d55";
-      ctx.textAlign = "center";
-      ctx.fillText(ok ? "RIGHT" : "WRONG", cx, portraitY + pr + 48);
-      ctx.restore();
-    }
 
     // Labels
     ctx.textAlign = "center";
@@ -1522,33 +1483,15 @@
     ctx.fillText(label + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
 
     ctx.font = "700 12px Orbitron, monospace";
-    // Series + strike always
-    const series = String((st.market && (st.market.series_ticker || st.market.ticker)) || which.toUpperCase()).slice(0, 18);
-    const strike = (st.market && st.market.floor_strike != null) ? st.market.floor_strike : null;
-    ctx.font = "600 9px Share Tech Mono, monospace";
-    ctx.fillStyle = focused ? "rgba(180,200,220,0.8)" : "rgba(140,160,180,0.45)";
-    ctx.fillText(series + (strike != null ? (" · " + strike) : ""), cx, cy - radius - 22);
-
     if (locked) {
       ctx.fillStyle = gold;
-      ctx.font = "700 12px Orbitron, monospace";
       ctx.fillText("LOCKED " + dir, cx, cy + pr + 16);
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "#f0d78a";
       const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
-      // Path of the call: entry → current side mid if available
-      let pathTxt = (conf || "—") + (conf ? "%" : "") + oddsTxt;
-      try {
-        const up = st.market && st.market.up_pct;
-        if (odds != null && up != null) {
-          const cur = (dir === "UP" || dir === "UP_HOLD") ? Number(up) : (100 - Number(up));
-          if (isFinite(cur)) pathTxt += " → " + Math.round(cur) + "¢";
-        }
-      } catch (e) {}
-      ctx.fillText(pathTxt, cx, cy + pr + 30);
+      ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, cy + pr + 30);
     } else {
       ctx.fillStyle = "#a8c0d8";
-      ctx.font = "700 12px Orbitron, monospace";
       ctx.fillText(dir, cx, cy + pr + 16);
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(180,200,220,0.75)";
@@ -1578,6 +1521,9 @@
       });
     }
 
+    const mkt = st.market || {};
+    const series = mkt.series_ticker || mkt.ticker || which.toUpperCase();
+    const strike = mkt.floor_strike != null ? mkt.floor_strike : null;
     ctx.font = "600 9px Share Tech Mono, monospace";
     ctx.fillStyle = focused ? "rgba(180,200,220,0.75)" : "rgba(140,160,180,0.45)";
     ctx.textAlign = "center";
@@ -1662,19 +1608,14 @@
       return;
     }
 
-    // Focused table overlay for single/table view
-    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
-      const focused = tableState(focusTable);
-      if (focused) {
-        state = Object.assign({}, state, {
-          decision: focused.decision || state.decision,
-          locked_call: focused.locked_call || (focused.decision && focused.decision.locked_call) || state.locked_call,
-          agents: focused.agents || state.agents,
-          market: focused.market || state.market,
-          accuracy: focused.accuracy || state.accuracy,
-        });
+    // Snapshot focused table — temporary swap, restored at end of drawArt
+    const __prevState = state;
+    try {
+      if (typeof getViewState === "function") {
+        const view = getViewState();
+        if (view) state = view;
       }
-    }
+    } catch (e) {}
 
     const cx = w / 2, cy = h / 2;
     const radius = Math.min(w, h) * (mode === "floor" ? 0.42 : 0.34);
@@ -2285,6 +2226,7 @@
     for (let y = 0; y < h; y += 3) {
       ctx.fillRect(0, y, w, 1);
     }
+    try { if (typeof __prevState !== 'undefined' && __prevState) state = __prevState; } catch (e) {}
   }
 
   function renderDashboard() {
@@ -2370,24 +2312,6 @@
     }
   }
 
-
-  function updateDualAccuracyStrips() {
-    try {
-      if (!state || !state.tables) return;
-      const b = (state.tables.bitcoin && state.tables.bitcoin.accuracy) || {};
-      const e = (state.tables.ethereum && state.tables.ethereum.accuracy) || {};
-      const sb = document.getElementById("accuracyStrip");
-      const se = document.getElementById("accuracyStripEth");
-      if (sb) {
-        const c = b.correct || 0, t = b.total || 0, p = b.pending || 0;
-        sb.textContent = `${c}/${t}` + (p ? ` · ${p}o` : "");
-      }
-      if (se) {
-        const c = e.correct || 0, t = e.total || 0, p = e.pending || 0;
-        se.textContent = `${c}/${t}` + (p ? ` · ${p}o` : "");
-      }
-    } catch (e) {}
-  }
   function updateAccuracy(acc) {
     const detailEl = document.getElementById("accuracyDetail");
     const callLogEl = document.getElementById("callLog");
@@ -2411,15 +2335,12 @@
     const label = (acc && acc.label) || (pct != null ? `${correct}/${total} · ${pct}%` : `${correct}/${total} · —`);
     const pctText = pct != null ? `${pct}%` : "—";
     let verdict = (acc && acc.verdict) || "COLLECTING";
-    if (!total && pending) verdict = `FINISH-ONLY · ${pending} OPEN — WAITING ON HOUR CLOSE`;
-    else if (!total) verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    if (!total) verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
 
     if (accuracyPct) accuracyPct.textContent = pctText;
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
     if (detailEl) detailEl.textContent = (!total)
-      ? (pending
-          ? `finish-only · ${pending} open lock${pending === 1 ? "" : "s"} · grades at hour close`
-          : "finish-only · 0 settled hours · no open locks yet")
+      ? ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""))
       : (`${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : ""));
     if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
     checkWinStreakCelebrate(acc);
@@ -2433,16 +2354,8 @@
     }
     if (hrCorrect) hrCorrect.textContent = String(correct);
     if (hrWrong) hrWrong.textContent = String(wrong);
-    // CALLS = settled finish-only; OPEN = pending locks still live
     if (hrTotal) hrTotal.textContent = String(total);
     if (hrPending) hrPending.textContent = String(pending);
-    // Dual strip if present
-    try {
-      const stripB = document.getElementById("accuracyStrip");
-      const stripE = document.getElementById("accuracyStripEth");
-      if (stripB && focusTable === "bitcoin") stripB.textContent = `${correct}/${total}` + (pending ? ` · ${pending}o` : "");
-      if (stripE && focusTable === "ethereum") stripE.textContent = `${correct}/${total}` + (pending ? ` · ${pending}o` : "");
-    } catch (e) {}
 
     // Path tally: avg peak favorable move on wins (peak − entry Kalshi %)
     const hrPathAvg = document.getElementById("hrPathAvg");
@@ -3291,14 +3204,7 @@ function drawCandleChart() {
     }
     if (badge) badge.classList.toggle("active", !!h.in_huddle);
     if (status) {
-      if (h.in_huddle) {
-        status.textContent = "IN SESSION · nightly review";
-      } else {
-        let hint = (h.next_huddle_hint || "—").replace("Next huddle in ", "");
-        // Never imply market is 15m — huddle slot is a short nightly cool-down
-        hint = hint.replace(/,\s*15\s*min/i, ", nightly").replace(/\b15\s*min\b/i, "nightly");
-        status.textContent = hint;
-      }
+      status.textContent = h.in_huddle ? "IN SESSION" : (h.next_huddle_hint || "—").replace("Next huddle in ", "");
       if (!h.in_huddle && h.next_huddle_hint) {
         status.title = h.next_huddle_hint;
       }
@@ -3598,40 +3504,22 @@ function drawCandleChart() {
     }
   }
 
-
-  function detectSettleFlash(view) {
-    try {
-      const which = focusTable === "ethereum" ? "ethereum" : "bitcoin";
-      const acc = (view && view.accuracy) || (state && state.accuracy) || {};
-      const log = acc.recent || acc.log || acc.settled || [];
-      if (!Array.isArray(log)) return;
-      for (const row of log.slice(0, 5)) {
-        const id = row.id || row.settled_at || JSON.stringify(row).slice(0, 40);
-        if (_lastSettledIds[which].has(id)) continue;
-        const reason = row.settle_reason || "";
-        if (reason !== "finish_match" && reason !== "finish_miss" && row.correct == null) continue;
-        _lastSettledIds[which].add(id);
-        const ok = row.correct === 1 || row.correct === true || reason === "finish_match";
-        settleFlash[which] = { result: ok ? "RIGHT" : "WRONG", until: Date.now() + 3200 };
-        break;
-      }
-    } catch (e) {}
-  }
-
   function updateUI() {
     if (!state) return;
-    // Prefer focused table when dual API is present
-    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
-      const focused = tableState(focusTable);
-      if (focused) {
-        state = Object.assign({}, state, {
-          decision: focused.decision || state.decision,
-          locked_call: focused.locked_call || (focused.decision && focused.decision.locked_call) || state.locked_call,
-          agents: focused.agents || state.agents,
-          accuracy: focused.accuracy || state.accuracy,
-          market: focused.market || state.market,
-          hierarchy: focused.hierarchy || state.hierarchy,
-        });
+    // Prefer focused table when dual API is present (read-only view — keep tables intact)
+    const __savedTables = state.tables;
+    const __savedBtc = state.btc;
+    const __savedEth = state.eth;
+    const __savedDual = state.dual;
+    if (typeof getViewState === "function" && isDualMode()) {
+      const view = getViewState();
+      if (view) {
+        state = view;
+        // restore dual roots so next focus switch still works
+        if (__savedTables) state.tables = __savedTables;
+        if (__savedBtc) state.btc = __savedBtc;
+        if (__savedEth) state.eth = __savedEth;
+        if (__savedDual != null) state.dual = __savedDual;
       }
     }
     if (state.system_settings) applySettingsSnapshot(state.system_settings);
@@ -3713,13 +3601,6 @@ function drawCandleChart() {
         if (sNum != null && sNum <= 60) ledSub.textContent = "FINAL MINUTE";
         else if (sNum != null && sNum <= 180) ledSub.textContent = "LATE WINDOW";
         else ledSub.textContent = "until close";
-        try {
-          if (sNum != null) {
-            const frac = Math.max(0, Math.min(1, sNum / 3600));
-            const box = document.getElementById("windowLed") || document.getElementById("ledWindow");
-            if (box) box.style.setProperty("--hour-frac", String(frac));
-          }
-        } catch (e) {}
       }
       const dualSub = document.getElementById("dualWindowSub");
       if (dualSub && typeof tableState === "function") {
@@ -3741,7 +3622,6 @@ function drawCandleChart() {
 
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
-    try { updateDualAccuracyStrips(); } catch (e) {}
     updateLaw(state.law);
     updateHuddle(state.huddle);
     updateColorTally(state);
@@ -4428,67 +4308,64 @@ function drawCandleChart() {
   }
 
 
-  // BTC / ETH focus — MUST run even when summon gate is skipped (returning visitors)
+  // BTC / ETH focus — exclusive, always wired (even if summon gate skipped)
   function wireFocusAndHelp() {
-    if (window.__focusWired) return;
-    window.__focusWired = true;
     const focusBtc = document.getElementById("focusBtc");
     const focusEth = document.getElementById("focusEth");
-    function setFocusTable(which) {
-      focusTable = which === "ethereum" ? "ethereum" : "bitcoin";
-      document.body.dataset.focusTable = focusTable;
-      try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+    if (!focusBtc && !focusEth) return;
+
+    function applyFocusChrome() {
+      const isEth = focusTable === "ethereum";
+      document.body.dataset.focusTable = isEth ? "ethereum" : "bitcoin";
       if (focusBtc) {
-        focusBtc.classList.toggle("focus-active", focusTable === "bitcoin");
-        focusBtc.classList.remove("active");
+        focusBtc.classList.remove("active", "mode-tab");
+        if (isEth) focusBtc.classList.remove("focus-active");
+        else focusBtc.classList.add("focus-active");
       }
       if (focusEth) {
-        focusEth.classList.toggle("focus-active", focusTable === "ethereum");
-        focusEth.classList.remove("active");
+        focusEth.classList.remove("active", "mode-tab");
+        if (isEth) focusEth.classList.add("focus-active");
+        else focusEth.classList.remove("focus-active");
       }
-      // Force table chrome label
-      try {
-        const badge = document.getElementById("focusTableBadge");
-        if (badge) badge.textContent = focusTable === "ethereum" ? "ETH · VITALIK" : "BTC · SATOSHI";
-      } catch (e) {}
-      try { updateUI(); } catch (e) {}
-      try { drawArt(); } catch (e) {}
+      const badge = document.getElementById("focusTableBadge");
+      if (badge) badge.textContent = isEth ? "ETH · VITALIK" : "BTC · SATOSHI";
+    }
+
+    function setFocusTable(which) {
+      focusTable = (which === "ethereum" || which === "eth") ? "ethereum" : "bitcoin";
+      try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+      applyFocusChrome();
+      try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
+      try { drawArt(); } catch (e) { console.warn("focus drawArt", e); }
       try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
-      try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
+      try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;
-    if (focusBtc) {
-      focusBtc.onclick = (e) => {
+
+    function bind(btn, which) {
+      if (!btn || btn.__focusBound) return;
+      btn.__focusBound = true;
+      btn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        setFocusTable("bitcoin");
-      };
+        e.stopImmediatePropagation();
+        setFocusTable(which);
+      }, true); // capture — beat any mode-tab handler
     }
-    if (focusEth) {
-      focusEth.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setFocusTable("ethereum");
-      };
-    }
-    try { setFocusTable(focusTable || "bitcoin"); } catch (e) {}
+    bind(focusBtc, "bitcoin");
+    bind(focusEth, "ethereum");
+    applyFocusChrome();
 
     const btnHelp = document.getElementById("btnHelp");
     if (btnHelp && !btnHelp.__wired) {
       btnHelp.__wired = true;
       btnHelp.addEventListener("click", () => { try { ensureAudio(); openTutorial(true); } catch (e) {} });
     }
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
-        const tag = (e.target && e.target.tagName) || "";
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        try { ensureAudio(); openTutorial(true); } catch (err) {}
-      }
-    });
   }
+  // Allow re-wire after DOM patches
+  window.__focusWired = false;
 
   function initSummonGate_DISABLED_OLD(){ try{ document.getElementById('summonGate')?.remove(); document.body.classList.remove('gate-locked'); }catch(e){} return; }
   function initSummonGate() {
@@ -4532,6 +4409,19 @@ function drawCandleChart() {
   let celebratePlaying = false;
   let lastCelebratedStreak = 0; // fire once per streak milestone
 
+
+  function fitVideoToScreen(vid) {
+    if (!vid) return;
+    try {
+      vid.style.width = "100%";
+      vid.style.height = "100%";
+      vid.style.maxWidth = "100vw";
+      vid.style.maxHeight = "100dvh";
+      vid.style.objectFit = "contain";
+      vid.style.objectPosition = "center center";
+    } catch (e) {}
+  }
+
   function playCelebrateVideo(reason) {
     if (celebratePlaying) return;
     const wrap = document.getElementById("celebrateVideoWrap");
@@ -4545,6 +4435,7 @@ function drawCandleChart() {
     celebratePlaying = true;
     ensureAudio();
     wrap.classList.remove("hidden");
+    fitVideoToScreen(vid);
     wrap.setAttribute("aria-hidden", "false");
     vid.currentTime = 0;
     vid.muted = !!soundMuted;
@@ -5046,6 +4937,7 @@ function drawCandleChart() {
     }
     wrap.classList.add("active");
     const vid = document.getElementById("summonVideo");
+    fitVideoToScreen(vid);
     const fog = document.getElementById("summonFogOverlay");
     if (fog) fog.style.opacity = "0.85";
 
