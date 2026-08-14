@@ -80,7 +80,39 @@ class ChartsJsTests(unittest.TestCase):
     def test_fit_canvas_has_real_height(self):
         self.assertIn("const minH = isPair ? 220", JS)
         self.assertIn("if (h < minH) h = minH", JS)
-        self.assertIn("canvas.width < 40 || canvas.height < 40", JS)
+        self.assertIn('canvas.style.width = w + "px"', JS)
+        self.assertIn("opts.rows", JS)
+
+    def test_live_book_odds_rejects_missing_zero(self):
+        self.assertIn("function liveBookOdds", JS)
+        self.assertIn("never invent 0.0% from a missing print", JS)
+        self.assertIn("n === 0) return NaN", JS)
+        self.assertIn("const book = liveBookOdds(m);", JS)
+        self.assertNotIn("UP 0.0%", JS)
+
+    def test_candle_ohlc_and_tape_scale(self):
+        self.assertIn("function candleOHLC", JS)
+        self.assertIn("Scale from the tape only", JS)
+        self.assertIn("h > cl * 1.25 || l < cl * 0.75", JS)
+
+    def test_accuracy_zero_is_finish_only_not_collecting(self):
+        start = JS.find("function drawChartAccuracy()")
+        end = JS.find("function drawChartWeights()", start)
+        acc = JS[start:end]
+        self.assertIn("0/0 finish-only", acc)
+        self.assertNotIn("COLLECTING", acc)
+
+    def test_funding_hides_empty_card(self):
+        self.assertIn("function drawChartFunding", JS)
+        self.assertIn("card.hidden = true", JS)
+        start = JS.find("function drawChartFunding()")
+        end = JS.find("function pairFromLockRow", start)
+        fund = JS[start:end]
+        self.assertNotIn("COLLECTING", fund)
+
+    def test_weights_fit_rows(self):
+        self.assertIn("fitCanvas(canvas, { rows: ranked.length })", JS)
+        self.assertIn(".slice(0, 10)", JS)
 
     def test_charts_tab_layouts_then_draws(self):
         self.assertIn("Layout after the view is visible, then draw", JS)
@@ -102,6 +134,23 @@ class ChartsCssTests(unittest.TestCase):
         self.assertIn("body.mode-charts #chartsView.charts-view:not(.hidden)", CSS)
         self.assertIn("overflow-y: auto !important", CSS)
         self.assertIn(".charts-pairs", CSS)
+
+    def test_1280_pairs_side_by_side(self):
+        self.assertIn("grid-template-columns: 1fr 1fr !important", CSS)
+        self.assertIn(".chart-card.chart-pair-eth", CSS)
+
+    def test_open_charts_btn_hidden_charts_tab_stays(self):
+        self.assertIn("#openChartsBtn", CSS)
+        self.assertIn("#openChartsBtn.open-charts-btn", CSS)
+        btn = CSS.split("#openChartsBtn,")[-1][:180]
+        self.assertIn("display: none !important", btn)
+        self.assertIn('id="tabCharts"', HTML)
+        self.assertIn('id="chartsView"', HTML)
+
+    def test_floor_led_not_fixed_top_40(self):
+        self.assertNotIn("top: 40px", CSS)
+        self.assertIn("html body.floor-mode #app > header #windowLed.led-float.led-window", CSS)
+        self.assertIn("top: auto !important", CSS)
 
 
 class NoRegressionTests(unittest.TestCase):

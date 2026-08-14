@@ -3278,30 +3278,49 @@ function drawCandleChart() {
     }
   }
 
+  function liveBookOdds(m) {
+    /* Same live book the footer uses — never invent 0.0% from a missing print. */
+    if (!m) return null;
+    function pct(v) {
+      if (v == null || v === "") return NaN;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n === 0) return NaN;
+      return n > 0 && n <= 1.5 ? n * 100 : n;
+    }
+    let up = pct(m.up_pct);
+    if (!Number.isFinite(up)) up = pct(m.up_mid);
+    if (!Number.isFinite(up)) up = pct(m.yes_price);
+    if (!Number.isFinite(up)) up = pct(m.kalshi_yes_bid);
+    if (!Number.isFinite(up)) up = pct(m.kalshi_yes_ask);
+    let down = pct(m.down_pct);
+    if (!Number.isFinite(down)) down = pct(m.no_price);
+    if (!Number.isFinite(down) && Number.isFinite(up)) down = 100 - up;
+    if (!Number.isFinite(up) || up <= 0 || up >= 100) return null;
+    if (!Number.isFinite(down)) down = 100 - up;
+    return { up, down };
+  }
+
   function recordSeriesFromState(s) {
     if (!s) return;
     const t = Date.now();
     const m = s.market || {};
     const price = Number(m.price);
     const target = Number(m.kalshi_target);
-    let up = Number(m.up_pct);
-    let down = Number(m.down_pct);
-    let yes = m.kalshi_yes_bid;
-    if (typeof yes === "string") yes = parseFloat(yes);
-    if (!Number.isFinite(up) && Number.isFinite(yes)) {
-      up = yes > 1.5 ? yes : yes * 100;
-    }
-    if (Number.isFinite(up)) {
-      if (up <= 1.5 && up >= 0) up = up * 100;
-      if (!Number.isFinite(down)) down = 100 - up;
-      if (Number.isFinite(down) && down <= 1.5 && down >= 0) down = down * 100;
-      pushSeries(series.odds, { t, up, down });
-    }
+    const book = liveBookOdds(m);
+    if (book) pushSeries(series.odds, { t, up: book.up, down: book.down });
     if (Number.isFinite(price) && Number.isFinite(target)) {
       pushSeries(series.delta, { t, d: price - target });
     }
-    if (m.funding != null && Number.isFinite(Number(m.funding))) {
-      pushSeries(series.funding, { t, f: Number(m.funding) * 100 });
+    function takeFunding(mm) {
+      if (!mm || mm.funding == null) return;
+      const f = Number(mm.funding);
+      if (!Number.isFinite(f)) return;
+      pushSeries(series.funding, { t, f: Math.abs(f) > 1 ? f : f * 100 });
+    }
+    takeFunding(m);
+    if (typeof tableState === "function") {
+      takeFunding((tableState("bitcoin") || {}).market);
+      takeFunding((tableState("ethereum") || {}).market);
     }
     const dir = (s.decision && s.decision.direction) || "WAIT";
     const conf = (s.decision && s.decision.confidence) || 0;
@@ -3329,19 +3348,17 @@ function drawCandleChart() {
     const head = parent.querySelector(".chart-card-head");
     const isPair = canvas.id === "chartBtc" || canvas.id === "chartEth";
     const minW = 160;
-    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? 160 : 140);
+    const wantRows = (opts && opts.rows) || 0;
+    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? Math.max(160, wantRows * 15 + 20) : 140);
     const w = Math.max(minW, parent.clientWidth || minW);
     let h = (parent.clientHeight || 0) - (head ? head.offsetHeight : 0);
     if (h < minH) h = minH;
-    const tiny = canvas.width < 40 || canvas.height < 40;
     if (canvas.width !== w || canvas.height !== h) {
-      const tapeCount = opts && opts.candles;
-      if (!tiny && canvas.dataset.hasTape === "1" && tapeCount != null && tapeCount < 2) {
-        return canvas.getContext("2d");
-      }
       canvas.width = w;
       canvas.height = h;
     }
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
     return canvas.getContext("2d");
   }
 
@@ -3426,6 +3443,26 @@ function drawCandleChart() {
     return Number.isFinite(d) ? d : null;
   }
 
+  function candleOHLC(c) {
+    if (!c) return null;
+    let o, h, l, cl, t, v;
+    if (Array.isArray(c)) {
+      t = c[0]; o = Number(c[1]); h = Number(c[2]); l = Number(c[3]); cl = Number(c[4]); v = Number(c[5]);
+    } else {
+      o = Number(c.o != null ? c.o : c.open);
+      h = Number(c.h != null ? c.h : c.high);
+      l = Number(c.l != null ? c.l : c.low);
+      cl = Number(c.c != null ? c.c : c.close);
+      t = c.t != null ? c.t : c.open_time;
+      v = Number(c.v != null ? c.v : c.volume);
+    }
+    if (![o, h, l, cl].every(Number.isFinite)) return null;
+    if (cl <= 0 || cl > 5e6 || h <= 0 || l <= 0 || h > 5e6 || l > 5e6) return null;
+    if (h > cl * 1.25 || l < cl * 0.75) return null;
+    if (h < l) { const swap = h; h = l; l = swap; }
+    return { o, h, l, c: cl, t, v };
+  }
+
   function candleTimeMs(c) {
     if (!c) return null;
     return parseStampMs(c.t != null ? c.t : c.open_time);
@@ -3478,9 +3515,9 @@ function drawCandleChart() {
     const left = x0 != null ? x0 : pad.l;
     const right = x1 != null ? x1 : (w - pad.r);
     ctx.save();
-    ctx.fillStyle = "rgba(240, 193, 74, 0.07)";
+    ctx.fillStyle = "rgba(240, 193, 74, 0.14)";
     ctx.fillRect(Math.min(left, right), pad.t, Math.max(6, Math.abs(right - left)), h - pad.t - pad.b);
-    ctx.strokeStyle = "rgba(240, 193, 74, 0.4)";
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.55)";
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -3495,47 +3532,43 @@ function drawCandleChart() {
     ctx.textAlign = "left";
     ctx.fillText("1H WINDOW", left + 4, pad.t + 10);
     const lc = pairLock(ts);
-    if (lc) {
-      const lockMs = parseStampMs(lc.locked_at);
-      const xLock = xAtTime(candles, lockMs, pad, w);
-      if (xLock != null) {
-        ctx.strokeStyle = "#f0c14a";
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = "#f0c14a";
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.moveTo(xLock, pad.t);
-        ctx.lineTo(xLock, h - pad.b);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        let lockPx = Number(lc.entry_price != null ? lc.entry_price : lc.price);
-        if (!Number.isFinite(lockPx) && lockMs != null) {
-          let nearest = null, best = Infinity;
-          candles.forEach(c => {
-            const tm = candleTimeMs(c);
-            if (tm == null) return;
-            const d = Math.abs(tm - lockMs);
-            if (d < best) { best = d; nearest = c; }
-          });
-          if (nearest) lockPx = Number(nearest.c);
-        }
-        if (Number.isFinite(lockPx) && typeof yAt === "function") {
-          const y = yAt(lockPx);
-          ctx.fillStyle = "#f0c14a";
-          ctx.beginPath();
-          ctx.moveTo(xLock, y - 5);
-          ctx.lineTo(xLock + 5, y);
-          ctx.lineTo(xLock, y + 5);
-          ctx.lineTo(xLock - 5, y);
-          ctx.closePath();
-          ctx.fill();
-        }
-        ctx.fillStyle = "#f0c14a";
-        ctx.font = "8px Orbitron, monospace";
-        ctx.textAlign = "center";
-        ctx.fillText("LOCK", xLock, pad.t + 22);
-      }
+    const lockMs = (lc && parseStampMs(lc.locked_at)) || Date.now();
+    const xLock = xAtTime(candles, lockMs, pad, w) || (w - pad.r - 8);
+    ctx.strokeStyle = "#f0c14a";
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = "#f0c14a";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(xLock, pad.t);
+    ctx.lineTo(xLock, h - pad.b);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    let lockPx = lc ? Number(lc.entry_price != null ? lc.entry_price : lc.price) : NaN;
+    if (!Number.isFinite(lockPx)) {
+      let nearest = null, best = Infinity;
+      candles.forEach(c => {
+        const tm = candleTimeMs(c);
+        if (tm == null) return;
+        const d = Math.abs(tm - lockMs);
+        if (d < best) { best = d; nearest = c; }
+      });
+      if (nearest) lockPx = Number(nearest.c);
     }
+    if (Number.isFinite(lockPx) && typeof yAt === "function") {
+      const y = yAt(lockPx);
+      ctx.fillStyle = "#f0c14a";
+      ctx.beginPath();
+      ctx.moveTo(xLock, y - 5);
+      ctx.lineTo(xLock + 5, y);
+      ctx.lineTo(xLock, y + 5);
+      ctx.lineTo(xLock - 5, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "#f0c14a";
+    ctx.font = "8px Orbitron, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("LOCK", xLock, pad.t + 22);
     ctx.restore();
   }
 
@@ -3545,7 +3578,8 @@ function drawCandleChart() {
     if (!canvas) return;
     const ts = (typeof tableState === "function" ? tableState(tableKey) : null) || {};
     const market = ts.market || {};
-    const candles = (market.candles || []).slice(-60);
+    const raw = (market.candles || []).slice(-60);
+    const candles = raw.map(candleOHLC).filter(Boolean);
     const target = Number(market.kalshi_target);
     const price = Number(market.price);
     const meta = document.getElementById(metaId);
@@ -3555,8 +3589,7 @@ function drawCandleChart() {
         : "—";
     }
     if (candles.length < 2) {
-      if (canvas.dataset.hasTape === "1" && canvas.width >= 40 && canvas.height >= 40) return;
-      const ctx0 = fitCanvas(canvas, { candles: candles.length });
+      const ctx0 = fitCanvas(canvas);
       if (!ctx0) return;
       const w0 = canvas.width, h0 = canvas.height;
       chartFrame(ctx0, w0, h0);
@@ -3566,52 +3599,74 @@ function drawCandleChart() {
       ctx0.fillText("NO TAPE", w0 / 2, h0 / 2);
       return;
     }
-    canvas.dataset.hasTape = "1";
-    const ctx = fitCanvas(canvas, { candles: candles.length });
+    const ctx = fitCanvas(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    let min = Infinity, max = -Infinity;
+    /* Scale from the tape only so a far K TARGET cannot pin price to the floor. */
+    const closes = candles.map(c => c.c).filter(n => Number.isFinite(n) && n > 0);
+    let min = Math.min.apply(null, closes);
+    let max = Math.max.apply(null, closes);
+    const spanC = (max - min) || Math.abs(max) * 0.002 || 1;
     candles.forEach(c => {
-      min = Math.min(min, Number(c.l)); max = Math.max(max, Number(c.h));
+      if (Number.isFinite(c.l) && c.l > 0 && (min - c.l) <= spanC * 2) min = Math.min(min, c.l);
+      if (Number.isFinite(c.h) && c.h > 0 && (c.h - max) <= spanC * 2) max = Math.max(max, c.h);
     });
-    if (Number.isFinite(target)) { min = Math.min(min, target); max = Math.max(max, target); }
-    if (Number.isFinite(price)) { min = Math.min(min, price); max = Math.max(max, price); }
-    const padAmt = (max - min) * 0.06 || 1;
-    min -= padAmt; max += padAmt;
-    const pad = { l: 6, r: 6, t: 12, b: 10 };
-    const yAt = (p) => pad.t + (1 - (p - min) / (max - min)) * (h - pad.t - pad.b);
+    if (Number.isFinite(price) && price > 0 && price < 5e6) {
+      const mid = (min + max) / 2 || price;
+      if (price >= min && price <= max || Math.abs(price - mid) / (Math.abs(mid) || 1) < 0.08) {
+        min = Math.min(min, price);
+        max = Math.max(max, price);
+      }
+    }
+    let targetY = null;
+    if (Number.isFinite(target) && target > 0 && target < 5e6) {
+      const span0 = max - min || Math.abs(max) * 0.01 || 1;
+      const grown = Math.max(max, target) - Math.min(min, target);
+      if (grown <= span0 * 4) {
+        min = Math.min(min, target);
+        max = Math.max(max, target);
+        targetY = target;
+      } else {
+        targetY = target < min ? min : max;
+      }
+    }
+    const padAmt = (max - min) * 0.08 || Math.abs(max) * 0.002 || 1;
+    min -= padAmt;
+    max += padAmt;
+    const pad = { l: 6, r: 6, t: 14, b: 10 };
+    const yAt = (p) => pad.t + (1 - (p - min) / (max - min || 1)) * (h - pad.t - pad.b);
     drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt);
     const cw = (w - pad.l - pad.r) / candles.length;
     candles.forEach((c, i) => {
-      const o = Number(c.o), cl = Number(c.c), hi = Number(c.h), lo = Number(c.l);
       const x = pad.l + i * cw + cw / 2;
-      const up = cl >= o;
+      const up = c.c >= c.o;
       const col = up ? "#39ff14" : "#ff2d55";
       ctx.strokeStyle = col; ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.moveTo(x, yAt(hi)); ctx.lineTo(x, yAt(lo)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, yAt(c.h)); ctx.lineTo(x, yAt(c.l)); ctx.stroke();
       ctx.globalAlpha = 0.9;
-      const by = Math.min(yAt(o), yAt(cl));
-      const bh = Math.max(1, Math.abs(yAt(cl) - yAt(o)));
+      const by = Math.min(yAt(c.o), yAt(c.c));
+      const bh = Math.max(1, Math.abs(yAt(c.c) - yAt(c.o)));
       ctx.fillStyle = col;
       ctx.fillRect(x - Math.max(1, cw * 0.3), by, Math.max(2, cw * 0.6), bh);
     });
     ctx.globalAlpha = 1;
-    if (Number.isFinite(target)) {
+    if (targetY != null) {
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = "#f0c14a";
       ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(pad.l, yAt(target)); ctx.lineTo(w - pad.r, yAt(target)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(targetY)); ctx.lineTo(w - pad.r, yAt(targetY)); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = "#f0c14a";
       ctx.font = "9px Orbitron";
       ctx.textAlign = "left";
-      ctx.fillText("K TARGET", pad.l + 4, yAt(target) - 4);
+      ctx.fillText("K TARGET", pad.l + 4, Math.max(pad.t + 10, yAt(targetY) - 4));
     }
-    if (Number.isFinite(price)) {
+    if (Number.isFinite(price) && price > 0 && price < 5e6) {
+      const py = Math.min(max, Math.max(min, price));
       const col = Number.isFinite(target) ? (price >= target ? "#39ff14" : "#ff2d55") : "#00e8ff";
       ctx.strokeStyle = col; ctx.lineWidth = 1.3;
-      ctx.beginPath(); ctx.moveTo(pad.l, yAt(price)); ctx.lineTo(w - pad.r, yAt(price)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(py)); ctx.lineTo(w - pad.r, yAt(py)); ctx.stroke();
     }
   }
 
@@ -3655,26 +3710,29 @@ function drawCandleChart() {
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
     const meta = document.getElementById("chartOddsMeta");
+    const book = liveBookOdds((state && state.market) || {});
+    if (book && !series.odds.length) {
+      pushSeries(series.odds, { t: Date.now(), up: book.up, down: book.down });
+    }
+    const last = series.odds.length ? series.odds[series.odds.length - 1] : null;
+    const up = book ? book.up : Number(last && last.up);
+    const down = book ? book.down : (Number.isFinite(Number(last && last.down))
+      ? Number(last.down)
+      : (Number.isFinite(up) ? 100 - up : NaN));
+    if (meta) {
+      meta.textContent = (Number.isFinite(Number(up)) && Number.isFinite(Number(down)))
+        ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
+        : "waiting on live book";
+    }
     if (!series.odds.length) {
       ctx.fillStyle = "rgba(120,140,160,0.5)";
       ctx.font = "10px Orbitron, monospace";
       ctx.textAlign = "center";
-      ctx.fillText("COLLECTING…", canvas.width / 2, canvas.height / 2);
-      if (meta) meta.textContent = "UP — · DOWN —";
+      ctx.fillText("waiting on live book", canvas.width / 2, canvas.height / 2);
       return;
     }
     drawLineSeries(ctx, series.odds, p => p.up, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
     drawLineSeries(ctx, series.odds, p => p.down, "#ff2d55", { yMin: 0, yMax: 100 });
-    const last = series.odds[series.odds.length - 1];
-    const up = Number(last && last.up);
-    const down = Number.isFinite(Number(last && last.down))
-      ? Number(last.down)
-      : (Number.isFinite(up) ? 100 - up : NaN);
-    if (meta) {
-      meta.textContent = (Number.isFinite(up) && Number.isFinite(down))
-        ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
-        : "UP — · DOWN —";
-    }
   }
 
   function drawChartDelta() {
@@ -3693,6 +3751,20 @@ function drawCandleChart() {
 
   function drawChartFunding() {
     const canvas = document.getElementById("chartFunding");
+    if (!canvas) return;
+    const card = canvas.closest(".chart-card");
+    if (!series.funding.length) {
+      const mm = (state && state.market) || {};
+      const f = Number(mm.funding);
+      if (Number.isFinite(f)) {
+        pushSeries(series.funding, { t: Date.now(), f: Math.abs(f) > 1 ? f : f * 100 });
+      }
+    }
+    if (!series.funding.length) {
+      if (card) card.hidden = true;
+      return;
+    }
+    if (card) card.hidden = false;
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
@@ -3893,36 +3965,39 @@ function drawCandleChart() {
 
   function drawChartWeights() {
     const canvas = document.getElementById("chartWeights");
-    const ctx = fitCanvas(canvas);
+    if (!canvas) return;
+    const weights = (state && (state.weights || (state.learning && state.learning.weights))) || {};
+    const ranked = AGENT_ORDER
+      .filter(k => k !== "law")
+      .map(k => ({ k, w: Number(weights[k]) || 0, label: AGENT_LABELS[k] || k }))
+      .sort((a, b) => Math.abs(b.w) - Math.abs(a.w))
+      .slice(0, 10);
+    const ctx = fitCanvas(canvas, { rows: ranked.length });
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    const weights = (state && (state.weights || (state.learning && state.learning.weights))) || {};
-    const entries = AGENT_ORDER
-      .filter(k => k !== "law")
-      .map(k => ({ k, w: Number(weights[k]) || 0, label: AGENT_LABELS[k] || k }));
-    if (!entries.some(e => e.w > 0)) {
+    if (!ranked.some(e => e.w !== 0)) {
       ctx.fillStyle = "rgba(120,140,160,0.5)";
       ctx.font = "10px Orbitron";
       ctx.textAlign = "center";
       ctx.fillText("NO WEIGHTS", w / 2, h / 2);
       return;
     }
-    const maxW = Math.max(...entries.map(e => e.w), 0.01);
-    const pad = { l: 48, r: 10, t: 8, b: 8 };
-    const rowH = (h - pad.t - pad.b) / entries.length;
-    entries.forEach((e, i) => {
+    const maxW = Math.max(...ranked.map(e => Math.abs(e.w)), 0.01);
+    const pad = { l: 56, r: 8, t: 6, b: 6 };
+    const rowH = Math.max(14, (h - pad.t - pad.b) / ranked.length);
+    ranked.forEach((e, i) => {
       const y = pad.t + i * rowH;
-      const bw = (e.w / maxW) * (w - pad.l - pad.r);
-      ctx.fillStyle = "rgba(0,232,255,0.55)";
-      ctx.fillRect(pad.l, y + 3, Math.max(2, bw), rowH - 6);
+      const bw = (Math.abs(e.w) / maxW) * (w - pad.l - pad.r);
+      ctx.fillStyle = e.w >= 0 ? "rgba(0,232,255,0.55)" : "rgba(255,45,85,0.55)";
+      ctx.fillRect(pad.l, y + 2, Math.max(2, bw), Math.max(8, rowH - 4));
       ctx.fillStyle = "#c0e8ff";
       ctx.font = "8px Orbitron";
       ctx.textAlign = "right";
-      ctx.fillText(e.label, pad.l - 4, y + rowH * 0.65);
+      ctx.fillText(e.label, pad.l - 4, y + rowH * 0.7);
       ctx.textAlign = "left";
-      ctx.fillStyle = "rgba(200,220,240,0.7)";
-      ctx.fillText(e.w.toFixed(3), pad.l + bw + 4, y + rowH * 0.65);
+      ctx.fillStyle = bw > 40 ? "rgba(6,8,12,0.92)" : "rgba(200,220,240,0.75)";
+      ctx.fillText(e.w.toFixed(3), bw > 40 ? pad.l + 4 : pad.l + bw + 4, y + rowH * 0.7);
     });
   }
 
@@ -4507,14 +4582,9 @@ function drawCandleChart() {
     const dnEl = document.getElementById("liveDownPct");
     const timEl = document.getElementById("windowTimer");
     const m = state.market || {};
-    if (upEl) {
-      const u = m.up_pct != null ? m.up_pct : m.yes_price != null ? m.yes_price : null;
-      upEl.textContent = u != null ? (Number(u) <= 1 ? (Number(u) * 100).toFixed(1) : Number(u).toFixed(1)) + "%" : "—";
-    }
-    if (dnEl) {
-      const dnp = m.down_pct != null ? m.down_pct : m.no_price != null ? m.no_price : null;
-      dnEl.textContent = dnp != null ? (Number(dnp) <= 1 ? (Number(dnp) * 100).toFixed(1) : Number(dnp).toFixed(1)) + "%" : "—";
-    }
+    const book = liveBookOdds(m);
+    if (upEl) upEl.textContent = book ? book.up.toFixed(1) + "%" : "—";
+    if (dnEl) dnEl.textContent = book ? book.down.toFixed(1) + "%" : "—";
     if (timEl || document.getElementById("ledWindowTime")) {
       let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
       if (secs == null && m.close_time) {

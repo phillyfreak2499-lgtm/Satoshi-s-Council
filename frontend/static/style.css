@@ -3871,16 +3871,17 @@ body.floor-mode .floor-music-btn {
 }
 body.floor-mode #windowLed,
 body.floor-mode #windowLed.led-window {
-  /* Top-left corner — bottom ring seats (ODDS / STRIKE / CLOCK) stay clear. */
-  top: 40px !important;
-  left: 14px !important;
+  /* In-flow under nav — never fixed top:40 under the tab row. */
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
   right: auto !important;
   bottom: auto !important;
   transform: none !important;
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
-  z-index: 70 !important;
+  z-index: 4 !important;
 }
 body.mode-art #windowLed,
 body.mode-art #windowLed.led-window {
@@ -4314,15 +4315,16 @@ body.mode-art .led-window {
 body.floor-mode #windowLed,
 body.floor-mode #windowLed.led-window,
 body.mode-floor #windowLed {
-  top: 40px !important;
-  left: 14px !important;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
   right: auto !important;
   bottom: auto !important;
   transform: none !important;
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
-  z-index: 70 !important;
+  z-index: 4 !important;
 }
 body.mode-art #windowLed,
 body.mode-art #windowLed.led-window {
@@ -5779,4 +5781,41 @@ body.admin-unlocked.mode-settings #adminToolsCard,
 body.admin-unlocked.mode-settings #brainCard,
 body.admin-unlocked.mode-settings #adminDeskHost {
   display: block !important;
+}
+
+/* ===== CHARTS 1280 — both pair cards, hide dead Full Charts, fit weights ===== */
+@media (min-width: 900px) {
+  body.mode-charts .charts-pairs {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+  }
+  body.mode-charts .chart-card.chart-pair-eth,
+  body.mode-charts .chart-card.chart-pair-btc {
+    display: flex !important;
+    visibility: visible !important;
+  }
+}
+#openChartsBtn,
+#openChartsBtn.open-charts-btn {
+  display: none !important;
+}
+.chart-card:has(#chartWeights),
+#chartWeights {
+  min-height: 180px;
+  overflow: visible;
+}
+
+/* ===== FLOOR 1H — last word in-flow dock (beats leftover fixed top) ===== */
+html body.floor-mode #app > header #windowLed.led-float.led-window,
+html body.mode-floor #app > header #windowLed.led-float.led-window,
+html body.mode-art #app > header #windowLed.led-float.led-window {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
+  transform: none !important;
+  display: block !important;
+  margin: 6px auto 8px !important;
 }
