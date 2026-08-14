@@ -32,6 +32,7 @@ from backend.agents.liq import LiqSpecialist
 from backend.agents.guardian import GuardianBot
 from backend.agents.law import LawBot, apply_find_out_to_signals
 from backend.agents.leader import Leader
+from backend.agents.window_memory import WindowMemory
 from backend.agents.subs import run_all_subs, synthesize_from_subs
 from backend.learning.adaptive import AdaptiveLearner
 from backend.storage.db import PerformanceStore
@@ -47,6 +48,7 @@ class Council:
         self.store = PerformanceStore()
         self.learner = AdaptiveLearner()
         self.leader = Leader(learner=self.learner)
+        self.wm = WindowMemory()
         self.law = LawBot()
         self.agents = [
             CandlePatternSpecialist(),
@@ -80,6 +82,18 @@ class Council:
 
     async def start(self):
         await self.store.init()
+        # Seed multi-window memory from recent settled calls
+        try:
+            rows = []
+            if hasattr(self.store, "recent_settled_calls"):
+                rows = await self.store.recent_settled_calls(24)
+            elif hasattr(self.store, "get_recent_settled"):
+                rows = await self.store.get_recent_settled(24)
+            if rows:
+                n = self.wm.seed_from_store(rows)
+                logger.info(f"WindowMemory seeded with {n} settled windows")
+        except Exception as e:
+            logger.debug(f"WindowMemory seed: {e}")
         # Rebuild adaptive weights + pair affinities from history
         try:
             try:
@@ -150,6 +164,40 @@ class Council:
             logger.debug(f"Huddle cycle: {e}")
 
         market_data = await self.pipeline.fetch()
+        # Multi-window memory: tick update + inject snapshot for specialists
+        try:
+            km = market_data.get("kalshi_market") or {}
+            ticker = (
+                market_data.get("market_ticker")
+                or km.get("ticker")
+                or km.get("market_ticker")
+            )
+            up_pct = market_data.get("up_pct")
+            price = market_data.get("current_price")
+            mins_left = market_data.get("mins_left")
+            if mins_left is None:
+                close_t = km.get("close_time") or market_data.get("close_time")
+                if close_t:
+                    try:
+                        from backend.learning.regime_keys import parse_mins_left
+                        mins_left = parse_mins_left(close_t)
+                    except Exception:
+                        mins_left = None
+            self.wm.on_tick(ticker, up_pct, price, mins_left)
+            # Reflect Chair entry if already locked this window
+            if getattr(self.leader, "_entry_dir", None) and not self.wm.live.entry_dir:
+                self.wm.set_entry(
+                    self.leader._entry_dir,
+                    int(getattr(self.leader, "_entry_conf", 0) or 0),
+                    getattr(self.leader, "_entry_up_pct", None),
+                )
+            market_data["wm"] = self.wm.snapshot()
+            market_data["phase"] = self.wm.live.phase
+            if mins_left is not None:
+                market_data["mins_left"] = mins_left
+        except Exception as e:
+            logger.debug(f"WindowMemory tick: {e}")
+            market_data.setdefault("wm", {})
         try:
             subs_map = run_all_subs(market_data)
         except Exception as e:
