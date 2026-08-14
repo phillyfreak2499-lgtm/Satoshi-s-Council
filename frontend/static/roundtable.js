@@ -1389,6 +1389,58 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // ── CENTER LOCKED CALL PLAQUE (follower-bot clear) ──
+    // Table is reserved for the single GOAL CONTRACT call.
+    try {
+      const d = (state && state.decision) || {};
+      const lc = d.locked_call || {};
+      const locked = !!(lc.locked || d.window_locked || d.locked_dir);
+      const lockDir = (lc.direction || d.locked_dir || d.entry_dir || "").toUpperCase();
+      if (locked && (lockDir === "UP" || lockDir === "DOWN")) {
+        const conf = lc.confidence || d.confidence || 0;
+        const odds = lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : (d.entry_up_pct != null ? Math.round(lockDir === "UP" ? d.entry_up_pct : 100 - d.entry_up_pct) : null);
+        // Glow plate
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 0.42, 0, Math.PI * 2);
+        ctx.fillStyle = lockDir === "UP" ? "rgba(0, 80, 40, 0.55)" : "rgba(80, 10, 20, 0.55)";
+        ctx.fill();
+        ctx.strokeStyle = lockDir === "UP" ? "rgba(0, 255, 140, 0.9)" : "rgba(255, 80, 100, 0.9)";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = lockDir === "UP" ? "#00ff8c" : "#ff4060";
+        ctx.shadowBlur = 18;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        // Text
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 22px Orbitron, monospace";
+        ctx.fillText("LOCKED " + lockDir, cx, cy - 28);
+        ctx.font = "bold 14px Orbitron, monospace";
+        ctx.fillStyle = "rgba(255,220,120,0.95)";
+        ctx.fillText("ONE CALL · FOLLOW THIS", cx, cy - 6);
+        ctx.font = "12px Orbitron, monospace";
+        ctx.fillStyle = "rgba(200,230,255,0.9)";
+        let sub = conf ? (conf + "%") : "";
+        if (odds != null) sub += (sub ? "  ·  " : "") + odds + "¢ entry";
+        ctx.fillText(sub, cx, cy + 14);
+        ctx.font = "10px Orbitron, monospace";
+        ctx.fillStyle = "rgba(180,200,220,0.75)";
+        ctx.fillText("GOAL · best odds <80%", cx, cy + 30);
+        ctx.restore();
+      } else {
+        // Small goal reminder when not locked
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "10px Orbitron, monospace";
+        ctx.fillStyle = "rgba(0, 200, 255, 0.45)";
+        ctx.fillText("GOAL · 1 window-end guess @ best odds (<80%)", cx, cy);
+        ctx.restore();
+      }
+    } catch (e) { /* keep drawing */ }
+
     if (!state || !state.agents) {
       // still draw rain + rings while waiting
       return;
@@ -1414,13 +1466,16 @@
     }));
     seatList.sort((a, b) => a.rank - b.rank || String(a.name).localeCompare(String(b.name)));
 
-    const ringR = radius * 0.92; // classic round-table radius
+    // Bots removed from the TABLE — they live on the FLOOR (outer ring).
+    // Table surface reserved for Chair + clear locked call for follower bots.
+    const ringR = radius * (mode === "floor" ? 1.18 : 1.25); // outside table = floor
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
       const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
       // Subtle hierarchy: top-3 sit a hair closer to the Chair (still one ring)
       const rk = item.rank;
-      const pull = rk <= 1 ? 0.88 : rk <= 3 ? 0.92 : rk <= 7 ? 0.96 : 1.0;
+      // Stay fully on the floor ring — no inward hierarchy pull onto the table
+      const pull = 1.0;
       const rSeat = ringR * pull;
       positions[item.name] = {
         x: cx + Math.cos(angle) * rSeat,
@@ -1806,6 +1861,47 @@
     ctx.font = "11px Orbitron, sans-serif";
     ctx.fillStyle = "#e8f4ff";
     ctx.fillText(leaderConf + "%", cx, cy + lr + 46);
+
+        // ===== CLEAR LOCKED CALL plate for follower bots (GOAL: one call @ best odds) =====
+    {
+      const lc = state.locked_call || (state.decision && state.decision.locked_call) || {};
+      const isLocked = !!(lc.locked || lc.irreversible || lc.direction);
+      const showDir = (lc.direction || leaderDir || "WAIT").toUpperCase();
+      const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
+      const entryOdds = lc.entry_odds_pct;
+      const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
+      const plateY = cy + lr + 68;
+      const plateW = isLocked && isDir ? 260 : 240;
+      const plateH = 38;
+      ctx.beginPath();
+      const rx = 8;
+      ctx.moveTo(cx - plateW/2 + rx, plateY - plateH/2);
+      ctx.arcTo(cx + plateW/2, plateY - plateH/2, cx + plateW/2, plateY + plateH/2, rx);
+      ctx.arcTo(cx + plateW/2, plateY + plateH/2, cx - plateW/2, plateY + plateH/2, rx);
+      ctx.arcTo(cx - plateW/2, plateY + plateH/2, cx - plateW/2, plateY - plateH/2, rx);
+      ctx.arcTo(cx - plateW/2, plateY - plateH/2, cx + plateW/2, plateY - plateH/2, rx);
+      ctx.closePath();
+      ctx.fillStyle = isDir ? "rgba(0, 20, 40, 0.94)" : "rgba(10, 12, 20, 0.88)";
+      ctx.fill();
+      ctx.strokeStyle = isDir ? scL : "rgba(120, 140, 160, 0.55)";
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = isDir ? scL : "transparent";
+      ctx.shadowBlur = isDir ? 16 : 0;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.font = "700 12px Orbitron, sans-serif";
+      ctx.fillStyle = isDir ? "#ffffff" : "rgba(180, 200, 220, 0.9)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      let lockLabel;
+      if (isLocked && isDir) {
+        const oddsPart = entryOdds != null ? ` @ ${Math.round(entryOdds)}¢` : "";
+        lockLabel = `LOCKED ${showDir}${oddsPart} · ${showConf}% · FOLLOW`;
+      } else {
+        lockLabel = "GOAL · one guess @ best odds (<80%)";
+      }
+      ctx.fillText(lockLabel, cx, plateY);
+    }
 
     // Scanline overlay on canvas itself (subtle)
     ctx.fillStyle = "rgba(0, 0, 0, 0.04)";
