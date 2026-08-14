@@ -156,9 +156,16 @@ class Settings(BaseSettings):
     PAPER_PATH_SCALED: bool = True
     HOLD_FRACTION: float = 0.25
     MIN_CALL_REENTRY_SEC: float = 90.0
-    # Hard cap graded window_calls per ticker (ENTRY+MID+FINAL). Same-side refresh does not count.
-    MAX_CALLS_PER_WINDOW: int = 3
+    # Hard cap graded window_calls per ticker. Strict one-call discipline (GOAL CONTRACT).
+    # Same-side refresh does not count as a new call; opposite revisions are disabled when =1.
+    MAX_CALLS_PER_WINDOW: int = 1
     CALL_MAX_AGE_SEC: float = 15 * 60
+    # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
+    # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
+    MAX_ENTRY_ODDS_PCT: float = 80.0
+    # Quiet-period directional confidence floor (used by Leader adaptive path)
+    QUIET_MIN_DIRECTIONAL_CONF: int = 80
+
 
     # Learning
     REWEIGHT_EVERY_N_SIGNALS: int = 40
