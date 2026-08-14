@@ -43,8 +43,20 @@ from backend.services.runtime_settings import runtime_settings
 
 
 class Council:
-    def __init__(self):
-        self.pipeline = DataPipeline()
+    def __init__(
+        self,
+        asset: str = "btc",
+        leader_name: str = "satoshi",
+        series_ticker: str | None = None,
+        symbol: str | None = None,
+    ):
+        self.asset = (asset or "btc").lower()
+        self.leader_name = (leader_name or "satoshi").lower()
+        self.pipeline = DataPipeline(
+            asset=self.asset,
+            series_ticker=series_ticker,
+            symbol=symbol,
+        )
         self.store = PerformanceStore()
         self.learner = AdaptiveLearner()
         self.leader = Leader(learner=self.learner)
@@ -107,7 +119,7 @@ class Council:
             logger.debug(f"Adaptive rebuild: {e}")
         self.running = True
         self._task = asyncio.create_task(self._loop())
-        logger.info("Council continuous analysis started (with sub-councils)")
+        logger.info(f"Council continuous analysis started asset={self.asset} leader={self.leader_name}")
 
     async def stop(self):
         self.running = False
@@ -131,7 +143,12 @@ class Council:
             elapsed = asyncio.get_event_loop().time() - t0
             try:
                 prof = runtime_settings.profile()
-                interval = float(prof.get("analysis_interval", 1.5))
+                if self.asset == "eth":
+                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.0))
+                elif self.asset == "btc":
+                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.0))
+                else:
+                    interval = float(prof.get("analysis_interval", getattr(settings, "ANALYSIS_INTERVAL", 4.0)))
                 st = self.latest_state or {}
                 mkt = st.get("market") or {}
                 dec = (st.get("decision") or {}).get("direction")
@@ -443,6 +460,8 @@ class Council:
         # Build public state for frontend
         state = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "asset": self.asset,
+            "leader_name": self.leader_name,
             "decision": {
                 "direction": decision["direction"],
                 "confidence": decision["confidence"],
