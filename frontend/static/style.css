@@ -3311,3 +3311,38 @@ body:not(.floor-mode) .floor-money-rain {
 .dual-vote-strip { color: #9ec8e0; font-size: 12px; letter-spacing: 0.03em; }
 .dual-vote-strip b { color: #d8f0ff; font-weight: 700; }
 .dual-focus-banner { background: rgba(0,20,40,0.6); }
+
+
+/* TIMER CENTERED — middle of screen bottom (not corner) */
+.led-window,
+body.floor-mode .led-window,
+body.mode-art .led-window {
+  left: 50% !important;
+  right: auto !important;
+  bottom: 88px !important;
+  top: auto !important;
+  transform: translateX(-50%) !important;
+  opacity: 1 !important;
+  z-index: 50 !important;
+}
+body.floor-mode .led-window {
+  bottom: 96px !important;
+  transform: translateX(-50%) scale(1.15) !important;
+}
+
+/* Floor bot count LED removed */
+#floorLed,
+.led-floor {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ETH/BTC decision chips in footer strip */
+.eth-decision-strip b,
+.btc-decision-strip b {
+  font-variant-numeric: tabular-nums;
+}
+.eth-decision-strip { color: #9dffc0; }
+.btc-decision-strip { color: #7fe9ff; }
