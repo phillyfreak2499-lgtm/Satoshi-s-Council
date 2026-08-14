@@ -46,6 +46,7 @@ class Leader:
 
         # Per-window Entry / Mid / Final lock (one graded call path per Kalshi ticker)
         self._locked_ticker: Optional[str] = None
+        self._locked_window: Optional[str] = None  # close_time identity — stable across ATM ticker hops
         self._locked_dir: Optional[str] = None  # active UP | DOWN
         self._locked_conf: int = 0
         self._locked_score: float = 0.0
@@ -71,6 +72,7 @@ class Leader:
 
     def _clear_window_lock(self) -> None:
         self._locked_ticker = None
+        self._locked_window = None
         self._locked_dir = None
         self._locked_conf = 0
         self._locked_score = 0.0
@@ -843,9 +845,20 @@ class Leader:
         except (TypeError, ValueError):
             up_pct = None
 
-        # New ticker → clear previous lock
-        if ticker and self._locked_ticker and ticker != self._locked_ticker:
+        # Window identity: prefer close_time so ATM strike/ticker hops do NOT clear the lock
+        window_id = None
+        if regime_features:
+            window_id = regime_features.get("close_time") or regime_features.get("window_id")
+        if not window_id:
+            window_id = ticker
+        window_id = str(window_id) if window_id else None
+
+        if window_id and self._locked_window and window_id != self._locked_window:
+            # True new hourly window → clear
             self._clear_window_lock()
+        elif ticker and self._locked_ticker and ticker != self._locked_ticker and self._entry_dir:
+            # Same window, market ticker hopped (ATM ladder) — keep lock, update ticker tag
+            self._locked_ticker = ticker
 
         call_phase = None
         max_odds = float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0))
@@ -871,9 +884,9 @@ class Leader:
 
         # ══════════════════════════════════════════════════════════════
         # GOAL CONTRACT: one irreversible call per window. No flipping.
+        # Hold even if ticker is briefly missing this cycle.
         # ══════════════════════════════════════════════════════════════
-        if ticker and (self._entry_dir or self._active_dir()):
-            # Already locked → ALWAYS surface the locked side. Never WAIT/SWAP/flip.
+        if self._entry_dir or self._active_dir():
             active = self._active_dir()
             direction = active  # type: ignore[assignment]
             lean = active
@@ -883,6 +896,10 @@ class Leader:
             if gate_notes:
                 summary += " · " + ", ".join(gate_notes[:2])
             call_phase = None
+            if ticker:
+                self._locked_ticker = ticker
+            if window_id:
+                self._locked_window = window_id
 
         elif is_directional and ticker:
             # No lock yet → try to open the single ENTRY lock
