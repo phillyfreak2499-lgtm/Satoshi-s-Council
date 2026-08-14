@@ -257,7 +257,8 @@ class Council:
         # Path-grade open scalp calls on Kalshi odds (full + 1/4 HOLD)
         try:
             await self.store.settle_expired_calls(
-                current_price=entry_price, up_pct=up_pct, down_pct=down_pct
+                current_price=entry_price, up_pct=up_pct, down_pct=down_pct,
+                floor_strike=market_data.get("kalshi_floor_strike"),
             )
         except Exception as e:
             logger.debug(f"Settle skip: {e}")
@@ -343,6 +344,21 @@ class Council:
             if ticker:
                 regime_features["ticker"] = ticker
                 regime_features["market_ticker"] = ticker
+            # Freshness for lock gate (no ENTRY on stale Kalshi)
+            try:
+                regime_features["stale"] = bool(market_data.get("stale") or (market_data.get("kalshi") or {}).get("stale"))
+                regime_features["kalshi_fetched_at"] = (
+                    (market_data.get("kalshi") or {}).get("fetched_at")
+                    or market_data.get("fetched_at")
+                )
+                regime_features["kalshi_healthy"] = bool((market_data.get("health") or {}).get("kalshi", True))
+                # strike / series for plaque identity
+                regime_features["series_ticker"] = market_data.get("series_ticker") or (market_data.get("kalshi") or {}).get("series_ticker")
+                regime_features["floor_strike"] = market_data.get("kalshi_floor_strike")
+                regime_features["kalshi_title"] = market_data.get("kalshi_title")
+            except Exception:
+                pass
+
             # mins_left for classify fallback
             from backend.learning.regime_keys import parse_mins_left
             km = market_data.get("kalshi_market") or {}
@@ -492,13 +508,19 @@ class Council:
                 "funding": market_data.get("funding_rate"),
                 "oi": market_data.get("open_interest"),
                 "kalshi_ticker": ticker,
+                "ticker": ticker,
+                "series_ticker": market_data.get("series_ticker") or (market_data.get("kalshi") or {}).get("series_ticker"),
+                "floor_strike": market_data.get("kalshi_floor_strike"),
+                "stale": bool(market_data.get("stale") or (market_data.get("kalshi") or {}).get("stale")),
                 "kalshi_yes_bid": market_data.get("kalshi_yes_bid"),
                 "kalshi_yes_ask": market_data.get("kalshi_yes_ask"),
                 "up_pct": up_pct,
                 "up_mid": up_pct,
                 "down_pct": down_pct,
                 "close_time": close_time,
-                # Kalshi settlement threshold (YES if BTC finishes above this)
+                "mins_left": market_data.get("mins_left"),
+                "seconds_left": (float(market_data["mins_left"]) * 60.0) if market_data.get("mins_left") is not None else None,
+                # Kalshi settlement threshold (YES if asset finishes above this)
                 "kalshi_target": market_data.get("kalshi_floor_strike"),
                 "kalshi_title": market_data.get("kalshi_title"),
                 # Slim candle series for right-side live chart (last ~60 × 1m)
