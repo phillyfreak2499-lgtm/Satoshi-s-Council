@@ -2323,6 +2323,26 @@ body.floor-mode.law-lock .floor-hint { color: rgba(255, 140, 40, 0.75); }
   grid-template-columns: 1fr 1fr 1fr;
   gap: 6px;
 }
+#autoBetCard,
+#autoBetCard.hidden {
+  display: none !important;
+}
+body.admin-unlocked #settingsView:not(.hidden) #autoBetCard {
+  display: block !important;
+}
+#setAutoBetMode {
+  background: #0d111a;
+  border: 1px solid #2a3348;
+  color: #e8eef8;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  width: 100%;
+}
+#autoBetFollowNote {
+  margin-top: 8px;
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;

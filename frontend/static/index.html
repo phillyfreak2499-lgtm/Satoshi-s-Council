@@ -317,6 +317,25 @@
           </div>
         </div>
 
+        <div class="beast-card settings-card hidden" id="autoBetCard" aria-hidden="true">
+          <div class="beast-title">AUTO-BET SETUP</div>
+          <p class="settings-sub">Admin only. Desk access code cannot open this. No live orders — this is setup only.</p>
+          <label class="set-check"><input type="checkbox" id="setAutoBetOn" /> Enable auto-bet setup</label>
+          <label class="set-field">Mode
+            <select id="setAutoBetMode">
+              <option value="off">Off — no auto betting</option>
+              <option value="paper_chair">Paper — Chair locks only (no live orders)</option>
+              <option value="follow_leaders">Follow leaders — reserved slot (not live)</option>
+            </select>
+          </label>
+          <label class="set-field">Size $
+            <input type="number" step="1" min="0" max="10000" id="setAutoBetSize" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setAutoBetBtc" checked /> Bitcoin / Satoshi table</label>
+          <label class="set-check"><input type="checkbox" id="setAutoBetEth" checked /> Ethereum / Vitalik table</label>
+          <p class="settings-foot" id="autoBetFollowNote">Follow leaders is a reserved mode for later. It does not place orders.</p>
+        </div>
+
         <div class="settings-actions">
           <button type="button" class="gate-btn gate-btn-summon" id="btnSaveSettings">Save settings</button>
           <button type="button" class="gate-btn gate-btn-ghost" id="btnResetSettings">Reset defaults</button>

@@ -101,7 +101,7 @@ async def get_state(response: Response):
     state = council.get_state()
     # Surface server-side lag for the UI
     if isinstance(state, dict):
-        state = dict(state)
+        state = _strip_public_auto_bet(dict(state))
         state["server_time"] = time.time()
     return state
 
@@ -110,7 +110,7 @@ async def get_state(response: Response):
 async def force_analyze():
     """Manual trigger for testing."""
     state = await council.analyze_once()
-    return state
+    return _strip_public_auto_bet(state) if isinstance(state, dict) else state
 
 
 @app.get("/api/history")
@@ -209,9 +209,30 @@ async def lifetime(limit: int = 500, offset: int = 0):
 
 
 
+def _strip_public_auto_bet(obj):
+    """Remove auto-bet setup from any public payload. Admin GET /api/settings keeps it."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k == "auto_bet":
+                continue
+            out[k] = _strip_public_auto_bet(v)
+        return out
+    if isinstance(obj, list):
+        return [_strip_public_auto_bet(x) for x in obj]
+    return obj
+
+
+def _settings_for_client(request: Request) -> dict:
+    snap = runtime_settings.snapshot()
+    if not _admin_ok(request):
+        return _strip_public_auto_bet(snap)
+    return snap
+
+
 @app.get("/api/settings")
-async def get_settings():
-    return runtime_settings.snapshot()
+async def get_settings(request: Request):
+    return _settings_for_client(request)
 
 
 @app.post("/api/settings")
@@ -223,7 +244,12 @@ async def post_settings(request: Request):
         body = {}
     if not isinstance(body, dict):
         body = {}
-    return runtime_settings.apply_patch(body)
+    # Auto-bet setup is admin-only. Desk access code is not enough.
+    if "auto_bet" in body and not _admin_ok(request):
+        body = dict(body)
+        body.pop("auto_bet", None)
+    runtime_settings.apply_patch(body)
+    return _settings_for_client(request)
 
 
 @app.post("/api/settings/beast")
@@ -236,7 +262,8 @@ async def toggle_beast(request: Request):
         on = bool(body["enabled"])
     else:
         on = not runtime_settings.beast_mode
-    return runtime_settings.set_beast_mode(on)
+    runtime_settings.set_beast_mode(on)
+    return _settings_for_client(request)
 
 
 @app.get("/api/brain/export")

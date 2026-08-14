@@ -37,6 +37,19 @@
     const cb = pendingAdminCb;
     pendingAdminCb = null;
     if (ok && typeof cb === "function") cb();
+    try { syncAutoBetVisibility(); } catch (e) {}
+  }
+
+  function syncAutoBetVisibility() {
+    const unlocked = isAdminUnlocked();
+    document.body.classList.toggle("admin-unlocked", unlocked);
+    const card = document.getElementById("autoBetCard");
+    if (!card) return;
+    let current = "art";
+    try { current = mode; } catch (e) {}
+    const show = unlocked && current === "settings";
+    card.classList.toggle("hidden", !show);
+    card.setAttribute("aria-hidden", show ? "false" : "true");
   }
   function wireAdminGate() {
     const submit = document.getElementById("adminSubmit");
@@ -269,6 +282,16 @@
     chk("setSoundBell", U.sound_bell !== false);
     chk("setBeamGlow", U.beam_glow !== false);
     set("setWatermark", U.watermark_opacity);
+    const AB = s.auto_bet || {};
+    if (s.auto_bet) {
+      chk("setAutoBetOn", AB.enabled);
+      const modeEl = document.getElementById("setAutoBetMode");
+      if (modeEl && AB.mode) modeEl.value = AB.mode;
+      set("setAutoBetSize", AB.size);
+      chk("setAutoBetBtc", AB.btc !== false);
+      chk("setAutoBetEth", AB.eth !== false);
+    }
+    try { syncAutoBetVisibility(); } catch (e) {}
     if (U.watermark_opacity != null) {
       document.documentElement.style.setProperty("--zt-watermark-opacity", U.watermark_opacity);
     }
@@ -314,7 +337,9 @@
 
   async function fetchSettings() {
     try {
-      const r = await fetch(API_BASE + "/api/settings");
+      const r = isAdminUnlocked()
+        ? await adminFetch(API_BASE + "/api/settings")
+        : await fetch(API_BASE + "/api/settings");
       if (!r.ok) return null;
       return await r.json();
     } catch (e) {
@@ -3601,6 +3626,7 @@ function drawCandleChart() {
     if (mode === "settings") {
       fetchSettings().then(applySettingsSnapshot);
     }
+    try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
       requestAnimationFrame(() => { drawCharts(); });
@@ -4776,13 +4802,31 @@ function drawCandleChart() {
         watermark_opacity: num("setWatermark", 0.18),
       },
     };
+    if (isAdminUnlocked()) {
+      const modeEl = document.getElementById("setAutoBetMode");
+      let abMode = (modeEl && modeEl.value) || "off";
+      if (abMode !== "off" && abMode !== "paper_chair" && abMode !== "follow_leaders") abMode = "off";
+      body.auto_bet = {
+        enabled: !!(document.getElementById("setAutoBetOn") && document.getElementById("setAutoBetOn").checked),
+        mode: abMode,
+        size: num("setAutoBetSize", 25),
+        btc: on("setAutoBetBtc"),
+        eth: on("setAutoBetEth"),
+      };
+    }
     const st = document.getElementById("settingsSaveStatus");
     try {
-      const r = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const r = isAdminUnlocked()
+        ? await adminFetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        : await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
       const s = await r.json();
       applySettingsSnapshot(s);
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
@@ -4805,15 +4849,18 @@ function drawCandleChart() {
         const r = await fetch("/api/settings");
         const s = await r.json();
         if (s.defaults) {
-          await fetch("/api/settings", {
+          const resetBody = {
+            learning: s.defaults.learning,
+            trading: s.defaults.trading,
+            huddle: s.defaults.huddle,
+            ui: s.defaults.ui,
+          };
+          if (isAdminUnlocked() && s.defaults.auto_bet) resetBody.auto_bet = s.defaults.auto_bet;
+          const resetFn = isAdminUnlocked() ? adminFetch : fetch;
+          await resetFn("/api/settings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              learning: s.defaults.learning,
-              trading: s.defaults.trading,
-              huddle: s.defaults.huddle,
-              ui: s.defaults.ui,
-            }),
+            body: JSON.stringify(resetBody),
           });
         }
         const s2 = await (await fetch("/api/settings")).json();
@@ -4829,6 +4876,7 @@ function drawCandleChart() {
 
   // Force clean Table view — hide any stacked info panels
   setMode("art");
+  try { syncAutoBetVisibility(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);
   animId = requestAnimationFrame(loop);
