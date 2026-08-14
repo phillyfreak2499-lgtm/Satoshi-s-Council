@@ -1,93 +1,123 @@
 """
-STREAK – consecutive candle direction / microstructure path for 15m scalps.
+STREAK – multi-window direction streak + mean-reversion specialist.
+
+Reads prior settled windows from WindowMemory:
+  - Continuation when streak is young and path agrees
+  - Fade when streak is extended (mean-rev)
+
+ENTRY: Is the multi-window streak a whole-window edge?
+MID/FINAL: Has the live path broken the streak thesis?
 """
 from __future__ import annotations
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
 
 
 class StreakSpecialist(BaseSpecialist):
     name = "streak"
-    category = "microstructure"
-    base_weight = settings.BASE_WEIGHTS.get("streak", 0.10)
+    category = "streak"
+    base_weight = settings.BASE_WEIGHTS.get("streak", 0.08)
 
     async def get_signal(self, market_data: Dict[str, Any]) -> AgentSignal:
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted", self.category, muted=True)
 
-        candles = market_data.get("candles") or []
-        if len(candles) < 10:
-            return AgentSignal(self.name, "WAIT", 25, "Need more candles", self.category)
+        phase = self.phase(market_data)
+        quiet = self.is_quiet(market_data)
+        floor = self.quiet_confidence_floor(market_data, base=54)
+        path = self.path_move(market_data)
+        entry = self.entry_dir(market_data)
+        streak_dir, streak_n = self.streak(market_data)
+        mean_rev = self.mean_reversion_bias(market_data)
+        prior_hr = self.prior_hit_rate(market_data, 12)
 
-        recent = candles[-12:]
-        signs = []
-        for c in recent:
-            body = float(c["close"]) - float(c["open"])
-            if body > 0:
-                signs.append(1)
-            elif body < 0:
-                signs.append(-1)
+        features: Dict[str, Any] = {
+            "streak_dir": streak_dir,
+            "streak_n": streak_n,
+            "mean_rev_bias": mean_rev,
+            "prior_hit_rate": prior_hr,
+            "phase": phase,
+            "horizon": "entry" if phase == "entry" else "revision",
+            "path_move": path,
+            "entry_dir": entry,
+            "subs": [
+                {"name": "STR", "detail": f"{streak_dir or '—'}×{streak_n}"},
+                {"name": "MR", "detail": mean_rev or "—"},
+                {"name": "HR", "detail": f"{prior_hr:.0%}" if prior_hr is not None else "—"},
+            ],
+        }
+
+        notes = []
+        local_dir = None
+        local_conf = 45
+
+        # Young streak → continuation; extended → fade
+        continue_max = int(getattr(settings, "STREAK_CONTINUE_MAX", 3))
+        fade_min = int(getattr(settings, "STREAK_FADE_MIN", 5))
+
+        if streak_dir in ("UP", "DOWN") and streak_n >= 1:
+            if streak_n <= continue_max:
+                local_dir = streak_dir
+                local_conf = min(72, 50 + streak_n * 5)
+                notes.append(f"young streak {streak_dir}×{streak_n} — continue")
+            elif streak_n >= fade_min:
+                local_dir = "DOWN" if streak_dir == "UP" else "UP"
+                local_conf = min(78, 54 + (streak_n - fade_min) * 4)
+                notes.append(f"extended streak {streak_dir}×{streak_n} — fade")
             else:
-                signs.append(0)
+                notes.append(f"mid streak {streak_dir}×{streak_n} — neutral")
+        else:
+            notes.append("no prior-window streak")
 
-        # Count trailing streak
-        streak = 0
-        if signs:
-            last = signs[-1]
-            if last != 0:
-                for s in reversed(signs):
-                    if s == last:
-                        streak += 1
-                    else:
-                        break
-
-        up_count = signs[-6:].count(1)
-        down_count = signs[-6:].count(-1)
+        if mean_rev and local_dir == mean_rev:
+            local_conf = min(84, local_conf + 6)
+            notes.append("mean-rev agrees")
+        elif mean_rev and local_dir and local_dir != mean_rev:
+            local_conf = max(48, local_conf - 6)
+            notes.append("mean-rev conflicts")
 
         direction = "WAIT"
-        conf = 40
-        reason = "No clear streak"
+        conf = 46
 
-        if streak >= 4 and signs[-1] == 1:
-            direction = "UP"
-            conf = min(80, 48 + streak * 6)
-            reason = f"{streak}-candle green streak"
-        elif streak >= 4 and signs[-1] == -1:
-            direction = "DOWN"
-            conf = min(80, 48 + streak * 6)
-            reason = f"{streak}-candle red streak"
-        elif streak == 3 and signs[-1] == 1 and up_count >= 4:
-            direction = "UP"
-            conf = 56
-            reason = "Building green path"
-        elif streak == 3 and signs[-1] == -1 and down_count >= 4:
-            direction = "DOWN"
-            conf = 56
-            reason = "Building red path"
-        elif streak >= 5:
-            # Very extended — soft continuation still, but note stretch
-            direction = "UP" if signs[-1] == 1 else "DOWN"
-            conf = 52
-            reason = f"Extended {streak}-streak (watch fade)"
-        elif up_count >= 5 and signs[-1] == 1:
-            direction = "UP"
-            conf = 50
-            reason = "Majority green last 6m"
-        elif down_count >= 5 and signs[-1] == -1:
-            direction = "DOWN"
-            conf = 50
-            reason = "Majority red last 6m"
+        if phase == "entry":
+            if local_dir and local_conf >= 52:
+                direction, conf = local_dir, local_conf
+                if prior_hr is not None and prior_hr >= 0.60 and local_dir == streak_dir:
+                    conf = min(86, conf + 4)
+                    notes.append(f"hot prior HR {prior_hr:.0%}")
+            else:
+                notes.append("no whole-window streak edge")
+        else:
+            if entry in ("UP", "DOWN"):
+                # Live path breaking streak thesis?
+                broken = (
+                    path is not None
+                    and abs(path) >= 5.0
+                    and (
+                        (entry == "UP" and path <= -5)
+                        or (entry == "DOWN" and path >= 5)
+                    )
+                )
+                if broken and local_dir and local_dir != entry:
+                    direction, conf = local_dir, max(local_conf, 62)
+                    notes.append(f"path broke streak entry {entry} (path {path:+.1f})")
+                elif local_dir == entry:
+                    direction, conf = entry, max(local_conf, 56)
+                    notes.append(f"streak thesis still with entry {entry}")
+                else:
+                    direction, conf = entry, 53
+                    notes.append(f"hold entry {entry}")
+            elif local_dir:
+                direction, conf = local_dir, local_conf
+            else:
+                notes.append("no revision streak edge")
 
-        return AgentSignal(
-            self.name,
-            direction,
-            conf,
-            reason,
-            self.category,
-            features={
-                "streak": streak,
-                "up_6": up_count,
-                "down_6": down_count,
-            },
-        )
+        if quiet and direction != "WAIT":
+            conf = min(conf, floor)
+            if conf < floor:
+                direction, conf = "WAIT", floor
+                notes.append("quiet gate")
+
+        reason = self.annotate_reason(market_data, " · ".join(notes) if notes else "streak neutral")
+        return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
