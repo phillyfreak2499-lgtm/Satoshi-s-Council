@@ -1,69 +1,127 @@
 """
-Momentum Specialist – RSI, MACD-style, Stochastic on short timeframes.
+DRIFT – Trend Scout (Momentum).
+
+Multi-horizon momentum:
+  - 5m / 15m / 30m returns (not just last tick)
+  - Prior-window direction streak (is this a trend day?)
+  - Path since entry inside the current window
+
+ENTRY: Is momentum aligned across horizons enough to bet the full window?
+MID/FINAL: Has momentum flipped against the entry hard enough to revise?
 """
 from __future__ import annotations
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
 import numpy as np
 
 
-def rsi(closes: np.ndarray, period: int = 14) -> float:
-    if len(closes) < period + 1:
-        return 50.0
-    deltas = np.diff(closes[-(period + 1):])
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-    avg_gain = gains.mean() or 1e-9
-    avg_loss = losses.mean() or 1e-9
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-
 class MomentumSpecialist(BaseSpecialist):
     name = "momentum"
     category = "momentum"
-    base_weight = settings.BASE_WEIGHTS["momentum"]
+    base_weight = settings.BASE_WEIGHTS.get("momentum", 0.10)
 
     async def get_signal(self, market_data: Dict[str, Any]) -> AgentSignal:
         if self.is_muted:
-            return AgentSignal(self.name, "WAIT", 0, "Muted by Guardian", self.category, muted=True)
+            return AgentSignal(self.name, "WAIT", 0, "Muted", self.category, muted=True)
 
         candles = market_data.get("candles") or []
-        if len(candles) < 25:
-            return AgentSignal(self.name, "WAIT", 30, "Insufficient data for momentum", self.category)
+        if len(candles) < 20:
+            return AgentSignal(self.name, "WAIT", 28, "Insufficient history", self.category)
 
-        closes = np.array([c["close"] for c in candles], dtype=float)
-        r = rsi(closes, 14)
+        phase = self.phase(market_data)
+        quiet = self.is_quiet(market_data)
+        floor = self.quiet_confidence_floor(market_data, base=54)
+        streak_dir, streak_n = self.streak(market_data)
+        path = self.path_move(market_data)
+        entry = self.entry_dir(market_data)
 
-        # Simple MACD-ish: EMA12 vs EMA26 approximation with SMA for speed
-        ema_fast = closes[-12:].mean()
-        ema_slow = closes[-26:].mean() if len(closes) >= 26 else closes.mean()
-        macd = (ema_fast - ema_slow) / closes[-1]
+        closes = np.array([c["close"] for c in candles[-60:]], dtype=float)
+        ret_5 = (closes[-1] - closes[-6]) / closes[-6] if len(closes) > 5 else 0.0
+        ret_15 = (closes[-1] - closes[-16]) / closes[-16] if len(closes) > 15 else 0.0
+        ret_30 = (closes[-1] - closes[-31]) / closes[-31] if len(closes) > 30 else 0.0
+
+        # Alignment score across horizons
+        signs = [np.sign(ret_5), np.sign(ret_15), np.sign(ret_30)]
+        aligned_up = sum(1 for s in signs if s > 0)
+        aligned_down = sum(1 for s in signs if s < 0)
+
+        features = {
+            "ret_5": round(float(ret_5), 5),
+            "ret_15": round(float(ret_15), 5),
+            "ret_30": round(float(ret_30), 5),
+            "aligned_up": aligned_up,
+            "aligned_down": aligned_down,
+            "phase": phase,
+            "horizon": "entry" if phase == "entry" else "revision",
+            "path_move": path,
+            "streak_n": streak_n,
+        }
 
         direction = "WAIT"
-        conf = 40
-        reason = "Momentum neutral"
+        conf = 45
+        notes = []
 
-        if r > 68 and macd > 0:
-            direction = "UP"
-            conf = min(80, 50 + int((r - 50) * 0.8))
-            reason = f"RSI {r:.0f} hot but MACD still green — momentum not exhausted yet"
-        elif r < 32 and macd < 0:
-            direction = "DOWN"
-            conf = min(80, 50 + int((50 - r) * 0.8))
-            reason = f"RSI {r:.0f} washed out + MACD red — downside momentum live"
-        elif r > 55 and macd > 0.0003:
-            direction = "UP"
-            conf = 60
-            reason = f"RSI {r:.0f} + MACD lift — short-term drift UP"
-        elif r < 45 and macd < -0.0003:
-            direction = "DOWN"
-            conf = 60
-            reason = f"RSI {r:.0f} + MACD drag — short-term drift DOWN"
+        if phase == "entry":
+            if aligned_up >= 3 and ret_15 > 0.0015:
+                direction, conf = "UP", min(86, 58 + int(ret_15 * 6000))
+                notes.append(f"aligned UP 5/15/30 · 15m +{ret_15*100:.2f}%")
+            elif aligned_down >= 3 and ret_15 < -0.0015:
+                direction, conf = "DOWN", min(86, 58 + int(abs(ret_15) * 6000))
+                notes.append(f"aligned DOWN 5/15/30 · 15m {ret_15*100:.2f}%")
+            elif aligned_up >= 2 and ret_5 > 0.001:
+                direction, conf = "UP", 60
+                notes.append("partial UP alignment")
+            elif aligned_down >= 2 and ret_5 < -0.001:
+                direction, conf = "DOWN", 60
+                notes.append("partial DOWN alignment")
+            else:
+                notes.append("horizons mixed — no entry momentum")
+
+            # Multi-window streak reinforcement
+            if direction in ("UP", "DOWN") and streak_dir == direction and streak_n >= 3:
+                conf = min(90, conf + 6)
+                notes.append(f"streak {streak_dir}×{streak_n}")
+            elif direction in ("UP", "DOWN") and streak_dir and streak_dir != direction and streak_n >= 4:
+                conf = max(50, conf - 10)
+                notes.append("counter-streak risk")
+
         else:
-            conf = 45
-            reason = f"RSI {r:.0f} mid-range — no edge, WAIT"
+            # Revision: momentum vs entry
+            if entry in ("UP", "DOWN"):
+                adverse = (
+                    (entry == "UP" and aligned_down >= 2 and ret_15 < -0.0015)
+                    or (entry == "DOWN" and aligned_up >= 2 and ret_15 > 0.0015)
+                )
+                supportive = (
+                    (entry == "UP" and aligned_up >= 2)
+                    or (entry == "DOWN" and aligned_down >= 2)
+                )
+                if adverse and path is not None and abs(path) >= 4.0:
+                    direction = "DOWN" if entry == "UP" else "UP"
+                    conf = 66
+                    notes.append(f"momentum flipped vs entry {entry} (path {path:+.1f})")
+                elif supportive:
+                    direction, conf = entry, 60
+                    notes.append(f"momentum still with entry {entry}")
+                else:
+                    direction, conf = entry, 54
+                    notes.append(f"momentum soft — hold entry {entry}")
+            else:
+                if aligned_up >= 3:
+                    direction, conf = "UP", 58
+                    notes.append("late aligned UP")
+                elif aligned_down >= 3:
+                    direction, conf = "DOWN", 58
+                    notes.append("late aligned DOWN")
+                else:
+                    notes.append("no revision momentum")
 
-        features = {"rsi_14": round(r, 1), "macd_approx": round(macd, 6)}
+        if quiet and direction != "WAIT":
+            conf = min(conf, floor)
+            if conf < floor:
+                direction, conf = "WAIT", floor
+                notes.append("quiet gate")
+
+        reason = self.annotate_reason(market_data, " · ".join(notes) if notes else "momentum neutral")
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
