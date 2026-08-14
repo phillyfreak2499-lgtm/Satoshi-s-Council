@@ -111,6 +111,8 @@ class Council:
         self._task: asyncio.Task | None = None
         self.running = False
         self._last_learned_ids: set = set()
+        self._shadow_book: list = []
+        self._last_settle_review = None
         self.huddle = NightlyHuddle()
 
     async def start(self):

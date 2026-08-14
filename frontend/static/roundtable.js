@@ -3716,7 +3716,7 @@ function drawCandleChart() {
         try {
           if (sNum != null) {
             const frac = Math.max(0, Math.min(1, sNum / 3600));
-            const box = document.getElementById("ledWindow");
+            const box = document.getElementById("windowLed") || document.getElementById("ledWindow");
             if (box) box.style.setProperty("--hour-frac", String(frac));
           }
         } catch (e) {}
