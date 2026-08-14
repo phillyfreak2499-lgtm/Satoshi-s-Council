@@ -452,6 +452,7 @@ class PerformanceStore:
         up_pct: float | None = None,
         down_pct: float | None = None,
         floor_strike: float | None = None,
+        asset: str | None = None,
     ) -> int:
         """
         Finish-only grading for hit-rate / lifetime.
@@ -492,11 +493,17 @@ class PerformanceStore:
             return None
 
         async with self.Session() as session:
+            filters = [WindowCall.actual_outcome.is_(None)]
+            if asset:
+                filters.append(WindowCall.asset == asset.lower())
             result = await session.execute(
-                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
+                select(WindowCall).where(*filters)
             )
             rows = result.scalars().all()
             for row in rows:
+                # Safety: never grade a row with this table's spot/strike if asset mismatches
+                if asset and row.asset and row.asset.lower() != asset.lower():
+                    continue
                 side = self._grade_side(row.direction)
                 if side is None:
                     continue
@@ -630,9 +637,20 @@ class PerformanceStore:
                     ]
             except Exception:
                 pass
+            # Finish-only: path / near_certain / partial / flipped do NOT count
+            FINISH = {"finish_match", "finish_miss"}
+            settled = [
+                r for r in settled
+                if (r.settle_reason in FINISH)
+                and self._grade_side(r.direction) in ("UP", "DOWN")
+                and (r.actual_outcome in ("UP", "DOWN"))
+            ]
+            pending_filters = [WindowCall.actual_outcome.is_(None)]
+            if asset:
+                pending_filters.append(WindowCall.asset == asset.lower())
             pending = (
                 await session.execute(
-                    select(func.count(WindowCall.id)).where(WindowCall.actual_outcome.is_(None))
+                    select(func.count(WindowCall.id)).where(*pending_filters)
                 )
             ).scalar() or 0
             total_signals = (
