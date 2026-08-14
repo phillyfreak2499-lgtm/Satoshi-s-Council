@@ -286,13 +286,22 @@ class Leader:
             if l20 is not None and l20 >= 55 and life >= 53:
                 thr -= 0.05
                 conf_bar -= 2.5
-            # Bad recent form → stricter (learning from pain)
-            if l20 is not None and l20 < 45 and n >= min_n + 4:
-                thr += 0.10
-                conf_bar += 5.0
-            elif l20 is not None and l20 < 48 and n >= min_n + 4:
-                thr += 0.05
-                conf_bar += 2.5
+            # Rolling form breaker: cold streak → effectively WAIT-only until form recovers
+            form_break = False
+            if l20 is not None and n >= min_n + 6:
+                if l20 < 45:
+                    form_break = True
+                    thr = max(thr, ceil - 0.02)  # near ceiling
+                    conf_bar = max(conf_bar, conf_ceil - 1)
+                elif l20 < 48:
+                    thr += 0.08
+                    conf_bar += 4.0
+                elif l20 < 52:
+                    thr += 0.04
+                    conf_bar += 2.0
+
+        else:
+            form_break = False
 
         # Nightly huddle cool-down: fewer noise calls 3–4 AM CT
         bump = float(getattr(self, "cool_down_bump", 0.0) or 0.0)
@@ -302,7 +311,14 @@ class Leader:
 
         thr = max(floor, min(ceil, thr))
         conf_bar = max(conf_floor, min(conf_ceil, conf_bar))
-        return {"confluence": thr, "dir_conf": conf_bar, "phase": phase, "n": n}
+        return {
+            "confluence": thr,
+            "dir_conf": conf_bar,
+            "phase": phase,
+            "n": n,
+            "form_break": bool(locals().get("form_break", False)),
+            "l20": l20,
+        }
 
     def sync_from_learner(self) -> None:
         """Pull latest adaptive weights into the Chair's working set."""
@@ -552,6 +568,9 @@ class Leader:
 
         # Adaptive anti-WAIT: lifetime edge lowers the bar; bad L20 raises it
         bars = self.adaptive_thresholds()
+        if bars.get("form_break"):
+            # Circuit: recent form too cold — force WAIT path by maxing threshold
+            pass
         threshold = bars["confluence"] / aggressiveness
         dir_conf_bar = bars["dir_conf"]
 
@@ -575,6 +594,8 @@ class Leader:
         direction: Direction = "WAIT"
         conf = settings.WAIT_DEFAULT_CONFIDENCE
         summary = "Insufficient confluence – WAIT (scalp calls paused)"
+        if bars.get("form_break"):
+            summary = f"FORM BREAK · L20={bars.get('l20')}% – WAIT until recent form recovers"
         lean: Optional[str] = None  # underlying UP/DOWN when direction is SWAP / HOLD
 
         abs_score = abs(score)
