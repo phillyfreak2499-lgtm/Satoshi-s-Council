@@ -401,10 +401,17 @@ class FollowerGate:
     def live_off(self, token: str | None) -> None:
         self.set_live(token, "OFF", on=False)
 
-    def evaluate_order(self, token: str | None, intent: Dict[str, Any], world: Dict[str, Any]) -> dict:
+    def evaluate_order(
+        self,
+        token: str | None,
+        intent: Dict[str, Any],
+        world: Dict[str, Any],
+        *,
+        commit: bool = True,
+    ) -> dict:
         """
         Server-side refuse. Live cannot bypass LAW / huddle / sick-feed / caps.
-        Does not place a Kalshi order. Audits intended vs live.
+        Does not place a Kalshi order — routing is a separate step after accept.
         """
         sess = self.touch(token)
         want_live = bool(intent.get("live"))
@@ -485,7 +492,8 @@ class FollowerGate:
                 return rec
             sess.first_live_ok = True
 
-        self.runtime.record_accept(rec["stake"], rec["contracts"])
+        if commit:
+            self.runtime.record_accept(rec["stake"], rec["contracts"])
         rec["accepted"] = True
         rec["refuse"] = ""
         rec["routed"] = False

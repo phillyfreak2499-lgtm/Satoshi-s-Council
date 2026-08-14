@@ -122,7 +122,7 @@ class NoRegressionTests(unittest.TestCase):
         self.assertIn("KXBTCD-26AUG1415-T62999.99", GATES)
 
     def test_follower_stays_off_public_surface(self):
-        for needle in ("tabFollower", "FOLLOWER_PASSWORD", "/api/follower/unlock"):
+        for needle in ("tabFollower", "FOLLOWER_PASSWORD", "/api/follower/unlock", "/api/follower/order"):
             self.assertNotIn(needle, HTML)
             self.assertNotIn(needle, JS)
 

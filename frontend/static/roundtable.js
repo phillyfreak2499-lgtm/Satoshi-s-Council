@@ -645,6 +645,30 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     });
   }
 
+  function deskLockSnapshot() {
+    function one(t) {
+      if (!t) return { locked: false, direction: "", ticker: "" };
+      const lc = t.locked_call || (t.decision && t.decision.locked_call) || {};
+      const d = String(lc.direction || "").toUpperCase();
+      const locked = !!(lc.locked && (d === "UP" || d === "DOWN"));
+      const m = t.market || {};
+      return {
+        locked: locked,
+        direction: locked ? d : "",
+        ticker: m.kalshi_ticker || m.ticker || "",
+        mins_left: (t.lock_timeline && t.lock_timeline.mins_left != null)
+          ? t.lock_timeline.mins_left
+          : m.mins_left,
+      };
+    }
+    return {
+      focus: focusTable === "bitcoin" ? "btc" : "eth",
+      btc: one(typeof tableState === "function" ? tableState("bitcoin") : state),
+      eth: one(typeof tableState === "function" ? tableState("ethereum") : null),
+    };
+  }
+  window.__deskLockSnapshot = deskLockSnapshot;
+
 
   // Rolling series for Charts tab (built from poll snapshots)
   const series = {
@@ -4561,6 +4585,9 @@ function drawCandleChart() {
     statusDot.className = "dot " + (healthy ? "live" : "warn");
 
     try { syncSeatStorm(); } catch (e) {}
+    try {
+      if (typeof window.__afterDeskUpdate === "function") window.__afterDeskUpdate();
+    } catch (e) {}
 
     // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
@@ -4629,6 +4656,7 @@ function drawCandleChart() {
       const r = await fetch(`${API_BASE}/api/state`);
       if (!r.ok) throw new Error(r.status);
       state = await r.json();
+      try { window.state = state; } catch (e) {}
       updateUI();
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}

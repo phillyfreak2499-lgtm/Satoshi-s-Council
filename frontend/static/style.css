@@ -3323,6 +3323,42 @@ body:not(.floor-mode) .floor-money-rain {
 }
 
 
+.lock-live-host[hidden],
+.lock-live-host.hidden { display: none !important; }
+.lock-live-host:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lock-live-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 45, 85, 0.45);
+  background: rgba(12, 6, 10, 0.92);
+  color: #ff8aa0;
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.lock-live-confirm {
+  min-height: 44px;
+  width: 72px;
+  padding: 6px 8px;
+  background: rgba(4, 8, 14, 0.9);
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  color: #c8e8ff;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+}
+.lock-live-status {
+  font-family: Share Tech Mono, monospace;
+  font-size: 11px;
+  color: #8aa8c0;
+}
+
 /* ===== Status strip – big locked call ===== */
 #finalDecision.status-strip {
   display: flex;

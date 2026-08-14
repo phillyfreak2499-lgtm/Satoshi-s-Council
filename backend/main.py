@@ -524,12 +524,50 @@ def _follower_world(asset: str) -> dict:
         mins_left = (table.get("lock_timeline") or {}).get("mins_left")
         if mins_left is None:
             mins_left = table.get("mins_left")
+        market = table.get("market") if isinstance(table.get("market"), dict) else {}
+        if mins_left is None:
+            mins_left = market.get("mins_left")
+        if mins_left is None and market.get("seconds_left") is not None:
+            try:
+                mins_left = float(market["seconds_left"]) / 60.0
+            except (TypeError, ValueError):
+                mins_left = None
     return {
         "law_locked": law_locked,
         "huddle": huddle,
         "sick_feed": sick,
         "mins_left": mins_left,
     }
+
+
+def _table_quotes(asset: str) -> dict:
+    table = _table_for_asset(asset)
+    market = table.get("market") if isinstance(table, dict) and isinstance(table.get("market"), dict) else {}
+    return {
+        "ticker": str(market.get("kalshi_ticker") or market.get("ticker") or "").strip(),
+        "yes_bid": market.get("kalshi_yes_bid"),
+        "yes_ask": market.get("kalshi_yes_ask"),
+        "up_pct": market.get("up_pct") if market.get("up_pct") is not None else market.get("up_mid"),
+    }
+
+
+def _chair_lock(asset: str) -> dict | None:
+    """Current Chair UP/DOWN lock + ticker/quotes. None if no lock."""
+    table = _table_for_asset(asset)
+    if not isinstance(table, dict):
+        return None
+    lc = table.get("locked_call")
+    if not isinstance(lc, dict):
+        dec = table.get("decision") if isinstance(table.get("decision"), dict) else {}
+        lc = dec.get("locked_call") if isinstance(dec.get("locked_call"), dict) else {}
+    if not lc.get("locked"):
+        return None
+    side = str(lc.get("direction") or "").upper()
+    if side not in ("UP", "DOWN"):
+        return None
+    q = _table_quotes(asset)
+    q["side"] = side
+    return q
 
 
 def _admin_ok(request: Request) -> bool:
@@ -778,33 +816,67 @@ async def follower_live_off(request: Request):
 
 @app.post("/api/follower/order")
 async def follower_order(request: Request):
-    """Intended / live order. Refuse gates always apply. No password material logged."""
+    """
+    Paper intended, or live Kalshi after Follower gates.
+    from_lock uses the Chair lock side (HUD "Send this lock live").
+    Seat Storm never calls this. Sick-feed / LAW / huddle / caps still refuse.
+    """
+    from backend.services.follower_route import route_accepted_live
+
     try:
         body = await request.json()
     except Exception:
         body = {}
     if not isinstance(body, dict):
         body = {}
+    asset = "eth" if str(body.get("asset") or "").lower() in ("eth", "ethereum") else "btc"
+    from_lock = bool(body.get("from_lock"))
+    lock = _chair_lock(asset)
+    quotes = _table_quotes(asset)
+    if from_lock:
+        if not lock:
+            return {
+                "ok": False,
+                "accepted": False,
+                "routed": False,
+                "live": True,
+                "refuse": "intent",
+            }
+        side = lock["side"]
+        live = True
+    else:
+        side = body.get("side")
+        live = bool(body.get("live"))
     intent = {
-        "asset": body.get("asset"),
-        "side": body.get("side"),
+        "asset": asset,
+        "side": side,
         "stake": body.get("stake"),
         "contracts": body.get("contracts"),
-        "live": bool(body.get("live")),
+        "live": live,
         "confirm_first": body.get("confirm_first") or body.get("confirm") or "",
     }
-    asset = "eth" if str(intent["asset"] or "").lower() in ("eth", "ethereum") else "btc"
+    want_live = bool(intent["live"])
     result = follower_gate.evaluate_order(
         _follower_token(request),
         intent,
         _follower_world(asset),
+        commit=not want_live,
     )
+    if result.get("accepted") and want_live:
+        route_lock = dict(quotes)
+        route_lock["side"] = result.get("side")
+        if lock:
+            route_lock.update({k: lock[k] for k in ("ticker", "yes_bid", "yes_ask", "up_pct") if lock.get(k) is not None})
+        result = await route_accepted_live(result, route_lock)
+        if result.get("accepted") and result.get("routed"):
+            follower_gate.runtime.record_accept(result.get("stake") or 0, result.get("contracts") or 1)
     return {
-        "ok": bool(result.get("accepted")),
+        "ok": bool(result.get("accepted")) and (not want_live or bool(result.get("routed"))),
         "accepted": bool(result.get("accepted")),
-        "routed": False,
+        "routed": bool(result.get("routed")),
         "live": bool(result.get("live")),
         "refuse": result.get("refuse") or "",
+        "order_id": result.get("order_id") or "",
     }
 
 

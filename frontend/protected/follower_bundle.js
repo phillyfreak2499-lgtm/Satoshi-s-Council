@@ -162,10 +162,113 @@
       const d = await r.json().catch(function () { return {}; });
       if ($("followerOrderConfirm")) $("followerOrderConfirm").value = "";
       if (!st) return;
-      if (d && d.accepted) {
-        st.textContent = live ? "Intended live held — not routed." : "Intended paper recorded.";
+      if (d && d.accepted && (!live || d.routed)) {
+        st.textContent = live ? ("Live routed" + (d.order_id ? (" · " + d.order_id) : "")) : "Paper recorded.";
       } else {
-        st.textContent = "Refused";
+        st.textContent = "Refused" + (d && d.refuse ? (" · " + d.refuse) : "");
+      }
+    } catch (e) {
+      if (st) st.textContent = "Refused";
+    }
+  }
+
+  function mountLockLive() {
+    const host = $("lockLiveHost");
+    if (!host || host.__llMounted) return;
+    host.__llMounted = true;
+    host.innerHTML =
+      '<input type="text" id="lockLiveConfirm" class="lock-live-confirm" placeholder="LIVE" autocomplete="off" />' +
+      '<button type="button" id="lockLiveBtn" class="lock-live-btn">SEND THIS LOCK LIVE</button>' +
+      '<span id="lockLiveStatus" class="lock-live-status"></span>';
+    const btn = $("lockLiveBtn");
+    const conf = $("lockLiveConfirm");
+    if (btn && !btn.__wired) {
+      btn.__wired = true;
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        sendLockLive();
+      });
+    }
+    if (conf && !conf.__hotkeys) {
+      conf.__hotkeys = true;
+      conf.addEventListener("keydown", function (e) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendLockLive();
+        }
+      }, true);
+    }
+  }
+
+  function focusedLock() {
+    const snap = (typeof window.__deskLockSnapshot === "function")
+      ? window.__deskLockSnapshot()
+      : null;
+    if (!snap) return null;
+    const key = snap.focus === "btc" ? "btc" : "eth";
+    const row = snap[key] || {};
+    if (row.locked) return { asset: key, direction: row.direction };
+    if (snap.btc && snap.btc.locked) return { asset: "btc", direction: snap.btc.direction };
+    if (snap.eth && snap.eth.locked) return { asset: "eth", direction: snap.eth.direction };
+    return null;
+  }
+
+  function syncLockLive() {
+    mountLockLive();
+    const host = $("lockLiveHost");
+    if (!host) return;
+    const lock = focusedLock();
+    const on = !!lock;
+    host.hidden = !on;
+    host.classList.toggle("hidden", !on);
+    host.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+
+  async function sendLockLive() {
+    const st = $("lockLiveStatus");
+    const lock = focusedLock();
+    if (!lock) {
+      if (st) st.textContent = "No Chair lock";
+      return;
+    }
+    const sess = await status();
+    if (!sess || !sess.ok) {
+      if (st) st.textContent = "Follower session required";
+      return;
+    }
+    if (!sess.live) {
+      if (st) st.textContent = "Arm Live on Follower first";
+      return;
+    }
+    if (!sess.armed) {
+      if (st) st.textContent = "Arming delay — wait";
+      return;
+    }
+    const word = ($("lockLiveConfirm") && $("lockLiveConfirm").value) || "";
+    try {
+      const r = await fetch("/api/follower/order", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_lock: true,
+          asset: lock.asset,
+          stake: Number(($("followerOrderStake") && $("followerOrderStake").value) || 25),
+          contracts: Number(($("followerOrderContracts") && $("followerOrderContracts").value) || 1),
+          live: true,
+          confirm_first: word,
+        }),
+      });
+      const d = await r.json().catch(function () { return {}; });
+      if ($("lockLiveConfirm")) $("lockLiveConfirm").value = "";
+      if (!st) return;
+      if (d && d.accepted && d.routed) {
+        st.textContent = "Live routed";
+      } else {
+        st.textContent = "Refused" + (d && d.refuse ? (" · " + d.refuse) : "");
       }
     } catch (e) {
       if (st) st.textContent = "Refused";
@@ -224,6 +327,7 @@
       if (typeof window.setMode === "function") window.setMode("follower");
     });
     document.addEventListener("pointerdown", function () { heartbeat(); }, { passive: true });
+    try { syncLockLive(); } catch (e) {}
   }
 
   async function tick() {
@@ -234,10 +338,17 @@
     }
     paintLive(d);
     try { renderFollower(); } catch (e) {}
+    try { syncLockLive(); } catch (e) {}
     await heartbeat();
   }
+
+  window.__afterDeskUpdate = function () {
+    try { syncLockLive(); } catch (e) {}
+    try { renderFollower(); } catch (e) {}
+  };
 
   wire();
   tick();
   setInterval(tick, 30000);
+  setInterval(function () { try { syncLockLive(); } catch (e) {} }, 2000);
 })();

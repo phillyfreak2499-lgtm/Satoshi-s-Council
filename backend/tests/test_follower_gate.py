@@ -151,9 +151,11 @@ class FollowerGateTests(unittest.TestCase):
             token,
             {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": True, "confirm_first": "LIVE"},
             self._world(),
+            commit=False,
         )
         self.assertTrue(rec["accepted"])
         self.assertFalse(rec["routed"])
+        self.assertEqual(g.runtime.book.contracts, 0)
 
     def test_law_huddle_sick_refuse_even_when_live(self):
         g = self._gate()
@@ -237,6 +239,9 @@ class FollowerPublicSurfaceTests(unittest.TestCase):
             'setMode("follower")',
             "Type LIVE to arm",
             "/api/follower/unlock",
+            "/api/follower/order",
+            "SEND THIS LOCK LIVE",
+            "FOLLOWER_PASSWORD_2",
         ):
             self.assertNotIn(needle, html)
             self.assertNotIn(needle, js)
