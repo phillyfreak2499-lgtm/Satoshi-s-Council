@@ -19,6 +19,16 @@ from backend.agents.roster import display_name, title_of
 # UP_HOLD / DOWN_HOLD = 1/4-size scalp (weaker confluence, smaller Kalshi path target)
 Direction = Literal["UP", "DOWN", "WAIT", "SWAP", "UP_HOLD", "DOWN_HOLD"]
 
+# Shared non-negotiable mission for every specialist + the Chair.
+GOAL_CONTRACT = (
+    "GOAL CONTRACT: Contribute to exactly ONE high-quality directional guess "
+    "on how this Kalshi 15m BTC window ends (open→close UP or DOWN) at the "
+    "best available odds. Never push when chosen side ≥80¢. Once Chair locks, "
+    "support/monitor only. WAIT preferred over low-edge noise."
+)
+
+GOAL_CONTRACT_SHORT = "GOAL · 1 window-end guess @ best odds (<80%)"
+
 
 @dataclass
 class AgentSignal:
@@ -170,9 +180,9 @@ class BaseSpecialist(ABC):
         return "FINAL"
 
     def annotate_reason(self, market_data: Dict[str, Any], core: str) -> str:
-        """Prefix reasoning with phase so debate log is readable."""
+        """Prefix reasoning with phase + goal awareness so debate log is readable."""
         tag = self.phase_tag(market_data)
-        return f"[{tag}] {core}"
+        return f"[{tag}] {GOAL_CONTRACT_SHORT} · {core}"
 
     def record_signal(self, signal: AgentSignal, limit: int = 40):
         self._recent_signals.append(signal)
