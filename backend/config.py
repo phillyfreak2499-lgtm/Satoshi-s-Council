@@ -156,6 +156,8 @@ class Settings(BaseSettings):
     PAPER_PATH_SCALED: bool = True
     HOLD_FRACTION: float = 0.25
     MIN_CALL_REENTRY_SEC: float = 90.0
+    # Hard cap graded window_calls per ticker (ENTRY+MID+FINAL). Same-side refresh does not count.
+    MAX_CALLS_PER_WINDOW: int = 3
     CALL_MAX_AGE_SEC: float = 15 * 60
 
     # Learning
