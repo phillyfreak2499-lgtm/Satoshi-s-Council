@@ -1446,6 +1446,8 @@
       return;
     }
 
+    // Specialists ONLY on Floor mode — Table is Chair + LOCKED plaque only
+    if (mode === "floor") {
     const agents = state.agents.filter(a => a.agent_name !== "leader");
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
@@ -1468,7 +1470,7 @@
 
     // Bots removed from the TABLE — they live on the FLOOR (outer ring).
     // Table surface reserved for Chair + clear locked call for follower bots.
-    const ringR = radius * (mode === "floor" ? 1.18 : 1.25); // outside table = floor
+    const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
       const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
@@ -1680,11 +1682,16 @@
     // Rim bot seats — custom logos, outline color = call direction
     const now = performance.now();
     const isGlitch = now < glitchUntil;
+    // Dim floor specialists slightly when Chair has locked (table is the hero)
+    const _flc = (state && (state.locked_call || (state.decision && state.decision.locked_call))) || null;
+    const floorLocked = !!( _flc && _flc.locked && _flc.direction && (_flc.direction === "UP" || _flc.direction === "DOWN") );
+    const floorAlpha = floorLocked ? 0.55 : 1.0;
 
     order.forEach((name, i) => {
       const pos = positions[name];
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
+      ctx.globalAlpha = floorAlpha;
       const pulse = 1 + 0.06 * Math.sin(time * 0.0045 + i * 1.1);
       // Slightly larger seats so logos read cleanly
       const r = (agent.confidence > 55 ? 18 : 15) * pulse;
@@ -1756,6 +1763,10 @@
       ctx.fillStyle = lawLocked() ? "rgba(255, 120, 20, 0.95)" : sc;
       ctx.fillText(lawLocked() ? "LOCKED" : `${showDir} ${agent.confidence}%`, pos.x, pos.y + r + (title ? 41 : 30));
     });
+    ctx.globalAlpha = 1;
+
+    } // end floor-only specialists
+    ctx.globalAlpha = 1;
 
     // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
     // Prefer locked_call so portrait matches the LOCKED plaque after the single call
@@ -3235,7 +3246,10 @@ function drawCandleChart() {
       }
     } catch (e) { /* non-fatal */ }
 
-    decisionConf.textContent = (d.confidence != null ? d.confidence + "%" : "—");
+    // Prefer locked confidence so strip matches plaque/portrait
+    decisionConf.textContent = (hasLock && lc && lc.confidence != null)
+      ? (lc.confidence + "%")
+      : (d.confidence != null ? d.confidence + "%" : "—");
     decisionSummary.textContent = d.summary || "";
     if (d.regime_key) {
       decisionSummary.textContent = (decisionSummary.textContent || "") +
