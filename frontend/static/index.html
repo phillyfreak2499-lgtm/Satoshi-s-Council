@@ -89,8 +89,8 @@
           <span id="lawStatus" class="law-status">OK</span>
         </div>
         <div class="mode-tabs" role="tablist" aria-label="View mode">
-          <button type="button" id="focusBtc" class="mode-tab active" title="Focus Bitcoin / Satoshi">BTC</button>
-          <button type="button" id="focusEth" class="mode-tab" title="Focus Ethereum / Vitalik">ETH</button>
+          <button type="button" id="focusBtc" class="mode-tab focus-tab focus-active" title="Focus Bitcoin / Satoshi">BTC</button>
+          <button type="button" id="focusEth" class="mode-tab focus-tab" title="Focus Ethereum / Vitalik">ETH</button>
           <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
           <button id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
           <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
@@ -450,6 +450,7 @@
         <div class="led-label">1H WINDOW</div>
         <div id="ledWindowTime" class="led-digits led-time">--:--</div>
         <div class="led-foot" id="ledWindowSub">until close</div>
+        <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
       </div>
     </div>
 
@@ -478,6 +479,7 @@
         <span>Funding <b id="funding">—</b></span>
         <span>Kalshi <b id="kalshiTicker">—</b></span>
         <span class="acc-strip">BTC <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
+        <span id="paperAutoSummary" class="paper-auto-summary">auto —</span>
       </div>
     </footer>
   </div>
