@@ -390,6 +390,25 @@ class Leader:
                 self.learner.weights[k] = v
         self.learner._normalize()
 
+
+    @staticmethod
+    def _clean_summary(text: str) -> str:
+        """Strip legacy path/scalp language — finish-only doctrine."""
+        if not text:
+            return text
+        import re
+        t = str(text)
+        t = re.sub(r"\s*·\s*¼\s*scalp[^·]*", "", t, flags=re.I)
+        t = re.sub(r"\s*·\s*1/4\s*scalp[^·]*", "", t, flags=re.I)
+        t = re.sub(r"finish not required", "finish grades only", t, flags=re.I)
+        t = re.sub(r"path = right[^·]*", "directional", t, flags=re.I)
+        t = re.sub(r"Kalshi \+?[\d.]+ pts path = right[^·]*", "Kalshi path note", t, flags=re.I)
+        t = re.sub(r"\s{2,}", " ", t).strip(" ·")
+        return t
+
+    def summarize_clean(self, summary: str) -> str:
+        return self._clean_summary(summary)
+
     def synthesize(
         self,
         signals: List[AgentSignal],
@@ -937,18 +956,60 @@ class Leader:
                     f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
                 )
             else:
-                # Lock the underlying side (HOLD becomes full lock under one-call mode)
-                lock_dir = lean  # UP or DOWN
-                self._set_window_lock(
-                    ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
-                )
-                call_phase = "entry"
-                direction = lock_dir  # type: ignore[assignment]
-                odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
-                summary = (
-                    f"LOCKED {lock_dir}{odds_str} · ONE CALL · FOLLOW THIS · "
-                    f"{GOAL_CONTRACT_SHORT} · {summary}"
-                )
+                # Soft preferred band 40–65¢ + hourly timing bias
+                pref_lo = float(getattr(settings, "PREFERRED_ENTRY_ODDS_MIN", 40.0))
+                pref_hi = float(getattr(settings, "PREFERRED_ENTRY_ODDS_MAX", 65.0))
+                in_band = side_odds is None or (pref_lo <= float(side_odds) <= pref_hi)
+                thr = self.adaptive_thresholds()
+                need = float(thr.get("confluence", 0.55) or 0.55)
+                if not in_band:
+                    need = max(need, need * 1.18)
+                ml = None
+                try:
+                    if regime_features and regime_features.get("mins_left") is not None:
+                        ml = float(regime_features["mins_left"])
+                except (TypeError, ValueError):
+                    ml = None
+                if ml is not None:
+                    hard_early = float(getattr(settings, "HOURLY_HARD_EARLY_MIN", 45.0))
+                    early = float(getattr(settings, "HOURLY_EARLY_MIN", 35.0))
+                    late = float(getattr(settings, "HOURLY_LATE_MIN", 20.0))
+                    if ml >= hard_early:
+                        need = max(need, need * 1.25)
+                    elif ml >= early:
+                        need = max(need, need * 1.12)
+                    elif ml <= late:
+                        need = need * 0.92
+                abs_score = abs(float(score)) if score is not None else 0.0
+                if abs_score < need and not in_band:
+                    direction = "WAIT"
+                    lean = None
+                    firm = False
+                    conf = max(int(conf), 68)
+                    summary = (
+                        f"WAIT · odds {float(side_odds):.0f}¢ outside preferred "
+                        f"{pref_lo:.0f}–{pref_hi:.0f}¢ — need stronger confluence · {summary}"
+                    )
+                elif abs_score < need * 0.95 and ml is not None and ml >= early:
+                    direction = "WAIT"
+                    lean = None
+                    firm = False
+                    conf = max(int(conf), 70)
+                    summary = (
+                        f"WAIT · early hour ({ml:.0f}m left) — patience · {summary}"
+                    )
+                else:
+                    lock_dir = lean
+                    self._set_window_lock(
+                        ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
+                    )
+                    call_phase = "entry"
+                    direction = lock_dir  # type: ignore[assignment]
+                    odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
+                    summary = (
+                        f"LOCKED {lock_dir}{odds_str} · ONE CALL · FOLLOW THIS · "
+                        f"{GOAL_CONTRACT_SHORT} · {summary}"
+                    )
 
         elif direction == "SWAP" and not (self._entry_dir or self._active_dir()):
             # SWAP with no lock → WAIT (no flip noise)
@@ -972,7 +1033,7 @@ class Leader:
         return {
             "direction": direction,
             "confidence": conf,
-            "summary": summary,
+            "summary": self._clean_summary(summary),
             "score": round(score, 4),
             "diversity": diversity,
             "aggressiveness": aggressiveness,

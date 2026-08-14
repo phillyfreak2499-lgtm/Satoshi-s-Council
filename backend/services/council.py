@@ -58,11 +58,11 @@ class Council:
             symbol=symbol,
         )
         self.store = PerformanceStore()
-        self.learner = AdaptiveLearner()
+        self.learner = AdaptiveLearner(asset=self.asset)
         self.leader = Leader(learner=self.learner)
         self.wm = WindowMemory()
         self.law = LawBot()
-        self.agents = [
+        all_agents = [
             CandlePatternSpecialist(),
             VolumeSpecialist(),
             MomentumSpecialist(),
@@ -86,6 +86,26 @@ class Council:
             GuardianBot(),
             self.law,
         ]
+        # ETH: thinner core roster for clarity + CPU
+        if self.asset == "eth":
+            core = {
+                x.strip().lower()
+                for x in str(getattr(settings, "ETH_CORE_AGENTS",
+                    "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale")).split(",")
+                if x.strip()
+            }
+            # Always keep guardian + law
+            core |= {"guardian", "law"}
+            self.agents = [
+                a for a in all_agents
+                if getattr(a, "name", None) in core
+                or getattr(a, "agent_name", None) in core
+                or a is self.law
+            ]
+            if len(self.agents) < 5:
+                self.agents = all_agents  # safety fallback
+        else:
+            self.agents = all_agents
         self.latest_state: Dict[str, Any] = {}
         self._task: asyncio.Task | None = None
         self.running = False
@@ -408,8 +428,6 @@ class Council:
                             break
             except Exception:
                 pass
-            if close_time:
-                regime_features["close_time"] = close_time
             if up_pct is not None:
                 regime_features["up_pct"] = up_pct
             if down_pct is not None:
@@ -596,15 +614,9 @@ class Council:
         """
         recent = await self.store.recent_settled_calls(limit=40)
         learned = 0
-        FINISH = {"finish_match", "finish_miss"}
         for row in reversed(recent):  # chronological
             rid = row.get("id")
             if rid is None or rid in self._last_learned_ids:
-                continue
-            settle_reason = row.get("settle_reason") or ""
-            # Path-era / near_certain / flipped never train the hourly brain
-            if settle_reason not in FINISH:
-                self._last_learned_ids.add(rid)  # mark seen, skip forever
                 continue
             outcome = row.get("outcome")
             votes = row.get("agent_votes") or {}
@@ -612,12 +624,20 @@ class Council:
                 reg = row.get("regime") or row.get("regime_key")
                 if not reg:
                     reg = regime_from_call(row.get("called_at"), row.get("close_time"))
-                self.learner.learn_from_settled(votes, outcome, regime=reg, credit=1.0)
+                # Reduced learning credit for near_certain freebies (entry already extreme)
+                credit = 1.0
+                settle_reason = row.get("settle_reason") or ""
+                open_px = row.get("open_price")
+                near_bar = float(getattr(settings, "NEAR_CERTAIN_ENTRY_BAR", 88.0))
+                near_credit = float(getattr(settings, "NEAR_CERTAIN_LEARN_CREDIT", 0.25))
+                try:
+                    if settle_reason == "near_certain" and open_px is not None and float(open_px) >= near_bar:
+                        credit = near_credit
+                except Exception:
+                    pass
+                self.learner.learn_from_settled(votes, outcome, regime=reg, credit=credit)
                 learned += 1
             self._last_learned_ids.add(rid)
-            # Cap burst — never re-train 40 path rows in one cycle
-            if learned >= 5:
-                break
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:
             keep = set(sorted(self._last_learned_ids)[-300:])

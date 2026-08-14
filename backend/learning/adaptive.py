@@ -31,7 +31,8 @@ class AdaptiveLearner:
     Leader holds a reference and uses weights + affinities each cycle.
     """
 
-    def __init__(self):
+    def __init__(self, asset: str | None = None):
+        self.asset = (asset or "btc").lower()
         self.weights: Dict[str, float] = {
             k: float(v) for k, v in settings.BASE_WEIGHTS.items()
             if k not in NON_VOTERS
@@ -613,7 +614,11 @@ class AdaptiveLearner:
         from backend.config import settings as _s
         root = Path(getattr(_s, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
         root.mkdir(parents=True, exist_ok=True)
-        path = Path(path) if path else root / "council-learning.json"
+        if path is None:
+            tag = getattr(self, "asset", None) or "btc"
+            path = root / f"council-learning-{tag}.json"
+        else:
+            path = Path(path)
         payload = {
             "weights": dict(self.weights),
             "correct": dict(self.correct),
@@ -644,7 +649,11 @@ class AdaptiveLearner:
         import json
         from backend.config import settings as _s
         root = Path(getattr(_s, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
-        path = Path(path) if path else root / "council-learning.json"
+        if path is None:
+            tag = getattr(self, "asset", None) or "btc"
+            path = root / f"council-learning-{tag}.json"
+        else:
+            path = Path(path)
         if not path.exists():
             return False
         try:

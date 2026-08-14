@@ -172,6 +172,17 @@ class Settings(BaseSettings):
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
     MAX_ENTRY_ODDS_PCT: float = 80.0
+    # Soft preferred band — still allow up to MAX but raise bar outside preferred
+    PREFERRED_ENTRY_ODDS_MIN: float = 40.0
+    PREFERRED_ENTRY_ODDS_MAX: float = 65.0
+    # Hourly timing (minutes left)
+    HOURLY_HARD_EARLY_MIN: float = 45.0   # very early → strong WAIT
+    HOURLY_EARLY_MIN: float = 35.0
+    HOURLY_LATE_MIN: float = 20.0
+    HOURLY_HARD_LATE_MIN: float = 8.0
+    # ETH uses a thinner specialist set
+    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale"
+
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80
 
