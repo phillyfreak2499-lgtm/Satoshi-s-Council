@@ -36,6 +36,32 @@ class TablePortraitTests(unittest.TestCase):
         self.assertIn("const plateY = cy + radius + 14", JS)
 
 
+class ChairThinkTests(unittest.TestCase):
+    def test_think_hud_is_canvas_not_gif(self):
+        self.assertIn("function drawChairThink", JS)
+        self.assertIn("function noteChairLock", JS)
+        self.assertIn("const sealFX", JS)
+        self.assertIn("slow radar sweep", JS)
+        self.assertIn("orbiting ticks", JS)
+        self.assertIn("parked lock flash", JS)
+        self.assertNotIn("spinner.gif", JS)
+        self.assertNotIn('ctx.fillText("SEALED"', JS)
+
+    def test_wait_ambient_no_face_cover_phone_cheap(self):
+        self.assertIn("WAIT hours stay ambient", JS)
+        self.assertIn("Don't cover the face", JS)
+        self.assertIn("Phone: keep it cheap", JS)
+        self.assertIn("isPhoneDesk()", JS)
+        think = JS.split("function chairThinkRate", 1)[1].split("function resizeRoundtable", 1)[0]
+        self.assertIn("ctx.clip()", think)
+        self.assertIn("in_huddle", think)
+
+    def test_called_on_table_and_floor_chairs(self):
+        self.assertIn("drawChairThink(cx, portraitY, pr, radius", JS)
+        self.assertIn("drawChairThink(cx, cy, lr, radius", JS)
+        self.assertIn("noteChairLock(whichChair, _lc)", JS)
+
+
 class TableFeedTests(unittest.TestCase):
     def test_feed_is_packets_not_reasoning_only(self):
         self.assertIn('id="signalFeed"', HTML)

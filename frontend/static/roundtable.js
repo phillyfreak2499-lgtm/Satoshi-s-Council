@@ -702,6 +702,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let _tableEmberUntil = 0;
   let _tableEmberKey = "";
   let _tableEmberDir = "WAIT";
+  // Parked lock flash — expanding ring on lock. Wired by noteChairLock.
+  const sealFX = {
+    bitcoin: { until: 0, dir: "WAIT" },
+    ethereum: { until: 0, dir: "WAIT" },
+  };
+  const _sealSeen = { bitcoin: "", ethereum: "" };
 
   // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
@@ -1685,6 +1691,164 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return true;
   }
 
+  function chairKeyOf(which) {
+    return which === "ethereum" ? "ethereum" : "bitcoin";
+  }
+
+  function noteChairLock(which, lc) {
+    const key = chairKeyOf(which);
+    const side = String((lc && lc.direction) || "").toUpperCase();
+    const locked = !!(lc && lc.locked && (side === "UP" || side === "DOWN"));
+    const stamp = locked ? String(lc.ticker || lc.locked_at || lc.close_time || side) : "";
+    if (locked && stamp && _sealSeen[key] !== stamp) {
+      _sealSeen[key] = stamp;
+      sealFX[key] = { until: Date.now() + 1100, dir: side };
+    }
+    if (!locked) _sealSeen[key] = "";
+  }
+
+  function chairThinkRate(st, dir, locked, which) {
+    const sfx = sealFX[chairKeyOf(which)];
+    const punching = !!(sfx && sfx.until > Date.now());
+    const huddle = (st && st.huddle) || (state && state.huddle) || {};
+    const raw = String(dir || "WAIT").toUpperCase();
+    const wait = !locked && raw.indexOf("WAIT") >= 0;
+    let rate = wait ? 0.52 : 1;
+    if (huddle.in_huddle) rate = 1.65;
+    else if (typeof beastMode !== "undefined" && beastMode && !wait) rate = 1.25;
+    if (locked) rate = Math.max(rate, 1.15);
+    if (punching) rate = 2.2;
+    return rate;
+  }
+
+  function drawChairThink(cx, cy, photoR, seatR, opts) {
+    // Chair thinking HUD. Fills the empty annulus from the photo out to the
+    // seat circle: slow radar sweep + orbiting ticks (game HUD, not a spinner gif).
+    // Portrait idle: soft glow pulse, occasional eye/ember flicker.
+    // Faster when analysis is hot, punch on lock (parked lock flash).
+    // WAIT hours stay ambient, not frozen. Don't cover the face.
+    // Phone: keep it cheap (CSS/canvas, no huge video).
+    if (!ctx || !photoR || !seatR || seatR <= photoR + 3) return;
+    opts = opts || {};
+    const which = opts.which;
+    const dir = String(opts.dir || "WAIT").toUpperCase();
+    const locked = !!opts.locked;
+    const st = opts.st || {};
+    const key = chairKeyOf(which);
+    const phone = (typeof isPhoneDesk === "function") ? isPhoneDesk() : false;
+    const rate = chairThinkRate(st, dir, locked, which);
+    const wait = !locked && dir.indexOf("WAIT") >= 0;
+    const sfx = sealFX[key];
+    const punching = !!(sfx && sfx.until > Date.now() && !reduceMotion);
+    const gold = "rgba(240, 193, 74, 0.95)";
+    const hue = (locked || punching) ? gold
+      : (dir === "UP" || dir === "UP_HOLD") ? "rgba(0, 255, 120, 0.75)"
+      : (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255, 55, 90, 0.75)"
+      : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.62)");
+    const inner = photoR + 3;
+    const outer = seatR - 2;
+    const mid = (inner + outer) / 2;
+    const band = Math.max(2.5, outer - inner);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+    ctx.arc(cx, cy, inner, 0, Math.PI * 2, true);
+    ctx.clip();
+
+    if (!reduceMotion) {
+      const sweep = time * 0.00032 * rate;
+      const span = wait ? 0.70 : 0.95;
+      ctx.strokeStyle = hue;
+      ctx.lineCap = "round";
+      ctx.lineWidth = phone ? Math.min(5, band * 0.42) : Math.min(8, band * 0.50);
+      ctx.globalAlpha = (wait ? 0.22 : 0.36) * (punching ? 1.35 : 1);
+      ctx.beginPath();
+      ctx.arc(cx, cy, mid, sweep, sweep + span);
+      ctx.stroke();
+      if (!phone) {
+        ctx.globalAlpha *= 0.45;
+        ctx.lineWidth *= 0.55;
+        ctx.beginPath();
+        ctx.arc(cx, cy, mid, sweep - 0.55, sweep);
+        ctx.stroke();
+      }
+    }
+
+    const n = (phone || reduceMotion) ? 6 : 12;
+    const orbit = reduceMotion ? 0 : (-time * 0.00018 * rate);
+    ctx.globalAlpha = wait ? 0.28 : 0.48;
+    ctx.strokeStyle = hue;
+    ctx.lineWidth = phone ? 1.2 : 1.6;
+    ctx.lineCap = "butt";
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = orbit + (i / n) * Math.PI * 2;
+      const c = Math.cos(a), s = Math.sin(a);
+      const r0 = inner + 1;
+      const r1 = inner + 1 + band * (i % 3 === 0 ? 0.62 : 0.40);
+      ctx.moveTo(cx + c * r0, cy + s * r0);
+      ctx.lineTo(cx + c * r1, cy + s * r1);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    const pulse = reduceMotion ? 0.7 : (0.55 + 0.45 * Math.sin(time * 0.0024 * rate));
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, photoR + 1.2, 0, Math.PI * 2);
+    ctx.strokeStyle = hue;
+    ctx.globalAlpha = (wait ? 0.20 : 0.32) + 0.18 * pulse;
+    ctx.lineWidth = locked ? 2.4 : 1.8;
+    if (!phone && !reduceMotion) {
+      ctx.shadowColor = hue;
+      ctx.shadowBlur = 8 + 7 * pulse;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    if (!reduceMotion && !phone) {
+      const seed = key === "ethereum" ? 2.1 : 0.7;
+      const phase = (time * 0.00105 * rate + seed) % (wait ? 11 : 7);
+      if (phase < 0.14 || punching) {
+        const eyeY = cy - photoR * 0.16;
+        const spread = photoR * 0.21;
+        const a = punching ? 0.55 : (0.22 + 0.35 * (1 - phase / 0.14));
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = Math.max(0, Math.min(0.6, a));
+        ctx.fillStyle = (punching || locked) ? "rgba(255, 190, 80, 0.9)" : hue;
+        [[-spread, 0], [spread, 0]].forEach((p) => {
+          ctx.beginPath();
+          ctx.arc(cx + p[0], eyeY, Math.max(1.2, photoR * 0.028), 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.restore();
+      }
+    } else if (!reduceMotion && phone && punching) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = gold;
+      ctx.beginPath();
+      ctx.arc(cx, cy - photoR * 0.16, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (punching) {
+      const a = Math.max(0, (sfx.until - Date.now()) / 1100);
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.95, a + 0.2);
+      ctx.strokeStyle = gold;
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, photoR + 6 + (1 - a) * 14, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
 
   function resizeRoundtable() {
     if (!canvas) return;
@@ -1883,6 +2047,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
+    try {
+      noteChairLock(which, lc);
+      drawChairThink(cx, portraitY, pr, radius, { which, dir, locked, st });
+    } catch (e) {}
 
     // Labels
     ctx.textAlign = "center";
@@ -1906,24 +2074,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ctx.font = "600 9px Share Tech Mono, monospace";
           ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
           ctx.fillText("Q:" + Math.round(Number(q)), cx, plateY + 28);
-        }
-      } catch (e) {}
-      try {
-        const key = which === "ethereum" ? "ethereum" : "bitcoin";
-        const sfx = sealFX[key];
-        if (sfx && sfx.until > Date.now() && !reduceMotion) {
-          const a = Math.max(0, (sfx.until - Date.now()) / 1100);
-          ctx.save();
-          ctx.globalAlpha = Math.min(0.95, a + 0.2);
-          ctx.strokeStyle = typeof gold !== "undefined" ? gold : "#f0c24b";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(cx, (typeof portraitY !== "undefined" ? portraitY : cy), (typeof pr !== "undefined" ? pr : 40) + 6 + (1 - a) * 12, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = "800 10px Orbitron, monospace";
-          ctx.fillStyle = "#f0c24b";
-          ctx.fillText("SEALED", cx, (typeof portraitY !== "undefined" ? portraitY : cy));
-          ctx.restore();
         }
       } catch (e) {}
     } else {
@@ -2004,6 +2154,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
                       "rgba(200,220,255,0.45)";
     ctx.lineWidth = 2;
     ctx.stroke();
+    try {
+      noteChairLock(which, lc);
+      drawChairThink(cx, cy - 4, pr, radius, { which, dir, locked, st });
+    } catch (e) {}
 
     ctx.font = "700 12px Orbitron, monospace";
     ctx.fillStyle = which === "ethereum" ? "#9dffc0" : "#7fe9ff";
@@ -2025,24 +2179,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ctx.font = "600 9px Share Tech Mono, monospace";
           ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
           ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
-        }
-      } catch (e) {}
-      try {
-        const key = which === "ethereum" ? "ethereum" : "bitcoin";
-        const sfx = sealFX[key];
-        if (sfx && sfx.until > Date.now() && !reduceMotion) {
-          const a = Math.max(0, (sfx.until - Date.now()) / 1100);
-          ctx.save();
-          ctx.globalAlpha = Math.min(0.95, a + 0.2);
-          ctx.strokeStyle = typeof gold !== "undefined" ? gold : "#f0c24b";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(cx, (typeof portraitY !== "undefined" ? portraitY : cy), (typeof pr !== "undefined" ? pr : 40) + 6 + (1 - a) * 12, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = "800 10px Orbitron, monospace";
-          ctx.fillStyle = "#f0c24b";
-          ctx.fillText("SEALED", cx, (typeof portraitY !== "undefined" ? portraitY : cy));
-          ctx.restore();
         }
       } catch (e) {}
     } else {
@@ -2617,6 +2753,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.strokeStyle = "rgba(240, 193, 74, 0.65)";
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    try {
+      const whichChair = focusTable === "ethereum" ? "ethereum" : "bitcoin";
+      noteChairLock(whichChair, _lc);
+      drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
+    } catch (e) {}
 
     // Labels under portrait (don't cover the face)
     ctx.font = "700 11px Orbitron, sans-serif";
