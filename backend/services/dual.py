@@ -1,6 +1,7 @@
 """
 Dual-table orchestrator: Bitcoin (Satoshi) + Ethereum (Vitalik).
 Sequential analysis on a shared event loop for ~2 CPU / 4 GB hosts.
+Proxies store/leader/learner/huddle/law to BTC so existing main.py routes keep working.
 """
 from __future__ import annotations
 import asyncio
@@ -19,12 +20,44 @@ class DualOrchestrator:
         self.running = False
         self._task: Optional[asyncio.Task] = None
 
+    # ── back-compat proxies (main.py still uses council.store / .leader / …) ──
+    @property
+    def store(self):
+        return self.btc.store
+
+    @property
+    def leader(self):
+        return self.btc.leader
+
+    @property
+    def learner(self):
+        return self.btc.learner
+
+    @property
+    def huddle(self):
+        return self.btc.huddle
+
+    @property
+    def law(self):
+        return self.btc.law
+
+    @property
+    def pipeline(self):
+        return self.btc.pipeline
+
+    @property
+    def agents(self):
+        return self.btc.agents
+
+    @property
+    def latest_state(self):
+        return self.get_state()
+
     async def start(self):
-        # Init stores/learners without starting per-council loops
         await self.btc.store.init()
         if self.eth:
+            # Separate logical table; same DB file for now (accuracy still mostly BTC-scoped via UI focus)
             await self.eth.store.init()
-        # Seed / load in background-safe way (reuse Council.start partial)
         for c in self._councils():
             try:
                 if hasattr(c.learner, "load"):
@@ -35,7 +68,8 @@ class DualOrchestrator:
         self.running = True
         self._task = asyncio.create_task(self._loop())
         logger.info(
-            f"DualOrchestrator started (btc=on eth={'on' if self.eth else 'off'} sequential={settings.DUAL_SEQUENTIAL})"
+            f"DualOrchestrator started (btc=on eth={'on' if self.eth else 'off'} "
+            f"sequential={getattr(settings, 'DUAL_SEQUENTIAL', True)})"
         )
 
     def _councils(self):
@@ -67,7 +101,6 @@ class DualOrchestrator:
     async def _loop(self):
         while self.running:
             t0 = asyncio.get_event_loop().time()
-            # Sequential: BTC then ETH (keeps peak CPU predictable)
             for c in self._councils():
                 if not self.running:
                     break
@@ -76,7 +109,6 @@ class DualOrchestrator:
                 except Exception as e:
                     logger.exception(f"Dual analysis error ({c.asset}): {e}")
             elapsed = asyncio.get_event_loop().time() - t0
-            # Pace: use the longer of the two intervals as the full dual-cycle sleep base
             interval = max(
                 float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.0)),
                 float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.0)),
@@ -92,22 +124,23 @@ class DualOrchestrator:
     def get_state(self) -> Dict[str, Any]:
         btc_state = self.btc.get_state()
         eth_state = self.eth.get_state() if self.eth else None
-        return {
+        # Back-compat top-level = BTC so older UI still renders
+        base = {k: v for k, v in btc_state.items() if k not in ("tables", "btc", "eth", "dual")}
+        base.update({
             "mode": "dual",
+            "dual": True,
             "tables": {
                 "bitcoin": btc_state,
                 "ethereum": eth_state,
             },
-            # Back-compat: top-level mirrors BTC so old UI still renders something
-            **{k: v for k, v in btc_state.items() if k not in ("tables",)},
             "btc": btc_state,
             "eth": eth_state,
-            "dual": True,
             "leaders": {
                 "bitcoin": "satoshi",
                 "ethereum": "vitalik" if self.eth else None,
             },
-        }
+        })
+        return base
 
     async def analyze_once(self) -> Dict[str, Any]:
         await self.btc.analyze_once()
