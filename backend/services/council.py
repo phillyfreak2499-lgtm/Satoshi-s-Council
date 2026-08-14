@@ -451,6 +451,8 @@ class Council:
                 "diversity": decision.get("diversity"),
                 "lockdown": bool(decision.get("lockdown")),
                 "lean": decision.get("lean"),  # underlying UP/DOWN when direction is SWAP/HOLD
+                "call_phase": decision.get("call_phase"),
+                "locked_call": decision.get("locked_call"),  # clear follower-readable lock
                 "display_direction": (
                     "1/4 UP HOLD" if decision["direction"] == "UP_HOLD"
                     else "1/4 DOWN HOLD" if decision["direction"] == "DOWN_HOLD"
@@ -609,6 +611,7 @@ class Council:
                 "wrong_streak": 0,
                 "label": "0/0 · —",
             },
+                        "locked_call": decision.get("locked_call"),  # follower-bot clear lock
             "law": self.law.status(),
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),
