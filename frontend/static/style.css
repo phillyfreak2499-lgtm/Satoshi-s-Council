@@ -3356,39 +3356,52 @@ body.floor-mode .led-window {
 }
 
 
-/* BTC / ETH focus — exclusive gold active (not shared with Floor/Table mode) */
-.mode-tab.focus-tab {
-  border-color: rgba(240, 193, 74, 0.35);
-  min-width: 3.2rem;
-}
-.mode-tab.focus-tab.focus-active {
-  background: linear-gradient(165deg, rgba(240, 193, 74, 0.28), rgba(120, 80, 10, 0.45)) !important;
-  border-color: rgba(240, 193, 74, 0.95) !important;
-  color: #ffe7a0 !important;
-  box-shadow: 0 0 14px rgba(240, 193, 74, 0.45) !important;
-  text-shadow: 0 0 8px rgba(240, 193, 74, 0.35);
-}
-.mode-tab.focus-tab:not(.focus-active) {
-  opacity: 0.72;
-}
 
-.paper-auto-summary { color: #f0d78a; font-size: 12px; margin-left: 8px; }
-.paper-auto-list { max-height: 120px; overflow: auto; font-size: 11px; padding: 4px 8px; }
-.paper-auto-row { padding: 2px 0; font-family: "Share Tech Mono", monospace; }
 
-/* FOCUS TABS HARD — exclusive gold, always clickable */
-#focusBtc, #focusEth {
+
+/* ===== BTC / ETH focus — exclusive, never mode-tab ===== */
+.focus-tab {
   pointer-events: auto !important;
   cursor: pointer !important;
-  z-index: 60 !important;
+  z-index: 80 !important;
   position: relative;
+  min-width: 3.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 160, 180, 0.35);
+  background: rgba(10, 18, 30, 0.85);
+  color: #9ab0c8;
+  font-family: Orbitron, monospace;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  transition: all 0.15s ease;
 }
-#focusBtc.focus-active, #focusEth.focus-active {
-  background: linear-gradient(165deg, rgba(240, 193, 74, 0.35), rgba(120, 80, 10, 0.55)) !important;
-  border: 1px solid rgba(240, 193, 74, 0.95) !important;
+.focus-tab:hover { opacity: 1; border-color: rgba(240, 193, 74, 0.55); color: #f0d78a; }
+.focus-tab.focus-active {
+  opacity: 1 !important;
   color: #ffe7a0 !important;
-  box-shadow: 0 0 16px rgba(240, 193, 74, 0.5) !important;
+  border-color: rgba(240, 193, 74, 0.95) !important;
+  background: linear-gradient(165deg, rgba(240, 193, 74, 0.32), rgba(90, 55, 5, 0.55)) !important;
+  box-shadow: 0 0 16px rgba(240, 193, 74, 0.55) !important;
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.4);
 }
-#focusBtc:not(.focus-active), #focusEth:not(.focus-active) {
-  opacity: 0.65;
+/* Only ONE of these can look active — force sibling off via body dataset */
+body[data-focus-table="bitcoin"] #focusEth.focus-active,
+body[data-focus-table="ethereum"] #focusBtc.focus-active {
+  /* safety: never both */
+  opacity: 0.7 !important;
+  color: #9ab0c8 !important;
+  border-color: rgba(140, 160, 180, 0.35) !important;
+  background: rgba(10, 18, 30, 0.85) !important;
+  box-shadow: none !important;
+}
+.focus-table-badge {
+  font-family: Share Tech Mono, monospace;
+  font-size: 11px;
+  color: #f0d78a;
+  margin-left: 6px;
+  padding: 0.25rem 0.5rem;
+  border-left: 1px solid rgba(240, 193, 74, 0.35);
 }
