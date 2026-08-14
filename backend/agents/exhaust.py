@@ -1,8 +1,12 @@
 """
 EXHAUST – fade continuation after a large 1h run when short momentum flips.
 
-Research: after ≥~1–1.5% 1h BTC move near high/low, 5m flips against,
+Research edge: after ≥~1% 1h BTC move near high/low, 5m flips against,
 Kalshi still extreme → fade the crowded side.
+
+Multi-window:
+  ENTRY: is this a fresh exhaustion setup worth a full-window fade?
+  MID/FINAL: did the fade work, or did the run resume against entry?
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -17,7 +21,6 @@ class ExhaustSpecialist(BaseSpecialist):
 
     @staticmethod
     def _candle_returns(candles: List[Dict[str, Any]]) -> Dict[str, Optional[float]]:
-        """Expect newest-last or newest-first; normalize to chronological."""
         if not candles or len(candles) < 5:
             return {"ret_5m": None, "ret_15m": None, "ret_60m": None, "near_high": None, "near_low": None}
         rows = []
@@ -36,6 +39,7 @@ class ExhaustSpecialist(BaseSpecialist):
             return {"ret_5m": None, "ret_15m": None, "ret_60m": None, "near_high": None, "near_low": None}
         rows.sort(key=lambda x: x[0])
         last = rows[-1][4]
+
         def ret_n(n):
             if len(rows) <= n:
                 return None
@@ -43,7 +47,7 @@ class ExhaustSpecialist(BaseSpecialist):
             if base <= 0:
                 return None
             return (last - base) / base * 100.0
-        # Assume ~1m candles if available
+
         window = rows[-60:] if len(rows) >= 60 else rows
         hi = max(r[2] for r in window)
         lo = min(r[3] for r in window)
@@ -61,10 +65,19 @@ class ExhaustSpecialist(BaseSpecialist):
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted", self.category, muted=True)
 
+        phase = self.phase(market_data)
+        quiet = self.is_quiet(market_data)
+        floor = self.quiet_confidence_floor(market_data, base=55)
+        path = self.path_move(market_data)
+        entry = self.entry_dir(market_data)
+        streak_dir, streak_n = self.streak(market_data)
+        mean_rev = self.mean_reversion_bias(market_data)
+
         candles = market_data.get("candles") or []
         stats = self._candle_returns(candles)
         r60 = stats["ret_60m"]
         r5 = stats["ret_5m"]
+        r15 = stats["ret_15m"]
         up = market_data.get("up_pct")
         try:
             up = float(up) if up is not None else None
@@ -74,6 +87,10 @@ class ExhaustSpecialist(BaseSpecialist):
         features = {
             **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in stats.items()},
             "up_pct": up,
+            "phase": phase,
+            "horizon": "entry" if phase == "entry" else "revision",
+            "path_move": path,
+            "entry_dir": entry,
             "subs": [
                 {"name": "1H", "detail": f"{r60:+.2f}%" if r60 is not None else "—"},
                 {"name": "5M", "detail": f"{r5:+.2f}%" if r5 is not None else "—"},
@@ -82,39 +99,101 @@ class ExhaustSpecialist(BaseSpecialist):
         }
 
         if r60 is None or r5 is None:
-            return AgentSignal(self.name, "WAIT", 45, "Need more candle history", self.category, features=features)
+            return AgentSignal(
+                self.name, "WAIT", 45,
+                self.annotate_reason(market_data, "need more candle history"),
+                self.category, features=features,
+            )
 
         run_thr = float(getattr(settings, "EXHAUST_1H_PCT", 0.9))
         flip_thr = float(getattr(settings, "EXHAUST_5M_FLIP", 0.12))
         extreme_yes = float(getattr(settings, "EXHAUST_YES_HIGH", 68.0))
         extreme_no = float(getattr(settings, "EXHAUST_YES_LOW", 32.0))
 
-        # Fade run-up: 1h up big, near high, 5m flips down, YES still expensive
-        if r60 >= run_thr and r5 <= -flip_thr:
-            near_hi = stats.get("near_high")
-            if near_hi is not None and near_hi <= 0.35:  # within 0.35% of local high
-                if up is None or up >= extreme_yes:
-                    conf = min(88, 60 + int((r60 - run_thr) * 12))
-                    return AgentSignal(
-                        self.name, "DOWN", conf,
-                        f"Exhaust fade · 1h +{r60:.2f}% but 5m {r5:+.2f}% · YES crowded",
-                        self.category, features=features,
-                    )
+        notes = []
+        local_dir = None
+        local_conf = 48
 
-        # Fade dump: 1h down big, near low, 5m flips up, YES still cheap
-        if r60 <= -run_thr and r5 >= flip_thr:
-            near_lo = stats.get("near_low")
-            if near_lo is not None and near_lo <= 0.35:
-                if up is None or up <= extreme_no:
-                    conf = min(88, 60 + int((abs(r60) - run_thr) * 12))
-                    return AgentSignal(
-                        self.name, "UP", conf,
-                        f"Exhaust fade · 1h {r60:.2f}% but 5m {r5:+.2f}% · YES soft",
-                        self.category, features=features,
-                    )
-
-        return AgentSignal(
-            self.name, "WAIT", 50,
-            f"No exhaust (1h {r60:+.2f}% · 5m {r5:+.2f}%)",
-            self.category, features=features,
+        # Fade run-up
+        fade_up_run = (
+            r60 >= run_thr
+            and r5 <= -flip_thr
+            and stats.get("near_high") is not None
+            and stats["near_high"] <= 0.40
+            and (up is None or up >= extreme_yes - 4)
         )
+        # Fade dump
+        fade_down_run = (
+            r60 <= -run_thr
+            and r5 >= flip_thr
+            and stats.get("near_low") is not None
+            and stats["near_low"] <= 0.40
+            and (up is None or up <= extreme_no + 4)
+        )
+
+        if fade_up_run:
+            local_dir = "DOWN"
+            local_conf = min(88, 60 + int((r60 - run_thr) * 12))
+            notes.append(f"exhaust fade · 1h +{r60:.2f}% but 5m {r5:+.2f}%")
+            if up is not None and up >= extreme_yes:
+                local_conf = min(92, local_conf + 4)
+                notes.append("YES crowded")
+        elif fade_down_run:
+            local_dir = "UP"
+            local_conf = min(88, 60 + int((abs(r60) - run_thr) * 12))
+            notes.append(f"exhaust fade · 1h {r60:.2f}% but 5m {r5:+.2f}%")
+            if up is not None and up <= extreme_no:
+                local_conf = min(92, local_conf + 4)
+                notes.append("YES cheap / NO crowded")
+        else:
+            notes.append(f"no exhaust (1h {r60:+.2f}% · 5m {r5:+.2f}%)")
+
+        direction = "WAIT"
+        conf = 48
+
+        if phase == "entry":
+            if local_dir:
+                direction, conf = local_dir, local_conf
+                # Multi-window: exhaustion fades work better after extended streaks
+                if streak_dir and streak_dir != local_dir and streak_n >= 3:
+                    conf = min(94, conf + 5)
+                    notes.append(f"fade after streak {streak_dir}×{streak_n}")
+                if mean_rev == local_dir:
+                    conf = min(94, conf + 4)
+                    notes.append("mean-rev agrees")
+            else:
+                notes.append("no whole-window exhaust edge")
+        else:
+            if entry in ("UP", "DOWN"):
+                # Did the run resume against our fade?
+                resumed = (
+                    (entry == "DOWN" and r5 is not None and r5 > flip_thr * 1.5 and r15 is not None and r15 > 0.15)
+                    or (entry == "UP" and r5 is not None and r5 < -flip_thr * 1.5 and r15 is not None and r15 < -0.15)
+                )
+                still_exhaust = local_dir == entry
+                if resumed and path is not None and abs(path) >= 4.0:
+                    direction = "UP" if entry == "DOWN" else "DOWN"
+                    conf = 64
+                    notes.append(f"run resumed vs exhaust entry {entry} (path {path:+.1f})")
+                elif still_exhaust:
+                    direction, conf = entry, max(local_conf, 58)
+                    notes.append(f"exhaust still valid for entry {entry}")
+                elif local_dir and local_dir != entry:
+                    direction, conf = local_dir, max(local_conf, 60)
+                    notes.append(f"new exhaust vs entry {entry}")
+                else:
+                    direction, conf = entry, 54
+                    notes.append(f"hold entry {entry}")
+            elif local_dir:
+                direction, conf = local_dir, local_conf
+            else:
+                notes.append("no revision exhaust edge")
+
+        if quiet and direction != "WAIT":
+            conf = min(conf, floor)
+            if conf < floor:
+                direction, conf = "WAIT", floor
+                notes.append("quiet gate")
+
+        reason = self.annotate_reason(market_data, " · ".join(notes) if notes else "exhaust neutral")
+        return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
