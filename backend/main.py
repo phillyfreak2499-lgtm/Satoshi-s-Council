@@ -20,14 +20,23 @@ from backend.services.dual import DualOrchestrator
 from backend.config import settings
 from backend.services.runtime_settings import runtime_settings
 from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
-from backend.services.follower_gate import FollowerGate
+from backend.services.follower_gate import WRONG as FOLLOWER_WRONG
+from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerRuntime
+from backend.services.follower_ping import ping_lock_event
 
 council = DualOrchestrator()  # BTC Satoshi + ETH Vitalik
 
 # frontend/static is the single deployable UI for Render
 STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "static"
+PROTECTED_DIR = Path(__file__).resolve().parent.parent / "frontend" / "protected"
 DATA_DIR = Path(getattr(settings, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+_PROTECTED_OK = {
+    "follower_gate.html",
+    "follower_gate.js",
+    "follower_bundle.html",
+    "follower_bundle.js",
+}
 
 
 @asynccontextmanager
@@ -374,7 +383,21 @@ async def learning():
 # ── Admin (password-gated from UI; soft check on destructive ops) ─────
 ADMIN_PASSWORD = "5152622439"
 
-follower_gate = FollowerGate(ADMIN_PASSWORD)
+follower_gate = FollowerGate(
+    ADMIN_PASSWORD,
+    audit=FollowerAudit(DATA_DIR / "follower-audit.jsonl"),
+    runtime=FollowerRuntime(DATA_DIR / "follower-runtime.json"),
+    ping=ping_lock_event,
+)
+
+
+def _cookie_secure() -> bool:
+    raw = (os.environ.get("FOLLOWER_COOKIE_SECURE") or "").strip().lower()
+    if raw in ("0", "false", "no"):
+        return False
+    if raw in ("1", "true", "yes"):
+        return True
+    return True
 
 
 def _client_ip(request: Request) -> str:
@@ -399,10 +422,84 @@ def _set_follower_cookie(response: Response, token: str) -> None:
         key=FOLLOWER_COOKIE,
         value=token,
         httponly=True,
+        secure=_cookie_secure(),
         samesite="lax",
         path="/",
-        secure=False,
     )
+
+
+def _clear_follower_cookie(response: Response) -> None:
+    response.delete_cookie(
+        FOLLOWER_COOKIE,
+        path="/",
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+    )
+
+
+def _read_protected(name: str) -> Path | None:
+    if name not in _PROTECTED_OK:
+        return None
+    path = PROTECTED_DIR / name
+    if not path.is_file():
+        return None
+    try:
+        path.resolve().relative_to(PROTECTED_DIR.resolve())
+    except ValueError:
+        return None
+    return path
+
+
+def _table_for_asset(asset: str) -> dict:
+    state = council.get_state() if council else {}
+    if not isinstance(state, dict):
+        return {}
+    if asset == "eth":
+        table = state.get("eth") or (state.get("tables") or {}).get("ethereum") or {}
+        return table if isinstance(table, dict) else {}
+    table = state.get("btc") or (state.get("tables") or {}).get("bitcoin") or state
+    return table if isinstance(table, dict) else {}
+
+
+def _follower_world(asset: str) -> dict:
+    """LAW / huddle / sick-feed / clock. Live cannot bypass these."""
+    from backend.data.spot_health import spot_feed_ok
+    from backend.services.huddle import is_huddle_window
+
+    table = _table_for_asset(asset)
+    health = table.get("health") if isinstance(table.get("health"), dict) else {}
+    if not health:
+        st = council.get_state() if council else {}
+        health = (st.get("health") or {}) if isinstance(st, dict) else {}
+        if not isinstance(health, dict):
+            health = {}
+    spot_ok = spot_feed_ok(health, table)
+    kalshi_ok = bool(health.get("kalshi", True))
+    sick = (not spot_ok) and (not kalshi_ok)
+    law_locked = True
+    try:
+        if asset == "eth" and getattr(council, "eth", None) is not None:
+            law_locked = bool(council.eth.law.is_locked())
+        else:
+            law_locked = bool(council.law.is_locked())
+    except Exception:
+        law_locked = True
+    try:
+        huddle = bool(is_huddle_window())
+    except Exception:
+        huddle = True
+    mins_left = None
+    if isinstance(table, dict):
+        mins_left = (table.get("lock_timeline") or {}).get("mins_left")
+        if mins_left is None:
+            mins_left = table.get("mins_left")
+    return {
+        "law_locked": law_locked,
+        "huddle": huddle,
+        "sick_feed": sick,
+        "mins_left": mins_left,
+    }
 
 
 def _admin_ok(request: Request) -> bool:
@@ -518,10 +615,70 @@ async def admin_verify(request: Request):
     return {"ok": ok}
 
 
+@app.get("/api/desk/extensions")
+async def desk_extensions(request: Request):
+    """Admin-only fragments. Desk-code-only users get 404 — no Follower label."""
+    if not _admin_ok(request):
+        return Response(status_code=404)
+    html_path = _read_protected("follower_gate.html")
+    js_path = _read_protected("follower_gate.js")
+    return {
+        "html": html_path.read_text(encoding="utf-8") if html_path else "",
+        "js": js_path.read_text(encoding="utf-8") if js_path else "",
+    }
+
+
+@app.get("/api/desk/extensions.js")
+async def desk_extensions_js(request: Request):
+    if not _admin_ok(request):
+        return Response(status_code=404)
+    path = _read_protected("follower_gate.js")
+    if path is None:
+        return Response(status_code=404)
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/api/follower/status")
 async def follower_status(request: Request):
-    """Session-only. Desk code and Settings admin unlock are not enough."""
-    return {"ok": _follower_ok(request)}
+    """Session cookie only. Desk code and Settings admin unlock are not enough."""
+    view = follower_gate.session_view(_follower_token(request))
+    if not view:
+        return Response(status_code=404)
+    return view
+
+
+@app.get("/api/follower/bundle")
+async def follower_bundle(request: Request):
+    if not _follower_ok(request):
+        return Response(status_code=404)
+    follower_gate.touch(_follower_token(request))
+    path = _read_protected("follower_bundle.html")
+    if path is None:
+        return Response(status_code=404)
+    return FileResponse(
+        path,
+        media_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/follower/bundle.js")
+async def follower_bundle_js(request: Request):
+    if not _follower_ok(request):
+        return Response(status_code=404)
+    follower_gate.touch(_follower_token(request))
+    path = _read_protected("follower_bundle.js")
+    if path is None:
+        return Response(status_code=404)
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/follower/unlock")
@@ -540,9 +697,9 @@ async def follower_unlock(request: Request):
     p2 = body.get("p2") or body.get("lock2") or ""
     p3 = body.get("p3") or body.get("lock3") or ""
     ip = _client_ip(request)
-    ok, err, token = follower_gate.unlock(ip, str(p1), str(p2), str(p3))
+    ok, err, token, _reason = follower_gate.unlock(ip, str(p1), str(p2), str(p3))
     if not ok:
-        return {"ok": False, "error": err}
+        return {"ok": False, "error": err or FOLLOWER_WRONG}
     resp = ORJSONResponse({"ok": True})
     if token:
         _set_follower_cookie(resp, token)
@@ -553,8 +710,79 @@ async def follower_unlock(request: Request):
 async def follower_lock(request: Request):
     follower_gate.revoke(_follower_token(request))
     resp = ORJSONResponse({"ok": True})
-    resp.delete_cookie(FOLLOWER_COOKIE, path="/")
+    _clear_follower_cookie(resp)
     return resp
+
+
+@app.post("/api/follower/heartbeat")
+async def follower_heartbeat(request: Request):
+    sess = follower_gate.touch(_follower_token(request))
+    if sess is None:
+        return Response(status_code=404)
+    return {"ok": True}
+
+
+@app.post("/api/follower/live")
+async def follower_live(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    confirm = body.get("confirm") or body.get("word") or ""
+    ok, err, view = follower_gate.set_live(_follower_token(request), confirm, on=True)
+    if not ok:
+        return {"ok": False, "error": "refused", "reason": err}
+    return {"ok": True, **(view or {})}
+
+
+@app.post("/api/follower/live-off")
+async def follower_live_off(request: Request):
+    follower_gate.live_off(_follower_token(request))
+    view = follower_gate.session_view(_follower_token(request))
+    if not view:
+        return {"ok": True, "live": False}
+    return {"ok": True, **view}
+
+
+@app.post("/api/follower/order")
+async def follower_order(request: Request):
+    """Intended / live order. Refuse gates always apply. No password material logged."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    intent = {
+        "asset": body.get("asset"),
+        "side": body.get("side"),
+        "stake": body.get("stake"),
+        "contracts": body.get("contracts"),
+        "live": bool(body.get("live")),
+        "confirm_first": body.get("confirm_first") or body.get("confirm") or "",
+    }
+    asset = "eth" if str(intent["asset"] or "").lower() in ("eth", "ethereum") else "btc"
+    result = follower_gate.evaluate_order(
+        _follower_token(request),
+        intent,
+        _follower_world(asset),
+    )
+    return {
+        "ok": bool(result.get("accepted")),
+        "accepted": bool(result.get("accepted")),
+        "routed": False,
+        "live": bool(result.get("live")),
+        "refuse": result.get("refuse") or "",
+    }
+
+
+@app.get("/api/follower/audit")
+async def follower_audit(request: Request, limit: int = 80):
+    if not _follower_ok(request):
+        return Response(status_code=404)
+    return {"ok": True, "events": follower_gate.audit.recent(limit)}
 
 
 

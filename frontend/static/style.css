@@ -2921,58 +2921,6 @@ footer, #marketStrip, .window-timer {
   margin-top: 12px;
   justify-content: flex-end;
 }
-.follower-card {
-  width: min(400px, 94vw);
-}
-.follower-lock-label {
-  display: block;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #7a8aaa;
-  margin-top: 10px;
-}
-.follower-lock-label .password-input {
-  width: 100%;
-  margin-top: 4px;
-  box-sizing: border-box;
-}
-.follower-lock-label .password-input:disabled {
-  opacity: 0.45;
-}
-.follower-boards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-  max-width: 920px;
-}
-.follower-card-lock {
-  padding: 16px 18px;
-  border-radius: 12px;
-  background: linear-gradient(160deg, #0e1428, #0a0e1c);
-  border: 1px solid rgba(120, 160, 255, 0.22);
-}
-.follower-card-lock .fc-chair {
-  font-family: Orbitron, sans-serif;
-  letter-spacing: 0.14em;
-  font-size: 12px;
-  color: #9ec5ff;
-}
-.follower-card-lock .fc-dir {
-  font-family: Orbitron, sans-serif;
-  font-size: 28px;
-  margin: 8px 0 4px;
-}
-.follower-card-lock .fc-dir.UP { color: #4ade80; }
-.follower-card-lock .fc-dir.DOWN { color: #f87171; }
-.follower-card-lock .fc-dir.WAIT { color: #94a3b8; }
-.follower-card-lock .fc-meta {
-  font-size: 13px;
-  color: #9aa8c2;
-  line-height: 1.45;
-}
-
-
 /* ===== MAIN TABLE: LEFT lifetime · CENTER table · RIGHT debate =====
    Hierarchy is ranks-only. Never collapse #tableStage.
 */
@@ -4182,8 +4130,6 @@ body.mode-charts #tabCharts,
 body.mode-charts #tabCharts.active,
 body.mode-paper #tabPaper,
 body.mode-paper #tabPaper.active,
-body.mode-follower #tabFollower,
-body.mode-follower #tabFollower.active,
 body.mode-settings #tabSettings,
 body.mode-settings #tabSettings.active,
 body.mode-floor #tabFloor,
@@ -4206,8 +4152,6 @@ body.beast-mode.mode-charts #tabCharts,
 body.beast-mode.mode-charts #tabCharts.active,
 body.beast-mode.mode-paper #tabPaper,
 body.beast-mode.mode-paper #tabPaper.active,
-body.beast-mode.mode-follower #tabFollower,
-body.beast-mode.mode-follower #tabFollower.active,
 body.beast-mode.mode-settings #tabSettings,
 body.beast-mode.mode-settings #tabSettings.active,
 body.beast-mode.mode-floor #tabFloor,
@@ -4405,7 +4349,6 @@ body.mode-settings #botsView,
 body.mode-settings #ranksView,
 body.mode-settings #chartsView,
 body.mode-settings #paperView,
-body.mode-settings #followerView,
 body.mode-settings #dashboardOverlay,
 body.mode-settings #openChartsBtn,
 body.mode-settings #hierarchyPanel {
@@ -5247,9 +5190,8 @@ body.mode-settings #openChartsBtn {
   #settingsView select,
   #settingsView input[type="number"],
   #settingsView input[type="text"],
-  #followerGate .password-input,
-  #followerGate .gate-btn,
-  #tabFollower {
+  #fgGate .password-input,
+  #fgGate .gate-btn {
     min-height: 44px !important;
     min-width: 44px !important;
   }

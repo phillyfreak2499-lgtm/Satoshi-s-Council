@@ -53,6 +53,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       window.__openSettingsAfterAdmin = false;
       setMode("settings");
     }
+    if (ok) {
+      try { loadAdminDeskExtensions(); } catch (e) {}
+    }
     try { syncAutoBetVisibility(); } catch (e) {}
   }
 
@@ -179,136 +182,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   window.requestAdminUnlock = requestAdminUnlock;
   window.ADMIN_PASSWORD = ADMIN_PASSWORD;
 
-  /* ===== FOLLOWER (three sequential locks; server-verified) ===== */
-  let followerUnlocked = false;
-  let pendingFollowerCb = null;
-  function isFollowerUnlocked() {
-    return !!followerUnlocked;
-  }
-  function setFollowerUnlocked(on) {
-    followerUnlocked = !!on;
-    document.body.classList.toggle("follower-unlocked", !!on);
-  }
-  async function followerStatus() {
+  /* Admin-only desk extensions are fetched after Settings unlock. Not a public route. */
+  let adminExtBooted = false;
+  async function loadAdminDeskExtensions() {
+    if (adminExtBooted || !isAdminUnlocked()) return;
+    adminExtBooted = true;
     try {
-      const r = await fetch("/api/follower/status", { credentials: "same-origin" });
+      const r = await adminFetch("/api/desk/extensions", { credentials: "same-origin" });
+      if (!r.ok) return;
       const d = await r.json();
-      return !!(d && d.ok);
-    } catch (e) {
-      return false;
-    }
-  }
-  function followerShowError(msg) {
-    const err = document.getElementById("followerError");
-    if (!err) return;
-    err.textContent = msg || "Wrong password";
-    err.classList.remove("hidden");
-  }
-  function followerClearFields() {
-    const a = document.getElementById("followerPw1");
-    const b = document.getElementById("followerPw2");
-    const c = document.getElementById("followerPw3");
-    if (a) a.value = "";
-    if (b) { b.value = ""; b.disabled = true; }
-    if (c) { c.value = ""; c.disabled = true; }
-    if (a) a.disabled = false;
-  }
-  function followerSyncSeq() {
-    const a = document.getElementById("followerPw1");
-    const b = document.getElementById("followerPw2");
-    const c = document.getElementById("followerPw3");
-    const has1 = !!(a && String(a.value || "").length);
-    const has2 = !!(b && String(b.value || "").length);
-    if (b) b.disabled = !has1;
-    if (c) c.disabled = !(has1 && has2);
-  }
-  function closeFollowerGate(ok) {
-    const gate = document.getElementById("followerGate");
-    if (gate) gate.classList.add("hidden");
-    followerClearFields();
-    const cb = pendingFollowerCb;
-    pendingFollowerCb = null;
-    if (ok && typeof cb === "function") cb();
-  }
-  function requestFollowerUnlock(cb) {
-    pendingFollowerCb = typeof cb === "function" ? cb : null;
-    followerStatus().then((ok) => {
-      if (ok) {
-        setFollowerUnlocked(true);
-        closeFollowerGate(true);
-        return;
-      }
-      setFollowerUnlocked(false);
-      const gate = document.getElementById("followerGate");
-      const err = document.getElementById("followerError");
-      if (err) { err.classList.add("hidden"); err.textContent = "Wrong password"; }
-      followerClearFields();
-      if (gate) gate.classList.remove("hidden");
-      setTimeout(() => {
-        try { document.getElementById("followerPw1") && document.getElementById("followerPw1").focus(); } catch (e) {}
-      }, 40);
-    });
-  }
-  function wireFollowerGate() {
-    const submit = document.getElementById("followerSubmit");
-    const cancel = document.getElementById("followerCancel");
-    const a = document.getElementById("followerPw1");
-    const b = document.getElementById("followerPw2");
-    const c = document.getElementById("followerPw3");
-    const err = document.getElementById("followerError");
-    if (!submit || submit.__wired) return;
-    submit.__wired = true;
-    const tryUnlock = async () => {
-      const p1 = (a && a.value) || "";
-      const p2 = (b && b.value) || "";
-      const p3 = (c && c.value) || "";
-      if (err) err.classList.add("hidden");
-      submit.disabled = true;
-      try {
-        const r = await fetch("/api/follower/unlock", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ p1, p2, p3 }),
-        });
-        let data = {};
-        try { data = await r.json(); } catch (e) { data = {}; }
-        followerClearFields();
-        if (data && data.ok) {
-          setFollowerUnlocked(true);
-          closeFollowerGate(true);
-        } else {
-          setFollowerUnlocked(false);
-          followerShowError("Wrong password");
-          setTimeout(() => { try { a && a.focus(); } catch (e) {} }, 20);
+      if (d && d.html) {
+        let host = document.getElementById("deskExtensions");
+        if (!host) {
+          host = document.createElement("div");
+          host.id = "deskExtensions";
+          document.body.appendChild(host);
         }
-      } catch (e) {
-        followerClearFields();
-        followerShowError("Wrong password");
+        host.innerHTML = d.html;
       }
-      submit.disabled = false;
-    };
-    submit.addEventListener("click", tryUnlock);
-    [a, b, c].forEach((el, idx) => {
-      if (!el) return;
-      el.addEventListener("input", followerSyncSeq);
-      el.addEventListener("keydown", (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (e.key !== "Enter") return;
-        e.preventDefault();
-        if (idx === 0 && b) { followerSyncSeq(); if (!b.disabled) b.focus(); return; }
-        if (idx === 1 && c) { followerSyncSeq(); if (!c.disabled) c.focus(); return; }
-        tryUnlock();
-      }, true);
-    });
-    if (cancel) {
-      cancel.addEventListener("click", () => closeFollowerGate(false));
-    }
+      if (d && d.js) {
+        const s = document.createElement("script");
+        s.textContent = d.js;
+        document.body.appendChild(s);
+      }
+    } catch (e) {}
   }
-  window.isFollowerUnlocked = isFollowerUnlocked;
-  window.requestFollowerUnlock = requestFollowerUnlock;
-  try { wireFollowerGate(); } catch (e) {}
+  window.loadAdminDeskExtensions = loadAdminDeskExtensions;
+  if (isAdminUnlocked()) {
+    try { loadAdminDeskExtensions(); } catch (e) {}
+  }
 
 
   const overlay = document.getElementById("dashboardOverlay");
@@ -3990,43 +3892,6 @@ function drawCandleChart() {
   }
 
 
-  function _followerLockCard(st, chair, asset) {
-    const d = (st && st.decision) || {};
-    const lc = (st && (st.locked_call || d.locked_call)) || {};
-    const locked = !!(lc && lc.locked && (lc.direction === "UP" || lc.direction === "DOWN"));
-    const dir = locked ? lc.direction : (d.direction || "WAIT");
-    const conf = locked ? (lc.confidence || d.confidence) : (d.confidence || "—");
-    const odds = lc.entry_odds != null ? lc.entry_odds : (lc.up_pct != null ? lc.up_pct : d.entry_odds);
-    const ev = lc.ev_cents != null ? lc.ev_cents : d.ev_cents;
-    const pf = lc.p_finish != null ? lc.p_finish : d.p_finish;
-    const strike = (st && st.market && st.market.floor_strike) || lc.floor_strike;
-    const mins = (st && st.lock_timeline && st.lock_timeline.mins_left);
-    const bits = [];
-    if (odds != null) bits.push(Number(odds).toFixed(0) + "¢");
-    if (conf != null && conf !== "—") bits.push(conf + "%");
-    if (pf != null) bits.push("P " + Number(pf).toFixed(2));
-    if (ev != null) bits.push("EV " + Number(ev).toFixed(1) + "¢");
-    if (strike != null) bits.push("K " + Number(strike).toLocaleString());
-    if (mins != null) bits.push(Number(mins).toFixed(0) + "m left");
-    return (
-      '<article class="follower-card-lock">' +
-        '<div class="fc-chair">' + chair + " · " + asset + "</div>" +
-        '<div class="fc-dir ' + dir + '">' + (locked ? ("LOCKED " + dir) : dir) + "</div>" +
-        '<div class="fc-meta">' + (locked ? "FOLLOW THIS" : "No lock") +
-          (bits.length ? "<br/>" + bits.join(" · ") : "") + "</div>" +
-      "</article>"
-    );
-  }
-  function renderFollower() {
-    const host = document.getElementById("followerBoards");
-    if (!host) return;
-    const btc = (state && (state.btc || (state.tables && state.tables.bitcoin))) || state || {};
-    const eth = (state && (state.eth || (state.tables && state.tables.ethereum))) || null;
-    host.innerHTML =
-      _followerLockCard(btc, "SATOSHI", "BTC") +
-      _followerLockCard(eth || {}, "VITALIK", "ETH");
-  }
-
   function setMode(next) {
     // Settings requires admin unlock for this browser session
     if (next === "settings") {
@@ -4042,18 +3907,8 @@ function drawCandleChart() {
         return;
       }
     }
-    if (next === "follower") {
-      const unlocked = (typeof isFollowerUnlocked === "function") ? isFollowerUnlocked() : false;
-      if (!unlocked) {
-        if (typeof requestFollowerUnlock === "function") {
-          requestFollowerUnlock(() => {
-            if (typeof isFollowerUnlocked === "function" && isFollowerUnlocked()) {
-              setMode("follower");
-            }
-          });
-        }
-        return;
-      }
+    if (next === "follower" && !document.body.classList.contains("follower-unlocked")) {
+      return;
     }
     const prevMode = mode;
     mode = next;
@@ -4104,8 +3959,8 @@ function drawCandleChart() {
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
-    if (mode === "follower") {
-      try { renderFollower(); } catch (e) {}
+    if (mode === "follower" && typeof window.renderFollower === "function") {
+      try { window.renderFollower(); } catch (e) {}
     }
     if (mode === "settings" && prevMode !== "settings") {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
@@ -4250,8 +4105,8 @@ function drawCandleChart() {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
     }
-    if (mode === "follower") {
-      try { renderFollower(); } catch (e) {}
+    if (mode === "follower" && typeof window.renderFollower === "function") {
+      try { window.renderFollower(); } catch (e) {}
     }
     if (mode === "charts" && !deskCinematicOn()) drawCharts();
 
@@ -4411,10 +4266,10 @@ function drawCandleChart() {
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!el.isContentEditable;
     };
     if (typing(t) || typing(a)) return true;
-    if (t && t.closest && (t.closest("#adminGate") || t.closest("#followerGate") || t.closest("#settingsView") || t.closest("#passwordGate"))) return true;
+    if (t && t.closest && (t.closest("#adminGate") || t.closest("#fgGate") || t.closest("#settingsView") || t.closest("#passwordGate"))) return true;
     const admin = document.getElementById("adminGate");
     if (admin && !admin.classList.contains("hidden")) return true;
-    const fol = document.getElementById("followerGate");
+    const fol = document.getElementById("fgGate");
     if (fol && !fol.classList.contains("hidden")) return true;
     const pass = document.getElementById("passwordGate");
     if (pass && !pass.classList.contains("hidden")) return true;
@@ -4428,7 +4283,9 @@ function drawCandleChart() {
     if (deskHotkeysBlocked(e)) return;
     if (e.key === "m" || e.key === "M") {
       // cycle Screensaver → Dashboard → Charts
-      const order = ["art", "dashboard", "bots", "ranks", "paper", "follower", "charts", "settings"];
+      const order = (typeof window.__deskModeCycle === "function")
+        ? window.__deskModeCycle()
+        : ["art", "dashboard", "bots", "ranks", "paper", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -4448,7 +4305,6 @@ function drawCandleChart() {
     if (e.key === "5") setMode("paper");
     if (e.key === "6") setMode("charts");
     if (e.key === "7") setMode("settings");
-    if (e.key === "8") setMode("follower");
     if (e.key === "x" || e.key === "X") setBeastMode(!beastMode);
     if (e.key === "?" || (e.shiftKey && e.key === "/")) {
       const tag = (e.target && e.target.tagName) || "";
@@ -5035,7 +4891,7 @@ function drawCandleChart() {
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
       try { if (mode === "charts" && !deskCinematicOn()) drawCharts(); } catch (e) {}
-      try { if (mode === "follower") renderFollower(); } catch (e) {}
+      try { if (mode === "follower" && typeof window.renderFollower === "function") window.renderFollower(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;

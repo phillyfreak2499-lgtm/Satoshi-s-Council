@@ -62,6 +62,8 @@ services:
       # App reads env first, else /etc/secrets/COINGLASS_API_KEY. Never commit the key.
       # Follower locks 2–3: set FOLLOWER_PASSWORD_2 and FOLLOWER_PASSWORD_3 in the
       # Dashboard. Never put the values in this file.
+      # Optional lock ping: LOCK_PING_URL (or FOLLOWER_PING_URL) in the Dashboard.
+      # Fired on Follower unlock and Live on/off. Never put the URL in this file.
 
   # Nightly huddle + keep-alive (Starter doesn't sleep, but Cron guarantees 3 AM CT run)
   - type: cron
