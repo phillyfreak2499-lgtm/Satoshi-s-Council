@@ -33,8 +33,8 @@ class Settings(BaseSettings):
 
     # Polling / analysis cadence — dual hourly on 2 CPU / 4 GB
     ANALYSIS_INTERVAL: float = 4.0          # fallback / single-table
-    ANALYSIS_INTERVAL_BTC: float = 4.0
-    ANALYSIS_INTERVAL_ETH: float = 4.0
+    ANALYSIS_INTERVAL_BTC: float = 4.5
+    ANALYSIS_INTERVAL_ETH: float = 4.5
     HTTP_TIMEOUT: float = 4.0
     KLINE_LIMIT: int = 90
     ANALYSIS_INTERVAL_FLAT: float = 6.0
@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     DUAL_SPOT: bool = True
     PARALLEL_AGENTS: bool = True
     PARALLEL_AGENT_LIMIT: int = 5           # cap concurrency per table
+    KALSHI_MAX_QUOTE_AGE_S: float = 25.0  # no ENTRY lock if quote older than this
     KALSHI_ORDERBOOK_EVERY: int = 4
     SLOW_METRICS_TTL: float = 45.0
 
