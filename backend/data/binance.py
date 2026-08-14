@@ -17,7 +17,9 @@ _FUTURES_COOLDOWN = 3600.0
 
 
 class BinanceClient:
-    def __init__(self):
+    def __init__(self, symbol: str | None = None):
+        from backend.config import settings
+        self.symbol = symbol or getattr(settings, 'SYMBOL', 'BTCUSDT')
         self.spot_bases = [
             "https://data-api.binance.vision",
             "https://api.binance.com",
@@ -60,7 +62,7 @@ class BinanceClient:
         return r.json()
 
     async def get_klines(self, limit: int = 120) -> List[Dict[str, Any]]:
-        symbol = getattr(settings, "SYMBOL", "BTCUSDT")
+        symbol = self.symbol
         params = {"symbol": symbol, "interval": "1m", "limit": limit}
         last_err = None
         for i in range(len(self.spot_bases)):
@@ -113,7 +115,7 @@ class BinanceClient:
     async def get_premium_index(self) -> Dict[str, Any]:
         if not self._futures_allowed():
             return {}
-        symbol = getattr(settings, "SYMBOL", "BTCUSDT")
+        symbol = self.symbol
         for base in self.futures_bases:
             try:
                 url = f"{base}/fapi/v1/premiumIndex"
@@ -136,7 +138,7 @@ class BinanceClient:
     async def get_open_interest(self) -> Dict[str, Any]:
         if not self._futures_allowed():
             return {}
-        symbol = getattr(settings, "SYMBOL", "BTCUSDT")
+        symbol = self.symbol
         for base in self.futures_bases:
             try:
                 url = f"{base}/fapi/v1/openInterest"
