@@ -1,10 +1,10 @@
-import time
 """
 Council orchestrator – wires pipeline, agents, leader, store, and continuous loop.
 Includes nested sub-council micro-bots behind each specialist.
 """
 from __future__ import annotations
 import asyncio
+import time
 from typing import Any, Dict, List
 from datetime import datetime, timezone
 from loguru import logger
@@ -111,6 +111,8 @@ class Council:
         self._task: asyncio.Task | None = None
         self.running = False
         self._last_learned_ids: set = set()
+        self._shadow_book: list = []
+        self._last_settle_review = None
         self.huddle = NightlyHuddle()
 
     async def start(self):
@@ -440,6 +442,10 @@ class Council:
             ml = parse_mins_left(close_t or market_data.get("close_time"))
             if ml is not None:
                 regime_features["mins_left"] = ml
+            # Stable hourly window id — ATM ticker hops must not clear the lock
+            ct_id = close_time or close_t or market_data.get("close_time")
+            if ct_id:
+                regime_features["close_time"] = ct_id
             # Bid-ask spread in cents for Chair gate
             try:
                 bid = market_data.get("kalshi_yes_bid")
