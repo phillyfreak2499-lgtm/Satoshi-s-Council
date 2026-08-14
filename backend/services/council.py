@@ -141,6 +141,12 @@ class Council:
             logger.info(f"Adaptive weights restored from {n} windows")
         except Exception as e:
             logger.debug(f"Adaptive rebuild: {e}")
+        # Paint lifetime log / huddle from disk before the first analyze_once.
+        # Does not create, truncate, or delete SQLite / brain files.
+        try:
+            await self.hydrate_persisted_desk()
+        except Exception as e:
+            logger.debug(f"desk hydrate skip ({self.asset}): {e}")
         self.running = True
         self._task = asyncio.create_task(self._loop())
         logger.info(f"Council continuous analysis started asset={self.asset} leader={self.leader_name}")
@@ -822,9 +828,86 @@ class Council:
             )
         return learned
 
+    async def hydrate_persisted_desk(self) -> Dict[str, Any]:
+        """Read lifetime log + huddle from disk into latest_state.
+
+        Used after deploy / process start so /api/state is not an empty
+        'Initializing… 50%' shell. Never deletes council.db, brain, or
+        learning JSON — analyze_once also only reads get_accuracy.
+        """
+        acc = None
+        try:
+            acc = await self.store.get_accuracy(asset=self.asset)
+            if isinstance(acc, dict):
+                acc = dict(acc)
+                acc["hydrating"] = False
+                acc["hydrated"] = True
+        except Exception as e:
+            logger.debug(f"accuracy hydrate skip ({self.asset}): {e}")
+            acc = None
+        huddle = None
+        try:
+            huddle = self.huddle.status()
+        except Exception:
+            huddle = None
+        live = self.latest_state or {}
+        if live and (live.get("accuracy") or {}).get("hydrated"):
+            # Keep a live analyze_once payload; only fill missing huddle.
+            if huddle and not live.get("huddle"):
+                live = dict(live)
+                live["huddle"] = huddle
+                self.latest_state = live
+            return live
+        seed = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "decision": {
+                "direction": "WAIT",
+                "confidence": 50,
+                "summary": "Initializing...",
+                "locked_call": None,
+                "p_finish": None,
+                "ev_cents": None,
+            },
+            "agents": live.get("agents") or [],
+            "weights": self.leader.weights,
+            "market": live.get("market") or {},
+            "health": live.get("health") or {},
+            "sub_council_count": live.get("sub_council_count") or 0,
+            "accuracy": acc if acc is not None else {
+                "correct": 0,
+                "total": 0,
+                "wrong": 0,
+                "accuracy_pct": None,
+                "pending": 0,
+                "streak": 0,
+                "wrong_streak": 0,
+                "label": "0/0 · —",
+                "hydrating": True,
+            },
+            "hydrating": acc is None,
+            "locked_call": live.get("locked_call"),
+            "p_finish": live.get("p_finish"),
+            "ev_cents": live.get("ev_cents"),
+            "law": self.law.status(),
+            "learning": self.learner.snapshot(),
+            "hierarchy": self.learner.hierarchy_ranks(),
+            "huddle": huddle or live.get("huddle") or {},
+        }
+        self.latest_state = seed
+        logger.info(
+            f"[{self.asset}] Desk hydrated from disk "
+            f"hits={((acc or {}).get('total') if acc else 0)} "
+            f"(no storage reset)"
+        )
+        return seed
+
     def get_state(self) -> Dict[str, Any]:
         # Cold-start safe: never reference undefined names in the fallback.
-        base = self.latest_state or {
+        # Empty accuracy here is hydrating — not a disk wipe. No log/open
+        # arrays so the UI will not paint LIFETIME LOG EMPTY over a reload.
+        if self.latest_state:
+            return self.latest_state
+        return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "decision": {
                 "direction": "WAIT",
@@ -839,6 +922,7 @@ class Council:
             "market": {},
             "health": {},
             "sub_council_count": 0,
+            "hydrating": True,
             "accuracy": {
                 "correct": 0,
                 "total": 0,
@@ -848,6 +932,7 @@ class Council:
                 "streak": 0,
                 "wrong_streak": 0,
                 "label": "0/0 · —",
+                "hydrating": True,
             },
             "locked_call": None,
             "p_finish": None,
@@ -856,7 +941,6 @@ class Council:
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),
         }
-        return base
 
     async def maybe_reweight(self):
         """Periodic snapshot of agent stats (adaptive learner runs continuously)."""

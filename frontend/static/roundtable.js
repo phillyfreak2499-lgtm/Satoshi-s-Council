@@ -2543,10 +2543,36 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
   }
 
+  let lastHydratedAcc = null;
+
+  function accuracyIsHydrating(acc) {
+    if (acc && acc.hydrating) return true;
+    if (state && state.hydrating && !(acc && (Array.isArray(acc.log) || Array.isArray(acc.recent)))) {
+      return true;
+    }
+    const summary = (state && state.decision && state.decision.summary) || "";
+    const hasLogKey = !!(acc && (Array.isArray(acc.log) || Array.isArray(acc.recent)));
+    if (/initializing/i.test(summary) && !hasLogKey) return true;
+    return false;
+  }
+
   function updateAccuracy(acc) {
     const detailEl = document.getElementById("accuracyDetail");
     const callLogEl = document.getElementById("callLog");
     const callLogMeta = document.getElementById("callLogMeta");
+    const hydrating = accuracyIsHydrating(acc);
+    const hasLogKey = !!(acc && (Array.isArray(acc.log) || Array.isArray(acc.recent)));
+    const hasRows = !!(acc && (
+      (Array.isArray(acc.log) && acc.log.length) ||
+      (Array.isArray(acc.recent) && acc.recent.length) ||
+      (Array.isArray(acc.open) && acc.open.length)
+    ));
+    const hasTotals = !!(acc && ((acc.total || 0) > 0 || (acc.pending || 0) > 0));
+    if (hydrating && !hasRows && !hasTotals && lastHydratedAcc) {
+      acc = lastHydratedAcc;
+    } else if (acc && (hasLogKey || hasTotals || acc.hydrated)) {
+      lastHydratedAcc = acc;
+    }
     const hrPct = document.getElementById("hrPct");
     const hrCorrect = document.getElementById("hrCorrect");
     const hrWrong = document.getElementById("hrWrong");
@@ -2694,8 +2720,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
 
       if (!parts.length) {
-        callLogEl.innerHTML = `<div class="call-empty">LIFETIME LOG EMPTY<br/>UP / DOWN / 1/4 HOLD path-calls accumulate here<br/>Persists across sessions</div>`;
+        if (hydrating && !hasLogKey) {
+          if (callLogEl.dataset.hydrated === "1") {
+            // Keep the last painted log — cold payload is not a wipe
+          } else {
+            callLogEl.innerHTML = `<div class="call-empty">Loading lifetime log…<br/>Hydrating from disk — not a reset</div>`;
+          }
+        } else {
+          callLogEl.innerHTML = `<div class="call-empty">LIFETIME LOG EMPTY<br/>UP / DOWN / 1/4 HOLD path-calls accumulate here<br/>Persists across sessions</div>`;
+          callLogEl.dataset.hydrated = "";
+        }
       } else {
+        callLogEl.dataset.hydrated = "1";
         callLogEl.innerHTML = parts.join("");
       }
     }
@@ -2708,10 +2744,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function resizeCandleChart() {
     if (!candleCanvas || !candleCanvas.parentElement) return;
+    if (deskCinematicOn()) return;
     const parent = candleCanvas.parentElement;
     const w = Math.max(180, parent.clientWidth - 8);
     const h = Math.max(200, parent.clientHeight - (parent.querySelector(".panel-head")?.offsetHeight || 36) - 8);
     if (candleCanvas.width !== w || candleCanvas.height !== h) {
+      // Setting width/height clears pixels. Keep last tape if we cannot redraw.
+      const raw = ((state && state.market) || {}).candles || [];
+      if (raw.length < 2 && candleCanvas.dataset.hasTape === "1") return;
       candleCanvas.width = w;
       candleCanvas.height = h;
     }
@@ -2984,11 +3024,16 @@ function drawCandleChart() {
 
   function fitCanvas(canvas) {
     if (!canvas || !canvas.parentElement) return null;
+    if (deskCinematicOn()) return canvas.getContext("2d");
     const parent = canvas.parentElement;
     const head = parent.querySelector(".chart-card-head");
     const w = Math.max(120, parent.clientWidth);
     const h = Math.max(80, parent.clientHeight - (head ? head.offsetHeight : 0));
     if (canvas.width !== w || canvas.height !== h) {
+      const raw = ((state && state.market) || {}).candles || [];
+      if (raw.length < 2 && canvas.dataset.hasTape === "1") {
+        return canvas.getContext("2d");
+      }
       canvas.width = w;
       canvas.height = h;
     }
@@ -3463,10 +3508,13 @@ function drawCandleChart() {
     }
     if (badge) badge.classList.toggle("active", !!h.in_huddle);
     if (status) {
-      status.textContent = h.in_huddle ? "IN SESSION" : (h.next_huddle_hint || "—").replace("Next huddle in ", "");
-      if (!h.in_huddle && h.next_huddle_hint) {
+      if (h.in_huddle) {
+        status.textContent = "IN SESSION";
+      } else if (h.next_huddle_hint) {
+        status.textContent = String(h.next_huddle_hint).replace("Next huddle in ", "");
         status.title = h.next_huddle_hint;
       }
+      // else keep last chip — empty huddle on cold start must not wipe to —
     }
     if (banner) {
       if (h.in_huddle) {
@@ -4771,6 +4819,7 @@ function drawCandleChart() {
       wrap.classList.remove("hidden");
       wrap.classList.add("active");
       wrap.setAttribute("aria-hidden", "false");
+      if (fallback) fallback.hidden = false;
       return;
     }
     const gate = document.getElementById("summonGate");
@@ -4784,15 +4833,23 @@ function drawCandleChart() {
     wrap.classList.add("active");
     fitVideoToScreen(vid);
     wrap.setAttribute("aria-hidden", "false");
-    if (fallback) fallback.hidden = true;
+    if (fallback) fallback.hidden = false;
     vid.muted = !!soundMuted;
     vid.playsInline = true;
     vid.setAttribute("playsinline", "");
     vid.setAttribute("webkit-playsinline", "");
 
+    let loadTimer = null;
+    let loadGen = 0;
+    const clearLoadTimer = () => {
+      if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
+    };
+
     const cleanup = () => {
       celebratePlaying = false;
       document.body.classList.remove("zt-cinematic");
+      clearLoadTimer();
+      loadGen += 1;
       try { vid.pause(); } catch (e) {}
       wrap.classList.add("hidden");
       wrap.classList.remove("active");
@@ -4814,17 +4871,9 @@ function drawCandleChart() {
       if (fallback) fallback.hidden = false;
     };
 
-    // Files that exist in this repo. /zt-celebrate.mp4 is not checked in.
-    const sources = [
-      "/static/video/money-closeup.mp4",
-      "/zt-intro.mp4",
-      "/summon-council.mp4",
-      "/static/zt-intro.mp4",
-      "/static/summon-council.mp4",
-      "/zt-celebrate.mp4",
-    ];
-
-    const playUrl = (url) => {
+    const playReady = () => {
+      if (!celebratePlaying) return;
+      clearLoadTimer();
       const p = vid.play();
       if (p && p.then) {
         p.then(() => {
@@ -4841,32 +4890,67 @@ function drawCandleChart() {
             keepOverlay();
           }
         });
+      } else {
+        keepOverlay();
       }
     };
 
+    // Files that exist in this repo. /zt-celebrate.mp4 is not checked in.
+    const sources = [
+      "/static/video/money-closeup.mp4",
+      "/zt-intro.mp4",
+      "/summon-council.mp4",
+      "/static/zt-intro.mp4",
+      "/static/summon-council.mp4",
+      "/zt-celebrate.mp4",
+    ];
+
     let srcIdx = 0;
+    const LOAD_MS = 1500;
+
     const tryNext = () => {
+      clearLoadTimer();
       if (!celebratePlaying) return;
       if (srcIdx >= sources.length) {
         keepOverlay();
         return;
       }
+      const gen = ++loadGen;
       const url = sources[srcIdx++];
       vid.onerror = null;
       vid.onloadeddata = null;
       vid.oncanplay = null;
       try { vid.pause(); } catch (e) {}
+      try {
+        while (vid.firstChild) vid.removeChild(vid.firstChild);
+      } catch (e) {}
       vid.src = url;
-      vid.onerror = () => tryNext();
-      vid.oncanplay = () => playUrl(url);
-      try { vid.load(); } catch (e) { tryNext(); }
+      const ok = () => { if (gen !== loadGen) return; playReady(); };
+      const fail = () => { if (gen !== loadGen) return; tryNext(); };
+      vid.onerror = fail;
+      vid.oncanplay = ok;
+      vid.onloadeddata = () => { if (vid.readyState >= 2) ok(); };
+      try { vid.load(); } catch (e) { tryNext(); return; }
+      loadTimer = setTimeout(() => { if (gen !== loadGen) return; tryNext(); }, LOAD_MS);
     };
-    vid.onerror = null;
-    try {
-      while (vid.firstChild) vid.removeChild(vid.firstChild);
-      vid.removeAttribute("src");
-    } catch (e) {}
-    tryNext();
+
+    // Keep preloaded <source> tags — stripping them caused a ~15s black hang.
+    const gen0 = ++loadGen;
+    const ok0 = () => { if (gen0 !== loadGen) return; playReady(); };
+    const fail0 = () => { if (gen0 !== loadGen) return; tryNext(); };
+    vid.onerror = fail0;
+    vid.oncanplay = ok0;
+    vid.onloadeddata = () => { if (vid.readyState >= 2) ok0(); };
+    if (vid.readyState >= 2) {
+      playReady();
+    } else {
+      try { vid.load(); } catch (e) { tryNext(); }
+      loadTimer = setTimeout(() => {
+        if (gen0 !== loadGen) return;
+        if (vid.readyState >= 2) { playReady(); return; }
+        tryNext();
+      }, LOAD_MS);
+    }
     if (reason === "streak") {
       try { playSfxReveal(); } catch (e) {}
     }

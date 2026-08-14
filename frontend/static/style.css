@@ -4083,42 +4083,90 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   padding-bottom: 18px;
 }
 
-/* Tab highlight follows body.mode-* so BOTS cannot stay lit on RANKS */
-body.mode-ranks #tabBots,
-body.mode-ranks #tabBots.active,
-body.beast-mode.mode-ranks #tabBots,
-body.beast-mode.mode-ranks #tabBots.active,
-body.mode-art #tabBots,
-body.mode-floor #tabBots,
-body.mode-dashboard #tabBots,
-body.mode-paper #tabBots,
-body.mode-charts #tabBots,
-body.mode-settings #tabBots,
-body.mode-bots #tabRanks,
-body.mode-bots #tabRanks.active,
-body.beast-mode.mode-bots #tabRanks,
-body.beast-mode.mode-bots #tabRanks.active,
-body.mode-art #tabRanks,
-body.mode-floor #tabRanks,
-body.mode-dashboard #tabRanks,
-body.mode-paper #tabRanks,
-body.mode-charts #tabRanks,
-body.mode-settings #tabRanks {
+/* Tab highlight follows body.mode-* so DASHBOARD cannot stay lit on CHARTS
+   (same lock as BOTS→RANKS). Wait until a mode-* class exists so Table
+   is not unstyled before setMode("art") on boot. */
+body[class*="mode-"]:not(.mode-dashboard) #tabDashboard,
+body[class*="mode-"]:not(.mode-dashboard) #tabDashboard.active,
+body.beast-mode[class*="mode-"]:not(.mode-dashboard) #tabDashboard,
+body.beast-mode[class*="mode-"]:not(.mode-dashboard) #tabDashboard.active,
+body[class*="mode-"]:not(.mode-bots) #tabBots,
+body[class*="mode-"]:not(.mode-bots) #tabBots.active,
+body.beast-mode[class*="mode-"]:not(.mode-bots) #tabBots,
+body.beast-mode[class*="mode-"]:not(.mode-bots) #tabBots.active,
+body[class*="mode-"]:not(.mode-ranks) #tabRanks,
+body[class*="mode-"]:not(.mode-ranks) #tabRanks.active,
+body.beast-mode[class*="mode-"]:not(.mode-ranks) #tabRanks,
+body.beast-mode[class*="mode-"]:not(.mode-ranks) #tabRanks.active,
+body[class*="mode-"]:not(.mode-charts) #tabCharts,
+body[class*="mode-"]:not(.mode-charts) #tabCharts.active,
+body.beast-mode[class*="mode-"]:not(.mode-charts) #tabCharts,
+body.beast-mode[class*="mode-"]:not(.mode-charts) #tabCharts.active,
+body[class*="mode-"]:not(.mode-paper) #tabPaper,
+body[class*="mode-"]:not(.mode-paper) #tabPaper.active,
+body.beast-mode[class*="mode-"]:not(.mode-paper) #tabPaper,
+body.beast-mode[class*="mode-"]:not(.mode-paper) #tabPaper.active,
+body[class*="mode-"]:not(.mode-settings) #tabSettings,
+body[class*="mode-"]:not(.mode-settings) #tabSettings.active,
+body.beast-mode[class*="mode-"]:not(.mode-settings) #tabSettings,
+body.beast-mode[class*="mode-"]:not(.mode-settings) #tabSettings.active,
+body[class*="mode-"]:not(.mode-floor) #tabFloor,
+body[class*="mode-"]:not(.mode-floor) #tabFloor.active,
+body.beast-mode[class*="mode-"]:not(.mode-floor) #tabFloor,
+body.beast-mode[class*="mode-"]:not(.mode-floor) #tabFloor.active,
+body[class*="mode-"]:not(.mode-art) #tabScreensaver,
+body[class*="mode-"]:not(.mode-art) #tabScreensaver.active,
+body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver,
+body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver.active {
   color: var(--muted) !important;
   border-color: transparent !important;
   background: transparent !important;
   box-shadow: none !important;
   text-shadow: none !important;
   filter: none !important;
+  transition: none !important;
 }
+body.mode-dashboard #tabDashboard,
+body.mode-dashboard #tabDashboard.active,
 body.mode-bots #tabBots,
 body.mode-bots #tabBots.active,
 body.mode-ranks #tabRanks,
-body.mode-ranks #tabRanks.active {
+body.mode-ranks #tabRanks.active,
+body.mode-charts #tabCharts,
+body.mode-charts #tabCharts.active,
+body.mode-paper #tabPaper,
+body.mode-paper #tabPaper.active,
+body.mode-settings #tabSettings,
+body.mode-settings #tabSettings.active,
+body.mode-floor #tabFloor,
+body.mode-floor #tabFloor.active,
+body.mode-art #tabScreensaver,
+body.mode-art #tabScreensaver.active {
   color: var(--blade) !important;
   border-color: rgba(0, 232, 255, 0.5) !important;
   background: rgba(0, 232, 255, 0.08) !important;
   box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+  transition: none !important;
+}
+body.beast-mode.mode-dashboard #tabDashboard,
+body.beast-mode.mode-dashboard #tabDashboard.active,
+body.beast-mode.mode-bots #tabBots,
+body.beast-mode.mode-bots #tabBots.active,
+body.beast-mode.mode-ranks #tabRanks,
+body.beast-mode.mode-ranks #tabRanks.active,
+body.beast-mode.mode-charts #tabCharts,
+body.beast-mode.mode-charts #tabCharts.active,
+body.beast-mode.mode-paper #tabPaper,
+body.beast-mode.mode-paper #tabPaper.active,
+body.beast-mode.mode-settings #tabSettings,
+body.beast-mode.mode-settings #tabSettings.active,
+body.beast-mode.mode-floor #tabFloor,
+body.beast-mode.mode-floor #tabFloor.active,
+body.beast-mode.mode-art #tabScreensaver,
+body.beast-mode.mode-art #tabScreensaver.active {
+  border-color: rgba(240, 193, 74, 0.7) !important;
+  color: #ffe49a !important;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.4) !important;
 }
 
 /* Keep huddle chip text at 1280 — cinematic must not blank it */
