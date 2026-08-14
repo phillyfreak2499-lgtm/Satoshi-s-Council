@@ -3223,3 +3223,87 @@ body:not(.floor-mode) .floor-money-rain {
   opacity: 0 !important;
   pointer-events: none;
 }
+
+
+/* ===== Status strip – big locked call ===== */
+#finalDecision.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  padding: 0.65rem 1.1rem;
+  background: linear-gradient(180deg, rgba(12, 18, 28, 0.95), rgba(6, 10, 16, 0.98));
+  border-top: 1px solid rgba(0, 255, 200, 0.18);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+#finalDecision .label {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: rgba(140, 180, 200, 0.75);
+  font-weight: 600;
+}
+#decisionPhase {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+#decisionPhase.phase-entry {
+  color: #7ee8ff;
+  background: rgba(0, 180, 255, 0.15);
+  box-shadow: 0 0 12px rgba(0, 180, 255, 0.25);
+}
+#decisionPhase.phase-mid {
+  color: #ffd56a;
+  background: rgba(255, 180, 40, 0.14);
+  box-shadow: 0 0 12px rgba(255, 180, 40, 0.2);
+}
+#decisionPhase.phase-final {
+  color: #ff9b7a;
+  background: rgba(255, 100, 60, 0.14);
+  box-shadow: 0 0 12px rgba(255, 100, 60, 0.22);
+}
+#decisionPhase.phase-hold {
+  color: #9aa7b8;
+  background: rgba(120, 140, 160, 0.12);
+}
+#finalDecision #decisionDir {
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-shadow: 0 0 18px currentColor;
+}
+#finalDecision #decisionDir.UP { color: #3dff9a; }
+#finalDecision #decisionDir.DOWN { color: #ff5c6a; }
+#finalDecision #decisionDir.WAIT,
+#finalDecision #decisionDir.LOCKED { color: #c0c8d4; }
+#decisionConf {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e8f0ff;
+  opacity: 0.92;
+}
+#decisionLock {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8fd4ff;
+  letter-spacing: 0.04em;
+}
+#decisionLock.is-locked {
+  color: #7ee8ff;
+  text-shadow: 0 0 10px rgba(0, 220, 255, 0.45);
+}
+#decisionSummary {
+  flex: 1 1 220px;
+  font-size: 0.82rem;
+  color: rgba(190, 210, 230, 0.88);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(52vw, 640px);
+}
