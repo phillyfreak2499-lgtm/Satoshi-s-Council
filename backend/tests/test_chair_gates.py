@@ -148,6 +148,18 @@ class LeaderPriceEdgeTests(unittest.TestCase):
         self.assertEqual(late["phase"], "late")
         self.assertTrue(ev_gate_blocks(late["p_finish"], late["ev_cents"], late["min_p"], late["min_ev"]))
 
+    def test_wait_keeps_priced_edge_on_state(self):
+        chair = Leader()
+        chair._last_p_finish = 0.48
+        chair._last_ev_cents = 1.2
+        chair._last_ev_phase = "early"
+        empty = chair._price_edge(48, None, 50.0, {"spread_cents": 2.0, "mins_left": 50})
+        self.assertIsNone(empty["p_finish"])
+        kept_p = empty["p_finish"] if empty["p_finish"] is not None else chair._last_p_finish
+        kept_ev = empty["ev_cents"] if empty["ev_cents"] is not None else chair._last_ev_cents
+        self.assertEqual(kept_p, 0.48)
+        self.assertEqual(kept_ev, 1.2)
+
     def test_locked_call_carries_p_finish(self):
         chair = Leader()
         chair._set_window_lock("KXBTCD-TEST", "UP", 72, 0.8, up_pct=48.0, call_phase="entry")

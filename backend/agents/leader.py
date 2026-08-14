@@ -1271,9 +1271,10 @@ class Leader:
         if live_odds is None and live_lean in ("UP", "DOWN") and up_pct is not None:
             live_odds = float(up_pct) if live_lean == "UP" else (100.0 - float(up_pct))
         live_edge = self._price_edge(conf, live_lean, live_odds, regime_features)
-        p_finish = live_edge["p_finish"]
-        ev_cents = live_edge["ev_cents"]
-        ev_phase = live_edge["phase"]
+        # Keep the priced edge on WAIT so /api/state still shows why we stood down
+        p_finish = live_edge["p_finish"] if live_edge["p_finish"] is not None else self._last_p_finish
+        ev_cents = live_edge["ev_cents"] if live_edge["ev_cents"] is not None else self._last_ev_cents
+        ev_phase = live_edge["phase"] if live_edge["p_finish"] is not None else (self._last_ev_phase or live_edge["phase"])
         self._last_p_finish = p_finish
         self._last_ev_cents = ev_cents
         self._last_ev_phase = ev_phase
