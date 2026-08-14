@@ -3487,44 +3487,56 @@ function drawCandleChart() {
   const TUTORIAL_SLIDES = [
     {
       title: "WHAT IS THIS?",
-      body: "Satoshi’s Council is a team of specialist bots watching Bitcoin’s 15-minute Kalshi market.\n\nEach bot looks at one job (candles, volume, odds, panic…). Satoshi in the middle listens harder to bots that have been right, then makes one paper call: UP, DOWN, HOLD, or WAIT.\n\nThis is a training table — it does not place real orders for you.",
-      tip: "Think of it like a war room, not a single magic indicator.",
+      body: "Satoshi’s Council is a living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).\n\nEach bot has one job — candles, volume, odds, panic, cheap side, etc. The Chair (Satoshi) listens harder to bots that have been right, then locks exactly ONE high-quality paper call per window: UP or DOWN — or WAIT if there is no edge.\n\nThis is a research co-pilot and training table. It does not place real orders.",
+      tip: "Think war room, not magic indicator. Quality over quantity.",
       bots: null,
     },
     {
-      title: "HOW A CALL WORKS",
-      body: "1) Bots vote green (UP), red (DOWN), or neutral (WAIT).\n2) Ranked bots near Satoshi count more.\n3) Satoshi only goes full UP/DOWN when the top seats mostly agree.\n4) Weaker agreement can still make a smaller HOLD (scalp-sized) call.\n5) WAIT means “no clear edge — sit out.”",
-      tip: "Fewer good calls beat lots of noisy ones.",
+      title: "THE ONE-CALL RULE",
+      body: "GOAL CONTRACT (non-negotiable):\n\n• Exactly one directional guess per 15-minute window on how the window ends (BTC open → close).\n• Taken only at the best available odds.\n• Once the Chair locks the call, it is irreversible for that window.\n• WAIT is always preferred over a low-edge or noisy call.\n\nOne excellent guess beats three mediocre ones.",
+      tip: "Look for the big LOCKED plaque in the center of the table — that is the single decision a follower can trust.",
       bots: null,
     },
     {
-      title: "CORE BOTS",
-      body: "These seats read classic market structure — the “body” of the tape.",
-      tip: "You do not need to memorize every name. Colors on the table show how they are voting live.",
+      title: "THE 80% ODDS GATE",
+      body: "The Chair will only lock a call when the chosen side’s Kalshi price is under 80¢.\n\nWhy? Markets already priced at 80–99¢ offer poor payout for the risk. We want value — the side that still has room to run.\n\nIf the market is already expensive, the Council says WAIT even if bots are screaming.",
+      tip: "Best odds = higher potential payoff when we are right.",
+      bots: null,
+    },
+    {
+      title: "TABLE vs FLOOR",
+      body: "• TABLE — clean decision stage. The center shows the LOCKED call (or the GOAL badge when waiting).\n• FLOOR — the specialists live here (outer ring, hierarchy panel, debate log, color tally).\n\nWhen a lock fires, the table becomes the single source of truth. Floor bots remain visible so you can still see the debate that led to the call.",
+      tip: "Press the Floor tab for the immersive full-screen view. ESC returns to Table.",
+      bots: null,
+    },
+    {
+      title: "HOW A CALL IS MADE",
+      body: "1. Specialists vote UP / DOWN / WAIT with confidence.\n2. Ranked bots closer to the Chair count more (hierarchy + adaptive weights).\n3. Chair synthesizes confluence + pair affinity.\n4. If edge exists AND chosen side < 80¢ → LOCK (one call, irreversible).\n5. Otherwise → WAIT.\n\nAfter lock, the plaque shows direction, confidence, entry ¢, and “FOLLOW THIS”.",
+      tip: "HIT RATE only counts directional locks (WAIT is not a call).",
+      bots: null,
+    },
+    {
+      title: "CORE vs EDGE BOTS",
+      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on what public 15m data has favored: panic fades, cheap odds, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the floor show how they are voting live.",
+      tip: "Open the Bots tab anytime for the full field guide.",
       bots: "core",
     },
     {
-      title: "EDGE & RESEARCH BOTS",
-      body: "These seats lean on what public 15m Kalshi research has favored — panic fades, cheap odds, spot lag, and exhaustion.",
-      tip: "FADE / CHEAP / VEL / EXHAUST are the “new school” seats from backtests.",
-      bots: "edge",
-    },
-    {
-      title: "RIGHT OR WRONG?",
-      body: "A call is scored on Kalshi odds, not just the final BTC print.\n\n• Full call: odds need a solid move your way (path target).\n• HOLD: smaller move still counts.\n• Near 90%+: treated as locked-in.\n\nPaper money is scaled to that path move — like a scalp, not a full $1 contract fantasy.",
-      tip: "Open the Paper tab anytime to see wins, losses, and tallies.",
+      title: "SCORING & PAPER",
+      body: "Calls are graded on Kalshi odds path, not just the final BTC print.\n\n• Full UP/DOWN: needs a solid move your way after entry.\n• Near 90%+ at entry is treated as locked-in.\n• Paper P&L is path-scaled (like a scalp), not a full binary fantasy.\n\nOpen the Paper tab for wins, losses, hit rate, and tallies.",
+      tip: "Track average entry odds of locks — lower is usually better value.",
       bots: null,
     },
     {
-      title: "TABS YOU WILL USE",
-      body: "• Table — living council map\n• Dashboard — seat cards\n• Bots — full guide for every specialist\n• Ranks — who Satoshi trusts most\n• Paper — your practice scorecard\n• Charts — price context\n• Settings — BEAST MODE (max speed) on/off",
-      tip: "Press 1–7 to jump tabs. Press X to toggle BEAST.",
+      title: "TABS & CONTROLS",
+      body: "• Table — living council map (LOCKED plaque)\n• Floor — immersive table-only view\n• Dashboard — seat cards\n• Bots — full specialist guide\n• Ranks — who the Chair trusts most\n• Paper — practice scorecard\n• Charts — price context\n• Settings — BEAST MODE, sounds, knobs\n\nKeys: 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · ? Help",
+      tip: "HIT RATE badge (top) = Chair directional accuracy. LAW badge = enforcer status.",
       bots: null,
     },
     {
       title: "YOU ARE READY",
-      body: "When you hit Summon the Council, the fog lifts and the table comes alive.\n\nWatch colors change, Satoshi decide, and the lifetime log fill in. Start in BEAST if you want max refresh — or Standard on a lighter machine.\n\nWelcome to the table.",
-      tip: "You can replay this tutorial later by clearing Skip in the browser (localStorage).",
+      body: "When you Summon the Council the fog lifts and the table comes alive.\n\nWatch the floor vote, wait for a clean LOCKED plaque under 80¢, and follow that single call. Everything else is context.\n\nPaper-track expectancy before any size. Quality over quantity. One high-edge guess per window.",
+      tip: "Re-open this tutorial anytime from the Help / ? button in the header.",
       bots: null,
     },
   ];
@@ -3816,13 +3828,47 @@ function drawCandleChart() {
     step();
   }
 
-  function openTutorial() {
+  function openTutorial(fromHelp) {
     ensureAudio();
     playSfxClick();
+    const gateAlive = !!document.getElementById("summonGate");
+    const fromGate = gateAlive && !fromHelp;
+
+    // If gate is gone (already inside the app), build a standalone overlay
+    let tut = document.getElementById("gateTutorial");
+    let standalone = false;
+    if (!tut) {
+      standalone = true;
+      const overlay = document.createElement("div");
+      overlay.id = "helpTutorialOverlay";
+      overlay.className = "summon-gate";
+      overlay.style.zIndex = "9999";
+      overlay.innerHTML = `
+        <div class="gate-tutorial" id="gateTutorial" style="display:flex">
+          <div class="tut-card">
+            <div class="tut-step"><span id="tutStep">1</span> / <span id="tutTotal">9</span></div>
+            <h2 id="tutTitle">Welcome</h2>
+            <p id="tutBody"></p>
+            <p id="tutTip" class="tut-tip"></p>
+            <div id="tutBots" class="tut-bots" style="display:none"></div>
+            <div class="tut-actions">
+              <button type="button" id="tutBack" class="gate-btn gate-btn-ghost">Back</button>
+              <button type="button" id="tutSkip" class="gate-btn gate-btn-ghost">Close</button>
+              <button type="button" id="tutNext" class="gate-btn gate-btn-summon">Next</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      tut = document.getElementById("gateTutorial");
+    }
+
     const inner = document.getElementById("gateInner");
-    const tut = document.getElementById("gateTutorial");
     if (inner) inner.classList.add("hidden");
-    if (tut) tut.classList.remove("hidden");
+    if (tut) {
+      tut.classList.remove("hidden");
+      tut.style.display = "flex";
+    }
+
     let step = 0;
     const total = TUTORIAL_SLIDES.length;
     const title = document.getElementById("tutTitle");
@@ -3832,15 +3878,25 @@ function drawCandleChart() {
     const totalEl = document.getElementById("tutTotal");
     const next = document.getElementById("tutNext");
     const back = document.getElementById("tutBack");
+    const skip = document.getElementById("tutSkip");
     if (totalEl) totalEl.textContent = String(total);
 
-    // tip element (create once)
     let tipEl = document.getElementById("tutTip");
     if (!tipEl && body && body.parentNode) {
       tipEl = document.createElement("p");
       tipEl.id = "tutTip";
       tipEl.className = "tut-tip";
       body.parentNode.insertBefore(tipEl, botsEl || body.nextSibling);
+    }
+
+    function closeStandalone() {
+      const ov = document.getElementById("helpTutorialOverlay");
+      if (ov) {
+        try { ov.remove(); } catch (e) {}
+      } else if (tut) {
+        tut.classList.add("hidden");
+        tut.style.display = "none";
+      }
     }
 
     function renderBots(kind) {
@@ -3867,7 +3923,13 @@ function drawCandleChart() {
       renderBots(s.bots);
       if (stepEl) stepEl.textContent = String(step + 1);
       if (back) back.style.visibility = step === 0 ? "hidden" : "visible";
-      if (next) next.textContent = step >= total - 1 ? "Summon the Council" : "Next";
+      if (next) {
+        if (fromGate) {
+          next.textContent = step >= total - 1 ? "Summon the Council" : "Next";
+        } else {
+          next.textContent = step >= total - 1 ? "Done" : "Next";
+        }
+      }
     }
     render();
 
@@ -3880,6 +3942,17 @@ function drawCandleChart() {
         }
       };
     }
+    if (skip) {
+      skip.onclick = () => {
+        playSfxClick();
+        if (fromGate) {
+          if (tut) tut.classList.add("hidden");
+          runSummonSequence(window.__councilFog || null);
+        } else {
+          closeStandalone();
+        }
+      };
+    }
     if (next) {
       next.onclick = () => {
         if (step < total - 1) {
@@ -3888,8 +3961,12 @@ function drawCandleChart() {
           render();
         } else {
           playSfxClick();
-          if (tut) tut.classList.add("hidden");
-          runSummonSequence(window.__councilFog || null);
+          if (fromGate) {
+            if (tut) tut.classList.add("hidden");
+            runSummonSequence(window.__councilFog || null);
+          } else {
+            closeStandalone();
+          }
         }
       };
     }
@@ -3911,7 +3988,20 @@ function drawCandleChart() {
     const btnTut = document.getElementById("btnTutorial");
     const btnSum = document.getElementById("btnSummon");
     const btnSkip = document.getElementById("btnSkipGate");
-    if (btnTut) btnTut.addEventListener("click", () => { ensureAudio(); openTutorial(); });
+    if (btnTut) btnTut.addEventListener("click", () => { ensureAudio(); openTutorial(false); });
+    // Permanent Help button (works after gate is dismissed)
+    const btnHelp = document.getElementById("btnHelp");
+    if (btnHelp) btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
+    // Keyboard: ? opens tutorial anytime
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        ensureAudio();
+        openTutorial(true);
+      }
+    });
     if (btnSum) btnSum.addEventListener("click", () => { ensureAudio(); playSfxClick(); runSummonSequence(fog); });
     if (btnSkip) {
       btnSkip.addEventListener("click", () => {
