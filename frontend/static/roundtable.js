@@ -345,7 +345,7 @@
 
   let mode = "art"; // art | dashboard | charts
   let state = null;
-  let focusTable = "bitcoin"; // bitcoin | ethereum
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "bitcoin"; })();
   function tableState(which) {
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -379,10 +379,10 @@
   let glitchUntil = 0;
   let debateHistory = []; // REMOVED — debate log disabled for dual CPU room
 
-  // Market-open bell — one ring per new hourly window
+  // Market-open bell — one ring per new 15m window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
   let lastWindowKey = null;       // kalshi ticker or close_time
-  let lastClockBucket = null;     // fallback: floor(unix / 3600)
+  let lastClockBucket = null;     // fallback: floor(unix / 900)
   let audioCtx = null;
   let bellArmed = false;          // need a user gesture before AudioContext
 
@@ -444,7 +444,7 @@
   }
 
 
-  /** Short purple mist burst when a new hourly market opens (~5s). */
+  /** Short purple mist burst when a new 15m market opens (~5s). */
   /**
    * Professional volumetric purple mist — particle physics.
    * Soft billows + micro-sparks + ground fog, ~5s cinematic burst on new market.
@@ -759,8 +759,8 @@
   }
 
   function clockBucket(date = new Date()) {
-    // hourly UTC buckets aligned to clock
-    return Math.floor(date.getTime() / (60 * 60 * 1000));
+    // 15-minute UTC buckets aligned to clock
+    return Math.floor(date.getTime() / (15 * 60 * 1000));
   }
 
   function maybeRingForNewWindow(s) {
@@ -1349,11 +1349,15 @@
 
     // Left = Bitcoin / Satoshi, Right = Ethereum / Vitalik
     // Each side: chair + FULL specialist bot ring
-    drawTableWithBots(w * 0.25, h * 0.50, Math.min(w, h) * 0.18, "bitcoin", "SATOSHI · BTC");
-    drawTableWithBots(w * 0.75, h * 0.50, Math.min(w, h) * 0.18, "ethereum", "VITALIK · ETH");
+    drawTableWithBots(w * 0.25, h * 0.50, Math.min(w, h) * 0.18, "bitcoin", "SATOSHI · BTC", focusTable === "bitcoin");
+    drawTableWithBots(w * 0.75, h * 0.50, Math.min(w, h) * 0.18, "ethereum", "VITALIK · ETH", focusTable === "ethereum");
   }
 
-  function drawTableWithBots(cx, cy, radius, which, label) {
+  function drawTableWithBots(cx, cy, radius, which, label, focused) {
+    if (focused == null) focused = true;
+    ctx.save();
+    if (!focused) ctx.globalAlpha = 0.38;
+
     const st = tableState(which) || {};
     const d = st.decision || {};
     const lc = st.locked_call || d.locked_call || null;
@@ -1363,59 +1367,109 @@
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
     const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader");
 
-    // Table rings
-    const accent = which === "ethereum" ? "rgba(120, 255, 160, 0.4)" : "rgba(0, 220, 255, 0.4)";
+    const gold = "rgba(240, 193, 74, 0.95)";
+    const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.45)" : "rgba(0, 220, 255, 0.45)");
+    const pr = radius * 0.48; // portrait radius
+    const portraitY = cy - 4;
+    const ringR = radius * 1.55;
+
+    // Outer table rings (under everything)
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.strokeStyle = accent;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = focused ? 2.5 : 1.5;
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
-    ctx.strokeStyle = which === "ethereum" ? "rgba(120, 255, 160, 0.12)" : "rgba(0, 220, 255, 0.12)";
+    ctx.strokeStyle = locked ? "rgba(240, 193, 74, 0.2)" : (which === "ethereum" ? "rgba(120, 255, 160, 0.12)" : "rgba(0, 220, 255, 0.12)");
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Chair portrait
+    // Spokes FIRST — drawn under the leader photo; stop at portrait rim
+    const n = Math.max(agents.length, 1);
+    const botPts = [];
+    agents.forEach((a, i) => {
+      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const x = cx + Math.cos(ang) * ringR;
+      const y = cy + Math.sin(ang) * ringR;
+      const adir = String(a.direction || "WAIT").toUpperCase();
+      let col = "rgba(160,180,200,0.85)";
+      if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
+      if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
+      const confA = Number(a.confidence) || 50;
+      // endpoint on portrait rim (not through the face)
+      const dx = x - cx, dy = y - portraitY;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const stopR = pr + 2;
+      const ix = cx + (dx / dist) * stopR;
+      const iy = portraitY + (dy / dist) * stopR;
+      const spokeAlpha = 0.2 + Math.min(0.5, confA / 100 * 0.45);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(ix, iy);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.2;
+      ctx.globalAlpha = (focused ? 1 : 0.5) * spokeAlpha * 0.35;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(ix, iy);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = (focused ? 1 : 0.5) * spokeAlpha;
+      ctx.stroke();
+      ctx.globalAlpha = focused ? 1 : 0.38;
+      botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?" });
+    });
+
+    // Leader portrait ON TOP of spokes
     const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
-    const pr = radius * 0.48;
     if (img && img.complete && img.naturalWidth) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+      ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
       ctx.clip();
-      ctx.drawImage(img, cx - pr, cy - 4 - pr, pr * 2, pr * 2);
+      ctx.drawImage(img, cx - pr, portraitY - pr, pr * 2, pr * 2);
       ctx.restore();
-      ctx.beginPath();
-      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
-      ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.75)" :
-                        (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255,40,70,0.75)" :
-                        "rgba(200,220,255,0.4)";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
     } else {
-      // placeholder disk while image loads
       ctx.beginPath();
-      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+      ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
       ctx.fillStyle = "#0a1220";
       ctx.fill();
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 2;
-      ctx.stroke();
     }
+    // Gold ring when locked / focused, else direction color
+    ctx.beginPath();
+    ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
+    if (locked) {
+      ctx.strokeStyle = gold;
+      ctx.lineWidth = 3.2;
+      ctx.shadowColor = gold;
+      ctx.shadowBlur = 14;
+    } else if (focused) {
+      ctx.strokeStyle = which === "ethereum" ? "rgba(120,255,160,0.9)" : "rgba(0,220,255,0.9)";
+      ctx.lineWidth = 2.8;
+    } else {
+      ctx.strokeStyle = "rgba(200,220,255,0.35)";
+      ctx.lineWidth = 2;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Label + lock plaque
+    // Labels
     ctx.textAlign = "center";
     ctx.font = "700 11px Orbitron, monospace";
-    ctx.fillStyle = which === "ethereum" ? "#9dffc0" : "#7fe9ff";
-    ctx.fillText(label, cx, cy - radius - 10);
+    ctx.fillStyle = locked ? gold : (which === "ethereum" ? "#9dffc0" : "#7fe9ff");
+    ctx.fillText(label + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
 
     ctx.font = "700 12px Orbitron, monospace";
     if (locked) {
-      ctx.fillStyle = (dir === "UP" || dir === "UP_HOLD") ? "#39ff14" : "#ff2d55";
+      ctx.fillStyle = gold;
       ctx.fillText("LOCKED " + dir, cx, cy + pr + 16);
       ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "#d8f0ff";
+      ctx.fillStyle = "#f0d78a";
       const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
       ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, cy + pr + 30);
     } else {
@@ -1426,62 +1480,37 @@
       ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, cy + pr + 30);
     }
 
-    // Specialist bot ring around THIS table
-    const ringR = radius * 1.55;
-    const n = Math.max(agents.length, 1);
-    if (!agents.length) {
+    // Bot icons on top of spokes
+    if (!botPts.length) {
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(160,180,200,0.55)";
-      ctx.fillText("bots loading…", cx, cy + radius + 44);
-      return;
+      ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
+    } else {
+      botPts.forEach((bp) => {
+        try {
+          drawBotIcon(bp.name, bp.x, bp.y, 14, bp.col, bp.confA);
+        } catch (e) {
+          ctx.beginPath();
+          ctx.arc(bp.x, bp.y, 9, 0, Math.PI * 2);
+          ctx.fillStyle = bp.col;
+          ctx.fill();
+        }
+        const tag = (bp.a.display_name || bp.a.callsign || bp.name || "?").toString().slice(0, 7);
+        ctx.font = "600 8px Share Tech Mono, monospace";
+        ctx.fillStyle = "rgba(200,220,240,0.85)";
+        ctx.textAlign = "center";
+        ctx.fillText(tag, bp.x, bp.y + 20);
+      });
     }
-    agents.forEach((a, i) => {
-      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
-      const x = cx + Math.cos(ang) * ringR;
-      const y = cy + Math.sin(ang) * ringR;
-      const adir = String(a.direction || "WAIT").toUpperCase();
-      let col = "rgba(160,180,200,0.9)";
-      if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
-      if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
-      const name = a.agent_name || a.name || "?";
-      const confA = a.confidence || 50;
-      // spoke to leader — color matches bot vote
-      const confA2 = Number(a.confidence) || 50;
-      const spokeAlpha = 0.22 + Math.min(0.55, confA2 / 100 * 0.5);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(cx, cy);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 2.4;
-      ctx.globalAlpha = spokeAlpha * 0.4;
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 10;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(cx, cy);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 1.3;
-      ctx.globalAlpha = spokeAlpha;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      // icon
-      try {
-        drawBotIcon(name, x, y, 14, col, confA);
-      } catch (e) {
-        ctx.beginPath();
-        ctx.arc(x, y, 9, 0, Math.PI * 2);
-        ctx.fillStyle = col;
-        ctx.fill();
-      }
-      // short callsign
-      const tag = (a.display_name || a.callsign || name || "?").toString().slice(0, 7);
-      ctx.font = "600 8px Share Tech Mono, monospace";
-      ctx.fillStyle = "rgba(200,220,240,0.8)";
-      ctx.textAlign = "center";
-      ctx.fillText(tag, x, y + 20);
-    });
+
+    const mkt = st.market || {};
+    const series = mkt.series_ticker || mkt.ticker || which.toUpperCase();
+    const strike = mkt.floor_strike != null ? mkt.floor_strike : null;
+    ctx.font = "600 9px Share Tech Mono, monospace";
+    ctx.fillStyle = focused ? "rgba(180,200,220,0.75)" : "rgba(140,160,180,0.45)";
+    ctx.textAlign = "center";
+    ctx.fillText(String(series).slice(0, 18) + (strike != null ? (" · " + strike) : ""), cx, cy + ringR + 28);
+    ctx.restore();
   }
 
   function drawMiniTable(cx, cy, radius, which, label) {
@@ -2364,7 +2393,7 @@
       const parts = [];
 
       openRows.forEach(r => {
-        const tick = (r.ticker || "").replace(/^KX(BTC|ETH)(D|15M)-?/i, "") || "—";
+        const tick = (r.ticker || "").replace(/^KXBTC15M-?/i, "") || "—";
         const entry = r.entry_side_pct != null ? Number(r.entry_side_pct) : (r.open_price != null ? Number(r.open_price) : null);
         const peak = r.peak_side_pct != null ? Number(r.peak_side_pct) : (r.exit_price != null ? Number(r.exit_price) : null);
         let pathPts = r.path_move_pct != null ? Number(r.path_move_pct) : null;
@@ -2394,7 +2423,7 @@
               hour: "2-digit", minute: "2-digit",
             })
           : "";
-        const tick = (r.ticker || "").replace(/^KX(BTC|ETH)(D|15M)-?/i, "") || "—";
+        const tick = (r.ticker || "").replace(/^KXBTC15M-?/i, "") || "—";
         const entry = r.entry_side_pct != null ? Number(r.entry_side_pct) : (r.open_price != null ? Number(r.open_price) : null);
         const peak = r.peak_side_pct != null ? Number(r.peak_side_pct) : (r.exit_price != null ? Number(r.exit_price) : null);
         let pathPts = r.path_move_pct != null ? Number(r.path_move_pct) : null;
@@ -2996,7 +3025,7 @@ function drawCandleChart() {
 
 
   const BOT_GUIDE = {
-    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for hourly direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
+    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for 15m direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
     volume: { blurb: "Relative volume spikes and dry-ups vs price. Confirms moves when volume agrees.", subs: "SPIKE · DRYUP" },
     momentum: { blurb: "RSI + MACD-style short momentum. Continuation and soft mean-revert when stretched.", subs: "RSI · MACD" },
     orderflow: { blurb: "Taker pressure and book imbalance proxies + Kalshi mid lean.", subs: "BOOK · TAKER" },
@@ -3010,7 +3039,7 @@ function drawCandleChart() {
     session_tod: { blurb: "UTC session (Asia/Europe/US) priors, weekend dampening, early vs late window.", subs: "SESS · WINDOW" },
     whale: { blurb: "Whale-tape proxy: volume spikes, range expansion, taker aggression.", subs: "SPIKE · TAKER" },
     quorum: { blurb: "Counts how many seats lean each way and learns which headcount + combinations are usually right. Competes for rank.", subs: "SIZE · COMBO · FLOOR" },
-    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public hourly backtests.", subs: "30S · 60S · THR" },
+    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public 15m backtests.", subs: "30S · 60S · THR" },
     cheap: { blurb: "Value seat: lean the soft side when YES or NO is ≤42¢ — recovery toward fair, not chase expensive continuation.", subs: "YES · NO · BAND" },
     spotlag: { blurb: "Binance spot velocity in bps. Kalshi often lags CEX by seconds — follow hard spot bursts in the lag window.", subs: "30S · 60S · 3M" },
     exhaust: { blurb: "After a large 1h BTC run near high/low, if 5m flips against and Kalshi is still extreme, fade continuation.", subs: "1H · 5M · YES" },
@@ -3023,22 +3052,13 @@ function drawCandleChart() {
   function renderBotsGuide() {
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
-    // Prefer focused table agents/hierarchy when dual
-    let src = state;
-    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
-      src = tableState(focusTable) || state;
-    }
-    const focusLabel = (focusTable === "ethereum") ? "ETHEREUM · VITALIK TABLE" : "BITCOIN · SATOSHI TABLE";
-    const hier = (src && src.hierarchy) || (src && src.learning && src.learning.hierarchy) || [];
+    const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
     const rankMap = {};
     hier.forEach(r => { rankMap[r.agent] = r; });
-    const agents = (src && src.agents) || [];
+    const agents = (state && state.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    const banner = '<div class="dual-focus-banner" style="grid-column:1/-1;padding:10px 14px;margin-bottom:8px;border:1px solid rgba(0,220,255,0.25);border-radius:8px;font:700 13px Orbitron,monospace;color:' +
-      (focusTable === "ethereum" ? "#9dffc0" : "#7fe9ff") + '">BOTS · ' + focusLabel +
-      ' · use BTC/ETH tabs to switch · ' + agents.length + ' specialists voting</div>';
-    grid.innerHTML = banner + Object.keys(BOT_GUIDE).map(key => {
+    grid.innerHTML = Object.keys(BOT_GUIDE).map(key => {
       const g = BOT_GUIDE[key];
       const r = rankMap[key] || {};
       const ag = byName[key] || {};
@@ -3061,34 +3081,50 @@ function drawCandleChart() {
     }).join("");
   }
 
+
+  async function loadAutoPaper() {
+    try {
+      const asset = focusTable === "ethereum" ? "eth" : "btc";
+      const r = await fetch("/api/paper/auto?asset=" + asset, { cache: "no-store" });
+      if (!r.ok) return;
+      const data = await r.json();
+      const el = document.getElementById("paperAutoSummary");
+      if (el) {
+        el.textContent = (asset.toUpperCase()) + " auto · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0);
+      }
+      const list = document.getElementById("paperAutoList");
+      if (list && Array.isArray(data.recent)) {
+        list.innerHTML = data.recent.slice(0, 12).map(row => {
+          const ok = row.correct ? "RIGHT" : "WRONG";
+          const col = row.correct ? "#39ff14" : "#ff2d55";
+          return '<div class="paper-auto-row" style="color:'+col+'">' + ok + " · " + (row.direction||"") + " · " + (row.ticker||"") + " · " + (row.pnl!=null?row.pnl:"") + "</div>";
+        }).join("") || "<div class=\"paper-auto-row\">No finish-graded trades yet</div>";
+      }
+    } catch (e) {}
+  }
+
   function renderRanksBoard() {
     const table = document.getElementById("ranksTable");
     const phaseEl = document.getElementById("ranksPhase");
     const notesEl = document.getElementById("learnNotes");
     if (!table) return;
-    let src = state;
-    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
-      src = tableState(focusTable) || state;
-    }
-    if (phaseEl) {
-      phaseEl.textContent = (focusTable === "ethereum" ? "ETH · Vitalik" : "BTC · Satoshi") + " ranks";
-    }
-    const hier = (src && src.hierarchy) || (src && src.learning && src.learning.hierarchy) || [];
-    const agents = (src && src.agents) || [];
+    // Strict asset split — ranks for focused table only
+    const src = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const hier = (src.hierarchy) || (src.learning && src.learning.hierarchy) || [];
+    const agents = (src.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    const acc = (src && src.accuracy) || (state && state.accuracy) || {};
+    if (phaseEl) {
+      phaseEl.textContent = (focusTable === "ethereum" ? "ETH · Vitalik ranks (finish-only)" : "BTC · Satoshi ranks (finish-only)");
+    }
+    const acc = (src.accuracy) || (state && state.accuracy) || {};
     const n = acc.total || 0;
-    const thr = (src && src.decision && src.decision.threshold_used != null)
-      ? src.decision.threshold_used
-      : (state && state.decision && state.decision.threshold_used);
-    const edge = (src && src.decision && src.decision.edge_score != null)
-      ? src.decision.edge_score
-      : (state && state.decision && state.decision.edge_score);
+    const thr = state && state.decision && state.decision.threshold_used;
+    const edge = state && state.decision && state.decision.edge_score;
     const phase = n < 15
       ? ("COLD START · " + n + " settled — Chair is loose so the council can learn. Threshold " + (thr != null ? Number(thr).toFixed(2) : "—") + ".")
       : ("LEARNED · " + n + " settled · hit " + (acc.accuracy_pct != null ? acc.accuracy_pct + "%" : "—") + " · edge score " + (edge != null ? edge : "—") + " · thr " + (thr != null ? Number(thr).toFixed(2) : "—") + ".");
-    if (phaseEl) phaseEl.textContent = ((focusTable === "ethereum") ? "ETH · " : "BTC · ") + phase;
+    if (phaseEl) phaseEl.textContent = phase;
     const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span>LISTEN</span><span class="hide-sm">WT</span></div>';
     const rows = hier.filter(r => r.agent !== "law");
     const body = rows.map(r => {
@@ -3174,65 +3210,21 @@ function drawCandleChart() {
   }
 
 
-  function countVotes(agents) {
-    let up = 0, down = 0, wait = 0, hold = 0, swap = 0;
-    (agents || []).forEach(a => {
-      const d = (a && a.direction) || "WAIT";
-      if (d === "UP") up++;
-      else if (d === "DOWN") down++;
-      else if (d === "UP_HOLD" || d === "DOWN_HOLD") hold++;
-      else if (d === "SWAP") swap++;
-      else wait++;
-    });
-    return { up, down, wait, hold, swap };
-  }
-
   function updateColorTally(state) {
     const cc = (state && state.color_counts) || {};
     let up = cc.UP, down = cc.DOWN, wait = cc.WAIT, hold = cc.HOLD || 0, swap = cc.SWAP || 0;
     if (up == null && state && state.agents) {
-      const c = countVotes(state.agents);
-      up = c.up; down = c.down; wait = c.wait; hold = c.hold; swap = c.swap;
+      up = down = wait = hold = swap = 0;
+      state.agents.forEach(a => {
+        const d = a.direction || "WAIT";
+        if (d === "UP") up++;
+        else if (d === "DOWN") down++;
+        else if (d === "UP_HOLD" || d === "DOWN_HOLD") hold++;
+        else if (d === "SWAP") swap++;
+        else wait++;
+      });
     }
     up = up || 0; down = down || 0; wait = wait || 0; hold = hold || 0; swap = swap || 0;
-
-    // Dual vote strip: BTC + ETH specialist counts
-    try {
-      const btcSt = (typeof tableState === "function" ? tableState("bitcoin") : null) || state;
-      const ethSt = (typeof tableState === "function" ? tableState("ethereum") : null);
-      const b = countVotes((btcSt && btcSt.agents) || state.agents || []);
-      const e = countVotes((ethSt && ethSt.agents) || []);
-      const bv = document.getElementById("btcVotes");
-      const ev = document.getElementById("ethVotes");
-      if (bv) bv.textContent = "↑" + b.up + " ↓" + b.down + " ·" + b.wait;
-      if (ev) ev.textContent = ethSt
-        ? ("↑" + e.up + " ↓" + e.down + " ·" + e.wait)
-        : "—";
-      const ethPx = document.getElementById("ethPrice");
-      if (ethPx) {
-        const px = ethSt && ethSt.market && ethSt.market.price;
-        ethPx.textContent = px != null ? Number(px).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
-      }
-      const accEth = document.getElementById("accuracyStripEth");
-      if (accEth) {
-        const a = (ethSt && ethSt.accuracy) || {};
-        accEth.textContent = (a.label || ((a.correct || 0) + "/" + (a.total || 0)));
-      }
-      // Table-view ETH/BTC decision chips (visible on Table + Floor)
-      function chip(st, dirId, confId) {
-        const d = (st && st.decision) || {};
-        const lc = (st && st.locked_call) || d.locked_call || null;
-        const locked = !!(lc && lc.locked && lc.direction);
-        const dir = locked ? lc.direction : (d.direction || "—");
-        const conf = locked ? (lc.confidence || d.confidence) : d.confidence;
-        const dirEl = document.getElementById(dirId);
-        const confEl = document.getElementById(confId);
-        if (dirEl) dirEl.textContent = locked ? ("LOCK " + dir) : String(dir);
-        if (confEl) confEl.textContent = conf != null ? (conf + "%") : "";
-      }
-      chip(btcSt, "btcDir", "btcConf");
-      chip(ethSt, "ethDir", "ethConf");
-    } catch (err) {}
     const total = Math.max(1, up + down + wait + hold + swap);
 
     const elU = document.getElementById("ctUp");
@@ -3444,6 +3436,8 @@ function drawCandleChart() {
     }
     mode = next;
     modeTabs.forEach(btn => {
+      // BTC/ETH focus buttons use focus-active, not mode active
+      if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
     document.body.classList.toggle("floor-mode", mode === "floor");
@@ -3574,7 +3568,7 @@ function drawCandleChart() {
         display = mm + ":" + ss;
       } else {
         const now = Date.now();
-        const bucket = 60 * 60 * 1000;
+        const bucket = 60 * 60 * 1000; // hourly window fallback
         const left = bucket - (now % bucket);
         const s = Math.floor(left / 1000);
         display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
@@ -3589,6 +3583,22 @@ function drawCandleChart() {
         else if (sNum != null && sNum <= 180) ledSub.textContent = "LATE WINDOW";
         else ledSub.textContent = "until close";
       }
+      const dualSub = document.getElementById("dualWindowSub");
+      if (dualSub && typeof tableState === "function") {
+        function fmtLeft(st) {
+          if (!st || !st.market) return "—";
+          const m = st.market;
+          let s = m.seconds_left != null ? m.seconds_left : m.time_remaining;
+          if (s == null && m.close_time) {
+            s = Math.max(0, Math.floor((new Date(m.close_time) - Date.now()) / 1000));
+          }
+          if (s == null || isNaN(s)) return "—";
+          s = Math.max(0, Math.floor(Number(s)));
+          return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+        }
+        dualSub.textContent = "BTC " + fmtLeft(tableState("bitcoin")) + " · ETH " + fmtLeft(tableState("ethereum"));
+      }
+
     }
 
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
@@ -3610,7 +3620,7 @@ function drawCandleChart() {
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
 
-    // Market-open bell when a new hourly window/contract appears
+    // Market-open bell when a new 15m window/contract appears
     maybeRingForNewWindow(state);
 
     // Trigger brief glitch when decision changes
@@ -3688,6 +3698,7 @@ function drawCandleChart() {
     openChartsBtn.addEventListener("click", () => setMode("charts"));
   }
   modeTabs.forEach(btn => {
+    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
     btn.addEventListener("click", () => setMode(btn.dataset.mode));
   });
   wirePaperEntry();
@@ -3792,7 +3803,7 @@ function drawCandleChart() {
   const TUTORIAL_SLIDES = [
     {
       title: "WHAT IS THIS?",
-      body: "Satoshi’s Council is a dual Round Table: Bitcoin (Satoshi) + Ethereum (Vitalik) on Kalshi hourly markets (KXBTCD / KXETHD).\n\nEach bot has one job — candles, volume, odds, panic, cheap side, etc. The Chair (Satoshi) listens harder to bots that have been right, then locks exactly ONE high-quality paper call per window: UP or DOWN — or WAIT if there is no edge.\n\nThis is a research co-pilot and training table. It does not place real orders.",
+      body: "Satoshi’s Council is a living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).\n\nEach bot has one job — candles, volume, odds, panic, cheap side, etc. The Chair (Satoshi) listens harder to bots that have been right, then locks exactly ONE high-quality paper call per window: UP or DOWN — or WAIT if there is no edge.\n\nThis is a research co-pilot and training table. It does not place real orders.",
       tip: "Think war room, not magic indicator. Quality over quantity.",
       bots: null,
     },
@@ -3822,7 +3833,7 @@ function drawCandleChart() {
     },
     {
       title: "CORE vs EDGE BOTS",
-      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on what public hourly data has favored: panic fades, cheap odds, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the floor show how they are voting live.",
+      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on what public 15m data has favored: panic fades, cheap odds, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the floor show how they are voting live.",
       tip: "Open the Bots tab anytime for the full field guide.",
       bots: "core",
     },
@@ -4277,6 +4288,69 @@ function drawCandleChart() {
     }
   }
 
+
+  // BTC / ETH focus — MUST run even when summon gate is skipped (returning visitors)
+  function wireFocusAndHelp() {
+    if (window.__focusWired) return;
+    window.__focusWired = true;
+    const focusBtc = document.getElementById("focusBtc");
+    const focusEth = document.getElementById("focusEth");
+    function setFocusTable(which) {
+      focusTable = which === "ethereum" ? "ethereum" : "bitcoin";
+      document.body.dataset.focusTable = focusTable;
+      try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+      if (focusBtc) {
+        focusBtc.classList.toggle("focus-active", focusTable === "bitcoin");
+        focusBtc.classList.remove("active");
+      }
+      if (focusEth) {
+        focusEth.classList.toggle("focus-active", focusTable === "ethereum");
+        focusEth.classList.remove("active");
+      }
+      // Force table chrome label
+      try {
+        const badge = document.getElementById("focusTableBadge");
+        if (badge) badge.textContent = focusTable === "ethereum" ? "ETH · VITALIK" : "BTC · SATOSHI";
+      } catch (e) {}
+      try { updateUI(); } catch (e) {}
+      try { drawArt(); } catch (e) {}
+      try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
+      try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
+      try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
+      try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
+    }
+    window.setFocusTable = setFocusTable;
+    if (focusBtc) {
+      focusBtc.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setFocusTable("bitcoin");
+      };
+    }
+    if (focusEth) {
+      focusEth.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setFocusTable("ethereum");
+      };
+    }
+    try { setFocusTable(focusTable || "bitcoin"); } catch (e) {}
+
+    const btnHelp = document.getElementById("btnHelp");
+    if (btnHelp && !btnHelp.__wired) {
+      btnHelp.__wired = true;
+      btnHelp.addEventListener("click", () => { try { ensureAudio(); openTutorial(true); } catch (e) {} });
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        try { ensureAudio(); openTutorial(true); } catch (err) {}
+      }
+    });
+  }
+
   function initSummonGate_DISABLED_OLD(){ try{ document.getElementById('summonGate')?.remove(); document.body.classList.remove('gate-locked'); }catch(e){} return; }
   function initSummonGate() {
     const gate = document.getElementById("summonGate");
@@ -4297,33 +4371,8 @@ function drawCandleChart() {
     // Permanent Help button (works after gate is dismissed)
     const btnHelp = document.getElementById("btnHelp");
     if (btnHelp) btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
-    const focusBtc = document.getElementById("focusBtc");
-    const focusEth = document.getElementById("focusEth");
-    if (focusBtc) focusBtc.addEventListener("click", () => {
-      focusTable = "bitcoin";
-      focusBtc.classList.add("active");
-      if (focusEth) focusEth.classList.remove("active");
-      try { drawArt(); } catch (e) {}
-      try { updateUI(); } catch (e) {}
-    });
-    if (focusEth) focusEth.addEventListener("click", () => {
-      focusTable = "ethereum";
-      focusEth.classList.add("active");
-      if (focusBtc) focusBtc.classList.remove("active");
-      try { drawArt(); } catch (e) {}
-      try { updateUI(); } catch (e) {}
-    });
+    // Focus tabs wired in wireFocusAndHelp() — always, even when gate is skipped
 
-    // Keyboard: ? opens tutorial anytime
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
-        const tag = (e.target && e.target.tagName) || "";
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        ensureAudio();
-        openTutorial(true);
-      }
-    });
     if (btnSum) btnSum.addEventListener("click", () => { ensureAudio(); playSfxClick(); runSummonSequence(fog); });
     if (btnSkip) {
       btnSkip.addEventListener("click", () => {
@@ -4337,6 +4386,7 @@ function drawCandleChart() {
   }
 
   initSummonGate();
+  try { wireFocusAndHelp(); } catch (e) { console.warn('focus wire', e); }
 
   
   // ——— ZT celebrate cinematic (logo click + 5-win streak) ———
@@ -4598,6 +4648,7 @@ function drawCandleChart() {
         requestAnimationFrame(() => { sg.style.opacity = "1"; });
       }
       try { initSummonGate(); } catch (e) { console.warn(e); }
+      try { wireFocusAndHelp(); } catch (e) { console.warn(e); }
     };
 
     if (!vid) { finish(); return; }
@@ -4623,6 +4674,7 @@ function drawCandleChart() {
     const sg = document.getElementById("summonGate");
     if (sg) sg.classList.remove("hidden");
     try { initSummonGate(); } catch (e) { console.warn(e); }
+      try { wireFocusAndHelp(); } catch (e) { console.warn(e); }
   }
 
   function initPasswordGate() {
