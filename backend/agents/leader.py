@@ -4,15 +4,21 @@ The Chair / Leader – confluence synthesis + adaptive weighting.
 Weights drift with each bot's historical correctness.
 When historically strong coalitions agree again, their joint vote
 gets an affinity bonus — the Chair "remembers" who is right together.
+
+GOAL CONTRACT (enforced here):
+  Exactly ONE high-quality directional guess per Kalshi 15m window,
+  taken only when the chosen side offers best odds (market mid < MAX_ENTRY_ODDS_PCT).
+  Once locked, the call is irreversible for that ticker.
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-from backend.agents.base import AgentSignal, Direction
+from backend.agents.base import AgentSignal, Direction, GOAL_CONTRACT, GOAL_CONTRACT_SHORT
 from backend.config import settings
 from backend.learning.adaptive import AdaptiveLearner, NON_VOTERS
 from backend.agents.roster import display_name
 from loguru import logger
 import copy
+import time
 
 
 class Leader:
@@ -96,7 +102,11 @@ class Leader:
 
     def _set_window_lock(self, ticker: str, direction: str, conf: int, score: float,
                          up_pct: float | None = None, call_phase: str = "entry") -> None:
-        """Set or revise the Chair lock for this ticker (entry / mid / final)."""
+        """Set the single Chair lock for this ticker (GOAL: one call max).
+
+        When MAX_CALLS_PER_WINDOW <= 1 the lock is irreversible for the ticker.
+        Mid/final revision slots are only opened when the config allows >1 calls.
+        """
         if direction in ("UP", "UP_HOLD"):
             side = "UP"
         elif direction in ("DOWN", "DOWN_HOLD"):
@@ -105,30 +115,31 @@ class Leader:
             return
         if not ticker:
             return
-        import time
         now = time.time()
         if ticker != self._locked_ticker:
             self._clear_window_lock()
             self._locked_ticker = ticker
 
+        max_calls = int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1)
+        # Always record the first firm call as ENTRY
         if call_phase == "entry" or not self._entry_dir:
             self._entry_dir = side
             self._entry_conf = int(conf)
             self._entry_score = float(score)
             self._entry_up_pct = float(up_pct) if up_pct is not None else None
             self._entry_at = now
-        elif call_phase == "mid" and self._mid_dir is None and self._revisions_used < 2:
+        elif max_calls > 1 and call_phase == "mid" and self._mid_dir is None and self._revisions_used < (max_calls - 1):
             self._mid_dir = side
             self._mid_conf = int(conf)
             self._mid_at = now
             self._revisions_used += 1
-        elif call_phase == "final" and self._final_dir is None and self._revisions_used < 2:
+        elif max_calls > 1 and call_phase == "final" and self._final_dir is None and self._revisions_used < (max_calls - 1):
             self._final_dir = side
             self._final_conf = int(conf)
             self._final_at = now
             self._revisions_used += 1
         else:
-            # reinforce active side without spending a revision
+            # Reinforce active side; no new graded event
             pass
 
         self._locked_ticker = ticker
@@ -147,11 +158,11 @@ class Leader:
     ) -> tuple:
         """Return (blocked, reason, allowed_phase).
 
-        Rules (follower-bot ready):
-          - Same side as active lock → always blocked (hold, no new call)
-          - Opposite side → only if a revision slot is open AND hysteresis clears
-          - Max 2 revisions total (mid + final)
-          - After final (or 2 revisions) → hard lock until ticker changes
+        GOAL CONTRACT rules (follower-bot ready):
+          - Same side as active lock → always blocked (hold)
+          - Opposite side → only if MAX_CALLS_PER_WINDOW > 1 and a revision slot remains
+          - When MAX_CALLS_PER_WINDOW == 1 → hard irreversible lock after first entry
+          - After final / budget spent → hard lock until ticker changes
         """
         if not getattr(settings, "WINDOW_LOCK_ENABLED", True):
             return False, "", None
@@ -161,13 +172,18 @@ class Leader:
             return False, "", None
 
         active = self._active_dir()
+        max_calls = int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1)
 
         # Same side: never open a new graded call — just hold
         if lean == active:
             return True, f"hold {active}", None
 
+        # Strict one-call policy: any opposite attempt is blocked
+        if max_calls <= 1:
+            return True, f"hard-lock {active} (one-call / irreversible)", None
+
         # Hard lock after final or revision budget spent
-        if self._final_dir or int(getattr(self, "_revisions_used", 0) or 0) >= 2:
+        if self._final_dir or int(getattr(self, "_revisions_used", 0) or 0) >= (max_calls - 1):
             return True, f"hard-lock {active} (final/budget spent)", None
 
         # Phase from minutes left
@@ -180,12 +196,12 @@ class Leader:
         else:
             phase = "final"
 
-        # Entry is immutable — only mid/final may revise opposite
+        # Entry is immutable — only mid/final may revise opposite when allowed
         if not self._entry_dir:
             return False, "", "entry"
 
-        can_mid = phase == "mid" and self._mid_dir is None and self._revisions_used < 2
-        can_final = phase == "final" and self._final_dir is None and self._revisions_used < 2
+        can_mid = phase == "mid" and self._mid_dir is None and self._revisions_used < (max_calls - 1)
+        can_final = phase == "final" and self._final_dir is None and self._revisions_used < (max_calls - 1)
         if not can_mid and not can_final:
             return True, f"lock held {active} · no revision slot in {phase}", None
 
@@ -194,7 +210,6 @@ class Leader:
         min_delta = float(getattr(settings, "FLIP_MIN_CONF_DELTA", 22))
         min_gap = float(getattr(settings, "FLIP_MIN_GAP_SEC", 120.0))
 
-        import time
         locked_conf = self._active_conf()
         locked_at = self._final_at or self._mid_at or self._entry_at or self._locked_at or 0.0
         age = time.time() - locked_at
@@ -773,7 +788,7 @@ class Leader:
                 summary += " · " + ", ".join(path_notes[:3])
 
 
-        # --- Per-window Entry / Mid / Final lock (max 1 entry + 2 opposite revisions) ---
+        # --- Per-window single lock (GOAL CONTRACT: one call max, best odds only) ---
         ticker = None
         mins_left = None
         up_pct = None
@@ -797,18 +812,40 @@ class Leader:
             self._clear_window_lock()
 
         call_phase = None
+        max_odds = float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0))
         # Only FULL UP/DOWN can open or revise a graded call — not HOLD/WAIT/SWAP
         is_full_dir = direction in ("UP", "DOWN") and lean in ("UP", "DOWN") and firm
 
         if is_full_dir and ticker:
-            if not self._entry_dir:
-                # First firm full call = ENTRY (only once per ticker)
+            # Compute chosen-side market odds (¢)
+            side_odds = None
+            if up_pct is not None:
+                if lean == "UP":
+                    side_odds = float(up_pct)
+                else:
+                    side_odds = 100.0 - float(up_pct)
+
+            # GOAL: refuse lock when chosen side is already ≥ MAX_ENTRY_ODDS_PCT
+            if side_odds is not None and side_odds >= max_odds:
+                refused_side = lean
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 72)
+                summary = (
+                    f"WAIT · GOAL CONTRACT · {refused_side} already {side_odds:.0f}¢ "
+                    f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
+                )
+                # do not set any lock
+            elif not self._entry_dir:
+                # First firm full call = ENTRY (only once per ticker when MAX_CALLS=1)
                 self._set_window_lock(ticker, direction, conf, score, up_pct=up_pct, call_phase="entry")
                 call_phase = "entry"
-                if self._entry_up_pct is not None:
-                    summary = f"ENTRY {lean} @ {self._entry_up_pct:.0f}¢ · {summary}"
-                else:
-                    summary = f"ENTRY {lean} · {summary}"
+                odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
+                summary = (
+                    f"LOCKED {lean}{odds_str} · ONE CALL · FOLLOW THIS · "
+                    f"{GOAL_CONTRACT_SHORT} · {summary}"
+                )
             else:
                 active = self._active_dir()
                 # Same side → hold, do not open another graded call
@@ -816,12 +853,12 @@ class Leader:
                     direction = active  # type: ignore[assignment]
                     lean = active
                     conf = max(int(conf), self._active_conf())
-                    summary = f"Lock held {active} · no new call"
+                    summary = f"Lock held {active} · irreversible · no new call"
                     if gate_notes:
                         summary += " · " + ", ".join(gate_notes[:2])
                     call_phase = None  # not a new graded event
                 else:
-                    # Opposite side — only mid/final with hysteresis
+                    # Opposite side — blocked under one-call policy
                     blocked, lock_reason, allowed_phase = self._lock_blocks_opposite(
                         ticker, lean, conf, score, mins_left=mins_left
                     )
@@ -835,6 +872,7 @@ class Leader:
                             summary += " · " + ", ".join(gate_notes[:2])
                         call_phase = None
                     else:
+                        # Only reachable when MAX_CALLS_PER_WINDOW > 1
                         phase_to_use = allowed_phase or "mid"
                         self._set_window_lock(
                             ticker, direction, conf, score,
@@ -846,7 +884,7 @@ class Leader:
             # Soft outcomes while a lock is live — surface the held call
             active = self._active_dir()
             if active and direction == "WAIT":
-                summary = f"Lock held {active} · {summary}"
+                summary = f"Lock held {active} · irreversible · {summary}"
             elif active and direction in ("UP_HOLD", "DOWN_HOLD"):
                 # Demote HOLDs to held full side display when lock exists
                 hold_side = "UP" if direction == "UP_HOLD" else "DOWN"
@@ -898,6 +936,26 @@ class Leader:
             "entry_up_pct": self._entry_up_pct,
             "revisions_used": int(getattr(self, "_revisions_used", 0) or 0),
             "call_phase": locals().get("call_phase"),
+            # Follower-bot ready: one clear locked call object (GOAL CONTRACT)
+            "locked_call": {
+                "locked": bool(self._entry_dir or self._locked_dir or self._active_dir()),
+                "direction": self._active_dir(),
+                "confidence": int(self._active_conf()),
+                "entry_odds_pct": (
+                    float(self._entry_up_pct) if (self._active_dir() == "UP" and self._entry_up_pct is not None)
+                    else (100.0 - float(self._entry_up_pct) if (self._active_dir() == "DOWN" and self._entry_up_pct is not None) else None)
+                ),
+                "entry_up_pct": self._entry_up_pct,
+                "locked_at": getattr(self, "_locked_at", None) or getattr(self, "_entry_at", None),
+                "phase": (
+                    "final" if self._final_dir else
+                    "mid" if self._mid_dir else
+                    "entry" if self._entry_dir else None
+                ),
+                "irreversible": True,
+                "ticker": self._locked_ticker,
+                "goal": "one high-quality directional guess on how the window ends at the best odds (<80%)",
+            },
             "agent_details": details,
             "weights": {k: round(v, 3) for k, v in self.weights.items()},
             "learning": self.learner.snapshot(),
