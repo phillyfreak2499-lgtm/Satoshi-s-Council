@@ -122,6 +122,7 @@
         <button type="button" id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
         <button type="button" id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
         <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabFollower" class="mode-tab" data-mode="follower" title="Follow the Chair locks — three-lock gate">Follower</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -459,6 +460,14 @@
       <div id="paperCalls" class="paper-calls"></div>
     </section>
 
+    <section id="followerView" class="info-view hidden" aria-label="Follower desk">
+      <div class="info-hero">
+        <h2>FOLLOWER</h2>
+        <p>Paper follow of the Chair locks. Desk code and Settings unlock are not enough. No live orders.</p>
+      </div>
+      <div id="followerBoards" class="follower-boards"></div>
+    </section>
+
 <!-- Charts tab: full wall of useful views -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
       <div class="charts-grid">
@@ -622,6 +631,27 @@
         <button type="button" id="adminSubmit" class="gate-btn gate-btn-summon">Unlock</button>
       </div>
       <p id="adminError" class="password-error hidden">Wrong password</p>
+    </div>
+  </div>
+
+  <div id="followerGate" class="admin-gate hidden" role="dialog" aria-modal="true" aria-label="Follower unlock">
+    <div class="admin-card follower-card">
+      <div class="admin-title">FOLLOWER</div>
+      <div class="admin-sub">Three locks, in order. Desk code and Settings unlock are not enough.</div>
+      <label class="follower-lock-label" for="followerPw1">Password 1
+        <input type="password" id="followerPw1" class="password-input" placeholder="Password 1" autocomplete="off" />
+      </label>
+      <label class="follower-lock-label" for="followerPw2">Password 2
+        <input type="password" id="followerPw2" class="password-input" placeholder="Password 2" autocomplete="off" disabled />
+      </label>
+      <label class="follower-lock-label" for="followerPw3">Password 3
+        <input type="password" id="followerPw3" class="password-input" placeholder="Password 3" autocomplete="off" disabled />
+      </label>
+      <div class="admin-actions">
+        <button type="button" id="followerCancel" class="gate-btn gate-btn-ghost">Cancel</button>
+        <button type="button" id="followerSubmit" class="gate-btn gate-btn-summon">Unlock</button>
+      </div>
+      <p id="followerError" class="password-error hidden">Wrong password</p>
     </div>
   </div>
 

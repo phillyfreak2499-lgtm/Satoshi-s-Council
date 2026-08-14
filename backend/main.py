@@ -19,6 +19,8 @@ from backend.services.council import Council
 from backend.services.dual import DualOrchestrator
 from backend.config import settings
 from backend.services.runtime_settings import runtime_settings
+from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
+from backend.services.follower_gate import FollowerGate
 
 council = DualOrchestrator()  # BTC Satoshi + ETH Vitalik
 
@@ -372,6 +374,36 @@ async def learning():
 # ── Admin (password-gated from UI; soft check on destructive ops) ─────
 ADMIN_PASSWORD = "5152622439"
 
+follower_gate = FollowerGate(ADMIN_PASSWORD)
+
+
+def _client_ip(request: Request) -> str:
+    xff = (request.headers.get("x-forwarded-for") or "").strip()
+    if xff:
+        return xff.split(",")[0].strip() or "unknown"
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _follower_token(request: Request) -> str:
+    return (request.cookies.get(FOLLOWER_COOKIE) or "").strip()
+
+
+def _follower_ok(request: Request) -> bool:
+    return follower_gate.session_ok(_follower_token(request))
+
+
+def _set_follower_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=FOLLOWER_COOKIE,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        path="/",
+        secure=False,
+    )
+
 
 def _admin_ok(request: Request) -> bool:
     """Accept password via header X-Council-Admin or query ?admin=."""
@@ -484,6 +516,45 @@ async def admin_verify(request: Request):
     pw = (body or {}).get("password") or ""
     ok = pw == ADMIN_PASSWORD
     return {"ok": ok}
+
+
+@app.get("/api/follower/status")
+async def follower_status(request: Request):
+    """Session-only. Desk code and Settings admin unlock are not enough."""
+    return {"ok": _follower_ok(request)}
+
+
+@app.post("/api/follower/unlock")
+async def follower_unlock(request: Request):
+    """
+    Three locks, one answer: ok or 'wrong password'.
+    Never echo submitted values. Never say which lock failed.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    p1 = body.get("p1") or body.get("lock1") or ""
+    p2 = body.get("p2") or body.get("lock2") or ""
+    p3 = body.get("p3") or body.get("lock3") or ""
+    ip = _client_ip(request)
+    ok, err, token = follower_gate.unlock(ip, str(p1), str(p2), str(p3))
+    if not ok:
+        return {"ok": False, "error": err}
+    resp = ORJSONResponse({"ok": True})
+    if token:
+        _set_follower_cookie(resp, token)
+    return resp
+
+
+@app.post("/api/follower/lock")
+async def follower_lock(request: Request):
+    follower_gate.revoke(_follower_token(request))
+    resp = ORJSONResponse({"ok": True})
+    resp.delete_cookie(FOLLOWER_COOKIE, path="/")
+    return resp
 
 
 
