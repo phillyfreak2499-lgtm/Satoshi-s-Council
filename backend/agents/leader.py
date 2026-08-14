@@ -849,88 +849,75 @@ class Leader:
 
         call_phase = None
         max_odds = float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0))
-        # Only FULL UP/DOWN can open or revise a graded call — not HOLD/WAIT/SWAP
-        is_full_dir = direction in ("UP", "DOWN") and lean in ("UP", "DOWN") and firm
 
-        # Compute chosen-side market odds (¢) when we have a lean
+        # Resolve underlying lean from HOLD/SWAP so we can lock a single side
+        if lean not in ("UP", "DOWN"):
+            if direction in ("UP", "UP_HOLD"):
+                lean = "UP"
+            elif direction in ("DOWN", "DOWN_HOLD"):
+                lean = "DOWN"
+
+        # Any firm directional (full OR HOLD) can open the one-call lock
+        is_directional = (
+            direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD")
+            and lean in ("UP", "DOWN")
+            and firm
+        )
+
+        # Chosen-side market odds (¢)
         side_odds = None
         if lean in ("UP", "DOWN") and up_pct is not None:
             side_odds = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
 
-        if is_full_dir and ticker:
-            if self._entry_dir or self._active_dir():
-                # ── Already locked: hold / block opposite. Never re-apply odds gate. ──
-                active = self._active_dir()
-                if lean == active:
-                    direction = active  # type: ignore[assignment]
-                    lean = active
-                    conf = max(int(conf), self._active_conf())
-                    summary = f"Lock held {active} · irreversible · no new call"
-                    if gate_notes:
-                        summary += " · " + ", ".join(gate_notes[:2])
-                    call_phase = None
-                else:
-                    blocked, lock_reason, allowed_phase = self._lock_blocks_opposite(
-                        ticker, lean, conf, score, mins_left=mins_left
-                    )
-                    if blocked:
-                        direction = active  # type: ignore[assignment]
-                        lean = active
-                        conf = max(55, min(int(conf), self._active_conf()))
-                        firm = True
-                        summary = f"Lock held {active} · {lock_reason}"
-                        if gate_notes:
-                            summary += " · " + ", ".join(gate_notes[:2])
-                        call_phase = None
-                    else:
-                        # Only reachable when MAX_CALLS_PER_WINDOW > 1
-                        phase_to_use = allowed_phase or "mid"
-                        self._set_window_lock(
-                            ticker, direction, conf, score,
-                            up_pct=up_pct, call_phase=phase_to_use,
-                        )
-                        call_phase = phase_to_use
-                        summary = f"{phase_to_use.upper()} revise → {lean} · {summary}"
-            else:
-                # ── No lock yet: apply GOAL CONTRACT odds gate, then open single lock ──
-                if side_odds is not None and side_odds >= max_odds:
-                    refused_side = lean
-                    direction = "WAIT"
-                    lean = None
-                    firm = False
-                    conf = max(int(conf), 72)
-                    summary = (
-                        f"WAIT · GOAL CONTRACT · {refused_side} already {side_odds:.0f}¢ "
-                        f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
-                    )
-                else:
-                    # Open the one irreversible ENTRY lock
-                    self._set_window_lock(
-                        ticker, direction, conf, score, up_pct=up_pct, call_phase="entry"
-                    )
-                    call_phase = "entry"
-                    odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
-                    summary = (
-                        f"LOCKED {lean}{odds_str} · ONE CALL · FOLLOW THIS · "
-                        f"{GOAL_CONTRACT_SHORT} · {summary}"
-                    )
-        elif self._active_dir() and direction in ("UP_HOLD", "DOWN_HOLD", "WAIT", "SWAP"):
-            # Soft outcomes while a lock is live — surface the held call
+        # ══════════════════════════════════════════════════════════════
+        # GOAL CONTRACT: one irreversible call per window. No flipping.
+        # ══════════════════════════════════════════════════════════════
+        if ticker and (self._entry_dir or self._active_dir()):
+            # Already locked → ALWAYS surface the locked side. Never WAIT/SWAP/flip.
             active = self._active_dir()
-            if active and direction == "WAIT":
-                summary = f"Lock held {active} · irreversible · {summary}"
-            elif active and direction in ("UP_HOLD", "DOWN_HOLD"):
-                hold_side = "UP" if direction == "UP_HOLD" else "DOWN"
-                if hold_side == active:
-                    direction = active  # type: ignore[assignment]
-                    lean = active
-                    summary = f"Lock held {active} · HOLD demoted · {summary}"
-                else:
-                    summary = f"Lock held {active} · opposite HOLD ignored · {summary}"
-                    direction = active  # type: ignore[assignment]
-                    lean = active
+            direction = active  # type: ignore[assignment]
+            lean = active
+            firm = True
+            conf = max(int(conf), self._active_conf())
+            summary = f"Lock held {active} · irreversible · one call · {summary}"
+            if gate_notes:
+                summary += " · " + ", ".join(gate_notes[:2])
+            call_phase = None
 
-        # Remember last firm directional lean (UP/DOWN under SWAP/HOLD counts as lean)
+        elif is_directional and ticker:
+            # No lock yet → try to open the single ENTRY lock
+            if side_odds is not None and side_odds >= max_odds:
+                refused_side = lean
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 72)
+                summary = (
+                    f"WAIT · GOAL CONTRACT · {refused_side} already {side_odds:.0f}¢ "
+                    f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
+                )
+            else:
+                # Lock the underlying side (HOLD becomes full lock under one-call mode)
+                lock_dir = lean  # UP or DOWN
+                self._set_window_lock(
+                    ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
+                )
+                call_phase = "entry"
+                direction = lock_dir  # type: ignore[assignment]
+                odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
+                summary = (
+                    f"LOCKED {lock_dir}{odds_str} · ONE CALL · FOLLOW THIS · "
+                    f"{GOAL_CONTRACT_SHORT} · {summary}"
+                )
+
+        elif direction == "SWAP" and not (self._entry_dir or self._active_dir()):
+            # SWAP with no lock → WAIT (no flip noise)
+            direction = "WAIT"
+            lean = None
+            firm = False
+            summary = f"WAIT · SWAP suppressed under one-call mode · {summary}"
+
+        # Remember last firm directional lean
         if firm and lean in ("UP", "DOWN"):
             self._last_firm_dir = lean
             self._last_firm_score = score
