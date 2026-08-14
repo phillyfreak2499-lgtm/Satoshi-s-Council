@@ -8,6 +8,7 @@ from backend.agents.chair_gates import (
     band_tighten,
     book_too_thin,
     clamp_p_finish,
+    close_time_from_kalshi_ticker,
     compute_ev_cents,
     dead_book_reason,
     early_lock_blocked,
@@ -15,6 +16,7 @@ from backend.agents.chair_gates import (
     eth_fades_btc_impulse,
     ev_gate_blocks,
     finish_outcome,
+    kalshi_result_to_side,
     kalshi_taker_fee_cents,
     late_spot_decisive,
     official_window_due,
@@ -22,6 +24,9 @@ from backend.agents.chair_gates import (
     odds_band_key,
     parse_book_depth,
     playable_yes_mid,
+    resolve_finish_side,
+    strike_from_kalshi_ticker,
+    ticker_asset,
     time_ev_hurdles,
     build_btc_lead,
 )
@@ -111,6 +116,37 @@ class WindowStrikeTests(unittest.TestCase):
         self.assertFalse(official_window_due(future, now=now))
         self.assertFalse(official_window_due(None, now=now))
         self.assertFalse(official_window_due("not-a-time", now=now))
+        # 1062/1063: 15:00 ET = 19:00 UTC. Still open at 21:17 must be due via ticker.
+        ticker = "KXBTCD-26AUG1415-T62999.99"
+        late = datetime(2026, 8, 14, 21, 17, tzinfo=timezone.utc)
+        self.assertTrue(official_window_due(None, now=late, ticker=ticker))
+        self.assertFalse(official_window_due(None, now=datetime(2026, 8, 14, 18, 0, tzinfo=timezone.utc), ticker=ticker))
+
+    def test_ticker_close_and_strike(self):
+        ticker = "KXETHD-26AUG1415-T1874.99"
+        ct = close_time_from_kalshi_ticker(ticker)
+        self.assertIsNotNone(ct)
+        self.assertEqual(ct.astimezone(timezone.utc).hour, 19)
+        self.assertEqual(strike_from_kalshi_ticker(ticker), 1874.99)
+        self.assertEqual(ticker_asset(ticker), "eth")
+        self.assertEqual(ticker_asset("KXBTCD-26AUG1415-T62999.99"), "btc")
+
+    def test_finish_prefers_official_then_locked_strike(self):
+        self.assertEqual(kalshi_result_to_side("yes"), "UP")
+        self.assertEqual(kalshi_result_to_side({"result": "no"}), "DOWN")
+        self.assertEqual(
+            resolve_finish_side(spot=None, locked_strike=62999.99, kalshi_result="yes"),
+            "UP",
+        )
+        self.assertEqual(
+            resolve_finish_side(
+                spot=63050,
+                locked_strike=None,
+                ticker="KXBTCD-26AUG1415-T62999.99",
+            ),
+            "UP",
+        )
+        self.assertIsNone(resolve_finish_side(spot=None, locked_strike=62999.99))
 
     def test_exact_strike_finish(self):
         self.assertEqual(finish_outcome(100_100, 100_000), "UP")

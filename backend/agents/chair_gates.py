@@ -103,6 +103,102 @@ def parse_iso_utc(value: Any) -> Optional[datetime]:
         return None
 
 
+_KALSHI_MONTHS = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def ticker_asset(ticker: Any) -> Optional[str]:
+    """KXBTCD-… → btc, KXETHD-… → eth."""
+    text = str(ticker or "").upper()
+    if text.startswith("KXETHD") or text.startswith("KXETH"):
+        return "eth"
+    if text.startswith("KXBTCD") or text.startswith("KXBTC"):
+        return "btc"
+    return None
+
+
+def close_time_from_kalshi_ticker(ticker: Any) -> Optional[datetime]:
+    """
+    KXBTCD-26AUG1415-T62999.99 → 15:00 America/New_York on 2026-08-14.
+    That is the official hourly close (19:00 UTC while EDT).
+    """
+    import re
+    from zoneinfo import ZoneInfo
+
+    m = re.search(r"-(\d{2})([A-Z]{3})(\d{2})(\d{2})(?:-|$)", str(ticker or ""), re.I)
+    if not m:
+        return None
+    yy, mon, dd, hh = m.group(1), m.group(2).upper(), m.group(3), m.group(4)
+    month = _KALSHI_MONTHS.get(mon)
+    if month is None:
+        return None
+    try:
+        day = int(dd)
+        hour = int(hh)
+        if hour > 23 or day < 1 or day > 31:
+            return None
+        local = datetime(2000 + int(yy), month, day, hour, 0, 0, tzinfo=ZoneInfo("America/New_York"))
+        return local.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def strike_from_kalshi_ticker(ticker: Any) -> Optional[float]:
+    """KXBTCD-26AUG1415-T62999.99 → 62999.99 (locked strike baked into the contract)."""
+    import re
+
+    m = re.search(r"-T(\d+(?:\.\d+)?)$", str(ticker or ""), re.I)
+    if not m:
+        return None
+    try:
+        px = float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+    return px if px > 0 else None
+
+
+def kalshi_result_to_side(raw: Any) -> Optional[str]:
+    """Official Kalshi market result → UP (yes) / DOWN (no)."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        raw = raw.get("result") or raw.get("settlement_result") or raw.get("outcome")
+    text = str(raw or "").strip().lower()
+    if text in ("yes", "y", "up"):
+        return "UP"
+    if text in ("no", "n", "down"):
+        return "DOWN"
+    return None
+
+
+def resolve_close_time(close_time: Any, ticker: Any = None) -> Optional[datetime]:
+    ct = parse_iso_utc(close_time)
+    if ct is not None:
+        if ct.tzinfo is None:
+            ct = ct.replace(tzinfo=timezone.utc)
+        return ct
+    return close_time_from_kalshi_ticker(ticker)
+
+
+def resolve_finish_side(
+    *,
+    spot: Any = None,
+    locked_strike: Any = None,
+    ticker: Any = None,
+    kalshi_result: Any = None,
+) -> Optional[str]:
+    """Official result first; else last spot vs locked (or ticker) strike."""
+    official = kalshi_result_to_side(kalshi_result)
+    if official:
+        return official
+    strike = locked_strike
+    if strike is None:
+        strike = strike_from_kalshi_ticker(ticker)
+    return finish_outcome(spot, strike)
+
+
 def window_minutes_from_times(open_time: Any, close_time: Any) -> Optional[float]:
     start = parse_iso_utc(open_time)
     end = parse_iso_utc(close_time)
@@ -513,17 +609,15 @@ def eth_fades_btc_impulse(lean: Any, btc_lead: Any) -> bool:
     return side != bd
 
 
-def official_window_due(close_time: Any, now: datetime | None = None) -> bool:
+def official_window_due(close_time: Any, now: datetime | None = None, ticker: Any = None) -> bool:
     """
     Grade only after the official Kalshi close.
-    Missing or unparseable close_time → not due (never invent a close).
+    If close_time is missing, infer it from the contract ticker (never invent a clock).
     """
-    ct = parse_iso_utc(close_time)
+    ct = resolve_close_time(close_time, ticker)
     if ct is None:
         return False
     stamp = now or datetime.now(timezone.utc)
-    if ct.tzinfo is None:
-        ct = ct.replace(tzinfo=timezone.utc)
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=timezone.utc)
     return stamp >= ct

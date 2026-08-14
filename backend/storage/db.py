@@ -13,7 +13,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer, Text, select, func
 from backend.config import settings
-from backend.agents.chair_gates import finish_outcome, official_window_due
+from backend.agents.chair_gates import (
+    official_window_due,
+    resolve_close_time,
+    resolve_finish_side,
+    strike_from_kalshi_ticker,
+    ticker_asset,
+)
 from loguru import logger
 
 
@@ -492,6 +498,7 @@ class PerformanceStore:
         down_pct: float | None = None,
         floor_strike: float | None = None,
         asset: str | None = None,
+        kalshi_results: Dict[str, Any] | None = None,
     ) -> int:
         """
         Finish-only grading for hit-rate / lifetime.
@@ -499,37 +506,30 @@ class PerformanceStore:
         A call is RIGHT only when the window has ended and the final
         market outcome matches the locked side (UP or DOWN).
 
-        No path/peak/near-certain early wins. Path stats may still be
-        updated for diagnostics, but correct=1 only on finish match.
+        Close clock + locked strike come from the row, or from the Kalshi
+        ticker (KXBTCD-26AUG1415-T62999.99) when those columns are empty.
+        Official Kalshi yes/no beats a later spot print.
         """
         now = datetime.now(timezone.utc)
         settled_n = 0
-
-        def _final_outcome(locked_strike: float | None) -> Optional[str]:
-            # Exact locked strike beats the live ATM (hops still hurt more than a fancy model)
-            strike = locked_strike if locked_strike is not None else None
-            graded = finish_outcome(current_price, strike)
-            if graded is not None:
-                return graded
-            # Legacy rows with no stored strike: only then use this cycle's strike
-            if locked_strike is None:
-                graded = finish_outcome(current_price, floor_strike)
-                if graded is not None:
-                    return graded
-            return None
+        results = kalshi_results if isinstance(kalshi_results, dict) else {}
+        want = (asset or "").strip().lower() or None
 
         async with self.Session() as session:
-            filters = [WindowCall.actual_outcome.is_(None)]
-            if asset:
-                filters.append(WindowCall.asset == asset.lower())
             result = await session.execute(
-                select(WindowCall).where(*filters)
+                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
             )
             rows = result.scalars().all()
             for row in rows:
-                # Safety: never grade a row with this table's spot/strike if asset mismatches
-                if asset and row.asset and row.asset.lower() != asset.lower():
-                    continue
+                inferred = ticker_asset(row.ticker)
+                row_asset = (row.asset or inferred or "").lower()
+                if want:
+                    if inferred and inferred != want:
+                        continue
+                    if row_asset and row_asset != want:
+                        continue
+                    if not inferred and not row_asset:
+                        continue
                 side = self._grade_side(row.direction)
                 if side is None:
                     continue
@@ -546,10 +546,11 @@ class PerformanceStore:
                     except (TypeError, ValueError):
                         pass
 
-                # Grade only on official Kalshi close — never invent a close from max_age
-                if not official_window_due(row.close_time, now=now):
+                if not official_window_due(row.close_time, now=now, ticker=row.ticker):
                     continue
-                reason = "window_end"
+                resolved_ct = resolve_close_time(row.close_time, row.ticker)
+                if resolved_ct is not None and not row.close_time:
+                    row.close_time = resolved_ct.isoformat()
 
                 locked_strike = None
                 try:
@@ -557,15 +558,30 @@ class PerformanceStore:
                         locked_strike = float(row.floor_strike)
                 except (TypeError, ValueError):
                     locked_strike = None
+                if locked_strike is None:
+                    locked_strike = strike_from_kalshi_ticker(row.ticker)
+                    if locked_strike is not None:
+                        row.floor_strike = locked_strike
+                if locked_strike is None:
+                    try:
+                        locked_strike = float(floor_strike) if floor_strike is not None else None
+                    except (TypeError, ValueError):
+                        locked_strike = None
 
-                final = _final_outcome(locked_strike)
+                official = results.get(row.ticker) or results.get(str(row.ticker or "").upper())
+                final = resolve_finish_side(
+                    spot=current_price,
+                    locked_strike=locked_strike,
+                    ticker=row.ticker,
+                    kalshi_result=official,
+                )
                 stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
                 row.paper_stake = stake
                 if not row.paper_side:
                     row.paper_side = self._paper_side(row.direction)
 
                 if final is None:
-                    # Official close passed but no honest strike/spot — leave open
+                    # Due, but still no official result and no honest spot/strike
                     continue
 
                 matched = final == side
@@ -573,14 +589,12 @@ class PerformanceStore:
                 row.correct = 1 if matched else 0
                 row.settled_at = now.isoformat()
                 row.settle_reason = "finish_match" if matched else "finish_miss"
-                # Binary paper: win = stake * (100/entry - 1) approx, or flat unit
                 try:
                     entry = float(row.open_price) if row.open_price is not None else 50.0
                     if matched and 1.0 < entry < 99.0:
-                        # $1 on YES at entry¢ pays $1*(100/entry) if finishes right
                         row.paper_pnl = stake * ((100.0 / entry) - 1.0)
                     elif matched:
-                        row.paper_pnl = stake  # flat win
+                        row.paper_pnl = stake
                     else:
                         row.paper_pnl = -stake
                 except Exception:
@@ -1104,6 +1118,35 @@ class PerformanceStore:
         except Exception as e:
             logger.warning(f"prune_old_window_calls: {e}")
             return 0
+
+    async def list_open_calls(self, asset: str | None = None) -> List[Dict[str, Any]]:
+        """Open (unsettled) window calls for hour-close grading. Never deletes."""
+        want = (asset or "").strip().lower() or None
+        async with self.Session() as session:
+            result = await session.execute(
+                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
+            )
+            rows = result.scalars().all()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            inferred = ticker_asset(r.ticker)
+            row_asset = (r.asset or inferred or "").lower()
+            if want:
+                if inferred and inferred != want:
+                    continue
+                if row_asset and row_asset != want:
+                    continue
+                if not inferred and not row_asset:
+                    continue
+            out.append({
+                "id": r.id,
+                "ticker": r.ticker,
+                "close_time": r.close_time,
+                "floor_strike": getattr(r, "floor_strike", None),
+                "asset": r.asset or inferred,
+                "direction": r.direction,
+            })
+        return out
 
     async def recent_settled_calls(self, limit: int = 20, asset: str | None = None) -> List[Dict[str, Any]]:
         """Newest-first settled window calls, with agent votes when available."""

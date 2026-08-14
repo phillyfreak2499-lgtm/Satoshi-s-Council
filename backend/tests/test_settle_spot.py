@@ -34,6 +34,7 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
     async def test_settle_due_windows_passes_last_spot(self):
         c = self._council()
         c._last_spot = 97_500.0
+        c.store.list_open_calls = AsyncMock(return_value=[])
         c.store.settle_expired_calls = AsyncMock(return_value=1)
         c._learn_from_new_settlements = AsyncMock(return_value=1)
         n = await c.settle_due_windows(current_price=0, up_pct=52, down_pct=48, floor_strike=97_000)
@@ -41,7 +42,19 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
         kwargs = c.store.settle_expired_calls.await_args.kwargs
         self.assertEqual(kwargs["current_price"], 97_500.0)
         self.assertEqual(kwargs["asset"], "btc")
+        self.assertIn("kalshi_results", kwargs)
         c._learn_from_new_settlements.assert_awaited()
+
+    async def test_settle_uses_persisted_spot_when_cycle_is_empty(self):
+        c = self._council()
+        c._last_spot = None
+        c.store.list_open_calls = AsyncMock(return_value=[])
+        c.store.settle_expired_calls = AsyncMock(return_value=1)
+        c._learn_from_new_settlements = AsyncMock(return_value=1)
+        c._load_persisted_spot = lambda: 62_100.0
+        n = await c.settle_due_windows(current_price=None, up_pct=None, down_pct=None, floor_strike=62_999.99)
+        self.assertEqual(n, 1)
+        self.assertEqual(c.store.settle_expired_calls.await_args.kwargs["current_price"], 62_100.0)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import asyncio
 import time
 from typing import Any, Dict, List
 from datetime import datetime, timezone
+from pathlib import Path
 from loguru import logger
 
 from backend.data.pipeline import DataPipeline
@@ -42,6 +43,7 @@ from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
+    official_window_due,
     odds_to_cents,
     parse_book_depth,
     pick_settle_spot,
@@ -206,15 +208,67 @@ class Council:
             delay = max(0.2, interval - elapsed)
             await asyncio.sleep(delay)
 
+    def _last_spot_path(self) -> Path:
+        root = Path(getattr(settings, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
+        return root / "last-spot.json"
+
+    def _persist_last_spot(self, spot: float) -> None:
+        """Small cache only — never writes brain / council.db / learning JSON."""
+        import json
+        path = self._last_spot_path()
+        data: Dict[str, Any] = {}
+        try:
+            if path.is_file():
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    data = raw
+        except Exception:
+            data = {}
+        data[self.asset] = {"price": float(spot), "ts": time.time()}
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _load_persisted_spot(self) -> float | None:
+        import json
+        path = self._last_spot_path()
+        try:
+            if not path.is_file():
+                return None
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            rec = (raw or {}).get(self.asset) if isinstance(raw, dict) else None
+            if not isinstance(rec, dict):
+                return None
+            return pick_settle_spot(rec.get("price"), None)
+        except Exception:
+            return None
+
     def _usable_spot(self, price: Any = None) -> float | None:
         """Cache the last good print; settle with it when this cycle's spot is missing."""
+        pipe = getattr(self, "pipeline", None)
+        last_good = getattr(pipe, "last_good", None) if pipe is not None else None
+        lg_price = None
+        if isinstance(last_good, dict):
+            lg_price = (
+                last_good.get("current_price")
+                or last_good.get("binance_price")
+                or last_good.get("coinbase_price")
+            )
+        st = self.latest_state or {}
+        mkt = st.get("market") or {}
         spot = pick_settle_spot(price, getattr(self, "_last_spot", None))
         if spot is None:
-            st = self.latest_state or {}
-            mkt = st.get("market") or {}
-            spot = pick_settle_spot(mkt.get("current_price") or mkt.get("price"), None)
+            spot = pick_settle_spot(lg_price, mkt.get("current_price") or mkt.get("price"))
+        if spot is None:
+            spot = self._load_persisted_spot()
         if spot is not None:
             self._last_spot = spot
+            try:
+                self._persist_last_spot(spot)
+            except Exception:
+                pass
         return spot
 
     async def settle_due_windows(
@@ -240,6 +294,35 @@ class Council:
             floor_strike = mkt.get("kalshi_floor_strike") or mkt.get("floor_strike")
         if close_time is None:
             close_time = mkt.get("close_time")
+        kalshi_results: Dict[str, Any] = {}
+        try:
+            import inspect
+            opens = []
+            getter = getattr(self.store, "list_open_calls", None)
+            if callable(getter):
+                maybe = getter(asset=self.asset)
+                opens = await maybe if inspect.isawaitable(maybe) else (maybe or [])
+            due = []
+            for row in opens or []:
+                if not isinstance(row, dict):
+                    continue
+                if official_window_due(row.get("close_time"), ticker=row.get("ticker")):
+                    t = row.get("ticker")
+                    if t:
+                        due.append(t)
+            client = getattr(getattr(self, "pipeline", None), "kalshi", None)
+            fn = getattr(client, "get_market", None) if client is not None else None
+            if due and callable(fn):
+                for ticker in due[:8]:
+                    try:
+                        maybe = fn(ticker)
+                        market = await maybe if inspect.isawaitable(maybe) else (maybe or {})
+                    except Exception:
+                        market = {}
+                    if isinstance(market, dict) and market:
+                        kalshi_results[ticker] = market
+        except Exception as e:
+            logger.debug(f"Kalshi close-result fetch skip: {e}")
         settled_n = 0
         try:
             settled_n = await self.store.settle_expired_calls(
@@ -248,6 +331,7 @@ class Council:
                 down_pct=down_pct,
                 floor_strike=floor_strike,
                 asset=self.asset,
+                kalshi_results=kalshi_results,
             )
             try:
                 due = False
@@ -320,6 +404,10 @@ class Council:
             self.leader.cool_down_bump = 0.0
             logger.debug(f"Huddle cycle: {e}")
 
+        try:
+            await self.settle_due_windows()
+        except Exception:
+            pass
         market_data = await self.pipeline.fetch()
         if self._btc_lead:
             market_data["btc_lead"] = self._btc_lead

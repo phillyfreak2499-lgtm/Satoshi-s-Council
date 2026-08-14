@@ -104,11 +104,24 @@ class DataPipeline:
             pass
 
         if isinstance(binance_data, Exception):
-            logger.error(f"Binance gather error ({self.asset}): {binance_data}")
-            binance_data = {"source": "binance", "healthy": False, "error": str(binance_data)}
+            logger.error(f"Binance gather error ({self.asset}): {type(binance_data).__name__}")
+            binance_data = {"source": "binance", "healthy": False, "error": type(binance_data).__name__}
         if isinstance(kalshi_data, Exception):
-            logger.error(f"Kalshi gather error ({self.asset}): {kalshi_data}")
-            kalshi_data = {"source": "kalshi", "healthy": False, "error": str(kalshi_data)}
+            err_name = type(kalshi_data).__name__
+            logger.debug(f"Kalshi gather flap ({self.asset}): {err_name}")
+            last_k = (self.last_good or {}).get("kalshi") if isinstance(self.last_good, dict) else None
+            if isinstance(last_k, dict) and last_k:
+                kalshi_data = dict(last_k)
+                kalshi_data["stale"] = True
+                kalshi_data["healthy"] = True
+                kalshi_data["error"] = err_name
+            else:
+                kalshi_data = {
+                    "source": "kalshi",
+                    "healthy": False,
+                    "stale": True,
+                    "error": err_name,
+                }
         if isinstance(coinbase_data, Exception):
             coinbase_data = {"source": "coinbase", "healthy": False, "error": str(coinbase_data)}
         if not isinstance(cg_data, dict):
