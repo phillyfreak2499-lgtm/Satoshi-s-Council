@@ -132,7 +132,7 @@ async def accuracy():
     btc = await store.get_accuracy(asset="btc")
     eth = await store.get_accuracy(asset="eth")
     all_ = await store.get_accuracy(asset=None)
-    return {"btc": btc, "eth": eth, "combined": all_, **all_}
+    return {"btc": btc, "eth": eth, "combined": all_, "finish_only": True, **all_}
 
 
 @app.get("/api/huddle")
@@ -171,6 +171,19 @@ async def paper_add(request: Request):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+
+@app.get("/api/paper/auto")
+async def paper_auto(asset: str | None = None):
+    """Finish-only auto paper journal, filtered by asset=btc|eth."""
+    a = (asset or "").lower() or None
+    if a not in (None, "btc", "eth", "bitcoin", "ethereum"):
+        a = None
+    if a == "bitcoin":
+        a = "btc"
+    if a == "ethereum":
+        a = "eth"
+    return await council.store.paper_summary_by_asset(asset=a)
 
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
