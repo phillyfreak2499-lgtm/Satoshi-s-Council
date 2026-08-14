@@ -181,6 +181,17 @@
   chairImages.UP.src = "/chair-up.jpg";
   chairImages.DOWN.src = "/chair-down.jpg";
   chairImages.WAIT.src = "/chair-wait.jpg";
+
+  const vitalikImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
+  vitalikImages.UP.src = "/vitalik-up.jpg";
+  vitalikImages.DOWN.src = "/vitalik-down.jpg";
+  vitalikImages.WAIT.src = "/vitalik-wait.jpg";
+  function vitalikPortraitFor(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return vitalikImages.UP;
+    if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN;
+    return vitalikImages.WAIT;
+  }
   chairImages.UP_HOLD = chairImages.UP;
   chairImages.DOWN_HOLD = chairImages.DOWN;
   chairImages.SWAP = chairImages.WAIT;
@@ -334,6 +345,19 @@
 
   let mode = "art"; // art | dashboard | charts
   let state = null;
+  let focusTable = "bitcoin"; // bitcoin | ethereum
+  function tableState(which) {
+    if (!state) return null;
+    if (state.tables && state.tables[which]) return state.tables[which];
+    if (which === "bitcoin" && state.btc) return state.btc;
+    if (which === "ethereum" && state.eth) return state.eth;
+    if (which === "bitcoin") return state;
+    return null;
+  }
+  function isDualMode() {
+    return !!(state && (state.dual || (state.tables && state.tables.ethereum)));
+  }
+
 
   // Rolling series for Charts tab (built from poll snapshots)
   const series = {
@@ -1309,10 +1333,112 @@
   }
 
 
+
+  function drawDualFloor(w, h) {
+    ctx.fillStyle = "#02040a";
+    ctx.fillRect(0, 0, w, h);
+    const mid = w / 2;
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.25)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mid, h * 0.08);
+    ctx.lineTo(mid, h * 0.92);
+    ctx.stroke();
+    drawMiniTable(w * 0.25, h * 0.48, Math.min(w, h) * 0.22, "bitcoin", "SATOSHI · BTC");
+    drawMiniTable(w * 0.75, h * 0.48, Math.min(w, h) * 0.22, "ethereum", "VITALIK · ETH");
+  }
+
+  function drawMiniTable(cx, cy, radius, which, label) {
+    const st = tableState(which) || {};
+    const d = st.decision || {};
+    const lc = st.locked_call || d.locked_call || null;
+    const locked = !!(lc && lc.locked && lc.direction);
+    const dir = locked ? lc.direction : (d.direction || "WAIT");
+    const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
+    const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = which === "ethereum" ? "rgba(120, 255, 160, 0.35)" : "rgba(0, 220, 255, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
+    ctx.strokeStyle = which === "ethereum" ? "rgba(120, 255, 160, 0.15)" : "rgba(0, 220, 255, 0.15)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+    const pr = radius * 0.42;
+    if (img && img.complete && img.naturalWidth) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy - 8, pr, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, cx - pr, cy - 8 - pr, pr * 2, pr * 2);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy - 8, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.7)" :
+                        (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255,40,70,0.7)" :
+                        "rgba(200,220,255,0.45)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    ctx.font = "700 12px Orbitron, monospace";
+    ctx.fillStyle = which === "ethereum" ? "#9dffc0" : "#7fe9ff";
+    ctx.textAlign = "center";
+    ctx.fillText(label, cx, cy - radius - 12);
+
+    ctx.font = "700 14px Orbitron, monospace";
+    if (locked) {
+      ctx.fillStyle = dir === "UP" ? "#39ff14" : "#ff2d55";
+      ctx.fillText("LOCKED " + dir, cx, cy + pr + 18);
+      ctx.font = "600 11px Rajdhani, sans-serif";
+      ctx.fillStyle = "#d8f0ff";
+      const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
+      ctx.fillText(conf + "%" + oddsTxt + " · FOLLOW THIS", cx, cy + pr + 34);
+    } else {
+      ctx.fillStyle = "#a8c0d8";
+      ctx.fillText(dir === "WAIT" ? "WAIT" : String(dir), cx, cy + pr + 18);
+      ctx.font = "600 11px Rajdhani, sans-serif";
+      ctx.fillStyle = "rgba(180,200,220,0.8)";
+      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · one call / best odds", cx, cy + pr + 34);
+    }
+
+    const m = st.market || {};
+    const px = m.price != null ? Number(m.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
+    ctx.font = "10px Share Tech Mono, monospace";
+    ctx.fillStyle = "rgba(160,180,200,0.7)";
+    ctx.fillText(px, cx, cy + radius + 8);
+  }
+
   function drawArt() {
     if (!ctx || !canvas) return;
     resizeRoundtable();
     const w = canvas.width, h = canvas.height;
+
+    // Dual Floor: two chairs side-by-side
+    if (mode === "floor" && typeof isDualMode === "function" && isDualMode()) {
+      drawDualFloor(w, h);
+      return;
+    }
+
+    // Focused table overlay for single/table view
+    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
+      const focused = tableState(focusTable);
+      if (focused) {
+        state = Object.assign({}, state, {
+          decision: focused.decision || state.decision,
+          locked_call: focused.locked_call || (focused.decision && focused.decision.locked_call) || state.locked_call,
+          agents: focused.agents || state.agents,
+          market: focused.market || state.market,
+          accuracy: focused.accuracy || state.accuracy,
+        });
+      }
+    }
+
     const cx = w / 2, cy = h / 2;
     const radius = Math.min(w, h) * (mode === "floor" ? 0.42 : 0.34);
 
@@ -1817,7 +1943,7 @@
     ctx.restore();
 
     // Clip circle + draw armored portrait
-    const portrait = chairPortraitFor(leaderDir);
+    const portrait = (focusTable === "ethereum") ? vitalikPortraitFor(leaderDir) : chairPortraitFor(leaderDir);
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, lr, 0, Math.PI * 2);
@@ -3218,6 +3344,20 @@ function drawCandleChart() {
 
   function updateUI() {
     if (!state) return;
+    // Prefer focused table when dual API is present
+    if (typeof isDualMode === "function" && isDualMode() && typeof tableState === "function") {
+      const focused = tableState(focusTable);
+      if (focused) {
+        state = Object.assign({}, state, {
+          decision: focused.decision || state.decision,
+          locked_call: focused.locked_call || (focused.decision && focused.decision.locked_call) || state.locked_call,
+          agents: focused.agents || state.agents,
+          accuracy: focused.accuracy || state.accuracy,
+          market: focused.market || state.market,
+          hierarchy: focused.hierarchy || state.hierarchy,
+        });
+      }
+    }
     if (state.system_settings) applySettingsSnapshot(state.system_settings);
     else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
     const d = state.decision || {};
@@ -4006,6 +4146,23 @@ function drawCandleChart() {
     // Permanent Help button (works after gate is dismissed)
     const btnHelp = document.getElementById("btnHelp");
     if (btnHelp) btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
+    const focusBtc = document.getElementById("focusBtc");
+    const focusEth = document.getElementById("focusEth");
+    if (focusBtc) focusBtc.addEventListener("click", () => {
+      focusTable = "bitcoin";
+      focusBtc.classList.add("active");
+      if (focusEth) focusEth.classList.remove("active");
+      try { drawArt(); } catch (e) {}
+      try { updateUI(); } catch (e) {}
+    });
+    if (focusEth) focusEth.addEventListener("click", () => {
+      focusTable = "ethereum";
+      focusEth.classList.add("active");
+      if (focusBtc) focusBtc.classList.remove("active");
+      try { drawArt(); } catch (e) {}
+      try { updateUI(); } catch (e) {}
+    });
+
     // Keyboard: ? opens tutorial anytime
     document.addEventListener("keydown", (e) => {
       if (e.key === "?" || (e.shiftKey && e.key === "/")) {
@@ -5005,3 +5162,13 @@ function drawCandleChart() {
     }
   };
 })();
+
+
+/* AUDIO_STRIPPED_V1 — hard disable all sound */
+function ensureAudio(){ return null; }
+function playMarketBell(){ return; }
+function playSfxClick(){ return; }
+function playSfxWhoosh(){ return; }
+function playSfxFogDrone(){ return; }
+function playSfxChime(){ return; }
+function playSfxReveal(){ return; }
