@@ -1,135 +1,158 @@
 """
-ODDS – Kalshi mid / skew + odds velocity (rate of change of UP%).
+ODDS – Kalshi Skew specialist.
+
+Real job: read the *path of the contract* across the window and across
+recent windows — not just the last mid.
+
+Entry phase:
+  - Is YES mispriced relative to recent settle distribution / spot path?
+  - Cheap extremes with confirmation from multi-window context.
+
+Mid / Final:
+  - Has the path from entry invalidated the original skew thesis?
+  - Momentum of the contract itself (YES climbing vs fading).
+
+Uses WindowMemory path_move and prior window outcomes.
 """
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
-import time
 
 
 class OddsSpecialist(BaseSpecialist):
     name = "odds"
-    category = "kalshi"
+    category = "odds"
     base_weight = settings.BASE_WEIGHTS.get("odds", 0.11)
-
-    def __init__(self):
-        super().__init__()
-        # Rolling mid history for velocity: (ts, mid_0_1)
-        self._mid_hist: List[tuple] = []
-
-    def _track_mid(self, mid: float) -> Optional[float]:
-        now = time.time()
-        self._mid_hist.append((now, mid))
-        # Keep ~3 minutes
-        cutoff = now - 180
-        self._mid_hist = [(t, m) for t, m in self._mid_hist if t >= cutoff]
-        if len(self._mid_hist) < 2:
-            return None
-        # Velocity: change in UP% over last ~60s (or available span)
-        t0, m0 = self._mid_hist[0]
-        t1, m1 = self._mid_hist[-1]
-        # Prefer sample ~60s ago if present
-        target = now - 60
-        older = min(self._mid_hist, key=lambda x: abs(x[0] - target))
-        if abs(older[0] - target) < 45:
-            m0 = older[1]
-            t0 = older[0]
-        dt = max(1.0, t1 - t0)
-        # percentage points per minute
-        vel = ((m1 - m0) * 100.0) / (dt / 60.0)
-        return vel
 
     async def get_signal(self, market_data: Dict[str, Any]) -> AgentSignal:
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted", self.category, muted=True)
 
-        bid = market_data.get("kalshi_yes_bid")
-        ask = market_data.get("kalshi_yes_ask")
-        features: Dict[str, Any] = {}
+        phase = self.phase(market_data)
+        up = _pct(market_data.get("up_pct"))
+        if up is None:
+            bid = market_data.get("kalshi_yes_bid")
+            up = _pct(bid)
+        if up is None:
+            return AgentSignal(self.name, "WAIT", 35, "No Kalshi mid", self.category)
 
-        if bid is None and ask is None:
-            return AgentSignal(
-                self.name, "WAIT", 30, "No Kalshi book", self.category, features=features
-            )
-
-        try:
-            b = float(bid) if bid is not None else None
-            a = float(ask) if ask is not None else None
-        except Exception:
-            return AgentSignal(self.name, "WAIT", 25, "Bad Kalshi quotes", self.category)
-
-        if b is not None and b > 1.5:
-            b = b / 100.0
-        if a is not None and a > 1.5:
-            a = a / 100.0
-
-        if b is not None and a is not None:
-            mid = (b + a) / 2.0
-            spread = max(0.0, a - b)
-        else:
-            mid = float(b if b is not None else a)
-            spread = 0.0
-
-        mid = max(0.0, min(1.0, mid))
-        up_pct = mid * 100.0
-        vel = self._track_mid(mid)
+        down = 100.0 - up
+        path = self.path_move(market_data)
+        entry = self.entry_dir(market_data)
+        entry_px = (market_data.get("wm") or {}).get("entry_up_pct")
+        quiet = self.is_quiet(market_data)
+        floor = self.quiet_confidence_floor(market_data, base=56)
+        mean_rev = self.mean_reversion_bias(market_data)
+        streak_dir, streak_n = self.streak(market_data)
 
         features = {
-            "kalshi_mid": round(mid, 3),
-            "up_pct": round(up_pct, 1),
-            "spread": round(spread, 4),
-            "velocity_ppm": round(vel, 2) if vel is not None else None,
+            "up_pct": up,
+            "down_pct": down,
+            "path_move": path,
+            "entry_dir": entry,
+            "entry_up_pct": entry_px,
+            "phase": phase,
+            "horizon": "entry" if phase == "entry" else "revision",
+            "quiet": quiet,
         }
 
         direction = "WAIT"
-        conf = 40
-        reason = f"Kalshi mid {up_pct:.0f}% – neutral band"
+        conf = 48
+        notes = []
 
-        if mid >= 0.62:
-            direction = "UP"
-            conf = min(82, 52 + int((mid - 0.5) * 100))
-            reason = f"Kalshi mid {up_pct:.0f}% leaning UP"
-        elif mid <= 0.38:
-            direction = "DOWN"
-            conf = min(82, 52 + int((0.5 - mid) * 100))
-            reason = f"Kalshi mid {up_pct:.0f}% leaning DOWN"
-        elif mid >= 0.55:
-            direction = "UP"
-            conf = 54
-            reason = f"Soft UP skew ({up_pct:.0f}%)"
-        elif mid <= 0.45:
-            direction = "DOWN"
-            conf = 54
-            reason = f"Soft DOWN skew ({up_pct:.0f}%)"
-
-        # Velocity override / boost: fast odds move is a 15m signal
-        if vel is not None:
-            if vel >= 4.0:  # +4 pts per minute
-                if direction != "DOWN":
-                    direction = "UP"
-                conf = min(88, max(conf, 58) + int(min(15, vel)))
-                reason += f" · velocity +{vel:.1f}pp/m"
-            elif vel <= -4.0:
-                if direction != "UP":
-                    direction = "DOWN"
-                conf = min(88, max(conf, 58) + int(min(15, abs(vel))))
-                reason += f" · velocity {vel:.1f}pp/m"
-            elif abs(vel) >= 2.0 and direction != "WAIT":
-                # Agreeing velocity boosts; conflicting cuts
-                if (direction == "UP" and vel > 0) or (direction == "DOWN" and vel < 0):
-                    conf = min(86, conf + 6)
-                    reason += f" · vel confirms ({vel:+.1f})"
+        # ── ENTRY: whole-window value ───────────────────────────────
+        if phase == "entry":
+            # Extreme cheap with multi-window support
+            if up <= 28 and not quiet:
+                direction, conf = "UP", min(84, 62 + int((28 - up) * 1.5))
+                notes.append(f"deep cheap YES {up:.0f}¢")
+                if mean_rev == "UP":
+                    conf = min(88, conf + 6)
+                    notes.append("aligned multi-window mean-rev")
+                if streak_dir == "DOWN" and streak_n >= 3:
+                    conf = min(90, conf + 4)
+                    notes.append(f"fade {streak_n}-down streak")
+            elif down <= 28 and not quiet:
+                direction, conf = "DOWN", min(84, 62 + int((28 - down) * 1.5))
+                notes.append(f"deep cheap NO ({down:.0f}¢)")
+                if mean_rev == "DOWN":
+                    conf = min(88, conf + 6)
+                    notes.append("aligned multi-window mean-rev")
+            elif up <= 38 and not quiet:
+                direction, conf = "UP", 60
+                notes.append(f"value YES {up:.0f}¢")
+            elif down <= 38 and not quiet:
+                direction, conf = "DOWN", 60
+                notes.append(f"value NO {down:.0f}¢")
+            elif abs(up - 50) < 8:
+                direction, conf = "WAIT", max(floor, 58)
+                notes.append(f"fair {up:.0f}¢ — no skew edge")
+            else:
+                # Mild lean only if not quiet
+                if not quiet and up < 45:
+                    direction, conf = "UP", 54
+                    notes.append(f"mild YES value {up:.0f}¢")
+                elif not quiet and up > 55:
+                    direction, conf = "DOWN", 54
+                    notes.append(f"mild NO value {down:.0f}¢")
                 else:
-                    conf = max(42, conf - 8)
-                    reason += f" · vel conflict ({vel:+.1f})"
+                    notes.append(f"mid {up:.0f}¢ — no entry edge")
 
-        if spread > 0.08 and direction != "WAIT":
-            conf = max(42, conf - 10)
-            reason += " · wide spread"
-        elif spread > 0.12:
-            direction = "WAIT"
-            conf = 55
-            reason = f"Spread too wide ({spread:.0%}) – no ODDS edge"
+            if quiet and direction != "WAIT":
+                conf = min(conf, floor - 5)
+                notes.append("quiet — trimmed")
+
+        # ── MID / FINAL: path vs entry thesis ───────────────────────
+        else:
+            if entry in ("UP", "DOWN") and path is not None:
+                # Path supporting entry
+                if entry == "UP" and path >= 3.0:
+                    direction, conf = "UP", min(80, 58 + int(path))
+                    notes.append(f"path supports entry UP +{path:.1f}pts")
+                elif entry == "DOWN" and path <= -3.0:
+                    direction, conf = "DOWN", min(80, 58 + int(abs(path)))
+                    notes.append(f"path supports entry DOWN {path:.1f}pts")
+                # Path against entry — candidate revision
+                elif entry == "UP" and path <= -5.0:
+                    direction, conf = "DOWN", min(78, 55 + int(abs(path)))
+                    notes.append(f"path broken vs entry UP ({path:.1f}) — revise")
+                elif entry == "DOWN" and path >= 5.0:
+                    direction, conf = "UP", min(78, 55 + int(path))
+                    notes.append(f"path broken vs entry DOWN (+{path:.1f}) — revise")
+                else:
+                    # Hold entry side with moderate conf
+                    direction, conf = entry, 57
+                    notes.append(f"path {path:+.1f} still with entry {entry}")
+            else:
+                # No entry yet — fall back to level
+                if up <= 35:
+                    direction, conf = "UP", 58
+                    notes.append(f"late value YES {up:.0f}¢")
+                elif up >= 65:
+                    direction, conf = "DOWN", 58
+                    notes.append(f"late value NO {down:.0f}¢")
+                else:
+                    notes.append(f"no entry lock · mid {up:.0f}¢")
+
+        if not notes:
+            notes.append("odds neutral")
+
+        reason = self.annotate_reason(market_data, "; ".join(notes))
+        if direction != "WAIT" and conf < floor and quiet:
+            direction, conf = "WAIT", floor
+            reason = self.annotate_reason(market_data, "quiet gate — odds WAIT")
 
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
+
+
+def _pct(v) -> Optional[float]:
+    try:
+        if v is None:
+            return None
+        x = float(v)
+        if x <= 1.0:
+            x *= 100.0
+        return x
+    except (TypeError, ValueError):
+        return None
