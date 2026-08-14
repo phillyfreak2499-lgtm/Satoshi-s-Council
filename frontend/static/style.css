@@ -5355,11 +5355,28 @@ body.mode-settings #openChartsBtn {
 #app > header {
   order: 1 !important;
   position: relative !important;
-  z-index: 80 !important;
+  z-index: 4 !important;
   flex-shrink: 0 !important;
+  overflow: visible !important;
 }
-#app > #windowLed {
-  order: 2 !important;
+#app > header #windowLed,
+#app > header #windowLed.led-window,
+#app > header #windowLed.led-float {
+  order: 3 !important;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
+  transform: none !important;
+  z-index: 1 !important;
+  margin: 6px auto 8px !important;
+  width: max-content !important;
+  max-width: calc(100% - 16px) !important;
+  pointer-events: none !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
 }
 #app > #mainTable,
 #app > #settingsView,
@@ -5371,15 +5388,11 @@ body.mode-settings #openChartsBtn {
 }
 #app > footer { order: 10 !important; }
 
-body.floor-mode #app > #windowLed,
-body.floor-mode #app > #windowLed.led-window,
-body.floor-mode #app > #windowLed.led-float,
-body.mode-floor #app > #windowLed,
-body.mode-floor #app > #windowLed.led-window,
-body.mode-floor #app > #windowLed.led-float,
-body.mode-art #app > #windowLed,
-body.mode-art #app > #windowLed.led-window,
-body.mode-art #app > #windowLed.led-float {
+body.floor-mode #app > header #windowLed,
+body.floor-mode #app > header #windowLed.led-window,
+body.mode-floor #app > header #windowLed,
+body.mode-art #app > header #windowLed,
+body.mode-art #app > header #windowLed.led-window {
   position: relative !important;
   top: auto !important;
   left: auto !important;
@@ -5391,7 +5404,7 @@ body.mode-art #app > #windowLed.led-float {
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
-  z-index: 4 !important;
+  z-index: 1 !important;
   margin: 6px auto 8px !important;
   width: max-content !important;
   max-width: calc(100% - 16px) !important;
@@ -5399,9 +5412,9 @@ body.mode-art #app > #windowLed.led-float {
   overflow: visible !important;
   flex: 0 0 auto !important;
 }
-body.floor-mode #app > #windowLed .led-foot,
-body.mode-floor #app > #windowLed .led-foot,
-body.mode-art #app > #windowLed .led-foot {
+body.floor-mode #app > header #windowLed .led-foot,
+body.mode-floor #app > header #windowLed .led-foot,
+body.mode-art #app > header #windowLed .led-foot {
   display: block !important;
   visibility: visible !important;
   overflow: visible !important;
@@ -5410,10 +5423,40 @@ body.mode-art #app > #windowLed .led-foot {
 body.floor-mode #app > header,
 body.mode-floor #app > header {
   position: relative !important;
-  z-index: 80 !important;
+  z-index: 4 !important;
   overflow: visible !important;
+  flex-wrap: nowrap !important;
+  flex-direction: column !important;
 }
-body:not(.mode-art):not(.floor-mode):not(.mode-floor) #app > #windowLed {
+body:not(.mode-art):not(.floor-mode):not(.mode-floor) #app > header #windowLed {
   display: none !important;
   visibility: hidden !important;
+}
+
+/* ===== COLD-LOAD GATES — last word, do not ship unlocked ===== */
+html.gate-locked #app,
+body.gate-locked #app,
+body.gate-revealing #app,
+body:has(#passwordGate:not(.hidden)) #app {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#passwordGate.password-gate:not(.hidden) {
+  display: flex !important;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 200000 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+body:not(.admin-unlocked) #adminToolsCard,
+body:not(.admin-unlocked) #brainCard,
+body:not(.admin-unlocked) #autoBetCard,
+body:not(.admin-unlocked) #adminDeskHost {
+  display: none !important;
+}
+body.admin-unlocked.mode-settings #adminToolsCard,
+body.admin-unlocked.mode-settings #brainCard,
+body.admin-unlocked.mode-settings #adminDeskHost {
+  display: block !important;
 }

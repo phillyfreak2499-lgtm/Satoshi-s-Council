@@ -17,18 +17,41 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
   const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
-  // Session-only. A cold visit must NOT start admin-unlocked from leftover localStorage.
+  const DESK_KEY = "council_auth_ok";
+  // Cold load: leftover storage must not paint privileged chrome.
   try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  try { localStorage.removeItem(DESK_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  document.body.classList.add("gate-locked");
   document.body.classList.remove("admin-unlocked", "follower-unlocked");
   document.body.setAttribute("data-password-protected", "true");
+  function hasDeskAuth() {
+    try { return sessionStorage.getItem(DESK_KEY) === "1"; } catch (e) { return false; }
+  }
   function isAdminUnlocked() {
-    try { return sessionStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(ADMIN_KEY) === "1" && !!window.__adminUnlockedThisPage; } catch (e) { return !!window.__adminUnlockedThisPage; }
   }
   function setAdminUnlocked(on) {
     try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
     try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    if (on) window.__adminUnlockedThisPage = true;
     document.body.classList.toggle("admin-unlocked", !!on);
+    if (on) {
+      try { mountAdminDesk(); } catch (e) {}
+    }
   }
+  function mountAdminDesk() {
+    const host = document.getElementById("adminDeskHost");
+    const tpl = document.getElementById("adminDeskTemplate");
+    if (!host || !tpl) return;
+    if (host.dataset.mounted !== "1") {
+      host.appendChild(tpl.content.cloneNode(true));
+      host.dataset.mounted = "1";
+    }
+    try { wireAdminTools(); } catch (e) {}
+    try { wireBrain(); } catch (e) {}
+  }
+  window.mountAdminDesk = mountAdminDesk;
   let pendingAdminCb = null;
   function requestAdminUnlock(cb) {
     if (isAdminUnlocked()) { if (typeof cb === "function") cb(); return; }
@@ -54,6 +77,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       setMode("settings");
     }
     if (ok) {
+      try { mountAdminDesk(); } catch (e) {}
       try { loadAdminDeskExtensions(); } catch (e) {}
     }
     try { syncAutoBetVisibility(); } catch (e) {}
@@ -3918,7 +3942,14 @@ function drawCandleChart() {
 
 
   function setMode(next) {
-    // Settings requires admin unlock for this browser session
+    if (!hasDeskAuth()) {
+      document.body.classList.add("gate-locked");
+      document.body.classList.remove("admin-unlocked");
+      const pg = document.getElementById("passwordGate");
+      if (pg) pg.classList.remove("hidden");
+      return;
+    }
+    // Settings requires admin unlock on this page load. Do not inherit a leftover session.
     if (next === "settings") {
       const unlocked = (typeof isAdminUnlocked === "function") ? isAdminUnlocked() : false;
       if (!unlocked) {
@@ -3926,6 +3957,8 @@ function drawCandleChart() {
         if (typeof requestAdminUnlock === "function") {
           requestAdminUnlock(() => {
             window.__openSettingsAfterAdmin = false;
+            window.__adminUnlockedThisPage = true;
+            try { mountAdminDesk(); } catch (e) {}
             setMode("settings");
           });
         }
@@ -5811,8 +5844,12 @@ function drawCandleChart() {
   }
 
   function initPasswordGate() {
-    // Cold visit / new tab: leftover localStorage must not skip the desk code.
+    // Never skip the desk code from localStorage. Cold tab / hard refresh
+    // must see the access overlay. Same-tab session only.
     try { localStorage.removeItem(passKey); } catch (e) {}
+    try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    document.body.classList.remove("admin-unlocked");
     let sessionOk = false;
     try { sessionOk = sessionStorage.getItem(passKey) === "1"; } catch (e) { sessionOk = false; }
     if (sessionOk) {
@@ -6162,14 +6199,21 @@ function drawCandleChart() {
 (function () {
   const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
+  try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  document.body.classList.remove("admin-unlocked");
 
   window.isAdminUnlocked = function isAdminUnlocked() {
-    try { return sessionStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(ADMIN_KEY) === "1" && !!window.__adminUnlockedThisPage; } catch (e) { return !!window.__adminUnlockedThisPage; }
   };
   function setAdminUnlocked(on) {
     try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
     try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    if (on) window.__adminUnlockedThisPage = true;
     document.body.classList.toggle("admin-unlocked", !!on);
+    if (on) {
+      try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
+    }
   }
 
   let pendingAdminCb = null;
@@ -6193,6 +6237,10 @@ function drawCandleChart() {
     pendingAdminCb = null;
     window.__pendingAdminUnlock = null;
     if (ok && typeof cb === "function") cb();
+    if (ok) {
+      window.__adminUnlockedThisPage = true;
+      try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
+    }
     if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
       window.__openSettingsAfterAdmin = false;
       window.setMode("settings");

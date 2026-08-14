@@ -827,7 +827,10 @@ async def api_unknown(rest: str):
 if STATIC_DIR.is_dir():
     @app.get("/")
     async def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -841,14 +844,18 @@ if STATIC_DIR.is_dir():
     # Flat asset paths used by static/index.html (style.css, roundtable.js)
     @app.get("/style.css")
     async def style_css():
-        return FileResponse(STATIC_DIR / "style.css", media_type="text/css")
+        return FileResponse(
+            STATIC_DIR / "style.css",
+            media_type="text/css",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
 
     @app.get("/roundtable.js")
     async def roundtable_js():
         return FileResponse(
             STATIC_DIR / "roundtable.js",
             media_type="application/javascript",
-            headers={"Cache-Control": "no-cache"},
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
 
     @app.get("/app.js")

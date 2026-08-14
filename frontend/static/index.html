@@ -9,6 +9,22 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
+  <script>
+  /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
+  (function () {
+    try { localStorage.removeItem("council_auth_ok"); } catch (e) {}
+    try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    document.documentElement.classList.add("gate-locked");
+    document.addEventListener("DOMContentLoaded", function () {
+      document.body.classList.add("gate-locked");
+      document.body.classList.remove("admin-unlocked", "follower-unlocked");
+      document.body.setAttribute("data-password-protected", "true");
+      var pg = document.getElementById("passwordGate");
+      if (pg) pg.classList.remove("hidden");
+    });
+  })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
@@ -126,17 +142,16 @@
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
       </div>
-    </header>
-
-    <!-- Docked under the nav so Floor tabs never cover “until close / BTC · ETH”. -->
-    <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
-      <div class="led-bezel">
-        <div class="led-label">1H WINDOW</div>
-        <div id="ledWindowTime" class="led-digits led-time">--:--</div>
-        <div class="led-foot" id="ledWindowSub">until close</div>
-        <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
+      <!-- Inside header, after tabs, so a wrapped 390 nav cannot cover it. -->
+      <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
+        <div class="led-bezel">
+          <div class="led-label">1H WINDOW</div>
+          <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+          <div class="led-foot" id="ledWindowSub">until close</div>
+          <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
+        </div>
       </div>
-    </div>
+    </header>
 
     <main id="mainTable">
       <!-- LEFT: Lifetime accuracy + settled log -->
@@ -376,29 +391,7 @@
         </div>
 
 
-        <div class="beast-card settings-card" id="adminToolsCard">
-          <div class="beast-title">ADMIN TOOLS</div>
-          <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities.</p>
-          <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
-            <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate</button>
-            <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
-            <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
-          </div>
-          <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
-        </div>
-
-<div class="brain-card" id="brainCard">
-          <div class="beast-title">LEARNING BRAIN</div>
-          <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
-          <div class="brain-actions">
-            <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="#" role="button">Download brain.json</a>
-            <label class="gate-btn gate-btn-ghost brain-upload">
-              Upload brain.json
-              <input type="file" id="brainFile" accept="application/json,.json" hidden />
-            </label>
-          </div>
-          <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
-        </div>
+        <div id="adminDeskHost"></div>
 
         <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
       </div>
@@ -610,6 +603,32 @@
       <img src="/hive-egg.png" alt="" class="hive-egg-img" />
     </div>
 
+
+  <!-- Privileged Settings chrome is not in the public tree until admin unlock. -->
+  <template id="adminDeskTemplate">
+    <div class="beast-card settings-card" id="adminToolsCard">
+      <div class="beast-title">ADMIN TOOLS</div>
+      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities.</p>
+      <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate</button>
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
+        <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
+      </div>
+      <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
+    </div>
+    <div class="brain-card" id="brainCard">
+      <div class="beast-title">LEARNING BRAIN</div>
+      <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
+      <div class="brain-actions">
+        <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="#" role="button">Download brain.json</a>
+        <label class="gate-btn gate-btn-ghost brain-upload">
+          Upload brain.json
+          <input type="file" id="brainFile" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
+    </div>
+  </template>
 
   <!-- Admin password modal (Settings / destructive actions) -->
   <div id="adminGate" class="admin-gate hidden" role="dialog" aria-modal="true" aria-label="Admin password">

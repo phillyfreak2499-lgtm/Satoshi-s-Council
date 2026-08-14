@@ -34,21 +34,34 @@ class SettingsJsonRouteTests(unittest.TestCase):
 
 class GateColdVisitTests(unittest.TestCase):
     def test_html_starts_locked(self):
-        self.assertIn('class="gate-locked"', HTML)
+        self.assertRegex(HTML, r'<body class="gate-locked"')
+        self.assertNotRegex(HTML, r'<body[^>]*admin-unlocked')
         self.assertIn('data-password-protected="true"', HTML)
         self.assertIn('id="passwordGate"', HTML)
+        self.assertNotIn('id="passwordGate" class="password-gate hidden"', HTML)
         self.assertIn('id="adminGate"', HTML)
         self.assertIn("Enter access code", HTML)
+        self.assertIn("Never start admin-unlocked", HTML)
+        self.assertIn('sessionStorage.removeItem("council_admin_unlocked")', HTML)
+
+    def test_admin_tools_are_not_in_the_live_tree(self):
+        live = HTML.split('<template id="adminDeskTemplate">')[0]
+        self.assertNotIn('id="adminToolsCard"', live)
+        self.assertNotIn("btnClearHitRate", live)
+        self.assertIn('id="adminDeskTemplate"', HTML)
+        self.assertIn("btnClearHitRate", HTML.split('<template id="adminDeskTemplate">', 1)[1])
 
     def test_js_requires_desk_code_and_admin_on_cold(self):
         self.assertIn('localStorage.removeItem(passKey)', JS)
         self.assertIn('localStorage.removeItem(ADMIN_KEY)', JS)
+        self.assertIn("sessionStorage.removeItem(ADMIN_KEY)", JS)
         self.assertIn("sessionStorage.getItem(passKey)", JS)
-        self.assertIn("sessionStorage.getItem(ADMIN_KEY)", JS)
         self.assertIn("requestAdminUnlock", JS)
-        self.assertIn('if (next === "settings")', JS)
+        self.assertIn("if (!hasDeskAuth())", JS)
+        self.assertIn("__adminUnlockedThisPage", JS)
         self.assertNotIn("localStorage.setItem(passKey", JS)
         self.assertNotIn("localStorage.setItem(ADMIN_KEY", JS)
+        self.assertNotIn("localStorage.getItem(passKey)", JS)
 
 
 class PaperPnlPrefillTests(unittest.TestCase):
@@ -65,18 +78,20 @@ class PaperPnlPrefillTests(unittest.TestCase):
 
 
 class FloorOneHDockTests(unittest.TestCase):
-    def test_window_led_is_after_header_before_main(self):
+    def test_window_led_lives_inside_header_after_tabs(self):
         header_end = HTML.find("</header>")
+        tabs = HTML.find('class="mode-tabs"')
         led = HTML.find('id="windowLed"')
         main = HTML.find('id="mainTable"')
-        self.assertGreater(led, header_end)
-        self.assertGreater(main, led)
+        self.assertGreater(led, tabs)
+        self.assertGreater(header_end, led)
+        self.assertGreater(main, header_end)
         self.assertEqual(len(re.findall(r'id="windowLed"', HTML)), 1)
 
     def test_css_docks_floor_in_flow(self):
-        self.assertIn("body.floor-mode #app > #windowLed", CSS)
+        self.assertIn("body.floor-mode #app > header #windowLed", CSS)
         self.assertIn("position: relative !important;", CSS)
-        self.assertIn("in-flow under nav", CSS)
+        self.assertIn("COLD-LOAD GATES", CSS)
 
 
 class PacksNotDroppedTests(unittest.TestCase):
