@@ -112,6 +112,8 @@ DEFAULTS: Dict[str, Any] = {
         "floor_immersive_default": False,
         "show_fade_tags": True,
         "show_anti_tags": True,
+        "call_sfx": True,
+        "team_loops": True,
     },
 }
 
@@ -246,10 +248,20 @@ class RuntimeSettings:
         self.save()
         return self.snapshot()
 
+    def reset_to_defaults(self) -> Dict[str, Any]:
+        """Replace runtime settings with factory DEFAULTS and persist."""
+        with self._lock:
+            self._data = json.loads(json.dumps(DEFAULTS))
+        self.save()
+        logger.info("Runtime settings reset to factory defaults")
+        return self.snapshot()
+
     def apply_patch(self, body: Dict[str, Any]) -> Dict[str, Any]:
         """Apply a partial settings body from the Settings tab."""
         if not isinstance(body, dict):
             return self.snapshot()
+        if body.get("reset") is True or body.get("reset_defaults") is True:
+            return self.reset_to_defaults()
         if "beast_mode" in body:
             self.set_beast_mode(bool(body["beast_mode"]))
         for sec in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet"):
@@ -308,6 +320,9 @@ class RuntimeSettings:
                 else "Balanced cadence · single spot · power-friendly"
             ),
             "defaults": {
+                "beast_mode": DEFAULTS["beast_mode"],
+                "beast": DEFAULTS["beast"],
+                "normal": DEFAULTS["normal"],
                 "learning": DEFAULTS["learning"],
                 "trading": DEFAULTS["trading"],
                 "huddle": DEFAULTS["huddle"],

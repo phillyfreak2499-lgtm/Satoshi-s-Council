@@ -103,6 +103,7 @@ class PerformanceStore:
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 
     async def init(self):
+        # create_all only — never DROP, truncate, or rewrite council.db / brain.
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             # Best-effort add new columns / drop unique on ticker for multi-call scalp mode

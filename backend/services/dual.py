@@ -64,6 +64,10 @@ class DualOrchestrator:
                     c.learner.load()
             except Exception as e:
                 logger.debug(f"learner load {c.asset}: {e}")
+            try:
+                await c.hydrate_persisted_desk()
+            except Exception as e:
+                logger.debug(f"desk hydrate {c.asset}: {e}")
             c.running = True
         self.running = True
         self._task = asyncio.create_task(self._loop())

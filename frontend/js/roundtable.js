@@ -3255,6 +3255,9 @@ function drawCandleChart() {
     if (s) applySettingsSnapshot(s);
   });
 
+  window.applySettingsSnapshot = applySettingsSnapshot;
+  window.setMode = setMode;
+
   // Force clean Table view — hide any stacked info panels
   setMode("art");
   poll();
@@ -3322,7 +3325,11 @@ function drawCandleChart() {
         body: JSON.stringify(body),
       });
       const s = await r.json();
-      applySettingsSnapshot(s);
+      const applySnap = window.applySettingsSnapshot;
+      if (typeof applySnap !== "function") {
+        throw new ReferenceError("applySettingsSnapshot is not defined");
+      }
+      applySnap(s);
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
       if (st) st.textContent = "Save failed: " + e;
@@ -3351,7 +3358,7 @@ function drawCandleChart() {
           });
         }
         const s2 = await (await fetch("/api/settings")).json();
-        applySettingsSnapshot(s2);
+        if (typeof window.applySettingsSnapshot === "function") window.applySettingsSnapshot(s2);
         const st = document.getElementById("settingsSaveStatus");
         if (st) st.textContent = "Defaults restored";
       } catch (e) {}

@@ -1742,8 +1742,10 @@ body:not(.gate-locked) #app {
 .tut-tip {
   font-size: 12px;
   color: #6a8a9a;
-  margin: -8px 0 14px;
+  margin: 0 0 14px;
   font-style: italic;
+  position: relative;
+  display: block;
 }
 
 /* Full-viewport summon cinematic */
@@ -2359,6 +2361,15 @@ body.admin-unlocked.mode-settings #autoBetCard {
   gap: 10px;
   margin: 12px 0 18px;
 }
+#settingsView:not(.hidden) {
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  isolation: isolate;
+  position: relative !important;
+  left: auto !important;
+  height: auto !important;
+  max-height: none !important;
+}
 
 
 /* ===== FULL UPDATE: logo, password, summon, lightsaber, floor space ===== */
@@ -2369,7 +2380,6 @@ body.admin-unlocked.mode-settings #autoBetCard {
   box-shadow: 0 0 12px rgba(120, 200, 255, 0.25);
 }
 .zt-header-logo img { display: block; border-radius: 8px; }
-.title-zt { color: #7dd3fc; font-weight: 500; opacity: 0.9; }
 .credit-popup {
   position: fixed; top: 58px; left: 16px; z-index: 5000;
   background: rgba(8,12,22,0.95); border: 1px solid #3b82f6;
@@ -3845,13 +3855,14 @@ footer {
 #decisionSummary,
 #finalDecision #decisionSummary,
 footer #decisionSummary {
-  white-space: normal !important;
-  overflow: visible !important;
-  text-overflow: unset !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
   max-width: none !important;
-  flex: 1 1 100% !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
   word-break: normal;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 #marketStrip {
   display: flex !important;
@@ -3968,4 +3979,676 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+/* ===== LIVE DESK QA — strip / tabs / cinematic (1280) ===== */
+#app {
+  overflow: hidden !important;
+}
+#app > footer {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  gap: 6px !important;
+  position: relative !important;
+  z-index: 80 !important;
+  isolation: isolate;
+  background: #03060c !important;
+  border-top: 1px solid rgba(0, 232, 255, 0.16);
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.55);
+  clip-path: none !important;
+  overflow: hidden !important;
+  min-width: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+#app > footer #finalDecision,
+#app > footer #finalDecision.status-strip {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  flex: 0 0 auto !important;
+  order: 1 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  gap: 6px 10px !important;
+  padding: 4px 2px 2px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+#app > footer #decisionDir {
+  font-size: 1.15rem !important;
+  line-height: 1.1 !important;
+}
+#app > footer #decisionSummary,
+#app > footer #finalDecision #decisionSummary {
+  flex: 1 1 12rem !important;
+  max-width: none !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+#app > footer #marketStrip {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  flex: 0 0 auto !important;
+  order: 2 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  gap: 6px 12px !important;
+  padding-top: 6px !important;
+  margin-top: 0 !important;
+  border-top: 1px solid rgba(0, 232, 255, 0.12);
+  background: #03060c !important;
+  z-index: 1 !important;
+}
+#mainTable {
+  overflow: hidden !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+#lifetimePanel {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  position: relative !important;
+  z-index: 1 !important;
+  padding-bottom: 8px !important;
+}
+#callLog.call-log {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  z-index: 1 !important;
+}
+#callLog .call-empty {
+  position: relative !important;
+  z-index: 1 !important;
+  padding-bottom: 18px;
+}
+
+/* Tab highlight follows body.mode-* so DASHBOARD cannot stay lit on CHARTS
+   (same lock as BOTS→RANKS). Wait until a mode-* class exists so Table
+   is not unstyled before setMode("art") on boot. */
+body[class*="mode-"]:not(.mode-dashboard) #tabDashboard,
+body[class*="mode-"]:not(.mode-dashboard) #tabDashboard.active,
+body.beast-mode[class*="mode-"]:not(.mode-dashboard) #tabDashboard,
+body.beast-mode[class*="mode-"]:not(.mode-dashboard) #tabDashboard.active,
+body[class*="mode-"]:not(.mode-bots) #tabBots,
+body[class*="mode-"]:not(.mode-bots) #tabBots.active,
+body.beast-mode[class*="mode-"]:not(.mode-bots) #tabBots,
+body.beast-mode[class*="mode-"]:not(.mode-bots) #tabBots.active,
+body[class*="mode-"]:not(.mode-ranks) #tabRanks,
+body[class*="mode-"]:not(.mode-ranks) #tabRanks.active,
+body.beast-mode[class*="mode-"]:not(.mode-ranks) #tabRanks,
+body.beast-mode[class*="mode-"]:not(.mode-ranks) #tabRanks.active,
+body[class*="mode-"]:not(.mode-charts) #tabCharts,
+body[class*="mode-"]:not(.mode-charts) #tabCharts.active,
+body.beast-mode[class*="mode-"]:not(.mode-charts) #tabCharts,
+body.beast-mode[class*="mode-"]:not(.mode-charts) #tabCharts.active,
+body[class*="mode-"]:not(.mode-paper) #tabPaper,
+body[class*="mode-"]:not(.mode-paper) #tabPaper.active,
+body.beast-mode[class*="mode-"]:not(.mode-paper) #tabPaper,
+body.beast-mode[class*="mode-"]:not(.mode-paper) #tabPaper.active,
+body[class*="mode-"]:not(.mode-settings) #tabSettings,
+body[class*="mode-"]:not(.mode-settings) #tabSettings.active,
+body.beast-mode[class*="mode-"]:not(.mode-settings) #tabSettings,
+body.beast-mode[class*="mode-"]:not(.mode-settings) #tabSettings.active,
+body[class*="mode-"]:not(.mode-floor) #tabFloor,
+body[class*="mode-"]:not(.mode-floor) #tabFloor.active,
+body.beast-mode[class*="mode-"]:not(.mode-floor) #tabFloor,
+body.beast-mode[class*="mode-"]:not(.mode-floor) #tabFloor.active,
+body[class*="mode-"]:not(.mode-art) #tabScreensaver,
+body[class*="mode-"]:not(.mode-art) #tabScreensaver.active,
+body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver,
+body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver.active {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  transition: none !important;
+}
+body.mode-dashboard #tabDashboard,
+body.mode-dashboard #tabDashboard.active,
+body.mode-bots #tabBots,
+body.mode-bots #tabBots.active,
+body.mode-ranks #tabRanks,
+body.mode-ranks #tabRanks.active,
+body.mode-charts #tabCharts,
+body.mode-charts #tabCharts.active,
+body.mode-paper #tabPaper,
+body.mode-paper #tabPaper.active,
+body.mode-settings #tabSettings,
+body.mode-settings #tabSettings.active,
+body.mode-floor #tabFloor,
+body.mode-floor #tabFloor.active,
+body.mode-art #tabScreensaver,
+body.mode-art #tabScreensaver.active {
+  color: var(--blade) !important;
+  border-color: rgba(0, 232, 255, 0.5) !important;
+  background: rgba(0, 232, 255, 0.08) !important;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+  transition: none !important;
+}
+body.beast-mode.mode-dashboard #tabDashboard,
+body.beast-mode.mode-dashboard #tabDashboard.active,
+body.beast-mode.mode-bots #tabBots,
+body.beast-mode.mode-bots #tabBots.active,
+body.beast-mode.mode-ranks #tabRanks,
+body.beast-mode.mode-ranks #tabRanks.active,
+body.beast-mode.mode-charts #tabCharts,
+body.beast-mode.mode-charts #tabCharts.active,
+body.beast-mode.mode-paper #tabPaper,
+body.beast-mode.mode-paper #tabPaper.active,
+body.beast-mode.mode-settings #tabSettings,
+body.beast-mode.mode-settings #tabSettings.active,
+body.beast-mode.mode-floor #tabFloor,
+body.beast-mode.mode-floor #tabFloor.active,
+body.beast-mode.mode-art #tabScreensaver,
+body.beast-mode.mode-art #tabScreensaver.active {
+  border-color: rgba(240, 193, 74, 0.7) !important;
+  color: #ffe49a !important;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.4) !important;
+}
+
+/* Keep huddle chip text at 1280 — cinematic must not blank it */
+#app > header .huddle-badge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+#app > header .huddle-badge .huddle-label,
+#app > header .huddle-badge .huddle-status,
+#app > header .huddle-badge .huddle-chip-status {
+  display: inline !important;
+  visibility: visible !important;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cinematic is an overlay only — never take over layout / resize the desk */
+body.zt-cinematic #celebrateVideoWrap:not(.hidden) {
+  z-index: 10080 !important;
+}
+
+/* ===== DESK LIST LOCK — timer / header / tutorial (final) ===== */
+#windowLed::before,
+#windowLed::after,
+#ledWindow::before,
+#ledWindow::after,
+.led-window::before,
+.led-window::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  animation: none !important;
+  opacity: 0 !important;
+}
+#windowLed,
+#windowLed.led-window,
+#windowLed.led-float,
+body.floor-mode .led-window,
+body.mode-floor .led-window,
+body.mode-art .led-window {
+  position: fixed !important;
+  left: 16px !important;
+  right: auto !important;
+  top: 110px !important;
+  bottom: auto !important;
+  transform: none !important;
+  z-index: 35 !important;
+}
+body.floor-mode #windowLed,
+body.floor-mode #windowLed.led-window,
+body.mode-floor #windowLed {
+  top: 40px !important;
+  left: 14px !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 70 !important;
+}
+body.mode-art #windowLed,
+body.mode-art #windowLed.led-window {
+  top: 110px !important;
+  left: 16px !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+body:not(.mode-art):not(.floor-mode):not(.mode-floor) #windowLed,
+body.mode-dashboard #windowLed,
+body.mode-dashboard #windowLed.led-window,
+body.mode-dashboard .led-window,
+body.mode-bots #windowLed,
+body.mode-ranks #windowLed,
+body.mode-paper #windowLed,
+body.mode-charts #windowLed,
+body.mode-settings #windowLed {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#app > header,
+#app > header.top-bar {
+  overflow: visible !important;
+  clip-path: none !important;
+  flex-wrap: nowrap !important;
+  flex-direction: column !important;
+}
+#app > header .header-row {
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+}
+#app > header .controls {
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+#beastBadge,
+#app > header .beast-badge,
+#app > header #beastBadge {
+  flex: 0 0 auto !important;
+  overflow: visible !important;
+  max-width: none !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+#helpTutorialOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 20000 !important;
+}
+#helpTutorialOverlay .tut-card {
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: min(560px, 92vw) !important;
+  max-height: min(80vh, 680px) !important;
+  overflow: auto !important;
+  position: relative !important;
+}
+#helpTutorialOverlay .tut-body,
+#helpTutorialOverlay .tut-tip,
+#helpTutorialOverlay .tut-bots {
+  position: relative !important;
+  margin-top: 0 !important;
+  margin-bottom: 12px !important;
+  white-space: pre-wrap;
+  overflow: visible;
+}
+
+/* ===== SETTINGS HIT-ZONE + ROOM LOCK =====
+   Leftover BOTS/CHARTS/RANKS / hive / logo hit boxes must not sit on
+   SOUND & UI. Panel scrolls in the space under the header, not through it. */
+#hiveBtn.hive-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  padding: 4px !important;
+  margin-left: 6px !important;
+  overflow: hidden !important;
+  flex: 0 0 28px !important;
+}
+#hiveEgg.hidden,
+.hive-egg.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.mode-settings #app > header {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  pointer-events: none !important;
+}
+body.mode-settings #app > header .mode-tab,
+body.mode-settings #app > header .focus-tab,
+body.mode-settings #app > header .beast-badge,
+body.mode-settings #app > header #beastBadge,
+body.mode-settings #app > header #soundToggle,
+body.mode-settings #app > header #tabSettings {
+  pointer-events: auto !important;
+}
+body.mode-settings #hiveBtn,
+body.mode-settings #ztLogoBtn,
+body.mode-settings #ztHeaderLogo {
+  pointer-events: none !important;
+}
+
+body.mode-settings #mainTable,
+body.mode-settings #mainTable *,
+body.mode-settings #botsView,
+body.mode-settings #ranksView,
+body.mode-settings #chartsView,
+body.mode-settings #paperView,
+body.mode-settings #dashboardOverlay,
+body.mode-settings #openChartsBtn,
+body.mode-settings #hierarchyPanel {
+  pointer-events: none !important;
+}
+
+body.mode-settings #settingsView:not(.hidden),
+body.mode-settings #settingsView.info-view:not(.hidden) {
+  display: block !important;
+  visibility: visible !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 90 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  isolation: isolate !important;
+  pointer-events: auto !important;
+  padding: 10px 16px 28px !important;
+}
+body.mode-settings #settingsView .settings-panel {
+  position: relative !important;
+  z-index: 2 !important;
+  pointer-events: auto !important;
+  margin: 4px auto 36px !important;
+  max-width: min(920px, calc(100% - 12px)) !important;
+  padding-bottom: 40px !important;
+}
+body.mode-settings #settingsView .set-check,
+body.mode-settings #settingsView .set-field,
+body.mode-settings #settingsView input,
+body.mode-settings #settingsView label,
+body.mode-settings #settingsView button,
+body.mode-settings #settingsView select,
+body.mode-settings #settingsView #adminToolsCard {
+  position: relative !important;
+  z-index: 3 !important;
+  pointer-events: auto !important;
+}
+
+/* ===== PHONE 390 — layer on current desk, do not replace it ===== */
+@media (max-width: 480px) {
+  html, body {
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+  #app {
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    padding-left: env(safe-area-inset-left, 0px) !important;
+    padding-right: env(safe-area-inset-right, 0px) !important;
+  }
+
+  #app > header {
+    order: 1;
+    flex: 0 0 auto !important;
+    position: relative !important;
+    z-index: 20 !important;
+    overflow: visible !important;
+  }
+  #app > header .header-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  #app > header .mode-tabs {
+    order: 2;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 6px !important;
+    padding: 4px 6px !important;
+  }
+  #app > header .mode-tab,
+  #app > header .focus-tab,
+  #app > header #soundToggle,
+  #app > header .beast-badge,
+  #app > header #beastBadge {
+    flex: 0 0 auto !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    padding: 10px 12px !important;
+    font-size: 0.68rem !important;
+    line-height: 1.1 !important;
+  }
+  #app > header .zt-logo-btn,
+  #app > header .zt-header-logo {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  #windowLed,
+  #windowLed.led-window,
+  #windowLed.led-float,
+  body.mode-art #windowLed,
+  body.mode-art #windowLed.led-window,
+  body.floor-mode #windowLed,
+  body.floor-mode #windowLed.led-window,
+  body.mode-floor #windowLed,
+  body.mode-floor #windowLed.led-window {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    order: 2;
+    z-index: 6 !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    margin: 6px auto 0 !important;
+    width: fit-content !important;
+    max-width: calc(100vw - 24px) !important;
+    pointer-events: none !important;
+  }
+  body.mode-dashboard #windowLed,
+  body.mode-bots #windowLed,
+  body.mode-ranks #windowLed,
+  body.mode-paper #windowLed,
+  body.mode-charts #windowLed,
+  body.mode-settings #windowLed {
+    display: none !important;
+  }
+
+  #mainTable,
+  #settingsView,
+  #botsView,
+  #ranksView,
+  #paperView,
+  #chartsView {
+    order: 3;
+  }
+  #app > footer {
+    order: 10;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+  #app > footer #finalDecision,
+  #app > footer #finalDecision.status-strip {
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+  }
+
+  #mainTable {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+  #tableStage,
+  #mainTable #tableStage,
+  #mainTable .table-stage {
+    order: 1;
+    width: 100% !important;
+    min-height: min(68dvh, 520px) !important;
+    height: min(68dvh, 520px) !important;
+    max-height: none !important;
+  }
+  #lifetimePanel {
+    order: 2;
+    display: flex !important;
+    padding-top: 8px !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  body.mode-art #lifetimePanel {
+    padding-top: 8px !important;
+  }
+  #debatePanel,
+  #hierarchyPanel,
+  body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
+    display: none !important;
+  }
+
+  body.floor-mode #app > header,
+  body.mode-floor #app > header {
+    display: flex !important;
+  }
+  body.floor-mode #app > header .header-row,
+  body.mode-floor #app > header .header-row {
+    display: none !important;
+  }
+  body.floor-mode #app > header .mode-tabs,
+  body.mode-floor #app > header .mode-tabs {
+    display: flex !important;
+  }
+  body.floor-mode #app > footer,
+  body.mode-floor #app > footer {
+    display: flex !important;
+  }
+  body.floor-mode #mainTable,
+  body.floor-mode #tableStage,
+  body.floor-mode .table-stage,
+  body.mode-floor #mainTable,
+  body.mode-floor #tableStage {
+    height: auto !important;
+    min-height: min(72dvh, 560px) !important;
+    max-height: none !important;
+  }
+  body.floor-mode #lifetimePanel,
+  body.mode-floor #lifetimePanel {
+    display: none !important;
+  }
+
+  body.mode-settings #settingsView:not(.hidden),
+  body.mode-settings #settingsView.info-view:not(.hidden) {
+    flex: 0 0 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    z-index: 80 !important;
+    padding: 8px 12px 32px !important;
+  }
+  body.mode-settings #app > header {
+    pointer-events: none !important;
+    z-index: 4 !important;
+  }
+  body.mode-settings #app > header .mode-tab,
+  body.mode-settings #app > header .focus-tab,
+  body.mode-settings #app > header #tabSettings {
+    pointer-events: auto !important;
+  }
+  body.mode-settings #settingsView .set-check {
+    min-height: 44px !important;
+    pointer-events: auto !important;
+    z-index: 20 !important;
+  }
+  body.mode-settings #settingsView .set-check input[type="checkbox"] {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    pointer-events: auto !important;
+  }
+
+  .password-gate,
+  .summon-gate,
+  #adminGate.admin-gate {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: max(20px, env(safe-area-inset-top, 20px)) 16px max(20px, env(safe-area-inset-bottom, 20px)) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+  }
+  .password-card,
+  .gate-inner,
+  .tut-card,
+  .admin-card {
+    margin: auto !important;
+    position: relative !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    width: min(360px, 92vw) !important;
+    max-width: 92vw !important;
+  }
+
+  .lightsaber-wrap {
+    top: auto !important;
+    bottom: auto !important;
+    left: 8px !important;
+    transform: none !important;
+    width: 10px !important;
+    height: 120px !important;
+  }
+
+  .info-view:not(.hidden),
+  .charts-view:not(.hidden) {
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
 }

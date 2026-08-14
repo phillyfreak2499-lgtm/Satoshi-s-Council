@@ -2,10 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Satoshi’s Council / ZT</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Satoshi’s Council</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -27,7 +29,7 @@
   <div id="summonGate" class="summon-gate hidden">
     <canvas id="gateFog" class="gate-fog"></canvas>
     <div id="gateInner" class="gate-inner">
-      <div class="gate-brand">SATOSHI’S COUNCIL / ZT</div>
+      <div class="gate-brand">SATOSHI’S COUNCIL</div>
       <div class="gate-actions">
         <button type="button" id="btnTutorial" class="gate-btn gate-btn-ghost">Tutorial</button>
         <button type="button" id="btnSummon" class="gate-btn gate-btn-summon">Summon the Council</button>
@@ -58,10 +60,10 @@
     <header>
       <div class="header-row">
         <div class="logo">
-          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="ZT logo">
-            <img src="/zt-logo.jpg" alt="ZT" width="36" height="36" />
+          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="Satoshi’s Council">
+            <img src="/zt-logo.jpg" alt="Satoshi’s Council" width="36" height="36" />
           </button>
-          <span class="title">SATOSHI’S COUNCIL <span class="title-zt">/ ZT</span></span>
+          <span class="title">SATOSHI’S COUNCIL</span>
           <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
         </div>
         <div id="creditPopup" class="credit-popup hidden" role="dialog" aria-label="Credits">
@@ -91,8 +93,8 @@
             <span class="law-label">LAW</span>
             <span id="lawStatus" class="law-status">OK</span>
           </div>
-          <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="ZT — play cinematic (also unlocks after 5 wins in a row)" aria-label="Play ZT cinematic">
-            <img src="/zt-logo.jpg" alt="ZT" width="28" height="28" />
+          <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="Play cinematic (also unlocks after 5 wins in a row)" aria-label="Play cinematic">
+            <img src="/zt-logo.jpg" alt="" width="28" height="28" />
           </button>
           <button type="button" id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
           <button type="button" id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>
@@ -553,12 +555,14 @@
     <button type="button" id="summonVideoSkip" class="summon-video-skip">Skip</button>
   </div>
   <div id="celebrateVideoWrap" class="celebrate-video-wrap hidden" aria-hidden="true">
-    <video id="celebrateVideo" playsinline webkit-playsinline preload="metadata">
-      <source src="/zt-celebrate.mp4" type="video/mp4" />
+    <video id="celebrateVideo" playsinline webkit-playsinline preload="auto">
+      <source src="/static/video/money-closeup.mp4" type="video/mp4" />
       <source src="/zt-intro.mp4" type="video/mp4" />
       <source src="/summon-council.mp4" type="video/mp4" />
+      <source src="/static/zt-intro.mp4" type="video/mp4" />
+      <source src="/zt-celebrate.mp4" type="video/mp4" />
     </video>
-    <div id="celebrateFallback" class="celebrate-fallback" hidden>ZT CINEMATIC</div>
+    <div id="celebrateFallback" class="celebrate-fallback" hidden>CINEMATIC</div>
     <button type="button" id="celebrateVideoSkip" class="celebrate-skip">Skip</button>
   </div>
 

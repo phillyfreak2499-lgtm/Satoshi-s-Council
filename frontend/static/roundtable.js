@@ -3,6 +3,10 @@
  * Screensaver Mode: High-tech cyberpunk knight / samurai Round Table
  * Dashboard Mode: armor-plate neon HUD cards
  */
+window.applySettingsSnapshot = window.applySettingsSnapshot || function applySettingsSnapshotStub() {};
+if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
+  window.applySettingsSnapshot._stub = true;
+}
 (() => {
   const canvas = document.getElementById("roundtable");
   if (!canvas) {
@@ -39,6 +43,10 @@
     pendingAdminCb = null;
     window.__pendingAdminUnlock = null;
     if (ok && typeof cb === "function") cb();
+    if (ok && window.__openSettingsAfterAdmin && typeof setMode === "function") {
+      window.__openSettingsAfterAdmin = false;
+      setMode("settings");
+    }
     try { syncAutoBetVisibility(); } catch (e) {}
   }
 
@@ -72,7 +80,14 @@
       }
     };
     submit.addEventListener("click", tryUnlock);
-    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+    if (input && !input.__hotkeysSwallowed) {
+      input.__hotkeysSwallowed = true;
+      input.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.key === "Enter") tryUnlock();
+      }, true);
+    }
     if (cancel && !cancel.__wired) {
       cancel.__wired = true;
       cancel.addEventListener("click", () => closeAdminGate(false));
@@ -167,6 +182,10 @@
   const chartsView = document.getElementById("chartsView");
   const mainTable = document.getElementById("mainTable");
   const modeTabs = document.querySelectorAll(".mode-tab");
+  let celebratePlaying = false;
+  function deskCinematicOn() {
+    return !!(celebratePlaying || (document.body && document.body.classList.contains("zt-cinematic")));
+  }
 
   // Same-origin on Render (UI served by FastAPI); override via localStorage if needed
   const API_BASE =
@@ -229,10 +248,34 @@
 
   let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 800;
   let beastMode = localStorage.getItem("council_beast") !== "0";
+  let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
+  let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
   let pollTimer = null;
 
   let applyingBeastChrome = false;
+  let lastSettingsSnap = null;
+  function paintBeastProfileLine(s) {
+    const snap = s || lastSettingsSnap || {};
+    const stats = document.getElementById("beastStats");
+    if (!stats) return;
+    const interval = snap.analysis_interval;
+    const hot = snap.analysis_interval_hot;
+    const dual = snap.dual_spot;
+    if (beastMode) {
+      stats.textContent = interval != null
+        ? `Profile BEAST · cycle ${interval}s · hot ${hot}s · dual-spot ${dual ? "ON" : "OFF"}`
+        : "Profile BEAST";
+    } else {
+      stats.textContent = interval != null
+        ? `Profile STANDARD · cycle ${interval}s · dual-spot ${dual ? "ON" : "OFF"}`
+        : "Profile STANDARD";
+    }
+  }
   function applyBeastChrome(on) {
+    const loops = document.getElementById("teamLoopToggle");
+    const loopsWas = loops ? !!loops.checked : null;
+    const sfx = document.getElementById("callSfxToggle");
+    const sfxWas = sfx ? !!sfx.checked : null;
     beastMode = !!on;
     applyingBeastChrome = true;
     document.body.classList.toggle("beast-mode", beastMode);
@@ -246,22 +289,33 @@
     const tog = document.getElementById("beastToggle");
     if (tog) tog.checked = beastMode;
     localStorage.setItem("council_beast", beastMode ? "1" : "0");
-    const stats = document.getElementById("beastStats");
-    if (stats) {
-      stats.textContent = beastMode ? "Profile BEAST" : "Profile STANDARD";
-    }
     const blurb = document.getElementById("beastBlurb");
     if (blurb) {
       blurb.textContent = beastMode
         ? "Max refresh · dual spot · parallel seats · premium HUD"
         : "Balanced cadence · single spot · power-friendly";
     }
+    paintBeastProfileLine(lastSettingsSnap);
+    if (loops && loopsWas != null) loops.checked = loopsWas;
+    if (sfx && sfxWas != null) sfx.checked = sfxWas;
     applyingBeastChrome = false;
   }
 
-  function applySettingsSnapshot(s) {
+  function applySettingsSnapshot(s, opts) {
     if (!s) return;
-    applyBeastChrome(!!s.beast_mode);
+    opts = opts || {};
+    // Poll / beast POST must not paint over in-progress Settings edits.
+    // Save, Reset, and first open pass localToggles or force.
+    if (typeof mode !== "undefined" && mode === "settings" && !opts.localToggles && !opts.force) {
+      lastSettingsSnap = s;
+      return;
+    }
+    lastSettingsSnap = s;
+    const loops = document.getElementById("teamLoopToggle");
+    const loopsWas = loops ? !!loops.checked : null;
+    const sfx = document.getElementById("callSfxToggle");
+    const sfxWas = sfx ? !!sfx.checked : null;
+    if (typeof s.beast_mode === "boolean") applyBeastChrome(s.beast_mode);
     const L = s.learning || {};
     const T = s.trading || {};
     const H = s.huddle || {};
@@ -318,12 +372,28 @@
     chk("setDualInput", s.dual_spot);
     chk("setParallelInput", s.parallel_agents);
     const blurb = document.getElementById("beastBlurb");
-    if (blurb) blurb.textContent = s.blurb || "";
-    const stats = document.getElementById("beastStats");
-    if (stats) {
-      stats.textContent = s.beast_mode
-        ? `Profile BEAST · cycle ${s.analysis_interval}s · hot ${s.analysis_interval_hot}s · dual-spot ${s.dual_spot ? "ON" : "OFF"}`
-        : `Profile STANDARD · cycle ${s.analysis_interval}s · dual-spot ${s.dual_spot ? "ON" : "OFF"}`;
+    if (blurb && (s.blurb || typeof s.beast_mode === "boolean")) {
+      blurb.textContent = s.blurb || (beastMode
+        ? "Max refresh · dual spot · parallel seats · premium HUD"
+        : "Balanced cadence · single spot · power-friendly");
+    }
+    paintBeastProfileLine(s);
+    // Call voice / Team-loops are independent of BEAST. Only apply them on
+    // Save/Reset — a poll or beast toggle must not silently flip the other.
+    if (opts.localToggles) {
+      if (typeof U.call_sfx === "boolean") {
+        callSfxOn = U.call_sfx;
+        try { localStorage.setItem("council_call_sfx", callSfxOn ? "1" : "0"); } catch (e) {}
+        if (sfx) sfx.checked = callSfxOn;
+      }
+      if (typeof U.team_loops === "boolean") {
+        teamLoopsOn = U.team_loops;
+        try { localStorage.setItem("council_team_loops", teamLoopsOn ? "1" : "0"); } catch (e) {}
+        if (loops) loops.checked = teamLoopsOn;
+      }
+    } else {
+      if (sfx && sfxWas != null) sfx.checked = sfxWas;
+      if (loops && loopsWas != null) loops.checked = loopsWas;
     }
     const map = {
       setInterval: s.analysis_interval != null ? s.analysis_interval + "s" : "—",
@@ -349,6 +419,22 @@
       }
     }
   }
+  applySettingsSnapshot._real = true;
+  window.applySettingsSnapshot = applySettingsSnapshot;
+
+  function stayOnSettings() {
+    const sv = document.getElementById("settingsView");
+    const showing = !!(sv && !sv.classList.contains("hidden"));
+    if (mode !== "settings" && !showing) return;
+    if (mode !== "settings") {
+      try { setMode("settings"); } catch (e) {}
+      return;
+    }
+    if (sv) sv.classList.remove("hidden");
+    document.body.classList.add("mode-settings");
+    document.body.classList.remove("mode-floor", "floor-mode", "mode-art");
+    document.body.classList.remove("mode-dashboard", "mode-bots", "mode-ranks", "mode-paper", "mode-charts");
+  }
 
   async function fetchSettings() {
     try {
@@ -363,7 +449,14 @@
   }
 
   async function setBeastMode(on) {
+    const loops = document.getElementById("teamLoopToggle");
+    const loopsWas = loops ? !!loops.checked : teamLoopsOn;
+    const sfx = document.getElementById("callSfxToggle");
+    const sfxWas = sfx ? !!sfx.checked : callSfxOn;
     applyBeastChrome(on);
+    if (loops) loops.checked = loopsWas;
+    if (sfx) sfx.checked = sfxWas;
+    paintBeastProfileLine(lastSettingsSnap);
     try {
       const r = await fetch(API_BASE + "/api/settings", {
         method: "POST",
@@ -372,13 +465,28 @@
       });
       if (r.ok) {
         const s = await r.json();
-        applySettingsSnapshot(s);
+        if (mode === "settings") {
+          lastSettingsSnap = s;
+          applyBeastChrome(!!on);
+        } else {
+          applySettingsSnapshot(s);
+        }
+        if (loops) loops.checked = loopsWas;
+        if (sfx) sfx.checked = sfxWas;
+        teamLoopsOn = loopsWas;
+        callSfxOn = sfxWas;
+        paintBeastProfileLine(s);
+        stayOnSettings();
         return s;
       }
     } catch (e) {
       console.warn("beast toggle failed", e);
     }
     applyBeastChrome(on);
+    if (loops) loops.checked = loopsWas;
+    if (sfx) sfx.checked = sfxWas;
+    paintBeastProfileLine(lastSettingsSnap);
+    stayOnSettings();
     return null;
   }
 
@@ -387,6 +495,7 @@
   let mode = "art"; // art | dashboard | charts
   let state = null;
   let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "bitcoin"; })();
+  try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableState(which) {
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -952,8 +1061,6 @@
   }
 
   /** Final reveal — low gong + high sparkle */
-  let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
-  let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
   let lastSpokenDir = null;
   (function wireLocalSettingsToggles() {
     const sfx = document.getElementById("callSfxToggle");
@@ -977,6 +1084,7 @@
         loops.addEventListener("click", (e) => e.stopPropagation());
         loops.addEventListener("change", (e) => {
           e.stopPropagation();
+          e.stopImmediatePropagation();
           teamLoopsOn = !!loops.checked;
           localStorage.setItem("council_team_loops", teamLoopsOn ? "1" : "0");
         });
@@ -1157,6 +1265,7 @@
   const GOLD = "#f0c14a";       // ceremonial armor
 
   function resize() {
+    if (deskCinematicOn()) return;
     const stage = document.getElementById("tableStage");
     const maxW = Math.min(1200, (stage?.clientWidth || window.innerWidth) - 12);
     const maxH = Math.min(820, (stage?.clientHeight || window.innerHeight - 140) - 8);
@@ -1420,6 +1529,14 @@
   }
 
 
+
+  function isPhoneDesk() {
+    try {
+      return !!(window.matchMedia && window.matchMedia("(max-width: 480px)").matches);
+    } catch (e) {
+      return window.innerWidth <= 480;
+    }
+  }
 
   function drawDualFloor(w, h) {
     ctx.fillStyle = "#02040a";
@@ -1734,8 +1851,8 @@
     resizeRoundtable();
     const w = canvas.width, h = canvas.height;
 
-    // Dual Floor: two chairs side-by-side
-    if (mode === "floor" && typeof isDualMode === "function" && isDualMode()) {
+    // Dual Floor: two chairs side-by-side — phone is one focused table
+    if (mode === "floor" && !isPhoneDesk() && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
       try { drawTrailFX(ctx); } catch(e) {}
       return;
@@ -2445,10 +2562,36 @@
     }
   }
 
+  let lastHydratedAcc = null;
+
+  function accuracyIsHydrating(acc) {
+    if (acc && acc.hydrating) return true;
+    if (state && state.hydrating && !(acc && (Array.isArray(acc.log) || Array.isArray(acc.recent)))) {
+      return true;
+    }
+    const summary = (state && state.decision && state.decision.summary) || "";
+    const hasLogKey = !!(acc && (Array.isArray(acc.log) || Array.isArray(acc.recent)));
+    if (/initializing/i.test(summary) && !hasLogKey) return true;
+    return false;
+  }
+
   function updateAccuracy(acc) {
     const detailEl = document.getElementById("accuracyDetail");
     const callLogEl = document.getElementById("callLog");
     const callLogMeta = document.getElementById("callLogMeta");
+    const hydrating = accuracyIsHydrating(acc);
+    const hasLogKey = !!(acc && (Array.isArray(acc.log) || Array.isArray(acc.recent)));
+    const hasRows = !!(acc && (
+      (Array.isArray(acc.log) && acc.log.length) ||
+      (Array.isArray(acc.recent) && acc.recent.length) ||
+      (Array.isArray(acc.open) && acc.open.length)
+    ));
+    const hasTotals = !!(acc && ((acc.total || 0) > 0 || (acc.pending || 0) > 0));
+    if (hydrating && !hasRows && !hasTotals && lastHydratedAcc) {
+      acc = lastHydratedAcc;
+    } else if (acc && (hasLogKey || hasTotals || acc.hydrated)) {
+      lastHydratedAcc = acc;
+    }
     const hrPct = document.getElementById("hrPct");
     const hrCorrect = document.getElementById("hrCorrect");
     const hrWrong = document.getElementById("hrWrong");
@@ -2596,8 +2739,18 @@
       });
 
       if (!parts.length) {
-        callLogEl.innerHTML = `<div class="call-empty">LIFETIME LOG EMPTY<br/>UP / DOWN / 1/4 HOLD path-calls accumulate here<br/>Persists across sessions</div>`;
+        if (hydrating && !hasLogKey) {
+          if (callLogEl.dataset.hydrated === "1") {
+            // Keep the last painted log — cold payload is not a wipe
+          } else {
+            callLogEl.innerHTML = `<div class="call-empty">Loading lifetime log…<br/>Hydrating from disk — not a reset</div>`;
+          }
+        } else {
+          callLogEl.innerHTML = `<div class="call-empty">LIFETIME LOG EMPTY<br/>UP / DOWN / 1/4 HOLD path-calls accumulate here<br/>Persists across sessions</div>`;
+          callLogEl.dataset.hydrated = "";
+        }
       } else {
+        callLogEl.dataset.hydrated = "1";
         callLogEl.innerHTML = parts.join("");
       }
     }
@@ -2610,10 +2763,14 @@
 
   function resizeCandleChart() {
     if (!candleCanvas || !candleCanvas.parentElement) return;
+    if (deskCinematicOn()) return;
     const parent = candleCanvas.parentElement;
     const w = Math.max(180, parent.clientWidth - 8);
     const h = Math.max(200, parent.clientHeight - (parent.querySelector(".panel-head")?.offsetHeight || 36) - 8);
     if (candleCanvas.width !== w || candleCanvas.height !== h) {
+      // Setting width/height clears pixels. Keep last tape if we cannot redraw.
+      const raw = ((state && state.market) || {}).candles || [];
+      if (raw.length < 2 && candleCanvas.dataset.hasTape === "1") return;
       candleCanvas.width = w;
       candleCanvas.height = h;
     }
@@ -2675,8 +2832,29 @@
 
 function drawCandleChart() {
     if (!candleCtx || !candleCanvas) return;
+    if (deskCinematicOn()) return;
 
-    if (!candleCtx || !candleCanvas) return;
+    const market = (state && state.market) || {};
+    const raw = market.candles || [];
+    const livePrice = Number(market.price);
+    const kalshiTarget = Number(market.kalshi_target);
+
+    if (raw.length < 2) {
+      // Keep the last painted tape — do not clear to NO TAPE
+      if (candleCanvas.dataset.hasTape === "1") return;
+      resizeCandleChart();
+      const w0 = candleCanvas.width;
+      const h0 = candleCanvas.height;
+      candleCtx.clearRect(0, 0, w0, h0);
+      candleCtx.fillStyle = "rgba(2, 6, 14, 0.35)";
+      candleCtx.fillRect(0, 0, w0, h0);
+      candleCtx.fillStyle = "rgba(120,140,160,0.6)";
+      candleCtx.font = "11px Orbitron, monospace";
+      candleCtx.textAlign = "center";
+      candleCtx.fillText("NO TAPE", w0 / 2, h0 / 2);
+      return;
+    }
+    candleCanvas.dataset.hasTape = "1";
     resizeCandleChart();
     const w = candleCanvas.width;
     const h = candleCanvas.height;
@@ -2685,19 +2863,6 @@ function drawCandleChart() {
     // subtle panel backdrop
     candleCtx.fillStyle = "rgba(2, 6, 14, 0.35)";
     candleCtx.fillRect(0, 0, w, h);
-
-    const market = (state && state.market) || {};
-    const raw = market.candles || [];
-    const livePrice = Number(market.price);
-    const kalshiTarget = Number(market.kalshi_target);
-
-    if (raw.length < 2) {
-      candleCtx.fillStyle = "rgba(120,140,160,0.6)";
-      candleCtx.font = "11px Orbitron, monospace";
-      candleCtx.textAlign = "center";
-      candleCtx.fillText("NO TAPE", w / 2, h / 2);
-      return;
-    }
 
     const candles = raw.slice(-48);
     let min = Infinity, max = -Infinity;
@@ -2878,11 +3043,16 @@ function drawCandleChart() {
 
   function fitCanvas(canvas) {
     if (!canvas || !canvas.parentElement) return null;
+    if (deskCinematicOn()) return canvas.getContext("2d");
     const parent = canvas.parentElement;
     const head = parent.querySelector(".chart-card-head");
     const w = Math.max(120, parent.clientWidth);
     const h = Math.max(80, parent.clientHeight - (head ? head.offsetHeight : 0));
     if (canvas.width !== w || canvas.height !== h) {
+      const raw = ((state && state.market) || {}).candles || [];
+      if (raw.length < 2 && canvas.dataset.hasTape === "1") {
+        return canvas.getContext("2d");
+      }
       canvas.width = w;
       canvas.height = h;
     }
@@ -2953,28 +3123,41 @@ function drawCandleChart() {
 
   function syncChartPairTitle() {
     const pairTitle = document.getElementById("chartPairTitle");
-    if (pairTitle) pairTitle.textContent = (focusTable === "ethereum") ? "ETH · 1m" : "BTC · 1m";
+    const focus = (typeof focusTable === "string" && focusTable)
+      || (document.body && document.body.dataset.focusTable)
+      || "bitcoin";
+    const eth = focus === "ethereum" || focus === "eth";
+    if (pairTitle) pairTitle.textContent = eth ? "ETH · 1m" : "BTC · 1m";
   }
 
   function drawChartBtc() {
+    if (deskCinematicOn()) return;
     syncChartPairTitle();
     const canvas = document.getElementById("chartBtc");
-    const ctx = fitCanvas(canvas);
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
+    if (!canvas) return;
     const view = (typeof getViewState === "function" ? getViewState() : null) || state || {};
     const market = (view && view.market) || (state && state.market) || {};
     const candles = (market.candles || []).slice(-60);
     const target = Number(market.kalshi_target);
     const price = Number(market.price);
     if (candles.length < 2) {
-      ctx.fillStyle = "rgba(120,140,160,0.5)";
-      ctx.font = "11px Orbitron";
-      ctx.textAlign = "center";
-      ctx.fillText("NO TAPE", w / 2, h / 2);
+      // fitCanvas resizes and clears — skip if we already have tape
+      if (canvas.dataset.hasTape === "1") return;
+      const ctx0 = fitCanvas(canvas);
+      if (!ctx0) return;
+      const w0 = canvas.width, h0 = canvas.height;
+      chartFrame(ctx0, w0, h0);
+      ctx0.fillStyle = "rgba(120,140,160,0.5)";
+      ctx0.font = "11px Orbitron";
+      ctx0.textAlign = "center";
+      ctx0.fillText("NO TAPE", w0 / 2, h0 / 2);
       return;
     }
+    canvas.dataset.hasTape = "1";
+    const ctx = fitCanvas(canvas);
+    if (!ctx) return;
+    const w = canvas.width, h = canvas.height;
+    chartFrame(ctx, w, h);
     let min = Infinity, max = -Infinity;
     candles.forEach(c => {
       min = Math.min(min, Number(c.l)); max = Math.max(max, Number(c.h));
@@ -3171,6 +3354,7 @@ function drawCandleChart() {
 
   function drawCharts() {
     if (mode !== "charts") return;
+    if (deskCinematicOn()) return;
     drawChartBtc();
     drawChartVolume();
     drawChartOdds();
@@ -3338,17 +3522,18 @@ function drawCandleChart() {
     const status = document.getElementById("huddleStatus");
     const banner = document.getElementById("huddleBanner");
     if (!h) {
-      if (status) status.textContent = "—";
-      if (badge) badge.classList.remove("active");
-      if (banner) banner.classList.remove("show");
+      // Keep the last chip text — a missing payload must not blank HUDDLE
       return;
     }
     if (badge) badge.classList.toggle("active", !!h.in_huddle);
     if (status) {
-      status.textContent = h.in_huddle ? "IN SESSION" : (h.next_huddle_hint || "—").replace("Next huddle in ", "");
-      if (!h.in_huddle && h.next_huddle_hint) {
+      if (h.in_huddle) {
+        status.textContent = "IN SESSION";
+      } else if (h.next_huddle_hint) {
+        status.textContent = String(h.next_huddle_hint).replace("Next huddle in ", "");
         status.title = h.next_huddle_hint;
       }
+      // else keep last chip — empty huddle on cold start must not wipe to —
     }
     if (banner) {
       if (h.in_huddle) {
@@ -3586,13 +3771,26 @@ function drawCandleChart() {
         return;
       }
     }
+    const prevMode = mode;
     mode = next;
-    modeTabs.forEach(btn => {
-      // BTC/ETH focus buttons use focus-active, not mode active
-      if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
-      btn.classList.toggle("active", btn.dataset.mode === mode);
-    });
+    // Body class first — CSS tab lock uses body.mode-* as source of truth
     document.body.classList.toggle("floor-mode", mode === "floor");
+    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
+      document.body.classList.toggle("mode-" + m, mode === m);
+    });
+    document.querySelectorAll(".mode-tab").forEach((btn) => {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") {
+        btn.classList.remove("active");
+        return;
+      }
+      if (!btn.dataset.mode) {
+        btn.classList.remove("active");
+        return;
+      }
+      const on = btn.dataset.mode === mode;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
     try {
       if (typeof window.__floorMusicOnMode === "function") {
         window.__floorMusicOnMode(mode === "floor");
@@ -3600,10 +3798,6 @@ function drawCandleChart() {
     } catch (e) {}
     // Hierarchy only on ranks / dashboard
     document.body.classList.toggle("show-hierarchy", mode === "ranks" || mode === "dashboard");
-    // Mode class for LED visibility rules
-    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
-      document.body.classList.toggle("mode-" + m, mode === m);
-    });
     const botsView = document.getElementById("botsView");
     const ranksView = document.getElementById("ranksView");
     const paperView = document.getElementById("paperView");
@@ -3637,13 +3831,13 @@ function drawCandleChart() {
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
-    if (mode === "settings") {
-      fetchSettings().then(applySettingsSnapshot);
+    if (mode === "settings" && prevMode !== "settings") {
+      fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
-      requestAnimationFrame(() => { drawCharts(); });
+      requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
     }
   }
 
@@ -3665,8 +3859,10 @@ function drawCandleChart() {
         if (__savedDual != null) state.dual = __savedDual;
       }
     }
-    if (state.system_settings) applySettingsSnapshot(state.system_settings);
-    else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
+    if (mode !== "settings") {
+      if (state.system_settings) applySettingsSnapshot(state.system_settings);
+      else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
+    }
     const d = state.decision || {};
     const prevDir = decisionDir.textContent;
     // Prefer locked_call so the strip matches the plaque / portrait after the single call
@@ -3766,17 +3962,18 @@ function drawCandleChart() {
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
     updateLaw(state.law);
-    updateHuddle(state.huddle);
+    if (!deskCinematicOn()) updateHuddle(state.huddle);
+    try { syncChartPairTitle(); } catch (e) {}
     updateColorTally(state);
     updateDebate();
-    drawCandleChart();
+    if (!deskCinematicOn()) drawCandleChart();
     renderHierarchy();
     recordSeriesFromState(state);
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
     }
-    if (mode === "charts") drawCharts();
+    if (mode === "charts" && !deskCinematicOn()) drawCharts();
 
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
@@ -3862,16 +4059,21 @@ function drawCandleChart() {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
-    });
+    }, true);
   });
   if (!document.__modeTabsDelegated) {
     document.__modeTabsDelegated = true;
     document.addEventListener("click", (e) => {
+      if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
-      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth") return;
+      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
-    });
+    }, true);
   }
   wirePaperEntry();
   document.querySelectorAll(".paper-cal-btn").forEach(btn => {
@@ -3919,18 +4121,18 @@ function drawCandleChart() {
     const a = document.activeElement;
     const typing = (el) => {
       if (!el) return false;
-      const tag = el.tagName || "";
+      const tag = (el.tagName || "").toUpperCase();
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!el.isContentEditable;
     };
     if (typing(t) || typing(a)) return true;
+    if (t && t.closest && (t.closest("#adminGate") || t.closest("#settingsView") || t.closest("#passwordGate"))) return true;
     const admin = document.getElementById("adminGate");
     if (admin && !admin.classList.contains("hidden")) return true;
     const pass = document.getElementById("passwordGate");
     if (pass && !pass.classList.contains("hidden")) return true;
-    if (mode === "settings") {
-      const k = e && e.key;
-      if (k === "0" || k === "1" || k === "2" || k === "3" || k === "4" || k === "5" || k === "6" || k === "7") return true;
-    }
+    const sv = document.getElementById("settingsView");
+    if (sv && !sv.classList.contains("hidden")) return true;
+    if (mode === "settings") return true;
     return false;
   }
 
@@ -3963,6 +4165,7 @@ function drawCandleChart() {
   });
 
   window.addEventListener("resize", () => {
+    if (deskCinematicOn()) return;
     resizeRoundtable();
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
@@ -4220,7 +4423,9 @@ function drawCandleChart() {
     document.body.classList.remove("gate-locked", "gate-revealing");
     localStorage.setItem("council_entered", "1");
     function after() {
-      try { if (mode !== "settings") setMode("art"); } catch (e) {}
+      try {
+        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("art");
+      } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
     }
@@ -4384,9 +4589,10 @@ function drawCandleChart() {
 
     const q = (name) => {
       if (!root) return null;
-      return root.querySelector('[data-tut="' + name + '"]')
-        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1))
-        || document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
+      const local = root.querySelector('[data-tut="' + name + '"]')
+        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1));
+      if (local || standalone) return local;
+      return document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
     };
 
     const inner = document.getElementById("gateInner");
@@ -4533,7 +4739,7 @@ function drawCandleChart() {
       try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
-      try { if (mode === "charts") drawCharts(); } catch (e) {}
+      try { if (mode === "charts" && !deskCinematicOn()) drawCharts(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;
@@ -4558,6 +4764,7 @@ function drawCandleChart() {
       focusBadge.title = "Floor — both tables (dual)";
       focusBadge.addEventListener("click", (e) => {
         e.preventDefault();
+        if (mode === "settings") return;
         setMode("floor");
       });
     }
@@ -4610,7 +4817,6 @@ function drawCandleChart() {
 
   
   // ——— ZT celebrate cinematic (logo click + 5-win streak) ———
-  let celebratePlaying = false;
   let lastCelebratedStreak = 0; // fire once per streak milestone
 
 
@@ -4636,31 +4842,45 @@ function drawCandleChart() {
       wrap.classList.remove("hidden");
       wrap.classList.add("active");
       wrap.setAttribute("aria-hidden", "false");
+      if (fallback) fallback.hidden = false;
       return;
     }
     const gate = document.getElementById("summonGate");
     if (gate && document.body.classList.contains("gate-locked")) return;
 
+    // Overlay only — Fullscreen API resizes the desk and blanks Charts / huddle
     celebratePlaying = true;
+    document.body.classList.add("zt-cinematic");
     ensureAudio();
     wrap.classList.remove("hidden");
     wrap.classList.add("active");
     fitVideoToScreen(vid);
     wrap.setAttribute("aria-hidden", "false");
-    if (fallback) fallback.hidden = true;
-    try { vid.currentTime = 0; } catch (e) {}
+    if (fallback) fallback.hidden = false;
     vid.muted = !!soundMuted;
+    vid.playsInline = true;
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+
+    let loadTimer = null;
+    let loadGen = 0;
+    const clearLoadTimer = () => {
+      if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
+    };
 
     const cleanup = () => {
       celebratePlaying = false;
+      document.body.classList.remove("zt-cinematic");
+      clearLoadTimer();
+      loadGen += 1;
       try { vid.pause(); } catch (e) {}
       wrap.classList.add("hidden");
       wrap.classList.remove("active");
       wrap.setAttribute("aria-hidden", "true");
       if (fallback) fallback.hidden = true;
-      try {
-        if (document.fullscreenElement) document.exitFullscreen();
-      } catch (e) {}
+      vid.onerror = null;
+      vid.onloadeddata = null;
+      vid.oncanplay = null;
       vid.removeEventListener("ended", onEnded);
     };
     const onEnded = () => cleanup();
@@ -4674,21 +4894,13 @@ function drawCandleChart() {
       if (fallback) fallback.hidden = false;
     };
 
-    const goFs = () => {
-      const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.msRequestFullscreen;
-      if (req) {
-        try { req.call(wrap); } catch (e) {}
-      }
-    };
-
-    const sources = ["/zt-celebrate.mp4", "/zt-intro.mp4", "/summon-council.mp4"];
-    let srcIdx = 0;
-    const tryPlay = () => {
+    const playReady = () => {
+      if (!celebratePlaying) return;
+      clearLoadTimer();
       const p = vid.play();
       if (p && p.then) {
         p.then(() => {
           if (fallback) fallback.hidden = true;
-          goFs();
           if (!soundMuted) {
             try { vid.muted = false; } catch (e) {}
           }
@@ -4696,31 +4908,72 @@ function drawCandleChart() {
           vid.muted = true;
           const p2 = vid.play();
           if (p2 && p2.then) {
-            p2.then(() => {
-              if (fallback) fallback.hidden = true;
-              goFs();
-            }).catch(advanceSrc);
+            p2.then(() => { if (fallback) fallback.hidden = true; }).catch(() => keepOverlay());
           } else {
-            advanceSrc();
+            keepOverlay();
           }
         });
       } else {
-        goFs();
+        keepOverlay();
       }
     };
-    const advanceSrc = () => {
-      srcIdx += 1;
-      if (srcIdx < sources.length) {
-        try {
-          vid.src = sources[srcIdx];
-          vid.load();
-        } catch (e) {}
-        tryPlay();
+
+    // Files that exist in this repo. /zt-celebrate.mp4 is not checked in.
+    const sources = [
+      "/static/video/money-closeup.mp4",
+      "/zt-intro.mp4",
+      "/summon-council.mp4",
+      "/static/zt-intro.mp4",
+      "/static/summon-council.mp4",
+      "/zt-celebrate.mp4",
+    ];
+
+    let srcIdx = 0;
+    const LOAD_MS = 1500;
+
+    const tryNext = () => {
+      clearLoadTimer();
+      if (!celebratePlaying) return;
+      if (srcIdx >= sources.length) {
+        keepOverlay();
         return;
       }
-      keepOverlay();
+      const gen = ++loadGen;
+      const url = sources[srcIdx++];
+      vid.onerror = null;
+      vid.onloadeddata = null;
+      vid.oncanplay = null;
+      try { vid.pause(); } catch (e) {}
+      try {
+        while (vid.firstChild) vid.removeChild(vid.firstChild);
+      } catch (e) {}
+      vid.src = url;
+      const ok = () => { if (gen !== loadGen) return; playReady(); };
+      const fail = () => { if (gen !== loadGen) return; tryNext(); };
+      vid.onerror = fail;
+      vid.oncanplay = ok;
+      vid.onloadeddata = () => { if (vid.readyState >= 2) ok(); };
+      try { vid.load(); } catch (e) { tryNext(); return; }
+      loadTimer = setTimeout(() => { if (gen !== loadGen) return; tryNext(); }, LOAD_MS);
     };
-    tryPlay();
+
+    // Keep preloaded <source> tags — stripping them caused a ~15s black hang.
+    const gen0 = ++loadGen;
+    const ok0 = () => { if (gen0 !== loadGen) return; playReady(); };
+    const fail0 = () => { if (gen0 !== loadGen) return; tryNext(); };
+    vid.onerror = fail0;
+    vid.oncanplay = ok0;
+    vid.onloadeddata = () => { if (vid.readyState >= 2) ok0(); };
+    if (vid.readyState >= 2) {
+      playReady();
+    } else {
+      try { vid.load(); } catch (e) { tryNext(); }
+      loadTimer = setTimeout(() => {
+        if (gen0 !== loadGen) return;
+        if (vid.readyState >= 2) { playReady(); return; }
+        tryNext();
+      }, LOAD_MS);
+    }
     if (reason === "streak") {
       try { playSfxReveal(); } catch (e) {}
     }
@@ -4734,8 +4987,8 @@ function drawCandleChart() {
     if (ztBtn) {
       ztBtn.classList.toggle("streak-hot", streak >= 3);
       ztBtn.title = streak >= 5
-        ? `ZT · ${streak} win streak! Click to replay cinematic`
-        : `ZT cinematic · win streak ${streak}/5 for auto play`;
+        ? `${streak} win streak! Click to replay cinematic`
+        : `Cinematic · win streak ${streak}/5 for auto play`;
     }
     // 5+ win streak → fullscreen close-up money video (once per milestone)
     if (streak >= 5 && streak % 5 === 0 && streak !== lastCelebratedStreak) {
@@ -4766,7 +5019,7 @@ function drawCandleChart() {
   }
   applyBeastChrome(beastMode);
   fetchSettings().then((s) => {
-    if (s) applySettingsSnapshot(s);
+    if (s) applySettingsSnapshot(s, { localToggles: true });
   });
 
   function wireZtCinematic(btn) {
@@ -4776,11 +5029,12 @@ function drawCandleChart() {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
+      if (document.body.classList.contains("mode-settings")) return;
       playCelebrateVideo("manual");
     }, true);
   }
   wireZtCinematic(document.getElementById("ztLogoBtn"));
-  wireZtCinematic(document.getElementById("ztHeaderLogo"));
 
   async function collectAndSaveSettings() {
     const num = (id, d) => {
@@ -4840,6 +5094,8 @@ function drawCandleChart() {
         sound_bell: on("setSoundBell"),
         beam_glow: on("setBeamGlow"),
         watermark_opacity: num("setWatermark", 0.18),
+        call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
+        team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
       },
     };
     if (isAdminUnlocked()) {
@@ -4868,12 +5124,18 @@ function drawCandleChart() {
             body: JSON.stringify(body),
           });
       const s = await r.json();
-      applySettingsSnapshot(s);
+      const applySnap = (typeof window.applySettingsSnapshot === "function")
+        ? window.applySettingsSnapshot
+        : function () {};
+      applySnap(s, { localToggles: true });
+      stayOnSettings();
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
+      stayOnSettings();
       if (st) st.textContent = "Save failed: " + e;
     }
   }
+  window.collectAndSaveSettings = collectAndSaveSettings;
 
   try { wireAdminGate(); wireAdminTools(); wireBrain(); } catch (e) { console.warn("admin/brain wire", e); }
   document.addEventListener("DOMContentLoaded", () => {
@@ -4882,40 +5144,82 @@ function drawCandleChart() {
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   if (btnSaveSettings && !btnSaveSettings.__wired) {
     btnSaveSettings.__wired = true;
-    btnSaveSettings.addEventListener("click", collectAndSaveSettings);
+    btnSaveSettings.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      collectAndSaveSettings();
+    });
   }
+  async function resetSettingsToDefaults() {
+    const st = document.getElementById("settingsSaveStatus");
+    if (!confirm("Restore Settings defaults?\n\nCall voice turns back on. Cycle times, path grading, and sound knobs reset. BEAST and Team-loops each go to their own defaults — they are not tied together.")) {
+      stayOnSettings();
+      return;
+    }
+    try {
+      const resetFn = isAdminUnlocked() ? adminFetch : fetch;
+      const r = await resetFn(API_BASE + "/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const s = await r.json();
+      callSfxOn = true;
+      teamLoopsOn = true;
+      try { localStorage.setItem("council_call_sfx", "1"); } catch (e) {}
+      try { localStorage.setItem("council_team_loops", "1"); } catch (e) {}
+      const sfx = document.getElementById("callSfxToggle");
+      if (sfx) sfx.checked = true;
+      const loops = document.getElementById("teamLoopToggle");
+      if (loops) loops.checked = true;
+      if (typeof window.applySettingsSnapshot === "function") {
+        window.applySettingsSnapshot(s, { localToggles: true });
+      }
+      callSfxOn = true;
+      teamLoopsOn = true;
+      if (sfx) sfx.checked = true;
+      if (loops) loops.checked = true;
+      stayOnSettings();
+      if (st) st.textContent = "Defaults restored · " + new Date().toLocaleTimeString();
+    } catch (e) {
+      stayOnSettings();
+      if (st) st.textContent = "Reset failed: " + e;
+    }
+  }
+  window.resetSettingsToDefaults = resetSettingsToDefaults;
   const btnResetSettings = document.getElementById("btnResetSettings");
   if (btnResetSettings && !btnResetSettings.__wired) {
     btnResetSettings.__wired = true;
-    btnResetSettings.addEventListener("click", async () => {
-      try {
-        const r = await fetch("/api/settings");
-        const s = await r.json();
-        if (s.defaults) {
-          const resetBody = {
-            learning: s.defaults.learning,
-            trading: s.defaults.trading,
-            huddle: s.defaults.huddle,
-            ui: s.defaults.ui,
-          };
-          if (isAdminUnlocked() && s.defaults.auto_bet) resetBody.auto_bet = s.defaults.auto_bet;
-          const resetFn = isAdminUnlocked() ? adminFetch : fetch;
-          await resetFn("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(resetBody),
-          });
-        }
-        const s2 = await (await fetch("/api/settings")).json();
-        applySettingsSnapshot(s2);
-        const st = document.getElementById("settingsSaveStatus");
-        if (st) st.textContent = "Defaults restored";
-      } catch (e) {}
+    btnResetSettings.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resetSettingsToDefaults();
     });
   }
 
   window.setMode = setMode;
   window.applySettingsSnapshot = applySettingsSnapshot;
+
+  const settingsViewEl = document.getElementById("settingsView");
+  if (settingsViewEl && !settingsViewEl.__deskLocked) {
+    settingsViewEl.__deskLocked = true;
+    settingsViewEl.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("keyup", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("wheel", (e) => {
+      e.stopPropagation();
+    }, { capture: true, passive: true });
+  }
 
   // Force clean Table view — hide any stacked info panels
   setMode("art");
@@ -4926,7 +5230,186 @@ function drawCandleChart() {
 })();
 
 
+/* Settings Save fallback: persist + paint even if the desk IIFE did not export applySettingsSnapshot */
+(function wireSettingsSaveFallback() {
+  function paintSettingsSnapshot(s) {
+    if (!s) return;
+    const L = s.learning || {};
+    const T = s.trading || {};
+    const H = s.huddle || {};
+    const U = s.ui || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    set("setPathWin", L.path_win_pct);
+    set("setHoldFrac", L.hold_fraction);
+    set("setNearBar", L.near_certain_bar);
+    set("setFadeMinN", L.fade_min_n);
+    set("setFadeWr", L.fade_wr_threshold);
+    set("setFadeCap", L.fade_max_weight_share);
+    set("setAntiMin", L.anti_min_tries);
+    set("setAntiWr", L.anti_win_rate);
+    set("setAntiCap", L.anti_max_bonus);
+    set("setMinConf", T.min_confluence);
+    set("setMinDirConf", T.min_directional_conf);
+    set("setTopN", T.top_n_agreement);
+    set("setColdN", L.cold_start_samples);
+    set("setCalN", L.calibrate_samples);
+    set("setExpN", L.exploit_samples);
+    set("setLawWrongs", T.law_lock_after_wrongs);
+    set("setLawWindows", T.law_lock_windows);
+    set("setLawShadow", T.law_shadow_early_unlock_rights);
+    chk("setHuddleOn", H.enabled !== false);
+    set("setHuddleHour", H.hour_ct);
+    set("setHuddleDur", H.duration_minutes);
+    set("setHuddleRebuild", H.rebuild_limit);
+    chk("setSoundOn", U.sound_enabled !== false);
+    chk("setSoundUp", U.sound_up !== false);
+    chk("setSoundDown", U.sound_down !== false);
+    chk("setSoundSwap", U.sound_swap !== false);
+    chk("setSoundBell", U.sound_bell !== false);
+    chk("setBeamGlow", U.beam_glow !== false);
+    set("setWatermark", U.watermark_opacity);
+    const AB = s.auto_bet || {};
+    if (s.auto_bet) {
+      chk("setAutoBetOn", AB.enabled);
+      const modeEl = document.getElementById("setAutoBetMode");
+      if (modeEl && AB.mode) modeEl.value = AB.mode;
+      set("setAutoBetSize", AB.size);
+      chk("setAutoBetBtc", AB.btc !== false);
+      chk("setAutoBetEth", AB.eth !== false);
+    }
+    set("setIntervalInput", s.analysis_interval);
+    set("setHotInput", s.analysis_interval_hot);
+    set("setFlatInput", s.analysis_interval_flat);
+    set("setPollInput", s.ui_poll_ms);
+    chk("setDualInput", s.dual_spot);
+    chk("setParallelInput", s.parallel_agents);
+    const tog = document.getElementById("beastToggle");
+    if (tog && s.beast_mode != null) tog.checked = !!s.beast_mode;
+  }
+  if (typeof window.applySettingsSnapshot !== "function" || window.applySettingsSnapshot._stub) {
+    window.applySettingsSnapshot = paintSettingsSnapshot;
+  }
 
+  async function fallbackCollectAndSave() {
+    if (typeof window.collectAndSaveSettings === "function") {
+      return window.collectAndSaveSettings();
+    }
+    const num = (id, d) => {
+      const el = document.getElementById(id);
+      if (!el || el.value === "") return d;
+      const v = Number(el.value);
+      return Number.isFinite(v) ? v : d;
+    };
+    const on = (id) => {
+      const el = document.getElementById(id);
+      return el ? !!el.checked : true;
+    };
+    const body = {
+      beast_mode: !!(document.getElementById("beastToggle") && document.getElementById("beastToggle").checked),
+      learning: {
+        path_win_pct: num("setPathWin", 7),
+        hold_fraction: num("setHoldFrac", 0.35),
+        near_certain_bar: num("setNearBar", 90),
+        fade_min_n: num("setFadeMinN", 20),
+        fade_wr_threshold: num("setFadeWr", 0.42),
+        fade_max_weight_share: num("setFadeCap", 0.18),
+        anti_min_tries: num("setAntiMin", 15),
+        anti_win_rate: num("setAntiWr", 0.62),
+        anti_max_bonus: num("setAntiCap", 0.12),
+        cold_start_samples: num("setColdN", 15),
+        calibrate_samples: num("setCalN", 20),
+        exploit_samples: num("setExpN", 80),
+      },
+      trading: {
+        min_confluence: num("setMinConf", 0.42),
+        min_directional_conf: num("setMinDirConf", 50),
+        top_n_agreement: num("setTopN", 3),
+        law_lock_after_wrongs: num("setLawWrongs", 2),
+        law_lock_windows: num("setLawWindows", 1),
+        law_shadow_early_unlock_rights: num("setLawShadow", 1),
+      },
+      huddle: {
+        enabled: on("setHuddleOn"),
+        hour_ct: num("setHuddleHour", 3),
+        duration_minutes: num("setHuddleDur", 15),
+        rebuild_limit: num("setHuddleRebuild", 400),
+      },
+      ui: {
+        sound_enabled: on("setSoundOn"),
+        sound_up: on("setSoundUp"),
+        sound_down: on("setSoundDown"),
+        sound_swap: on("setSoundSwap"),
+        sound_bell: on("setSoundBell"),
+        beam_glow: on("setBeamGlow"),
+        watermark_opacity: num("setWatermark", 0.18),
+        call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
+        team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
+      },
+    };
+    const st = document.getElementById("settingsSaveStatus");
+    try {
+      const r = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const s = await r.json();
+      window.applySettingsSnapshot(s, { localToggles: true });
+      if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
+    } catch (e) {
+      if (st) st.textContent = "Save failed: " + e;
+    }
+  }
+
+  function bindSave() {
+    const btn = document.getElementById("btnSaveSettings");
+    if (!btn || btn.__wired) return;
+    btn.__wired = true;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fallbackCollectAndSave();
+    });
+  }
+  function bindReset() {
+    const btn = document.getElementById("btnResetSettings");
+    if (!btn || btn.__wired) return;
+    btn.__wired = true;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.resetSettingsToDefaults === "function") {
+        window.resetSettingsToDefaults();
+        return;
+      }
+      if (!confirm("Restore Settings defaults?\n\nCall voice turns back on.")) return;
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      }).then((r) => r.json()).then((s) => {
+        const sfx = document.getElementById("callSfxToggle");
+        if (sfx) sfx.checked = true;
+        try { localStorage.setItem("council_call_sfx", "1"); } catch (err) {}
+        if (typeof window.applySettingsSnapshot === "function") {
+          window.applySettingsSnapshot(s, { localToggles: true });
+        }
+        const st = document.getElementById("settingsSaveStatus");
+        if (st) st.textContent = "Defaults restored · " + new Date().toLocaleTimeString();
+      }).catch((err) => {
+        const st = document.getElementById("settingsSaveStatus");
+        if (st) st.textContent = "Reset failed: " + err;
+      });
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => { bindSave(); bindReset(); });
+  } else {
+    bindSave();
+    bindReset();
+  }
+})();
 
 /* ===== LIVE UPDATE PATCH ===== */
 (function () {
@@ -5026,11 +5509,14 @@ function drawCandleChart() {
   }
 
   function initLogoCredit() {
-    const btn = document.getElementById("ztHeaderLogo") || document.getElementById("ztLogoBtn");
+    const btn = document.getElementById("ztHeaderLogo");
     const pop = document.getElementById("creditPopup");
     if (!btn || !pop) return;
+    if (btn.__creditWired) return;
+    btn.__creditWired = true;
     btn.addEventListener("click", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       pop.classList.toggle("hidden");
       setTimeout(() => pop.classList.add("hidden"), 3200);
     });
@@ -5310,6 +5796,9 @@ function drawCandleChart() {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
+      if (document.body.classList.contains("mode-settings")) return;
+      if (e.currentTarget !== btn) return;
       open();
     });
 
@@ -5365,8 +5854,8 @@ function drawCandleChart() {
     const cb = pendingAdminCb || window.__pendingAdminUnlock;
     pendingAdminCb = null;
     window.__pendingAdminUnlock = null;
-    if (ok && cb) cb();
-    else if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
+    if (ok && typeof cb === "function") cb();
+    if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
       window.__openSettingsAfterAdmin = false;
       window.setMode("settings");
     }
@@ -5390,7 +5879,14 @@ function drawCandleChart() {
         }
       };
       submit.addEventListener("click", tryUnlock);
-      if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+      if (input && !input.__hotkeysSwallowed) {
+        input.__hotkeysSwallowed = true;
+        input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (e.key === "Enter") tryUnlock();
+        }, true);
+      }
     }
     if (cancel && !cancel.__wired) {
       cancel.__wired = true;
