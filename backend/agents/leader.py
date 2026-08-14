@@ -146,7 +146,12 @@ class Leader:
         mins_left: float | None = None,
     ) -> tuple:
         """Return (blocked, reason, allowed_phase).
-        Opposite side blocked unless hysteresis clears AND a revision slot is open.
+
+        Rules (follower-bot ready):
+          - Same side as active lock → always blocked (hold, no new call)
+          - Opposite side → only if a revision slot is open AND hysteresis clears
+          - Max 2 revisions total (mid + final)
+          - After final (or 2 revisions) → hard lock until ticker changes
         """
         if not getattr(settings, "WINDOW_LOCK_ENABLED", True):
             return False, "", None
@@ -154,9 +159,16 @@ class Leader:
             return False, "", None
         if self._locked_ticker != ticker or not self._active_dir():
             return False, "", None
+
         active = self._active_dir()
+
+        # Same side: never open a new graded call — just hold
         if lean == active:
-            return False, "", None
+            return True, f"hold {active}", None
+
+        # Hard lock after final or revision budget spent
+        if self._final_dir or int(getattr(self, "_revisions_used", 0) or 0) >= 2:
+            return True, f"hard-lock {active} (final/budget spent)", None
 
         # Phase from minutes left
         if mins_left is None:
@@ -168,7 +180,7 @@ class Leader:
         else:
             phase = "final"
 
-        # Entry is immutable once set — only mid/final can revise
+        # Entry is immutable — only mid/final may revise opposite
         if not self._entry_dir:
             return False, "", "entry"
 
@@ -177,9 +189,10 @@ class Leader:
         if not can_mid and not can_final:
             return True, f"lock held {active} · no revision slot in {phase}", None
 
-        hysteresis = float(getattr(settings, "HYSTERESIS_BAND", 14))
-        min_delta = float(getattr(settings, "FLIP_MIN_CONF_DELTA", 18))
-        min_gap = float(getattr(settings, "FLIP_MIN_GAP_SEC", 90.0))
+        # Stricter hysteresis for opposite flips
+        hysteresis = float(getattr(settings, "HYSTERESIS_BAND", 18))
+        min_delta = float(getattr(settings, "FLIP_MIN_CONF_DELTA", 22))
+        min_gap = float(getattr(settings, "FLIP_MIN_GAP_SEC", 120.0))
 
         import time
         locked_conf = self._active_conf()
@@ -188,14 +201,15 @@ class Leader:
         conf_ok = conf >= (locked_conf + hysteresis)
         delta_ok = conf >= (locked_conf + min_delta)
         gap_ok = age >= min_gap
+        score_ok = abs(score - float(self._locked_score or 0.0)) >= 0.32
 
-        if conf_ok and delta_ok and gap_ok:
+        if conf_ok and delta_ok and gap_ok and score_ok:
             return False, "", ("mid" if can_mid else "final")
 
         return True, (
             f"lock held {active} "
-            f"(need +{hysteresis:.0f} conf / Δ{min_delta:.0f}, "
-            f"have conf {conf} vs locked {locked_conf})"
+            f"(need +{hysteresis:.0f} conf / Δ{min_delta:.0f} / {min_gap:.0f}s, "
+            f"have conf {conf} vs locked {locked_conf}, age {age:.0f}s)"
         ), None
 
     def update_edge_from_accuracy(self, accuracy: Dict[str, Any] | None) -> None:
@@ -738,7 +752,7 @@ class Leader:
                 summary += " · " + ", ".join(path_notes[:3])
 
 
-        # --- Per-window Entry / Mid / Final lock ---
+        # --- Per-window Entry / Mid / Final lock (max 1 entry + 2 opposite revisions) ---
         ticker = None
         mins_left = None
         up_pct = None
@@ -762,22 +776,35 @@ class Leader:
             self._clear_window_lock()
 
         call_phase = None
-        if firm and lean in ("UP", "DOWN") and direction not in ("WAIT",):
+        # Only FULL UP/DOWN can open or revise a graded call — not HOLD/WAIT/SWAP
+        is_full_dir = direction in ("UP", "DOWN") and lean in ("UP", "DOWN") and firm
+
+        if is_full_dir and ticker:
             if not self._entry_dir:
-                # First firm call = ENTRY
-                self._set_window_lock(ticker or "", direction, conf, score, up_pct=up_pct, call_phase="entry")
+                # First firm full call = ENTRY (only once per ticker)
+                self._set_window_lock(ticker, direction, conf, score, up_pct=up_pct, call_phase="entry")
                 call_phase = "entry"
                 if self._entry_up_pct is not None:
                     summary = f"ENTRY {lean} @ {self._entry_up_pct:.0f}¢ · {summary}"
                 else:
                     summary = f"ENTRY {lean} · {summary}"
             else:
-                blocked, lock_reason, allowed_phase = self._lock_blocks_opposite(
-                    ticker, lean, conf, score, mins_left=mins_left
-                )
-                if blocked:
-                    active = self._active_dir()
-                    if active:
+                active = self._active_dir()
+                # Same side → hold, do not open another graded call
+                if lean == active:
+                    direction = active  # type: ignore[assignment]
+                    lean = active
+                    conf = max(int(conf), self._active_conf())
+                    summary = f"Lock held {active} · no new call"
+                    if gate_notes:
+                        summary += " · " + ", ".join(gate_notes[:2])
+                    call_phase = None  # not a new graded event
+                else:
+                    # Opposite side — only mid/final with hysteresis
+                    blocked, lock_reason, allowed_phase = self._lock_blocks_opposite(
+                        ticker, lean, conf, score, mins_left=mins_left
+                    )
+                    if blocked:
                         direction = active  # type: ignore[assignment]
                         lean = active
                         conf = max(55, min(int(conf), self._active_conf()))
@@ -785,36 +812,31 @@ class Leader:
                         summary = f"Lock held {active} · {lock_reason}"
                         if gate_notes:
                             summary += " · " + ", ".join(gate_notes[:2])
+                        call_phase = None
                     else:
-                        direction = "WAIT"
-                        firm = False
-                        lean = None
-                        conf = max(int(conf), 70)
-                        summary = f"Flip blocked · {lock_reason}"
-                else:
-                    # Revision allowed
-                    phase_to_use = allowed_phase or "mid"
-                    self._set_window_lock(
-                        ticker or "", direction, conf, score,
-                        up_pct=up_pct, call_phase=phase_to_use,
-                    )
-                    call_phase = phase_to_use
-                    summary = f"{phase_to_use.upper()} revise → {lean} · {summary}"
-        elif self._active_dir() and direction == "WAIT":
-            # Surface the held lock even on soft WAIT confluence
+                        phase_to_use = allowed_phase or "mid"
+                        self._set_window_lock(
+                            ticker, direction, conf, score,
+                            up_pct=up_pct, call_phase=phase_to_use,
+                        )
+                        call_phase = phase_to_use
+                        summary = f"{phase_to_use.upper()} revise → {lean} · {summary}"
+        elif self._active_dir() and direction in ("UP_HOLD", "DOWN_HOLD", "WAIT", "SWAP"):
+            # Soft outcomes while a lock is live — surface the held call
             active = self._active_dir()
-            if active and firm is False:
-                # keep WAIT if confluence truly weak; still annotate
+            if active and direction == "WAIT":
                 summary = f"Lock held {active} · {summary}"
-
-        # Guardian caution (does not force WAIT — only trims confidence)
-        guardian = next((s for s in signals if s.agent_name == "guardian"), None)
-        if guardian and guardian.confidence > 70 and guardian.direction == "WAIT":
-            if direction not in ("WAIT",):
-                conf = max(42, conf - 12)
-                summary += " (Guardian caution applied)"
-            else:
-                conf = max(conf, 75)
+            elif active and direction in ("UP_HOLD", "DOWN_HOLD"):
+                # Demote HOLDs to held full side display when lock exists
+                hold_side = "UP" if direction == "UP_HOLD" else "DOWN"
+                if hold_side == active:
+                    direction = active  # type: ignore[assignment]
+                    lean = active
+                    summary = f"Lock held {active} · HOLD demoted · {summary}"
+                else:
+                    summary = f"Lock held {active} · opposite HOLD ignored · {summary}"
+                    direction = active  # type: ignore[assignment]
+                    lean = active
 
         # Remember last firm directional lean (UP/DOWN under SWAP/HOLD counts as lean)
         if firm and lean in ("UP", "DOWN"):
