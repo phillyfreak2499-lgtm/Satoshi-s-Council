@@ -73,6 +73,7 @@ class WindowCall(Base):
     paper_pnl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     paper_side: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # BUY_YES | BUY_NO
     regime_key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    asset: Mapped[Optional[str]] = mapped_column(String(8), nullable=True, index=True)  # btc | eth
 
 
 
@@ -109,6 +110,7 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN paper_pnl FLOAT",
                 "ALTER TABLE window_calls ADD COLUMN paper_side VARCHAR(16)",
                 "ALTER TABLE window_calls ADD COLUMN regime_key VARCHAR(32)",
+                "ALTER TABLE window_calls ADD COLUMN asset VARCHAR(8)",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -126,6 +128,7 @@ class PerformanceStore:
         kalshi_target: float | None = None,
         up_pct: float | None = None,
         down_pct: float | None = None,
+        asset: str | None = None,
     ):
         votes = {s.agent_name: s.to_dict() for s in agent_signals}
         rec = SignalRecord(
@@ -165,6 +168,7 @@ class PerformanceStore:
                 up_pct=up_pct,
                 down_pct=down_pct,
                 regime_key=decision.get("regime_key"),
+                asset=asset,
             )
 
         return signal_id
@@ -271,6 +275,7 @@ class PerformanceStore:
         up_pct: float | None = None,
         down_pct: float | None = None,
         regime_key: str | None = None,
+        asset: str | None = None,
     ):
         """
         Open a path-graded scalp call (full or 1/4 HOLD).
@@ -434,6 +439,7 @@ class PerformanceStore:
                 paper_stake=stake,
                 paper_side=self._paper_side(direction),
                 regime_key=regime_key,
+                asset=(asset or None),
             ))
             await session.commit()
 
@@ -590,17 +596,20 @@ class PerformanceStore:
             "regime_key": r.regime_key,
         }
 
-    async def get_accuracy(self) -> Dict[str, Any]:
+    async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
         """
         Lifetime hit-rate for the Chair's directional calls (persisted in SQLite).
         WAIT excluded — only settled UP/DOWN window calls count.
         Includes rolling windows + full log so you can see if it needs fixing over time.
         """
         async with self.Session() as session:
+            filters = [WindowCall.actual_outcome.isnot(None)]
+            if asset:
+                filters.append(WindowCall.asset == asset.lower())
             settled = (
                 await session.execute(
                     select(WindowCall)
-                    .where(WindowCall.actual_outcome.isnot(None))
+                    .where(*filters)
                     .order_by(WindowCall.id.asc())
                 )
             ).scalars().all()
