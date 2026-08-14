@@ -377,7 +377,7 @@
   let animId = null;
   let time = 0;
   let glitchUntil = 0;
-  let debateHistory = []; // rolling transcript so it feels like a live floor
+  let debateHistory = []; // REMOVED — debate log disabled for dual CPU room
 
   // Market-open bell — one ring per new 15m window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
@@ -2289,57 +2289,8 @@
   }
 
   function updateDebate() {
-    if (!debateLog) return;
-    const agents = (state && state.agents) || [];
-    if (!agents.length) {
-      debateLog.innerHTML = `<div class="debate-empty">AWAITING SEATS…</div>`;
-      return;
-    }
-
-    // Newest round first; keep rolling history so it reads like a real debate
-    const stamp = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "";
-    const lines = agents
-      .filter(a => a.agent_name !== "leader" && a.agent_name !== "law")
-      .map(a => {
-        const who = labelOf(a);
-        const rawDir = a.direction || "WAIT";
-        const dir = lawLocked() ? "LOCKED" : rawDir;
-        const said = (a.reasoning || "").trim() || `${dir} at ${a.confidence}%`;
-        // Feature chips from agent features (keep short)
-        const feats = a.features || {};
-        const chips = [];
-        if (feats.rsi_14 != null) chips.push("RSI " + feats.rsi_14);
-        if (feats.body_ratio != null) chips.push("body " + Math.round(feats.body_ratio * 100) + "%");
-        if (feats.ret_5 != null) chips.push("5m " + (feats.ret_5 * 100).toFixed(2) + "%");
-        if (feats.vol_spike != null) chips.push("vol x" + feats.vol_spike);
-        if (feats.funding != null) chips.push("fund " + feats.funding);
-        if (feats.yes_mid != null) chips.push("mid " + feats.yes_mid);
-        return { who, dir, conf: a.confidence, said, stamp, chips: chips.slice(0, 3) };
-      });
-
-    const fingerprint = lines.map(l => l.who + l.dir + l.said).join("|");
-    if (!debateHistory.length || debateHistory[0]._fp !== fingerprint) {
-      // Group as a round header + entries
-      const batch = [{ _round: true, stamp, _fp: fingerprint }].concat(
-        lines.map(l => ({ ...l, _fp: fingerprint }))
-      );
-      debateHistory = batch.concat(debateHistory).slice(0, 60);
-    }
-
-    debateLog.innerHTML = debateHistory.map(e => {
-      if (e._round) {
-        return `<div class="debate-round">ROUND · ${e.stamp || ""}</div>`;
-      }
-      const chips = (e.chips || []).map(c => `<span class="feat-chip">${c}</span>`).join("");
-      return `
-      <div class="debate-entry dir-${e.dir}">
-        <div class="who"><b>${e.who}</b>
-          <span class="dir-badge dir-${e.dir}" style="color:${strongColor(e.dir)};border-color:${strongColor(e.dir)}55">${e.dir}${e.conf != null ? " " + e.conf + "%" : ""}</span>
-        </div>
-        <div class="said">${e.said}</div>
-        ${chips ? `<div class="feat-chips">${chips}</div>` : ""}
-      </div>`;
-    }).join("");
+    // Debate log removed — saves DOM work and memory on dual tables
+    return;
   }
 
   function resizeCandleChart() {
