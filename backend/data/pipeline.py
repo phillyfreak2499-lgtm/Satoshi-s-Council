@@ -14,7 +14,12 @@ from backend.services.runtime_settings import runtime_settings
 from backend.config import settings
 
 
+# Shared across BTC+ETH pipelines in-process
+_SPOT_CACHE: dict = {"btc": None, "eth": None, "ts": 0.0}
+_SPOT_TTL = 2.5  # seconds
+
 class DataPipeline:
+
     def __init__(
         self,
         symbol: Optional[str] = None,
@@ -65,6 +70,22 @@ class DataPipeline:
             tasks.append(self.coinbase.get_spot())
         results = await asyncio.gather(*tasks, return_exceptions=True)
         binance_data, kalshi_data = results[0], results[1]
+        # Shared spot cache (both tables)
+        import time as _t
+        global _SPOT_CACHE
+        try:
+            if not isinstance(binance_data, Exception) and binance_data and binance_data.get("healthy"):
+                _SPOT_CACHE[self.asset] = binance_data
+                _SPOT_CACHE["ts"] = _t.time()
+            elif isinstance(binance_data, Exception) or not (binance_data or {}).get("healthy"):
+                cached = _SPOT_CACHE.get(self.asset)
+                if cached and (_t.time() - float(_SPOT_CACHE.get("ts") or 0)) < _SPOT_TTL:
+                    binance_data = cached
+                    binance_data = dict(binance_data)
+                    binance_data["from_shared_cache"] = True
+        except Exception:
+            pass
+
         coinbase_data = results[2] if dual else {"source": "coinbase", "healthy": False, "price": None}
 
         if isinstance(binance_data, Exception):

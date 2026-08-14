@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 from backend.config import settings
+import asyncio
+
+# Serialize Kalshi HTTP across BTC+ETH clients (one in-flight fetch family at a time)
+_KALSHI_LOCK = asyncio.Lock()
+_KALSHI_LAST: float = 0.0
+_KALSHI_MIN_GAP = 0.35  # seconds between series fetches
 
 
 class KalshiClient:
@@ -26,16 +32,23 @@ class KalshiClient:
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=0.3, min=0.3, max=2))
     async def get_open_markets(self) -> List[Dict[str, Any]]:
-        url = f"{self.base}/markets"
-        params = {
-            "series_ticker": self.series_ticker,
-            "status": "open",
-            "limit": 200,
-        }
-        r = await self.client.get(url, params=params)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("markets", [])
+        global _KALSHI_LAST
+        async with _KALSHI_LOCK:
+            import time as _t
+            gap = _t.time() - float(_KALSHI_LAST or 0)
+            if gap < _KALSHI_MIN_GAP:
+                await asyncio.sleep(_KALSHI_MIN_GAP - gap)
+            url = f"{self.base}/markets"
+            params = {
+                "series_ticker": self.series_ticker,
+                "status": "open",
+                "limit": 200,
+            }
+            r = await self.client.get(url, params=params)
+            _KALSHI_LAST = _t.time()
+            r.raise_for_status()
+            data = r.json()
+            return data.get("markets", [])
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=0.3, min=0.3, max=2))
     async def get_orderbook(self, ticker: str) -> Dict[str, Any]:

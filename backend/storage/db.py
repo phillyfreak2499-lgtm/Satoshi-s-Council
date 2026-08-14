@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer, Text, select, func
 from backend.config import settings
+from backend.agents.chair_gates import finish_outcome, official_window_due
 from loguru import logger
 
 
@@ -74,6 +75,9 @@ class WindowCall(Base):
     paper_side: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # BUY_YES | BUY_NO
     regime_key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     asset: Mapped[Optional[str]] = mapped_column(String(8), nullable=True, index=True)  # btc | eth
+    floor_strike: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # exact locked strike
+    p_finish: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ev_cents: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
 
 
@@ -111,6 +115,9 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN paper_side VARCHAR(16)",
                 "ALTER TABLE window_calls ADD COLUMN regime_key VARCHAR(32)",
                 "ALTER TABLE window_calls ADD COLUMN asset VARCHAR(8)",
+                "ALTER TABLE window_calls ADD COLUMN floor_strike FLOAT",
+                "ALTER TABLE window_calls ADD COLUMN p_finish FLOAT",
+                "ALTER TABLE window_calls ADD COLUMN ev_cents FLOAT",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -145,6 +152,8 @@ class PerformanceStore:
                 "kalshi_target": kalshi_target if kalshi_target is not None else decision.get("kalshi_target"),
                 "up_pct": up_pct,
                 "down_pct": down_pct,
+                "p_finish": decision.get("p_finish"),
+                "ev_cents": decision.get("ev_cents"),
             }),
         )
         async with self.Session() as session:
@@ -159,16 +168,24 @@ class PerformanceStore:
             lean = decision.get("lean")
             grade_dir = lean if lean in ("UP", "DOWN") else None
         if market_ticker and grade_dir in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+            lc = decision.get("locked_call") if isinstance(decision.get("locked_call"), dict) else {}
             await self.record_window_call(
                 ticker=market_ticker,
                 direction=grade_dir,
                 confidence=int(decision.get("confidence") or 0),
                 entry_price=entry_price,
-                close_time=close_time,
+                close_time=close_time or (lc or {}).get("close_time"),
                 up_pct=up_pct,
                 down_pct=down_pct,
                 regime_key=decision.get("regime_key"),
                 asset=asset,
+                floor_strike=(
+                    decision.get("floor_strike")
+                    or (lc or {}).get("floor_strike")
+                    or kalshi_target
+                ),
+                p_finish=decision.get("p_finish") if decision.get("p_finish") is not None else (lc or {}).get("p_finish"),
+                ev_cents=decision.get("ev_cents") if decision.get("ev_cents") is not None else (lc or {}).get("ev_cents"),
             )
 
         return signal_id
@@ -276,6 +293,9 @@ class PerformanceStore:
         down_pct: float | None = None,
         regime_key: str | None = None,
         asset: str | None = None,
+        floor_strike: float | None = None,
+        p_finish: float | None = None,
+        ev_cents: float | None = None,
     ):
         """
         Open a path-graded scalp call (full or 1/4 HOLD).
@@ -319,6 +339,21 @@ class PerformanceStore:
                         active.close_time = close_time
                     if entry_price is not None:
                         active.entry_price = entry_price
+                    if floor_strike is not None:
+                        try:
+                            active.floor_strike = float(floor_strike)
+                        except (TypeError, ValueError):
+                            pass
+                    if p_finish is not None:
+                        try:
+                            active.p_finish = float(p_finish)
+                        except (TypeError, ValueError):
+                            pass
+                    if ev_cents is not None:
+                        try:
+                            active.ev_cents = float(ev_cents)
+                        except (TypeError, ValueError):
+                            pass
                     # Promote 1/4 HOLD → full UP/DOWN when Chair firms up (same side)
                     if direction in ("UP", "DOWN") and active.direction in ("UP_HOLD", "DOWN_HOLD"):
                         active.direction = direction
@@ -443,6 +478,9 @@ class PerformanceStore:
                 paper_side=self._paper_side(direction),
                 regime_key=regime_key,
                 asset=(asset or None),
+                floor_strike=float(floor_strike) if floor_strike is not None else None,
+                p_finish=float(p_finish) if p_finish is not None else None,
+                ev_cents=float(ev_cents) if ev_cents is not None else None,
             ))
             await session.commit()
 
@@ -466,30 +504,17 @@ class PerformanceStore:
         now = datetime.now(timezone.utc)
         settled_n = 0
 
-        def _final_outcome() -> Optional[str]:
-            # Prefer spot vs strike when both known
-            if current_price is not None and floor_strike is not None:
-                try:
-                    px = float(current_price)
-                    strike = float(floor_strike)
-                    if px > strike:
-                        return "UP"
-                    if px < strike:
-                        return "DOWN"
-                    # exact strike — treat as no edge / miss for directional
-                    return None
-                except (TypeError, ValueError):
-                    pass
-            # Fallback: Kalshi YES mid at settle (>50 = UP finished)
-            if up_pct is not None:
-                try:
-                    u = float(up_pct)
-                    if u >= 55.0:
-                        return "UP"
-                    if u <= 45.0:
-                        return "DOWN"
-                except (TypeError, ValueError):
-                    pass
+        def _final_outcome(locked_strike: float | None) -> Optional[str]:
+            # Exact locked strike beats the live ATM (hops still hurt more than a fancy model)
+            strike = locked_strike if locked_strike is not None else None
+            graded = finish_outcome(current_price, strike)
+            if graded is not None:
+                return graded
+            # Legacy rows with no stored strike: only then use this cycle's strike
+            if locked_strike is None:
+                graded = finish_outcome(current_price, floor_strike)
+                if graded is not None:
+                    return graded
             return None
 
         async with self.Session() as session:
@@ -520,43 +545,26 @@ class PerformanceStore:
                     except (TypeError, ValueError):
                         pass
 
-                # Only settle after window close (or max age safety net)
-                due = False
-                reason = "window_end"
-                if row.close_time:
-                    try:
-                        ct = datetime.fromisoformat(row.close_time.replace("Z", "+00:00"))
-                        due = now >= ct
-                        reason = "window_end"
-                    except Exception:
-                        due = False
-                if not due and row.called_at:
-                    try:
-                        called = datetime.fromisoformat(row.called_at.replace("Z", "+00:00"))
-                        max_age = float(getattr(settings, "CALL_MAX_AGE_SEC", 3600.0))
-                        if (now - called).total_seconds() >= max_age:
-                            due = True
-                            reason = "max_age"
-                    except Exception:
-                        due = False
-                if not due:
+                # Grade only on official Kalshi close — never invent a close from max_age
+                if not official_window_due(row.close_time, now=now):
                     continue
+                reason = "window_end"
 
-                final = _final_outcome()
+                locked_strike = None
+                try:
+                    if getattr(row, "floor_strike", None) is not None:
+                        locked_strike = float(row.floor_strike)
+                except (TypeError, ValueError):
+                    locked_strike = None
+
+                final = _final_outcome(locked_strike)
                 stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
                 row.paper_stake = stake
                 if not row.paper_side:
                     row.paper_side = self._paper_side(row.direction)
 
                 if final is None:
-                    # Cannot resolve — leave open unless max_age forced; then void miss
-                    if reason == "max_age":
-                        row.actual_outcome = "VOID"
-                        row.correct = 0
-                        row.settled_at = now.isoformat()
-                        row.settle_reason = "unresolved_max_age"
-                        row.paper_pnl = 0.0
-                        settled_n += 1
+                    # Official close passed but no honest strike/spot — leave open
                     continue
 
                 matched = final == side
@@ -608,6 +616,9 @@ class PerformanceStore:
             "paper_pnl": r.paper_pnl,
             "paper_side": r.paper_side,
             "regime_key": r.regime_key,
+            "p_finish": getattr(r, "p_finish", None),
+            "ev_cents": getattr(r, "ev_cents", None),
+            "floor_strike": getattr(r, "floor_strike", None),
         }
 
     async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
@@ -617,9 +628,19 @@ class PerformanceStore:
         Includes rolling windows + full log so you can see if it needs fixing over time.
         """
         async with self.Session() as session:
+            def _asset_clause(col):
+                """BTC includes legacy NULL-asset rows; ETH is strict."""
+                if not asset:
+                    return None
+                a = asset.lower()
+                if a == "btc":
+                    return (col == "btc") | (col.is_(None))
+                return col == a
+
             filters = [WindowCall.actual_outcome.isnot(None)]
-            if asset:
-                filters.append(WindowCall.asset == asset.lower())
+            ac = _asset_clause(WindowCall.asset)
+            if ac is not None:
+                filters.append(ac)
             settled = (
                 await session.execute(
                     select(WindowCall)
@@ -638,16 +659,20 @@ class PerformanceStore:
             except Exception:
                 pass
             # Finish-only: path / near_certain / partial / flipped do NOT count
+            # Also accept settled rows with outcome but missing reason (legacy → treat as finish)
             FINISH = {"finish_match", "finish_miss"}
             settled = [
                 r for r in settled
-                if (r.settle_reason in FINISH)
-                and self._grade_side(r.direction) in ("UP", "DOWN")
+                if self._grade_side(r.direction) in ("UP", "DOWN")
                 and (r.actual_outcome in ("UP", "DOWN"))
+                and (
+                    (r.settle_reason in FINISH)
+                    or (not r.settle_reason)  # legacy graded rows
+                )
             ]
             pending_filters = [WindowCall.actual_outcome.is_(None)]
-            if asset:
-                pending_filters.append(WindowCall.asset == asset.lower())
+            if ac is not None:
+                pending_filters.append(ac)
             pending = (
                 await session.execute(
                     select(func.count(WindowCall.id)).where(*pending_filters)
@@ -663,10 +688,13 @@ class PerformanceStore:
                     )
                 )
             ).scalar() or 0
+            open_q = [WindowCall.actual_outcome.is_(None)]
+            if ac is not None:
+                open_q.append(ac)
             open_rows = (
                 await session.execute(
                     select(WindowCall)
-                    .where(WindowCall.actual_outcome.is_(None))
+                    .where(*open_q)
                     .order_by(WindowCall.id.desc())
                     .limit(12)
                 )
@@ -826,6 +854,10 @@ class PerformanceStore:
             "last_20": last_20,
             "last_50": last_50,
             "pending": int(pending),
+            "open": int(pending),
+            "calls_logged": int(pending) + int(total),
+            "calls_settled": int(total),
+
             "streak": streak,
             "wrong_streak": wrong_streak,
             "total_signals": int(total_signals),
@@ -1131,6 +1163,10 @@ class PerformanceStore:
                     "agent_votes": votes,
                     "settle_reason": r.settle_reason,
                     "path_move_pct": r.path_move_pct,
+                    "paper_pnl": r.paper_pnl,
+                    "p_finish": getattr(r, "p_finish", None),
+                    "ev_cents": getattr(r, "ev_cents", None),
+                    "floor_strike": getattr(r, "floor_strike", None),
                 })
             return out
 

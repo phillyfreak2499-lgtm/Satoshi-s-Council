@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Satoshi’s Council / ZT</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="stylesheet" href="/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -54,60 +56,63 @@
     <!-- watermark removed; clean logo lives in header -->
     <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
     <header>
-      <div class="logo">
-        <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="ZT logo">
-          <img src="/zt-logo.jpg" alt="ZT" width="36" height="36" />
-        </button>
-        <span class="title">SATOSHI’S COUNCIL <span class="title-zt">/ ZT</span></span>
-        <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
-      </div>
-      <div id="creditPopup" class="credit-popup hidden" role="dialog" aria-label="Credits">
-        <div class="credit-inner">Created by <b>Zachery Teas</b></div>
-      </div>
-      <div class="controls">
-        <button type="button" id="hiveBtn" class="hive-btn" title="" aria-label="…">
-          <svg class="hive-svg" viewBox="0 0 32 32" width="16" height="16" aria-hidden="true">
-            <path fill="currentColor" d="M16 3l3.2 4.2h-6.4L16 3zm-7.5 5.5h15l2.5 4H6l2.5-4zm-3.2 5.5h21.4l2.3 3.8H3l2.3-3.8zm-1.5 5.3h24.4L28 23H4l-.2-3.7zM6.5 24.5h19L16 29.5l-9.5-5z"/>
-          </svg>
-        </button>
-        <div id="huddleBadge" class="huddle-badge" title="Nightly 3–4 AM CT cool-down review">
-          <span class="huddle-label">HUDDLE</span>
-          <span id="huddleStatus" class="huddle-status">—</span>
+      <div class="header-row">
+        <div class="logo">
+          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="ZT logo">
+            <img src="/zt-logo.jpg" alt="ZT" width="36" height="36" />
+          </button>
+          <span class="title">SATOSHI’S COUNCIL <span class="title-zt">/ ZT</span></span>
+          <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
         </div>
-        <div id="accuracyBadge" class="accuracy-badge cold" title="Finish-only hit rate per table (WAIT excluded). Resets in Settings.">
-          <div class="acc-col">
-            <span class="acc-label">HIT RATE</span>
-            <span id="accuracyPct" class="acc-pct">—</span>
+        <div id="creditPopup" class="credit-popup hidden" role="dialog" aria-label="Credits">
+          <div class="credit-inner">Created by <b>Zachery Teas</b></div>
+        </div>
+        <div class="controls">
+          <button type="button" id="hiveBtn" class="hive-btn" title="" aria-label="…">
+            <svg class="hive-svg" viewBox="0 0 32 32" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M16 3l3.2 4.2h-6.4L16 3zm-7.5 5.5h15l2.5 4H6l2.5-4zm-3.2 5.5h21.4l2.3 3.8H3l2.3-3.8zm-1.5 5.3h24.4L28 23H4l-.2-3.7zM6.5 24.5h19L16 29.5l-9.5-5z"/>
+            </svg>
+          </button>
+          <div id="huddleBadge" class="huddle-badge" title="Nightly 3–4 AM CT cool-down review">
+            <span class="huddle-label">HUDDLE</span>
+            <span id="huddleStatus" class="huddle-status">—</span>
           </div>
-          <div class="acc-col acc-col-right">
-            <span id="accuracyFrac" class="acc-frac">0 / 0</span>
-            <span id="accuracyDetail" class="acc-detail">0✓ · 0✗</span>
+          <div id="accuracyBadge" class="accuracy-badge cold" title="Finish-only hit rate per table (WAIT excluded). Resets in Settings.">
+            <div class="acc-col">
+              <span class="acc-label">HIT RATE</span>
+              <span id="accuracyPct" class="acc-pct">—</span>
+            </div>
+            <div class="acc-col acc-col-right">
+              <span id="accuracyFrac" class="acc-frac">0 / 0</span>
+              <span id="accuracyDetail" class="acc-detail">0✓ · 0✗</span>
+            </div>
           </div>
+          <div id="lawBadge" class="law-badge" title="LAW enforcer">
+            <span class="law-label">LAW</span>
+            <span id="lawStatus" class="law-status">OK</span>
+          </div>
+          <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="ZT — play cinematic (also unlocks after 5 wins in a row)" aria-label="Play ZT cinematic">
+            <img src="/zt-logo.jpg" alt="ZT" width="28" height="28" />
+          </button>
+          <button type="button" id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
+          <button type="button" id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>
+          <span id="statusDot" class="dot"></span>
+          <span id="lastUpdate">—</span>
         </div>
-        <div id="lawBadge" class="law-badge" title="LAW enforcer">
-          <span class="law-label">LAW</span>
-          <span id="lawStatus" class="law-status">OK</span>
-        </div>
-        <div class="mode-tabs" role="tablist" aria-label="View mode">
-          <button type="button" id="focusBtc" class="focus-tab focus-active" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
-          <button type="button" id="focusEth" class="focus-tab" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
-          <span id="focusTableBadge" class="focus-table-badge">BTC · SATOSHI</span>
-          <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
-          <button id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
-          <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
-          <button id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
-          <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
-          <button id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
-          <button id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
-          <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
-        </div>
-        <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="ZT — play cinematic (also unlocks after 5 wins in a row)" aria-label="Play ZT cinematic">
-          <img src="/zt-logo.jpg" alt="ZT" width="28" height="28" />
-        </button>
-        <button id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
-        <!-- audio removed -->
-        <span id="statusDot" class="dot"></span>
-        <span id="lastUpdate">—</span>
+      </div>
+      <div class="mode-tabs" role="tablist" aria-label="View mode">
+        <button type="button" id="focusBtc" class="focus-tab focus-active" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
+        <button type="button" id="focusEth" class="focus-tab" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
+        <span id="focusTableBadge" class="focus-table-badge" title="Floor shows both tables">BTC · SATOSHI</span>
+        <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
+        <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
+        <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
+        <button type="button" id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
+        <button type="button" id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
+        <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
+        <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
+        <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
       </div>
     </header>
 
@@ -312,6 +317,25 @@
           </div>
         </div>
 
+        <div class="beast-card settings-card hidden" id="autoBetCard" aria-hidden="true">
+          <div class="beast-title">AUTO-BET SETUP</div>
+          <p class="settings-sub">Admin only. Desk access code cannot open this. No live orders — this is setup only.</p>
+          <label class="set-check"><input type="checkbox" id="setAutoBetOn" /> Enable auto-bet setup</label>
+          <label class="set-field">Mode
+            <select id="setAutoBetMode">
+              <option value="off">Off — no auto betting</option>
+              <option value="paper_chair">Paper — Chair locks only (no live orders)</option>
+              <option value="follow_leaders">Follow leaders — reserved slot (not live)</option>
+            </select>
+          </label>
+          <label class="set-field">Size $
+            <input type="number" step="1" min="0" max="10000" id="setAutoBetSize" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setAutoBetBtc" checked /> Bitcoin / Satoshi table</label>
+          <label class="set-check"><input type="checkbox" id="setAutoBetEth" checked /> Ethereum / Vitalik table</label>
+          <p class="settings-foot" id="autoBetFollowNote">Follow leaders is a reserved mode for later. It does not place orders.</p>
+        </div>
+
         <div class="settings-actions">
           <button type="button" class="gate-btn gate-btn-summon" id="btnSaveSettings">Save settings</button>
           <button type="button" class="gate-btn gate-btn-ghost" id="btnResetSettings">Reset defaults</button>
@@ -379,11 +403,44 @@
       </div>
     </section>
 
+    <!-- Paper trading journal -->
+    <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
+      <div class="info-hero">
+        <h2>PAPER TRACKER</h2>
+        <p>Manual trade log — your bets, not the Chair. Enter side, stake, and what you got back. Totals use <b>America/Chicago</b>.</p>
+      </div>
+
+      <div class="paper-entry" id="paperEntry">
+        <div class="pe-sides">
+          <button type="button" class="pe-side up active" data-side="UP" id="peSideUp">UP</button>
+          <button type="button" class="pe-side down" data-side="DOWN" id="peSideDown">DOWN</button>
+        </div>
+        <div class="pe-fields">
+          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" /></label>
+          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="0" placeholder="0 if lost" /></label>
+          <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
+        </div>
+        <div class="pe-preview">P&amp;L: <strong id="pePnl">-$25.00</strong></div>
+        <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
+      </div>
+
+      <div class="paper-summary" id="paperSummary"></div>
+      <div class="paper-cal-tabs">
+        <button type="button" class="paper-cal-btn active" data-cal="daily">Daily</button>
+        <button type="button" class="paper-cal-btn" data-cal="weekly">Weekly</button>
+        <button type="button" class="paper-cal-btn" data-cal="monthly">Monthly</button>
+        <button type="button" class="paper-cal-btn" data-cal="yearly">Yearly</button>
+      </div>
+      <div id="paperCalendar" class="paper-calendar"></div>
+      <div class="panel-head" style="margin-top:16px"><span class="panel-title">TRADES</span><span class="panel-sub" id="paperCallMeta">—</span></div>
+      <div id="paperCalls" class="paper-calls"></div>
+    </section>
+
 <!-- Charts tab: full wall of useful views -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
       <div class="charts-grid">
         <article class="chart-card chart-wide">
-          <header class="chart-card-head"><span>BTC · 1m</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
+          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
           <canvas id="chartBtc"></canvas>
         </article>
         <article class="chart-card">
@@ -445,7 +502,7 @@
       </div>
     </div>
 
-    <!-- Floating 7-segment HOURLY WINDOW timer -->
+    <!-- Digit timer only — hour ring stays removed. Not inside the dashboard card grid. -->
     <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
       <div class="led-bezel">
         <div class="led-label">1H WINDOW</div>
@@ -487,10 +544,21 @@
 
   
   <!-- Win-streak celebrate (fullscreen close-up money) -->
-  <div id="celebrateVideoWrap" class="celebrate-video-wrap hidden" aria-hidden="true">
-    <video id="celebrateVideo" playsinline>
-      <source src="/static/video/money-closeup.mp4" type="video/mp4" />
+  <div id="summonVideoWrap" class="summon-video-wrap" aria-hidden="true">
+    <video id="summonVideo" playsinline webkit-playsinline preload="metadata">
+      <source src="/summon-council.mp4" type="video/mp4" />
+      <source src="/zt-intro.mp4" type="video/mp4" />
     </video>
+    <div id="summonFogOverlay" class="summon-fog-overlay"></div>
+    <button type="button" id="summonVideoSkip" class="summon-video-skip">Skip</button>
+  </div>
+  <div id="celebrateVideoWrap" class="celebrate-video-wrap hidden" aria-hidden="true">
+    <video id="celebrateVideo" playsinline webkit-playsinline preload="metadata">
+      <source src="/zt-celebrate.mp4" type="video/mp4" />
+      <source src="/zt-intro.mp4" type="video/mp4" />
+      <source src="/summon-council.mp4" type="video/mp4" />
+    </video>
+    <div id="celebrateFallback" class="celebrate-fallback" hidden>ZT CINEMATIC</div>
     <button type="button" id="celebrateVideoSkip" class="celebrate-skip">Skip</button>
   </div>
 

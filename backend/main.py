@@ -101,7 +101,7 @@ async def get_state(response: Response):
     state = council.get_state()
     # Surface server-side lag for the UI
     if isinstance(state, dict):
-        state = dict(state)
+        state = _strip_public_auto_bet(dict(state))
         state["server_time"] = time.time()
     return state
 
@@ -110,7 +110,7 @@ async def get_state(response: Response):
 async def force_analyze():
     """Manual trigger for testing."""
     state = await council.analyze_once()
-    return state
+    return _strip_public_auto_bet(state) if isinstance(state, dict) else state
 
 
 @app.get("/api/history")
@@ -209,9 +209,30 @@ async def lifetime(limit: int = 500, offset: int = 0):
 
 
 
+def _strip_public_auto_bet(obj):
+    """Remove auto-bet setup from any public payload. Admin GET /api/settings keeps it."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k == "auto_bet":
+                continue
+            out[k] = _strip_public_auto_bet(v)
+        return out
+    if isinstance(obj, list):
+        return [_strip_public_auto_bet(x) for x in obj]
+    return obj
+
+
+def _settings_for_client(request: Request) -> dict:
+    snap = runtime_settings.snapshot()
+    if not _admin_ok(request):
+        return _strip_public_auto_bet(snap)
+    return snap
+
+
 @app.get("/api/settings")
-async def get_settings():
-    return runtime_settings.snapshot()
+async def get_settings(request: Request):
+    return _settings_for_client(request)
 
 
 @app.post("/api/settings")
@@ -223,7 +244,12 @@ async def post_settings(request: Request):
         body = {}
     if not isinstance(body, dict):
         body = {}
-    return runtime_settings.apply_patch(body)
+    # Auto-bet setup is admin-only. Desk access code is not enough.
+    if "auto_bet" in body and not _admin_ok(request):
+        body = dict(body)
+        body.pop("auto_bet", None)
+    runtime_settings.apply_patch(body)
+    return _settings_for_client(request)
 
 
 @app.post("/api/settings/beast")
@@ -236,7 +262,8 @@ async def toggle_beast(request: Request):
         on = bool(body["enabled"])
     else:
         on = not runtime_settings.beast_mode
-    return runtime_settings.set_beast_mode(on)
+    runtime_settings.set_beast_mode(on)
+    return _settings_for_client(request)
 
 
 @app.get("/api/brain/export")
@@ -350,6 +377,49 @@ def _admin_ok(request: Request) -> bool:
         return False
 
 
+
+@app.get("/api/journal/locks.csv")
+async def journal_locks_csv(asset: str | None = None, limit: int = 200):
+    """Finish-only lock journal for offline review."""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+    rows = await council.store.recent_settled_calls(limit=min(500, max(20, limit)))
+    # filter finish-only + optional asset
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["id","asset","direction","entry_odds","outcome","result","settle_reason","strike","close_time","called_at"])
+    for r in rows:
+        reason = r.get("settle_reason") or ""
+        if reason not in ("finish_match", "finish_miss") and r.get("correct") is None:
+            # still include settled directional with outcome
+            if not r.get("outcome"):
+                continue
+        a = (r.get("asset") or "").lower()
+        if asset and a and a != asset.lower():
+            continue
+        direction = r.get("direction") or r.get("call_direction") or ""
+        outcome = r.get("outcome") or ""
+        ok = reason == "finish_match" or (direction and outcome and str(direction).upper() == str(outcome).upper())
+        w.writerow([
+            r.get("id"),
+            a,
+            direction,
+            r.get("entry_odds_pct") or r.get("open_price"),
+            outcome,
+            "RIGHT" if ok else "WRONG",
+            reason,
+            r.get("kalshi_target"),
+            r.get("close_time"),
+            r.get("called_at"),
+        ])
+    out.seek(0)
+    return StreamingResponse(
+        iter([out.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=lock-journal.csv"},
+    )
+
 @app.post("/api/admin/clear-hit-rate")
 async def admin_clear_hit_rate(request: Request):
     """Reset hit-rate counters display. Does NOT wipe AdaptiveLearner weights."""
@@ -438,6 +508,40 @@ if STATIC_DIR.is_dir():
             media_type="application/javascript",
             headers={"Cache-Control": "no-cache"},
         )
+
+    @app.get("/app.js")
+    async def app_js_stub():
+        path = STATIC_DIR / "app.js"
+        if not path.exists():
+            from fastapi.responses import Response
+            return Response("// desk UI is /roundtable.js\n", media_type="application/javascript")
+        return FileResponse(
+            path,
+            media_type="application/javascript",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/favicon.ico")
+    async def favicon_ico():
+        ico = STATIC_DIR / "favicon.ico"
+        svg = STATIC_DIR / "favicon.svg"
+        if ico.exists():
+            return FileResponse(ico, media_type="image/x-icon",
+                                headers={"Cache-Control": "public, max-age=86400"})
+        if svg.exists():
+            return FileResponse(svg, media_type="image/svg+xml",
+                                headers={"Cache-Control": "public, max-age=86400"})
+        from fastapi.responses import Response
+        return Response(status_code=404)
+
+    @app.get("/favicon.svg")
+    async def favicon_svg():
+        path = STATIC_DIR / "favicon.svg"
+        if not path.exists():
+            from fastapi.responses import Response
+            return Response(status_code=404)
+        return FileResponse(path, media_type="image/svg+xml",
+                            headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/summon-council.mp4")
     async def summon_video():

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     ANALYSIS_INTERVAL: float = 4.0          # fallback / single-table
     ANALYSIS_INTERVAL_BTC: float = 4.5
     ANALYSIS_INTERVAL_ETH: float = 4.5
+    # Adaptive cadence (quality > frequency)
+    ADAPTIVE_INTERVAL: bool = True
+    ANALYSIS_INTERVAL_QUIET: float = 7.0   # both WAIT + calm
+    ANALYSIS_INTERVAL_ACTIVE: float = 4.0  # near lock / late hour
+
     HTTP_TIMEOUT: float = 4.0
     KLINE_LIMIT: int = 90
     ANALYSIS_INTERVAL_FLAT: float = 6.0
@@ -172,6 +177,40 @@ class Settings(BaseSettings):
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
     MAX_ENTRY_ODDS_PCT: float = 80.0
+    # Soft preferred band — still allow up to MAX but raise bar outside preferred
+    PREFERRED_ENTRY_ODDS_MIN: float = 40.0
+    PREFERRED_ENTRY_ODDS_MAX: float = 65.0
+    # Next-layer edge gates
+    ANTI_CHASE_PTS: float = 4.0          # if side mid jumped this many ¢ recently → WAIT
+    ANTI_CHASE_LOOKBACK_S: float = 180.0
+    MAX_SPREAD_CENTS: float = 5.0        # no ENTRY if bid-ask wider than this
+    TWO_STAGE_HOLD_S: float = 12.0       # lean must hold this long before hard LOCK
+    DUAL_CORRELATION_VETO: bool = True   # demote weaker table when both lean same weakly
+    # P(finish) + EV gate (paper pricing only — never a live order)
+    MIN_P_FINISH: float = 0.55
+    MIN_EV_CENTS: float = 3.0
+    # Top-of-book depth: known thin size → WAIT (spread still hard-gated above)
+    MIN_BOOK_SIZE: float = 5.0
+    # Time-to-expiry EV hurdles (hourly official window)
+    EARLY_WINDOW_MINS: float = 20.0      # first ~20 min → patient
+    LATE_WINDOW_MINS: float = 15.0       # last ~15 min → strong misprice only
+    EARLY_EV_MULT: float = 1.5
+    LATE_MIN_P_FINISH: float = 0.70
+    LATE_MIN_EV_CENTS: float = 8.0
+    # Odds-band calibration: tighten the band that loses money
+    CALIB_BAND_MIN_N: int = 8
+    CALIB_MISS_GAP: float = 0.08
+    CALIB_P_TIGHTEN: float = 0.05
+    CALIB_EV_TIGHTEN: float = 2.0
+
+    # Hourly timing (minutes left)
+    HOURLY_HARD_EARLY_MIN: float = 45.0   # very early → strong WAIT
+    HOURLY_EARLY_MIN: float = 35.0
+    HOURLY_LATE_MIN: float = 20.0
+    HOURLY_HARD_LATE_MIN: float = 8.0
+    # ETH uses a thinner specialist set
+    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale"
+
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80
 

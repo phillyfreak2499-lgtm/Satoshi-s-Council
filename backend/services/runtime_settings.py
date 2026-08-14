@@ -91,6 +91,15 @@ DEFAULTS: Dict[str, Any] = {
         "prune_days": 90,
         "law_bump_hours": 6,
     },
+    # --- Auto-bet setup (admin Settings only). No live orders. ---
+    # mode slot: off | paper_chair | follow_leaders (follow_leaders is reserved).
+    "auto_bet": {
+        "enabled": False,
+        "mode": "off",
+        "size": 25.0,
+        "btc": True,
+        "eth": True,
+    },
     # --- UI / audio ---
     "ui": {
         "sound_enabled": True,
@@ -105,6 +114,31 @@ DEFAULTS: Dict[str, Any] = {
         "show_anti_tags": True,
     },
 }
+
+
+AUTO_BET_MODES = ("off", "paper_chair", "follow_leaders")
+
+
+def _sanitize_auto_bet(patch: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only known auto-bet knobs. Never store API keys or secrets."""
+    if not isinstance(patch, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    if "enabled" in patch:
+        out["enabled"] = bool(patch["enabled"])
+    if "mode" in patch:
+        mode = str(patch.get("mode") or "off").strip().lower()
+        out["mode"] = mode if mode in AUTO_BET_MODES else "off"
+    if "size" in patch:
+        try:
+            out["size"] = max(0.0, min(10000.0, float(patch["size"])))
+        except Exception:
+            pass
+    if "btc" in patch:
+        out["btc"] = bool(patch["btc"])
+    if "eth" in patch:
+        out["eth"] = bool(patch["eth"])
+    return out
 
 
 def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
@@ -175,6 +209,9 @@ class RuntimeSettings:
     def ui(self) -> Dict[str, Any]:
         return dict(self._data.get("ui") or DEFAULTS["ui"])
 
+    def auto_bet(self) -> Dict[str, Any]:
+        return dict(self._data.get("auto_bet") or DEFAULTS["auto_bet"])
+
     def knobs(self, section: str, key: str, default: Any = None) -> Any:
         """Read a nested knob with fallback to DEFAULTS then `default`."""
         sec = self._data.get(section) or DEFAULTS.get(section) or {}
@@ -183,7 +220,7 @@ class RuntimeSettings:
         return (DEFAULTS.get(section) or {}).get(key, default)
 
     def update_section(self, section: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-        if section not in ("learning", "trading", "huddle", "ui", "beast", "normal"):
+        if section not in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet"):
             raise ValueError(f"Unknown section: {section}")
         with self._lock:
             cur = dict(self._data.get(section) or DEFAULTS.get(section) or {})
@@ -215,9 +252,12 @@ class RuntimeSettings:
             return self.snapshot()
         if "beast_mode" in body:
             self.set_beast_mode(bool(body["beast_mode"]))
-        for sec in ("learning", "trading", "huddle", "ui", "beast", "normal"):
+        for sec in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet"):
             if isinstance(body.get(sec), dict):
-                self.update_section(sec, body[sec])
+                patch = body[sec]
+                if sec == "auto_bet":
+                    patch = _sanitize_auto_bet(patch)
+                self.update_section(sec, patch)
         # flat aliases for convenience
         flat_map = {
             "path_win_pct": ("learning", "path_win_pct"),
@@ -260,6 +300,7 @@ class RuntimeSettings:
             "trading": self.trading(),
             "huddle": self.huddle(),
             "ui": self.ui(),
+            "auto_bet": self.auto_bet(),
             "label": "BEAST MODE" if self.beast_mode else "STANDARD",
             "blurb": (
                 "Max refresh · dual spot · parallel seats · premium HUD"
@@ -271,6 +312,7 @@ class RuntimeSettings:
                 "trading": DEFAULTS["trading"],
                 "huddle": DEFAULTS["huddle"],
                 "ui": DEFAULTS["ui"],
+                "auto_bet": DEFAULTS["auto_bet"],
             },
         }
 

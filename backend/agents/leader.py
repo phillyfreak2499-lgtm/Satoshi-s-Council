@@ -16,6 +16,14 @@ from backend.agents.base import AgentSignal, Direction, GOAL_CONTRACT, GOAL_CONT
 from backend.config import settings
 from backend.learning.adaptive import AdaptiveLearner, NON_VOTERS
 from backend.agents.roster import display_name
+from backend.agents.chair_gates import (
+    book_too_thin,
+    clamp_p_finish,
+    compute_ev_cents,
+    ev_gate_blocks,
+    parse_book_depth,
+    time_ev_hurdles,
+)
 from loguru import logger
 import copy
 import time
@@ -64,6 +72,20 @@ class Leader:
         self._final_conf: int = 0
         self._final_at: float = 0.0
         self._revisions_used: int = 0
+        # Two-stage lean → lock
+        self._lean_pending_dir: Optional[str] = None
+        self._lean_pending_since: float = 0.0
+        self._lean_pending_conf: int = 0
+        # Anti-chase: recent side-odds samples (ts, side_odds for UP as up_pct)
+        self._odds_hist: list = []
+        # Paper P(finish) / EV — last cycle + values frozen at lock
+        self._last_p_finish: Optional[float] = None
+        self._last_ev_cents: Optional[float] = None
+        self._last_ev_phase: Optional[str] = None
+        self._locked_p_finish: Optional[float] = None
+        self._locked_ev_cents: Optional[float] = None
+        self._locked_floor_strike: Optional[float] = None
+        self._locked_close_time: Optional[str] = None
 
     def _normalize_weights(self) -> None:
         total = sum(self.weights.values()) or 1.0
@@ -89,6 +111,17 @@ class Leader:
         self._final_conf = 0
         self._final_at = 0.0
         self._revisions_used = 0
+        self._lean_pending_dir = None
+        self._lean_pending_since = 0.0
+        self._lean_pending_conf = 0
+        self._odds_hist = []
+        self._last_p_finish = None
+        self._last_ev_cents = None
+        self._last_ev_phase = None
+        self._locked_p_finish = None
+        self._locked_ev_cents = None
+        self._locked_floor_strike = None
+        self._locked_close_time = None
 
     def _active_dir(self) -> Optional[str]:
         return self._final_dir or self._mid_dir or self._entry_dir or self._locked_dir
@@ -263,6 +296,70 @@ class Leader:
             "irreversible": int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1) <= 1,
             "ticker": self._locked_ticker,
             "goal": GOAL_CONTRACT_SHORT,
+            "p_finish": self._locked_p_finish,
+            "ev_cents": self._locked_ev_cents,
+            "floor_strike": self._locked_floor_strike,
+            "close_time": self._locked_close_time,
+        }
+
+    def _price_edge(
+        self,
+        conf: Any,
+        lean: str | None,
+        side_odds: float | None,
+        regime_features: Dict[str, Any] | None,
+    ) -> Dict[str, Any]:
+        """Paper P(finish) + EV vs chosen-side mid and half-spread."""
+        spread = None
+        try:
+            if regime_features and regime_features.get("spread_cents") is not None:
+                spread = float(regime_features["spread_cents"])
+        except (TypeError, ValueError):
+            spread = None
+        p_finish = clamp_p_finish(conf) if lean in ("UP", "DOWN") else None
+        ev = None
+        if p_finish is not None and side_odds is not None:
+            ev = compute_ev_cents(p_finish, side_odds, spread)
+        mins_left = None
+        window_minutes = None
+        if regime_features:
+            try:
+                if regime_features.get("mins_left") is not None:
+                    mins_left = float(regime_features["mins_left"])
+            except (TypeError, ValueError):
+                mins_left = None
+            try:
+                if regime_features.get("window_minutes") is not None:
+                    window_minutes = float(regime_features["window_minutes"])
+            except (TypeError, ValueError):
+                window_minutes = None
+        hurdles = time_ev_hurdles(
+            mins_left,
+            window_minutes,
+            min_p=float(getattr(settings, "MIN_P_FINISH", 0.55)),
+            min_ev=float(getattr(settings, "MIN_EV_CENTS", 3.0)),
+            early_window_mins=float(getattr(settings, "EARLY_WINDOW_MINS", 20.0)),
+            late_window_mins=float(getattr(settings, "LATE_WINDOW_MINS", 15.0)),
+            early_ev_mult=float(getattr(settings, "EARLY_EV_MULT", 1.5)),
+            late_min_p=float(getattr(settings, "LATE_MIN_P_FINISH", 0.70)),
+            late_min_ev=float(getattr(settings, "LATE_MIN_EV_CENTS", 8.0)),
+        )
+        min_p = float(hurdles["min_p"])
+        min_ev = float(hurdles["min_ev"])
+        if side_odds is not None and hasattr(self.learner, "odds_band_tighten"):
+            try:
+                tight = self.learner.odds_band_tighten(side_odds)
+                min_p += float(tight.get("p_add") or 0.0)
+                min_ev += float(tight.get("ev_add") or 0.0)
+            except Exception:
+                pass
+        return {
+            "p_finish": p_finish,
+            "ev_cents": ev,
+            "spread": spread,
+            "phase": hurdles["phase"],
+            "min_p": min_p,
+            "min_ev": min_ev,
         }
 
     def update_edge_from_accuracy(self, accuracy: Dict[str, Any] | None) -> None:
@@ -389,6 +486,25 @@ class Leader:
             if k not in NON_VOTERS:
                 self.learner.weights[k] = v
         self.learner._normalize()
+
+
+    @staticmethod
+    def _clean_summary(text: str) -> str:
+        """Strip legacy path/scalp language — finish-only doctrine."""
+        if not text:
+            return text
+        import re
+        t = str(text)
+        t = re.sub(r"\s*·\s*¼\s*scalp[^·]*", "", t, flags=re.I)
+        t = re.sub(r"\s*·\s*1/4\s*scalp[^·]*", "", t, flags=re.I)
+        t = re.sub(r"finish not required", "finish grades only", t, flags=re.I)
+        t = re.sub(r"path = right[^·]*", "directional", t, flags=re.I)
+        t = re.sub(r"Kalshi \+?[\d.]+ pts path = right[^·]*", "Kalshi path note", t, flags=re.I)
+        t = re.sub(r"\s{2,}", " ", t).strip(" ·")
+        return t
+
+    def summarize_clean(self, summary: str) -> str:
+        return self._clean_summary(summary)
 
     def synthesize(
         self,
@@ -882,11 +998,21 @@ class Leader:
         if lean in ("UP", "DOWN") and up_pct is not None:
             side_odds = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
 
+        edge = self._price_edge(conf, lean, side_odds, regime_features)
+        p_finish = edge["p_finish"]
+        ev_cents = edge["ev_cents"]
+        ev_phase = edge["phase"]
+        self._last_p_finish = p_finish
+        self._last_ev_cents = ev_cents
+        self._last_ev_phase = ev_phase
+
         # ══════════════════════════════════════════════════════════════
         # GOAL CONTRACT: one irreversible call per window. No flipping.
         # Hold even if ticker is briefly missing this cycle.
         # ══════════════════════════════════════════════════════════════
         if self._entry_dir or self._active_dir():
+            self._lean_pending_dir = None
+            self._lean_pending_since = 0.0
             active = self._active_dir()
             direction = active  # type: ignore[assignment]
             lean = active
@@ -937,18 +1063,189 @@ class Leader:
                     f"(≥{max_odds:.0f}¢) — low edge, no lock · {summary}"
                 )
             else:
-                # Lock the underlying side (HOLD becomes full lock under one-call mode)
-                lock_dir = lean  # UP or DOWN
-                self._set_window_lock(
-                    ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
-                )
-                call_phase = "entry"
-                direction = lock_dir  # type: ignore[assignment]
-                odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
-                summary = (
-                    f"LOCKED {lock_dir}{odds_str} · ONE CALL · FOLLOW THIS · "
-                    f"{GOAL_CONTRACT_SHORT} · {summary}"
-                )
+                # Soft preferred band 40–65¢ + hourly timing bias
+                pref_lo = float(getattr(settings, "PREFERRED_ENTRY_ODDS_MIN", 40.0))
+                pref_hi = float(getattr(settings, "PREFERRED_ENTRY_ODDS_MAX", 65.0))
+                in_band = side_odds is None or (pref_lo <= float(side_odds) <= pref_hi)
+                thr = self.adaptive_thresholds()
+                need = float(thr.get("confluence", 0.55) or 0.55)
+                if not in_band:
+                    need = max(need, need * 1.18)
+                ml = None
+                try:
+                    if regime_features and regime_features.get("mins_left") is not None:
+                        ml = float(regime_features["mins_left"])
+                except (TypeError, ValueError):
+                    ml = None
+                if ml is not None:
+                    hard_early = float(getattr(settings, "HOURLY_HARD_EARLY_MIN", 45.0))
+                    early = float(getattr(settings, "HOURLY_EARLY_MIN", 35.0))
+                    late = float(getattr(settings, "HOURLY_LATE_MIN", 20.0))
+                    if ml >= hard_early:
+                        need = max(need, need * 1.25)
+                    elif ml >= early:
+                        need = max(need, need * 1.12)
+                    elif ml <= late:
+                        need = need * 0.92
+                abs_score = abs(float(score)) if score is not None else 0.0
+                if abs_score < need and not in_band:
+                    direction = "WAIT"
+                    lean = None
+                    firm = False
+                    conf = max(int(conf), 68)
+                    summary = (
+                        f"WAIT · odds {float(side_odds):.0f}¢ outside preferred "
+                        f"{pref_lo:.0f}–{pref_hi:.0f}¢ — need stronger confluence · {summary}"
+                    )
+                elif abs_score < need * 0.95 and ml is not None and ml >= early:
+                    direction = "WAIT"
+                    lean = None
+                    firm = False
+                    conf = max(int(conf), 70)
+                    summary = (
+                        f"WAIT · early hour ({ml:.0f}m left) — patience · {summary}"
+                    )
+                else:
+                    import time as _t2
+                    # --- Spread gate ---
+                    spread = None
+                    try:
+                        if regime_features and regime_features.get("spread_cents") is not None:
+                            spread = float(regime_features["spread_cents"])
+                    except (TypeError, ValueError):
+                        spread = None
+                    max_spread = float(getattr(settings, "MAX_SPREAD_CENTS", 5.0))
+                    if spread is not None and spread > max_spread:
+                        direction = "WAIT"
+                        lean = None
+                        firm = False
+                        conf = max(int(conf), 68)
+                        summary = (
+                            f"WAIT · spread {spread:.1f}¢ > {max_spread:.0f}¢ — no lock · {summary}"
+                        )
+                    else:
+                        # --- Book depth: wide already gated; thin size → WAIT ---
+                        depth = None
+                        if regime_features:
+                            depth = regime_features.get("book_depth")
+                            if not isinstance(depth, dict):
+                                depth = parse_book_depth(
+                                    regime_features.get("kalshi_orderbook")
+                                    or regime_features.get("orderbook")
+                                )
+                        min_book = float(getattr(settings, "MIN_BOOK_SIZE", 5.0))
+                        thin_book = book_too_thin(depth, lean, min_book)
+                        if thin_book:
+                            direction = "WAIT"
+                            lean = None
+                            firm = False
+                            conf = max(int(conf), 68)
+                            summary = (
+                                f"WAIT · thin book (need ≥{min_book:.0f} size) — no lock · {summary}"
+                            )
+                        elif side_odds is None or p_finish is None or ev_cents is None:
+                            direction = "WAIT"
+                            lean = None
+                            firm = False
+                            conf = max(int(conf), 68)
+                            summary = (
+                                f"WAIT · no chosen-side mid — cannot price EV · {summary}"
+                            )
+                        elif ev_gate_blocks(p_finish, ev_cents, edge["min_p"], edge["min_ev"]):
+                            direction = "WAIT"
+                            lean = None
+                            firm = False
+                            conf = max(int(conf), 70)
+                            phase_txt = f" · {ev_phase}" if ev_phase and ev_phase != "middle" else ""
+                            if p_finish < float(edge["min_p"]):
+                                summary = (
+                                    f"WAIT · P(finish) {p_finish:.2f} < {edge['min_p']:.2f}"
+                                    f"{phase_txt} — no lock · {summary}"
+                                )
+                            else:
+                                summary = (
+                                    f"WAIT · EV {ev_cents:.1f}¢ < {edge['min_ev']:.1f}¢"
+                                    f"{phase_txt} — no lock · {summary}"
+                                )
+                        else:
+                            # --- Anti-chase: side mid jumped toward lean recently ---
+                            chased = False
+                            try:
+                                now = _t2.time()
+                                look = float(getattr(settings, "ANTI_CHASE_LOOKBACK_S", 180.0))
+                                thr_pts = float(getattr(settings, "ANTI_CHASE_PTS", 4.0))
+                                if side_odds is not None:
+                                    self._odds_hist.append((now, float(side_odds), lean))
+                                    self._odds_hist = [h for h in self._odds_hist if now - h[0] <= look]
+                                    old = [h for h in self._odds_hist if h[2] == lean and now - h[0] >= min(30.0, look * 0.3)]
+                                    if old:
+                                        oldest = old[0][1]
+                                        delta = float(side_odds) - float(oldest)
+                                        # chasing = price of our side rose hard (less edge)
+                                        if delta >= thr_pts:
+                                            chased = True
+                            except Exception:
+                                chased = False
+                            if chased:
+                                direction = "WAIT"
+                                lean = None
+                                firm = False
+                                conf = max(int(conf), 70)
+                                summary = (
+                                    f"WAIT · anti-chase — side already ran {thr_pts:.0f}¢+ · {summary}"
+                                )
+                            else:
+                                # --- Two-stage: lean must hold TWO_STAGE_HOLD_S before hard LOCK ---
+                                hold_s = float(getattr(settings, "TWO_STAGE_HOLD_S", 12.0))
+                                now = _t2.time()
+                                if self._lean_pending_dir != lean:
+                                    self._lean_pending_dir = lean
+                                    self._lean_pending_since = now
+                                    self._lean_pending_conf = int(conf)
+                                    direction = "WAIT"
+                                    firm = False
+                                    conf = max(int(conf), 65)
+                                    summary = (
+                                        f"LEAN {lean} · holding {hold_s:.0f}s before lock · {summary}"
+                                    )
+                                elif (now - float(self._lean_pending_since or now)) < hold_s:
+                                    left = hold_s - (now - float(self._lean_pending_since))
+                                    direction = "WAIT"
+                                    firm = False
+                                    conf = max(int(conf), 65)
+                                    summary = (
+                                        f"LEAN {lean} · {left:.0f}s to lock · {summary}"
+                                    )
+                                else:
+                                    lock_dir = lean
+                                    self._set_window_lock(
+                                        ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
+                                    )
+                                    self._locked_p_finish = p_finish
+                                    self._locked_ev_cents = ev_cents
+                                    try:
+                                        fs = (
+                                            regime_features.get("floor_strike")
+                                            if regime_features else None
+                                        )
+                                        self._locked_floor_strike = float(fs) if fs is not None else None
+                                    except (TypeError, ValueError):
+                                        self._locked_floor_strike = None
+                                    ct = (
+                                        regime_features.get("close_time")
+                                        if regime_features else None
+                                    )
+                                    self._locked_close_time = str(ct) if ct else None
+                                    self._lean_pending_dir = None
+                                    self._lean_pending_since = 0.0
+                                    call_phase = "entry"
+                                    direction = lock_dir  # type: ignore[assignment]
+                                    odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
+                                    ev_str = f" · EV {ev_cents:.1f}¢" if ev_cents is not None else ""
+                                    summary = (
+                                        f"LOCKED {lock_dir}{odds_str}{ev_str} · ONE CALL · FOLLOW THIS · "
+                                        f"{GOAL_CONTRACT_SHORT} · {summary}"
+                                    )
 
         elif direction == "SWAP" and not (self._entry_dir or self._active_dir()):
             # SWAP with no lock → WAIT (no flip noise)
@@ -969,10 +1266,27 @@ class Leader:
 
         self.signal_count += 1
         total_calls = max(1, self.wait_calls + self.directional_calls)
+        live_lean = lean if lean in ("UP", "DOWN") else self._active_dir()
+        live_odds = side_odds
+        if live_odds is None and live_lean in ("UP", "DOWN") and up_pct is not None:
+            live_odds = float(up_pct) if live_lean == "UP" else (100.0 - float(up_pct))
+        live_edge = self._price_edge(conf, live_lean, live_odds, regime_features)
+        # Keep the priced edge on WAIT so /api/state still shows why we stood down
+        p_finish = live_edge["p_finish"] if live_edge["p_finish"] is not None else self._last_p_finish
+        ev_cents = live_edge["ev_cents"] if live_edge["ev_cents"] is not None else self._last_ev_cents
+        ev_phase = live_edge["phase"] if live_edge["p_finish"] is not None else (self._last_ev_phase or live_edge["phase"])
+        self._last_p_finish = p_finish
+        self._last_ev_cents = ev_cents
+        self._last_ev_phase = ev_phase
+        locked_call = self._build_locked_call()
+        if locked_call and p_finish is not None and locked_call.get("p_finish") is None:
+            locked_call["p_finish"] = p_finish
+        if locked_call and ev_cents is not None and locked_call.get("ev_cents") is None:
+            locked_call["ev_cents"] = ev_cents
         return {
             "direction": direction,
             "confidence": conf,
-            "summary": summary,
+            "summary": self._clean_summary(summary),
             "score": round(score, 4),
             "diversity": diversity,
             "aggressiveness": aggressiveness,
@@ -997,7 +1311,15 @@ class Leader:
             "revisions_used": int(getattr(self, "_revisions_used", 0) or 0),
             "call_phase": locals().get("call_phase"),
             # Follower-bot ready: only present when a real lock exists
-            "locked_call": self._build_locked_call(),
+            "locked_call": locked_call,
+            "p_finish": p_finish,
+            "ev_cents": ev_cents,
+            "ev_phase": ev_phase,
+            "floor_strike": (
+                self._locked_floor_strike
+                if self._locked_floor_strike is not None
+                else (regime_features or {}).get("floor_strike")
+            ),
             "agent_details": details,
             "weights": {k: round(v, 3) for k, v in self.weights.items()},
             "learning": self.learner.snapshot(),
@@ -1018,6 +1340,9 @@ class Leader:
             "pair_bonus": 0.0,
             "pair_notes": [],
             "locked_call": self._build_locked_call(),
+            "p_finish": self._last_p_finish,
+            "ev_cents": self._last_ev_cents,
+            "ev_phase": self._last_ev_phase,
             "agent_details": [],
             "weights": {k: round(v, 3) for k, v in self.weights.items()},
             "learning": self.learner.snapshot(),

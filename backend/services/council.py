@@ -4,6 +4,7 @@ Includes nested sub-council micro-bots behind each specialist.
 """
 from __future__ import annotations
 import asyncio
+import time
 from typing import Any, Dict, List
 from datetime import datetime, timezone
 from loguru import logger
@@ -40,6 +41,7 @@ from backend.config import settings
 from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
+from backend.agents.chair_gates import parse_book_depth, window_minutes_from_times
 
 
 class Council:
@@ -58,11 +60,11 @@ class Council:
             symbol=symbol,
         )
         self.store = PerformanceStore()
-        self.learner = AdaptiveLearner()
+        self.learner = AdaptiveLearner(asset=self.asset)
         self.leader = Leader(learner=self.learner)
         self.wm = WindowMemory()
         self.law = LawBot()
-        self.agents = [
+        all_agents = [
             CandlePatternSpecialist(),
             VolumeSpecialist(),
             MomentumSpecialist(),
@@ -86,10 +88,32 @@ class Council:
             GuardianBot(),
             self.law,
         ]
+        # ETH: thinner core roster for clarity + CPU
+        if self.asset == "eth":
+            core = {
+                x.strip().lower()
+                for x in str(getattr(settings, "ETH_CORE_AGENTS",
+                    "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale")).split(",")
+                if x.strip()
+            }
+            # Always keep guardian + law
+            core |= {"guardian", "law"}
+            self.agents = [
+                a for a in all_agents
+                if getattr(a, "name", None) in core
+                or getattr(a, "agent_name", None) in core
+                or a is self.law
+            ]
+            if len(self.agents) < 5:
+                self.agents = all_agents  # safety fallback
+        else:
+            self.agents = all_agents
         self.latest_state: Dict[str, Any] = {}
         self._task: asyncio.Task | None = None
         self.running = False
         self._last_learned_ids: set = set()
+        self._shadow_book: list = []
+        self._last_settle_review = None
         self.huddle = NightlyHuddle()
 
     async def start(self):
@@ -165,7 +189,47 @@ class Council:
             delay = max(0.2, interval - elapsed)
             await asyncio.sleep(delay)
 
+
+    async def _restore_open_lock(self) -> None:
+        """Persist one-call integrity across process restart."""
+        if getattr(self, "_lock_restored", False):
+            return
+        self._lock_restored = True
+        try:
+            if self.leader._entry_dir or self.leader._active_dir():
+                return
+            acc = await self.store.get_accuracy(asset=self.asset)
+            opens = acc.get("open_log") or []
+            if not isinstance(opens, list):
+                return
+            for row in opens:
+                if not isinstance(row, dict):
+                    continue
+                direction = row.get("direction") or ""
+                side = "UP" if direction in ("UP", "UP_HOLD") else ("DOWN" if direction in ("DOWN", "DOWN_HOLD") else None)
+                if side not in ("UP", "DOWN"):
+                    continue
+                ticker = row.get("ticker") or ""
+                conf = int(row.get("confidence") or 70)
+                up = row.get("entry_side_pct") or row.get("open_price")
+                self.leader._set_window_lock(
+                    ticker, side, conf, 0.0, up_pct=up, call_phase="entry"
+                )
+                if row.get("close_time"):
+                    self.leader._locked_window = str(row["close_time"])
+                logger.info(
+                    f"[{self.asset}/{self.leader_name}] Restored open lock {side} "
+                    f"ticker={ticker}"
+                )
+                break
+        except Exception as e:
+            logger.debug(f"lock restore skip ({self.asset}): {e}")
+
     async def analyze_once(self) -> Dict[str, Any]:
+        try:
+            await self._restore_open_lock()
+        except Exception:
+            pass
         # Refresh edge stats before synthesis so WAIT bar tracks lifetime log
         try:
             self.leader.update_edge_from_accuracy(await self.store.get_accuracy(asset=self.asset))
@@ -379,7 +443,20 @@ class Council:
             ml = parse_mins_left(close_t or market_data.get("close_time"))
             if ml is not None:
                 regime_features["mins_left"] = ml
-            # Bid-ask spread in cents for Chair gate
+            # Stable hourly window id — ATM ticker hops must not clear the lock
+            ct_id = close_time or close_t or market_data.get("close_time")
+            if ct_id:
+                regime_features["close_time"] = ct_id
+            open_t = None
+            if isinstance(km, dict):
+                open_t = km.get("open_time") or km.get("open_ts")
+            if open_t:
+                regime_features["open_time"] = open_t
+            win_mins = window_minutes_from_times(open_t, ct_id)
+            if win_mins is None:
+                win_mins = 60.0  # KXBTCD / KXETHD hourly
+            regime_features["window_minutes"] = win_mins
+            # Bid-ask spread in cents for Chair gate (top-of-book, not mid alone)
             try:
                 bid = market_data.get("kalshi_yes_bid")
                 ask = market_data.get("kalshi_yes_ask")
@@ -390,6 +467,17 @@ class Council:
                     if a <= 1.0:
                         a *= 100.0
                     regime_features["spread_cents"] = abs(a - b)
+            except Exception:
+                pass
+            # Book depth — thin size → Chair WAIT
+            try:
+                depth = parse_book_depth(market_data.get("kalshi_orderbook"))
+                regime_features["book_depth"] = depth
+                regime_features["kalshi_orderbook"] = market_data.get("kalshi_orderbook")
+                if depth.get("yes_bid_sz") is not None:
+                    regime_features["book_yes_size"] = depth["yes_bid_sz"]
+                if depth.get("no_bid_sz") is not None:
+                    regime_features["book_no_size"] = depth["no_bid_sz"]
             except Exception:
                 pass
             # Quiet-mode signals (ATR / vol / volume percentile when available)
@@ -408,8 +496,6 @@ class Council:
                             break
             except Exception:
                 pass
-            if close_time:
-                regime_features["close_time"] = close_time
             if up_pct is not None:
                 regime_features["up_pct"] = up_pct
             if down_pct is not None:
@@ -472,6 +558,58 @@ class Council:
         # Attach Kalshi target so settlement grades against floor_strike
         decision["kalshi_target"] = market_data.get("kalshi_floor_strike")
 
+        # Lock quality score (0–100): confluence × odds band × spread
+        try:
+            conf = float(decision.get("confidence") or 0)
+            up = up_pct
+            lean = decision.get("direction")
+            so = None
+            if lean in ("UP", "DOWN") and up is not None:
+                so = float(up) if lean == "UP" else (100.0 - float(up))
+            band = 1.0
+            if so is not None:
+                if 40 <= so <= 65:
+                    band = 1.0
+                elif 35 <= so <= 75:
+                    band = 0.85
+                else:
+                    band = 0.65
+            spread = (regime_features or {}).get("spread_cents") if isinstance(regime_features, dict) else None
+            sp = 1.0
+            if spread is not None:
+                sp = max(0.5, 1.0 - (float(spread) / 12.0))
+            q = int(max(0, min(100, conf * band * sp)))
+            decision["quality_score"] = q
+            if decision.get("locked_call") and isinstance(decision["locked_call"], dict):
+                decision["locked_call"]["quality_score"] = q
+        except Exception:
+            pass
+
+        # Shadow book: would a stricter 45–60¢ band have locked?
+        try:
+            from backend.config import settings as _s
+            so = None
+            lean = decision.get("direction")
+            if lean in ("UP", "DOWN") and up_pct is not None:
+                so = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
+            strict_lo, strict_hi = 45.0, 60.0
+            in_strict = so is not None and strict_lo <= so <= strict_hi
+            would = bool(
+                decision.get("window_locked") or (decision.get("locked_call") or {}).get("locked")
+            ) and in_strict
+            self._shadow_book.append({
+                "t": time.time(),
+                "asset": self.asset,
+                "live_dir": decision.get("direction"),
+                "live_odds": so,
+                "would_strict_lock": would,
+                "in_strict_band": in_strict,
+            })
+            self._shadow_book = self._shadow_book[-80:]
+        except Exception:
+            pass
+
+
         signal_id = await self.store.log_signal(
             decision,
             signals,
@@ -504,6 +642,10 @@ class Council:
                 "lean": decision.get("lean"),  # underlying UP/DOWN when direction is SWAP/HOLD
                 "call_phase": decision.get("call_phase"),
                 "locked_call": decision.get("locked_call"),  # clear follower-readable lock
+                "p_finish": decision.get("p_finish"),
+                "ev_cents": decision.get("ev_cents"),
+                "ev_phase": decision.get("ev_phase"),
+                "quality_score": decision.get("quality_score"),
                 "display_direction": (
                     "1/4 UP HOLD" if decision["direction"] == "UP_HOLD"
                     else "1/4 DOWN HOLD" if decision["direction"] == "DOWN_HOLD"
@@ -564,6 +706,26 @@ class Council:
             "dual_spot": bool(runtime_settings.get("dual_spot", True)),
             "sub_council_count": sum(len(s.subs or []) for s in signals),
             "accuracy": accuracy,
+            "locked_call": decision.get("locked_call"),
+            "p_finish": decision.get("p_finish"),
+            "ev_cents": decision.get("ev_cents"),
+            "ev_phase": decision.get("ev_phase"),
+            "shadow_book": list(self._shadow_book[-12:]),
+            "last_settle_review": self._last_settle_review,
+            "health": {
+                "kalshi": bool(market_data.get("kalshi_healthy", market_data.get("healthy", True))),
+                "quote_age_s": (time.time() - float(market_data["kalshi_fetched_at"]))
+                    if market_data.get("kalshi_fetched_at") else None,
+                "from_cache": bool(market_data.get("from_shared_cache") or market_data.get("last_good")),
+                "asset": self.asset,
+            },
+            "regime_key": (regime_features.get("regime_key") if isinstance(regime_features, dict) else None),
+            "lock_timeline": {
+                "close_time": close_time,
+                "locked_at": getattr(self.leader, "_entry_at", None) or getattr(self.leader, "_locked_at", None),
+                "mins_left": (regime_features.get("mins_left") if isinstance(regime_features, dict) else None),
+            },
+
             "law": law_status,
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),
@@ -602,20 +764,32 @@ class Council:
             if rid is None or rid in self._last_learned_ids:
                 continue
             settle_reason = row.get("settle_reason") or ""
-            # Path-era / near_certain / flipped never train the hourly brain
-            if settle_reason not in FINISH:
-                self._last_learned_ids.add(rid)  # mark seen, skip forever
-                continue
             outcome = row.get("outcome")
+            # Never train on VOID / path-era / unresolved
+            if outcome in ("VOID", None, "") or settle_reason not in FINISH:
+                self._last_learned_ids.add(rid)
+                continue
             votes = row.get("agent_votes") or {}
             if outcome in ("UP", "DOWN") and votes:
                 reg = row.get("regime") or row.get("regime_key")
                 if not reg:
                     reg = regime_from_call(row.get("called_at"), row.get("close_time"))
                 self.learner.learn_from_settled(votes, outcome, regime=reg, credit=1.0)
+                if hasattr(self.learner, "record_finish_calibration"):
+                    try:
+                        pred = row.get("p_finish")
+                        if pred is None and row.get("confidence") is not None:
+                            pred = float(row.get("confidence") or 0) / 100.0
+                        self.learner.record_finish_calibration(
+                            side_odds=row.get("open_price") or row.get("entry_side_pct"),
+                            p_finish=pred,
+                            finished=bool(row.get("correct") == 1),
+                            pnl=row.get("paper_pnl"),
+                        )
+                    except Exception:
+                        pass
                 learned += 1
             self._last_learned_ids.add(rid)
-            # Cap burst — never re-train 40 path rows in one cycle
             if learned >= 5:
                 break
         # Bound memory of learned ids
@@ -657,6 +831,8 @@ class Council:
                 "confidence": 50,
                 "summary": "Initializing...",
                 "locked_call": None,
+                "p_finish": None,
+                "ev_cents": None,
             },
             "agents": [],
             "weights": self.leader.weights,
@@ -674,6 +850,8 @@ class Council:
                 "label": "0/0 · —",
             },
             "locked_call": None,
+            "p_finish": None,
+            "ev_cents": None,
             "law": self.law.status(),
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),
