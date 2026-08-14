@@ -1445,13 +1445,27 @@
       if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
       const name = a.agent_name || a.name || "?";
       const confA = a.confidence || 50;
-      // spoke
+      // spoke to leader — color matches bot vote
+      const confA2 = Number(a.confidence) || 50;
+      const spokeAlpha = 0.22 + Math.min(0.55, confA2 / 100 * 0.5);
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(x, y);
-      ctx.strokeStyle = "rgba(80,120,160,0.12)";
-      ctx.lineWidth = 1;
+      ctx.moveTo(x, y);
+      ctx.lineTo(cx, cy);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.4;
+      ctx.globalAlpha = spokeAlpha * 0.4;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 10;
       ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(cx, cy);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.3;
+      ctx.globalAlpha = spokeAlpha;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
       // icon
       try {
         drawBotIcon(name, x, y, 14, col, confA);
@@ -3204,6 +3218,20 @@ function drawCandleChart() {
         const a = (ethSt && ethSt.accuracy) || {};
         accEth.textContent = (a.label || ((a.correct || 0) + "/" + (a.total || 0)));
       }
+      // Table-view ETH/BTC decision chips (visible on Table + Floor)
+      function chip(st, dirId, confId) {
+        const d = (st && st.decision) || {};
+        const lc = (st && st.locked_call) || d.locked_call || null;
+        const locked = !!(lc && lc.locked && lc.direction);
+        const dir = locked ? lc.direction : (d.direction || "—");
+        const conf = locked ? (lc.confidence || d.confidence) : d.confidence;
+        const dirEl = document.getElementById(dirId);
+        const confEl = document.getElementById(confId);
+        if (dirEl) dirEl.textContent = locked ? ("LOCK " + dir) : String(dir);
+        if (confEl) confEl.textContent = conf != null ? (conf + "%") : "";
+      }
+      chip(btcSt, "btcDir", "btcConf");
+      chip(ethSt, "ethDir", "ethConf");
     } catch (err) {}
     const total = Math.max(1, up + down + wait + hold + swap);
 
