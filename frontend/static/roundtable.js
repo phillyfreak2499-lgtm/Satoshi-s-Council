@@ -1420,12 +1420,7 @@
       let col = "rgba(160,180,200,0.85)";
       if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
       if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
-      let confA = Number(a.confidence) || 50;
-      try {
-        const w = (st.weights && (st.weights[a.agent_name] || st.weights[a.name])) || 0;
-        if (w > 0.08) confA = Math.min(100, confA + 12); // specialist heat
-      } catch (e) {}
-
+      const confA = Number(a.confidence) || 50;
       // endpoint on portrait rim (not through the face)
       const dx = x - cx, dy = y - portraitY;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1560,11 +1555,6 @@
       ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, cy + pr + 30);
     }
 
-    // Quiet mode: hide specialist ring
-    if (document.body.classList.contains("quiet-mode")) {
-      ctx.restore();
-      return;
-    }
     // Bot icons on top of spokes
     if (!botPts.length) {
       ctx.font = "600 10px Rajdhani, sans-serif";
@@ -2380,6 +2370,24 @@
     }
   }
 
+
+  function updateDualAccuracyStrips() {
+    try {
+      if (!state || !state.tables) return;
+      const b = (state.tables.bitcoin && state.tables.bitcoin.accuracy) || {};
+      const e = (state.tables.ethereum && state.tables.ethereum.accuracy) || {};
+      const sb = document.getElementById("accuracyStrip");
+      const se = document.getElementById("accuracyStripEth");
+      if (sb) {
+        const c = b.correct || 0, t = b.total || 0, p = b.pending || 0;
+        sb.textContent = `${c}/${t}` + (p ? ` · ${p}o` : "");
+      }
+      if (se) {
+        const c = e.correct || 0, t = e.total || 0, p = e.pending || 0;
+        se.textContent = `${c}/${t}` + (p ? ` · ${p}o` : "");
+      }
+    } catch (e) {}
+  }
   function updateAccuracy(acc) {
     const detailEl = document.getElementById("accuracyDetail");
     const callLogEl = document.getElementById("callLog");
@@ -2403,12 +2411,15 @@
     const label = (acc && acc.label) || (pct != null ? `${correct}/${total} · ${pct}%` : `${correct}/${total} · —`);
     const pctText = pct != null ? `${pct}%` : "—";
     let verdict = (acc && acc.verdict) || "COLLECTING";
-    if (!total) verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    if (!total && pending) verdict = `FINISH-ONLY · ${pending} OPEN — WAITING ON HOUR CLOSE`;
+    else if (!total) verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
 
     if (accuracyPct) accuracyPct.textContent = pctText;
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
     if (detailEl) detailEl.textContent = (!total)
-      ? ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""))
+      ? (pending
+          ? `finish-only · ${pending} open lock${pending === 1 ? "" : "s"} · grades at hour close`
+          : "finish-only · 0 settled hours · no open locks yet")
       : (`${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : ""));
     if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
     checkWinStreakCelebrate(acc);
@@ -2422,8 +2433,16 @@
     }
     if (hrCorrect) hrCorrect.textContent = String(correct);
     if (hrWrong) hrWrong.textContent = String(wrong);
+    // CALLS = settled finish-only; OPEN = pending locks still live
     if (hrTotal) hrTotal.textContent = String(total);
     if (hrPending) hrPending.textContent = String(pending);
+    // Dual strip if present
+    try {
+      const stripB = document.getElementById("accuracyStrip");
+      const stripE = document.getElementById("accuracyStripEth");
+      if (stripB && focusTable === "bitcoin") stripB.textContent = `${correct}/${total}` + (pending ? ` · ${pending}o` : "");
+      if (stripE && focusTable === "ethereum") stripE.textContent = `${correct}/${total}` + (pending ? ` · ${pending}o` : "");
+    } catch (e) {}
 
     // Path tally: avg peak favorable move on wins (peak − entry Kalshi %)
     const hrPathAvg = document.getElementById("hrPathAvg");
@@ -3272,7 +3291,14 @@ function drawCandleChart() {
     }
     if (badge) badge.classList.toggle("active", !!h.in_huddle);
     if (status) {
-      status.textContent = h.in_huddle ? "IN SESSION" : (h.next_huddle_hint || "—").replace("Next huddle in ", "");
+      if (h.in_huddle) {
+        status.textContent = "IN SESSION · nightly review";
+      } else {
+        let hint = (h.next_huddle_hint || "—").replace("Next huddle in ", "");
+        // Never imply market is 15m — huddle slot is a short nightly cool-down
+        hint = hint.replace(/,\s*15\s*min/i, ", nightly").replace(/\b15\s*min\b/i, "nightly");
+        status.textContent = hint;
+      }
       if (!h.in_huddle && h.next_huddle_hint) {
         status.title = h.next_huddle_hint;
       }
@@ -3690,7 +3716,7 @@ function drawCandleChart() {
         try {
           if (sNum != null) {
             const frac = Math.max(0, Math.min(1, sNum / 3600));
-            const box = document.getElementById("ledWindow") || document.getElementById("windowLed");
+            const box = document.getElementById("ledWindow");
             if (box) box.style.setProperty("--hour-frac", String(frac));
           }
         } catch (e) {}
@@ -3715,6 +3741,7 @@ function drawCandleChart() {
 
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
+    try { updateDualAccuracyStrips(); } catch (e) {}
     updateLaw(state.law);
     updateHuddle(state.huddle);
     updateColorTally(state);
@@ -4402,111 +4429,6 @@ function drawCandleChart() {
 
 
   // BTC / ETH focus — MUST run even when summon gate is skipped (returning visitors)
-
-  function wireNextLayerUi() {
-    if (window.__nextLayerWired) return;
-    window.__nextLayerWired = true;
-    const q = document.getElementById("btnQuiet");
-    if (q) {
-      try {
-        if (localStorage.getItem("council_quiet") === "1") {
-          document.body.classList.add("quiet-mode");
-          q.classList.add("active");
-        }
-      } catch (e) {}
-      q.addEventListener("click", () => {
-        const on = document.body.classList.toggle("quiet-mode");
-        q.classList.toggle("active", on);
-        try { localStorage.setItem("council_quiet", on ? "1" : "0"); } catch (e) {}
-        try { drawArt(); } catch (e) {}
-      });
-    }
-    const j = document.getElementById("btnJournal");
-    if (j) {
-      j.addEventListener("click", () => {
-        const a = focusTable === "ethereum" ? "eth" : "btc";
-        window.open("/api/journal/locks.csv?asset=" + a + "&limit=200", "_blank");
-      });
-    }
-  }
-
-  function updateNextLayerChrome(view) {
-    try {
-      const tables = (state && state.tables) || {};
-      const b = tables.bitcoin || state.btc || {};
-      const e = tables.ethereum || state.eth || {};
-      const hb = document.getElementById("healthBtc");
-      const he = document.getElementById("healthEth");
-      function paint(el, h) {
-        if (!el) return;
-        el.classList.remove("ok", "cache", "bad");
-        if (!h) { el.classList.add("bad"); return; }
-        if (h.from_cache) el.classList.add("cache");
-        else if (h.kalshi === false || (h.quote_age_s != null && h.quote_age_s > 30)) el.classList.add("bad");
-        else el.classList.add("ok");
-      }
-      paint(hb, b.health || (view && view.asset === "btc" ? view.health : null) || (focusTable === "bitcoin" ? (view && view.health) : null));
-      paint(he, e.health || (focusTable === "ethereum" ? (view && view.health) : null));
-      // if dual get_state nests health per table
-      if (b.health) paint(hb, b.health);
-      if (e.health) paint(he, e.health);
-      if (!b.health && view && view.health && focusTable === "bitcoin") paint(hb, view.health);
-      if (!e.health && view && view.health && focusTable === "ethereum") paint(he, view.health);
-
-      const reg = document.getElementById("regimeChip");
-      if (reg) {
-        const rk = (view && view.regime_key) || (tables[focusTable] && tables[focusTable].regime_key) || "—";
-        reg.textContent = String(rk).replace(/_/g, " ").slice(0, 18);
-      }
-
-      const banner = document.getElementById("kalshiBanner");
-      if (banner) {
-        const h = (view && view.health) || {};
-        const thin = h.from_cache || h.kalshi === false || (h.quote_age_s != null && h.quote_age_s > 25);
-        banner.hidden = !thin;
-      }
-
-      const rev = document.getElementById("settleReview");
-      if (rev) {
-        const r = (view && view.last_settle_review) || null;
-        if (r && r.at && (Date.now() / 1000 - Number(r.at)) < 120) {
-          rev.hidden = false;
-          rev.classList.toggle("right", r.result === "RIGHT");
-          rev.classList.toggle("wrong", r.result === "WRONG");
-          const odds = r.entry_odds != null ? (" @ " + Math.round(Number(r.entry_odds)) + "¢") : "";
-          rev.textContent = (r.asset || "").toUpperCase() + " · LOCKED " + (r.direction || "?") + odds +
-            " · finished " + (r.outcome || "?") + " · " + (r.result || "");
-        } else if (r && r.at) {
-          // keep briefly after
-          if ((Date.now() / 1000 - Number(r.at)) > 180) rev.hidden = true;
-        }
-      }
-
-      // Micro-timeline
-      const prog = document.getElementById("htProgress");
-      const lock = document.getElementById("htLock");
-      const tl = (view && view.lock_timeline) || {};
-      const ml = tl.mins_left;
-      if (prog && ml != null && isFinite(Number(ml))) {
-        const fracLeft = Math.max(0, Math.min(1, Number(ml) / 60));
-        prog.style.width = ((1 - fracLeft) * 100).toFixed(1) + "%";
-      }
-      if (lock) {
-        if (tl.locked_at && ml != null) {
-          // approximate lock position: 1 - mins_left/60 at lock time unknown → show near current if locked
-          const locked = !!(view && view.locked_call && view.locked_call.locked);
-          lock.hidden = !locked;
-          if (locked) {
-            const done = 1 - Math.max(0, Math.min(1, Number(ml) / 60));
-            lock.style.left = (done * 100).toFixed(1) + "%";
-          }
-        } else {
-          lock.hidden = true;
-        }
-      }
-    } catch (e) {}
-  }
-
   function wireFocusAndHelp() {
     if (window.__focusWired) return;
     window.__focusWired = true;
@@ -4533,7 +4455,6 @@ function drawCandleChart() {
       try { drawArt(); } catch (e) {}
       try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
-      try { updateNextLayerChrome(state); } catch (e) {}
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
     }
@@ -4605,7 +4526,6 @@ function drawCandleChart() {
 
   initSummonGate();
   try { wireFocusAndHelp(); } catch (e) { console.warn('focus wire', e); }
-  try { wireNextLayerUi(); } catch (e) {}
 
   
   // ——— ZT celebrate cinematic (logo click + 5-win streak) ———

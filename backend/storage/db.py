@@ -617,9 +617,19 @@ class PerformanceStore:
         Includes rolling windows + full log so you can see if it needs fixing over time.
         """
         async with self.Session() as session:
+            def _asset_clause(col):
+                """BTC includes legacy NULL-asset rows; ETH is strict."""
+                if not asset:
+                    return None
+                a = asset.lower()
+                if a == "btc":
+                    return (col == "btc") | (col.is_(None))
+                return col == a
+
             filters = [WindowCall.actual_outcome.isnot(None)]
-            if asset:
-                filters.append(WindowCall.asset == asset.lower())
+            ac = _asset_clause(WindowCall.asset)
+            if ac is not None:
+                filters.append(ac)
             settled = (
                 await session.execute(
                     select(WindowCall)
@@ -638,16 +648,20 @@ class PerformanceStore:
             except Exception:
                 pass
             # Finish-only: path / near_certain / partial / flipped do NOT count
+            # Also accept settled rows with outcome but missing reason (legacy → treat as finish)
             FINISH = {"finish_match", "finish_miss"}
             settled = [
                 r for r in settled
-                if (r.settle_reason in FINISH)
-                and self._grade_side(r.direction) in ("UP", "DOWN")
+                if self._grade_side(r.direction) in ("UP", "DOWN")
                 and (r.actual_outcome in ("UP", "DOWN"))
+                and (
+                    (r.settle_reason in FINISH)
+                    or (not r.settle_reason)  # legacy graded rows
+                )
             ]
             pending_filters = [WindowCall.actual_outcome.is_(None)]
-            if asset:
-                pending_filters.append(WindowCall.asset == asset.lower())
+            if ac is not None:
+                pending_filters.append(ac)
             pending = (
                 await session.execute(
                     select(func.count(WindowCall.id)).where(*pending_filters)
@@ -663,10 +677,13 @@ class PerformanceStore:
                     )
                 )
             ).scalar() or 0
+            open_q = [WindowCall.actual_outcome.is_(None)]
+            if ac is not None:
+                open_q.append(ac)
             open_rows = (
                 await session.execute(
                     select(WindowCall)
-                    .where(WindowCall.actual_outcome.is_(None))
+                    .where(*open_q)
                     .order_by(WindowCall.id.desc())
                     .limit(12)
                 )
@@ -826,6 +843,10 @@ class PerformanceStore:
             "last_20": last_20,
             "last_50": last_50,
             "pending": int(pending),
+            "open": int(pending),
+            "calls_logged": int(pending) + int(total),
+            "calls_settled": int(total),
+
             "streak": streak,
             "wrong_streak": wrong_streak,
             "total_signals": int(total_signals),
