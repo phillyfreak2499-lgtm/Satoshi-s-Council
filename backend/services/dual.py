@@ -99,6 +99,7 @@ class DualOrchestrator:
                 pass
 
     async def _loop(self):
+        import random
         while self.running:
             t0 = asyncio.get_event_loop().time()
             for c in self._councils():
@@ -108,14 +109,20 @@ class DualOrchestrator:
                     await c.analyze_once()
                 except Exception as e:
                     logger.exception(f"Dual analysis error ({c.asset}): {e}")
+                # Jitter between tables so Kalshi calls don't stampede
+                try:
+                    await asyncio.sleep(0.15 + random.random() * 0.35)
+                except asyncio.CancelledError:
+                    break
             elapsed = asyncio.get_event_loop().time() - t0
             interval = max(
-                float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.0)),
-                float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.0)),
+                float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.5)),
+                float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.5)),
+                4.0,  # dual hard floor — protects rate limits
             )
             if getattr(settings, "BEAST_MODE", False):
-                interval = max(2.5, interval * 0.7)
-            sleep_for = max(0.5, interval - elapsed)
+                interval = max(3.5, interval * 0.9)  # still calm under BEAST
+            sleep_for = max(0.8, interval - elapsed)
             try:
                 await asyncio.sleep(sleep_for)
             except asyncio.CancelledError:
