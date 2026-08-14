@@ -3539,3 +3539,168 @@ body[data-focus-table="ethereum"] .floor-btc-dim {
 body.reduce-motion .floor-money-rain { display: none !important; }
 body.reduce-motion #ledWindow::before,
 body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5; }
+
+/* ===== DESK FIT @ 1280 — keep overlay look, stop clip / overlap ===== */
+header {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  flex-wrap: nowrap !important;
+  gap: 6px !important;
+  padding: 8px 14px 7px !important;
+  overflow: visible !important;
+  clip-path: none !important;
+  z-index: 60;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  min-width: 0;
+}
+header .logo {
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+header .logo .title {
+  font-size: 0.84rem;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+header .controls {
+  flex: 1 1 auto;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px !important;
+  min-width: 0;
+}
+header .mode-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  max-width: none !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 4px;
+}
+header .mode-tab,
+header .focus-tab,
+#soundToggle {
+  flex: 0 0 auto;
+  padding: 5px 8px !important;
+  font-size: 0.62rem !important;
+  letter-spacing: 0.06em !important;
+  white-space: nowrap;
+}
+header .focus-tab {
+  min-width: 2.8rem;
+}
+header .focus-table-badge {
+  flex: 0 0 auto;
+  margin-left: 2px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+header .accuracy-badge {
+  min-width: 0;
+  padding: 4px 8px;
+}
+header .huddle-badge {
+  min-width: 0;
+  padding: 3px 8px;
+}
+header .law-badge {
+  padding: 4px 8px;
+}
+header .beast-badge {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  font-size: 10px;
+}
+header #lastUpdate {
+  max-width: 7.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+#mainTable {
+  padding: 0 12px 8px 0 !important;
+  column-gap: 12px !important;
+}
+#lifetimePanel {
+  margin: 8px 0 8px 8px;
+}
+#hierarchyPanel,
+body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
+  margin: 8px 12px 8px 0 !important;
+}
+
+/* Digit timer docks to the table stage corner — never lower-center overlay.
+   Hour ring stays gone (no ::before conic). */
+#tableStage #windowLed.led-window,
+#tableStage .led-window,
+body.floor-mode #tableStage #windowLed.led-window,
+body.mode-art #tableStage #windowLed.led-window,
+body.floor-mode .led-window,
+body.mode-art .led-window {
+  position: absolute !important;
+  left: 10px !important;
+  right: auto !important;
+  bottom: 10px !important;
+  top: auto !important;
+  transform: none !important;
+  z-index: 12 !important;
+  pointer-events: none;
+}
+#windowLed::before,
+#windowLed::after,
+#ledWindow::before,
+#ledWindow::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  animation: none !important;
+}
+#tableStage #windowLed .led-time {
+  font-size: 32px !important;
+}
+#tableStage #windowLed .led-bezel {
+  padding: 10px 14px 8px;
+}
+body.mode-dashboard .led-float,
+body.mode-paper .led-float,
+body.mode-bots .led-float,
+body.mode-ranks .led-float,
+body.mode-charts .led-float,
+body.mode-settings .led-float {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body:not(.floor-mode) .floor-music-btn {
+  display: none !important;
+}
+body.floor-mode .floor-music-btn {
+  display: inline-flex !important;
+  position: fixed !important;
+  top: 36px;
+  left: 14px;
+  z-index: 70;
+  opacity: 1;
+}
+
+@media (max-width: 1320px) {
+  header .logo .title { font-size: 0.72rem; letter-spacing: 0.08em; }
+  header .live-clock { font-size: 11px; margin-left: 8px; }
+  header .accuracy-badge .acc-detail { display: none; }
+  header #lastUpdate { display: none; }
+}

@@ -914,6 +914,30 @@
   let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
   let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
   let lastSpokenDir = null;
+  (function wireLocalSettingsToggles() {
+    const sfx = document.getElementById("callSfxToggle");
+    const loops = document.getElementById("teamLoopToggle");
+    if (sfx) {
+      sfx.checked = callSfxOn;
+      if (!sfx.__wired) {
+        sfx.__wired = true;
+        sfx.addEventListener("change", () => {
+          callSfxOn = !!sfx.checked;
+          localStorage.setItem("council_call_sfx", callSfxOn ? "1" : "0");
+        });
+      }
+    }
+    if (loops) {
+      loops.checked = teamLoopsOn;
+      if (!loops.__wired) {
+        loops.__wired = true;
+        loops.addEventListener("change", () => {
+          teamLoopsOn = !!loops.checked;
+          localStorage.setItem("council_team_loops", teamLoopsOn ? "1" : "0");
+        });
+      }
+    }
+  })();
 
   /** Speak-ish synthesized call: UP / DOWN / WAIT / SWAP */
   function playCallVoice(dir) {
@@ -3535,15 +3559,18 @@ function drawCandleChart() {
     });
     const botsView = document.getElementById("botsView");
     const ranksView = document.getElementById("ranksView");
+    const paperView = document.getElementById("paperView");
     const settingsView = document.getElementById("settingsView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
+    const showPaper = mode === "paper";
     const showSettings = mode === "settings";
     const showMain = mode === "art" || mode === "dashboard" || mode === "floor";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
+    if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
@@ -3560,6 +3587,9 @@ function drawCandleChart() {
     if (mode === "dashboard") renderDashboard();
     if (mode === "bots") renderBotsGuide();
     if (mode === "ranks") renderRanksBoard();
+    if (mode === "paper") {
+      fetchPaper().then(() => renderPaper());
+    }
     if (mode === "settings") {
       fetchSettings().then(applySettingsSnapshot);
     }
@@ -3717,16 +3747,11 @@ function drawCandleChart() {
     }
   }
 
-  function loop(ts) {
-    time = ts;
-    if (mode === "art" || mode === "floor") drawArt();
-    if (!document.hidden) {
-      
-  // Learning brain export / import
-  (function wireBrain() {
+  function wireBrain() {
     const file = document.getElementById("brainFile");
     const status = document.getElementById("brainStatus");
-    if (!file) return;
+    if (!file || file.__wired) return;
+    file.__wired = true;
     file.addEventListener("change", async () => {
       const f = file.files && file.files[0];
       if (!f) return;
@@ -3752,9 +3777,13 @@ function drawCandleChart() {
       }
       file.value = "";
     });
-  })();
+  }
 
-  animId = requestAnimationFrame(loop);
+  function loop(ts) {
+    time = ts;
+    if (mode === "art" || mode === "floor") drawArt();
+    if (!document.hidden) {
+      animId = requestAnimationFrame(loop);
     } else {
       animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, 500);
     }
@@ -4421,6 +4450,16 @@ function drawCandleChart() {
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
     applyFocusChrome();
+    const focusBadge = document.getElementById("focusTableBadge");
+    if (focusBadge && !focusBadge.__wired) {
+      focusBadge.__wired = true;
+      focusBadge.style.cursor = "pointer";
+      focusBadge.title = "Floor — both tables (dual)";
+      focusBadge.addEventListener("click", (e) => {
+        e.preventDefault();
+        setMode("floor");
+      });
+    }
 
     const btnHelp = document.getElementById("btnHelp");
     if (btnHelp && !btnHelp.__wired) {
@@ -4586,13 +4625,15 @@ function drawCandleChart() {
     if (s) applySettingsSnapshot(s);
   });
 
-  // Force clean Table view — hide any stacked info panels
-  setMode("art");
-  poll();
-  pollTimer = setInterval(poll, POLL_MS);
-  animId = requestAnimationFrame(loop);
-})();
-
+  const ztCine = document.getElementById("ztLogoBtn");
+  if (ztCine && !ztCine.__cineWired) {
+    ztCine.__cineWired = true;
+    ztCine.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      playCelebrateVideo("manual");
+    });
+  }
 
   async function collectAndSaveSettings() {
     const num = (id, d) => {
@@ -4669,16 +4710,19 @@ function drawCandleChart() {
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    try { wireAdminGate(); wireAdminTools(); } catch (e) { console.warn("admin wire", e); }
-    const btn = document.getElementById("btnSaveSettings");
-    if (btn) btn.addEventListener("click", collectAndSaveSettings);
-    const rst = document.getElementById("btnResetSettings");
-    if (rst) rst.addEventListener("click", async () => {
+  try { wireAdminGate(); wireAdminTools(); wireBrain(); } catch (e) { console.warn("admin/brain wire", e); }
+  const btnSaveSettings = document.getElementById("btnSaveSettings");
+  if (btnSaveSettings && !btnSaveSettings.__wired) {
+    btnSaveSettings.__wired = true;
+    btnSaveSettings.addEventListener("click", collectAndSaveSettings);
+  }
+  const btnResetSettings = document.getElementById("btnResetSettings");
+  if (btnResetSettings && !btnResetSettings.__wired) {
+    btnResetSettings.__wired = true;
+    btnResetSettings.addEventListener("click", async () => {
       try {
         const r = await fetch("/api/settings");
         const s = await r.json();
-        // re-fetch defaults by posting empty learning from defaults if present
         if (s.defaults) {
           await fetch("/api/settings", {
             method: "POST",
@@ -4697,7 +4741,17 @@ function drawCandleChart() {
         if (st) st.textContent = "Defaults restored";
       } catch (e) {}
     });
-  });
+  }
+
+  window.setMode = setMode;
+  window.applySettingsSnapshot = applySettingsSnapshot;
+
+  // Force clean Table view — hide any stacked info panels
+  setMode("art");
+  poll();
+  pollTimer = setInterval(poll, POLL_MS);
+  animId = requestAnimationFrame(loop);
+})();
 
 
 
