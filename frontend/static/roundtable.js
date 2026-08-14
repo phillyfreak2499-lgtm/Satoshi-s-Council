@@ -751,7 +751,17 @@
       if (key !== lastWindowKey) {
         lastWindowKey = key;
         lastClockBucket = bucket;
-        playMarketBell();
+        // Skip-window: previous chair was WAIT → awkward silence; else market bell
+        try {
+          const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
+          if (lastDir === "WAIT" || lastDir === "HOLD") {
+            playSkipCricketsSfx();
+          } else {
+            playMarketBell();
+          }
+        } catch (e) {
+          playMarketBell();
+        }
         playNewMarketMist();
         return;
       }
@@ -863,6 +873,7 @@
 
   /** Speak-ish synthesized call: UP / DOWN / WAIT / SWAP */
   function playCallVoice(dir) {
+    try { window.__lastChairDir = dir; } catch (e) {}
     if (soundMuted || !callSfxOn) return;
     const ctx = ensureAudio();
     if (!ctx) return;
@@ -1267,44 +1278,32 @@
     __wasLawLocked = locked;
   }
 
-  function playJailDoorSound() {
+  function playSampleSfx(url, volume) {
     try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      const ctx = new AC();
-      const now = ctx.currentTime;
-      // Metallic slam + rattle
-      const o1 = ctx.createOscillator();
-      const g1 = ctx.createGain();
-      o1.type = "square";
-      o1.frequency.setValueAtTime(120, now);
-      o1.frequency.exponentialRampToValueAtTime(55, now + 0.18);
-      g1.gain.setValueAtTime(0.12, now);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-      o1.connect(g1); g1.connect(ctx.destination);
-      o1.start(now); o1.stop(now + 0.36);
-      // Clank
-      const o2 = ctx.createOscillator();
-      const g2 = ctx.createGain();
-      o2.type = "triangle";
-      o2.frequency.setValueAtTime(380, now + 0.05);
-      o2.frequency.exponentialRampToValueAtTime(90, now + 0.25);
-      g2.gain.setValueAtTime(0.08, now + 0.05);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-      o2.connect(g2); g2.connect(ctx.destination);
-      o2.start(now + 0.05); o2.stop(now + 0.42);
-      // Short noise burst for bolt
-      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.12, ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-      const noise = ctx.createBufferSource();
-      noise.buffer = buf;
-      const ng = ctx.createGain();
-      ng.gain.setValueAtTime(0.1, now);
-      ng.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-      noise.connect(ng); ng.connect(ctx.destination);
-      noise.start(now);
+      if (soundMuted) return;
+      ensureAudio();
+      const a = new Audio(url);
+      a.volume = Math.max(0, Math.min(1, volume == null ? 0.55 : volume));
+      const p = a.play();
+      if (p && p.catch) p.catch(() => {});
     } catch (e) {}
+  }
+
+  function playJailDoorSound() {
+    // Lockdown → police siren sample
+    playSampleSfx("/static/sfx/lockdown-siren.mp3", 0.5);
+  }
+
+  function playWinCashSfx() {
+    playSampleSfx("/static/sfx/win-cash.mp3", 0.6);
+  }
+
+  function playLoseTromboneSfx() {
+    playSampleSfx("/static/sfx/lose-trombone.mp3", 0.55);
+  }
+
+  function playSkipCricketsSfx() {
+    playSampleSfx("/static/sfx/skip-crickets.mp3", 0.45);
   }
 
 
@@ -3059,6 +3058,11 @@ function drawCandleChart() {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
     document.body.classList.toggle("floor-mode", mode === "floor");
+    try {
+      if (typeof window.__floorMusicOnMode === "function") {
+        window.__floorMusicOnMode(mode === "floor");
+      }
+    } catch (e) {}
     // Hierarchy only on ranks / dashboard
     document.body.classList.toggle("show-hierarchy", mode === "ranks" || mode === "dashboard");
     // Mode class for LED visibility rules
@@ -3875,13 +3879,19 @@ function drawCandleChart() {
         ? `ZT · ${streak} win streak! Click to replay cinematic`
         : `ZT cinematic · win streak ${streak}/5 for auto play`;
     }
-    // Fire once when crossing 5, 10, 15... (every 5)
+    // 5+ win streak → fullscreen close-up money video (once per milestone)
     if (streak >= 5 && streak % 5 === 0 && streak !== lastCelebratedStreak) {
       lastCelebratedStreak = streak;
       playCelebrateVideo("streak");
     }
-    // Reset milestone tracker when streak breaks
     if (streak === 0) lastCelebratedStreak = 0;
+
+    // 3+ win streak → raining money on Floor background; stop on wrong (streak 0)
+    try {
+      if (typeof window.__setFloorMoneyRain === "function") {
+        window.__setFloorMoneyRain(streak >= 3);
+      }
+    } catch (e) {}
   }
 
   // BEAST badge + settings toggle
@@ -4034,7 +4044,7 @@ function drawCandleChart() {
       wrap.className = "summon-video-wrap";
       wrap.innerHTML = `
         <video id="ztIntroVideo" playsinline webkit-playsinline>
-          <source src="/zt-intro.mp4" type="video/mp4" />
+          <source src="/static/video/money-closeup.mp4" type="video/mp4" />
         </video>
       `;
       document.body.appendChild(wrap);
@@ -4247,23 +4257,11 @@ function drawCandleChart() {
     el.className = "sfx-flash show " + kind;
     el.textContent = kind === "win" ? "💰" : "⚠️";
     try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (AC) {
-        const ctx = new AC();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
-        if (kind === "win") {
-          o.frequency.value = 880; g.gain.value = 0.08;
-          o.start(); o.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
-          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-          o.stop(ctx.currentTime + 0.26);
-        } else {
-          o.type = "square"; o.frequency.value = 180; g.gain.value = 0.06;
-          o.start(); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-          o.stop(ctx.currentTime + 0.36);
-        }
-      }
+      if (kind === "win") playWinCashSfx();
+      else playLoseTromboneSfx();
+    } catch (e) {}
+    try {
+      if (typeof window.__onGradedOutcome === "function") window.__onGradedOutcome(kind, acc);
     } catch (e) {}
     setTimeout(() => el.classList.remove("show"), 700);
   }
@@ -4561,4 +4559,223 @@ function drawCandleChart() {
   if (document.readyState !== "loading") {
     setTimeout(() => { wireAdminGate(); wireAdminTools(); }, 200);
   }
+})();
+
+
+
+/* ===== FLOOR MODE BACKGROUND MUSIC (only in Floor) ===== */
+(function initFloorMusic() {
+  const TRACKS = [
+    "/static/music/floor/01-transmission.mp3",
+    "/static/music/floor/02-metaphor-mood-maze.mp3",
+    "/static/music/floor/03-take-me-somewhere-else.mp3",
+    "/static/music/floor/04-evacuate.mp3",
+    "/static/music/floor/05-eclectic-dream.mp3",
+    "/static/music/floor/06-killjoy.mp3",
+    "/static/music/floor/07-midnight-drift.mp3",
+    "/static/music/floor/08-in-drive.mp3",
+    "/static/music/floor/09-smoke-me.mp3",
+  ];
+  const VOL_KEY = "council_floor_music_vol";
+  const MUTE_KEY = "council_floor_music_muted";
+  let idx = 0;
+  let audio = null;
+  let active = false;
+  let muted = localStorage.getItem(MUTE_KEY) === "1";
+  let vol = Number(localStorage.getItem(VOL_KEY));
+  if (!(vol >= 0 && vol <= 1)) vol = 0.28;
+
+  function ensureAudio() {
+    if (!audio) {
+      audio = new Audio();
+      audio.preload = "auto";
+      audio.loop = false;
+      audio.volume = muted ? 0 : vol;
+      audio.addEventListener("ended", () => {
+        idx = (idx + 1) % TRACKS.length;
+        playCurrent();
+      });
+      audio.addEventListener("error", () => {
+        // Skip broken track
+        idx = (idx + 1) % TRACKS.length;
+        setTimeout(playCurrent, 400);
+      });
+    }
+    return audio;
+  }
+
+  function playCurrent() {
+    if (!active || muted) return;
+    const a = ensureAudio();
+    const src = TRACKS[idx % TRACKS.length];
+    if (!a.src.endsWith(src.split("/").pop())) {
+      a.src = src;
+    }
+    a.volume = muted ? 0 : vol;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+
+  function stopMusic() {
+    active = false;
+    if (audio) {
+      try { audio.pause(); } catch (e) {}
+    }
+  }
+
+  function startMusic() {
+    active = true;
+    if (muted) return;
+    playCurrent();
+  }
+
+  window.__floorMusicOnMode = function (isFloor) {
+    if (isFloor) startMusic();
+    else stopMusic();
+  };
+
+  window.__floorMusicToggleMute = function () {
+    muted = !muted;
+    localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
+    if (audio) audio.volume = muted ? 0 : vol;
+    if (muted) {
+      if (audio) try { audio.pause(); } catch (e) {}
+    } else if (active) {
+      playCurrent();
+    }
+    const btn = document.getElementById("floorMusicBtn");
+    if (btn) {
+      btn.textContent = muted ? "🔇 Floor" : "🎵 Floor";
+      btn.setAttribute("aria-pressed", muted ? "false" : "true");
+      btn.title = muted ? "Floor music muted — click to play" : "Floor music on — click to mute";
+    }
+    return muted;
+  };
+
+  function wireBtn() {
+    let btn = document.getElementById("floorMusicBtn");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "floorMusicBtn";
+      btn.type = "button";
+      btn.className = "floor-music-btn";
+      btn.textContent = muted ? "🔇 Floor" : "🎵 Floor";
+      btn.title = muted ? "Floor music muted — click to play" : "Floor music on — click to mute";
+      btn.setAttribute("aria-pressed", muted ? "false" : "true");
+      // Prefer header controls
+      const controls = document.querySelector("header .controls") || document.querySelector("header");
+      if (controls) controls.appendChild(btn);
+      else document.body.appendChild(btn);
+    }
+    if (!btn.__wired) {
+      btn.__wired = true;
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        window.__floorMusicToggleMute();
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", wireBtn);
+  if (document.readyState !== "loading") setTimeout(wireBtn, 200);
+})();
+
+
+
+/* ===== Floor money rain (3+ win streak) + graded outcome hook ===== */
+(function initFloorMoneyRain() {
+  let active = false;
+  let lastKind = null;
+
+  function ensureEls() {
+    let wrap = document.getElementById("floorMoneyRain");
+    let vid = document.getElementById("floorMoneyRainVideo");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = "floorMoneyRain";
+      wrap.className = "floor-money-rain hidden";
+      wrap.setAttribute("aria-hidden", "true");
+      vid = document.createElement("video");
+      vid.id = "floorMoneyRainVideo";
+      vid.playsInline = true;
+      vid.muted = true;
+      vid.loop = true;
+      const src = document.createElement("source");
+      src.src = "/static/video/money-rain.mp4";
+      src.type = "video/mp4";
+      vid.appendChild(src);
+      wrap.appendChild(vid);
+      document.body.appendChild(wrap);
+    }
+    return { wrap, vid: vid || document.getElementById("floorMoneyRainVideo") };
+  }
+
+  function startRain() {
+    const { wrap, vid } = ensureEls();
+    if (!wrap || !vid) return;
+    active = true;
+    wrap.classList.remove("hidden");
+    wrap.classList.add("active");
+    wrap.setAttribute("aria-hidden", "false");
+    // Only play when Floor mode is on
+    if (document.body.classList.contains("floor-mode")) {
+      try {
+        vid.currentTime = 0;
+        const p = vid.play();
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) {}
+    }
+  }
+
+  function stopRain() {
+    const { wrap, vid } = ensureEls();
+    active = false;
+    if (wrap) {
+      wrap.classList.remove("active");
+      wrap.classList.add("hidden");
+      wrap.setAttribute("aria-hidden", "true");
+    }
+    if (vid) {
+      try { vid.pause(); } catch (e) {}
+    }
+  }
+
+  window.__setFloorMoneyRain = function (on) {
+    if (on) startRain();
+    else stopRain();
+  };
+
+  // Re-evaluate when entering/leaving floor mode
+  const prev = window.__floorMusicOnMode;
+  window.__floorMusicOnMode = function (isFloor) {
+    if (typeof prev === "function") {
+      try { prev(isFloor); } catch (e) {}
+    }
+    if (isFloor && active) {
+      const vid = document.getElementById("floorMoneyRainVideo");
+      if (vid) {
+        const p = vid.play();
+        if (p && p.catch) p.catch(() => {});
+      }
+      const wrap = document.getElementById("floorMoneyRain");
+      if (wrap) {
+        wrap.classList.remove("hidden");
+        wrap.classList.add("active");
+      }
+    } else if (!isFloor) {
+      const vid = document.getElementById("floorMoneyRainVideo");
+      if (vid) try { vid.pause(); } catch (e) {}
+      const wrap = document.getElementById("floorMoneyRain");
+      if (wrap) wrap.classList.remove("active");
+    }
+  };
+
+  // On wrong call → hard stop rain
+  window.__onGradedOutcome = function (kind, acc) {
+    lastKind = kind;
+    if (kind === "lose") {
+      stopRain();
+      lastCelebratedStreak = 0;
+    }
+  };
 })();
