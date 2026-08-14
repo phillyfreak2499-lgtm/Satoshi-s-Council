@@ -1337,15 +1337,137 @@
   function drawDualFloor(w, h) {
     ctx.fillStyle = "#02040a";
     ctx.fillRect(0, 0, w, h);
+
     const mid = w / 2;
-    ctx.strokeStyle = "rgba(0, 220, 255, 0.25)";
+    // subtle divider
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.18)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(mid, h * 0.08);
-    ctx.lineTo(mid, h * 0.92);
+    ctx.moveTo(mid, h * 0.05);
+    ctx.lineTo(mid, h * 0.95);
     ctx.stroke();
-    drawMiniTable(w * 0.25, h * 0.48, Math.min(w, h) * 0.22, "bitcoin", "SATOSHI · BTC");
-    drawMiniTable(w * 0.75, h * 0.48, Math.min(w, h) * 0.22, "ethereum", "VITALIK · ETH");
+
+    // Left = Bitcoin / Satoshi, Right = Ethereum / Vitalik
+    // Each side: chair + FULL specialist bot ring
+    drawTableWithBots(w * 0.25, h * 0.50, Math.min(w, h) * 0.18, "bitcoin", "SATOSHI · BTC");
+    drawTableWithBots(w * 0.75, h * 0.50, Math.min(w, h) * 0.18, "ethereum", "VITALIK · ETH");
+  }
+
+  function drawTableWithBots(cx, cy, radius, which, label) {
+    const st = tableState(which) || {};
+    const d = st.decision || {};
+    const lc = st.locked_call || d.locked_call || null;
+    const locked = !!(lc && lc.locked && lc.direction);
+    const dir = locked ? String(lc.direction) : String(d.direction || "WAIT");
+    const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
+    const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
+    const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader");
+
+    // Table rings
+    const accent = which === "ethereum" ? "rgba(120, 255, 160, 0.4)" : "rgba(0, 220, 255, 0.4)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
+    ctx.strokeStyle = which === "ethereum" ? "rgba(120, 255, 160, 0.12)" : "rgba(0, 220, 255, 0.12)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Chair portrait
+    const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+    const pr = radius * 0.48;
+    if (img && img.complete && img.naturalWidth) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, cx - pr, cy - 4 - pr, pr * 2, pr * 2);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.75)" :
+                        (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255,40,70,0.75)" :
+                        "rgba(200,220,255,0.4)";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else {
+      // placeholder disk while image loads
+      ctx.beginPath();
+      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+      ctx.fillStyle = "#0a1220";
+      ctx.fill();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Label + lock plaque
+    ctx.textAlign = "center";
+    ctx.font = "700 11px Orbitron, monospace";
+    ctx.fillStyle = which === "ethereum" ? "#9dffc0" : "#7fe9ff";
+    ctx.fillText(label, cx, cy - radius - 10);
+
+    ctx.font = "700 12px Orbitron, monospace";
+    if (locked) {
+      ctx.fillStyle = (dir === "UP" || dir === "UP_HOLD") ? "#39ff14" : "#ff2d55";
+      ctx.fillText("LOCKED " + dir, cx, cy + pr + 16);
+      ctx.font = "600 10px Rajdhani, sans-serif";
+      ctx.fillStyle = "#d8f0ff";
+      const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
+      ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, cy + pr + 30);
+    } else {
+      ctx.fillStyle = "#a8c0d8";
+      ctx.fillText(dir, cx, cy + pr + 16);
+      ctx.font = "600 10px Rajdhani, sans-serif";
+      ctx.fillStyle = "rgba(180,200,220,0.75)";
+      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, cy + pr + 30);
+    }
+
+    // Specialist bot ring around THIS table
+    const ringR = radius * 1.55;
+    const n = Math.max(agents.length, 1);
+    if (!agents.length) {
+      ctx.font = "600 10px Rajdhani, sans-serif";
+      ctx.fillStyle = "rgba(160,180,200,0.55)";
+      ctx.fillText("bots loading…", cx, cy + radius + 44);
+      return;
+    }
+    agents.forEach((a, i) => {
+      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const x = cx + Math.cos(ang) * ringR;
+      const y = cy + Math.sin(ang) * ringR;
+      const adir = String(a.direction || "WAIT").toUpperCase();
+      let col = "rgba(160,180,200,0.9)";
+      if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
+      if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
+      const name = a.agent_name || a.name || "?";
+      const confA = a.confidence || 50;
+      // spoke
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = "rgba(80,120,160,0.12)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // icon
+      try {
+        drawBotIcon(name, x, y, 11, col, confA);
+      } catch (e) {
+        ctx.beginPath();
+        ctx.arc(x, y, 9, 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.fill();
+      }
+      // short callsign
+      const tag = (a.display_name || a.callsign || name || "?").toString().slice(0, 7);
+      ctx.font = "600 8px Share Tech Mono, monospace";
+      ctx.fillStyle = "rgba(200,220,240,0.8)";
+      ctx.textAlign = "center";
+      ctx.fillText(tag, x, y + 20);
+    });
   }
 
   function drawMiniTable(cx, cy, radius, which, label) {
