@@ -111,6 +111,11 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("function drawChartEth()", JS)
         self.assertIn('p => p.down, "#ff2d55"', JS)
 
+    def test_table_feed_and_pulse_present(self):
+        self.assertIn("function markSeatTick", JS)
+        self.assertIn('id="signalChairLast"', HTML)
+        self.assertIn("const pr = radius * 0.80", JS)
+
 
 if __name__ == "__main__":
     unittest.main()

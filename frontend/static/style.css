@@ -4958,59 +4958,93 @@ body.mode-floor #debatePanel.signal-feed {
   display: none !important;
 }
 .signal-chair {
-  margin: 8px 10px 6px;
+  margin: 6px 10px 10px;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 232, 255, 0.28);
-  background: rgba(0, 20, 36, 0.55);
+  border-radius: 0;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border: 1px solid rgba(240, 193, 74, 0.35);
+  background:
+    linear-gradient(180deg, rgba(18, 12, 4, 0.75), rgba(4, 10, 18, 0.82));
+  box-shadow: 0 0 16px rgba(240, 193, 74, 0.08);
+  flex-shrink: 0;
 }
 .signal-chair-dir {
   font-family: Orbitron, monospace;
-  font-size: 16px;
-  letter-spacing: 0.12em;
+  font-size: 15px;
+  letter-spacing: 0.14em;
   color: #7fe9ff;
+  text-shadow: 0 0 10px currentColor;
 }
 .signal-chair-dir.UP { color: #39ff14; }
 .signal-chair-dir.DOWN { color: #ff2d55; }
+.signal-chair-dir.WAIT { color: #00e8ff; }
 .signal-chair-meta {
   margin-top: 4px;
   font-size: 11px;
   color: rgba(180, 210, 230, 0.8);
   font-family: Share Tech Mono, monospace;
 }
+.signal-chair-last {
+  margin-top: 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(240, 193, 74, 0.85);
+  font-family: Orbitron, monospace;
+}
 .signal-feed-list {
   list-style: none;
   margin: 0;
-  padding: 6px 10px 12px;
+  padding: 6px 10px 8px;
   overflow-y: auto;
   min-height: 0;
   flex: 1 1 auto;
 }
-.signal-feed-list li {
+.signal-feed-list li,
+.signal-feed-list .sf-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 6px 8px;
-  padding: 7px 4px;
-  border-bottom: 1px solid rgba(0, 232, 255, 0.08);
+  grid-template-columns: 1fr auto auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 6px 6px;
+  border-bottom: 1px solid rgba(0, 232, 255, 0.12);
   font-size: 12px;
+  background: linear-gradient(90deg, rgba(0, 232, 255, 0.04), transparent 70%);
+}
+.signal-feed-list .sf-empty {
+  display: block;
+  color: rgba(140, 160, 180, 0.75);
+  font-family: Share Tech Mono, monospace;
+  font-size: 11px;
 }
 .signal-feed-list .sf-name {
   font-family: Orbitron, monospace;
   font-size: 10px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: #c8e8ff;
 }
 .signal-feed-list .sf-dir {
   font-weight: 700;
   font-size: 10px;
+  letter-spacing: 0.08em;
+  font-family: Orbitron, monospace;
 }
-.signal-feed-list .sf-dir.UP { color: #39ff14; }
-.signal-feed-list .sf-dir.DOWN { color: #ff2d55; }
+.signal-feed-list .sf-dir.UP { color: #39ff14; text-shadow: 0 0 8px rgba(57, 255, 20, 0.45); }
+.signal-feed-list .sf-dir.DOWN { color: #ff2d55; text-shadow: 0 0 8px rgba(255, 45, 85, 0.4); }
 .signal-feed-list .sf-dir.WAIT { color: #00e8ff; }
-.signal-feed-list .sf-shout {
-  grid-column: 1 / -1;
-  color: rgba(190, 210, 225, 0.82);
-  line-height: 1.35;
+.signal-feed-list .sf-conf {
+  font-family: Share Tech Mono, monospace;
+  font-size: 11px;
+  color: rgba(200, 220, 240, 0.85);
+}
+.signal-feed-list .sf-in {
+  animation: sfPacketIn 0.38s ease-out;
+}
+@keyframes sfPacketIn {
+  0% { opacity: 0; transform: translateX(14px); filter: brightness(2.2); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signal-feed-list .sf-in { animation: none; }
 }
 
 body.majority-up.floor-mode::before,
@@ -5520,6 +5554,35 @@ body.mode-floor #app > header {
 body:not(.mode-art):not(.floor-mode):not(.mode-floor) #app > header #windowLed {
   display: none !important;
   visibility: hidden !important;
+}
+
+/* ===== TABLE HUD — right signal feed + keep Floor full-bleed ===== */
+body.mode-art #mainTable {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 300px) !important;
+  grid-template-areas: "lifetime table debate" !important;
+}
+body.mode-art #debatePanel,
+body.mode-art #debatePanel.signal-feed {
+  display: flex !important;
+  visibility: visible !important;
+  flex-direction: column !important;
+  min-width: 240px !important;
+  max-width: 300px;
+}
+body.floor-mode #debatePanel,
+body.mode-floor #debatePanel,
+body.show-hierarchy #debatePanel {
+  display: none !important;
+}
+@media (max-width: 480px) {
+  body.mode-art #debatePanel,
+  body.mode-art #debatePanel.signal-feed {
+    display: flex !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    max-height: 200px;
+    order: 4;
+  }
 }
 
 /* ===== CHARTS HUD — real canvas height, both pairs, 390 scroll ===== */

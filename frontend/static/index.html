@@ -209,13 +209,14 @@
 <aside id="debatePanel" class="side-panel side-right signal-feed" aria-label="Signal feed">
         <div class="panel-head">
           <span class="panel-title">SIGNAL FEED</span>
-          <span class="panel-sub" id="signalFeedMeta">live shouts</span>
+          <span class="panel-sub" id="signalFeedMeta">live packets</span>
         </div>
+        <ol id="signalFeed" class="signal-feed-list" aria-live="polite"></ol>
         <div id="signalChair" class="signal-chair">
           <div class="signal-chair-dir" id="signalChairDir">WAIT</div>
           <div class="signal-chair-meta" id="signalChairMeta">P(finish) — · EV — · — left</div>
+          <div class="signal-chair-last" id="signalChairLast">last lock —</div>
         </div>
-        <ol id="signalFeed" class="signal-feed-list" aria-live="polite"></ol>
       </aside>
 <aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only" aria-label="Bot hierarchy">
         <div class="panel-head">
