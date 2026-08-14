@@ -3407,11 +3407,11 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 }
 
 /* Hour remaining ring around center timer */
-#ledWindow {
+#windowLed {
   position: relative;
   --hour-frac: 1;
 }
-#ledWindow::before {
+#windowLed::before {
   content: "";
   position: absolute;
   inset: -6px;
