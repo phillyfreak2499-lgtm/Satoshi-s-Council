@@ -15,6 +15,7 @@ from loguru import logger
 from backend.config import settings
 from backend.agents.roster import display_name
 from backend.learning.regime_keys import classify_regime, split_key
+from backend.agents.chair_gates import band_tighten, odds_band_key
 
 # Agents that never receive adaptive vote weight
 NON_VOTERS = {"guardian", "law", "leader", "chair"}
@@ -57,6 +58,11 @@ class AdaptiveLearner:
         # Calibration: conf bucket -> {hits, tries}
         self.calib_hits: Dict[str, int] = defaultdict(int)
         self.calib_tries: Dict[str, int] = defaultdict(int)
+        # Finish-only odds-band calibration: predicted P vs realized finish
+        self.odds_band_hits: Dict[str, int] = defaultdict(int)
+        self.odds_band_tries: Dict[str, int] = defaultdict(int)
+        self.odds_band_p_sum: Dict[str, float] = defaultdict(float)
+        self.odds_band_pnl: Dict[str, float] = defaultdict(float)
         self.agent_calib: Dict[str, Dict[str, list]] = defaultdict(lambda: {"hits": [], "confs": []})
         # Quorum: how many agreeing bots when the side was right
         self.quorum_size_hits: Dict[int, int] = defaultdict(int)
@@ -276,6 +282,7 @@ class AdaptiveLearner:
                 }
                 for k in sorted(self.calib_tries.keys())
             },
+            "odds_calibration": self.odds_calibration_snapshot(),
         }
 
     def learn_from_settled(
@@ -523,8 +530,101 @@ class AdaptiveLearner:
             "graded": len(directional),
         }
 
+    def record_finish_calibration(
+        self,
+        side_odds: Any = None,
+        p_finish: Any = None,
+        finished: bool = False,
+        pnl: Any = None,
+    ) -> None:
+        """Finish-only: predicted P vs actual finish, keyed by entry odds band."""
+        band = odds_band_key(side_odds)
+        if not band:
+            return
+        try:
+            pred = float(p_finish) if p_finish is not None else None
+        except (TypeError, ValueError):
+            pred = None
+        if pred is None:
+            return
+        pred = max(0.01, min(0.99, pred))
+        self.odds_band_tries[band] += 1
+        self.odds_band_p_sum[band] += pred
+        if finished:
+            self.odds_band_hits[band] += 1
+        try:
+            if pnl is not None:
+                self.odds_band_pnl[band] += float(pnl)
+        except (TypeError, ValueError):
+            pass
 
+    def odds_band_stats(self, side_odds: Any = None, band: str | None = None) -> Dict[str, Any]:
+        key = band or odds_band_key(side_odds)
+        if not key:
+            return {}
+        return {
+            "band": key,
+            "tries": int(self.odds_band_tries.get(key, 0) or 0),
+            "hits": int(self.odds_band_hits.get(key, 0) or 0),
+            "p_sum": float(self.odds_band_p_sum.get(key, 0.0) or 0.0),
+            "pnl_sum": float(self.odds_band_pnl.get(key, 0.0) or 0.0),
+        }
 
+    def odds_band_tighten(self, side_odds: Any = None, band: str | None = None) -> Dict[str, Any]:
+        """Raise P/EV hurdles for an odds band that is over-confident or losing money."""
+        stats = self.odds_band_stats(side_odds=side_odds, band=band)
+        if not stats:
+            return {"p_add": 0.0, "ev_add": 0.0, "losing": False}
+        return band_tighten(
+            stats,
+            min_n=int(getattr(settings, "CALIB_BAND_MIN_N", 8)),
+            miss_gap=float(getattr(settings, "CALIB_MISS_GAP", 0.08)),
+            p_add=float(getattr(settings, "CALIB_P_TIGHTEN", 0.05)),
+            ev_add=float(getattr(settings, "CALIB_EV_TIGHTEN", 2.0)),
+        )
+
+    def odds_calibration_snapshot(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for key in sorted(set(self.odds_band_tries.keys()) | set(self.odds_band_hits.keys())):
+            tries = int(self.odds_band_tries.get(key, 0) or 0)
+            hits = int(self.odds_band_hits.get(key, 0) or 0)
+            p_sum = float(self.odds_band_p_sum.get(key, 0.0) or 0.0)
+            pnl_sum = float(self.odds_band_pnl.get(key, 0.0) or 0.0)
+            predicted = (p_sum / tries) if tries else None
+            realized = (hits / tries) if tries else None
+            tight = self.odds_band_tighten(band=key)
+            out[key] = {
+                "tries": tries,
+                "hits": hits,
+                "predicted": round(predicted, 3) if predicted is not None else None,
+                "realized": round(realized, 3) if realized is not None else None,
+                "pnl_sum": round(pnl_sum, 2),
+                "losing": bool(tight.get("losing")),
+                "p_add": tight.get("p_add"),
+                "ev_add": tight.get("ev_add"),
+            }
+        return out
+
+    def _odds_band_export(self) -> Dict[str, Any]:
+        keys = set(self.odds_band_tries.keys()) | set(self.odds_band_hits.keys())
+        return {
+            k: {
+                "hits": int(self.odds_band_hits.get(k, 0) or 0),
+                "tries": int(self.odds_band_tries.get(k, 0) or 0),
+                "p_sum": float(self.odds_band_p_sum.get(k, 0.0) or 0.0),
+                "pnl_sum": float(self.odds_band_pnl.get(k, 0.0) or 0.0),
+            }
+            for k in keys
+        }
+
+    def _odds_band_restore(self, data: Dict[str, Any] | None) -> None:
+        for k, v in (data or {}).items():
+            if not isinstance(v, dict):
+                continue
+            self.odds_band_hits[k] = int(v.get("hits") or 0)
+            self.odds_band_tries[k] = int(v.get("tries") or 0)
+            self.odds_band_p_sum[k] = float(v.get("p_sum") or 0.0)
+            self.odds_band_pnl[k] = float(v.get("pnl_sum") or 0.0)
 
     def load_from_dict(self, data: dict) -> bool:
         """Restore learning state from an in-memory brain export."""
@@ -557,6 +657,7 @@ class AdaptiveLearner:
             for k, v in (data.get("calibration") or {}).items():
                 self.calib_hits[k] = int(v.get("hits") or 0)
                 self.calib_tries[k] = int(v.get("tries") or 0)
+            self._odds_band_restore(data.get("odds_calibration") or data.get("odds_band"))
             for k, v in (data.get("quorum_size_hits") or {}).items():
                 self.quorum_size_hits[int(k)] = int(v)
             for k, v in (data.get("quorum_size_tries") or {}).items():
@@ -599,6 +700,7 @@ class AdaptiveLearner:
                 k: {"hits": self.calib_hits[k], "tries": self.calib_tries[k]}
                 for k in self.calib_tries
             },
+            "odds_calibration": self._odds_band_export(),
             "quorum_size_hits": {str(k): v for k, v in self.quorum_size_hits.items()},
             "quorum_size_tries": {str(k): v for k, v in self.quorum_size_tries.items()},
             "combo_hits": dict(list(self.combo_hits.items())[:400]),
@@ -635,6 +737,7 @@ class AdaptiveLearner:
                 k: {"hits": self.calib_hits[k], "tries": self.calib_tries[k]}
                 for k in self.calib_tries
             },
+            "odds_calibration": self._odds_band_export(),
             "quorum_size_hits": {str(k): v for k, v in self.quorum_size_hits.items()},
             "quorum_size_tries": {str(k): v for k, v in self.quorum_size_tries.items()},
             "combo_hits": dict(list(self.combo_hits.items())[:200]),
@@ -690,6 +793,11 @@ class AdaptiveLearner:
             for rk, agents in (data.get("regime_wrong") or {}).items():
                 for a, c in agents.items():
                     self.regime_wrong[rk][a] = int(c)
+            for k, v in (data.get("calibration") or {}).items():
+                if isinstance(v, dict):
+                    self.calib_hits[k] = int(v.get("hits") or 0)
+                    self.calib_tries[k] = int(v.get("tries") or 0)
+            self._odds_band_restore(data.get("odds_calibration") or data.get("odds_band"))
             self._recompute_regime_weights()
             return True
         except Exception:

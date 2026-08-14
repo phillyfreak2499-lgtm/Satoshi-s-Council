@@ -186,6 +186,22 @@ class Settings(BaseSettings):
     MAX_SPREAD_CENTS: float = 5.0        # no ENTRY if bid-ask wider than this
     TWO_STAGE_HOLD_S: float = 12.0       # lean must hold this long before hard LOCK
     DUAL_CORRELATION_VETO: bool = True   # demote weaker table when both lean same weakly
+    # P(finish) + EV gate (paper pricing only — never a live order)
+    MIN_P_FINISH: float = 0.55
+    MIN_EV_CENTS: float = 3.0
+    # Top-of-book depth: known thin size → WAIT (spread still hard-gated above)
+    MIN_BOOK_SIZE: float = 5.0
+    # Time-to-expiry EV hurdles (hourly official window)
+    EARLY_WINDOW_MINS: float = 20.0      # first ~20 min → patient
+    LATE_WINDOW_MINS: float = 15.0       # last ~15 min → strong misprice only
+    EARLY_EV_MULT: float = 1.5
+    LATE_MIN_P_FINISH: float = 0.70
+    LATE_MIN_EV_CENTS: float = 8.0
+    # Odds-band calibration: tighten the band that loses money
+    CALIB_BAND_MIN_N: int = 8
+    CALIB_MISS_GAP: float = 0.08
+    CALIB_P_TIGHTEN: float = 0.05
+    CALIB_EV_TIGHTEN: float = 2.0
 
     # Hourly timing (minutes left)
     HOURLY_HARD_EARLY_MIN: float = 45.0   # very early → strong WAIT

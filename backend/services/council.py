@@ -41,6 +41,7 @@ from backend.config import settings
 from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
+from backend.agents.chair_gates import parse_book_depth, window_minutes_from_times
 
 
 class Council:
@@ -446,7 +447,16 @@ class Council:
             ct_id = close_time or close_t or market_data.get("close_time")
             if ct_id:
                 regime_features["close_time"] = ct_id
-            # Bid-ask spread in cents for Chair gate
+            open_t = None
+            if isinstance(km, dict):
+                open_t = km.get("open_time") or km.get("open_ts")
+            if open_t:
+                regime_features["open_time"] = open_t
+            win_mins = window_minutes_from_times(open_t, ct_id)
+            if win_mins is None:
+                win_mins = 60.0  # KXBTCD / KXETHD hourly
+            regime_features["window_minutes"] = win_mins
+            # Bid-ask spread in cents for Chair gate (top-of-book, not mid alone)
             try:
                 bid = market_data.get("kalshi_yes_bid")
                 ask = market_data.get("kalshi_yes_ask")
@@ -457,6 +467,17 @@ class Council:
                     if a <= 1.0:
                         a *= 100.0
                     regime_features["spread_cents"] = abs(a - b)
+            except Exception:
+                pass
+            # Book depth — thin size → Chair WAIT
+            try:
+                depth = parse_book_depth(market_data.get("kalshi_orderbook"))
+                regime_features["book_depth"] = depth
+                regime_features["kalshi_orderbook"] = market_data.get("kalshi_orderbook")
+                if depth.get("yes_bid_sz") is not None:
+                    regime_features["book_yes_size"] = depth["yes_bid_sz"]
+                if depth.get("no_bid_sz") is not None:
+                    regime_features["book_no_size"] = depth["no_bid_sz"]
             except Exception:
                 pass
             # Quiet-mode signals (ATR / vol / volume percentile when available)
@@ -621,6 +642,9 @@ class Council:
                 "lean": decision.get("lean"),  # underlying UP/DOWN when direction is SWAP/HOLD
                 "call_phase": decision.get("call_phase"),
                 "locked_call": decision.get("locked_call"),  # clear follower-readable lock
+                "p_finish": decision.get("p_finish"),
+                "ev_cents": decision.get("ev_cents"),
+                "ev_phase": decision.get("ev_phase"),
                 "quality_score": decision.get("quality_score"),
                 "display_direction": (
                     "1/4 UP HOLD" if decision["direction"] == "UP_HOLD"
@@ -682,6 +706,10 @@ class Council:
             "dual_spot": bool(runtime_settings.get("dual_spot", True)),
             "sub_council_count": sum(len(s.subs or []) for s in signals),
             "accuracy": accuracy,
+            "locked_call": decision.get("locked_call"),
+            "p_finish": decision.get("p_finish"),
+            "ev_cents": decision.get("ev_cents"),
+            "ev_phase": decision.get("ev_phase"),
             "shadow_book": list(self._shadow_book[-12:]),
             "last_settle_review": self._last_settle_review,
             "health": {
@@ -747,6 +775,19 @@ class Council:
                 if not reg:
                     reg = regime_from_call(row.get("called_at"), row.get("close_time"))
                 self.learner.learn_from_settled(votes, outcome, regime=reg, credit=1.0)
+                if hasattr(self.learner, "record_finish_calibration"):
+                    try:
+                        pred = row.get("p_finish")
+                        if pred is None and row.get("confidence") is not None:
+                            pred = float(row.get("confidence") or 0) / 100.0
+                        self.learner.record_finish_calibration(
+                            side_odds=row.get("open_price") or row.get("entry_side_pct"),
+                            p_finish=pred,
+                            finished=bool(row.get("correct") == 1),
+                            pnl=row.get("paper_pnl"),
+                        )
+                    except Exception:
+                        pass
                 learned += 1
             self._last_learned_ids.add(rid)
             if learned >= 5:
@@ -790,6 +831,8 @@ class Council:
                 "confidence": 50,
                 "summary": "Initializing...",
                 "locked_call": None,
+                "p_finish": None,
+                "ev_cents": None,
             },
             "agents": [],
             "weights": self.leader.weights,
@@ -807,6 +850,8 @@ class Council:
                 "label": "0/0 · —",
             },
             "locked_call": None,
+            "p_finish": None,
+            "ev_cents": None,
             "law": self.law.status(),
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),
