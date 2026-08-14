@@ -5729,7 +5729,7 @@ function drawCandleChart() {
       y: (ev.clientY - rect.top) * (sz.h / rect.height),
     };
   }
-  /* Seat Storm — pass-time after a Chair lock. Never opens Follower. Never sends Kalshi orders. Paper/live unaffected. */
+  /* Seat Storm — pass-time after a Chair lock. Never auto-starts. Offer KILL TIME / PLAY only; the mini runs after a tap. Never opens Follower. Never sends Kalshi orders. Paper/live unaffected. */
   const SS_SEATS = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "STREAK", "ODDS", "STRIKE"];
   const SS_DURATION_MS = 40000;
   const SS_LAST_N_SEC = 180;
@@ -5745,6 +5745,7 @@ function drawCandleChart() {
     raf: 0,
     startedAt: 0,
     _last: -1,
+    tap: false,
   };
 
   function isSeatStormPlaying() { return !!ss.playing; }
@@ -5946,6 +5947,8 @@ function drawCandleChart() {
   }
 
   function startSeatStorm() {
+    if (!ss.tap) return;
+    ss.tap = false;
     if (!ssCanOffer()) return;
     if (lawLocked() || ssDeskSick()) return;
     ss.best = ssReadBest();
@@ -5986,9 +5989,19 @@ function drawCandleChart() {
       stopSeatStorm(lawLocked() || ssDeskSick() ? "blocked" : "close");
       return;
     }
+    if (!ss.playing) ssReveal(document.getElementById("seatStormPlay"), false);
     const offer = ssCanOffer();
     ssReveal(document.getElementById("seatStormPrompt"), !!(offer && mode === "floor"));
     ssReveal(document.getElementById("seatStormTableBtn"), !!(offer && mode === "art"));
+  }
+
+  function ssTapStart(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    ss.tap = true;
+    startSeatStorm();
   }
 
   function initSeatStorm() {
@@ -5998,19 +6011,11 @@ function drawCandleChart() {
     const exit = document.getElementById("ssExit");
     if (prompt && !prompt.__ssWired) {
       prompt.__ssWired = true;
-      prompt.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        startSeatStorm();
-      });
+      prompt.addEventListener("click", ssTapStart);
     }
     if (tableBtn && !tableBtn.__ssWired) {
       tableBtn.__ssWired = true;
-      tableBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        startSeatStorm();
-      });
+      tableBtn.addEventListener("click", ssTapStart);
     }
     if (exit && !exit.__ssWired) {
       exit.__ssWired = true;

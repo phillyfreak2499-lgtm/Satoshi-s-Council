@@ -24,7 +24,8 @@ class SeatStormMarkupTests(unittest.TestCase):
     def test_floor_and_table_prompts(self):
         self.assertIn('id="seatStormPrompt"', HTML)
         self.assertIn('id="seatStormTableBtn"', HTML)
-        self.assertIn(">KILL TIME</button>", HTML)
+        self.assertIn(">KILL TIME / PLAY</button>", HTML)
+        self.assertIn('aria-label="Start Seat Storm"', HTML)
         self.assertIn('id="seatStormPlay"', HTML)
         self.assertIn('id="ssStreak"', HTML)
         self.assertIn('id="ssBest"', HTML)
@@ -43,6 +44,20 @@ class SeatStormMarkupTests(unittest.TestCase):
         self.assertIn("min-height: 44px", CSS)
         self.assertIn("z-index: 85", CSS)
         self.assertIn("z-index: 88", CSS)
+
+
+    def test_never_auto_starts_only_tap(self):
+        storm = _storm_js()
+        self.assertIn("Never auto-starts", storm)
+        self.assertIn("function ssTapStart", storm)
+        self.assertIn("if (!ss.tap) return;", storm)
+        self.assertIn("ss.tap = true;", storm)
+        self.assertNotIn("startSeatStorm();", storm.split("function startSeatStorm")[0])
+        init = storm.split("function initSeatStorm")[1]
+        self.assertNotIn("startSeatStorm();", init)
+        sync = storm.split("function syncSeatStorm")[1].split("function ssTapStart")[0]
+        self.assertNotIn("startSeatStorm();", sync)
+        self.assertIn("if (!ss.playing) ssReveal(document.getElementById(\"seatStormPlay\"), false);", storm)
 
 
 class SeatStormRulesTests(unittest.TestCase):

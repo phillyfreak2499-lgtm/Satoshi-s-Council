@@ -5621,7 +5621,7 @@ body.show-hierarchy #debatePanel {
   }
 }
 
-/* ===== SEAT STORM — lock-wait mini, no orders ===== */
+/* ===== SEAT STORM — opt-in lock-wait mini, no auto-start, no orders ===== */
 .seat-storm-prompt,
 .seat-storm-table-btn {
   position: fixed;
