@@ -275,7 +275,7 @@ class PerformanceStore:
         """
         Open a path-graded scalp call (full or 1/4 HOLD).
 
-        Circuit breaker: max MAX_CALLS_PER_WINDOW (default 3) graded rows
+        Circuit breaker: max MAX_CALLS_PER_WINDOW (default 1) graded rows — one-call protocol
         per ticker per window — matches Chair ENTRY + MID + FINAL budget.
         Same-side refresh of an open call does NOT consume a new slot.
         WAIT never recorded. Grades on Kalshi odds path.
@@ -290,7 +290,7 @@ class PerformanceStore:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat()
         win_pts = self._win_pts(direction)
-        max_per_window = int(getattr(settings, "MAX_CALLS_PER_WINDOW", 3))
+        max_per_window = int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1))
 
         async with self.Session() as session:
             # Active open call for THIS ticker (newest unsettled)
