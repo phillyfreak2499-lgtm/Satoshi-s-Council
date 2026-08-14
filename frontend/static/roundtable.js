@@ -248,10 +248,34 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 800;
   let beastMode = localStorage.getItem("council_beast") !== "0";
+  let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
+  let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
   let pollTimer = null;
 
   let applyingBeastChrome = false;
+  let lastSettingsSnap = null;
+  function paintBeastProfileLine(s) {
+    const snap = s || lastSettingsSnap || {};
+    const stats = document.getElementById("beastStats");
+    if (!stats) return;
+    const interval = snap.analysis_interval;
+    const hot = snap.analysis_interval_hot;
+    const dual = snap.dual_spot;
+    if (beastMode) {
+      stats.textContent = interval != null
+        ? `Profile BEAST · cycle ${interval}s · hot ${hot}s · dual-spot ${dual ? "ON" : "OFF"}`
+        : "Profile BEAST";
+    } else {
+      stats.textContent = interval != null
+        ? `Profile STANDARD · cycle ${interval}s · dual-spot ${dual ? "ON" : "OFF"}`
+        : "Profile STANDARD";
+    }
+  }
   function applyBeastChrome(on) {
+    const loops = document.getElementById("teamLoopToggle");
+    const loopsWas = loops ? !!loops.checked : null;
+    const sfx = document.getElementById("callSfxToggle");
+    const sfxWas = sfx ? !!sfx.checked : null;
     beastMode = !!on;
     applyingBeastChrome = true;
     document.body.classList.toggle("beast-mode", beastMode);
@@ -265,21 +289,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const tog = document.getElementById("beastToggle");
     if (tog) tog.checked = beastMode;
     localStorage.setItem("council_beast", beastMode ? "1" : "0");
-    const stats = document.getElementById("beastStats");
-    if (stats) {
-      stats.textContent = beastMode ? "Profile BEAST" : "Profile STANDARD";
-    }
     const blurb = document.getElementById("beastBlurb");
     if (blurb) {
       blurb.textContent = beastMode
         ? "Max refresh · dual spot · parallel seats · premium HUD"
         : "Balanced cadence · single spot · power-friendly";
     }
+    paintBeastProfileLine(lastSettingsSnap);
+    if (loops && loopsWas != null) loops.checked = loopsWas;
+    if (sfx && sfxWas != null) sfx.checked = sfxWas;
     applyingBeastChrome = false;
   }
 
-  function applySettingsSnapshot(s) {
+  function applySettingsSnapshot(s, opts) {
     if (!s) return;
+    opts = opts || {};
+    lastSettingsSnap = s;
+    const loops = document.getElementById("teamLoopToggle");
+    const loopsWas = loops ? !!loops.checked : null;
+    const sfx = document.getElementById("callSfxToggle");
+    const sfxWas = sfx ? !!sfx.checked : null;
     if (typeof s.beast_mode === "boolean") applyBeastChrome(s.beast_mode);
     const L = s.learning || {};
     const T = s.trading || {};
@@ -336,18 +365,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     set("setPollInput", s.ui_poll_ms);
     chk("setDualInput", s.dual_spot);
     chk("setParallelInput", s.parallel_agents);
-    const beastOn = (typeof s.beast_mode === "boolean") ? s.beast_mode : beastMode;
     const blurb = document.getElementById("beastBlurb");
     if (blurb && (s.blurb || typeof s.beast_mode === "boolean")) {
-      blurb.textContent = s.blurb || (beastOn
+      blurb.textContent = s.blurb || (beastMode
         ? "Max refresh · dual spot · parallel seats · premium HUD"
         : "Balanced cadence · single spot · power-friendly");
     }
-    const stats = document.getElementById("beastStats");
-    if (stats) {
-      stats.textContent = beastOn
-        ? `Profile BEAST · cycle ${s.analysis_interval}s · hot ${s.analysis_interval_hot}s · dual-spot ${s.dual_spot ? "ON" : "OFF"}`
-        : `Profile STANDARD · cycle ${s.analysis_interval}s · dual-spot ${s.dual_spot ? "ON" : "OFF"}`;
+    paintBeastProfileLine(s);
+    // Call voice / Team-loops are independent of BEAST. Only apply them on
+    // Save/Reset — a poll or beast toggle must not silently flip the other.
+    if (opts.localToggles) {
+      if (typeof U.call_sfx === "boolean") {
+        callSfxOn = U.call_sfx;
+        try { localStorage.setItem("council_call_sfx", callSfxOn ? "1" : "0"); } catch (e) {}
+        if (sfx) sfx.checked = callSfxOn;
+      }
+      if (typeof U.team_loops === "boolean") {
+        teamLoopsOn = U.team_loops;
+        try { localStorage.setItem("council_team_loops", teamLoopsOn ? "1" : "0"); } catch (e) {}
+        if (loops) loops.checked = teamLoopsOn;
+      }
+    } else {
+      if (sfx && sfxWas != null) sfx.checked = sfxWas;
+      if (loops && loopsWas != null) loops.checked = loopsWas;
     }
     const map = {
       setInterval: s.analysis_interval != null ? s.analysis_interval + "s" : "—",
@@ -376,6 +416,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   applySettingsSnapshot._real = true;
   window.applySettingsSnapshot = applySettingsSnapshot;
 
+  function stayOnSettings() {
+    const sv = document.getElementById("settingsView");
+    const showing = !!(sv && !sv.classList.contains("hidden"));
+    if (mode !== "settings" && !showing) return;
+    if (mode !== "settings") {
+      try { setMode("settings"); } catch (e) {}
+      return;
+    }
+    if (sv) sv.classList.remove("hidden");
+    document.body.classList.add("mode-settings");
+    document.body.classList.remove("mode-floor", "floor-mode", "mode-art");
+    document.body.classList.remove("mode-dashboard", "mode-bots", "mode-ranks", "mode-paper", "mode-charts");
+  }
+
   async function fetchSettings() {
     try {
       const r = isAdminUnlocked()
@@ -389,7 +443,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   async function setBeastMode(on) {
+    const loops = document.getElementById("teamLoopToggle");
+    const loopsWas = loops ? !!loops.checked : teamLoopsOn;
+    const sfx = document.getElementById("callSfxToggle");
+    const sfxWas = sfx ? !!sfx.checked : callSfxOn;
     applyBeastChrome(on);
+    if (loops) loops.checked = loopsWas;
+    if (sfx) sfx.checked = sfxWas;
+    paintBeastProfileLine(lastSettingsSnap);
     try {
       const r = await fetch(API_BASE + "/api/settings", {
         method: "POST",
@@ -399,12 +460,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (r.ok) {
         const s = await r.json();
         applySettingsSnapshot(s);
+        if (loops) loops.checked = loopsWas;
+        if (sfx) sfx.checked = sfxWas;
+        teamLoopsOn = loopsWas;
+        callSfxOn = sfxWas;
+        paintBeastProfileLine(s);
+        stayOnSettings();
         return s;
       }
     } catch (e) {
       console.warn("beast toggle failed", e);
     }
     applyBeastChrome(on);
+    if (loops) loops.checked = loopsWas;
+    if (sfx) sfx.checked = sfxWas;
+    paintBeastProfileLine(lastSettingsSnap);
+    stayOnSettings();
     return null;
   }
 
@@ -979,8 +1050,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   /** Final reveal — low gong + high sparkle */
-  let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
-  let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
   let lastSpokenDir = null;
   (function wireLocalSettingsToggles() {
     const sfx = document.getElementById("callSfxToggle");
@@ -3695,7 +3764,7 @@ function drawCandleChart() {
       fetchPaper().then(() => renderPaper());
     }
     if (mode === "settings") {
-      fetchSettings().then((s) => { if (s) applySettingsSnapshot(s); });
+      fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
@@ -4624,6 +4693,7 @@ function drawCandleChart() {
       focusBadge.title = "Floor — both tables (dual)";
       focusBadge.addEventListener("click", (e) => {
         e.preventDefault();
+        if (mode === "settings") return;
         setMode("floor");
       });
     }
@@ -4842,7 +4912,7 @@ function drawCandleChart() {
   }
   applyBeastChrome(beastMode);
   fetchSettings().then((s) => {
-    if (s) applySettingsSnapshot(s);
+    if (s) applySettingsSnapshot(s, { localToggles: true });
   });
 
   function wireZtCinematic(btn) {
@@ -4915,6 +4985,8 @@ function drawCandleChart() {
         sound_bell: on("setSoundBell"),
         beam_glow: on("setBeamGlow"),
         watermark_opacity: num("setWatermark", 0.18),
+        call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
+        team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
       },
     };
     if (isAdminUnlocked()) {
@@ -4946,9 +5018,11 @@ function drawCandleChart() {
       const applySnap = (typeof window.applySettingsSnapshot === "function")
         ? window.applySettingsSnapshot
         : function () {};
-      applySnap(s);
+      applySnap(s, { localToggles: true });
+      stayOnSettings();
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
+      stayOnSettings();
       if (st) st.textContent = "Save failed: " + e;
     }
   }
@@ -4961,40 +5035,76 @@ function drawCandleChart() {
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   if (btnSaveSettings && !btnSaveSettings.__wired) {
     btnSaveSettings.__wired = true;
-    btnSaveSettings.addEventListener("click", collectAndSaveSettings);
+    btnSaveSettings.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      collectAndSaveSettings();
+    });
   }
+  async function resetSettingsToDefaults() {
+    const st = document.getElementById("settingsSaveStatus");
+    if (!confirm("Restore Settings defaults?\n\nCall voice turns back on. Cycle times, path grading, and sound knobs reset. BEAST and Team-loops each go to their own defaults — they are not tied together.")) {
+      stayOnSettings();
+      return;
+    }
+    try {
+      const resetFn = isAdminUnlocked() ? adminFetch : fetch;
+      const r = await resetFn(API_BASE + "/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const s = await r.json();
+      callSfxOn = true;
+      teamLoopsOn = true;
+      try { localStorage.setItem("council_call_sfx", "1"); } catch (e) {}
+      try { localStorage.setItem("council_team_loops", "1"); } catch (e) {}
+      const sfx = document.getElementById("callSfxToggle");
+      if (sfx) sfx.checked = true;
+      const loops = document.getElementById("teamLoopToggle");
+      if (loops) loops.checked = true;
+      if (typeof window.applySettingsSnapshot === "function") {
+        window.applySettingsSnapshot(s, { localToggles: true });
+      }
+      callSfxOn = true;
+      teamLoopsOn = true;
+      if (sfx) sfx.checked = true;
+      if (loops) loops.checked = true;
+      stayOnSettings();
+      if (st) st.textContent = "Defaults restored · " + new Date().toLocaleTimeString();
+    } catch (e) {
+      stayOnSettings();
+      if (st) st.textContent = "Reset failed: " + e;
+    }
+  }
+  window.resetSettingsToDefaults = resetSettingsToDefaults;
   const btnResetSettings = document.getElementById("btnResetSettings");
   if (btnResetSettings && !btnResetSettings.__wired) {
     btnResetSettings.__wired = true;
-    btnResetSettings.addEventListener("click", async () => {
-      try {
-        const r = await fetch("/api/settings");
-        const s = await r.json();
-        if (s.defaults) {
-          const resetBody = {
-            learning: s.defaults.learning,
-            trading: s.defaults.trading,
-            huddle: s.defaults.huddle,
-            ui: s.defaults.ui,
-          };
-          if (isAdminUnlocked() && s.defaults.auto_bet) resetBody.auto_bet = s.defaults.auto_bet;
-          const resetFn = isAdminUnlocked() ? adminFetch : fetch;
-          await resetFn("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(resetBody),
-          });
-        }
-        const s2 = await (await fetch("/api/settings")).json();
-        if (typeof window.applySettingsSnapshot === "function") window.applySettingsSnapshot(s2);
-        const st = document.getElementById("settingsSaveStatus");
-        if (st) st.textContent = "Defaults restored";
-      } catch (e) {}
+    btnResetSettings.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resetSettingsToDefaults();
     });
   }
 
   window.setMode = setMode;
   window.applySettingsSnapshot = applySettingsSnapshot;
+
+  const settingsViewEl = document.getElementById("settingsView");
+  if (settingsViewEl && !settingsViewEl.__deskLocked) {
+    settingsViewEl.__deskLocked = true;
+    settingsViewEl.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("keyup", (e) => {
+      e.stopPropagation();
+    }, true);
+    settingsViewEl.addEventListener("wheel", (e) => {
+      e.stopPropagation();
+    }, { capture: true, passive: true });
+  }
 
   // Force clean Table view — hide any stacked info panels
   setMode("art");
@@ -5118,6 +5228,8 @@ function drawCandleChart() {
         sound_bell: on("setSoundBell"),
         beam_glow: on("setBeamGlow"),
         watermark_opacity: num("setWatermark", 0.18),
+        call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
+        team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
       },
     };
     const st = document.getElementById("settingsSaveStatus");
@@ -5128,7 +5240,7 @@ function drawCandleChart() {
         body: JSON.stringify(body),
       });
       const s = await r.json();
-      window.applySettingsSnapshot(s);
+      window.applySettingsSnapshot(s, { localToggles: true });
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
       if (st) st.textContent = "Save failed: " + e;
@@ -5139,12 +5251,48 @@ function drawCandleChart() {
     const btn = document.getElementById("btnSaveSettings");
     if (!btn || btn.__wired) return;
     btn.__wired = true;
-    btn.addEventListener("click", fallbackCollectAndSave);
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fallbackCollectAndSave();
+    });
+  }
+  function bindReset() {
+    const btn = document.getElementById("btnResetSettings");
+    if (!btn || btn.__wired) return;
+    btn.__wired = true;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.resetSettingsToDefaults === "function") {
+        window.resetSettingsToDefaults();
+        return;
+      }
+      if (!confirm("Restore Settings defaults?\n\nCall voice turns back on.")) return;
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      }).then((r) => r.json()).then((s) => {
+        const sfx = document.getElementById("callSfxToggle");
+        if (sfx) sfx.checked = true;
+        try { localStorage.setItem("council_call_sfx", "1"); } catch (err) {}
+        if (typeof window.applySettingsSnapshot === "function") {
+          window.applySettingsSnapshot(s, { localToggles: true });
+        }
+        const st = document.getElementById("settingsSaveStatus");
+        if (st) st.textContent = "Defaults restored · " + new Date().toLocaleTimeString();
+      }).catch((err) => {
+        const st = document.getElementById("settingsSaveStatus");
+        if (st) st.textContent = "Reset failed: " + err;
+      });
+    });
   }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bindSave);
+    document.addEventListener("DOMContentLoaded", () => { bindSave(); bindReset(); });
   } else {
     bindSave();
+    bindReset();
   }
 })();
 

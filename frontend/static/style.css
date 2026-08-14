@@ -2361,6 +2361,15 @@ body.admin-unlocked.mode-settings #autoBetCard {
   gap: 10px;
   margin: 12px 0 18px;
 }
+#settingsView:not(.hidden) {
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  isolation: isolate;
+  position: relative !important;
+  left: auto !important;
+  height: auto !important;
+  max-height: none !important;
+}
 
 
 /* ===== FULL UPDATE: logo, password, summon, lightsaber, floor space ===== */
