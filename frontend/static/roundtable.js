@@ -167,6 +167,10 @@
   const chartsView = document.getElementById("chartsView");
   const mainTable = document.getElementById("mainTable");
   const modeTabs = document.querySelectorAll(".mode-tab");
+  let celebratePlaying = false;
+  function deskCinematicOn() {
+    return !!(celebratePlaying || (document.body && document.body.classList.contains("zt-cinematic")));
+  }
 
   // Same-origin on Render (UI served by FastAPI); override via localStorage if needed
   const API_BASE =
@@ -1158,6 +1162,7 @@
   const GOLD = "#f0c14a";       // ceremonial armor
 
   function resize() {
+    if (deskCinematicOn()) return;
     const stage = document.getElementById("tableStage");
     const maxW = Math.min(1200, (stage?.clientWidth || window.innerWidth) - 12);
     const maxH = Math.min(820, (stage?.clientHeight || window.innerHeight - 140) - 8);
@@ -2676,8 +2681,29 @@
 
 function drawCandleChart() {
     if (!candleCtx || !candleCanvas) return;
+    if (deskCinematicOn()) return;
 
-    if (!candleCtx || !candleCanvas) return;
+    const market = (state && state.market) || {};
+    const raw = market.candles || [];
+    const livePrice = Number(market.price);
+    const kalshiTarget = Number(market.kalshi_target);
+
+    if (raw.length < 2) {
+      // Keep the last painted tape — do not clear to NO TAPE
+      if (candleCanvas.dataset.hasTape === "1") return;
+      resizeCandleChart();
+      const w0 = candleCanvas.width;
+      const h0 = candleCanvas.height;
+      candleCtx.clearRect(0, 0, w0, h0);
+      candleCtx.fillStyle = "rgba(2, 6, 14, 0.35)";
+      candleCtx.fillRect(0, 0, w0, h0);
+      candleCtx.fillStyle = "rgba(120,140,160,0.6)";
+      candleCtx.font = "11px Orbitron, monospace";
+      candleCtx.textAlign = "center";
+      candleCtx.fillText("NO TAPE", w0 / 2, h0 / 2);
+      return;
+    }
+    candleCanvas.dataset.hasTape = "1";
     resizeCandleChart();
     const w = candleCanvas.width;
     const h = candleCanvas.height;
@@ -2686,19 +2712,6 @@ function drawCandleChart() {
     // subtle panel backdrop
     candleCtx.fillStyle = "rgba(2, 6, 14, 0.35)";
     candleCtx.fillRect(0, 0, w, h);
-
-    const market = (state && state.market) || {};
-    const raw = market.candles || [];
-    const livePrice = Number(market.price);
-    const kalshiTarget = Number(market.kalshi_target);
-
-    if (raw.length < 2) {
-      candleCtx.fillStyle = "rgba(120,140,160,0.6)";
-      candleCtx.font = "11px Orbitron, monospace";
-      candleCtx.textAlign = "center";
-      candleCtx.fillText("NO TAPE", w / 2, h / 2);
-      return;
-    }
 
     const candles = raw.slice(-48);
     let min = Infinity, max = -Infinity;
@@ -2958,24 +2971,33 @@ function drawCandleChart() {
   }
 
   function drawChartBtc() {
+    if (deskCinematicOn()) return;
     syncChartPairTitle();
     const canvas = document.getElementById("chartBtc");
-    const ctx = fitCanvas(canvas);
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
+    if (!canvas) return;
     const view = (typeof getViewState === "function" ? getViewState() : null) || state || {};
     const market = (view && view.market) || (state && state.market) || {};
     const candles = (market.candles || []).slice(-60);
     const target = Number(market.kalshi_target);
     const price = Number(market.price);
     if (candles.length < 2) {
-      ctx.fillStyle = "rgba(120,140,160,0.5)";
-      ctx.font = "11px Orbitron";
-      ctx.textAlign = "center";
-      ctx.fillText("NO TAPE", w / 2, h / 2);
+      // fitCanvas resizes and clears — skip if we already have tape
+      if (canvas.dataset.hasTape === "1") return;
+      const ctx0 = fitCanvas(canvas);
+      if (!ctx0) return;
+      const w0 = canvas.width, h0 = canvas.height;
+      chartFrame(ctx0, w0, h0);
+      ctx0.fillStyle = "rgba(120,140,160,0.5)";
+      ctx0.font = "11px Orbitron";
+      ctx0.textAlign = "center";
+      ctx0.fillText("NO TAPE", w0 / 2, h0 / 2);
       return;
     }
+    canvas.dataset.hasTape = "1";
+    const ctx = fitCanvas(canvas);
+    if (!ctx) return;
+    const w = canvas.width, h = canvas.height;
+    chartFrame(ctx, w, h);
     let min = Infinity, max = -Infinity;
     candles.forEach(c => {
       min = Math.min(min, Number(c.l)); max = Math.max(max, Number(c.h));
@@ -3172,6 +3194,7 @@ function drawCandleChart() {
 
   function drawCharts() {
     if (mode !== "charts") return;
+    if (deskCinematicOn()) return;
     drawChartBtc();
     drawChartVolume();
     drawChartOdds();
@@ -3339,9 +3362,7 @@ function drawCandleChart() {
     const status = document.getElementById("huddleStatus");
     const banner = document.getElementById("huddleBanner");
     if (!h) {
-      if (status) status.textContent = "—";
-      if (badge) badge.classList.remove("active");
-      if (banner) banner.classList.remove("show");
+      // Keep the last chip text — a missing payload must not blank HUDDLE
       return;
     }
     if (badge) badge.classList.toggle("active", !!h.in_huddle);
@@ -3588,12 +3609,24 @@ function drawCandleChart() {
       }
     }
     mode = next;
-    modeTabs.forEach(btn => {
-      // BTC/ETH focus buttons use focus-active, not mode active
-      if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
-      btn.classList.toggle("active", btn.dataset.mode === mode);
-    });
+    // Body class first — CSS tab lock uses body.mode-* as source of truth
     document.body.classList.toggle("floor-mode", mode === "floor");
+    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
+      document.body.classList.toggle("mode-" + m, mode === m);
+    });
+    document.querySelectorAll(".mode-tab").forEach((btn) => {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") {
+        btn.classList.remove("active");
+        return;
+      }
+      if (!btn.dataset.mode) {
+        btn.classList.remove("active");
+        return;
+      }
+      const on = btn.dataset.mode === mode;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
     try {
       if (typeof window.__floorMusicOnMode === "function") {
         window.__floorMusicOnMode(mode === "floor");
@@ -3601,10 +3634,6 @@ function drawCandleChart() {
     } catch (e) {}
     // Hierarchy only on ranks / dashboard
     document.body.classList.toggle("show-hierarchy", mode === "ranks" || mode === "dashboard");
-    // Mode class for LED visibility rules
-    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
-      document.body.classList.toggle("mode-" + m, mode === m);
-    });
     const botsView = document.getElementById("botsView");
     const ranksView = document.getElementById("ranksView");
     const paperView = document.getElementById("paperView");
@@ -3644,7 +3673,7 @@ function drawCandleChart() {
     try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
-      requestAnimationFrame(() => { drawCharts(); });
+      requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
     }
   }
 
@@ -3767,17 +3796,17 @@ function drawCandleChart() {
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
     updateLaw(state.law);
-    updateHuddle(state.huddle);
+    if (!deskCinematicOn()) updateHuddle(state.huddle);
     updateColorTally(state);
     updateDebate();
-    drawCandleChart();
+    if (!deskCinematicOn()) drawCandleChart();
     renderHierarchy();
     recordSeriesFromState(state);
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
     }
-    if (mode === "charts") drawCharts();
+    if (mode === "charts" && !deskCinematicOn()) drawCharts();
 
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
@@ -3863,16 +3892,20 @@ function drawCandleChart() {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
-    });
+    }, true);
   });
   if (!document.__modeTabsDelegated) {
     document.__modeTabsDelegated = true;
     document.addEventListener("click", (e) => {
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
-      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth") return;
+      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
-    });
+    }, true);
   }
   wirePaperEntry();
   document.querySelectorAll(".paper-cal-btn").forEach(btn => {
@@ -3964,6 +3997,7 @@ function drawCandleChart() {
   });
 
   window.addEventListener("resize", () => {
+    if (deskCinematicOn()) return;
     resizeRoundtable();
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
@@ -4534,7 +4568,7 @@ function drawCandleChart() {
       try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
-      try { if (mode === "charts") drawCharts(); } catch (e) {}
+      try { if (mode === "charts" && !deskCinematicOn()) drawCharts(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;
@@ -4611,7 +4645,6 @@ function drawCandleChart() {
 
   
   // ——— ZT celebrate cinematic (logo click + 5-win streak) ———
-  let celebratePlaying = false;
   let lastCelebratedStreak = 0; // fire once per streak milestone
 
 
@@ -4642,26 +4675,31 @@ function drawCandleChart() {
     const gate = document.getElementById("summonGate");
     if (gate && document.body.classList.contains("gate-locked")) return;
 
+    // Overlay only — Fullscreen API resizes the desk and blanks Charts / huddle
     celebratePlaying = true;
+    document.body.classList.add("zt-cinematic");
     ensureAudio();
     wrap.classList.remove("hidden");
     wrap.classList.add("active");
     fitVideoToScreen(vid);
     wrap.setAttribute("aria-hidden", "false");
     if (fallback) fallback.hidden = true;
-    try { vid.currentTime = 0; } catch (e) {}
     vid.muted = !!soundMuted;
+    vid.playsInline = true;
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
 
     const cleanup = () => {
       celebratePlaying = false;
+      document.body.classList.remove("zt-cinematic");
       try { vid.pause(); } catch (e) {}
       wrap.classList.add("hidden");
       wrap.classList.remove("active");
       wrap.setAttribute("aria-hidden", "true");
       if (fallback) fallback.hidden = true;
-      try {
-        if (document.fullscreenElement) document.exitFullscreen();
-      } catch (e) {}
+      vid.onerror = null;
+      vid.onloadeddata = null;
+      vid.oncanplay = null;
       vid.removeEventListener("ended", onEnded);
     };
     const onEnded = () => cleanup();
@@ -4675,21 +4713,21 @@ function drawCandleChart() {
       if (fallback) fallback.hidden = false;
     };
 
-    const goFs = () => {
-      const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.msRequestFullscreen;
-      if (req) {
-        try { req.call(wrap); } catch (e) {}
-      }
-    };
+    // Files that exist in this repo. /zt-celebrate.mp4 is not checked in.
+    const sources = [
+      "/static/video/money-closeup.mp4",
+      "/zt-intro.mp4",
+      "/summon-council.mp4",
+      "/static/zt-intro.mp4",
+      "/static/summon-council.mp4",
+      "/zt-celebrate.mp4",
+    ];
 
-    const sources = ["/zt-celebrate.mp4", "/zt-intro.mp4", "/summon-council.mp4"];
-    let srcIdx = 0;
-    const tryPlay = () => {
+    const playUrl = (url) => {
       const p = vid.play();
       if (p && p.then) {
         p.then(() => {
           if (fallback) fallback.hidden = true;
-          goFs();
           if (!soundMuted) {
             try { vid.muted = false; } catch (e) {}
           }
@@ -4697,31 +4735,37 @@ function drawCandleChart() {
           vid.muted = true;
           const p2 = vid.play();
           if (p2 && p2.then) {
-            p2.then(() => {
-              if (fallback) fallback.hidden = true;
-              goFs();
-            }).catch(advanceSrc);
+            p2.then(() => { if (fallback) fallback.hidden = true; }).catch(() => keepOverlay());
           } else {
-            advanceSrc();
+            keepOverlay();
           }
         });
-      } else {
-        goFs();
       }
     };
-    const advanceSrc = () => {
-      srcIdx += 1;
-      if (srcIdx < sources.length) {
-        try {
-          vid.src = sources[srcIdx];
-          vid.load();
-        } catch (e) {}
-        tryPlay();
+
+    let srcIdx = 0;
+    const tryNext = () => {
+      if (!celebratePlaying) return;
+      if (srcIdx >= sources.length) {
+        keepOverlay();
         return;
       }
-      keepOverlay();
+      const url = sources[srcIdx++];
+      vid.onerror = null;
+      vid.onloadeddata = null;
+      vid.oncanplay = null;
+      try { vid.pause(); } catch (e) {}
+      vid.src = url;
+      vid.onerror = () => tryNext();
+      vid.oncanplay = () => playUrl(url);
+      try { vid.load(); } catch (e) { tryNext(); }
     };
-    tryPlay();
+    vid.onerror = null;
+    try {
+      while (vid.firstChild) vid.removeChild(vid.firstChild);
+      vid.removeAttribute("src");
+    } catch (e) {}
+    tryNext();
     if (reason === "streak") {
       try { playSfxReveal(); } catch (e) {}
     }
@@ -4781,7 +4825,6 @@ function drawCandleChart() {
     }, true);
   }
   wireZtCinematic(document.getElementById("ztLogoBtn"));
-  wireZtCinematic(document.getElementById("ztHeaderLogo"));
 
   async function collectAndSaveSettings() {
     const num = (id, d) => {
@@ -5174,11 +5217,14 @@ function drawCandleChart() {
   }
 
   function initLogoCredit() {
-    const btn = document.getElementById("ztHeaderLogo") || document.getElementById("ztLogoBtn");
+    const btn = document.getElementById("ztHeaderLogo");
     const pop = document.getElementById("creditPopup");
     if (!btn || !pop) return;
+    if (btn.__creditWired) return;
+    btn.__creditWired = true;
     btn.addEventListener("click", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       pop.classList.toggle("hidden");
       setTimeout(() => pop.classList.add("hidden"), 3200);
     });

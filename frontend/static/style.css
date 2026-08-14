@@ -3845,13 +3845,14 @@ footer {
 #decisionSummary,
 #finalDecision #decisionSummary,
 footer #decisionSummary {
-  white-space: normal !important;
-  overflow: visible !important;
-  text-overflow: unset !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
   max-width: none !important;
-  flex: 1 1 100% !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
   word-break: normal;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 #marketStrip {
   display: flex !important;
@@ -3968,4 +3969,165 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+/* ===== LIVE DESK QA — strip / tabs / cinematic (1280) ===== */
+#app {
+  overflow: hidden !important;
+}
+#app > footer {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  gap: 6px !important;
+  position: relative !important;
+  z-index: 80 !important;
+  isolation: isolate;
+  background: #03060c !important;
+  border-top: 1px solid rgba(0, 232, 255, 0.16);
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.55);
+  clip-path: none !important;
+  overflow: hidden !important;
+  min-width: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+#app > footer #finalDecision,
+#app > footer #finalDecision.status-strip {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  flex: 0 0 auto !important;
+  order: 1 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  gap: 6px 10px !important;
+  padding: 4px 2px 2px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+#app > footer #decisionDir {
+  font-size: 1.15rem !important;
+  line-height: 1.1 !important;
+}
+#app > footer #decisionSummary,
+#app > footer #finalDecision #decisionSummary {
+  flex: 1 1 12rem !important;
+  max-width: none !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+#app > footer #marketStrip {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  flex: 0 0 auto !important;
+  order: 2 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  gap: 6px 12px !important;
+  padding-top: 6px !important;
+  margin-top: 0 !important;
+  border-top: 1px solid rgba(0, 232, 255, 0.12);
+  background: #03060c !important;
+  z-index: 1 !important;
+}
+#mainTable {
+  overflow: hidden !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+#lifetimePanel {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  position: relative !important;
+  z-index: 1 !important;
+  padding-bottom: 8px !important;
+}
+#callLog.call-log {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  z-index: 1 !important;
+}
+#callLog .call-empty {
+  position: relative !important;
+  z-index: 1 !important;
+  padding-bottom: 18px;
+}
+
+/* Tab highlight follows body.mode-* so BOTS cannot stay lit on RANKS */
+body.mode-ranks #tabBots,
+body.mode-ranks #tabBots.active,
+body.beast-mode.mode-ranks #tabBots,
+body.beast-mode.mode-ranks #tabBots.active,
+body.mode-art #tabBots,
+body.mode-floor #tabBots,
+body.mode-dashboard #tabBots,
+body.mode-paper #tabBots,
+body.mode-charts #tabBots,
+body.mode-settings #tabBots,
+body.mode-bots #tabRanks,
+body.mode-bots #tabRanks.active,
+body.beast-mode.mode-bots #tabRanks,
+body.beast-mode.mode-bots #tabRanks.active,
+body.mode-art #tabRanks,
+body.mode-floor #tabRanks,
+body.mode-dashboard #tabRanks,
+body.mode-paper #tabRanks,
+body.mode-charts #tabRanks,
+body.mode-settings #tabRanks {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+body.mode-bots #tabBots,
+body.mode-bots #tabBots.active,
+body.mode-ranks #tabRanks,
+body.mode-ranks #tabRanks.active {
+  color: var(--blade) !important;
+  border-color: rgba(0, 232, 255, 0.5) !important;
+  background: rgba(0, 232, 255, 0.08) !important;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+}
+
+/* Keep huddle chip text at 1280 — cinematic must not blank it */
+#app > header .huddle-badge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+#app > header .huddle-badge .huddle-label,
+#app > header .huddle-badge .huddle-status,
+#app > header .huddle-badge .huddle-chip-status {
+  display: inline !important;
+  visibility: visible !important;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cinematic is an overlay only — never take over layout / resize the desk */
+body.zt-cinematic #celebrateVideoWrap:not(.hidden) {
+  z-index: 10080 !important;
 }

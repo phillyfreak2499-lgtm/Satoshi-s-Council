@@ -543,41 +543,36 @@ if STATIC_DIR.is_dir():
         return FileResponse(path, media_type="image/svg+xml",
                             headers={"Cache-Control": "public, max-age=86400"})
 
-    @app.get("/summon-council.mp4")
-    async def summon_video():
+    def _first_video(*names: str):
+        folders = (STATIC_DIR, STATIC_DIR / "video", STATIC_DIR / "videos")
+        for name in names:
+            for folder in folders:
+                path = folder / name
+                if path.exists():
+                    return path
+        return None
+
+    def _video_response(path):
         from fastapi.responses import Response
-        path = STATIC_DIR / "summon-council.mp4"
-        if not path.exists():
+        if path is None or not path.exists():
             return Response(status_code=404)
         return FileResponse(
             path,
             media_type="video/mp4",
             headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
         )
+
+    @app.get("/summon-council.mp4")
+    async def summon_video():
+        return _video_response(_first_video("summon-council.mp4"))
 
     @app.get("/zt-celebrate.mp4")
     async def zt_celebrate_video():
-        from fastapi.responses import Response
-        path = STATIC_DIR / "zt-celebrate.mp4"
-        if not path.exists():
-            return Response(status_code=404)
-        return FileResponse(
-            path,
-            media_type="video/mp4",
-            headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
-        )
+        return _video_response(_first_video("zt-celebrate.mp4", "money-closeup.mp4"))
 
     @app.get("/zt-intro.mp4")
     async def zt_intro_video():
-        from fastapi.responses import Response
-        path = STATIC_DIR / "zt-intro.mp4"
-        if not path.exists():
-            return Response(status_code=404)
-        return FileResponse(
-            path,
-            media_type="video/mp4",
-            headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
-        )
+        return _video_response(_first_video("zt-intro.mp4", "money-closeup.mp4"))
 
     @app.get("/zt-logo.jpg")
     async def zt_logo():
