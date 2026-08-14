@@ -593,9 +593,15 @@ class Council:
         return learned
 
     def get_state(self) -> Dict[str, Any]:
+        # Cold-start safe: never reference undefined names in the fallback.
         base = self.latest_state or {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "decision": {"direction": "WAIT", "confidence": 50, "summary": "Initializing..."},
+            "decision": {
+                "direction": "WAIT",
+                "confidence": 50,
+                "summary": "Initializing...",
+                "locked_call": None,
+            },
             "agents": [],
             "weights": self.leader.weights,
             "market": {},
@@ -611,7 +617,7 @@ class Council:
                 "wrong_streak": 0,
                 "label": "0/0 · —",
             },
-                        "locked_call": decision.get("locked_call"),  # follower-bot clear lock
+            "locked_call": None,
             "law": self.law.status(),
             "learning": self.learner.snapshot(),
             "hierarchy": self.learner.hierarchy_ranks(),
