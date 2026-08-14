@@ -4988,6 +4988,7 @@ body.hour-slam .hour-slam {
 #debatePanel.signal-feed {
   min-width: 0;
   overflow: hidden;
+  min-height: 0;
 }
 body.mode-art #debatePanel.signal-feed {
   display: flex !important;
@@ -5037,7 +5038,8 @@ body.mode-floor #debatePanel.signal-feed {
   padding: 6px 10px 8px;
   overflow-y: auto;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  max-height: 160px;
 }
 .signal-feed-list li,
 .signal-feed-list .sf-row {
@@ -5620,7 +5622,7 @@ body.show-hierarchy #debatePanel {
     display: flex !important;
     max-width: none !important;
     min-width: 0 !important;
-    max-height: 200px;
+    max-height: none;
     order: 4;
   }
 }
@@ -5902,7 +5904,7 @@ html body #app > header .huddle-badge .huddle-label {
   }
 }
 
-/* ===== TABLE LEFT HUD — 1H at top of column, tape fills the void ===== */
+/* ===== TABLE RIGHT HUD — tape / why-lock / dual / storm fill the ring's right ===== */
 html body.mode-art #lifetimePanel #windowLed.led-float.led-window,
 body.mode-art #lifetimePanel #windowLed,
 body.mode-art #lifetimePanel #windowLed.led-window,
@@ -5920,21 +5922,6 @@ body.mode-art #lifetimePanel #windowLed.led-float {
   max-width: none !important;
   z-index: 2 !important;
 }
-#lifetimePanel .hud-card {
-  flex: 0 0 auto;
-  margin: 0 8px 8px;
-  padding: 8px 10px;
-  border: 1px solid rgba(0, 232, 255, 0.22);
-  background: linear-gradient(145deg, rgba(8, 14, 26, 0.95), rgba(3, 6, 14, 0.96));
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-}
-#lifetimePanel .lock-tape-card {
-  flex: 1 1 auto;
-  min-height: 140px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
 #lifetimePanel .lifetime-log-block:not(.idle) {
   flex: 1 1 auto;
   min-height: 0;
@@ -5942,7 +5929,22 @@ body.mode-art #lifetimePanel #windowLed.led-float {
   flex-direction: column;
   overflow: hidden;
 }
-#lifetimePanel .hud-card-head {
+#debatePanel .hud-card {
+  flex: 0 0 auto;
+  margin: 0 8px 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: linear-gradient(145deg, rgba(8, 14, 26, 0.95), rgba(3, 6, 14, 0.96));
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+#debatePanel .lock-tape-card {
+  flex: 1 1 auto;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#debatePanel .hud-card-head {
   display: flex;
   justify-content: space-between;
   font-family: Orbitron, monospace;
@@ -5951,7 +5953,7 @@ body.mode-art #lifetimePanel #windowLed.led-float {
   color: var(--gold);
   margin-bottom: 6px;
 }
-#lifetimePanel .hud-meta { color: var(--muted); letter-spacing: 0.04em; }
+#debatePanel .hud-meta { color: var(--muted); letter-spacing: 0.04em; }
 .lock-tape-list {
   list-style: none;
   margin: 0;
@@ -5994,7 +5996,7 @@ body.mode-art #lifetimePanel #windowLed.led-float {
 .dual-fight-strip.agree { color: var(--jade); }
 .dual-fight-strip.fight { color: var(--blood); }
 .lifetime-log-block.idle { display: none !important; }
-#lifetimePanel #seatStormTableBtn.seat-storm-table-btn {
+#debatePanel #seatStormTableBtn.seat-storm-table-btn {
   position: static !important;
   top: auto !important;
   right: auto !important;
@@ -6004,6 +6006,6 @@ body.mode-art #lifetimePanel #windowLed.led-float {
   margin: 0 8px 10px;
   justify-content: center;
 }
-body.mode-art #lifetimePanel #seatStormTableBtn.seat-storm-table-btn:not(.hidden):not([hidden]) {
+body.mode-art #debatePanel #seatStormTableBtn.seat-storm-table-btn:not(.hidden):not([hidden]) {
   display: inline-flex !important;
 }

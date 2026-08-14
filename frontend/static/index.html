@@ -165,7 +165,7 @@
     </header>
 
     <main id="mainTable">
-      <!-- LEFT: 1H + game HUD (tape / why-lock / dual / storm). Not over the nav. -->
+      <!-- LEFT: 1H WINDOW + LIFETIME. Docked at top of this column, not over the nav. -->
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
         <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
           <div class="led-bezel">
@@ -204,25 +204,6 @@
           <span class="hr-path-lab">ENTRY</span>
           <b id="hrEntryAvg">—</b>
         </div>
-        <section id="lockTapeCard" class="hud-card lock-tape-card" aria-label="Last locks tape">
-          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
-          <ol id="lockTapeList" class="lock-tape-list" aria-live="polite">
-            <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>
-          </ol>
-        </section>
-        <section id="whyLockCard" class="hud-card why-lock-card hidden" aria-label="Why this lock">
-          <header class="hud-card-head"><span>WHY THIS LOCK</span></header>
-          <p id="whyLockLine" class="why-lock-line">—</p>
-        </section>
-        <section id="dualFightCard" class="hud-card dual-fight-card" aria-label="BTC versus ETH">
-          <header class="hud-card-head"><span>BTC · ETH</span><span class="hud-meta" id="dualFightMeta">—</span></header>
-          <div id="dualFightStrip" class="dual-fight-strip">
-            <span id="dualFightBtc">BTC —</span>
-            <span id="dualFightVs" class="dual-fight-vs">·</span>
-            <span id="dualFightEth">ETH —</span>
-          </div>
-        </section>
-        <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden aria-label="Start Seat Storm">START SEAT STORM</button>
         <div id="lifetimeLogBlock" class="lifetime-log-block idle">
           <div class="panel-head panel-head-sub">
             <span class="panel-title">LIFETIME LOG</span>
@@ -246,7 +227,26 @@
       <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 
 
-<aside id="debatePanel" class="side-panel side-right signal-feed" aria-label="Signal feed">
+<aside id="debatePanel" class="side-panel side-right signal-feed" aria-label="Table HUD">
+        <section id="lockTapeCard" class="hud-card lock-tape-card" aria-label="Last locks tape">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
+          <ol id="lockTapeList" class="lock-tape-list" aria-live="polite">
+            <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>
+          </ol>
+        </section>
+        <section id="whyLockCard" class="hud-card why-lock-card hidden" aria-label="Why this lock">
+          <header class="hud-card-head"><span>WHY THIS LOCK</span></header>
+          <p id="whyLockLine" class="why-lock-line">—</p>
+        </section>
+        <section id="dualFightCard" class="hud-card dual-fight-card" aria-label="BTC versus ETH">
+          <header class="hud-card-head"><span>BTC · ETH</span><span class="hud-meta" id="dualFightMeta">—</span></header>
+          <div id="dualFightStrip" class="dual-fight-strip">
+            <span id="dualFightBtc">BTC —</span>
+            <span id="dualFightVs" class="dual-fight-vs">·</span>
+            <span id="dualFightEth">ETH —</span>
+          </div>
+        </section>
+        <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden aria-label="Start Seat Storm">START SEAT STORM</button>
         <div class="panel-head">
           <span class="panel-title">SIGNAL FEED</span>
           <span class="panel-sub" id="signalFeedMeta">live packets</span>

@@ -57,12 +57,18 @@ class TableFeedTests(unittest.TestCase):
         self.assertIn("sfPacketIn", CSS)
 
 
-class TableLeftHudTests(unittest.TestCase):
-    def test_left_column_has_tape_why_fight_storm(self):
-        self.assertIn('id="lockTapeList"', HTML)
-        self.assertIn('id="whyLockLine"', HTML)
-        self.assertIn('id="dualFightStrip"', HTML)
-        self.assertIn('id="seatStormTableBtn"', HTML)
+class TableRightHudTests(unittest.TestCase):
+    def test_right_column_has_tape_why_fight_storm(self):
+        right = HTML.split('id="debatePanel"', 1)[1].split('id="hierarchyPanel"', 1)[0]
+        left = HTML.split('id="lifetimePanel"', 1)[1].split('id="tableStage"', 1)[0]
+        self.assertIn('id="lockTapeList"', right)
+        self.assertIn('id="whyLockLine"', right)
+        self.assertIn('id="dualFightStrip"', right)
+        self.assertIn('id="seatStormTableBtn"', right)
+        self.assertNotIn('id="lockTapeList"', left)
+        self.assertNotIn('id="whyLockLine"', left)
+        self.assertNotIn('id="dualFightStrip"', left)
+        self.assertNotIn('id="seatStormTableBtn"', left)
         self.assertIn("START SEAT STORM", HTML)
         self.assertIn("function paintTableHud", JS)
         self.assertIn("function whyThisLockLine", JS)
@@ -72,14 +78,17 @@ class TableLeftHudTests(unittest.TestCase):
         self.assertIn('class="lifetime-log-block idle"', HTML)
         self.assertIn('logBlock.classList.add("idle")', JS)
         self.assertIn("Never auto-starts", JS)
+        self.assertIn("#debatePanel .lock-tape-card", CSS)
 
-    def test_one_h_docks_in_left_column(self):
+    def test_one_h_still_docks_in_left_column(self):
         panel = HTML.find('id="lifetimePanel"')
         led = HTML.find('id="windowLed"')
+        debate = HTML.find('id="debatePanel"')
         self.assertGreater(led, panel)
+        self.assertLess(led, debate)
         self.assertIn("body.mode-art #lifetimePanel #windowLed", CSS)
         self.assertIn("html body.mode-art #lifetimePanel #windowLed.led-float.led-window", CSS)
-        self.assertIn("#lifetimePanel .lock-tape-card", CSS)
+        self.assertNotIn("#lifetimePanel .lock-tape-card", CSS)
         self.assertIn("function dockWindowLed", JS)
 
 
