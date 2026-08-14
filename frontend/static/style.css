@@ -30,8 +30,8 @@ body {
   min-height: min(85vh, 540px);
   overflow: hidden;
   background-image:
-    radial-gradient(ellipse at 50% 30%, rgba(0, 40, 70, 0.35) 0%, transparent 55%),
-    radial-gradient(ellipse at 80% 80%, rgba(80, 0, 40, 0.18) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 30%, rgba(0, 28, 48, 0.28) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 80%, rgba(8, 12, 20, 0.22) 0%, transparent 50%),
     radial-gradient(ellipse at center, #0a1020 0%, #02040a 72%),
     repeating-linear-gradient(
       0deg,
@@ -2101,7 +2101,7 @@ html, body {
   align-items: center !important;
   justify-content: center !important;
   overflow: hidden !important;
-  background: radial-gradient(ellipse at center, rgba(40, 12, 60, 0.45) 0%, rgba(2, 4, 12, 0.95) 65%);
+  background: radial-gradient(ellipse at center, rgba(8, 14, 24, 0.55) 0%, rgba(2, 4, 10, 0.96) 70%);
 }
 #hierarchyPanel { grid-area: hierarchy !important; }
 #roundtable {
@@ -2679,6 +2679,7 @@ footer, #marketStrip, .window-timer {
 
 /* ===== MARKET MIST CANVAS (particle physics) ===== */
 .market-mist {
+  display: none !important;
   position: fixed;
   inset: 0;
   z-index: 9000;
@@ -3546,19 +3547,10 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 
 
 /* ===== Hour aurora + focus spotlight + reduced motion ===== */
-body.floor-mode::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 40, 80, calc(0.12 + (1 - var(--hour-frac, 0.5)) * 0.08)) 0%,
-    transparent 35%,
-    rgba(80, 30, 10, calc(0.05 + (1 - var(--hour-frac, 0.5)) * 0.18)) 100%
-  );
-  transition: background 1.2s ease;
+body.floor-mode::before,
+body.mode-floor::before {
+  content: none;
+  background: none;
 }
 body.floor-mode #roundtable {
   position: relative;
@@ -4923,14 +4915,14 @@ body.mode-floor #debatePanel.signal-feed {
   line-height: 1.35;
 }
 
-body.majority-up.floor-mode::before {
-  background: radial-gradient(ellipse at 50% 55%, rgba(20, 90, 30, 0.28), transparent 60%) !important;
-}
-body.majority-down.floor-mode::before {
-  background: radial-gradient(ellipse at 50% 55%, rgba(90, 10, 22, 0.30), transparent 60%) !important;
-}
-body.majority-wait.floor-mode::before {
-  background: radial-gradient(ellipse at 50% 55%, rgba(10, 40, 90, 0.28), transparent 60%) !important;
+body.majority-up.floor-mode::before,
+body.majority-down.floor-mode::before,
+body.majority-wait.floor-mode::before,
+body.majority-up.mode-floor::before,
+body.majority-down.mode-floor::before,
+body.majority-wait.mode-floor::before {
+  content: none !important;
+  background: none !important;
 }
 
 /* Floor exit — always tappable, phones have no Esc */

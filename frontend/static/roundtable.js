@@ -590,6 +590,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let hourSlamUntil = 0;
   let debateHistory = [];
   const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  let _tableEmberUntil = 0;
+  let _tableEmberKey = "";
+  let _tableEmberDir = "WAIT";
 
   // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
@@ -659,312 +662,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
 
-  /** Short purple mist burst when a new hourly market opens (~5s). */
-  /**
-   * Professional volumetric purple mist — particle physics.
-   * Soft billows + micro-sparks + ground fog, ~5s cinematic burst on new market.
-   */
+  /** Hour-open cue: short table ember, not a full-screen grape fog. */
   function playNewMarketMist() {
     try {
-      // Stop any prior run
       if (window.__mistCtrl && typeof window.__mistCtrl.stop === "function") {
         try { window.__mistCtrl.stop(); } catch (e) {}
       }
-
-      let wrap = document.getElementById("marketMist");
-      if (!wrap) {
-        wrap = document.createElement("div");
-        wrap.id = "marketMist";
-        wrap.className = "market-mist";
-        wrap.innerHTML = '<canvas id="marketMistCanvas"></canvas>';
-        document.body.appendChild(wrap);
-      }
-      let canvas = document.getElementById("marketMistCanvas");
-      if (!canvas) {
-        canvas = document.createElement("canvas");
-        canvas.id = "marketMistCanvas";
-        wrap.innerHTML = "";
-        wrap.appendChild(canvas);
-      }
-      wrap.classList.add("active");
-      wrap.classList.remove("fade");
-
-      const ctx = canvas.getContext("2d", { alpha: true });
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      let w = 0, h = 0;
-      function resize() {
-        w = window.innerWidth;
-        h = window.innerHeight;
-        canvas.width = Math.floor(w * dpr);
-        canvas.height = Math.floor(h * dpr);
-        canvas.style.width = w + "px";
-        canvas.style.height = h + "px";
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      }
-      resize();
-
-      // --- Particle system ---
-      // Layers: 0 ground fog, 1 mid billows, 2 high wisps, 3 sparkle motes
-      const blobs = [];
-      const motes = [];
-      const DURATION = 5200;
-      const FADE_START = 2800;
-      const t0 = performance.now();
-      let raf = 0;
-      let running = true;
-
-      function spawnBlob(layer) {
-        const ground = layer === 0;
-        const high = layer === 2;
-        return {
-          layer,
-          x: Math.random() * w,
-          y: ground ? h * (0.55 + Math.random() * 0.5)
-                    : high ? h * Math.random() * 0.5
-                    : h * (0.2 + Math.random() * 0.65),
-          // radius in px
-          r: ground ? (90 + Math.random() * 160)
-                    : high ? (50 + Math.random() * 110)
-                    : (70 + Math.random() * 140),
-          vx: (Math.random() - 0.5) * (ground ? 18 : 32),
-          vy: ground ? -(8 + Math.random() * 14) : (Math.random() - 0.5) * 22,
-          // turbulence seeds
-          seed: Math.random() * 1000,
-          phase: Math.random() * Math.PI * 2,
-          breath: 0.55 + Math.random() * 0.9,
-          // color in purple/magenta range
-          hue: high ? 270 + Math.random() * 28 : 285 + Math.random() * 32,
-          sat: ground ? 58 + Math.random() * 22 : 48 + Math.random() * 28,
-          lit: ground ? 26 + Math.random() * 18 : 34 + Math.random() * 22,
-          baseA: ground ? 0.16 + Math.random() * 0.12 : high ? 0.06 + Math.random() * 0.07 : 0.1 + Math.random() * 0.11,
-        };
-      }
-      function spawnMote() {
-        return {
-          x: Math.random() * w,
-          y: h * (0.15 + Math.random() * 0.75),
-          r: 0.6 + Math.random() * 1.8,
-          vx: (Math.random() - 0.5) * 40,
-          vy: -(12 + Math.random() * 40),
-          life: 0.4 + Math.random() * 1.2,
-          age: 0,
-          hue: 290 + Math.random() * 40,
-        };
-      }
-
-      for (let i = 0; i < 18; i++) blobs.push(spawnBlob(0));
-      for (let i = 0; i < 22; i++) blobs.push(spawnBlob(1));
-      for (let i = 0; i < 14; i++) blobs.push(spawnBlob(2));
-      for (let i = 0; i < 50; i++) motes.push(spawnMote());
-
-      // Cheap multi-octave turbulence (no noise lib)
-      function turb(x, y, t, seed) {
-        return Math.sin(x * 0.004 + t * 0.55 + seed)
-             + Math.sin(y * 0.005 - t * 0.4 + seed * 1.3) * 0.7
-             + Math.sin((x + y) * 0.003 + t * 0.8 + seed * 0.5) * 0.5;
-      }
-      // Wind shear: horizontal wind strengthens with height (atmospheric profile)
-      // height01 = 0 at floor, 1 at top of screen
-      function windShear(height01, t) {
-        const base = 28 + Math.sin(t * 0.35) * 10;       // slow shifting wind
-        const shear = height01 * height01;               // quadratic shear aloft
-        const gust = Math.sin(t * 1.7 + height01 * 4) * 12 * height01;
-        return base * shear + gust;
-      }
-
-      let lastTs = t0;
-      function frame(now) {
-        if (!running) return;
-        const elapsed = now - t0;
-        const t = elapsed / 1000;
-        // clamp dt so tab-throttling doesn't explode physics
-        let dt = Math.min(0.033, Math.max(0.008, (now - lastTs) / 1000));
-        lastTs = now;
-
-        // envelope: ramp in 0.55s, hold, fade after FADE_START
-        let env = 1;
-        if (elapsed < 550) env = elapsed / 550;
-        else if (elapsed > FADE_START) env = Math.max(0, 1 - (elapsed - FADE_START) / (DURATION - FADE_START));
-        env = Math.min(1, Math.max(0, env));
-
-        ctx.clearRect(0, 0, w, h);
-
-        // --- Volumetric lighting (cheap, no raymarch) ---
-        // Key light sits upper-center; shafts + in-scatter glow only
-        const lx = w * 0.5 + Math.sin(t * 0.25) * w * 0.04;
-        const ly = h * 0.18;
-        // Soft god-ray cones (additive)
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        for (let i = 0; i < 5; i++) {
-          const ang = -0.55 + i * 0.28 + Math.sin(t * 0.4 + i) * 0.04;
-          const len = h * (0.7 + (i % 2) * 0.12);
-          const tipX = lx + Math.sin(ang) * len;
-          const tipY = ly + Math.cos(ang) * len * 0.15 + len;
-          const shaft = ctx.createLinearGradient(lx, ly, tipX, tipY);
-          const a0 = (0.07 - i * 0.008) * env;
-          shaft.addColorStop(0, `rgba(190, 120, 255, ${a0})`);
-          shaft.addColorStop(0.45, `rgba(140, 60, 210, ${a0 * 0.35})`);
-          shaft.addColorStop(1, "rgba(40, 0, 80, 0)");
-          ctx.fillStyle = shaft;
-          ctx.beginPath();
-          // narrow triangle shaft
-          const spread = 36 + i * 10;
-          ctx.moveTo(lx, ly);
-          ctx.lineTo(tipX - spread, tipY);
-          ctx.lineTo(tipX + spread, tipY);
-          ctx.closePath();
-          ctx.fill();
-        }
-        // Bright core at light source
-        const core = ctx.createRadialGradient(lx, ly, 0, lx, ly, Math.min(w, h) * 0.22);
-        core.addColorStop(0, `rgba(230, 190, 255, ${0.2 * env})`);
-        core.addColorStop(0.35, `rgba(160, 80, 220, ${0.1 * env})`);
-        core.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = core;
-        ctx.beginPath();
-        ctx.arc(lx, ly, Math.min(w, h) * 0.22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // Deep purple underglow pool (floor bounce light)
-        const pool = ctx.createRadialGradient(w * 0.5, h * 0.78, 0, w * 0.5, h * 0.75, Math.max(w, h) * 0.65);
-        pool.addColorStop(0, `rgba(120, 30, 160, ${0.2 * env})`);
-        pool.addColorStop(0.45, `rgba(60, 12, 90, ${0.1 * env})`);
-        pool.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = pool;
-        ctx.fillRect(0, 0, w, h);
-
-        // Soft vignette
-        const vig = ctx.createRadialGradient(w * 0.5, h * 0.5, Math.min(w, h) * 0.28, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
-        vig.addColorStop(0, "rgba(0,0,0,0)");
-        vig.addColorStop(1, `rgba(4, 0, 10, ${0.42 * env})`);
-        ctx.fillStyle = vig;
-        ctx.fillRect(0, 0, w, h);
-
-        // Billow particles — wind shear + buoyancy + turbulence
-        for (const b of blobs) {
-          const height01 = 1 - Math.max(0, Math.min(1, b.y / h));
-          const shear = windShear(height01, t);
-          const n = turb(b.x, b.y, t, b.seed);
-          // accelerate toward shear wind (stronger aloft), add turb
-          b.vx += ((shear - b.vx) * 0.55 + n * 14) * dt;
-          b.vy += (n * 0.7 - 10 - height01 * 6) * dt; // buoyancy stronger high
-          b.vx *= (1 - 0.45 * dt);
-          b.vy *= (1 - 0.4 * dt);
-          b.x += b.vx * dt * 55;
-          b.y += b.vy * dt * 55;
-          if (b.x < -b.r) b.x = w + b.r;
-          if (b.x > w + b.r) b.x = -b.r;
-          if (b.y < -b.r) b.y = h + b.r * 0.25;
-          if (b.y > h + b.r) b.y = h * 0.55;
-
-          const breath = 1 + Math.sin(t * b.breath + b.phase) * 0.12;
-          const rr = b.r * breath;
-          // volumetric lighting: brighten particles nearer the light shaft
-          const dx = (b.x - lx) / w;
-          const dy = (b.y - ly) / h;
-          const distL = Math.sqrt(dx * dx + dy * dy);
-          const light = Math.max(0, 1 - distL * 1.6);
-          const a = b.baseA * env * (0.85 + 0.15 * Math.sin(t * 1.2 + b.phase));
-          const litBoost = b.lit + light * 18;
-          const satBoost = Math.min(90, b.sat + light * 12);
-          const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, rr);
-          g.addColorStop(0, `hsla(${b.hue}, ${satBoost}%, ${litBoost + 14}%, ${a * (1 + light * 0.5)})`);
-          g.addColorStop(0.42, `hsla(${b.hue}, ${b.sat}%, ${litBoost}%, ${a * 0.42})`);
-          g.addColorStop(1, `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, 0)`);
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(b.x, b.y, rr, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Micro mote sparks — also feel shear aloft
-        ctx.globalCompositeOperation = "lighter";
-        for (const m of motes) {
-          m.age += dt;
-          const height01 = 1 - Math.max(0, Math.min(1, m.y / h));
-          const shear = windShear(height01, t);
-          const n = turb(m.x, m.y, t, m.x * 0.01);
-          m.vx += ((shear * 0.7 - m.vx) * 0.4 + n * 20) * dt;
-          m.vy += (-22 + n * 10) * dt;
-          m.x += m.vx * dt * 50;
-          m.y += m.vy * dt * 50;
-          if (m.age > m.life || m.y < -10) {
-            m.x = Math.random() * w;
-            m.y = h * (0.4 + Math.random() * 0.55);
-            m.age = 0;
-            m.life = 0.5 + Math.random() * 1.3;
-            m.vx = (Math.random() - 0.5) * 40;
-            m.vy = -(12 + Math.random() * 36);
-          }
-          const lifeA = 1 - m.age / m.life;
-          // brighter near light
-          const dx = (m.x - lx) / w;
-          const dy = (m.y - ly) / h;
-          const light = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) * 1.8);
-          const a = lifeA * env * (0.45 + light * 0.4);
-          ctx.fillStyle = `hsla(${m.hue}, 85%, ${65 + light * 20}%, ${a})`;
-          ctx.beginPath();
-          ctx.arc(m.x, m.y, m.r * (1 + light * 0.5), 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalCompositeOperation = "source-over";
-
-        // Ground fog sheets (sheared horizontally)
-        ctx.save();
-        for (let i = 0; i < 4; i++) {
-          const y = h * (0.58 + i * 0.1) + Math.sin(t * 0.7 + i) * 16;
-          const a = (0.04 + i * 0.014) * env;
-          const band = ctx.createLinearGradient(0, y - 36, 0, y + 48);
-          band.addColorStop(0, "rgba(0,0,0,0)");
-          band.addColorStop(0.4, `rgba(130, 40, 180, ${a})`);
-          band.addColorStop(0.6, `rgba(80, 20, 120, ${a * 0.7})`);
-          band.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = band;
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          const shearOff = windShear(0.15 + i * 0.05, t) * 0.35;
-          for (let x = 0; x <= w; x += 32) {
-            const yy = y + Math.sin((x + shearOff) * 0.01 + t * 0.9 + i) * 11
-                         + Math.sin(x * 0.022 + t * 1.2) * 5;
-            ctx.lineTo(x, yy);
-          }
-          ctx.lineTo(w, y + 50);
-          ctx.lineTo(0, y + 50);
-          ctx.closePath();
-          ctx.fill();
-        }
-        ctx.restore();
-
-        if (elapsed < DURATION) {
-          raf = requestAnimationFrame(frame);
-        } else {
-          running = false;
-          wrap.classList.remove("active");
-          ctx.clearRect(0, 0, w, h);
-        }
-      }
-
-      raf = requestAnimationFrame(frame);
-      window.__mistCtrl = {
-        stop() {
-          running = false;
-          cancelAnimationFrame(raf);
-          wrap.classList.remove("active");
-          try { ctx.clearRect(0, 0, w, h); } catch (e) {}
-        }
-      };
-      // hard safety stop
-      clearTimeout(window.__mistTimer2);
-      window.__mistTimer2 = setTimeout(() => {
-        if (window.__mistCtrl) window.__mistCtrl.stop();
-      }, DURATION + 200);
-    } catch (e) {
-      console.warn("mist physics failed", e);
-    }
+      const wrap = document.getElementById("marketMist");
+      if (wrap) wrap.classList.remove("active");
+      const d = ((state && state.decision) || {}).direction || "WAIT";
+      _tableEmberDir = String(d).toUpperCase();
+      _tableEmberKey = "hour:" + Date.now();
+      _tableEmberUntil = Date.now() + 1600;
+    } catch (e) {}
   }
-
   function windowKeyFromState(s) {
 
     const m = (s && s.market) || {};
@@ -1570,23 +1281,115 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { x: x1 + (dx / dist) * r, y: y1 + (dy / dist) * r };
   }
 
-  function drawMajorityHaze(cx, cy, r, dir) {
-    const g = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r * 2.15);
-    if (dir === "UP") {
-      g.addColorStop(0, "rgba(30, 110, 40, 0.42)");
-      g.addColorStop(0.55, "rgba(20, 70, 28, 0.12)");
-    } else if (dir === "DOWN") {
-      g.addColorStop(0, "rgba(110, 16, 28, 0.44)");
-      g.addColorStop(0.55, "rgba(70, 8, 18, 0.12)");
-    } else {
-      g.addColorStop(0, "rgba(16, 48, 110, 0.40)");
-      g.addColorStop(0.55, "rgba(8, 24, 70, 0.12)");
+  let _tableWisps = null;
+
+  function smokeTone(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return { r: 28, g: 118, b: 52 };
+    if (d === "DOWN" || d === "DOWN_HOLD") return { r: 148, g: 22, b: 36 };
+    return { r: 32, g: 78, b: 132 };
+  }
+
+  function noteTableEmber(key, dir) {
+    if (!key || key === _tableEmberKey) return;
+    _tableEmberKey = key;
+    _tableEmberDir = String(dir || "WAIT").toUpperCase();
+    _tableEmberUntil = Date.now() + 1400;
+  }
+
+  function ensureTableWisps() {
+    if (_tableWisps) return _tableWisps;
+    const n = reduceMotion ? 5 : 8;
+    _tableWisps = [];
+    for (let i = 0; i < n; i++) {
+      _tableWisps.push({
+        a0: (i / n) * Math.PI * 2,
+        drift: 0.00006 + (i % 3) * 0.000025,
+        dist: 0.76 + (i % 4) * 0.05,
+        stretch: 0.19 + (i % 3) * 0.045,
+        fat: 0.042 + (i % 2) * 0.018,
+        phase: i * 1.7,
+        waitSpeck: i === 2 || i === 6,
+      });
     }
-    g.addColorStop(1, "rgba(2, 4, 10, 0)");
-    ctx.fillStyle = g;
+    return _tableWisps;
+  }
+
+  function drawTableSmoke(cx, cy, tableR, dir) {
+    if (!ctx || !tableR) return;
+    const tone = smokeTone(dir);
+    const wisps = ensureTableWisps();
+    ctx.save();
+    // Annulus on the deck — hole for the Chair, never a room wash
     ctx.beginPath();
-    ctx.arc(cx, cy, r * 2.15, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(cx, cy + tableR * 0.10, tableR * 1.06, 0, Math.PI * 2);
+    ctx.arc(cx, cy, tableR * 0.58, 0, Math.PI * 2, true);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.rect(cx - tableR * 1.2, cy - tableR * 0.02, tableR * 2.4, tableR * 1.35);
+    ctx.clip();
+
+    for (let i = 0; i < wisps.length; i++) {
+      const w = wisps[i];
+      const ang = w.a0 + time * w.drift;
+      const pulse = 0.84 + 0.16 * Math.sin(time * 0.00082 + w.phase);
+      const x = cx + Math.cos(ang) * tableR * w.dist;
+      const y = cy + tableR * 0.30 + Math.sin(ang) * tableR * w.dist * 0.36;
+      const rw = tableR * w.stretch * pulse;
+      const rh = tableR * w.fat * pulse;
+      let cr = tone.r, cg = tone.g, cb = tone.b;
+      let a = 0.10 * pulse;
+      if (String(dir || "WAIT").toUpperCase() === "WAIT" && w.waitSpeck) {
+        cr = 88; cg = 48; cb = 118;
+        a *= 0.4;
+      }
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rw);
+      g.addColorStop(0, "rgba(" + cr + "," + cg + "," + cb + "," + a + ")");
+      g.addColorStop(0.52, "rgba(" + cr + "," + cg + "," + cb + "," + (a * 0.26) + ")");
+      g.addColorStop(1, "rgba(2,4,10,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rw, rh, ang * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    if (reduceMotion || Date.now() >= _tableEmberUntil) return;
+    const span = 1400;
+    const t = 1 - (_tableEmberUntil - Date.now()) / span;
+    const fade = Math.sin(Math.min(1, Math.max(0, t)) * Math.PI);
+    if (fade <= 0.01) return;
+    const ember = smokeTone(_tableEmberDir);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 5; i++) {
+      const u = (i / 5 + t * 0.35) % 1;
+      const lift = u * tableR * 0.40;
+      const wobble = Math.sin(time * 0.007 + i * 1.3) * tableR * 0.035;
+      const x = cx + wobble;
+      const y = cy + tableR * 0.36 - lift;
+      const rad = 3 + (1 - u) * 5;
+      const a = fade * 0.20 * (1 - u);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad * 3);
+      g.addColorStop(0, "rgba(255,168,64," + a + ")");
+      g.addColorStop(0.4, "rgba(" + (ember.r + 36) + "," + (ember.g + 16) + "," + ember.b + "," + (a * 0.45) + ")");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = fade * 0.14;
+    ctx.strokeStyle = "rgba(255, 186, 88, 0.75)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx + Math.sin(time * 0.018) * 3, cy + tableR * 0.08 - t * tableR * 0.18, tableR * 0.20, tableR * 0.05, 0.12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMajorityHaze(cx, cy, r, dir) {
+    drawTableSmoke(cx, cy, r, dir);
   }
 
   function drawHourRing(cx, cy, r, frac, color) {
@@ -1858,7 +1661,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const portraitY = cy - 2;
     const ringR = radius * 1.48;
     const orbit = reduceMotion ? 0 : time * 0.00014;
-    drawMajorityHaze(cx, cy, radius, maj);
     drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
     drawHourSlamRings(cx, cy, radius);
 
@@ -1873,6 +1675,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.strokeStyle = locked ? "rgba(240, 193, 74, 0.2)" : (which === "ethereum" ? "rgba(120, 255, 160, 0.12)" : "rgba(0, 220, 255, 0.12)");
     ctx.lineWidth = 1;
     ctx.stroke();
+
+    drawTableSmoke(cx, cy, radius, maj);
+    if (locked) {
+      noteTableEmber((which || "table") + ":" + String((lc && (lc.ticker || lc.close_time)) || dir), dir);
+    }
 
     const n = Math.max(agents.length, 1);
     const chairLean = String(dir || "WAIT").toUpperCase();
@@ -2131,7 +1938,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     const preAgents = (state && state.agents) || [];
     const maj = majorityDirOf(preAgents);
-    drawMajorityHaze(cx, cy, radius, maj);
     try {
       document.body.classList.remove("majority-up", "majority-down", "majority-wait");
       document.body.classList.add(maj === "UP" ? "majority-up" : maj === "DOWN" ? "majority-down" : "majority-wait");
@@ -2168,7 +1974,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ? "rgba(0, 232, 255, 0.38)"
           : i === 1
             ? "rgba(240, 193, 74, 0.22)"
-            : "rgba(255, 0, 170, 0.14)";
+            : "rgba(180, 210, 230, 0.10)";
       }
       ctx.lineWidth = 1.6 - i * 0.3;
       ctx.stroke();
@@ -2199,6 +2005,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.setLineDash([6, 8]);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    drawTableSmoke(cx, cy, radius, maj);
+    try {
+      const d0 = (state && state.decision) || {};
+      const lc0 = d0.locked_call || (state && state.locked_call) || {};
+      if (lc0 && lc0.locked && lc0.direction) {
+        noteTableEmber(String(lc0.ticker || lc0.close_time || lc0.direction), lc0.direction);
+      }
+    } catch (e) {}
 
     // ── CENTER LOCKED CALL PLAQUE (follower-bot clear) ──
     // Table is reserved for the single GOAL CONTRACT call.
