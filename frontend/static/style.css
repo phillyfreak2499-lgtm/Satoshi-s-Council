@@ -5090,3 +5090,64 @@ body.admin-unlocked.mode-settings #adminToolsCard,
 body.admin-unlocked.mode-settings #brainCard {
   display: block !important;
 }
+
+/* ===== MED: 1H WINDOW unclipped on Floor / Table ===== */
+#windowLed,
+#windowLed.led-window,
+#windowLed.led-float {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+body.mode-art #windowLed,
+body.mode-art #windowLed.led-window,
+body.floor-mode #windowLed,
+body.floor-mode #windowLed.led-window,
+body.mode-floor #windowLed,
+body.mode-floor #windowLed.led-window {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 110 !important;
+}
+body.floor-mode #mainTable,
+body.mode-floor #mainTable {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+}
+body.floor-mode #tableStage,
+body.mode-floor #tableStage,
+body.floor-mode .table-stage,
+body.mode-floor .table-stage {
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+/* ===== MED: only the current tab stays lit ===== */
+body:not(.mode-art) #app > header #tabScreensaver,
+body:not(.mode-art) #app > header #tabScreensaver.active,
+body:not(.mode-floor) #app > header #tabFloor,
+body:not(.mode-floor) #app > header #tabFloor.active,
+body:not(.mode-dashboard) #app > header #tabDashboard,
+body:not(.mode-dashboard) #app > header #tabDashboard.active,
+body:not(.mode-bots) #app > header #tabBots,
+body:not(.mode-bots) #app > header #tabBots.active,
+body:not(.mode-ranks) #app > header #tabRanks,
+body:not(.mode-ranks) #app > header #tabRanks.active,
+body:not(.mode-paper) #app > header #tabPaper,
+body:not(.mode-paper) #app > header #tabPaper.active,
+body:not(.mode-charts) #app > header #tabCharts,
+body:not(.mode-charts) #app > header #tabCharts.active,
+body:not(.mode-settings) #app > header #tabSettings,
+body:not(.mode-settings) #app > header #tabSettings.active {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}

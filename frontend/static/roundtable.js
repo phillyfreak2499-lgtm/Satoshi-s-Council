@@ -452,7 +452,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     document.body.classList.toggle("floor-mode", next === "floor");
   }
   function syncExclusiveTabActive(next) {
-    document.querySelectorAll(".mode-tab").forEach((btn) => {
+    document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
       if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp" || !btn.dataset.mode) {
         btn.classList.remove("active");
         if (btn.hasAttribute("aria-selected")) btn.setAttribute("aria-selected", "false");
@@ -556,13 +556,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!focused) return state;
     const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
     return Object.assign({}, state, {
-      decision: focused.decision || state.decision,
-      locked_call: lc || state.locked_call,
-      agents: focused.agents || state.agents,
-      market: focused.market || state.market,
-      accuracy: focused.accuracy || state.accuracy,
-      hierarchy: focused.hierarchy || state.hierarchy,
-      learning: focused.learning || state.learning,
+      decision: focused.decision || {},
+      locked_call: lc || null,
+      agents: Array.isArray(focused.agents) ? focused.agents : [],
+      market: focused.market || {},
+      accuracy: focused.accuracy || {},
+      hierarchy: focused.hierarchy || [],
+      learning: focused.learning || {},
+      weights: focused.weights || (focused.learning && focused.learning.weights) || {},
       _focusTable: focusTable,
     });
   }
@@ -611,6 +612,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   /** Synthesized exchange-style opening bell (no sample file / no copyright). */
   function playMarketBell() {
     if (soundMuted) return;
+    try {
+      if (typeof window.__floorMusicDuck === "function") window.__floorMusicDuck(2200);
+    } catch (e) {}
     const ctx = ensureAudio();
     if (!ctx || !bellArmed) return;
     const now = ctx.currentTime;
@@ -2686,19 +2690,23 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function renderDashboard() {
-    if (!state || !state.agents) {
+    const view = (typeof getViewState === "function" ? getViewState() : null) || state;
+    if (!view || !Array.isArray(view.agents)) {
       overlay.innerHTML = "";
       return;
     }
-    const learning = state.learning || {};
+    const learning = view.learning || {};
     const records = learning.records || {};
     const topPairs = learning.top_pairs || [];
-    const weights = state.weights || learning.weights || {};
+    const weights = view.weights || learning.weights || {};
+    const focusName = (view._focusTable === "ethereum" || focusTable === "ethereum")
+      ? "ETH · Vitalik"
+      : "BTC · Satoshi";
 
     const pairCard = topPairs.length
       ? `<div class="agent-card pair-card">
           <div class="name">COALITIONS</div>
-          <div class="title">Satoshi memory · right together</div>
+          <div class="title">${focusName} memory · right together</div>
           ${topPairs.slice(0, 4).map(p => {
             const labels = (p.labels || p.pair.split("|")).join(" + ");
             const pct = p.affinity != null ? Math.round(p.affinity * 100) : "—";
@@ -2710,7 +2718,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`
       : "";
 
-    const agentCards = state.agents.map(a => {
+    const agentCards = view.agents.map(a => {
       const col = strongColor(a.direction);
       const callsign = labelOf(a);
       const title = titleOf(a);
@@ -3885,10 +3893,18 @@ function drawCandleChart() {
 
   function paperPnlPreview() {
     const stake = Number(document.getElementById("peStake")?.value || 0);
-    const ret = Number(document.getElementById("peReturned")?.value || 0);
-    const pnl = ret - stake;
+    const retEl = document.getElementById("peReturned");
+    const retRaw = retEl ? String(retEl.value).trim() : "";
     const el = document.getElementById("pePnl");
     if (!el) return;
+    // Empty "got back" is a scratch preview, not a ghost −$25 loss.
+    if (retRaw === "") {
+      el.textContent = "$0.00";
+      el.className = "";
+      return;
+    }
+    const ret = Number(retRaw);
+    const pnl = (Number.isFinite(ret) ? ret : 0) - stake;
     el.textContent = (pnl >= 0 ? "+" : "") + "$" + pnl.toFixed(2);
     el.className = pnl > 0 ? "pos" : (pnl < 0 ? "neg" : "");
   }
@@ -6339,6 +6355,17 @@ function drawCandleChart() {
     else stopMusic();
   };
 
+  window.__floorMusicDuck = function (ms) {
+    if (!audio || muted || !active) return;
+    try { audio.volume = Math.min(vol, 0.04); } catch (e) {}
+    const hold = Math.max(400, Number(ms) || 2200);
+    setTimeout(() => {
+      if (audio && !muted) {
+        try { audio.volume = vol; } catch (e) {}
+      }
+    }, hold);
+  };
+
   window.__floorMusicToggleMute = function () {
     muted = !muted;
     localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
@@ -6486,11 +6513,4 @@ function drawCandleChart() {
 })();
 
 
-/* AUDIO_STRIPPED_V1 — hard disable all sound */
-function ensureAudio(){ return null; }
-function playMarketBell(){ return; }
-function playSfxClick(){ return; }
-function playSfxWhoosh(){ return; }
-function playSfxFogDrone(){ return; }
-function playSfxChime(){ return; }
-function playSfxReveal(){ return; }
+/* Sound lives inside the desk IIFE. Do not stub Bell here — Floor music ducks under it. */
