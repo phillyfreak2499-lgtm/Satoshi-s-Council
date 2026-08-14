@@ -96,6 +96,12 @@ class DualOrchestrator:
                 await c.hydrate_persisted_desk()
             except Exception as e:
                 logger.debug(f"desk hydrate {c.asset}: {e}")
+            try:
+                n = await c.sweep_official_finishes()
+                if n:
+                    logger.info(f"[{c.asset}] Official closer swept {n} open hour(s)")
+            except Exception as e:
+                logger.debug(f"official closer sweep skip ({c.asset}): {e}")
             c.running = True
         self.running = True
         self._task = asyncio.create_task(self._loop())

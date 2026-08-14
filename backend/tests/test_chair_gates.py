@@ -16,8 +16,10 @@ from backend.agents.chair_gates import (
     eth_fades_btc_impulse,
     ev_gate_blocks,
     finish_outcome,
+    known_official_market,
     kalshi_result_to_side,
     kalshi_taker_fee_cents,
+    official_y_finish,
     late_spot_decisive,
     official_window_due,
     pick_settle_spot,
@@ -131,22 +133,23 @@ class WindowStrikeTests(unittest.TestCase):
         self.assertEqual(ticker_asset(ticker), "eth")
         self.assertEqual(ticker_asset("KXBTCD-26AUG1415-T62999.99"), "btc")
 
-    def test_finish_prefers_official_then_locked_strike(self):
+    def test_official_y_finish_only_from_kalshi_result(self):
         self.assertEqual(kalshi_result_to_side("yes"), "UP")
         self.assertEqual(kalshi_result_to_side({"result": "no"}), "DOWN")
-        self.assertEqual(
-            resolve_finish_side(spot=None, locked_strike=62999.99, kalshi_result="yes"),
-            "UP",
-        )
-        self.assertEqual(
-            resolve_finish_side(
-                spot=63050,
-                locked_strike=None,
-                ticker="KXBTCD-26AUG1415-T62999.99",
-            ),
-            "UP",
-        )
-        self.assertIsNone(resolve_finish_side(spot=None, locked_strike=62999.99))
+        self.assertEqual(official_y_finish({"status": "finalized", "result": "no"}), "DOWN")
+        self.assertEqual(official_y_finish({"status": "finalized", "result": "yes"}), "UP")
+        self.assertIsNone(official_y_finish({"status": "active", "result": "no"}))
+        # Later-hour spot must not invent y_finish
+        self.assertIsNone(official_y_finish(None))
+        self.assertIsNone(resolve_finish_side(spot=63050, locked_strike=62999.99, kalshi_result=None))
+        # 1062 / 1063 documented official finishes
+        btc = known_official_market("KXBTCD-26AUG1415-T62999.99", 1062)
+        eth = known_official_market("KXETHD-26AUG1415-T1874.99", 1063)
+        self.assertEqual(official_y_finish(btc), "DOWN")
+        self.assertEqual(official_y_finish(eth), "DOWN")
+        self.assertEqual(resolve_finish_side(ticker="KXBTCD-26AUG1415-T62999.99"), "DOWN")
+        # id 1062 with a different ticker must not apply
+        self.assertIsNone(known_official_market("KXBTCD-OTHER", 1062))
 
     def test_exact_strike_finish(self):
         self.assertEqual(finish_outcome(100_100, 100_000), "UP")

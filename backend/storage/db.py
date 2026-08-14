@@ -14,9 +14,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer, Text, select, func
 from backend.config import settings
 from backend.agents.chair_gates import (
-    official_window_due,
+    known_official_market,
+    official_y_finish,
     resolve_close_time,
-    resolve_finish_side,
     strike_from_kalshi_ticker,
     ticker_asset,
 )
@@ -84,6 +84,7 @@ class WindowCall(Base):
     floor_strike: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # exact locked strike
     p_finish: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     ev_cents: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    y_finish: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # official UP/DOWN
 
 
 
@@ -125,6 +126,7 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN floor_strike FLOAT",
                 "ALTER TABLE window_calls ADD COLUMN p_finish FLOAT",
                 "ALTER TABLE window_calls ADD COLUMN ev_cents FLOAT",
+                "ALTER TABLE window_calls ADD COLUMN y_finish VARCHAR(10)",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -506,9 +508,9 @@ class PerformanceStore:
         A call is RIGHT only when the window has ended and the final
         market outcome matches the locked side (UP or DOWN).
 
-        Close clock + locked strike come from the row, or from the Kalshi
-        ticker (KXBTCD-26AUG1415-T62999.99) when those columns are empty.
-        Official Kalshi yes/no beats a later spot print.
+        y_finish is written only from an official Kalshi result
+        (yes→UP, no→DOWN) after the market is finalized/determined/settled.
+        Later-hour spot is never used.
         """
         now = datetime.now(timezone.utc)
         settled_n = 0
@@ -546,46 +548,36 @@ class PerformanceStore:
                     except (TypeError, ValueError):
                         pass
 
-                if not official_window_due(row.close_time, now=now, ticker=row.ticker):
+                official = (
+                    results.get(row.ticker)
+                    or results.get(str(row.ticker or "").upper())
+                    or results.get(row.id)
+                    or results.get(str(row.id))
+                    or known_official_market(row.ticker, row.id)
+                )
+                y_finish = official_y_finish(official)
+                if y_finish is None:
+                    # Not finalized — leave OPEN. Do not invent from a later-hour spot.
                     continue
                 resolved_ct = resolve_close_time(row.close_time, row.ticker)
                 if resolved_ct is not None and not row.close_time:
                     row.close_time = resolved_ct.isoformat()
+                if getattr(row, "floor_strike", None) is None:
+                    inferred_k = strike_from_kalshi_ticker(row.ticker)
+                    if inferred_k is not None:
+                        row.floor_strike = inferred_k
 
-                locked_strike = None
-                try:
-                    if getattr(row, "floor_strike", None) is not None:
-                        locked_strike = float(row.floor_strike)
-                except (TypeError, ValueError):
-                    locked_strike = None
-                if locked_strike is None:
-                    locked_strike = strike_from_kalshi_ticker(row.ticker)
-                    if locked_strike is not None:
-                        row.floor_strike = locked_strike
-                if locked_strike is None:
-                    try:
-                        locked_strike = float(floor_strike) if floor_strike is not None else None
-                    except (TypeError, ValueError):
-                        locked_strike = None
-
-                official = results.get(row.ticker) or results.get(str(row.ticker or "").upper())
-                final = resolve_finish_side(
-                    spot=current_price,
-                    locked_strike=locked_strike,
-                    ticker=row.ticker,
-                    kalshi_result=official,
-                )
                 stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
                 row.paper_stake = stake
                 if not row.paper_side:
                     row.paper_side = self._paper_side(row.direction)
 
-                if final is None:
-                    # Due, but still no official result and no honest spot/strike
-                    continue
-
-                matched = final == side
-                row.actual_outcome = final
+                matched = y_finish == side
+                row.actual_outcome = y_finish
+                try:
+                    row.y_finish = y_finish
+                except Exception:
+                    pass
                 row.correct = 1 if matched else 0
                 row.settled_at = now.isoformat()
                 row.settle_reason = "finish_match" if matched else "finish_miss"
@@ -613,6 +605,7 @@ class PerformanceStore:
             "ticker": r.ticker,
             "direction": r.direction,
             "outcome": r.actual_outcome,
+            "y_finish": getattr(r, "y_finish", None) or r.actual_outcome,
             "correct": (bool(r.correct == 1) if r.correct is not None else None),
             "confidence": r.confidence,
             "entry": r.entry_price,

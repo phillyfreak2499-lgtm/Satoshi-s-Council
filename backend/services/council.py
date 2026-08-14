@@ -43,7 +43,8 @@ from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
-    official_window_due,
+    known_official_market,
+    official_y_finish,
     odds_to_cents,
     parse_book_depth,
     pick_settle_spot,
@@ -160,6 +161,12 @@ class Council:
             await self.hydrate_persisted_desk()
         except Exception as e:
             logger.debug(f"desk hydrate skip ({self.asset}): {e}")
+        try:
+            n = await self.sweep_official_finishes()
+            if n:
+                logger.info(f"[{self.asset}] Official closer swept {n} open hour(s)")
+        except Exception as e:
+            logger.debug(f"official closer sweep skip ({self.asset}): {e}")
         self.running = True
         self._task = asyncio.create_task(self._loop())
         logger.info(f"Council continuous analysis started asset={self.asset} leader={self.leader_name}")
@@ -271,6 +278,68 @@ class Council:
                 pass
         return spot
 
+    async def _official_results_for_opens(self) -> Dict[str, Any]:
+        """Fetch finalized Kalshi markets for every OPEN paper hour. No model."""
+        import inspect
+        results: Dict[str, Any] = {}
+        opens = []
+        getter = getattr(self.store, "list_open_calls", None)
+        if callable(getter):
+            # Every OPEN row — a BTC loop must still see a finalized ETH ticker.
+            maybe = getter()
+            opens = await maybe if inspect.isawaitable(maybe) else (maybe or [])
+        if not isinstance(opens, list):
+            opens = []
+        tickers: list[str] = []
+        for row in opens:
+            if not isinstance(row, dict):
+                continue
+            t = row.get("ticker")
+            known = known_official_market(t, row.get("id"))
+            if known:
+                results[t] = known
+                if row.get("id") is not None:
+                    results[row["id"]] = known
+            if t:
+                tickers.append(t)
+        client = getattr(getattr(self, "pipeline", None), "kalshi", None)
+        fn = getattr(client, "get_market", None) if client is not None else None
+        if callable(fn):
+            for ticker in tickers[:40]:
+                try:
+                    maybe = fn(ticker)
+                    market = await maybe if inspect.isawaitable(maybe) else (maybe or {})
+                except Exception:
+                    market = {}
+                # Live fetch wins only when Kalshi has an official yes/no.
+                # A flap or still-active body must not clobber a known official.
+                if isinstance(market, dict) and official_y_finish(market):
+                    results[ticker] = market
+        return results
+
+    async def sweep_official_finishes(self) -> int:
+        """Startup/loop closer: write y_finish from official result, then learn."""
+        kalshi_results = {}
+        try:
+            kalshi_results = await self._official_results_for_opens()
+        except Exception as e:
+            logger.debug(f"Kalshi official fetch skip: {e}")
+            kalshi_results = {}
+        settled_n = 0
+        try:
+            settled_n = await self.store.settle_expired_calls(
+                current_price=None,
+                asset=None,
+                kalshi_results=kalshi_results,
+            )
+        except Exception as e:
+            logger.debug(f"Settle skip: {e}")
+        try:
+            await self._learn_from_new_settlements()
+        except Exception as e:
+            logger.debug(f"Adaptive learn skip: {e}")
+        return settled_n
+
     async def settle_due_windows(
         self,
         current_price: Any = None,
@@ -280,57 +349,30 @@ class Council:
         close_time: Any = None,
     ) -> int:
         """
-        Finish-only settle + learn. Safe to call after analyze_once fails.
-        Uses last known spot when this cycle's price is missing or <= 0.
+        Finish-only settle + learn from official Kalshi result.
+        Later-hour spot is not y_finish.
         """
         st = self.latest_state or {}
         mkt = st.get("market") or {}
-        price = self._usable_spot(current_price if current_price is not None else mkt.get("current_price") or mkt.get("price"))
         if up_pct is None:
             up_pct = mkt.get("up_pct")
         if down_pct is None:
             down_pct = mkt.get("down_pct")
-        if floor_strike is None:
-            floor_strike = mkt.get("kalshi_floor_strike") or mkt.get("floor_strike")
         if close_time is None:
             close_time = mkt.get("close_time")
         kalshi_results: Dict[str, Any] = {}
         try:
-            import inspect
-            opens = []
-            getter = getattr(self.store, "list_open_calls", None)
-            if callable(getter):
-                maybe = getter(asset=self.asset)
-                opens = await maybe if inspect.isawaitable(maybe) else (maybe or [])
-            due = []
-            for row in opens or []:
-                if not isinstance(row, dict):
-                    continue
-                if official_window_due(row.get("close_time"), ticker=row.get("ticker")):
-                    t = row.get("ticker")
-                    if t:
-                        due.append(t)
-            client = getattr(getattr(self, "pipeline", None), "kalshi", None)
-            fn = getattr(client, "get_market", None) if client is not None else None
-            if due and callable(fn):
-                for ticker in due[:8]:
-                    try:
-                        maybe = fn(ticker)
-                        market = await maybe if inspect.isawaitable(maybe) else (maybe or {})
-                    except Exception:
-                        market = {}
-                    if isinstance(market, dict) and market:
-                        kalshi_results[ticker] = market
+            kalshi_results = await self._official_results_for_opens()
         except Exception as e:
             logger.debug(f"Kalshi close-result fetch skip: {e}")
         settled_n = 0
         try:
             settled_n = await self.store.settle_expired_calls(
-                current_price=price,
+                current_price=None,
                 up_pct=up_pct,
                 down_pct=down_pct,
-                floor_strike=floor_strike,
-                asset=self.asset,
+                floor_strike=None,
+                asset=None,
                 kalshi_results=kalshi_results,
             )
             try:

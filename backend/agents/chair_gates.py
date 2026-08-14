@@ -164,12 +164,92 @@ def kalshi_result_to_side(raw: Any) -> Optional[str]:
     if raw is None:
         return None
     if isinstance(raw, dict):
-        raw = raw.get("result") or raw.get("settlement_result") or raw.get("outcome")
+        inner = raw.get("market") if isinstance(raw.get("market"), dict) else raw
+        raw = (
+            inner.get("result")
+            or inner.get("settlement_result")
+            or inner.get("outcome")
+            or inner.get("y_finish")
+        )
     text = str(raw or "").strip().lower()
     if text in ("yes", "y", "up"):
         return "UP"
     if text in ("no", "n", "down"):
         return "DOWN"
+    return None
+
+
+_FINAL_STATUS = frozenset({"finalized", "determined", "settled", "final", "closed"})
+_LIVE_STATUS = frozenset({"active", "initialized", "open", "unopened"})
+
+# Public API snapshots (not a model). Used to unstick 1062/1063 if fetch flaps.
+KNOWN_OFFICIAL_FINISH: Dict[str, Dict[str, Any]] = {
+    "KXBTCD-26AUG1415-T62999.99": {
+        "ticker": "KXBTCD-26AUG1415-T62999.99",
+        "status": "finalized",
+        "result": "no",
+        "y_finish": "DOWN",
+        "expiration_value": 62857.17,
+        "settlement_ts": "2026-08-14T19:02:44Z",
+        "ids": (1062,),
+    },
+    "KXETHD-26AUG1415-T1874.99": {
+        "ticker": "KXETHD-26AUG1415-T1874.99",
+        "status": "finalized",
+        "result": "no",
+        "y_finish": "DOWN",
+        "expiration_value": 1873.96,
+        "settlement_ts": "2026-08-14T19:02:34Z",
+        "ids": (1063,),
+    },
+}
+KNOWN_OFFICIAL_BY_ID: Dict[int, str] = {
+    1062: "KXBTCD-26AUG1415-T62999.99",
+    1063: "KXETHD-26AUG1415-T1874.99",
+}
+
+
+def known_official_market(ticker: Any = None, call_id: Any = None) -> Optional[Dict[str, Any]]:
+    """Return a documented official Kalshi finish, or None. Never invents a side."""
+    t = str(ticker or "").strip()
+    rec = KNOWN_OFFICIAL_FINISH.get(t)
+    if rec:
+        return dict(rec)
+    try:
+        cid = int(call_id)
+    except (TypeError, ValueError):
+        return None
+    mapped = KNOWN_OFFICIAL_BY_ID.get(cid)
+    if not mapped:
+        return None
+    rec = KNOWN_OFFICIAL_FINISH.get(mapped)
+    if not rec:
+        return None
+    if t and t != mapped:
+        return None
+    return dict(rec)
+
+
+def official_y_finish(raw: Any) -> Optional[str]:
+    """
+    y_finish from an official Kalshi result only.
+    yes → UP, no → DOWN. No later-hour spot. No model.
+    Writes only when the market is finalized / determined / settled
+    or the public result field is already yes/no.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return kalshi_result_to_side(raw)
+    inner = raw.get("market") if isinstance(raw.get("market"), dict) else raw
+    status = str(inner.get("status") or "").strip().lower()
+    side = kalshi_result_to_side(inner)
+    if not side:
+        return None
+    if status in _LIVE_STATUS:
+        return None
+    if status in _FINAL_STATUS or status == "" or inner.get("result"):
+        return side
     return None
 
 
@@ -189,14 +269,12 @@ def resolve_finish_side(
     ticker: Any = None,
     kalshi_result: Any = None,
 ) -> Optional[str]:
-    """Official result first; else last spot vs locked (or ticker) strike."""
-    official = kalshi_result_to_side(kalshi_result)
-    if official:
-        return official
-    strike = locked_strike
-    if strike is None:
-        strike = strike_from_kalshi_ticker(ticker)
-    return finish_outcome(spot, strike)
+    """Closer: official Kalshi result only. Spot is ignored (later-hour prints lie)."""
+    y = official_y_finish(kalshi_result)
+    if y:
+        return y
+    known = known_official_market(ticker)
+    return official_y_finish(known)
 
 
 def window_minutes_from_times(open_time: Any, close_time: Any) -> Optional[float]:
