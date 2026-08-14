@@ -116,8 +116,12 @@ async def roster():
 
 @app.get("/api/accuracy")
 async def accuracy():
-    """Lifetime hit-rate: correct / total + rolling windows + verdict."""
-    return await council.store.get_accuracy()
+    """Lifetime hit-rate per asset (btc/eth) + combined."""
+    store = council.store
+    btc = await store.get_accuracy(asset="btc")
+    eth = await store.get_accuracy(asset="eth")
+    all_ = await store.get_accuracy(asset=None)
+    return {"btc": btc, "eth": eth, "combined": all_, **all_}
 
 
 @app.get("/api/huddle")
@@ -478,6 +482,21 @@ if STATIC_DIR.is_dir():
     @app.get("/chair-wait.jpg")
     async def chair_wait():
         return FileResponse(STATIC_DIR / "chair-wait.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/vitalik-up.jpg")
+    async def vitalik_up():
+        return FileResponse(STATIC_DIR / "vitalik-up.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/vitalik-down.jpg")
+    async def vitalik_down():
+        return FileResponse(STATIC_DIR / "vitalik-down.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/vitalik-wait.jpg")
+    async def vitalik_wait():
+        return FileResponse(STATIC_DIR / "vitalik-wait.jpg", media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/hive-egg.png")
