@@ -274,6 +274,10 @@ class Council:
         try:
             rk = regime_from_market(market_data)
             regime_features["regime_key"] = rk
+            # Ticker required for per-window Chair lock
+            if ticker:
+                regime_features["ticker"] = ticker
+                regime_features["market_ticker"] = ticker
             # mins_left for classify fallback
             from backend.learning.regime_keys import parse_mins_left
             km = market_data.get("kalshi_market") or {}
@@ -294,6 +298,26 @@ class Council:
                     regime_features["spread_cents"] = abs(a - b)
             except Exception:
                 pass
+            # Quiet-mode signals (ATR / vol / volume percentile when available)
+            try:
+                if market_data.get("atr_pct") is not None:
+                    regime_features["atr_pct"] = float(market_data["atr_pct"])
+                if market_data.get("realized_vol") is not None:
+                    regime_features["realized_vol"] = float(market_data["realized_vol"])
+                if market_data.get("volume_percentile") is not None:
+                    regime_features["volume_percentile"] = float(market_data["volume_percentile"])
+                # Fallback: crude ATR from features if agents provided it
+                if "atr_pct" not in regime_features and regime_sig and isinstance(regime_sig.features, dict):
+                    for k in ("atr_pct", "atr", "realized_vol"):
+                        if regime_sig.features.get(k) is not None:
+                            regime_features["atr_pct"] = float(regime_sig.features[k])
+                            break
+            except Exception:
+                pass
+            if up_pct is not None:
+                regime_features["up_pct"] = up_pct
+            if down_pct is not None:
+                regime_features["down_pct"] = down_pct
         except Exception:
             pass
 
