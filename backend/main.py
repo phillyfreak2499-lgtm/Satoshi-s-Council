@@ -16,10 +16,11 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from backend.services.council import Council
+from backend.services.dual import DualOrchestrator
 from backend.config import settings
 from backend.services.runtime_settings import runtime_settings
 
-council = Council()
+council = DualOrchestrator()  # BTC Satoshi + ETH Vitalik
 
 # frontend/static is the single deployable UI for Render
 STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "static"
