@@ -106,6 +106,11 @@ class PacksNotDroppedTests(unittest.TestCase):
             self.assertNotIn(needle, HTML)
             self.assertNotIn(needle, JS)
 
+    def test_charts_wall_has_eth_canvas(self):
+        self.assertIn('id="chartEth"', HTML)
+        self.assertIn("function drawChartEth()", JS)
+        self.assertIn('p => p.down, "#ff2d55"', JS)
+
 
 if __name__ == "__main__":
     unittest.main()

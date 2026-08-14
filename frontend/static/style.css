@@ -416,37 +416,56 @@ header {
   opacity: 0.7;
 }
 
-/* Charts tab wall */
+/* Charts tab wall — game HUD, both pairs on screen */
 .charts-view {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 14px 16px 18px;
   background:
     radial-gradient(ellipse at 20% 0%, rgba(0, 40, 70, 0.25) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 100%, rgba(40, 0, 30, 0.15) 0%, transparent 45%);
 }
 .charts-view.hidden { display: none; }
+.charts-pairs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 280px;
+  margin-bottom: 12px;
+}
 .charts-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: minmax(180px, 1fr);
+  grid-auto-rows: minmax(180px, auto);
   gap: 12px;
-  height: 100%;
-  min-height: 520px;
+  height: auto;
+  min-height: 0;
 }
 .chart-card {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 180px;
   background: linear-gradient(145deg, rgba(8, 14, 26, 0.95), rgba(3, 6, 14, 0.96));
   border: 1px solid rgba(0, 232, 255, 0.2);
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   box-shadow: 0 0 18px rgba(0, 232, 255, 0.05);
 }
-.chart-card.chart-wide {
-  grid-column: span 2;
-  grid-row: span 2;
+.chart-card.chart-wide,
+.chart-card.chart-pair {
+  grid-column: span 1;
+  grid-row: span 1;
+  min-height: 260px;
+}
+.chart-card.chart-pair-btc {
+  border-color: rgba(0, 232, 255, 0.42);
+  box-shadow: 0 0 24px rgba(0, 232, 255, 0.12), inset 0 0 40px rgba(0, 30, 60, 0.25);
+}
+.chart-card.chart-pair-eth {
+  border-color: rgba(57, 255, 20, 0.35);
+  box-shadow: 0 0 24px rgba(57, 255, 20, 0.1), inset 0 0 40px rgba(10, 40, 16, 0.22);
 }
 .chart-card-head {
   display: flex;
@@ -466,23 +485,60 @@ header {
   font-size: 0.55rem;
 }
 .chart-card canvas {
-  flex: 1;
+  flex: 1 1 auto;
   width: 100%;
-  min-height: 0;
+  min-height: 140px;
+  height: 140px;
   display: block;
 }
+.chart-card.chart-pair canvas,
+.chart-card.chart-wide canvas {
+  min-height: 220px;
+  height: 220px;
+}
+.chart-card.chart-tape {
+  min-height: 220px;
+}
+.chart-lock-list {
+  margin: 0;
+  padding: 6px 10px 8px;
+  list-style: none;
+  max-height: 132px;
+  overflow-y: auto;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: #c0e8ff;
+  border-top: 1px solid rgba(240, 193, 74, 0.12);
+  flex-shrink: 0;
+}
+.chart-lock-list.empty,
+.chart-lock-empty {
+  color: rgba(140, 160, 180, 0.8);
+}
+.chart-lock-row {
+  display: grid;
+  grid-template-columns: 36px 44px 1fr auto;
+  gap: 8px;
+  padding: 3px 0;
+}
+.chart-lock-row.lock-open { color: var(--gold); }
+.chart-lock-row .lock-side.up { color: var(--jade); }
+.chart-lock-row .lock-side.down { color: var(--blood); }
 @media (max-width: 1100px) {
-  .charts-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .chart-card.chart-wide {
-    grid-column: span 2;
+  .charts-pairs { grid-template-columns: 1fr 1fr; }
+  .charts-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-card.chart-wide,
+  .chart-card.chart-pair {
+    grid-column: span 1;
     grid-row: span 1;
   }
 }
 @media (max-width: 640px) {
+  .charts-pairs,
   .charts-grid { grid-template-columns: 1fr; }
-  .chart-card.chart-wide { grid-column: span 1; }
+  .chart-card.chart-wide,
+  .chart-card.chart-pair { grid-column: span 1; }
 }
 #mainTable.hidden { display: none; }
 
@@ -4647,11 +4703,44 @@ body.mode-settings #settingsView #adminToolsCard {
     height: 120px !important;
   }
 
-  .info-view:not(.hidden),
-  .charts-view:not(.hidden) {
+  .info-view:not(.hidden) {
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
+  }
+  body.mode-charts #chartsView.charts-view:not(.hidden),
+  .charts-view:not(.hidden) {
+    display: block !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .charts-pairs,
+  .charts-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .chart-card {
+    min-height: 200px !important;
+    width: 100% !important;
+  }
+  .chart-card.chart-pair,
+  .chart-card.chart-wide {
+    min-height: 260px !important;
+  }
+  .chart-card canvas {
+    min-height: 160px !important;
+    height: 160px !important;
+  }
+  .chart-card.chart-pair canvas,
+  .chart-card.chart-wide canvas {
+    min-height: 220px !important;
+    height: 220px !important;
   }
 }
 
@@ -5431,6 +5520,29 @@ body.mode-floor #app > header {
 body:not(.mode-art):not(.floor-mode):not(.mode-floor) #app > header #windowLed {
   display: none !important;
   visibility: hidden !important;
+}
+
+/* ===== CHARTS HUD — real canvas height, both pairs, 390 scroll ===== */
+body.mode-charts #chartsView.charts-view:not(.hidden) {
+  display: block !important;
+  visibility: visible !important;
+  position: relative !important;
+  left: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+#chartBtc, #chartEth, #chartOdds, #chartTape, #chartAccuracy, #chartWeights,
+#chartVolume, #chartDelta, #chartFunding {
+  min-width: 160px;
+  min-height: 140px;
+}
+#chartBtc, #chartEth {
+  min-height: 220px;
+}
+#chartWeights {
+  min-height: 160px;
 }
 
 /* ===== COLD-LOAD GATES — last word, do not ship unlocked ===== */

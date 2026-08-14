@@ -648,11 +648,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   // Rolling series for Charts tab (built from poll snapshots)
   const series = {
-    odds: [],      // {t, up}
+    odds: [],      // {t, up, down}
     delta: [],     // {t, d} price - target
     funding: [],   // {t, f}
-    tape: [],      // {t, dir, conf}
-    accuracy: [],  // {t, pct}
+    tape: [],      // {t, dir, conf} live lean (lock history is separate)
+    accuracy: [],  // {t, pct, n, correct} finish-only, n>0 only
     max: 90,
   };
   function pushSeries(arr, point) {
@@ -3187,12 +3187,18 @@ function drawCandleChart() {
     const m = s.market || {};
     const price = Number(m.price);
     const target = Number(m.kalshi_target);
+    let up = Number(m.up_pct);
+    let down = Number(m.down_pct);
     let yes = m.kalshi_yes_bid;
     if (typeof yes === "string") yes = parseFloat(yes);
-    // Kalshi may return 0-1 or 0-100
-    if (Number.isFinite(yes)) {
-      if (yes > 1.5) yes = yes / 100;
-      pushSeries(series.odds, { t, up: yes * 100 });
+    if (!Number.isFinite(up) && Number.isFinite(yes)) {
+      up = yes > 1.5 ? yes : yes * 100;
+    }
+    if (Number.isFinite(up)) {
+      if (up <= 1.5 && up >= 0) up = up * 100;
+      if (!Number.isFinite(down)) down = 100 - up;
+      if (Number.isFinite(down) && down <= 1.5 && down >= 0) down = down * 100;
+      pushSeries(series.odds, { t, up, down });
     }
     if (Number.isFinite(price) && Number.isFinite(target)) {
       pushSeries(series.delta, { t, d: price - target });
@@ -3207,22 +3213,33 @@ function drawCandleChart() {
       pushSeries(series.tape, { t, dir, conf });
     }
     const acc = s.accuracy || {};
-    const pct = acc.pct != null ? Number(acc.pct) : (acc.rate != null ? Number(acc.rate) * 100 : null);
-    if (pct != null && Number.isFinite(pct)) {
-      pushSeries(series.accuracy, { t, pct });
+    const n = Number(acc.total) || 0;
+    // Finish-only: never invent a win rate when n=0
+    if (n > 0) {
+      const pct = acc.accuracy_pct != null
+        ? Number(acc.accuracy_pct)
+        : (acc.correct != null ? (Number(acc.correct) / n) * 100 : null);
+      if (pct != null && Number.isFinite(pct)) {
+        pushSeries(series.accuracy, { t, pct, n, correct: Number(acc.correct) || 0 });
+      }
     }
   }
 
-  function fitCanvas(canvas) {
+  function fitCanvas(canvas, opts) {
     if (!canvas || !canvas.parentElement) return null;
     if (deskCinematicOn()) return canvas.getContext("2d");
     const parent = canvas.parentElement;
     const head = parent.querySelector(".chart-card-head");
-    const w = Math.max(120, parent.clientWidth);
-    const h = Math.max(80, parent.clientHeight - (head ? head.offsetHeight : 0));
+    const isPair = canvas.id === "chartBtc" || canvas.id === "chartEth";
+    const minW = 160;
+    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? 160 : 140);
+    const w = Math.max(minW, parent.clientWidth || minW);
+    let h = (parent.clientHeight || 0) - (head ? head.offsetHeight : 0);
+    if (h < minH) h = minH;
+    const tiny = canvas.width < 40 || canvas.height < 40;
     if (canvas.width !== w || canvas.height !== h) {
-      const raw = ((state && state.market) || {}).candles || [];
-      if (raw.length < 2 && canvas.dataset.hasTape === "1") {
+      const tapeCount = opts && opts.candles;
+      if (!tiny && canvas.dataset.hasTape === "1" && tapeCount != null && tapeCount < 2) {
         return canvas.getContext("2d");
       }
       canvas.width = w;
@@ -3248,11 +3265,16 @@ function drawCandleChart() {
       return;
     }
     let min = Infinity, max = -Infinity;
-    points.forEach(p => {
-      const y = getY(p);
-      if (Number.isFinite(y)) { min = Math.min(min, y); max = Math.max(max, y); }
-    });
-    if (!(max > min)) { min -= 1; max += 1; }
+    if (Number.isFinite(opts.yMin) && Number.isFinite(opts.yMax)) {
+      min = opts.yMin;
+      max = opts.yMax;
+    } else {
+      points.forEach(p => {
+        const y = getY(p);
+        if (Number.isFinite(y)) { min = Math.min(min, y); max = Math.max(max, y); }
+      });
+      if (!(max > min)) { min -= 1; max += 1; }
+    }
     const span = max - min || 1;
     const yAt = (v) => pad.t + (1 - (v - min) / span) * (h - pad.t - pad.b);
     const xAt = (i) => pad.l + (i / Math.max(1, points.length - 1)) * (w - pad.l - pad.r);
@@ -3293,29 +3315,151 @@ function drawCandleChart() {
     }
   }
 
-  function syncChartPairTitle() {
-    const pairTitle = document.getElementById("chartPairTitle");
-    const focus = (typeof focusTable === "string" && focusTable)
-      || (document.body && document.body.dataset.focusTable)
-      || "bitcoin";
-    const eth = focus === "ethereum" || focus === "eth";
-    if (pairTitle) pairTitle.textContent = eth ? "ETH · 1m" : "BTC · 1m";
+  function parseStampMs(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "number" && Number.isFinite(v)) return v < 1e12 ? v * 1000 : v;
+    const s = String(v).trim();
+    if (!s) return null;
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      const n = Number(s);
+      if (!Number.isFinite(n)) return null;
+      return n < 1e12 ? n * 1000 : n;
+    }
+    const d = Date.parse(s);
+    return Number.isFinite(d) ? d : null;
   }
 
-  function drawChartBtc() {
+  function candleTimeMs(c) {
+    if (!c) return null;
+    return parseStampMs(c.t != null ? c.t : c.open_time);
+  }
+
+  function hourWindowMs(ts) {
+    const m = (ts && ts.market) || {};
+    const lc = (ts && (ts.locked_call || (ts.decision && ts.decision.locked_call))) || {};
+    const close = parseStampMs(m.close_time || lc.close_time);
+    if (close) return { start: close - 3600000, end: close };
+    const now = Date.now();
+    const start = Math.floor(now / 3600000) * 3600000;
+    return { start, end: start + 3600000 };
+  }
+
+  function xAtTime(candles, tMs, pad, w) {
+    if (!candles.length || tMs == null) return null;
+    const cw = (w - pad.l - pad.r) / candles.length;
+    let idx = 0;
+    let found = false;
+    for (let i = 0; i < candles.length; i++) {
+      const tm = candleTimeMs(candles[i]);
+      if (tm == null) continue;
+      found = true;
+      if (tm <= tMs) idx = i;
+    }
+    if (!found) return null;
+    return pad.l + idx * cw + cw / 2;
+  }
+
+  function pairLock(ts) {
+    if (!ts) return null;
+    const lc = ts.locked_call || (ts.decision && ts.decision.locked_call) || null;
+    if (lc && lc.locked && lc.direction) return lc;
+    return null;
+  }
+
+  function syncChartPairTitle() {
+    // Both pairs stay on screen — do not retitle BTC to ETH on focus
+    const btcTitle = document.getElementById("chartPairTitle") || document.getElementById("chartBtcTitle");
+    const ethTitle = document.getElementById("chartEthTitle");
+    if (btcTitle) btcTitle.textContent = "BTC · 1m";
+    if (ethTitle) ethTitle.textContent = "ETH · 1m";
+  }
+
+  function drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt) {
+    const win = hourWindowMs(ts);
+    const x0 = xAtTime(candles, win.start, pad, w);
+    const x1 = xAtTime(candles, win.end, pad, w);
+    const left = x0 != null ? x0 : pad.l;
+    const right = x1 != null ? x1 : (w - pad.r);
+    ctx.save();
+    ctx.fillStyle = "rgba(240, 193, 74, 0.07)";
+    ctx.fillRect(Math.min(left, right), pad.t, Math.max(6, Math.abs(right - left)), h - pad.t - pad.b);
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(left, pad.t);
+    ctx.lineTo(left, h - pad.b);
+    ctx.moveTo(right, pad.t);
+    ctx.lineTo(right, h - pad.b);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(240, 193, 74, 0.75)";
+    ctx.font = "8px Orbitron, monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("1H WINDOW", left + 4, pad.t + 10);
+    const lc = pairLock(ts);
+    if (lc) {
+      const lockMs = parseStampMs(lc.locked_at);
+      const xLock = xAtTime(candles, lockMs, pad, w);
+      if (xLock != null) {
+        ctx.strokeStyle = "#f0c14a";
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#f0c14a";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(xLock, pad.t);
+        ctx.lineTo(xLock, h - pad.b);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        let lockPx = Number(lc.entry_price != null ? lc.entry_price : lc.price);
+        if (!Number.isFinite(lockPx) && lockMs != null) {
+          let nearest = null, best = Infinity;
+          candles.forEach(c => {
+            const tm = candleTimeMs(c);
+            if (tm == null) return;
+            const d = Math.abs(tm - lockMs);
+            if (d < best) { best = d; nearest = c; }
+          });
+          if (nearest) lockPx = Number(nearest.c);
+        }
+        if (Number.isFinite(lockPx) && typeof yAt === "function") {
+          const y = yAt(lockPx);
+          ctx.fillStyle = "#f0c14a";
+          ctx.beginPath();
+          ctx.moveTo(xLock, y - 5);
+          ctx.lineTo(xLock + 5, y);
+          ctx.lineTo(xLock, y + 5);
+          ctx.lineTo(xLock - 5, y);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.fillStyle = "#f0c14a";
+        ctx.font = "8px Orbitron, monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("LOCK", xLock, pad.t + 22);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawPairCandles(canvasId, tableKey, metaId) {
     if (deskCinematicOn()) return;
-    syncChartPairTitle();
-    const canvas = document.getElementById("chartBtc");
+    const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    const view = (typeof getViewState === "function" ? getViewState() : null) || state || {};
-    const market = (view && view.market) || (state && state.market) || {};
+    const ts = (typeof tableState === "function" ? tableState(tableKey) : null) || {};
+    const market = ts.market || {};
     const candles = (market.candles || []).slice(-60);
     const target = Number(market.kalshi_target);
     const price = Number(market.price);
+    const meta = document.getElementById(metaId);
+    if (meta) {
+      meta.textContent = Number.isFinite(price)
+        ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
+        : "—";
+    }
     if (candles.length < 2) {
-      // fitCanvas resizes and clears — skip if we already have tape
-      if (canvas.dataset.hasTape === "1") return;
-      const ctx0 = fitCanvas(canvas);
+      if (canvas.dataset.hasTape === "1" && canvas.width >= 40 && canvas.height >= 40) return;
+      const ctx0 = fitCanvas(canvas, { candles: candles.length });
       if (!ctx0) return;
       const w0 = canvas.width, h0 = canvas.height;
       chartFrame(ctx0, w0, h0);
@@ -3326,7 +3470,7 @@ function drawCandleChart() {
       return;
     }
     canvas.dataset.hasTape = "1";
-    const ctx = fitCanvas(canvas);
+    const ctx = fitCanvas(canvas, { candles: candles.length });
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
@@ -3340,6 +3484,7 @@ function drawCandleChart() {
     min -= padAmt; max += padAmt;
     const pad = { l: 6, r: 6, t: 12, b: 10 };
     const yAt = (p) => pad.t + (1 - (p - min) / (max - min)) * (h - pad.t - pad.b);
+    drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt);
     const cw = (w - pad.l - pad.r) / candles.length;
     candles.forEach((c, i) => {
       const o = Number(c.o), cl = Number(c.c), hi = Number(c.h), lo = Number(c.l);
@@ -3371,13 +3516,18 @@ function drawCandleChart() {
       ctx.strokeStyle = col; ctx.lineWidth = 1.3;
       ctx.beginPath(); ctx.moveTo(pad.l, yAt(price)); ctx.lineTo(w - pad.r, yAt(price)); ctx.stroke();
     }
-    const meta = document.getElementById("chartBtcMeta");
-    if (meta) {
-      meta.textContent = Number.isFinite(price)
-        ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
-        : "—";
-    }
+  }
+
+  function drawChartBtc() {
+    if (deskCinematicOn()) return;
     syncChartPairTitle();
+    drawPairCandles("chartBtc", "bitcoin", "chartBtcMeta");
+  }
+
+  function drawChartEth() {
+    if (deskCinematicOn()) return;
+    syncChartPairTitle();
+    drawPairCandles("chartEth", "ethereum", "chartEthMeta");
   }
 
   function drawChartVolume() {
@@ -3407,11 +3557,27 @@ function drawCandleChart() {
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
-    // 50% guide
-    drawLineSeries(ctx, series.odds, p => p.up, "#00e8ff", { zero: 50 });
     const meta = document.getElementById("chartOddsMeta");
+    if (!series.odds.length) {
+      ctx.fillStyle = "rgba(120,140,160,0.5)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("COLLECTING…", canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = "UP — · DOWN —";
+      return;
+    }
+    drawLineSeries(ctx, series.odds, p => p.up, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    drawLineSeries(ctx, series.odds, p => p.down, "#ff2d55", { yMin: 0, yMax: 100 });
     const last = series.odds[series.odds.length - 1];
-    if (meta) meta.textContent = last ? `UP ${last.up.toFixed(1)}%` : "—";
+    const up = Number(last && last.up);
+    const down = Number.isFinite(Number(last && last.down))
+      ? Number(last.down)
+      : (Number.isFinite(up) ? 100 - up : NaN);
+    if (meta) {
+      meta.textContent = (Number.isFinite(up) && Number.isFinite(down))
+        ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
+        : "UP — · DOWN —";
+    }
   }
 
   function drawChartDelta() {
@@ -3439,38 +3605,167 @@ function drawCandleChart() {
     if (meta) meta.textContent = last ? `${last.f.toFixed(4)}%` : "—";
   }
 
+  function pairFromLockRow(r, fallback) {
+    const a = String((r && r.asset) || "").toLowerCase();
+    if (a === "eth" || a === "ethereum") return "ETH";
+    if (a === "btc" || a === "bitcoin") return "BTC";
+    const tick = String((r && r.ticker) || "");
+    if (/ETH/i.test(tick)) return "ETH";
+    if (/BTC/i.test(tick)) return "BTC";
+    return fallback || "—";
+  }
+
+  function sideFromLockRow(r) {
+    const d = String((r && (r.direction || r.locked_call || r.side)) || "").toUpperCase();
+    if (d.includes("UP")) return "UP";
+    if (d.includes("DOWN")) return "DOWN";
+    return d || "—";
+  }
+
+  function fmtLockTime(t) {
+    const ms = parseStampMs(t);
+    if (ms == null) return "—";
+    return new Date(ms).toLocaleString([], {
+      month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function collectChairLocks() {
+    const items = [];
+    const seen = new Set();
+    function add(item) {
+      if (!item || !item.side || item.side === "—") return;
+      const key = [item.pair, item.side, item.status, item.ticker || item.id || item.t].join("|");
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(item);
+    }
+    function ingestAcc(acc, fallbackPair) {
+      if (!acc) return;
+      const openRows = Array.isArray(acc.open) ? acc.open : [];
+      const settled = acc.log || acc.recent || [];
+      openRows.forEach(r => add({
+        pair: pairFromLockRow(r, fallbackPair),
+        side: sideFromLockRow(r),
+        t: r.called_at || r.locked_at,
+        status: "OPEN",
+        id: r.id,
+        ticker: r.ticker,
+      }));
+      settled.forEach(r => add({
+        pair: pairFromLockRow(r, fallbackPair),
+        side: sideFromLockRow(r),
+        t: r.called_at || r.settled_at,
+        status: "SETTLED",
+        outcome: r.outcome || r.y_finish,
+        grade: r.correct === true ? "HIT" : (r.correct === false ? "MISS" : ""),
+        id: r.id,
+        ticker: r.ticker,
+      }));
+    }
+    ["bitcoin", "ethereum"].forEach(key => {
+      const ts = (typeof tableState === "function" ? tableState(key) : null) || {};
+      const pair = key === "ethereum" ? "ETH" : "BTC";
+      const lc = pairLock(ts);
+      if (lc) {
+        add({
+          pair,
+          side: sideFromLockRow(lc),
+          t: lc.locked_at,
+          status: "OPEN",
+          ticker: lc.ticker,
+          id: "live:" + pair + ":" + (lc.ticker || lc.locked_at || ""),
+        });
+      }
+      ingestAcc(ts.accuracy, pair);
+    });
+    ingestAcc(state && state.accuracy, null);
+    items.sort((a, b) => (parseStampMs(b.t) || 0) - (parseStampMs(a.t) || 0));
+    return items;
+  }
+
   function drawChartTape() {
     const canvas = document.getElementById("chartTape");
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    const pts = series.tape.slice(-24);
-    if (!pts.length) {
-      ctx.fillStyle = "rgba(120,140,160,0.5)";
+    const locks = collectChairLocks();
+    const list = document.getElementById("chartTapeList");
+    const meta = document.getElementById("chartTapeMeta");
+    if (!locks.length) {
+      ctx.fillStyle = "rgba(120,140,160,0.7)";
       ctx.font = "10px Orbitron";
       ctx.textAlign = "center";
-      ctx.fillText("NO SIGNALS YET", w / 2, h / 2);
+      ctx.fillText("NO CHAIR LOCKS YET", w / 2, h / 2);
+      if (meta) meta.textContent = "no locks";
+      if (list) {
+        list.innerHTML = '<li class="chart-lock-empty">No Chair locks yet — tape waits on a lock, not live lean.</li>';
+        list.classList.add("empty");
+      }
       return;
     }
-    const pad = { l: 8, r: 8, t: 12, b: 12 };
+    if (list) list.classList.remove("empty");
+    const pts = locks.slice(0, 16).reverse();
+    const pad = { l: 8, r: 8, t: 14, b: 12 };
     const slot = (w - pad.l - pad.r) / pts.length;
     pts.forEach((p, i) => {
-      const col = strongColor(p.dir);
+      const col = p.side === "UP" ? "#39ff14" : (p.side === "DOWN" ? "#ff2d55" : "#8aa0b8");
       const x = pad.l + i * slot + slot / 2;
-      const barH = Math.max(8, (p.conf / 100) * (h - pad.t - pad.b));
-      ctx.fillStyle = col;
-      ctx.globalAlpha = 0.75;
-      ctx.fillRect(x - slot * 0.3, h - pad.b - barH, slot * 0.6, barH);
+      const barH = p.status === "OPEN" ? (h - pad.t - pad.b) * 0.72 : (h - pad.t - pad.b) * 0.5;
+      ctx.globalAlpha = p.status === "OPEN" ? 0.9 : 0.55;
+      if (p.status === "OPEN") {
+        ctx.fillStyle = col;
+        ctx.fillRect(x - slot * 0.28, h - pad.b - barH, Math.max(3, slot * 0.56), barH);
+      } else {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(x - slot * 0.28, h - pad.b - barH, Math.max(3, slot * 0.56), barH);
+      }
       ctx.globalAlpha = 1;
       ctx.fillStyle = col;
       ctx.font = "7px Orbitron";
       ctx.textAlign = "center";
-      ctx.fillText(p.dir[0], x, h - pad.b - barH - 3);
+      ctx.fillText((p.pair || "")[0] + p.side[0], x, h - pad.b - barH - 3);
     });
-    const meta = document.getElementById("chartTapeMeta");
-    const last = pts[pts.length - 1];
-    if (meta && last) meta.textContent = `${last.dir} ${last.conf}%`;
+    const last = locks[0];
+    if (meta && last) {
+      meta.textContent = `${last.pair} ${last.side} · ${last.status}${last.grade ? " · " + last.grade : ""}`;
+    }
+    if (list) {
+      list.innerHTML = locks.slice(0, 10).map(p => {
+        const when = fmtLockTime(p.t);
+        const grade = p.status === "SETTLED"
+          ? (p.grade ? p.grade : (p.outcome || "settled"))
+          : "open";
+        return `<li class="chart-lock-row ${p.status === "OPEN" ? "lock-open" : "lock-settled"}">`
+          + `<span class="lock-pair">${p.pair}</span>`
+          + `<span class="lock-side ${p.side === "UP" ? "up" : "down"}">${p.side}</span>`
+          + `<span class="lock-time">${when}</span>`
+          + `<span class="lock-status">${p.status === "OPEN" ? "OPEN" : "SETTLED"} · ${grade}</span>`
+          + `</li>`;
+      }).join("");
+    }
+  }
+
+  function finishOnlyStats() {
+    const btc = ((typeof tableState === "function" ? tableState("bitcoin") : null) || {}).accuracy || {};
+    const eth = ((typeof tableState === "function" ? tableState("ethereum") : null) || {}).accuracy || {};
+    const root = (state && state.accuracy) || {};
+    let correct = 0, wrong = 0, total = 0;
+    if ((btc.total || 0) + (eth.total || 0) > 0) {
+      correct = (btc.correct || 0) + (eth.correct || 0);
+      wrong = (btc.wrong || 0) + (eth.wrong || 0);
+      total = (btc.total || 0) + (eth.total || 0);
+    } else {
+      correct = root.correct || 0;
+      total = root.total || 0;
+      wrong = root.wrong != null ? root.wrong : Math.max(0, total - correct);
+    }
+    if (!total) return { correct: 0, wrong: 0, total: 0, pct: null };
+    if (!wrong && total) wrong = Math.max(0, total - correct);
+    return { correct, wrong, total, pct: (correct / total) * 100 };
   }
 
   function drawChartAccuracy() {
@@ -3478,14 +3773,24 @@ function drawCandleChart() {
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
-    drawLineSeries(ctx, series.accuracy, p => p.pct, "#39ff14", { zero: 50 });
+    const stats = finishOnlyStats();
     const meta = document.getElementById("chartAccMeta");
-    const last = series.accuracy[series.accuracy.length - 1];
-    const acc = state && state.accuracy;
+    if (stats.total === 0) {
+      ctx.fillStyle = "rgba(120,140,160,0.7)";
+      ctx.font = "11px Orbitron";
+      ctx.textAlign = "center";
+      ctx.fillText("0/0 finish-only", canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = "0/0 finish-only";
+      return;
+    }
+    const spark = series.accuracy.filter(p => p && p.n > 0 && Number.isFinite(p.pct));
+    if (spark.length) {
+      drawLineSeries(ctx, spark, p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    } else {
+      drawLineSeries(ctx, [{ t: 0, pct: stats.pct }], p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    }
     if (meta) {
-      meta.textContent = last
-        ? `${last.pct.toFixed(0)}%`
-        : (acc && acc.label) || "—";
+      meta.textContent = `${stats.correct}/${stats.total} finish-only`;
     }
   }
 
@@ -3527,7 +3832,9 @@ function drawCandleChart() {
   function drawCharts() {
     if (mode !== "charts") return;
     if (deskCinematicOn()) return;
+    syncChartPairTitle();
     drawChartBtc();
+    drawChartEth();
     drawChartVolume();
     drawChartOdds();
     drawChartDelta();
@@ -4026,7 +4333,11 @@ function drawCandleChart() {
     try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
-      requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
+      // Layout after the view is visible, then draw (avoids 0×0 canvases)
+      requestAnimationFrame(() => {
+        try { if (chartsView) void chartsView.offsetWidth; } catch (e) {}
+        requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
+      });
     }
   }
 

@@ -627,6 +627,7 @@ class PerformanceStore:
             "p_finish": getattr(r, "p_finish", None),
             "ev_cents": getattr(r, "ev_cents", None),
             "floor_strike": getattr(r, "floor_strike", None),
+            "asset": (r.asset or ticker_asset(r.ticker)),
         }
 
     async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
@@ -894,6 +895,7 @@ class PerformanceStore:
             "path_partial_pct": float(getattr(settings, "PATH_PARTIAL_PCT", 4.0)),
             "path_near_certain_pct": float(getattr(settings, "PATH_NEAR_CERTAIN_PCT", 90.0)),
             "paper_path_scaled": bool(getattr(settings, "PAPER_PATH_SCALED", True)),
+            "finish_only": True,
         }
 
     async def get_lifetime_log(self, limit: int = 500, offset: int = 0) -> Dict[str, Any]:

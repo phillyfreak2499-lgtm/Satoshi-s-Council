@@ -462,19 +462,25 @@
       <div id="paperCalls" class="paper-calls"></div>
     </section>
 
-<!-- Charts tab: full wall of useful views -->
+<!-- Charts tab: game HUD wall — BTC and ETH 1m both visible -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
-      <div class="charts-grid">
-        <article class="chart-card chart-wide">
+      <div class="charts-pairs">
+        <article class="chart-card chart-wide chart-pair chart-pair-btc">
           <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
           <canvas id="chartBtc"></canvas>
         </article>
+        <article class="chart-card chart-wide chart-pair chart-pair-eth">
+          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-meta" id="chartEthMeta">—</span></header>
+          <canvas id="chartEth"></canvas>
+        </article>
+      </div>
+      <div class="charts-grid">
         <article class="chart-card">
           <header class="chart-card-head"><span>VOLUME</span><span class="chart-meta" id="chartVolMeta">—</span></header>
           <canvas id="chartVolume"></canvas>
         </article>
         <article class="chart-card">
-          <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">—</span></header>
+          <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">UP — · DOWN —</span></header>
           <canvas id="chartOdds"></canvas>
         </article>
         <article class="chart-card">
@@ -485,12 +491,13 @@
           <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
           <canvas id="chartFunding"></canvas>
         </article>
-        <article class="chart-card">
-          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">—</span></header>
+        <article class="chart-card chart-tape">
+          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">locks</span></header>
           <canvas id="chartTape"></canvas>
+          <ol id="chartTapeList" class="chart-lock-list" aria-label="Chair lock history"></ol>
         </article>
         <article class="chart-card">
-          <header class="chart-card-head"><span>HIT RATE</span><span class="chart-meta" id="chartAccMeta">—</span></header>
+          <header class="chart-card-head"><span>HIT RATE · FINISH-ONLY</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
           <canvas id="chartAccuracy"></canvas>
         </article>
         <article class="chart-card">
