@@ -329,8 +329,11 @@ class PerformanceStore:
                     # path update happens in settle/update
                     await session.commit()
                     return
-                # Flip: mark previous as miss if path never hit, open new opposite
-                # Higher flip cost — require a longer gap before the opposite call is accepted
+                # One-call protocol: never grade a mid-window flip as miss.
+                # Keep the original open call until window finish.
+                await session.commit()
+                return
+                # (unreachable legacy flip settle removed)
                 active.actual_outcome = "MISS"
                 active.correct = 0
                 active.settled_at = now_iso
@@ -448,14 +451,46 @@ class PerformanceStore:
         current_price: float | None = None,
         up_pct: float | None = None,
         down_pct: float | None = None,
+        floor_strike: float | None = None,
     ) -> int:
         """
-        Path-grade open calls on Kalshi odds.
-        RIGHT if favorable Kalshi side move >= win_pct (10 full / 2.5 for 1/4 HOLD).
-        Does not require finishing the 15m on that level.
+        Finish-only grading for hit-rate / lifetime.
+
+        A call is RIGHT only when the window has ended and the final
+        market outcome matches the locked side (UP or DOWN).
+
+        No path/peak/near-certain early wins. Path stats may still be
+        updated for diagnostics, but correct=1 only on finish match.
         """
         now = datetime.now(timezone.utc)
         settled_n = 0
+
+        def _final_outcome() -> Optional[str]:
+            # Prefer spot vs strike when both known
+            if current_price is not None and floor_strike is not None:
+                try:
+                    px = float(current_price)
+                    strike = float(floor_strike)
+                    if px > strike:
+                        return "UP"
+                    if px < strike:
+                        return "DOWN"
+                    # exact strike — treat as no edge / miss for directional
+                    return None
+                except (TypeError, ValueError):
+                    pass
+            # Fallback: Kalshi YES mid at settle (>50 = UP finished)
+            if up_pct is not None:
+                try:
+                    u = float(up_pct)
+                    if u >= 55.0:
+                        return "UP"
+                    if u <= 45.0:
+                        return "DOWN"
+                except (TypeError, ValueError):
+                    pass
+            return None
+
         async with self.Session() as session:
             result = await session.execute(
                 select(WindowCall).where(WindowCall.actual_outcome.is_(None))
@@ -465,64 +500,22 @@ class PerformanceStore:
                 side = self._grade_side(row.direction)
                 if side is None:
                     continue
-                need = row.win_pct if row.win_pct is not None else self._win_pts(row.direction)
-                row.win_pct = need
+
+                # Track path diagnostics only (never settle early on path)
                 entry_side = row.open_price
                 cur_side = self._side_pct(side, up_pct, down_pct)
-
-                near_bar = float(getattr(settings, "PATH_NEAR_CERTAIN_PCT", 90.0))
-                partial_need = float(getattr(settings, "PATH_PARTIAL_PCT", 4.0))
-                if row.direction in ("UP_HOLD", "DOWN_HOLD"):
-                    partial_need = partial_need * float(getattr(settings, "HOLD_FRACTION", 0.25))
-
                 if entry_side is not None and cur_side is not None:
-                    peak = row.exit_price if row.exit_price is not None else entry_side
-                    peak = max(float(peak), float(cur_side))
-                    row.exit_price = peak
-                    move = max(0.0, float(peak) - float(entry_side))
-                    row.path_move_pct = move
+                    try:
+                        peak = row.exit_price if row.exit_price is not None else entry_side
+                        peak = max(float(peak), float(cur_side))
+                        row.exit_price = peak
+                        row.path_move_pct = max(0.0, float(peak) - float(entry_side))
+                    except (TypeError, ValueError):
+                        pass
 
-                    # 90→100 rule: entry already near-certain OR peak reaches near-certain
-                    entry_f = float(entry_side)
-                    peak_f = float(peak)
-                    if entry_f >= near_bar or peak_f >= near_bar:
-                        row.actual_outcome = side
-                        row.correct = 1
-                        row.settled_at = now.isoformat()
-                        row.settle_reason = "near_certain"
-                        if peak_f < entry_f:
-                            row.path_move_pct = max(move, max(0.0, near_bar - entry_f))
-                        stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
-                        row.paper_stake = stake
-                        if not row.paper_side:
-                            row.paper_side = self._paper_side(row.direction)
-                        row.paper_pnl = self._compute_paper_pnl(
-                            row.direction, 1, row.open_price, stake,
-                            path_move_pct=row.path_move_pct, settle_reason="near_certain",
-                        )
-                        settled_n += 1
-                        continue
-
-                    # Full path hit
-                    if move + 1e-9 >= float(need):
-                        row.actual_outcome = side
-                        row.correct = 1
-                        row.settled_at = now.isoformat()
-                        row.settle_reason = "kalshi_path_hit"
-                        stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
-                        row.paper_stake = stake
-                        if not row.paper_side:
-                            row.paper_side = self._paper_side(row.direction)
-                        row.paper_pnl = self._compute_paper_pnl(
-                            row.direction, 1, row.open_price, stake,
-                            path_move_pct=move, settle_reason="kalshi_path_hit",
-                        )
-                        settled_n += 1
-                        continue
-
-                # Expire: partial path credit or miss
+                # Only settle after window close (or max age safety net)
                 due = False
-                reason = "expired"
+                reason = "window_end"
                 if row.close_time:
                     try:
                         ct = datetime.fromisoformat(row.close_time.replace("Z", "+00:00"))
@@ -533,42 +526,56 @@ class PerformanceStore:
                 if not due and row.called_at:
                     try:
                         called = datetime.fromisoformat(row.called_at.replace("Z", "+00:00"))
-                        if (now - called).total_seconds() >= float(settings.CALL_MAX_AGE_SEC):
+                        max_age = float(getattr(settings, "CALL_MAX_AGE_SEC", 3600.0))
+                        if (now - called).total_seconds() >= max_age:
                             due = True
                             reason = "max_age"
                     except Exception:
                         due = False
-                if due:
-                    move = float(row.path_move_pct or 0.0)
-                    stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
-                    row.paper_stake = stake
-                    if not row.paper_side:
-                        row.paper_side = self._paper_side(row.direction)
+                if not due:
+                    continue
 
-                    # Partial credit: enough path to count as a win (smaller $)
-                    if move + 1e-9 >= partial_need:
-                        row.actual_outcome = side if side else "PARTIAL"
-                        row.correct = 1
-                        row.settled_at = now.isoformat()
-                        row.settle_reason = "partial_path"
-                        row.paper_pnl = self._compute_paper_pnl(
-                            row.direction, 1, row.open_price, stake,
-                            path_move_pct=move, settle_reason="partial_path",
-                        )
-                    else:
-                        row.actual_outcome = "MISS"
+                final = _final_outcome()
+                stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
+                row.paper_stake = stake
+                if not row.paper_side:
+                    row.paper_side = self._paper_side(row.direction)
+
+                if final is None:
+                    # Cannot resolve — leave open unless max_age forced; then void miss
+                    if reason == "max_age":
+                        row.actual_outcome = "VOID"
                         row.correct = 0
                         row.settled_at = now.isoformat()
-                        row.settle_reason = reason
-                        row.paper_pnl = self._compute_paper_pnl(
-                            row.direction, 0, row.open_price, stake,
-                            path_move_pct=move, settle_reason=reason,
-                        )
-                    settled_n += 1
+                        row.settle_reason = "unresolved_max_age"
+                        row.paper_pnl = 0.0
+                        settled_n += 1
+                    continue
+
+                matched = final == side
+                row.actual_outcome = final
+                row.correct = 1 if matched else 0
+                row.settled_at = now.isoformat()
+                row.settle_reason = "finish_match" if matched else "finish_miss"
+                # Binary paper: win = stake * (100/entry - 1) approx, or flat unit
+                try:
+                    entry = float(row.open_price) if row.open_price is not None else 50.0
+                    if matched and 1.0 < entry < 99.0:
+                        # $1 on YES at entry¢ pays $1*(100/entry) if finishes right
+                        row.paper_pnl = stake * ((100.0 / entry) - 1.0)
+                    elif matched:
+                        row.paper_pnl = stake  # flat win
+                    else:
+                        row.paper_pnl = -stake
+                except Exception:
+                    row.paper_pnl = stake if matched else -stake
+                settled_n += 1
+
             await session.commit()
         if settled_n:
-            logger.info(f"Settled {settled_n} path-call(s) [Kalshi odds grade]")
+            logger.info(f"Settled {settled_n} call(s) [finish-only grade]")
         return settled_n
+
 
     def _row_to_log(self, r: WindowCall, status: str = "settled") -> Dict[str, Any]:
         return {
