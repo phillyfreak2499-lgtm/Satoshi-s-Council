@@ -254,12 +254,25 @@ class Council:
             market_data["up_pct"] = up_pct
             market_data["down_pct"] = down_pct
 
-        # Path-grade open scalp calls on Kalshi odds (full + 1/4 HOLD)
+        # Finish-only settle for THIS asset only (never grade ETH with BTC price)
         try:
             await self.store.settle_expired_calls(
-                current_price=entry_price, up_pct=up_pct, down_pct=down_pct,
+                current_price=entry_price,
+                up_pct=up_pct,
+                down_pct=down_pct,
                 floor_strike=market_data.get("kalshi_floor_strike"),
+                asset=self.asset,
             )
+            try:
+                from datetime import datetime, timezone
+                due = False
+                if close_time:
+                    ct_ = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
+                    due = datetime.now(timezone.utc) >= ct_
+                if due and hasattr(self.leader, "_clear_window_lock"):
+                    self.leader._clear_window_lock()
+            except Exception:
+                pass
         except Exception as e:
             logger.debug(f"Settle skip: {e}")
 
