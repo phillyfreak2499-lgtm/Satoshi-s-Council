@@ -1976,25 +1976,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return true;
   }
 
-  function coverSatoshiEmblem(cx, cy, r) {
-    // Cover the gold ZT chest emblem. Face stays. Vitalik is already clean.
-    if (!ctx || !r) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.clip();
-    const ex = cx;
-    const ey = cy + r * 0.58;
-    ctx.beginPath();
-    ctx.ellipse(ex, ey, r * 0.48, r * 0.38, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(6, 8, 14, 0.97)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(80, 88, 98, 0.45)";
-    ctx.lineWidth = Math.max(1, r * 0.025);
-    ctx.stroke();
-    ctx.restore();
-  }
-
   function chairKeyOf(which) {
     return isEthTable(which) ? "ethereum" : "bitcoin";
   }
@@ -2025,7 +2006,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return rate;
   }
   function pulseRate(st, dir, locked, which) {
-    // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×. No gold ZT.
+    // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×.
     return chairThinkRate(st, dir, locked, which);
   }
 
@@ -2412,7 +2393,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
-    if (!isEthTable(which)) coverSatoshiEmblem(cx, portraitY, pr);
     rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
     ctx.beginPath();
@@ -2535,7 +2515,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
-    if (!isEthTable(which)) coverSatoshiEmblem(cx, cy - 4, pr);
     ctx.beginPath();
     ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
     ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.7)" :
@@ -3265,7 +3244,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
       ctx.fill();
     }
-    if (!isEthTable(focusTable)) coverSatoshiEmblem(cx, cy, lr);
     rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
     // Eye glow ring pulse (extra emphasis on call color)

@@ -309,43 +309,20 @@ class FloorNameplateOverlapTests(unittest.TestCase):
 
 
 class SatoshiChairEmblemTests(unittest.TestCase):
-    def test_cover_satoshi_emblem_hides_zt_on_chair_art(self):
+    def test_chair_art_may_keep_zt_crest(self):
         js = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
         html = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("function coverSatoshiEmblem(cx, cy, r)", js)
-        self.assertIn("gold ZT chest emblem", js)
-        self.assertIn("coverSatoshiEmblem(cx, portraitY, pr)", js)
-        self.assertIn("coverSatoshiEmblem(cx, cy, lr)", js)
-        self.assertIn("coverSatoshiEmblem(cx, cy - 4, pr)", js)
+        self.assertNotIn("function coverSatoshiEmblem", js)
+        self.assertNotIn("gold ZT chest emblem", js)
         self.assertIn('"/chair-up.jpg"', js)
         self.assertIn('"/chair-down.jpg"', js)
         self.assertIn('"/chair-wait.jpg"', js)
         for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
             self.assertTrue((ROOT / "frontend" / "static" / name).is_file(), name)
         self.assertIn("Satoshi’s Council", html)
+        self.assertIn('src="/council-mark.png"', html)
         self.assertNotIn("ZT ·", js)
         self.assertNotIn("ZT ·", html)
-
-    def test_satoshi_chair_jpgs_have_no_gold_zt_on_chest(self):
-        from PIL import Image
-
-        def is_emblem(p):
-            r, g, b = p[:3]
-            if r > 140 and g > 95 and b < 100 and r > b + 50:
-                return True
-            if g > 100 and g > r + 30 and g > b + 15 and r < 150:
-                return True
-            return False
-
-        for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
-            im = Image.open(ROOT / "frontend" / "static" / name).convert("RGB")
-            w, h = im.size
-            gold = 0
-            for y in range(int(h * 0.68), int(h * 0.90)):
-                for x in range(int(w * 0.38), int(w * 0.62)):
-                    if is_emblem(im.getpixel((x, y))):
-                        gold += 1
-            self.assertLess(gold, 80, "%s still has gold/ZT chest pixels (%s)" % (name, gold))
 
 
 class FloorTableChromeOverlapTests(unittest.TestCase):
