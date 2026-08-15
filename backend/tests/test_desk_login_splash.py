@@ -120,7 +120,7 @@ class LoginSplashStackTests(unittest.TestCase):
 
     def test_wire_note_newest_first(self):
         self.assertIn("2026-08-15-login-splash", WIRE_JS)
-        self.assertIn("signed Satoshi-center council table", WIRE_JS)
+        self.assertIn("Signed Satoshi-center council table", WIRE_JS)
         self.assertIn("dark stone + amber/cyan", WIRE_JS)
         self.assertIn("Type sits over the table, not the faces", WIRE_JS)
         self.assertLess(
