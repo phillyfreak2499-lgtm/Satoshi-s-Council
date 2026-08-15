@@ -697,7 +697,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
 
-  let mode = "art"; // art | dashboard | charts
+  let mode = "art"; // art | seats | paper | charts | …  (bots/ranks/dashboard alias to seats)
   let state = null;
   let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
@@ -8329,9 +8329,7 @@ function drawCandleChart() {
     if (typeof focusTable !== "undefined" && isFrontTable(focusTable)) {
       try { paintFrontWindowChrome(); } catch (e) {}
       try { if (mode === "art" || mode === "floor") drawArt(); } catch (e) {}
-      try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
-      try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
-      try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
+      try { if (isSeatsMode(mode)) paintSeatsPage(); } catch (e) {}
       try { paintTableHud(); } catch (e) {}
     }
   }
@@ -8713,7 +8711,7 @@ function drawCandleChart() {
     } catch (e) {}
     if (atsPollTimer) clearInterval(atsPollTimer);
     atsPollTimer = setInterval(function () {
-      if (mode !== "art" && mode !== "floor" && mode !== "dashboard" && mode !== "bots" && mode !== "ranks" && focusTable !== "ats") return;
+      if (mode !== "art" && mode !== "floor" && !isSeatsMode(mode) && focusTable !== "ats") return;
       fetch("/api/ats", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
         if (!data) return;
         atsBoard = data;
@@ -9102,7 +9100,49 @@ function drawCandleChart() {
   }
 
 
+  function aliasDeskMode(next) {
+    const n = String(next || "").toLowerCase();
+    if (n === "bots" || n === "ranks" || n === "dashboard") return "seats";
+    return n;
+  }
+  function isSeatsMode(m) {
+    return aliasDeskMode(m) === "seats";
+  }
+  function modeFromHash(hash) {
+    const raw = String(hash == null ? (typeof location !== "undefined" ? location.hash : "") : hash)
+      .replace(/^#/, "")
+      .split(/[/?&]/)[0]
+      .toLowerCase();
+    if (!raw) return null;
+    return aliasDeskMode(raw);
+  }
+  function syncModeHash(next) {
+    try {
+      if (typeof history === "undefined" || !history.replaceState) return;
+      const want = "#" + String(next || "art");
+      if ((location.hash || "") !== want) history.replaceState(null, "", want);
+    } catch (e) {}
+  }
+  function applyHashMode() {
+    const dest = modeFromHash(typeof location !== "undefined" ? location.hash : "");
+    if (dest && typeof setMode === "function") {
+      try { setMode(dest); } catch (e) {}
+      return dest;
+    }
+    return null;
+  }
+  window.aliasDeskMode = aliasDeskMode;
+  window.modeFromHash = modeFromHash;
+  window.applyHashMode = applyHashMode;
+
+  function paintSeatsPage() {
+    try { renderBotsGuide(); } catch (e) {}
+    try { renderRanksBoard(); } catch (e) {}
+    try { renderDashboard(); } catch (e) {}
+  }
+
   function setMode(next) {
+    next = aliasDeskMode(next);
     if (!hasDeskAuth()) {
       document.body.classList.add("gate-locked");
       document.body.classList.remove("admin-unlocked");
@@ -9153,8 +9193,9 @@ function drawCandleChart() {
         window.__floorMusicOnMode(mode === "floor" || mode === "night");
       }
     } catch (e) {}
-    // Hierarchy only on ranks / dashboard
-    document.body.classList.toggle("show-hierarchy", mode === "ranks" || mode === "dashboard");
+    // Hierarchy on Seats (old ranks / dashboard)
+    document.body.classList.toggle("show-hierarchy", isSeatsMode(mode));
+    const seatsView = document.getElementById("seatsView");
     const botsView = document.getElementById("botsView");
     const ranksView = document.getElementById("ranksView");
     const paperView = document.getElementById("paperView");
@@ -9169,8 +9210,9 @@ function drawCandleChart() {
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
     const showCharts = mode === "charts";
-    const showBots = mode === "bots";
-    const showRanks = mode === "ranks";
+    const showSeats = isSeatsMode(mode);
+    const showBots = showSeats;
+    const showRanks = showSeats;
     const showPaper = mode === "paper";
     const showSettings = mode === "settings";
     const showFollower = mode === "follower";
@@ -9182,8 +9224,9 @@ function drawCandleChart() {
     const showSchool = mode === "school";
     const showSide = mode === "side";
     const showFront = mode === "front";
-    const showMain = mode === "art" || mode === "dashboard" || mode === "floor" || mode === "night";
+    const showMain = mode === "art" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
+    if (seatsView) seatsView.classList.toggle("hidden", !showSeats);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
     if (paperView) paperView.classList.toggle("hidden", !showPaper);
@@ -9198,7 +9241,7 @@ function drawCandleChart() {
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
-    if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
+    if (overlay) overlay.classList.toggle("hidden", !showSeats);
     try { dockWindowLed(); } catch (e) {}
     // Always redraw the round table when main view is visible (bots live on canvas)
     if (showMain) {
@@ -9210,9 +9253,7 @@ function drawCandleChart() {
         try { resizeRoundtable(); drawArt(); } catch (e2) {}
       }
     }
-    if (mode === "dashboard") renderDashboard();
-    if (mode === "bots") renderBotsGuide();
-    if (mode === "ranks") renderRanksBoard();
+    if (showSeats) paintSeatsPage();
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
@@ -9224,7 +9265,7 @@ function drawCandleChart() {
     if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
-    if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || mode === "dashboard" || mode === "bots" || mode === "ranks" || mode === "charts" || mode === "tape" || mode === "paper")) {
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || isSeatsMode(mode) || mode === "charts" || mode === "tape" || mode === "paper")) {
       try { loadAtsTable(); } catch (e) {}
     }
     if (mode === "follower" && typeof window.renderFollower === "function") {
@@ -9249,6 +9290,7 @@ function drawCandleChart() {
         requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
       });
     }
+    try { syncModeHash(mode); } catch (e) {}
   }
 
   function applyDeskState(payload) {
@@ -9522,7 +9564,7 @@ function drawCandleChart() {
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
-      if (mode === "dashboard") renderDashboard();
+      if (isSeatsMode(mode)) paintSeatsPage();
     } catch (e) {
       if (statusDot) statusDot.className = "dot err";
       console.warn("Council poll failed", e);
@@ -9554,6 +9596,22 @@ function drawCandleChart() {
       e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
     }, true);
+  }
+  if (!window.__seatsHashWired) {
+    window.__seatsHashWired = true;
+    window.addEventListener("hashchange", function () {
+      try { applyHashMode(); } catch (e) {}
+    });
+  }
+  const seatsCardsToggle = document.getElementById("seatsCardsToggle");
+  if (seatsCardsToggle && !seatsCardsToggle.__wired) {
+    seatsCardsToggle.__wired = true;
+    seatsCardsToggle.addEventListener("click", function () {
+      const on = !document.body.classList.contains("seats-cards-off");
+      document.body.classList.toggle("seats-cards-off", on);
+      seatsCardsToggle.setAttribute("aria-pressed", on ? "false" : "true");
+      seatsCardsToggle.textContent = on ? "CARDS OFF" : "CARDS ON";
+    });
   }
   wirePaperEntry();
   document.querySelectorAll(".paper-cal-btn").forEach(btn => {
@@ -9624,7 +9682,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "wire", "charts", "settings"];
+        : ["art", "seats", "paper", "tape", "book", "brain", "news", "wire", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -9651,9 +9709,9 @@ function drawCandleChart() {
     }
     if (e.key === "0") setMode("floor");
     if (e.key === "1") setMode("art");
-    if (e.key === "2") setMode("dashboard");
-    if (e.key === "3") setMode("bots");
-    if (e.key === "4") setMode("ranks");
+    if (e.key === "2") setMode("seats");
+    if (e.key === "3") setMode("seats");
+    if (e.key === "4") setMode("seats");
     if (e.key === "5") setMode("paper");
     if (e.key === "6") setMode("charts");
     if (e.key === "7") setMode("settings");
@@ -9752,22 +9810,10 @@ function drawCandleChart() {
       body: "Floor is four equal chairs: Satoshi, Vitalik, Raijin, Ares. Tap a Chair to focus that table. The strip is a paper match score. Reset is in Settings. ESC or TABLE returns to the desk.",
     },
     {
-      mode: "dashboard",
-      target: "#tabDashboard",
-      title: "DASHBOARD",
-      body: "Seat cards for the focused table. Use BTC / ETH to switch which Chair you are reading.",
-    },
-    {
-      mode: "bots",
-      target: "#tabBots",
-      title: "BOTS",
-      body: "Field guide for every specialist. Each seat has one job. Colors on the Floor show how they are voting live.",
-    },
-    {
-      mode: "ranks",
-      target: "#tabRanks",
-      title: "RANKS",
-      body: "Who the Chair trusts most. Higher-ranked bots count more when a call is made.",
+      mode: "seats",
+      target: "#tabSeats",
+      title: "SEATS",
+      body: "Same people, one page. Field guide (who they are), rank board (how they sit), live cards (the lean). BTC / ETH / ATS / DWF switch which Chair you are reading. Old #bots #ranks #dashboard links land here.",
     },
     {
       mode: "paper",
@@ -10293,9 +10339,7 @@ function drawCandleChart() {
       applyFocusChrome();
       try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
       try { drawArt(); } catch (e) { console.warn("focus drawArt", e); }
-      try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
-      try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
-      try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
+      try { if (isSeatsMode(mode)) paintSeatsPage(); } catch (e) {}
       try { if (mode === "charts" && !deskCinematicOn()) drawCharts(); } catch (e) {}
       try { if (mode === "follower" && typeof window.renderFollower === "function") window.renderFollower(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
@@ -11311,7 +11355,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "front", "charts", "settings"];
+    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "front", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
@@ -11690,7 +11734,10 @@ function drawCandleChart() {
     if (onboarded) {
       const sg = document.getElementById("summonGate");
       if (sg) sg.classList.add("hidden");
-      try { if (typeof window.setMode === "function") window.setMode("art"); } catch (e) {}
+      try {
+        const dest = (typeof window.modeFromHash === "function" && window.modeFromHash(location.hash)) || "art";
+        if (typeof window.setMode === "function") window.setMode(dest);
+      } catch (e) {}
       try { if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour(); } catch (e) {}
       return;
     }

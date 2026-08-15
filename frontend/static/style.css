@@ -1990,7 +1990,7 @@ body.beast-mode .zt-logo-btn {
   50% { box-shadow: 0 0 28px rgba(255, 200, 60, 0.75); }
 }
 
-#settingsView.hidden, #botsView.hidden, #ranksView.hidden, #paperView.hidden, #chartsView.hidden { display: none !important; }
+#settingsView.hidden, #seatsView.hidden, #botsView.hidden, #ranksView.hidden, #paperView.hidden, #chartsView.hidden { display: none !important; }
 
 .info-view:not(.hidden),
 .charts-view:not(.hidden) {
@@ -2278,6 +2278,7 @@ html, body {
   display: block !important;
 }
 #settingsView.hidden,
+#seatsView.hidden,
 #botsView.hidden,
 #ranksView.hidden,
 #paperView.hidden,
@@ -3364,6 +3365,7 @@ body.floor-mode .led-window {
 /* Hide LEDs on non-table views */
 body.mode-bots .led-float,
 body.mode-ranks .led-float,
+body.mode-seats .led-float,
 body.mode-charts .led-float,
 body.mode-settings .led-float,
 body.mode-tape .led-float,
@@ -4294,6 +4296,7 @@ body.floor-mode #windowLed.led-window {
   padding: 10px 14px 8px;
 }
 body.mode-dashboard .led-float,
+body.mode-seats .led-float,
 body.mode-paper .led-float,
 body.mode-bots .led-float,
 body.mode-ranks .led-float,
@@ -4373,6 +4376,9 @@ body.mode-art #windowLed.led-window {
 body.mode-dashboard #windowLed,
 body.mode-dashboard #windowLed.led-window,
 body.mode-dashboard #windowLed.led-float,
+body.mode-seats #windowLed,
+body.mode-seats #windowLed.led-window,
+body.mode-seats #windowLed.led-float,
 body.mode-bots #windowLed,
 body.mode-bots #windowLed.led-window,
 body.mode-ranks #windowLed,
@@ -4392,7 +4398,8 @@ body.mode-settings #windowLed {
   padding: 12px 12px 20px !important;
   pointer-events: auto;
 }
-#botsView.info-view:not(.hidden) {
+#botsView.info-view:not(.hidden),
+#seatsView.info-view:not(.hidden) {
   padding-bottom: 28px;
 }
 .bot-blurb {
@@ -4650,18 +4657,10 @@ body.show-hierarchy #hierarchyPanel.hierarchy-ranks-only {
 /* Tab highlight follows body.mode-* so DASHBOARD cannot stay lit on CHARTS
    (same lock as BOTS→RANKS). Wait until a mode-* class exists so Table
    is not unstyled before setMode("art") on boot. */
-body[class*="mode-"]:not(.mode-dashboard) #tabDashboard,
-body[class*="mode-"]:not(.mode-dashboard) #tabDashboard.active,
-body.beast-mode[class*="mode-"]:not(.mode-dashboard) #tabDashboard,
-body.beast-mode[class*="mode-"]:not(.mode-dashboard) #tabDashboard.active,
-body[class*="mode-"]:not(.mode-bots) #tabBots,
-body[class*="mode-"]:not(.mode-bots) #tabBots.active,
-body.beast-mode[class*="mode-"]:not(.mode-bots) #tabBots,
-body.beast-mode[class*="mode-"]:not(.mode-bots) #tabBots.active,
-body[class*="mode-"]:not(.mode-ranks) #tabRanks,
-body[class*="mode-"]:not(.mode-ranks) #tabRanks.active,
-body.beast-mode[class*="mode-"]:not(.mode-ranks) #tabRanks,
-body.beast-mode[class*="mode-"]:not(.mode-ranks) #tabRanks.active,
+body[class*="mode-"]:not(.mode-seats) #tabSeats,
+body[class*="mode-"]:not(.mode-seats) #tabSeats.active,
+body.beast-mode[class*="mode-"]:not(.mode-seats) #tabSeats,
+body.beast-mode[class*="mode-"]:not(.mode-seats) #tabSeats.active,
 body[class*="mode-"]:not(.mode-charts) #tabCharts,
 body[class*="mode-"]:not(.mode-charts) #tabCharts.active,
 body.beast-mode[class*="mode-"]:not(.mode-charts) #tabCharts,
@@ -4726,12 +4725,8 @@ body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver.active {
   filter: none !important;
   transition: none !important;
 }
-body.mode-dashboard #tabDashboard,
-body.mode-dashboard #tabDashboard.active,
-body.mode-bots #tabBots,
-body.mode-bots #tabBots.active,
-body.mode-ranks #tabRanks,
-body.mode-ranks #tabRanks.active,
+body.mode-seats #tabSeats,
+body.mode-seats #tabSeats.active,
 body.mode-charts #tabCharts,
 body.mode-charts #tabCharts.active,
 body.mode-paper #tabPaper,
@@ -4766,12 +4761,8 @@ body.mode-art #tabScreensaver.active {
   box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
   transition: none !important;
 }
-body.beast-mode.mode-dashboard #tabDashboard,
-body.beast-mode.mode-dashboard #tabDashboard.active,
-body.beast-mode.mode-bots #tabBots,
-body.beast-mode.mode-bots #tabBots.active,
-body.beast-mode.mode-ranks #tabRanks,
-body.beast-mode.mode-ranks #tabRanks.active,
+body.beast-mode.mode-seats #tabSeats,
+body.beast-mode.mode-seats #tabSeats.active,
 body.beast-mode.mode-charts #tabCharts,
 body.beast-mode.mode-charts #tabCharts.active,
 body.beast-mode.mode-paper #tabPaper,
@@ -5001,6 +4992,7 @@ body.mode-settings #ztHeaderLogo {
 
 body.mode-settings #mainTable,
 body.mode-settings #mainTable *,
+body.mode-settings #seatsView,
 body.mode-settings #botsView,
 body.mode-settings #ranksView,
 body.mode-settings #chartsView,
@@ -5151,6 +5143,7 @@ body.mode-settings #settingsView #adminToolsCard {
     pointer-events: none !important;
   }
   body.mode-dashboard #windowLed,
+  body.mode-seats #windowLed,
   body.mode-bots #windowLed,
   body.mode-ranks #windowLed,
   body.mode-paper #windowLed,
@@ -5161,6 +5154,7 @@ body.mode-settings #settingsView #adminToolsCard {
 
   #mainTable,
   #settingsView,
+  #seatsView,
   #botsView,
   #ranksView,
   #paperView,
@@ -5384,12 +5378,8 @@ body.mode-side #app > header #tabSide,
 body.mode-side #app > header #tabSide.active,
 body.mode-front #app > header #tabFront,
 body.mode-front #app > header #tabFront.active,
-body.mode-dashboard #app > header #tabDashboard,
-body.mode-dashboard #app > header #tabDashboard.active,
-body.mode-bots #app > header #tabBots,
-body.mode-bots #app > header #tabBots.active,
-body.mode-ranks #app > header #tabRanks,
-body.mode-ranks #app > header #tabRanks.active,
+body.mode-seats #app > header #tabSeats,
+body.mode-seats #app > header #tabSeats.active,
 body.mode-charts #app > header #tabCharts,
 body.mode-charts #app > header #tabCharts.active,
 body.mode-paper #app > header #tabPaper,
@@ -5412,9 +5402,7 @@ body.beast-mode.mode-wire #app > header #tabWire,
 body.beast-mode.mode-school #app > header #tabSchool,
 body.beast-mode.mode-side #app > header #tabSide,
 body.beast-mode.mode-front #app > header #tabFront,
-body.beast-mode.mode-dashboard #app > header #tabDashboard,
-body.beast-mode.mode-bots #app > header #tabBots,
-body.beast-mode.mode-ranks #app > header #tabRanks,
+body.beast-mode.mode-seats #app > header #tabSeats,
 body.beast-mode.mode-charts #app > header #tabCharts,
 body.beast-mode.mode-paper #app > header #tabPaper,
 body.beast-mode.mode-settings #app > header #tabSettings {
@@ -5455,6 +5443,9 @@ body.mode-floor #windowLed.led-window {
 body.mode-dashboard #windowLed,
 body.mode-dashboard #windowLed.led-window,
 body.mode-dashboard #windowLed.led-float,
+body.mode-seats #windowLed,
+body.mode-seats #windowLed.led-window,
+body.mode-seats #windowLed.led-float,
 body.mode-bots #windowLed,
 body.mode-ranks #windowLed,
 body.mode-paper #windowLed,
@@ -5466,6 +5457,7 @@ body.mode-settings #windowLed {
 }
 #mainTable,
 #settingsView,
+#seatsView,
 #botsView,
 #ranksView,
 #paperView,
@@ -5932,12 +5924,8 @@ body:not(.mode-side) #app > header #tabSide,
 body:not(.mode-side) #app > header #tabSide.active,
 body:not(.mode-front) #app > header #tabFront,
 body:not(.mode-front) #app > header #tabFront.active,
-body:not(.mode-dashboard) #app > header #tabDashboard,
-body:not(.mode-dashboard) #app > header #tabDashboard.active,
-body:not(.mode-bots) #app > header #tabBots,
-body:not(.mode-bots) #app > header #tabBots.active,
-body:not(.mode-ranks) #app > header #tabRanks,
-body:not(.mode-ranks) #app > header #tabRanks.active,
+body:not(.mode-seats) #app > header #tabSeats,
+body:not(.mode-seats) #app > header #tabSeats.active,
 body:not(.mode-paper) #app > header #tabPaper,
 body:not(.mode-paper) #app > header #tabPaper.active,
 body:not(.mode-charts) #app > header #tabCharts,
@@ -6179,6 +6167,7 @@ body.mode-settings #openChartsBtn {
 }
 #app > #mainTable,
 #app > #settingsView,
+#app > #seatsView,
 #app > #botsView,
 #app > #ranksView,
 #app > #paperView,
@@ -6885,9 +6874,7 @@ body.night-mode header .header-row,
 body.night-mode #beastBadge,
 body.night-mode #btnHelp,
 body.night-mode #tabSettings,
-body.night-mode #tabBots,
-body.night-mode #tabDashboard,
-body.night-mode #tabRanks,
+body.night-mode #tabSeats,
 body.night-mode #tabPaper,
 body.night-mode #tabTape,
 body.night-mode #tabBook,
@@ -7146,10 +7133,8 @@ body.gate-locked .health-strip {
   body.phone-floor #tabSettings,
   body.phone-floor #btnHelp,
   body.phone-floor #tabCharts,
-  body.phone-floor #tabBots,
-  body.phone-floor #tabRanks,
+  body.phone-floor #tabSeats,
   body.phone-floor #tabPaper,
-  body.phone-floor #tabDashboard,
   body.phone-floor #tabTape,
   body.phone-floor #tabBook,
   body.phone-floor #tabBrain,
@@ -8300,4 +8285,144 @@ body.floor-mode[data-chair-room="ares"] #atsGameStrip {
   background: rgba(8, 14, 22, 0.72);
   box-shadow: 0 0 14px rgba(240, 193, 74, 0.28);
   letter-spacing: 0.14em;
+}
+
+/* ===== SEATS — field guide + ranks + cards, one scroll, no third door ===== */
+#seatsView.seats-view {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#seatsView.hidden { display: none !important; }
+#seatsView .seats-hero h2 {
+  color: #00e8ff;
+  text-shadow: 0 0 14px rgba(0, 232, 255, 0.4);
+}
+#seatsView #botsView,
+#seatsView #ranksView,
+#seatsView .seats-cards-block {
+  position: relative;
+  inset: auto;
+  max-height: none;
+  overflow: visible;
+  min-height: 0;
+  padding: 0;
+}
+#seatsView #botsView.hidden,
+#seatsView #ranksView.hidden { display: none !important; }
+.seats-strip,
+.seats-board,
+.seats-cards-block {
+  display: block;
+  width: 100%;
+}
+.seats-cards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+.seats-cards-head h2 {
+  font-family: Orbitron, monospace;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: #00e8ff;
+  margin: 0;
+  text-shadow: 0 0 12px rgba(0, 232, 255, 0.35);
+}
+.seats-cards-toggle {
+  font-family: Orbitron, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #7fe9ff;
+  background: rgba(0, 232, 255, 0.08);
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  border-radius: 2px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.seats-cards-toggle:hover {
+  border-color: rgba(0, 232, 255, 0.7);
+  box-shadow: 0 0 12px rgba(0, 232, 255, 0.2);
+}
+body.mode-seats #dashboardOverlay,
+#seatsView #dashboardOverlay {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: flex-start;
+  gap: 10px;
+  padding: 0 0 16px !important;
+  overflow: visible !important;
+  pointer-events: auto;
+  z-index: 1;
+  min-height: 0 !important;
+  width: 100%;
+}
+body.mode-seats #dashboardOverlay.hidden,
+body.seats-cards-off #dashboardOverlay,
+body.mode-seats.seats-cards-off #dashboardOverlay { display: none !important; }
+body.mode-seats #dashboardOverlay .agent-card {
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-width: 0;
+}
+body.mode-seats #mainTable { display: none !important; }
+
+/* Phone / narrow: Seats stays in normal flow and scrolls. No crushed 3-col. */
+@media (max-width: 720px) {
+  body.mode-seats #seatsView,
+  body.mode-seats #seatsView.info-view:not(.hidden) {
+    display: block !important;
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+  body.mode-seats #botsView,
+  body.mode-seats #ranksView,
+  body.mode-seats .seats-cards-block,
+  body.mode-seats #dashboardOverlay {
+    display: block !important;
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    float: none !important;
+    grid-column: auto !important;
+  }
+  body.mode-seats #dashboardOverlay {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+  }
+  body.seats-cards-off #dashboardOverlay,
+  body.mode-seats.seats-cards-off #dashboardOverlay {
+    display: none !important;
+  }
+  body.mode-seats #dashboardOverlay .agent-card,
+  body.mode-seats #dashboardOverlay .pair-card {
+    flex: 1 1 auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  body.mode-seats .bots-grid {
+    grid-template-columns: 1fr !important;
+  }
+  body.mode-seats .rank-row {
+    grid-template-columns: 28px minmax(0, 1fr) 52px 36px 36px 44px !important;
+  }
 }

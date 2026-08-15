@@ -109,7 +109,7 @@ class MarkupTests(unittest.TestCase):
     def test_night_is_chrome_less(self):
         self.assertIn("body.night-mode #beastBadge", CSS)
         self.assertIn("body.night-mode #tabSettings", CSS)
-        self.assertIn("body.night-mode #tabBots", CSS)
+        self.assertIn("body.night-mode #tabSeats", CSS)
         self.assertIn("body.night-mode #tabNight", CSS)
         self.assertIn("night-mode", JS)
         self.assertIn('data-mode="night"', HTML)
