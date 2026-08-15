@@ -123,8 +123,14 @@ class LoginSplashStackTests(unittest.TestCase):
         self.assertIn("Signed Satoshi-center council table", WIRE_JS)
         self.assertIn("dark stone + amber/cyan", WIRE_JS)
         self.assertIn("Type sits over the table, not the faces", WIRE_JS)
+        self.assertIn("2026-08-15-satoshi-face", WIRE_JS)
+        self.assertIn("Satoshi chair face swap", WIRE_JS)
         self.assertLess(
             WIRE_JS.find("2026-08-15-login-splash"),
+            WIRE_JS.find("2026-08-15-satoshi-face"),
+        )
+        self.assertLess(
+            WIRE_JS.find("2026-08-15-satoshi-face"),
             WIRE_JS.find("2026-08-15-vitalik-face"),
         )
 
