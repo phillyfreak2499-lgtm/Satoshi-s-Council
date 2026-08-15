@@ -1360,6 +1360,238 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.restore();
   }
+
+  // Chair rooms + hour weather sit UNDER majority wisps. Same table, different world.
+  // No weather API — range / VOLT / book spread / time-left chop already on the desk.
+  const _hourWx = { level: 0, mode: "calm", motion: 1, range: 0, volt: 0, book: 0, chop: 0 };
+  function chairRoomOf(which) {
+    const key = (typeof chairKeyOf === "function") ? chairKeyOf(which) : String(which || "").toLowerCase();
+    if (key === "ats") return "ares";
+    if (key === "ethereum") return "vitalik";
+    if (key === "front") return "";
+    return "satoshi";
+  }
+  function chairLockIsReal(lc) {
+    if (!lc || !lc.locked) return false;
+    const side = String(lc.direction || "").toUpperCase();
+    if (!side || side === "WAIT" || side === "SIT" || side === "HOLD" || side === "EMPTY") return false;
+    return true;
+  }
+  function lockStampWord(dir, which) {
+    const d = String(dir || "").toUpperCase();
+    if (!d || d === "WAIT" || d === "SIT" || d === "HOLD") return "";
+    if (typeof isAtsTable === "function" && isAtsTable(which)) {
+      try {
+        const pick = ((typeof tableState === "function" ? tableState("ats") : null) || {}).pick || {};
+        const game = String(pick.game || pick.title || "").trim();
+        const num = String(pick.number || pick.call || "").trim();
+        const ticket = (game + (num ? (" " + num) : "")).trim();
+        if (ticket) return ticket.slice(0, 22);
+      } catch (e) {}
+      return d === "UP" || d === "DOWN" ? d : d.slice(0, 12);
+    }
+    if (d === "UP" || d === "UP_HOLD" || d === "YES" || d === "COVER" || d === "OVER" || d === "HOME") return "UP";
+    if (d === "DOWN" || d === "DOWN_HOLD" || d === "NO" || d === "NO-COVER" || d === "UNDER" || d === "AWAY") return "DOWN";
+    if (d === "ABOVE" || d === "BELOW" || d === "BETWEEN") return d;
+    return d.slice(0, 10);
+  }
+  function hourWeatherOf(st) {
+    // Tie storm / still to the hour we already have. Not a fake wash.
+    st = st || {};
+    const m = st.market || {};
+    const agents = st.agents || [];
+    let rangeScore = 0;
+    const candles = m.candles || [];
+    if (candles.length >= 2) {
+      let hi = -Infinity, lo = Infinity, last = 0;
+      for (let i = 0; i < candles.length; i++) {
+        const c = candles[i];
+        const h = Number(c.h != null ? c.h : c.high);
+        const l = Number(c.l != null ? c.l : c.low);
+        const cl = Number(c.c != null ? c.c : c.close);
+        if (Number.isFinite(h)) hi = Math.max(hi, h);
+        if (Number.isFinite(l)) lo = Math.min(lo, l);
+        if (Number.isFinite(cl)) last = cl;
+      }
+      if (last > 0 && hi > lo) rangeScore = Math.min(1, ((hi - lo) / last) / 0.012);
+    }
+    let voltScore = 0;
+    for (let i = 0; i < agents.length; i++) {
+      const a = agents[i];
+      if (!a || a.agent_name !== "volatility") continue;
+      const d = String(a.direction || "").toUpperCase();
+      const c = Number(a.confidence) || 0;
+      if (d && d !== "WAIT" && d !== "SIT") voltScore = Math.min(1, c / 100);
+      break;
+    }
+    const yb = Number(m.kalshi_yes_bid != null ? m.kalshi_yes_bid : m.up_pct);
+    const ya = Number(m.kalshi_yes_ask);
+    let bookScore = 0;
+    if (Number.isFinite(yb) && Number.isFinite(ya)) bookScore = Math.min(1, Math.abs(ya - yb) / 8);
+    if ((Number.isFinite(yb) && yb >= 99) || (Number.isFinite(ya) && ya >= 99)) bookScore = Math.max(bookScore, 0.55);
+    let chopScore = 0;
+    const secs = (typeof secondsLeftOf === "function") ? secondsLeftOf(m) : null;
+    if (secs != null && secs < 720) {
+      chopScore = (1 - secs / 720) * Math.max(rangeScore, voltScore, 0.25);
+    }
+    if (m.window_kind === "game" && secs != null && secs < 3600) {
+      chopScore = Math.max(chopScore, (1 - Math.max(0, secs) / 3600) * 0.7);
+    }
+    const level = Math.max(0, Math.min(1, rangeScore * 0.38 + voltScore * 0.28 + bookScore * 0.18 + chopScore * 0.16));
+    const modeWx = level >= 0.62 ? "wild" : (level <= 0.22 ? "dead" : "calm");
+    _hourWx.level = level;
+    _hourWx.mode = modeWx;
+    _hourWx.motion = modeWx === "wild" ? 1.85 : (modeWx === "dead" ? 0.18 : 1);
+    _hourWx.range = rangeScore;
+    _hourWx.volt = voltScore;
+    _hourWx.book = bookScore;
+    _hourWx.chop = chopScore;
+    return _hourWx;
+  }
+  function syncChairRoom(which, st) {
+    const room = chairRoomOf(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "bitcoin"));
+    const wx = hourWeatherOf(st || (typeof tableState === "function" ? tableState(which || focusTable) : null) || (typeof state !== "undefined" ? state : {}) || {});
+    try {
+      document.body.dataset.chairRoom = room || "";
+      document.body.dataset.hourWeather = wx.mode;
+      document.documentElement.style.setProperty("--hour-weather", String(wx.level));
+    } catch (e) {}
+    return { room: room, wx: wx };
+  }
+  function seatMoodOf(dir, conf) {
+    const locked = (typeof floorSeatDirLocked === "function") ? floorSeatDirLocked(dir) : false;
+    const c = Number(conf) || 0;
+    if (!locked) return { glow: 0.14, lean: 0.84, alpha: 0.40, loud: false };
+    const loud = c >= 62;
+    return { glow: loud ? 1 : 0.55, lean: loud ? 1.08 : 0.96, alpha: loud ? 1 : 0.78, loud: loud };
+  }
+  function drawChairRoom(w, h, which, weather, cx, cy, tableR) {
+    // Room wash UNDER wisps. Cheap CSS/canvas. Phone: wash only, no extra strokes.
+    if (!ctx || !w || !h) return;
+    const room = chairRoomOf(which);
+    if (!room) return;
+    const wx = weather || _hourWx;
+    const storm = wx.mode === "wild" ? 1 : (wx.mode === "dead" ? 0.22 : 0.55);
+    const phone = (typeof isPhoneDesk === "function") && isPhoneDesk();
+    const clock = (typeof time === "number" ? time : 0);
+    ctx.save();
+    let clipX = 0, clipY = 0, clipW = w, clipH = h;
+    if (cx != null && cy != null && tableR) {
+      clipX = cx - tableR * 1.85;
+      clipY = cy - tableR * 1.85;
+      clipW = tableR * 3.7;
+      clipH = tableR * 3.7;
+      ctx.beginPath();
+      ctx.rect(clipX, clipY, clipW, clipH);
+      ctx.clip();
+    }
+    let c0, c1, c2;
+    if (room === "vitalik") {
+      c0 = "rgba(40, 210, 190," + (0.10 + 0.10 * storm) + ")";
+      c1 = "rgba(8, 36, 42," + (0.42 + 0.10 * storm) + ")";
+      c2 = "rgba(2, 10, 14, 0.55)";
+    } else if (room === "ares") {
+      c0 = "rgba(255, 224, 140," + (0.08 + 0.10 * storm) + ")";
+      c1 = "rgba(8, 14, 28," + (0.50 + 0.08 * storm) + ")";
+      c2 = "rgba(1, 4, 10, 0.62)";
+    } else {
+      c0 = "rgba(240, 176, 64," + (0.12 + 0.12 * storm) + ")";
+      c1 = "rgba(36, 20, 6," + (0.48 + 0.10 * storm) + ")";
+      c2 = "rgba(6, 3, 2, 0.58)";
+    }
+    const gx = (cx != null) ? cx : w * 0.50;
+    const gy = (cy != null) ? (cy - (tableR || h * 0.2) * 0.35) : h * 0.18;
+    const g = ctx.createRadialGradient(gx, gy, 8, gx, gy, Math.max(w, h) * 0.72);
+    g.addColorStop(0, c0);
+    g.addColorStop(0.42, c1);
+    g.addColorStop(1, c2);
+    ctx.fillStyle = g;
+    ctx.fillRect(clipX, clipY, clipW, clipH);
+    if (phone || reduceMotion || (cx != null && tableR)) {
+      ctx.restore();
+      return;
+    }
+    ctx.globalAlpha = 0.10 + 0.10 * storm;
+    if (room === "satoshi") {
+      ctx.strokeStyle = "rgba(240, 186, 74, 0.55)";
+      ctx.lineWidth = 1;
+      const sway = Math.sin(clock * 0.0004 * (wx.motion || 1)) * 4 * storm;
+      for (let i = 0; i < 3; i++) {
+        const y = h * (0.22 + i * 0.18) + sway;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.08, y);
+        ctx.lineTo(w * 0.92, y);
+        ctx.stroke();
+      }
+    } else if (room === "vitalik") {
+      ctx.strokeStyle = "rgba(120, 255, 220, 0.40)";
+      ctx.lineWidth = 1.2;
+      const tilt = 0.08 * Math.sin(clock * 0.0003 * (wx.motion || 1));
+      ctx.beginPath();
+      ctx.moveTo(w * (0.18 + tilt), h * 0.08);
+      ctx.lineTo(w * (0.18 + tilt), h * 0.92);
+      ctx.moveTo(w * (0.82 - tilt), h * 0.08);
+      ctx.lineTo(w * (0.82 - tilt), h * 0.92);
+      ctx.stroke();
+    } else if (room === "ares") {
+      ctx.fillStyle = "rgba(255, 230, 160," + (0.05 + 0.07 * storm) + ")";
+      const flick = 0.85 + 0.15 * Math.sin(clock * 0.002 * (wx.motion || 1));
+      ctx.globalAlpha = (0.16 + 0.18 * storm) * flick;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.08, 0);
+      ctx.lineTo(w * 0.28, h);
+      ctx.lineTo(w * 0.02, h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(w * 0.92, 0);
+      ctx.lineTo(w * 0.72, h);
+      ctx.lineTo(w * 0.98, h);
+      ctx.closePath();
+      ctx.fill();
+      try { drawAresScorebug(w, h, storm); } catch (e) {}
+    }
+    ctx.restore();
+  }
+  function drawAresScorebug(w, h, storm) {
+    // Part of the Ares room. Reuses sport chip + atsKickLine. Not a fourth tab.
+    if (!ctx) return;
+    const phone = (typeof isPhoneDesk === "function") && isPhoneDesk();
+    if (phone) return;
+    const ts = (typeof tableState === "function" ? tableState("ats") : null) || {};
+    const pick = ts.pick || {};
+    const clock = (ts.market && ts.market.clock) || ts.clock || {};
+    const sport = String(pick.sport || clock.sport || "").trim().toUpperCase() || "ATS";
+    const game = String(pick.game || clock.game || "NO GAME").slice(0, 18);
+    const line = (typeof atsKickLine === "function")
+      ? atsKickLine(pick.close_time || clock.close_time, pick.mins_left != null ? pick.mins_left : clock.mins_left)
+      : "CLOCK IS DARK";
+    const bw = Math.min(w * 0.62, 420);
+    const bh = 28;
+    const x = (w - bw) / 2;
+    const y = Math.max(10, h * 0.035);
+    ctx.save();
+    ctx.globalAlpha = 0.82 + 0.10 * (storm || 0);
+    ctx.fillStyle = "rgba(4, 10, 18, 0.78)";
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.70)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, 4);
+    else ctx.rect(x, y, bw, bh);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = "700 10px Orbitron, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ffe27a";
+    ctx.fillText(sport, x + 10, y + bh / 2);
+    ctx.fillStyle = "#e8f4ff";
+    ctx.fillText(game, x + 58, y + bh / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#7fe9ff";
+    ctx.fillText(line, x + bw - 10, y + bh / 2);
+    ctx.restore();
+  }
   function syncSeatSpinBtn() {
     const btn = document.getElementById("seatSpinBtn");
     if (!btn) return;
@@ -1386,8 +1618,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const sealFX = {
     bitcoin: { until: 0, dir: "WAIT" },
     ethereum: { until: 0, dir: "WAIT" },
+    ats: { until: 0, dir: "WAIT" },
+    front: { until: 0, dir: "WAIT" },
   };
-  const _sealSeen = { bitcoin: "", ethereum: "" };
+  const _sealSeen = { bitcoin: "", ethereum: "", ats: "", front: "" };
 
   // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
@@ -2281,10 +2515,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return _tableWisps;
   }
 
-  function drawTableSmoke(cx, cy, tableR, dir) {
+  function drawTableSmoke(cx, cy, tableR, dir, weather) {
     if (!ctx || !tableR) return;
     const tone = smokeTone(dir);
     const wisps = ensureTableWisps();
+    const motion = (weather && weather.motion != null) ? weather.motion : (_hourWx.motion || 1);
     ctx.save();
     // Annulus on the deck — hole for the Chair, never a room wash
     ctx.beginPath();
@@ -2297,7 +2532,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     for (let i = 0; i < wisps.length; i++) {
       const w = wisps[i];
-      const ang = w.a0 + time * w.drift;
+      const ang = w.a0 + time * w.drift * motion;
       const pulse = 0.84 + 0.16 * Math.sin(time * 0.00082 + w.phase);
       const x = cx + Math.cos(ang) * tableR * w.dist;
       const y = cy + tableR * 0.30 + Math.sin(ang) * tableR * w.dist * 0.36;
@@ -2454,10 +2689,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function drawGameBot(name, x, y, r, dir, conf, faceAng, phase) {
+    const mood = seatMoodOf(dir, conf);
     const breathe = reduceMotion ? 1 : (1 + 0.08 * Math.sin(time * 0.0042 + (phase || 0)));
-    const rr = r * breathe;
+    const rr = r * breathe * mood.lean;
     const sc = strongColor(dir);
     ctx.save();
+    ctx.globalAlpha = mood.alpha;
     ctx.translate(x, y);
     if (faceAng != null) ctx.rotate(faceAng + Math.PI / 2);
     drawHex(0, 0, rr + 7);
@@ -2470,7 +2707,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.strokeStyle = sc;
     ctx.lineWidth = 2.6;
     ctx.shadowColor = sc;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = mood.loud ? 22 : (8 + 10 * mood.glow);
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.restore();
@@ -2600,8 +2837,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function noteChairLock(which, lc) {
     const key = chairKeyOf(which);
+    if (!sealFX[key]) sealFX[key] = { until: 0, dir: "WAIT" };
     const side = String((lc && lc.direction) || "").toUpperCase();
-    const locked = !!(lc && lc.locked && (side === "UP" || side === "DOWN"));
+    const locked = chairLockIsReal(lc);
     const stamp = locked ? String(lc.ticker || lc.locked_at || lc.close_time || side) : "";
     if (locked && stamp && _sealSeen[key] !== stamp) {
       _sealSeen[key] = stamp;
@@ -2927,14 +3165,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function drawLockIgnition(cx, cy, photoR, which) {
-    // Fat lock saber: hard hit on Chair LOCK (~1s), then stays OFF. Not a fade.
-    // Green UP / red DOWN. Next to the portrait — not over the face or seat labels.
+    // Fat lock saber + table stamp: hard hit on Chair LOCK (~1s), then stays OFF. Not a fade.
+    // Green UP / red DOWN / sports ticket. Next to the portrait — not over the face or seat labels.
+    // Don't fire on WAIT.
     if (!ctx || !photoR) return;
     const key = chairKeyOf(which);
     const sfx = sealFX[key];
     if (!sfx || !(sfx.until > Date.now())) return;
     const dir = String(sfx.dir || "").toUpperCase();
-    if (dir !== "UP" && dir !== "DOWN") return;
+    const word = lockStampWord(dir, which);
+    if (!word) return;
+    if (dir === "WAIT" || dir === "SIT" || dir === "HOLD") return;
     const left = sfx.until - Date.now();
     const t = 1 - Math.max(0, Math.min(1, left / 1100));
     let grow = 1;
@@ -2953,7 +3194,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } else {
       alpha = left > 80 ? 0.95 : 0;
     }
-    const up = dir === "UP";
+    const tone = (typeof wxTone === "function") ? wxTone(dir) : (dir === "UP" || dir === "UP_HOLD" ? "UP" : (dir === "DOWN" || dir === "DOWN_HOLD" ? "DOWN" : "WAIT"));
+    const up = tone === "UP" || word === "UP";
     const glow = up ? "rgba(57, 255, 20, 0.9)" : "rgba(255, 45, 85, 0.9)";
     const core = up ? "rgba(210, 255, 200, 0.98)" : "rgba(255, 214, 220, 0.98)";
     const dualFloor = floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle();
@@ -2984,6 +3226,37 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.fillStyle = "rgba(18, 14, 10, 0.95)";
     ctx.fillRect(x - thick * 0.42, hiltY - 2, thick * 0.84, 7);
+    ctx.restore();
+    // Stamp slams the call onto the table. One beat. Not a fade.
+    drawLockStamp(cx, cy, photoR, which, word, glow, alpha, t);
+  }
+  function drawLockStamp(cx, cy, photoR, which, word, glow, alpha, t) {
+    if (!ctx || !word || alpha <= 0) return;
+    const phone = (typeof isPhoneDesk === "function") && isPhoneDesk();
+    const slam = (!reduceMotion && t < 0.10) ? (1.18 - t * 1.6) : 1;
+    const tw = Math.min(photoR * (phone ? 1.55 : 1.85), word.length > 8 ? 168 : 118) * slam;
+    const th = (phone ? 22 : 28) * slam;
+    const y = cy + photoR * 0.92;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, y);
+    ctx.rotate(reduceMotion ? 0 : (-0.04 + (t < 0.08 ? 0.08 : 0)));
+    ctx.fillStyle = "rgba(8, 10, 14, 0.92)";
+    ctx.strokeStyle = glow || "rgba(240, 193, 74, 0.95)";
+    ctx.lineWidth = 3.2;
+    ctx.shadowColor = glow || "rgba(240, 193, 74, 0.8)";
+    ctx.shadowBlur = phone ? 0 : 14;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-tw / 2, -th / 2, tw, th, 5);
+    else ctx.rect(-tw / 2, -th / 2, tw, th);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#fff6d8";
+    ctx.font = "700 " + (phone ? 11 : 13) + "px Orbitron, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(word).slice(0, 22), 0, 1);
     ctx.restore();
   }
 
@@ -3290,7 +3563,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function drawQuadFloor(w, h) {
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
+    try { syncChairRoom(focusTable, tableState(focusTable) || state); } catch (e) {}
+    try { drawChairRoom(w, h, focusTable, _hourWx); } catch (e) {}
+    ctx.fillStyle = "rgba(2, 4, 10, 0.10)";
     ctx.fillRect(0, 0, w, h);
 
     const cam = floorCameraOffset();
@@ -3330,9 +3605,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const hideWait = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor")) && floorCryptoTable(which);
     const agents = hideWait ? floorLockedAgents(roster) : roster;
     const maj = majorityDirOf(roster);
+    const wx = hourWeatherOf(st);
     const gold = "rgba(240, 193, 74, 0.95)";
     const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
-    const pr = radius * 0.80 * chairBreatheScale(which, locked);
+    const chairMood = seatMoodOf(dir, conf);
+    const pr = radius * 0.80 * chairBreatheScale(which, locked) * (0.92 + 0.08 * chairMood.lean);
     const portraitY = cy - 2;
     const ringR = radius * 1.48;
     const orbit = seatOrbitAngle();
@@ -3351,7 +3628,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    drawTableSmoke(cx, cy, radius, maj);
+    try { drawChairRoom(radius * 4, radius * 4, which, wx, cx, cy, radius); } catch (e) {}
+    drawTableSmoke(cx, cy, radius, maj, wx);
     if (locked) {
       noteTableEmber((which || "table") + ":" + String((lc && (lc.ticker || lc.close_time)) || dir), dir);
     }
@@ -3394,16 +3672,21 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.strokeStyle = gold;
       ctx.lineWidth = 3.2;
       ctx.shadowColor = gold;
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 10 + 12 * chairMood.glow;
     } else if (focused) {
       ctx.strokeStyle = which === "ethereum" ? "rgba(120,255,160,0.9)" : "rgba(0,220,255,0.9)";
       ctx.lineWidth = 2.8;
+      ctx.globalAlpha = chairMood.alpha;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = chairMood.loud ? 16 : 6;
     } else {
       ctx.strokeStyle = "rgba(200,220,255,0.35)";
       ctx.lineWidth = 2;
+      ctx.globalAlpha = chairMood.alpha;
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
+    ctx.globalAlpha = focused ? 1 : 0.42;
     try {
       noteChairLock(which, lc);
       drawChairThink(cx, portraitY, pr, radius, { which, dir, locked, st });
@@ -3755,7 +4038,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     if (floorLikeMode()) {
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
+      try { syncChairRoom(focusTable, state); } catch (e) {}
+      try { drawChairRoom(w, h, focusTable, _hourWx); } catch (e) {}
+      ctx.fillStyle = "rgba(2, 4, 10, 0.10)";
       ctx.fillRect(0, 0, w, h);
     } else {
       ctx.fillStyle = "#02040a";
@@ -3764,6 +4049,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     const preAgents = (state && state.agents) || [];
     const maj = majorityDirOf(preAgents);
+    const hourWx = hourWeatherOf(state);
     try {
       document.body.classList.remove("majority-up", "majority-down", "majority-wait");
       document.body.classList.add(maj === "UP" ? "majority-up" : maj === "DOWN" ? "majority-down" : "majority-wait");
@@ -3832,7 +4118,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    drawTableSmoke(cx, cy, radius, maj);
+    drawTableSmoke(cx, cy, radius, maj, hourWx);
     try {
       const d0 = (state && state.decision) || {};
       const lc0 = d0.locked_call || (state && state.locked_call) || {};
@@ -4260,19 +4546,23 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const waitFloor = floorLikeMode() && !_hasLock;
+    const chairMood = seatMoodOf(leaderDir, leaderConf);
     const leaderPulse = reduceMotion ? 1 : (1 + (waitFloor ? 0.055 : 0.02) * Math.sin(time * 0.0035));
-    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse;
+    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse * (0.90 + 0.10 * chairMood.lean);
     const scL = strongColor(leaderDir);
     const eyeGlow =
       leaderDir === "UP" || leaderDir === "UP_HOLD" || leaderDir === "COVER" || leaderDir === "OVER" || leaderDir === "HOME" ? "rgba(0, 255, 100, 0.85)" :
       leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" || leaderDir === "NO-COVER" || leaderDir === "UNDER" || leaderDir === "AWAY" ? "rgba(255, 40, 70, 0.85)" :
       "rgba(220, 235, 255, 0.75)";
 
-    // Soft aura matching call
+    // Soft aura matching call — loud seats glow, WAIT Chair leans back
+    ctx.save();
+    ctx.globalAlpha = chairMood.alpha;
     ctx.beginPath();
     ctx.arc(cx, cy, lr + 28, 0, Math.PI * 2);
-    ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 40)).replace(/[\d.]+\)$/, "0.12)");
+    ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 40)).replace(/[\d.]+\)$/, (0.08 + 0.10 * chairMood.glow) + ")");
     ctx.fill();
+    ctx.restore();
 
     // Outer rotating dashed ring
     ctx.save();
@@ -9944,6 +10234,7 @@ function drawCandleChart() {
       const isFront = isFrontTable(focusTable);
       const isAts = typeof isAtsTable === "function" && isAtsTable(focusTable);
       document.body.dataset.focusTable = isAts ? "ats" : (isFront ? "front" : (isEth ? "ethereum" : "bitcoin"));
+      try { syncChairRoom(focusTable, (typeof tableState === "function" ? tableState(focusTable) : null) || state); } catch (e) {}
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
         if (isEth || isFront || isAts) focusBtc.classList.remove("focus-active");
