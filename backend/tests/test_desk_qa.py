@@ -99,6 +99,144 @@ class FloorOneHDockTests(unittest.TestCase):
         self.assertIn("COLD-LOAD GATES", CSS)
 
 
+class DeskUnlockRevealTests(unittest.TestCase):
+    def test_unlock_clears_html_and_body_and_reveals_app(self):
+        self.assertIn("function revealAppAfterDeskUnlock", JS)
+        unlock = JS.split("function revealAppAfterDeskUnlock", 1)[1].split("\n  function ", 1)[0]
+        self.assertIn('document.documentElement.classList.remove("gate-locked", "gate-revealing")', unlock)
+        self.assertIn('document.body.classList.remove("gate-locked", "gate-revealing")', unlock)
+        self.assertIn('getElementById("passwordGate")', unlock)
+        self.assertIn('classList.add("hidden")', unlock)
+        self.assertIn('getElementById("app")', unlock)
+        self.assertIn('setProperty("visibility", "visible", "important")', unlock)
+        self.assertIn("desk-unlocked", unlock)
+        auth = JS.split("function showAppAfterAuth", 1)[1].split("function playZtIntroThenSummonGate", 1)[0]
+        self.assertIn("revealAppAfterDeskUnlock", auth)
+        self.assertNotIn('document.body.classList.add("gate-locked")', auth)
+        self.assertIn("html.desk-unlocked #app", CSS)
+        self.assertIn("body.desk-unlocked #app", CSS)
+
+    def test_successful_unlock_leaves_app_visible(self):
+        """After a successful desk unlock, html/body are unlocked and #app is not hidden."""
+        html = _FakeEl(["gate-locked"])
+        body = _FakeEl(["gate-locked", "gate-revealing"])
+        app = _FakeEl([])
+        gate = _FakeEl([])
+        revealAppAfterDeskUnlock = _load_reveal_fn(html, body, app, gate)
+        revealAppAfterDeskUnlock()
+        self.assertFalse(html.classList.contains("gate-locked"))
+        self.assertFalse(html.classList.contains("gate-revealing"))
+        self.assertFalse(body.classList.contains("gate-locked"))
+        self.assertFalse(body.classList.contains("gate-revealing"))
+        self.assertTrue(html.classList.contains("desk-unlocked"))
+        self.assertTrue(body.classList.contains("desk-unlocked"))
+        self.assertTrue(gate.classList.contains("hidden"))
+        self.assertNotEqual(app.style.get("visibility"), "hidden")
+        self.assertEqual(app.style.get("visibility"), "visible")
+
+    def test_cold_visit_still_starts_locked(self):
+        self.assertIn('document.documentElement.classList.add("gate-locked")', HTML)
+        self.assertRegex(HTML, r'<body class="gate-locked"')
+        self.assertNotIn('class="desk-unlocked"', HTML)
+        self.assertNotRegex(HTML, r"<html[^>]*desk-unlocked")
+        self.assertNotRegex(HTML, r"<body[^>]*desk-unlocked")
+        self.assertIn("html.gate-locked #app", CSS)
+        self.assertIn("visibility: hidden !important", CSS)
+
+
+class FloorNameplateOverlapTests(unittest.TestCase):
+    def test_fit_helper_keeps_goal_off_seat_names(self):
+        self.assertIn("function floorNameplateFit", JS)
+        self.assertIn("cover bottom seat names", JS)
+        self.assertIn("WICK / WIRE / EXHAUST / QUORUM", JS)
+        for w, h in ((1280, 700), (1280, 620), (390, 390), (390, 520)):
+            radius, ring_r, lr, seat_r, nameplate_h, phone = _floor_nameplate_fit(w, h)
+            plate_bottom = lr + 46 + 14
+            seat_inner = ring_r - seat_r
+            self.assertLess(
+                plate_bottom,
+                seat_inner,
+                "GOAL/nameplate covers seats at %sx%s" % (w, h),
+            )
+            cy = h / 2.0
+            label_stack = 28 if phone else 42
+            label_bottom = cy + ring_r + seat_r + label_stack
+            self.assertLessEqual(
+                label_bottom,
+                h - 4,
+                "outer seat labels clip at %sx%s" % (w, h),
+            )
+
+
+class _FakeClassList:
+    def __init__(self, start):
+        self._s = set(start)
+
+    def add(self, *names):
+        self._s.update(names)
+
+    def remove(self, *names):
+        self._s.difference_update(names)
+
+    def contains(self, name):
+        return name in self._s
+
+
+class _FakeEl:
+    def __init__(self, classes):
+        self.classList = _FakeClassList(classes)
+        self.style = _FakeStyle()
+        self.attrs = {}
+
+    def setAttribute(self, k, v):
+        self.attrs[k] = v
+
+
+class _FakeStyle:
+    def __init__(self):
+        self._p = {}
+
+    def setProperty(self, name, value, _priority=None):
+        self._p[name] = value
+
+    def get(self, name):
+        return self._p.get(name)
+
+
+def _load_reveal_fn(html, body, app, gate):
+    def revealAppAfterDeskUnlock():
+        if gate:
+            gate.classList.add("hidden")
+            gate.setAttribute("aria-hidden", "true")
+        html.classList.remove("gate-locked", "gate-revealing")
+        body.classList.remove("gate-locked", "gate-revealing")
+        html.classList.add("desk-unlocked")
+        body.classList.add("desk-unlocked")
+        if app:
+            app.style.setProperty("visibility", "visible", "important")
+            app.style.setProperty("pointer-events", "auto", "important")
+
+    return revealAppAfterDeskUnlock
+
+
+def _floor_nameplate_fit(w, h):
+    short = min(w, h)
+    phone = w <= 420 or short <= 520
+    seat_r = 18 if phone else 24
+    label_stack = 28 if phone else 42
+    edge_pad = 6 if phone else 10
+    nameplate_h = 60
+    ring_mul = 1.15
+    want_radius = short * 0.40
+    max_ring = short * 0.5 - seat_r - label_stack - edge_pad
+    radius = max(64, min(want_radius, max_ring / ring_mul))
+    ring_r = radius * ring_mul
+    want_lr = short * 0.22
+    max_lr = max(40, ring_r - seat_r - nameplate_h - 10)
+    lr_base = min(want_lr, max_lr)
+    return radius, ring_r, lr_base, seat_r, nameplate_h, phone
+
+
 class PacksNotDroppedTests(unittest.TestCase):
     def test_official_closer_still_present(self):
         gates = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")

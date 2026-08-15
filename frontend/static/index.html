@@ -23,9 +23,12 @@
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     document.documentElement.classList.add("gate-locked");
+    document.documentElement.classList.remove("desk-unlocked");
     document.addEventListener("DOMContentLoaded", function () {
+      document.documentElement.classList.add("gate-locked");
+      document.documentElement.classList.remove("desk-unlocked");
       document.body.classList.add("gate-locked");
-      document.body.classList.remove("admin-unlocked", "follower-unlocked");
+      document.body.classList.remove("admin-unlocked", "follower-unlocked", "desk-unlocked");
       document.body.setAttribute("data-password-protected", "true");
       var pg = document.getElementById("passwordGate");
       if (pg) pg.classList.remove("hidden");

@@ -5879,6 +5879,12 @@ body:has(#passwordGate:not(.hidden)) #app {
   visibility: visible !important;
   pointer-events: auto !important;
 }
+/* Successful desk unlock must beat leftover html.gate-locked / gate-revealing. */
+html.desk-unlocked #app,
+body.desk-unlocked #app {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
 body:not(.admin-unlocked) #adminToolsCard,
 body:not(.admin-unlocked) #brainCard,
 body:not(.admin-unlocked) #autoBetCard,

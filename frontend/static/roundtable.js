@@ -37,9 +37,37 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try { sessionStorage.removeItem(DESK_KEY); } catch (e) {}
   window.__deskUnlockedThisPage = false;
   window.__adminUnlockedThisPage = false;
+  document.documentElement.classList.add("gate-locked");
+  document.documentElement.classList.remove("desk-unlocked");
   document.body.classList.add("gate-locked");
-  document.body.classList.remove("admin-unlocked", "follower-unlocked");
+  document.body.classList.remove("admin-unlocked", "follower-unlocked", "desk-unlocked");
   document.body.setAttribute("data-password-protected", "true");
+  function revealAppAfterDeskUnlock() {
+    // Successful desk code: never leave #app hidden. Clear lock classes on
+    // BOTH html and body — CSS also keys off html.gate-locked and leftover
+    // gate-revealing. Hide the desk overlay and force the desk visible.
+    try {
+      const pg = document.getElementById("passwordGate");
+      if (pg) {
+        pg.classList.add("hidden");
+        pg.setAttribute("aria-hidden", "true");
+      }
+    } catch (e) {}
+    try {
+      document.documentElement.classList.remove("gate-locked", "gate-revealing");
+      document.body.classList.remove("gate-locked", "gate-revealing");
+      document.documentElement.classList.add("desk-unlocked");
+      document.body.classList.add("desk-unlocked");
+    } catch (e) {}
+    try {
+      const app = document.getElementById("app");
+      if (app) {
+        app.style.setProperty("visibility", "visible", "important");
+        app.style.setProperty("pointer-events", "auto", "important");
+      }
+    } catch (e) {}
+  }
+  window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {
     try { return sessionStorage.getItem(DESK_KEY) === "1" && !!window.__deskUnlockedThisPage; } catch (e) { return !!window.__deskUnlockedThisPage; }
   }
@@ -340,8 +368,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
   // Desk-code gate stays up on a cold visit. Do not strip gate-locked here.
+  document.documentElement.classList.add("gate-locked");
+  document.documentElement.classList.remove("desk-unlocked");
   document.body.classList.add("gate-locked");
-  document.body.classList.remove("admin-unlocked");
+  document.body.classList.remove("admin-unlocked", "desk-unlocked");
 
   let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 800;
   let beastMode = localStorage.getItem("council_beast") !== "0";
@@ -2287,6 +2317,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return null;
   }
 
+  function floorNameplateFit(w, h) {
+    // Keep GOAL strip + Chair nameplate inside the table so they do not
+    // cover bottom seat names (WICK / WIRE / EXHAUST / QUORUM) at 1280 or 390.
+    const short = Math.min(w, h);
+    const phone = !!(typeof isPhoneDesk === "function" && isPhoneDesk()) || w <= 420 || short <= 520;
+    const seatR = phone ? 18 : 24;
+    const labelStack = phone ? 28 : 42;
+    const edgePad = phone ? 6 : 10;
+    const nameplateH = 60;
+    const ringMul = 1.15;
+    const wantRadius = short * 0.40;
+    const maxRing = short * 0.5 - seatR - labelStack - edgePad;
+    const radius = Math.max(64, Math.min(wantRadius, maxRing / ringMul));
+    const ringR = radius * ringMul;
+    const wantLr = short * 0.22;
+    const maxLr = Math.max(40, ringR - seatR - nameplateH - 10);
+    const lrBase = Math.min(wantLr, maxLr);
+    return { radius, ringR, lrBase, seatR, labelStack, nameplateH, phone, ringMul };
+  }
+
   function drawArt() {
     if (!ctx || !canvas) return;
     chairHits = [];
@@ -2311,7 +2361,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {}
 
     const cx = w / 2, cy = h / 2;
-    const radius = Math.min(w, h) * (mode === "floor" ? 0.40 : 0.32);
+    const floorFit = mode === "floor" ? floorNameplateFit(w, h) : null;
+    const radius = floorFit ? floorFit.radius : Math.min(w, h) * (mode === "floor" ? 0.40 : 0.32);
 
     if (mode === "floor") {
       ctx.clearRect(0, 0, w, h);
@@ -2635,7 +2686,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
     const chairCore = { x: cx, y: cy };
-    const chairR = Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28);
+    const chairR = floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28);
     const chairStop = chairR + 6;
     const chairLean = String((state.decision && state.decision.direction) || "WAIT").toUpperCase();
     order.forEach((name, i) => {
@@ -2684,7 +2735,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       ctx.globalAlpha = floorAlpha;
-      const r = (isPhoneDesk() || mode === "floor") ? 24 : 20;
+      const r = floorFit ? floorFit.seatR : ((isPhoneDesk() || mode === "floor") ? 24 : 20);
       const col = colorFor(agent.direction, agent.confidence);
       const sc = strongColor(agent.direction);
       const face = floorLocked ? Math.atan2(cy - pos.y, cx - pos.x) : pos.angle;
@@ -2700,7 +2751,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
       // Rank badge above name (hierarchy rank · upright)
       if (pos.rank) {
-        const badgeY = pos.y - r - 12;
+        const badgeY = pos.y - r - (floorFit && floorFit.phone ? 8 : 12);
         const top3 = pos.rank <= 3;
         // pill background
         ctx.font = "700 10px Orbitron, monospace";
@@ -2728,23 +2779,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.textBaseline = "alphabetic";
       }
 
-      // Callsign + signal
-      ctx.font = "700 11px Orbitron, monospace";
+      // Callsign + signal — keep inside the canvas; phone skips the subtitle
+      const compact = !!(floorFit && floorFit.phone);
+      const nameOff = compact ? 14 : 18;
+      const titleOff = 29;
+      const dirOff = compact ? 26 : (titleOf(agent.agent_name ? agent : name) ? 41 : 30);
+      const labelY = Math.min(h - 6, pos.y + r + nameOff);
+      ctx.font = compact ? "700 9px Orbitron, monospace" : "700 11px Orbitron, monospace";
       ctx.fillStyle = "#d8f0ff";
       ctx.textAlign = "center";
       ctx.shadowColor = CYAN;
       ctx.shadowBlur = 6;
-      ctx.fillText(labelOf(agent.agent_name ? agent : name), pos.x, pos.y + r + 18);
+      ctx.fillText(labelOf(agent.agent_name ? agent : name), pos.x, labelY);
       ctx.shadowBlur = 0;
       ctx.font = "8px Rajdhani, Inter, monospace";
       ctx.fillStyle = "rgba(240, 193, 74, 0.7)";
-      const title = titleOf(agent.agent_name ? agent : name);
-      if (title) ctx.fillText(title, pos.x, pos.y + r + 29);
-      ctx.font = "9px Orbitron, monospace";
+      const title = compact ? "" : titleOf(agent.agent_name ? agent : name);
+      if (title) ctx.fillText(title, pos.x, Math.min(h - 6, pos.y + r + titleOff));
+      ctx.font = compact ? "8px Orbitron, monospace" : "9px Orbitron, monospace";
       ctx.fillStyle = sc;
       const showDir = effectiveDir(agent.direction);
       ctx.fillStyle = lawLocked() ? "rgba(255, 120, 20, 0.95)" : sc;
-      ctx.fillText(lawLocked() ? "LOCKED" : `${showDir} ${agent.confidence}%`, pos.x, pos.y + r + (title ? 41 : 30));
+      ctx.fillText(lawLocked() ? "LOCKED" : `${showDir} ${agent.confidence}%`, pos.x, Math.min(h - 6, pos.y + r + dirOff));
     });
     ctx.globalAlpha = 1;
 
@@ -2758,7 +2814,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const leaderPulse = reduceMotion ? 1 : (1 + 0.02 * Math.sin(time * 0.0035));
-    const lr = Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28) * leaderPulse;
+    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28)) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
       leaderDir === "UP" || leaderDir === "UP_HOLD" ? "rgba(0, 255, 100, 0.85)" :
@@ -2830,24 +2886,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
     } catch (e) {}
 
-    // Labels under portrait (don't cover the face)
-    ctx.font = "700 11px Orbitron, sans-serif";
+    // Labels under portrait — tucked to the rim so GOAL / nameplate stay
+    // inside the seat ring (do not cover WICK / WIRE / EXHAUST / QUORUM).
+    const hudTight = !!(floorFit && mode === "floor");
+    const nameY = cy + lr + (hudTight ? 10 : 16);
+    const dirY = cy + lr + (hudTight ? 22 : 32);
+    const confY = cy + lr + (hudTight ? 32 : 46);
+    ctx.font = hudTight ? "700 10px Orbitron, sans-serif" : "700 11px Orbitron, sans-serif";
     ctx.fillStyle = GOLD;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(240, 193, 74, 0.55)";
     ctx.shadowBlur = 8;
-    ctx.fillText(chairNameOf(focusTable), cx, cy + lr + 16);
+    ctx.fillText(chairNameOf(focusTable), cx, nameY);
     ctx.shadowBlur = 0;
-    ctx.font = "700 13px Orbitron, sans-serif";
+    ctx.font = hudTight ? "700 12px Orbitron, sans-serif" : "700 13px Orbitron, sans-serif";
     ctx.fillStyle = "#ffffff";
     ctx.shadowColor = scL;
     ctx.shadowBlur = 12;
-    ctx.fillText(leaderDir, cx, cy + lr + 32);
+    ctx.fillText(leaderDir, cx, dirY);
     ctx.shadowBlur = 0;
-    ctx.font = "11px Orbitron, sans-serif";
+    ctx.font = hudTight ? "10px Orbitron, sans-serif" : "11px Orbitron, sans-serif";
     ctx.fillStyle = "#e8f4ff";
-    ctx.fillText(leaderConf + "%", cx, cy + lr + 46);
+    ctx.fillText(leaderConf + "%", cx, confY);
 
         // ===== CLEAR LOCKED CALL plate for follower bots (GOAL: one call @ best odds) =====
     {
@@ -2857,9 +2918,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
       const entryOdds = lc.entry_odds_pct;
       const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
-      const plateY = cy + lr + 68;
-      const plateW = isLocked && isDir ? 260 : 240;
-      const plateH = 38;
+      const plateY = cy + lr + (hudTight ? 46 : 68);
+      const plateW = hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 260 : 240);
+      const plateH = hudTight ? 28 : 38;
       ctx.beginPath();
       const rx = 8;
       ctx.moveTo(cx - plateW/2 + rx, plateY - plateH/2);
@@ -5521,7 +5582,9 @@ function drawCandleChart() {
 
   function dismissGate(animated, land) {
     const gate = document.getElementById("summonGate");
+    document.documentElement.classList.remove("gate-locked", "gate-revealing");
     document.body.classList.remove("gate-locked", "gate-revealing", "tutorial-walk");
+    try { revealAppAfterDeskUnlock(); } catch (e) {}
     markOnboarded();
     const dest = land || "art";
     function after() {
@@ -5699,8 +5762,10 @@ function drawCandleChart() {
     if (fromGate) {
       const sg = document.getElementById("summonGate");
       if (sg) sg.classList.add("hidden");
+      document.documentElement.classList.remove("gate-locked", "gate-revealing");
       document.body.classList.remove("gate-locked", "gate-revealing");
       document.body.classList.add("tutorial-walk");
+      try { revealAppAfterDeskUnlock(); } catch (e) {}
     }
 
     overlay.hidden = false;
@@ -6953,18 +7018,19 @@ function drawCandleChart() {
   const passKey = "council_auth_ok";
 
   function showAppAfterAuth() {
-    const pg = document.getElementById("passwordGate");
-    if (pg) pg.classList.add("hidden");
+    if (typeof window.revealAppAfterDeskUnlock === "function") {
+      window.revealAppAfterDeskUnlock();
+    }
     document.body.classList.remove("admin-unlocked");
     const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
     if (onboarded) {
-      document.body.classList.remove("gate-locked", "gate-revealing");
       const sg = document.getElementById("summonGate");
       if (sg) sg.classList.add("hidden");
       try { if (typeof window.setMode === "function") window.setMode("art"); } catch (e) {}
       return;
     }
-    document.body.classList.add("gate-locked");
+    // First-login choice overlays the desk. Do not re-lock html/body —
+    // a leftover html.gate-locked would keep #app visibility:hidden.
     const sg = document.getElementById("summonGate");
     if (sg) sg.classList.remove("hidden");
     try { if (typeof window.initSummonGate === "function") window.initSummonGate(); } catch (e) {}
@@ -7039,13 +7105,15 @@ function drawCandleChart() {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     window.__deskUnlockedThisPage = false;
-    document.body.classList.remove("admin-unlocked");
+    document.body.classList.remove("admin-unlocked", "desk-unlocked");
+    document.documentElement.classList.remove("desk-unlocked");
     const pg = document.getElementById("passwordGate");
     const input = document.getElementById("passwordInput");
     const btn = document.getElementById("passwordSubmit");
     const err = document.getElementById("passwordError");
     if (!pg) return;
     pg.classList.remove("hidden");
+    document.documentElement.classList.add("gate-locked");
     document.body.classList.add("gate-locked");
     document.body.classList.remove("admin-unlocked");
     document.body.setAttribute("data-password-protected", "true");
@@ -7291,7 +7359,9 @@ function drawCandleChart() {
           gate.classList.add("fade-out");
           setTimeout(() => { try { gate.remove(); } catch (e) {} }, 900);
         }
+        document.documentElement.classList.remove("gate-locked", "gate-revealing");
         document.body.classList.remove("gate-locked", "gate-revealing");
+        try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
         try {
           if (typeof finishSummon === "function") finishSummon(null);
         } catch (e) {}
