@@ -7213,12 +7213,13 @@ body.gate-locked .health-strip {
 }
 .side-card.parked .side-card-head { letter-spacing: 0.16em; color: rgba(180, 200, 220, 0.55); }
 
-/* Small Raijin on shared Floor / Table. Does not change seat orbit or STILL. */
+/* Phone HUD chip for Raijin. Dual Floor paints the smaller third chair on canvas. */
 .floor-raijin {
   position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
+  right: 8px;
+  bottom: 10px;
+  left: auto;
+  transform: none;
   z-index: 6;
   display: none;
   align-items: center;
@@ -7238,12 +7239,12 @@ body.gate-locked .health-strip {
   height: 36px;
   object-fit: cover;
   border-radius: 50%;
-  border: 1px solid rgba(240, 193, 74, 0.45);
+  border: 1px solid rgba(0, 220, 255, 0.45);
 }
 body.mode-floor .floor-raijin,
-body.mode-art .floor-raijin { display: inline-flex; }
-body.night-mode .floor-raijin,
-body.phone-floor .floor-raijin { display: none !important; }
+body.mode-art .floor-raijin { display: none; }
+body.night-mode .floor-raijin { display: none !important; }
+body.phone-floor .floor-raijin { display: inline-flex !important; }
 
 /* THE FRONT — Dallas weather ring. CRT/neon, not a city list. */
 .front-hud { max-width: 980px; }

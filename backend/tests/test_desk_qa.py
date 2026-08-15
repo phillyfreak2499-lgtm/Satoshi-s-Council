@@ -251,6 +251,15 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                 self.assertIn(lab, fnames, "%s missing on Floor %sx%s" % (lab, w, h))
             satoshi = [p for p in floor["nameplates"] if "SATOSHI" in str(p.get("text") or "")]
             self.assertTrue(satoshi)
+            raijin = [p for p in floor["nameplates"] if str(p.get("text") or "") == "RAIJIN"]
+            self.assertTrue(raijin, "Raijin third chair missing on Floor %sx%s" % (w, h))
+            vitalik = [p for p in floor["nameplates"] if "VITALIK" in str(p.get("text") or "")]
+            for plate in raijin:
+                for other in satoshi + vitalik:
+                    self.assertFalse(
+                        _rects_intersect(plate, other),
+                        "RAIJIN covers %s at Floor %sx%s" % (other.get("text"), w, h),
+                    )
             cluster = [s for s in floor["seats"] if s["name"] in floor_hits]
             for i, a in enumerate(cluster):
                 for b in cluster[i + 1 :]:
@@ -283,6 +292,7 @@ class FloorNameplateOverlapTests(unittest.TestCase):
 
     def test_dual_tables_do_not_crush_at_1042(self):
         self.assertIn("function dualFloorTableR", JS)
+        self.assertIn("function floorRaijinFit", JS)
         self.assertIn("do not crush at 1042", JS)
         self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin"', JS)
         self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum"', JS)
@@ -542,6 +552,21 @@ def _dual_floor_table_r(w, h):
     return min(want, max_r)
 
 
+def _floor_raijin_fit(w, h):
+    phone = w <= 480 or min(w, h) <= 520
+    dual = (not phone) and w >= 720
+    if not dual:
+        return None
+    r = _dual_floor_table_r(w, h)
+    mid = (not phone) and w <= 1180
+    chrome_bottom = 96 if mid else 48
+    photo_r = max(18, min(r * 0.20, 24))
+    seat_r = photo_r * 1.26
+    ring_top = h * 0.52 - r * 1.48
+    y = max(chrome_bottom + seat_r + 4, min(ring_top - seat_r - 8, chrome_bottom + seat_r + 8))
+    return {"x": w * 0.50, "y": y, "photoR": photo_r, "seatR": seat_r}
+
+
 def _floor_hud_layout(w, h, view="floor"):
     """Mirrors floorHudGeometry — real AABBs, not a radial-only fit."""
     import math
@@ -585,6 +610,20 @@ def _floor_hud_layout(w, h, view="floor"):
             nw = _text_w(text, 11)
             nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text, "table": side})
             add_seats(cx, cy, r * 1.48, 22, 8, 9, side)
+        rz = _floor_raijin_fit(w, h)
+        if rz:
+            nw = _text_w("RAIJIN", 8)
+            box = max(nw, rz["seatR"] * 2)
+            nameplates.append(
+                {
+                    "x": rz["x"] - box / 2,
+                    "y": rz["y"] - rz["seatR"],
+                    "w": box,
+                    "h": rz["seatR"] * 2 + 12,
+                    "text": "RAIJIN",
+                    "table": "front",
+                }
+            )
     elif view == "art" and not phone:
         radius = min(w, h) * 0.32
         ring_r = radius * 1.18

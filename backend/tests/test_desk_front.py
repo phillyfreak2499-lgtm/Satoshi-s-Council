@@ -101,7 +101,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("id=\"frontRing\"", HTML)
         self.assertIn('id="frontChairImg"', HTML)
         self.assertIn("/static/bots/raijin-wait.png", HTML)
-        self.assertIn("/static/bots/raijin-chair.png", HTML)
+        self.assertIn("/static/bots/raijin-chair.png", FRONT)
         self.assertIn("RAIJIN", HTML)
         self.assertIn("GLASS", HTML)
         self.assertIn("PIT", HTML)
@@ -172,6 +172,10 @@ class FrontMarkupTests(unittest.TestCase):
     def test_floor_raijin_small_presence(self):
         self.assertIn('id="floorRaijin"', HTML)
         self.assertIn("floor-raijin", CSS)
+        self.assertIn("function floorRaijinFit", JS)
+        self.assertIn("function drawFloorRaijinChair", JS)
+        self.assertIn("/static/bots/raijin-wait.png", JS)
+        self.assertIn('rememberChairHit(cx, cy, pr, "front")', JS)
         self.assertIn("function syncSeatSpinBtn", JS)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
 

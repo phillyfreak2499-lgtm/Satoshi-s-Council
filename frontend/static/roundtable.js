@@ -2304,6 +2304,59 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return Math.min(want, maxR);
   }
 
+  function floorRaijinFit(w, h) {
+    // Smaller third Floor chair. Dual only. Phone tucks the HUD chip.
+    // Keep off GOAL, WIRE/EXHAUST/CASCADE, and SATOSHI/VITALIK nameplates.
+    const phone = w <= 480 || Math.min(w, h) <= 520;
+    const dual = !phone && w >= 720;
+    if (!dual) return { show: "chip", phone: phone, dual: false };
+    const R = dualFloorTableR(w, h);
+    const mid = !phone && w <= 1180;
+    const chromeBottom = mid ? 96 : 48;
+    const photoR = Math.max(18, Math.min(R * 0.20, 24));
+    const seatR = photoR * 1.26;
+    const ringTop = h * 0.52 - R * 1.48;
+    const y = Math.max(chromeBottom + seatR + 4, Math.min(ringTop - seatR - 8, chromeBottom + seatR + 8));
+    return { show: "chair", x: w * 0.50, y: y, photoR: photoR, seatR: seatR, dual: true, phone: false };
+  }
+
+  const raijinPortrait = new Image();
+  raijinPortrait.crossOrigin = "anonymous";
+  raijinPortrait.src = "/static/bots/raijin-wait.png";
+
+  function drawFloorRaijinChair(w, h) {
+    const fit = floorRaijinFit(w, h);
+    if (!fit || fit.show !== "chair") return;
+    const cx = fit.x, cy = fit.y, pr = fit.photoR, sr = fit.seatR;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    if (!containPortrait(raijinPortrait, cx, cy, pr)) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, pr, 0, Math.PI * 2);
+      ctx.fillStyle = "#0a1220";
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    try {
+      drawChairThink(cx, cy, pr, sr, { which: "front", dir: "WAIT", locked: false, st: {} });
+    } catch (e) {}
+    ctx.font = "700 8px Orbitron, monospace";
+    ctx.fillStyle = "#7fe9ff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("RAIJIN", cx, cy + pr + 3);
+    ctx.restore();
+    rememberChairHit(cx, cy, pr, "front");
+  }
+
   function drawDualFloor(w, h) {
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
@@ -2323,6 +2376,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const tableR = dualFloorTableR(w, h);
     drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
     drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
+    drawFloorRaijinChair(w, h);
     ctx.restore();
   }
 
@@ -2675,6 +2729,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
         addSeats(cx, cy, R * 1.48, 22, 8, 9, side);
       });
+      const rz = floorRaijinFit(w, h);
+      if (rz && rz.show === "chair") {
+        const nw = tw("RAIJIN", 8);
+        out.nameplates.push({
+          x: rz.x - Math.max(nw, rz.seatR * 2) / 2,
+          y: rz.y - rz.seatR,
+          w: Math.max(nw, rz.seatR * 2),
+          h: rz.seatR * 2 + 12,
+          text: "RAIJIN",
+          table: "front",
+        });
+      }
     } else if (view === "art" && !phone) {
       const radius = Math.min(w, h) * 0.32;
       const ringR = radius * 1.18;
@@ -8525,9 +8591,14 @@ function drawCandleChart() {
       if ((mode !== "floor" && mode !== "art") || leaderClickPlaying || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
-      if (!pt || !chairHitAt(pt.x, pt.y)) return;
+      const hit = pt && chairHitAt(pt.x, pt.y);
+      if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
+      if (hit.which === "front") {
+        try { setMode("front"); } catch (err) {}
+        return;
+      }
       playLeaderClickVideo();
     };
     targets.forEach((el) => {
