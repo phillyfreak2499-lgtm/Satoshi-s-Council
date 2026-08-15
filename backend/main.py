@@ -4,9 +4,10 @@ Serves /api/state + static Round Table UI. Continuous analysis loop.
 Deploy on Render: PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1
 """
 from __future__ import annotations
+import asyncio
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import Request, FastAPI, Response
@@ -39,16 +40,35 @@ _PROTECTED_OK = {
 }
 
 
+async def _boot_council():
+    """Hydrate + first Kalshi/candle fetch. Must not run before the HTTP port is bound."""
+    try:
+        await council.start()
+        logger.info(
+            f"{settings.APP_NAME} online · analysis every {settings.ANALYSIS_INTERVAL}s · "
+            f"http_timeout={settings.HTTP_TIMEOUT}s"
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Council boot failed — HTTP stays up")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await council.start()
-    logger.info(
-        f"{settings.APP_NAME} online · analysis every {settings.ANALYSIS_INTERVAL}s · "
-        f"http_timeout={settings.HTTP_TIMEOUT}s"
-    )
-    yield
-    await council.stop()
-    logger.info("Council shut down cleanly")
+    # Listen first. Hydrate/sweep/first fetch stay off the uvicorn bind path.
+    # Render single-instance disk swap 502s if $PORT is still closed.
+    boot = asyncio.create_task(_boot_council(), name="council-boot")
+    logger.info("HTTP listen ready — council boot continues in background")
+    try:
+        yield
+    finally:
+        if not boot.done():
+            boot.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await boot
+        await council.stop()
+        logger.info("Council shut down cleanly")
 
 
 app = FastAPI(
@@ -88,7 +108,12 @@ async def health():
     btc_age = _age((btc or {}).get("timestamp"))
     eth_age = _age((eth or {}).get("timestamp")) if eth else None
     max_age = max(90.0, float(getattr(settings, "ANALYSIS_INTERVAL", 4.5)) * 10)
-    healthy = bool(council.running) and (age is None or age < max_age)
+    if not council.running:
+        status = "warming"
+    elif age is None or age < max_age:
+        status = "ok"
+    else:
+        status = "degraded"
     btc_h = ((btc or {}).get("health") or {}) if isinstance(btc, dict) else {}
     eth_h = ((eth or {}).get("health") or {}) if isinstance(eth, dict) else {}
     from backend.data.spot_health import spot_feed_ok
@@ -102,7 +127,7 @@ async def health():
     if quote_age is None:
         quote_age = age
     return {
-        "status": "ok" if healthy else "degraded",
+        "status": status,
         "service": settings.APP_NAME,
         "running": council.running,
         "dual": bool(state.get("dual")),
