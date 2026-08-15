@@ -853,13 +853,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       { id: "LINE", job: "The Kalshi book / the number.", dir: "WAIT", call: "THE NUMBER · —", n: 0 },
       { id: "STEAM", job: "Line movement.", dir: "WAIT", call: "STEAM IS QUIET", n: 0 },
       { id: "FADE", job: "Public vs sharp.", dir: "WAIT", call: "NO CROWD TO FADE", n: 0 },
-      { id: "HURT", job: "Injuries / out.", dir: "WAIT", call: "NO CUTS ON THE SHEET", n: 0 },
+      { id: "HURT", job: "Injuries / out.", dir: "WAIT", call: "HURT · SIT · DARK", n: 0 },
       { id: "ICE", job: "Veto.", dir: "WAIT", call: "ICE IS CLEAR", n: 0 },
     ];
     const subs = (board && Array.isArray(board.subs)) ? board.subs : [
       { id: "CLOCK", parent: "LINE", call: "CLOCK IS DARK" },
-      { id: "FORM", parent: "FADE", call: "NO CARD YET" },
-      { id: "WX", parent: "ICE", call: "WX IS A GHOST" },
+      { id: "FORM", parent: "FADE", call: "FORM · SIT · NO CARD" },
+      { id: "WX", parent: "ICE", call: "WX · DARK" },
     ];
     const acc = (board && board.accuracy) || {};
     const tape = (board && board.tape) || [];
@@ -953,6 +953,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       pick: pick,
       eyes: (chair && chair.eyes) || pick.eyes,
       watch: (chair && chair.watch) || pick.watch || (board && board.watch),
+      why: (chair && chair.why) || pick.why || (board && board.why),
       learning: { hierarchy: hierarchy },
     };
   }
@@ -5365,8 +5366,10 @@ function drawCandleChart() {
           whyLine.textContent = `${why.side} · ${why.conf}% · ${seats}`;
         }
         if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+          const whyAts = (focused && focused.why) || {};
           const watch = (focused && focused.watch) || {};
-          if (watch.line) whyLine.textContent = whyLine.textContent + " · " + watch.line;
+          const extra = [whyAts.line, whyAts.strip, watch.line].filter(Boolean);
+          if (extra.length) whyLine.textContent = extra.join(" · ");
         }
       } else {
         whyCard.classList.add("hidden");
@@ -5981,6 +5984,20 @@ function drawCandleChart() {
     return bits.slice(0, 3).join(" · ");
   }
 
+  function paintAtsWhy(ts) {
+    const wrap = document.getElementById("atsWhy");
+    const line = document.getElementById("atsWhyLine");
+    const strip = document.getElementById("atsWhyStrip");
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    const show = ats && (mode === "art" || mode === "floor" || mode === "night");
+    if (wrap) wrap.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
+    const why = view.why || (view.pick && view.pick.why) || {};
+    if (line) line.textContent = String(why.line || "WHY · DARK · NO GAME ON THE TABLE");
+    if (strip) strip.textContent = String(why.strip || "LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK");
+  }
+
   function paintAtsWatch(ts) {
     const el = document.getElementById("atsWatch");
     if (!el) return;
@@ -6001,7 +6018,13 @@ function drawCandleChart() {
     el.hidden = !show;
     if (!show) return;
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
-    el.textContent = chairWhyLineText(ts);
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+      const why = ts.why || (ts.pick && ts.pick.why) || {};
+      el.textContent = String(why.line || chairWhyLineText(ts));
+    } else {
+      el.textContent = chairWhyLineText(ts);
+    }
+    try { paintAtsWhy(ts); } catch (e) {}
     try { paintAtsWatch(ts); } catch (e) {}
   }
 
@@ -7591,6 +7614,7 @@ function drawCandleChart() {
         try { paintAresEyes((atsBoard.chair && atsBoard.chair.eyes) || (atsBoard.pick && atsBoard.pick.eyes)); } catch (e) {}
         try { renderAtsBotsGuide(atsBoard); } catch (e) {}
         try { paintAtsChartTape(atsBoard); } catch (e) {}
+        try { paintAtsWhy(atsBoard); } catch (e) {}
         try { paintAtsWatch(atsBoard); } catch (e) {}
         try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
         try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
@@ -7605,6 +7629,7 @@ function drawCandleChart() {
         try { paintAresEyes((data.chair && data.chair.eyes) || (data.pick && data.pick.eyes)); } catch (e) {}
         try { renderAtsBotsGuide(data); } catch (e) {}
         try { paintAtsChartTape(data); } catch (e) {}
+        try { paintAtsWhy(data); } catch (e) {}
         try { paintAtsWatch(data); } catch (e) {}
       }).catch(function () {});
     }, 20000);
@@ -7648,7 +7673,8 @@ function drawCandleChart() {
     const pick = (data && data.pick) || {};
     const chair = (data && data.chair) || {};
     const watch = (data && data.watch) || chair.watch || pick.watch || {};
-    if (line) line.textContent = (chair.call || pick.number || "WAIT · no game on the table") + " · " + (watch.line || "WATCH · DARK · NO LISTING");
+    const why = (data && data.why) || chair.why || pick.why || {};
+    if (line) line.textContent = (chair.call || pick.number || "WAIT · no game on the table") + " · " + (why.line || "WHY · DARK") + " · " + (watch.line || "WATCH · DARK · NO LISTING");
     if (meta) meta.textContent = (pick.sport || "ATS") + (pick.kind ? (" · " + pick.kind) : "");
   }
 

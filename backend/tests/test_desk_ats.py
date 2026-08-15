@@ -352,6 +352,75 @@ class AtsPickTests(unittest.TestCase):
         self.assertEqual(down["line"], "WATCH · DARK · FEED QUIET")
         self.assertNotIn("ESPN", down["line"])
 
+    def test_why_uses_real_facts_and_sits_when_dark(self):
+        why0 = desk_ats.build_why(None, [], [])
+        self.assertIn("DARK", why0["line"])
+        self.assertIn("HURT DARK", why0["strip"])
+        self.assertFalse(any(r["fed"] for r in why0["seats"] if r["id"] == "HURT"))
+        self.assertIsNone(desk_ats.parse_hurt({}))
+        self.assertIsNone(desk_ats.parse_form({"againstTheSpread": [{"team": {"abbreviation": "CHI"}, "records": []}], "lastFiveGames": []}))
+        self.assertIsNone(desk_ats.parse_hurt({"injuries": [{"team": {"abbreviation": "CHI"}, "injuries": [{"status": "Active", "athlete": {"displayName": "Nobody"}}]}]}))
+        hurt = desk_ats.parse_hurt({"injuries": [{"team": {"abbreviation": "CHI"}, "injuries": [
+            {"status": "Out", "athlete": {"shortName": "O. Trapilo"}, "type": {"description": "out"}},
+            {"status": "Questionable", "athlete": {"shortName": "C. Bryant"}},
+        ]}]})
+        self.assertEqual(hurt, "CHI OUT O. Trapilo")
+        self.assertNotIn("Bryant", hurt or "")
+        form = desk_ats.parse_form({"lastFiveGames": [{"team": {"abbreviation": "CHI"}, "events": [
+            {"gameResult": "W"}, {"gameResult": "L"}, {"gameResult": "W"},
+        ]}]})
+        self.assertEqual(form, "CHI L5 2-1")
+        wx, mattered = desk_ats.parse_wx({"gameInfo": {"weather": {"temperature": 75, "conditionId": "Cloudy", "precipitation": 80, "gust": 5}}})
+        self.assertIn("75°", wx)
+        self.assertTrue(mattered)
+        fair, fair_m = desk_ats.parse_wx({"gameInfo": {"weather": {"temperature": 72, "conditionId": "Clear", "precipitation": 0}}})
+        self.assertFalse(fair_m)
+        pick = {
+            "call": "DAL", "kind": "ml", "number": "DAL @ SEA", "mid": 41, "leftover": 7.8,
+            "public": "SEA", "steam": 0.0, "ice": None, "hurt": "CHI OUT O. Trapilo",
+            "form": "CHI L5 2-1", "wx": "75° CLOUDY 80% RAIN", "wx_mattered": True,
+            "close_time": "2026-08-16T00:00:00Z",
+        }
+        seats = desk_ats.build_seats(pick)
+        subs = desk_ats.build_subs(pick)
+        why = desk_ats.build_why(pick, seats, subs)
+        self.assertIn("WHY · DAL", why["line"])
+        self.assertIn("FADE SEA", why["line"])
+        self.assertIn("LEFTOVER", why["line"])
+        ids = [r["id"] for r in why["seats"]]
+        self.assertEqual(ids[:5], ["LINE", "STEAM", "FADE", "HURT", "ICE"])
+        hurt_row = next(r for r in why["seats"] if r["id"] == "HURT")
+        self.assertEqual(hurt_row["vote"], "WAIT")
+        self.assertFalse(hurt_row["fed"])
+        self.assertIn("Trapilo", hurt_row["fact"])
+        steam_row = next(r for r in why["seats"] if r["id"] == "STEAM")
+        self.assertIn("SIT", steam_row["fact"])
+        self.assertIn("HURT SIT", why["strip"])
+
+    async def test_why_attaches_on_board(self):
+        summary = {
+            "injuries": [{"team": {"abbreviation": "SEA"}, "injuries": [
+                {"status": "Out", "athlete": {"shortName": "D. Metcalf"}, "type": {"description": "out"}},
+            ]}],
+            "lastFiveGames": [{"team": {"abbreviation": "SEA"}, "events": [{"gameResult": "W"}, {"gameResult": "W"}]}],
+            "gameInfo": {"weather": {"temperature": 64, "conditionId": "Clear", "precipitation": 10}},
+        }
+        events = [{
+            "id": "4018",
+            "shortName": "DAL @ SEA",
+            "competitors": [{"abbreviation": "DAL"}, {"abbreviation": "SEA"}],
+            "broadcasts": [{"type": "TV", "isNational": True, "shortName": "FOX"}],
+        }]
+        board = await desk_ats.build_board(
+            fetch=_fetch_factory(), now=NOW, force=True, watch_events=events, espn_summary=summary,
+        )
+        self.assertIn("why", board)
+        self.assertEqual(board["why"]["source"], "kalshi+espn-summary")
+        if board.get("pick"):
+            self.assertIn("Metcalf", board["pick"].get("hurt") or "")
+            self.assertIn("SEA L5", board["pick"].get("form") or "")
+            self.assertIn("64°", board["pick"].get("wx") or "")
+
 
 class AtsFloorChromeTests(unittest.TestCase):
     def test_four_equal_floor_chairs(self):
@@ -368,6 +437,15 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertIn("SATOSHI", geo)
         self.assertIn("VITALIK", geo)
         self.assertIn("function floorHudGeometry", JS)
+
+    def test_why_strip_on_ats_hud(self):
+        self.assertIn('id="atsWhy"', HTML)
+        self.assertIn('id="atsWhyStrip"', HTML)
+        self.assertIn("function paintAtsWhy", JS)
+        self.assertIn("WHY · DARK", HTML + JS + ATS)
+        self.assertIn("SIT · DARK", ATS)
+        self.assertIn("kalshi+espn-summary", ATS)
+        self.assertNotIn('"WHY"', ATS.split("SEATS:", 1)[1].split("CHAIR:", 1)[0])
 
     def test_watch_line_on_ats_hud(self):
         self.assertIn('id="atsWatch"', HTML)

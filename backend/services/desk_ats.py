@@ -152,6 +152,7 @@ _dead_series: Dict[str, float] = {}
 _mids: Dict[str, List[Tuple[float, float]]] = {}
 _data_override: Optional[Path] = None
 _watch_cache: Dict[str, Dict[str, Any]] = {}
+_summary_cache: Dict[str, Dict[str, Any]] = {}
 
 # ESPN scoreboard header — public JSON ESPN.com uses for the scores strip.
 # site.api.espn.com 403s from some egress; this header endpoint does not.
@@ -176,13 +177,14 @@ WATCH_ALIASES: Dict[str, str] = {
 
 
 def reset_for_tests(data_dir: Optional[Path] = None) -> None:
-    global _fills, _fills_loaded, _board_cache, _dead_series, _mids, _data_override, _watch_cache
+    global _fills, _fills_loaded, _board_cache, _dead_series, _mids, _data_override, _watch_cache, _summary_cache
     _fills = []
     _fills_loaded = True
     _board_cache = {"at": 0.0, "payload": None}
     _dead_series = {}
     _mids = {}
     _watch_cache = {}
+    _summary_cache = {}
     _data_override = data_dir
 
 
@@ -586,8 +588,8 @@ def one_liner(seat: str, **kw: Any) -> str:
     if s == "HURT":
         note = kw.get("hurt")
         if note:
-            return f"HURT · {note}"
-        return "NO CUTS ON THE SHEET"
+            return f"HURT · SIT · {note}"
+        return "HURT · SIT · DARK"
     if s == "ICE":
         why = kw.get("ice")
         if why:
@@ -599,10 +601,10 @@ def one_liner(seat: str, **kw: Any) -> str:
         return str(kw.get("clock") or "CLOCK IS DARK")
     if s == "FORM":
         rec = kw.get("form")
-        return f"FORM · {rec}" if rec else "NO CARD YET"
+        return f"FORM · {rec}" if rec else "FORM · SIT · NO CARD"
     if s == "WX":
         wx = kw.get("wx")
-        return f"WX · {wx}" if wx else "WX IS A GHOST"
+        return f"WX · {wx}" if wx else "WX · DARK"
     return "—"
 
 
@@ -1056,6 +1058,7 @@ def listing_from_event(ev: Dict[str, Any]) -> Dict[str, Any]:
         "listed": True,
         "source": "espn-header",
         "game": game,
+        "event_id": ev.get("id"),
         "why": None,
         "down": False,
     }
@@ -1135,7 +1138,247 @@ async def attach_watch(
     return listing_from_event(ev)
 
 
-async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = None, force: bool = False, watch_fetch: Optional[_Fetch] = None, watch_events: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+HURT_STATUSES = ("out", "doubtful", "injured reserve")
+ESPN_SITE = "https://site.web.api.espn.com/apis/site/v2/sports"
+
+
+def parse_hurt(summary: Dict[str, Any]) -> Optional[str]:
+    """Out / doubtful only. Never invent a name."""
+    bits: List[str] = []
+    for block in summary.get("injuries") or []:
+        if not isinstance(block, dict):
+            continue
+        ab = str((block.get("team") or {}).get("abbreviation") or "").upper()
+        for it in block.get("injuries") or []:
+            if not isinstance(it, dict):
+                continue
+            st = str(it.get("status") or "").lower()
+            typ = it.get("type") if isinstance(it.get("type"), dict) else {}
+            desc = str(typ.get("description") or typ.get("abbreviation") or "").lower()
+            if st not in HURT_STATUSES and desc not in ("out", "doubtful", "o", "d"):
+                continue
+            ath = it.get("athlete") if isinstance(it.get("athlete"), dict) else {}
+            name = str(ath.get("shortName") or ath.get("displayName") or "").strip()
+            if not name:
+                continue
+            label = "DOUBTFUL" if ("doubt" in st or desc in ("doubtful", "d")) else "OUT"
+            bits.append(f"{ab} {label} {name}" if ab else f"{label} {name}")
+            if len(bits) >= 2:
+                return " · ".join(bits)
+    return " · ".join(bits) if bits else None
+
+
+def parse_form(summary: Dict[str, Any]) -> Optional[str]:
+    """Last-five W/L and ATS only when ESPN actually printed a record."""
+    bits: List[str] = []
+    for row in summary.get("lastFiveGames") or []:
+        if not isinstance(row, dict):
+            continue
+        ab = str((row.get("team") or {}).get("abbreviation") or "").upper()
+        evs = row.get("events") or []
+        if not ab or not isinstance(evs, list):
+            continue
+        w = sum(1 for e in evs if isinstance(e, dict) and str(e.get("gameResult") or "").upper() == "W")
+        l = sum(1 for e in evs if isinstance(e, dict) and str(e.get("gameResult") or "").upper() == "L")
+        if (w + l) > 0:
+            bits.append(f"{ab} L5 {w}-{l}")
+    for row in summary.get("againstTheSpread") or []:
+        if not isinstance(row, dict):
+            continue
+        ab = str((row.get("team") or {}).get("abbreviation") or "").upper()
+        for rec in row.get("records") or []:
+            if not isinstance(rec, dict):
+                continue
+            summ = str(rec.get("summary") or rec.get("displayValue") or "").strip()
+            if ab and summ and summ not in ("0-0", "0-0-0"):
+                bits.append(f"{ab} ATS {summ}")
+    return " · ".join(bits[:2]) if bits else None
+
+
+def parse_wx(summary: Dict[str, Any]) -> Tuple[Optional[str], bool]:
+    """Weather only if ESPN printed it. 'mattered' = rain/wind/extreme temp."""
+    w = ((summary.get("gameInfo") or {}).get("weather") or {})
+    if not isinstance(w, dict) or not w:
+        return None, False
+    parts: List[str] = []
+    temp = w.get("temperature")
+    cond = w.get("conditionId")
+    precip = w.get("precipitation")
+    gust = w.get("gust")
+    try:
+        if temp is not None:
+            parts.append(f"{int(float(temp))}°")
+    except (TypeError, ValueError):
+        pass
+    if cond:
+        parts.append(str(cond).upper())
+    mattered = False
+    try:
+        if precip is not None and float(precip) >= 40:
+            parts.append(f"{int(float(precip))}% RAIN")
+            mattered = True
+        if gust is not None and float(gust) >= 15:
+            parts.append(f"GUST {int(float(gust))}")
+            mattered = True
+        if temp is not None and (float(temp) <= 32 or float(temp) >= 90):
+            mattered = True
+        if cond and any(x in str(cond).lower() for x in ("rain", "snow", "storm", "wind")):
+            mattered = True
+    except (TypeError, ValueError):
+        pass
+    return (" ".join(parts) if parts else None), mattered
+
+
+def apply_espn_facts(pick: Dict[str, Any], summary: Optional[Dict[str, Any]]) -> None:
+    if not pick or not isinstance(summary, dict):
+        return
+    hurt = parse_hurt(summary)
+    form = parse_form(summary)
+    wx, mattered = parse_wx(summary)
+    if hurt:
+        pick["hurt"] = hurt
+    if form:
+        pick["form"] = form
+    if wx:
+        pick["wx"] = wx
+        pick["wx_mattered"] = mattered
+
+
+async def _espn_summary_fetch(sport: str, league: str, event_id: str) -> Dict[str, Any]:
+    import httpx
+
+    url = f"{ESPN_SITE}/{sport}/{league}/summary?event={event_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; SatoshiCouncil/1.0)",
+        "Accept": "application/json",
+        "Referer": "https://www.espn.com/",
+    }
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        r = await client.get(url, headers=headers)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, dict) else {}
+
+
+async def load_espn_summary(sport: str, event_id: Any, fetch: Optional[_Fetch] = None) -> Optional[Dict[str, Any]]:
+    eid = str(event_id or "").strip()
+    pair = ESPN_LEAGUES.get(str(sport or "").upper())
+    if not eid or not pair:
+        return None
+    hit = _summary_cache.get(eid)
+    if hit and time.time() - float(hit.get("at") or 0) < WATCH_TTL_S:
+        return hit.get("payload")
+    if _data_override is not None and fetch is None:
+        return None
+    try:
+        if fetch:
+            data = await fetch("/summary", {"sport": pair[0], "league": pair[1], "event": eid})
+        else:
+            data = await _espn_summary_fetch(pair[0], pair[1], eid)
+        payload = data if isinstance(data, dict) else None
+        _summary_cache[eid] = {"at": time.time(), "payload": payload}
+        return payload
+    except Exception:
+        _summary_cache[eid] = {"at": time.time(), "payload": None}
+        return None
+
+
+def build_why(
+    pick: Optional[Dict[str, Any]],
+    seats: List[Dict[str, Any]],
+    subs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Punchy WHY strip. SIT / DARK when a seat did not vote or had no fact."""
+    by = {str(s.get("id")): s for s in (seats or [])}
+    sub_by = {str(s.get("id")): s for s in (subs or [])}
+
+    def row(sid: str, vote: Any, fact: str, fed: bool) -> Dict[str, Any]:
+        v = str(vote or "WAIT").upper()
+        return {"id": sid, "vote": v, "fact": fact, "fed": bool(fed and v != "WAIT")}
+
+    rows: List[Dict[str, Any]] = []
+    if not pick:
+        for sid in ("LINE", "STEAM", "FADE", "HURT", "ICE"):
+            rows.append(row(sid, "WAIT", f"{sid} · SIT · DARK", False))
+        return {
+            "line": "WHY · DARK · NO GAME ON THE TABLE",
+            "strip": "LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK",
+            "seats": rows,
+            "source": None,
+        }
+
+    line = by.get("LINE") or {}
+    steam = by.get("STEAM") or {}
+    fade = by.get("FADE") or {}
+    hurt = by.get("HURT") or {}
+    ice = by.get("ICE") or {}
+    steam_run = pick.get("steam")
+    if steam_run is None:
+        steam_fact = "STEAM · SIT · DARK"
+    elif abs(float(steam_run)) < 1.5:
+        steam_fact = "STEAM · SIT · THE NUMBER HOLDS"
+    else:
+        steam_fact = steam.get("call") or one_liner("STEAM", run=steam_run)
+    hurt_note = pick.get("hurt")
+    hurt_fact = hurt.get("call") or (f"HURT · SIT · {hurt_note}" if hurt_note else "HURT · SIT · DARK")
+    ice_on = bool(pick.get("ice"))
+    rows.append(row("LINE", line.get("dir"), line.get("call") or one_liner("LINE", number=pick.get("number"), mid=pick.get("mid")), not ice_on))
+    rows.append(row("STEAM", steam.get("dir"), steam_fact, steam.get("dir") not in (None, "WAIT")))
+    rows.append(row("FADE", fade.get("dir"), fade.get("call") or one_liner("FADE", public=pick.get("public")), fade.get("dir") not in (None, "WAIT")))
+    rows.append(row("HURT", "WAIT", hurt_fact, False))
+    rows.append(row("ICE", "WAIT" if ice_on else (ice.get("dir") or "WAIT"), ice.get("call") or one_liner("ICE", ice=pick.get("ice"), unknown=pick.get("unknown_book")), ice_on))
+
+    clock = sub_by.get("CLOCK") or {}
+    form = sub_by.get("FORM") or {}
+    wx = sub_by.get("WX") or {}
+    clock_fact = clock.get("call") or clock_line(pick.get("close_time"))
+    if clock_fact and "DARK" not in str(clock_fact).upper() and "THEY'RE OFF" not in str(clock_fact).upper():
+        rows.append(row("CLOCK", "WAIT", clock_fact, True))
+    if pick.get("form"):
+        rows.append(row("FORM", "WAIT", form.get("call") or f"FORM · {pick.get('form')}", True))
+    else:
+        rows.append(row("FORM", "WAIT", "FORM · SIT · NO CARD", False))
+    if pick.get("wx"):
+        rows.append(row("WX", "WAIT", wx.get("call") or f"WX · {pick.get('wx')}", bool(pick.get("wx_mattered"))))
+    else:
+        rows.append(row("WX", "WAIT", "WX · DARK", False))
+
+    call = str(pick.get("call") or "WAIT").upper()
+    if ice_on:
+        head = f"WHY · ICE SAT · {pick.get('ice')}"
+    elif call == "WAIT":
+        head = "WHY · DARK · NO EDGE AFTER VIG"
+    else:
+        bits = [f"WHY · {call}"]
+        pub = pick.get("public")
+        if pub and str(pub).upper() != call:
+            bits.append(f"FADE {pub}")
+        leftover = pick.get("leftover")
+        if leftover is not None and float(leftover) > 0:
+            bits.append(f"LEFTOVER {float(leftover):.1f}¢")
+        if pick.get("number"):
+            bits.append(str(pick.get("number")))
+        head = " · ".join(bits[:4])
+
+    chips = []
+    for r in rows:
+        if r["id"] in ("CLOCK", "FORM", "WX") and not r["fed"] and "DARK" in r["fact"]:
+            continue
+        if r["fed"] and r["vote"] != "WAIT":
+            chips.append(f"{r['id']} {r['vote']}")
+        elif "DARK" in r["fact"]:
+            chips.append(f"{r['id']} DARK")
+        else:
+            chips.append(f"{r['id']} SIT")
+    return {
+        "line": head,
+        "strip": " · ".join(chips[:7]),
+        "seats": rows,
+        "source": "kalshi+espn-summary",
+    }
+
+
+async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = None, force: bool = False, watch_fetch: Optional[_Fetch] = None, watch_events: Optional[List[Dict[str, Any]]] = None, espn_summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     ttl = BOARD_TTL_S
     if not force and _board_cache.get("payload") and time.time() - float(_board_cache.get("at") or 0) < ttl:
         return _board_cache["payload"]
@@ -1145,17 +1388,25 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
     if lock and pick and not pick.get("ice"):
         pick = dict(pick)
         pick["locked"] = True
+    watch = await attach_watch(pick, fetch=watch_fetch, events=watch_events)
+    if pick:
+        summary = espn_summary
+        if summary is None and watch.get("event_id"):
+            summary = await load_espn_summary(pick.get("sport"), watch.get("event_id"), fetch=watch_fetch)
+        apply_espn_facts(pick, summary)
     chair = build_chair(pick)
     seats = build_seats(pick)
     subs = build_subs(pick)
-    watch = await attach_watch(pick, fetch=watch_fetch, events=watch_events)
+    why = build_why(pick, seats, subs)
     chair["watch"] = watch
+    chair["why"] = why
     acc = chair_accuracy()
     payload = {
         "chair": chair,
         "seats": seats,
         "subs": subs,
         "watch": watch,
+        "why": why,
         "pick": None if not pick else {
             "ticker": pick.get("ticker"),
             "game": pick.get("game"),
@@ -1175,6 +1426,10 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
             "siblings": pick.get("siblings") or [],
             "eyes": chair.get("eyes"),
             "watch": watch,
+            "why": why,
+            "hurt": pick.get("hurt"),
+            "form": pick.get("form"),
+            "wx": pick.get("wx"),
         },
         "accuracy": acc,
         "tape": lock_tape(),

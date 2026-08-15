@@ -6699,11 +6699,47 @@ body.night-mode .table-stage {
   text-overflow: ellipsis;
 }
 .chair-why[hidden] { display: none !important; }
+.ats-why {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: calc(14% - 20px);
+  z-index: 9;
+  pointer-events: none;
+  text-align: center;
+}
+.ats-why-line {
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 12px;
+  letter-spacing: 0.10em;
+  color: #f0c14a;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.45), 0 1px 8px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-why-strip {
+  margin-top: 3px;
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #7fe9ff;
+  text-shadow: 0 0 8px rgba(0, 232, 255, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-why[hidden] { display: none !important; }
+body.floor-mode .ats-why,
+body.night-mode .ats-why,
+body.mode-floor .ats-why { bottom: calc(4% + 34px); }
+body:not([data-focus-table="ats"]) .ats-why { display: none !important; }
+body[data-focus-table="ats"] .chair-why { display: none !important; }
 .ats-watch {
   position: absolute;
   left: 10%;
   right: 10%;
-  bottom: calc(14% - 22px);
+  bottom: calc(14% - 48px);
   z-index: 9;
   pointer-events: none;
   text-align: center;
@@ -6720,7 +6756,7 @@ body.night-mode .table-stage {
 .ats-watch[hidden] { display: none !important; }
 body.floor-mode .ats-watch,
 body.night-mode .ats-watch,
-body.mode-floor .ats-watch { bottom: calc(4% + 16px); }
+body.mode-floor .ats-watch { bottom: calc(4% + 14px); }
 body:not([data-focus-table="ats"]) .ats-watch { display: none !important; }
 body.floor-mode .chair-why,
 body.night-mode .chair-why,
@@ -6890,8 +6926,13 @@ body.gate-locked .health-strip {
     font-size: 16px;
     white-space: normal;
   }
+  body.phone-floor .ats-why {
+    bottom: calc(8% + 22px);
+  }
+  body.phone-floor .ats-why-line { font-size: 11px; white-space: normal; }
+  body.phone-floor .ats-why-strip { font-size: 9px; letter-spacing: 0.06em; }
   body.phone-floor .ats-watch {
-    bottom: calc(8% + 8px);
+    bottom: calc(8% + 2px);
     font-size: 11px;
     white-space: normal;
   }
