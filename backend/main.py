@@ -1302,6 +1302,21 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "vitalik-wait.jpg", media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/raijin-up.jpg")
+    async def raijin_up():
+        return FileResponse(STATIC_DIR / "raijin-up.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/raijin-down.jpg")
+    async def raijin_down():
+        return FileResponse(STATIC_DIR / "raijin-down.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/raijin-wait.jpg")
+    async def raijin_wait():
+        return FileResponse(STATIC_DIR / "raijin-wait.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/hive-egg.png")
     async def hive_egg_png():
         path = STATIC_DIR / "hive-egg.png"

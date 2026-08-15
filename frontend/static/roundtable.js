@@ -365,6 +365,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN;
     return vitalikImages.WAIT;
   }
+  const raijinImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
+  ["UP", "DOWN", "WAIT"].forEach(k => {
+    raijinImages[k].crossOrigin = "anonymous";
+    raijinImages[k].onload = _chairLoaded;
+    raijinImages[k].onerror = () => console.warn("Raijin image failed:", k);
+  });
+  raijinImages.UP.src = "/raijin-up.jpg";
+  raijinImages.DOWN.src = "/raijin-down.jpg";
+  raijinImages.WAIT.src = "/raijin-wait.jpg";
+  raijinImages.UP_HOLD = raijinImages.UP;
+  raijinImages.DOWN_HOLD = raijinImages.DOWN;
+  function raijinPortraitFor(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return raijinImages.UP;
+    if (d === "DOWN" || d === "DOWN_HOLD") return raijinImages.DOWN;
+    return raijinImages.WAIT;
+  }
+  function raijinPortraitSrc(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return "/raijin-up.jpg";
+    if (d === "DOWN" || d === "DOWN_HOLD") return "/raijin-down.jpg";
+    return "/raijin-wait.jpg";
+  }
   chairImages.UP_HOLD = chairImages.UP;
   chairImages.DOWN_HOLD = chairImages.DOWN;
   chairImages.SWAP = chairImages.WAIT;
@@ -2453,13 +2476,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
     raijinPortrait.src = "/static/bots/raijin-chair.png";
   };
-  function raijinFace() {
+  function frontLockDir() {
+    const data = (typeof frontBoard !== "undefined" && frontBoard) || {};
+    const chair = data.chair || {};
+    const tape = Array.isArray(data.tape) ? data.tape : [];
+    const open = tape.find(function (p) { return String(p.result || "").toUpperCase() === "OPEN"; });
+    if (open) return (String(open.side || "").toUpperCase() === "NO" || String(open.side || "").toUpperCase() === "DOWN") ? "DOWN" : "UP";
+    if (typeof frontLeanOf === "function") return frontLeanOf(chair.eye);
+    const eye = String(chair.eye || "WAIT").toUpperCase();
+    if (eye === "UP" || eye === "YES") return "UP";
+    if (eye === "DOWN" || eye === "NO") return "DOWN";
+    return "WAIT";
+  }
+  function raijinFace(dir) {
+    const pic = raijinPortraitFor(dir != null ? dir : frontLockDir());
+    if (pic && pic.complete && pic.naturalWidth) return pic;
     const el = document.getElementById("frontChairImg");
     if (el && el.complete && el.naturalWidth) return el;
     const chip = document.querySelector("#floorRaijin img");
     if (chip && chip.complete && chip.naturalWidth) return chip;
     if (raijinPortrait.complete && raijinPortrait.naturalWidth) return raijinPortrait;
-    return el || raijinPortrait;
+    return pic || el || raijinPortrait;
   }
 
   function drawFloorRaijinChair(w, h) {
@@ -2473,8 +2510,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.strokeStyle = "rgba(0, 220, 255, 0.55)";
     ctx.lineWidth = 1.6;
     ctx.stroke();
-    if (!containPortrait(raijinPortrait, cx, cy, pr)) {
-      containPortrait(raijinFace(), cx, cy, pr);
+    const floorDir = frontLockDir();
+    if (!containPortrait(raijinPortraitFor(floorDir), cx, cy, pr)) {
+      if (!containPortrait(raijinPortrait, cx, cy, pr)) {
+        containPortrait(raijinFace(floorDir), cx, cy, pr);
+      }
     }
     ctx.beginPath();
     ctx.arc(cx, cy, pr, 0, Math.PI * 2);
@@ -2482,7 +2522,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 2;
     ctx.stroke();
     try {
-      drawChairThink(cx, cy, pr, sr, { which: "front", dir: "WAIT", locked: false, st: {} });
+      drawChairThink(cx, cy, pr, sr, { which: "front", dir: floorDir, locked: floorDir === "UP" || floorDir === "DOWN", st: {} });
     } catch (e) {}
     ctx.font = "700 8px Orbitron, monospace";
     ctx.fillStyle = "#7fe9ff";
@@ -6228,7 +6268,7 @@ function drawCandleChart() {
     if (img.id === "frontChairImg") {
       const wrap = img.closest ? img.closest(".front-mark") : img.parentElement;
       if (wrap) wrap.classList.remove("blank");
-      img.src = "/static/bots/raijin-chair.png";
+      img.src = raijinPortraitSrc(frontLockDir());
       return;
     }
     const wrap = img.closest ? img.closest(".front-mark") : img.parentElement;
@@ -6401,7 +6441,7 @@ function drawCandleChart() {
     if (chairCall) chairCall.textContent = (data.chair && (data.chair.call || data.chair.bracket)) || "—";
     const chairImg = document.getElementById("frontChairImg");
     if (chairImg) {
-      chairImg.src = "/static/bots/raijin-chair.png";
+      chairImg.src = raijinPortraitSrc(frontLockDir());
     }
     (data.seats || []).forEach(function (s) {
       const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
@@ -6440,7 +6480,7 @@ function drawCandleChart() {
     if (why) why.textContent = (best && (best.skip || best.bracket)) || "";
     document.querySelectorAll("#frontView .front-mark img").forEach(function (img) {
       if (img.id === "frontChairImg") {
-        img.src = "/static/bots/raijin-chair.png";
+        img.src = raijinPortraitSrc(frontLockDir());
         return;
       }
       if (img.complete && !img.naturalWidth) window.frontMarkFail(img);
@@ -6552,8 +6592,10 @@ function drawCandleChart() {
         ctx.fillText(s.id, x + Math.cos(outA) * 16, y + Math.sin(outA) * 16);
         ctx.restore();
       });
-      if (!containPortrait(raijinPortrait, cx, portraitY, pr)) {
-        containPortrait(raijinFace(), cx, portraitY, pr);
+      if (!containPortrait(raijinPortraitFor(dir), cx, portraitY, pr)) {
+        if (!containPortrait(raijinPortrait, cx, portraitY, pr)) {
+          containPortrait(raijinFace(dir), cx, portraitY, pr);
+        }
       }
       const chairMark = document.querySelector("#frontStageWrap > #frontChair .front-mark");
       if (chairMark) {
