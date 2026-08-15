@@ -270,6 +270,88 @@ class AtsPickTests(unittest.TestCase):
         sun = desk_ats.sport_priority(datetime(2026, 8, 16, 16, 0, tzinfo=timezone.utc))
         self.assertEqual(sun[0], "NFL")
 
+    def test_prefers_nearer_kick_over_month_out_cfb(self):
+        """Sep 18 HOU@TTU cannot beat a nearer NFL or CFB book — leftover is not a month jump."""
+        far = {
+            "ticker": "KXNCAAFGAME-26SEP18HOUTTU-HOU",
+            "game": "HOUTTU",
+            "sport": "CFB",
+            "kind": "ml",
+            "call": "HOU",
+            "leftover": 12.0,
+            "ice": None,
+            "close_time": "2026-09-18T23:59:00Z",
+            "unknown_book": False,
+        }
+        near_nfl = {
+            "ticker": "KXNFLGAME-26AUG15DALSEA-SEA",
+            "game": "DALSEA",
+            "sport": "NFL",
+            "kind": "ml",
+            "call": "SEA",
+            "leftover": 3.0,
+            "ice": None,
+            "close_time": "2026-08-16T00:00:00Z",
+            "unknown_book": False,
+        }
+        near_cfb = {
+            "ticker": "KXNCAAFGAME-26AUG16OSUMICH-OSU",
+            "game": "OSUMICH",
+            "sport": "CFB",
+            "kind": "ml",
+            "call": "OSU",
+            "leftover": 2.0,
+            "ice": None,
+            "close_time": "2026-08-16T19:00:00Z",
+            "unknown_book": False,
+        }
+        haw = {
+            "ticker": "KXNCAAFGAME-26AUG22HAWSTAN-HAW",
+            "game": "HAWSTAN",
+            "sport": "CFB",
+            "kind": "ml",
+            "call": "HAW",
+            "leftover": 9.0,
+            "ice": None,
+            "close_time": "2026-08-22T12:00:00Z",
+            "unknown_book": False,
+        }
+        self.assertGreater(desk_ats.kick_mins_left(far, NOW), desk_ats.MONTH_KICK_MINS)
+        self.assertEqual(desk_ats.pick_one_game([far, near_nfl], now=NOW)["game"], "DALSEA")
+        self.assertEqual(desk_ats.pick_one_game([far, near_cfb], now=NOW)["game"], "OSUMICH")
+        self.assertEqual(desk_ats.pick_one_game([far, haw, near_nfl], now=NOW)["game"], "DALSEA")
+        self.assertEqual(desk_ats.pick_one_game([far, haw], now=NOW)["game"], "HAWSTAN")
+        self.assertEqual(desk_ats.pick_one_game([far], now=NOW)["game"], "HOUTTU")
+        # Calendar still breaks ties among similarly-near books (Saturday → CFB).
+        sat_nfl = dict(near_nfl, leftover=8.0)
+        sat_cfb = dict(near_cfb, leftover=4.0)
+        self.assertEqual(desk_ats.pick_one_game([sat_nfl, sat_cfb], now=NOW)["game"], "OSUMICH")
+
+    async def test_board_skips_sep18_cfb_when_nearer_nfl_exists(self):
+        extra = {
+            "KXNCAAFGAME": [
+                _m(
+                    "KXNCAAFGAME-26SEP18HOUTTU-HOU",
+                    series="KXNCAAFGAME",
+                    event="KXNCAAFGAME-26SEP18HOUTTU",
+                    title="Will Houston win the Houston vs Texas Tech game?",
+                    yes_bid="0.38",
+                    yes_ask="0.40",
+                    volume="88000",
+                    close="2026-09-18T23:59:00Z",
+                ),
+            ],
+            "KXNCAAFSPREAD": [],
+            "KXNCAAFTOTAL": [],
+        }
+        board = await desk_ats.build_board(fetch=_fetch_factory(extra), now=NOW, force=True)
+        pick = board["pick"]
+        self.assertIsNotNone(pick)
+        self.assertNotEqual(pick["game"], "HOUTTU")
+        self.assertNotIn("HOUTTU", str(pick.get("ticker") or ""))
+        self.assertEqual(pick["game"], "DALSEA")
+        self.assertEqual(pick["sport"], "NFL")
+
     async def test_paper_lock_caps_and_follower_off(self):
         board = await desk_ats.build_board(fetch=_fetch_factory(), now=NOW, force=True)
         self.assertTrue(board["paper_only"])
