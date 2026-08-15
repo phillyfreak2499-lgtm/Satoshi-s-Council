@@ -281,6 +281,34 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertTrue(held["held"])
         self.assertFalse(held["live"])
 
+    def test_live_kdfw_crt_backdrop(self):
+        self.assertEqual(desk_front.DALLAS["station"], "KDFW")
+        self.assertEqual(desk_front.DALLAS["market"], "DFW")
+        self.assertIn("api.weather.gov/stations/KDFW/observations/latest", FRONT)
+        self.assertIn("aviationweather.gov/api/data/metar?ids=KDFW", FRONT)
+        self.assertIn("WX_REFRESH_S = 180.0", FRONT)
+        self.assertIn("Dead feed holds last mode", FRONT)
+        self.assertIn("const frontWxRefreshMs = 180000", JS)
+        self.assertIn("Never invent SUN", JS)
+        self.assertIn('wx === "SUN"', JS)
+        self.assertIn('wx === "HEAT"', JS)
+        self.assertIn('wx === "CLOUD"', JS)
+        self.assertIn('wx === "RAIN"', JS)
+        self.assertIn('wx === "WIND"', JS)
+        self.assertIn('wx === "STORM"', JS)
+        self.assertIn("rgba(255, 214, 74", JS)
+        self.assertIn("wxNow === \"WIND\"", JS)
+        self.assertIn("windLean", JS)
+        self.assertIn("bolt-punch", JS + CSS)
+        self.assertIn("/static/bots/glass.png", HTML + JS)
+        self.assertIn("/static/bots/pit.png", HTML + JS)
+        self.assertIn("/static/bots/frost.png", HTML + JS)
+        self.assertIn("/static/bots/bone.png", HTML + JS)
+        self.assertIn("FRONT / RAIJIN", HTML)
+        self.assertIn("function renderFrontBotsGuide", JS)
+        self.assertIn('id="frontSettingsCard"', HTML)
+        self.assertIn("Raijin / THE FRONT", (ROOT / "TUTORIAL.md").read_text(encoding="utf-8"))
+
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

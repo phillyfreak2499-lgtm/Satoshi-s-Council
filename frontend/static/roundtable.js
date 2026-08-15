@@ -6089,6 +6089,7 @@ function drawCandleChart() {
   let frontLastMode = "";
   let frontWired = false;
   let frontBoltUntil = 0;
+  const frontWxRefreshMs = 180000; // live KDFW METAR/NWS every few minutes. Dead feed holds last mode.
 
   function frontApi(path, opt) {
     const base = typeof API_BASE === "string" ? API_BASE : "";
@@ -6336,6 +6337,9 @@ function drawCandleChart() {
       });
       const n = named.length;
       const orbit = (typeof seatOrbitAngle === "function") ? seatOrbitAngle() : 0;
+      const wrapEl = document.getElementById("frontStageWrap");
+      const wxNow = String((data.weather && data.weather.mode) || (wrapEl && wrapEl.getAttribute("data-wx")) || "").toUpperCase();
+      const windLean = wxNow === "WIND" ? -0.10 : 0;
       named.forEach(function (s, i) {
         const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
         const x = cx + Math.cos(ang) * ringR;
@@ -6350,6 +6354,18 @@ function drawCandleChart() {
         const fresh = markSeatTick("front:" + s.id, adir, confA);
         drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh);
         const face = locked ? Math.atan2(portraitY - y, cx - x) : ang;
+        if (wxNow === "SUN") {
+          ctx.save();
+          ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+          ctx.beginPath();
+          ctx.ellipse(x - 18, y + 22, 16, 5, -0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.save();
+        ctx.translate(x, y);
+        if (windLean) ctx.rotate(windLean);
+        ctx.translate(-x, -y);
         const mark = frontSeatImgs[s.id];
         if (!containPortrait(mark, x, y, 22)) {
           drawGameBot(s.id, x, y, 22, adir, confA, face, i);
@@ -6366,6 +6382,7 @@ function drawCandleChart() {
         ctx.textBaseline = "alphabetic";
         const outA = Math.atan2(y - cy, x - cx);
         ctx.fillText(s.id, x + Math.cos(outA) * 16, y + Math.sin(outA) * 16);
+        ctx.restore();
       });
       if (!containPortrait(raijinPortrait, cx, portraitY, pr)) {
         ctx.beginPath();
@@ -6438,98 +6455,115 @@ function drawCandleChart() {
     frontWxT += 1;
     ctx.fillStyle = "#02040a";
     ctx.fillRect(0, 0, w, h);
+    // CRT/neon KDFW backdrop. Never invent SUN when the feed is dead.
     if (wx === "SUN") {
-      const g = ctx.createRadialGradient(w * 0.72, h * 0.18, 8, w * 0.5, h * 0.45, w * 0.7);
-      g.addColorStop(0, "rgba(255, 210, 80, 0.55)");
-      g.addColorStop(0.35, "rgba(0, 232, 255, 0.16)");
+      const g = ctx.createRadialGradient(w * 0.78, h * 0.10, 4, w * 0.42, h * 0.42, w * 0.85);
+      g.addColorStop(0, "rgba(255, 214, 74, 0.92)");
+      g.addColorStop(0.18, "rgba(255, 176, 40, 0.42)");
+      g.addColorStop(0.42, "rgba(0, 232, 255, 0.22)");
       g.addColorStop(1, "rgba(2, 4, 10, 0)");
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+      ctx.strokeStyle = "rgba(255, 210, 80, 0.28)";
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(w * 0.5, h * 0.82, w * 0.28, 18, 0, 0, Math.PI * 2);
+      ctx.moveTo(w * 0.78, h * 0.10);
+      ctx.lineTo(w * 0.18, h * 0.92);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+      ctx.beginPath();
+      ctx.ellipse(w * 0.38, h * 0.86, w * 0.34, 22, -0.28, 0, Math.PI * 2);
       ctx.fill();
     } else if (wx === "HEAT") {
       const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, "rgba(255, 90, 20, 0.18)");
-      g.addColorStop(1, "rgba(80, 20, 0, 0.35)");
+      g.addColorStop(0, "rgba(255, 70, 10, 0.28)");
+      g.addColorStop(0.45, "rgba(180, 40, 0, 0.22)");
+      g.addColorStop(1, "rgba(60, 12, 0, 0.55)");
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "rgba(255, 140, 40, 0.18)";
-      for (let i = 0; i < 8; i++) {
+      ctx.strokeStyle = "rgba(255, 120, 30, 0.22)";
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 12; i++) {
         ctx.beginPath();
-        const y = (h * 0.2) + i * 28 + Math.sin((frontWxT + i * 12) / 14) * 6;
+        const y = (h * 0.12) + i * 26 + Math.sin((frontWxT + i * 12) / 14) * 8;
         ctx.moveTo(0, y);
-        for (let x = 0; x <= w; x += 16) ctx.lineTo(x, y + Math.sin((x + frontWxT * 2 + i * 20) / 18) * 5);
+        for (let x = 0; x <= w; x += 12) ctx.lineTo(x, y + Math.sin((x + frontWxT * 2.4 + i * 20) / 16) * 7);
         ctx.stroke();
       }
     } else if (wx === "CLOUD") {
-      ctx.fillStyle = "rgba(70, 84, 98, 0.22)";
+      ctx.fillStyle = "rgba(70, 84, 98, 0.28)";
       ctx.fillRect(0, 0, w, h);
-      const drift = (frontWxT * 0.15) % (w + 160);
-      ctx.fillStyle = "rgba(120, 130, 140, 0.16)";
+      const drift = (frontWxT * 0.08) % (w + 220);
+      ctx.fillStyle = "rgba(120, 130, 140, 0.20)";
       ctx.beginPath();
-      ctx.ellipse(drift - 80, h * 0.28, 90, 28, 0, 0, Math.PI * 2);
-      ctx.ellipse(drift + 40, h * 0.34, 70, 22, 0, 0, Math.PI * 2);
+      ctx.ellipse(drift - 90, h * 0.24, 120, 34, 0, 0, Math.PI * 2);
+      ctx.ellipse(drift + 50, h * 0.32, 96, 26, 0, 0, Math.PI * 2);
+      ctx.ellipse(drift + 160, h * 0.22, 80, 22, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0, 232, 255, 0.12)";
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.08)";
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(w * 0.45, h * 0.2);
-      ctx.lineTo(w * 0.52, h * 0.38);
-      ctx.lineTo(w * 0.48, h * 0.38);
-      ctx.lineTo(w * 0.58, h * 0.58);
+      ctx.moveTo(w * 0.45, h * 0.18);
+      ctx.lineTo(w * 0.52, h * 0.36);
+      ctx.lineTo(w * 0.48, h * 0.36);
+      ctx.lineTo(w * 0.58, h * 0.56);
       ctx.stroke();
     } else if (wx === "RAIN" || wx === "STORM") {
-      ctx.fillStyle = wx === "STORM" ? "rgba(8, 12, 28, 0.55)" : "rgba(6, 14, 24, 0.35)";
+      ctx.fillStyle = wx === "STORM" ? "rgba(8, 12, 28, 0.62)" : "rgba(6, 14, 24, 0.40)";
       ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "rgba(0, 232, 255, 0.28)";
+      ctx.strokeStyle = wx === "STORM" ? "rgba(0, 232, 255, 0.38)" : "rgba(0, 232, 255, 0.28)";
+      ctx.lineWidth = 1.1;
       frontWxBits.forEach(function (d) {
-        d.x += d.s * 0.35;
-        d.y += d.s * 2.1;
+        d.x += d.s * 0.85;
+        d.y += d.s * 2.4;
         if (d.y > h + 10) { d.y = -10; d.x = Math.random() * w; }
         ctx.globalAlpha = d.a;
         ctx.beginPath();
         ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x - 4, d.y + d.l);
+        ctx.lineTo(d.x - 7, d.y + d.l);
         ctx.stroke();
       });
       ctx.globalAlpha = 1;
-      const sheen = ctx.createLinearGradient(0, h * 0.72, 0, h);
+      const sheen = ctx.createLinearGradient(0, h * 0.68, 0, h);
       sheen.addColorStop(0, "rgba(0, 232, 255, 0)");
-      sheen.addColorStop(1, "rgba(0, 232, 255, 0.12)");
+      sheen.addColorStop(0.55, "rgba(0, 232, 255, 0.08)");
+      sheen.addColorStop(1, "rgba(0, 232, 255, 0.20)");
       ctx.fillStyle = sheen;
-      ctx.fillRect(0, h * 0.72, w, h * 0.28);
+      ctx.fillRect(0, h * 0.68, w, h * 0.32);
       if (wx === "STORM") {
         const flash = (Date.now() < frontBoltUntil) || (frontWxT % 180 === 0);
-        if (frontWxT % 180 === 0) frontBoltUntil = Date.now() + 140;
+        if (frontWxT % 180 === 0) frontBoltUntil = Date.now() + 160;
         if (flash) {
-          ctx.fillStyle = "rgba(220, 240, 255, 0.22)";
+          ctx.fillStyle = "rgba(220, 240, 255, 0.28)";
           ctx.fillRect(0, 0, w, h);
-          ctx.strokeStyle = "rgba(0, 232, 255, 0.95)";
-          ctx.lineWidth = 2.4;
+          ctx.strokeStyle = "rgba(0, 232, 255, 0.98)";
+          ctx.lineWidth = 3.2;
           ctx.beginPath();
-          ctx.moveTo(w * 0.5, h * 0.08);
-          ctx.lineTo(w * 0.46, h * 0.32);
-          ctx.lineTo(w * 0.54, h * 0.34);
-          ctx.lineTo(w * 0.42, h * 0.72);
+          ctx.moveTo(w * 0.52, h * 0.04);
+          ctx.lineTo(w * 0.46, h * 0.30);
+          ctx.lineTo(w * 0.56, h * 0.34);
+          ctx.lineTo(w * 0.40, h * 0.78);
           ctx.stroke();
           ctx.lineWidth = 1;
           if (wrap) wrap.classList.add("bolt-punch");
         } else if (wrap) wrap.classList.remove("bolt-punch");
       }
     } else if (wx === "WIND") {
-      ctx.strokeStyle = "rgba(0, 232, 255, 0.22)";
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.26)";
+      ctx.lineWidth = 1.2;
       frontWxBits.forEach(function (d) {
-        d.x += d.s * 3.2;
+        d.x += d.s * 3.6;
         if (d.x > w + 20) { d.x = -20; d.y = Math.random() * h; }
         ctx.globalAlpha = d.a;
         ctx.beginPath();
         ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x + d.l * 2.2, d.y);
+        ctx.lineTo(d.x + d.l * 2.6, d.y);
         ctx.stroke();
       });
       ctx.globalAlpha = 1;
     }
+    ctx.fillStyle = "rgba(0, 232, 255, 0.018)";
+    for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
     drawFrontTable(ctx, w, h);
     frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
   }
@@ -6592,7 +6626,7 @@ function drawCandleChart() {
       frontApi("/api/front").then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
         if (data) paintFrontBoard(data);
       }).catch(function () {});
-    }, 20000);
+    }, 20000); // book. Live KDFW weather refresh is frontWxRefreshMs / WX_REFRESH_S.
   }
   window.loadFrontTable = loadFrontTable;
 

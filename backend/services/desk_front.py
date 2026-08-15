@@ -104,7 +104,10 @@ THIN_VOL = 200.0
 FLIP_F = 2.0
 BOARD_TTL_S = 20.0
 WX_TTL_S = 180.0
+WX_REFRESH_S = 180.0  # live KDFW METAR/NWS every few minutes. Dead feed holds last mode.
 NWS_UA = "SatoshiCouncil/1.0 (the-front; dallas-kdfw)"
+NWS_OBS_URL = "https://api.weather.gov/stations/KDFW/observations/latest"
+METAR_URL = "https://aviationweather.gov/api/data/metar?ids=KDFW&format=json"
 HEAT_F = 95.0
 WIND_KT = 20.0
 
@@ -857,7 +860,7 @@ async def _nws_get(url: str) -> Dict[str, Any]:
 async def fetch_kdfw_obs(nws: Optional[_Nws] = None) -> Optional[Dict[str, Any]]:
     fn = nws or _nws_get
     try:
-        data = await fn("https://api.weather.gov/stations/KDFW/observations/latest")
+        data = await fn(NWS_OBS_URL)
         parsed = parse_nws_obs(data if isinstance(data, dict) else {})
         if parsed:
             return parsed
@@ -867,7 +870,7 @@ async def fetch_kdfw_obs(nws: Optional[_Nws] = None) -> Optional[Dict[str, Any]]
         return None
     try:
         av = await _http_get(
-            "https://aviationweather.gov/api/data/metar?ids=KDFW&format=json",
+            METAR_URL,
             {"User-Agent": NWS_UA, "Accept": "application/json"},
         )
         row: Dict[str, Any] = {}
@@ -1200,6 +1203,19 @@ async def build_board(
                 chair["n"] = acc.get("total") or 0
                 chair["wr"] = None if not acc.get("total") else (acc.get("correct") or 0) / acc["total"]
                 out["chair"] = chair
+            held = _load_wx_hold()
+            hold_age = time.time() - float(held.get("at") or 0)
+            if held.get("mode") in WX_MODES and 0 < hold_age < WX_REFRESH_S:
+                out["weather"] = {
+                    "mode": held.get("mode"),
+                    "held": False,
+                    "live": True,
+                    "station": "KDFW",
+                    "obs": held.get("obs"),
+                    "at": datetime.now(timezone.utc).isoformat(),
+                }
+            else:
+                out["weather"] = remember_weather(await fetch_kdfw_obs())
             return out
 
     n = now or datetime.now(timezone.utc)
@@ -1248,7 +1264,7 @@ async def build_board(
     if wx_obs is None:
         held = _load_wx_hold()
         age = time.time() - float(held.get("at") or 0)
-        if held.get("mode") in WX_MODES and 0 < age < WX_TTL_S:
+        if held.get("mode") in WX_MODES and 0 < age < WX_REFRESH_S:
             weather = {
                 "mode": held.get("mode"),
                 "held": False,
