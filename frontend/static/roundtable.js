@@ -5984,7 +5984,12 @@ function drawCandleChart() {
   let frontBoard = null;
   let frontStake = 5;
   let frontPollTimer = 0;
+  let frontWxRaf = 0;
+  let frontWxBits = [];
+  let frontWxT = 0;
+  let frontLastMode = "";
   let frontWired = false;
+  let frontBoltUntil = 0;
 
   function frontApi(path, opt) {
     const base = typeof API_BASE === "string" ? API_BASE : "";
@@ -6055,45 +6060,40 @@ function drawCandleChart() {
       else armSt.textContent = "paper default · live off";
     }
   }
-  function paintFrontSeats(data) {
-    const box = document.getElementById("frontSeats");
+  function paintFrontGuide(data) {
+    const box = document.getElementById("frontGuide");
     if (!box) return;
-    const seats = (data && data.seats) || [];
+    const seats = ((data && data.seats) || []).slice();
+    if (data && data.chair) seats.unshift(data.chair);
     box.innerHTML = seats.map(function (s) {
-      return '<article class="front-seat-card" data-seat="' + String(s.id || "") + '">' +
-        '<span class="front-mark"><img src="' + String(s.mark || "") + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
-        "<div><h3>" + String(s.id || "") + "</h3><p>" + String(s.job || "") + "</p></div></article>";
+      const mark = String((s && s.mark) || "");
+      return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
+        '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
+        "<div><h3>" + String((s && s.id) || "") + "</h3>" +
+        "<p>" + String((s && s.job) || "") + "</p>" +
+        '<div class="nw">' + frontWr(s) + (s && s.call ? (" · " + s.call) : "") + "</div></div></article>";
     }).join("");
   }
-  function paintFrontCards(data) {
-    const box = document.getElementById("frontCards");
+  function paintFrontBook(data) {
+    const box = document.getElementById("frontBook");
     if (!box) return;
-    const rows = Array.isArray(data && data.cards) ? data.cards : [];
+    const rows = Array.isArray(data && data.brackets) ? data.brackets : [];
     if (!rows.length) {
       const dropped = ((data && data.dropped) || []).join(" ");
-      box.innerHTML = '<p class="side-flag">' + (dropped ? ("series dropped · " + dropped) : "No open city books.") + "</p>";
+      box.innerHTML = '<p class="side-flag">' + (dropped ? ("series dropped · " + dropped) : "No open DFW book.") + "</p>";
       return;
     }
     box.innerHTML = rows.map(function (b) {
       const dont = !!b.dont_play;
-      const votes = (b.votes || []).map(function (v) {
-        return '<span class="front-vote">' + String(v.id) + " " + String(v.dir || "") + (v.call ? (" · " + v.call) : "") + "</span>";
-      }).join("");
-      const hon = b.honesty || {};
-      const ev = hon.ev_cents != null ? (hon.ev_cents + "¢ EV") : "EV —";
-      return '<article class="front-card' + (b.best ? " best" : "") + (dont ? " dont-play" : "") + '" data-ticker="' + String(b.ticker || "") + '">' +
-        '<div class="front-card-head"><span>' + String(b.city || "") + " · " + String(b.place || b.station || "") + "</span>" +
-        "<span>" + (b.best ? "BEST · " : "") + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
-        '<div class="front-bracket">' + String(b.bracket || "") + " · " + String(b.station || "") + "</div>" +
-        "<div>YES " + frontCents(b.yes_ask) + " · NO " + frontCents(b.no_ask) + "</div>" +
-        '<div class="front-votes">' + votes + "</div>" +
-        '<div class="front-honesty">after-fee ' + ev + " · n " + (hon.sample_n != null ? hon.sample_n : "—") +
-        (hon.dont_play ? (" · " + hon.dont_play) : " · play") + "</div>" +
+      return '<article class="front-bet' + (b.best ? " best" : "") + (dont ? " dont-play" : "") + '" data-ticker="' + String(b.ticker || "") + '">' +
+        '<div class="front-bet-head"><span>' + String(b.bracket || "") + "</span><span>" + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
+        "<div>YES " + frontCents(b.yes_ask) + " · NO " + frontCents(b.no_ask) + (b.volume != null ? (" · n " + Math.round(b.volume)) : "") + "</div>" +
+        (b.skip ? '<div class="side-flag">' + b.skip + "</div>" : "") +
         '<button type="button" class="yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
         '<button type="button" class="no" data-side="NO"' + (dont ? " disabled" : "") + ">NO</button>" +
         "</article>";
     }).join("");
-    box.querySelectorAll(".front-card").forEach(function (el) {
+    box.querySelectorAll(".front-bet").forEach(function (el) {
       const ticker = el.getAttribute("data-ticker");
       const card = rows.find(function (b) { return String(b.ticker) === ticker; });
       el.querySelectorAll("button[data-side]").forEach(function (btn) {
@@ -6101,17 +6101,36 @@ function drawCandleChart() {
       });
     });
   }
+  function paintFrontSeats(data) {
+    const chairCall = document.getElementById("frontChairCall");
+    if (chairCall) chairCall.textContent = (data.chair && (data.chair.call || data.chair.bracket)) || "—";
+    const chairImg = document.getElementById("frontChairImg");
+    if (chairImg && data.chair && data.chair.mark) {
+      chairImg.src = data.chair.mark;
+    }
+    (data.seats || []).forEach(function (s) {
+      const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
+      if (el) el.textContent = s.call || "—";
+    });
+  }
   function paintFrontBoard(data) {
     frontBoard = data || frontBoard;
     if (!frontBoard) return;
     paintFrontArm(frontBoard.status || {});
+    const wx = (frontBoard.weather && frontBoard.weather.mode) || "";
+    const held = !!(frontBoard.weather && frontBoard.weather.held);
+    const badge = document.getElementById("frontWxBadge");
+    if (badge) badge.textContent = wx ? ("WX · " + wx + (held ? " · HOLD" : " · KDFW")) : "WX · HOLD";
+    const wrap = document.getElementById("frontStageWrap");
+    if (wrap) wrap.setAttribute("data-wx", wx || "");
     const feed = document.getElementById("frontFeedStatus");
-    const n = ((frontBoard.cards || []).length);
+    const n = ((frontBoard.brackets || []).length);
     if (feed) {
-      feed.textContent = n ? (n + " cities · ranked by confidence") : ((frontBoard.dropped || []).length ? "series dropped" : "no open books");
+      feed.textContent = n ? (n + " DFW brackets · KXHIGHTDAL") : ((frontBoard.dropped || []).length ? "series dropped" : "no open DFW book");
     }
     paintFrontSeats(frontBoard);
-    paintFrontCards(frontBoard);
+    paintFrontBook(frontBoard);
+    paintFrontGuide(frontBoard);
     const fills = document.getElementById("frontFills");
     if (fills) {
       fills.innerHTML = (frontBoard.fills || []).map(function (f) {
@@ -6120,11 +6139,151 @@ function drawCandleChart() {
       }).join("");
     }
     const why = document.getElementById("frontWhy");
-    const best = (frontBoard.cards || []).find(function (b) { return b.best; });
-    if (why) why.textContent = best ? ((best.best ? "BEST · " : "") + (best.city || "") + " " + (best.bracket || "") + (best.skip ? (" · " + best.skip) : "")) : "";
+    const best = (frontBoard.brackets || []).find(function (b) { return b.best; });
+    if (why) why.textContent = (best && (best.skip || best.bracket)) || "";
     document.querySelectorAll("#frontView .front-mark img").forEach(function (img) {
       if (img.complete && !img.naturalWidth) window.frontMarkFail(img);
     });
+    startFrontWx(wx);
+  }
+  function seedFrontWx(w, h, mode) {
+    frontWxBits = [];
+    const n = mode === "RAIN" || mode === "STORM" ? 90 : (mode === "WIND" ? 70 : 36);
+    for (let i = 0; i < n; i++) {
+      frontWxBits.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        s: 0.6 + Math.random() * 2.4,
+        a: 0.08 + Math.random() * 0.22,
+        l: 8 + Math.random() * 18,
+      });
+    }
+  }
+  function drawFrontWxFrame() {
+    const canvas = document.getElementById("frontWx");
+    if (!canvas || mode !== "front") {
+      frontWxRaf = 0;
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const wrap = document.getElementById("frontStageWrap");
+    const w = canvas.clientWidth || 720;
+    const h = canvas.clientHeight || 520;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      seedFrontWx(w, h, (wrap && wrap.getAttribute("data-wx")) || "");
+    }
+    const wx = (wrap && wrap.getAttribute("data-wx")) || "";
+    frontWxT += 1;
+    ctx.fillStyle = "#02040a";
+    ctx.fillRect(0, 0, w, h);
+    if (wx === "SUN") {
+      const g = ctx.createRadialGradient(w * 0.72, h * 0.18, 8, w * 0.5, h * 0.45, w * 0.7);
+      g.addColorStop(0, "rgba(255, 210, 80, 0.55)");
+      g.addColorStop(0.35, "rgba(0, 232, 255, 0.16)");
+      g.addColorStop(1, "rgba(2, 4, 10, 0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+      ctx.beginPath();
+      ctx.ellipse(w * 0.5, h * 0.82, w * 0.28, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (wx === "HEAT") {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, "rgba(255, 90, 20, 0.18)");
+      g.addColorStop(1, "rgba(80, 20, 0, 0.35)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(255, 140, 40, 0.18)";
+      for (let i = 0; i < 8; i++) {
+        ctx.beginPath();
+        const y = (h * 0.2) + i * 28 + Math.sin((frontWxT + i * 12) / 14) * 6;
+        ctx.moveTo(0, y);
+        for (let x = 0; x <= w; x += 16) ctx.lineTo(x, y + Math.sin((x + frontWxT * 2 + i * 20) / 18) * 5);
+        ctx.stroke();
+      }
+    } else if (wx === "CLOUD") {
+      ctx.fillStyle = "rgba(70, 84, 98, 0.22)";
+      ctx.fillRect(0, 0, w, h);
+      const drift = (frontWxT * 0.15) % (w + 160);
+      ctx.fillStyle = "rgba(120, 130, 140, 0.16)";
+      ctx.beginPath();
+      ctx.ellipse(drift - 80, h * 0.28, 90, 28, 0, 0, Math.PI * 2);
+      ctx.ellipse(drift + 40, h * 0.34, 70, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.12)";
+      ctx.beginPath();
+      ctx.moveTo(w * 0.45, h * 0.2);
+      ctx.lineTo(w * 0.52, h * 0.38);
+      ctx.lineTo(w * 0.48, h * 0.38);
+      ctx.lineTo(w * 0.58, h * 0.58);
+      ctx.stroke();
+    } else if (wx === "RAIN" || wx === "STORM") {
+      ctx.fillStyle = wx === "STORM" ? "rgba(8, 12, 28, 0.55)" : "rgba(6, 14, 24, 0.35)";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.28)";
+      frontWxBits.forEach(function (d) {
+        d.x += d.s * 0.35;
+        d.y += d.s * 2.1;
+        if (d.y > h + 10) { d.y = -10; d.x = Math.random() * w; }
+        ctx.globalAlpha = d.a;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 4, d.y + d.l);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      const sheen = ctx.createLinearGradient(0, h * 0.72, 0, h);
+      sheen.addColorStop(0, "rgba(0, 232, 255, 0)");
+      sheen.addColorStop(1, "rgba(0, 232, 255, 0.12)");
+      ctx.fillStyle = sheen;
+      ctx.fillRect(0, h * 0.72, w, h * 0.28);
+      if (wx === "STORM") {
+        const flash = (Date.now() < frontBoltUntil) || (frontWxT % 180 === 0);
+        if (frontWxT % 180 === 0) frontBoltUntil = Date.now() + 140;
+        if (flash) {
+          ctx.fillStyle = "rgba(220, 240, 255, 0.22)";
+          ctx.fillRect(0, 0, w, h);
+          ctx.strokeStyle = "rgba(0, 232, 255, 0.95)";
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(w * 0.5, h * 0.08);
+          ctx.lineTo(w * 0.46, h * 0.32);
+          ctx.lineTo(w * 0.54, h * 0.34);
+          ctx.lineTo(w * 0.42, h * 0.72);
+          ctx.stroke();
+          ctx.lineWidth = 1;
+          if (wrap) wrap.classList.add("bolt-punch");
+        } else if (wrap) wrap.classList.remove("bolt-punch");
+      }
+    } else if (wx === "WIND") {
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.22)";
+      frontWxBits.forEach(function (d) {
+        d.x += d.s * 3.2;
+        if (d.x > w + 20) { d.x = -20; d.y = Math.random() * h; }
+        ctx.globalAlpha = d.a;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x + d.l * 2.2, d.y);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.28)";
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.36, 0, Math.PI * 2);
+    ctx.stroke();
+    frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
+  }
+  function startFrontWx(mode) {
+    if (mode && mode !== frontLastMode) {
+      frontLastMode = mode;
+      const canvas = document.getElementById("frontWx");
+      if (canvas) seedFrontWx(canvas.clientWidth || 720, canvas.clientHeight || 520, mode);
+    }
+    if (!frontWxRaf) frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
   }
   async function tapFront(card, side) {
     if (!card || !card.ticker) return;
@@ -7145,7 +7304,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Weather page — not the crypto Floor. CHI Midway, NYC Central Park, DAL DFW. FORECAST, MARKET, SKIP, and CLIMO vote. One BEST city+bracket. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
+      body: "Weather page — not the crypto Floor. Raijin chairs Dallas DFW (KXHIGHTDAL / KDFW). GLASS, PIT, FROST, and BONE rank the book. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",
@@ -8553,6 +8712,16 @@ function drawCandleChart() {
       e.preventDefault();
       e.stopPropagation();
       resetSettingsToDefaults();
+    });
+  }
+
+  const floorRaijinBtn = document.getElementById("floorRaijin");
+  if (floorRaijinBtn && !floorRaijinBtn.__wired) {
+    floorRaijinBtn.__wired = true;
+    floorRaijinBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      try { setMode("front"); } catch (err) {}
     });
   }
 

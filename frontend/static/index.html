@@ -264,6 +264,10 @@
         </div>
         <div id="chairWhy" class="chair-why" aria-live="polite">WAIT · —</div>
         <button type="button" id="phoneScore" class="phone-score" hidden aria-label="Flip BTC / ETH">BTC 0–0</button>
+        <button type="button" id="floorRaijin" class="floor-raijin" title="THE FRONT · Raijin · Dallas DFW" aria-label="Open THE FRONT">
+          <img src="/static/bots/raijin-chair.png" alt="" width="44" height="44">
+          <span>RAIJIN</span>
+        </button>
       </div>
       <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 
@@ -467,9 +471,9 @@
         </div>
 
         <div class="beast-card settings-card" id="frontSettingsCard">
-          <div class="beast-title">THE FRONT</div>
-          <p class="settings-sub">Daily high-temp cards. CHI Midway, NYC Central Park, DAL DFW. FORECAST / MARKET / SKIP / CLIMO vote. One BEST lock. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
-          <p class="settings-foot">Settlement is NWS CLI. Date is in the ticker. Desk-code only.</p>
+          <div class="beast-title">RAIJIN · THE FRONT</div>
+          <p class="settings-sub">Dallas DFW daily high (KXHIGHTDAL / KDFW). Weather council — GLASS, PIT, FROST, BONE. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
+          <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only.</p>
         </div>
 
         <div class="settings-actions">
@@ -651,22 +655,54 @@
     <section id="frontView" class="info-view hidden" aria-label="THE FRONT">
       <div class="info-hero">
         <h2>THE FRONT</h2>
-        <p>Daily high-temp cards. Weather page — not the crypto Floor. FORECAST / MARKET / SKIP / CLIMO vote. One BEST lock. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+        <p>Dallas DFW daily high. Weather council — not the crypto Floor. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
       </div>
       <div id="frontHud" class="front-hud">
         <div class="front-mode-row">
+          <span class="front-wx-badge" id="frontWxBadge">WX · —</span>
           <span class="side-badge paper" id="frontModeBadge">PAPER</span>
           <span class="side-status" id="frontFeedStatus">loading</span>
         </div>
-        <div id="frontSeats" class="front-seats" aria-label="Weather seats"></div>
+        <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
+          <canvas id="frontWx" width="720" height="520" aria-hidden="true"></canvas>
+          <div id="frontRing" class="front-ring" aria-label="Raijin weather table">
+            <div class="front-chair" id="frontChair">
+              <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-wait.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">RAIJIN</span>
+              <span class="front-call" id="frontChairCall">—</span>
+            </div>
+            <button type="button" class="front-seat" data-seat="GLASS" style="--a:-90">
+              <span class="front-mark"><img src="/static/bots/glass.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">GLASS</span>
+              <span class="front-call" data-call="GLASS">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="PIT" style="--a:0">
+              <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">PIT</span>
+              <span class="front-call" data-call="PIT">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="FROST" style="--a:90">
+              <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">FROST</span>
+              <span class="front-call" data-call="FROST">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="BONE" style="--a:180">
+              <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">BONE</span>
+              <span class="front-call" data-call="BONE">—</span>
+            </button>
+          </div>
+        </div>
         <div class="side-size-row">
           <span class="side-size-label">SIZE</span>
           <button type="button" class="front-step on" data-size="5">$5</button>
           <button type="button" class="front-step" data-size="10">$10</button>
           <button type="button" class="front-step" data-size="25">$25</button>
         </div>
-        <div id="frontCards" class="front-cards"></div>
+        <div id="frontBook" class="front-book"></div>
         <div id="frontWhy" class="side-why"></div>
+        <div class="front-guide-head">BOT FIELD GUIDE · THE FRONT</div>
+        <div id="frontGuide" class="front-guide"></div>
         <div id="frontFills" class="side-fills"></div>
         <details class="side-live-box">
           <summary>LIVE (off · this tab only)</summary>

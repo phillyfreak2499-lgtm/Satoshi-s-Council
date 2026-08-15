@@ -1,14 +1,12 @@
 """
-THE FRONT — daily high-temp city cards. Weather page, not a crypto Floor.
+THE FRONT — Dallas DFW daily-high weather council.
 
-Four seats only: FORECAST, MARKET, SKIP, CLIMO.
-Required cities: CHI Midway, NYC Central Park, DAL DFW.
-Optional extras only if that series is open and liquid. 404 → drop. Do not fake.
+Named seats (RAIJIN / GLASS / PIT / FROST / BONE), not a crypto Floor.
+Dallas only: KXHIGHTDAL / KDFW. If that series 404s, drop it. Do not fake cities.
 
 Paper by default. Never auto-bets. Never talks to Follower.
-Does not place Chair 1H locks. Settlement is NWS CLI for the station.
+Does not place Chair 1H locks. Settlement is NWS CLI for KDFW.
 Date lives in the ticker. Read strike_type from the API every time.
-2°F between-brackets are inclusive both ends.
 """
 from __future__ import annotations
 
@@ -42,44 +40,55 @@ MONTHS = {
 }
 TICK_DATE = re.compile(r"-(\d{2})([A-Z]{3})(\d{2})(?:-|$)")
 
-CITIES: Tuple[Dict[str, Any], ...] = (
-    {"id": "CHI", "name": "CHICAGO", "place": "Midway", "series": "KXHIGHCHI", "station": "KMDW", "tz": "America/Chicago", "required": True, "climo": {8: 83, 7: 84, 9: 76, 6: 81, 10: 64}},
-    {"id": "NYC", "name": "NEW YORK", "place": "Central Park", "series": "KXHIGHNY", "station": "KNYC", "tz": "America/New_York", "required": True, "climo": {8: 84, 7: 85, 9: 77, 6: 80, 10: 66}},
-    {"id": "DAL", "name": "DALLAS", "place": "DFW", "series": "KXHIGHTDAL", "station": "KDFW", "tz": "America/Chicago", "required": True, "climo": {8: 96, 7: 97, 9: 90, 6: 94, 10: 81}},
-    {"id": "MIA", "name": "MIAMI", "place": "MIA", "series": "KXHIGHMIA", "station": "KMIA", "tz": "America/New_York", "required": False, "climo": {8: 90, 7: 91, 9: 88, 6: 89, 10: 86}},
-    {"id": "AUS", "name": "AUSTIN", "place": "AUS", "series": "KXHIGHAUS", "station": "KAUS", "tz": "America/Chicago", "required": False, "climo": {8: 97, 7: 98, 9: 91, 6: 94, 10: 83}},
-    {"id": "PHX", "name": "PHOENIX", "place": "PHX", "series": "KXHIGHTPHX", "station": "KPHX", "tz": "America/Phoenix", "required": False, "climo": {8: 105, 7: 106, 9: 100, 6: 104, 10: 90}},
-)
+DALLAS: Dict[str, Any] = {
+    "id": "DAL",
+    "name": "DALLAS",
+    "series": "KXHIGHTDAL",
+    "station": "KDFW",
+    "icao": "KDFW",
+    "market": "DFW",
+    "tz": "America/Chicago",
+    "climo": {8: 96, 7: 97, 9: 90, 6: 94, 10: 81},
+}
 
-SEATS: Tuple[Dict[str, Any], ...] = (
-    {"id": "FORECAST", "job": "NWS/NBM official high for the station.", "mark": "/static/bots/glass.png", "weight": 1.0},
-    {"id": "MARKET", "job": "Kalshi implied vs that high, after vig.", "mark": "/static/bots/pit.png", "weight": 1.0},
-    {"id": "SKIP", "job": "Junk book / flip / SICK / thin n.", "mark": "/static/bots/frost.png", "weight": 1.0},
-    {"id": "CLIMO", "job": "Seasonal base. Low weight.", "mark": "/static/bots/bone.png", "weight": 0.25},
+SEATS: Tuple[Dict[str, str], ...] = (
+    {"id": "GLASS", "job": "Official high. Reads the NWS/CLI print for KDFW.", "mark": "/static/bots/glass.png"},
+    {"id": "PIT", "job": "Market book. Implied cents after vig and spread.", "mark": "/static/bots/pit.png"},
+    {"id": "FROST", "job": "Skip freeze. Sick book, flip, thin sample, junk spread.", "mark": "/static/bots/frost.png"},
+    {"id": "BONE", "job": "Climo bones. Seasonal DFW high vs the live bracket.", "mark": "/static/bots/bone.png"},
 )
+CHAIR: Dict[str, str] = {
+    "id": "RAIJIN",
+    "job": "Weather chair. Ranks the DFW book. Does not lock the 1H Chair.",
+    "mark": "/static/bots/raijin-chair.png",
+}
 
-CITY_LIQUID_VOL = 2000.0
-CITY_LIQUID_SPREAD = 4.0
+WX_MODES = ("SUN", "HEAT", "CLOUD", "RAIN", "WIND", "STORM")
 THIN_VOL = 200.0
 FLIP_F = 2.0
 BOARD_TTL_S = 20.0
-NWS_UA = "SatoshiCouncil/1.0 (the-front)"
+WX_TTL_S = 180.0
+NWS_UA = "SatoshiCouncil/1.0 (the-front; dallas-kdfw)"
+HEAT_F = 95.0
+WIND_KT = 20.0
 
 _board_cache: Dict[str, Any] = {"at": 0.0, "payload": None}
 _arm: Dict[str, Any] = {"phrase_ok": False, "armed_at": 0.0, "kill": False}
 _fills: List[Dict[str, Any]] = []
 _fills_loaded = False
 _forecast_prev: Dict[str, float] = {}
+_wx_hold: Dict[str, Any] = {"mode": None, "obs": None, "at": 0.0}
 _data_override: Optional[Path] = None
 
 
 def reset_for_tests(data_dir: Optional[Path] = None) -> None:
-    global _fills, _fills_loaded, _board_cache, _arm, _forecast_prev, _data_override
+    global _fills, _fills_loaded, _board_cache, _arm, _forecast_prev, _wx_hold, _data_override
     _fills = []
     _fills_loaded = True
     _board_cache = {"at": 0.0, "payload": None}
     _arm = {"phrase_ok": False, "armed_at": 0.0, "kill": False}
     _forecast_prev = {}
+    _wx_hold = {"mode": None, "obs": None, "at": 0.0}
     _data_override = data_dir
 
 
@@ -108,6 +117,33 @@ def _load_fills() -> List[Dict[str, Any]]:
 
 def _save_fills() -> None:
     _data_path("front_table.json").write_text(json.dumps({"fills": _fills[-400:]}, indent=2), encoding="utf-8")
+
+
+def _load_wx_hold() -> Dict[str, Any]:
+    if _wx_hold.get("mode"):
+        return _wx_hold
+    path = _data_path("front_wx.json")
+    try:
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("mode") in WX_MODES:
+                _wx_hold.update({
+                    "mode": data.get("mode"),
+                    "obs": data.get("obs") if isinstance(data.get("obs"), dict) else None,
+                    "at": float(data.get("at") or 0),
+                })
+    except Exception:
+        pass
+    return _wx_hold
+
+
+def _save_wx_hold() -> None:
+    if not _wx_hold.get("mode"):
+        return
+    _data_path("front_wx.json").write_text(
+        json.dumps({"mode": _wx_hold.get("mode"), "obs": _wx_hold.get("obs"), "at": _wx_hold.get("at")}, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -259,16 +295,166 @@ def skip_reason(flags: Dict[str, Any], forecast: Optional[float], flipped: bool,
     return why_line(flags, None, 0)
 
 
-def city_is_liquid(markets: List[Dict[str, Any]]) -> bool:
-    for m in markets:
-        flags = book_health(m)
-        vol = float(flags.get("volume") or 0)
-        spread = flags.get("spread")
-        if str(m.get("strike_type") or "").lower() != "between":
-            continue
-        if vol >= CITY_LIQUID_VOL and (spread is None or spread <= CITY_LIQUID_SPREAD):
-            return True
-    return False
+def classify_weather(obs: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Map a live KDFW observation to a CRT backdrop mode. None = hold last, do not invent sun."""
+    if not isinstance(obs, dict):
+        return None
+    text = str(obs.get("text") or obs.get("textDescription") or "").lower()
+    raw = str(obs.get("raw") or obs.get("rawMessage") or "").upper()
+    tokens = re.findall(r"[A-Z+]+", raw)
+    temp = obs.get("temp_f")
+    wind = obs.get("wind_kt")
+    try:
+        temp_f = float(temp) if temp is not None else None
+    except (TypeError, ValueError):
+        temp_f = None
+    try:
+        wind_kt = float(wind) if wind is not None else None
+    except (TypeError, ValueError):
+        wind_kt = None
+
+    if not text and not raw and temp_f is None and wind_kt is None:
+        return None
+
+    storm_txt = ("thunder", "tstm", "lightning", "funnel", "tornado")
+    storm_tok = {"TS", "VCTS", "SQ", "FC", "TSRA", "+TSRA", "-TSRA"}
+    if any(w in text for w in storm_txt) or any(t in storm_tok for t in tokens) or "+RA" in tokens:
+        return "STORM"
+    if "heavy" in text and any(w in text for w in ("rain", "shower", "precip")):
+        return "STORM"
+
+    rain_txt = ("rain", "shower", "drizzle", "precip")
+    if any(w in text for w in rain_txt) or any(t.endswith("RA") or t.endswith("DZ") or t == "SHRA" for t in tokens):
+        return "RAIN"
+
+    if wind_kt is not None and wind_kt >= WIND_KT:
+        return "WIND"
+
+    cloudy = any(w in text for w in ("cloud", "overcast", "broken", "obscur", "fog", "mist", "bkn", "ovc"))
+    clear = any(w in text for w in ("clear", "fair", "sunny", "few")) or any(t in tokens for t in ("SKC", "CLR", "CAVOK", "FEW"))
+    if temp_f is not None and temp_f >= HEAT_F and not cloudy:
+        return "HEAT"
+    if cloudy and not clear:
+        return "CLOUD"
+    if clear:
+        return "SUN"
+    if temp_f is not None and temp_f >= HEAT_F:
+        return "HEAT"
+    if text or raw:
+        return "CLOUD"
+    return None
+
+
+def _c_to_f(val: Any) -> Optional[float]:
+    try:
+        return float(val) * 9.0 / 5.0 + 32.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _kmh_to_kt(val: Any) -> Optional[float]:
+    try:
+        return float(val) / 1.852
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_nws_obs(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    props = data.get("properties") if isinstance(data, dict) else None
+    if not isinstance(props, dict):
+        if isinstance(data, dict) and (data.get("rawMessage") or data.get("textDescription")):
+            props = data
+        else:
+            return None
+    temp_c = ((props.get("temperature") or {}) if isinstance(props.get("temperature"), dict) else {}).get("value")
+    if temp_c is None:
+        temp_c = props.get("temp")
+    wind = ((props.get("windSpeed") or {}) if isinstance(props.get("windSpeed"), dict) else {}).get("value")
+    if wind is None:
+        wind = props.get("wspd")
+        wind_kt = None if wind is None else float(wind)
+    else:
+        wind_kt = _kmh_to_kt(wind)
+    temp_f = _c_to_f(temp_c)
+    text = props.get("textDescription") or props.get("wxString") or ""
+    raw = props.get("rawMessage") or props.get("rawOb") or ""
+    if temp_f is None and not text and not raw:
+        return None
+    return {
+        "station": "KDFW",
+        "text": str(text or ""),
+        "raw": str(raw or ""),
+        "temp_f": None if temp_f is None else round(temp_f, 1),
+        "wind_kt": None if wind_kt is None else round(float(wind_kt), 1),
+    }
+
+
+async def _http_get(url: str, headers: Optional[Dict[str, str]] = None) -> Any:
+    import httpx
+
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        r = await client.get(url, headers=headers or {})
+        r.raise_for_status()
+        return r.json()
+
+
+async def _nws_get(url: str) -> Dict[str, Any]:
+    data = await _http_get(url, {"User-Agent": NWS_UA, "Accept": "application/geo+json"})
+    return data if isinstance(data, dict) else {}
+
+
+async def fetch_kdfw_obs(nws: Optional[_Nws] = None) -> Optional[Dict[str, Any]]:
+    fn = nws or _nws_get
+    try:
+        data = await fn("https://api.weather.gov/stations/KDFW/observations/latest")
+        parsed = parse_nws_obs(data if isinstance(data, dict) else {})
+        if parsed:
+            return parsed
+    except Exception:
+        pass
+    if nws is not None:
+        return None
+    try:
+        av = await _http_get(
+            "https://aviationweather.gov/api/data/metar?ids=KDFW&format=json",
+            {"User-Agent": NWS_UA, "Accept": "application/json"},
+        )
+        row: Dict[str, Any] = {}
+        if isinstance(av, list) and av and isinstance(av[0], dict):
+            row = av[0]
+        elif isinstance(av, dict):
+            row = av
+        return parse_nws_obs(row)
+    except Exception:
+        return None
+
+
+def remember_weather(obs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Live mode from KDFW. Dead feed holds last mode — never invents sun."""
+    held = _load_wx_hold()
+    mode = classify_weather(obs)
+    if mode in WX_MODES and obs:
+        _wx_hold["mode"] = mode
+        _wx_hold["obs"] = obs
+        _wx_hold["at"] = time.time()
+        _save_wx_hold()
+        return {
+            "mode": mode,
+            "held": False,
+            "live": True,
+            "station": "KDFW",
+            "obs": obs,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+    last = held.get("mode") if held.get("mode") in WX_MODES else None
+    return {
+        "mode": last,
+        "held": True,
+        "live": False,
+        "station": "KDFW",
+        "obs": held.get("obs"),
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 async def _kalshi_fetch(path: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -279,16 +465,6 @@ async def _kalshi_fetch(path: str, params: Dict[str, Any]) -> Dict[str, Any]:
         r = await client.get(base + path, params=params)
         if r.status_code == 404:
             return {"markets": [], "missing": True}
-        r.raise_for_status()
-        data = r.json()
-        return data if isinstance(data, dict) else {}
-
-
-async def _nws_get(url: str) -> Dict[str, Any]:
-    import httpx
-
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-        r = await client.get(url, headers={"User-Agent": NWS_UA, "Accept": "application/geo+json"})
         r.raise_for_status()
         data = r.json()
         return data if isinstance(data, dict) else {}
@@ -362,80 +538,28 @@ def note_forecast(station: str, day: date, high: Optional[float]) -> bool:
     return prev is not None and abs(float(high) - float(prev)) >= FLIP_F
 
 
-def seat_votes(
-    *,
-    forecast: Optional[float],
-    climo: Optional[float],
-    p: Optional[float],
-    climo_p: Optional[float],
-    implied: Optional[float],
-    skip: Optional[str],
-    city: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    """FORECAST / MARKET / SKIP / CLIMO vote on this city's bracket."""
-    stats = _seat_stats()
-    forecast_dir = "WAIT" if forecast is None else ("YES" if (p or 0) >= 0.5 else "NO")
-    market_dir = "WAIT"
-    if implied is not None and p is not None:
-        market_dir = "YES" if p >= implied else "NO"
-    elif implied is not None:
-        market_dir = "YES" if implied < 0.5 else "NO"
-    skip_dir = "SKIP" if skip else "CLEAR"
-    climo_dir = "WAIT" if climo_p is None else ("YES" if climo_p >= 0.5 else "NO")
-    rows = [
-        {
-            "id": "FORECAST",
-            "job": SEATS[0]["job"],
-            "mark": SEATS[0]["mark"],
-            "dir": forecast_dir,
-            "call": None if forecast is None else f"{forecast:.0f}°F {city['station']}",
-            "weight": 1.0,
-            **stats["FORECAST"],
-        },
-        {
-            "id": "MARKET",
-            "job": SEATS[1]["job"],
-            "mark": SEATS[1]["mark"],
-            "dir": market_dir,
-            "call": None if implied is None else f"{int(round(implied * 100))}¢ after vig",
-            "weight": 1.0,
-            **stats["MARKET"],
-        },
-        {
-            "id": "SKIP",
-            "job": SEATS[2]["job"],
-            "mark": SEATS[2]["mark"],
-            "dir": skip_dir,
-            "call": skip or "clear",
-            "weight": 1.0,
-            **stats["SKIP"],
-        },
-        {
-            "id": "CLIMO",
-            "job": SEATS[3]["job"],
-            "mark": SEATS[3]["mark"],
-            "dir": climo_dir,
-            "call": None if climo is None else f"{climo}°F season",
-            "weight": 0.25,
-            **stats["CLIMO"],
-        },
-    ]
-    return rows
+def seat_record(n: int, wr: Optional[float]) -> Dict[str, Any]:
+    return {"n": int(n), "wr": None if wr is None else round(float(wr), 3)}
 
 
-def _seat_stats() -> Dict[str, Dict[str, Any]]:
+def seat_stats() -> Dict[str, Dict[str, Any]]:
     rows = [r for r in _load_fills() if r.get("settled") and r.get("result") in ("HIT", "MISS", "yes", "no")]
     n = len(rows)
-    hits = sum(1 for r in rows if str(r.get("result") or "").upper() in ("HIT", "YES"))
+    hits = 0
+    for r in rows:
+        res = str(r.get("result") or "").upper()
+        if res in ("HIT", "YES"):
+            hits += 1
     wr = None if n < 1 else hits / n
-    rec = {"n": n, "wr": None if wr is None else round(wr, 3)}
-    return {s["id"]: dict(rec) for s in SEATS}
+    rec = seat_record(n, wr)
+    out = {s["id"]: dict(rec) for s in SEATS}
+    out["RAIJIN"] = dict(rec)
+    return out
 
 
-def score_bet(
+def score_bracket(
     m: Dict[str, Any],
     *,
-    city: Dict[str, Any],
     forecast: Optional[float],
     flipped: bool,
     day: date,
@@ -444,51 +568,30 @@ def score_bet(
     flags = book_health(m)
     vol = float(flags.get("volume") or 0)
     p = forecast_p(forecast, m)
-    climo = (city.get("climo") or {}).get(day.month)
+    climo = (DALLAS.get("climo") or {}).get(day.month)
     climo_p = forecast_p(float(climo), m) if climo is not None else None
     skip = skip_reason(flags, forecast, flipped, vol)
-    implied = None if q.get("yes_ask") is None else q["yes_ask"] / 100.0
+    implied = (q.get("yes_ask") or 50) / 100.0
     fee = kalshi_taker_fee_cents(q.get("yes_ask"))
     half = (float(flags.get("spread") or 0) / 2.0)
     fill = float(q.get("yes_ask") or 50) + fee + half
     ev = None
     if p is not None:
         ev = round(100.0 * p - fill, 1)
-    votes = seat_votes(
-        forecast=forecast,
-        climo=climo,
-        p=p,
-        climo_p=climo_p,
-        implied=implied,
-        skip=skip,
-        city=city,
-    )
     if skip:
         conf = min(22, max(4, int(round(12 + 8 * (p or 0)))))
     else:
-        edge = (p or 0.5) - (implied or 0.5)
+        edge = (p or 0.5) - implied
         climo_align = 0.0
         if climo_p is not None and p is not None:
             climo_align = 1.0 - min(1.0, abs(climo_p - p))
-        yes_w = 0.0
-        no_w = 0.0
-        for v in votes:
-            w = float(v.get("weight") or 0)
-            if v["id"] == "SKIP":
-                continue
-            if v.get("dir") == "YES":
-                yes_w += w
-            elif v.get("dir") == "NO":
-                no_w += w
-        vote_edge = (yes_w - no_w) / max(1.0, yes_w + no_w)
-        conf = int(round(50 + 24 * ((p or 0.5) - 0.5) + 16 * edge + 4 * climo_align + 8 * vote_edge))
+        conf = int(round(50 + 28 * ((p or 0.5) - 0.5) + 18 * edge + 4 * climo_align))
         conf = max(0, min(99, conf))
     return {
-        "city": city["id"],
-        "name": city["name"],
-        "place": city.get("place"),
-        "station": city["station"],
-        "series": city["series"],
+        "city": DALLAS["id"],
+        "name": DALLAS["name"],
+        "station": DALLAS["station"],
+        "series": DALLAS["series"],
         "ticker": m.get("ticker"),
         "day": day.isoformat(),
         "strike_type": str(m.get("strike_type") or ""),
@@ -506,22 +609,15 @@ def score_bet(
         "sample_n": int(vol),
         "p_forecast": None if p is None else round(p, 3),
         "ev_cents": ev,
-        "fee_cents": fee,
         "confidence": conf,
         "dont_play": bool(skip),
         "skip": skip,
-        "votes": votes,
-        "honesty": {
-            "ev_cents": ev,
-            "sample_n": int(vol),
-            "dont_play": skip or "",
-        },
         "best": False,
         "follower": False,
     }
 
 
-def pick_city_bet(scored: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def pick_best(scored: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not scored:
         return None
     playable = [b for b in scored if not b.get("dont_play")]
@@ -530,12 +626,69 @@ def pick_city_bet(scored: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return pool[0]
 
 
+def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: Optional[date]) -> List[Dict[str, Any]]:
+    stats = seat_stats()
+    climo = (DALLAS.get("climo") or {}).get(day.month) if day else None
+    glass_call = None if forecast is None else f"{forecast:.0f}°F KDFW"
+    pit_call = None
+    frost_call = "clear"
+    bone_call = None if climo is None else f"{climo}°F season"
+    if best:
+        if best.get("yes_ask") is not None:
+            pit_call = f"{int(round(best['yes_ask']))}¢ {best.get('bracket') or ''}".strip()
+        frost_call = best.get("skip") or "clear"
+    rows = []
+    calls = {"GLASS": glass_call, "PIT": pit_call, "FROST": frost_call, "BONE": bone_call}
+    for seat in SEATS:
+        rec = stats.get(seat["id"]) or seat_record(0, None)
+        rows.append({
+            "id": seat["id"],
+            "job": seat["job"],
+            "mark": seat["mark"],
+            "call": calls.get(seat["id"]),
+            "n": rec["n"],
+            "wr": rec["wr"],
+            "letter": None,
+        })
+    return rows
+
+
+def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    rec = seat_stats().get("RAIJIN") or seat_record(0, None)
+    if not best:
+        eye = "WAIT"
+    elif best.get("dont_play"):
+        eye = "DOWN"
+    else:
+        eye = "UP"
+    marks = {
+        "UP": "/static/bots/raijin-up.png",
+        "DOWN": "/static/bots/raijin-down.png",
+        "WAIT": "/static/bots/raijin-wait.png",
+    }
+    return {
+        "id": CHAIR["id"],
+        "job": CHAIR["job"],
+        "mark": marks.get(eye) or CHAIR["mark"],
+        "portrait": CHAIR["mark"],
+        "eye": eye,
+        "call": None if not best else (best.get("skip") or best.get("bracket")),
+        "bracket": None if not best else best.get("bracket"),
+        "ticker": None if not best else best.get("ticker"),
+        "confidence": None if not best else best.get("confidence"),
+        "dont_play": bool(best.get("dont_play")) if best else True,
+        "n": rec["n"],
+        "wr": rec["wr"],
+    }
+
+
 async def build_board(
     fetch: Optional[_Fetch] = None,
     nws: Optional[_Nws] = None,
     now: Optional[datetime] = None,
+    wx_obs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    if fetch is None and nws is None and now is None:
+    if fetch is None and nws is None and now is None and wx_obs is None:
         cached = _board_cache.get("payload")
         if cached and (time.time() - float(_board_cache.get("at") or 0)) < BOARD_TTL_S:
             out = dict(cached)
@@ -543,43 +696,63 @@ async def build_board(
             return out
 
     n = now or datetime.now(timezone.utc)
-    cards: List[Dict[str, Any]] = []
     dropped: List[str] = []
+    brackets: List[Dict[str, Any]] = []
+    forecast = None
+    day = None
 
-    for city in CITIES:
-        rows, missing = await fetch_series(str(city["series"]), fetch)
-        if missing or not rows:
-            dropped.append(str(city["series"]))
-            continue
-        day = pick_event_day(rows, n, str(city["tz"]))
+    rows, missing = await fetch_series(str(DALLAS["series"]), fetch)
+    if missing or not rows:
+        dropped.append(str(DALLAS["series"]))
+    else:
+        day = pick_event_day(rows, n, str(DALLAS["tz"]))
         if day is None:
-            dropped.append(str(city["series"]))
-            continue
-        today = [m for m in rows if date_from_ticker(m.get("ticker")) == day]
-        if not today:
-            continue
-        if not city["required"] and not city_is_liquid(today):
-            continue
-        forecast = await nws_high(str(city["station"]), day, nws)
-        flipped = note_forecast(str(city["station"]), day, forecast)
-        scored = [score_bet(m, city=city, forecast=forecast, flipped=flipped, day=day) for m in today]
-        bet = pick_city_bet(scored)
-        if bet:
-            cards.append(bet)
+            dropped.append(str(DALLAS["series"]))
+        else:
+            today = [m for m in rows if date_from_ticker(m.get("ticker")) == day]
+            forecast = await nws_high(str(DALLAS["station"]), day, nws)
+            flipped = note_forecast(str(DALLAS["station"]), day, forecast)
+            brackets = [score_bracket(m, forecast=forecast, flipped=flipped, day=day) for m in today]
+            brackets.sort(key=lambda b: (-int(b.get("confidence") or 0), -(b.get("ev_cents") or -99)))
 
-    cards.sort(key=lambda b: (-int(b.get("confidence") or 0), -(b.get("ev_cents") or -99)))
-    best = next((c for c in cards if not c.get("dont_play")), None)
-    if best is None and cards:
-        best = cards[0]
+    best = pick_best(brackets)
     if best:
         best["best"] = True
+
+    if wx_obs is None:
+        held = _load_wx_hold()
+        age = time.time() - float(held.get("at") or 0)
+        if held.get("mode") in WX_MODES and 0 < age < WX_TTL_S:
+            weather = {
+                "mode": held.get("mode"),
+                "held": False,
+                "live": True,
+                "station": "KDFW",
+                "obs": held.get("obs"),
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            weather = remember_weather(await fetch_kdfw_obs(nws))
+    else:
+        weather = remember_weather(wx_obs)
 
     payload = {
         "ok": True,
         "mode": "paper",
         "title": "THE FRONT",
-        "seats": [{"id": s["id"], "job": s["job"], "mark": s["mark"], "weight": s["weight"]} for s in SEATS],
-        "cards": cards,
+        "city": {
+            "id": DALLAS["id"],
+            "name": DALLAS["name"],
+            "station": DALLAS["station"],
+            "icao": DALLAS["icao"],
+            "market": DALLAS["market"],
+            "series": DALLAS["series"],
+            "day": None if day is None else day.isoformat(),
+        },
+        "weather": weather,
+        "chair": build_chair(best),
+        "seats": build_seats(best, forecast, day),
+        "brackets": brackets,
         "best": None if best is None else best.get("ticker"),
         "dropped": dropped,
         "fills": list(reversed(_load_fills()[-12:])),
@@ -587,7 +760,7 @@ async def build_board(
         "product": "Satoshi’s Council",
         "follower": False,
         "auto_bets": False,
-        "note": "Daily highs. NWS CLI station. Date is in the ticker. Not the crypto Floor.",
+        "note": "Dallas DFW only. NWS CLI / KDFW. Date is in the ticker. Not the crypto Floor.",
     }
     _board_cache["at"] = time.time()
     _board_cache["payload"] = payload
