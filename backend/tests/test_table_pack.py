@@ -93,6 +93,24 @@ class ChairThinkTests(unittest.TestCase):
         self.assertIn("noteChairLock(whichChair, _lc)", JS)
 
 
+class SeatOrbitTests(unittest.TestCase):
+    def test_seat_orbit_is_slower_and_can_freeze(self):
+        self.assertIn("function seatOrbitAngle", JS)
+        self.assertIn("const SEAT_ORBIT_SPEED = 0.00007", JS)
+        self.assertIn('SEAT_SPIN_KEY = "council_seat_spin"', JS)
+        self.assertIn("function setSeatSpin", JS)
+        self.assertIn("function syncSeatSpinBtn", JS)
+        self.assertIn("seatOrbitAngle()", JS)
+        self.assertNotIn("time * 0.00014", JS)
+        self.assertIn('id="seatSpinBtn"', HTML)
+        self.assertIn(">SPIN</button>", HTML)
+        self.assertIn("Freeze seat orbit", HTML)
+        self.assertIn(".seat-spin-btn", CSS)
+        self.assertIn("body.mode-art .seat-spin-btn", CSS)
+        self.assertIn("localStorage.setItem(SEAT_SPIN_KEY", JS)
+        self.assertIn("seatOrbitHold += dt * SEAT_ORBIT_SPEED", JS)
+
+
 class LockIgnitionTests(unittest.TestCase):
     def test_fat_lock_beam_not_always_on(self):
         self.assertIn("function drawLockIgnition", JS)

@@ -676,6 +676,37 @@ main {
   opacity: 0.92;
 }
 
+.seat-spin-btn {
+  display: none;
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 16;
+  min-height: 32px;
+  min-width: 64px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 232, 255, 0.45);
+  background: rgba(4, 12, 22, 0.88);
+  color: #7fe9ff;
+  font-family: Orbitron, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  pointer-events: auto;
+  cursor: pointer;
+}
+body.mode-floor .seat-spin-btn:not([hidden]),
+body.floor-mode .seat-spin-btn:not([hidden]),
+body.mode-art .seat-spin-btn:not([hidden]) {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+.seat-spin-btn[aria-pressed="false"] {
+  color: #c8d2dc;
+  border-color: rgba(200, 210, 220, 0.35);
+}
+
 .table-stage {
   min-height: 480px;
   min-width: 0;

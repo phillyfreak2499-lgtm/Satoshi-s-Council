@@ -772,6 +772,44 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let hourSlamUntil = 0;
   let debateHistory = [];
   const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const SEAT_ORBIT_SPEED = 0.00007; // half of the old 0.00014 fidget spin
+  const SEAT_SPIN_KEY = "council_seat_spin";
+  let seatOrbitFrozen = false;
+  let seatOrbitHold = 0;
+  let seatOrbitLastT = 0;
+  try {
+    seatOrbitFrozen = localStorage.getItem(SEAT_SPIN_KEY) === "0";
+  } catch (e) {}
+  function seatOrbitAngle() {
+    // Screensaver pace. Freeze keeps the last angle so unfreeze does not jump.
+    if (reduceMotion) return 0;
+    if (!seatOrbitLastT) seatOrbitLastT = time;
+    if (!seatOrbitFrozen) {
+      const dt = Math.max(0, time - seatOrbitLastT);
+      seatOrbitHold += dt * SEAT_ORBIT_SPEED;
+    }
+    seatOrbitLastT = time;
+    return seatOrbitHold;
+  }
+  function syncSeatSpinBtn() {
+    const btn = document.getElementById("seatSpinBtn");
+    if (!btn) return;
+    const on = mode === "floor" || mode === "art";
+    btn.hidden = !on;
+    btn.setAttribute("aria-hidden", on ? "false" : "true");
+    const spinning = !seatOrbitFrozen && !reduceMotion;
+    btn.textContent = spinning ? "SPIN" : "STILL";
+    btn.setAttribute("aria-pressed", spinning ? "true" : "false");
+    btn.title = spinning ? "Freeze seat orbit" : "Resume seat orbit";
+    btn.setAttribute("aria-label", spinning ? "Seat orbit on — click to freeze" : "Seat orbit still — click to spin");
+  }
+  function setSeatSpin(on) {
+    seatOrbitFrozen = !on;
+    try { localStorage.setItem(SEAT_SPIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
+  }
+  window.setSeatSpin = setSeatSpin;
+  window.seatOrbitAngle = seatOrbitAngle;
   let _tableEmberUntil = 0;
   let _tableEmberKey = "";
   let _tableEmberDir = "WAIT";
@@ -2169,7 +2207,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const pr = radius * 0.80;
     const portraitY = cy - 2;
     const ringR = radius * 1.48;
-    const orbit = reduceMotion ? 0 : time * 0.00014;
+    const orbit = seatOrbitAngle();
     drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
     drawHourSlamRings(cx, cy, radius);
 
@@ -2640,7 +2678,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
-      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + (reduceMotion ? 0 : time * 0.00014);
+      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + seatOrbitAngle();
       // Subtle hierarchy: top-3 sit a hair closer to the Chair (still one ring)
       const rk = item.rank;
       // Stay fully on the floor ring — no inward hierarchy pull onto the table
@@ -4991,6 +5029,7 @@ function drawCandleChart() {
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
     try { syncFloorExitBtn(); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
@@ -6055,6 +6094,16 @@ function drawCandleChart() {
         setMode("art");
       });
     }
+    const seatSpin = document.getElementById("seatSpinBtn");
+    if (seatSpin && !seatSpin.__wired) {
+      seatSpin.__wired = true;
+      seatSpin.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSeatSpin(seatOrbitFrozen);
+      });
+    }
+    try { syncSeatSpinBtn(); } catch (e) {}
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
