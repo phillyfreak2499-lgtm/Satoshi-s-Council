@@ -1283,6 +1283,63 @@ async def load_espn_summary(sport: str, event_id: Any, fetch: Optional[_Fetch] =
         return None
 
 
+def _why_chip(sid: str, vote: str, fact: str, fed: bool, pick: Dict[str, Any]) -> Optional[str]:
+    """Short fight-strip token. Real fact if we have one; SIT / DARK otherwise."""
+    sid = sid.upper()
+    if sid == "LINE":
+        num = str(pick.get("number") or "").strip()
+        mid = pick.get("mid")
+        if vote != "WAIT":
+            if mid is not None:
+                try:
+                    return f"LINE {vote} {int(round(float(mid)))}¢"
+                except (TypeError, ValueError):
+                    return f"LINE {vote}"
+            return f"LINE {vote}" + (f" {num}" if num else "")
+        return "LINE SIT"
+    if sid == "STEAM":
+        run = pick.get("steam")
+        if run is None:
+            return "STEAM DARK"
+        try:
+            mag = abs(float(run))
+        except (TypeError, ValueError):
+            return "STEAM SIT"
+        if mag >= 1.5:
+            way = "UP" if float(run) > 0 else "DOWN"
+            return f"STEAM {way} {mag:.0f}¢"
+        return "STEAM SIT"
+    if sid == "FADE":
+        if vote != "WAIT":
+            return f"FADE {vote}"
+        return "FADE SIT" if pick.get("public") else "FADE DARK"
+    if sid == "HURT":
+        note = str(pick.get("hurt") or "").strip()
+        return f"HURT {note}" if note else "HURT DARK"
+    if sid == "ICE":
+        ice = str(pick.get("ice") or "").strip()
+        if ice:
+            return f"ICE {ice}"
+        return "ICE SIT"
+    if sid == "CLOCK":
+        if not fed or "DARK" in fact.upper():
+            return None
+        return f"CLOCK {fact}" if fact and not fact.upper().startswith("CLOCK") else (fact or "CLOCK")
+    if sid == "FORM":
+        rec = str(pick.get("form") or "").strip()
+        return f"FORM {rec}" if rec else None
+    if sid == "WX":
+        wx = str(pick.get("wx") or "").strip()
+        if wx and pick.get("wx_mattered"):
+            return f"WX {wx}"
+        return None
+    if fed and vote != "WAIT":
+        return f"{sid} {vote}"
+    if "DARK" in fact.upper():
+        return f"{sid} DARK"
+    return f"{sid} SIT"
+
+
 def build_why(
     pick: Optional[Dict[str, Any]],
     seats: List[Dict[str, Any]],
@@ -1294,7 +1351,7 @@ def build_why(
 
     def row(sid: str, vote: Any, fact: str, fed: bool) -> Dict[str, Any]:
         v = str(vote or "WAIT").upper()
-        return {"id": sid, "vote": v, "fact": fact, "fed": bool(fed and v != "WAIT")}
+        return {"id": sid, "vote": v, "fact": fact, "fed": bool(fed)}
 
     rows: List[Dict[str, Any]] = []
     if not pick:
@@ -1325,14 +1382,15 @@ def build_why(
     rows.append(row("LINE", line.get("dir"), line.get("call") or one_liner("LINE", number=pick.get("number"), mid=pick.get("mid")), not ice_on))
     rows.append(row("STEAM", steam.get("dir"), steam_fact, steam.get("dir") not in (None, "WAIT")))
     rows.append(row("FADE", fade.get("dir"), fade.get("call") or one_liner("FADE", public=pick.get("public")), fade.get("dir") not in (None, "WAIT")))
-    rows.append(row("HURT", "WAIT", hurt_fact, False))
+    rows.append(row("HURT", "WAIT", hurt_fact, bool(hurt_note)))
     rows.append(row("ICE", "WAIT" if ice_on else (ice.get("dir") or "WAIT"), ice.get("call") or one_liner("ICE", ice=pick.get("ice"), unknown=pick.get("unknown_book")), ice_on))
 
     clock = sub_by.get("CLOCK") or {}
     form = sub_by.get("FORM") or {}
     wx = sub_by.get("WX") or {}
     clock_fact = clock.get("call") or clock_line(pick.get("close_time"))
-    if clock_fact and "DARK" not in str(clock_fact).upper() and "THEY'RE OFF" not in str(clock_fact).upper():
+    clock_live = bool(clock_fact and "DARK" not in str(clock_fact).upper() and "THEY'RE OFF" not in str(clock_fact).upper())
+    if clock_live:
         rows.append(row("CLOCK", "WAIT", clock_fact, True))
     if pick.get("form"):
         rows.append(row("FORM", "WAIT", form.get("call") or f"FORM · {pick.get('form')}", True))
@@ -1358,18 +1416,22 @@ def build_why(
             bits.append(f"LEFTOVER {float(leftover):.1f}¢")
         if pick.get("number"):
             bits.append(str(pick.get("number")))
-        head = " · ".join(bits[:4])
+        if hurt_note:
+            bits.append(str(hurt_note))
+        elif pick.get("wx_mattered") and pick.get("wx"):
+            bits.append(str(pick.get("wx")))
+        head = " · ".join(bits[:5])
 
     chips = []
-    for r in rows:
-        if r["id"] in ("CLOCK", "FORM", "WX") and not r["fed"] and "DARK" in r["fact"]:
+    order = ("LINE", "STEAM", "FADE", "HURT", "ICE", "WX", "FORM", "CLOCK")
+    by_id = {r["id"]: r for r in rows}
+    for sid in order:
+        r = by_id.get(sid)
+        if not r:
             continue
-        if r["fed"] and r["vote"] != "WAIT":
-            chips.append(f"{r['id']} {r['vote']}")
-        elif "DARK" in r["fact"]:
-            chips.append(f"{r['id']} DARK")
-        else:
-            chips.append(f"{r['id']} SIT")
+        token = _why_chip(r["id"], r["vote"], r["fact"], r["fed"], pick)
+        if token:
+            chips.append(token)
     return {
         "line": head,
         "strip": " · ".join(chips[:7]),

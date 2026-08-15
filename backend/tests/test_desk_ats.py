@@ -387,15 +387,20 @@ class AtsPickTests(unittest.TestCase):
         self.assertIn("WHY · DAL", why["line"])
         self.assertIn("FADE SEA", why["line"])
         self.assertIn("LEFTOVER", why["line"])
+        self.assertIn("Trapilo", why["line"])
         ids = [r["id"] for r in why["seats"]]
         self.assertEqual(ids[:5], ["LINE", "STEAM", "FADE", "HURT", "ICE"])
         hurt_row = next(r for r in why["seats"] if r["id"] == "HURT")
         self.assertEqual(hurt_row["vote"], "WAIT")
-        self.assertFalse(hurt_row["fed"])
+        self.assertTrue(hurt_row["fed"])
         self.assertIn("Trapilo", hurt_row["fact"])
         steam_row = next(r for r in why["seats"] if r["id"] == "STEAM")
         self.assertIn("SIT", steam_row["fact"])
-        self.assertIn("HURT SIT", why["strip"])
+        self.assertIn("HURT CHI OUT O. Trapilo", why["strip"])
+        self.assertIn("FORM CHI L5 2-1", why["strip"])
+        self.assertIn("WX 75°", why["strip"])
+        self.assertIn("STEAM SIT", why["strip"])
+        self.assertIn("LINE DAL", why["strip"])
 
     async def test_why_attaches_on_board(self):
         summary = {
@@ -420,6 +425,9 @@ class AtsPickTests(unittest.TestCase):
             self.assertIn("Metcalf", board["pick"].get("hurt") or "")
             self.assertIn("SEA L5", board["pick"].get("form") or "")
             self.assertIn("64°", board["pick"].get("wx") or "")
+            self.assertIn("Metcalf", board["why"]["strip"])
+            self.assertIn("FORM SEA L5", board["why"]["strip"])
+            self.assertNotIn("WX", board["why"]["strip"])  # clear 64° did not matter
 
 
 class AtsFloorChromeTests(unittest.TestCase):
