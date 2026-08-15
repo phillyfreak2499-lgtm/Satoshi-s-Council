@@ -6,7 +6,10 @@ Scan open Kalshi sports markets (verified series only).
 Keep 20–80 with measured depth. 10–90 is for the crypto Chairs only.
 v1: moneyline, spread (ATS), total. No player props.
 Rank nearer kick first, then calendar sport, then leftover after vig / half-spread.
-A fat leftover a month out does not beat a nearer NFL/CFB book.
+Hard cap: do not lock or paper-fill a kick more than 72 hours out.
+Prefer same-day / next 24h. NFL/CFB still preferred inside that window.
+Nothing playable inside 72h → WAIT. Do not fall back to a month-out book.
+An OPEN paper fill whose kick is more than 72h is sat so it cannot pin the chair.
 Sport follows the calendar among similarly-near games (CFB Sat, NFL Sun).
 ICE: 99¢ chalk, empty book, stale, too early, no depth.
 empty/unknown-null is UNKNOWN not DEAD.
@@ -100,8 +103,15 @@ ARES_GATES: Tuple[str, ...] = (
 ARES_YES_LO = 20.0
 ARES_YES_HI = 80.0
 FOOTBALL_SPORTS = frozenset({"NFL", "CFB"})
-# ~30 days. September CFB does not lock when a nearer NFL/CFB book is live.
+# Hard cap. A month-out leftover does not lock. Prefer same-day / next 24h inside this.
+MAX_KICK_HOURS = 72
+MAX_KICK_MINS = MAX_KICK_HOURS * 60.0
+NEAR_KICK_HOURS = 24
+NEAR_KICK_MINS = NEAR_KICK_HOURS * 60.0
+# Diagnostic only — Sep 18 CFB is still a month-out book vs mid-August.
 MONTH_KICK_MINS = 30 * 24 * 60.0
+FAR_KICK_SIT = "KICK > 72H"
+FAR_KICK_GATE = "KICK > 72H · WAIT"
 KEY_NUMBERS = frozenset({3.0, 7.0})
 KEY_NUMBER_MIN_LEFTOVER = 3.0
 LATE_HURT_MINS = 15.0
@@ -1024,26 +1034,75 @@ def late_hurt_gate(pick: Dict[str, Any], now: Optional[datetime] = None) -> Opti
     return None
 
 
-def open_paper_ticket() -> Optional[Dict[str, Any]]:
-    """The one open paper ticket, if any. ONE TICKET sits after this."""
+def sit_far_horizon_fills(now: Optional[datetime] = None) -> int:
+    """Sit/void OPEN paper fills whose kick is more than 72h out. They cannot pin the chair."""
+    n = now or datetime.now(timezone.utc)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=timezone.utc)
+    changed = 0
     for r in _load_fills():
         if str(r.get("side") or "").upper() == "WAIT":
+            continue
+        if str(r.get("result") or "").upper() not in ("OPEN", "PENDING", ""):
+            continue
+        if not beyond_kick_cap(r, n):
+            continue
+        r["result"] = "SIT"
+        r["settled"] = True
+        r["sit_reason"] = FAR_KICK_SIT
+        r["sat_at"] = n.isoformat()
+        changed += 1
+    if changed:
+        _save_fills()
+    return changed
+
+
+def open_paper_ticket(now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    """The one open paper ticket, if any. Far-horizon OPEN fills are sat first."""
+    sit_far_horizon_fills(now)
+    for r in _load_fills():
+        if str(r.get("side") or "").upper() == "WAIT":
+            continue
+        if str(r.get("result") or "").upper() in ("SIT", "VOID"):
             continue
         if str(r.get("result") or "").upper() in ("OPEN", "PENDING", ""):
             return r
     return None
 
 
-def one_ticket_gate(pick: Dict[str, Any], held: Optional[Dict[str, Any]] = None) -> Optional[str]:
-    """Already sat on one book / one side. Do not spray the slate."""
-    ticket = held if held is not None else open_paper_ticket()
+def one_ticket_gate(
+    pick: Dict[str, Any],
+    held: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Optional[str]:
+    """Already sat on one book / one side. Do not spray the slate.
+
+    An OPEN fill whose kick is more than 72h is sat and does not block a nearer book.
+    """
+    sit_far_horizon_fills(now)
+    ticket = held if held is not None else open_paper_ticket(now)
     if not ticket:
+        return None
+    if beyond_kick_cap(ticket, now):
+        return None
+    if str(ticket.get("result") or "").upper() in ("SIT", "VOID"):
         return None
     if pick.get("ticker") and ticket.get("ticker") and pick.get("ticker") == ticket.get("ticker"):
         return None
     if pick.get("game") and ticket.get("game") and pick.get("game") == ticket.get("game"):
         return None
     return "ONE TICKET · ALREADY SAT"
+
+
+def far_kick_gate(pick: Dict[str, Any], now: Optional[datetime] = None) -> Optional[str]:
+    """Hard 72h cap. Unknown kick or a month-out leftover → WAIT, not a lock."""
+    if beyond_kick_cap(pick, now):
+        return FAR_KICK_GATE
+    if kick_mins_left(pick, now) is None:
+        return FAR_KICK_GATE
+    if not playable_kick(pick, now):
+        return FAR_KICK_GATE
+    return None
 
 
 def apply_ares_gates(
@@ -1055,6 +1114,7 @@ def apply_ares_gates(
     """Run the five gates. ICE veto stays. PUBLIC TUG is visual-only and is not a gate here."""
     if not pick:
         return None
+    sit_far_horizon_fills(now)
     if pick.get("ice"):
         return str(pick.get("ice"))
     reason = sit_after_kick(pick, watch, now)
@@ -1063,7 +1123,9 @@ def apply_ares_gates(
     if not reason:
         reason = key_number_gate(pick)
     if not reason:
-        reason = one_ticket_gate(pick, held)
+        reason = far_kick_gate(pick, now)
+    if not reason:
+        reason = one_ticket_gate(pick, held, now)
     if reason:
         pick["gate"] = reason
         pick["call"] = "WAIT"
@@ -1126,53 +1188,60 @@ def kick_mins_left(row: Dict[str, Any], now: Optional[datetime] = None) -> Optio
         return None
 
 
-def kick_horizon(row: Dict[str, Any], now: Optional[datetime] = None) -> int:
-    """Coarse kick bucket. Smaller = nearer. A month-out leftover sits last."""
+def playable_kick(row: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    """Kick is known and inside the 72h hard cap. Already-off books are not playable."""
     mins = kick_mins_left(row, now)
     if mins is None:
-        return 5
+        return False
     try:
         m = float(mins)
     except (TypeError, ValueError):
-        return 5
-    if m <= 0:
-        return 99
-    if m < 2 * 24 * 60:
-        return 0
-    if m < 7 * 24 * 60:
-        return 1
-    if m < 14 * 24 * 60:
-        return 2
-    if m < MONTH_KICK_MINS:
-        return 3
-    return 4
+        return False
+    return 0 < m <= MAX_KICK_MINS
 
 
-def month_out_kick(row: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+def beyond_kick_cap(row: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    """Known kick more than 72 hours out. Unknown clocks are not treated as far."""
     mins = kick_mins_left(row, now)
     if mins is None:
         return False
     try:
-        return float(mins) >= MONTH_KICK_MINS
+        return float(mins) > MAX_KICK_MINS
     except (TypeError, ValueError):
         return False
 
 
+def kick_horizon(row: Dict[str, Any], now: Optional[datetime] = None) -> int:
+    """Coarse kick bucket. Smaller = nearer. Same-day / next 24h beats the rest of the 72h window."""
+    mins = kick_mins_left(row, now)
+    if mins is None:
+        return 99
+    try:
+        m = float(mins)
+    except (TypeError, ValueError):
+        return 99
+    if m <= 0:
+        return 99
+    if m <= NEAR_KICK_MINS:
+        return 0
+    if m <= MAX_KICK_MINS:
+        return 1
+    return 99
+
+
+def month_out_kick(row: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    """True when kick is past the 72h cap (or the old 30-day leftover)."""
+    return beyond_kick_cap(row, now)
+
+
 def nearer_football_playable(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> bool:
-    """A nearer NFL/CFB book is on the table — do not lock a 30-day-out slate."""
+    """An NFL/CFB book inside the 72h window is on the table."""
     for r in rows:
         if r.get("ice"):
             continue
         if str(r.get("sport") or "").upper() not in FOOTBALL_SPORTS:
             continue
-        mins = kick_mins_left(r, now)
-        if mins is None:
-            continue
-        try:
-            m = float(mins)
-        except (TypeError, ValueError):
-            continue
-        if 0 < m < MONTH_KICK_MINS:
+        if playable_kick(r, now):
             return True
     return False
 
@@ -1190,7 +1259,7 @@ def rank_key(row: Dict[str, Any], priority: List[str], now: Optional[datetime] =
 
 
 def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
-    """ONE TICKET: nearer kick first. Calendar sport breaks ties among similarly-near books."""
+    """ONE TICKET: 72h hard cap. Prefer same-day / next 24h, then calendar sport."""
     if not rows:
         return None
     pri = sport_priority(now)
@@ -1199,10 +1268,10 @@ def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) ->
         return None
     clear = [r for r in playable if not r.get("ice")]
     pack = clear or playable
-    if nearer_football_playable(pack, now):
-        near = [r for r in pack if not month_out_kick(r, now)]
-        if near:
-            pack = near
+    inside = [r for r in pack if playable_kick(r, now)]
+    if not inside:
+        return None
+    pack = inside
     pack.sort(key=lambda r: rank_key(r, pri, now))
     best = pack[0]
     game = best.get("game")
@@ -1262,7 +1331,11 @@ def paper_lock_if_clear(pick: Optional[Dict[str, Any]], now: Optional[datetime] 
     """Paper only. Cap a few per day. Follower stays off. ONE TICKET sits after the first open fill."""
     if not pick or pick.get("ice") or pick.get("gate") or pick.get("call") in (None, "WAIT"):
         return None
-    held = open_paper_ticket()
+    if not playable_kick(pick, now):
+        pick["gate"] = FAR_KICK_GATE
+        pick["call"] = "WAIT"
+        return None
+    held = open_paper_ticket(now)
     if held and held.get("ticker") != pick.get("ticker"):
         pick["gate"] = "ONE TICKET · ALREADY SAT"
         pick["call"] = "WAIT"
@@ -1839,8 +1912,9 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
     if not force and _board_cache.get("payload") and time.time() - float(_board_cache.get("at") or 0) < ttl:
         return _board_cache["payload"]
     rows = await scan_open(fetch=fetch)
+    sit_far_horizon_fills(now)
     pick = pick_one_game(rows, now=now)
-    held = open_paper_ticket()
+    held = open_paper_ticket(now)
     if held and pick:
         pinned = next((r for r in rows if r.get("ticker") == held.get("ticker")), None)
         if pinned is None:
