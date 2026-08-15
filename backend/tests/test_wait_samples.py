@@ -380,7 +380,9 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn('id="focusFront"', HTML)
         self.assertIn('class="focus-tab"', HTML)
         self.assertIn('data-focus="front"', HTML)
-        self.assertIn(">RAIJIN</button>", HTML)
+        self.assertIn(">DWF</button>", HTML)
+        self.assertIn('id="focusAts"', HTML)
+        self.assertIn(">ATS</button>", HTML)
         self.assertIn('id="focusBtc"', HTML)
         self.assertIn('id="focusEth"', HTML)
         row = HTML.split('id="modeTabs"', 1)[1].split('id="tabFloor"', 1)[0]
@@ -400,7 +402,7 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn('chairPortraitOf(which, dir)', JS)
         self.assertIn("DFW · Raijin", JS)
         self.assertIn("DFW · RAIJIN", JS)
-        self.assertIn("waiting on Satoshi / Vitalik / Raijin", JS)
+        self.assertIn("waiting on Satoshi / Vitalik / Raijin / Ares", JS)
 
     def test_floor_raijin_focuses_table(self):
         wire = JS.split("function wireFloorChairClicks", 1)[1].split("wireFloorChairClicks();", 1)[0]

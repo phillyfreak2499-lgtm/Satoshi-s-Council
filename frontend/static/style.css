@@ -3692,10 +3692,16 @@ body.mode-art .led-window {
 /* Only ONE of these can look active — force sibling off via body dataset */
 body[data-focus-table="bitcoin"] #focusEth.focus-active,
 body[data-focus-table="bitcoin"] #focusFront.focus-active,
+body[data-focus-table="bitcoin"] #focusAts.focus-active,
 body[data-focus-table="ethereum"] #focusBtc.focus-active,
 body[data-focus-table="ethereum"] #focusFront.focus-active,
+body[data-focus-table="ethereum"] #focusAts.focus-active,
 body[data-focus-table="front"] #focusBtc.focus-active,
-body[data-focus-table="front"] #focusEth.focus-active {
+body[data-focus-table="front"] #focusEth.focus-active,
+body[data-focus-table="front"] #focusAts.focus-active,
+body[data-focus-table="ats"] #focusBtc.focus-active,
+body[data-focus-table="ats"] #focusEth.focus-active,
+body[data-focus-table="ats"] #focusFront.focus-active {
   /* safety: never both */
   opacity: 0.7 !important;
   color: #9ab0c8 !important;
@@ -6693,6 +6699,65 @@ body.night-mode .table-stage {
   text-overflow: ellipsis;
 }
 .chair-why[hidden] { display: none !important; }
+.ats-why {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: calc(14% - 20px);
+  z-index: 9;
+  pointer-events: none;
+  text-align: center;
+}
+.ats-why-line {
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 12px;
+  letter-spacing: 0.10em;
+  color: #f0c14a;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.45), 0 1px 8px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-why-strip {
+  margin-top: 3px;
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #7fe9ff;
+  text-shadow: 0 0 8px rgba(0, 232, 255, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-why[hidden] { display: none !important; }
+body.floor-mode .ats-why,
+body.night-mode .ats-why,
+body.mode-floor .ats-why { bottom: calc(4% + 34px); }
+body:not([data-focus-table="ats"]) .ats-why { display: none !important; }
+body[data-focus-table="ats"] .chair-why { display: none !important; }
+.ats-watch {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: calc(14% - 48px);
+  z-index: 9;
+  pointer-events: none;
+  text-align: center;
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: #7fe9ff;
+  text-shadow: 0 0 10px rgba(0, 232, 255, 0.55), 0 1px 8px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-watch[data-listed="1"] { color: #f0c14a; text-shadow: 0 0 10px rgba(240, 193, 74, 0.55), 0 1px 8px rgba(0, 0, 0, 0.9); }
+.ats-watch[hidden] { display: none !important; }
+body.floor-mode .ats-watch,
+body.night-mode .ats-watch,
+body.mode-floor .ats-watch { bottom: calc(4% + 14px); }
+body:not([data-focus-table="ats"]) .ats-watch { display: none !important; }
 body.floor-mode .chair-why,
 body.night-mode .chair-why,
 body.mode-floor .chair-why {
@@ -6859,6 +6924,16 @@ body.gate-locked .health-strip {
   body.phone-floor .chair-why {
     bottom: calc(8% + 28px);
     font-size: 16px;
+    white-space: normal;
+  }
+  body.phone-floor .ats-why {
+    bottom: calc(8% + 22px);
+  }
+  body.phone-floor .ats-why-line { font-size: 11px; white-space: normal; }
+  body.phone-floor .ats-why-strip { font-size: 9px; letter-spacing: 0.06em; }
+  body.phone-floor .ats-watch {
+    bottom: calc(8% + 2px);
+    font-size: 11px;
     white-space: normal;
   }
   body.phone-floor.floor-mode #floorExitBtn:not([hidden]),
@@ -7781,4 +7856,89 @@ html body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
   body.mode-charts #app > header .accuracy-badge .acc-label {
     display: none;
   }
+}
+
+/* Ares — one portrait, CSS eye / rim recolor from the pick */
+.ares-face {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: min(26vw, 200px);
+  height: min(26vw, 200px);
+  transform: translate(-50%, -58%);
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+  --ares-eye-a: #F5B942;
+  --ares-eye-b: #F5B942;
+}
+.ares-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ares-eye {
+  position: absolute;
+  top: 38%;
+  width: 11%;
+  height: 7%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ares-eye-a) 0%, transparent 70%);
+  mix-blend-mode: screen;
+  filter: blur(1px);
+  box-shadow: 0 0 10px var(--ares-eye-a);
+  pointer-events: none;
+}
+.ares-eye-l { left: 32%; }
+.ares-eye-r { right: 32%; left: auto; }
+.ares-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 18px var(--ares-eye-a), 0 0 16px var(--ares-eye-b);
+  pointer-events: none;
+}
+.ares-face[data-eye="wait"] { --ares-eye-a: #F5B942; --ares-eye-b: #F5B942; }
+.ares-face[data-eye="over"] { --ares-eye-a: #FF6A1A; --ares-eye-b: #FFC14A; }
+.ares-face[data-eye="under"] { --ares-eye-a: #3DE0FF; --ares-eye-b: #00E8FF; }
+.ares-face[data-eye="team"] { --ares-eye-a: var(--ares-eye-a); --ares-eye-b: var(--ares-eye-b); }
+body:not([data-focus-table="ats"]) .ares-face,
+body.mode-floor .ares-face,
+body.mode-night .ares-face,
+body.mode-charts .ares-face,
+body.mode-settings .ares-face { display: none !important; }
+.ats-sub {
+  font-family: Share Tech Mono, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #7fe9ff;
+  margin-top: 4px;
+  opacity: 0.85;
+}
+body[data-focus-table="ats"] .chart-card.chart-pair-btc,
+body[data-focus-table="ats"] .chart-card.chart-pair-eth,
+body.charts-hero-ats .chart-card.chart-pair-btc,
+body.charts-hero-ats .chart-card.chart-pair-eth {
+  display: none !important;
+}
+body[data-focus-table="ats"] #atsChartTape,
+body.charts-hero-ats #atsChartTape {
+  display: block !important;
+}
+.ats-chart-line {
+  font-family: Orbitron, monospace;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: #ffe7a0;
+  padding: 18px 16px 22px;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.45);
+}
+#focusAts.focus-active {
+  opacity: 1 !important;
+  color: #ffe7a0 !important;
+  border-color: rgba(240, 193, 74, 0.95) !important;
+  background: linear-gradient(165deg, rgba(240, 193, 74, 0.32), rgba(90, 55, 5, 0.55)) !important;
+  box-shadow: 0 0 16px rgba(240, 193, 74, 0.55) !important;
 }
