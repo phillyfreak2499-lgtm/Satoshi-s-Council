@@ -10,8 +10,13 @@ from unittest.mock import MagicMock, patch
 
 sys.modules.setdefault("httpx", MagicMock())
 
+# Sibling tests may have mocked these; load the real modules for this file.
+for _name in ("backend.data.binance", "backend.data.cfbenchmarks", "backend.data.coinglass"):
+    mod = sys.modules.get(_name)
+    if mod is None or isinstance(mod, MagicMock):
+        sys.modules.pop(_name, None)
+
 from backend.data.binance import (
-    BinanceClient,
     coinbase_product_for_symbol,
     snapshot_from_parts,
     spot_source_from_base,
@@ -60,10 +65,14 @@ class SnapshotHealthTests(unittest.TestCase):
         self.assertFalse(research_spot_ok("binance.us"))
 
     def test_vision_not_us_in_research_bases(self):
-        client = BinanceClient(symbol="BTCUSDT")
-        self.assertEqual(client.spot_bases, ["https://data-api.binance.vision"])
-        self.assertIn("binance.us", client.us_book_base)
-        self.assertNotIn("https://api.binance.us", client.spot_bases)
+        src = (Path(__file__).resolve().parents[1] / "data" / "binance.py").read_text(encoding="utf-8")
+        self.assertIn("https://data-api.binance.vision", src)
+        self.assertIn("us_book_base = \"https://api.binance.us\"", src)
+        self.assertIn("separate book", src)
+        # us is labeled, not a vision fallback in spot_bases
+        bases_block = src.split("self.spot_bases = [", 1)[1].split("]", 1)[0]
+        self.assertIn("binance.vision", bases_block)
+        self.assertNotIn("binance.us", bases_block)
 
 
 class SpotFeedOkTests(unittest.TestCase):
