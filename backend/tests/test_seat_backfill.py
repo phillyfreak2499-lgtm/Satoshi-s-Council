@@ -509,9 +509,10 @@ class CoinGlassHistBackfillTests(unittest.IsolatedAsyncioTestCase):
         if rec.get("status") != "graded":
             self.fail(f"expected graded hour, got {rec}")
         cg_voted = {s for s in rec["seats"] if s in sb.COINGLASS_SEATS}
-        self.assertTrue(
+        self.assertEqual(
             cg_voted,
-            f"CARRY/CHAIN/CASCADE should vote from fixture, seats={rec['seats']}",
+            set(sb.COINGLASS_SEATS),
+            f"CARRY/CHAIN/CASCADE should all vote from fixture, seats={rec['seats']}",
         )
         n = sum(
             int(learner.correct.get(s) or 0) + int(learner.wrong.get(s) or 0)
@@ -600,8 +601,10 @@ class CoinGlassHistBackfillTests(unittest.IsolatedAsyncioTestCase):
             cg_feeds={"funding": True, "open_interest": True, "liquidations": True},
         )
         self.assertIn("funding", votes)
+        self.assertIn("oi_pressure", votes)
         self.assertIn("liq", votes)
         self.assertIn(votes["funding"].get("direction"), ("UP", "DOWN"))
+        self.assertIn(votes["oi_pressure"].get("direction"), ("UP", "DOWN"))
         self.assertIn(votes["liq"].get("direction"), ("UP", "DOWN"))
 
 
