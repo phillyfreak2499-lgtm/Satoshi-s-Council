@@ -201,6 +201,12 @@ class ZachBarTests(unittest.TestCase):
         self.assertFalse(zach_band_skips_preferred(9, 20.0))
         self.assertIn("≥99", never_lock_near_certain(99, 1) or "")
         self.assertIsNotNone(zach_bar_reason(99, 1, p_finish=0.99, fee_cents=1.0, yes_mid=99, side_ask=99))
+        # 10–90 does not drop EV: 82¢ / 88¢ with leftover < 0 still fail Zach's bar.
+        self.assertLess(leftover_after_vig(0.62, 82.0, spread_cents=2.0, fee_cents=1.0), 0.0)
+        self.assertLess(leftover_after_vig(0.62, 88.0, spread_cents=2.0, fee_cents=1.0), 0.0)
+        self.assertGreater(leftover_after_vig(0.95, 88.0, spread_cents=2.0, fee_cents=1.0), 0.0)
+        self.assertIn("leftover", zach_bar_reason(88, 12, p_finish=0.62, fee_cents=1.0, yes_mid=88, side_ask=88) or "")
+        self.assertIn("leftover", zach_bar_reason(82, 18, p_finish=0.62, fee_cents=1.0, yes_mid=82, side_ask=82) or "")
 
     def test_leftover_required_at_the_ask(self):
         self.assertGreater(leftover_after_vig(0.62, 25.0, fee_cents=1.0), 0.0)

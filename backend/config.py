@@ -196,7 +196,7 @@ class Settings(BaseSettings):
     # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
     EARLY_NO_LOCK_MINS: float = 10.0
     PLAYABLE_MID_MIN: float = 10.0  # Zach hard band — two-sided, not 45–55
-    PLAYABLE_MID_MAX: float = 90.0
+    PLAYABLE_MID_MAX: float = 90.0  # 10–90 does not drop EV ≥ 0 after half-spread
     LATE_HOURLY_VOL_PCT: float = 0.40
     P_FINISH_COLD_N: int = 15
     P_FINISH_WARM_N: int = 40

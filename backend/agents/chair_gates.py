@@ -1437,7 +1437,10 @@ def explore_paper_lock_ok(
     min_p: float | None = None,
     min_ev: float | None = None,
 ) -> bool:
-    """P(finish) ≥ 0.55, EV ≥ 0 after half-spread, 10–90 band."""
+    """P(finish) ≥ 0.55, EV ≥ 0 after half-spread, 10–90 band.
+
+    The wider band does not drop the EV gate. 82¢ / 88¢ still FAIL when EV < 0.
+    """
     if min_p is None:
         try:
             from backend.config import settings
