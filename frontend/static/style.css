@@ -6135,8 +6135,12 @@ body.admin-unlocked.mode-settings #adminDeskHost {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
   }
-  body.mode-charts .chart-card.chart-pair-eth,
-  body.mode-charts .chart-card.chart-pair-btc {
+  body.mode-charts.charts-hero-btc .charts-pairs,
+  body.mode-charts.charts-hero-eth .charts-pairs {
+    grid-template-columns: 1fr !important;
+  }
+  body.mode-charts .chart-card.chart-pair-eth:not(.chart-hero-off),
+  body.mode-charts .chart-card.chart-pair-btc:not(.chart-hero-off) {
     display: flex !important;
     visibility: visible !important;
   }
@@ -7615,9 +7619,19 @@ body.mode-charts .chart-card.no-feed canvas {
   max-height: 36px !important;
   flex: 0 0 auto;
 }
-body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth,
-body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
+html body.mode-charts .chart-card.chart-pair-eth.chart-hero-off,
+html body.mode-charts .chart-card.chart-pair-btc.chart-hero-off,
+html body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth,
+html body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
   display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
 }
 @media (min-width: 900px) {
   body.mode-charts.charts-hero-btc .charts-pairs,

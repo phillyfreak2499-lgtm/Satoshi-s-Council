@@ -164,6 +164,7 @@ class ChartsCssTests(unittest.TestCase):
         self.assertIn("function syncChartHero()", JS)
         self.assertIn('classList.toggle("charts-hero-eth"', JS)
         self.assertIn('classList.toggle("charts-hero-btc"', JS)
+        self.assertIn("chart-hero-off", JS)
         self.assertIn("body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth", CSS)
         self.assertIn("body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc", CSS)
         self.assertIn("display: none !important", CSS)
@@ -203,7 +204,7 @@ class ChartsCssTests(unittest.TestCase):
     def test_canvas_capped_never_grows_with_points(self):
         self.assertIn("Never let a canvas grow with data points", JS)
         self.assertIn('canvas.style.maxHeight = maxH + "px"', JS)
-        self.assertIn('canvas.style.width = "100%"', JS)
+        self.assertIn('canvas.style.width = w + "px"', JS)
         self.assertIn("max-height: 220px !important", CSS)
         self.assertIn("flex: 0 0 auto !important", CSS)
 
@@ -217,17 +218,27 @@ class ChartsCssTests(unittest.TestCase):
         self.assertIn("down = 100 - up", JS)
 
     def test_funding_hides_zero_dummy(self):
+        self.assertIn("function realFundingPct", JS)
         fund = JS[JS.find("function drawChartFunding()"):JS.find("function pairFromLockRow")]
-        self.assertIn("Math.abs(f) >= 1e-8", fund)
         self.assertIn("card.hidden = true", fund)
+        self.assertIn("1e-4", JS)
+        self.assertNotIn("COLLECTING", fund)
 
     def test_tape_uses_same_window_clock(self):
         tape = JS[JS.find("function drawChartTape()"):JS.find("function finishOnlyStats()")]
-        self.assertIn("p.window ||", tape)
+        self.assertIn('p.window || "1H"', tape)
+        self.assertNotIn("fmtLockTime(p.t)", tape)
+        self.assertNotIn("fmtLockTime(called_at)", tape)
 
     def test_pair_head_has_window_room(self):
-        self.assertIn("t: 28", JS)
-        self.assertIn("1H WINDOW", JS)
+        self.assertIn("t: 40", JS)
+        self.assertIn('fillText("1H WINDOW", pad.l + 4, 14)', JS)
+
+    def test_offscale_target_is_chip_not_edge_line(self):
+        pair = JS[JS.find("function drawPairCandles"):JS.find("function drawChartBtc()")]
+        self.assertIn("Do not draw an edge line", pair)
+        self.assertIn("setPairTargetChip(canvas, targetChip)", pair)
+        self.assertIn("targetY = null", pair)
 
 
 class NoRegressionTests(unittest.TestCase):
