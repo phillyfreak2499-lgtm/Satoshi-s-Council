@@ -23,8 +23,11 @@ from backend.services.desk_pack import (
     brain_recap_from_report,
     calibration_strip,
     chair_tape_payload,
+    close_print,
+    health_strip_from_health,
     tape_result,
     tape_row_from_call,
+    why_line,
     window_label_ct,
 )
 
@@ -294,6 +297,129 @@ class FreezeTests(unittest.TestCase):
         self.assertIn("/api/book", JS)
         self.assertIn("/api/brain/recap", JS)
         self.assertIn("/api/news", JS)
+
+
+class WhyLineTests(unittest.TestCase):
+    def test_wait_down_99_no_edge(self):
+        line = why_line(
+            decision={"direction": "WAIT", "summary": "no lock"},
+            market={"kalshi_ticker": "KXBTCD-26AUG1516-T1", "kalshi_yes_bid": 1},
+        )
+        self.assertEqual(line, "WAIT · DOWN is 99¢, no edge")
+        self.assertNotIn("\n", line)
+        self.assertLess(len(line), 80)
+
+    def test_lock_up_book_size_ev(self):
+        book = {"yes": [[48, 20], [47, 10]], "no": [[51, 15]]}
+        line = why_line(
+            decision={"direction": "UP", "ev_cents": 4},
+            market={
+                "kalshi_ticker": "KXBTCD-26AUG1516-T1",
+                "kalshi_yes_bid": 48,
+                "kalshi_yes_ask": 50,
+                "kalshi_orderbook": book,
+            },
+            locked_call={"locked": True, "direction": "UP", "ev_cents": 4},
+        )
+        self.assertEqual(line, "LOCK UP · book has size, EV +4¢")
+
+    def test_why_is_on_floor_and_table(self):
+        self.assertIn('id="chairWhy"', HTML)
+        self.assertIn("function paintChairWhy()", JS)
+        self.assertIn("function chairWhyLineText(", JS)
+        self.assertIn('mode === "art" || mode === "floor" || mode === "night"', JS)
+        self.assertIn(".chair-why", CSS)
+        self.assertNotIn("debug dump", JS.split("function chairWhyLineText", 1)[1][:800].lower())
+
+
+class CloseRecapTests(unittest.TestCase):
+    def test_open_if_ungraded(self):
+        out = close_print(
+            {"direction": "UP", "y_finish": None, "settle_reason": None, "paper_pnl": 12},
+            pair="BTC",
+            lean="UP",
+        )
+        self.assertEqual(out["result"], "OPEN")
+        self.assertIsNone(out["pnl"])
+        fake = close_print(
+            {"direction": "UP", "y_finish": "UP", "settle_reason": "spot_guess", "paper_pnl": 9},
+            pair="BTC",
+        )
+        self.assertEqual(fake["result"], "OPEN")
+
+    def test_official_paid_only(self):
+        hit = close_print(
+            {
+                "direction": "UP",
+                "y_finish": "UP",
+                "settle_reason": "finish_match",
+                "correct": 1,
+                "paper_pnl": 12.5,
+            },
+            pair="BTC",
+        )
+        self.assertEqual(hit["result"], "HIT")
+        self.assertEqual(hit["pnl"], 12.5)
+
+    def test_js_plays_once_then_existing_slam(self):
+        self.assertIn("function beginHourCloseThenSlam()", JS)
+        self.assertIn("setTimeout(finishHourClose, 8000)", JS)
+        self.assertIn("function lastHourPrint(", JS)
+        self.assertIn('result: "OPEN"', JS)
+        self.assertIn("window.__dismissCloseRecap", JS)
+        self.assertIn('id="closeRecap"', HTML)
+        self.assertIn("HOUR CLOSE", HTML)
+        self.assertIn("tap or Esc skips", HTML)
+        self.assertIn("beginHourCloseThenSlam()", JS)
+        self.assertIn("Date.now() + 1100", JS)
+        self.assertIn("function drawHourSlamRings", JS)
+        self.assertIn("function triggerHourSlam()", JS)
+        esc = JS.split('if (e.key === "Escape")', 1)[1][:900]
+        self.assertLess(esc.find("__dismissCloseRecap"), esc.find('setMode("art")'))
+        self.assertIn("isSeatStormPlaying", esc)
+        self.assertIn("__dismissLeaderClick", esc)
+
+
+class PhoneFloorTests(unittest.TestCase):
+    def test_one_handed_floor_not_scaled_desk(self):
+        self.assertIn("phone-floor", JS)
+        self.assertIn("function isPhoneDesk()", JS)
+        self.assertIn('matchMedia("(max-width: 480px)")', JS)
+        self.assertIn('id="phoneScore"', HTML)
+        self.assertIn("Math.abs(dx) < 48", JS)
+        self.assertIn("body.phone-floor #beastBadge", CSS)
+        self.assertIn("body.phone-floor #tabSettings", CSS)
+        self.assertIn("body.phone-floor #phoneScore:not([hidden])", CSS)
+        self.assertIn("min-height: 44px", CSS.split("body.phone-floor #phoneScore", 1)[1][:400])
+        self.assertIn("min(46dvh, 380px)", CSS)
+        self.assertIn("100dvh", CSS.split("body.phone-floor #mainTable", 1)[1][:500])
+        self.assertIn('id="floorExitBtn"', HTML)
+
+
+class HealthStripTests(unittest.TestCase):
+    def test_matches_health_endpoint(self):
+        for key in ('"kalshi_ok"', '"spot_ok"', '"coinglass_ok"', '"quote_age_s"'):
+            self.assertIn(key, MAIN)
+        self.assertIn('id="healthStrip"', HTML)
+        self.assertIn('id="healthKalshi"', HTML)
+        self.assertIn('id="healthSpot"', HTML)
+        self.assertIn('id="healthGlass"', HTML)
+        self.assertIn('id="healthAge"', HTML)
+        self.assertIn("function paintHealthStrip(", JS)
+        self.assertIn("function loadHealthStrip()", JS)
+        self.assertIn("/health", JS)
+        self.assertIn(".health-dot.down", CSS)
+        self.assertIn("body.gate-locked #healthStrip", CSS)
+        self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:400])
+
+    def test_strip_shape_dims_down_feeds(self):
+        strip = health_strip_from_health(
+            {"kalshi_ok": False, "spot_ok": True, "coinglass_ok": False, "quote_age_s": 3}
+        )
+        self.assertFalse(strip["kalshi"])
+        self.assertTrue(strip["spot"])
+        self.assertFalse(strip["coinglass"])
+        self.assertEqual(strip["quote_age_s"], 3)
 
 
 if __name__ == "__main__":

@@ -6486,3 +6486,200 @@ body.night-mode .table-stage {
   .tape-row { grid-template-columns: 1fr 1fr; }
   .tape-row.head { display: none; }
 }
+
+/* Why — one live line under the Chair (Floor + Table). No paragraph. */
+.chair-why {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 14%;
+  z-index: 9;
+  pointer-events: none;
+  text-align: center;
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  color: #e8f4ff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chair-why[hidden] { display: none !important; }
+body.floor-mode .chair-why,
+body.night-mode .chair-why,
+body.mode-floor .chair-why {
+  bottom: calc(4% + 36px);
+}
+
+/* Close — 8s recap on Floor, then the existing hour slam */
+.close-recap {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+  cursor: pointer;
+}
+body.close-recap-on #closeRecap:not([hidden]),
+#closeRecap.close-recap:not(.hidden):not([hidden]) {
+  display: flex !important;
+}
+.close-recap-card {
+  text-align: center;
+  padding: 28px 32px;
+  max-width: min(92vw, 520px);
+  color: #e8f4ff;
+  font-family: Orbitron, Rajdhani, sans-serif;
+}
+.close-kicker {
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  color: rgba(200, 220, 240, 0.55);
+  margin-bottom: 12px;
+}
+.close-line {
+  font-size: 22px;
+  margin: 8px 0;
+  letter-spacing: 0.06em;
+}
+.close-books {
+  font-size: 16px;
+  color: #f0c14a;
+  margin-top: 12px;
+  letter-spacing: 0.08em;
+}
+.close-hint {
+  font-size: 12px;
+  opacity: 0.55;
+  margin-top: 16px;
+  letter-spacing: 0.08em;
+}
+
+/* Health — tiny strip, not a page. Dim when a feed is down. */
+.health-strip {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  right: max(10px, env(safe-area-inset-right, 10px));
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(200, 220, 240, 0.72);
+  pointer-events: none;
+  background: rgba(2, 6, 14, 0.35);
+}
+.health-strip[hidden],
+body.gate-locked #healthStrip,
+body.gate-locked .health-strip {
+  display: none !important;
+}
+.health-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.health-dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #39ff14;
+}
+.health-dot.down {
+  opacity: 0.38;
+}
+.health-dot.down::before {
+  background: #6b7c90;
+}
+.health-age {
+  font-family: Orbitron, monospace;
+  min-width: 2em;
+}
+
+.phone-score {
+  display: none;
+  pointer-events: auto;
+}
+.phone-score[hidden] { display: none !important; }
+
+/* Phone Floor — one-handed ~390. Table/Pro stay stacked. */
+@media (max-width: 480px) {
+  body.phone-floor #mainTable,
+  body.phone-floor #tableStage,
+  body.phone-floor #mainTable #tableStage,
+  body.phone-floor .table-stage,
+  body.phone-floor.floor-mode #tableStage,
+  body.phone-floor.mode-floor #tableStage,
+  body.phone-floor.night-mode #tableStage {
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    overflow: hidden !important;
+  }
+  body.phone-floor #beastBadge,
+  body.phone-floor #tabSettings,
+  body.phone-floor #btnHelp,
+  body.phone-floor #tabCharts,
+  body.phone-floor #tabBots,
+  body.phone-floor #tabRanks,
+  body.phone-floor #tabPaper,
+  body.phone-floor #tabDashboard,
+  body.phone-floor #tabTape,
+  body.phone-floor #tabBook,
+  body.phone-floor #tabBrain,
+  body.phone-floor #tabNews,
+  body.phone-floor header .header-row,
+  body.phone-floor #app > header .header-row,
+  body.phone-floor #rivalryStrip,
+  body.phone-floor #lifetimePanel,
+  body.phone-floor #debatePanel,
+  body.phone-floor #hierarchyPanel,
+  body.phone-floor footer,
+  body.phone-floor #app > footer,
+  body.phone-floor .focus-tab,
+  body.phone-floor .focus-table-badge {
+    display: none !important;
+  }
+  body.phone-floor #phoneScore:not([hidden]) {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    left: 50%;
+    top: max(56px, calc(env(safe-area-inset-top, 0px) + 48px));
+    transform: translateX(-50%);
+    z-index: 12;
+    min-height: 44px;
+    min-width: 120px;
+    padding: 10px 18px;
+    border: 1px solid rgba(0, 232, 255, 0.45);
+    background: rgba(4, 12, 22, 0.88);
+    color: #e8f4ff;
+    font-family: Orbitron, monospace;
+    font-size: 16px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+  body.phone-floor .chair-why {
+    bottom: calc(8% + 28px);
+    font-size: 16px;
+    white-space: normal;
+  }
+  body.phone-floor.floor-mode #floorExitBtn:not([hidden]),
+  body.phone-floor.mode-floor .floor-exit-btn:not([hidden]) {
+    display: inline-flex !important;
+    min-height: 44px;
+    min-width: 72px;
+  }
+  body.phone-floor .health-strip:not([hidden]) {
+    top: max(8px, env(safe-area-inset-top, 8px));
+    right: max(10px, env(safe-area-inset-right, 10px));
+  }
+}

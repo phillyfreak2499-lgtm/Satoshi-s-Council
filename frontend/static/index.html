@@ -113,6 +113,21 @@
       <span id="rivalTrash" class="rival-trash"></span>
     </div>
     <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
+    <div id="closeRecap" class="close-recap hidden" hidden aria-hidden="true" role="dialog" aria-label="Hour close">
+      <div class="close-recap-card">
+        <div class="close-kicker">HOUR CLOSE</div>
+        <p id="closeSatoshi" class="close-line">SATOSHI · —</p>
+        <p id="closeVitalik" class="close-line">VITALIK · —</p>
+        <p id="closeBooks" class="close-books">BOOKS · —</p>
+        <p class="close-hint">tap or Esc skips</p>
+      </div>
+    </div>
+    <div id="healthStrip" class="health-strip" hidden aria-label="Feed health">
+      <span id="healthKalshi" class="health-dot" data-feed="kalshi">Kalshi</span>
+      <span id="healthSpot" class="health-dot" data-feed="spot">Spot</span>
+      <span id="healthGlass" class="health-dot" data-feed="coinglass">Glass</span>
+      <span id="healthAge" class="health-age">—</span>
+    </div>
     <!-- watermark removed; clean logo lives in header -->
     <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
     <header>
@@ -244,6 +259,8 @@
         <div id="floorCrawl" class="floor-crawl" hidden aria-label="Last five locks">
           <div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div>
         </div>
+        <div id="chairWhy" class="chair-why" aria-live="polite">WAIT · —</div>
+        <button type="button" id="phoneScore" class="phone-score" hidden aria-label="Flip BTC / ETH">BTC 0–0</button>
       </div>
       <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 

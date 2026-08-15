@@ -89,6 +89,18 @@ async def health():
     eth_age = _age((eth or {}).get("timestamp")) if eth else None
     max_age = max(90.0, float(getattr(settings, "ANALYSIS_INTERVAL", 4.5)) * 10)
     healthy = bool(council.running) and (age is None or age < max_age)
+    btc_h = ((btc or {}).get("health") or {}) if isinstance(btc, dict) else {}
+    eth_h = ((eth or {}).get("health") or {}) if isinstance(eth, dict) else {}
+    from backend.data.spot_health import spot_feed_ok
+
+    spot_ok = bool(spot_feed_ok(btc_h, btc)) or bool(eth and spot_feed_ok(eth_h, eth))
+    kalshi_btc_ok = bool(btc_h.get("kalshi", True))
+    kalshi_eth_ok = bool(eth_h.get("kalshi", True)) if eth else None
+    kalshi_ok = kalshi_btc_ok and (kalshi_eth_ok is not False)
+    coinglass_ok = bool(btc_h.get("coinglass") or eth_h.get("coinglass"))
+    quote_age = btc_h.get("quote_age_s")
+    if quote_age is None:
+        quote_age = age
     return {
         "status": "ok" if healthy else "degraded",
         "service": settings.APP_NAME,
@@ -97,10 +109,14 @@ async def health():
         "state_age_s": round(age, 1) if age is not None else None,
         "btc_age_s": round(btc_age, 1) if btc_age is not None else None,
         "eth_age_s": round(eth_age, 1) if eth_age is not None else None,
-        "kalshi_btc_ok": bool(((btc or {}).get("health") or {}).get("kalshi", True)),
-        "kalshi_eth_ok": bool(((eth or {}).get("health") or {}).get("kalshi", True)) if eth else None,
+        "kalshi_btc_ok": kalshi_btc_ok,
+        "kalshi_eth_ok": kalshi_eth_ok,
+        "kalshi_ok": kalshi_ok,
+        "spot_ok": spot_ok,
+        "coinglass_ok": coinglass_ok,
+        "quote_age_s": round(float(quote_age), 1) if quote_age is not None else None,
         "analysis_interval_s": settings.ANALYSIS_INTERVAL,
-        "fetch_ms": (state.get("health") or {}).get("last_fetch_ms"),
+        "fetch_ms": (state.get("health") or {}).get("last_fetch_ms") or btc_h.get("last_fetch_ms"),
     }
 
 

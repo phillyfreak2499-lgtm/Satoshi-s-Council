@@ -73,6 +73,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       if (typeof window.prefetchLeaderClickVideo === "function") window.prefetchLeaderClickVideo();
     } catch (e) {}
+    try {
+      if (typeof window.loadHealthStrip === "function") window.loadHealthStrip();
+    } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {
@@ -565,6 +568,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (next) document.body.classList.add("mode-" + next);
     document.body.classList.toggle("floor-mode", next === "floor" || next === "night");
     document.body.classList.toggle("night-mode", next === "night");
+    const phoneFloor = (next === "floor" || next === "night") && (typeof isPhoneDesk === "function" ? isPhoneDesk() : false);
+    document.body.classList.toggle("phone-floor", phoneFloor);
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
@@ -939,7 +944,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (key !== lastWindowKey) {
         lastWindowKey = key;
         lastClockBucket = bucket;
-        try { triggerHourSlam(); } catch (e) {}
+        try { beginHourCloseThenSlam(); } catch (e) { try { triggerHourSlam(); } catch (e2) {} }
         // Skip-window: previous chair was WAIT → awkward silence; else market bell
         try {
           const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
@@ -963,7 +968,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     if (bucket !== lastClockBucket) {
       lastClockBucket = bucket;
-      try { triggerHourSlam(); } catch (e) {}
+      try { beginHourCloseThenSlam(); } catch (e) { try { triggerHourSlam(); } catch (e2) {} }
       playMarketBell();
       playNewMarketMist();
     }
@@ -1477,6 +1482,111 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
+  }
+
+  let closeRecapTimer = 0;
+  let closeRecapOn = false;
+
+  function lastHourPrint(tableKey) {
+    const pair = tableKey === "ethereum" ? "ETH" : "BTC";
+    const ts = (typeof tableState === "function" ? tableState(tableKey) : null) || {};
+    const acc = ts.accuracy || {};
+    const open = Array.isArray(acc.open) && acc.open.length ? acc.open[0] : null;
+    const log = (acc.log || acc.recent || [])[0] || null;
+    const lc = (typeof pairLock === "function") ? pairLock(ts) : null;
+    const row = open || lc || log;
+    const lean = (typeof tableLean === "function") ? tableLean(ts) : { side: "WAIT", locked: false };
+    if (!row) {
+      return { pair: pair, side: lean.side || "WAIT", result: lean.locked ? "OPEN" : (lean.side === "WAIT" ? "WAIT" : "OPEN"), pnl: null };
+    }
+    const y = String(row.y_finish || "").toUpperCase();
+    const reason = String(row.settle_reason || "");
+    const official = (y === "UP" || y === "DOWN") && (reason === "finish_match" || reason === "finish_miss");
+    const side = (typeof sideFromLockRow === "function") ? sideFromLockRow(row) : (row.direction || lean.side || "WAIT");
+    if (!official) {
+      return { pair: pair, side: side || "WAIT", result: "OPEN", pnl: null };
+    }
+    const hit = row.correct === true || row.correct === 1;
+    return {
+      pair: pair,
+      side: side || "WAIT",
+      result: hit ? "HIT" : "MISS",
+      pnl: row.paper_pnl != null ? Number(row.paper_pnl) : (row.pnl != null ? Number(row.pnl) : null),
+    };
+  }
+
+  function formatCloseLine(chair, print) {
+    const side = print.side || "WAIT";
+    const res = print.result || "OPEN";
+    let paid = "OPEN";
+    if (res === "WAIT") paid = "WAIT";
+    else if (res === "OPEN") paid = "OPEN";
+    else if (print.pnl != null && isFinite(print.pnl)) {
+      paid = (print.pnl >= 0 ? "+$" : "-$") + Math.abs(print.pnl).toFixed(2);
+    } else {
+      paid = res;
+    }
+    return chair + " · " + (print.pair || "") + " " + side + " · " + paid;
+  }
+
+  function fillCloseRecap() {
+    const sat = document.getElementById("closeSatoshi");
+    const vit = document.getElementById("closeVitalik");
+    const books = document.getElementById("closeBooks");
+    const b = lastHourPrint("bitcoin");
+    const e = lastHourPrint("ethereum");
+    if (sat) sat.textContent = formatCloseLine("SATOSHI", b);
+    if (vit) vit.textContent = formatCloseLine("VITALIK", e);
+    const sc = (typeof scorecardFromState === "function") ? scorecardFromState() : {};
+    if (books) books.textContent = "BOOKS · " + (sc.match || "BTC 0 · ETH 0");
+  }
+
+  function hideCloseRecap() {
+    closeRecapOn = false;
+    if (closeRecapTimer) {
+      try { clearTimeout(closeRecapTimer); } catch (e) {}
+      closeRecapTimer = 0;
+    }
+    const el = document.getElementById("closeRecap");
+    if (el) {
+      el.classList.add("hidden");
+      el.hidden = true;
+      el.setAttribute("aria-hidden", "true");
+    }
+    document.body.classList.remove("close-recap-on");
+  }
+
+  function finishHourClose() {
+    hideCloseRecap();
+    try { triggerHourSlam(); } catch (e) {}
+  }
+
+  function dismissCloseRecap() {
+    if (!closeRecapOn) return false;
+    finishHourClose();
+    return true;
+  }
+  window.__dismissCloseRecap = dismissCloseRecap;
+
+  function beginHourCloseThenSlam() {
+    const onFloor = (typeof floorLikeMode === "function") ? floorLikeMode() : (mode === "floor");
+    if (!onFloor) {
+      try { triggerHourSlam(); } catch (e) {}
+      return;
+    }
+    fillCloseRecap();
+    closeRecapOn = true;
+    const el = document.getElementById("closeRecap");
+    if (el) {
+      el.classList.remove("hidden");
+      el.hidden = false;
+      el.setAttribute("aria-hidden", "false");
+    }
+    document.body.classList.add("close-recap-on");
+    if (closeRecapTimer) {
+      try { clearTimeout(closeRecapTimer); } catch (e) {}
+    }
+    closeRecapTimer = setTimeout(finishHourClose, 8000);
   }
 
   function triggerHourSlam() {
@@ -4722,6 +4832,96 @@ function drawCandleChart() {
     track.textContent = line + " · " + line;
   }
 
+  function chairWhyLineText(ts) {
+    const view = ts || (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const d = view.decision || {};
+    const m = view.market || {};
+    const h = view.health || (state && state.health) || {};
+    const lc = view.locked_call || d.locked_call || {};
+    const locked = !!(lc && lc.locked && lc.direction && /UP|DOWN/.test(String(lc.direction).toUpperCase()));
+    const raw = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
+    const side = raw.indexOf("UP") >= 0 ? "UP" : (raw.indexOf("DOWN") >= 0 ? "DOWN" : "WAIT");
+    const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
+    const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
+    const down = yb != null ? (100 - yb) : (m.down_pct != null ? Number(m.down_pct) : null);
+    const ev = lc.ev_cents != null ? Number(lc.ev_cents) : (d.ev_cents != null ? Number(d.ev_cents) : null);
+    const stale = !!(m.stale || h.stale || (h.quote_age_s != null && Number(h.quote_age_s) > 20));
+    const empty = !(m.kalshi_ticker || m.ticker) || (yb == null && ya == null);
+    const wall99 = (yb != null && yb >= 99) || (down != null && down >= 99) || (ya != null && ya >= 99);
+    const evBit = (ev != null && isFinite(ev)) ? ("EV " + (ev >= 0 ? "+" : "") + Math.round(ev) + "¢") : "";
+    if (locked) {
+      const extras = [];
+      if (!empty && !wall99) extras.push("book has size");
+      if (evBit) extras.push(evBit);
+      return extras.length ? ("LOCK " + side + " · " + extras.join(", ")) : ("LOCK " + side);
+    }
+    const bits = ["WAIT"];
+    if (wall99 && down != null && down >= 99) bits.push("DOWN is 99¢, no edge");
+    else if (wall99 && yb != null && yb >= 99) bits.push("UP is 99¢, no edge");
+    else if (wall99) bits.push("≥99¢ wall, no edge");
+    else if (empty) bits.push("empty book");
+    else if (stale) bits.push("stale quote");
+    else if (ev != null && ev <= 0) bits.push("no edge");
+    else if (/dead book/i.test(String(d.summary || ""))) bits.push("dead book");
+    else if (evBit) bits.push(evBit);
+    else bits.push("no edge");
+    return bits.slice(0, 3).join(" · ");
+  }
+
+  function paintChairWhy() {
+    const el = document.getElementById("chairWhy");
+    if (!el) return;
+    const show = mode === "art" || mode === "floor" || mode === "night";
+    el.hidden = !show;
+    if (!show) return;
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    el.textContent = chairWhyLineText(ts);
+  }
+
+  function paintPhoneScore() {
+    const el = document.getElementById("phoneScore");
+    if (!el) return;
+    const phoneFloor = (typeof isPhoneDesk === "function" && isPhoneDesk()) && (mode === "floor" || mode === "night");
+    el.hidden = !phoneFloor;
+    if (!phoneFloor) return;
+    const sc = (typeof scorecardFromState === "function") ? scorecardFromState() : {};
+    const eth = focusTable === "ethereum";
+    el.textContent = eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0");
+    el.setAttribute("aria-label", "Flip to " + (eth ? "Bitcoin / Satoshi" : "Ethereum / Vitalik"));
+  }
+
+  function paintHealthStrip(data) {
+    const strip = document.getElementById("healthStrip");
+    if (!strip) return;
+    const unlocked = (typeof hasDeskAuth === "function") ? hasDeskAuth() : true;
+    strip.hidden = !unlocked;
+    if (!unlocked || !data) return;
+    function setDot(id, ok) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("down", !ok);
+      el.classList.toggle("up", !!ok);
+    }
+    const kalshi = data.kalshi_ok != null ? !!data.kalshi_ok : !!(data.kalshi_btc_ok !== false);
+    setDot("healthKalshi", kalshi);
+    setDot("healthSpot", !!data.spot_ok);
+    setDot("healthGlass", !!data.coinglass_ok);
+    const ageEl = document.getElementById("healthAge");
+    const age = data.quote_age_s != null ? data.quote_age_s : data.state_age_s;
+    if (ageEl) ageEl.textContent = (age != null && isFinite(Number(age))) ? (Math.round(Number(age)) + "s") : "—";
+  }
+
+  async function loadHealthStrip() {
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/health", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      paintHealthStrip(await r.json());
+    } catch (e) {
+      paintHealthStrip({ kalshi_ok: false, spot_ok: false, coinglass_ok: false, quote_age_s: null });
+    }
+  }
+  window.loadHealthStrip = loadHealthStrip;
+
   function fmtP(p) {
     if (p == null || p === "") return "—";
     const n = Number(p);
@@ -5362,6 +5562,8 @@ function drawCandleChart() {
       try { prefetchLeaderClickVideo(); } catch (e) {}
     }
     try { paintFloorCrawl(); } catch (e) {}
+    try { paintChairWhy(); } catch (e) {}
+    try { paintPhoneScore(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
       // Layout after the view is visible, then draw (avoids 0×0 canvases)
@@ -5379,6 +5581,8 @@ function drawCandleChart() {
     try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
     try { paintTableHud(); } catch (e) {}
     try { paintFloorCrawl(); } catch (e) {}
+    try { paintChairWhy(); } catch (e) {}
+    try { paintPhoneScore(); } catch (e) {}
     try { dockWindowLed(); } catch (e) {}
     try {
       if (mode === "art" || mode === "floor") drawArt();
@@ -5621,6 +5825,7 @@ function drawCandleChart() {
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
       applyDeskState(payload);
+      try { loadHealthStrip(); } catch (e) {}
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
@@ -5741,6 +5946,10 @@ function drawCandleChart() {
         e.preventDefault();
         return;
       }
+      if (typeof window.__dismissCloseRecap === "function" && window.__dismissCloseRecap()) {
+        e.preventDefault();
+        return;
+      }
       if (mode === "floor" || mode === "night") setMode("art");
     }
     if (e.key === "0") setMode("floor");
@@ -5764,6 +5973,9 @@ function drawCandleChart() {
   window.addEventListener("resize", () => {
     if (deskCinematicOn()) return;
     resizeRoundtable();
+    try { syncExclusiveBodyMode(mode); } catch (e) {}
+    try { paintPhoneScore(); } catch (e) {}
+    try { paintChairWhy(); } catch (e) {}
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
@@ -6373,6 +6585,48 @@ function drawCandleChart() {
         e.stopPropagation();
         setMode("art");
       });
+    }
+    const closeRecap = document.getElementById("closeRecap");
+    if (closeRecap && !closeRecap.__wired) {
+      closeRecap.__wired = true;
+      closeRecap.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.__dismissCloseRecap === "function") window.__dismissCloseRecap();
+      });
+    }
+    const phoneScore = document.getElementById("phoneScore");
+    if (phoneScore && !phoneScore.__wired) {
+      phoneScore.__wired = true;
+      phoneScore.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = focusTable === "ethereum" ? "bitcoin" : "ethereum";
+        if (typeof setFocusTable === "function") setFocusTable(next);
+        try { paintPhoneScore(); } catch (err) {}
+        try { paintChairWhy(); } catch (err) {}
+      });
+    }
+    const stage = document.getElementById("tableStage");
+    if (stage && !stage.__phoneFlipWired) {
+      stage.__phoneFlipWired = true;
+      let sx = null;
+      stage.addEventListener("touchstart", function (e) {
+        if (!e.changedTouches || !e.changedTouches[0]) return;
+        sx = e.changedTouches[0].clientX;
+      }, { passive: true });
+      stage.addEventListener("touchend", function (e) {
+        if (sx == null || !e.changedTouches || !e.changedTouches[0]) return;
+        if (typeof isPhoneDesk === "function" && !isPhoneDesk()) return;
+        if (mode !== "floor" && mode !== "night") return;
+        const dx = e.changedTouches[0].clientX - sx;
+        sx = null;
+        if (Math.abs(dx) < 48) return;
+        const next = dx < 0 ? "ethereum" : "bitcoin";
+        if (typeof setFocusTable === "function") setFocusTable(next);
+        try { paintPhoneScore(); } catch (err) {}
+        try { paintChairWhy(); } catch (err) {}
+      }, { passive: true });
     }
     const seatSpin = document.getElementById("seatSpinBtn");
     if (seatSpin && !seatSpin.__wired) {

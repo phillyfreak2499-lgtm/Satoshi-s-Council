@@ -433,3 +433,145 @@ async def load_chair_tape_rows(store: Any, hours: int = TAPE_HOURS) -> List[Dict
         if _in_last_hours(when, hours, now):
             out.append(r)
     return out
+
+
+def why_line(
+    decision: Dict[str, Any] | None = None,
+    market: Dict[str, Any] | None = None,
+    health: Dict[str, Any] | None = None,
+    locked_call: Dict[str, Any] | None = None,
+) -> str:
+    """
+    One live line under the Chair. This hour only. No paragraph, no debug dump.
+    Reads existing summary/gates — does not lock or grade.
+    """
+    d = decision if isinstance(decision, dict) else {}
+    m = market if isinstance(market, dict) else {}
+    h = health if isinstance(health, dict) else {}
+    lc = locked_call if isinstance(locked_call, dict) else (d.get("locked_call") or {})
+    locked = bool(lc.get("locked") and str(lc.get("direction") or "").upper() in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
+    raw_side = str((lc.get("direction") if locked else d.get("direction")) or "WAIT").upper()
+    side = "UP" if "UP" in raw_side else ("DOWN" if "DOWN" in raw_side else "WAIT")
+    flags = book_flags(
+        parse_book_depth(m.get("kalshi_orderbook") or m.get("orderbook")),
+        yes_bid=m.get("kalshi_yes_bid") if m.get("kalshi_yes_bid") is not None else m.get("yes_bid") or m.get("up_pct"),
+        yes_ask=m.get("kalshi_yes_ask") if m.get("kalshi_yes_ask") is not None else m.get("yes_ask"),
+        no_bid=None,
+        no_ask=None,
+    )
+
+    def _desk_cents(raw: Any) -> Optional[float]:
+        """Desk quotes are 0–100¢. Scale true fractions only; 1 stays 1¢."""
+        if raw is None:
+            return None
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if 0 < v < 1.0:
+            v *= 100.0
+        return v
+
+    yb = _desk_cents(
+        m.get("kalshi_yes_bid") if m.get("kalshi_yes_bid") is not None else m.get("yes_bid") or m.get("up_pct")
+    )
+    ya = _desk_cents(m.get("kalshi_yes_ask") if m.get("kalshi_yes_ask") is not None else m.get("yes_ask"))
+    down_px = _desk_cents(m.get("down_pct") if m.get("down_pct") is not None else m.get("no_bid"))
+    if down_px is None and yb is not None:
+        down_px = round(100.0 - float(yb), 1)
+    ev = lc.get("ev_cents") if lc.get("ev_cents") is not None else d.get("ev_cents")
+    try:
+        ev_f = float(ev) if ev is not None else None
+    except (TypeError, ValueError):
+        ev_f = None
+    stale = bool(m.get("stale") or h.get("stale"))
+    age = h.get("quote_age_s")
+    try:
+        if age is not None and float(age) > 20:
+            stale = True
+    except (TypeError, ValueError):
+        pass
+    empty = bool(flags.get("empty")) and yb is None and ya is None
+    wall99 = (yb is not None and yb >= 99) or (down_px is not None and down_px >= 99) or (ya is not None and ya >= 99)
+
+    def _ev_bit() -> str:
+        if ev_f is None:
+            return ""
+        sign = "+" if ev_f >= 0 else ""
+        return f"EV {sign}{ev_f:.0f}¢"
+
+    if locked:
+        extras = []
+        if flags.get("has_size") and not flags.get("empty"):
+            extras.append("book has size")
+        evb = _ev_bit()
+        if evb:
+            extras.append(evb)
+        if extras:
+            return f"LOCK {side} · " + ", ".join(extras)
+        return f"LOCK {side}"
+
+    bits = ["WAIT"]
+    if wall99 and down_px is not None and down_px >= 99:
+        bits.append("DOWN is 99¢, no edge")
+    elif wall99 and yb is not None and yb >= 99:
+        bits.append("UP is 99¢, no edge")
+    elif wall99:
+        bits.append("≥99¢ wall, no edge")
+    elif empty:
+        bits.append("empty book")
+    elif flags.get("sick"):
+        bits.append("sick book")
+    elif stale:
+        bits.append("stale quote")
+    elif ev_f is not None and ev_f <= 0:
+        bits.append("no edge")
+    else:
+        summary = str(d.get("summary") or "")
+        if "dead book" in summary.lower():
+            bits.append("dead book")
+        elif "fresh quote" in summary.lower() or "stale" in summary.lower():
+            bits.append("stale quote")
+        elif ev_f is not None:
+            bits.append(_ev_bit())
+        else:
+            bits.append("no edge")
+    return " · ".join(bits[:3])
+
+
+def close_print(row: Dict[str, Any] | None, *, pair: str, lean: str = "WAIT") -> Dict[str, Any]:
+    """Hour-close chip. OPEN unless official Kalshi finish is on the row."""
+    if not row:
+        side = lean if lean in ("UP", "DOWN", "WAIT") else "WAIT"
+        return {"pair": pair, "side": side, "result": "OPEN" if side != "WAIT" else "WAIT", "pnl": None}
+    result = tape_result(row)
+    side = _side_of(row) or lean
+    pnl = row.get("paper_pnl") if result != "OPEN" else None
+    return {
+        "pair": pair,
+        "side": side or "WAIT",
+        "result": result if side != "WAIT" else "WAIT",
+        "pnl": round(float(pnl), 2) if pnl is not None and result != "OPEN" else None,
+    }
+
+
+def health_strip_from_health(payload: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Tiny strip shape that matches /health fields."""
+    h = payload if isinstance(payload, dict) else {}
+    age = h.get("quote_age_s")
+    if age is None:
+        age = h.get("state_age_s")
+    try:
+        age_s = float(age) if age is not None else None
+    except (TypeError, ValueError):
+        age_s = None
+    kalshi = h.get("kalshi_ok")
+    if kalshi is None:
+        kalshi = bool(h.get("kalshi_btc_ok", True)) and (h.get("kalshi_eth_ok") is not False)
+    return {
+        "kalshi": bool(kalshi),
+        "spot": bool(h.get("spot_ok")),
+        "coinglass": bool(h.get("coinglass_ok")),
+        "quote_age_s": round(age_s) if age_s is not None else None,
+        "status": h.get("status") or "ok",
+    }
