@@ -235,6 +235,32 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                         % (plate.get("text") or "HUD", seat["name"], w, h, plate, seat),
                     )
 
+    def test_dual_tables_do_not_crush_at_1042(self):
+        self.assertIn("function dualFloorTableR", JS)
+        self.assertIn("do not crush at 1042", JS)
+        self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin"', JS)
+        self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum"', JS)
+        for w, h in ((1042, 700), (1042, 800), (1042, 620), (1280, 700)):
+            layout = _floor_hud_layout(w, h)
+            self.assertTrue(layout["dual"], "ETH stays Satoshi/Vitalik dual at %sx%s" % (w, h))
+            btc = [s for s in layout["seats"] if s.get("table") == "btc"]
+            eth = [s for s in layout["seats"] if s.get("table") == "eth"]
+            self.assertTrue(btc and eth, "both councils missing at %sx%s" % (w, h))
+            for a in btc:
+                for b in eth:
+                    self.assertFalse(
+                        _rects_intersect(a, b),
+                        "1042 crush: %s/%s overlaps %s/%s at %sx%s a=%s b=%s"
+                        % (a["table"], a["name"], b["table"], b["name"], w, h, a, b),
+                    )
+            hud = list(layout["nameplates"]) + list(layout["goals"])
+            for plate in hud:
+                for seat in layout["seats"]:
+                    self.assertFalse(
+                        _rects_intersect(plate, seat),
+                        "%s overlaps %s at %sx%s" % (plate.get("text") or "HUD", seat["name"], w, h),
+                    )
+
 
 class SatoshiChairEmblemTests(unittest.TestCase):
     def test_cover_satoshi_emblem_hides_zt_on_chair_art(self):
@@ -441,6 +467,15 @@ def _text_w(s, px):
     return max(8, round(len(str(s)) * px * 0.62))
 
 
+def _dual_floor_table_r(w, h):
+    want = min(w, h) * 0.26
+    gap = w * 0.50
+    seat_r = 22
+    label_pad = 36
+    max_r = max(72, (gap - 2 * (seat_r + label_pad) - 20) / (2 * 1.48))
+    return min(want, max_r)
+
+
 def _floor_hud_layout(w, h):
     """Mirrors floorHudGeometry — real AABBs, not a radial-only fit."""
     import math
@@ -451,7 +486,7 @@ def _floor_hud_layout(w, h):
     goals = []
     seats = []
 
-    def add_seats(cx, cy, ring_r, seat_r, name_off, font_px):
+    def add_seats(cx, cy, ring_r, seat_r, name_off, font_px, side=""):
         n = len(_SEAT_LABELS)
         for i, lab in enumerate(_SEAT_LABELS):
             ang = -math.pi / 2 + (i / n) * math.pi * 2
@@ -460,19 +495,29 @@ def _floor_hud_layout(w, h):
             lw = _text_w(lab, font_px)
             ly = sy + seat_r + name_off
             seats.append(
-                {"x": sx - lw / 2, "y": ly - font_px, "w": lw, "h": font_px + 4, "name": lab}
+                {
+                    "x": sx - lw / 2,
+                    "y": ly - font_px,
+                    "w": lw,
+                    "h": font_px + 4,
+                    "name": lab,
+                    "table": side,
+                }
             )
 
     if dual:
-        r = min(w, h) * 0.26
+        r = _dual_floor_table_r(w, h)
         pr = r * 0.80
         cy = h * 0.52
         portrait_y = cy - 2
         name_y = portrait_y + pr + 11
-        for cx, text in ((w * 0.25, "SATOSHI · BTC · FOCUS"), (w * 0.75, "VITALIK · ETH")):
+        for cx, text, side in (
+            (w * 0.25, "SATOSHI · BTC · FOCUS", "btc"),
+            (w * 0.75, "VITALIK · ETH", "eth"),
+        ):
             nw = _text_w(text, 11)
-            nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text})
-            add_seats(cx, cy, r * 1.48, 22, 12, 10)
+            nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text, "table": side})
+            add_seats(cx, cy, r * 1.48, 22, 12, 10, side)
     else:
         radius, ring_r, lr, seat_r, _nh, is_phone = _floor_nameplate_fit(w, h)
         cx, cy = w / 2.0, h / 2.0

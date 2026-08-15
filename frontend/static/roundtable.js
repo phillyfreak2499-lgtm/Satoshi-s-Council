@@ -2309,6 +2309,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.setAttribute("aria-hidden", on ? "false" : "true");
   }
 
+  function dualFloorTableR(w, h) {
+    // Satoshi/Vitalik stay dual. Shrink the rings so they do not crush at 1042.
+    const want = Math.min(w, h) * 0.26;
+    const gap = w * 0.50;
+    const seatR = 22;
+    const labelPad = 36;
+    const maxR = Math.max(72, (gap - 2 * (seatR + labelPad) - 20) / (2 * 1.48));
+    return Math.min(want, maxR);
+  }
+
   function drawDualFloor(w, h) {
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
@@ -2325,7 +2335,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineTo(mid, h * 0.92);
     ctx.stroke();
 
-    const tableR = Math.min(w, h) * 0.26;
+    const tableR = dualFloorTableR(w, h);
     drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
     drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
     ctx.restore();
@@ -2634,7 +2644,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const labels = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN", "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP", "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN"];
     const out = { phone: phone, dual: dual, nameplates: [], goals: [], seats: [] };
     function tw(s, px) { return Math.max(8, Math.round(String(s).length * px * 0.62)); }
-    function addSeats(cx, cy, ringR, seatR, nameOff, fontPx) {
+    function addSeats(cx, cy, ringR, seatR, nameOff, fontPx, side) {
       const n = labels.length;
       labels.forEach(function (lab, i) {
         const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
@@ -2642,24 +2652,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const sy = cy + Math.sin(ang) * ringR;
         const lw = tw(lab, fontPx);
         const ly = sy + seatR + nameOff;
-        out.seats.push({ x: sx - lw / 2, y: ly - fontPx, w: lw, h: fontPx + 4, name: lab });
+        out.seats.push({ x: sx - lw / 2, y: ly - fontPx, w: lw, h: fontPx + 4, name: lab, table: side || "" });
       });
     }
     if (dual) {
-      const R = Math.min(w, h) * 0.26;
+      const R = dualFloorTableR(w, h);
       const pr = R * 0.80;
       const cy = h * 0.52;
       const portraitY = cy - 2;
       const nameY = portraitY + pr + 11;
       [
-        [w * 0.25, "SATOSHI · BTC · FOCUS"],
-        [w * 0.75, "VITALIK · ETH"],
+        [w * 0.25, "SATOSHI · BTC · FOCUS", "btc"],
+        [w * 0.75, "VITALIK · ETH", "eth"],
       ].forEach(function (pair) {
         const cx = pair[0];
         const t = pair[1];
+        const side = pair[2];
         const nw = tw(t, 11);
-        out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t });
-        addSeats(cx, cy, R * 1.48, 22, 12, 10);
+        out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
+        addSeats(cx, cy, R * 1.48, 22, 12, 10, side);
       });
     } else {
       const fit = floorNameplateFit(w, h);
