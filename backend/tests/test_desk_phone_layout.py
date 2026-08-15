@@ -96,7 +96,8 @@ class PhoneGateStickyTests(unittest.TestCase):
 
     def test_agree_row_is_44px_tap_target(self):
         splash = _splash_css()
-        agree = splash.split("#passwordGate .gate-agree", 1)[1][:500]
+        phone = splash.split("@media (max-width: 480px)", 1)[1]
+        agree = phone.split("#passwordGate .gate-agree", 1)[1][:400]
         self.assertIn("min-height: 44px", agree)
         self.assertIn("min-width: 44px", agree)
         self.assertIn('for="gateAgree"', _password_gate())
