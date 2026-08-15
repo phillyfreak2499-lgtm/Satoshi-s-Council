@@ -119,6 +119,10 @@ class LoginSplashStackTests(unittest.TestCase):
         self.assertNotIn("login-council", JS)
 
     def test_wire_note_newest_first(self):
+        self.assertIn("2026-08-15-hit-slate-reset", WIRE_JS)
+        self.assertIn("Chair hit slate reset after tape", WIRE_JS)
+        self.assertIn("3,053 hours", WIRE_JS)
+        self.assertIn("old 2/7", WIRE_JS)
         self.assertIn("2026-08-15-login-splash", WIRE_JS)
         self.assertIn("Signed Satoshi-center council table", WIRE_JS)
         self.assertIn("dark stone + amber/cyan", WIRE_JS)
@@ -127,6 +131,10 @@ class LoginSplashStackTests(unittest.TestCase):
         self.assertIn("2026-08-15-satoshi-face", WIRE_JS)
         self.assertIn("Satoshi chair face swap", WIRE_JS)
         self.assertIn("2026-08-15-raijin-cowboy", WIRE_JS)
+        self.assertLess(
+            WIRE_JS.find("2026-08-15-hit-slate-reset"),
+            WIRE_JS.find("2026-08-15-login-splash"),
+        )
         self.assertLess(
             WIRE_JS.find("2026-08-15-login-splash"),
             WIRE_JS.find("2026-08-15-raijin-cowboy-face"),

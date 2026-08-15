@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-hit-slate-reset",
+    "at": "2026-08-15T23:59:00-05:00",
+    "title": "Chair hit slate reset after tape",
+    "why": "90-day Kalshi tape replay merged into seat brains (3,053 hours; BTC 1,508 / ETH 1,545). WICK/STRIKE/CLOCK/DRIFT got the most. CARRY/CHAIN/CASCADE stayed empty (CoinGlass Upgrade plan). Displayed Chair hit count reset so the old 2/7 doesn’t sit on the new weights. Paper only. Follower OFF."
+  },
+  {
     "id": "2026-08-15-login-splash",
     "at": "2026-08-15T23:55:00-05:00",
     "title": "Login splash is the signed council table",
