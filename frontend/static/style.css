@@ -8367,9 +8367,9 @@ body.charts-hero-ats .chart-ktarget-chip {
   box-shadow: 0 0 16px rgba(240, 193, 74, 0.55) !important;
 }
 
-/* Signed table rooms — Table tab / #tableStage only. Dark scrim so HUD reads. No gold on shrine. Not Floor. Oracle later. */
-body.night-mode[data-chair-room="satoshi"] #tableStage,
-body.night-mode[data-chair-room="satoshi"] .table-stage {
+/* Signed table rooms — Table tab (art) / #tableStage only. Dark scrim so HUD reads. No gold on shrine. Not Floor. Oracle later. */
+body.mode-art[data-chair-room="satoshi"] #tableStage,
+body.mode-art[data-chair-room="satoshi"] .table-stage {
   background-color: #05070a !important;
   background-image:
     linear-gradient(180deg, rgba(2, 4, 8, 0.78) 0%, rgba(2, 4, 8, 0.52) 40%, rgba(2, 4, 8, 0.82) 100%),
@@ -8379,8 +8379,8 @@ body.night-mode[data-chair-room="satoshi"] .table-stage {
   background-position: center, center, center;
   background-repeat: no-repeat, no-repeat, no-repeat;
 }
-body.night-mode[data-chair-room="vitalik"] #tableStage,
-body.night-mode[data-chair-room="vitalik"] .table-stage {
+body.mode-art[data-chair-room="vitalik"] #tableStage,
+body.mode-art[data-chair-room="vitalik"] .table-stage {
   background-color: #02080c !important;
   background-image:
     linear-gradient(180deg, rgba(2, 8, 12, 0.80) 0%, rgba(2, 8, 12, 0.54) 40%, rgba(2, 8, 12, 0.84) 100%),
@@ -8390,8 +8390,8 @@ body.night-mode[data-chair-room="vitalik"] .table-stage {
   background-position: center, center, center;
   background-repeat: no-repeat, no-repeat, no-repeat;
 }
-body.night-mode[data-chair-room="ares"] #tableStage,
-body.night-mode[data-chair-room="ares"] .table-stage {
+body.mode-art[data-chair-room="ares"] #tableStage,
+body.mode-art[data-chair-room="ares"] .table-stage {
   background-color: #010308 !important;
   background-image:
     linear-gradient(180deg, rgba(1, 3, 8, 0.84) 0%, rgba(1, 3, 8, 0.56) 42%, rgba(1, 3, 8, 0.86) 100%),
@@ -8402,8 +8402,8 @@ body.night-mode[data-chair-room="ares"] .table-stage {
   background-position: center, center, center, center;
   background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
 }
-body.night-mode[data-chair-room="raijin"] #tableStage,
-body.night-mode[data-chair-room="raijin"] .table-stage {
+body.mode-art[data-chair-room="raijin"] #tableStage,
+body.mode-art[data-chair-room="raijin"] .table-stage {
   background-color: #06040c !important;
   background-image:
     linear-gradient(180deg, rgba(4, 2, 10, 0.82) 0%, rgba(4, 2, 10, 0.54) 40%, rgba(4, 2, 10, 0.86) 100%),
@@ -8413,9 +8413,9 @@ body.night-mode[data-chair-room="raijin"] .table-stage {
   background-position: center, center, center;
   background-repeat: no-repeat, no-repeat, no-repeat;
 }
-@media (max-width: 430px) {
-  body.night-mode[data-chair-room="satoshi"] #tableStage,
-  body.night-mode[data-chair-room="satoshi"] .table-stage {
+@media (max-width: 390px) {
+  body.mode-art[data-chair-room="satoshi"] #tableStage,
+  body.mode-art[data-chair-room="satoshi"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(2, 4, 8, 0.88) 0%, rgba(2, 4, 8, 0.70) 42%, rgba(2, 4, 8, 0.90) 100%),
       url("/static/room-satoshi.jpg");
@@ -8423,8 +8423,8 @@ body.night-mode[data-chair-room="raijin"] .table-stage {
     background-position: center, center;
     background-repeat: no-repeat, no-repeat;
   }
-  body.night-mode[data-chair-room="vitalik"] #tableStage,
-  body.night-mode[data-chair-room="vitalik"] .table-stage {
+  body.mode-art[data-chair-room="vitalik"] #tableStage,
+  body.mode-art[data-chair-room="vitalik"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(2, 8, 12, 0.88) 0%, rgba(2, 8, 12, 0.70) 42%, rgba(2, 8, 12, 0.90) 100%),
       url("/static/room-vitalik.jpg");
@@ -8432,8 +8432,8 @@ body.night-mode[data-chair-room="raijin"] .table-stage {
     background-position: center, center;
     background-repeat: no-repeat, no-repeat;
   }
-  body.night-mode[data-chair-room="ares"] #tableStage,
-  body.night-mode[data-chair-room="ares"] .table-stage {
+  body.mode-art[data-chair-room="ares"] #tableStage,
+  body.mode-art[data-chair-room="ares"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(1, 3, 8, 0.90) 0%, rgba(1, 3, 8, 0.72) 42%, rgba(1, 3, 8, 0.92) 100%),
       url("/static/room-ares.jpg");
@@ -8441,8 +8441,8 @@ body.night-mode[data-chair-room="raijin"] .table-stage {
     background-position: center, center;
     background-repeat: no-repeat, no-repeat;
   }
-  body.night-mode[data-chair-room="raijin"] #tableStage,
-  body.night-mode[data-chair-room="raijin"] .table-stage {
+  body.mode-art[data-chair-room="raijin"] #tableStage,
+  body.mode-art[data-chair-room="raijin"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(4, 2, 10, 0.90) 0%, rgba(4, 2, 10, 0.72) 42%, rgba(4, 2, 10, 0.92) 100%),
       url("/static/room-raijin.jpg");
@@ -8452,29 +8452,29 @@ body.night-mode[data-chair-room="raijin"] .table-stage {
   }
 }
 /* Floor keeps a cheap wash only — no signed photos, no gold on shrine. */
-body.floor-mode:not(.night-mode)[data-chair-room="satoshi"] #tableStage,
-body.floor-mode:not(.night-mode)[data-chair-room="satoshi"] .table-stage {
+body.floor-mode:not(.mode-art)[data-chair-room="satoshi"] #tableStage,
+body.floor-mode:not(.mode-art)[data-chair-room="satoshi"] .table-stage {
   background:
     radial-gradient(ellipse at 50% 16%, rgba(40, 160, 200, 0.10) 0%, transparent 44%),
     radial-gradient(ellipse at 50% 100%, rgba(32, 12, 14, 0.50) 0%, transparent 58%),
     linear-gradient(180deg, #0c1014 0%, #07080a 48%, #040506 100%) !important;
 }
-body.floor-mode:not(.night-mode)[data-chair-room="vitalik"] #tableStage,
-body.floor-mode:not(.night-mode)[data-chair-room="vitalik"] .table-stage {
+body.floor-mode:not(.mode-art)[data-chair-room="vitalik"] #tableStage,
+body.floor-mode:not(.mode-art)[data-chair-room="vitalik"] .table-stage {
   background:
     radial-gradient(ellipse at 72% 12%, rgba(80, 230, 210, 0.12) 0%, transparent 40%),
     radial-gradient(ellipse at 28% 88%, rgba(10, 48, 52, 0.42) 0%, transparent 55%),
     linear-gradient(180deg, #061418 0%, #031014 50%, #02080c 100%) !important;
 }
-body.floor-mode:not(.night-mode)[data-chair-room="ares"] #tableStage,
-body.floor-mode:not(.night-mode)[data-chair-room="ares"] .table-stage {
+body.floor-mode:not(.mode-art)[data-chair-room="ares"] #tableStage,
+body.floor-mode:not(.mode-art)[data-chair-room="ares"] .table-stage {
   background:
     radial-gradient(ellipse at 12% 0%, rgba(255, 230, 160, 0.10) 0%, transparent 36%),
     radial-gradient(ellipse at 88% 0%, rgba(255, 230, 160, 0.10) 0%, transparent 36%),
     linear-gradient(180deg, #071018 0%, #02060e 52%, #010308 100%) !important;
 }
-body.floor-mode:not(.night-mode)[data-chair-room="raijin"] #tableStage,
-body.floor-mode:not(.night-mode)[data-chair-room="raijin"] .table-stage {
+body.floor-mode:not(.mode-art)[data-chair-room="raijin"] #tableStage,
+body.floor-mode:not(.mode-art)[data-chair-room="raijin"] .table-stage {
   background:
     radial-gradient(ellipse at 50% 10%, rgba(150, 70, 210, 0.10) 0%, transparent 40%),
     radial-gradient(ellipse at 50% 100%, rgba(16, 8, 28, 0.48) 0%, transparent 58%),

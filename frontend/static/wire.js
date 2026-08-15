@@ -5,7 +5,7 @@ window.COUNCIL_WIRE = [
     "id": "2026-08-15-table-rooms",
     "at": "2026-08-15T23:20:00-05:00",
     "title": "Four signed table rooms",
-    "why": "Satoshi shrine, Vitalik city, Ares stadium, Raijin Dallas sit on the Table back. Dark fade so HUD, chairs, portraits, lock tape, and text still read. No gold — gold is for a later GLD bot. Not Floor. Oracle later. Paper. Follower OFF."
+    "why": "Signed plates on Table with fade — Satoshi shrine, Vitalik city, Ares stadium, Raijin Dallas. Phone 390. No gold. Not Floor. Oracle later. Paper. Follower OFF."
   },
   {
     "id": "2026-08-15-vitalik-face",

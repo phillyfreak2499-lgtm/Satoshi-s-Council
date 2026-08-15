@@ -1467,10 +1467,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function drawChairRoom(w, h, which, weather, cx, cy, tableR) {
     // Room wash UNDER wisps. Cheap CSS/canvas. Phone: wash only, no extra strokes.
-    // Table tab uses signed photos + scrim on #tableStage — don't paint a wash over them.
+    // Table tab (art) uses signed photos + scrim on #tableStage — don't paint a wash over them.
     if (!ctx || !w || !h) return;
     try {
-      if (document.body && document.body.classList.contains("night-mode")) return;
+      if (document.body && document.body.classList.contains("mode-art")) return;
     } catch (e) {}
     const room = chairRoomOf(which);
     if (!room) return;

@@ -242,7 +242,7 @@ class ChairRoomTests(unittest.TestCase):
         self.assertIn("Not Floor", CSS)
         self.assertIn("No gold on shrine", CSS)
         draw = JS.split("function drawChairRoom", 1)[1][:2200]
-        self.assertIn('classList.contains("night-mode")', draw)
+        self.assertIn('classList.contains("mode-art")', draw)
         self.assertIn("don't paint a wash over them", draw)
         self.assertNotIn("240, 176, 64", draw)
         self.assertIn('room === "raijin"', draw)
@@ -250,8 +250,11 @@ class ChairRoomTests(unittest.TestCase):
         self.assertNotIn('body.night-mode[data-chair-room="satoshi"] #app', CSS)
         table_css = CSS.split("Signed table rooms", 1)[1].split("Floor keeps a cheap wash", 1)[0]
         self.assertIn("#tableStage", table_css)
+        self.assertIn("body.mode-art[data-chair-room", table_css)
+        self.assertNotIn("body.night-mode[data-chair-room", table_css)
         self.assertNotIn("#app", table_css)
-        self.assertIn("max-width: 430px", table_css)
+        self.assertIn("max-width: 390px", table_css)
+        self.assertNotIn("max-width: 430px", table_css)
         for name in ("satoshi", "vitalik", "ares", "raijin"):
             path = ROOT / "frontend" / "static" / f"room-{name}.jpg"
             self.assertTrue(path.is_file(), name)
@@ -267,10 +270,10 @@ class ChairRoomTests(unittest.TestCase):
         smoke = JS.split("function drawTableSmoke", 1)[1].split("function drawMajorityHaze", 1)[0]
         self.assertIn("smokeTone(dir)", smoke)
         self.assertIn("w.drift * motion", smoke)
-        self.assertIn("body.night-mode[data-chair-room=\"satoshi\"]", CSS)
-        self.assertIn("body.night-mode[data-chair-room=\"vitalik\"]", CSS)
-        self.assertIn("body.night-mode[data-chair-room=\"ares\"]", CSS)
-        self.assertIn("body.night-mode[data-chair-room=\"raijin\"]", CSS)
+        self.assertIn("body.mode-art[data-chair-room=\"satoshi\"]", CSS)
+        self.assertIn("body.mode-art[data-chair-room=\"vitalik\"]", CSS)
+        self.assertIn("body.mode-art[data-chair-room=\"ares\"]", CSS)
+        self.assertIn("body.mode-art[data-chair-room=\"raijin\"]", CSS)
 
 
 class LockStampTests(unittest.TestCase):
