@@ -298,6 +298,59 @@ async def desk_school():
 
     return school_payload()
 
+
+@app.get("/api/side")
+async def api_side():
+    """Side Table — 15m arcade + hot strip. Paper default. No Follower."""
+    from backend.services import desk_side
+
+    return await desk_side.build_board()
+
+
+@app.post("/api/side/tap")
+async def api_side_tap(request: Request):
+    """Manual paper (default) or armed live tap. Never auto."""
+    from backend.services import desk_side
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return await desk_side.tap(
+        ticker=str(body.get("ticker") or ""),
+        side=str(body.get("side") or ""),
+        stake=body.get("stake") if body.get("stake") is not None else body.get("size"),
+        live=bool(body.get("live")),
+        yes_bid=body.get("yes_bid"),
+        yes_ask=body.get("yes_ask"),
+        secs_left=body.get("secs_left"),
+        sick=bool(body.get("sick") or body.get("dont_play")),
+    )
+
+
+@app.post("/api/side/arm")
+async def api_side_arm(request: Request):
+    """Opt-in live on this tab only. Typed phrase + delay."""
+    from backend.services import desk_side
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return desk_side.arm_live(str(body.get("phrase") or ""))
+
+
+@app.post("/api/side/kill")
+async def api_side_kill():
+    """Kill switch — Side Table live off."""
+    from backend.services import desk_side
+
+    return desk_side.kill_live()
+
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
     ok = await council.store.delete_manual_trade(trade_id)

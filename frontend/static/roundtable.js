@@ -5654,6 +5654,291 @@ function drawCandleChart() {
   }
   window.loadSchool = loadSchool;
 
+  let sideBoard = null;
+  let sideStake = 5;
+  let sideFocus = "BTC";
+  let sidePollTimer = 0;
+  let sideClockTimer = 0;
+  let sideLastStamp = {};
+  let sideWired = false;
+
+  function sideApi(path, opt) {
+    const base = typeof API_BASE === "string" ? API_BASE : "";
+    return fetch(base + path, opt || { cache: "no-store" });
+  }
+  function sideFmtClock(secs) {
+    if (secs == null || !isFinite(secs)) return "--:--";
+    const s = Math.max(0, Math.floor(secs));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return String(m).padStart(2, "0") + ":" + String(r).padStart(2, "0");
+  }
+  function sideCents(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return Math.round(n) + "¢";
+  }
+  function playSidePunch() {
+    try {
+      const flash = document.createElement("div");
+      flash.className = "side-flash";
+      document.body.appendChild(flash);
+      setTimeout(function () { try { flash.remove(); } catch (e) {} }, 320);
+    } catch (e) {}
+    if (typeof soundMuted !== "undefined" && soundMuted) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      o.frequency.setValueAtTime(180, now);
+      o.frequency.exponentialRampToValueAtTime(70, now + 0.16);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.2, now + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(now); o.stop(now + 0.24);
+    } catch (e) {}
+  }
+  function sidePhoneOne() {
+    return !!(typeof isPhoneDesk === "function" && isPhoneDesk()) || (window.innerWidth || 0) <= 480;
+  }
+  function wireSideTable() {
+    if (sideWired) return;
+    sideWired = true;
+    document.querySelectorAll(".side-step").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        sideStake = Number(btn.getAttribute("data-size") || 5);
+        document.querySelectorAll(".side-step").forEach(function (b) {
+          b.classList.toggle("on", Number(b.getAttribute("data-size")) === sideStake);
+        });
+      });
+    });
+    const armBtn = document.getElementById("sideArmBtn");
+    const killBtn = document.getElementById("sideKillBtn");
+    if (armBtn) {
+      armBtn.addEventListener("click", async function () {
+        const phrase = (document.getElementById("sideArmPhrase") || {}).value || "";
+        try {
+          const r = await sideApi("/api/side/arm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ phrase: phrase }),
+          });
+          const data = await r.json();
+          paintSideArm(data);
+        } catch (e) {}
+      });
+    }
+    if (killBtn) {
+      killBtn.addEventListener("click", async function () {
+        try {
+          const r = await sideApi("/api/side/kill", {
+            method: "POST",
+            headers: { Accept: "application/json" },
+          });
+          const data = await r.json();
+          paintSideArm(data);
+          loadSideTable();
+        } catch (e) {}
+      });
+    }
+  }
+  function paintSideArm(st) {
+    const badge = document.getElementById("sideModeBadge");
+    const armSt = document.getElementById("sideArmStatus");
+    const live = !!(st && st.armed && !st.killed);
+    if (badge) {
+      badge.textContent = live ? "LIVE" : "PAPER";
+      badge.classList.toggle("live", live);
+      badge.classList.toggle("paper", !live);
+    }
+    if (armSt) {
+      if (!st) { armSt.textContent = ""; return; }
+      if (st.killed) armSt.textContent = "killed · paper only";
+      else if (st.armed) armSt.textContent = "armed · taps are live on this tab";
+      else if (st.arming) armSt.textContent = "arming · " + Math.ceil(st.arm_delay_s || 0) + "s";
+      else if (st.error) armSt.textContent = st.error;
+      else armSt.textContent = "paper default · live off";
+    }
+  }
+  function sideTapeDots(tape) {
+    const rows = Array.isArray(tape) ? tape.slice(0, 8) : [];
+    return '<div class="side-tape">' + rows.map(function (t) {
+      return '<span class="side-dot ' + String((t && t.result) || "") + '"></span>';
+    }).join("") + "</div>";
+  }
+  function sideCardHtml(card, punch) {
+    if (!card) return "";
+    const dont = !!card.dont_play;
+    const secs = card.secs_left;
+    const next = !!(card.next_arms && secs != null && secs <= 20);
+    const why = card.why || "";
+    return '<article class="side-card' + (dont ? " dont-play" : "") + (punch ? " side-punch" : "") + '" data-ticker="' + String(card.ticker || "") + '">' +
+      '<div class="side-card-head"><span class="side-asset">' + String(card.asset || card.title || "") + '</span>' +
+      '<span class="side-strike">' + (card.strike != null ? ("strike " + card.strike) : (card.minutes ? (card.minutes + "m") : "")) + "</span></div>" +
+      '<div class="side-count' + (next ? " next-arm" : "") + '">' + sideFmtClock(secs) + (next ? " · NEXT" : "") + "</div>" +
+      '<div class="side-odds"><span class="yes">YES ' + sideCents(card.yes_ask) + '</span><span class="no">NO ' + sideCents(card.no_ask) + "</span></div>" +
+      sideTapeDots(card.tape) +
+      '<div class="side-actions">' +
+      '<button type="button" class="side-yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
+      '<button type="button" class="side-no" data-side="NO"' + (dont ? " disabled" : "") + ">NO</button>" +
+      "</div>" +
+      (why ? '<div class="side-flag">' + why + "</div>" : "") +
+      "</article>";
+  }
+  function paintSideBoard(data) {
+    sideBoard = data || sideBoard;
+    if (!sideBoard) return;
+    const st = sideBoard.status || {};
+    paintSideArm(st);
+    const feed = document.getElementById("sideFeedStatus");
+    const arcade = Array.isArray(sideBoard.arcade) ? sideBoard.arcade : [];
+    const extras = Array.isArray(sideBoard.extras) ? sideBoard.extras : [];
+    const pills5 = Array.isArray(sideBoard.pills_5m) ? sideBoard.pills_5m : [];
+    if (feed) {
+      feed.textContent = arcade.length ? (arcade.length + " open · 15m") : "no open 15m";
+    }
+    const clock = document.getElementById("sideClock");
+    const focusCard = arcade.find(function (c) { return c.asset === sideFocus; }) || arcade[0];
+    if (clock) clock.textContent = sideFmtClock(focusCard && focusCard.secs_left);
+    const pillBox = document.getElementById("sidePills");
+    if (pillBox) {
+      const names = arcade.map(function (c) { return c.asset; }).concat(extras.map(function (c) { return c.asset; }));
+      const uniq = [];
+      names.forEach(function (n) { if (n && uniq.indexOf(n) < 0) uniq.push(n); });
+      pillBox.innerHTML = uniq.map(function (n) {
+        return '<button type="button" class="side-pill' + (n === sideFocus ? " on" : "") + '" data-asset="' + n + '">' + n + " 15M</button>";
+      }).join("") + pills5.map(function (n) {
+        return '<button type="button" class="side-pill" data-asset="' + n + '" data-min="5">' + n + " 5M</button>";
+      }).join("");
+      pillBox.querySelectorAll(".side-pill").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          sideFocus = btn.getAttribute("data-asset") || "BTC";
+          paintSideBoard(sideBoard);
+        });
+      });
+    }
+    const box = document.getElementById("sideArcade");
+    if (box) {
+      const cards = sidePhoneOne()
+        ? (arcade.concat(extras)).filter(function (c) { return c.asset === sideFocus; }).slice(0, 1)
+        : arcade.concat(extras);
+      const show = cards.length ? cards : arcade.slice(0, 1);
+      box.innerHTML = show.map(function (c) {
+        const key = String(c.ticker || c.asset);
+        const stamp = ((c.tape && c.tape[0]) || {}).result || "";
+        const punch = stamp && sideLastStamp[key] && sideLastStamp[key] !== stamp;
+        if (stamp) sideLastStamp[key] = stamp;
+        else if (!sideLastStamp[key]) sideLastStamp[key] = stamp;
+        return sideCardHtml(c, punch);
+      }).join("") || '<p class="side-flag">No open 15m books.</p>';
+      box.querySelectorAll(".side-card").forEach(function (el) {
+        if (el.classList.contains("side-punch")) playSidePunch();
+        const ticker = el.getAttribute("data-ticker");
+        const card = show.find(function (c) { return String(c.ticker) === ticker; }) || focusCard;
+        el.querySelectorAll("button[data-side]").forEach(function (btn) {
+          btn.addEventListener("click", function () { tapSide(card, btn.getAttribute("data-side")); });
+        });
+      });
+    }
+    const hotBox = document.getElementById("sideHot");
+    if (hotBox) {
+      const hot = Array.isArray(sideBoard.hot) ? sideBoard.hot : [];
+      hotBox.innerHTML = hot.map(function (h) {
+        const left = sideFmtClock(h.secs_left);
+        const vol = h.volume != null ? Math.round(Number(h.volume)).toLocaleString() : "—";
+        return '<div class="side-hot-row" data-ticker="' + String(h.ticker || "") + '">' +
+          '<div><div class="side-hot-title">' + String(h.title || h.ticker || "") + "</div>" +
+          '<div class="side-hot-meta">YES ' + sideCents(h.yes_ask) + " · NO " + sideCents(h.no_ask) + " · vol " + vol + " · " + left + "</div></div>" +
+          (h.why ? '<div class="side-hot-meta">' + h.why + "</div>" : "") +
+          '<div class="side-hot-taps">' +
+          '<button type="button" class="yes" data-side="YES"' + (h.dont_play ? " disabled" : "") + ">YES</button>" +
+          '<button type="button" class="no" data-side="NO"' + (h.dont_play ? " disabled" : "") + ">NO</button>" +
+          "</div></div>";
+      }).join("") || '<p class="side-hot-meta">No liquid open books.</p>';
+      hotBox.querySelectorAll(".side-hot-row").forEach(function (row) {
+        const ticker = row.getAttribute("data-ticker");
+        const card = hot.find(function (h) { return String(h.ticker) === ticker; });
+        row.querySelectorAll("button[data-side]").forEach(function (btn) {
+          btn.addEventListener("click", function () { tapSide(card, btn.getAttribute("data-side")); });
+        });
+      });
+    }
+    const fills = document.getElementById("sideFills");
+    if (fills) {
+      const rows = Array.isArray(sideBoard.fills) ? sideBoard.fills : [];
+      fills.innerHTML = rows.map(function (f) {
+        return '<div class="side-fill">' + (f.paper ? "PAPER" : "LIVE") + " " + (f.side || "") + " " + (f.ticker || "") +
+          " · $" + (f.stake || "") + " @ " + sideCents(f.fill_cents) + " · " + (f.result || "OPEN") +
+          (f.pnl != null ? (" · " + f.pnl) : "") + "</div>";
+      }).join("");
+    }
+    const whyEl = document.getElementById("sideWhy");
+    if (whyEl) whyEl.textContent = (focusCard && focusCard.why) || "";
+  }
+  async function tapSide(card, side) {
+    if (!card || !card.ticker) return;
+    const st = (sideBoard && sideBoard.status) || {};
+    const live = !!(st.armed && !st.killed && st.live_allowed);
+    const why = document.getElementById("sideWhy");
+    try {
+      const r = await sideApi("/api/side/tap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          ticker: card.ticker,
+          side: side,
+          stake: sideStake,
+          live: live,
+          yes_bid: card.yes_bid,
+          yes_ask: card.yes_ask,
+          secs_left: card.secs_left,
+          sick: !!card.dont_play,
+        }),
+      });
+      const data = await r.json();
+      if (why) why.textContent = data && data.ok ? ((live ? "LIVE" : "PAPER") + " " + side + " · " + (card.ticker || "")) : ((data && data.error) || "tap refused");
+      if (data && data.ok) playSidePunch();
+      loadSideTable();
+    } catch (e) {
+      if (why) why.textContent = "tap failed";
+    }
+  }
+  async function loadSideTable() {
+    wireSideTable();
+    try {
+      const r = await sideApi("/api/side");
+      if (r.ok) {
+        const data = await r.json();
+        paintSideBoard(data);
+      }
+    } catch (e) {}
+    if (sidePollTimer) clearInterval(sidePollTimer);
+    if (sideClockTimer) clearInterval(sideClockTimer);
+    sidePollTimer = setInterval(function () {
+      if (mode !== "side") return;
+      sideApi("/api/side").then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (data) paintSideBoard(data);
+      }).catch(function () {});
+    }, 6000);
+    sideClockTimer = setInterval(function () {
+      if (mode !== "side" || !sideBoard) return;
+      const arcade = (sideBoard.arcade || []).concat(sideBoard.extras || []);
+      arcade.forEach(function (c) {
+        if (c && c.secs_left != null) c.secs_left = Math.max(0, Number(c.secs_left) - 1);
+      });
+      (sideBoard.hot || []).forEach(function (h) {
+        if (h && h.secs_left != null) h.secs_left = Math.max(0, Number(h.secs_left) - 1);
+      });
+      paintSideBoard(sideBoard);
+    }, 1000);
+  }
+  window.loadSideTable = loadSideTable;
+
   function renderRanksBoard() {
     const table = document.getElementById("ranksTable");
     const phaseEl = document.getElementById("ranksPhase");
@@ -6045,6 +6330,7 @@ function drawCandleChart() {
     const brainView = document.getElementById("brainView");
     const newsView = document.getElementById("newsView");
     const schoolView = document.getElementById("schoolView");
+    const sideView = document.getElementById("sideView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
@@ -6056,6 +6342,7 @@ function drawCandleChart() {
     const showBrain = mode === "brain";
     const showNews = mode === "news";
     const showSchool = mode === "school";
+    const showSide = mode === "side";
     const showMain = mode === "art" || mode === "dashboard" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
@@ -6068,6 +6355,7 @@ function drawCandleChart() {
     if (brainView) brainView.classList.toggle("hidden", !showBrain);
     if (newsView) newsView.classList.toggle("hidden", !showNews);
     if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
+    if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
     try { dockWindowLed(); } catch (e) {}
@@ -6092,6 +6380,7 @@ function drawCandleChart() {
     if (mode === "brain") loadBrainRecap();
     if (mode === "news") loadDeskNews();
     if (mode === "school") loadSchool();
+    if (mode === "side") loadSideTable();
     if (mode === "follower" && typeof window.renderFollower === "function") {
       try { window.renderFollower(); } catch (e) {}
     }
@@ -8030,7 +8319,7 @@ function drawCandleChart() {
 
   window.setMode = setMode;
   window.__deskModeCycle = function () {
-    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "school", "charts", "settings"];
+    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "school", "side", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 

@@ -4394,6 +4394,10 @@ body[class*="mode-"]:not(.mode-school) #tabSchool,
 body[class*="mode-"]:not(.mode-school) #tabSchool.active,
 body.beast-mode[class*="mode-"]:not(.mode-school) #tabSchool,
 body.beast-mode[class*="mode-"]:not(.mode-school) #tabSchool.active,
+body[class*="mode-"]:not(.mode-side) #tabSide,
+body[class*="mode-"]:not(.mode-side) #tabSide.active,
+body.beast-mode[class*="mode-"]:not(.mode-side) #tabSide,
+body.beast-mode[class*="mode-"]:not(.mode-side) #tabSide.active,
 body[class*="mode-"]:not(.mode-art) #tabScreensaver,
 body[class*="mode-"]:not(.mode-art) #tabScreensaver.active,
 body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver,
@@ -4432,6 +4436,8 @@ body.mode-news #tabNews,
 body.mode-news #tabNews.active,
 body.mode-school #tabSchool,
 body.mode-school #tabSchool.active,
+body.mode-side #tabSide,
+body.mode-side #tabSide.active,
 body.mode-art #tabScreensaver,
 body.mode-art #tabScreensaver.active {
   color: var(--blade) !important;
@@ -4466,6 +4472,8 @@ body.beast-mode.mode-news #tabNews,
 body.beast-mode.mode-news #tabNews.active,
 body.beast-mode.mode-school #tabSchool,
 body.beast-mode.mode-school #tabSchool.active,
+body.beast-mode.mode-side #tabSide,
+body.beast-mode.mode-side #tabSide.active,
 body.beast-mode.mode-art #tabScreensaver,
 body.beast-mode.mode-art #tabScreensaver.active {
   border-color: rgba(240, 193, 74, 0.7) !important;
@@ -4678,6 +4686,7 @@ body.mode-settings #bookView,
 body.mode-settings #brainView,
 body.mode-settings #newsView,
 body.mode-settings #schoolView,
+body.mode-settings #sideView,
 body.mode-settings #dashboardOverlay,
 body.mode-settings #openChartsBtn,
 body.mode-settings #hierarchyPanel {
@@ -5042,6 +5051,8 @@ body.mode-news #app > header #tabNews,
 body.mode-news #app > header #tabNews.active,
 body.mode-school #app > header #tabSchool,
 body.mode-school #app > header #tabSchool.active,
+body.mode-side #app > header #tabSide,
+body.mode-side #app > header #tabSide.active,
 body.mode-dashboard #app > header #tabDashboard,
 body.mode-dashboard #app > header #tabDashboard.active,
 body.mode-bots #app > header #tabBots,
@@ -5067,6 +5078,7 @@ body.beast-mode.mode-book #app > header #tabBook,
 body.beast-mode.mode-brain #app > header #tabBrain,
 body.beast-mode.mode-news #app > header #tabNews,
 body.beast-mode.mode-school #app > header #tabSchool,
+body.beast-mode.mode-side #app > header #tabSide,
 body.beast-mode.mode-dashboard #app > header #tabDashboard,
 body.beast-mode.mode-bots #app > header #tabBots,
 body.beast-mode.mode-ranks #app > header #tabRanks,
@@ -5581,6 +5593,8 @@ body:not(.mode-news) #app > header #tabNews,
 body:not(.mode-news) #app > header #tabNews.active,
 body:not(.mode-school) #app > header #tabSchool,
 body:not(.mode-school) #app > header #tabSchool.active,
+body:not(.mode-side) #app > header #tabSide,
+body:not(.mode-side) #app > header #tabSide.active,
 body:not(.mode-dashboard) #app > header #tabDashboard,
 body:not(.mode-dashboard) #app > header #tabDashboard.active,
 body:not(.mode-bots) #app > header #tabBots,
@@ -6452,6 +6466,7 @@ body.night-mode #tabBook,
 body.night-mode #tabBrain,
 body.night-mode #tabNews,
 body.night-mode #tabSchool,
+body.night-mode #tabSide,
 body.night-mode #tabCharts,
 body.night-mode #tabFloor,
 body.night-mode #tabScreensaver,
@@ -6651,6 +6666,7 @@ body.gate-locked .health-strip {
   body.phone-floor #tabBrain,
   body.phone-floor #tabNews,
   body.phone-floor #tabSchool,
+  body.phone-floor #tabSide,
   body.phone-floor header .header-row,
   body.phone-floor #app > header .header-row,
   body.phone-floor #rivalryStrip,
@@ -6847,4 +6863,275 @@ body.gate-locked .health-strip {
   font-family: Orbitron, monospace;
   letter-spacing: 0.1em;
   cursor: pointer;
+}
+
+/* Side Table — 15m arcade. Paper default. Manual taps. No Follower. */
+.side-hud { max-width: 920px; }
+.side-clock {
+  font-family: Orbitron, monospace;
+  font-size: clamp(42px, 12vw, 72px);
+  letter-spacing: 0.08em;
+  color: #00e8ff;
+  text-shadow: 0 0 18px rgba(0, 232, 255, 0.45);
+  line-height: 1;
+  margin: 4px 0 10px;
+}
+.side-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.side-badge {
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  padding: 6px 10px;
+  border: 1px solid rgba(57, 255, 20, 0.55);
+  color: #39ff14;
+  background: rgba(57, 255, 20, 0.08);
+}
+.side-badge.live {
+  border-color: rgba(255, 45, 85, 0.7);
+  color: #ff2d55;
+  background: rgba(255, 45, 85, 0.1);
+}
+.side-status {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: rgba(180, 200, 220, 0.7);
+}
+.side-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.side-pill {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  background: rgba(4, 14, 28, 0.8);
+  color: #7fe9ff;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.side-pill.on {
+  border-color: rgba(0, 232, 255, 0.7);
+  background: rgba(0, 232, 255, 0.12);
+  color: #e8f4ff;
+}
+.side-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.side-size-label {
+  font-family: Orbitron, monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: rgba(180, 200, 220, 0.65);
+}
+.side-step {
+  min-height: 44px;
+  min-width: 56px;
+  border: 1px solid rgba(0, 232, 255, 0.25);
+  background: rgba(4, 12, 22, 0.75);
+  color: #e8f4ff;
+  font-family: Orbitron, monospace;
+  cursor: pointer;
+}
+.side-step.on {
+  border-color: rgba(0, 232, 255, 0.7);
+  background: rgba(0, 232, 255, 0.12);
+}
+.side-arcade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.side-card {
+  position: relative;
+  padding: 14px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 12, 22, 0.88);
+  box-shadow: inset 0 0 24px rgba(0, 232, 255, 0.06);
+}
+.side-card.dont-play { border-color: rgba(255, 176, 0, 0.55); }
+.side-card.side-punch {
+  animation: sidePunch 0.42s ease-out;
+}
+@keyframes sidePunch {
+  0% { box-shadow: 0 0 0 0 rgba(0, 232, 255, 0.0); filter: brightness(2.2); }
+  40% { box-shadow: 0 0 28px rgba(0, 232, 255, 0.55); filter: brightness(1.4); }
+  100% { box-shadow: inset 0 0 24px rgba(0, 232, 255, 0.06); filter: none; }
+}
+.side-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.side-asset {
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.1em;
+  color: #00e8ff;
+  font-size: 18px;
+}
+.side-strike { color: rgba(200, 220, 240, 0.75); font-size: 13px; }
+.side-count {
+  font-family: Orbitron, monospace;
+  font-size: 28px;
+  color: #e8f4ff;
+  letter-spacing: 0.06em;
+  margin: 4px 0 8px;
+}
+.side-count.next-arm { color: #39ff14; text-shadow: 0 0 12px rgba(57, 255, 20, 0.35); }
+.side-odds {
+  display: flex;
+  gap: 12px;
+  font-family: Orbitron, monospace;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.side-odds .yes { color: #39ff14; }
+.side-odds .no { color: #ff2d55; }
+.side-tape {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 10px;
+  min-height: 18px;
+}
+.side-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(180, 200, 220, 0.25);
+}
+.side-dot.HIT { background: #39ff14; box-shadow: 0 0 8px rgba(57, 255, 20, 0.5); }
+.side-dot.MISS { background: #ff2d55; box-shadow: 0 0 8px rgba(255, 45, 85, 0.45); }
+.side-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.side-yes, .side-no {
+  min-height: 56px;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.12em;
+  font-size: 16px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.side-yes {
+  color: #10210a;
+  background: #39ff14;
+  border-color: #39ff14;
+}
+.side-no {
+  color: #fff;
+  background: #ff2d55;
+  border-color: #ff2d55;
+}
+.side-yes:disabled, .side-no:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.side-flag {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #ffb000;
+}
+.side-hot-head {
+  margin: 18px 0 8px;
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: rgba(180, 200, 220, 0.7);
+}
+.side-hot { display: flex; flex-direction: column; gap: 8px; }
+.side-hot-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(0, 232, 255, 0.14);
+  background: rgba(4, 12, 22, 0.7);
+}
+.side-hot-title { color: #e8f4ff; font-size: 14px; }
+.side-hot-meta { color: rgba(180, 200, 220, 0.65); font-size: 12px; }
+.side-hot-taps { display: flex; gap: 6px; }
+.side-hot-taps button {
+  min-height: 44px;
+  min-width: 56px;
+  font-family: Orbitron, monospace;
+  cursor: pointer;
+}
+.side-hot-taps .yes { color: #10210a; background: #39ff14; border: 0; }
+.side-hot-taps .no { color: #fff; background: #ff2d55; border: 0; }
+.side-fills {
+  margin-top: 14px;
+  font-size: 13px;
+  color: rgba(200, 220, 240, 0.8);
+}
+.side-fill { padding: 4px 0; border-bottom: 1px solid rgba(0, 232, 255, 0.08); }
+.side-why { min-height: 18px; margin-top: 10px; color: #ffb000; font-size: 13px; }
+.side-live-box {
+  margin-top: 18px;
+  border: 1px solid rgba(255, 45, 85, 0.25);
+  padding: 10px 12px;
+  background: rgba(20, 4, 8, 0.35);
+}
+.side-live-box summary {
+  cursor: pointer;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  color: rgba(255, 160, 180, 0.8);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.side-live-note { font-size: 13px; color: rgba(200, 220, 240, 0.75); }
+.side-arm-input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: rgba(4, 8, 14, 0.9);
+  border: 1px solid rgba(255, 45, 85, 0.35);
+  color: #e8f4ff;
+  font-family: Orbitron, monospace;
+}
+.side-arm-btn, .side-kill-btn {
+  min-height: 44px;
+  min-width: 96px;
+  margin-right: 8px;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.side-arm-btn { border: 1px solid #ff2d55; background: rgba(255, 45, 85, 0.12); color: #ff8aa0; }
+.side-kill-btn { border: 1px solid #ffb000; background: rgba(255, 176, 0, 0.1); color: #ffb000; }
+.side-arm-status { margin-top: 8px; font-size: 12px; color: rgba(200, 220, 240, 0.7); }
+.side-flash {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 232, 255, 0.18);
+  z-index: 80;
+  animation: sideFlash 0.28s ease-out forwards;
+}
+@keyframes sideFlash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (max-width: 480px) {
+  .side-arcade { grid-template-columns: 1fr; }
+  .side-yes, .side-no { min-height: 56px !important; }
+  .side-hot-row { grid-template-columns: 1fr; }
+  .side-hot-taps button { flex: 1; min-height: 56px; }
 }

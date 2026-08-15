@@ -59,11 +59,13 @@ class MarkupTests(unittest.TestCase):
             'id="tabBrain"',
             'id="tabNews"',
             'id="tabSchool"',
+            'id="tabSide"',
             'id="tapeView"',
             'id="bookView"',
             'id="brainView"',
             'id="newsView"',
             'id="schoolView"',
+            'id="sideView"',
             'id="floorCrawl"',
             "SATOSHI · BTC",
             "VITALIK · ETH",
@@ -106,10 +108,13 @@ class MarkupTests(unittest.TestCase):
             '@app.get("/api/brain/recap")',
             '@app.get("/api/news")',
             '@app.get("/api/school")',
+            '@app.get("/api/side")',
         ):
             self.assertIn(needle, MAIN)
         # catch-all still last
         self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/school'))
+        self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/side'))
+        self.assertGreater(MAIN.find('/api/side'), MAIN.find('/api/school'))
 
 
 class TapeLogicTests(unittest.TestCase):
@@ -294,9 +299,12 @@ class FreezeTests(unittest.TestCase):
         self.assertNotIn("desk_pack", FOLLOWER)
         self.assertNotIn("desk_news", FOLLOWER)
         self.assertNotIn("desk_school", FOLLOWER)
+        self.assertNotIn("desk_side", FOLLOWER)
         self.assertNotIn("from backend.services.desk_pack", GATES)
         self.assertNotIn("desk_school", GATES)
+        self.assertNotIn("desk_side", GATES)
         self.assertNotIn("desk_school", LEADER)
+        self.assertNotIn("desk_side", LEADER)
         self.assertIn("def decide_open_lock_grade", GATES)
         self.assertIn("function collectChairLocks()", JS)
 
@@ -313,6 +321,9 @@ class FreezeTests(unittest.TestCase):
         self.assertIn("function loadSchool()", JS)
         self.assertIn("/api/school", JS)
         self.assertIn('"school"', JS)
+        self.assertIn("function loadSideTable()", JS)
+        self.assertIn("/api/side", JS)
+        self.assertIn('"side"', JS)
 
 
 class WhyLineTests(unittest.TestCase):
@@ -517,6 +528,8 @@ class SchoolTests(unittest.TestCase):
         self.assertIn("Lessons do not change Chair locks", HTML)
         self.assertIn("body.night-mode #tabSchool", CSS)
         self.assertIn("body.mode-school #tabSchool", CSS)
+        self.assertIn("body.night-mode #tabSide", CSS)
+        self.assertIn("body.mode-side #tabSide", CSS)
 
     def test_school_does_not_lock(self):
         school = (ROOT / "backend" / "services" / "desk_school.py").read_text()

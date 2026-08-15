@@ -240,6 +240,15 @@ class Settings(BaseSettings):
         "exhaust": 0.016,
     }
 
+    # Side Table arcade — paper default, never Follower, never auto-bets
+    SIDE_TABLE_MAX_STAKE: float = 25.0
+    SIDE_TABLE_HOURLY_LOSS_CAP: float = 75.0
+    SIDE_TABLE_LIVE: bool = False
+    SIDE_TABLE_KILL: bool = False
+    SIDE_TABLE_ARM_DELAY_S: float = 8.0
+    SIDE_TABLE_CUTOFF_SEC: float = 60.0
+    SIDE_TABLE_ARM_PHRASE: str = "LIVE SIDE TABLE"
+
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80
 

@@ -191,6 +191,7 @@
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
         <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
+        <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -604,6 +605,40 @@
           <button type="button" id="schoolNextQ" class="school-next" hidden>NEXT</button>
         </div>
       </article>
+    </section>
+
+    <section id="sideView" class="info-view hidden" aria-label="Side Table">
+      <div class="info-hero">
+        <h2>SIDE TABLE</h2>
+        <p>15-minute arcade. Manual taps only. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+      </div>
+      <div id="sideHud" class="side-hud">
+        <div class="side-clock" id="sideClock">--:--</div>
+        <div class="side-mode-row">
+          <span class="side-badge paper" id="sideModeBadge">PAPER</span>
+          <span class="side-status" id="sideFeedStatus">loading</span>
+        </div>
+        <div class="side-pills" id="sidePills"></div>
+        <div class="side-size-row">
+          <span class="side-size-label">SIZE</span>
+          <button type="button" class="side-step on" data-size="5">$5</button>
+          <button type="button" class="side-step" data-size="10">$10</button>
+          <button type="button" class="side-step" data-size="25">$25</button>
+        </div>
+        <div id="sideArcade" class="side-arcade"></div>
+        <div class="side-hot-head">HOT STRIP · not the 1H Chair</div>
+        <div id="sideHot" class="side-hot"></div>
+        <div id="sideFills" class="side-fills"></div>
+        <div id="sideWhy" class="side-why"></div>
+        <details class="side-live-box">
+          <summary>LIVE (off · this tab only)</summary>
+          <p class="side-live-note">Default PAPER. Type the phrase, wait the delay, then tap. Kill switch kills Side Table live too. Same Kalshi keys already on the box. Never auto-bets.</p>
+          <input type="text" id="sideArmPhrase" class="side-arm-input" placeholder="LIVE SIDE TABLE" autocomplete="off" spellcheck="false">
+          <button type="button" class="side-arm-btn" id="sideArmBtn">ARM LIVE</button>
+          <button type="button" class="side-kill-btn" id="sideKillBtn">KILL LIVE</button>
+          <div id="sideArmStatus" class="side-arm-status"></div>
+        </details>
+      </div>
     </section>
 
     <!-- Paper trading journal -->
