@@ -93,6 +93,27 @@ class ChairThinkTests(unittest.TestCase):
         self.assertIn("noteChairLock(whichChair, _lc)", JS)
 
 
+class LockIgnitionTests(unittest.TestCase):
+    def test_fat_lock_beam_not_always_on(self):
+        self.assertIn("function drawLockIgnition", JS)
+        self.assertIn("drawLockIgnition(cx, portraitY, pr, which)", JS)
+        self.assertIn("drawLockIgnition(cx, cy, lr, whichChair)", JS)
+        self.assertIn("Fat lock saber: ignites ~1s on Chair LOCK, then stays OFF", JS)
+        self.assertIn('dir !== "UP" && dir !== "DOWN"', JS.split("function drawLockIgnition", 1)[1][:800])
+        self.assertIn("rgba(57, 255, 20", JS.split("function drawLockIgnition", 1)[1][:1600])
+        self.assertIn("rgba(255, 45, 85", JS.split("function drawLockIgnition", 1)[1][:1600])
+        ign = JS.split("function drawLockIgnition", 1)[1].split("function resizeRoundtable", 1)[0]
+        self.assertNotIn("purple", ign.lower())
+        self.assertNotIn("168, 85, 247", ign)
+        self.assertIn("Math.max(14, Math.min(22", ign)
+        self.assertIn("not over the face or seat labels", ign)
+        self.assertIn("Date.now() + 1100", JS)
+        wrap = CSS.split("Thin always-on saber retired", 1)[1][:280]
+        self.assertIn("display: none !important", wrap)
+        self.assertNotIn("ls-spark", JS.split("window.updateLightsaber", 1)[1][:500])
+        self.assertNotIn("wait-blade", JS.split("window.updateLightsaber", 1)[1][:500])
+
+
 class TableFeedTests(unittest.TestCase):
     def test_feed_is_packets_not_reasoning_only(self):
         self.assertIn('id="signalFeed"', HTML)

@@ -1976,6 +1976,67 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
   }
 
+  function drawLockIgnition(cx, cy, photoR, which) {
+    // Fat lock saber: ignites ~1s on Chair LOCK, then stays OFF. Not always-on.
+    // Green UP / red DOWN. Next to the portrait — not over the face or seat labels.
+    if (!ctx || !photoR) return;
+    const key = chairKeyOf(which);
+    const sfx = sealFX[key];
+    if (!sfx || !(sfx.until > Date.now())) return;
+    const dir = String(sfx.dir || "").toUpperCase();
+    if (dir !== "UP" && dir !== "DOWN") return;
+    const left = sfx.until - Date.now();
+    const t = 1 - Math.max(0, Math.min(1, left / 1100));
+    let grow = 1;
+    let alpha = 0.95;
+    if (!reduceMotion) {
+      if (t < 0.18) {
+        grow = t / 0.18;
+        alpha = 0.5 + 0.5 * grow;
+      } else if (t < 0.70) {
+        grow = 1;
+        alpha = 1;
+      } else {
+        grow = 1;
+        alpha = Math.max(0, 1 - (t - 0.70) / 0.30);
+      }
+    } else {
+      alpha = left > 180 ? 0.9 : left / 180;
+    }
+    const up = dir === "UP";
+    const glow = up ? "rgba(57, 255, 20, 0.9)" : "rgba(255, 45, 85, 0.9)";
+    const core = up ? "rgba(210, 255, 200, 0.98)" : "rgba(255, 214, 220, 0.98)";
+    const dualFloor = mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle();
+    const side = (dualFloor && key === "bitcoin") ? -1 : 1;
+    const gap = Math.max(16, photoR * 0.22);
+    const x = cx + side * (photoR + gap);
+    const hiltY = cy + photoR * 0.36;
+    const full = Math.min(photoR * 1.42, 118);
+    const len = full * grow;
+    const thick = Math.max(14, Math.min(22, photoR * 0.24));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = thick;
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.moveTo(x, hiltY);
+    ctx.lineTo(x, hiltY - len);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = core;
+    ctx.lineWidth = Math.max(5, thick * 0.36);
+    ctx.beginPath();
+    ctx.moveTo(x, hiltY);
+    ctx.lineTo(x, hiltY - len);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(18, 14, 10, 0.95)";
+    ctx.fillRect(x - thick * 0.42, hiltY - 2, thick * 0.84, 7);
+    ctx.restore();
+  }
+
 
   function resizeRoundtable() {
     if (!canvas) return;
@@ -2177,6 +2238,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       noteChairLock(which, lc);
       drawChairThink(cx, portraitY, pr, radius, { which, dir, locked, st });
+      drawLockIgnition(cx, portraitY, pr, which);
     } catch (e) {}
 
     // Labels
@@ -2928,6 +2990,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const whichChair = chairKeyOf(focusTable);
       noteChairLock(whichChair, _lc);
       drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
+      drawLockIgnition(cx, cy, lr, whichChair);
     } catch (e) {}
 
     // Labels under portrait — tucked to the rim so GOAL / nameplate stay
@@ -7260,61 +7323,13 @@ function drawCandleChart() {
     tick();
   }
 
-  // Lightsaber from Chair confidence
-    window.updateLightsaber = function updateLightsaber(state) {
-    const bar = document.getElementById("lightsaberBar");
-    const lab = document.getElementById("lightsaberLabel");
-    if (!bar || !lab) return;
-    const conf = Math.max(0, Math.min(100, Number((state && state.decision && state.decision.confidence) || (state && state.confidence) || 0)));
-    const dir = String((state && state.decision && state.decision.direction) || (state && state.direction) || "WAIT").toUpperCase();
-    const pct = conf;
-    lab.textContent = pct + "%";
-    // Height scales with confidence
-    bar.style.height = Math.max(28, Math.round(40 + pct * 1.1)) + "px";
-
-    bar.classList.remove("red", "up", "lit", "wait-blade");
-    if (dir === "UP" || dir === "UP_HOLD") {
-      bar.classList.add("up", "lit");
-      bar.style.background = "";
-    } else if (dir === "DOWN" || dir === "DOWN_HOLD" || dir === "SWAP") {
-      bar.classList.add("red");
-      bar.style.background = "";
-    } else {
-      bar.classList.add("wait-blade");
-      bar.style.background = "";
+  // Thin always-on DOM saber is retired. Lock punch is canvas drawLockIgnition.
+    window.updateLightsaber = function updateLightsaber() {
+    const wrap = document.getElementById("lightsaberWrap");
+    if (wrap) {
+      wrap.classList.add("hidden");
+      wrap.setAttribute("aria-hidden", "true");
     }
-
-    // Kylo Ren unstable sparks — denser when high confidence / directional
-    try {
-      let sparks = document.getElementById("lightsaberSparks");
-      if (!sparks) {
-        sparks = document.createElement("div");
-        sparks.id = "lightsaberSparks";
-        sparks.className = "lightsaber-sparks";
-        bar.appendChild(sparks);
-      }
-      // throttle particle spawn
-      const now = Date.now();
-      if (!window.__lsSparkAt) window.__lsSparkAt = 0;
-      const interval = dir === "WAIT" ? 220 : 90;
-      if (now - window.__lsSparkAt < interval) return;
-      window.__lsSparkAt = now;
-      const n = dir === "WAIT" ? 1 : (pct > 70 ? 3 : 2);
-      for (let i = 0; i < n; i++) {
-        const s = document.createElement("span");
-        s.className = "ls-spark";
-        const y = 8 + Math.random() * 84; // along blade
-        const side = Math.random() < 0.5 ? -1 : 1;
-        s.style.left = "50%";
-        s.style.top = y + "%";
-        s.style.setProperty("--sx", (side * (6 + Math.random() * 16)) + "px");
-        s.style.setProperty("--sy", (-8 - Math.random() * 18) + "px");
-        sparks.appendChild(s);
-        setTimeout(() => { try { s.remove(); } catch (e) {} }, 600);
-      }
-      // keep DOM light
-      while (sparks.children.length > 18) sparks.removeChild(sparks.firstChild);
-    } catch (e) {}
   }
 
   // Cha-ching / warning on graded outcomes

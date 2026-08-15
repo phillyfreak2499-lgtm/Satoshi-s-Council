@@ -2688,6 +2688,15 @@ body:not(.gate-locked):not(.gate-revealing) #app {
   z-index: 40 !important;
 }
 
+/* Thin always-on saber retired — lock ignition is canvas, 1s then OFF */
+#tableStage .lightsaber-wrap,
+.table-stage .lightsaber-wrap,
+.lightsaber-wrap {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* Lightsaber: right edge of CENTER table stage — never over debate log */
 .lightsaber-wrap {
   position: absolute !important;
