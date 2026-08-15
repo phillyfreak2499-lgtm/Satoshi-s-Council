@@ -65,8 +65,20 @@ def _fetch_factory(extra: dict | None = None):
             return {"markets": [], "missing": True}
         if isinstance(rows, list):
             return {"markets": rows}
+        alias = {
+            "KXNFLGAME": "nfl_ml",
+            "KXNFLSPREAD": "nfl_spread",
+            "KXNFLTOTAL": "nfl_total",
+            "KXNCAAFGAME": "cfb",
+        }
+        key = alias.get(series)
+        if key and key in extra:
+            got = extra.get(key)
+            if got == "404":
+                return {"markets": [], "missing": True}
+            return {"markets": got if isinstance(got, list) else []}
         if series == "KXNFLGAME":
-            return {"markets": extra.get("nfl_ml") or [
+            return {"markets": [
                 _m("KXNFLGAME-26AUG15DALSEA-SEA", event="KXNFLGAME-26AUG15DALSEA",
                    title="Will Seattle win the Dallas vs Seattle Pro Football game?",
                    yes_bid="0.58", yes_ask="0.59", volume="94000"),
@@ -75,22 +87,20 @@ def _fetch_factory(extra: dict | None = None):
                    yes_bid="0.40", yes_ask="0.41", volume="74000"),
             ]}
         if series == "KXNFLSPREAD":
-            return {"markets": extra.get("nfl_spread") or [
+            return {"markets": [
                 _m("KXNFLSPREAD-26AUG15DALSEA-SEA7", series=series,
                    event="KXNFLSPREAD-26AUG15DALSEA",
                    title="Seattle wins by over 6.5 points?",
                    yes_bid="0.44", yes_ask="0.46", volume="1515", floor=6.5),
             ]}
         if series == "KXNFLTOTAL":
-            return {"markets": extra.get("nfl_total") or [
+            return {"markets": [
                 _m("KXNFLTOTAL-26AUG15DALSEA-47", series=series,
                    event="KXNFLTOTAL-26AUG15DALSEA",
                    title="Will there be over 46.5 points scored?",
                    yes_bid="0.48", yes_ask="0.50", volume="6200", floor=46.5),
             ]}
-        if series == "KXNCAAFGAME":
-            return {"markets": extra.get("cfb") or []}
-        return {"markets": extra.get(series) or []}
+        return {"markets": []}
 
     return fetch
 

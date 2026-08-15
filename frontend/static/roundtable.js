@@ -9153,7 +9153,8 @@ function drawCandleChart() {
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
     bind(focusFront, "front");
-    bind(document.getElementById("focusAts"), "ats");
+    const focusAts = document.getElementById("focusAts");
+    bind(focusAts, "ats");
     applyFocusChrome();
     try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
     const floorExit = document.getElementById("floorExitBtn");

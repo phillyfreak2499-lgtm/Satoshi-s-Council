@@ -489,6 +489,8 @@ def sports_call(kind: str, side: str, team: Optional[str], home: Optional[str], 
     """COVER / NO-COVER · HOME / AWAY or team · OVER / UNDER. Never UP / DOWN / YES / NO."""
     k = str(kind or "").lower()
     s = str(side or "").upper()
+    if s in ("", "WAIT"):
+        return "WAIT"
     if k == "total":
         return "OVER" if s == "YES" else "UNDER"
     if k == "spread":
