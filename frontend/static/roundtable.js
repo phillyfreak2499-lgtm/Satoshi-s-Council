@@ -594,6 +594,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     document.body.classList.toggle("night-mode", next === "night");
     const phoneFloor = (next === "floor" || next === "night") && (typeof isPhoneDesk === "function" ? isPhoneDesk() : false);
     document.body.classList.toggle("phone-floor", phoneFloor);
+    try { if (typeof initModeTabsScroll === "function") initModeTabsScroll(); } catch (e) {}
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
@@ -6491,9 +6492,11 @@ function drawCandleChart() {
     if (!led) return;
     if (mode === "floor" && mode !== "night") {
       const header = document.querySelector("#app > header");
+      const shell = header && header.querySelector(".mode-tabs-shell");
       const tabs = header && header.querySelector(".mode-tabs");
-      if (tabs && tabs.parentNode && led.previousElementSibling !== tabs) {
-        tabs.parentNode.insertBefore(led, tabs.nextSibling);
+      const after = shell || tabs;
+      if (after && after.parentNode && led.previousElementSibling !== after) {
+        after.parentNode.insertBefore(led, after.nextSibling);
       }
     } else {
       const col = document.getElementById("lifetimePanel");
@@ -9823,6 +9826,40 @@ function drawCandleChart() {
       setMode(btn.dataset.mode);
     }, true);
   }
+  function initModeTabsScroll() {
+    const scroller = document.getElementById("modeTabs");
+    const prev = document.getElementById("modeTabsPrev");
+    const next = document.getElementById("modeTabsNext");
+    if (!scroller || !prev || !next) return;
+    const sync = () => {
+      const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      const x = scroller.scrollLeft;
+      const overflow = max > 8;
+      prev.setAttribute("aria-disabled", (!overflow || x <= 4) ? "true" : "false");
+      next.setAttribute("aria-disabled", (!overflow || x >= max - 4) ? "true" : "false");
+      scroller.classList.toggle("tabs-overflow", overflow);
+      scroller.classList.toggle("tabs-at-start", x <= 4);
+      scroller.classList.toggle("tabs-at-end", !overflow || x >= max - 4);
+    };
+    if (!scroller.__tabScrollWired) {
+      scroller.__tabScrollWired = true;
+      prev.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scroller.scrollBy({ left: -Math.max(120, scroller.clientWidth * 0.7), behavior: "smooth" });
+      });
+      next.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scroller.scrollBy({ left: Math.max(120, scroller.clientWidth * 0.7), behavior: "smooth" });
+      });
+      scroller.addEventListener("scroll", sync, { passive: true });
+      window.addEventListener("resize", sync);
+    }
+    sync();
+  }
+  try { initModeTabsScroll(); } catch (e) {}
+  window.initModeTabsScroll = initModeTabsScroll;
   if (!window.__seatsHashWired) {
     window.__seatsHashWired = true;
     window.addEventListener("hashchange", function () {

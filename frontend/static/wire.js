@@ -14,6 +14,12 @@ window.COUNCIL_WIRE = [
     "why": "90-day Kalshi tape replay merged into seat brains (3,053 hours; BTC 1,508 / ETH 1,545). WICK/STRIKE/CLOCK/DRIFT got the most. CARRY/CHAIN/CASCADE stayed empty (CoinGlass Upgrade plan). Displayed Chair hit count reset so the old 2/7 doesn’t sit on the new weights. Paper only. Follower OFF."
   },
   {
+    "id": "2026-08-15-phone-gate-nav",
+    "at": "2026-08-15T23:58:00-05:00",
+    "title": "Phone gate and nav use the real device width",
+    "why": "iPhone 390 had a dead side strip and SUMMON dropped under the fold and the keyboard. Body now follows 100% / 100dvw — no 375 lock. Agree + SUMMON stick to the bottom with a 44px tap row. Pact type is 16px on phone. Tab row scrolls with fade and arrows. Floor is one-handed and the leader stays tappable. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-login-splash",
     "at": "2026-08-15T23:55:00-05:00",
     "title": "Login splash is the signed council table",

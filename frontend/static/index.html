@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Satoshi’s Council</title>
   <meta name="description" content="Satoshi’s Council" />
   <meta property="og:title" content="Satoshi’s Council" />
@@ -67,12 +67,14 @@
         <li>YOU CAN LOSE THE FULL STAKE. The whole chip can vanish.</li>
         <li>NO PAST SCORE IS A PROMISE. Last hour does not own the next.</li>
       </ul>
-      <label class="gate-agree" for="gateAgree">
-        <input type="checkbox" id="gateAgree" />
-        <span>I agree. Paper. 18+. Eyes open.</span>
-      </label>
-      <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" disabled aria-disabled="true">SUMMON THE COUNCIL</button>
-      <p id="passwordError" class="password-error hidden">Wrong password</p>
+      <div class="gate-sticky-actions" id="gateStickyActions">
+        <label class="gate-agree" for="gateAgree">
+          <input type="checkbox" id="gateAgree" />
+          <span>I agree. Paper. 18+. Eyes open.</span>
+        </label>
+        <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" disabled aria-disabled="true">SUMMON THE COUNCIL</button>
+        <p id="passwordError" class="password-error hidden">Wrong password</p>
+      </div>
     </div>
   </div>
 
@@ -217,6 +219,8 @@
           <span id="lastUpdate">—</span>
         </div>
       </div>
+      <div class="mode-tabs-shell" id="modeTabsShell">
+      <button type="button" id="modeTabsPrev" class="mode-tabs-arrow mode-tabs-prev" aria-label="Scroll tabs left">‹</button>
       <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
         <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
@@ -239,6 +243,8 @@
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
+      </div>
+      <button type="button" id="modeTabsNext" class="mode-tabs-arrow mode-tabs-next" aria-label="Scroll tabs right">›</button>
       </div>
     </header>
 
