@@ -19,6 +19,7 @@ from backend.agents.chair_gates import (
 )
 from backend.learning.adaptive import AdaptiveLearner
 from backend.services import desk_front
+from backend.tests.test_desk_front import NOW, _fetch_factory, _m, _nws_high_only
 
 ROOT = Path(__file__).resolve().parents[2]
 HTML = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
@@ -309,6 +310,65 @@ class FrontWaitTests(unittest.TestCase):
             "city": "DAL",
         })
         self.assertIsNone(desk_front.record_wait_sample(day=day, skip="thin"))
+
+    def test_dont_play_is_wait_not_down_lock(self):
+        skip = desk_front.build_chair({"dont_play": True, "skip": "Don’t play · sample too thin"})
+        self.assertEqual(skip["eye"], "WAIT")
+        self.assertTrue(skip["mark"].endswith("raijin-wait.png"))
+
+    def test_would_lock_if_strict_can_be_true_when_gate_is_only_reason(self):
+        best = {
+            "p_forecast": 0.70,
+            "yes_ask": 48,
+            "dont_play": True,
+            "skip": "Don’t play · sample too thin",
+            "confidence": 18,
+            "strike_type": "between",
+            "floor_strike": 103,
+            "cap_strike": 104,
+            "climo": 96,
+        }
+        self.assertTrue(desk_front.front_would_lock_if_strict(best, 50))
+        self.assertFalse(desk_front.front_would_lock_if_strict(None, 50))
+        weak = dict(best, p_forecast=0.20, yes_ask=80)
+        self.assertFalse(desk_front.front_would_lock_if_strict(weak, 50))
+
+
+class FrontWaitBuildBoardTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        desk_front.reset_for_tests(Path(self.tmp.name))
+
+    async def test_build_board_writes_wait_on_dont_play_best(self):
+        """Skip/thin days still write a WAIT row. pick_best returns dont_play."""
+        thin = _m("KXHIGHTDAL-26AUG15-B103104", volume="50")
+        board = await desk_front.build_board(
+            fetch=_fetch_factory({"rows": [thin]}),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101},
+        )
+        best = next((b for b in board["brackets"] if b.get("best")), None)
+        self.assertIsNotNone(best)
+        self.assertTrue(best.get("dont_play"))
+        self.assertEqual(board["chair"]["eye"], "WAIT")
+        self.assertTrue(board["chair"]["mark"].endswith("raijin-wait.png"))
+        waits = [
+            r for r in desk_front._load_fills()
+            if str(r.get("side") or "").upper() == "WAIT" and not r.get("superseded")
+        ]
+        self.assertEqual(len(waits), 1, waits)
+        row = waits[0]
+        self.assertEqual(row["city"], "DAL")
+        self.assertEqual(row["station"], "KDFW")
+        self.assertEqual(row["pnl"], 0.0)
+        self.assertEqual(row["paper"], True)
+        self.assertIn(row.get("wait_reason"), ("no_depth", "dead_book", "other"))
+        self.assertTrue(row.get("would_lock_if_strict"), row)
+        self.assertEqual(board["accuracy"]["wait_n"], 1)
+        self.assertNotIn("KXHIGHNY", row.get("ticker") or "")
+        self.assertNotIn("KXHIGHCHI", row.get("ticker") or "")
 
 
 class FocusFrontWiringTests(unittest.TestCase):

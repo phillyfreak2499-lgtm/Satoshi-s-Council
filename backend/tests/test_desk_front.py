@@ -457,9 +457,10 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         up = desk_front.build_chair({"dont_play": False, "bracket": "103–104"})
         self.assertEqual(up["eye"], "UP")
         self.assertTrue(up["mark"].endswith("raijin-up.png"))
-        down = desk_front.build_chair({"dont_play": True, "skip": "thin book"})
-        self.assertEqual(down["eye"], "DOWN")
-        self.assertTrue(down["mark"].endswith("raijin-down.png"))
+        skip = desk_front.build_chair({"dont_play": True, "skip": "thin book"})
+        self.assertEqual(skip["eye"], "WAIT")
+        self.assertTrue(skip["mark"].endswith("raijin-wait.png"))
+        self.assertNotEqual(skip["eye"], "DOWN")
 
     async def test_inclusive_bracket_and_date_in_ticker(self):
         self.assertEqual(desk_front.date_from_ticker("KXHIGHTDAL-26AUG15-B103104"), date(2026, 8, 15))

@@ -1292,13 +1292,54 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
     return rows
 
 
+def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bool:
+    """
+    Shadow lock bar with skip/dont_play gates off.
+
+    Live play still sits WAIT on a gate. True only when the underlying
+    forecast vs book would have cleared min_c — the only reason we sat
+    was a gate, not a missing edge.
+    """
+    if not best:
+        return False
+    try:
+        pf = float(best["p_forecast"]) if best.get("p_forecast") is not None else 0.5
+    except (TypeError, ValueError):
+        pf = 0.5
+    try:
+        ask = float(best["yes_ask"]) if best.get("yes_ask") is not None else 50.0
+    except (TypeError, ValueError):
+        ask = 50.0
+    implied = ask / 100.0 if ask > 1.5 else ask
+    climo_p = None
+    try:
+        if best.get("climo") is not None:
+            climo_p = forecast_p(float(best["climo"]), {
+                "strike_type": best.get("strike_type"),
+                "floor_strike": best.get("floor_strike"),
+                "cap_strike": best.get("cap_strike"),
+            })
+    except (TypeError, ValueError):
+        climo_p = None
+    climo_align = 0.0
+    if climo_p is not None:
+        climo_align = 1.0 - min(1.0, abs(float(climo_p) - pf))
+    edge = pf - implied
+    conf = int(round(50 + 28 * (pf - 0.5) + 18 * edge + 4 * climo_align))
+    conf = max(0, min(99, conf))
+    try:
+        bar = int(min_c)
+    except (TypeError, ValueError):
+        bar = 50
+    return conf >= bar
+
+
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     acc = chair_accuracy()
     rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
-    if not best:
+    # Skip / dont_play is a WAIT, not a DOWN lock.
+    if not best or best.get("dont_play"):
         eye = "WAIT"
-    elif best.get("dont_play"):
-        eye = "DOWN"
     else:
         eye = "UP"
     # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
@@ -1413,13 +1454,10 @@ async def build_board(
     chair_best = best
     if best and not best.get("dont_play") and int(best.get("confidence") or 0) < min_c:
         chair_best = None
-    if day is not None and chair_best is None:
+    sit_out = chair_best is None or bool(best and best.get("dont_play"))
+    if day is not None and sit_out:
         skip = (best or {}).get("skip") if best else "Don’t play · empty book"
-        would = bool(
-            best
-            and not best.get("dont_play")
-            and int(best.get("confidence") or 0) >= min_c
-        )
+        would = front_would_lock_if_strict(best, min_c)
         try:
             record_wait_sample(
                 day=day,
