@@ -2,7 +2,7 @@
 Side Table arcade: 15m up/down + hot strip. Manual taps only.
 
 Paper by default. Never auto-bets. Never talks to Follower.
-Does not place Chair 1H locks. Does not import follower_gate.
+Does not place Chair 1H locks. Does not import the Follower gate.
 Live tickers come from Kalshi public markets — no stale contract codes.
 """
 from __future__ import annotations

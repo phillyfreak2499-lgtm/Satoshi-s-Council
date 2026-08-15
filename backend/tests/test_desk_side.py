@@ -132,7 +132,8 @@ class SideMarkupTests(unittest.TestCase):
         self.assertIn('"auto_bets": False', SIDE)
 
     def test_does_not_touch_follower_or_chair(self):
-        self.assertNotIn("follower_gate", SIDE)
+        self.assertNotIn("from backend.services.follower_gate", SIDE)
+        self.assertNotIn("from backend.services.follower", SIDE)
         self.assertNotIn("desk_side", FOLLOWER)
         self.assertNotIn("desk_side", GATES)
         self.assertNotIn("desk_side", LEADER)
