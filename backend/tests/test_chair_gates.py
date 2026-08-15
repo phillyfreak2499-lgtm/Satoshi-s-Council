@@ -641,10 +641,13 @@ class ExplorePaperLockTests(unittest.TestCase):
         self.assertEqual(out["direction"], "WAIT")
         self.assertFalse(out.get("window_locked"))
 
-    def test_explore_12c_and_88c_pass_band_99_hard_no(self):
+    def _fresh_explore_chair(self):
         chair = Leader()
         chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
-        cheap = chair.synthesize(
+        return chair
+
+    def test_explore_12c_and_88c_pass_band_99_hard_no(self):
+        cheap = self._fresh_explore_chair().synthesize(
             self._mixed_signals(),
             self._btc_regime(
                 up_pct=12,
@@ -664,7 +667,7 @@ class ExplorePaperLockTests(unittest.TestCase):
         self.assertIn(cheap["direction"], ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
         self.assertTrue(cheap.get("window_locked") or (cheap.get("locked_call") or {}).get("locked"))
 
-        rich = chair.synthesize(
+        rich = self._fresh_explore_chair().synthesize(
             self._mixed_signals(),
             self._btc_regime(
                 up_pct=88,
@@ -682,7 +685,7 @@ class ExplorePaperLockTests(unittest.TestCase):
         self.assertNotIn("outside 10–90", (rich.get("summary") or ""))
         self.assertNotIn("already 88", (rich.get("summary") or "").lower())
         # Band is open; EV after half-spread may still WAIT. 99¢ never locks.
-        wall = chair.synthesize(
+        wall = self._fresh_explore_chair().synthesize(
             self._mixed_signals(),
             self._btc_regime(yes_ask=99, no_ask=1, up_pct=99, yes_mid=99, side_ask=99),
         )
