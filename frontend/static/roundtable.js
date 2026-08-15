@@ -1237,6 +1237,34 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function floorLikeMode() {
     return mode === "floor" || mode === "night";
   }
+  function floorSeatDirLocked(dir) {
+    const d = String(dir || "").toUpperCase();
+    if (!d || d === "WAIT" || d === "SIT" || d === "—" || d === "-" || d === "EMPTY") return false;
+    return d === "UP" || d === "DOWN" || d === "UP_HOLD" || d === "DOWN_HOLD";
+  }
+  function floorCryptoTable(which) {
+    const w = String(which || "").toLowerCase();
+    return w === "bitcoin" || w === "btc" || w === "ethereum" || w === "eth";
+  }
+  function floorLockedAgents(agents) {
+    return (agents || []).filter(function (a) {
+      if (!a || !a.agent_name || a.agent_name === "leader" || a.sub) return false;
+      return floorSeatDirLocked(a.direction);
+    });
+  }
+  function floorLockedSeatLabels(side) {
+    try {
+      if (typeof floorLikeMode === "function" && !floorLikeMode()) return null;
+      if (side && !floorCryptoTable(side)) return null;
+      const key = (side === "eth" || side === "ethereum") ? "ethereum" : "bitcoin";
+      const st = (typeof tableState === "function" ? tableState(key) : null) || {};
+      return floorLockedAgents(st.agents || []).map(function (a) {
+        return (typeof labelOf === "function" ? labelOf(a) : (a.display_name || a.agent_name || "")).toString();
+      }).filter(Boolean);
+    } catch (e) {
+      return null;
+    }
+  }
   function floorCameraOffset() {
     // Slow room drift. No extra haze, particles, or purple.
     if (reduceMotion || !floorLikeMode()) return { x: 0, y: 0 };
@@ -3156,8 +3184,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const dir = locked ? String(lc.direction) : String(d.direction || "WAIT");
     const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
-    const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && !a.sub);
-    const maj = majorityDirOf(agents);
+    const roster = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && !a.sub);
+    const hideWait = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor")) && floorCryptoTable(which);
+    const agents = hideWait ? floorLockedAgents(roster) : roster;
+    const maj = majorityDirOf(roster);
     const gold = "rgba(240, 193, 74, 0.95)";
     const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
     const pr = radius * 0.80;
@@ -3281,9 +3311,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
     if (!botPts.length) {
-      ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(160,180,200,0.55)";
-      ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
+      if (!roster.length) {
+        ctx.font = "600 10px Rajdhani, sans-serif";
+        ctx.fillStyle = "rgba(160,180,200,0.55)";
+        ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
+      }
     } else {
       botPts.forEach((bp, i) => {
         const face = locked ? Math.atan2(portraitY - bp.y, cx - bp.x) : bp.ang;
@@ -3475,9 +3507,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const labels = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN", "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP", "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN"];
     const out = { phone: phone, dual: dual, view: view, nameplates: [], goals: [], seats: [] };
     function tw(s, px) { return Math.max(8, Math.round(String(s).length * px * 0.62)); }
-    function addSeats(cx, cy, ringR, seatR, nameOff, fontPx, side) {
-      const n = labels.length;
-      labels.forEach(function (lab, i) {
+    function addSeats(cx, cy, ringR, seatR, nameOff, fontPx, side, labs) {
+      const list = Array.isArray(labs) ? labs : labels;
+      const n = list.length;
+      if (!n) return;
+      list.forEach(function (lab, i) {
         const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
         const sx = cx + Math.cos(ang) * ringR;
         const sy = cy + Math.sin(ang) * ringR;
@@ -3505,7 +3539,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const nw = tw(t, 11);
         out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
         if (side === "btc" || side === "eth") {
-          addSeats(cx, cy, R * 1.42, 16, 6, 8, side);
+          const live = (typeof floorLockedSeatLabels === "function") ? floorLockedSeatLabels(side) : null;
+          addSeats(cx, cy, R * 1.42, 16, 6, 8, side, live);
         }
       });
     } else if (view === "art" && !phone) {
@@ -3537,7 +3572,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 8, w: nw, h: 12, text: "SATOSHI" });
       }
-      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11);
+      const live = (view !== "art" && typeof floorLockedSeatLabels === "function")
+        ? floorLockedSeatLabels((typeof focusTable !== "undefined" && floorCryptoTable(focusTable)) ? focusTable : "bitcoin")
+        : null;
+      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11, "", live);
     }
     return out;
   }
@@ -3728,7 +3766,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     // Specialists on Floor and Table — packet lines + game-unit seats
     if (mode === "floor" || mode === "art") {
-    const agents = state.agents.filter(a => a.agent_name !== "leader" && !a.sub);
+    let agents = state.agents.filter(a => a.agent_name !== "leader" && !a.sub);
+    const floorHideWait = floorLikeMode()
+      && !(typeof isFrontTable === "function" && isFrontTable(focusTable))
+      && !(typeof isAtsTable === "function" && isAtsTable(focusTable));
+    if (floorHideWait) {
+      agents = floorLockedAgents(agents);
+    }
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
@@ -3738,7 +3782,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const atsLive = typeof isAtsTable === "function" && isAtsTable(focusTable) && liveNames.length;
     const frontLive = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const frontNames = FRONT_SEAT_KEYS.filter(function (k) { return liveNames.indexOf(k) >= 0; });
-    const order = frontLive
+    let order = frontLive
       ? (frontNames.length ? frontNames : FRONT_SEAT_KEYS.slice())
       : (ethLive || atsLive)
       ? (ranked.length
@@ -3747,6 +3791,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : (ranked.length
           ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
           : AGENT_ORDER.filter(a => a !== "law"));
+    if (floorHideWait) {
+      const locked = {};
+      agents.forEach(function (a) { if (a && a.agent_name) locked[a.agent_name] = true; });
+      order = order.filter(function (n) { return locked[n]; });
+    }
     const n = order.length || 1;
     const positions = {};
     const rankOf = {};
@@ -6391,20 +6440,17 @@ function drawCandleChart() {
       const p = raw === "ETH" || raw === "ETHEREUM" ? "ETH"
         : (raw === "ATS" || raw === "ARES" ? "ATS"
           : (raw === "DFW" || raw === "FRONT" ? "DFW" : "BTC"));
-      const s = side && side !== "—" ? String(side).toUpperCase() : "WAIT";
-      const chip = p + " " + s;
+      const s = side && side !== "—" ? String(side).toUpperCase() : "";
+      if (!floorSeatDirLocked(s)) return;
+      const shown = s === "UP_HOLD" ? "UP" : (s === "DOWN_HOLD" ? "DOWN" : s);
+      const chip = p + " " + shown;
       if (chips.indexOf(chip) < 0) chips.push(chip);
     }
     try {
       const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
       const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
-      const a = tableLean((typeof tableState === "function" ? tableState("ats") : null) || {});
-      if (!b.locked) addChip("BTC", "WAIT");
-      else addChip("BTC", b.side);
-      if (!e.locked) addChip("ETH", "WAIT");
-      else addChip("ETH", e.side);
-      if (a && a.side && a.side !== "WAIT") addChip("ATS", a.side);
-      else addChip("ATS", "WAIT");
+      if (b && b.locked) addChip("BTC", b.side);
+      if (e && e.locked) addChip("ETH", e.side);
     } catch (err) {}
     try {
       const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
@@ -6413,7 +6459,12 @@ function drawCandleChart() {
         addChip(p.pair, p.side);
       });
     } catch (err) {}
-    while (chips.length < 2) chips.push("BTC WAIT");
+    if (!chips.length) {
+      track.textContent = "";
+      wrap.hidden = true;
+      wrap.setAttribute("aria-hidden", "true");
+      return;
+    }
     const line = chips.slice(0, 5).join(" · ");
     track.textContent = line + " · " + line;
   }

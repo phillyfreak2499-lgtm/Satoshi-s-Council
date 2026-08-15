@@ -50,6 +50,23 @@ FOLLOWER = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encodi
 CT = ZoneInfo("America/Chicago")
 
 
+def floor_seat_dir_locked(dir_):
+    d = str(dir_ or "").upper()
+    if not d or d in ("WAIT", "SIT", "—", "-", "EMPTY"):
+        return False
+    return d in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD")
+
+
+def floor_locked_agents(agents):
+    out = []
+    for a in agents or []:
+        if not a or not a.get("agent_name") or a.get("agent_name") == "leader" or a.get("sub"):
+            continue
+        if floor_seat_dir_locked(a.get("direction")):
+            out.append(a)
+    return out
+
+
 class MarkupTests(unittest.TestCase):
     def test_new_tabs_and_views(self):
         for needle in (
@@ -102,6 +119,39 @@ class MarkupTests(unittest.TestCase):
         self.assertIn("Slow room drift", JS)
         self.assertIn("floor-crawl-marquee", CSS)
         self.assertIn("No extra haze, particles, or purple", JS)
+
+    def test_floor_hides_wait_seats_until_lock(self):
+        self.assertIn("function floorSeatDirLocked(", JS)
+        self.assertIn("function floorLockedAgents(", JS)
+        self.assertIn("function floorLockedSeatLabels(", JS)
+        draw = JS.split("function drawTableWithBots", 1)[1].split("function drawMiniTable", 1)[0]
+        self.assertIn("floorLikeMode()", draw)
+        self.assertIn("floorLockedAgents(roster)", draw)
+        self.assertIn("floorCryptoTable(which)", draw)
+        self.assertIn("chairPortraitOf(which, dir)", draw)
+        crawl = JS.split("function paintFloorCrawl()", 1)[1][:1600]
+        self.assertNotIn('chips.push("BTC WAIT")', crawl)
+        self.assertIn("if (!floorSeatDirLocked(s)) return;", crawl)
+        self.assertIn("if (!chips.length)", crawl)
+        art = JS.split("function drawArt()", 1)[1]
+        self.assertIn("const floorHideWait = floorLikeMode()", art)
+        self.assertIn("order = order.filter(function (n) { return locked[n]; });", art)
+        self.assertTrue(floor_seat_dir_locked("UP"))
+        self.assertTrue(floor_seat_dir_locked("DOWN"))
+        self.assertTrue(floor_seat_dir_locked("up_hold"))
+        self.assertFalse(floor_seat_dir_locked("WAIT"))
+        self.assertFalse(floor_seat_dir_locked("SIT"))
+        self.assertFalse(floor_seat_dir_locked(""))
+        self.assertFalse(floor_seat_dir_locked(None))
+        self.assertEqual(
+            [a["agent_name"] for a in floor_locked_agents([
+                {"agent_name": "candle", "direction": "WAIT"},
+                {"agent_name": "volume", "direction": "UP"},
+                {"agent_name": "leader", "direction": "DOWN"},
+                {"agent_name": "news", "direction": "DOWN", "sub": True},
+            ])],
+            ["volume"],
+        )
 
     def test_routes_exist(self):
         for needle in (
