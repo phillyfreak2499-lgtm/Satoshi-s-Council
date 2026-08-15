@@ -1786,12 +1786,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const prev = _seatTick[k];
     if (!prev || prev.dir !== d || prev.conf !== c) {
       _seatTick[k] = { dir: d, conf: c, at: Date.now() };
+      try { bumpChairPulse(pulseKeyFromTick(k), 0.55); } catch (e) {}
       return true;
     }
     return (Date.now() - prev.at) < 2200;
   }
 
-  function drawPacketSpoke(x0, y0, x1, y1, color, conf, agree, fresh) {
+  function drawPacketSpoke(x0, y0, x1, y1, color, conf, agree, fresh, which) {
     const dx = x1 - x0, dy = y1 - y0;
     const dist = Math.hypot(dx, dy) || 1;
     ctx.save();
@@ -1812,10 +1813,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const speed = fast ? 0.0044 : 0.0019;
     const dash = 12;
     const gap = 18;
+    const clock = chairPulseTime(which);
     ctx.globalAlpha = fast ? 0.82 : 0.55;
     ctx.lineWidth = agree ? 2.3 : 1.45;
     ctx.setLineDash([dash, gap]);
-    ctx.lineDashOffset = -((time * speed * dist) % (dash + gap));
+    ctx.lineDashOffset = -((clock * speed * dist) % (dash + gap));
     ctx.shadowColor = color;
     ctx.shadowBlur = fast ? 16 : 8;
     ctx.beginPath();
@@ -1823,10 +1825,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineTo(x1, y1);
     ctx.stroke();
     ctx.setLineDash([]);
+    const phoneCheap = (typeof isPhoneDesk === "function") && isPhoneDesk();
+    if (phoneCheap) {
+      // Phone: one rate per chair, no per-segment sparkle
+      ctx.restore();
+      return;
+    }
     const n = fast ? 3 : 2;
     const nx = dx / dist, ny = dy / dist;
     for (let i = 0; i < n; i++) {
-      const t = ((time * speed * 0.62) + i / n) % 1;
+      const t = ((clock * speed * 0.62) + i / n) % 1;
       const x = x0 + dx * t;
       const y = y0 + dy * t;
       ctx.globalAlpha = 0.95;
@@ -1993,18 +2001,134 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!locked) _sealSeen[key] = "";
   }
 
+  const _chairPulse = { bitcoin: null, ethereum: null, front: null };
+  let _newsPulseSig = "";
+  function pulseKeyOf(which) {
+    const w = String(which || "").toLowerCase();
+    if (w === "front" || w === "raijin") return "front";
+    if (w === "ethereum" || w === "eth" || (typeof isEthTable === "function" && isEthTable(which))) return "ethereum";
+    return "bitcoin";
+  }
+  function pulseKeyFromTick(key) {
+    const k = String(key || "");
+    if (k.indexOf("front:") === 0) return "front";
+    if (k.indexOf("ethereum") === 0) return "ethereum";
+    if (k.indexOf("bitcoin") === 0) return "bitcoin";
+    if (k.indexOf("art:") === 0) return pulseKeyOf(typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    return pulseKeyOf(k.split(":")[0]);
+  }
+  function ensureChairPulse(which) {
+    const key = pulseKeyOf(which);
+    if (_chairPulse[key]) return _chairPulse[key];
+    const seed = key === "ethereum" ? 0.61 : (key === "front" ? 0.93 : 0.17);
+    _chairPulse[key] = {
+      key: key,
+      t: seed * 4000,
+      at: 0,
+      hz: 0.55 + seed * 0.35,
+      target: 0.55 + seed * 0.35,
+      heat: 0,
+      burstLeft: 0,
+      burstAcc: 0,
+      lullUntil: 0,
+      lastAct: 0,
+      lastPx: null,
+      lastLock: "",
+      wxSig: "",
+      walkAt: 0,
+    };
+    return _chairPulse[key];
+  }
+  function bumpChairPulse(which, amount) {
+    const p = ensureChairPulse(which);
+    p.lastAct = Date.now();
+    p.heat = Math.min(2.6, p.heat + Math.max(0.08, Number(amount) || 0.2));
+    if (p.burstLeft <= 0 && (typeof time !== "number" || time >= p.lullUntil) && Math.random() < 0.62) {
+      p.burstLeft = 2 + (Math.random() < 0.4 ? 1 : 0);
+      p.burstAcc = 0;
+    }
+  }
+  function stepChairPulse(which, now) {
+    // Each Chair has its own pulse clock. Packets, not a metronome.
+    const p = ensureChairPulse(which);
+    now = (now != null) ? now : (typeof time === "number" ? time : 0);
+    if (!p.at) p.at = now;
+    const dt = Math.max(0, Math.min(48, now - p.at));
+    p.at = now;
+    p.heat *= Math.pow(0.5, dt / 820);
+    if (p.burstLeft > 0) {
+      p.hz = 4.2 + Math.random() * 1.4;
+      p.burstAcc += dt;
+      if (p.burstAcc >= (1000 / Math.max(4, p.hz))) {
+        p.burstAcc = 0;
+        p.burstLeft -= 1;
+        if (p.burstLeft <= 0) p.lullUntil = now + 380 + Math.random() * 820;
+      }
+    } else if (p.lullUntil > now) {
+      p.hz = 0.34 + Math.random() * 0.18;
+    } else {
+      if (!p.walkAt || now - p.walkAt > 220 + Math.random() * 260) {
+        p.walkAt = now;
+        p.target += (Math.random() - 0.5) * 0.16;
+      }
+      const quiet = (Date.now() - (p.lastAct || 0)) > 1400;
+      if (quiet) p.target = Math.max(0.32, Math.min(1.05, p.target));
+      else p.target = Math.max(0.45, Math.min(3.2, p.target + p.heat * 0.9));
+      const want = Math.max(0.32, Math.min(5.6, p.target + p.heat * 1.8));
+      p.hz += (want - p.hz) * 0.14;
+    }
+    p.hz = Math.max(0.32, Math.min(5.6, p.hz));
+    p.t += dt * (p.hz / 2.72);
+    return p;
+  }
+  function stepAllChairPulses(now) {
+    stepChairPulse("bitcoin", now);
+    stepChairPulse("ethereum", now);
+    stepChairPulse("front", now);
+  }
+  function chairPulseTime(which) {
+    return ensureChairPulse(which).t;
+  }
+  function tasteChairActivity(which) {
+    const key = pulseKeyOf(which);
+    const p = ensureChairPulse(key);
+    if (key === "front") {
+      const wx = (typeof frontBoard !== "undefined" && frontBoard && frontBoard.weather) || {};
+      const sig = [wx.mode || "", wx.raw || wx.text || "", wx.held ? "1" : "0"].join("|");
+      if (p.wxSig && sig !== p.wxSig && (wx.mode || wx.raw || wx.text)) bumpChairPulse("front", 0.85);
+      p.wxSig = sig;
+      return;
+    }
+    const st = (typeof tableState === "function" ? tableState(key) : null) || (key === "bitcoin" ? state : null);
+    if (!st) return;
+    const px = Number((st.market || {}).price);
+    if (Number.isFinite(px) && p.lastPx != null && px !== p.lastPx) {
+      const d = Math.abs(px - p.lastPx) / Math.max(1, Math.abs(p.lastPx));
+      bumpChairPulse(key, Math.min(1.15, 0.22 + d * 48));
+    }
+    if (Number.isFinite(px)) p.lastPx = px;
+    const lc = st.locked_call || (st.decision && st.decision.locked_call) || {};
+    const lockKey = [lc.locked ? "1" : "0", lc.direction || "", lc.ticker || ""].join("|");
+    if (p.lastLock && p.lastLock !== lockKey) bumpChairPulse(key, 0.95);
+    p.lastLock = lockKey;
+  }
+
   function chairThinkRate(st, dir, locked, which) {
+    stepChairPulse(which);
+    tasteChairActivity(which);
+    const p = ensureChairPulse(which);
     const sfx = sealFX[chairKeyOf(which)];
     const punching = !!(sfx && sfx.until > Date.now());
     const huddle = (st && st.huddle) || (state && state.huddle) || {};
     const raw = String(dir || "WAIT").toUpperCase();
     const wait = !locked && raw.indexOf("WAIT") >= 0;
-    let rate = wait ? 0.52 : 1;
-    if (huddle.in_huddle) rate = 1.65;
-    else if (typeof beastMode !== "undefined" && beastMode && !wait) rate = 1.25;
+    let rate = p.hz / 1.15;
+    if (wait) rate = Math.min(rate, 0.72);
+    if (huddle.in_huddle) rate = Math.max(rate, 1.65);
+    else if (typeof beastMode !== "undefined" && beastMode && !wait) rate = Math.max(rate, 1.25);
     if (locked) rate = Math.max(rate, 1.15);
-    if (punching) rate = 2.2;
-    return rate;
+    if (punching) rate = Math.max(rate, 2.2);
+    return Math.max(0.32, Math.min(5.6, rate));
   }
   function pulseRate(st, dir, locked, which) {
     // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×.
@@ -2027,6 +2151,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const key = chairKeyOf(which);
     const phone = (typeof isPhoneDesk === "function") ? isPhoneDesk() : false;
     const rate = pulseRate(st, dir, locked, which);
+    const clock = chairPulseTime(which);
     const wait = !locked && dir.indexOf("WAIT") >= 0;
     const sfx = sealFX[key];
     const punching = !!(sfx && sfx.until > Date.now() && !reduceMotion);
@@ -2047,7 +2172,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.clip();
 
     if (!reduceMotion) {
-      const sweep = time * 0.00032 * rate;
+      const sweep = clock * 0.00032;
       const span = wait ? 0.70 : 0.95;
       ctx.strokeStyle = hue;
       ctx.lineCap = "round";
@@ -2066,7 +2191,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
     const n = (phone || reduceMotion) ? 6 : 12;
-    const orbit = reduceMotion ? 0 : (-time * 0.00018 * rate);
+    const orbit = reduceMotion ? 0 : (-clock * 0.00018);
     ctx.globalAlpha = wait ? 0.28 : 0.48;
     ctx.strokeStyle = hue;
     ctx.lineWidth = phone ? 1.2 : 1.6;
@@ -2083,7 +2208,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.restore();
 
-    const pulse = reduceMotion ? 0.7 : (0.55 + 0.45 * Math.sin(time * 0.0024 * rate));
+    const pulse = reduceMotion ? 0.7 : (0.55 + 0.45 * Math.sin(clock * 0.0024));
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, photoR + 1.2, 0, Math.PI * 2);
@@ -2100,7 +2225,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     if (!reduceMotion && !phone) {
       const seed = key === "ethereum" ? 2.1 : 0.7;
-      const phase = (time * 0.00105 * rate + seed) % (wait ? 11 : 7);
+      const phase = (clock * 0.00105 + seed) % (wait ? 11 : 7);
       if (phase < 0.14 || punching) {
         const eyeY = cy - photoR * 0.16;
         const spread = photoR * 0.21;
@@ -2446,7 +2571,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const end = spokeEnd(x, y, cx, portraitY, pr + 4);
       const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
       const fresh = markSeatTick((which || "t") + ":" + (a.agent_name || i), adir, confA);
-      drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh);
+      drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh, which);
       ctx.globalAlpha = focused ? 1 : 0.42;
       botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?", ang, adir });
     });
@@ -3158,7 +3283,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
       const fresh = markSeatTick("art:" + name, adir, conf);
       const end = spokeEnd(pos.x, pos.y, chairCore.x, chairCore.y, chairStop);
-      drawPacketSpoke(pos.x, pos.y, end.x, end.y, sc, conf, agree, fresh);
+      drawPacketSpoke(pos.x, pos.y, end.x, end.y, sc, conf, agree, fresh, focusTable);
       if (!reduceMotion && Math.random() < 0.03 + conf / 100 * 0.05) {
         spawnParticles(pos, end, sc);
       }
@@ -5361,6 +5486,13 @@ function drawCandleChart() {
       }
       if (breaking) {
         const rows = data.breaking || [];
+        const newsSig = rows.map(function (h) { return h.title || ""; }).join("|") + "|" + (data.liq_burst || "");
+        if (newsSig && newsSig !== _newsPulseSig) {
+          _newsPulseSig = newsSig;
+          if (rows.length || data.liq_burst) {
+            try { bumpChairPulse("bitcoin", 0.42); bumpChairPulse("ethereum", 0.42); } catch (e) {}
+          }
+        }
         breaking.innerHTML = rows.length
           ? rows.map(function (h) {
               const cls = (h.stale ? "stale" : "fresh") + (h.heat ? " heat" : "");
@@ -6291,6 +6423,7 @@ function drawCandleChart() {
     if (feed) {
       feed.textContent = n ? (n + " DFW brackets · KXHIGHTDAL") : ((frontBoard.dropped || []).length ? "series dropped" : "no open DFW book");
     }
+    try { tasteChairActivity("front"); bumpChairPulse("front", 0.12); } catch (e) {}
     paintFrontSeats(frontBoard);
     paintFrontBook(frontBoard);
     paintFrontGuide(frontBoard);
@@ -6387,7 +6520,7 @@ function drawCandleChart() {
         const end = spokeEnd(x, y, cx, portraitY, pr + 4);
         const agree = (adir === dir) && (adir === "UP" || adir === "DOWN");
         const fresh = markSeatTick("front:" + s.id, adir, confA);
-        drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh);
+        drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh, "front");
         const face = locked ? Math.atan2(portraitY - y, cx - x) : ang;
         if (wxNow === "SUN") {
           ctx.save();
@@ -6606,6 +6739,9 @@ function drawCandleChart() {
   }
   function startFrontWx(mode) {
     if (mode && mode !== frontLastMode) {
+      if (frontLastMode) {
+        try { bumpChairPulse("front", 0.85); } catch (e) {}
+      }
       frontLastMode = mode;
       const canvas = document.getElementById("frontWx");
       if (canvas) seedFrontWx(canvas.clientWidth || 920, canvas.clientHeight || 620, mode);
@@ -7150,6 +7286,12 @@ function drawCandleChart() {
     try { paintPhoneScore(); } catch (e) {}
     try { dockWindowLed(); } catch (e) {}
     try {
+      tasteChairActivity("bitcoin");
+      tasteChairActivity("ethereum");
+      bumpChairPulse("bitcoin", 0.16);
+      bumpChairPulse("ethereum", 0.16);
+    } catch (e) {}
+    try {
       if (mode === "art" || mode === "floor") drawArt();
     if (mode === "night") drawArt();
     } catch (e) {}
@@ -7375,6 +7517,7 @@ function drawCandleChart() {
 
   function loop(ts) {
     time = ts;
+    try { stepAllChairPulses(ts); } catch (e) {}
     if (mode === "art" || mode === "floor") drawArt();
     if (mode === "night") drawArt();
     if (!document.hidden) {

@@ -215,6 +215,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("drawPacketSpoke(", body)
         self.assertIn("drawChairThink(", body)
         self.assertIn("containPortrait(raijinPortrait", body)
+        self.assertIn('drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh, "front")', JS)
         self.assertIn('"GLASS"', body)
         self.assertIn('"PIT"', body)
         self.assertIn('"FROST"', body)
