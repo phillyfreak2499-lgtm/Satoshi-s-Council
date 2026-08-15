@@ -4479,21 +4479,27 @@ function drawCandleChart() {
     const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
     if (card) card.classList.toggle("no-feed", !!empty);
   }
-  function setPairTargetChip(canvas, text) {
+  function setPairHeadChip(canvas, cls, text) {
     const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
     if (!card) return;
-    let chip = card.querySelector(".chart-ktarget-chip");
+    let chip = card.querySelector("." + cls);
     if (!text) {
       if (chip) chip.remove();
       return;
     }
     if (!chip) {
       chip = document.createElement("span");
-      chip.className = "chart-ktarget-chip";
+      chip.className = cls;
       const head = card.querySelector(".chart-card-head");
       if (head) head.appendChild(chip);
     }
     chip.textContent = text;
+  }
+  function setPairTargetChip(canvas, text) {
+    setPairHeadChip(canvas, "chart-ktarget-chip", text);
+  }
+  function setPairWindowChip(canvas, text) {
+    setPairHeadChip(canvas, "chart-window-chip", text || "1H WINDOW");
   }
 
   function drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt) {
@@ -4515,10 +4521,7 @@ function drawCandleChart() {
     ctx.lineTo(right, h - pad.b);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(240, 193, 74, 0.75)";
-    ctx.font = "8px Orbitron, monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("1H WINDOW", pad.l + 4, 14);
+    /* 1H WINDOW lives on the card head — not fillText at pad.t+10 inside the plot. */
     const lc = pairLock(ts);
     const lockMs = (lc && parseStampMs(lc.locked_at)) || Date.now();
     const xLock = xAtTime(candles, lockMs, pad, w) || (w - pad.r - 8);
@@ -4576,6 +4579,7 @@ function drawCandleChart() {
         ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
         : "—";
     }
+    setPairWindowChip(canvas, "1H WINDOW");
     if (candles.length < 2) {
       setPairTargetChip(canvas, "");
       const ctx0 = fitCanvas(canvas);
@@ -4785,7 +4789,9 @@ function drawCandleChart() {
 
   function realFundingPct(mm) {
     if (!mm || mm.funding == null || mm.funding === "") return null;
-    const f = Number(mm.funding);
+    const raw = mm.funding;
+    if (raw === 0 || raw === "0" || raw === "0.0" || raw === "0.0000" || raw === "0.0000%") return null;
+    const f = Number(raw);
     if (!Number.isFinite(f) || f === 0) return null;
     const pct = Math.abs(f) > 1 ? f : f * 100;
     if (!Number.isFinite(pct) || Math.abs(pct) < 1e-4) return null;
@@ -4796,13 +4802,23 @@ function drawCandleChart() {
     const canvas = document.getElementById("chartFunding");
     if (!canvas) return;
     const card = canvas.closest(".chart-card");
-    const live = realFundingPct((state && state.market) || {});
-    if (live != null && !series.funding.some(p => Math.abs(p.f) >= 1e-4)) {
+    const mm = (state && state.market) || {};
+    /* Never push Number(mm.funding) when it is 0 / 0.0000% / null. */
+    if (mm.funding == null || mm.funding === "" || Number(mm.funding) === 0) {
+      if (card) card.hidden = true;
+      return;
+    }
+    const live = realFundingPct(mm);
+    if (live == null) {
+      if (card) card.hidden = true;
+      return;
+    }
+    if (!series.funding.some(p => Math.abs(p.f) >= 1e-4)) {
       pushSeries(series.funding, { t: Date.now(), f: live });
     }
     series.funding = series.funding.filter(p => p && Math.abs(Number(p.f)) >= 1e-4);
     const last = series.funding.length ? series.funding[series.funding.length - 1] : null;
-    if (live == null || !last) {
+    if (!last) {
       if (card) card.hidden = true;
       return;
     }
@@ -5019,6 +5035,8 @@ function drawCandleChart() {
           status: "OPEN",
           conf: lc.confidence,
           window: windowLabelOf(lc, ts),
+          close_time: lc.close_time || (ts.market && ts.market.close_time),
+          window_close: lc.window_close,
           ticker: lc.ticker,
           id: "live:" + pair + ":" + (lc.ticker || lc.locked_at || ""),
         });
@@ -5076,7 +5094,7 @@ function drawCandleChart() {
     }
     if (list) {
       list.innerHTML = locks.slice(0, 8).map(p => {
-        const when = p.window || "1H";
+        const when = windowLabelOf(p);
         const chair = p.pair === "ETH" ? "VITALIK" : "SATOSHI";
         const mark = p.grade === "HIT" ? "HIT" : (p.grade === "MISS" ? "MISS" : (p.status === "OPEN" ? "OPEN" : "SETTLED"));
         return `<li class="chart-lock-row ${p.status === "OPEN" ? "lock-open" : "lock-settled"}">`

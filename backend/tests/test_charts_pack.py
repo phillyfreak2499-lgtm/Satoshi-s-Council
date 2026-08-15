@@ -221,18 +221,26 @@ class ChartsCssTests(unittest.TestCase):
         self.assertIn("function realFundingPct", JS)
         fund = JS[JS.find("function drawChartFunding()"):JS.find("function pairFromLockRow")]
         self.assertIn("card.hidden = true", fund)
-        self.assertIn("1e-4", JS)
+        self.assertIn("Never push Number(mm.funding) when it is 0", fund)
+        self.assertIn("Number(mm.funding) === 0", fund)
         self.assertNotIn("COLLECTING", fund)
+        self.assertNotIn("pushSeries(series.funding, { t: Date.now(), f: Math.abs(f)", fund)
 
     def test_tape_uses_same_window_clock(self):
         tape = JS[JS.find("function drawChartTape()"):JS.find("function finishOnlyStats()")]
-        self.assertIn('p.window || "1H"', tape)
+        self.assertIn("windowLabelOf(p)", tape)
+        self.assertNotIn("parseStampMs(p.t)", tape)
         self.assertNotIn("fmtLockTime(p.t)", tape)
         self.assertNotIn("fmtLockTime(called_at)", tape)
 
     def test_pair_head_has_window_room(self):
-        self.assertIn("t: 40", JS)
-        self.assertIn('fillText("1H WINDOW", pad.l + 4, 14)', JS)
+        hour = JS[JS.find("function drawHourWindowAndLock"):JS.find("function drawPairCandles")]
+        self.assertIn("1H WINDOW", JS)
+        self.assertIn("function setPairWindowChip", JS)
+        self.assertIn("chart-window-chip", JS)
+        self.assertIn('setPairWindowChip(canvas, "1H WINDOW")', JS)
+        self.assertNotIn("pad.t + 10", hour)
+        self.assertNotIn('fillText("1H WINDOW"', hour)
 
     def test_offscale_target_is_chip_not_edge_line(self):
         pair = JS[JS.find("function drawPairCandles"):JS.find("function drawChartBtc()")]

@@ -7503,7 +7503,8 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
 }
 
 /* ===== CHARTS WALL — one hero, tight panes, no empty-sky screensaver ===== */
-.chart-ktarget-chip {
+.chart-ktarget-chip,
+.chart-window-chip {
   margin-left: 8px;
   padding: 1px 6px;
   border: 1px solid rgba(0, 232, 255, 0.45);
@@ -7513,6 +7514,11 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
   letter-spacing: 0.04em;
   text-shadow: 0 0 8px rgba(0, 232, 255, 0.45);
   white-space: nowrap;
+}
+.chart-window-chip {
+  border-color: rgba(240, 193, 74, 0.55);
+  color: #f0c14a;
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.4);
 }
 html body.mode-charts #app {
   display: flex !important;
