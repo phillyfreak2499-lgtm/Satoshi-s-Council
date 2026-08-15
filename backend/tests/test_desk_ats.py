@@ -316,16 +316,58 @@ class AtsPickTests(unittest.TestCase):
             "close_time": "2026-08-22T12:00:00Z",
             "unknown_book": False,
         }
+        mid = {
+            "ticker": "KXNFLGAME-26AUG17KCNY-KC",
+            "game": "KCNY",
+            "sport": "NFL",
+            "kind": "ml",
+            "call": "KC",
+            "leftover": 11.0,
+            "ice": None,
+            "close_time": "2026-08-17T20:00:00Z",
+            "unknown_book": False,
+        }
         self.assertGreater(desk_ats.kick_mins_left(far, NOW), desk_ats.MONTH_KICK_MINS)
+        self.assertGreater(desk_ats.kick_mins_left(far, NOW), desk_ats.MAX_KICK_MINS)
+        self.assertGreater(desk_ats.kick_mins_left(haw, NOW), desk_ats.MAX_KICK_MINS)
+        self.assertLessEqual(desk_ats.kick_mins_left(near_nfl, NOW), desk_ats.NEAR_KICK_MINS)
+        self.assertLessEqual(desk_ats.kick_mins_left(near_cfb, NOW), desk_ats.NEAR_KICK_MINS)
+        self.assertTrue(desk_ats.playable_kick(mid, NOW))
+        self.assertGreater(desk_ats.kick_mins_left(mid, NOW), desk_ats.NEAR_KICK_MINS)
         self.assertEqual(desk_ats.pick_one_game([far, near_nfl], now=NOW)["game"], "DALSEA")
         self.assertEqual(desk_ats.pick_one_game([far, near_cfb], now=NOW)["game"], "OSUMICH")
         self.assertEqual(desk_ats.pick_one_game([far, haw, near_nfl], now=NOW)["game"], "DALSEA")
-        self.assertEqual(desk_ats.pick_one_game([far, haw], now=NOW)["game"], "HAWSTAN")
-        self.assertEqual(desk_ats.pick_one_game([far], now=NOW)["game"], "HOUTTU")
+        # Week-out HAW and month-out HOU are both past the 72h cap → WAIT.
+        self.assertIsNone(desk_ats.pick_one_game([far, haw], now=NOW))
+        self.assertIsNone(desk_ats.pick_one_game([far], now=NOW))
+        # Same-day / <24h football still wins inside the window over a 48h leftover.
+        self.assertEqual(desk_ats.pick_one_game([mid, near_nfl], now=NOW)["game"], "DALSEA")
+        self.assertEqual(desk_ats.pick_one_game([mid, near_cfb], now=NOW)["game"], "OSUMICH")
+        self.assertEqual(desk_ats.pick_one_game([mid], now=NOW)["game"], "KCNY")
         # Calendar still breaks ties among similarly-near books (Saturday → CFB).
         sat_nfl = dict(near_nfl, leftover=8.0)
         sat_cfb = dict(near_cfb, leftover=4.0)
         self.assertEqual(desk_ats.pick_one_game([sat_nfl, sat_cfb], now=NOW)["game"], "OSUMICH")
+
+    def test_month_out_only_leftover_is_wait(self):
+        """Sep 18 HOU@TTU is not picked even when it is the only leftover."""
+        far = {
+            "ticker": "KXNCAAFGAME-26SEP18HOUTTU-HOU",
+            "game": "HOUTTU",
+            "sport": "CFB",
+            "kind": "ml",
+            "call": "HOU",
+            "leftover": 18.0,
+            "ice": None,
+            "close_time": "2026-09-21T00:00:00Z",
+            "unknown_book": False,
+        }
+        self.assertTrue(desk_ats.beyond_kick_cap(far, NOW))
+        self.assertIsNone(desk_ats.pick_one_game([far], now=NOW))
+        locked = dict(far)
+        self.assertIsNone(desk_ats.paper_lock_if_clear(locked, now=NOW))
+        self.assertEqual(locked["call"], "WAIT")
+        self.assertIn("72H", locked.get("gate") or "")
 
     async def test_board_skips_sep18_cfb_when_nearer_nfl_exists(self):
         extra = {
@@ -351,6 +393,61 @@ class AtsPickTests(unittest.TestCase):
         self.assertNotIn("HOUTTU", str(pick.get("ticker") or ""))
         self.assertEqual(pick["game"], "DALSEA")
         self.assertEqual(pick["sport"], "NFL")
+
+    async def test_board_waits_when_only_sep18_leftover(self):
+        extra = {
+            "KXNFLGAME": [],
+            "KXNFLSPREAD": [],
+            "KXNFLTOTAL": [],
+            "KXNCAAFGAME": [
+                _m(
+                    "KXNCAAFGAME-26SEP18HOUTTU-HOU",
+                    series="KXNCAAFGAME",
+                    event="KXNCAAFGAME-26SEP18HOUTTU",
+                    title="Will Houston win the Houston vs Texas Tech game?",
+                    yes_bid="0.38",
+                    yes_ask="0.40",
+                    volume="88000",
+                    close="2026-09-21T00:00:00Z",
+                ),
+            ],
+            "KXNCAAFSPREAD": [],
+            "KXNCAAFTOTAL": [],
+        }
+        board = await desk_ats.build_board(fetch=_fetch_factory(extra), now=NOW, force=True)
+        pick = board["pick"]
+        if pick:
+            self.assertNotEqual(pick.get("game"), "HOUTTU")
+            self.assertEqual(pick.get("call"), "WAIT")
+        self.assertEqual(board["chair"]["eye"], "WAIT")
+        self.assertTrue(board["paper_only"])
+        self.assertFalse(board["follower"])
+
+    async def test_board_sits_morning_sep18_fill_and_picks_nearer(self):
+        desk_ats._fills.append({
+            "id": "ats-1786814518368",
+            "ticker": "KXNCAAFGAME-26SEP18HOUTTU-HOU",
+            "game": "HOUTTU",
+            "sport": "CFB",
+            "kind": "ml",
+            "side": "HOU",
+            "result": "OPEN",
+            "settled": False,
+            "paper": True,
+            "follower": False,
+            "close_time": "2026-09-21T00:00:00Z",
+            "day": "2026-08-15",
+        })
+        desk_ats._save_fills()
+        board = await desk_ats.build_board(fetch=_fetch_factory(), now=NOW, force=True)
+        pick = board["pick"]
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["game"], "DALSEA")
+        self.assertNotEqual(pick.get("call"), "HOU")
+        stored = next(r for r in desk_ats._load_fills() if r.get("id") == "ats-1786814518368")
+        self.assertIn(str(stored.get("result") or "").upper(), ("SIT", "VOID"))
+        self.assertTrue(board["paper_only"])
+        self.assertFalse(board["follower"])
 
     async def test_paper_lock_caps_and_follower_off(self):
         board = await desk_ats.build_board(fetch=_fetch_factory(), now=NOW, force=True)
@@ -707,7 +804,123 @@ class AtsGateTests(unittest.TestCase):
         self.assertIsNone(spray)
         self.assertEqual(desk_ats.locks_today(NOW), 1)
         other = {"ticker": "KXNFLGAME-26AUG15KCNY-KC", "game": "KCNY", "call": "KC", "ice": None}
-        self.assertEqual(desk_ats.one_ticket_gate(other), "ONE TICKET · ALREADY SAT")
+        self.assertEqual(desk_ats.one_ticket_gate(other, now=NOW), "ONE TICKET · ALREADY SAT")
+
+    def test_open_far_fill_is_sat_and_does_not_block_nearer(self):
+        """Morning Sep 18 OPEN fill cannot pin the chair. Sit it; take a nearer book."""
+        far_fill = {
+            "id": "ats-1786814518368",
+            "ticker": "KXNCAAFGAME-26SEP18HOUTTU-HOU",
+            "game": "HOUTTU",
+            "sport": "CFB",
+            "kind": "ml",
+            "side": "HOU",
+            "yes_no": "YES",
+            "result": "OPEN",
+            "settled": False,
+            "paper": True,
+            "follower": False,
+            "live": False,
+            "close_time": "2026-09-21T00:00:00Z",
+            "day": "2026-08-15",
+            "at": "2026-08-15T12:00:00+00:00",
+        }
+        desk_ats._fills.append(far_fill)
+        desk_ats._save_fills()
+        self.assertIsNone(desk_ats.open_paper_ticket(NOW))
+        stored = desk_ats._load_fills()[0]
+        self.assertIn(str(stored.get("result") or "").upper(), ("SIT", "VOID"))
+        self.assertIn("72H", str(stored.get("sit_reason") or stored.get("result") or ""))
+        near = {
+            "ice": None, "call": "SEA", "leftover": 6.0, "game": "DALSEA",
+            "ticker": "KXNFLGAME-26AUG15DALSEA-SEA", "sport": "NFL", "kind": "ml",
+            "mid": 58, "title": "x", "number": "SEA", "close_time": "2026-08-16T00:00:00Z",
+            "side": "YES",
+        }
+        self.assertIsNone(desk_ats.one_ticket_gate(near, held=dict(far_fill), now=NOW))
+        lock = desk_ats.paper_lock_if_clear(near, now=NOW)
+        self.assertIsNotNone(lock)
+        self.assertEqual(lock["game"], "DALSEA")
+        self.assertEqual(lock["result"], "OPEN")
+        self.assertIsNone(desk_ats.one_ticket_gate(near, now=NOW))
+
+    def test_same_day_football_still_wins_inside_72h(self):
+        nfl = {
+            "ticker": "KXNFLGAME-26AUG15DALSEA-SEA",
+            "game": "DALSEA",
+            "sport": "NFL",
+            "kind": "ml",
+            "call": "SEA",
+            "leftover": 3.0,
+            "ice": None,
+            "close_time": "2026-08-16T00:00:00Z",
+            "unknown_book": False,
+        }
+        cfb = {
+            "ticker": "KXNCAAFGAME-26AUG16OSUMICH-OSU",
+            "game": "OSUMICH",
+            "sport": "CFB",
+            "kind": "ml",
+            "call": "OSU",
+            "leftover": 2.0,
+            "ice": None,
+            "close_time": "2026-08-16T08:00:00Z",
+            "unknown_book": False,
+        }
+        later = {
+            "ticker": "KXNFLGAME-26AUG17KCNY-KC",
+            "game": "KCNY",
+            "sport": "NFL",
+            "kind": "ml",
+            "call": "KC",
+            "leftover": 14.0,
+            "ice": None,
+            "close_time": "2026-08-17T20:00:00Z",
+            "unknown_book": False,
+        }
+        self.assertLessEqual(desk_ats.kick_mins_left(nfl, NOW), desk_ats.NEAR_KICK_MINS)
+        self.assertLessEqual(desk_ats.kick_mins_left(cfb, NOW), desk_ats.NEAR_KICK_MINS)
+        self.assertEqual(desk_ats.pick_one_game([later, nfl], now=NOW)["game"], "DALSEA")
+        self.assertEqual(desk_ats.pick_one_game([later, cfb], now=NOW)["game"], "OSUMICH")
+        self.assertEqual(desk_ats.pick_one_game([nfl, cfb], now=NOW)["game"], "OSUMICH")
+        lock = desk_ats.paper_lock_if_clear(dict(nfl, mid=58, side="YES", title="x", number="SEA"), now=NOW)
+        self.assertIsNotNone(lock)
+        self.assertEqual(lock["sport"], "NFL")
+
+    def test_btc_shadow_and_eth_gates_untouched(self):
+        from backend.agents.chair_gates import (
+            btc_shadow_pick,
+            eth_paper_lock_blocked,
+            eth_shadow_pick,
+            is_btc_shadow_row,
+            is_eth_shadow_row,
+        )
+        self.assertEqual(desk_ats.ARES_YES_LO, 20.0)
+        self.assertEqual(desk_ats.ARES_YES_HI, 80.0)
+        self.assertEqual(desk_ats.EARLY_NO_LOCK_MINS, 8.0)
+        self.assertIn("10–90 is for the crypto Chairs only", ATS)
+        self.assertIn("function atsKickLine", JS)
+        self.assertIn("function paintAresEyes", JS)
+        self.assertIn('id="aresFace"', HTML)
+        self.assertIn('id="atsSportChip"', HTML)
+        self.assertIn('"follower": False', ATS)
+        self.assertIn("paper_only", ATS)
+        self.assertIn("def btc_shadow_pick", GATES)
+        self.assertIn("def eth_shadow_pick", GATES)
+        self.assertIn("def eth_paper_lock_blocked", GATES)
+        self.assertNotIn("btc_shadow", ATS)
+        self.assertNotIn("eth_shadow", ATS)
+        self.assertIsNotNone(eth_paper_lock_blocked("ETH", 0))
+        self.assertIsNotNone(eth_paper_lock_blocked("ETH", 7))
+        self.assertIsNone(eth_paper_lock_blocked("ETH", 8))
+        btc = btc_shadow_pick("BTC", "UP", 80, ask=50, strike=63000)
+        self.assertEqual(btc["kind"], "btc_shadow")
+        self.assertTrue(is_btc_shadow_row(btc))
+        self.assertFalse(is_eth_shadow_row(btc))
+        self.assertIsNone(btc_shadow_pick("ETH", "UP", 80))
+        eth = eth_shadow_pick("ETH", "DOWN", 71, ask=44, strike=1874.99)
+        self.assertTrue(is_eth_shadow_row(eth))
+        self.assertFalse(is_btc_shadow_row(eth))
 
     def test_key_numbers_football_gate_nba_noop(self):
         thin = {
