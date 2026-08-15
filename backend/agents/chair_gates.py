@@ -1080,11 +1080,11 @@ def _score_pair(correct: Any, wrong: Any) -> Dict[str, int]:
 
 def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
     """
-    Floor matchup. Paper only.
+    Floor book match. Paper only. Not a leader card.
 
     BTC score = sized Chair locks, finish-only from Kalshi market.result.
     ETH score = shadow picks (including vetoed), finish-only from market.result.
-    Head-to-head is settled correct vs wrong — a matchup, not a stats dump.
+    Head-to-head is settled correct vs wrong — two books, not two chairs.
     """
     btc_acc = btc_acc if isinstance(btc_acc, dict) else {}
     eth_acc = eth_acc if isinstance(eth_acc, dict) else {}
@@ -1106,35 +1106,36 @@ def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
     btc_w, eth_w = btc["wrong"], eth["wrong"]
     played = btc_c + btc_w + eth_c + eth_w
     if btc_c > eth_c:
-        ahead = "satoshi"
+        ahead = "btc"
         lead = btc_c - eth_c
-        match = f"SATOSHI LEADS {btc_c}–{eth_c}"
-        line = "Satoshi is printing. Vitalik is watching."
+        match = f"BTC LEADS {btc_c}–{eth_c}"
+        line = "BTC book ahead on finishes."
     elif eth_c > btc_c:
-        ahead = "vitalik"
+        ahead = "eth"
         lead = eth_c - btc_c
-        match = f"VITALIK LEADS {eth_c}–{btc_c}"
-        line = "Vitalik took the night. Satoshi can chase."
+        match = f"ETH LEADS {eth_c}–{btc_c}"
+        line = "ETH book ahead on finishes."
     else:
         ahead = "tied"
         lead = 0
         match = f"TIED {btc_c}–{eth_c}"
         if played and btc_w < eth_w:
-            line = "Tied on hits. Fewer scars on the BTC table."
+            line = "Even finishes. BTC book has fewer misses."
         elif played and eth_w < btc_w:
-            line = "Tied on hits. ETH table is cleaner tonight."
+            line = "Even finishes. ETH book has fewer misses."
         else:
-            line = "Split night. Neither chair blinks."
+            line = "Even books. Waiting on the next finish."
     return {
         "paper": True,
+        "kind": "books",
         "btc": {**btc, "label": f"{btc_c}–{btc_w}"},
         "eth": {**eth, "label": f"{eth_c}–{eth_w}"},
         "ahead": ahead,
         "lead": lead,
         "match": match,
         "line": line,
-        "satoshi": f"SATOSHI {btc_c}–{btc_w}",
-        "vitalik": f"{eth_c}–{eth_w} VITALIK",
+        "btc_text": f"BTC {btc_c}–{btc_w}",
+        "eth_text": f"{eth_c}–{eth_w} ETH",
     }
 
 

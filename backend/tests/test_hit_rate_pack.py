@@ -251,11 +251,17 @@ class ZachBarTests(unittest.TestCase):
         self.assertEqual(sc["btc"]["wrong"], 2)
         self.assertEqual(sc["eth"]["correct"], 3)
         self.assertEqual(sc["eth"]["wrong"], 2)
-        self.assertEqual(sc["ahead"], "satoshi")
-        self.assertEqual(sc["match"], "SATOSHI LEADS 4–3")
-        self.assertEqual(sc["satoshi"], "SATOSHI 4–2")
-        self.assertEqual(sc["vitalik"], "3–2 VITALIK")
+        self.assertEqual(sc["ahead"], "btc")
+        self.assertEqual(sc["kind"], "books")
+        self.assertEqual(sc["match"], "BTC LEADS 4–3")
+        self.assertEqual(sc["btc_text"], "BTC 4–2")
+        self.assertEqual(sc["eth_text"], "3–2 ETH")
         self.assertNotIn("accuracy_pct", sc)
+        blob = " ".join(str(v) for v in sc.values())
+        self.assertNotIn("Satoshi", blob)
+        self.assertNotIn("Vitalik", blob)
+        self.assertNotIn("SATOSHI", blob)
+        self.assertNotIn("VITALIK", blob)
         tied = floor_scorecard(
             {"correct": 2, "wrong": 1},
             {"eth_shadow": {"n": 4, "hits": 2}},
@@ -263,8 +269,8 @@ class ZachBarTests(unittest.TestCase):
         self.assertEqual(tied["ahead"], "tied")
         self.assertEqual(tied["match"], "TIED 2–2")
         empty = floor_scorecard({}, {})
-        self.assertEqual(empty["satoshi"], "SATOSHI 0–0")
-        self.assertEqual(empty["vitalik"], "0–0 VITALIK")
+        self.assertEqual(empty["btc_text"], "BTC 0–0")
+        self.assertEqual(empty["eth_text"], "0–0 ETH")
 
     def test_never_lock_99_or_one_sided_100(self):
         self.assertIn("≥99", never_lock_near_certain(99, 1) or "")

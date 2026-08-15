@@ -5060,8 +5060,8 @@ body.mode-floor .rivalry-strip:not([hidden]) {
   font-size: 11px;
   letter-spacing: 0.1em;
 }
-.rivalry-strip.ahead-satoshi #rivalSat { color: #f0d78a; }
-.rivalry-strip.ahead-vitalik #rivalVit { color: #9dffc0; }
+.rivalry-strip.ahead-btc #rivalBtc { color: #f0d78a; }
+.rivalry-strip.ahead-eth #rivalEth { color: #9dffc0; }
 .rivalry-strip .rival-trash {
   color: #9ec8e0;
   font-family: Rajdhani, sans-serif;

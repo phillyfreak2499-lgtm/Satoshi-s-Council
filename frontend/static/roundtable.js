@@ -155,7 +155,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate and the Floor Satoshi vs Vitalik scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor BTC vs ETH book scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
@@ -1673,28 +1673,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ethN = Number(sh.n) || 0;
     const ethW = sh.wrong != null ? Number(sh.wrong) || 0 : Math.max(0, ethN - ethC);
     let match = "TIED " + btc.c + "–" + ethC;
-    let line = "Split night. Neither chair blinks.";
+    let line = "Even books. Waiting on the next finish.";
     let ahead = "tied";
     if (btc.c > ethC) {
-      ahead = "satoshi";
-      match = "SATOSHI LEADS " + btc.c + "–" + ethC;
-      line = "Satoshi is printing. Vitalik is watching.";
+      ahead = "btc";
+      match = "BTC LEADS " + btc.c + "–" + ethC;
+      line = "BTC book ahead on finishes.";
     } else if (ethC > btc.c) {
-      ahead = "vitalik";
-      match = "VITALIK LEADS " + ethC + "–" + btc.c;
-      line = "Vitalik took the night. Satoshi can chase.";
+      ahead = "eth";
+      match = "ETH LEADS " + ethC + "–" + btc.c;
+      line = "ETH book ahead on finishes.";
     } else if ((btc.c + btc.w + ethC + ethW) > 0 && btc.w < ethW) {
-      line = "Tied on hits. Fewer scars on the BTC table.";
+      line = "Even finishes. BTC book has fewer misses.";
     } else if ((btc.c + btc.w + ethC + ethW) > 0 && ethW < btc.w) {
-      line = "Tied on hits. ETH table is cleaner tonight.";
+      line = "Even finishes. ETH book has fewer misses.";
     }
     return {
       paper: true,
+      kind: "books",
       ahead: ahead,
       match: match,
       line: line,
-      satoshi: "SATOSHI " + btc.c + "–" + btc.w,
-      vitalik: ethC + "–" + ethW + " VITALIK",
+      btc_text: "BTC " + btc.c + "–" + btc.w,
+      eth_text: ethC + "–" + ethW + " ETH",
     };
   }
 
@@ -1705,15 +1706,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     strip.hidden = !onFloor;
     if (!onFloor) return;
     const sc = scorecardFromState();
-    const sat = document.getElementById("rivalSat");
-    const vit = document.getElementById("rivalVit");
+    const btcEl = document.getElementById("rivalBtc");
+    const ethEl = document.getElementById("rivalEth");
     const lead = document.getElementById("rivalLead");
     const trash = document.getElementById("rivalTrash");
-    if (sat) sat.textContent = sc.satoshi || "SATOSHI 0–0";
-    if (vit) vit.textContent = sc.vitalik || "0–0 VITALIK";
+    if (btcEl) btcEl.textContent = sc.btc_text || "BTC 0–0";
+    if (ethEl) ethEl.textContent = sc.eth_text || "0–0 ETH";
     if (lead) lead.textContent = sc.match || "TIED 0–0";
     if (trash) trash.textContent = sc.line || "";
-    strip.classList.remove("ahead-satoshi", "ahead-vitalik", "ahead-tied");
+    strip.classList.remove("ahead-btc", "ahead-eth", "ahead-tied");
     strip.classList.add("ahead-" + (sc.ahead || "tied"));
   }
 
@@ -7450,7 +7451,7 @@ function drawCandleChart() {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate and the Floor Satoshi vs Vitalik scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor BTC vs ETH book scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
