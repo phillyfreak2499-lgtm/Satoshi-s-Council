@@ -3,9 +3,9 @@
 window.COUNCIL_WIRE = [
   {
     "id": "2026-08-15-floor-chairs",
-    "at": "2026-08-15T22:50:00-05:00",
-    "title": "Floor Chair checkboxes, leftover grow",
-    "why": "Pick which Chairs sit the Floor. The ones left grow — one big, 50/50, thirds, or fourths. Lock-only rings stay. Why: leftover seats should fill the room, not leave empty holes. Paper. Follower OFF."
+    "at": "2026-08-15T23:05:00-05:00",
+    "title": "Floor is leaders only + checkboxes",
+    "why": "Floor shows Chairs only — Satoshi, Vitalik, Ares, Raijin. Checkboxes pick who sits; leftover grow 1 / 50-50 / thirds / fourths. No seat-bot rings, not even lock-only. Bots stay on Seats and Table. Paper. Follower OFF."
   },
   {
     "id": "2026-08-15-coinglass-miss",

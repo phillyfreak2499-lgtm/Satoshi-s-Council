@@ -1,4 +1,4 @@
-"""Floor Chair checkboxes + leftover grow. Lock-only stays. Follower OFF."""
+"""Floor is leaders only + Chair checkboxes. Leftover grow. Follower OFF."""
 from __future__ import annotations
 
 import unittest
@@ -249,31 +249,29 @@ class LeftoverGrowLayoutTests(unittest.TestCase):
         self.assertIn('drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin"', draw)
 
 
-class FloorLockOnlyStaysTests(unittest.TestCase):
-    def test_floor_lock_only_still_holds(self):
-        self.assertIn("function floorSeatDirLocked(", JS)
-        self.assertIn("function floorLockedAgents(", JS)
-        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
-        self.assertIn("function chairLockIsReal(", JS)
+class FloorLeadersOnlyTests(unittest.TestCase):
+    def test_floor_has_no_seat_bot_rings(self):
+        self.assertIn("Floor is leaders only", JS)
+        self.assertIn("No seat-bot rings", JS)
+        self.assertIn("onFloor ? [] : roster", JS)
+        draw = JS.split("function drawTableWithBots", 1)[1].split("function drawMiniTable", 1)[0]
+        self.assertIn("if (onFloor)", draw)
+        self.assertIn("drawFloorAttractGlow(cx, cy, radius, which)", draw)
+        self.assertNotIn("hideWait ? floorLockedAgents(roster) : roster", draw)
+        self.assertNotIn("drawGameBot(bp.name", draw.split("if (onFloor)", 1)[1].split("} else if (!botPts.length)", 1)[0])
         art = JS.split("function drawArt()", 1)[1]
-        self.assertIn("const floorHideWait = floorLikeMode()", art)
-        self.assertIn("order = order.filter(function (n) { return locked[n]; });", art)
+        self.assertIn("if (floorLikeMode())", art)
+        self.assertIn("drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable))", art)
+        self.assertIn("Seat-bot rings stay on Table / Seats", art)
+        self.assertNotIn("ORA", JS.split("const FLOOR_CHAIR_KEYS", 1)[1][:400])
+        self.assertNotIn("oracle", JS.split("const FLOOR_CHAIR_KEYS", 1)[1][:400].lower())
+        self.assertIn("function chairLockIsReal(", JS)
+        self.assertIn("function drawThinkingRing(", JS)
+        self.assertIn("function drawLockIgnition(", JS)
+        self.assertIn("drawChairThink(cx, portraitY, pr, radius", draw)
+        self.assertIn("drawLockIgnition(cx, portraitY, pr, which)", draw)
         self.assertNotIn("full WAIT roster", JS)
         self.assertNotIn("WAIT roster to fill", JS)
-        self.assertTrue(floor_seat_dir_locked("UP"))
-        self.assertTrue(floor_seat_dir_locked("DOWN_HOLD"))
-        self.assertFalse(floor_seat_dir_locked("WAIT"))
-        self.assertEqual(
-            [a["agent_name"] for a in floor_locked_agents([
-                {"agent_name": "candle", "direction": "WAIT"},
-                {"agent_name": "volume", "direction": "UP"},
-                {"agent_name": "leader", "direction": "DOWN"},
-            ])],
-            ["volume"],
-        )
-        real = JS.split("function chairLockIsReal", 1)[1].split("function lockStampWord", 1)[0]
-        self.assertIn('side === "WAIT"', real)
-        self.assertIn("return false", real)
 
 
 class PhoneNoCrushTests(unittest.TestCase):
@@ -318,12 +316,14 @@ class FollowerUntouchedTests(unittest.TestCase):
 class FloorChairWireTests(unittest.TestCase):
     def test_wire_note(self):
         self.assertIn("2026-08-15-floor-chairs", WIRE_JS)
-        self.assertIn("Floor Chair checkboxes, leftover grow", WIRE_JS)
-        why = WIRE_JS.split("2026-08-15-floor-chairs", 1)[1][:500]
-        self.assertIn("one big", why)
-        self.assertIn("50/50", why)
+        self.assertIn("Floor is leaders only + checkboxes", WIRE_JS)
+        why = WIRE_JS.split("2026-08-15-floor-chairs", 1)[1][:600]
+        self.assertIn("Chairs only", why)
+        self.assertIn("leftover grow", why)
+        self.assertIn("50-50", why)
         self.assertIn("thirds", why)
         self.assertIn("fourths", why)
+        self.assertIn("No seat-bot rings", why)
         self.assertIn("Follower OFF", why)
         self.assertNotIn("ZT ·", why)
 

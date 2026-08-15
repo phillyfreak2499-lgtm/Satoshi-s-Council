@@ -128,16 +128,16 @@ class MarkupTests(unittest.TestCase):
         self.assertIn("function floorLockedSeatLabels(", JS)
         draw = JS.split("function drawTableWithBots", 1)[1].split("function drawMiniTable", 1)[0]
         self.assertIn("floorLikeMode()", draw)
-        self.assertIn("floorLockedAgents(roster)", draw)
-        self.assertIn("floorCryptoTable(which)", draw)
+        self.assertIn("onFloor ? [] : roster", draw)
+        self.assertIn("Floor is leaders only", draw)
         self.assertIn("chairPortraitOf(which, dir)", draw)
         crawl = JS.split("function paintFloorCrawl()", 1)[1][:1600]
         self.assertNotIn('chips.push("BTC WAIT")', crawl)
         self.assertIn("if (!floorSeatDirLocked(s)) return;", crawl)
         self.assertIn("if (!chips.length)", crawl)
         art = JS.split("function drawArt()", 1)[1]
-        self.assertIn("const floorHideWait = floorLikeMode()", art)
-        self.assertIn("order = order.filter(function (n) { return locked[n]; });", art)
+        self.assertIn("if (floorLikeMode())", art)
+        self.assertIn("drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable))", art)
         self.assertTrue(floor_seat_dir_locked("UP"))
         self.assertTrue(floor_seat_dir_locked("DOWN"))
         self.assertTrue(floor_seat_dir_locked("up_hold"))

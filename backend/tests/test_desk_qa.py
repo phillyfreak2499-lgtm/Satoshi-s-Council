@@ -220,10 +220,8 @@ class FloorNameplateOverlapTests(unittest.TestCase):
         self.assertIn("dualNameY", JS)
         self.assertIn("FOCUSWICK", JS)
         self.assertIn('view === "art"', JS)
-        # Live collisions this pass — not the old WICK/QUORUM watch list.
+        # Table still has seat-bot rings. Floor is leaders only — no seat bots.
         table_hits = ("WIRE", "CASCADE")
-        floor_hits = ("WIRE", "EXHAUST", "VEL", "CHEAP")
-        phone_hits = ("FADE", "ORBIT", "WHALE")
         for w, h in ((1280, 700), (1280, 620)):
             table = _floor_hud_layout(w, h, "art")
             self.assertFalse(table["dual"])
@@ -246,9 +244,7 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                     )
             floor = _floor_hud_layout(w, h, "floor")
             self.assertTrue(floor["dual"])
-            fnames = {s["name"] for s in floor["seats"]}
-            for lab in floor_hits:
-                self.assertIn(lab, fnames, "%s missing on Floor %sx%s" % (lab, w, h))
+            self.assertEqual(floor["seats"], [], "Floor must not draw seat-bot rings at %sx%s" % (w, h))
             satoshi = [p for p in floor["nameplates"] if "SATOSHI" in str(p.get("text") or "")]
             self.assertTrue(satoshi)
             raijin = [p for p in floor["nameplates"] if "RAIJIN" in str(p.get("text") or "")]
@@ -262,35 +258,10 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                         _rects_intersect(plate, other),
                         "RAIJIN covers %s at Floor %sx%s" % (other.get("text"), w, h),
                     )
-            cluster = [s for s in floor["seats"] if s["name"] in floor_hits]
-            for i, a in enumerate(cluster):
-                for b in cluster[i + 1 :]:
-                    if a.get("table") != b.get("table"):
-                        continue
-                    self.assertFalse(
-                        _rects_intersect(a, b),
-                        "Floor %s overlaps %s at %sx%s a=%s b=%s" % (a["name"], b["name"], w, h, a, b),
-                    )
-                for plate in satoshi:
-                    if a.get("table") and plate.get("table") and a["table"] != plate["table"]:
-                        continue
-                    self.assertFalse(
-                        _rects_intersect(plate, a),
-                        "SATOSHI · BTC overlaps %s at Floor %sx%s plate=%s seat=%s"
-                        % (a["name"], w, h, plate, a),
-                    )
         for w, h in ((390, 390), (390, 520)):
             phone = _floor_hud_layout(w, h, "floor")
-            names = {s["name"] for s in phone["seats"]}
-            for lab in phone_hits:
-                self.assertIn(lab, names, "%s missing on phone %sx%s" % (lab, w, h))
-            for plate in list(phone["nameplates"]) + list(phone["goals"]):
-                for seat in phone["seats"]:
-                    self.assertFalse(
-                        _rects_intersect(plate, seat),
-                        "phone %s overlaps %s at %sx%s plate=%s seat=%s"
-                        % (plate.get("text") or "HUD", seat["name"], w, h, plate, seat),
-                    )
+            self.assertEqual(phone["seats"], [], "phone Floor must not draw seat-bot rings at %sx%s" % (w, h))
+            self.assertTrue(phone["nameplates"] or phone["goals"])
 
     def test_dual_tables_do_not_crush_at_1042(self):
         self.assertIn("function dualFloorTableR", JS)
@@ -303,22 +274,15 @@ class FloorNameplateOverlapTests(unittest.TestCase):
         for w, h in ((1042, 700), (1042, 800), (1042, 620), (1280, 700)):
             layout = _floor_hud_layout(w, h)
             self.assertTrue(layout["dual"], "ETH stays Satoshi/Vitalik dual at %sx%s" % (w, h))
-            btc = [s for s in layout["seats"] if s.get("table") == "btc"]
-            eth = [s for s in layout["seats"] if s.get("table") == "eth"]
-            self.assertTrue(btc and eth, "both councils missing at %sx%s" % (w, h))
-            for a in btc:
-                for b in eth:
+            self.assertEqual(layout["seats"], [], "Floor leftover grow is chairs only at %sx%s" % (w, h))
+            satoshi = [p for p in layout["nameplates"] if "SATOSHI" in str(p.get("text") or "")]
+            vitalik = [p for p in layout["nameplates"] if "VITALIK" in str(p.get("text") or "")]
+            self.assertTrue(satoshi and vitalik, "both Chairs missing at %sx%s" % (w, h))
+            for a in satoshi:
+                for b in vitalik:
                     self.assertFalse(
                         _rects_intersect(a, b),
-                        "1042 crush: %s/%s overlaps %s/%s at %sx%s a=%s b=%s"
-                        % (a["table"], a["name"], b["table"], b["name"], w, h, a, b),
-                    )
-            hud = list(layout["nameplates"]) + list(layout["goals"])
-            for plate in hud:
-                for seat in layout["seats"]:
-                    self.assertFalse(
-                        _rects_intersect(plate, seat),
-                        "%s overlaps %s at %sx%s" % (plate.get("text") or "HUD", seat["name"], w, h),
+                        "1042 crush: %s overlaps %s at %sx%s" % (a.get("text"), b.get("text"), w, h),
                     )
 
 
@@ -624,8 +588,7 @@ def _floor_hud_layout(w, h, view="floor"):
             name_y = cy - 2 + pr + 11
             nw = _text_w(text, 11)
             nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text, "table": side})
-            if side in ("btc", "eth"):
-                add_seats(cx, cy, r * 1.42, 16, 6, 8, side)
+            # Floor is leaders only — no seat-bot rings.
     elif view == "art" and not phone:
         radius = min(w, h) * 0.32
         ring_r = radius * 1.18
@@ -674,7 +637,8 @@ def _floor_hud_layout(w, h, view="floor"):
             )
             nw = _text_w("SATOSHI", 10)
             nameplates.append({"x": cx - nw / 2, "y": cy + lr * 0.52 - 8, "w": nw, "h": 12, "text": "SATOSHI"})
-        add_seats(cx, cy, ring_r, seat_r, 8 if is_phone else 12, 9 if is_phone else 11)
+        if view == "art":
+            add_seats(cx, cy, ring_r, seat_r, 8 if is_phone else 12, 9 if is_phone else 11)
     return {"phone": phone, "dual": dual, "view": view, "nameplates": nameplates, "goals": goals, "seats": seats}
 
 

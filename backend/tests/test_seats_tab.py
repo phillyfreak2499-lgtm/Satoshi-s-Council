@@ -125,10 +125,11 @@ class SeatsLeaveAloneTests(unittest.TestCase):
     def test_floor_lock_only_still_holds(self):
         self.assertIn("function floorSeatDirLocked(", JS)
         self.assertIn("function floorLockedAgents(", JS)
-        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
+        self.assertIn("onFloor ? [] : roster", JS)
+        self.assertIn("Floor is leaders only", JS)
         art = JS.split("function drawArt()", 1)[1]
-        self.assertIn("const floorHideWait = floorLikeMode()", art)
-        self.assertIn("order = order.filter(function (n) { return locked[n]; });", art)
+        self.assertIn("if (floorLikeMode())", art)
+        self.assertIn("drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable))", art)
         self.assertTrue(floor_seat_dir_locked("UP"))
         self.assertTrue(floor_seat_dir_locked("DOWN_HOLD"))
         self.assertFalse(floor_seat_dir_locked("WAIT"))

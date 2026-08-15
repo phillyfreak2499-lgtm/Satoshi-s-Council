@@ -3761,8 +3761,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
     const roster = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && !a.sub);
-    const hideWait = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor")) && floorCryptoTable(which);
-    const agents = hideWait ? floorLockedAgents(roster) : roster;
+    const onFloor = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor"));
+    // Floor is leaders only. No seat-bot rings — not even lock-only. Bots stay on Seats and Table.
+    const agents = onFloor ? [] : roster;
     const maj = majorityDirOf(roster);
     const wx = hourWeatherOf(st);
     const gold = "rgba(240, 193, 74, 0.95)";
@@ -3894,13 +3895,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       try { drawPublicTug(cx, cy, radius, st && st.tug); } catch (e) {}
     }
 
-    if (!botPts.length) {
+    if (onFloor) {
+      drawFloorAttractGlow(cx, cy, radius, which);
+    } else if (!botPts.length) {
       if (!roster.length) {
         ctx.font = "600 10px Rajdhani, sans-serif";
         ctx.fillStyle = "rgba(160,180,200,0.55)";
         ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
-      } else if (hideWait) {
-        drawFloorAttractGlow(cx, cy, radius, which);
       }
     } else {
       botPts.forEach((bp, i) => {
@@ -4126,10 +4127,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           const nameY = cy - 2 + pr + 11;
           const nw = tw(t, 11);
           out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
-          if (side === "btc" || side === "eth") {
-            const live = (typeof floorLockedSeatLabels === "function") ? floorLockedSeatLabels(side) : null;
-            addSeats(cx, cy, R * 1.42, 16, 6, 8, side, live);
-          }
+          // Floor is leaders only — no seat-bot rings on Floor HUD.
         });
       } else {
         const slots = floorChairLayout(w, h, keys, false);
@@ -4140,10 +4138,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           const nameY = s.y - 2 + pr + 11;
           const nw = tw(t, 11);
           out.nameplates.push({ x: s.x - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
-          if (side === "btc" || side === "eth") {
-            const live = (typeof floorLockedSeatLabels === "function") ? floorLockedSeatLabels(side) : null;
-            addSeats(s.x, s.y, s.r * 1.42, 16, 6, 8, side, live);
-          }
+          // Floor leftover grow — chairs only, no seat-bot rings.
         });
       }
     } else if (view === "art" && !phone) {
@@ -4175,10 +4170,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 8, w: nw, h: 12, text: "SATOSHI" });
       }
-      const live = (view !== "art" && typeof floorLockedSeatLabels === "function")
-        ? floorLockedSeatLabels((typeof focusTable !== "undefined" && floorCryptoTable(focusTable)) ? focusTable : "bitcoin")
-        : null;
-      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11, "", live);
+      if (view === "art") {
+        addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11, "", null);
+      }
     }
     return out;
   }
@@ -4370,15 +4364,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return;
     }
 
-    // Specialists on Floor and Table — packet lines + game-unit seats
-    if (mode === "floor" || mode === "art") {
+    // Floor is leaders only. Seat-bot rings stay on Table / Seats — not the Floor.
+    if (floorLikeMode()) {
+      drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable));
+    } else if (mode === "art") {
     let agents = state.agents.filter(a => a.agent_name !== "leader" && !a.sub);
-    const floorHideWait = floorLikeMode()
-      && !(typeof isFrontTable === "function" && isFrontTable(focusTable))
-      && !(typeof isAtsTable === "function" && isAtsTable(focusTable));
-    if (floorHideWait) {
-      agents = floorLockedAgents(agents);
-    }
+    const floorHideWait = false;
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
@@ -4417,8 +4408,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }));
     seatList.sort((a, b) => a.rank - b.rank || String(a.name).localeCompare(String(b.name)));
 
-    // Bots removed from the TABLE — they live on the FLOOR (outer ring).
-    // Table surface reserved for Chair + clear locked call for follower bots.
+    // Seat-bot rings live on Table / Seats. Floor is leaders only.
     const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle

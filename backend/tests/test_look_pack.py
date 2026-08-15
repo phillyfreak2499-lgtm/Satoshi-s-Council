@@ -32,14 +32,14 @@ def floor_locked_agents(agents):
 
 
 class FloorLockOnlyStaysTests(unittest.TestCase):
-    def test_floor_still_hides_wait_seats(self):
+    def test_floor_is_leaders_only_no_seat_bots(self):
         self.assertIn("function floorSeatDirLocked(", JS)
         self.assertIn("function floorLockedAgents(", JS)
-        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
-        self.assertIn("floorCryptoTable(which)", JS)
+        self.assertIn("onFloor ? [] : roster", JS)
+        self.assertIn("Floor is leaders only", JS)
         art = JS.split("function drawArt()", 1)[1]
-        self.assertIn("const floorHideWait = floorLikeMode()", art)
-        self.assertIn("order = order.filter(function (n) { return locked[n]; });", art)
+        self.assertIn("if (floorLikeMode())", art)
+        self.assertIn("drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable))", art)
         self.assertNotIn("full WAIT roster", JS)
         self.assertNotIn("WAIT roster to fill", JS)
         self.assertTrue(floor_seat_dir_locked("UP"))
