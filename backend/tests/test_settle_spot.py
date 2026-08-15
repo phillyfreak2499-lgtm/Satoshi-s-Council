@@ -235,6 +235,52 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
         )
         c.store.record_eth_shadow_pick.assert_not_awaited()
 
+    async def test_btc_shadow_persists_and_skips_counting_lock(self):
+        c = self._council()
+        c.asset = "btc"
+        c.store.record_btc_shadow_pick = AsyncMock()
+        pick = {
+            "kind": "btc_shadow",
+            "side": "UP",
+            "confidence": 74,
+            "ask": 50,
+            "strike": 63000.0,
+            "vetoed": False,
+            "paper_stake": 0.0,
+            "counts_as_lock": False,
+        }
+        await c._maybe_record_btc_shadow(
+            {"btc_shadow_pick": pick, "window_locked": False},
+            "KXBTCD-26AUG1616-T63000.00",
+            "2026-08-16T16:00:00+00:00",
+        )
+        c.store.record_btc_shadow_pick.assert_awaited()
+        kwargs = c.store.record_btc_shadow_pick.await_args.kwargs
+        self.assertEqual(kwargs["direction"], "UP")
+        self.assertEqual(kwargs["side_ask"], 50)
+        self.assertEqual(kwargs["floor_strike"], 63000.0)
+        self.assertFalse(kwargs["vetoed"])
+        c.store.record_btc_shadow_pick.reset_mock()
+        await c._maybe_record_btc_shadow(
+            {"btc_shadow_pick": pick, "window_locked": True},
+            "KXBTCD-26AUG1616-T63000.00",
+            "2026-08-16T16:00:00+00:00",
+        )
+        c.store.record_btc_shadow_pick.assert_not_awaited()
+        await c._maybe_record_btc_shadow(
+            {"btc_shadow_pick": pick, "locked_call": {"locked": True, "direction": "UP"}},
+            "KXBTCD-26AUG1616-T63000.00",
+            "2026-08-16T16:00:00+00:00",
+        )
+        c.store.record_btc_shadow_pick.assert_not_awaited()
+        c.asset = "eth"
+        await c._maybe_record_btc_shadow(
+            {"btc_shadow_pick": pick},
+            "KXETHD-26AUG1616-T2000.00",
+            "2026-08-16T16:00:00+00:00",
+        )
+        c.store.record_btc_shadow_pick.assert_not_awaited()
+
     async def test_restore_skips_eth_shadow(self):
         c = self._council()
         c.asset = "eth"
@@ -245,6 +291,23 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
                 "confidence": 71,
                 "shadow": True,
                 "kind": "eth_shadow",
+            }]
+        })
+        c.leader._set_window_lock = MagicMock()
+        await c._restore_open_lock()
+        c.leader._set_window_lock.assert_not_called()
+
+    async def test_restore_skips_btc_shadow(self):
+        c = self._council()
+        c.asset = "btc"
+        c.store.get_accuracy = AsyncMock(return_value={
+            "open": [{
+                "direction": "UP",
+                "ticker": "KXBTCD-26AUG1616-T63000.00",
+                "confidence": 74,
+                "shadow": True,
+                "kind": "btc_shadow",
+                "asset": "btc",
             }]
         })
         c.leader._set_window_lock = MagicMock()

@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from backend.agents.chair_gates import (
     book_is_unknown,
     close_time_from_kalshi_ticker,
-    is_eth_shadow_row,
+    is_shadow_row,
     odds_to_cents,
     parse_book_depth,
     ticker_asset,
@@ -180,7 +180,10 @@ def calibration_strip(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def chair_tape_payload(rows: List[Dict[str, Any]], hours: int = TAPE_HOURS) -> Dict[str, Any]:
-    chair = [r for r in rows if (r.get("kind") or "chair") != "eth_shadow" and not r.get("shadow")]
+    chair = [
+        r for r in rows
+        if (r.get("kind") or "chair") not in ("eth_shadow", "btc_shadow") and not r.get("shadow")
+    ]
     tape = [tape_row_from_call(r) for r in chair]
     tape.sort(key=lambda r: str(r.get("called_at") or r.get("close_time") or ""), reverse=True)
     return {
@@ -431,7 +434,7 @@ async def load_chair_tape_rows(store: Any, hours: int = TAPE_HOURS) -> List[Dict
     now = datetime.now(timezone.utc)
     out = []
     for r in list(opens or []) + list(settled or []):
-        if is_eth_shadow_row(r) or r.get("shadow") or r.get("kind") == "eth_shadow":
+        if is_shadow_row(r) or r.get("shadow") or r.get("kind") in ("eth_shadow", "btc_shadow"):
             continue
         when = _parse_iso(r.get("called_at") or r.get("close_time") or r.get("settled_at"))
         if r.get("actual_outcome") is None or r.get("y_finish") is None:
