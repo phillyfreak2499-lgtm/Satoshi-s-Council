@@ -462,6 +462,23 @@ class NightlyHuddle:
         except Exception as e:
             self._log(f"Learner save failed: {e}")
 
+        backfill_meta: Dict[str, Any] = {}
+        try:
+            snap = learner.snapshot() if hasattr(learner, "snapshot") else {}
+            backfill_meta = (snap.get("backfill") or getattr(learner, "backfill", None) or {}) if isinstance(snap, dict) else {}
+            if not isinstance(backfill_meta, dict):
+                backfill_meta = {}
+            n_bf = int(backfill_meta.get("hours_graded") or 0)
+            if n_bf > 0:
+                msg = (
+                    f"Backfill tape: {n_bf} hour(s) tagged backfill "
+                    f"(merge into live brain, not a wipe)"
+                )
+                house.append(msg)
+                self._log(msg)
+        except Exception as e:
+            self._log(f"Backfill tag read: {e}")
+
         # ------------------------------------------------------------------
         # 7) Patterns + report
         # ------------------------------------------------------------------
@@ -482,6 +499,7 @@ class NightlyHuddle:
             "rebuilt_windows": rebuilt_n,
             "l20_bump": self._l20_bump,
             "law_bump": law_bump_meta,
+            "backfill": backfill_meta,
             "accuracy_snapshot": {
                 "total": accuracy.get("total"),
                 "correct": accuracy.get("correct"),

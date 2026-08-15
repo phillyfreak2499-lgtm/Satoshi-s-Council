@@ -8,6 +8,12 @@ window.COUNCIL_WIRE = [
     "why": "CoinGlass now logs the real miss + 30m/1h paths. CARRY/CHAIN/CASCADE stay dark only with a reason. Paper. Follower OFF."
   },
   {
+    "id": "2026-08-15-seat-backfill",
+    "at": "2026-08-15T22:30:00-05:00",
+    "title": "90-day Kalshi seat backfill",
+    "why": "BTC and ETH brains get settled 1h tape they never sat through. Merge into the live brain. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-summon-oath",
     "at": "2026-08-15T22:10:00-05:00",
     "title": "Gate now SUMMON THE COUNCIL after agree",

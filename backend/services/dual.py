@@ -47,6 +47,7 @@ class DualOrchestrator:
             self.eth = Council(asset="eth", leader_name="vitalik")
         self.running = False
         self._task: Optional[asyncio.Task] = None
+        self._backfill_task: Optional[asyncio.Task] = None
 
     # ── back-compat proxies (main.py still uses council.store / .leader / …) ──
     @property
@@ -105,6 +106,13 @@ class DualOrchestrator:
             c.running = True
         self.running = True
         self._task = asyncio.create_task(self._loop())
+        try:
+            from backend.learning.seat_backfill import maybe_run_boot_backfill
+            self._backfill_task = asyncio.create_task(
+                maybe_run_boot_backfill(self), name="seat-backfill"
+            )
+        except Exception as e:
+            logger.debug(f"seat backfill boot schedule skip: {e}")
         logger.info(
             f"DualOrchestrator started (btc=on eth={'on' if self.eth else 'off'} "
             f"sequential={getattr(settings, 'DUAL_SEQUENTIAL', True)})"
@@ -124,6 +132,12 @@ class DualOrchestrator:
             self._task.cancel()
             try:
                 await self._task
+            except asyncio.CancelledError:
+                pass
+        if self._backfill_task:
+            self._backfill_task.cancel()
+            try:
+                await self._backfill_task
             except asyncio.CancelledError:
                 pass
         for c in self._councils():

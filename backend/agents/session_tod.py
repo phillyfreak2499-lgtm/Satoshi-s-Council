@@ -47,7 +47,18 @@ class SessionTodSpecialist(BaseSpecialist):
         streak_dir, streak_n = self.streak(market_data)
         mean_rev = self.mean_reversion_bias(market_data)
 
-        now = datetime.now(timezone.utc)
+        raw_now = market_data.get("as_of") or market_data.get("now")
+        if isinstance(raw_now, datetime):
+            now = raw_now if raw_now.tzinfo else raw_now.replace(tzinfo=timezone.utc)
+        elif raw_now:
+            try:
+                now = datetime.fromisoformat(str(raw_now).replace("Z", "+00:00"))
+                if now.tzinfo is None:
+                    now = now.replace(tzinfo=timezone.utc)
+            except Exception:
+                now = datetime.now(timezone.utc)
+        else:
+            now = datetime.now(timezone.utc)
         hour = now.hour
         name, bias, activity = _session_for(hour)
 

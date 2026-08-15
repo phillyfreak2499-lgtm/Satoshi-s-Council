@@ -133,6 +133,76 @@ class BinanceClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_historical_klines(
+        self,
+        start_ms: int,
+        end_ms: int,
+        limit: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        """
+        Historical 1m bars. Same stack as the desk:
+        data-api.binance.vision → api.binance.us → Coinbase BTC-USD/ETH-USD.
+        Empty on miss — do not invent candles.
+        """
+        symbol = self.symbol
+        params = {
+            "symbol": symbol,
+            "interval": "1m",
+            "startTime": int(start_ms),
+            "endTime": int(end_ms),
+            "limit": int(limit),
+        }
+        last_err = None
+        bases = list(self.spot_bases) + [self.us_book_base]
+        for base in bases:
+            url = f"{base}/api/v3/klines"
+            try:
+                raw = await self._get_json(url, params)
+                candles = []
+                for row in raw or []:
+                    candles.append({
+                        "open_time": int(row[0]),
+                        "open": float(row[1]),
+                        "high": float(row[2]),
+                        "low": float(row[3]),
+                        "close": float(row[4]),
+                        "volume": float(row[5]),
+                        "close_time": int(row[6]),
+                    })
+                if candles:
+                    self._last_spot_source = spot_source_from_base(base)
+                    return candles
+            except Exception as e:
+                last_err = e
+        try:
+            product = coinbase_product_for_symbol(self.symbol)
+            start_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(start_ms) / 1000.0))
+            end_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(end_ms) / 1000.0))
+            url = f"https://api.exchange.coinbase.com/products/{product}/candles"
+            raw = await self._get_json(url, {
+                "granularity": 60,
+                "start": start_iso,
+                "end": end_iso,
+            })
+            candles = []
+            for row in reversed(list(raw or [])[:limit]):
+                t, low, high, o, c, vol = row
+                candles.append({
+                    "open_time": int(t) * 1000,
+                    "open": float(o),
+                    "high": float(high),
+                    "low": float(low),
+                    "close": float(c),
+                    "volume": float(vol),
+                    "close_time": int(t) * 1000 + 59999,
+                })
+            self._last_spot_source = "coinbase"
+            return candles
+        except Exception as e:
+            logger.debug(f"historical klines failed: {last_err}; coinbase: {e}")
+            self._last_spot_source = None
+            return []
+
     async def get_klines(self, limit: int = 120) -> List[Dict[str, Any]]:
         symbol = self.symbol
         params = {"symbol": symbol, "interval": "1m", "limit": limit}

@@ -898,6 +898,47 @@ async def journal_locks_csv(asset: str | None = None, limit: int = 200):
         headers={"Content-Disposition": "attachment; filename=lock-journal.csv"},
     )
 
+@app.get("/api/admin/seat-backfill")
+async def admin_seat_backfill_contract(request: Request):
+    """Print the 90-day Kalshi seat-backfill contract. No run. No live orders."""
+    if not _admin_ok(request):
+        return {"ok": False, "error": "admin password required"}
+    from backend.learning.seat_backfill import backfill_contract, load_status
+    return {"ok": True, "contract": backfill_contract(), "status": load_status()}
+
+
+@app.post("/api/admin/seat-backfill")
+async def admin_seat_backfill(request: Request):
+    """
+    One-pass 90-day Kalshi seat backfill on the persistent disk.
+    Paper. Follower OFF. Merges into live brains. Does not wipe.
+    """
+    if not _admin_ok(request):
+        return {"ok": False, "error": "admin password required"}
+    body = await _read_json_obj(request)
+    force = bool(body.get("force"))
+    from backend.learning.seat_backfill import run_seat_backfill
+    learners = {}
+    clients = {}
+    for c in council._councils():
+        learners[c.asset] = c.learner
+        pipe = getattr(c, "pipeline", None)
+        if pipe is not None:
+            clients[c.asset] = getattr(pipe, "kalshi", None)
+    report = await run_seat_backfill(
+        learners=learners,
+        kalshi_clients=clients,
+        persist=True,
+        force=force,
+    )
+    for c in council._councils():
+        try:
+            c.leader.sync_from_learner()
+        except Exception:
+            pass
+    return report
+
+
 @app.post("/api/admin/clear-hit-rate")
 async def admin_clear_hit_rate(request: Request):
     """Reset hit-rate counters display. Does NOT wipe AdaptiveLearner weights."""
