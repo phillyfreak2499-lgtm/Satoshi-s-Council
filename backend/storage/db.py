@@ -11,9 +11,17 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Float, Integer, Text, select, func
+from sqlalchemy import String, Float, Integer, Text, or_, select, func
 from backend.config import settings
-from backend.agents.chair_gates import finish_outcome, official_window_due
+from backend.agents.chair_gates import (
+    chair_bins_from_settled,
+    decide_open_lock_grade,
+    known_official_market,
+    is_eth_shadow_row,
+    lock_time_strike,
+    paper_stake_for_lock,
+    ticker_asset,
+)
 from loguru import logger
 
 
@@ -78,6 +86,10 @@ class WindowCall(Base):
     floor_strike: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # exact locked strike
     p_finish: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     ev_cents: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    y_finish: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # official UP/DOWN
+    shadow: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = ETH shadow pick
+    vetoed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = BTC-impulse veto
+    side_ask: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # ask ¢ at pick time
 
 
 
@@ -119,6 +131,10 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN floor_strike FLOAT",
                 "ALTER TABLE window_calls ADD COLUMN p_finish FLOAT",
                 "ALTER TABLE window_calls ADD COLUMN ev_cents FLOAT",
+                "ALTER TABLE window_calls ADD COLUMN y_finish VARCHAR(10)",
+                "ALTER TABLE window_calls ADD COLUMN shadow INTEGER",
+                "ALTER TABLE window_calls ADD COLUMN vetoed INTEGER",
+                "ALTER TABLE window_calls ADD COLUMN side_ask FLOAT",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -180,16 +196,24 @@ class PerformanceStore:
                 down_pct=down_pct,
                 regime_key=decision.get("regime_key"),
                 asset=asset,
-                floor_strike=(
-                    decision.get("floor_strike")
-                    or (lc or {}).get("floor_strike")
-                    or kalshi_target
+                floor_strike=lock_time_strike(
+                    ticker=market_ticker,
+                    floor_strike=(
+                        decision.get("floor_strike")
+                        or (lc or {}).get("floor_strike")
+                        or kalshi_target
+                    ),
                 ),
                 p_finish=decision.get("p_finish") if decision.get("p_finish") is not None else (lc or {}).get("p_finish"),
                 ev_cents=decision.get("ev_cents") if decision.get("ev_cents") is not None else (lc or {}).get("ev_cents"),
             )
 
         return signal_id
+
+    @staticmethod
+    def _counting_lock_clause():
+        """Chair locks that count — ETH shadows are a parallel tape."""
+        return or_(WindowCall.shadow.is_(None), WindowCall.shadow == 0)
 
     @staticmethod
     def _grade_side(direction: str) -> Optional[str]:
@@ -207,9 +231,8 @@ class PerformanceStore:
 
     @staticmethod
     def _default_stake(direction: str) -> float:
-        if direction in ("UP_HOLD", "DOWN_HOLD"):
-            return float(getattr(settings, "PAPER_STAKE_HOLD", 10.0))
-        return float(getattr(settings, "PAPER_STAKE_DEFAULT", 25.0))
+        # Flat paper stake. Chair conf is not a size multiplier.
+        return paper_stake_for_lock(direction, lifetime_n=0, chair_conf=None)
 
     @staticmethod
     def _paper_side(direction: str) -> str:
@@ -312,6 +335,8 @@ class PerformanceStore:
         entry_side = self._side_pct(side, up_pct, down_pct)
         if entry_side is None:
             return  # need Kalshi odds to open a graded call
+        # Persist lock-time strike even when live Kalshi floor_strike is null.
+        floor_strike = lock_time_strike(ticker=ticker, floor_strike=floor_strike)
 
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat()
@@ -325,6 +350,7 @@ class PerformanceStore:
                 .where(
                     WindowCall.actual_outcome.is_(None),
                     WindowCall.ticker == ticker,
+                    PerformanceStore._counting_lock_clause(),
                 )
                 .order_by(WindowCall.id.desc())
                 .limit(1)
@@ -345,6 +371,10 @@ class PerformanceStore:
                             active.floor_strike = float(floor_strike)
                         except (TypeError, ValueError):
                             pass
+                    elif getattr(active, "floor_strike", None) is None:
+                        filled = lock_time_strike(ticker=ticker)
+                        if filled is not None:
+                            active.floor_strike = filled
                     if p_finish is not None:
                         try:
                             active.p_finish = float(p_finish)
@@ -394,7 +424,10 @@ class PerformanceStore:
             # Debounce same-side re-entry
             result = await session.execute(
                 select(WindowCall)
-                .where(WindowCall.direction == direction)
+                .where(
+                    WindowCall.direction == direction,
+                    PerformanceStore._counting_lock_clause(),
+                )
                 .order_by(WindowCall.id.desc())
                 .limit(1)
             )
@@ -446,6 +479,7 @@ class PerformanceStore:
                         select(func.count(WindowCall.id)).where(
                             WindowCall.ticker == ticker,
                             WindowCall.close_time == close_time,
+                            PerformanceStore._counting_lock_clause(),
                         )
                     )
                 else:
@@ -453,6 +487,7 @@ class PerformanceStore:
                     cnt_q = await session.execute(
                         select(func.count(WindowCall.id)).where(
                             WindowCall.ticker == ticker,
+                            PerformanceStore._counting_lock_clause(),
                         )
                     )
                 n_calls = int(cnt_q.scalar_one() or 0)
@@ -485,6 +520,82 @@ class PerformanceStore:
             ))
             await session.commit()
 
+    async def record_eth_shadow_pick(
+        self,
+        ticker: str,
+        direction: str,
+        confidence: int,
+        close_time: str | None = None,
+        side_ask: float | None = None,
+        floor_strike: float | None = None,
+        vetoed: bool = False,
+        asset: str = "eth",
+    ) -> None:
+        """
+        One ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
+        A BTC-impulse veto is stored so we can grade whether the veto was right.
+        """
+        side = self._grade_side(direction)
+        if side is None or not ticker:
+            return
+        strike = lock_time_strike(ticker=ticker, floor_strike=floor_strike)
+        ask = None
+        try:
+            if side_ask is not None:
+                ask = float(side_ask)
+        except (TypeError, ValueError):
+            ask = None
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        async with self.Session() as session:
+            q = select(WindowCall).where(
+                WindowCall.actual_outcome.is_(None),
+                WindowCall.shadow == 1,
+            )
+            if close_time:
+                q = q.where(WindowCall.close_time == close_time)
+            else:
+                q = q.where(WindowCall.ticker == ticker)
+            q = q.order_by(WindowCall.id.desc()).limit(1)
+            existing = (await session.execute(q)).scalar_one_or_none()
+            if existing is not None:
+                existing.direction = side
+                existing.confidence = int(confidence or 0)
+                existing.ticker = ticker
+                existing.vetoed = 1 if vetoed else 0
+                if ask is not None:
+                    existing.side_ask = ask
+                    existing.open_price = ask
+                if strike is not None:
+                    existing.floor_strike = strike
+                if close_time:
+                    existing.close_time = close_time
+                existing.paper_stake = 0.0
+                existing.asset = "eth"
+                await session.commit()
+                return
+            session.add(WindowCall(
+                ticker=ticker,
+                direction=side,
+                confidence=int(confidence or 0),
+                entry_price=None,
+                open_price=ask,
+                close_time=close_time,
+                called_at=now_iso,
+                win_pct=None,
+                path_move_pct=0.0,
+                exit_price=ask,
+                paper_stake=0.0,
+                paper_pnl=0.0,
+                paper_side=self._paper_side(side),
+                asset="eth",
+                floor_strike=strike,
+                shadow=1,
+                vetoed=1 if vetoed else 0,
+                side_ask=ask,
+            ))
+            await session.commit()
+
     async def settle_expired_calls(
         self,
         current_price: float | None = None,
@@ -492,6 +603,7 @@ class PerformanceStore:
         down_pct: float | None = None,
         floor_strike: float | None = None,
         asset: str | None = None,
+        kalshi_results: Dict[str, Any] | None = None,
     ) -> int:
         """
         Finish-only grading for hit-rate / lifetime.
@@ -499,37 +611,30 @@ class PerformanceStore:
         A call is RIGHT only when the window has ended and the final
         market outcome matches the locked side (UP or DOWN).
 
-        No path/peak/near-certain early wins. Path stats may still be
-        updated for diagnostics, but correct=1 only on finish match.
+        y_finish is written only from an official Kalshi result
+        (yes→UP, no→DOWN) after the market is finalized/determined/settled.
+        Later-hour spot is never used.
         """
         now = datetime.now(timezone.utc)
         settled_n = 0
-
-        def _final_outcome(locked_strike: float | None) -> Optional[str]:
-            # Exact locked strike beats the live ATM (hops still hurt more than a fancy model)
-            strike = locked_strike if locked_strike is not None else None
-            graded = finish_outcome(current_price, strike)
-            if graded is not None:
-                return graded
-            # Legacy rows with no stored strike: only then use this cycle's strike
-            if locked_strike is None:
-                graded = finish_outcome(current_price, floor_strike)
-                if graded is not None:
-                    return graded
-            return None
+        results = kalshi_results if isinstance(kalshi_results, dict) else {}
+        want = (asset or "").strip().lower() or None
 
         async with self.Session() as session:
-            filters = [WindowCall.actual_outcome.is_(None)]
-            if asset:
-                filters.append(WindowCall.asset == asset.lower())
             result = await session.execute(
-                select(WindowCall).where(*filters)
+                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
             )
             rows = result.scalars().all()
             for row in rows:
-                # Safety: never grade a row with this table's spot/strike if asset mismatches
-                if asset and row.asset and row.asset.lower() != asset.lower():
-                    continue
+                inferred = ticker_asset(row.ticker)
+                row_asset = (row.asset or inferred or "").lower()
+                if want:
+                    if inferred and inferred != want:
+                        continue
+                    if row_asset and row_asset != want:
+                        continue
+                    if not inferred and not row_asset:
+                        continue
                 side = self._grade_side(row.direction)
                 if side is None:
                     continue
@@ -546,45 +651,73 @@ class PerformanceStore:
                     except (TypeError, ValueError):
                         pass
 
-                # Grade only on official Kalshi close — never invent a close from max_age
-                if not official_window_due(row.close_time, now=now):
+                official = (
+                    results.get(row.ticker)
+                    or results.get(str(row.ticker or "").upper())
+                    or results.get(row.id)
+                    or results.get(str(row.id))
+                    or known_official_market(row.ticker, row.id)
+                )
+                # Persist missing lock-time strike (1062/1063 were null).
+                # Identity only — y_finish still comes from official result.
+                if getattr(row, "floor_strike", None) is None:
+                    filled = lock_time_strike(ticker=row.ticker, kalshi_result=official)
+                    if filled is not None:
+                        row.floor_strike = filled
+                # Hour-close only. Official Kalshi yes/no → y_finish.
+                # Never current_price vs strike. Never invent an outcome.
+                grade = decide_open_lock_grade(
+                    ticker=row.ticker,
+                    call_id=row.id,
+                    close_time=row.close_time,
+                    direction=row.direction,
+                    kalshi_result=official,
+                    now=now,
+                )
+                if grade is None:
                     continue
-                reason = "window_end"
+                y_finish = grade["y_finish"]
+                if grade.get("close_iso") and not row.close_time:
+                    row.close_time = grade["close_iso"]
+                if getattr(row, "floor_strike", None) is None and grade.get("floor_strike") is not None:
+                    row.floor_strike = grade["floor_strike"]
+                if not row.asset and grade.get("asset"):
+                    row.asset = grade["asset"]
 
-                locked_strike = None
-                try:
-                    if getattr(row, "floor_strike", None) is not None:
-                        locked_strike = float(row.floor_strike)
-                except (TypeError, ValueError):
-                    locked_strike = None
-
-                final = _final_outcome(locked_strike)
-                stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
-                row.paper_stake = stake
+                shadow = is_eth_shadow_row(row) or bool(getattr(row, "shadow", 0))
+                if shadow:
+                    stake = 0.0
+                    row.paper_stake = 0.0
+                    row.paper_pnl = 0.0
+                    row.shadow = 1
+                else:
+                    stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
+                    row.paper_stake = stake
                 if not row.paper_side:
                     row.paper_side = self._paper_side(row.direction)
 
-                if final is None:
-                    # Official close passed but no honest strike/spot — leave open
-                    continue
-
-                matched = final == side
-                row.actual_outcome = final
+                matched = bool(grade.get("correct"))
+                row.actual_outcome = y_finish
+                try:
+                    row.y_finish = y_finish
+                except Exception:
+                    pass
                 row.correct = 1 if matched else 0
                 row.settled_at = now.isoformat()
-                row.settle_reason = "finish_match" if matched else "finish_miss"
-                # Binary paper: win = stake * (100/entry - 1) approx, or flat unit
-                try:
-                    entry = float(row.open_price) if row.open_price is not None else 50.0
-                    if matched and 1.0 < entry < 99.0:
-                        # $1 on YES at entry¢ pays $1*(100/entry) if finishes right
-                        row.paper_pnl = stake * ((100.0 / entry) - 1.0)
-                    elif matched:
-                        row.paper_pnl = stake  # flat win
-                    else:
-                        row.paper_pnl = -stake
-                except Exception:
-                    row.paper_pnl = stake if matched else -stake
+                row.settle_reason = grade.get("settle_reason") or (
+                    "finish_match" if matched else "finish_miss"
+                )
+                if not shadow:
+                    try:
+                        entry = float(row.open_price) if row.open_price is not None else 50.0
+                        if matched and 1.0 < entry < 99.0:
+                            row.paper_pnl = stake * ((100.0 / entry) - 1.0)
+                        elif matched:
+                            row.paper_pnl = stake
+                        else:
+                            row.paper_pnl = -stake
+                    except Exception:
+                        row.paper_pnl = stake if matched else -stake
                 settled_n += 1
 
             await session.commit()
@@ -599,6 +732,7 @@ class PerformanceStore:
             "ticker": r.ticker,
             "direction": r.direction,
             "outcome": r.actual_outcome,
+            "y_finish": getattr(r, "y_finish", None) or r.actual_outcome,
             "correct": (bool(r.correct == 1) if r.correct is not None else None),
             "confidence": r.confidence,
             "entry": r.entry_price,
@@ -620,6 +754,11 @@ class PerformanceStore:
             "p_finish": getattr(r, "p_finish", None),
             "ev_cents": getattr(r, "ev_cents", None),
             "floor_strike": getattr(r, "floor_strike", None),
+            "asset": (r.asset or ticker_asset(r.ticker)),
+            "shadow": bool(getattr(r, "shadow", 0)),
+            "vetoed": bool(getattr(r, "vetoed", 0)),
+            "side_ask": getattr(r, "side_ask", None),
+            "kind": "eth_shadow" if is_eth_shadow_row(r) else "chair",
         }
 
     async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
@@ -671,7 +810,13 @@ class PerformanceStore:
                     or (not r.settle_reason)  # legacy graded rows
                 )
             ]
-            pending_filters = [WindowCall.actual_outcome.is_(None)]
+            reliability = list(settled)
+            # Chair locks that count — ETH shadows fill the reliability bin only.
+            settled = [r for r in settled if not is_eth_shadow_row(r)]
+            pending_filters = [
+                WindowCall.actual_outcome.is_(None),
+                PerformanceStore._counting_lock_clause(),
+            ]
             if ac is not None:
                 pending_filters.append(ac)
             pending = (
@@ -816,6 +961,11 @@ class PerformanceStore:
 
         first_at = settled[0].settled_at or settled[0].called_at if settled else None
         last_at = newest_first[0].settled_at or newest_first[0].called_at if newest_first else None
+        chair_bins = chair_bins_from_settled(
+            reliability if (asset or "").lower() in ("eth", "ethereum") else settled
+        )
+        shadow_rows = [r for r in reliability if is_eth_shadow_row(r)]
+        shadow_hits = sum(1 for r in shadow_rows if r.correct == 1)
 
         return {
             # Lifetime primary stats
@@ -858,6 +1008,16 @@ class PerformanceStore:
             "open": int(pending),
             "calls_logged": int(pending) + int(total),
             "calls_settled": int(total),
+            "reliability_n": len(reliability),
+            "eth_shadow": {
+                "n": len(shadow_rows),
+                "hits": shadow_hits,
+                "wrong": max(0, len(shadow_rows) - shadow_hits),
+                "accuracy_pct": (
+                    round(100.0 * shadow_hits / len(shadow_rows), 1) if shadow_rows else None
+                ),
+            },
+            "chair_bins": chair_bins,
 
             "streak": streak,
             "wrong_streak": wrong_streak,
@@ -887,6 +1047,7 @@ class PerformanceStore:
             "path_partial_pct": float(getattr(settings, "PATH_PARTIAL_PCT", 4.0)),
             "path_near_certain_pct": float(getattr(settings, "PATH_NEAR_CERTAIN_PCT", 90.0)),
             "paper_path_scaled": bool(getattr(settings, "PAPER_PATH_SCALED", True)),
+            "finish_only": True,
         }
 
     async def get_lifetime_log(self, limit: int = 500, offset: int = 0) -> Dict[str, Any]:
@@ -997,6 +1158,7 @@ class PerformanceStore:
                 "entry_side_pct": r.open_price,
                 "path_move_pct": r.path_move_pct,
                 "confidence": r.confidence,
+                "asset": (r.asset or ticker_asset(r.ticker)),
             })
 
         def bucket_sum(pred):
@@ -1079,6 +1241,44 @@ class PerformanceStore:
             "open": [c for c in calls if c["status"] == "open"][:20],
         }
 
+    async def paper_summary_by_asset(self, asset: str | None = None) -> Dict[str, Any]:
+        """Finish-graded auto paper only. Open locks do not invent a −$25 P&L."""
+        journal = await self.get_paper_journal()
+        calls = list(journal.get("calls") or [])
+        want = (asset or "").strip().lower() or None
+        if want in ("bitcoin",):
+            want = "btc"
+        if want in ("ethereum",):
+            want = "eth"
+        if want:
+            filtered = []
+            for c in calls:
+                inferred = ticker_asset(c.get("ticker"))
+                row_a = (c.get("asset") or inferred or "").lower()
+                if inferred and inferred != want:
+                    continue
+                if row_a and row_a != want:
+                    continue
+                if not inferred and not row_a:
+                    continue
+                filtered.append(c)
+            calls = filtered
+        settled = [
+            c for c in calls
+            if c.get("status") in ("win", "loss") and c.get("pnl") is not None
+        ]
+        wins = sum(1 for c in settled if c.get("correct") is True)
+        losses = sum(1 for c in settled if c.get("correct") is False)
+        pnl = round(sum(float(c.get("pnl") or 0) for c in settled), 2)
+        return {
+            "asset": want,
+            "wins": wins,
+            "losses": losses,
+            "pnl": pnl if settled else 0.0,
+            "recent": settled[:20],
+            "open": [c for c in calls if c.get("status") == "open"][:20],
+        }
+
 
     async def prune_old_window_calls(self, days: int = 90) -> int:
         """Delete settled window_calls older than `days`. Returns rows removed."""
@@ -1105,16 +1305,54 @@ class PerformanceStore:
             logger.warning(f"prune_old_window_calls: {e}")
             return 0
 
-    async def recent_settled_calls(self, limit: int = 20) -> List[Dict[str, Any]]:
+    async def list_open_calls(self, asset: str | None = None) -> List[Dict[str, Any]]:
+        """Open (unsettled) window calls for hour-close grading. Never deletes."""
+        want = (asset or "").strip().lower() or None
+        async with self.Session() as session:
+            result = await session.execute(
+                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
+            )
+            rows = result.scalars().all()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            inferred = ticker_asset(r.ticker)
+            row_asset = (r.asset or inferred or "").lower()
+            if want:
+                if inferred and inferred != want:
+                    continue
+                if row_asset and row_asset != want:
+                    continue
+                if not inferred and not row_asset:
+                    continue
+            out.append({
+                "id": r.id,
+                "ticker": r.ticker,
+                "close_time": r.close_time,
+                "floor_strike": getattr(r, "floor_strike", None),
+                "asset": r.asset or inferred,
+                "direction": r.direction,
+                "shadow": bool(getattr(r, "shadow", 0)),
+                "vetoed": bool(getattr(r, "vetoed", 0)),
+            })
+        return out
+
+    async def recent_settled_calls(self, limit: int = 20, asset: str | None = None) -> List[Dict[str, Any]]:
         """Newest-first settled window calls, with agent votes when available."""
         async with self.Session() as session:
             result = await session.execute(
                 select(WindowCall)
                 .where(WindowCall.actual_outcome.isnot(None))
                 .order_by(WindowCall.id.desc())
-                .limit(limit)
+                .limit(max(int(limit) * 3, 40))
             )
             rows = result.scalars().all()
+            if asset:
+                want = asset.lower()
+                rows = [
+                    r for r in rows
+                    if (r.asset or ticker_asset(r.ticker) or "").lower() == want
+                ]
+            rows = rows[: max(1, int(limit))]
             out = []
             for r in rows:
                 votes = None
@@ -1131,12 +1369,13 @@ class PerformanceStore:
                         votes = json.loads(sig.agent_votes)
                     except Exception:
                         votes = None
-                # outcome for learner: winning side label UP/DOWN
-                if r.correct == 1:
-                    outcome = "UP" if r.direction in ("UP", "UP_HOLD") else "DOWN" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
-                else:
-                    # miss → opposite of call side for grading agent votes against truth
-                    outcome = "DOWN" if r.direction in ("UP", "UP_HOLD") else "UP" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
+                # Learner truth is official y_finish, not a later-hour spot.
+                outcome = getattr(r, "y_finish", None) or r.actual_outcome
+                if outcome not in ("UP", "DOWN"):
+                    if r.correct == 1:
+                        outcome = "UP" if r.direction in ("UP", "UP_HOLD") else "DOWN" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
+                    else:
+                        outcome = "DOWN" if r.direction in ("UP", "UP_HOLD") else "UP" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
                 # Prefer stored regime; else derive from timestamps
                 reg = r.regime_key
                 if not reg:
@@ -1151,6 +1390,7 @@ class PerformanceStore:
                     "direction": r.direction,
                     "confidence": r.confidence,
                     "actual_outcome": r.actual_outcome,
+                    "y_finish": getattr(r, "y_finish", None) or r.actual_outcome,
                     "outcome": outcome,
                     "correct": r.correct,
                     "entry_price": r.entry_price,
@@ -1168,6 +1408,10 @@ class PerformanceStore:
                     "p_finish": getattr(r, "p_finish", None),
                     "ev_cents": getattr(r, "ev_cents", None),
                     "floor_strike": getattr(r, "floor_strike", None),
+                    "shadow": bool(getattr(r, "shadow", 0)),
+                    "vetoed": bool(getattr(r, "vetoed", 0)),
+                    "side_ask": getattr(r, "side_ask", None),
+                    "kind": "eth_shadow" if is_eth_shadow_row(r) else "chair",
                 })
             return out
 
@@ -1395,6 +1639,12 @@ class PerformanceStore:
                     "paper_pnl": r.paper_pnl,
                     "settle_reason": r.settle_reason,
                     "regime_key": r.regime_key,
+                    "asset": r.asset,
+                    "floor_strike": getattr(r, "floor_strike", None),
+                    "y_finish": getattr(r, "y_finish", None),
+                    "shadow": getattr(r, "shadow", None),
+                    "vetoed": getattr(r, "vetoed", None),
+                    "side_ask": getattr(r, "side_ask", None),
                 })
             return out
 
@@ -1441,6 +1691,15 @@ class PerformanceStore:
                     paper_pnl=row.get("paper_pnl"),
                     settle_reason=row.get("settle_reason"),
                     regime_key=row.get("regime_key"),
+                    floor_strike=lock_time_strike(
+                        ticker=row.get("ticker"),
+                        floor_strike=row.get("floor_strike"),
+                    ),
+                    asset=row.get("asset"),
+                    y_finish=row.get("y_finish"),
+                    shadow=row.get("shadow"),
+                    vetoed=row.get("vetoed"),
+                    side_ask=row.get("side_ask"),
                 ))
                 imported += 1
                 existing.add(key)

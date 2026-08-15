@@ -4,49 +4,80 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Satoshi’s Council</title>
+  <meta name="description" content="Satoshi’s Council" />
+  <meta property="og:title" content="Satoshi’s Council" />
+  <meta property="og:description" content="Satoshi’s Council" />
+  <meta property="og:image" content="/council-mark.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
+  <script>
+  /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
+  (function () {
+    try { localStorage.removeItem("council_auth_ok"); } catch (e) {}
+    try { sessionStorage.removeItem("council_auth_ok"); } catch (e) {}
+    try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    document.documentElement.classList.add("gate-locked");
+    document.addEventListener("DOMContentLoaded", function () {
+      document.body.classList.add("gate-locked");
+      document.body.classList.remove("admin-unlocked", "follower-unlocked");
+      document.body.setAttribute("data-password-protected", "true");
+      var pg = document.getElementById("passwordGate");
+      if (pg) pg.classList.remove("hidden");
+    });
+  })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
-<body class="gate-locked">
+<body class="gate-locked" data-password-protected="true">
 
   <!-- Password gate -->
   <div id="passwordGate" class="password-gate">
     <div class="password-card">
+      <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
-      <div class="password-sub">Enter access code</div>
+      <div class="password-sub">Password-protected private desk · Enter access code</div>
       <input type="password" id="passwordInput" class="password-input" placeholder="Password" autocomplete="current-password" />
       <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon">Enter</button>
       <p id="passwordError" class="password-error hidden">Wrong password</p>
     </div>
   </div>
 
-  <!-- Startup: Tutorial or Summon -->
-  <div id="summonGate" class="summon-gate hidden">
+  <!-- First-login choice: Tutorial or Summon. Returning users skip this. -->
+  <div id="summonGate" class="summon-gate hidden" aria-label="First visit">
     <canvas id="gateFog" class="gate-fog"></canvas>
     <div id="gateInner" class="gate-inner">
+      <img class="gate-mark" src="/council-mark.png" alt="" width="88" height="88" />
       <div class="gate-brand">SATOSHI’S COUNCIL</div>
       <div class="gate-actions">
         <button type="button" id="btnTutorial" class="gate-btn gate-btn-ghost">Tutorial</button>
         <button type="button" id="btnSummon" class="gate-btn gate-btn-summon">Summon the Council</button>
       </div>
-      <p class="gate-hint">Password-protected private desk</p>
     </div>
-    <div id="gateTutorial" class="gate-tutorial hidden">
-      <div class="tut-card">
-        <div class="tut-step" id="tutStepLabel">1 / 5</div>
-        <h2 id="tutTitle">Welcome</h2>
-        <p id="tutBody"></p>
-        <div class="tut-actions">
-          <button type="button" id="tutSkip" class="gate-btn gate-btn-ghost">Skip</button>
-          <button type="button" id="tutNext" class="gate-btn gate-btn-summon">Next</button>
-        </div>
+    <div id="summonStatus" class="summon-status hidden" aria-live="polite">
+      <p id="summonLine"></p>
+    </div>
+    <div id="gateTutorial" class="gate-tutorial hidden"></div>
+  </div>
+
+  <div id="coachOverlay" class="coach-overlay hidden" hidden aria-hidden="true">
+    <div id="coachHole" class="coach-hole" aria-hidden="true"></div>
+    <aside id="coachCard" class="coach-card" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
+      <div class="coach-step" id="coachStep">1 / 1</div>
+      <h2 id="coachTitle">Tutorial</h2>
+      <p id="coachBody"></p>
+      <div class="coach-actions">
+        <button type="button" id="coachBack" class="gate-btn gate-btn-ghost">Back</button>
+        <button type="button" id="coachSkip" class="gate-btn gate-btn-ghost">Skip</button>
+        <button type="button" id="coachNext" class="gate-btn gate-btn-summon">Next</button>
       </div>
-    </div>
+    </aside>
   </div>
 
 
@@ -54,20 +85,44 @@
   <!-- Startup gate: Tutorial or Summon -->
   <div id="app">
     <div id="ztWatermark" class="zt-watermark" aria-hidden="true"></div>
-    <div class="floor-hint" id="floorHint">FLOOR · ESC or TABLE to exit</div>
+    <div class="floor-hint" id="floorHint">FLOOR</div>
+    <button type="button" id="floorExitBtn" class="floor-exit-btn" hidden>TABLE</button>
+    <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden aria-label="Start Seat Storm">KILL TIME / PLAY</button>
+    <div id="seatStormPlay" class="seat-storm-play hidden" hidden aria-hidden="true">
+      <div class="ss-hud">
+        <span class="ss-title">SEAT STORM</span>
+        <span id="ssStreak" class="ss-streak">0</span>
+        <span id="ssBest" class="ss-best">BEST 0</span>
+        <span id="ssClock" class="ss-clock">0:40</span>
+        <span id="ssPair" class="ss-pair">ETH</span>
+        <button type="button" id="ssExit" class="ss-exit">BACK TO DESK</button>
+      </div>
+      <div id="ssRing" class="ss-ring" role="group" aria-label="Seat Storm ring"></div>
+      <p id="ssStatus" class="ss-status">Tap the lit seat</p>
+    </div>
+    <div id="rivalryStrip" class="rivalry-strip" hidden aria-label="Paper book match · BTC sized locks vs ETH shadow picks" title="BTC sized locks vs ETH shadow picks · finish-only · reset in Settings">
+      <span class="rival-tag">PAPER</span>
+      <span class="rival-tag">BOOKS</span>
+      <span id="rivalBtc">BTC 0–0</span>
+      <b class="rival-vs">VS</b>
+      <span id="rivalEth">0–0 ETH</span>
+      <span id="rivalLead" class="rival-lead">BTC 0 · ETH 0</span>
+      <span id="rivalTrash" class="rival-trash"></span>
+    </div>
+    <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
     <!-- watermark removed; clean logo lives in header -->
     <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
     <header>
       <div class="header-row">
         <div class="logo">
-          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Created by Zachery Teas" aria-label="Satoshi’s Council">
-            <img src="/zt-logo.jpg" alt="Satoshi’s Council" width="36" height="36" />
+          <button type="button" id="ztHeaderLogo" class="zt-header-logo" title="Satoshi’s Council" aria-label="Satoshi’s Council">
+            <img src="/council-mark.png" alt="" width="36" height="36" />
           </button>
           <span class="title">SATOSHI’S COUNCIL</span>
           <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
-        </div>
-        <div id="creditPopup" class="credit-popup hidden" role="dialog" aria-label="Credits">
-          <div class="credit-inner">Created by <b>Zachery Teas</b></div>
+          <div id="creditPopup" class="credit-popup hidden" role="dialog" aria-label="Credits">
+            <div class="credit-inner">Created by <b>Zachery Teas</b></div>
+          </div>
         </div>
         <div class="controls">
           <button type="button" id="hiveBtn" class="hive-btn" title="" aria-label="…">
@@ -94,7 +149,7 @@
             <span id="lawStatus" class="law-status">OK</span>
           </div>
           <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="Play cinematic (also unlocks after 5 wins in a row)" aria-label="Play cinematic">
-            <img src="/zt-logo.jpg" alt="" width="28" height="28" />
+            <img src="/council-mark.png" alt="" width="28" height="28" />
           </button>
           <button type="button" id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
           <button type="button" id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>
@@ -102,10 +157,10 @@
           <span id="lastUpdate">—</span>
         </div>
       </div>
-      <div class="mode-tabs" role="tablist" aria-label="View mode">
-        <button type="button" id="focusBtc" class="focus-tab focus-active" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
-        <button type="button" id="focusEth" class="focus-tab" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
-        <span id="focusTableBadge" class="focus-table-badge" title="Floor shows both tables">BTC · SATOSHI</span>
+      <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
+        <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
+        <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
+        <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
@@ -119,8 +174,16 @@
     </header>
 
     <main id="mainTable">
-      <!-- LEFT: Lifetime accuracy + settled log -->
+      <!-- LEFT: 1H WINDOW + LIFETIME. Docked at top of this column, not over the nav. -->
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
+        <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
+          <div class="led-bezel">
+            <div class="led-label">1H WINDOW</div>
+            <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+            <div class="led-foot" id="ledWindowSub">until close</div>
+            <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
+          </div>
+        </div>
         <div class="panel-head">
           <span class="panel-title">LIFETIME</span>
           <span class="panel-sub" id="callLogMeta">0/0 · —</span>
@@ -150,16 +213,18 @@
           <span class="hr-path-lab">ENTRY</span>
           <b id="hrEntryAvg">—</b>
         </div>
-        <div class="panel-head panel-head-sub">
-          <span class="panel-title">LIFETIME LOG</span>
-          <span class="panel-sub" id="logCount">all settled</span>
+        <div id="lifetimeLogBlock" class="lifetime-log-block idle">
+          <div class="panel-head panel-head-sub">
+            <span class="panel-title">LIFETIME LOG</span>
+            <span class="panel-sub" id="logCount">all settled</span>
+          </div>
+          <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
         </div>
-        <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
       </aside>
 
       <!-- CENTER: Round table -->
 <div id="tableStage" class="table-stage">
-        <canvas id="roundtable" width="1100" height="780"></canvas>
+        <canvas id="roundtable" width="1100" height="780" role="img" aria-label="Vitalik ETH table"></canvas>
         <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
           <div id="lightsaberBar" class="lightsaber-bar">
             <div class="lightsaber-sparks" id="lightsaberSparks"></div>
@@ -168,8 +233,40 @@
         </div>
         <div id="dashboardOverlay" class="hidden"></div>
       </div>
+      <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 
 
+<aside id="debatePanel" class="side-panel side-right signal-feed" aria-label="Table HUD">
+        <section id="lockTapeCard" class="hud-card lock-tape-card" aria-label="Last locks tape">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
+          <ol id="lockTapeList" class="lock-tape-list" aria-live="polite">
+            <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>
+          </ol>
+        </section>
+        <section id="whyLockCard" class="hud-card why-lock-card hidden" aria-label="Why this lock">
+          <header class="hud-card-head"><span>WHY THIS LOCK</span></header>
+          <p id="whyLockLine" class="why-lock-line">—</p>
+        </section>
+        <section id="dualFightCard" class="hud-card dual-fight-card" aria-label="BTC versus ETH">
+          <header class="hud-card-head"><span>BTC · ETH</span><span class="hud-meta" id="dualFightMeta">—</span></header>
+          <div id="dualFightStrip" class="dual-fight-strip">
+            <span id="dualFightBtc">BTC —</span>
+            <span id="dualFightVs" class="dual-fight-vs">·</span>
+            <span id="dualFightEth">ETH —</span>
+          </div>
+        </section>
+        <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden aria-label="Start Seat Storm">START SEAT STORM</button>
+        <div class="panel-head">
+          <span class="panel-title">SIGNAL FEED</span>
+          <span class="panel-sub" id="signalFeedMeta">live packets</span>
+        </div>
+        <ol id="signalFeed" class="signal-feed-list" aria-live="polite"></ol>
+        <div id="signalChair" class="signal-chair">
+          <div class="signal-chair-dir" id="signalChairDir">WAIT</div>
+          <div class="signal-chair-meta" id="signalChairMeta">P(finish) — · EV — · — left</div>
+          <div class="signal-chair-last" id="signalChairLast">last lock —</div>
+        </div>
+      </aside>
 <aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only" aria-label="Bot hierarchy">
         <div class="panel-head">
           <span class="panel-title">HIERARCHY</span>
@@ -177,7 +274,6 @@
         </div>
         <div class="hierarchy-hint">Top of the ring = rank #1 · closer seats still carry more listen weight. Wrong streak → muted until they earn back.</div>
         <div id="hierarchyList" class="hierarchy-list" aria-live="polite"></div>
-        <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
       </aside>
 </main>
 
@@ -233,7 +329,7 @@
           </div>
 
           <div class="beast-card settings-card">
-            <div class="beast-title">FADE (invert chronic losers)</div>
+            <div class="beast-title fade-title">FADE — invert chronic losers</div>
             <label class="set-field">Min graded samples
               <input type="number" step="1" min="5" max="100" id="setFadeMinN" />
             </label>
@@ -345,29 +441,7 @@
         </div>
 
 
-        <div class="beast-card settings-card" id="adminToolsCard">
-          <div class="beast-title">ADMIN TOOLS</div>
-          <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities.</p>
-          <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
-            <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate</button>
-            <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
-            <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
-          </div>
-          <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
-        </div>
-
-<div class="brain-card" id="brainCard">
-          <div class="beast-title">LEARNING BRAIN</div>
-          <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
-          <div class="brain-actions">
-            <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="/api/brain/export" download>Download brain.json</a>
-            <label class="gate-btn gate-btn-ghost brain-upload">
-              Upload brain.json
-              <input type="file" id="brainFile" accept="application/json,.json" hidden />
-            </label>
-          </div>
-          <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
-        </div>
+        <div id="adminDeskHost"></div>
 
         <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
       </div>
@@ -379,7 +453,7 @@
     <section id="botsView" class="info-view hidden" aria-label="Bot field guide">
       <div class="info-hero">
         <h2>BOT FIELD GUIDE</h2>
-        <p>Each seat reads its own lane + its sub-bots. Satoshi only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
+        <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
       </div>
       <div id="botsGrid" class="bots-grid"></div>
     </section>
@@ -388,14 +462,14 @@
     <section id="ranksView" class="info-view hidden" aria-label="Rank board">
       <div class="info-hero">
         <h2>RANK BOARD</h2>
-        <p id="ranksPhase">Learning phase: collecting samples — Satoshi starts loose, then gets pickier as the lifetime log fills in.</p>
+        <p id="ranksPhase">Learning phase: collecting samples — the Chair starts loose, then gets pickier as the lifetime log fills in.</p>
       </div>
       <div class="ranks-legend">
         <span><b>#</b> rank</span>
         <span><b>HIT</b> right calls</span>
         <span><b>MISS</b> wrong calls</span>
         <span><b>WR%</b> win rate</span>
-        <span><b>LISTEN</b> how hard Satoshi hears them</span>
+        <span><b>LISTEN</b> how hard the Chair hears them</span>
         <span><b>WT</b> adaptive weight</span>
       </div>
       <div id="ranksTable" class="ranks-table" role="table"></div>
@@ -418,11 +492,11 @@
           <button type="button" class="pe-side down" data-side="DOWN" id="peSideDown">DOWN</button>
         </div>
         <div class="pe-fields">
-          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" /></label>
-          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="0" placeholder="0 if lost" /></label>
+          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" autocomplete="off" /></label>
+          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="" placeholder="enter after fill" autocomplete="off" /></label>
           <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
         </div>
-        <div class="pe-preview">P&amp;L: <strong id="pePnl">-$25.00</strong></div>
+        <div class="pe-preview">P&amp;L: <strong id="pePnl">—</strong></div>
         <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
       </div>
 
@@ -438,19 +512,25 @@
       <div id="paperCalls" class="paper-calls"></div>
     </section>
 
-<!-- Charts tab: full wall of useful views -->
+<!-- Charts tab: game HUD wall — BTC and ETH 1m both visible -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
-      <div class="charts-grid">
-        <article class="chart-card chart-wide">
+      <div class="charts-pairs">
+        <article class="chart-card chart-wide chart-pair chart-pair-btc">
           <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
           <canvas id="chartBtc"></canvas>
         </article>
+        <article class="chart-card chart-wide chart-pair chart-pair-eth">
+          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-meta" id="chartEthMeta">—</span></header>
+          <canvas id="chartEth"></canvas>
+        </article>
+      </div>
+      <div class="charts-grid">
         <article class="chart-card">
           <header class="chart-card-head"><span>VOLUME</span><span class="chart-meta" id="chartVolMeta">—</span></header>
           <canvas id="chartVolume"></canvas>
         </article>
         <article class="chart-card">
-          <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">—</span></header>
+          <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">UP — · DOWN —</span></header>
           <canvas id="chartOdds"></canvas>
         </article>
         <article class="chart-card">
@@ -461,12 +541,13 @@
           <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
           <canvas id="chartFunding"></canvas>
         </article>
-        <article class="chart-card">
-          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">—</span></header>
+        <article class="chart-card chart-tape">
+          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">locks</span></header>
           <canvas id="chartTape"></canvas>
+          <ol id="chartTapeList" class="chart-lock-list" aria-label="Chair lock history"></ol>
         </article>
         <article class="chart-card">
-          <header class="chart-card-head"><span>HIT RATE</span><span class="chart-meta" id="chartAccMeta">—</span></header>
+          <header class="chart-card-head"><span>HIT RATE · FINISH-ONLY</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
           <canvas id="chartAccuracy"></canvas>
         </article>
         <article class="chart-card">
@@ -504,16 +585,6 @@
       </div>
     </div>
 
-    <!-- Digit timer only — hour ring stays removed. Not inside the dashboard card grid. -->
-    <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
-      <div class="led-bezel">
-        <div class="led-label">1H WINDOW</div>
-        <div id="ledWindowTime" class="led-digits led-time">--:--</div>
-        <div class="led-foot" id="ledWindowSub">until close</div>
-        <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
-      </div>
-    </div>
-
     <!-- Hidden legacy tally hooks so old JS still binds without visual clutter -->
     <div id="colorTally" class="color-tally hidden" aria-hidden="true">
       <b id="ctUp">0</b><b id="ctDown">0</b><b id="ctWait">0</b><span id="ctQuorum"></span>
@@ -525,6 +596,7 @@
         <span id="decisionDir" class="dir WAIT">WAIT</span>
         <span id="decisionConf" class="decision-conf">—</span>
         <span id="decisionLock" class="decision-lock"></span>
+        <span id="lockLiveHost" class="lock-live-host" hidden></span>
         <span id="decisionSummary" class="decision-summary"></span>
       </div>
       <div id="marketStrip">
@@ -549,7 +621,7 @@
   <div id="summonVideoWrap" class="summon-video-wrap" aria-hidden="true">
     <video id="summonVideo" playsinline webkit-playsinline preload="metadata">
       <source src="/summon-council.mp4" type="video/mp4" />
-      <source src="/zt-intro.mp4" type="video/mp4" />
+      <source src="/static/summon-council.mp4" type="video/mp4" />
     </video>
     <div id="summonFogOverlay" class="summon-fog-overlay"></div>
     <button type="button" id="summonVideoSkip" class="summon-video-skip">Skip</button>
@@ -564,6 +636,14 @@
     </video>
     <div id="celebrateFallback" class="celebrate-fallback" hidden>CINEMATIC</div>
     <button type="button" id="celebrateVideoSkip" class="celebrate-skip">Skip</button>
+  </div>
+  <div id="leaderClickWrap" class="celebrate-video-wrap leader-click-wrap hidden" aria-hidden="true">
+    <video id="leaderClickVideo" playsinline webkit-playsinline preload="none">
+      <source src="/leader-click.mp4" type="video/mp4" />
+      <source src="/static/leader-click.mp4" type="video/mp4" />
+    </video>
+    <div id="leaderClickFallback" class="celebrate-fallback" hidden></div>
+    <button type="button" id="leaderClickSkip" class="celebrate-skip">Close</button>
   </div>
 
   <!-- Floor-mode raining money background (3+ win streak) -->
@@ -581,6 +661,32 @@
       <img src="/hive-egg.png" alt="" class="hive-egg-img" />
     </div>
 
+
+  <!-- Privileged Settings chrome is not in the public tree until admin unlock. -->
+  <template id="adminDeskTemplate">
+    <div class="beast-card settings-card" id="adminToolsCard">
+      <div class="beast-title">ADMIN TOOLS</div>
+      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities. Floor book-match reset lives here (BTC sized locks vs ETH shadow picks, finish-only) — not on the public Floor.</p>
+      <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate &amp; Scorecard</button>
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
+        <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
+      </div>
+      <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
+    </div>
+    <div class="brain-card" id="brainCard">
+      <div class="beast-title">LEARNING BRAIN</div>
+      <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
+      <div class="brain-actions">
+        <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="#" role="button">Download brain.json</a>
+        <label class="gate-btn gate-btn-ghost brain-upload">
+          Upload brain.json
+          <input type="file" id="brainFile" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
+    </div>
+  </template>
 
   <!-- Admin password modal (Settings / destructive actions) -->
   <div id="adminGate" class="admin-gate hidden" role="dialog" aria-modal="true" aria-label="Admin password">

@@ -4,9 +4,11 @@ Includes nested sub-council micro-bots behind each specialist.
 """
 from __future__ import annotations
 import asyncio
+import inspect
 import time
 from typing import Any, Dict, List
 from datetime import datetime, timezone
+from pathlib import Path
 from loguru import logger
 
 from backend.data.pipeline import DataPipeline
@@ -41,7 +43,23 @@ from backend.config import settings
 from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
-from backend.agents.chair_gates import parse_book_depth, window_minutes_from_times
+from backend.agents.chair_gates import (
+    collect_official_results,
+    lock_time_strike,
+    eth_paper_lock_blocked,
+    eth_settled_n_for_zach,
+    eth_shadow_pick,
+    event_ticker_from_kalshi_ticker,
+    known_official_market,
+    lifetime_n_for_zach,
+    official_y_finish,
+    odds_to_cents,
+    parse_book_depth,
+    pick_settle_spot,
+    stuck_hours_open,
+    tape_backfill_stats,
+    window_minutes_from_times,
+)
 
 
 class Council:
@@ -114,7 +132,13 @@ class Council:
         self._last_learned_ids: set = set()
         self._shadow_book: list = []
         self._last_settle_review = None
+        self._last_spot: float | None = None
+        self._btc_lead: Dict[str, Any] | None = None
         self.huddle = NightlyHuddle()
+
+    def attach_btc_lead(self, lead: Dict[str, Any] | None) -> None:
+        """Vitalik input: Satoshi move / lock / hour spot delta."""
+        self._btc_lead = lead if isinstance(lead, dict) else None
 
     async def start(self):
         await self.store.init()
@@ -122,7 +146,7 @@ class Council:
         try:
             rows = []
             if hasattr(self.store, "recent_settled_calls"):
-                rows = await self.store.recent_settled_calls(24)
+                rows = await self.store.recent_settled_calls(24, asset=self.asset)
             elif hasattr(self.store, "get_recent_settled"):
                 rows = await self.store.get_recent_settled(24)
             if rows:
@@ -130,23 +154,36 @@ class Council:
                 logger.info(f"WindowMemory seeded with {n} settled windows")
         except Exception as e:
             logger.debug(f"WindowMemory seed: {e}")
-        # Rebuild adaptive weights + pair affinities from history
+        # Load the on-disk brain. Do not rebuild over it — a short replay
+        # of recent settles would wipe a long-run learner (seen live: 17777 → 2).
         try:
+            loaded = False
             try:
-                self.learner.load()
+                loaded = bool(self.learner.load())
             except Exception:
-                pass
-            n = await self.learner.rebuild_from_store(self.store)
-            self.leader.sync_from_learner()
-            logger.info(f"Adaptive weights restored from {n} windows")
+                loaded = False
+            if loaded:
+                self.leader.sync_from_learner()
+                logger.info("Adaptive learner loaded from disk — not rebuilding")
+            else:
+                logger.info(
+                    "Adaptive learner file missing — leaving weights; "
+                    "learn_from_settled runs on new hour-close grades only"
+                )
         except Exception as e:
-            logger.debug(f"Adaptive rebuild: {e}")
+            logger.debug(f"Adaptive load: {e}")
         # Paint lifetime log / huddle from disk before the first analyze_once.
         # Does not create, truncate, or delete SQLite / brain files.
         try:
             await self.hydrate_persisted_desk()
         except Exception as e:
             logger.debug(f"desk hydrate skip ({self.asset}): {e}")
+        try:
+            n = await self.sweep_official_finishes()
+            if n:
+                logger.info(f"[{self.asset}] Official closer swept {n} open hour(s)")
+        except Exception as e:
+            logger.debug(f"official closer sweep skip ({self.asset}): {e}")
         self.running = True
         self._task = asyncio.create_task(self._loop())
         logger.info(f"Council continuous analysis started asset={self.asset} leader={self.leader_name}")
@@ -174,11 +211,11 @@ class Council:
             try:
                 prof = runtime_settings.profile()
                 if self.asset == "eth":
-                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.0))
+                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 2.0))
                 elif self.asset == "btc":
-                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.0))
+                    interval = float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 2.0))
                 else:
-                    interval = float(prof.get("analysis_interval", getattr(settings, "ANALYSIS_INTERVAL", 4.0)))
+                    interval = float(prof.get("analysis_interval", getattr(settings, "ANALYSIS_INTERVAL", 2.0)))
                 st = self.latest_state or {}
                 mkt = st.get("market") or {}
                 dec = (st.get("decision") or {}).get("direction")
@@ -195,6 +232,324 @@ class Council:
             delay = max(0.2, interval - elapsed)
             await asyncio.sleep(delay)
 
+    def _last_spot_path(self) -> Path:
+        root = Path(getattr(settings, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
+        return root / "last-spot.json"
+
+    def _persist_last_spot(self, spot: float) -> None:
+        """Small cache only — never writes brain / council.db / learning JSON."""
+        import json
+        path = self._last_spot_path()
+        data: Dict[str, Any] = {}
+        try:
+            if path.is_file():
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    data = raw
+        except Exception:
+            data = {}
+        data[self.asset] = {"price": float(spot), "ts": time.time()}
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _load_persisted_spot(self) -> float | None:
+        import json
+        path = self._last_spot_path()
+        try:
+            if not path.is_file():
+                return None
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            rec = (raw or {}).get(self.asset) if isinstance(raw, dict) else None
+            if not isinstance(rec, dict):
+                return None
+            return pick_settle_spot(rec.get("price"), None)
+        except Exception:
+            return None
+
+    def _usable_spot(self, price: Any = None, market_data: Dict[str, Any] | None = None) -> float | None:
+        """Prefer the 60s CFB research print; never persist a lone last-tick wick as official."""
+        md = market_data if isinstance(market_data, dict) else {}
+        research = pick_settle_spot(
+            md.get("research_spot") or md.get("cfb_avg_60s") or price,
+            None,
+        )
+        if research is not None:
+            self._last_spot = research
+            try:
+                self._persist_last_spot(research)
+            except Exception:
+                pass
+            return research
+        pipe = getattr(self, "pipeline", None)
+        last_good = getattr(pipe, "last_good", None) if pipe is not None else None
+        lg_price = None
+        if isinstance(last_good, dict):
+            lg_price = (
+                last_good.get("research_spot")
+                or last_good.get("cfb_avg_60s")
+                or last_good.get("current_price")
+                or last_good.get("binance_price")
+                or last_good.get("coinbase_price")
+            )
+        st = self.latest_state or {}
+        mkt = st.get("market") or {}
+        spot = pick_settle_spot(price, getattr(self, "_last_spot", None))
+        if spot is None:
+            spot = pick_settle_spot(lg_price, mkt.get("current_price") or mkt.get("price"))
+        if spot is None:
+            spot = self._load_persisted_spot()
+        if spot is not None:
+            self._last_spot = spot
+            try:
+                self._persist_last_spot(spot)
+            except Exception:
+                pass
+        return spot
+
+    async def _official_results_for_opens(self) -> Dict[str, Any]:
+        """Fetch official Kalshi yes/no for every OPEN paper hour. No model. No 40-cap."""
+        import inspect
+        results: Dict[str, Any] = {}
+        opens = []
+        getter = getattr(self.store, "list_open_calls", None)
+        if callable(getter):
+            # Every OPEN row — a BTC loop must still see a finalized ETH ticker.
+            maybe = getter()
+            opens = await maybe if inspect.isawaitable(maybe) else (maybe or [])
+        if not isinstance(opens, list):
+            opens = []
+        tickers: list[str] = []
+        for row in opens:
+            if not isinstance(row, dict):
+                continue
+            t = row.get("ticker")
+            known = known_official_market(t, row.get("id"))
+            if known:
+                results[t] = known
+                if row.get("id") is not None:
+                    results[row["id"]] = known
+            if t:
+                tickers.append(str(t).strip())
+        unique = []
+        seen = set()
+        for t in tickers:
+            if t and t not in seen:
+                seen.add(t)
+                unique.append(t)
+        client = getattr(getattr(self, "pipeline", None), "kalshi", None)
+
+        def _kalshi_fn(name: str):
+            if client is None:
+                return None
+            if not callable(getattr(type(client), name, None)):
+                return None
+            fn = getattr(client, name, None)
+            return fn if callable(fn) else None
+
+        fn_event = _kalshi_fn("get_event")
+        fn_market = _kalshi_fn("get_market")
+
+        async def _await(maybe):
+            return await maybe if inspect.isawaitable(maybe) else (maybe or {})
+
+        # One event fetch per hour covers every strike on that tape.
+        events = []
+        ev_seen = set()
+        leftover = []
+        for t in unique:
+            ev = event_ticker_from_kalshi_ticker(t)
+            if ev and ev not in ev_seen:
+                ev_seen.add(ev)
+                events.append(ev)
+            if not ev:
+                leftover.append(t)
+        if callable(fn_event):
+            for ev in events:
+                try:
+                    body = await _await(fn_event(ev))
+                except Exception:
+                    body = {}
+                pulled = collect_official_results(body)
+                for ticker, market in pulled.items():
+                    results[ticker] = market
+            have = {str(k) for k in results if official_y_finish(results.get(k))}
+            leftover.extend([t for t in unique if t not in have])
+        elif callable(fn_market):
+            leftover = list(unique)
+        # Dedup leftover while keeping order
+        rest = []
+        rest_seen = set()
+        for t in leftover:
+            if t and t not in rest_seen:
+                rest_seen.add(t)
+                rest.append(t)
+        if callable(fn_market):
+            for ticker in rest:
+                if official_y_finish(results.get(ticker)):
+                    continue
+                try:
+                    market = await _await(fn_market(ticker))
+                except Exception:
+                    market = {}
+                pulled = collect_official_results(market) if isinstance(market, dict) else {}
+                if pulled:
+                    for tk, mk in pulled.items():
+                        results[tk] = mk
+                elif isinstance(market, dict) and official_y_finish(market):
+                    results[ticker] = market
+        for row in opens:
+            if not isinstance(row, dict):
+                continue
+            t = row.get("ticker")
+            if t and official_y_finish(results.get(t)) and row.get("id") is not None:
+                results[row["id"]] = results[t]
+        stats = tape_backfill_stats(opens, results)
+        self._last_tape_backfill = dict(stats)
+        logger.info(
+            f"[{self.asset}] Tape scan: {stats['open_n']} OPEN rows · "
+            f"{stats['unique_tickers']} tickers · {stats['finalized_tickers']} finalized"
+        )
+        return results
+
+    async def sweep_official_finishes(self) -> int:
+        """Startup/loop closer: write y_finish from official result, then learn."""
+        kalshi_results = {}
+        try:
+            kalshi_results = await self._official_results_for_opens()
+        except Exception as e:
+            logger.debug(f"Kalshi official fetch skip: {e}")
+            kalshi_results = {}
+        settled_n = 0
+        try:
+            settled_n = await self.store.settle_expired_calls(
+                current_price=None,
+                asset=None,
+                kalshi_results=kalshi_results,
+            )
+        except Exception as e:
+            logger.debug(f"Settle skip: {e}")
+        try:
+            # Whole tape, not the first 5. This is the calibration set.
+            await self._learn_from_new_settlements(limit=2000, max_learn=2000)
+        except Exception as e:
+            logger.debug(f"Adaptive learn skip: {e}")
+        stats = dict(getattr(self, "_last_tape_backfill", {}) or {})
+        stats["graded_n"] = int(settled_n or 0)
+        self._last_tape_backfill = stats
+        if settled_n or stats.get("open_n"):
+            logger.info(
+                f"[{self.asset}] Tape backfill graded {settled_n} hour(s) "
+                f"(OPEN {stats.get('open_n', 0)} · "
+                f"tickers {stats.get('unique_tickers', 0)} · "
+                f"finalized {stats.get('finalized_tickers', 0)})"
+            )
+        return settled_n
+
+    async def settle_due_windows(
+        self,
+        current_price: Any = None,
+        up_pct: Any = None,
+        down_pct: Any = None,
+        floor_strike: Any = None,
+        close_time: Any = None,
+    ) -> int:
+        """
+        Finish-only settle + learn from official Kalshi result.
+        Later-hour spot is not y_finish.
+        """
+        st = self.latest_state or {}
+        mkt = st.get("market") or {}
+        if up_pct is None:
+            up_pct = mkt.get("up_pct")
+        if down_pct is None:
+            down_pct = mkt.get("down_pct")
+        if close_time is None:
+            close_time = mkt.get("close_time")
+        kalshi_results: Dict[str, Any] = {}
+        try:
+            kalshi_results = await self._official_results_for_opens()
+        except Exception as e:
+            logger.debug(f"Kalshi close-result fetch skip: {e}")
+        settled_n = 0
+        try:
+            settled_n = await self.store.settle_expired_calls(
+                current_price=None,
+                up_pct=up_pct,
+                down_pct=down_pct,
+                floor_strike=None,
+                asset=None,
+                kalshi_results=kalshi_results,
+            )
+            try:
+                due = False
+                if close_time:
+                    ct_ = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
+                    due = datetime.now(timezone.utc) >= ct_
+                if due and hasattr(self.leader, "_clear_window_lock"):
+                    self.leader._clear_window_lock()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"Settle skip: {e}")
+        try:
+            await self._learn_from_new_settlements()
+        except Exception as e:
+            logger.debug(f"Adaptive learn skip: {e}")
+        return settled_n
+
+    async def _maybe_record_eth_shadow(
+        self,
+        decision: Dict[str, Any] | None,
+        ticker: str | None,
+        close_time: str | None,
+    ) -> None:
+        """
+        Persist one ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
+        A BTC-impulse veto is stored so we can grade whether the veto was right.
+        """
+        if str(self.asset or "").lower() not in ("eth", "ethereum"):
+            return
+        if not ticker or not isinstance(decision, dict):
+            return
+        if decision.get("window_locked"):
+            return
+        lc = decision.get("locked_call")
+        if isinstance(lc, dict) and lc.get("locked"):
+            return
+        pick = decision.get("eth_shadow_pick")
+        if not isinstance(pick, dict):
+            side = decision.get("shadow_direction") or decision.get("lean")
+            pick = eth_shadow_pick(
+                self.asset,
+                side,
+                decision.get("shadow_confidence") or decision.get("confidence") or 0,
+                ask=None,
+                strike=decision.get("floor_strike"),
+                vetoed=False,
+                ticker=ticker,
+            )
+        if not pick:
+            return
+        fn = getattr(self.store, "record_eth_shadow_pick", None)
+        if not callable(fn):
+            return
+        try:
+            maybe = fn(
+                ticker=ticker,
+                direction=pick.get("side") or pick.get("direction"),
+                confidence=int(pick.get("confidence") or 0),
+                close_time=close_time,
+                side_ask=pick.get("ask"),
+                floor_strike=pick.get("strike") or decision.get("floor_strike"),
+                vetoed=bool(pick.get("vetoed")),
+            )
+            if inspect.isawaitable(maybe):
+                await maybe
+        except Exception as e:
+            logger.debug(f"ETH shadow persist skip: {e}")
 
     async def _restore_open_lock(self) -> None:
         """Persist one-call integrity across process restart."""
@@ -205,11 +560,13 @@ class Council:
             if self.leader._entry_dir or self.leader._active_dir():
                 return
             acc = await self.store.get_accuracy(asset=self.asset)
-            opens = acc.get("open_log") or []
+            opens = acc.get("open") or acc.get("open_log") or []
             if not isinstance(opens, list):
                 return
             for row in opens:
                 if not isinstance(row, dict):
+                    continue
+                if row.get("shadow") or row.get("kind") == "eth_shadow":
                     continue
                 direction = row.get("direction") or ""
                 side = "UP" if direction in ("UP", "UP_HOLD") else ("DOWN" if direction in ("DOWN", "DOWN_HOLD") else None)
@@ -250,7 +607,13 @@ class Council:
             self.leader.cool_down_bump = 0.0
             logger.debug(f"Huddle cycle: {e}")
 
+        try:
+            await self.settle_due_windows()
+        except Exception:
+            pass
         market_data = await self.pipeline.fetch()
+        if self._btc_lead:
+            market_data["btc_lead"] = self._btc_lead
         # Multi-window memory: tick update + inject snapshot for specialists
         try:
             km = market_data.get("kalshi_market") or {}
@@ -297,7 +660,14 @@ class Council:
         if isinstance(km, dict):
             ticker = km.get("ticker")
             close_time = km.get("close_time")
-        entry_price = market_data.get("current_price")
+        entry_price = self._usable_spot(
+            market_data.get("research_spot")
+            or market_data.get("cfb_avg_60s")
+            or market_data.get("current_price"),
+            market_data,
+        )
+        if entry_price is not None:
+            market_data["current_price"] = entry_price
 
         # Kalshi odds (0-100) for path grading
         def _odds_pct(raw):
@@ -325,32 +695,13 @@ class Council:
             market_data["down_pct"] = down_pct
 
         # Finish-only settle for THIS asset only (never grade ETH with BTC price)
-        try:
-            await self.store.settle_expired_calls(
-                current_price=entry_price,
-                up_pct=up_pct,
-                down_pct=down_pct,
-                floor_strike=market_data.get("kalshi_floor_strike"),
-                asset=self.asset,
-            )
-            try:
-                from datetime import datetime, timezone
-                due = False
-                if close_time:
-                    ct_ = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
-                    due = datetime.now(timezone.utc) >= ct_
-                if due and hasattr(self.leader, "_clear_window_lock"):
-                    self.leader._clear_window_lock()
-            except Exception:
-                pass
-        except Exception as e:
-            logger.debug(f"Settle skip: {e}")
-
-        # Teach the learner from any newly settled windows
-        try:
-            await self._learn_from_new_settlements()
-        except Exception as e:
-            logger.debug(f"Adaptive learn skip: {e}")
+        await self.settle_due_windows(
+            current_price=entry_price,
+            up_pct=up_pct,
+            down_pct=down_pct,
+            floor_strike=market_data.get("kalshi_floor_strike"),
+            close_time=close_time,
+        )
 
         # LAW evaluates streak / may trigger lockdown + find-out fixes
         try:
@@ -417,6 +768,17 @@ class Council:
 
         # Regime features for Leader
         # (find-out annotation applied after shadow capture when locked)
+        open_rows: list = []
+        try:
+            import inspect
+            getter = getattr(self.store, "list_open_calls", None)
+            if callable(getter):
+                maybe = getter()
+                open_rows = await maybe if inspect.isawaitable(maybe) else (maybe or [])
+            if not isinstance(open_rows, list):
+                open_rows = []
+        except Exception:
+            open_rows = []
         regime_sig = next((s for s in signals if s.agent_name == "regime"), None)
         regime_features = dict(regime_sig.features) if regime_sig else {}
         # Enrich with split-weight key (session × window phase)
@@ -437,7 +799,13 @@ class Council:
                 regime_features["kalshi_healthy"] = bool((market_data.get("health") or {}).get("kalshi", True))
                 # strike / series for plaque identity
                 regime_features["series_ticker"] = market_data.get("series_ticker") or (market_data.get("kalshi") or {}).get("series_ticker")
-                regime_features["floor_strike"] = market_data.get("kalshi_floor_strike")
+                km0 = market_data.get("kalshi_market") if isinstance(market_data.get("kalshi_market"), dict) else {}
+                regime_features["floor_strike"] = lock_time_strike(
+                    ticker=ticker,
+                    floor_strike=market_data.get("kalshi_floor_strike"),
+                    cap_strike=market_data.get("kalshi_cap_strike") or km0.get("cap_strike"),
+                    strike_price=km0.get("strike_price"),
+                )
                 regime_features["kalshi_title"] = market_data.get("kalshi_title")
             except Exception:
                 pass
@@ -506,6 +874,81 @@ class Council:
                 regime_features["up_pct"] = up_pct
             if down_pct is not None:
                 regime_features["down_pct"] = down_pct
+            # Paper-fill at the real ask + playable mid band
+            yb = odds_to_cents(market_data.get("kalshi_yes_bid"))
+            ya = odds_to_cents(market_data.get("kalshi_yes_ask"))
+            if yb is not None:
+                regime_features["yes_bid"] = yb
+            if ya is not None:
+                regime_features["yes_ask"] = ya
+            if yb is not None:
+                regime_features["no_ask"] = 100.0 - yb
+            if yb is not None and ya is not None:
+                regime_features["yes_mid"] = (yb + ya) / 2.0
+            elif up_pct is not None:
+                regime_features["yes_mid"] = float(up_pct)
+            spot = (
+                market_data.get("research_spot")
+                or market_data.get("cfb_avg_60s")
+                or market_data.get("current_price")
+                or market_data.get("spot_price")
+            )
+            try:
+                if spot is not None and float(spot) > 0:
+                    regime_features["spot_price"] = float(spot)
+                    regime_features["current_price"] = float(spot)
+            except (TypeError, ValueError):
+                pass
+            try:
+                rs = market_data.get("research_spot") or market_data.get("cfb_avg_60s")
+                if rs is not None and float(rs) > 0:
+                    regime_features["research_spot"] = float(rs)
+                    regime_features["cfb_avg_60s"] = float(
+                        market_data.get("cfb_avg_60s") or rs
+                    )
+            except (TypeError, ValueError):
+                pass
+            if market_data.get("research_spot_kind"):
+                regime_features["research_spot_kind"] = market_data.get("research_spot_kind")
+                regime_features["kind"] = market_data.get("research_spot_kind")
+            if market_data.get("research_spot_source"):
+                regime_features["research_spot_source"] = market_data.get("research_spot_source")
+            regime_features["asset"] = self.asset
+            try:
+                raw_n = int((self.leader.edge or {}).get("total") or 0)
+            except (TypeError, ValueError):
+                raw_n = 0
+            try:
+                # ETH reliability includes graded shadow picks, not just counting locks.
+                rel_n = int((self.leader.edge or {}).get("reliability_n") or 0)
+            except (TypeError, ValueError):
+                rel_n = 0
+            stuck = stuck_hours_open(open_rows)
+            regime_features["stuck_open"] = stuck
+            regime_features["open_rows"] = [
+                {"id": r.get("id"), "ticker": r.get("ticker")}
+                for r in open_rows
+                if isinstance(r, dict)
+            ][:24]
+            # n=0 until 1062/1063 settle. Chair conf is not P(finish).
+            regime_features["settled_n"] = lifetime_n_for_zach(raw_n, open_rows)
+            regime_features["lifetime_n"] = regime_features["settled_n"]
+            if stuck:
+                regime_features["chair_bin_settled_n"] = 0
+            else:
+                try:
+                    hot = ((self.leader.edge or {}).get("chair_bins") or {}).get("90+") or {}
+                    regime_features["chair_bin_settled_n"] = int(hot.get("settled") or 0)
+                except (TypeError, ValueError):
+                    regime_features["chair_bin_settled_n"] = 0
+            eth_raw = rel_n if str(self.asset or "").lower() in ("eth", "ethereum") else 0
+            regime_features["eth_settled_n"] = eth_settled_n_for_zach(eth_raw, open_rows)
+            regime_features["eth_lock_blocked"] = bool(
+                eth_paper_lock_blocked(self.asset, regime_features["eth_settled_n"])
+            )
+            lead = market_data.get("btc_lead") or self._btc_lead
+            if isinstance(lead, dict):
+                regime_features["btc_lead"] = lead
         except Exception:
             pass
 
@@ -544,6 +987,7 @@ class Council:
                 "lockdown": True,
                 "shadow_direction": shadow.get("direction"),
                 "shadow_confidence": shadow.get("confidence"),
+                "eth_shadow_pick": shadow.get("eth_shadow_pick"),
             }
             # Annotate debate UI after shadow capture
             signals = apply_find_out_to_signals(signals, self.law)
@@ -561,8 +1005,15 @@ class Council:
                 except Exception:
                     pass
 
-        # Attach Kalshi target so settlement grades against floor_strike
-        decision["kalshi_target"] = market_data.get("kalshi_floor_strike")
+        # Lock-time strike on the paper row. Closer still uses official result,
+        # not current_price vs strike.
+        _lock_strike = lock_time_strike(
+            ticker=ticker,
+            floor_strike=market_data.get("kalshi_floor_strike"),
+            cap_strike=market_data.get("kalshi_cap_strike"),
+        )
+        decision["kalshi_target"] = _lock_strike
+        decision["floor_strike"] = _lock_strike
 
         # Lock quality score (0–100): confluence × odds band × spread
         try:
@@ -591,7 +1042,8 @@ class Council:
         except Exception:
             pass
 
-        # Shadow book: would a stricter 45–60¢ band have locked?
+        # Shadow book (diagnostic only): would a stricter 45–60¢ band have locked?
+        # Live playable band stays 20–80¢ + leftover — do not make 45–55 the live band.
         try:
             from backend.config import settings as _s
             so = None
@@ -622,11 +1074,16 @@ class Council:
             market_ticker=ticker,
             entry_price=entry_price,
             close_time=close_time,
-            kalshi_target=market_data.get("kalshi_floor_strike"),
+            kalshi_target=lock_time_strike(
+                ticker=ticker,
+                floor_strike=market_data.get("kalshi_floor_strike"),
+                cap_strike=market_data.get("kalshi_cap_strike"),
+            ),
             up_pct=up_pct,
             down_pct=down_pct,
             asset=self.asset,
         )
+        await self._maybe_record_eth_shadow(decision, ticker, close_time)
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
         # Feed lifetime edge into Chair so WAIT bar loosens as hit-rate proves out
@@ -648,6 +1105,7 @@ class Council:
                 "lean": decision.get("lean"),  # underlying UP/DOWN when direction is SWAP/HOLD
                 "call_phase": decision.get("call_phase"),
                 "locked_call": decision.get("locked_call"),  # clear follower-readable lock
+                "eth_shadow_pick": decision.get("eth_shadow_pick"),
                 "p_finish": decision.get("p_finish"),
                 "ev_cents": decision.get("ev_cents"),
                 "ev_phase": decision.get("ev_phase"),
@@ -674,7 +1132,7 @@ class Council:
                 "kalshi_ticker": ticker,
                 "ticker": ticker,
                 "series_ticker": market_data.get("series_ticker") or (market_data.get("kalshi") or {}).get("series_ticker"),
-                "floor_strike": market_data.get("kalshi_floor_strike"),
+                "floor_strike": _lock_strike,
                 "stale": bool(market_data.get("stale") or (market_data.get("kalshi") or {}).get("stale")),
                 "kalshi_yes_bid": market_data.get("kalshi_yes_bid"),
                 "kalshi_yes_ask": market_data.get("kalshi_yes_ask"),
@@ -685,7 +1143,7 @@ class Council:
                 "mins_left": market_data.get("mins_left"),
                 "seconds_left": (float(market_data["mins_left"]) * 60.0) if market_data.get("mins_left") is not None else None,
                 # Kalshi settlement threshold (YES if asset finishes above this)
-                "kalshi_target": market_data.get("kalshi_floor_strike"),
+                "kalshi_target": _lock_strike,
                 "kalshi_title": market_data.get("kalshi_title"),
                 # Slim candle series for right-side live chart (last ~60 × 1m)
                 "candles": [
@@ -700,7 +1158,6 @@ class Council:
                     for c in (market_data.get("candles") or [])[-60:]
                 ],
             },
-            "health": market_data.get("health"),
             "fetch_ms": market_data.get("fetch_ms"),
             "fetched_at": market_data.get("fetched_at"),
             "signal_id": signal_id,
@@ -719,7 +1176,16 @@ class Council:
             "shadow_book": list(self._shadow_book[-12:]),
             "last_settle_review": self._last_settle_review,
             "health": {
-                "kalshi": bool(market_data.get("kalshi_healthy", market_data.get("healthy", True))),
+                **(market_data.get("health") or {}),
+                "kalshi": bool((market_data.get("health") or {}).get(
+                    "kalshi",
+                    market_data.get("kalshi_healthy", market_data.get("healthy", True)),
+                )),
+                "binance": bool((market_data.get("health") or {}).get("binance", False)),
+                "coinbase": bool((market_data.get("health") or {}).get("coinbase", False)),
+                "coinglass": bool((market_data.get("health") or {}).get("coinglass", False)),
+                "spot_source": (market_data.get("health") or {}).get("spot_source")
+                    or market_data.get("spot_source"),
                 "quote_age_s": (time.time() - float(market_data["kalshi_fetched_at"]))
                     if market_data.get("kalshi_fetched_at") else None,
                 "from_cache": bool(market_data.get("from_shared_cache") or market_data.get("last_good")),
@@ -757,12 +1223,13 @@ class Council:
         )
         return state
 
-    async def _learn_from_new_settlements(self) -> int:
+    async def _learn_from_new_settlements(self, *, limit: int = 40, max_learn: int = 5) -> int:
         """
         Grade agent votes on any settled windows we haven't learned from yet.
         Drives continuous weight drift + pair affinity.
+        Tape backfill passes a high limit so weeks of NULL hours can train.
         """
-        recent = await self.store.recent_settled_calls(limit=40)
+        recent = await self.store.recent_settled_calls(limit=limit, asset=self.asset)
         learned = 0
         FINISH = {"finish_match", "finish_miss"}
         for row in reversed(recent):  # chronological
@@ -770,13 +1237,13 @@ class Council:
             if rid is None or rid in self._last_learned_ids:
                 continue
             settle_reason = row.get("settle_reason") or ""
-            outcome = row.get("outcome")
+            outcome = row.get("y_finish") or row.get("actual_outcome") or row.get("outcome")
             # Never train on VOID / path-era / unresolved
             if outcome in ("VOID", None, "") or settle_reason not in FINISH:
                 self._last_learned_ids.add(rid)
                 continue
             votes = row.get("agent_votes") or {}
-            if outcome in ("UP", "DOWN") and votes:
+            if outcome in ("UP", "DOWN"):
                 reg = row.get("regime") or row.get("regime_key")
                 if not reg:
                     reg = regime_from_call(row.get("called_at"), row.get("close_time"))
@@ -796,7 +1263,7 @@ class Council:
                         pass
                 learned += 1
             self._last_learned_ids.add(rid)
-            if learned >= 5:
+            if learned >= int(max_learn):
                 break
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:

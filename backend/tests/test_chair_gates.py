@@ -8,13 +8,43 @@ from backend.agents.chair_gates import (
     band_tighten,
     book_too_thin,
     clamp_p_finish,
+    close_time_from_kalshi_ticker,
+    collect_official_results,
     compute_ev_cents,
+    decide_open_lock_grade,
+    dead_book_reason,
+    early_lock_blocked,
+    estimate_p_finish,
+    eth_fades_btc_impulse,
+    eth_paper_lock_blocked,
+    eth_shadow_pick,
     ev_gate_blocks,
     finish_outcome,
+    known_official_market,
+    kalshi_result_to_side,
+    kalshi_taker_fee_cents,
+    event_ticker_from_kalshi_ticker,
+    kalshi_market_finalized,
+    leftover_after_vig,
+    lifetime_n_for_zach,
+    lock_time_strike,
+    official_y_finish,
+    late_spot_decisive,
+    never_lock_near_certain,
     official_window_due,
+    paper_stake_for_lock,
+    pick_settle_spot,
     odds_band_key,
     parse_book_depth,
+    playable_yes_mid,
+    resolve_finish_side,
+    stuck_hours_open,
+    strike_from_kalshi_ticker,
+    tape_backfill_stats,
+    ticker_asset,
     time_ev_hurdles,
+    build_btc_lead,
+    zach_bar_reason,
 )
 from backend.agents.leader import Leader
 from backend.config import settings
@@ -30,9 +60,22 @@ class ClampAndEvTests(unittest.TestCase):
         self.assertEqual(clamp_p_finish(None), 0.01)
 
     def test_ev_cents_formula(self):
-        # 100*0.70 − 50 − 2 = 18
-        self.assertAlmostEqual(compute_ev_cents(0.70, 50.0, 4.0), 18.0)
-        self.assertAlmostEqual(compute_ev_cents(0.55, 52.0, 2.0), 2.0)
+        # Paper-fill at ask: 100*P − ask − fee − half-spread
+        self.assertAlmostEqual(compute_ev_cents(0.70, 50.0, 4.0, fee_cents=0.0), 18.0)
+        self.assertAlmostEqual(kalshi_taker_fee_cents(50.0), 1.75)
+        self.assertAlmostEqual(compute_ev_cents(0.70, 50.0, 4.0), 16.25)
+
+    def test_estimate_p_finish_shrinks_cold_91(self):
+        # 91% Chair on a cold book is not P(finish)
+        p = estimate_p_finish(91, 0)
+        self.assertLessEqual(p, 0.62)
+        self.assertGreater(p, 0.50)
+        warm = estimate_p_finish(91, 80)
+        self.assertLessEqual(warm, 0.80)
+        self.assertGreater(warm, p)
+        # 90%+ bin stays faded until that bin has enough actually settled hours
+        faded = estimate_p_finish(91, 80, bin_settled_n=0)
+        self.assertLessEqual(faded, 0.62)
 
     def test_ev_gate_wait(self):
         self.assertTrue(ev_gate_blocks(0.50, 10.0, 0.55, 3.0))
@@ -92,12 +135,167 @@ class WindowStrikeTests(unittest.TestCase):
         self.assertFalse(official_window_due(future, now=now))
         self.assertFalse(official_window_due(None, now=now))
         self.assertFalse(official_window_due("not-a-time", now=now))
+        # 1062/1063: 15:00 ET = 19:00 UTC. Still open at 21:17 must be due via ticker.
+        ticker = "KXBTCD-26AUG1415-T62999.99"
+        late = datetime(2026, 8, 14, 21, 17, tzinfo=timezone.utc)
+        self.assertTrue(official_window_due(None, now=late, ticker=ticker))
+        self.assertFalse(official_window_due(None, now=datetime(2026, 8, 14, 18, 0, tzinfo=timezone.utc), ticker=ticker))
+
+    def test_ticker_close_and_strike(self):
+        ticker = "KXETHD-26AUG1415-T1874.99"
+        ct = close_time_from_kalshi_ticker(ticker)
+        self.assertIsNotNone(ct)
+        self.assertEqual(ct.astimezone(timezone.utc).hour, 19)
+        self.assertEqual(strike_from_kalshi_ticker(ticker), 1874.99)
+        self.assertEqual(ticker_asset(ticker), "eth")
+        self.assertEqual(ticker_asset("KXBTCD-26AUG1415-T62999.99"), "btc")
+        # 1062/1063 had null floor_strike — ticker still has the lock-time strike
+        self.assertEqual(lock_time_strike(ticker="KXBTCD-26AUG1415-T62999.99"), 62999.99)
+        self.assertEqual(lock_time_strike(ticker="KXETHD-26AUG1415-T1874.99"), 1874.99)
+        self.assertEqual(lock_time_strike(floor_strike=64000, ticker="KXBTCD-26AUG1415-T62999.99"), 64000.0)
+        self.assertEqual(lock_time_strike(cap_strike=1875, ticker="KXETHD-26AUG1415-T1874.99"), 1875.0)
+        self.assertIsNone(lock_time_strike(ticker="KXBTCD-NOSTRIKE"))
+
+    def test_official_y_finish_only_from_kalshi_result(self):
+        self.assertEqual(kalshi_result_to_side("yes"), "UP")
+        self.assertEqual(kalshi_result_to_side({"result": "no"}), "DOWN")
+        self.assertEqual(official_y_finish({"status": "finalized", "result": "no"}), "DOWN")
+        self.assertEqual(official_y_finish({"status": "finalized", "result": "yes"}), "UP")
+        self.assertIsNone(official_y_finish({"status": "active", "result": "no"}))
+        # Later-hour spot must not invent y_finish
+        self.assertIsNone(official_y_finish(None))
+        self.assertIsNone(resolve_finish_side(spot=63050, locked_strike=62999.99, kalshi_result=None))
+        # 1062 / 1063 documented official finishes
+        btc = known_official_market("KXBTCD-26AUG1415-T62999.99", 1062)
+        eth = known_official_market("KXETHD-26AUG1415-T1874.99", 1063)
+        self.assertEqual(official_y_finish(btc), "DOWN")
+        self.assertEqual(official_y_finish(eth), "DOWN")
+        self.assertEqual(resolve_finish_side(ticker="KXBTCD-26AUG1415-T62999.99"), "DOWN")
+        # id 1062 with a different ticker must not apply
+        self.assertIsNone(known_official_market("KXBTCD-OTHER", 1062))
+
+    def test_live_1062_1063_grade_after_19utc_close(self):
+        """Live stuck OPEN rows: null strike, hour already closed, official no."""
+        after = datetime(2026, 8, 14, 21, 17, tzinfo=timezone.utc)
+        before = datetime(2026, 8, 14, 18, 50, tzinfo=timezone.utc)
+        btc = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1415-T62999.99",
+            call_id=1062,
+            close_time="2026-08-14T19:00:00Z",
+            direction="DOWN",
+            now=after,
+        )
+        self.assertIsNotNone(btc)
+        self.assertEqual(btc["y_finish"], "DOWN")
+        self.assertTrue(btc["correct"])
+        self.assertEqual(btc["settle_reason"], "finish_match")
+        self.assertEqual(btc["asset"], "btc")
+        self.assertEqual(btc["floor_strike"], 62999.99)
+        eth = decide_open_lock_grade(
+            ticker="KXETHD-26AUG1415-T1874.99",
+            call_id=1063,
+            close_time="2026-08-14T19:00:00Z",
+            direction="UP",
+            now=after,
+        )
+        self.assertIsNotNone(eth)
+        self.assertEqual(eth["y_finish"], "DOWN")
+        self.assertFalse(eth["correct"])
+        self.assertEqual(eth["settle_reason"], "finish_miss")
+        self.assertEqual(eth["asset"], "eth")
+        self.assertIsNone(decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1415-T62999.99",
+            call_id=1062,
+            close_time="2026-08-14T19:00:00Z",
+            direction="DOWN",
+            now=before,
+        ))
+        # Later-hour spot must not be a closer — no spot argument exists.
+        self.assertIsNone(decide_open_lock_grade(
+            ticker="KXBTCD-26AUG9999-T1",
+            call_id=1,
+            close_time="2026-08-14T19:00:00Z",
+            direction="DOWN",
+            kalshi_result={"status": "active"},
+            now=after,
+        ))
+
+    def test_finalized_tape_grades_without_known_ids(self):
+        """Every finalized paper hour — not just 1062/1063. No guessed side."""
+        live = {
+            "ticker": "KXBTCD-26AUG1000-T60000.00",
+            "status": "finalized",
+            "result": "yes",
+        }
+        self.assertTrue(kalshi_market_finalized(live))
+        grade = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1000-T60000.00",
+            call_id=44,
+            close_time=None,
+            direction="UP",
+            kalshi_result=live,
+        )
+        self.assertIsNotNone(grade)
+        self.assertEqual(grade["y_finish"], "UP")
+        self.assertTrue(grade["correct"])
+        no_guess = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1000-T60000.00",
+            call_id=44,
+            close_time=None,
+            direction="UP",
+            kalshi_result=None,
+        )
+        self.assertIsNone(no_guess)
+        still_open = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1000-T60000.00",
+            call_id=44,
+            close_time=None,
+            direction="UP",
+            kalshi_result={"ticker": "KXBTCD-26AUG1000-T60000.00", "status": "active", "result": "yes"},
+        )
+        self.assertIsNone(still_open)
+
+    def test_event_payload_collects_every_finalized_strike(self):
+        self.assertEqual(
+            event_ticker_from_kalshi_ticker("KXBTCD-26AUG1415-T62999.99"),
+            "KXBTCD-26AUG1415",
+        )
+        body = {
+            "event": {"event_ticker": "KXBTCD-26AUG1000", "status": "determined"},
+            "markets": [
+                {"ticker": "KXBTCD-26AUG1000-T60000.00", "status": "finalized", "result": "yes"},
+                {"ticker": "KXBTCD-26AUG1000-T61000.00", "status": "finalized", "result": "no"},
+                {"ticker": "KXBTCD-26AUG1000-T62000.00", "status": "active"},
+            ],
+        }
+        pulled = collect_official_results(body)
+        self.assertEqual(official_y_finish(pulled["KXBTCD-26AUG1000-T60000.00"]), "UP")
+        self.assertEqual(official_y_finish(pulled["KXBTCD-26AUG1000-T61000.00"]), "DOWN")
+        self.assertNotIn("KXBTCD-26AUG1000-T62000.00", pulled)
+        stats = tape_backfill_stats(
+            [
+                {"id": 1, "ticker": "KXBTCD-26AUG1000-T60000.00"},
+                {"id": 2, "ticker": "KXBTCD-26AUG1000-T61000.00"},
+                {"id": 3, "ticker": "KXBTCD-26AUG1000-T62000.00"},
+            ],
+            pulled,
+        )
+        self.assertEqual(stats["open_n"], 3)
+        self.assertEqual(stats["unique_tickers"], 3)
+        self.assertEqual(stats["finalized_tickers"], 2)
 
     def test_exact_strike_finish(self):
         self.assertEqual(finish_outcome(100_100, 100_000), "UP")
         self.assertEqual(finish_outcome(99_900, 100_000), "DOWN")
         self.assertIsNone(finish_outcome(100_000, 100_000))
         self.assertIsNone(finish_outcome(None, 100_000))
+
+    def test_pick_settle_spot_skips_zero_and_uses_last(self):
+        self.assertEqual(pick_settle_spot(100_100, None), 100_100)
+        self.assertEqual(pick_settle_spot(0, 99_900), 99_900)
+        self.assertEqual(pick_settle_spot(None, 99_900), 99_900)
+        self.assertIsNone(pick_settle_spot(0, None))
+        self.assertIsNone(pick_settle_spot("bad", None))
 
 
 class OddsBandCalibTests(unittest.TestCase):
@@ -132,21 +330,40 @@ class OddsBandCalibTests(unittest.TestCase):
 class LeaderPriceEdgeTests(unittest.TestCase):
     def test_price_edge_middle_and_late(self):
         chair = Leader()
+        chair.edge["total"] = 80
         mid = chair._price_edge(
             70, "UP", 50.0,
-            {"spread_cents": 4.0, "mins_left": 30, "window_minutes": 60},
+            {"spread_cents": 4.0, "mins_left": 30, "window_minutes": 60, "settled_n": 80},
         )
-        self.assertAlmostEqual(mid["p_finish"], 0.70)
-        self.assertAlmostEqual(mid["ev_cents"], 18.0)
+        # shrink 0.85: 0.50 + 0.20*0.85 = 0.67; EV = 67 − 50 − 1.75 − 2 = 13.25
+        self.assertAlmostEqual(mid["p_finish"], 0.67)
+        self.assertAlmostEqual(mid["ev_cents"], 13.25)
         self.assertEqual(mid["phase"], "middle")
         self.assertFalse(ev_gate_blocks(mid["p_finish"], mid["ev_cents"], mid["min_p"], mid["min_ev"]))
 
         late = chair._price_edge(
             60, "UP", 55.0,
-            {"spread_cents": 2.0, "mins_left": 10, "window_minutes": 60},
+            {"spread_cents": 2.0, "mins_left": 10, "window_minutes": 60, "settled_n": 80},
         )
         self.assertEqual(late["phase"], "late")
         self.assertTrue(ev_gate_blocks(late["p_finish"], late["ev_cents"], late["min_p"], late["min_ev"]))
+
+    def test_price_edge_uses_yes_ask_not_mid(self):
+        chair = Leader()
+        chair.edge["total"] = 80
+        edge = chair._price_edge(
+            70, "UP", 48.0,
+            {
+                "spread_cents": 4.0,
+                "mins_left": 30,
+                "window_minutes": 60,
+                "settled_n": 80,
+                "yes_ask": 52.0,
+                "yes_bid": 48.0,
+            },
+        )
+        # fill at 52¢ ask, not 48¢ mid
+        self.assertAlmostEqual(edge["ev_cents"], compute_ev_cents(0.67, 52.0, 4.0))
 
     def test_wait_keeps_priced_edge_on_state(self):
         chair = Leader()
@@ -171,7 +388,112 @@ class LeaderPriceEdgeTests(unittest.TestCase):
         self.assertTrue(lc["locked"])
         self.assertEqual(lc["p_finish"], 0.72)
         self.assertEqual(lc["ev_cents"], 19.0)
+        self.assertEqual(lc["leftover_after_vig"], 19.0)
+        self.assertTrue(lc["paper_only"])
         self.assertEqual(lc["floor_strike"], 100000.0)
+
+    def test_stuck_open_forces_n0_p_finish(self):
+        chair = Leader()
+        chair.edge["total"] = 80
+        warm = chair._price_edge(
+            70, "UP", 50.0,
+            {"spread_cents": 4.0, "mins_left": 30, "window_minutes": 60, "settled_n": 80},
+        )
+        cold = chair._price_edge(
+            70, "UP", 50.0,
+            {
+                "spread_cents": 4.0,
+                "mins_left": 30,
+                "window_minutes": 60,
+                "settled_n": 80,
+                "stuck_open": True,
+                "open_rows": [{"id": 1062, "ticker": "KXBTCD-26AUG1415-T62999.99"}],
+            },
+        )
+        self.assertLessEqual(cold["p_finish"], 0.62)
+        self.assertLess(cold["p_finish"], warm["p_finish"])
+        self.assertEqual(lifetime_n_for_zach(80, [{"id": 1063}]), 0)
+
+    def test_zach_leftover_matches_ask_ev(self):
+        self.assertAlmostEqual(
+            leftover_after_vig(0.70, 50.0, 4.0),
+            compute_ev_cents(0.70, 50.0, 4.0),
+        )
+        self.assertIsNone(zach_bar_reason(25, 75, p_finish=0.62, fee_cents=1.0, yes_mid=25, side_ask=25))
+        self.assertIsNotNone(never_lock_near_certain(99, 1))
+        self.assertIsNotNone(eth_paper_lock_blocked("ETH", 0))
+        self.assertEqual(paper_stake_for_lock("DOWN", 0, 91), 25.0)
+        self.assertFalse(stuck_hours_open([]))
+
+
+class EthShadowPickTests(unittest.TestCase):
+    def _signals(self, side: str):
+        from backend.agents.base import AgentSignal
+        names = (
+            "candle", "volume", "momentum", "orderflow", "odds", "strike",
+            "quorum", "cheap", "panic", "spotlag", "exhaust", "whale",
+        )
+        return [
+            AgentSignal(n, side, 82, "test", n)
+            for n in names
+        ]
+
+    def _eth_regime(self, **over):
+        base = {
+            "asset": "eth",
+            "ticker": "KXETHD-26AUG1516-T2000.00",
+            "mins_left": 35,
+            "window_minutes": 60,
+            "up_pct": 48,
+            "yes_ask": 50,
+            "no_ask": 52,
+            "yes_mid": 48,
+            "floor_strike": 2000.0,
+            "kalshi_healthy": True,
+            "eth_settled_n": 0,
+            "settled_n": 0,
+            "spread_cents": 2.0,
+        }
+        base.update(over)
+        return base
+
+    def test_eth_wait_still_writes_shadow_pick(self):
+        chair = Leader()
+        out = chair.synthesize(self._signals("UP"), self._eth_regime())
+        self.assertEqual(out["direction"], "WAIT")
+        self.assertFalse(out.get("window_locked"))
+        self.assertFalse((out.get("locked_call") or {}).get("locked"))
+        pick = out.get("eth_shadow_pick")
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["side"], "UP")
+        self.assertEqual(pick["paper_stake"], 0.0)
+        self.assertFalse(pick["counts_as_lock"])
+        self.assertEqual(pick["strike"], 2000.0)
+        self.assertEqual(pick["ask"], 50)
+        self.assertFalse(pick["vetoed"])
+
+    def test_btc_impulse_veto_still_records_eth_shadow(self):
+        chair = Leader()
+        out = chair.synthesize(
+            self._signals("DOWN"),
+            self._eth_regime(btc_lead={"direction": "UP", "impulse": True, "locked": True}),
+        )
+        self.assertEqual(out["direction"], "WAIT")
+        pick = out.get("eth_shadow_pick")
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["side"], "DOWN")
+        self.assertTrue(pick["vetoed"])
+        self.assertEqual(pick["paper_stake"], 0.0)
+        self.assertFalse(pick["counts_as_lock"])
+
+    def test_btc_does_not_write_eth_shadow(self):
+        chair = Leader()
+        out = chair.synthesize(
+            self._signals("UP"),
+            self._eth_regime(asset="btc", ticker="KXBTCD-26AUG1516-T63000.00", floor_strike=63000.0),
+        )
+        self.assertIsNone(out.get("eth_shadow_pick"))
+        self.assertIsNone(eth_shadow_pick("btc", "UP", 80))
 
 
 if __name__ == "__main__":

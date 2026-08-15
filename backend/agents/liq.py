@@ -38,6 +38,15 @@ class LiqSpecialist(BaseSpecialist):
 
         oi = market_data.get("open_interest") or market_data.get("oi")
         candles = market_data.get("candles") or market_data.get("klines") or []
+        liq_long = market_data.get("liq_long_usd")
+        liq_short = market_data.get("liq_short_usd")
+        has_cg_liq = liq_long is not None or liq_short is not None
+        try:
+            liq_long_f = float(liq_long or 0.0)
+            liq_short_f = float(liq_short or 0.0)
+        except (TypeError, ValueError):
+            liq_long_f, liq_short_f = 0.0, 0.0
+            has_cg_liq = False
         last_vol = None
         if candles:
             try:
@@ -83,12 +92,32 @@ class LiqSpecialist(BaseSpecialist):
             except Exception:
                 pass
 
-        # Cascade signature: big vol + directional move + OI flushing
+        # Cascade signature: CoinGlass forced-flow when present, else vol/OI proxy
         cascade = vol_spike >= 2.0 and abs(ret) >= 0.06
         hard_cascade = vol_spike >= 2.8 and abs(ret) >= 0.10
         oi_flush = oi_delta_pct < -0.008
         oi_build = oi_delta_pct > 0.010
+        cg_dir = None
+        cg_conf = 45
+        if has_cg_liq:
+            total_liq = liq_long_f + liq_short_f
+            # ~$2M BTC / ~$800k ETH in the last 30m/1h bar is a real flush
+            floor = 800_000.0 if str(market_data.get("asset") or "").lower() == "eth" else 2_000_000.0
+            if total_liq >= floor:
+                if liq_long_f > liq_short_f * 1.35:
+                    cg_dir, cg_conf = "DOWN", min(86, 56 + int(liq_long_f / max(floor, 1) * 8))
+                    cascade = True
+                    if liq_long_f > liq_short_f * 2.0:
+                        hard_cascade = True
+                elif liq_short_f > liq_long_f * 1.35:
+                    cg_dir, cg_conf = "UP", min(86, 56 + int(liq_short_f / max(floor, 1) * 8))
+                    cascade = True
+                    if liq_short_f > liq_long_f * 2.0:
+                        hard_cascade = True
 
+        cg = market_data.get("coinglass") if isinstance(market_data.get("coinglass"), dict) else {}
+        cg_interval = cg.get("interval") or market_data.get("cg_interval")
+        daily_heat = bool(cg.get("daily_heatmap") or market_data.get("cg_daily_heatmap"))
         features = {
             "vol_spike": round(vol_spike, 2),
             "ret_3m_pct": round(ret, 3),
@@ -98,22 +127,43 @@ class LiqSpecialist(BaseSpecialist):
             "cascade": cascade,
             "hard_cascade": hard_cascade,
             "oi_flush": oi_flush,
+            "liq_long_usd": round(liq_long_f, 0) if has_cg_liq else None,
+            "liq_short_usd": round(liq_short_f, 0) if has_cg_liq else None,
             "phase": phase,
             "horizon": "entry" if phase == "entry" else "revision",
             "path_move": path,
             "entry_dir": entry,
+            # 1h liq spike = local flush, not P(finish). Daily heatmap cannot lock.
+            "lock_force": False,
+            "advisory": True,
+            "not_p_finish": True,
+            "local_flush": bool(cascade or hard_cascade),
+            "cg_interval": cg_interval,
+            "daily_heatmap": daily_heat,
             "subs": [
                 {"name": "VOL", "detail": f"×{vol_spike:.1f}"},
                 {"name": "RET", "detail": f"{ret:+.2f}%"},
                 {"name": "OIΔ", "detail": f"{oi_delta_pct*100:+.1f}%"},
             ],
         }
+        if has_cg_liq:
+            features["subs"].append({"name": "LIQ", "detail": f"L{liq_long_f/1e6:.1f}/S{liq_short_f/1e6:.1f}M"})
 
         notes = []
         local_dir = None
         local_conf = 45
 
-        if cascade:
+        if cg_dir:
+            local_dir, local_conf = cg_dir, cg_conf
+            notes.append(
+                f"CoinGlass liq L${liq_long_f/1e6:.1f}M / S${liq_short_f/1e6:.1f}M"
+            )
+            if hard_cascade:
+                notes.append("hard cascade")
+            if oi_flush:
+                local_conf = min(90, local_conf + 4)
+                notes.append("OI flushing")
+        elif cascade:
             local_dir = "UP" if ret > 0 else "DOWN"
             local_conf = min(84, int(52 + vol_spike * 7 + abs(ret) * 35))
             notes.append(f"liq-pressure vol×{vol_spike:.1f} ret {ret:+.2f}%")

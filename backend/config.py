@@ -32,18 +32,18 @@ class Settings(BaseSettings):
     SYMBOL_ETH: str = "ETHUSDT"
 
     # Polling / analysis cadence — dual hourly on 2 CPU / 4 GB
-    ANALYSIS_INTERVAL: float = 4.0          # fallback / single-table
-    ANALYSIS_INTERVAL_BTC: float = 4.5
-    ANALYSIS_INTERVAL_ETH: float = 4.5
+    ANALYSIS_INTERVAL: float = 2.0          # fallback / single-table
+    ANALYSIS_INTERVAL_BTC: float = 2.0
+    ANALYSIS_INTERVAL_ETH: float = 2.0
     # Adaptive cadence (quality > frequency)
     ADAPTIVE_INTERVAL: bool = True
-    ANALYSIS_INTERVAL_QUIET: float = 7.0   # both WAIT + calm
-    ANALYSIS_INTERVAL_ACTIVE: float = 4.0  # near lock / late hour
+    ANALYSIS_INTERVAL_QUIET: float = 3.5   # both WAIT + calm
+    ANALYSIS_INTERVAL_ACTIVE: float = 2.0  # near lock / late hour
 
     HTTP_TIMEOUT: float = 4.0
     KLINE_LIMIT: int = 90
-    ANALYSIS_INTERVAL_FLAT: float = 6.0
-    ANALYSIS_INTERVAL_HOT: float = 3.0
+    ANALYSIS_INTERVAL_FLAT: float = 3.5
+    ANALYSIS_INTERVAL_HOT: float = 1.5
     BEAST_MODE: bool = False                # dual default: balanced, not max burn
     DUAL_SPOT: bool = True
     PARALLEL_AGENTS: bool = True
@@ -177,9 +177,11 @@ class Settings(BaseSettings):
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
     MAX_ENTRY_ODDS_PCT: float = 80.0
-    # Soft preferred band — still allow up to MAX but raise bar outside preferred
+    # Soft preferred label only. Live playable band is 20–80¢ + leftover after vig.
+    # Do NOT shrink the hard band to 45–55. Council shadow 45–60 is diagnostic.
     PREFERRED_ENTRY_ODDS_MIN: float = 40.0
     PREFERRED_ENTRY_ODDS_MAX: float = 65.0
+    NEVER_LOCK_CENTS: float = 99.0           # never lock ≥99¢ / one-sided 100¢
     # Next-layer edge gates
     ANTI_CHASE_PTS: float = 4.0          # if side mid jumped this many ¢ recently → WAIT
     ANTI_CHASE_LOOKBACK_S: float = 180.0
@@ -189,6 +191,27 @@ class Settings(BaseSettings):
     # P(finish) + EV gate (paper pricing only — never a live order)
     MIN_P_FINISH: float = 0.55
     MIN_EV_CENTS: float = 3.0
+    # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
+    EARLY_NO_LOCK_MINS: float = 10.0
+    PLAYABLE_MID_MIN: float = 20.0  # Zach hard band — two-sided, not 45–55
+    PLAYABLE_MID_MAX: float = 80.0
+    LATE_HOURLY_VOL_PCT: float = 0.40
+    P_FINISH_COLD_N: int = 15
+    P_FINISH_WARM_N: int = 40
+    CHAIR_HOT_BIN: float = 90.0
+    CHAIR_HOT_BIN_MIN_N: int = 15  # fade 90%+ until this many actually settled hours
+    ETH_RELIABILITY_MIN_N: int = 8  # no ETH paper lock until this many finish-graded ETH hours
+    BTC_LEAD_IMPULSE_PCT: float = 0.15
+    BTC_LEAD_STRONG_PCT: float = 0.25
+    # Official Kalshi hourly settle: 60s CFB BRTI / ETHUSD_RTI (ERTI) average
+    CFB_INDEX_BTC: str = "BRTI"
+    CFB_INDEX_ETH: str = "ETHUSD_RTI"
+    # CoinGlass v4 — key from env or /etc/secrets/COINGLASS_API_KEY (never in git)
+    # Prefer 1h OI Δ / 1h liqs. Funding is an 8h clock (display only).
+    COINGLASS_BASE: str = "https://open-api-v4.coinglass.com"
+    COINGLASS_EXCHANGE: str = "Binance"
+    COINGLASS_INTERVAL: str = "1h"
+    COINGLASS_TTL: float = 60.0
     # Top-of-book depth: known thin size → WAIT (spread still hard-gated above)
     MIN_BOOK_SIZE: float = 5.0
     # Time-to-expiry EV hurdles (hourly official window)
@@ -209,7 +232,7 @@ class Settings(BaseSettings):
     HOURLY_LATE_MIN: float = 20.0
     HOURLY_HARD_LATE_MIN: float = 8.0
     # ETH uses a thinner specialist set
-    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale"
+    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq"
 
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80

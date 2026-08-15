@@ -35,6 +35,8 @@ class RuntimeSettingsResetTests(unittest.TestCase):
         self.assertEqual(snap["learning"]["path_win_pct"], DEFAULTS["learning"]["path_win_pct"])
         saved = json.loads(self._path.read_text(encoding="utf-8"))
         self.assertTrue(saved["ui"]["call_sfx"])
+        self.assertEqual(snap["analysis_interval"], DEFAULTS["beast"]["analysis_interval"])
+        self.assertGreaterEqual(snap["analysis_interval"], 1.2)
 
     def test_reset_flag_on_patch(self):
         rs = RuntimeSettings()
@@ -42,6 +44,29 @@ class RuntimeSettingsResetTests(unittest.TestCase):
         snap = rs.apply_patch({"reset": True})
         self.assertTrue(snap["beast_mode"])
         self.assertTrue(snap["ui"]["call_sfx"])
+
+    def test_migrates_old_factory_cadence(self):
+        self._path.write_text(json.dumps({
+            "beast_mode": True,
+            "normal": {
+                "analysis_interval": 5.0,
+                "analysis_interval_hot": 3.0,
+                "analysis_interval_flat": 8.0,
+                "ui_poll_ms": 2500,
+            },
+            "beast": {
+                "analysis_interval": 1.5,
+                "analysis_interval_hot": 1.0,
+                "analysis_interval_flat": 3.0,
+                "ui_poll_ms": 800,
+            },
+            "ui": {"call_sfx": True},
+        }), encoding="utf-8")
+        rs = RuntimeSettings()
+        self.assertEqual(rs.profile()["analysis_interval"], 1.2)
+        self.assertEqual(rs._data["normal"]["analysis_interval"], 2.0)
+        self.assertEqual(rs._data["normal"]["analysis_interval_flat"], 3.5)
+        self.assertTrue(rs.ui()["call_sfx"])
 
 
 if __name__ == "__main__":

@@ -9,6 +9,34 @@ from typing import Any, Dict, Optional
 from loguru import logger
 from backend.config import settings
 from backend.services.council import Council
+from backend.agents.chair_gates import build_btc_lead, floor_scorecard
+
+DUAL_FLOOR_S = 2.0
+BEAST_FLOOR_S = 1.2
+
+
+def compute_dual_interval(
+    *,
+    beast: bool = False,
+    active: bool = False,
+    profile: Dict[str, Any] | None = None,
+    adaptive: bool = True,
+) -> float:
+    """Shared dual cadence. Normal floor 2s; BEAST can run at 1.2s."""
+    prof = profile or {}
+    base = float(prof.get("analysis_interval") or getattr(settings, "ANALYSIS_INTERVAL", 2.0))
+    hot = float(prof.get("analysis_interval_hot") or getattr(settings, "ANALYSIS_INTERVAL_HOT", 1.5))
+    flat = float(prof.get("analysis_interval_flat") or getattr(settings, "ANALYSIS_INTERVAL_FLAT", 3.5))
+    floor = BEAST_FLOOR_S if beast else DUAL_FLOOR_S
+    interval = max(base, floor)
+    if adaptive:
+        if active:
+            interval = max(hot, floor)
+        else:
+            interval = max(interval, flat)
+    if beast:
+        interval = max(BEAST_FLOOR_S, interval * 0.9)
+    return interval
 
 
 class DualOrchestrator:
@@ -68,6 +96,12 @@ class DualOrchestrator:
                 await c.hydrate_persisted_desk()
             except Exception as e:
                 logger.debug(f"desk hydrate {c.asset}: {e}")
+            try:
+                n = await c.sweep_official_finishes()
+                if n:
+                    logger.info(f"[{c.asset}] Official closer swept {n} open hour(s)")
+            except Exception as e:
+                logger.debug(f"official closer sweep skip ({c.asset}): {e}")
             c.running = True
         self.running = True
         self._task = asyncio.create_task(self._loop())
@@ -102,6 +136,31 @@ class DualOrchestrator:
             except Exception:
                 pass
 
+
+    def snapshot_btc_lead(self) -> Dict[str, Any]:
+        """Satoshi lock / lean / hour spot delta for Vitalik."""
+        st = self.btc.latest_state or {}
+        d = st.get("decision") or {}
+        lc = d.get("locked_call") or st.get("locked_call") or {}
+        raw_dir = lc.get("direction") or d.get("lean") or d.get("direction") or "WAIT"
+        locked = bool(lc.get("locked") or d.get("window_locked"))
+        market = st.get("market") or {}
+        return build_btc_lead(
+            direction=raw_dir,
+            locked=locked,
+            candles=market.get("candles") or [],
+            price=market.get("price"),
+            impulse_pct=float(getattr(settings, "BTC_LEAD_IMPULSE_PCT", 0.15)),
+            strong_pct=float(getattr(settings, "BTC_LEAD_STRONG_PCT", 0.25)),
+        )
+
+    def _feed_btc_lead(self) -> None:
+        if not self.eth:
+            return
+        try:
+            self.eth.attach_btc_lead(self.snapshot_btc_lead())
+        except Exception as e:
+            logger.debug(f"btc-lead inject skip: {e}")
 
     def _correlation_veto(self) -> None:
         """If both tables lean the same side weakly, demote the weaker to WAIT (no lock yet)."""
@@ -144,54 +203,72 @@ class DualOrchestrator:
         weaker.latest_state = st
         logger.info(f"Correlation veto: demoted {weaker.asset} ({bd} weak dual lean)")
 
+    def _tables_active(self) -> bool:
+        for c in self._councils():
+            st = c.latest_state or {}
+            d = st.get("decision") or {}
+            lc = d.get("locked_call") or st.get("locked_call") or {}
+            ml = (st.get("lock_timeline") or {}).get("mins_left")
+            dir_ = (d.get("direction") or "WAIT").upper()
+            if lc.get("locked") or dir_ in ("UP", "DOWN") or (d.get("summary") or "").startswith("LEAN"):
+                return True
+            if ml is not None and float(ml) <= 20:
+                return True
+        return False
+
     async def _loop(self):
         import random
+        from backend.services.runtime_settings import runtime_settings
         while self.running:
             t0 = asyncio.get_event_loop().time()
-            for c in self._councils():
+            councils = self._councils()
+            for i, c in enumerate(councils):
                 if not self.running:
                     break
                 try:
                     await c.analyze_once()
                 except Exception as e:
-                    logger.exception(f"Dual analysis error ({c.asset}): {e}")
+                    name = type(e).__name__
+                    if name in ("HTTPStatusError", "TimeoutException", "ConnectError", "ReadTimeout", "RuntimeError"):
+                        logger.warning(f"Dual analysis flap ({c.asset}): {name} — desk stays up")
+                    else:
+                        logger.warning(f"Dual analysis error ({c.asset}): {name}: {e}")
+                    try:
+                        await c.settle_due_windows()
+                    except Exception as se:
+                        logger.debug(f"Dual settle-after-error skip ({c.asset}): {se}")
+                if c.asset == "btc":
+                    self._feed_btc_lead()
+                # Jitter between tables so Kalshi calls don't stampede
+                if i < len(councils) - 1:
+                    try:
+                        await asyncio.sleep(0.15 + random.random() * 0.35)
+                    except asyncio.CancelledError:
+                        return
             try:
                 self._correlation_veto()
             except Exception as e:
                 logger.debug(f"correlation veto skip: {e}")
-                # Jitter between tables so Kalshi calls don't stampede
-                try:
-                    await asyncio.sleep(0.15 + random.random() * 0.35)
-                except asyncio.CancelledError:
-                    break
             elapsed = asyncio.get_event_loop().time() - t0
-            interval = max(
-                float(getattr(settings, "ANALYSIS_INTERVAL_BTC", 4.5)),
-                float(getattr(settings, "ANALYSIS_INTERVAL_ETH", 4.5)),
-                4.0,  # dual hard floor — protects rate limits
-            )
+            try:
+                prof = runtime_settings.profile()
+                beast = bool(runtime_settings.beast_mode or getattr(settings, "BEAST_MODE", False))
+            except Exception:
+                prof = {}
+                beast = bool(getattr(settings, "BEAST_MODE", False))
+            active = False
             if getattr(settings, "ADAPTIVE_INTERVAL", True):
                 try:
-                    active = False
-                    for c in self._councils():
-                        st = c.latest_state or {}
-                        d = st.get("decision") or {}
-                        lc = d.get("locked_call") or st.get("locked_call") or {}
-                        ml = (st.get("lock_timeline") or {}).get("mins_left")
-                        dir_ = (d.get("direction") or "WAIT").upper()
-                        if lc.get("locked") or dir_ in ("UP", "DOWN") or (d.get("summary") or "").startswith("LEAN"):
-                            active = True
-                        if ml is not None and float(ml) <= 20:
-                            active = True
-                    if active:
-                        interval = float(getattr(settings, "ANALYSIS_INTERVAL_ACTIVE", 4.0))
-                    else:
-                        interval = max(interval, float(getattr(settings, "ANALYSIS_INTERVAL_QUIET", 7.0)))
+                    active = self._tables_active()
                 except Exception:
-                    pass
-            if getattr(settings, "BEAST_MODE", False):
-                interval = max(3.5, interval * 0.9)  # still calm under BEAST
-            sleep_for = max(0.8, interval - elapsed)
+                    active = False
+            interval = compute_dual_interval(
+                beast=beast,
+                active=active,
+                profile=prof,
+                adaptive=bool(getattr(settings, "ADAPTIVE_INTERVAL", True)),
+            )
+            sleep_for = max(0.4, interval - elapsed)
             try:
                 await asyncio.sleep(sleep_for)
             except asyncio.CancelledError:
@@ -202,6 +279,8 @@ class DualOrchestrator:
         eth_state = self.eth.get_state() if self.eth else None
         # Back-compat top-level = BTC so older UI still renders
         base = {k: v for k, v in btc_state.items() if k not in ("tables", "btc", "eth", "dual")}
+        btc_acc = (btc_state or {}).get("accuracy") or {}
+        eth_acc = (eth_state or {}).get("accuracy") or {}
         base.update({
             "mode": "dual",
             "dual": True,
@@ -215,11 +294,13 @@ class DualOrchestrator:
                 "bitcoin": "satoshi",
                 "ethereum": "vitalik" if self.eth else None,
             },
+            "scorecard": floor_scorecard(btc_acc, eth_acc),
         })
         return base
 
     async def analyze_once(self) -> Dict[str, Any]:
         await self.btc.analyze_once()
+        self._feed_btc_lead()
         if self.eth:
             await self.eth.analyze_once()
         return self.get_state()

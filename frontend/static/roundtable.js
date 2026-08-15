@@ -17,12 +17,56 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
   const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
+  const DESK_KEY = "council_auth_ok";
+  const ONBOARD_KEY = "council_onboarded";
+  function hasOnboarded() {
+    try {
+      return localStorage.getItem(ONBOARD_KEY) === "1" || localStorage.getItem("council_entered") === "1";
+    } catch (e) { return false; }
+  }
+  function markOnboarded() {
+    try { localStorage.setItem(ONBOARD_KEY, "1"); } catch (e) {}
+    try { localStorage.setItem("council_entered", "1"); } catch (e) {}
+  }
+  window.hasOnboarded = hasOnboarded;
+  window.markOnboarded = markOnboarded;
+  // Cold load: leftover storage must not paint privileged chrome.
+  try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  try { localStorage.removeItem(DESK_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(DESK_KEY); } catch (e) {}
+  window.__deskUnlockedThisPage = false;
+  window.__adminUnlockedThisPage = false;
+  document.body.classList.add("gate-locked");
+  document.body.classList.remove("admin-unlocked", "follower-unlocked");
+  document.body.setAttribute("data-password-protected", "true");
+  function hasDeskAuth() {
+    try { return sessionStorage.getItem(DESK_KEY) === "1" && !!window.__deskUnlockedThisPage; } catch (e) { return !!window.__deskUnlockedThisPage; }
+  }
   function isAdminUnlocked() {
-    try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(ADMIN_KEY) === "1" && !!window.__adminUnlockedThisPage; } catch (e) { return !!window.__adminUnlockedThisPage; }
   }
   function setAdminUnlocked(on) {
-    try { localStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    if (on) window.__adminUnlockedThisPage = true;
+    document.body.classList.toggle("admin-unlocked", !!on);
+    if (on) {
+      try { mountAdminDesk(); } catch (e) {}
+    }
   }
+  function mountAdminDesk() {
+    const host = document.getElementById("adminDeskHost");
+    const tpl = document.getElementById("adminDeskTemplate");
+    if (!host || !tpl) return;
+    if (host.dataset.mounted !== "1") {
+      host.appendChild(tpl.content.cloneNode(true));
+      host.dataset.mounted = "1";
+    }
+    try { wireAdminTools(); } catch (e) {}
+    try { wireBrain(); } catch (e) {}
+  }
+  window.mountAdminDesk = mountAdminDesk;
   let pendingAdminCb = null;
   function requestAdminUnlock(cb) {
     if (isAdminUnlocked()) { if (typeof cb === "function") cb(); return; }
@@ -46,6 +90,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (ok && window.__openSettingsAfterAdmin && typeof setMode === "function") {
       window.__openSettingsAfterAdmin = false;
       setMode("settings");
+    }
+    if (ok) {
+      try { mountAdminDesk(); } catch (e) {}
+      try { loadAdminDeskExtensions(); } catch (e) {}
     }
     try { syncAutoBetVisibility(); } catch (e) {}
   }
@@ -107,11 +155,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate to start a clean FINISH-ONLY era? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
-            if (st()) st().textContent = data.ok ? ("Hit rate cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
+            if (st()) st().textContent = data.ok ? ("Hit rate & scorecard cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
           } catch (e) {
             if (st()) st().textContent = "Clear failed: " + e;
           }
@@ -149,11 +197,59 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         });
       });
     }
+    const brainBtn = document.getElementById("btnBrainExport");
+    if (brainBtn && !brainBtn.__wired) {
+      brainBtn.__wired = true;
+      brainBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-brain.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          const bs = document.getElementById("brainStatus");
+          if (bs) bs.textContent = "Brain download started…";
+        });
+      });
+    }
   }
   // Expose for any late handlers
   window.isAdminUnlocked = isAdminUnlocked;
   window.requestAdminUnlock = requestAdminUnlock;
   window.ADMIN_PASSWORD = ADMIN_PASSWORD;
+
+  /* Admin-only desk extensions are fetched after Settings unlock. Not a public route. */
+  let adminExtBooted = false;
+  async function loadAdminDeskExtensions() {
+    if (adminExtBooted || !isAdminUnlocked()) return;
+    adminExtBooted = true;
+    try {
+      const r = await adminFetch("/api/desk/extensions", { credentials: "same-origin" });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d && d.html) {
+        let host = document.getElementById("deskExtensions");
+        if (!host) {
+          host = document.createElement("div");
+          host.id = "deskExtensions";
+          document.body.appendChild(host);
+        }
+        host.innerHTML = d.html;
+      }
+      if (d && d.js) {
+        const s = document.createElement("script");
+        s.textContent = d.js;
+        document.body.appendChild(s);
+      }
+    } catch (e) {}
+  }
+  window.loadAdminDeskExtensions = loadAdminDeskExtensions;
+  if (isAdminUnlocked()) {
+    try { loadAdminDeskExtensions(); } catch (e) {}
+  }
 
 
   const overlay = document.getElementById("dashboardOverlay");
@@ -196,7 +292,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : "http://127.0.0.1:8000");
   // Poll faster than analysis interval so UI stays live after each cycle
 
-  // Chair portrait (eye color by direction) — armored ZT knight
+  // Chair portrait (eye color by direction) — armored knight
   const chairImages = {
     UP: new Image(),
     DOWN: new Image(),
@@ -217,6 +313,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   chairImages.WAIT.src = "/chair-wait.jpg";
 
   const vitalikImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
+  ["UP", "DOWN", "WAIT"].forEach(k => {
+    vitalikImages[k].crossOrigin = "anonymous";
+    vitalikImages[k].onload = _chairLoaded;
+    vitalikImages[k].onerror = () => console.warn("Vitalik image failed:", k);
+  });
   vitalikImages.UP.src = "/vitalik-up.jpg";
   vitalikImages.DOWN.src = "/vitalik-down.jpg";
   vitalikImages.WAIT.src = "/vitalik-wait.jpg";
@@ -238,13 +339,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
 
-  // Gate disabled — enter table immediately
-  try {
-    localStorage.setItem("council_entered", "1");
-    document.body.classList.remove("gate-locked", "gate-revealing");
-    const g = document.getElementById("summonGate");
-    if (g) g.remove();
-  } catch (e) {}
+  // Desk-code gate stays up on a cold visit. Do not strip gate-locked here.
+  document.body.classList.add("gate-locked");
+  document.body.classList.remove("admin-unlocked");
 
   let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 800;
   let beastMode = localStorage.getItem("council_beast") !== "0";
@@ -422,6 +519,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   applySettingsSnapshot._real = true;
   window.applySettingsSnapshot = applySettingsSnapshot;
 
+  function syncExclusiveBodyMode(next) {
+    const drop = [];
+    Array.prototype.forEach.call(document.body.classList, function (c) {
+      if (c === "floor-mode" || (c.length > 5 && c.indexOf("mode-") === 0)) drop.push(c);
+    });
+    drop.forEach(function (c) { document.body.classList.remove(c); });
+    if (next) document.body.classList.add("mode-" + next);
+    document.body.classList.toggle("floor-mode", next === "floor");
+  }
+  function syncExclusiveTabActive(next) {
+    document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp" || !btn.dataset.mode) {
+        btn.classList.remove("active");
+        if (btn.hasAttribute("aria-selected")) btn.setAttribute("aria-selected", "false");
+        return;
+      }
+      const on = btn.dataset.mode === next;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+
   function stayOnSettings() {
     const sv = document.getElementById("settingsView");
     const showing = !!(sv && !sv.classList.contains("hidden"));
@@ -431,18 +550,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return;
     }
     if (sv) sv.classList.remove("hidden");
-    document.body.classList.add("mode-settings");
-    document.body.classList.remove("mode-floor", "floor-mode", "mode-art");
-    document.body.classList.remove("mode-dashboard", "mode-bots", "mode-ranks", "mode-paper", "mode-charts");
+    syncExclusiveBodyMode("settings");
+    syncExclusiveTabActive("settings");
+  }
+
+  async function readSettingsJson(r) {
+    const ct = String((r && r.headers && r.headers.get("content-type")) || "").toLowerCase();
+    if (!ct.includes("json")) {
+      throw new Error("settings route returned HTML, not JSON");
+    }
+    return r.json();
+  }
+
+  async function postSettingsJson(body, path) {
+    const url = path || "/api/settings/save";
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    if (typeof isAdminUnlocked === "function" && isAdminUnlocked() && body && body.auto_bet) {
+      headers["X-Council-Admin"] = ADMIN_PASSWORD;
+    }
+    const r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body || {}),
+    });
+    const s = await readSettingsJson(r);
+    if (!r.ok && !s) throw new Error("HTTP " + r.status);
+    return s;
   }
 
   async function fetchSettings() {
     try {
-      const r = isAdminUnlocked()
-        ? await adminFetch(API_BASE + "/api/settings")
-        : await fetch(API_BASE + "/api/settings");
+      const r = await fetch("/api/settings", { headers: { Accept: "application/json" } });
       if (!r.ok) return null;
-      return await r.json();
+      return await readSettingsJson(r);
     } catch (e) {
       return null;
     }
@@ -458,13 +601,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (sfx) sfx.checked = sfxWas;
     paintBeastProfileLine(lastSettingsSnap);
     try {
-      const r = await fetch(API_BASE + "/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ beast_mode: !!on }),
-      });
-      if (r.ok) {
-        const s = await r.json();
+      const s = await postSettingsJson({ beast_mode: !!on }, "/api/settings/save");
+      if (s) {
         if (mode === "settings") {
           lastSettingsSnap = s;
           applyBeastChrome(!!on);
@@ -494,7 +632,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | dashboard | charts
   let state = null;
-  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "bitcoin"; })();
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableState(which) {
     if (!state) return null;
@@ -505,35 +643,65 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return null;
   }
   function isDualMode() {
-    return !!(state && (state.dual || (state.tables && (state.tables.ethereum || state.tables.bitcoin))));
+    return !!(state && (
+      state.dual ||
+      (state.tables && (state.tables.ethereum || state.tables.bitcoin)) ||
+      (state.btc && state.eth)
+    ));
   }
   /** Focused view of dual state — NEVER mutates state.tables */
   function getViewState() {
     if (!state) return null;
-    if (!isDualMode()) return state;
     const focused = tableState(focusTable);
-    if (!focused) return state;
+    if (!focused) {
+      return Object.assign({}, state, { _focusTable: focusTable });
+    }
     const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
     return Object.assign({}, state, {
-      decision: focused.decision || state.decision,
-      locked_call: lc || state.locked_call,
-      agents: focused.agents || state.agents,
-      market: focused.market || state.market,
-      accuracy: focused.accuracy || state.accuracy,
-      hierarchy: focused.hierarchy || state.hierarchy,
-      learning: focused.learning || state.learning,
+      decision: focused.decision || {},
+      locked_call: lc || null,
+      agents: Array.isArray(focused.agents) ? focused.agents : [],
+      market: focused.market || {},
+      accuracy: focused.accuracy || {},
+      hierarchy: focused.hierarchy || [],
+      learning: focused.learning || {},
+      weights: focused.weights || (focused.learning && focused.learning.weights) || {},
       _focusTable: focusTable,
     });
   }
 
+  function deskLockSnapshot() {
+    function one(t) {
+      if (!t) return { locked: false, direction: "", ticker: "" };
+      const lc = t.locked_call || (t.decision && t.decision.locked_call) || {};
+      const d = String(lc.direction || "").toUpperCase();
+      const locked = !!(lc.locked && (d === "UP" || d === "DOWN"));
+      const m = t.market || {};
+      return {
+        locked: locked,
+        direction: locked ? d : "",
+        ticker: m.kalshi_ticker || m.ticker || "",
+        mins_left: (t.lock_timeline && t.lock_timeline.mins_left != null)
+          ? t.lock_timeline.mins_left
+          : m.mins_left,
+      };
+    }
+    return {
+      focus: focusTable === "bitcoin" ? "btc" : "eth",
+      btc: one(typeof tableState === "function" ? tableState("bitcoin") : state),
+      eth: one(typeof tableState === "function" ? tableState("ethereum") : null),
+    };
+  }
+  window.__deskLockSnapshot = deskLockSnapshot;
+
 
   // Rolling series for Charts tab (built from poll snapshots)
   const series = {
-    odds: [],      // {t, up}
+    odds: [],      // {t, up, down}
     delta: [],     // {t, d} price - target
     funding: [],   // {t, f}
-    tape: [],      // {t, dir, conf}
-    accuracy: [],  // {t, pct}
+    tape: [],      // {t, dir, conf} live lean (lock history is separate)
+    accuracy: [],  // {t, pct, n, correct} finish-only, n>0 only
     max: 90,
   };
   function pushSeries(arr, point) {
@@ -545,7 +713,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let animId = null;
   let time = 0;
   let glitchUntil = 0;
-  let debateHistory = []; // REMOVED — debate log disabled for dual CPU room
+  let hourSlamUntil = 0;
+  let debateHistory = [];
+  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  let _tableEmberUntil = 0;
+  let _tableEmberKey = "";
+  let _tableEmberDir = "WAIT";
+  // Parked lock flash — expanding ring on lock. Wired by noteChairLock.
+  const sealFX = {
+    bitcoin: { until: 0, dir: "WAIT" },
+    ethereum: { until: 0, dir: "WAIT" },
+  };
+  const _sealSeen = { bitcoin: "", ethereum: "" };
 
   // Market-open bell — one ring per new hourly window
   let soundMuted = localStorage.getItem("council_bell_muted") === "1";
@@ -568,6 +747,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   /** Synthesized exchange-style opening bell (no sample file / no copyright). */
   function playMarketBell() {
     if (soundMuted) return;
+    try {
+      if (typeof window.__floorMusicDuck === "function") window.__floorMusicDuck(2200);
+    } catch (e) {}
     const ctx = ensureAudio();
     if (!ctx || !bellArmed) return;
     const now = ctx.currentTime;
@@ -612,312 +794,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
 
-  /** Short purple mist burst when a new hourly market opens (~5s). */
-  /**
-   * Professional volumetric purple mist — particle physics.
-   * Soft billows + micro-sparks + ground fog, ~5s cinematic burst on new market.
-   */
+  /** Hour-open cue: short table ember, not a full-screen grape fog. */
   function playNewMarketMist() {
     try {
-      // Stop any prior run
       if (window.__mistCtrl && typeof window.__mistCtrl.stop === "function") {
         try { window.__mistCtrl.stop(); } catch (e) {}
       }
-
-      let wrap = document.getElementById("marketMist");
-      if (!wrap) {
-        wrap = document.createElement("div");
-        wrap.id = "marketMist";
-        wrap.className = "market-mist";
-        wrap.innerHTML = '<canvas id="marketMistCanvas"></canvas>';
-        document.body.appendChild(wrap);
-      }
-      let canvas = document.getElementById("marketMistCanvas");
-      if (!canvas) {
-        canvas = document.createElement("canvas");
-        canvas.id = "marketMistCanvas";
-        wrap.innerHTML = "";
-        wrap.appendChild(canvas);
-      }
-      wrap.classList.add("active");
-      wrap.classList.remove("fade");
-
-      const ctx = canvas.getContext("2d", { alpha: true });
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      let w = 0, h = 0;
-      function resize() {
-        w = window.innerWidth;
-        h = window.innerHeight;
-        canvas.width = Math.floor(w * dpr);
-        canvas.height = Math.floor(h * dpr);
-        canvas.style.width = w + "px";
-        canvas.style.height = h + "px";
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      }
-      resize();
-
-      // --- Particle system ---
-      // Layers: 0 ground fog, 1 mid billows, 2 high wisps, 3 sparkle motes
-      const blobs = [];
-      const motes = [];
-      const DURATION = 5200;
-      const FADE_START = 2800;
-      const t0 = performance.now();
-      let raf = 0;
-      let running = true;
-
-      function spawnBlob(layer) {
-        const ground = layer === 0;
-        const high = layer === 2;
-        return {
-          layer,
-          x: Math.random() * w,
-          y: ground ? h * (0.55 + Math.random() * 0.5)
-                    : high ? h * Math.random() * 0.5
-                    : h * (0.2 + Math.random() * 0.65),
-          // radius in px
-          r: ground ? (90 + Math.random() * 160)
-                    : high ? (50 + Math.random() * 110)
-                    : (70 + Math.random() * 140),
-          vx: (Math.random() - 0.5) * (ground ? 18 : 32),
-          vy: ground ? -(8 + Math.random() * 14) : (Math.random() - 0.5) * 22,
-          // turbulence seeds
-          seed: Math.random() * 1000,
-          phase: Math.random() * Math.PI * 2,
-          breath: 0.55 + Math.random() * 0.9,
-          // color in purple/magenta range
-          hue: high ? 270 + Math.random() * 28 : 285 + Math.random() * 32,
-          sat: ground ? 58 + Math.random() * 22 : 48 + Math.random() * 28,
-          lit: ground ? 26 + Math.random() * 18 : 34 + Math.random() * 22,
-          baseA: ground ? 0.16 + Math.random() * 0.12 : high ? 0.06 + Math.random() * 0.07 : 0.1 + Math.random() * 0.11,
-        };
-      }
-      function spawnMote() {
-        return {
-          x: Math.random() * w,
-          y: h * (0.15 + Math.random() * 0.75),
-          r: 0.6 + Math.random() * 1.8,
-          vx: (Math.random() - 0.5) * 40,
-          vy: -(12 + Math.random() * 40),
-          life: 0.4 + Math.random() * 1.2,
-          age: 0,
-          hue: 290 + Math.random() * 40,
-        };
-      }
-
-      for (let i = 0; i < 18; i++) blobs.push(spawnBlob(0));
-      for (let i = 0; i < 22; i++) blobs.push(spawnBlob(1));
-      for (let i = 0; i < 14; i++) blobs.push(spawnBlob(2));
-      for (let i = 0; i < 50; i++) motes.push(spawnMote());
-
-      // Cheap multi-octave turbulence (no noise lib)
-      function turb(x, y, t, seed) {
-        return Math.sin(x * 0.004 + t * 0.55 + seed)
-             + Math.sin(y * 0.005 - t * 0.4 + seed * 1.3) * 0.7
-             + Math.sin((x + y) * 0.003 + t * 0.8 + seed * 0.5) * 0.5;
-      }
-      // Wind shear: horizontal wind strengthens with height (atmospheric profile)
-      // height01 = 0 at floor, 1 at top of screen
-      function windShear(height01, t) {
-        const base = 28 + Math.sin(t * 0.35) * 10;       // slow shifting wind
-        const shear = height01 * height01;               // quadratic shear aloft
-        const gust = Math.sin(t * 1.7 + height01 * 4) * 12 * height01;
-        return base * shear + gust;
-      }
-
-      let lastTs = t0;
-      function frame(now) {
-        if (!running) return;
-        const elapsed = now - t0;
-        const t = elapsed / 1000;
-        // clamp dt so tab-throttling doesn't explode physics
-        let dt = Math.min(0.033, Math.max(0.008, (now - lastTs) / 1000));
-        lastTs = now;
-
-        // envelope: ramp in 0.55s, hold, fade after FADE_START
-        let env = 1;
-        if (elapsed < 550) env = elapsed / 550;
-        else if (elapsed > FADE_START) env = Math.max(0, 1 - (elapsed - FADE_START) / (DURATION - FADE_START));
-        env = Math.min(1, Math.max(0, env));
-
-        ctx.clearRect(0, 0, w, h);
-
-        // --- Volumetric lighting (cheap, no raymarch) ---
-        // Key light sits upper-center; shafts + in-scatter glow only
-        const lx = w * 0.5 + Math.sin(t * 0.25) * w * 0.04;
-        const ly = h * 0.18;
-        // Soft god-ray cones (additive)
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        for (let i = 0; i < 5; i++) {
-          const ang = -0.55 + i * 0.28 + Math.sin(t * 0.4 + i) * 0.04;
-          const len = h * (0.7 + (i % 2) * 0.12);
-          const tipX = lx + Math.sin(ang) * len;
-          const tipY = ly + Math.cos(ang) * len * 0.15 + len;
-          const shaft = ctx.createLinearGradient(lx, ly, tipX, tipY);
-          const a0 = (0.07 - i * 0.008) * env;
-          shaft.addColorStop(0, `rgba(190, 120, 255, ${a0})`);
-          shaft.addColorStop(0.45, `rgba(140, 60, 210, ${a0 * 0.35})`);
-          shaft.addColorStop(1, "rgba(40, 0, 80, 0)");
-          ctx.fillStyle = shaft;
-          ctx.beginPath();
-          // narrow triangle shaft
-          const spread = 36 + i * 10;
-          ctx.moveTo(lx, ly);
-          ctx.lineTo(tipX - spread, tipY);
-          ctx.lineTo(tipX + spread, tipY);
-          ctx.closePath();
-          ctx.fill();
-        }
-        // Bright core at light source
-        const core = ctx.createRadialGradient(lx, ly, 0, lx, ly, Math.min(w, h) * 0.22);
-        core.addColorStop(0, `rgba(230, 190, 255, ${0.2 * env})`);
-        core.addColorStop(0.35, `rgba(160, 80, 220, ${0.1 * env})`);
-        core.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = core;
-        ctx.beginPath();
-        ctx.arc(lx, ly, Math.min(w, h) * 0.22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // Deep purple underglow pool (floor bounce light)
-        const pool = ctx.createRadialGradient(w * 0.5, h * 0.78, 0, w * 0.5, h * 0.75, Math.max(w, h) * 0.65);
-        pool.addColorStop(0, `rgba(120, 30, 160, ${0.2 * env})`);
-        pool.addColorStop(0.45, `rgba(60, 12, 90, ${0.1 * env})`);
-        pool.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = pool;
-        ctx.fillRect(0, 0, w, h);
-
-        // Soft vignette
-        const vig = ctx.createRadialGradient(w * 0.5, h * 0.5, Math.min(w, h) * 0.28, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
-        vig.addColorStop(0, "rgba(0,0,0,0)");
-        vig.addColorStop(1, `rgba(4, 0, 10, ${0.42 * env})`);
-        ctx.fillStyle = vig;
-        ctx.fillRect(0, 0, w, h);
-
-        // Billow particles — wind shear + buoyancy + turbulence
-        for (const b of blobs) {
-          const height01 = 1 - Math.max(0, Math.min(1, b.y / h));
-          const shear = windShear(height01, t);
-          const n = turb(b.x, b.y, t, b.seed);
-          // accelerate toward shear wind (stronger aloft), add turb
-          b.vx += ((shear - b.vx) * 0.55 + n * 14) * dt;
-          b.vy += (n * 0.7 - 10 - height01 * 6) * dt; // buoyancy stronger high
-          b.vx *= (1 - 0.45 * dt);
-          b.vy *= (1 - 0.4 * dt);
-          b.x += b.vx * dt * 55;
-          b.y += b.vy * dt * 55;
-          if (b.x < -b.r) b.x = w + b.r;
-          if (b.x > w + b.r) b.x = -b.r;
-          if (b.y < -b.r) b.y = h + b.r * 0.25;
-          if (b.y > h + b.r) b.y = h * 0.55;
-
-          const breath = 1 + Math.sin(t * b.breath + b.phase) * 0.12;
-          const rr = b.r * breath;
-          // volumetric lighting: brighten particles nearer the light shaft
-          const dx = (b.x - lx) / w;
-          const dy = (b.y - ly) / h;
-          const distL = Math.sqrt(dx * dx + dy * dy);
-          const light = Math.max(0, 1 - distL * 1.6);
-          const a = b.baseA * env * (0.85 + 0.15 * Math.sin(t * 1.2 + b.phase));
-          const litBoost = b.lit + light * 18;
-          const satBoost = Math.min(90, b.sat + light * 12);
-          const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, rr);
-          g.addColorStop(0, `hsla(${b.hue}, ${satBoost}%, ${litBoost + 14}%, ${a * (1 + light * 0.5)})`);
-          g.addColorStop(0.42, `hsla(${b.hue}, ${b.sat}%, ${litBoost}%, ${a * 0.42})`);
-          g.addColorStop(1, `hsla(${b.hue}, ${b.sat}%, ${b.lit}%, 0)`);
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(b.x, b.y, rr, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Micro mote sparks — also feel shear aloft
-        ctx.globalCompositeOperation = "lighter";
-        for (const m of motes) {
-          m.age += dt;
-          const height01 = 1 - Math.max(0, Math.min(1, m.y / h));
-          const shear = windShear(height01, t);
-          const n = turb(m.x, m.y, t, m.x * 0.01);
-          m.vx += ((shear * 0.7 - m.vx) * 0.4 + n * 20) * dt;
-          m.vy += (-22 + n * 10) * dt;
-          m.x += m.vx * dt * 50;
-          m.y += m.vy * dt * 50;
-          if (m.age > m.life || m.y < -10) {
-            m.x = Math.random() * w;
-            m.y = h * (0.4 + Math.random() * 0.55);
-            m.age = 0;
-            m.life = 0.5 + Math.random() * 1.3;
-            m.vx = (Math.random() - 0.5) * 40;
-            m.vy = -(12 + Math.random() * 36);
-          }
-          const lifeA = 1 - m.age / m.life;
-          // brighter near light
-          const dx = (m.x - lx) / w;
-          const dy = (m.y - ly) / h;
-          const light = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) * 1.8);
-          const a = lifeA * env * (0.45 + light * 0.4);
-          ctx.fillStyle = `hsla(${m.hue}, 85%, ${65 + light * 20}%, ${a})`;
-          ctx.beginPath();
-          ctx.arc(m.x, m.y, m.r * (1 + light * 0.5), 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalCompositeOperation = "source-over";
-
-        // Ground fog sheets (sheared horizontally)
-        ctx.save();
-        for (let i = 0; i < 4; i++) {
-          const y = h * (0.58 + i * 0.1) + Math.sin(t * 0.7 + i) * 16;
-          const a = (0.04 + i * 0.014) * env;
-          const band = ctx.createLinearGradient(0, y - 36, 0, y + 48);
-          band.addColorStop(0, "rgba(0,0,0,0)");
-          band.addColorStop(0.4, `rgba(130, 40, 180, ${a})`);
-          band.addColorStop(0.6, `rgba(80, 20, 120, ${a * 0.7})`);
-          band.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = band;
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          const shearOff = windShear(0.15 + i * 0.05, t) * 0.35;
-          for (let x = 0; x <= w; x += 32) {
-            const yy = y + Math.sin((x + shearOff) * 0.01 + t * 0.9 + i) * 11
-                         + Math.sin(x * 0.022 + t * 1.2) * 5;
-            ctx.lineTo(x, yy);
-          }
-          ctx.lineTo(w, y + 50);
-          ctx.lineTo(0, y + 50);
-          ctx.closePath();
-          ctx.fill();
-        }
-        ctx.restore();
-
-        if (elapsed < DURATION) {
-          raf = requestAnimationFrame(frame);
-        } else {
-          running = false;
-          wrap.classList.remove("active");
-          ctx.clearRect(0, 0, w, h);
-        }
-      }
-
-      raf = requestAnimationFrame(frame);
-      window.__mistCtrl = {
-        stop() {
-          running = false;
-          cancelAnimationFrame(raf);
-          wrap.classList.remove("active");
-          try { ctx.clearRect(0, 0, w, h); } catch (e) {}
-        }
-      };
-      // hard safety stop
-      clearTimeout(window.__mistTimer2);
-      window.__mistTimer2 = setTimeout(() => {
-        if (window.__mistCtrl) window.__mistCtrl.stop();
-      }, DURATION + 200);
-    } catch (e) {
-      console.warn("mist physics failed", e);
-    }
+      const wrap = document.getElementById("marketMist");
+      if (wrap) wrap.classList.remove("active");
+      const d = ((state && state.decision) || {}).direction || "WAIT";
+      _tableEmberDir = String(d).toUpperCase();
+      _tableEmberKey = "hour:" + Date.now();
+      _tableEmberUntil = Date.now() + 1600;
+    } catch (e) {}
   }
-
   function windowKeyFromState(s) {
 
     const m = (s && s.market) || {};
@@ -945,6 +835,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (key !== lastWindowKey) {
         lastWindowKey = key;
         lastClockBucket = bucket;
+        try { triggerHourSlam(); } catch (e) {}
         // Skip-window: previous chair was WAIT → awkward silence; else market bell
         try {
           const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
@@ -968,6 +859,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     if (bucket !== lastClockBucket) {
       lastClockBucket = bucket;
+      try { triggerHourSlam(); } catch (e) {}
       playMarketBell();
       playNewMarketMist();
     }
@@ -1188,8 +1080,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     liq: "CASCADE",
     guardian: "WARDEN",
     law: "LAW",
-    leader: "SATOSHI",
-    chair: "SATOSHI",
+    leader: "CHAIR",
+    chair: "CHAIR",
   };
   const AGENT_TITLES = {
     candle: "Pattern Seer",
@@ -1213,7 +1105,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     guardian: "System Guard",
     law: "Enforcer",
     leader: "The Gavel",
-    chair: "Satoshi",
+    chair: "The Gavel",
   };
   const SUB_LABELS = {
     body: "CORE",
@@ -1237,10 +1129,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     kalshi_feed: "NODE-K",
   };
 
+  function isEthTable(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    return w === "ethereum" || w === "eth" || w === "vitalik";
+  }
+  function chairNameOf(which) {
+    return isEthTable(which) ? "VITALIK" : "SATOSHI";
+  }
+  function chairTitleOf(which) {
+    return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
+  }
+  function chairBadgeOf(which) {
+    return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
+  }
+  function chairPortraitOf(which, dir) {
+    return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+  }
+
   function labelOf(agent) {
     if (!agent) return "—";
-    if (agent.display_name) return agent.display_name;
     const key = agent.agent_name || agent;
+    if (key === "leader" || key === "chair") return chairNameOf(focusTable);
+    if (agent.display_name) return agent.display_name;
     if (AGENT_LABELS[key]) return AGENT_LABELS[key];
     if (typeof key === "string" && key.includes(".")) {
       const sid = key.split(".")[1];
@@ -1251,8 +1161,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function titleOf(agent) {
     if (!agent) return "";
-    if (agent.title) return agent.title;
     const key = agent.agent_name || agent;
+    if (key === "leader" || key === "chair") return isEthTable(focusTable) ? "Vitalik" : "Satoshi";
+    if (agent.title) return agent.title;
     return AGENT_TITLES[key] || "";
   }
 
@@ -1464,6 +1375,551 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.closePath();
   }
 
+  function triggerHourSlam() {
+    hourSlamUntil = Date.now() + 1100;
+    document.body.classList.add("hour-slam");
+    const el = document.getElementById("hourSlam");
+    if (el) {
+      el.hidden = false;
+      el.setAttribute("aria-hidden", "false");
+    }
+    setTimeout(() => {
+      document.body.classList.remove("hour-slam");
+      if (el) {
+        el.hidden = true;
+        el.setAttribute("aria-hidden", "true");
+      }
+    }, 1100);
+  }
+
+  function secondsLeftOf(m) {
+    if (!m) return null;
+    let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
+    if (secs == null && m.close_time) {
+      secs = (new Date(m.close_time) - Date.now()) / 1000;
+    }
+    if (secs == null || isNaN(secs)) {
+      const bucket = 3600;
+      secs = bucket - ((Date.now() / 1000) % bucket);
+    }
+    return Math.max(0, Number(secs));
+  }
+
+  function hourFillFrac(m) {
+    const secs = secondsLeftOf(m);
+    if (secs == null) return 0.5;
+    return 1 - Math.max(0, Math.min(1, secs / 3600));
+  }
+
+  function majorityDirOf(agents) {
+    let up = 0, down = 0, wait = 0;
+    (agents || []).forEach((a) => {
+      if (!a || a.agent_name === "leader") return;
+      const d = String(a.direction || "WAIT").toUpperCase();
+      if (d === "UP" || d === "UP_HOLD") up++;
+      else if (d === "DOWN" || d === "DOWN_HOLD") down++;
+      else wait++;
+    });
+    if (up > down && up >= wait) return "UP";
+    if (down > up && down >= wait) return "DOWN";
+    return "WAIT";
+  }
+
+  function spokeEnd(x0, y0, x1, y1, stopR) {
+    const dx = x0 - x1, dy = y0 - y1;
+    const dist = Math.hypot(dx, dy) || 1;
+    const r = Math.min(stopR, dist - 2);
+    return { x: x1 + (dx / dist) * r, y: y1 + (dy / dist) * r };
+  }
+
+  let _tableWisps = null;
+
+  function smokeTone(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return { r: 28, g: 118, b: 52 };
+    if (d === "DOWN" || d === "DOWN_HOLD") return { r: 148, g: 22, b: 36 };
+    return { r: 32, g: 78, b: 132 };
+  }
+
+  function noteTableEmber(key, dir) {
+    if (!key || key === _tableEmberKey) return;
+    _tableEmberKey = key;
+    _tableEmberDir = String(dir || "WAIT").toUpperCase();
+    _tableEmberUntil = Date.now() + 1400;
+  }
+
+  function ensureTableWisps() {
+    if (_tableWisps) return _tableWisps;
+    const n = reduceMotion ? 5 : 8;
+    _tableWisps = [];
+    for (let i = 0; i < n; i++) {
+      _tableWisps.push({
+        a0: (i / n) * Math.PI * 2,
+        drift: 0.00006 + (i % 3) * 0.000025,
+        dist: 0.76 + (i % 4) * 0.05,
+        stretch: 0.19 + (i % 3) * 0.045,
+        fat: 0.042 + (i % 2) * 0.018,
+        phase: i * 1.7,
+        waitSpeck: i === 2 || i === 6,
+      });
+    }
+    return _tableWisps;
+  }
+
+  function drawTableSmoke(cx, cy, tableR, dir) {
+    if (!ctx || !tableR) return;
+    const tone = smokeTone(dir);
+    const wisps = ensureTableWisps();
+    ctx.save();
+    // Annulus on the deck — hole for the Chair, never a room wash
+    ctx.beginPath();
+    ctx.arc(cx, cy + tableR * 0.10, tableR * 1.06, 0, Math.PI * 2);
+    ctx.arc(cx, cy, tableR * 0.58, 0, Math.PI * 2, true);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.rect(cx - tableR * 1.2, cy - tableR * 0.02, tableR * 2.4, tableR * 1.35);
+    ctx.clip();
+
+    for (let i = 0; i < wisps.length; i++) {
+      const w = wisps[i];
+      const ang = w.a0 + time * w.drift;
+      const pulse = 0.84 + 0.16 * Math.sin(time * 0.00082 + w.phase);
+      const x = cx + Math.cos(ang) * tableR * w.dist;
+      const y = cy + tableR * 0.30 + Math.sin(ang) * tableR * w.dist * 0.36;
+      const rw = tableR * w.stretch * pulse;
+      const rh = tableR * w.fat * pulse;
+      let cr = tone.r, cg = tone.g, cb = tone.b;
+      let a = 0.10 * pulse;
+      if (String(dir || "WAIT").toUpperCase() === "WAIT" && w.waitSpeck) {
+        cr = 88; cg = 48; cb = 118;
+        a *= 0.4;
+      }
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rw);
+      g.addColorStop(0, "rgba(" + cr + "," + cg + "," + cb + "," + a + ")");
+      g.addColorStop(0.52, "rgba(" + cr + "," + cg + "," + cb + "," + (a * 0.26) + ")");
+      g.addColorStop(1, "rgba(2,4,10,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rw, rh, ang * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    if (reduceMotion || Date.now() >= _tableEmberUntil) return;
+    const span = 1400;
+    const t = 1 - (_tableEmberUntil - Date.now()) / span;
+    const fade = Math.sin(Math.min(1, Math.max(0, t)) * Math.PI);
+    if (fade <= 0.01) return;
+    const ember = smokeTone(_tableEmberDir);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 5; i++) {
+      const u = (i / 5 + t * 0.35) % 1;
+      const lift = u * tableR * 0.40;
+      const wobble = Math.sin(time * 0.007 + i * 1.3) * tableR * 0.035;
+      const x = cx + wobble;
+      const y = cy + tableR * 0.36 - lift;
+      const rad = 3 + (1 - u) * 5;
+      const a = fade * 0.20 * (1 - u);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad * 3);
+      g.addColorStop(0, "rgba(255,168,64," + a + ")");
+      g.addColorStop(0.4, "rgba(" + (ember.r + 36) + "," + (ember.g + 16) + "," + ember.b + "," + (a * 0.45) + ")");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = fade * 0.14;
+    ctx.strokeStyle = "rgba(255, 186, 88, 0.75)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx + Math.sin(time * 0.018) * 3, cy + tableR * 0.08 - t * tableR * 0.18, tableR * 0.20, tableR * 0.05, 0.12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMajorityHaze(cx, cy, r, dir) {
+    drawTableSmoke(cx, cy, r, dir);
+  }
+
+  function drawHourRing(cx, cy, r, frac, color) {
+    const start = -Math.PI / 2;
+    const fill = Math.max(0.02, Math.min(1, frac));
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(180, 210, 230, 0.14)";
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, start + Math.PI * 2 * fill);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineCap = "butt";
+  }
+
+  const _seatTick = Object.create(null);
+  function markSeatTick(key, dir, conf) {
+    const k = String(key || "");
+    const d = String(dir || "WAIT");
+    const c = Number(conf) || 0;
+    const prev = _seatTick[k];
+    if (!prev || prev.dir !== d || prev.conf !== c) {
+      _seatTick[k] = { dir: d, conf: c, at: Date.now() };
+      return true;
+    }
+    return (Date.now() - prev.at) < 2200;
+  }
+
+  function drawPacketSpoke(x0, y0, x1, y1, color, conf, agree, fresh) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const dist = Math.hypot(dx, dy) || 1;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.18 + Math.min(0.32, (conf || 0) / 220);
+    ctx.lineWidth = agree ? 2.8 : 1.55;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    // Visual pulse stays on when Bell is muted; only reduced-motion freezes packets
+    if (reduceMotion) {
+      ctx.restore();
+      return;
+    }
+    const fast = !!(agree || fresh);
+    const speed = fast ? 0.0044 : 0.0019;
+    const dash = 12;
+    const gap = 18;
+    ctx.globalAlpha = fast ? 0.82 : 0.55;
+    ctx.lineWidth = agree ? 2.3 : 1.45;
+    ctx.setLineDash([dash, gap]);
+    ctx.lineDashOffset = -((time * speed * dist) % (dash + gap));
+    ctx.shadowColor = color;
+    ctx.shadowBlur = fast ? 16 : 8;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const n = fast ? 3 : 2;
+    const nx = dx / dist, ny = dy / dist;
+    for (let i = 0; i < n; i++) {
+      const t = ((time * speed * 0.62) + i / n) % 1;
+      const x = x0 + dx * t;
+      const y = y0 + dy * t;
+      ctx.globalAlpha = 0.95;
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = fast ? 3.6 : 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x - nx * 8, y - ny * 8);
+      ctx.lineTo(x + nx * 6, y + ny * 6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, fast ? 3.8 : 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawGameBot(name, x, y, r, dir, conf, faceAng, phase) {
+    const breathe = reduceMotion ? 1 : (1 + 0.08 * Math.sin(time * 0.0042 + (phase || 0)));
+    const rr = r * breathe;
+    const sc = strongColor(dir);
+    ctx.save();
+    ctx.translate(x, y);
+    if (faceAng != null) ctx.rotate(faceAng + Math.PI / 2);
+    drawHex(0, 0, rr + 7);
+    ctx.fillStyle = "rgba(4, 8, 16, 0.94)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.55)";
+    ctx.lineWidth = 1.7;
+    ctx.stroke();
+    drawHex(0, 0, rr + 3.5);
+    ctx.strokeStyle = sc;
+    ctx.lineWidth = 2.6;
+    ctx.shadowColor = sc;
+    ctx.shadowBlur = 14;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    try {
+      drawBotIcon(name, x, y, rr, sc, conf || 0);
+    } catch (e) {
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fillStyle = sc;
+      ctx.fill();
+    }
+  }
+
+  function drawHourSlamRings(cx, cy, r) {
+    if (Date.now() >= hourSlamUntil || reduceMotion) return;
+    const a = Math.max(0, (hourSlamUntil - Date.now()) / 1100);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.95)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + (1 - a) * 70, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.7 + (1 - a) * 110, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function accRecord(acc) {
+    const c = (acc && acc.correct) || 0;
+    const w = (acc && acc.wrong) != null ? acc.wrong : Math.max(0, ((acc && acc.total) || 0) - c);
+    return { c, w };
+  }
+
+  function scorecardFromState() {
+    if (state && state.scorecard && typeof state.scorecard === "object") {
+      return state.scorecard;
+    }
+    const btcAcc = ((typeof tableState === "function" ? tableState("bitcoin") : null) || state || {}).accuracy || {};
+    const ethAcc = ((typeof tableState === "function" ? tableState("ethereum") : null) || {}).accuracy || {};
+    const btc = accRecord(btcAcc);
+    const sh = (ethAcc && ethAcc.eth_shadow) || {};
+    const ethC = Number(sh.hits) || 0;
+    const ethN = Number(sh.n) || 0;
+    const ethW = sh.wrong != null ? Number(sh.wrong) || 0 : Math.max(0, ethN - ethC);
+    const match = "BTC " + btc.c + " · ETH " + ethC;
+    let line = "Even books. Waiting on the next finish.";
+    let ahead = "tied";
+    if (btc.c > ethC) {
+      ahead = "btc";
+      line = "BTC book ahead on finishes.";
+    } else if (ethC > btc.c) {
+      ahead = "eth";
+      line = "ETH book ahead on finishes.";
+    } else if ((btc.c + btc.w + ethC + ethW) > 0 && btc.w < ethW) {
+      line = "Even finishes. BTC book has fewer misses.";
+    } else if ((btc.c + btc.w + ethC + ethW) > 0 && ethW < btc.w) {
+      line = "Even finishes. ETH book has fewer misses.";
+    }
+    return {
+      paper: true,
+      kind: "books",
+      ahead: ahead,
+      match: match,
+      line: line,
+      btc_text: "BTC " + btc.c + "–" + btc.w,
+      eth_text: ethC + "–" + ethW + " ETH",
+    };
+  }
+
+  function updateRivalryStrip() {
+    const strip = document.getElementById("rivalryStrip");
+    if (!strip) return;
+    const onFloor = mode === "floor";
+    strip.hidden = !onFloor;
+    if (!onFloor) return;
+    const sc = scorecardFromState();
+    const btcEl = document.getElementById("rivalBtc");
+    const ethEl = document.getElementById("rivalEth");
+    const lead = document.getElementById("rivalLead");
+    const trash = document.getElementById("rivalTrash");
+    if (btcEl) btcEl.textContent = sc.btc_text || "BTC 0–0";
+    if (ethEl) ethEl.textContent = sc.eth_text || "0–0 ETH";
+    if (lead) lead.textContent = sc.match || "BTC 0 · ETH 0";
+    if (trash) trash.textContent = sc.line || "";
+    strip.classList.remove("ahead-btc", "ahead-eth", "ahead-tied");
+    strip.classList.add("ahead-" + (sc.ahead || "tied"));
+  }
+
+  function containPortrait(img, cx, cy, r) {
+    if (!img || !img.complete || !img.naturalWidth) return false;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const side = r * 2;
+    const cover = Math.max(side / iw, side / ih);
+    // object-fit: cover — fill the seat circle. No empty photo annulus.
+    // Nudge up so a cover crop keeps the face in the circle.
+    const scale = cover;
+    const dw = iw * scale, dh = ih * scale;
+    const extraY = Math.max(0, (dh - side) / 2);
+    const faceBias = Math.min(r * 0.12, extraY * 0.35);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    if (ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, cx - dw / 2, cy - dh / 2 - faceBias, dw, dh);
+    ctx.restore();
+    return true;
+  }
+
+  function chairKeyOf(which) {
+    return isEthTable(which) ? "ethereum" : "bitcoin";
+  }
+
+  function noteChairLock(which, lc) {
+    const key = chairKeyOf(which);
+    const side = String((lc && lc.direction) || "").toUpperCase();
+    const locked = !!(lc && lc.locked && (side === "UP" || side === "DOWN"));
+    const stamp = locked ? String(lc.ticker || lc.locked_at || lc.close_time || side) : "";
+    if (locked && stamp && _sealSeen[key] !== stamp) {
+      _sealSeen[key] = stamp;
+      sealFX[key] = { until: Date.now() + 1100, dir: side };
+    }
+    if (!locked) _sealSeen[key] = "";
+  }
+
+  function chairThinkRate(st, dir, locked, which) {
+    const sfx = sealFX[chairKeyOf(which)];
+    const punching = !!(sfx && sfx.until > Date.now());
+    const huddle = (st && st.huddle) || (state && state.huddle) || {};
+    const raw = String(dir || "WAIT").toUpperCase();
+    const wait = !locked && raw.indexOf("WAIT") >= 0;
+    let rate = wait ? 0.52 : 1;
+    if (huddle.in_huddle) rate = 1.65;
+    else if (typeof beastMode !== "undefined" && beastMode && !wait) rate = 1.25;
+    if (locked) rate = Math.max(rate, 1.15);
+    if (punching) rate = 2.2;
+    return rate;
+  }
+
+  function drawChairThink(cx, cy, photoR, seatR, opts) {
+    // Chair thinking HUD. Fills the empty annulus from the photo out to the
+    // seat circle: slow radar sweep + orbiting ticks (game HUD, not a spinner gif).
+    // Portrait idle: soft glow pulse, occasional eye/ember flicker.
+    // Faster when analysis is hot, punch on lock (parked lock flash).
+    // WAIT hours stay ambient, not frozen. Don't cover the face.
+    // Phone: keep it cheap (CSS/canvas, no huge video).
+    if (!ctx || !photoR || !seatR || seatR <= photoR + 3) return;
+    opts = opts || {};
+    const which = opts.which;
+    const dir = String(opts.dir || "WAIT").toUpperCase();
+    const locked = !!opts.locked;
+    const st = opts.st || {};
+    const key = chairKeyOf(which);
+    const phone = (typeof isPhoneDesk === "function") ? isPhoneDesk() : false;
+    const rate = chairThinkRate(st, dir, locked, which);
+    const wait = !locked && dir.indexOf("WAIT") >= 0;
+    const sfx = sealFX[key];
+    const punching = !!(sfx && sfx.until > Date.now() && !reduceMotion);
+    const gold = "rgba(240, 193, 74, 0.95)";
+    const hue = (locked || punching) ? gold
+      : (dir === "UP" || dir === "UP_HOLD") ? "rgba(0, 255, 120, 0.75)"
+      : (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255, 55, 90, 0.75)"
+      : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.62)");
+    const inner = photoR + 3;
+    const outer = seatR - 2;
+    const mid = (inner + outer) / 2;
+    const band = Math.max(2.5, outer - inner);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+    ctx.arc(cx, cy, inner, 0, Math.PI * 2, true);
+    ctx.clip();
+
+    if (!reduceMotion) {
+      const sweep = time * 0.00032 * rate;
+      const span = wait ? 0.70 : 0.95;
+      ctx.strokeStyle = hue;
+      ctx.lineCap = "round";
+      ctx.lineWidth = phone ? Math.min(5, band * 0.42) : Math.min(8, band * 0.50);
+      ctx.globalAlpha = (wait ? 0.22 : 0.36) * (punching ? 1.35 : 1);
+      ctx.beginPath();
+      ctx.arc(cx, cy, mid, sweep, sweep + span);
+      ctx.stroke();
+      if (!phone) {
+        ctx.globalAlpha *= 0.45;
+        ctx.lineWidth *= 0.55;
+        ctx.beginPath();
+        ctx.arc(cx, cy, mid, sweep - 0.55, sweep);
+        ctx.stroke();
+      }
+    }
+
+    const n = (phone || reduceMotion) ? 6 : 12;
+    const orbit = reduceMotion ? 0 : (-time * 0.00018 * rate);
+    ctx.globalAlpha = wait ? 0.28 : 0.48;
+    ctx.strokeStyle = hue;
+    ctx.lineWidth = phone ? 1.2 : 1.6;
+    ctx.lineCap = "butt";
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = orbit + (i / n) * Math.PI * 2;
+      const c = Math.cos(a), s = Math.sin(a);
+      const r0 = inner + 1;
+      const r1 = inner + 1 + band * (i % 3 === 0 ? 0.62 : 0.40);
+      ctx.moveTo(cx + c * r0, cy + s * r0);
+      ctx.lineTo(cx + c * r1, cy + s * r1);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    const pulse = reduceMotion ? 0.7 : (0.55 + 0.45 * Math.sin(time * 0.0024 * rate));
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, photoR + 1.2, 0, Math.PI * 2);
+    ctx.strokeStyle = hue;
+    ctx.globalAlpha = (wait ? 0.20 : 0.32) + 0.18 * pulse;
+    ctx.lineWidth = locked ? 2.4 : 1.8;
+    if (!phone && !reduceMotion) {
+      ctx.shadowColor = hue;
+      ctx.shadowBlur = 8 + 7 * pulse;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    if (!reduceMotion && !phone) {
+      const seed = key === "ethereum" ? 2.1 : 0.7;
+      const phase = (time * 0.00105 * rate + seed) % (wait ? 11 : 7);
+      if (phase < 0.14 || punching) {
+        const eyeY = cy - photoR * 0.16;
+        const spread = photoR * 0.21;
+        const a = punching ? 0.55 : (0.22 + 0.35 * (1 - phase / 0.14));
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = Math.max(0, Math.min(0.6, a));
+        ctx.fillStyle = (punching || locked) ? "rgba(255, 190, 80, 0.9)" : hue;
+        [[-spread, 0], [spread, 0]].forEach((p) => {
+          ctx.beginPath();
+          ctx.arc(cx + p[0], eyeY, Math.max(1.2, photoR * 0.028), 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.restore();
+      }
+    } else if (!reduceMotion && phone && punching) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = gold;
+      ctx.beginPath();
+      ctx.arc(cx, cy - photoR * 0.16, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (punching) {
+      const a = Math.max(0, (sfx.until - Date.now()) / 1100);
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.95, a + 0.2);
+      ctx.strokeStyle = gold;
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, photoR + 6 + (1 - a) * 14, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
 
   function resizeRoundtable() {
     if (!canvas) return;
@@ -1478,8 +1934,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
-      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function cssCanvasSize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const sx = (ctx && ctx.getTransform) ? (ctx.getTransform().a || dpr) : dpr;
+    return {
+      w: canvas.width / (sx || 1) || parseFloat(canvas.style.width) || 320,
+      h: canvas.height / (sx || 1) || parseFloat(canvas.style.height) || 320,
+    };
   }
   function lawLocked() {
     const law = (state && state.law) || {};
@@ -1537,30 +2001,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return window.innerWidth <= 480;
     }
   }
+  function floorIsSingle() {
+    if (isPhoneDesk()) return true;
+    const stage = document.getElementById("tableStage");
+    const cssW = (stage && stage.clientWidth) || window.innerWidth || 0;
+    return cssW < 720;
+  }
+  function syncFloorExitBtn() {
+    const btn = document.getElementById("floorExitBtn");
+    if (!btn) return;
+    const on = mode === "floor";
+    btn.hidden = !on;
+    btn.setAttribute("aria-hidden", on ? "false" : "true");
+  }
 
   function drawDualFloor(w, h) {
-    ctx.fillStyle = "#02040a";
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
     ctx.fillRect(0, 0, w, h);
 
     const mid = w / 2;
-    // subtle divider
-    ctx.strokeStyle = "rgba(0, 220, 255, 0.18)";
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.22)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(mid, h * 0.05);
-    ctx.lineTo(mid, h * 0.95);
+    ctx.moveTo(mid, h * 0.08);
+    ctx.lineTo(mid, h * 0.92);
     ctx.stroke();
 
-    // Left = Bitcoin / Satoshi, Right = Ethereum / Vitalik
-    // Each side: chair + FULL specialist bot ring
-    drawTableWithBots(w * 0.25, h * 0.50, Math.min(w, h) * 0.18, "bitcoin", "SATOSHI · BTC", focusTable === "bitcoin");
-    drawTableWithBots(w * 0.75, h * 0.50, Math.min(w, h) * 0.18, "ethereum", "VITALIK · ETH", focusTable === "ethereum");
+    const tableR = Math.min(w, h) * 0.26;
+    drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
+    drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
     if (focused == null) focused = true;
     ctx.save();
-    if (!focused) ctx.globalAlpha = 0.38;
+    if (!focused) ctx.globalAlpha = 0.42;
 
     const st = tableState(which) || {};
     const d = st.decision || {};
@@ -1570,12 +2046,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
     const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader");
-
+    const maj = majorityDirOf(agents);
     const gold = "rgba(240, 193, 74, 0.95)";
-    const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.45)" : "rgba(0, 220, 255, 0.45)");
-    const pr = radius * 0.48; // portrait radius
-    const portraitY = cy - 4;
-    const ringR = radius * 1.55;
+    const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
+    const pr = radius * 0.80;
+    const portraitY = cy - 2;
+    const ringR = radius * 1.48;
+    const orbit = reduceMotion ? 0 : time * 0.00014;
+    drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
+    drawHourSlamRings(cx, cy, radius);
 
     // Outer table rings (under everything)
     ctx.beginPath();
@@ -1589,61 +2068,39 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Spokes FIRST — drawn under the leader photo; stop at portrait rim
+    drawTableSmoke(cx, cy, radius, maj);
+    if (locked) {
+      noteTableEmber((which || "table") + ":" + String((lc && (lc.ticker || lc.close_time)) || dir), dir);
+    }
+
     const n = Math.max(agents.length, 1);
+    const chairLean = String(dir || "WAIT").toUpperCase();
     const botPts = [];
     agents.forEach((a, i) => {
-      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
       const x = cx + Math.cos(ang) * ringR;
       const y = cy + Math.sin(ang) * ringR;
       const adir = String(a.direction || "WAIT").toUpperCase();
-      let col = "rgba(160,180,200,0.85)";
+      let col = "rgba(0,232,255,0.95)";
       if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
       if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
       const confA = Number(a.confidence) || 50;
-      // endpoint on portrait rim (not through the face)
-      const dx = x - cx, dy = y - portraitY;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const stopR = pr + 2;
-      const ix = cx + (dx / dist) * stopR;
-      const iy = portraitY + (dy / dist) * stopR;
-      const spokeAlpha = 0.2 + Math.min(0.5, confA / 100 * 0.45);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ix, iy);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 2.2;
-      ctx.globalAlpha = (focused ? 1 : 0.5) * spokeAlpha * 0.35;
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 8;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ix, iy);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 1.2;
-      ctx.globalAlpha = (focused ? 1 : 0.5) * spokeAlpha;
-      ctx.stroke();
-      ctx.globalAlpha = focused ? 1 : 0.38;
-      botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?" });
+      const end = spokeEnd(x, y, cx, portraitY, pr + 4);
+      const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
+      const fresh = markSeatTick((which || "t") + ":" + (a.agent_name || i), adir, confA);
+      drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh);
+      ctx.globalAlpha = focused ? 1 : 0.42;
+      botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?", ang, adir });
     });
 
-    // Leader portrait ON TOP of spokes
-    const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
-    if (img && img.complete && img.naturalWidth) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(img, cx - pr, portraitY - pr, pr * 2, pr * 2);
-      ctx.restore();
-    } else {
+    const img = chairPortraitOf(which, dir);
+    if (!containPortrait(img, cx, portraitY, pr)) {
       ctx.beginPath();
       ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
+    rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
     ctx.beginPath();
     ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
@@ -1661,76 +2118,56 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
+    try {
+      noteChairLock(which, lc);
+      drawChairThink(cx, portraitY, pr, radius, { which, dir, locked, st });
+    } catch (e) {}
 
     // Labels
     ctx.textAlign = "center";
     ctx.font = "700 11px Orbitron, monospace";
     ctx.fillStyle = locked ? gold : (which === "ethereum" ? "#9dffc0" : "#7fe9ff");
-    ctx.fillText(label + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
+    ctx.fillText((label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC"))) + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
 
     ctx.font = "700 12px Orbitron, monospace";
+    const plateY = cy + radius + 14;
     if (locked) {
       ctx.fillStyle = gold;
-      ctx.fillText("LOCKED " + dir, cx, cy + pr + 16);
+      ctx.fillText("LOCKED " + dir, cx, plateY);
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "#f0d78a";
       const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, cy + pr + 30);
+      ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, plateY + 14);
 
       try {
         const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
         if (q != null) {
           ctx.font = "600 9px Share Tech Mono, monospace";
           ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
-          ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
-        }
-      } catch (e) {}
-      try {
-        const key = which === "ethereum" ? "ethereum" : "bitcoin";
-        const sfx = sealFX[key];
-        if (sfx && sfx.until > Date.now() && !reduceMotion) {
-          const a = Math.max(0, (sfx.until - Date.now()) / 1100);
-          ctx.save();
-          ctx.globalAlpha = Math.min(0.95, a + 0.2);
-          ctx.strokeStyle = typeof gold !== "undefined" ? gold : "#f0c24b";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(cx, (typeof portraitY !== "undefined" ? portraitY : cy), (typeof pr !== "undefined" ? pr : 40) + 6 + (1 - a) * 12, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = "800 10px Orbitron, monospace";
-          ctx.fillStyle = "#f0c24b";
-          ctx.fillText("SEALED", cx, (typeof portraitY !== "undefined" ? portraitY : cy));
-          ctx.restore();
+          ctx.fillText("Q:" + Math.round(Number(q)), cx, plateY + 28);
         }
       } catch (e) {}
     } else {
       ctx.fillStyle = "#a8c0d8";
-      ctx.fillText(dir, cx, cy + pr + 16);
+      ctx.fillText(dir, cx, plateY);
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(180,200,220,0.75)";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, cy + pr + 30);
+      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, plateY + 14);
     }
 
-    // Bot icons on top of spokes
     if (!botPts.length) {
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(160,180,200,0.55)";
       ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
     } else {
-      botPts.forEach((bp) => {
-        try {
-          drawBotIcon(bp.name, bp.x, bp.y, 14, bp.col, bp.confA);
-        } catch (e) {
-          ctx.beginPath();
-          ctx.arc(bp.x, bp.y, 9, 0, Math.PI * 2);
-          ctx.fillStyle = bp.col;
-          ctx.fill();
-        }
-        const tag = (bp.a.display_name || bp.a.callsign || bp.name || "?").toString().slice(0, 7);
-        ctx.font = "600 8px Share Tech Mono, monospace";
-        ctx.fillStyle = "rgba(200,220,240,0.85)";
+      botPts.forEach((bp, i) => {
+        const face = locked ? Math.atan2(portraitY - bp.y, cx - bp.x) : bp.ang;
+        drawGameBot(bp.name, bp.x, bp.y, 22, bp.adir, bp.confA, face, i);
+        const tag = labelOf(bp.a) || (bp.name || "?").toString();
+        ctx.font = "700 10px Orbitron, monospace";
+        ctx.fillStyle = "rgba(220,235,250,0.95)";
         ctx.textAlign = "center";
-        ctx.fillText(tag, bp.x, bp.y + 20);
+        ctx.fillText(String(tag).slice(0, 8), bp.x, bp.y + 34);
       });
     }
 
@@ -1773,28 +2210,30 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
-    const pr = radius * 0.42;
-    if (img && img.complete && img.naturalWidth) {
-      ctx.save();
+    const img = chairPortraitOf(which, dir);
+    const pr = radius * 0.78;
+    if (!containPortrait(img, cx, cy - 4, pr)) {
       ctx.beginPath();
-      ctx.arc(cx, cy - 8, pr, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(img, cx - pr, cy - 8 - pr, pr * 2, pr * 2);
-      ctx.restore();
-      ctx.beginPath();
-      ctx.arc(cx, cy - 8, pr, 0, Math.PI * 2);
-      ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.7)" :
-                        (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255,40,70,0.7)" :
-                        "rgba(200,220,255,0.45)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+      ctx.fillStyle = "#0a1220";
+      ctx.fill();
     }
+    ctx.beginPath();
+    ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
+    ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.7)" :
+                      (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255,40,70,0.7)" :
+                      "rgba(200,220,255,0.45)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    try {
+      noteChairLock(which, lc);
+      drawChairThink(cx, cy - 4, pr, radius, { which, dir, locked, st });
+    } catch (e) {}
 
     ctx.font = "700 12px Orbitron, monospace";
     ctx.fillStyle = which === "ethereum" ? "#9dffc0" : "#7fe9ff";
     ctx.textAlign = "center";
-    ctx.fillText(label, cx, cy - radius - 12);
+    ctx.fillText(label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC")), cx, cy - radius - 12);
 
     ctx.font = "700 14px Orbitron, monospace";
     if (locked) {
@@ -1813,24 +2252,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
         }
       } catch (e) {}
-      try {
-        const key = which === "ethereum" ? "ethereum" : "bitcoin";
-        const sfx = sealFX[key];
-        if (sfx && sfx.until > Date.now() && !reduceMotion) {
-          const a = Math.max(0, (sfx.until - Date.now()) / 1100);
-          ctx.save();
-          ctx.globalAlpha = Math.min(0.95, a + 0.2);
-          ctx.strokeStyle = typeof gold !== "undefined" ? gold : "#f0c24b";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(cx, (typeof portraitY !== "undefined" ? portraitY : cy), (typeof pr !== "undefined" ? pr : 40) + 6 + (1 - a) * 12, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = "800 10px Orbitron, monospace";
-          ctx.fillStyle = "#f0c24b";
-          ctx.fillText("SEALED", cx, (typeof portraitY !== "undefined" ? portraitY : cy));
-          ctx.restore();
-        }
-      } catch (e) {}
     } else {
       ctx.fillStyle = "#a8c0d8";
       ctx.fillText(dir === "WAIT" ? "WAIT" : String(dir), cx, cy + pr + 18);
@@ -1846,13 +2267,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillText(px, cx, cy + radius + 8);
   }
 
+  let chairHits = [];
+  function rememberChairHit(x, y, r, which) {
+    if (mode !== "floor") return;
+    chairHits.push({
+      x: x,
+      y: y,
+      r: Math.max(28, (r || 40) + 12),
+      which: which || "bitcoin",
+    });
+  }
+  function chairHitAt(x, y) {
+    for (let i = chairHits.length - 1; i >= 0; i--) {
+      const h = chairHits[i];
+      const dx = x - h.x;
+      const dy = y - h.y;
+      if (dx * dx + dy * dy <= h.r * h.r) return h;
+    }
+    return null;
+  }
+
   function drawArt() {
     if (!ctx || !canvas) return;
+    chairHits = [];
     resizeRoundtable();
-    const w = canvas.width, h = canvas.height;
+    const sz = cssCanvasSize();
+    const w = sz.w, h = sz.h;
 
-    // Dual Floor: two chairs side-by-side — phone is one focused table
-    if (mode === "floor" && !isPhoneDesk() && typeof isDualMode === "function" && isDualMode()) {
+    // Dual Floor only when the stage is wide enough — phone is always one table
+    if (mode === "floor" && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
       try { drawTrailFX(ctx); } catch(e) {}
       return;
@@ -1868,20 +2311,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {}
 
     const cx = w / 2, cy = h / 2;
-    const radius = Math.min(w, h) * (mode === "floor" ? 0.42 : 0.34);
+    const radius = Math.min(w, h) * (mode === "floor" ? 0.40 : 0.32);
 
-    // Deep void forge
-    ctx.fillStyle = "#02040a";
-    ctx.fillRect(0, 0, w, h);
+    if (mode === "floor") {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      ctx.fillStyle = "#02040a";
+      ctx.fillRect(0, 0, w, h);
+    }
 
-    // Blade-forge haze: cyan core + blood edge + gold halo
-    const haze = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius * 2.0);
-    haze.addColorStop(0, "rgba(0, 50, 90, 0.5)");
-    haze.addColorStop(0.35, "rgba(40, 10, 50, 0.22)");
-    haze.addColorStop(0.7, "rgba(60, 20, 0, 0.08)");
-    haze.addColorStop(1, "rgba(2, 4, 10, 0)");
-    ctx.fillStyle = haze;
-    ctx.fillRect(0, 0, w, h);
+    const preAgents = (state && state.agents) || [];
+    const maj = majorityDirOf(preAgents);
+    try {
+      document.body.classList.remove("majority-up", "majority-down", "majority-wait");
+      document.body.classList.add(maj === "UP" ? "majority-up" : maj === "DOWN" ? "majority-down" : "majority-wait");
+      document.documentElement.style.setProperty("--hour-frac", String(hourFillFrac((state && state.market) || {})));
+    } catch (e) {}
+    drawHourRing(cx, cy, radius + 36, hourFillFrac((state && state.market) || {}), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
+    drawHourSlamRings(cx, cy, radius);
 
     // Digital rain (katana-edge cyan)
     ctx.font = "10px monospace";
@@ -1911,7 +2360,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ? "rgba(0, 232, 255, 0.38)"
           : i === 1
             ? "rgba(240, 193, 74, 0.22)"
-            : "rgba(255, 0, 170, 0.14)";
+            : "rgba(180, 210, 230, 0.10)";
       }
       ctx.lineWidth = 1.6 - i * 0.3;
       ctx.stroke();
@@ -1942,6 +2391,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.setLineDash([6, 8]);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    drawTableSmoke(cx, cy, radius, maj);
+    try {
+      const d0 = (state && state.decision) || {};
+      const lc0 = d0.locked_call || (state && state.locked_call) || {};
+      if (lc0 && lc0.locked && lc0.direction) {
+        noteTableEmber(String(lc0.ticker || lc0.close_time || lc0.direction), lc0.direction);
+      }
+    } catch (e) {}
 
     // ── CENTER LOCKED CALL PLAQUE (follower-bot clear) ──
     // Table is reserved for the single GOAL CONTRACT call.
@@ -1996,12 +2454,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) { /* keep drawing */ }
 
     if (!state || !state.agents) {
-      // still draw rain + rings while waiting
+      try { if (typeof __prevState !== "undefined" && __prevState) state = __prevState; } catch (e) {}
       return;
     }
 
-    // Specialists ONLY on Floor mode — Table is Chair + LOCKED plaque only
-    if (mode === "floor") {
+    // Specialists on Floor and Table — packet lines + game-unit seats
+    if (mode === "floor" || mode === "art") {
     const agents = state.agents.filter(a => a.agent_name !== "leader");
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
@@ -2027,7 +2485,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
-      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + (reduceMotion ? 0 : time * 0.00014);
       // Subtle hierarchy: top-3 sit a hair closer to the Chair (still one ring)
       const rk = item.rank;
       // Stay fully on the floor ring — no inward hierarchy pull onto the table
@@ -2176,43 +2634,23 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
 
-    // Spokes into CHAIR — color-matched to each rim bot (looks only)
     const chairCore = { x: cx, y: cy };
+    const chairR = Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28);
+    const chairStop = chairR + 6;
+    const chairLean = String((state.decision && state.decision.direction) || "WAIT").toUpperCase();
     order.forEach((name, i) => {
       const pos = positions[name];
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       const conf = Number(agent.confidence) || 0;
       const sc = lawLocked() ? "rgba(255, 120, 20, 0.95)" : strongColor(agent.direction);
-      // alpha scales with confidence so weak votes stay soft
-      const alpha = 0.18 + Math.min(0.55, conf / 100 * 0.55);
-      const pulse = 0.85 + 0.15 * Math.sin(time * 0.003 + i * 0.9);
-
-      // soft outer glow line
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-      ctx.lineTo(chairCore.x, chairCore.y);
-      ctx.strokeStyle = sc;
-      ctx.lineWidth = 3.2 * pulse;
-      ctx.globalAlpha = alpha * 0.35;
-      ctx.shadowColor = sc;
-      ctx.shadowBlur = 12;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // crisp core spoke
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-      ctx.lineTo(chairCore.x, chairCore.y);
-      ctx.strokeStyle = sc;
-      ctx.lineWidth = 1.4 * pulse;
-      ctx.globalAlpha = alpha;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      // occasional energy particles riding the spoke toward CHAIR
-      if (Math.random() < 0.04 + conf / 100 * 0.06) {
-        spawnParticles(pos, chairCore, sc);
+      const adir = String(agent.direction || "WAIT").toUpperCase();
+      const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
+      const fresh = markSeatTick("art:" + name, adir, conf);
+      const end = spokeEnd(pos.x, pos.y, chairCore.x, chairCore.y, chairStop);
+      drawPacketSpoke(pos.x, pos.y, end.x, end.y, sc, conf, agree, fresh);
+      if (!reduceMotion && Math.random() < 0.03 + conf / 100 * 0.05) {
+        spawnParticles(pos, end, sc);
       }
     });
 
@@ -2246,20 +2684,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       ctx.globalAlpha = floorAlpha;
-      const pulse = 1 + 0.06 * Math.sin(time * 0.0045 + i * 1.1);
-      // Slightly larger seats so logos read cleanly
-      const r = (agent.confidence > 55 ? 18 : 15) * pulse;
+      const r = (isPhoneDesk() || mode === "floor") ? 24 : 20;
       const col = colorFor(agent.direction, agent.confidence);
       const sc = strongColor(agent.direction);
-
-      // Outer bloom
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, r + 14, 0, Math.PI * 2);
-      ctx.fillStyle = col.replace(/[\d.]+\)$/, "0.12)");
-      ctx.fill();
-
-      // Logo + colored outline
-      drawBotIcon(name, pos.x, pos.y, r, sc, agent.confidence || 0);
+      const face = floorLocked ? Math.atan2(cy - pos.y, cx - pos.x) : pos.angle;
+      drawGameBot(name, pos.x, pos.y, r, agent.direction, agent.confidence || 0, face, i);
 
       // Occasional glitch offset
       if (isGlitch && Math.random() < 0.3) {
@@ -2328,8 +2757,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN") );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
-    const leaderPulse = 1 + 0.04 * Math.sin(time * 0.0035);
-    const lr = 72 * leaderPulse; // portrait radius — large center knight
+    const leaderPulse = reduceMotion ? 1 : (1 + 0.02 * Math.sin(time * 0.0035));
+    const lr = Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
       leaderDir === "UP" || leaderDir === "UP_HOLD" ? "rgba(0, 255, 100, 0.85)" :
@@ -2370,29 +2799,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // Clip circle + draw armored portrait
-    const portrait = (focusTable === "ethereum") ? vitalikPortraitFor(leaderDir) : chairPortraitFor(leaderDir);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, lr, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    if (portrait && portrait.complete && portrait.naturalWidth > 0) {
-      // cover-fit portrait in circle (favor face/upper armor)
-      const iw = portrait.naturalWidth;
-      const ih = portrait.naturalHeight;
-      const side = lr * 2;
-      const scale = Math.max(side / iw, side / ih) * 1.15;
-      const dw = iw * scale;
-      const dh = ih * scale;
-      // bias upward so helmet/eyes stay centered in the circle
-      ctx.drawImage(portrait, cx - dw / 2, cy - dh * 0.38, dw, dh);
-    } else {
-      // fallback core while image loads
+    const portrait = chairPortraitOf(focusTable, leaderDir);
+    if (!containPortrait(portrait, cx, cy, lr)) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, lr, 0, Math.PI * 2);
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
-      ctx.fillRect(cx - lr, cy - lr, lr * 2, lr * 2);
+      ctx.fill();
     }
-    ctx.restore();
+    rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
     // Eye glow ring pulse (extra emphasis on call color)
     ctx.beginPath();
@@ -2410,6 +2824,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.strokeStyle = "rgba(240, 193, 74, 0.65)";
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    try {
+      const whichChair = chairKeyOf(focusTable);
+      noteChairLock(whichChair, _lc);
+      drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
+    } catch (e) {}
 
     // Labels under portrait (don't cover the face)
     ctx.font = "700 11px Orbitron, sans-serif";
@@ -2418,7 +2837,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(240, 193, 74, 0.55)";
     ctx.shadowBlur = 8;
-    ctx.fillText("SATOSHI", cx, cy + lr + 16);
+    ctx.fillText(chairNameOf(focusTable), cx, cy + lr + 16);
     ctx.shadowBlur = 0;
     ctx.font = "700 13px Orbitron, sans-serif";
     ctx.fillStyle = "#ffffff";
@@ -2480,19 +2899,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function renderDashboard() {
-    if (!state || !state.agents) {
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || {};
+    const view = Object.assign({}, (typeof getViewState === "function" ? getViewState() : null) || state || {}, ts, { _focusTable: focusTable });
+    if (!view || !Array.isArray(view.agents)) {
       overlay.innerHTML = "";
       return;
     }
-    const learning = state.learning || {};
+    const learning = view.learning || {};
     const records = learning.records || {};
     const topPairs = learning.top_pairs || [];
-    const weights = state.weights || learning.weights || {};
+    const weights = view.weights || learning.weights || {};
+    const focusName = chairTitleOf(focusTable);
 
     const pairCard = topPairs.length
       ? `<div class="agent-card pair-card">
           <div class="name">COALITIONS</div>
-          <div class="title">Satoshi memory · right together</div>
+          <div class="title">${focusName} memory · right together</div>
           ${topPairs.slice(0, 4).map(p => {
             const labels = (p.labels || p.pair.split("|")).join(" + ");
             const pct = p.affinity != null ? Math.round(p.affinity * 100) : "—";
@@ -2504,7 +2926,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`
       : "";
 
-    const agentCards = state.agents.map(a => {
+    const agentCards = view.agents.map(a => {
       const col = strongColor(a.direction);
       const callsign = labelOf(a);
       const title = titleOf(a);
@@ -2535,7 +2957,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`;
     }).join("");
 
-    overlay.innerHTML = pairCard + agentCards;
+    overlay.innerHTML = `<div class="dash-focus-banner">${focusName}</div>` + pairCard + agentCards;
   }
 
   function updateLaw(law) {
@@ -2738,27 +3160,98 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`);
       });
 
+      const logBlock = document.getElementById("lifetimeLogBlock");
       if (!parts.length) {
         if (hydrating && !hasLogKey) {
           if (callLogEl.dataset.hydrated === "1") {
             // Keep the last painted log — cold payload is not a wipe
           } else {
-            callLogEl.innerHTML = `<div class="call-empty">Loading lifetime log…<br/>Hydrating from disk — not a reset</div>`;
+            callLogEl.innerHTML = "";
+            if (logBlock) logBlock.classList.add("idle");
           }
         } else {
-          callLogEl.innerHTML = `<div class="call-empty">LIFETIME LOG EMPTY<br/>UP / DOWN / 1/4 HOLD path-calls accumulate here<br/>Persists across sessions</div>`;
+          // 0/0: tape/baseline fills the column — do not leave a tall empty log void.
+          callLogEl.innerHTML = "";
           callLogEl.dataset.hydrated = "";
+          if (logBlock) logBlock.classList.add("idle");
         }
       } else {
         callLogEl.dataset.hydrated = "1";
         callLogEl.innerHTML = parts.join("");
+        if (logBlock) logBlock.classList.remove("idle");
       }
     }
   }
 
+  const _packetSeen = Object.create(null);
   function updateDebate() {
-    // Debate log removed — saves DOM work and memory on dual tables
-    return;
+    const list = document.getElementById("signalFeed");
+    const meta = document.getElementById("signalFeedMeta");
+    const dirEl = document.getElementById("signalChairDir");
+    const metaEl = document.getElementById("signalChairMeta");
+    const lastEl = document.getElementById("signalChairLast");
+    if (!list) return;
+    const view = (typeof getViewState === "function" ? getViewState() : state) || state || {};
+    const d = view.decision || {};
+    const lc = view.locked_call || d.locked_call || {};
+    const locked = !!(lc && lc.locked && lc.direction);
+    const dir = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
+    const m = view.market || {};
+    const secs = secondsLeftOf(m);
+    const mm = secs != null ? String(Math.floor(secs / 60)).padStart(2, "0") : "--";
+    const ss = secs != null ? String(Math.floor(secs % 60)).padStart(2, "0") : "--";
+    let pf = lc.p_finish != null ? lc.p_finish : d.p_finish;
+    pf = Number(pf);
+    if (Number.isFinite(pf) && pf <= 1.5) pf = pf * 100;
+    const pFinish = Number.isFinite(pf) ? (Math.round(pf) + "%") : "—";
+    const ev = (lc && lc.ev_cents != null) ? (Math.round(lc.ev_cents) + "¢")
+      : (d.ev_cents != null) ? (Math.round(d.ev_cents) + "¢")
+      : "—";
+    if (dirEl) {
+      dirEl.textContent = (locked ? "LOCKED " : "") + dir.replace("_HOLD", "");
+      dirEl.className = "signal-chair-dir " + dir.replace("_HOLD", "");
+    }
+    if (metaEl) metaEl.textContent = "P(finish) " + pFinish + " · EV " + ev + " · " + mm + ":" + ss + " left";
+    if (lastEl) {
+      const acc = view.accuracy || (state && state.accuracy) || {};
+      const settled = (acc.recent || acc.log || []).find(r => r && (r.outcome || r.y_finish));
+      if (settled) {
+        const side = String(settled.direction || settled.locked_call || "—").toUpperCase().replace("_HOLD", "");
+        const pair = /ETH/i.test(settled.ticker || settled.asset || "") ? "ETH" : "BTC";
+        const grade = settled.correct === true ? "HIT" : (settled.correct === false ? "MISS" : "SETTLED");
+        lastEl.textContent = "last lock " + pair + " " + side + " · " + grade;
+      } else {
+        lastEl.textContent = "last lock —";
+      }
+    }
+    const agents = (view.agents || []).filter((a) => a && a.agent_name && a.agent_name !== "leader");
+    const now = Date.now();
+    const packets = agents.map((a) => {
+      const name = labelOf(a);
+      const lean = String(a.direction || "WAIT").toUpperCase();
+      const conf = a.confidence;
+      const id = a.agent_name || name;
+      const key = id + "|" + lean + "|" + String(conf);
+      const prev = _packetSeen[id];
+      if (!prev || prev.key !== key) {
+        _packetSeen[id] = { key, at: now, name, dir: lean, conf };
+      }
+      return _packetSeen[id];
+    }).sort((a, b) => b.at - a.at).slice(0, 8);
+    if (meta) meta.textContent = packets.length ? (packets.length + " packets") : "awaiting";
+    if (!packets.length) {
+      list.innerHTML = '<li class="sf-empty">No specialist packets yet</li>';
+      return;
+    }
+    list.innerHTML = packets.map((s) => {
+      const lean = String(s.dir || "WAIT").replace("_HOLD", "");
+      const fresh = (now - s.at) < 900;
+      return '<li class="sf-row' + (fresh ? " sf-in" : "") + '">'
+        + '<span class="sf-name">' + s.name + '</span>'
+        + '<span class="sf-dir ' + lean + '">' + lean + '</span>'
+        + '<span class="sf-conf">' + (s.conf != null ? s.conf + "%" : "—") + '</span>'
+        + '</li>';
+    }).join("");
   }
 
   function resizeCandleChart() {
@@ -3009,24 +3502,49 @@ function drawCandleChart() {
     }
   }
 
+  function liveBookOdds(m) {
+    /* Same live book the footer uses — never invent 0.0% from a missing print. */
+    if (!m) return null;
+    function pct(v) {
+      if (v == null || v === "") return NaN;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n === 0) return NaN;
+      return n > 0 && n <= 1.5 ? n * 100 : n;
+    }
+    let up = pct(m.up_pct);
+    if (!Number.isFinite(up)) up = pct(m.up_mid);
+    if (!Number.isFinite(up)) up = pct(m.yes_price);
+    if (!Number.isFinite(up)) up = pct(m.kalshi_yes_bid);
+    if (!Number.isFinite(up)) up = pct(m.kalshi_yes_ask);
+    let down = pct(m.down_pct);
+    if (!Number.isFinite(down)) down = pct(m.no_price);
+    if (!Number.isFinite(down) && Number.isFinite(up)) down = 100 - up;
+    if (!Number.isFinite(up) || up <= 0 || up >= 100) return null;
+    if (!Number.isFinite(down)) down = 100 - up;
+    return { up, down };
+  }
+
   function recordSeriesFromState(s) {
     if (!s) return;
     const t = Date.now();
     const m = s.market || {};
     const price = Number(m.price);
     const target = Number(m.kalshi_target);
-    let yes = m.kalshi_yes_bid;
-    if (typeof yes === "string") yes = parseFloat(yes);
-    // Kalshi may return 0-1 or 0-100
-    if (Number.isFinite(yes)) {
-      if (yes > 1.5) yes = yes / 100;
-      pushSeries(series.odds, { t, up: yes * 100 });
-    }
+    const book = liveBookOdds(m);
+    if (book) pushSeries(series.odds, { t, up: book.up, down: book.down });
     if (Number.isFinite(price) && Number.isFinite(target)) {
       pushSeries(series.delta, { t, d: price - target });
     }
-    if (m.funding != null && Number.isFinite(Number(m.funding))) {
-      pushSeries(series.funding, { t, f: Number(m.funding) * 100 });
+    function takeFunding(mm) {
+      if (!mm || mm.funding == null) return;
+      const f = Number(mm.funding);
+      if (!Number.isFinite(f)) return;
+      pushSeries(series.funding, { t, f: Math.abs(f) > 1 ? f : f * 100 });
+    }
+    takeFunding(m);
+    if (typeof tableState === "function") {
+      takeFunding((tableState("bitcoin") || {}).market);
+      takeFunding((tableState("ethereum") || {}).market);
     }
     const dir = (s.decision && s.decision.direction) || "WAIT";
     const conf = (s.decision && s.decision.confidence) || 0;
@@ -3035,27 +3553,36 @@ function drawCandleChart() {
       pushSeries(series.tape, { t, dir, conf });
     }
     const acc = s.accuracy || {};
-    const pct = acc.pct != null ? Number(acc.pct) : (acc.rate != null ? Number(acc.rate) * 100 : null);
-    if (pct != null && Number.isFinite(pct)) {
-      pushSeries(series.accuracy, { t, pct });
+    const n = Number(acc.total) || 0;
+    // Finish-only: never invent a win rate when n=0
+    if (n > 0) {
+      const pct = acc.accuracy_pct != null
+        ? Number(acc.accuracy_pct)
+        : (acc.correct != null ? (Number(acc.correct) / n) * 100 : null);
+      if (pct != null && Number.isFinite(pct)) {
+        pushSeries(series.accuracy, { t, pct, n, correct: Number(acc.correct) || 0 });
+      }
     }
   }
 
-  function fitCanvas(canvas) {
+  function fitCanvas(canvas, opts) {
     if (!canvas || !canvas.parentElement) return null;
     if (deskCinematicOn()) return canvas.getContext("2d");
     const parent = canvas.parentElement;
     const head = parent.querySelector(".chart-card-head");
-    const w = Math.max(120, parent.clientWidth);
-    const h = Math.max(80, parent.clientHeight - (head ? head.offsetHeight : 0));
+    const isPair = canvas.id === "chartBtc" || canvas.id === "chartEth";
+    const minW = 160;
+    const wantRows = (opts && opts.rows) || 0;
+    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? Math.max(160, wantRows * 15 + 20) : 140);
+    const w = Math.max(minW, parent.clientWidth || minW);
+    let h = (parent.clientHeight || 0) - (head ? head.offsetHeight : 0);
+    if (h < minH) h = minH;
     if (canvas.width !== w || canvas.height !== h) {
-      const raw = ((state && state.market) || {}).candles || [];
-      if (raw.length < 2 && canvas.dataset.hasTape === "1") {
-        return canvas.getContext("2d");
-      }
       canvas.width = w;
       canvas.height = h;
     }
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
     return canvas.getContext("2d");
   }
 
@@ -3076,11 +3603,16 @@ function drawCandleChart() {
       return;
     }
     let min = Infinity, max = -Infinity;
-    points.forEach(p => {
-      const y = getY(p);
-      if (Number.isFinite(y)) { min = Math.min(min, y); max = Math.max(max, y); }
-    });
-    if (!(max > min)) { min -= 1; max += 1; }
+    if (Number.isFinite(opts.yMin) && Number.isFinite(opts.yMax)) {
+      min = opts.yMin;
+      max = opts.yMax;
+    } else {
+      points.forEach(p => {
+        const y = getY(p);
+        if (Number.isFinite(y)) { min = Math.min(min, y); max = Math.max(max, y); }
+      });
+      if (!(max > min)) { min -= 1; max += 1; }
+    }
     const span = max - min || 1;
     const yAt = (v) => pad.t + (1 - (v - min) / span) * (h - pad.t - pad.b);
     const xAt = (i) => pad.l + (i / Math.max(1, points.length - 1)) * (w - pad.l - pad.r);
@@ -3121,28 +3653,166 @@ function drawCandleChart() {
     }
   }
 
-  function syncChartPairTitle() {
-    const pairTitle = document.getElementById("chartPairTitle");
-    const focus = (typeof focusTable === "string" && focusTable)
-      || (document.body && document.body.dataset.focusTable)
-      || "bitcoin";
-    const eth = focus === "ethereum" || focus === "eth";
-    if (pairTitle) pairTitle.textContent = eth ? "ETH · 1m" : "BTC · 1m";
+  function parseStampMs(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "number" && Number.isFinite(v)) return v < 1e12 ? v * 1000 : v;
+    const s = String(v).trim();
+    if (!s) return null;
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      const n = Number(s);
+      if (!Number.isFinite(n)) return null;
+      return n < 1e12 ? n * 1000 : n;
+    }
+    const d = Date.parse(s);
+    return Number.isFinite(d) ? d : null;
   }
 
-  function drawChartBtc() {
+  function candleOHLC(c) {
+    if (!c) return null;
+    let o, h, l, cl, t, v;
+    if (Array.isArray(c)) {
+      t = c[0]; o = Number(c[1]); h = Number(c[2]); l = Number(c[3]); cl = Number(c[4]); v = Number(c[5]);
+    } else {
+      o = Number(c.o != null ? c.o : c.open);
+      h = Number(c.h != null ? c.h : c.high);
+      l = Number(c.l != null ? c.l : c.low);
+      cl = Number(c.c != null ? c.c : c.close);
+      t = c.t != null ? c.t : c.open_time;
+      v = Number(c.v != null ? c.v : c.volume);
+    }
+    if (![o, h, l, cl].every(Number.isFinite)) return null;
+    if (cl <= 0 || cl > 5e6 || h <= 0 || l <= 0 || h > 5e6 || l > 5e6) return null;
+    if (h > cl * 1.25 || l < cl * 0.75) return null;
+    if (h < l) { const swap = h; h = l; l = swap; }
+    return { o, h, l, c: cl, t, v };
+  }
+
+  function candleTimeMs(c) {
+    if (!c) return null;
+    return parseStampMs(c.t != null ? c.t : c.open_time);
+  }
+
+  function hourWindowMs(ts) {
+    const m = (ts && ts.market) || {};
+    const lc = (ts && (ts.locked_call || (ts.decision && ts.decision.locked_call))) || {};
+    const close = parseStampMs(m.close_time || lc.close_time);
+    if (close) return { start: close - 3600000, end: close };
+    const now = Date.now();
+    const start = Math.floor(now / 3600000) * 3600000;
+    return { start, end: start + 3600000 };
+  }
+
+  function xAtTime(candles, tMs, pad, w) {
+    if (!candles.length || tMs == null) return null;
+    const cw = (w - pad.l - pad.r) / candles.length;
+    let idx = 0;
+    let found = false;
+    for (let i = 0; i < candles.length; i++) {
+      const tm = candleTimeMs(candles[i]);
+      if (tm == null) continue;
+      found = true;
+      if (tm <= tMs) idx = i;
+    }
+    if (!found) return null;
+    return pad.l + idx * cw + cw / 2;
+  }
+
+  function pairLock(ts) {
+    if (!ts) return null;
+    const lc = ts.locked_call || (ts.decision && ts.decision.locked_call) || null;
+    if (lc && lc.locked && lc.direction) return lc;
+    return null;
+  }
+
+  function syncChartPairTitle() {
+    // Both pairs stay on screen — do not retitle BTC to ETH on focus
+    const btcTitle = document.getElementById("chartPairTitle") || document.getElementById("chartBtcTitle");
+    const ethTitle = document.getElementById("chartEthTitle");
+    if (btcTitle) btcTitle.textContent = "BTC · 1m";
+    if (ethTitle) ethTitle.textContent = "ETH · 1m";
+  }
+
+  function drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt) {
+    const win = hourWindowMs(ts);
+    const x0 = xAtTime(candles, win.start, pad, w);
+    const x1 = xAtTime(candles, win.end, pad, w);
+    const left = x0 != null ? x0 : pad.l;
+    const right = x1 != null ? x1 : (w - pad.r);
+    ctx.save();
+    ctx.fillStyle = "rgba(240, 193, 74, 0.14)";
+    ctx.fillRect(Math.min(left, right), pad.t, Math.max(6, Math.abs(right - left)), h - pad.t - pad.b);
+    ctx.strokeStyle = "rgba(240, 193, 74, 0.55)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(left, pad.t);
+    ctx.lineTo(left, h - pad.b);
+    ctx.moveTo(right, pad.t);
+    ctx.lineTo(right, h - pad.b);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(240, 193, 74, 0.75)";
+    ctx.font = "8px Orbitron, monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("1H WINDOW", left + 4, pad.t + 10);
+    const lc = pairLock(ts);
+    const lockMs = (lc && parseStampMs(lc.locked_at)) || Date.now();
+    const xLock = xAtTime(candles, lockMs, pad, w) || (w - pad.r - 8);
+    ctx.strokeStyle = "#f0c14a";
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = "#f0c14a";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(xLock, pad.t);
+    ctx.lineTo(xLock, h - pad.b);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    let lockPx = lc ? Number(lc.entry_price != null ? lc.entry_price : lc.price) : NaN;
+    if (!Number.isFinite(lockPx)) {
+      let nearest = null, best = Infinity;
+      candles.forEach(c => {
+        const tm = candleTimeMs(c);
+        if (tm == null) return;
+        const d = Math.abs(tm - lockMs);
+        if (d < best) { best = d; nearest = c; }
+      });
+      if (nearest) lockPx = Number(nearest.c);
+    }
+    if (Number.isFinite(lockPx) && typeof yAt === "function") {
+      const y = yAt(lockPx);
+      ctx.fillStyle = "#f0c14a";
+      ctx.beginPath();
+      ctx.moveTo(xLock, y - 5);
+      ctx.lineTo(xLock + 5, y);
+      ctx.lineTo(xLock, y + 5);
+      ctx.lineTo(xLock - 5, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "#f0c14a";
+    ctx.font = "8px Orbitron, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("LOCK", xLock, pad.t + 22);
+    ctx.restore();
+  }
+
+  function drawPairCandles(canvasId, tableKey, metaId) {
     if (deskCinematicOn()) return;
-    syncChartPairTitle();
-    const canvas = document.getElementById("chartBtc");
+    const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    const view = (typeof getViewState === "function" ? getViewState() : null) || state || {};
-    const market = (view && view.market) || (state && state.market) || {};
-    const candles = (market.candles || []).slice(-60);
+    const ts = (typeof tableState === "function" ? tableState(tableKey) : null) || {};
+    const market = ts.market || {};
+    const raw = (market.candles || []).slice(-60);
+    const candles = raw.map(candleOHLC).filter(Boolean);
     const target = Number(market.kalshi_target);
     const price = Number(market.price);
+    const meta = document.getElementById(metaId);
+    if (meta) {
+      meta.textContent = Number.isFinite(price)
+        ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
+        : "—";
+    }
     if (candles.length < 2) {
-      // fitCanvas resizes and clears — skip if we already have tape
-      if (canvas.dataset.hasTape === "1") return;
       const ctx0 = fitCanvas(canvas);
       if (!ctx0) return;
       const w0 = canvas.width, h0 = canvas.height;
@@ -3153,59 +3823,87 @@ function drawCandleChart() {
       ctx0.fillText("NO TAPE", w0 / 2, h0 / 2);
       return;
     }
-    canvas.dataset.hasTape = "1";
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    let min = Infinity, max = -Infinity;
+    /* Scale from the tape only so a far K TARGET cannot pin price to the floor. */
+    const closes = candles.map(c => c.c).filter(n => Number.isFinite(n) && n > 0);
+    let min = Math.min.apply(null, closes);
+    let max = Math.max.apply(null, closes);
+    const spanC = (max - min) || Math.abs(max) * 0.002 || 1;
     candles.forEach(c => {
-      min = Math.min(min, Number(c.l)); max = Math.max(max, Number(c.h));
+      if (Number.isFinite(c.l) && c.l > 0 && (min - c.l) <= spanC * 2) min = Math.min(min, c.l);
+      if (Number.isFinite(c.h) && c.h > 0 && (c.h - max) <= spanC * 2) max = Math.max(max, c.h);
     });
-    if (Number.isFinite(target)) { min = Math.min(min, target); max = Math.max(max, target); }
-    if (Number.isFinite(price)) { min = Math.min(min, price); max = Math.max(max, price); }
-    const padAmt = (max - min) * 0.06 || 1;
-    min -= padAmt; max += padAmt;
-    const pad = { l: 6, r: 6, t: 12, b: 10 };
-    const yAt = (p) => pad.t + (1 - (p - min) / (max - min)) * (h - pad.t - pad.b);
+    if (Number.isFinite(price) && price > 0 && price < 5e6) {
+      const mid = (min + max) / 2 || price;
+      if (price >= min && price <= max || Math.abs(price - mid) / (Math.abs(mid) || 1) < 0.08) {
+        min = Math.min(min, price);
+        max = Math.max(max, price);
+      }
+    }
+    let targetY = null;
+    if (Number.isFinite(target) && target > 0 && target < 5e6) {
+      const span0 = max - min || Math.abs(max) * 0.01 || 1;
+      const grown = Math.max(max, target) - Math.min(min, target);
+      if (grown <= span0 * 4) {
+        min = Math.min(min, target);
+        max = Math.max(max, target);
+        targetY = target;
+      } else {
+        targetY = target < min ? min : max;
+      }
+    }
+    const padAmt = (max - min) * 0.08 || Math.abs(max) * 0.002 || 1;
+    min -= padAmt;
+    max += padAmt;
+    const pad = { l: 6, r: 6, t: 14, b: 10 };
+    const yAt = (p) => pad.t + (1 - (p - min) / (max - min || 1)) * (h - pad.t - pad.b);
+    drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt);
     const cw = (w - pad.l - pad.r) / candles.length;
     candles.forEach((c, i) => {
-      const o = Number(c.o), cl = Number(c.c), hi = Number(c.h), lo = Number(c.l);
       const x = pad.l + i * cw + cw / 2;
-      const up = cl >= o;
+      const up = c.c >= c.o;
       const col = up ? "#39ff14" : "#ff2d55";
       ctx.strokeStyle = col; ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.moveTo(x, yAt(hi)); ctx.lineTo(x, yAt(lo)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, yAt(c.h)); ctx.lineTo(x, yAt(c.l)); ctx.stroke();
       ctx.globalAlpha = 0.9;
-      const by = Math.min(yAt(o), yAt(cl));
-      const bh = Math.max(1, Math.abs(yAt(cl) - yAt(o)));
+      const by = Math.min(yAt(c.o), yAt(c.c));
+      const bh = Math.max(1, Math.abs(yAt(c.c) - yAt(c.o)));
       ctx.fillStyle = col;
       ctx.fillRect(x - Math.max(1, cw * 0.3), by, Math.max(2, cw * 0.6), bh);
     });
     ctx.globalAlpha = 1;
-    if (Number.isFinite(target)) {
+    if (targetY != null) {
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = "#f0c14a";
       ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(pad.l, yAt(target)); ctx.lineTo(w - pad.r, yAt(target)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(targetY)); ctx.lineTo(w - pad.r, yAt(targetY)); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = "#f0c14a";
       ctx.font = "9px Orbitron";
       ctx.textAlign = "left";
-      ctx.fillText("K TARGET", pad.l + 4, yAt(target) - 4);
+      ctx.fillText("K TARGET", pad.l + 4, Math.max(pad.t + 10, yAt(targetY) - 4));
     }
-    if (Number.isFinite(price)) {
+    if (Number.isFinite(price) && price > 0 && price < 5e6) {
+      const py = Math.min(max, Math.max(min, price));
       const col = Number.isFinite(target) ? (price >= target ? "#39ff14" : "#ff2d55") : "#00e8ff";
       ctx.strokeStyle = col; ctx.lineWidth = 1.3;
-      ctx.beginPath(); ctx.moveTo(pad.l, yAt(price)); ctx.lineTo(w - pad.r, yAt(price)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(py)); ctx.lineTo(w - pad.r, yAt(py)); ctx.stroke();
     }
-    const meta = document.getElementById("chartBtcMeta");
-    if (meta) {
-      meta.textContent = Number.isFinite(price)
-        ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
-        : "—";
-    }
+  }
+
+  function drawChartBtc() {
+    if (deskCinematicOn()) return;
     syncChartPairTitle();
+    drawPairCandles("chartBtc", "bitcoin", "chartBtcMeta");
+  }
+
+  function drawChartEth() {
+    if (deskCinematicOn()) return;
+    syncChartPairTitle();
+    drawPairCandles("chartEth", "ethereum", "chartEthMeta");
   }
 
   function drawChartVolume() {
@@ -3235,11 +3933,30 @@ function drawCandleChart() {
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
-    // 50% guide
-    drawLineSeries(ctx, series.odds, p => p.up, "#00e8ff", { zero: 50 });
     const meta = document.getElementById("chartOddsMeta");
-    const last = series.odds[series.odds.length - 1];
-    if (meta) meta.textContent = last ? `UP ${last.up.toFixed(1)}%` : "—";
+    const book = liveBookOdds((state && state.market) || {});
+    if (book && !series.odds.length) {
+      pushSeries(series.odds, { t: Date.now(), up: book.up, down: book.down });
+    }
+    const last = series.odds.length ? series.odds[series.odds.length - 1] : null;
+    const up = book ? book.up : Number(last && last.up);
+    const down = book ? book.down : (Number.isFinite(Number(last && last.down))
+      ? Number(last.down)
+      : (Number.isFinite(up) ? 100 - up : NaN));
+    if (meta) {
+      meta.textContent = (Number.isFinite(Number(up)) && Number.isFinite(Number(down)))
+        ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
+        : "waiting on live book";
+    }
+    if (!series.odds.length) {
+      ctx.fillStyle = "rgba(120,140,160,0.5)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("waiting on live book", canvas.width / 2, canvas.height / 2);
+      return;
+    }
+    drawLineSeries(ctx, series.odds, p => p.up, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    drawLineSeries(ctx, series.odds, p => p.down, "#ff2d55", { yMin: 0, yMax: 100 });
   }
 
   function drawChartDelta() {
@@ -3258,6 +3975,20 @@ function drawCandleChart() {
 
   function drawChartFunding() {
     const canvas = document.getElementById("chartFunding");
+    if (!canvas) return;
+    const card = canvas.closest(".chart-card");
+    if (!series.funding.length) {
+      const mm = (state && state.market) || {};
+      const f = Number(mm.funding);
+      if (Number.isFinite(f)) {
+        pushSeries(series.funding, { t: Date.now(), f: Math.abs(f) > 1 ? f : f * 100 });
+      }
+    }
+    if (!series.funding.length) {
+      if (card) card.hidden = true;
+      return;
+    }
+    if (card) card.hidden = false;
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
@@ -3267,38 +3998,301 @@ function drawCandleChart() {
     if (meta) meta.textContent = last ? `${last.f.toFixed(4)}%` : "—";
   }
 
+  function pairFromLockRow(r, fallback) {
+    const a = String((r && r.asset) || "").toLowerCase();
+    if (a === "eth" || a === "ethereum") return "ETH";
+    if (a === "btc" || a === "bitcoin") return "BTC";
+    const tick = String((r && r.ticker) || "");
+    if (/ETH/i.test(tick)) return "ETH";
+    if (/BTC/i.test(tick)) return "BTC";
+    return fallback || "—";
+  }
+
+  function sideFromLockRow(r) {
+    const d = String((r && (r.direction || r.locked_call || r.side)) || "").toUpperCase();
+    if (d.includes("UP")) return "UP";
+    if (d.includes("DOWN")) return "DOWN";
+    return d || "—";
+  }
+
+  function fmtLockTime(t) {
+    const ms = parseStampMs(t);
+    if (ms == null) return "—";
+    return new Date(ms).toLocaleString([], {
+      month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function windowLabelOf(r, ts) {
+    const close = (r && (r.close_time || r.window_close)) || (ts && ts.market && ts.market.close_time);
+    const ms = parseStampMs(close);
+    if (ms != null) {
+      return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    const tick = String((r && r.ticker) || (ts && ts.market && ts.market.kalshi_ticker) || "");
+    const m = tick.match(/(\d{2})(\d{2})(?!.*\d)/);
+    if (m) return m[1] + ":" + m[2];
+    return "1H";
+  }
+
+  function tableLean(ts) {
+    const lc = pairLock(ts);
+    if (lc) {
+      return { side: sideFromLockRow(lc), locked: true, conf: lc.confidence };
+    }
+    const d = (ts && ts.decision) || {};
+    const raw = String(d.direction || "WAIT").toUpperCase();
+    const side = raw.includes("UP") ? "UP" : (raw.includes("DOWN") ? "DOWN" : "WAIT");
+    return { side, locked: false, conf: d.confidence };
+  }
+
+  function whyThisLockLine(ts) {
+    const lc = pairLock(ts);
+    if (!lc) return null;
+    const side = sideFromLockRow(lc);
+    const conf = lc.confidence != null ? lc.confidence : "—";
+    const agents = ((ts && ts.agents) || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && a.agent_name !== "law");
+    const allies = agents
+      .filter(a => {
+        const d = String(a.direction || "").toUpperCase();
+        return side === "UP" ? d.includes("UP") : (side === "DOWN" ? d.includes("DOWN") : false);
+      })
+      .sort((a, b) => (Number(b.confidence) || 0) - (Number(a.confidence) || 0));
+    const seats = allies.slice(0, 2).map(a => (AGENT_LABELS && AGENT_LABELS[a.agent_name]) || a.agent_name);
+    return { side, conf, seats };
+  }
+
+  function dockWindowLed() {
+    const led = document.getElementById("windowLed");
+    if (!led) return;
+    if (mode === "floor") {
+      const header = document.querySelector("#app > header");
+      const tabs = header && header.querySelector(".mode-tabs");
+      if (tabs && tabs.parentNode && led.previousElementSibling !== tabs) {
+        tabs.parentNode.insertBefore(led, tabs.nextSibling);
+      }
+    } else {
+      const col = document.getElementById("lifetimePanel");
+      if (col && col.firstElementChild !== led) col.insertBefore(led, col.firstChild);
+    }
+  }
+
+  function paintTableHud() {
+    const list = document.getElementById("lockTapeList");
+    const meta = document.getElementById("lockTapeMeta");
+    const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
+    if (list) {
+      if (!locks.length) {
+        list.innerHTML = '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>';
+      } else {
+        list.innerHTML = locks.slice(0, 8).map(p => {
+          const result = p.status === "OPEN"
+            ? "OPEN"
+            : (p.grade || p.outcome || "SETTLED");
+          const conf = p.conf != null ? (p.conf + "%") : "—";
+          const win = p.window || "1H";
+          return `<li class="lock-tape-row ${p.status === "OPEN" ? "open" : "settled"}">`
+            + `<span class="lt-pair">${p.pair}</span>`
+            + `<span class="lt-side ${p.side === "UP" ? "up" : "down"}">${p.side}</span>`
+            + `<span class="lt-conf">${conf}</span>`
+            + `<span class="lt-win">${win}</span>`
+            + `<span class="lt-res">${result}</span>`
+            + `</li>`;
+        }).join("");
+      }
+    }
+    if (meta) meta.textContent = locks.length ? (locks.length + " printed") : "baseline";
+
+    const whyCard = document.getElementById("whyLockCard");
+    const whyLine = document.getElementById("whyLockLine");
+    const focused = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    let why = whyThisLockLine(focused);
+    if (!why) {
+      const other = focusTable === "ethereum" ? "bitcoin" : "ethereum";
+      why = whyThisLockLine((typeof tableState === "function" ? tableState(other) : null) || {});
+    }
+    if (whyCard && whyLine) {
+      if (why) {
+        whyCard.classList.remove("hidden");
+        const seats = (why.seats && why.seats.length)
+          ? why.seats.join(" + ")
+          : "council majority";
+        whyLine.textContent = `${why.side} · ${why.conf}% · ${seats}`;
+      } else {
+        whyCard.classList.add("hidden");
+        whyLine.textContent = "—";
+      }
+    }
+
+    const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
+    const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
+    const btcEl = document.getElementById("dualFightBtc");
+    const ethEl = document.getElementById("dualFightEth");
+    const vsEl = document.getElementById("dualFightVs");
+    const fightMeta = document.getElementById("dualFightMeta");
+    const strip = document.getElementById("dualFightStrip");
+    function leanTxt(tag, lean) {
+      const lock = lean.locked ? "LOCK " : "";
+      const conf = lean.conf != null ? (" " + lean.conf + "%") : "";
+      return tag + " " + lock + lean.side + conf;
+    }
+    if (btcEl) btcEl.textContent = leanTxt("BTC", b);
+    if (ethEl) ethEl.textContent = leanTxt("ETH", e);
+    let verdict = "HOLD";
+    if (b.side === "UP" && e.side === "UP") verdict = "AGREE UP";
+    else if (b.side === "DOWN" && e.side === "DOWN") verdict = "AGREE DOWN";
+    else if ((b.side === "UP" && e.side === "DOWN") || (b.side === "DOWN" && e.side === "UP")) verdict = "FIGHT";
+    if (vsEl) vsEl.textContent = verdict === "FIGHT" ? "⚔" : (verdict.indexOf("AGREE") === 0 ? "✓" : "·");
+    if (fightMeta) fightMeta.textContent = verdict;
+    if (strip) {
+      strip.classList.toggle("agree", verdict.indexOf("AGREE") === 0);
+      strip.classList.toggle("fight", verdict === "FIGHT");
+    }
+  }
+
+  function collectChairLocks() {
+    const items = [];
+    const seen = new Set();
+    function add(item) {
+      if (!item || !item.side || item.side === "—") return;
+      const key = [item.pair, item.side, item.status, item.ticker || item.id || item.t].join("|");
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(item);
+    }
+    function ingestAcc(acc, fallbackPair) {
+      if (!acc) return;
+      const openRows = Array.isArray(acc.open) ? acc.open : [];
+      const settled = acc.log || acc.recent || [];
+      openRows.forEach(r => add({
+        pair: pairFromLockRow(r, fallbackPair),
+        side: sideFromLockRow(r),
+        t: r.called_at || r.locked_at,
+        status: "OPEN",
+        conf: r.confidence,
+        window: windowLabelOf(r),
+        id: r.id,
+        ticker: r.ticker,
+      }));
+      settled.forEach(r => add({
+        pair: pairFromLockRow(r, fallbackPair),
+        side: sideFromLockRow(r),
+        t: r.called_at || r.settled_at,
+        status: "SETTLED",
+        outcome: r.outcome || r.y_finish,
+        grade: r.correct === true ? "HIT" : (r.correct === false ? "MISS" : ""),
+        conf: r.confidence,
+        window: windowLabelOf(r),
+        id: r.id,
+        ticker: r.ticker,
+      }));
+    }
+    ["bitcoin", "ethereum"].forEach(key => {
+      const ts = (typeof tableState === "function" ? tableState(key) : null) || {};
+      const pair = key === "ethereum" ? "ETH" : "BTC";
+      const lc = pairLock(ts);
+      if (lc) {
+        add({
+          pair,
+          side: sideFromLockRow(lc),
+          t: lc.locked_at,
+          status: "OPEN",
+          conf: lc.confidence,
+          window: windowLabelOf(lc, ts),
+          ticker: lc.ticker,
+          id: "live:" + pair + ":" + (lc.ticker || lc.locked_at || ""),
+        });
+      }
+      ingestAcc(ts.accuracy, pair);
+    });
+    ingestAcc(state && state.accuracy, null);
+    items.sort((a, b) => (parseStampMs(b.t) || 0) - (parseStampMs(a.t) || 0));
+    return items;
+  }
+
   function drawChartTape() {
     const canvas = document.getElementById("chartTape");
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    const pts = series.tape.slice(-24);
-    if (!pts.length) {
-      ctx.fillStyle = "rgba(120,140,160,0.5)";
+    const locks = collectChairLocks();
+    const list = document.getElementById("chartTapeList");
+    const meta = document.getElementById("chartTapeMeta");
+    if (!locks.length) {
+      ctx.fillStyle = "rgba(120,140,160,0.7)";
       ctx.font = "10px Orbitron";
       ctx.textAlign = "center";
-      ctx.fillText("NO SIGNALS YET", w / 2, h / 2);
+      ctx.fillText("NO CHAIR LOCKS YET", w / 2, h / 2);
+      if (meta) meta.textContent = "no locks";
+      if (list) {
+        list.innerHTML = '<li class="chart-lock-empty">No Chair locks yet — tape waits on a lock, not live lean.</li>';
+        list.classList.add("empty");
+      }
       return;
     }
-    const pad = { l: 8, r: 8, t: 12, b: 12 };
-    const slot = (w - pad.l - pad.r) / pts.length;
+    if (list) list.classList.remove("empty");
+    const pts = locks.slice(0, 16).reverse();
+    const pad = { l: 8, r: 8, t: 14, b: 12 };
+    const slot = (w - pad.l - pad.r) / Math.max(pts.length, 1);
+    const barW = Math.min(10, Math.max(3, slot * 0.35));
     pts.forEach((p, i) => {
-      const col = strongColor(p.dir);
+      const col = p.side === "UP" ? "#39ff14" : (p.side === "DOWN" ? "#ff2d55" : "#8aa0b8");
       const x = pad.l + i * slot + slot / 2;
-      const barH = Math.max(8, (p.conf / 100) * (h - pad.t - pad.b));
-      ctx.fillStyle = col;
-      ctx.globalAlpha = 0.75;
-      ctx.fillRect(x - slot * 0.3, h - pad.b - barH, slot * 0.6, barH);
+      const barH = p.status === "OPEN" ? (h - pad.t - pad.b) * 0.72 : (h - pad.t - pad.b) * 0.5;
+      ctx.globalAlpha = p.status === "OPEN" ? 0.9 : 0.55;
+      if (p.status === "OPEN") {
+        ctx.fillStyle = col;
+        ctx.fillRect(x - barW / 2, h - pad.b - barH, barW, barH);
+      } else {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(x - barW / 2, h - pad.b - barH, barW, barH);
+      }
       ctx.globalAlpha = 1;
       ctx.fillStyle = col;
       ctx.font = "7px Orbitron";
       ctx.textAlign = "center";
-      ctx.fillText(p.dir[0], x, h - pad.b - barH - 3);
+      ctx.fillText((p.pair || "")[0] + p.side[0], x, h - pad.b - barH - 3);
     });
-    const meta = document.getElementById("chartTapeMeta");
-    const last = pts[pts.length - 1];
-    if (meta && last) meta.textContent = `${last.dir} ${last.conf}%`;
+    const last = locks[0];
+    if (meta && last) {
+      meta.textContent = `${last.pair} ${last.side} · ${last.status}${last.grade ? " · " + last.grade : ""}`;
+    }
+    if (list) {
+      list.innerHTML = locks.slice(0, 10).map(p => {
+        const when = fmtLockTime(p.t);
+        const grade = p.status === "SETTLED"
+          ? (p.grade ? p.grade : (p.outcome || "settled"))
+          : "open";
+        return `<li class="chart-lock-row ${p.status === "OPEN" ? "lock-open" : "lock-settled"}">`
+          + `<span class="lock-pair">${p.pair}</span>`
+          + `<span class="lock-side ${p.side === "UP" ? "up" : "down"}">${p.side}</span>`
+          + `<span class="lock-time">${when}</span>`
+          + `<span class="lock-status">${p.status === "OPEN" ? "OPEN" : "SETTLED"} · ${grade}</span>`
+          + `</li>`;
+      }).join("");
+    }
+  }
+
+  function finishOnlyStats() {
+    const btc = ((typeof tableState === "function" ? tableState("bitcoin") : null) || {}).accuracy || {};
+    const eth = ((typeof tableState === "function" ? tableState("ethereum") : null) || {}).accuracy || {};
+    const root = (state && state.accuracy) || {};
+    let correct = 0, wrong = 0, total = 0;
+    if ((btc.total || 0) + (eth.total || 0) > 0) {
+      correct = (btc.correct || 0) + (eth.correct || 0);
+      wrong = (btc.wrong || 0) + (eth.wrong || 0);
+      total = (btc.total || 0) + (eth.total || 0);
+    } else {
+      correct = root.correct || 0;
+      total = root.total || 0;
+      wrong = root.wrong != null ? root.wrong : Math.max(0, total - correct);
+    }
+    if (!total) return { correct: 0, wrong: 0, total: 0, pct: null };
+    if (!wrong && total) wrong = Math.max(0, total - correct);
+    return { correct, wrong, total, pct: (correct / total) * 100 };
   }
 
   function drawChartAccuracy() {
@@ -3306,56 +4300,71 @@ function drawCandleChart() {
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
-    drawLineSeries(ctx, series.accuracy, p => p.pct, "#39ff14", { zero: 50 });
+    const stats = finishOnlyStats();
     const meta = document.getElementById("chartAccMeta");
-    const last = series.accuracy[series.accuracy.length - 1];
-    const acc = state && state.accuracy;
+    if (stats.total === 0) {
+      ctx.fillStyle = "rgba(120,140,160,0.7)";
+      ctx.font = "11px Orbitron";
+      ctx.textAlign = "center";
+      ctx.fillText("0/0 finish-only", canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = "0/0 finish-only";
+      return;
+    }
+    const spark = series.accuracy.filter(p => p && p.n > 0 && Number.isFinite(p.pct));
+    if (spark.length) {
+      drawLineSeries(ctx, spark, p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    } else {
+      drawLineSeries(ctx, [{ t: 0, pct: stats.pct }], p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    }
     if (meta) {
-      meta.textContent = last
-        ? `${last.pct.toFixed(0)}%`
-        : (acc && acc.label) || "—";
+      meta.textContent = `${stats.correct}/${stats.total} finish-only`;
     }
   }
 
   function drawChartWeights() {
     const canvas = document.getElementById("chartWeights");
-    const ctx = fitCanvas(canvas);
+    if (!canvas) return;
+    const weights = (state && (state.weights || (state.learning && state.learning.weights))) || {};
+    const ranked = AGENT_ORDER
+      .filter(k => k !== "law")
+      .map(k => ({ k, w: Number(weights[k]) || 0, label: AGENT_LABELS[k] || k }))
+      .sort((a, b) => Math.abs(b.w) - Math.abs(a.w))
+      .slice(0, 10);
+    const ctx = fitCanvas(canvas, { rows: ranked.length });
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    const weights = (state && (state.weights || (state.learning && state.learning.weights))) || {};
-    const entries = AGENT_ORDER
-      .filter(k => k !== "law")
-      .map(k => ({ k, w: Number(weights[k]) || 0, label: AGENT_LABELS[k] || k }));
-    if (!entries.some(e => e.w > 0)) {
+    if (!ranked.some(e => e.w !== 0)) {
       ctx.fillStyle = "rgba(120,140,160,0.5)";
       ctx.font = "10px Orbitron";
       ctx.textAlign = "center";
       ctx.fillText("NO WEIGHTS", w / 2, h / 2);
       return;
     }
-    const maxW = Math.max(...entries.map(e => e.w), 0.01);
-    const pad = { l: 48, r: 10, t: 8, b: 8 };
-    const rowH = (h - pad.t - pad.b) / entries.length;
-    entries.forEach((e, i) => {
+    const maxW = Math.max(...ranked.map(e => Math.abs(e.w)), 0.01);
+    const pad = { l: 56, r: 8, t: 6, b: 6 };
+    const rowH = Math.max(14, (h - pad.t - pad.b) / ranked.length);
+    ranked.forEach((e, i) => {
       const y = pad.t + i * rowH;
-      const bw = (e.w / maxW) * (w - pad.l - pad.r);
-      ctx.fillStyle = "rgba(0,232,255,0.55)";
-      ctx.fillRect(pad.l, y + 3, Math.max(2, bw), rowH - 6);
+      const bw = (Math.abs(e.w) / maxW) * (w - pad.l - pad.r);
+      ctx.fillStyle = e.w >= 0 ? "rgba(0,232,255,0.55)" : "rgba(255,45,85,0.55)";
+      ctx.fillRect(pad.l, y + 2, Math.max(2, bw), Math.max(8, rowH - 4));
       ctx.fillStyle = "#c0e8ff";
       ctx.font = "8px Orbitron";
       ctx.textAlign = "right";
-      ctx.fillText(e.label, pad.l - 4, y + rowH * 0.65);
+      ctx.fillText(e.label, pad.l - 4, y + rowH * 0.7);
       ctx.textAlign = "left";
-      ctx.fillStyle = "rgba(200,220,240,0.7)";
-      ctx.fillText(e.w.toFixed(3), pad.l + bw + 4, y + rowH * 0.65);
+      ctx.fillStyle = bw > 40 ? "rgba(6,8,12,0.92)" : "rgba(200,220,240,0.75)";
+      ctx.fillText(e.w.toFixed(3), bw > 40 ? pad.l + 4 : pad.l + bw + 4, y + rowH * 0.7);
     });
   }
 
   function drawCharts() {
     if (mode !== "charts") return;
     if (deskCinematicOn()) return;
+    syncChartPairTitle();
     drawChartBtc();
+    drawChartEth();
     drawChartVolume();
     drawChartOdds();
     drawChartDelta();
@@ -3456,9 +4465,6 @@ function drawCandleChart() {
     const agents = (src.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    if (phaseEl) {
-      phaseEl.textContent = (focusTable === "ethereum" ? "ETH · Vitalik ranks (finish-only)" : "BTC · Satoshi ranks (finish-only)");
-    }
     const acc = (src.accuracy) || (state && state.accuracy) || {};
     const n = acc.total || 0;
     const thr = state && state.decision && state.decision.threshold_used;
@@ -3466,14 +4472,16 @@ function drawCandleChart() {
     const phase = n < 15
       ? ("COLD START · " + n + " settled — Chair is loose so the council can learn. Threshold " + (thr != null ? Number(thr).toFixed(2) : "—") + ".")
       : ("LEARNED · " + n + " settled · hit " + (acc.accuracy_pct != null ? acc.accuracy_pct + "%" : "—") + " · edge score " + (edge != null ? edge : "—") + " · thr " + (thr != null ? Number(thr).toFixed(2) : "—") + ".");
-    if (phaseEl) phaseEl.textContent = phase;
-    const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span>LISTEN</span><span class="hide-sm">WT</span></div>';
+    if (phaseEl) phaseEl.textContent = chairTitleOf(focusTable) + " ranks (finish-only) · " + phase;
+    const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span class="listen-col">LISTEN</span><span class="hide-sm">WT</span></div>';
     const rows = hier.filter(r => r.agent !== "law");
     const body = rows.map(r => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
       const conf = ag.confidence != null ? ag.confidence : "—";
-      const name = r.display_name || (AGENT_LABELS && AGENT_LABELS[r.agent]) || r.agent;
+      const name = (r.agent === "leader" || r.agent === "chair")
+        ? chairNameOf(focusTable)
+        : (r.display_name || (AGENT_LABELS && AGENT_LABELS[r.agent]) || r.agent);
       const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
       const listen = r.listen != null ? Math.round(r.listen * 100) + "%" : "—";
       const muted = (r.listen || 1) < 0.4;
@@ -3483,9 +4491,9 @@ function drawCandleChart() {
       return '<div class="rank-row ' + (top ? "top " : "") + (muted ? "muted-rank" : "") + '" role="row">' +
         '<span class="rk">#' + r.rank + '</span><span class="nm">' + name + '</span>' +
         '<span class="dir-live ' + dir + '">' + dir + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
-        '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span>' + listen + '</span>' +
+        '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span class="listen-col">' + listen + '</span>' +
         '<span class="hide-sm">' + (r.weight != null ? Number(r.weight).toFixed(3) : "—") + '</span></div>';
-    }).join("") || '<div class="rank-row">No rank data yet.</div>';
+    }).join("") || '<div class="rank-empty">No rank data yet.</div>';
     table.innerHTML = head + body;
     if (notesEl) {
       const notes = (state && state.learning && state.learning.notes) || [];
@@ -3636,10 +4644,23 @@ function drawCandleChart() {
 
   function paperPnlPreview() {
     const stake = Number(document.getElementById("peStake")?.value || 0);
-    const ret = Number(document.getElementById("peReturned")?.value || 0);
-    const pnl = ret - stake;
+    const retEl = document.getElementById("peReturned");
+    const retRaw = retEl ? String(retEl.value).trim() : "";
     const el = document.getElementById("pePnl");
     if (!el) return;
+    // No fill yet — do not pre-fill a fake −$25 from stake minus empty got-back.
+    if (retRaw === "") {
+      el.textContent = "—";
+      el.className = "";
+      return;
+    }
+    const ret = Number(retRaw);
+    if (!Number.isFinite(ret)) {
+      el.textContent = "—";
+      el.className = "";
+      return;
+    }
+    const pnl = ret - (Number.isFinite(stake) ? stake : 0);
     el.textContent = (pnl >= 0 ? "+" : "") + "$" + pnl.toFixed(2);
     el.className = pnl > 0 ? "pos" : (pnl < 0 ? "neg" : "");
   }
@@ -3660,11 +4681,15 @@ function drawCandleChart() {
       "<div class='paper-card'><div class='pc-label'>" + lab + "</div>" +
       "<div class='pc-val'>" + val + "</div>" +
       (sub ? "<div class='pc-sub'>" + sub + "</div>" : "") + "</div>";
+    const tradesN = Number(s.trades || 0);
+    const pnlStr = tradesN
+      ? ((Number(s.pnl || 0) >= 0 ? "+" : "") + "$" + Number(s.pnl || 0).toFixed(2))
+      : "—";
     sumEl.innerHTML =
-      card("TRADES", s.trades ?? 0, (s.wins || 0) + "W / " + (s.losses || 0) + "L") +
-      card("STAKED", "$" + Number(s.stake || 0).toFixed(2), "total risked") +
-      card("RETURNED", "$" + Number(s.returned || 0).toFixed(2), "cashed out") +
-      card("P&L", (Number(s.pnl || 0) >= 0 ? "+" : "") + "$" + Number(s.pnl || 0).toFixed(2), "net");
+      card("TRADES", tradesN, (s.wins || 0) + "W / " + (s.losses || 0) + "L") +
+      card("STAKED", tradesN ? ("$" + Number(s.stake || 0).toFixed(2)) : "—", "total risked") +
+      card("RETURNED", tradesN ? ("$" + Number(s.returned || 0).toFixed(2)) : "—", "cashed out") +
+      card("P&L", pnlStr, "net");
 
     const cal = (d.calendar && d.calendar[paperCalMode]) || [];
     if (calEl) {
@@ -3723,7 +4748,11 @@ function drawCandleChart() {
     if (up) up.addEventListener("click", () => setSide("UP"));
     if (down) down.addEventListener("click", () => setSide("DOWN"));
     if (stake) stake.addEventListener("input", paperPnlPreview);
-    if (ret) ret.addEventListener("input", paperPnlPreview);
+    if (ret) {
+      ret.setAttribute("autocomplete", "off");
+      if (!ret.dataset.user) ret.value = "";
+      ret.addEventListener("input", () => { ret.dataset.user = "1"; paperPnlPreview(); });
+    }
     paperPnlPreview();
     submit.addEventListener("click", async () => {
       const body = {
@@ -3742,7 +4771,7 @@ function drawCandleChart() {
         const data = await r.json();
         if (data.ok) {
           paperData = data.journal || paperData;
-          if (ret) ret.value = "0";
+          if (ret) ret.value = "";
           paperPnlPreview();
           renderPaper();
         } else {
@@ -3757,7 +4786,14 @@ function drawCandleChart() {
 
 
   function setMode(next) {
-    // Settings requires admin unlock for this browser session
+    if (!hasDeskAuth()) {
+      document.body.classList.add("gate-locked");
+      document.body.classList.remove("admin-unlocked");
+      const pg = document.getElementById("passwordGate");
+      if (pg) pg.classList.remove("hidden");
+      return;
+    }
+    // Settings requires admin unlock on this page load. Do not inherit a leftover session.
     if (next === "settings") {
       const unlocked = (typeof isAdminUnlocked === "function") ? isAdminUnlocked() : false;
       if (!unlocked) {
@@ -3765,32 +4801,29 @@ function drawCandleChart() {
         if (typeof requestAdminUnlock === "function") {
           requestAdminUnlock(() => {
             window.__openSettingsAfterAdmin = false;
+            window.__adminUnlockedThisPage = true;
+            try { mountAdminDesk(); } catch (e) {}
             setMode("settings");
           });
         }
         return;
       }
     }
+    if (next === "follower" && !document.body.classList.contains("follower-unlocked")) {
+      return;
+    }
+    try {
+      if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
+        stopSeatStorm("desk");
+      }
+    } catch (e) {}
     const prevMode = mode;
     mode = next;
-    // Body class first — CSS tab lock uses body.mode-* as source of truth
-    document.body.classList.toggle("floor-mode", mode === "floor");
-    ["art","floor","dashboard","bots","ranks","charts","settings","paper"].forEach(m => {
-      document.body.classList.toggle("mode-" + m, mode === m);
-    });
-    document.querySelectorAll(".mode-tab").forEach((btn) => {
-      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") {
-        btn.classList.remove("active");
-        return;
-      }
-      if (!btn.dataset.mode) {
-        btn.classList.remove("active");
-        return;
-      }
-      const on = btn.dataset.mode === mode;
-      btn.classList.toggle("active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
-    });
+    // Exactly one mode-* class and one .active pill — leftover ranks+charts lit two tabs
+    syncExclusiveBodyMode(mode);
+    syncExclusiveTabActive(mode);
+    try { syncFloorExitBtn(); } catch (e) {}
+    try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
         window.__floorMusicOnMode(mode === "floor");
@@ -3802,19 +4835,23 @@ function drawCandleChart() {
     const ranksView = document.getElementById("ranksView");
     const paperView = document.getElementById("paperView");
     const settingsView = document.getElementById("settingsView");
+    const followerView = document.getElementById("followerView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
     const showPaper = mode === "paper";
     const showSettings = mode === "settings";
+    const showFollower = mode === "follower";
     const showMain = mode === "art" || mode === "dashboard" || mode === "floor";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
     if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
+    if (followerView) followerView.classList.toggle("hidden", !showFollower);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
+    try { dockWindowLed(); } catch (e) {}
     // Always redraw the round table when main view is visible (bots live on canvas)
     if (showMain) {
       try {
@@ -3831,13 +4868,20 @@ function drawCandleChart() {
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
+    if (mode === "follower" && typeof window.renderFollower === "function") {
+      try { window.renderFollower(); } catch (e) {}
+    }
     if (mode === "settings" && prevMode !== "settings") {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
-      requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
+      // Layout after the view is visible, then draw (avoids 0×0 canvases)
+      requestAnimationFrame(() => {
+        try { if (chartsView) void chartsView.offsetWidth; } catch (e) {}
+        requestAnimationFrame(() => { if (!deskCinematicOn()) drawCharts(); });
+      });
     }
   }
 
@@ -3848,7 +4892,7 @@ function drawCandleChart() {
     const __savedBtc = state.btc;
     const __savedEth = state.eth;
     const __savedDual = state.dual;
-    if (typeof getViewState === "function" && isDualMode()) {
+    if (typeof getViewState === "function") {
       const view = getViewState();
       if (view) {
         state = view;
@@ -3905,14 +4949,9 @@ function drawCandleChart() {
     const dnEl = document.getElementById("liveDownPct");
     const timEl = document.getElementById("windowTimer");
     const m = state.market || {};
-    if (upEl) {
-      const u = m.up_pct != null ? m.up_pct : m.yes_price != null ? m.yes_price : null;
-      upEl.textContent = u != null ? (Number(u) <= 1 ? (Number(u) * 100).toFixed(1) : Number(u).toFixed(1)) + "%" : "—";
-    }
-    if (dnEl) {
-      const dnp = m.down_pct != null ? m.down_pct : m.no_price != null ? m.no_price : null;
-      dnEl.textContent = dnp != null ? (Number(dnp) <= 1 ? (Number(dnp) * 100).toFixed(1) : Number(dnp).toFixed(1)) + "%" : "—";
-    }
+    const book = liveBookOdds(m);
+    if (upEl) upEl.textContent = book ? book.up.toFixed(1) + "%" : "—";
+    if (dnEl) dnEl.textContent = book ? book.down.toFixed(1) + "%" : "—";
     if (timEl || document.getElementById("ledWindowTime")) {
       let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
       if (secs == null && m.close_time) {
@@ -3961,11 +5000,13 @@ function drawCandleChart() {
 
     lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
+    try { paintTableHud(); } catch (e) {}
     updateLaw(state.law);
     if (!deskCinematicOn()) updateHuddle(state.huddle);
     try { syncChartPairTitle(); } catch (e) {}
     updateColorTally(state);
     updateDebate();
+    try { updateRivalryStrip(); } catch (e) {}
     if (!deskCinematicOn()) drawCandleChart();
     renderHierarchy();
     recordSeriesFromState(state);
@@ -3973,10 +5014,18 @@ function drawCandleChart() {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
     }
+    if (mode === "follower" && typeof window.renderFollower === "function") {
+      try { window.renderFollower(); } catch (e) {}
+    }
     if (mode === "charts" && !deskCinematicOn()) drawCharts();
 
     const healthy = state.health?.binance || state.health?.kalshi;
     statusDot.className = "dot " + (healthy ? "live" : "warn");
+
+    try { syncSeatStorm(); } catch (e) {}
+    try {
+      if (typeof window.__afterDeskUpdate === "function") window.__afterDeskUpdate();
+    } catch (e) {}
 
     // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
@@ -4000,11 +5049,17 @@ function drawCandleChart() {
     file.addEventListener("change", async () => {
       const f = file.files && file.files[0];
       if (!f) return;
+      if (!isAdminUnlocked()) {
+        if (status) status.textContent = "Admin password required";
+        file.value = "";
+        requestAdminUnlock(() => { try { file.click(); } catch (e) {} });
+        return;
+      }
       if (status) status.textContent = "Importing " + f.name + "…";
       try {
         const text = await f.text();
         const brain = JSON.parse(text);
-        const res = await fetch("/api/brain/import", {
+        const res = await adminFetch("/api/brain/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ brain, mode: "merge" }),
@@ -4039,6 +5094,7 @@ function drawCandleChart() {
       const r = await fetch(`${API_BASE}/api/state`);
       if (!r.ok) throw new Error(r.status);
       state = await r.json();
+      try { window.state = state; } catch (e) {}
       updateUI();
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
@@ -4125,9 +5181,11 @@ function drawCandleChart() {
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || !!el.isContentEditable;
     };
     if (typing(t) || typing(a)) return true;
-    if (t && t.closest && (t.closest("#adminGate") || t.closest("#settingsView") || t.closest("#passwordGate"))) return true;
+    if (t && t.closest && (t.closest("#adminGate") || t.closest("#fgGate") || t.closest("#settingsView") || t.closest("#passwordGate"))) return true;
     const admin = document.getElementById("adminGate");
     if (admin && !admin.classList.contains("hidden")) return true;
+    const fol = document.getElementById("fgGate");
+    if (fol && !fol.classList.contains("hidden")) return true;
     const pass = document.getElementById("passwordGate");
     if (pass && !pass.classList.contains("hidden")) return true;
     const sv = document.getElementById("settingsView");
@@ -4140,12 +5198,25 @@ function drawCandleChart() {
     if (deskHotkeysBlocked(e)) return;
     if (e.key === "m" || e.key === "M") {
       // cycle Screensaver → Dashboard → Charts
-      const order = ["art", "dashboard", "bots", "ranks", "paper", "charts", "settings"];
+      const order = (typeof window.__deskModeCycle === "function")
+        ? window.__deskModeCycle()
+        : ["art", "dashboard", "bots", "ranks", "paper", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
     if (e.key === "b" || e.key === "B") soundToggle && soundToggle.click();
-    if (e.key === "Escape" && mode === "floor") setMode("art");
+    if (e.key === "Escape") {
+      if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
+        e.preventDefault();
+        stopSeatStorm("esc");
+        return;
+      }
+      if (typeof window.__dismissLeaderClick === "function" && window.__dismissLeaderClick()) {
+        e.preventDefault();
+        return;
+      }
+      if (mode === "floor") setMode("art");
+    }
     if (e.key === "0") setMode("floor");
     if (e.key === "1") setMode("art");
     if (e.key === "2") setMode("dashboard");
@@ -4183,7 +5254,7 @@ function drawCandleChart() {
     { name: "DRIFT", role: "Momentum", desc: "Short-term push: is BTC still running or stretched?" },
     { name: "TAPE", role: "Order flow", desc: "Who is hitting the book — buyers or sellers?" },
     { name: "CARRY", role: "Funding", desc: "Perp funding = how crowded the long/short side is." },
-    { name: "ORBIT", role: "Regime", desc: "Session + volatility — when Satoshi should be bold." },
+    { name: "ORBIT", role: "Regime", desc: "Session + volatility — when the Chair should be bold." },
     { name: "VOLT", role: "Volatility", desc: "How wild the range is right now." },
     { name: "CHAIN", role: "Open interest", desc: "OI pressure — squeeze / crowding risk." },
   ];
@@ -4204,58 +5275,88 @@ function drawCandleChart() {
 
   const TUTORIAL_SLIDES = [
     {
-      title: "WHAT IS THIS?",
-      body: "Satoshi’s Council is a dual Round Table: Satoshi chairs Bitcoin hourly markets (KXBTCD) and Vitalik chairs Ethereum hourly markets (KXETHD).\n\nEach specialist bot has one job — candles, volume, odds, panic, cheap side, etc. Each Chair locks exactly ONE high-quality paper call per hourly window: UP or DOWN — or WAIT if there is no edge.\n\nUse BTC / ETH to focus Table, Ranks, and hit rate. Floor shows both tables. Research co-pilot only — no real orders.",
-      tip: "Think war room, not magic indicator. Quality over quantity.",
-      bots: null,
+      mode: "art",
+      target: "#tabScreensaver",
+      title: "WHAT THIS IS",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
-      title: "THE ONE-CALL RULE",
-      body: "GOAL CONTRACT (non-negotiable):\n\n• Exactly one directional guess per hourly window on how that hour ends.\n• Taken only at the best available odds (side under 80¢).\n• Once the Chair locks the call, it is irreversible for that window.\n• WAIT is always preferred over a low-edge or noisy call.\n\nOne excellent guess beats three mediocre ones. BTC and ETH each get their own lock.",
-      tip: "Look for the big LOCKED plaque in the center of the table — that is the single decision a follower can trust.",
-      bots: null,
+      mode: "art",
+      target: "#tableStage",
+      title: "GOAL CONTRACT",
+      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (chosen side < 80¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
     },
     {
-      title: "THE 80% ODDS GATE",
-      body: "The Chair will only lock a call when the chosen side’s Kalshi price is under 80¢.\n\nWhy? Markets already priced at 80–99¢ offer poor payout for the risk. We want value — the side that still has room to run.\n\nIf the market is already expensive, the Council says WAIT even if bots are screaming.",
-      tip: "Best odds = higher potential payoff when we are right.",
-      bots: null,
+      mode: "art",
+      target: "#finalDecision",
+      title: "THE PLAQUE",
+      body: "The center plaque is the single source of truth when locked (LOCKED UP/DOWN @ XX¢ · FOLLOW THIS).\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
     },
     {
-      title: "TABLE vs FLOOR",
-      body: "• TABLE — clean decision stage. The center shows the LOCKED call (or the GOAL badge when waiting).\n• FLOOR — the specialists live here (outer ring, hierarchy panel, debate log, color tally).\n\nWhen a lock fires, the table becomes the single source of truth. Floor bots remain visible so you can still see the debate that led to the call.",
-      tip: "Press the Floor tab for the immersive full-screen view. ESC returns to Table.",
-      bots: null,
+      mode: "art",
+      target: "#accuracyBadge",
+      title: "HIT RATE",
+      body: "HIT RATE is Chair directional accuracy (WAIT excluded). Calls are graded on the Kalshi odds path, not only the final BTC print. Paper P&L is path-scaled. Only the single locked call per window is graded.",
     },
     {
+      mode: "art",
+      target: "#lawBadge",
+      title: "LAW",
+      body: "LAW is the enforcer badge after repeated misses. If LAW locks the table, wait — do not chase a new call.",
+    },
+    {
+      mode: "art",
+      target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. Specialists vote UP / DOWN / WAIT with confidence.\n2. Ranked bots closer to the Chair count more (hierarchy + adaptive weights).\n3. Chair synthesizes confluence + pair affinity.\n4. If edge exists AND chosen side < 80¢ → LOCK (one call, irreversible).\n5. Otherwise → WAIT.\n\nAfter lock, the plaque shows direction, confidence, entry ¢, and “FOLLOW THIS”.",
-      tip: "HIT RATE only counts directional locks (WAIT is not a call).",
-      bots: null,
+      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: chosen side must be under 80¢.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
     },
     {
-      title: "CORE vs EDGE BOTS",
-      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on tape, cheap odds, panic fades, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the Floor show how they are voting live on each table.",
-      tip: "Open the Bots tab anytime for the full field guide.",
-      bots: "core",
+      mode: "floor",
+      target: "#tabFloor",
+      title: "FLOOR",
+      body: "Floor is the immersive table. The outer ring is specialists still voting and ranking. The strip is a paper match score for the two books — BTC sized locks vs ETH shadow picks, finish-only. Reset is in Settings. ESC or TABLE returns to the desk.",
     },
     {
-      title: "SCORING & PAPER",
-      body: "Hit rate is FINISH-ONLY.\n\nA call counts RIGHT only when the hourly window has closed and the final outcome matches the lock (UP or DOWN).\n\nPath moves and near-certain mid-window spikes do NOT count.\nLifetime may show 0/0 until the first hours settle — that is expected.\n\nSettings → Clear hit-rate starts a clean finish-only era (weights kept).",
-      tip: "Track average entry odds of locks — lower is usually better value.",
-      bots: null,
+      mode: "dashboard",
+      target: "#tabDashboard",
+      title: "DASHBOARD",
+      body: "Seat cards for the focused table. Use BTC / ETH to switch which Chair you are reading.",
     },
     {
-      title: "TABS & CONTROLS",
-      body: "• Table — living council map (LOCKED plaque)\n• Floor — immersive table-only view\n• Dashboard — seat cards\n• Bots — full specialist guide\n• Ranks — who the Chair trusts most\n• Paper — practice scorecard\n• Charts — price context\n• Settings — BEAST MODE, sounds, knobs\n\nKeys: 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · ? Help",
-      tip: "HIT RATE badge (top) = Chair directional accuracy. LAW badge = enforcer status.",
-      bots: null,
+      mode: "bots",
+      target: "#tabBots",
+      title: "BOTS",
+      body: "Field guide for every specialist. Each seat has one job. Colors on the Floor show how they are voting live.",
     },
     {
-      title: "YOU ARE READY",
-      body: "When you Summon the Council the fog lifts and the table comes alive.\n\nWatch the floor vote, wait for a clean LOCKED plaque under 80¢, and follow that single call. Everything else is context.\n\nPaper-track expectancy before any size. Quality over quantity. One high-edge guess per window.",
-      tip: "Re-open this tutorial anytime from the Help / ? button in the header.",
-      bots: null,
+      mode: "ranks",
+      target: "#tabRanks",
+      title: "RANKS",
+      body: "Who the Chair trusts most. Higher-ranked bots count more when a call is made.",
+    },
+    {
+      mode: "paper",
+      target: "#tabPaper",
+      title: "PAPER",
+      body: "Practice scorecard. Paper-track expectancy before any size. Quality over quantity. One high-edge guess per window. This desk does not place real orders.",
+    },
+    {
+      mode: "charts",
+      target: "#tabCharts",
+      title: "CHARTS",
+      body: "Price and odds context for the window. Charts are research — they do not place a call.",
+    },
+    {
+      mode: "art",
+      target: "#tabSettings",
+      title: "SETTINGS",
+      body: "BEAST MODE, sounds, and knobs. Settings stays behind the admin lock.",
+    },
+    {
+      mode: "art",
+      target: "#btnHelp",
+      title: "HELP",
+      body: "Press ? anytime to replay this walkthrough. Keys: 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · ? Help.",
     },
   ];
 
@@ -4268,7 +5369,7 @@ function drawCandleChart() {
   ];
 
   function initFog() {
-    const canvas = document.getElementById("fogCanvas");
+    const canvas = document.getElementById("gateFog") || document.getElementById("fogCanvas");
     if (!canvas) return null;
     const ctx = canvas.getContext("2d", { alpha: true });
     let w = 0, h = 0, raf = 0, t0 = performance.now();
@@ -4418,13 +5519,14 @@ function drawCandleChart() {
   }
 
 
-  function dismissGate(animated) {
+  function dismissGate(animated, land) {
     const gate = document.getElementById("summonGate");
-    document.body.classList.remove("gate-locked", "gate-revealing");
-    localStorage.setItem("council_entered", "1");
+    document.body.classList.remove("gate-locked", "gate-revealing", "tutorial-walk");
+    markOnboarded();
+    const dest = land || "art";
     function after() {
       try {
-        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("art");
+        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode(dest);
       } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
@@ -4449,13 +5551,14 @@ function drawCandleChart() {
     }
     if (wrap) {
       wrap.classList.add("hidden");
+      wrap.classList.remove("active");
       wrap.setAttribute("aria-hidden", "true");
     }
     // exit browser fullscreen if we entered it
     try {
       if (document.fullscreenElement) document.exitFullscreen();
     } catch (e) {}
-    dismissGate(true);
+    dismissGate(true, "floor");
     if (fog) fog.stop();
   }
 
@@ -4478,8 +5581,11 @@ function drawCandleChart() {
     // Prefer the cinematic video full-viewport
     if (vid && wrap) {
       wrap.classList.remove("hidden");
+      wrap.classList.add("active");
       wrap.setAttribute("aria-hidden", "false");
-      vid.currentTime = 0;
+      const fogBed = document.getElementById("summonFogOverlay");
+      if (fogBed) fogBed.style.opacity = "0.55";
+      try { vid.currentTime = 0; } catch (e) {}
       vid.muted = !!soundMuted;
       // Try true browser fullscreen on the video wrap
       const goFs = () => {
@@ -4548,121 +5654,88 @@ function drawCandleChart() {
     step();
   }
 
+  function placeCoach(targetSel) {
+    const hole = document.getElementById("coachHole");
+    const card = document.getElementById("coachCard");
+    if (!hole || !card) return;
+    const el = targetSel ? document.querySelector(targetSel) : null;
+    const pad = 8;
+    let top = 80, left = 24, width = 120, height = 44;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      top = Math.max(8, r.top - pad);
+      left = Math.max(8, r.left - pad);
+      width = Math.min(window.innerWidth - left - 8, r.width + pad * 2);
+      height = Math.min(window.innerHeight - top - 8, r.height + pad * 2);
+    }
+    hole.style.top = top + "px";
+    hole.style.left = left + "px";
+    hole.style.width = Math.max(36, width) + "px";
+    hole.style.height = Math.max(28, height) + "px";
+    const cardW = Math.min(420, window.innerWidth - 24);
+    let cardTop = top + height + 12;
+    let cardLeft = Math.min(left, window.innerWidth - cardW - 12);
+    if (cardTop + 220 > window.innerHeight) cardTop = Math.max(12, top - 230);
+    if (cardLeft < 12) cardLeft = 12;
+    card.style.top = cardTop + "px";
+    card.style.left = cardLeft + "px";
+  }
+
   function openTutorial(fromHelp) {
     ensureAudio();
     playSfxClick();
-    const gateAlive = !!document.getElementById("summonGate") && !fromHelp;
-    const fromGate = gateAlive && !fromHelp;
+    try { document.getElementById("helpTutorialOverlay")?.remove(); } catch (e) {}
+    const overlay = document.getElementById("coachOverlay");
+    const title = document.getElementById("coachTitle");
+    const body = document.getElementById("coachBody");
+    const stepEl = document.getElementById("coachStep");
+    const next = document.getElementById("coachNext");
+    const back = document.getElementById("coachBack");
+    const skip = document.getElementById("coachSkip");
+    if (!overlay) return;
 
-    // Desk help always gets its own veil so tutorial text cannot sit on the HUD.
-    // Unique IDs — never write into leftover #gateTutorial nodes under #summonGate.
-    let standalone = false;
-    let root = null;
-    if (fromHelp || !document.getElementById("summonGate")) {
-      standalone = true;
-      try { document.getElementById("helpTutorialOverlay")?.remove(); } catch (e) {}
-      const overlay = document.createElement("div");
-      overlay.id = "helpTutorialOverlay";
-      overlay.setAttribute("role", "dialog");
-      overlay.setAttribute("aria-modal", "true");
-      overlay.setAttribute("aria-label", "Council tutorial");
-      overlay.innerHTML = `
-        <div class="gate-tutorial" style="display:flex">
-          <div class="tut-card">
-            <div class="tut-step"><span data-tut="step">1</span> / <span data-tut="total">9</span></div>
-            <h2 class="tut-title" data-tut="title">Welcome</h2>
-            <p class="tut-body" data-tut="body"></p>
-            <p class="tut-tip" data-tut="tip"></p>
-            <div class="tut-bots" data-tut="bots" style="display:none"></div>
-            <div class="tut-actions">
-              <button type="button" data-tut="back" class="gate-btn gate-btn-ghost">Back</button>
-              <button type="button" data-tut="skip" class="gate-btn gate-btn-ghost">Close</button>
-              <button type="button" data-tut="next" class="gate-btn gate-btn-summon">Next</button>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      root = overlay;
-    } else {
-      root = document.getElementById("gateTutorial") || document.getElementById("summonGate");
+    const prevMode = mode;
+    const fromGate = !fromHelp;
+    if (fromGate) {
+      const sg = document.getElementById("summonGate");
+      if (sg) sg.classList.add("hidden");
+      document.body.classList.remove("gate-locked", "gate-revealing");
+      document.body.classList.add("tutorial-walk");
     }
 
-    const q = (name) => {
-      if (!root) return null;
-      const local = root.querySelector('[data-tut="' + name + '"]')
-        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1));
-      if (local || standalone) return local;
-      return document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
-    };
-
-    const inner = document.getElementById("gateInner");
-    if (inner && !standalone) inner.classList.add("hidden");
-    if (root && !standalone) {
-      root.classList.remove("hidden");
-      root.style.display = "flex";
-    }
+    overlay.hidden = false;
+    overlay.classList.remove("hidden");
+    overlay.setAttribute("aria-hidden", "false");
 
     let step = 0;
     const total = TUTORIAL_SLIDES.length;
-    const title = q("title") || document.getElementById("tutTitle");
-    const body = q("body") || document.getElementById("tutBody");
-    const botsEl = q("bots") || document.getElementById("tutBots");
-    const stepEl = q("step") || document.getElementById("tutStep");
-    const totalEl = q("total") || document.getElementById("tutTotal");
-    const next = q("next") || document.getElementById("tutNext");
-    const back = q("back") || document.getElementById("tutBack");
-    const skip = q("skip") || document.getElementById("tutSkip");
-    if (totalEl) totalEl.textContent = String(total);
 
-    let tipEl = q("tip") || document.getElementById("tutTip");
-    if (!tipEl && body && body.parentNode) {
-      tipEl = document.createElement("p");
-      tipEl.className = "tut-tip";
-      tipEl.setAttribute("data-tut", "tip");
-      body.parentNode.insertBefore(tipEl, botsEl || body.nextSibling);
-    }
-
-    function closeStandalone() {
-      const ov = document.getElementById("helpTutorialOverlay");
-      if (ov) {
-        try { ov.remove(); } catch (e) {}
-      } else if (tut) {
-        tut.classList.add("hidden");
-        tut.style.display = "none";
+    function closeWalk(land) {
+      overlay.classList.add("hidden");
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("tutorial-walk");
+      if (fromGate) {
+        markOnboarded();
+        dismissGate(false, land || "art");
+      } else {
+        try { if (prevMode && typeof setMode === "function") setMode(prevMode); } catch (e) {}
       }
-    }
-
-    function renderBots(kind) {
-      if (!botsEl) return;
-      if (!kind) {
-        botsEl.innerHTML = "";
-        botsEl.style.display = "none";
-        return;
-      }
-      const list = kind === "core" ? TUT_BOTS_CORE : TUT_BOTS_EDGE;
-      botsEl.style.display = "grid";
-      botsEl.innerHTML = list.map(b =>
-        '<div class="tut-bot"><div class="tut-bot-name">' + b.name +
-        '</div><div class="tut-bot-role">' + b.role +
-        '</div><div class="tut-bot-desc">' + b.desc + '</div></div>'
-      ).join("");
     }
 
     function render() {
-      const s = TUTORIAL_SLIDES[step];
-      if (title) title.textContent = s.title;
-      if (body) body.textContent = s.body;
-      if (tipEl) tipEl.textContent = s.tip || "";
-      renderBots(s.bots);
-      if (stepEl) stepEl.textContent = String(step + 1);
-      if (back) back.style.visibility = step === 0 ? "hidden" : "visible";
-      if (next) {
-        if (fromGate) {
-          next.textContent = step >= total - 1 ? "Summon the Council" : "Next";
-        } else {
-          next.textContent = step >= total - 1 ? "Done" : "Next";
-        }
+      const s = TUTORIAL_SLIDES[step] || {};
+      if (s.mode && s.mode !== "settings" && typeof setMode === "function") {
+        try { setMode(s.mode); } catch (e) {}
       }
+      if (title) title.textContent = s.title || "";
+      if (body) body.textContent = s.body || "";
+      if (stepEl) stepEl.textContent = (step + 1) + " / " + total;
+      if (back) back.style.visibility = step === 0 ? "hidden" : "visible";
+      if (next) next.textContent = step >= total - 1 ? "Done" : "Next";
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => placeCoach(s.target));
+      });
     }
     render();
 
@@ -4678,12 +5751,7 @@ function drawCandleChart() {
     if (skip) {
       skip.onclick = () => {
         playSfxClick();
-        if (fromGate) {
-          if (tut) tut.classList.add("hidden");
-          runSummonSequence(window.__councilFog || null);
-        } else {
-          closeStandalone();
-        }
+        closeWalk("art");
       };
     }
     if (next) {
@@ -4694,16 +5762,14 @@ function drawCandleChart() {
           render();
         } else {
           playSfxClick();
-          if (fromGate) {
-            if (tut) tut.classList.add("hidden");
-            runSummonSequence(window.__councilFog || null);
-          } else {
-            closeStandalone();
-          }
+          closeWalk("art");
         }
       };
     }
   }
+  window.openTutorial = openTutorial;
+  window.runSummonSequence = runSummonSequence;
+  window.dismissGate = dismissGate;
 
 
   // BTC / ETH focus — exclusive, always wired (even if summon gate skipped)
@@ -4713,7 +5779,7 @@ function drawCandleChart() {
     if (!focusBtc && !focusEth) return;
 
     function applyFocusChrome() {
-      const isEth = focusTable === "ethereum";
+      const isEth = isEthTable(focusTable);
       document.body.dataset.focusTable = isEth ? "ethereum" : "bitcoin";
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
@@ -4726,7 +5792,17 @@ function drawCandleChart() {
         else focusEth.classList.remove("focus-active");
       }
       const badge = document.getElementById("focusTableBadge");
-      if (badge) badge.textContent = isEth ? "ETH · VITALIK" : "BTC · SATOSHI";
+      if (badge) {
+        badge.textContent = chairBadgeOf(focusTable);
+        badge.setAttribute("aria-label", chairTitleOf(focusTable));
+      }
+      const stage = document.getElementById("roundtable");
+      if (stage) {
+        const dual = (typeof mode !== "undefined" && mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle());
+        stage.setAttribute("aria-label", dual
+          ? "Floor — Satoshi BTC table and Vitalik ETH table"
+          : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"));
+      }
       try { syncChartPairTitle(); } catch (e) {}
     }
 
@@ -4740,6 +5816,7 @@ function drawCandleChart() {
       try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
       try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
       try { if (mode === "charts" && !deskCinematicOn()) drawCharts(); } catch (e) {}
+      try { if (mode === "follower" && typeof window.renderFollower === "function") window.renderFollower(); } catch (e) {}
       try { if (typeof loadAutoPaper === "function") loadAutoPaper(); } catch (e) {}
     }
     window.setFocusTable = setFocusTable;
@@ -4754,9 +5831,19 @@ function drawCandleChart() {
         setFocusTable(which);
       }, true); // capture — beat any mode-tab handler
     }
+    window.applyFocusChrome = applyFocusChrome;
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
     applyFocusChrome();
+    const floorExit = document.getElementById("floorExitBtn");
+    if (floorExit && !floorExit.__wired) {
+      floorExit.__wired = true;
+      floorExit.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMode("art");
+      });
+    }
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
@@ -4782,41 +5869,37 @@ function drawCandleChart() {
   function initSummonGate() {
     const gate = document.getElementById("summonGate");
     if (!gate) return;
-    // Returning visitors: short skip option still available; show gate once per session unless skip preferred
-    const quiet = localStorage.getItem("council_skip_gate") === "1";
-    if (quiet) {
-      dismissGate(false);
+    if (hasOnboarded()) {
+      dismissGate(false, "art");
       return;
     }
+    gate.classList.remove("hidden");
     const fog = initFog();
     window.__councilFog = fog;
 
     const btnTut = document.getElementById("btnTutorial");
     const btnSum = document.getElementById("btnSummon");
-    const btnSkip = document.getElementById("btnSkipGate");
-    if (btnTut) btnTut.addEventListener("click", () => { ensureAudio(); openTutorial(false); });
-    // Permanent Help button (works after gate is dismissed)
+    if (btnTut && !btnTut.__wiredOnboard) {
+      btnTut.__wiredOnboard = true;
+      btnTut.addEventListener("click", () => { ensureAudio(); openTutorial(false); });
+    }
     const btnHelp = document.getElementById("btnHelp");
-    if (btnHelp) btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
-    // Focus tabs wired in wireFocusAndHelp() — always, even when gate is skipped
-
-    if (btnSum) btnSum.addEventListener("click", () => { ensureAudio(); playSfxClick(); runSummonSequence(fog); });
-    if (btnSkip) {
-      btnSkip.addEventListener("click", () => {
-        ensureAudio();
-        playSfxClick();
-        localStorage.setItem("council_skip_gate", "1");
-        if (fog) fog.stop();
-        dismissGate(false);
-      });
+    if (btnHelp && !btnHelp.__wired) {
+      btnHelp.__wired = true;
+      btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
+    }
+    if (btnSum && !btnSum.__wiredOnboard) {
+      btnSum.__wiredOnboard = true;
+      btnSum.addEventListener("click", () => { ensureAudio(); playSfxClick(); runSummonSequence(fog); });
     }
   }
+  window.initSummonGate = initSummonGate;
 
-  initSummonGate();
+  // Do not init summon / dismiss to Table before the desk-code gate.
   try { wireFocusAndHelp(); } catch (e) { console.warn('focus wire', e); }
 
   
-  // ——— ZT celebrate cinematic (logo click + 5-win streak) ———
+  // ——— Celebrate cinematic (logo click + 5-win streak) ———
   let lastCelebratedStreak = 0; // fire once per streak milestone
 
 
@@ -4980,6 +6063,452 @@ function drawCandleChart() {
   }
   window.playCelebrateVideo = playCelebrateVideo;
 
+  let leaderClickPlaying = false;
+  function playLeaderClickVideo() {
+    // Gesture-only Floor clip. Uses frontend/static/leader-click.mp4.
+    // No title card. Portraits keep drawing underneath. Esc/click dismiss.
+    const wrap = document.getElementById("leaderClickWrap");
+    const vid = document.getElementById("leaderClickVideo");
+    const skipBtn = document.getElementById("leaderClickSkip");
+    const fallback = document.getElementById("leaderClickFallback");
+    if (!wrap || !vid) return;
+    if (leaderClickPlaying || celebratePlaying) return;
+    if (document.body.classList.contains("gate-locked")) return;
+    if (mode !== "floor") return;
+
+    leaderClickPlaying = true;
+    document.body.classList.add("leader-clip-on");
+    document.body.classList.remove("zt-cinematic");
+    ensureAudio();
+    wrap.classList.remove("hidden");
+    wrap.classList.add("active");
+    wrap.setAttribute("aria-hidden", "false");
+    if (fallback) {
+      fallback.hidden = true;
+      fallback.textContent = "";
+    }
+    if (typeof fitVideoToScreen === "function") {
+      try { fitVideoToScreen(vid); } catch (e) {}
+    }
+    vid.muted = !!soundMuted;
+    vid.playsInline = true;
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+    try { vid.currentTime = 0; } catch (e) {}
+    try {
+      if (typeof window.__floorMusicDuckHold === "function") window.__floorMusicDuckHold();
+    } catch (e) {}
+
+    const cleanup = () => {
+      if (!leaderClickPlaying) return false;
+      leaderClickPlaying = false;
+      document.body.classList.remove("leader-clip-on");
+      document.body.classList.remove("zt-cinematic");
+      try { vid.pause(); } catch (e) {}
+      try { vid.currentTime = 0; } catch (e) {}
+      wrap.classList.add("hidden");
+      wrap.classList.remove("active");
+      wrap.setAttribute("aria-hidden", "true");
+      if (fallback) {
+        fallback.hidden = true;
+        fallback.textContent = "";
+      }
+      try {
+        if (typeof window.__floorMusicUnduck === "function") window.__floorMusicUnduck();
+      } catch (e) {}
+      return true;
+    };
+    window.__dismissLeaderClick = function () {
+      if (!leaderClickPlaying) return false;
+      cleanup();
+      return true;
+    };
+
+    vid.onended = () => cleanup();
+    if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
+    wrap.onclick = () => cleanup();
+
+    const sources = ["/leader-click.mp4", "/static/leader-click.mp4"];
+    let srcIdx = 0;
+    const playReady = () => {
+      if (!leaderClickPlaying) return;
+      const p = vid.play();
+      if (p && p.then) {
+        p.then(() => {
+          if (fallback) fallback.hidden = true;
+          if (!soundMuted) {
+            try { vid.muted = false; } catch (e) {}
+          }
+        }).catch(() => {
+          vid.muted = true;
+          const p2 = vid.play();
+          if (p2 && p2.then) p2.catch(() => {});
+        });
+      }
+    };
+    const tryNext = () => {
+      if (!leaderClickPlaying) return;
+      if (srcIdx >= sources.length) {
+        if (fallback) fallback.hidden = true;
+        return;
+      }
+      const url = sources[srcIdx++];
+      vid.onerror = tryNext;
+      vid.oncanplay = playReady;
+      vid.src = url;
+      try { vid.load(); } catch (e) { tryNext(); }
+    };
+    if (vid.readyState >= 2 && vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc)) {
+      playReady();
+    } else {
+      tryNext();
+    }
+  }
+  window.playLeaderClickVideo = playLeaderClickVideo;
+
+  function canvasCssPoint(ev) {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const sz = cssCanvasSize();
+    return {
+      x: (ev.clientX - rect.left) * (sz.w / rect.width),
+      y: (ev.clientY - rect.top) * (sz.h / rect.height),
+    };
+  }
+  /* Seat Storm — pass-time after a Chair lock. Never auto-starts. Offer KILL TIME / PLAY only; the mini runs after a tap. Never opens Follower. Never sends Kalshi orders. Paper/live unaffected. */
+  const SS_SEATS = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "STREAK", "ODDS", "STRIKE"];
+  const SS_DURATION_MS = 40000;
+  const SS_LAST_N_SEC = 180;
+  const SS_BEST_KEY = "council_seat_storm_best";
+  const ss = {
+    playing: false,
+    seats: [],
+    lit: -1,
+    litUntil: 0,
+    streak: 0,
+    best: 0,
+    endsAt: 0,
+    raf: 0,
+    startedAt: 0,
+    _last: -1,
+    tap: false,
+  };
+
+  function isSeatStormPlaying() { return !!ss.playing; }
+
+  function ssReadBest() {
+    try { return Math.max(0, parseInt(sessionStorage.getItem(SS_BEST_KEY) || "0", 10) || 0); }
+    catch (_) { return 0; }
+  }
+  function ssWriteBest(n) {
+    ss.best = Math.max(0, n | 0);
+    try { sessionStorage.setItem(SS_BEST_KEY, String(ss.best)); } catch (_) {}
+  }
+
+  function ssReveal(el, on) {
+    if (!el) return;
+    el.hidden = !on;
+    el.classList.toggle("hidden", !on);
+    el.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+
+  function ssDeskSick() {
+    const s = state || {};
+    if (s.sick_feed) return true;
+    const bags = [s.health];
+    const b = typeof tableState === "function" ? tableState("bitcoin") : null;
+    const e = typeof tableState === "function" ? tableState("ethereum") : null;
+    if (b && b.health) bags.push(b.health);
+    if (e && e.health) bags.push(e.health);
+    return bags.some((h) => {
+      if (!h) return false;
+      const spotOk = !!(h.binance || h.coinbase || h.spot);
+      const kalshiDead = h.kalshi === false;
+      return !spotOk && kalshiDead;
+    });
+  }
+
+  function ssLockOf(t) {
+    if (!t) return null;
+    return t.locked_call || (t.decision && t.decision.locked_call) || null;
+  }
+
+  function ssWatchTables() {
+    if (!state) return [];
+    if (typeof isPhoneDesk === "function" && isPhoneDesk()) {
+      const t = (typeof tableState === "function" ? tableState(focusTable) : null) || state;
+      return t ? [t] : [];
+    }
+    const out = [];
+    const b = typeof tableState === "function" ? tableState("bitcoin") : null;
+    const e = typeof tableState === "function" ? tableState("ethereum") : null;
+    if (b) out.push(b);
+    if (e) out.push(e);
+    if (!out.length) out.push(state);
+    return out;
+  }
+
+  function ssLockedAndWaiting() {
+    return ssWatchTables().some((t) => {
+      const lc = ssLockOf(t);
+      if (!lc || !lc.locked) return false;
+      const d = String(lc.direction || "").toUpperCase();
+      if (d !== "UP" && d !== "DOWN") return false;
+      return secondsLeftOf(t.market) > SS_LAST_N_SEC;
+    });
+  }
+
+  function ssCanOffer() {
+    if (!hasDeskAuth()) return false;
+    if (ss.playing) return false;
+    if (lawLocked()) return false;
+    if (ssDeskSick()) return false;
+    if (!ssLockedAndWaiting()) return false;
+    return true;
+  }
+
+  function ssHitWindowMs() {
+    return Math.max(550, 1100 - ss.streak * 45);
+  }
+
+  function ssSfx(kind) {
+    if (soundMuted || !callSfxOn) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      if (kind === "hit") o.frequency.value = 880 + Math.min(ss.streak, 12) * 40;
+      else if (kind === "miss") o.frequency.value = 140;
+      else o.frequency.value = 220;
+      g.gain.value = 0.045;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + (kind === "hit" ? 0.07 : 0.12));
+    } catch (_) {}
+  }
+
+  function ssPaintHud() {
+    const st = document.getElementById("ssStreak");
+    const be = document.getElementById("ssBest");
+    const cl = document.getElementById("ssClock");
+    const pair = document.getElementById("ssPair");
+    if (st) st.textContent = String(ss.streak);
+    if (be) be.textContent = "BEST " + ss.best;
+    if (cl) {
+      const left = ss.playing ? Math.max(0, Math.ceil((ss.endsAt - Date.now()) / 1000)) : 0;
+      cl.textContent = "0:" + String(left).padStart(2, "0");
+    }
+    if (pair) pair.textContent = focusTable === "bitcoin" ? "BTC" : "ETH";
+  }
+
+  function ssClearLit() {
+    ss.seats.forEach((el) => el.classList.remove("ss-lit", "ss-miss"));
+    ss.lit = -1;
+    ss.litUntil = 0;
+  }
+
+  function ssPickSeat() {
+    if (!ss.playing || !ss.seats.length) return;
+    ssClearLit();
+    let idx = Math.floor(Math.random() * ss.seats.length);
+    if (ss.seats.length > 1 && ss._last === idx) idx = (idx + 1) % ss.seats.length;
+    ss._last = idx;
+    ss.lit = idx;
+    ss.litUntil = Date.now() + ssHitWindowMs();
+    ss.seats[idx].classList.add("ss-lit");
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "TAP THE LIT SEAT";
+  }
+
+  function ssMiss() {
+    if (!ss.playing) return;
+    const el = ss.seats[ss.lit];
+    if (el) {
+      el.classList.remove("ss-lit");
+      el.classList.add("ss-miss");
+      setTimeout(() => el.classList.remove("ss-miss"), 180);
+    }
+    ss.streak = 0;
+    ss.lit = -1;
+    ss.litUntil = 0;
+    ssSfx("miss");
+    ssPaintHud();
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "MISS — STREAK BROKE";
+    setTimeout(() => { if (ss.playing) ssPickSeat(); }, 220);
+  }
+
+  function ssHit(idx) {
+    if (!ss.playing || idx !== ss.lit) {
+      if (ss.playing && ss.lit >= 0) ssMiss();
+      return;
+    }
+    ss.streak += 1;
+    if (ss.streak > ss.best) ssWriteBest(ss.streak);
+    ssSfx("hit");
+    ssClearLit();
+    ssPaintHud();
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "HIT · STREAK " + ss.streak;
+    setTimeout(() => { if (ss.playing) ssPickSeat(); }, 90);
+  }
+
+  function ssTick() {
+    if (!ss.playing) return;
+    if (lawLocked() || ssDeskSick()) { stopSeatStorm("blocked"); return; }
+    if (!ssLockedAndWaiting()) { stopSeatStorm("close"); return; }
+    if (Date.now() >= ss.endsAt) { stopSeatStorm("time"); return; }
+    if (ss.lit >= 0 && Date.now() >= ss.litUntil) ssMiss();
+    ssPaintHud();
+    ss.raf = requestAnimationFrame(ssTick);
+  }
+
+  function ssBuildRing() {
+    const ring = document.getElementById("ssRing");
+    if (!ring) return;
+    ring.innerHTML = "";
+    ss.seats = [];
+    const n = SS_SEATS.length;
+    SS_SEATS.forEach((name, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ss-seat";
+      btn.textContent = name;
+      btn.setAttribute("aria-label", "Seat " + name);
+      const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const r = 38;
+      btn.style.left = (50 + r * Math.cos(ang)) + "%";
+      btn.style.top = (50 + r * Math.sin(ang)) + "%";
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ssHit(i);
+      });
+      ring.appendChild(btn);
+      ss.seats.push(btn);
+    });
+  }
+
+  function startSeatStorm() {
+    if (!ss.tap) return;
+    ss.tap = false;
+    if (!ssCanOffer()) return;
+    if (lawLocked() || ssDeskSick()) return;
+    ss.best = ssReadBest();
+    ss.streak = 0;
+    ss.playing = true;
+    ss.startedAt = Date.now();
+    ss.endsAt = ss.startedAt + SS_DURATION_MS;
+    ss._last = -1;
+    ssReveal(document.getElementById("seatStormPlay"), true);
+    ssBuildRing();
+    ssPaintHud();
+    const status = document.getElementById("ssStatus");
+    if (status) status.textContent = "TAP THE LIT SEAT";
+    syncSeatStorm();
+    ssPickSeat();
+    cancelAnimationFrame(ss.raf);
+    ss.raf = requestAnimationFrame(ssTick);
+  }
+
+  function stopSeatStorm(reason) {
+    ss.playing = false;
+    cancelAnimationFrame(ss.raf);
+    ss.raf = 0;
+    ssClearLit();
+    ssReveal(document.getElementById("seatStormPlay"), false);
+    const status = document.getElementById("ssStatus");
+    if (status) {
+      if (reason === "close") status.textContent = "WINDOW CLOSING — WATCH THE FINISH";
+      else if (reason === "time") status.textContent = "ROUND OVER";
+      else status.textContent = "";
+    }
+    ssPaintHud();
+    syncSeatStorm();
+  }
+
+  function syncSeatStorm() {
+    if (ss.playing && (lawLocked() || ssDeskSick() || !ssLockedAndWaiting())) {
+      stopSeatStorm(lawLocked() || ssDeskSick() ? "blocked" : "close");
+      return;
+    }
+    if (!ss.playing) ssReveal(document.getElementById("seatStormPlay"), false);
+    const offer = ssCanOffer();
+    ssReveal(document.getElementById("seatStormPrompt"), !!(offer && mode === "floor"));
+    ssReveal(document.getElementById("seatStormTableBtn"), !!(offer && mode === "art"));
+  }
+
+  function ssTapStart(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    ss.tap = true;
+    startSeatStorm();
+  }
+
+  function initSeatStorm() {
+    ss.best = ssReadBest();
+    const prompt = document.getElementById("seatStormPrompt");
+    const tableBtn = document.getElementById("seatStormTableBtn");
+    const exit = document.getElementById("ssExit");
+    if (prompt && !prompt.__ssWired) {
+      prompt.__ssWired = true;
+      prompt.addEventListener("click", ssTapStart);
+    }
+    if (tableBtn && !tableBtn.__ssWired) {
+      tableBtn.__ssWired = true;
+      tableBtn.addEventListener("click", ssTapStart);
+    }
+    if (exit && !exit.__ssWired) {
+      exit.__ssWired = true;
+      exit.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        stopSeatStorm("desk");
+      });
+    }
+    syncSeatStorm();
+  }
+
+  function wireFloorChairClicks() {
+    const stage = document.getElementById("tableStage");
+    const targets = [canvas, stage].filter(Boolean);
+    const already = targets.every((el) => el.__chairClickWired);
+    if (!targets.length || already) return;
+    const onMove = (e) => {
+      if (!canvas) return;
+      if (mode !== "floor" || leaderClickPlaying) {
+        canvas.classList.remove("chair-hot");
+        return;
+      }
+      const pt = canvasCssPoint(e);
+      canvas.classList.toggle("chair-hot", !!(pt && chairHitAt(pt.x, pt.y)));
+    };
+    const onGesture = (e) => {
+      if (mode !== "floor" || leaderClickPlaying || celebratePlaying) return;
+      if (document.body.classList.contains("gate-locked")) return;
+      const pt = canvasCssPoint(e);
+      if (!pt || !chairHitAt(pt.x, pt.y)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      playLeaderClickVideo();
+    };
+    targets.forEach((el) => {
+      if (el.__chairClickWired) return;
+      el.__chairClickWired = true;
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onGesture);
+      el.addEventListener("click", onGesture);
+    });
+  }
+  wireFloorChairClicks();
+  initSeatStorm();
+
   function checkWinStreakCelebrate(acc) {
     if (!acc) return;
     const streak = Number(acc.streak) || 0;
@@ -5051,9 +6580,9 @@ function drawCandleChart() {
     const body = {
       beast_mode: !!(document.getElementById("beastToggle") && document.getElementById("beastToggle").checked),
       [profileKey]: {
-        analysis_interval: num("setIntervalInput", 1.5),
-        analysis_interval_hot: num("setHotInput", 1.0),
-        analysis_interval_flat: num("setFlatInput", 3.0),
+        analysis_interval: num("setIntervalInput", profileKey === "beast" ? 1.2 : 2.0),
+        analysis_interval_hot: num("setHotInput", profileKey === "beast" ? 1.0 : 1.5),
+        analysis_interval_flat: num("setFlatInput", profileKey === "beast" ? 2.5 : 3.5),
         ui_poll_ms: num("setPollInput", 800),
         dual_spot: on("setDualInput"),
         parallel_agents: on("setParallelInput"),
@@ -5112,18 +6641,7 @@ function drawCandleChart() {
     }
     const st = document.getElementById("settingsSaveStatus");
     try {
-      const r = isAdminUnlocked()
-        ? await adminFetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          })
-        : await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-      const s = await r.json();
+      const s = await postSettingsJson(body, "/api/settings/save");
       const applySnap = (typeof window.applySettingsSnapshot === "function")
         ? window.applySettingsSnapshot
         : function () {};
@@ -5136,10 +6654,11 @@ function drawCandleChart() {
     }
   }
   window.collectAndSaveSettings = collectAndSaveSettings;
+  window.postSettingsJson = postSettingsJson;
 
-  try { wireAdminGate(); wireAdminTools(); wireBrain(); } catch (e) { console.warn("admin/brain wire", e); }
+  try { wireAdminGate(); wireAdminTools(); wireBrain(); wireFollowerGate(); } catch (e) { console.warn("admin/brain wire", e); }
   document.addEventListener("DOMContentLoaded", () => {
-    try { wireAdminGate(); wireAdminTools(); } catch (e) {}
+    try { wireAdminGate(); wireAdminTools(); wireFollowerGate(); } catch (e) {}
   });
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   if (btnSaveSettings && !btnSaveSettings.__wired) {
@@ -5157,14 +6676,7 @@ function drawCandleChart() {
       return;
     }
     try {
-      const resetFn = isAdminUnlocked() ? adminFetch : fetch;
-      const r = await resetFn(API_BASE + "/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true }),
-      });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const s = await r.json();
+      const s = await postSettingsJson({ reset: true }, "/api/settings/reset");
       callSfxOn = true;
       teamLoopsOn = true;
       try { localStorage.setItem("council_call_sfx", "1"); } catch (e) {}
@@ -5221,8 +6733,15 @@ function drawCandleChart() {
     }, { capture: true, passive: true });
   }
 
-  // Force clean Table view — hide any stacked info panels
-  setMode("art");
+  // Default desk after unlock is Table + ETH. Cold visit stays on the desk-code gate.
+  if (!hasDeskAuth()) {
+    document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked", "mode-art", "floor-mode");
+    const pg = document.getElementById("passwordGate");
+    if (pg) pg.classList.remove("hidden");
+  }
+  try { dockWindowLed(); } catch (e) {}
+  try { paintTableHud(); } catch (e) {}
   try { syncAutoBetVisibility(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);
@@ -5349,12 +6868,19 @@ function drawCandleChart() {
     };
     const st = document.getElementById("settingsSaveStatus");
     try {
-      const r = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const s = await r.json();
+      const poster = (typeof window.postSettingsJson === "function")
+        ? window.postSettingsJson
+        : async function (payload) {
+            const r = await fetch("/api/settings/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify(payload || {}),
+            });
+            const ct = String((r.headers.get("content-type") || "")).toLowerCase();
+            if (!ct.includes("json")) throw new Error("settings route returned HTML, not JSON");
+            return r.json();
+          };
+      const s = await poster(body, "/api/settings/save");
       window.applySettingsSnapshot(s, { localToggles: true });
       if (st) st.textContent = "Saved · " + new Date().toLocaleTimeString();
     } catch (e) {
@@ -5384,11 +6910,21 @@ function drawCandleChart() {
         return;
       }
       if (!confirm("Restore Settings defaults?\n\nCall voice turns back on.")) return;
-      fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true }),
-      }).then((r) => r.json()).then((s) => {
+      const poster = (typeof window.postSettingsJson === "function")
+        ? window.postSettingsJson
+        : null;
+      const req = poster
+        ? poster({ reset: true }, "/api/settings/reset")
+        : fetch("/api/settings/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ reset: true }),
+          }).then((r) => {
+            const ct = String((r.headers.get("content-type") || "")).toLowerCase();
+            if (!ct.includes("json")) throw new Error("settings route returned HTML, not JSON");
+            return r.json();
+          });
+      req.then((s) => {
         const sfx = document.getElementById("callSfxToggle");
         if (sfx) sfx.checked = true;
         try { localStorage.setItem("council_call_sfx", "1"); } catch (err) {}
@@ -5419,8 +6955,20 @@ function drawCandleChart() {
   function showAppAfterAuth() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.add("hidden");
-    // Play ZT intro video full-screen, then reveal summon gate
-    playZtIntroThenSummonGate();
+    document.body.classList.remove("admin-unlocked");
+    const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
+    if (onboarded) {
+      document.body.classList.remove("gate-locked", "gate-revealing");
+      const sg = document.getElementById("summonGate");
+      if (sg) sg.classList.add("hidden");
+      try { if (typeof window.setMode === "function") window.setMode("art"); } catch (e) {}
+      return;
+    }
+    document.body.classList.add("gate-locked");
+    const sg = document.getElementById("summonGate");
+    if (sg) sg.classList.remove("hidden");
+    try { if (typeof window.initSummonGate === "function") window.initSummonGate(); } catch (e) {}
+    try { if (typeof wireFocusAndHelp === "function") wireFocusAndHelp(); } catch (e) {}
   }
 
   function playZtIntroThenSummonGate() {
@@ -5442,7 +6990,9 @@ function drawCandleChart() {
     const finish = () => {
       wrap.classList.remove("active");
       if (vid) { try { vid.pause(); vid.currentTime = 0; } catch (e) {} }
-      document.body.classList.remove("gate-locked");
+      // Keep the desk hidden until Summon / Tutorial is dismissed.
+      document.body.classList.add("gate-locked");
+      document.body.classList.remove("admin-unlocked");
       const sg = document.getElementById("summonGate");
       if (sg) {
         sg.classList.remove("hidden");
@@ -5473,7 +7023,8 @@ function drawCandleChart() {
   function revealSummonGateOnly() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.add("hidden");
-    document.body.classList.remove("gate-locked");
+    document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked");
     const sg = document.getElementById("summonGate");
     if (sg) sg.classList.remove("hidden");
     try { initSummonGate(); } catch (e) { console.warn(e); }
@@ -5481,11 +7032,14 @@ function drawCandleChart() {
   }
 
   function initPasswordGate() {
-    // Returning visitors: skip password + intro video, go to summon gate
-    if (localStorage.getItem(passKey) === "1") {
-      revealSummonGateOnly();
-      return;
-    }
+    // Never skip the desk code from leftover storage. Cold tab / hard refresh
+    // must see the access overlay. A leftover unlocked session is not the public default.
+    try { localStorage.removeItem(passKey); } catch (e) {}
+    try { sessionStorage.removeItem(passKey); } catch (e) {}
+    try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    window.__deskUnlockedThisPage = false;
+    document.body.classList.remove("admin-unlocked");
     const pg = document.getElementById("passwordGate");
     const input = document.getElementById("passwordInput");
     const btn = document.getElementById("passwordSubmit");
@@ -5493,12 +7047,16 @@ function drawCandleChart() {
     if (!pg) return;
     pg.classList.remove("hidden");
     document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked");
+    document.body.setAttribute("data-password-protected", "true");
     const tryUnlock = () => {
       const v = (input && input.value) || "";
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
-        localStorage.setItem(passKey, "1");
+        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+        try { localStorage.removeItem(passKey); } catch (e) {}
+        window.__deskUnlockedThisPage = true;
         if (err) err.classList.add("hidden");
-        // Fresh password entry → ZT intro video → summon gate
+        // Fresh password entry → first-login choice, or the desk if already onboarded
         showAppAfterAuth();
       } else {
         if (err) err.classList.remove("hidden");
@@ -5535,7 +7093,7 @@ function drawCandleChart() {
     function resize() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      stars = Array.from({ length: 160 }, () => ({
+      stars = Array.from({ length: 240 }, () => ({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         z: Math.random() * 2 + 0.2,
@@ -5545,7 +7103,7 @@ function drawCandleChart() {
     resize();
     window.addEventListener("resize", resize);
     function tick() {
-      if (!document.body.classList.contains("mode-floor")) {
+      if (!document.body.classList.contains("mode-floor") && !document.body.classList.contains("floor-mode")) {
         requestAnimationFrame(tick);
         return;
       }
@@ -5690,6 +7248,10 @@ function drawCandleChart() {
 /* ===== SUMMON VIDEO + FOG REVEAL ===== */
 (function () {
   function playSummonVideoThenReveal() {
+    if (typeof window.runSummonSequence === "function") {
+      window.runSummonSequence(window.__councilFog || null);
+      return;
+    }
     const gate = document.getElementById("summonGate");
     if (gate) {
       gate.classList.add("summoning");
@@ -5826,12 +7388,21 @@ function drawCandleChart() {
 (function () {
   const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
+  try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  document.body.classList.remove("admin-unlocked");
 
   window.isAdminUnlocked = function isAdminUnlocked() {
-    try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch (e) { return false; }
+    try { return sessionStorage.getItem(ADMIN_KEY) === "1" && !!window.__adminUnlockedThisPage; } catch (e) { return !!window.__adminUnlockedThisPage; }
   };
   function setAdminUnlocked(on) {
-    try { localStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    if (on) window.__adminUnlockedThisPage = true;
+    document.body.classList.toggle("admin-unlocked", !!on);
+    if (on) {
+      try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
+    }
   }
 
   let pendingAdminCb = null;
@@ -5855,6 +7426,10 @@ function drawCandleChart() {
     pendingAdminCb = null;
     window.__pendingAdminUnlock = null;
     if (ok && typeof cb === "function") cb();
+    if (ok) {
+      window.__adminUnlockedThisPage = true;
+      try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
+    }
     if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
       window.__openSettingsAfterAdmin = false;
       window.setMode("settings");
@@ -5910,11 +7485,11 @@ function drawCandleChart() {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate to start a clean FINISH-ONLY era? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
-            if (st()) st().textContent = data.ok ? "Hit rate cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
+            if (st()) st().textContent = data.ok ? "Hit rate & scorecard cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
             // Refresh UI accuracy display
             try {
               const s = await (await fetch("/api/state")).json();
@@ -5958,6 +7533,24 @@ function drawCandleChart() {
         });
       });
     }
+    const brainBtn = document.getElementById("btnBrainExport");
+    if (brainBtn && !brainBtn.__wired) {
+      brainBtn.__wired = true;
+      brainBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-brain.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          const bs = document.getElementById("brainStatus");
+          if (bs) bs.textContent = "Brain download started…";
+        });
+      });
+    }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -5989,7 +7582,10 @@ function drawCandleChart() {
   let idx = 0;
   let audio = null;
   let active = false;
-  let muted = localStorage.getItem(MUTE_KEY) === "1";
+  let muted = localStorage.getItem(MUTE_KEY) !== "0";
+  if (localStorage.getItem(MUTE_KEY) == null) {
+    try { localStorage.setItem(MUTE_KEY, "1"); } catch (e) {}
+  }
   let vol = Number(localStorage.getItem(VOL_KEY));
   if (!(vol >= 0 && vol <= 1)) vol = 0.28;
 
@@ -6040,6 +7636,27 @@ function drawCandleChart() {
   window.__floorMusicOnMode = function (isFloor) {
     if (isFloor) startMusic();
     else stopMusic();
+  };
+
+  window.__floorMusicDuck = function (ms) {
+    if (!audio || muted || !active) return;
+    try { audio.volume = Math.min(vol, 0.04); } catch (e) {}
+    const hold = Math.max(400, Number(ms) || 2200);
+    setTimeout(() => {
+      if (audio && !muted) {
+        try { audio.volume = vol; } catch (e) {}
+      }
+    }, hold);
+  };
+
+  window.__floorMusicDuckHold = function () {
+    if (!audio || muted || !active) return;
+    try { audio.volume = Math.min(vol, 0.04); } catch (e) {}
+  };
+  window.__floorMusicUnduck = function () {
+    if (audio && !muted) {
+      try { audio.volume = vol; } catch (e) {}
+    }
   };
 
   window.__floorMusicToggleMute = function () {
@@ -6189,11 +7806,4 @@ function drawCandleChart() {
 })();
 
 
-/* AUDIO_STRIPPED_V1 — hard disable all sound */
-function ensureAudio(){ return null; }
-function playMarketBell(){ return; }
-function playSfxClick(){ return; }
-function playSfxWhoosh(){ return; }
-function playSfxFogDrone(){ return; }
-function playSfxChime(){ return; }
-function playSfxReveal(){ return; }
+/* Sound lives inside the desk IIFE. Do not stub Bell here — Floor music ducks under it. */

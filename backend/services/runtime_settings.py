@@ -17,9 +17,9 @@ SETTINGS_PATH = DATA_DIR / "system-settings.json"
 DEFAULTS: Dict[str, Any] = {
     "beast_mode": True,
     "beast": {
-        "analysis_interval": 1.5,
+        "analysis_interval": 1.2,
         "analysis_interval_hot": 1.0,
-        "analysis_interval_flat": 3.0,
+        "analysis_interval_flat": 2.5,
         "parallel_agents": True,
         "dual_spot": True,
         "slow_metrics_ttl": 20.0,
@@ -27,9 +27,9 @@ DEFAULTS: Dict[str, Any] = {
         "ui_poll_ms": 800,
     },
     "normal": {
-        "analysis_interval": 5.0,
-        "analysis_interval_hot": 3.0,
-        "analysis_interval_flat": 8.0,
+        "analysis_interval": 2.0,
+        "analysis_interval_hot": 1.5,
+        "analysis_interval_flat": 3.5,
         "parallel_agents": True,
         "dual_spot": False,
         "slow_metrics_ttl": 45.0,
@@ -166,8 +166,34 @@ class RuntimeSettings:
                 raw = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
                 if isinstance(raw, dict):
                     self._data = _deep_merge(DEFAULTS, raw)
+                    self._migrate_stale_cadence()
         except Exception as e:
             logger.warning(f"Runtime settings load failed: {e}")
+
+    def _migrate_stale_cadence(self) -> None:
+        """Replace leftover factory cycle times (5s / 1.5s) with the 2s / 1.2s floors."""
+        changed = False
+        normal = dict(self._data.get("normal") or {})
+        if (
+            float(normal.get("analysis_interval") or 0) == 5.0
+            and float(normal.get("analysis_interval_hot") or 0) == 3.0
+            and float(normal.get("analysis_interval_flat") or 0) == 8.0
+        ):
+            normal.update(DEFAULTS["normal"])
+            self._data["normal"] = normal
+            changed = True
+        beast = dict(self._data.get("beast") or {})
+        if float(beast.get("analysis_interval") or 0) == 1.5 and float(beast.get("analysis_interval_hot") or 0) == 1.0:
+            beast["analysis_interval"] = DEFAULTS["beast"]["analysis_interval"]
+            if float(beast.get("analysis_interval_flat") or 0) == 3.0:
+                beast["analysis_interval_flat"] = DEFAULTS["beast"]["analysis_interval_flat"]
+            self._data["beast"] = beast
+            changed = True
+        if changed:
+            try:
+                self.save()
+            except Exception:
+                pass
 
     def save(self) -> None:
         with self._lock:

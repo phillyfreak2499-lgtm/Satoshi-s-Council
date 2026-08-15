@@ -2340,7 +2340,6 @@ body.floor-mode.law-lock .floor-hint { color: rgba(255, 140, 40, 0.75); }
   box-shadow: 0 0 12px rgba(120, 200, 255, 0.25);
 }
 .zt-header-logo img { display: block; border-radius: 8px; }
-.title-zt { color: #7dd3fc; font-weight: 500; opacity: 0.9; }
 .credit-popup {
   position: fixed; top: 58px; left: 16px; z-index: 5000;
   background: rgba(8,12,22,0.95); border: 1px solid #3b82f6;

@@ -18,12 +18,25 @@ from backend.learning.adaptive import AdaptiveLearner, NON_VOTERS
 from backend.agents.roster import display_name
 from backend.agents.chair_gates import (
     book_too_thin,
-    clamp_p_finish,
     compute_ev_cents,
+    dead_book_reason,
+    early_lock_blocked,
+    estimate_p_finish,
+    eth_fades_btc_impulse,
+    eth_paper_lock_blocked,
+    eth_shadow_pick,
     ev_gate_blocks,
+    late_spot_decisive,
+    leftover_after_vig,
+    lock_force_allowed,
+    never_lock_near_certain,
+    odds_to_cents,
     parse_book_depth,
+    stuck_hours_open,
     time_ev_hurdles,
+    zach_band_skips_preferred,
 )
+from backend.data.cfbenchmarks import last15_spot
 from loguru import logger
 import copy
 import time
@@ -86,6 +99,7 @@ class Leader:
         self._locked_ev_cents: Optional[float] = None
         self._locked_floor_strike: Optional[float] = None
         self._locked_close_time: Optional[str] = None
+        self.edge: Dict[str, Any] = {}
 
     def _normalize_weights(self) -> None:
         total = sum(self.weights.values()) or 1.0
@@ -298,8 +312,10 @@ class Leader:
             "goal": GOAL_CONTRACT_SHORT,
             "p_finish": self._locked_p_finish,
             "ev_cents": self._locked_ev_cents,
+            "leftover_after_vig": self._locked_ev_cents,
             "floor_strike": self._locked_floor_strike,
             "close_time": self._locked_close_time,
+            "paper_only": True,
         }
 
     def _price_edge(
@@ -309,17 +325,64 @@ class Leader:
         side_odds: float | None,
         regime_features: Dict[str, Any] | None,
     ) -> Dict[str, Any]:
-        """Paper P(finish) + EV vs chosen-side mid and half-spread."""
+        """Paper P(finish) + EV at the real ask, not mid."""
         spread = None
         try:
             if regime_features and regime_features.get("spread_cents") is not None:
                 spread = float(regime_features["spread_cents"])
         except (TypeError, ValueError):
             spread = None
-        p_finish = clamp_p_finish(conf) if lean in ("UP", "DOWN") else None
+        settled_n = 0
+        try:
+            settled_n = int((self.edge or {}).get("total") or 0)
+        except (TypeError, ValueError):
+            settled_n = 0
+        if regime_features and regime_features.get("settled_n") is not None:
+            try:
+                settled_n = int(regime_features["settled_n"])
+            except (TypeError, ValueError):
+                pass
+        bin_n = None
+        if regime_features and regime_features.get("chair_bin_settled_n") is not None:
+            try:
+                bin_n = int(regime_features["chair_bin_settled_n"])
+            except (TypeError, ValueError):
+                bin_n = 0
+        elif isinstance(self.edge, dict):
+            hot = ((self.edge.get("chair_bins") or {}).get("90+") or {})
+            if hot.get("settled") is not None:
+                try:
+                    bin_n = int(hot.get("settled") or 0)
+                except (TypeError, ValueError):
+                    bin_n = 0
+        # 1062/1063 still OPEN → n=0. Chair conf is not P(finish).
+        if regime_features and (
+            regime_features.get("stuck_open")
+            or stuck_hours_open(regime_features.get("open_rows") or [])
+        ):
+            settled_n = 0
+            bin_n = 0
+        p_finish = (
+            estimate_p_finish(conf, settled_n, bin_settled_n=bin_n)
+            if lean in ("UP", "DOWN")
+            else None
+        )
+        fill_ask = None
+        if regime_features:
+            fill_ask = odds_to_cents(regime_features.get("side_ask"))
+            if fill_ask is None and lean == "UP":
+                fill_ask = odds_to_cents(regime_features.get("yes_ask"))
+            if fill_ask is None and lean == "DOWN":
+                fill_ask = odds_to_cents(regime_features.get("no_ask"))
+                if fill_ask is None:
+                    yb = odds_to_cents(regime_features.get("yes_bid"))
+                    if yb is not None:
+                        fill_ask = 100.0 - yb
+        if fill_ask is None:
+            fill_ask = odds_to_cents(side_odds)
         ev = None
-        if p_finish is not None and side_odds is not None:
-            ev = compute_ev_cents(p_finish, side_odds, spread)
+        if p_finish is not None and fill_ask is not None:
+            ev = compute_ev_cents(p_finish, fill_ask, spread)
         mins_left = None
         window_minutes = None
         if regime_features:
@@ -369,9 +432,12 @@ class Leader:
         self.cool_down_bump: float = 0.0
         self.edge = {
             "total": int(accuracy.get("total") or 0),
+            "reliability_n": int(accuracy.get("reliability_n") or accuracy.get("total") or 0),
             "accuracy_pct": accuracy.get("accuracy_pct"),
             "last_20_pct": (accuracy.get("last_20") or {}).get("accuracy_pct"),
             "verdict": accuracy.get("verdict") or "COLLECTING",
+            "chair_bins": accuracy.get("chair_bins") or {},
+            "eth_shadow": accuracy.get("eth_shadow") or {},
         }
 
     def adaptive_thresholds(self) -> Dict[str, float]:
@@ -568,10 +634,12 @@ class Leader:
             conf_w = (max(0.0, min(100.0, float(s.confidence or 0))) / 100.0) ** power
             signed = 0.0
             d = (s.direction or "WAIT").upper()
-            if d in ("UP", "UP_HOLD"):
-                signed = conf_w
-            elif d in ("DOWN", "DOWN_HOLD"):
-                signed = -conf_w
+            can_force = lock_force_allowed(getattr(s, "features", None))
+            if can_force:
+                if d in ("UP", "UP_HOLD"):
+                    signed = conf_w
+                elif d in ("DOWN", "DOWN_HOLD"):
+                    signed = -conf_w
             effective_dir = d
             if invert and signed != 0.0:
                 signed = -signed
@@ -582,7 +650,8 @@ class Leader:
                 elif "DOWN" in d:
                     effective_dir = "UP" if d == "DOWN" else "UP_HOLD"
             score += signed * w
-            weight_sum += w
+            if can_force:
+                weight_sum += w
             cat_dir = effective_dir if invert else s.direction
             category_dirs.setdefault(s.category, []).append(cat_dir)
             details.append({
@@ -604,11 +673,13 @@ class Leader:
                 "faded": invert,
                 "invert": invert,
                 "fade_strength": round(fade_strength, 3),
+                "lock_force": can_force,
+                "advisory": not can_force,
             })
 
         # Cap total influence of inverted (faded) bots so one loser can't steer the Chair
         max_share = float(getattr(settings, "FADE_MAX_WEIGHT_SHARE", 0.18))
-        inv = [d for d in details if d.get("invert")]
+        inv = [d for d in details if d.get("invert") and d.get("lock_force") is not False]
         if inv and weight_sum > 0:
             inv_w = sum(float(d["weight"]) for d in inv)
             share = inv_w / weight_sum
@@ -618,6 +689,8 @@ class Leader:
                 score = 0.0
                 weight_sum = 0.0
                 for d in details:
+                    if d.get("lock_force") is False:
+                        continue
                     w = float(d["weight"])
                     if d.get("invert"):
                         w *= scale
@@ -667,6 +740,15 @@ class Leader:
                     d["weight"] = round(float(d["weight"]) * scale, 3)
                     d["anti_faded"] = True
 
+        # BTC-leads-ETH: feed Satoshi impulse into Vitalik score (do not fade it)
+        btc_lead = None
+        if regime_features and isinstance(regime_features.get("btc_lead"), dict):
+            btc_lead = regime_features["btc_lead"]
+            bd = str(btc_lead.get("direction") or "").upper()
+            if btc_lead.get("impulse") and bd in ("UP", "DOWN"):
+                mag = 0.08 if btc_lead.get("strong") else 0.045
+                score = score + (mag if bd == "UP" else -mag)
+
         # Regime aggressiveness
         aggressiveness = 1.0
         if regime_features and "aggressiveness" in regime_features:
@@ -676,6 +758,8 @@ class Leader:
 
         # --- Research gates (KXBTC15M backtests) ---
         gate_notes = []
+        if btc_lead and btc_lead.get("impulse"):
+            gate_notes.append(f"btc-lead {btc_lead.get('direction')}")
         mins_left = None
         if regime_features:
             try:
@@ -997,6 +1081,10 @@ class Leader:
         side_odds = None
         if lean in ("UP", "DOWN") and up_pct is not None:
             side_odds = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
+        # ETH shadow pick keeps the intended side even if the counting lock WAITs.
+        shadow_side = lean if lean in ("UP", "DOWN") else None
+        shadow_conf = int(conf) if conf is not None else 0
+        shadow_vetoed = False
 
         edge = self._price_edge(conf, lean, side_odds, regime_features)
         p_finish = edge["p_finish"]
@@ -1005,6 +1093,18 @@ class Leader:
         self._last_p_finish = p_finish
         self._last_ev_cents = ev_cents
         self._last_ev_phase = ev_phase
+        eth_n_for_lock = 0
+        if regime_features:
+            if regime_features.get("eth_settled_n") is not None:
+                try:
+                    eth_n_for_lock = int(regime_features["eth_settled_n"])
+                except (TypeError, ValueError):
+                    eth_n_for_lock = 0
+            elif str(regime_features.get("asset") or "").upper() in ("ETH", "ETHEREUM"):
+                try:
+                    eth_n_for_lock = int(regime_features.get("settled_n") or 0)
+                except (TypeError, ValueError):
+                    eth_n_for_lock = 0
 
         # ══════════════════════════════════════════════════════════════
         # GOAL CONTRACT: one irreversible call per window. No flipping.
@@ -1052,6 +1152,93 @@ class Leader:
                 summary = (
                     f"WAIT · fresh quote required ({age_txt}) — no lock on stale Kalshi · {summary}"
                 )
+            elif early_lock_blocked(
+                (regime_features or {}).get("mins_left"),
+                (regime_features or {}).get("window_minutes") or 60.0,
+                float(getattr(settings, "EARLY_NO_LOCK_MINS", 10.0)),
+            ):
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 68)
+                summary = (
+                    f"WAIT · first {float(getattr(settings, 'EARLY_NO_LOCK_MINS', 10.0)):.0f}m "
+                    f"of the hour — no lock · {summary}"
+                )
+            elif never_lock_near_certain(
+                (regime_features or {}).get("yes_ask"),
+                (regime_features or {}).get("no_ask"),
+                side_odds=side_odds,
+            ):
+                why = never_lock_near_certain(
+                    (regime_features or {}).get("yes_ask"),
+                    (regime_features or {}).get("no_ask"),
+                    side_odds=side_odds,
+                )
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 72)
+                summary = f"WAIT · {why} — no lock · {summary}"
+            elif dead_book_reason(
+                (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
+                lean,
+                (regime_features or {}).get("yes_mid"),
+                float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0)),
+            ):
+                why = dead_book_reason(
+                    (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
+                    lean,
+                    (regime_features or {}).get("yes_mid"),
+                    float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0)),
+                )
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 72)
+                summary = f"WAIT · dead book · {why} — no lock · {summary}"
+            elif ev_phase == "late" and not late_spot_decisive(
+                last15_spot({
+                    "spot": (regime_features or {}).get("research_spot")
+                    or (regime_features or {}).get("cfb_avg_60s"),
+                    "kind": (regime_features or {}).get("research_spot_kind")
+                    or (regime_features or {}).get("kind"),
+                }),
+                (regime_features or {}).get("floor_strike"),
+                (regime_features or {}).get("mins_left"),
+                float(getattr(settings, "LATE_HOURLY_VOL_PCT", 0.40)),
+            ):
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 70)
+                summary = (
+                    f"WAIT · last 15m — 60s CFB avg not decisive vs strike · {summary}"
+                )
+            elif (regime_features or {}).get("btc_fade_blocked") or eth_fades_btc_impulse(
+                lean, (regime_features or {}).get("btc_lead")
+            ):
+                shadow_vetoed = True
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 70)
+                summary = (
+                    f"WAIT · ETH fade of BTC impulse blocked · {summary}"
+                )
+            elif eth_paper_lock_blocked(
+                (regime_features or {}).get("asset"),
+                eth_n_for_lock,
+            ):
+                why = eth_paper_lock_blocked(
+                    (regime_features or {}).get("asset"),
+                    eth_n_for_lock,
+                )
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 70)
+                summary = f"WAIT · {why} — ETH may still vote · {summary}"
             elif side_odds is not None and side_odds >= max_odds:
                 refused_side = lean
                 direction = "WAIT"
@@ -1088,7 +1275,20 @@ class Leader:
                     elif ml <= late:
                         need = need * 0.92
                 abs_score = abs(float(score)) if score is not None else 0.0
-                if abs_score < need and not in_band:
+                zach_mid = (regime_features or {}).get("yes_mid")
+                if zach_mid is None:
+                    zach_mid = side_odds
+                leftover = ev_cents
+                if leftover is None and p_finish is not None:
+                    fill = odds_to_cents((regime_features or {}).get("side_ask"))
+                    if fill is None:
+                        fill = odds_to_cents(side_odds)
+                    if fill is not None:
+                        leftover = leftover_after_vig(float(p_finish), float(fill))
+                # 20–80 + leftover after vig is playable. Do not shrink to 45–55.
+                if abs_score < need and not in_band and not zach_band_skips_preferred(
+                    zach_mid, leftover
+                ):
                     direction = "WAIT"
                     lean = None
                     firm = False
@@ -1218,8 +1418,16 @@ class Leader:
                                     )
                                 else:
                                     lock_dir = lean
+                                    # 91% Chair ≠ P(finish). Cap lock conf to calibrated p.
+                                    lock_conf = int(conf)
+                                    if p_finish is not None:
+                                        lock_conf = min(
+                                            lock_conf,
+                                            max(1, int(round(float(p_finish) * 100.0))),
+                                        )
+                                    conf = lock_conf
                                     self._set_window_lock(
-                                        ticker, lock_dir, conf, score, up_pct=up_pct, call_phase="entry"
+                                        ticker, lock_dir, lock_conf, score, up_pct=up_pct, call_phase="entry"
                                     )
                                     self._locked_p_finish = p_finish
                                     self._locked_ev_cents = ev_cents
@@ -1283,6 +1491,29 @@ class Leader:
             locked_call["p_finish"] = p_finish
         if locked_call and ev_cents is not None and locked_call.get("ev_cents") is None:
             locked_call["ev_cents"] = ev_cents
+        shadow_pick = None
+        try:
+            asset = (regime_features or {}).get("asset")
+            if shadow_side in ("UP", "DOWN"):
+                ask = None
+                if regime_features:
+                    if shadow_side == "UP":
+                        ask = regime_features.get("yes_ask") or regime_features.get("side_ask")
+                    else:
+                        ask = regime_features.get("no_ask") or regime_features.get("side_ask")
+                if ask is None:
+                    ask = live_odds
+                shadow_pick = eth_shadow_pick(
+                    asset,
+                    shadow_side,
+                    shadow_conf,
+                    ask=ask,
+                    strike=(regime_features or {}).get("floor_strike"),
+                    vetoed=shadow_vetoed,
+                    ticker=ticker,
+                )
+        except Exception:
+            shadow_pick = None
         return {
             "direction": direction,
             "confidence": conf,
@@ -1312,6 +1543,7 @@ class Leader:
             "call_phase": locals().get("call_phase"),
             # Follower-bot ready: only present when a real lock exists
             "locked_call": locked_call,
+            "eth_shadow_pick": shadow_pick,
             "p_finish": p_finish,
             "ev_cents": ev_cents,
             "ev_phase": ev_phase,
@@ -1340,6 +1572,7 @@ class Leader:
             "pair_bonus": 0.0,
             "pair_notes": [],
             "locked_call": self._build_locked_call(),
+            "eth_shadow_pick": None,
             "p_finish": self._last_p_finish,
             "ev_cents": self._last_ev_cents,
             "ev_phase": self._last_ev_phase,
