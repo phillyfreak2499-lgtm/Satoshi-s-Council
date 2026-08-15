@@ -19,7 +19,7 @@ import os
 import re
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -106,6 +106,7 @@ FLIP_F = 2.0
 BOARD_TTL_S = 20.0
 WX_TTL_S = 180.0
 WX_REFRESH_S = 180.0  # live KDFW METAR/NWS every few minutes. Dead feed holds last mode.
+CLI_HOUR_CT = 7  # NWS CLI for KDFW / FWD posts the next morning. Not a 1H close.
 NWS_UA = "SatoshiCouncil/1.0 (the-front; dallas-kdfw)"
 NWS_OBS_URL = "https://api.weather.gov/stations/KDFW/observations/latest"
 METAR_URL = "https://aviationweather.gov/api/data/metar?ids=KDFW&format=json"
@@ -331,6 +332,115 @@ def strike_label(m: Dict[str, Any]) -> str:
     if kind in ("less", "less_or_equal") and hi is not None:
         return f"<{int(float(hi))}°F"
     return str(m.get("title") or m.get("ticker") or "—")
+
+
+def cli_at_for(day: date) -> datetime:
+    """NWS CLI for that station/day. Next morning 07:00 CT — not a 1H close_time."""
+    return datetime(day.year, day.month, day.day, CLI_HOUR_CT, 0, tzinfo=CT) + timedelta(days=1)
+
+
+def kalshi_high_f(best: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not best:
+        return None
+    kind = str(best.get("strike_type") or "").lower()
+    lo, hi = best.get("floor_strike"), best.get("cap_strike")
+    try:
+        if kind == "between" and hi is not None:
+            return float(hi)
+        if kind in ("greater", "greater_or_equal") and lo is not None:
+            return float(lo)
+        if kind in ("less", "less_or_equal") and hi is not None:
+            return float(hi)
+        if lo is not None:
+            return float(lo)
+        if hi is not None:
+            return float(hi)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def weather_dir(
+    raw: Any,
+    *,
+    strike_type: Any = "",
+    forecast: Optional[float] = None,
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+) -> str:
+    """HUD word for Dallas daily high. Never UP / DOWN / YES / NO."""
+    d = str(raw or "WAIT").upper()
+    if d in ("ABOVE", "BELOW", "BETWEEN", "WAIT"):
+        return d
+    if d in ("WAIT", "CLEAR", "SKIP", ""):
+        return "WAIT"
+    kind = str(strike_type or "").lower()
+    yes = d in ("YES", "UP", "UP_HOLD")
+    no = d in ("NO", "DOWN", "DOWN_HOLD", "OUT")
+    if not yes and not no:
+        return "WAIT"
+    if kind == "between":
+        if yes:
+            return "BETWEEN"
+        if forecast is not None and cap_strike is not None:
+            try:
+                if float(forecast) > float(cap_strike):
+                    return "ABOVE"
+            except (TypeError, ValueError):
+                pass
+        if forecast is not None and floor_strike is not None:
+            try:
+                if float(forecast) < float(floor_strike):
+                    return "BELOW"
+            except (TypeError, ValueError):
+                pass
+        return "BELOW"
+    if kind in ("less", "less_or_equal"):
+        return "BELOW" if yes else "ABOVE"
+    return "ABOVE" if yes else "BELOW"
+
+
+def weather_eye(word: Any) -> str:
+    """Portrait eyes only. Green / red / white — HUD still uses weather words."""
+    w = str(word or "WAIT").upper()
+    if w in ("ABOVE", "BETWEEN", "UP", "YES", "UP_HOLD"):
+        return "UP"
+    if w in ("BELOW", "DOWN", "NO", "DOWN_HOLD"):
+        return "DOWN"
+    return "WAIT"
+
+
+def build_clock(
+    day: Optional[date],
+    best: Optional[Dict[str, Any]],
+    now: datetime,
+    forecast: Optional[float] = None,
+) -> Dict[str, Any]:
+    local = now.astimezone(CT) if now.tzinfo else now.replace(tzinfo=timezone.utc).astimezone(CT)
+    cli_at = None if day is None else cli_at_for(day)
+    secs = None if cli_at is None else max(0, int((cli_at - local).total_seconds()))
+    span = None
+    if day is not None and cli_at is not None:
+        start = datetime(day.year, day.month, day.day, 0, 0, tzinfo=CT)
+        span = max(1, int((cli_at - start).total_seconds()))
+    kind = str((best or {}).get("strike_type") or "").lower()
+    return {
+        "kind": "cli",
+        "label": "DFW HIGH",
+        "sub": "to CLI" if secs else "CLI",
+        "day": None if day is None else day.isoformat(),
+        "strike_type": kind or None,
+        "floor_strike": None if not best else best.get("floor_strike"),
+        "cap_strike": None if not best else best.get("cap_strike"),
+        "bracket": None if not best else best.get("bracket"),
+        "kalshi_high": kalshi_high_f(best),
+        "nws_high": forecast,
+        "ticker": None if not best else best.get("ticker"),
+        "cli_at": None if cli_at is None else cli_at.isoformat(),
+        "seconds_to_cli": secs,
+        "seconds_to_settle": secs,
+        "cli_span_s": span,
+    }
 
 
 def official_yes(
@@ -605,6 +715,12 @@ def lock_tape() -> List[Dict[str, Any]]:
             "bracket": row.get("bracket") or "",
             "best": bool(row.get("best")),
             "side": row.get("side") or ("WAIT" if str(row.get("result") or "").upper() == "WAIT" else row.get("side")),
+            "lean": weather_dir(
+                row.get("side") or "WAIT",
+                strike_type=row.get("strike_type"),
+                floor_strike=row.get("floor_strike"),
+                cap_strike=row.get("cap_strike"),
+            ),
             "result": str(row.get("result") or "OPEN").upper(),
             "wait_reason": row.get("wait_reason"),
             "pnl": row.get("pnl"),
@@ -1267,18 +1383,20 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
     for seat in SEATS:
         rec = recs.get(seat["id"]) or {"n": 0, "wr": None, "rank": 0, "correct": 0, "wrong": 0}
         raw = str((votes.get(seat["id"]) or {}).get("dir") or "WAIT").upper()
-        if raw == "YES":
-            lean = "UP"
-        elif raw in ("NO", "SKIP"):
-            lean = "DOWN"
-        else:
-            lean = "WAIT"
+        lean = weather_dir(
+            raw,
+            strike_type=None if not best else best.get("strike_type"),
+            forecast=forecast,
+            floor_strike=None if not best else best.get("floor_strike"),
+            cap_strike=None if not best else best.get("cap_strike"),
+        )
         rows.append({
             "id": seat["id"],
             "job": seat["job"],
             "mark": seat["mark"],
             "call": calls.get(seat["id"]),
             "dir": lean,
+            "eye": weather_eye(lean),
             "vote": raw,
             "n": rec.get("n") or 0,
             "wr": rec.get("wr"),
@@ -1337,11 +1455,19 @@ def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bo
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     acc = chair_accuracy()
     rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
-    # Skip / dont_play is a WAIT, not a DOWN lock.
+    # Skip / dont_play is a WAIT, not a BELOW lock. Portraits still use UP/WAIT eyes.
     if not best or best.get("dont_play"):
+        lean = "WAIT"
         eye = "WAIT"
     else:
-        eye = "UP"
+        lean = weather_dir(
+            "YES",
+            strike_type=best.get("strike_type"),
+            forecast=best.get("forecast"),
+            floor_strike=best.get("floor_strike"),
+            cap_strike=best.get("cap_strike"),
+        )
+        eye = weather_eye(lean)
     # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
     marks = {
         "UP": "/static/bots/raijin-up.png",
@@ -1355,8 +1481,11 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "mark": marks.get(eye) or CHAIR["mark"],
         "portrait": CHAIR["mark"],
         "eye": eye,
+        "lean": lean,
         "call": None if not best else (best.get("skip") or best.get("bracket")),
         "bracket": None if not best else best.get("bracket"),
+        "strike_type": None if not best else best.get("strike_type"),
+        "kalshi_high": None if not best else kalshi_high_f(best),
         "ticker": None if not best else best.get("ticker"),
         "confidence": None if not best else best.get("confidence"),
         "dont_play": bool(best.get("dont_play")) if best else True,
@@ -1381,6 +1510,20 @@ async def build_board(
             out["accuracy"] = chair_accuracy()
             out["tape"] = lock_tape()
             out["fills"] = list(reversed(_load_fills()[-12:]))
+            try:
+                day_s = ((out.get("city") or {}).get("day"))
+                day_d = date.fromisoformat(str(day_s)) if day_s else None
+                best_row = None
+                for b in out.get("brackets") or []:
+                    if isinstance(b, dict) and b.get("best"):
+                        best_row = b
+                        break
+                fc = None
+                if best_row and best_row.get("forecast") is not None:
+                    fc = best_row.get("forecast")
+                out["clock"] = build_clock(day_d, best_row, datetime.now(timezone.utc), fc)
+            except Exception:
+                pass
             recs = {r["id"]: r for r in seat_records()}
             seats = []
             for s in out.get("seats") or []:
@@ -1525,6 +1668,7 @@ async def build_board(
             for c in CITIES
         ],
         "weather": weather,
+        "clock": build_clock(day, best, n, forecast),
         "chair": build_chair(chair_best),
         "seats": build_seats(best, forecast, day),
         "brackets": brackets,

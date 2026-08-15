@@ -183,7 +183,7 @@
       <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
         <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
-        <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas / Raijin" aria-label="Focus Dallas / Raijin" data-focus="front">RAIJIN</button>
+        <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas Weather Forecast / Raijin" aria-label="Focus Dallas Weather Forecast / Raijin" data-focus="front">DWF</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
@@ -210,7 +210,7 @@
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
         <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
           <div class="led-bezel">
-            <div class="led-label">1H WINDOW</div>
+            <div class="led-label" id="ledWindowLabel">1H WINDOW</div>
             <div id="ledWindowTime" class="led-digits led-time">--:--</div>
             <div class="led-foot" id="ledWindowSub">until close</div>
             <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
@@ -888,15 +888,16 @@
         <span id="decisionSummary" class="decision-summary"></span>
       </div>
       <div id="marketStrip">
-        <span>BTC <b id="btcPrice">—</b></span>
-        <span>ETH <b id="ethPrice">—</b></span>
+        <span id="stripBtcPx">BTC <b id="btcPrice">—</b></span>
+        <span id="stripEthPx">ETH <b id="ethPrice">—</b></span>
+        <span id="wxHighStrip" class="wx-high-strip" hidden>KALSHI <b id="wxKalshiHigh">—</b> · NWS <b id="wxNwsHigh">—</b></span>
         <span id="ethDecisionStrip" class="eth-decision-strip">ETH <b id="ethDir">—</b> <b id="ethConf"></b></span>
         <span id="btcDecisionStrip" class="btc-decision-strip">BTC <b id="btcDir">—</b> <b id="btcConf"></b></span>
         <span class="odds-live">UP <b id="liveUpPct">—</b></span>
         <span class="odds-live down">DOWN <b id="liveDownPct">—</b></span>
         <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
         <span id="dualVoteStrip" class="dual-vote-strip">BTC <b id="btcVotes">—</b> · ETH <b id="ethVotes">—</b></span>
-        <span>Funding <b id="funding">—</b></span>
+        <span id="stripFunding">Funding <b id="funding">—</b></span>
         <span>Kalshi <b id="kalshiTicker">—</b></span>
         <span class="acc-strip">BTC <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
         <span id="paperAutoSummary" class="paper-auto-summary">auto —</span>

@@ -715,7 +715,72 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function isFrontTable(which) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
-    return w === "front" || w === "raijin" || w === "dfw" || w === "dallas";
+    return w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf";
+  }
+  const FRONT_SEAT_IDS = ["GLASS", "PIT", "FROST", "BONE"];
+  const FRONT_SEAT_KEYS = ["glass", "pit", "frost", "bone"];
+  function frontSeatMark(id) {
+    const k = String(id || "").toLowerCase();
+    if (FRONT_SEAT_KEYS.indexOf(k) >= 0) return "/static/bots/" + k + ".png";
+    return "";
+  }
+  function isFrontSeatKey(name) {
+    const k = String(name || "").toLowerCase();
+    return FRONT_SEAT_KEYS.indexOf(k) >= 0;
+  }
+  function wxWord(dir, strikeType, forecast, floor, cap) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "ABOVE" || d === "BELOW" || d === "BETWEEN" || d === "WAIT") return d;
+    if (d === "SKIP" || d === "CLEAR") return "WAIT";
+    const kind = String(strikeType || "").toLowerCase();
+    const yes = d === "YES" || d === "UP" || d === "UP_HOLD";
+    const no = d === "NO" || d === "DOWN" || d === "DOWN_HOLD" || d === "OUT";
+    if (!yes && !no) return "WAIT";
+    if (kind === "between") {
+      if (yes) return "BETWEEN";
+      if (forecast != null && cap != null && Number(forecast) > Number(cap)) return "ABOVE";
+      if (forecast != null && floor != null && Number(forecast) < Number(floor)) return "BELOW";
+      return "BELOW";
+    }
+    if (kind === "less" || kind === "less_or_equal") return yes ? "BELOW" : "ABOVE";
+    return yes ? "ABOVE" : "BELOW";
+  }
+  function wxEye(word) {
+    const w = String(word || "WAIT").toUpperCase();
+    if (w === "ABOVE" || w === "BETWEEN" || w === "UP" || w === "YES" || w === "UP_HOLD") return "UP";
+    if (w === "BELOW" || w === "DOWN" || w === "NO" || w === "DOWN_HOLD") return "DOWN";
+    return "WAIT";
+  }
+  function wxTone(dir) {
+    const w = String(dir || "WAIT").toUpperCase();
+    if (w === "ABOVE" || w === "BETWEEN" || w === "UP" || w === "UP_HOLD" || w === "YES") return "UP";
+    if (w === "BELOW" || w === "DOWN" || w === "DOWN_HOLD" || w === "NO") return "DOWN";
+    return "WAIT";
+  }
+  function frontClockOf(board) {
+    return (board && board.clock) || {};
+  }
+  function frontHighLine(ts) {
+    const m = (ts && ts.market) || {};
+    const clock = m.clock || frontClockOf(typeof frontBoard !== "undefined" ? frontBoard : null);
+    const kind = String(clock.strike_type || m.strike_type || "").toLowerCase();
+    const lo = clock.floor_strike != null ? clock.floor_strike : m.floor_strike;
+    const hi = clock.cap_strike != null ? clock.cap_strike : m.cap_strike;
+    const kh = clock.kalshi_high != null ? clock.kalshi_high : m.kalshi_high;
+    const nws = clock.nws_high != null ? clock.nws_high : m.nws_high;
+    const bracket = clock.bracket || m.bracket;
+    let head = "KALSHI HIGH —";
+    if (kind === "between" && lo != null && hi != null) {
+      head = "KALSHI HIGH " + Math.round(Number(lo)) + "–" + Math.round(Number(hi)) + "°F";
+    } else if (kh != null && isFinite(Number(kh))) {
+      head = "KALSHI HIGH " + Math.round(Number(kh)) + "°F";
+    } else if (bracket) {
+      head = "KALSHI HIGH " + String(bracket);
+    }
+    if (nws != null && isFinite(Number(nws))) {
+      head += " · NWS " + Math.round(Number(nws)) + "°F";
+    }
+    return head;
   }
   function frontTableState() {
     let board = null;
@@ -732,18 +797,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const fills = (board && board.fills) || [];
     const tape = (board && board.tape) || [];
     const best = ((board && board.brackets) || []).find(function (b) { return b && b.best; }) || {};
+    const clock = frontClockOf(board);
+    const strikeType = clock.strike_type || best.strike_type || "";
     const locked = fills.find(function (f) {
       const r = String((f && f.result) || "").toUpperCase();
       const side = String((f && f.side) || "").toUpperCase();
       return side !== "WAIT" && (r === "OPEN" || r === "PENDING" || (f && !f.settled && r !== "WAIT" && r !== "HIT" && r !== "MISS"));
     });
     const eye = String(chair.eye || "WAIT").toUpperCase();
-    const agents = seats.map(function (s) {
+    const chairLean = chair.lean || wxWord(eye === "UP" ? "YES" : (eye === "DOWN" ? "NO" : "WAIT"), strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike);
+    const agents = seats.filter(function (s) {
+      return s && FRONT_SEAT_IDS.indexOf(String(s.id || "").toUpperCase()) >= 0;
+    }).map(function (s) {
+      const lean = wxWord(s.dir || s.vote, strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike);
       return {
         agent_name: String(s.id || "").toLowerCase(),
         display_name: s.id,
         title: s.job || "",
-        direction: s.dir || "WAIT",
+        direction: lean,
+        mark: s.mark || frontSeatMark(s.id),
         confidence: s.confidence != null ? s.confidence : 50,
         reasoning: s.call || "",
         summary: s.call || "",
@@ -753,9 +825,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       agent_name: "leader",
       display_name: "RAIJIN",
       title: "DFW · Raijin",
-      direction: eye,
+      direction: chairLean,
       confidence: chair.confidence || 0,
-      reasoning: chair.call || "",
+      reasoning: chair.call || frontHighLine({ market: { clock: clock, strike_type: strikeType, floor_strike: clock.floor_strike, cap_strike: clock.cap_strike, kalshi_high: clock.kalshi_high, nws_high: clock.nws_high, bracket: clock.bracket || best.bracket } }),
       summary: chair.call || "",
     });
     const hierarchy = (records.length ? records : seats).map(function (r, i) {
@@ -776,7 +848,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const log = (tape.length ? tape : fills).map(function (f) {
       const side = String(f.side || f.result || "WAIT").toUpperCase();
       return {
-        direction: side === "YES" ? "UP" : (side === "NO" ? "DOWN" : "WAIT"),
+        direction: wxWord(f.lean || side, strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike),
         outcome: f.result,
         y_finish: f.y_finish,
         correct: String(f.result || "").toUpperCase() === "HIT" ? true : (String(f.result || "").toUpperCase() === "MISS" ? false : null),
@@ -791,12 +863,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return {
       agents: agents,
       decision: {
-        direction: eye,
+        direction: chairLean,
         confidence: chair.confidence || 0,
-        summary: chair.call || (best.skip || "WAIT · Dallas DFW"),
+        summary: frontHighLine({ market: { clock: clock, strike_type: strikeType, floor_strike: clock.floor_strike || best.floor_strike, cap_strike: clock.cap_strike || best.cap_strike, kalshi_high: clock.kalshi_high, nws_high: clock.nws_high, bracket: clock.bracket || best.bracket } }) + " · " + chairLean,
         locked_call: locked ? {
           locked: true,
-          direction: String(locked.side || "").toUpperCase() === "NO" ? "DOWN" : "UP",
+          direction: wxWord(locked.lean || locked.side, strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike),
           ticker: locked.ticker,
           confidence: locked.confidence,
         } : null,
@@ -821,19 +893,30 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       hierarchy: hierarchy,
       locked_call: locked ? {
         locked: true,
-        direction: String(locked.side || "").toUpperCase() === "NO" ? "DOWN" : "UP",
+        direction: wxWord(locked.lean || locked.side, strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike),
         ticker: locked.ticker,
       } : null,
       market: {
-        ticker: best.ticker || chair.ticker,
-        kalshi_ticker: best.ticker || chair.ticker,
+        ticker: best.ticker || chair.ticker || clock.ticker,
+        kalshi_ticker: best.ticker || chair.ticker || clock.ticker,
         series_ticker: "KXHIGHTDAL",
-        floor_strike: best.floor_strike,
+        strike_type: strikeType,
+        floor_strike: clock.floor_strike != null ? clock.floor_strike : best.floor_strike,
+        cap_strike: clock.cap_strike != null ? clock.cap_strike : best.cap_strike,
+        bracket: clock.bracket || best.bracket,
+        kalshi_high: clock.kalshi_high,
+        nws_high: clock.nws_high,
+        clock: clock,
+        window_kind: "cli",
+        window_label: "DFW HIGH",
         kalshi_yes_bid: best.yes_bid,
         kalshi_yes_ask: best.yes_ask,
         up_pct: best.yes_ask,
         down_pct: best.yes_ask != null ? (100 - Number(best.yes_ask)) : null,
-        close_time: board && board.city ? board.city.day : null,
+        seconds_left: clock.seconds_to_cli,
+        time_remaining: clock.seconds_to_cli,
+        close_time: clock.cli_at || null,
+        cli_span_s: clock.cli_span_s,
         stale: false,
       },
       leader_name: "RAIJIN",
@@ -860,10 +943,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   /** Focused view of dual state — NEVER mutates state.tables */
   function getViewState() {
     if (!state) return null;
+    if (isFrontTable(focusTable)) {
+      const focused = tableState("front") || frontTableState();
+      return Object.assign({}, state, {
+        decision: focused.decision || {},
+        locked_call: focused.locked_call || null,
+        agents: Array.isArray(focused.agents) ? focused.agents : [],
+        market: focused.market || {},
+        accuracy: focused.accuracy || {},
+        hierarchy: focused.hierarchy || [],
+        learning: focused.learning || {},
+        weights: focused.weights || {},
+        _focusTable: "front",
+      });
+    }
     const focused = tableState(focusTable);
-    const other = isFrontTable(focusTable)
-      ? tableState("ethereum")
-      : tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
+    const other = tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
     // Prefer the focused table when it has seats/window. Otherwise use the
     // payload that actually has a live hour (root BTC back-compat, then sibling).
     const live = tableHasLiveHour(focused)
@@ -1086,6 +1181,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function maybeRingForNewWindow(s) {
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) return;
     const key = windowKeyFromState(s);
     const bucket = clockBucket();
 
@@ -1410,7 +1506,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
   }
   function chairPortraitOf(which, dir) {
-    if (isFrontTable(which)) return raijinPortraitFor(dir);
+    if (isFrontTable(which)) return raijinPortraitFor(wxEye(dir));
     return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
   }
 
@@ -1475,6 +1571,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function displayDir(dir) {
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+      const m = (typeof tableState === "function" ? tableState("front") : null) || {};
+      const clock = (m.market && m.market.clock) || {};
+      return wxWord(dir, clock.strike_type || (m.market && m.market.strike_type), clock.nws_high, clock.floor_strike, clock.cap_strike);
+    }
     if (dir === "UP_HOLD") return "1/4 UP HOLD";
     if (dir === "DOWN_HOLD") return "1/4 DOWN HOLD";
     return dir || "WAIT";
@@ -1505,6 +1606,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     liq: "/bots/cascade.png",
     guardian: "/bots/warden.png",
     law: "/bots/law.png",
+    glass: "/static/bots/glass.png",
+    pit: "/static/bots/pit.png",
+    frost: "/static/bots/frost.png",
+    bone: "/static/bots/bone.png",
   };
   const botIconCache = {}; // name -> HTMLImageElement | null
   let botIconsReady = false;
@@ -1533,7 +1638,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   /** Draw circular bot logo with direction-colored ring outline. */
   function drawBotIcon(name, x, y, r, dirColor, conf) {
-    const img = botIconCache[name];
+    const img = botIconCache[String(name || "").toLowerCase()] || botIconCache[name];
     const ringR = r + 2;
     // Dark plate behind
     ctx.beginPath();
@@ -1588,6 +1693,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
   function colorFor(dir, conf) {
+    dir = wxTone(dir);
     if (dir === "UP") {
       const a = 0.4 + (conf / 100) * 0.6;
       return `rgba(57, 255, 20, ${a})`;
@@ -1612,6 +1718,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function strongColor(dir) {
+    dir = wxTone(dir);
     if (dir === "UP" || dir === "UP_HOLD") return ACID;
     if (dir === "DOWN" || dir === "DOWN_HOLD") return HOT_RED;
     if (dir === "SWAP") return GOLD;
@@ -1772,6 +1879,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       secs = (new Date(m.close_time) - Date.now()) / 1000;
     }
     if (secs == null || isNaN(secs)) {
+      if (m.window_kind === "cli" || m.series_ticker === "KXHIGHTDAL") return null;
       const bucket = 3600;
       secs = bucket - ((Date.now() / 1000) % bucket);
     }
@@ -1781,6 +1889,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function hourFillFrac(m) {
     const secs = secondsLeftOf(m);
     if (secs == null) return 0.5;
+    if (m && (m.window_kind === "cli" || m.series_ticker === "KXHIGHTDAL")) {
+      const span = Number(m.cli_span_s) || (31 * 3600);
+      return 1 - Math.max(0, Math.min(1, secs / span));
+    }
     return 1 - Math.max(0, Math.min(1, secs / 3600));
   }
 
@@ -1788,9 +1900,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     let up = 0, down = 0, wait = 0;
     (agents || []).forEach((a) => {
       if (!a || a.agent_name === "leader") return;
-      const d = String(a.direction || "WAIT").toUpperCase();
-      if (d === "UP" || d === "UP_HOLD") up++;
-      else if (d === "DOWN" || d === "DOWN_HOLD") down++;
+      const d = wxTone(a.direction);
+      if (d === "UP") up++;
+      else if (d === "DOWN") down++;
       else wait++;
     });
     if (up > down && up >= wait) return "UP";
@@ -2091,6 +2203,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } else if ((btc.c + btc.w + ethC + ethW) > 0 && ethW < btc.w) {
       line = "Even finishes. ETH book has fewer misses.";
     }
+    const frontAcc = ((typeof tableState === "function" ? tableState("front") : null) || {}).accuracy || {};
+    const fr = accRecord(frontAcc);
     return {
       paper: true,
       kind: "books",
@@ -2099,6 +2213,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       line: line,
       btc_text: "BTC " + btc.c + "–" + btc.w,
       eth_text: ethC + "–" + ethW + " ETH",
+      front_text: "DFW " + fr.c + "–" + fr.w,
     };
   }
 
@@ -3211,7 +3326,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const lc = d.locked_call || state.locked_call || {};
       const locked = !!(lc && lc.locked && lc.direction);
       const lockDir = (lc.direction || d.locked_dir || d.entry_dir || "").toUpperCase();
-      if (locked && (lockDir === "UP" || lockDir === "DOWN")) {
+      if (locked && (lockDir === "UP" || lockDir === "DOWN" || lockDir === "ABOVE" || lockDir === "BELOW" || lockDir === "BETWEEN")) {
         const conf = lc.confidence || d.confidence || 0;
         const odds = lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : (d.entry_up_pct != null ? Math.round(lockDir === "UP" ? d.entry_up_pct : 100 - d.entry_up_pct) : null);
         // Glow plate
@@ -3234,7 +3349,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.fillText("LOCKED " + lockDir, cx, cy - 28);
         ctx.font = "bold 14px Orbitron, monospace";
         ctx.fillStyle = "rgba(255,220,120,0.95)";
-        ctx.fillText("ONE CALL · FOLLOW THIS", cx, cy - 6);
+        ctx.fillText(isFrontTable(focusTable) ? frontHighLine(state) : "ONE CALL · FOLLOW THIS", cx, cy - 6);
         ctx.font = "12px Orbitron, monospace";
         ctx.fillStyle = "rgba(200,230,255,0.9)";
         let sub = conf ? (conf + "%") : "";
@@ -3242,7 +3357,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.fillText(sub, cx, cy + 14);
         ctx.font = "10px Orbitron, monospace";
         ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText("GOAL · best odds <80%", cx, cy + 30);
+        ctx.fillText(isFrontTable(focusTable) ? "GOAL · DFW HIGH · CLI" : "GOAL · best odds <80%", cx, cy + 30);
         ctx.restore();
       } else {
         // Small goal reminder when not locked
@@ -3251,7 +3366,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.textBaseline = "middle";
         ctx.font = "10px Orbitron, monospace";
         ctx.fillStyle = "rgba(0, 200, 255, 0.45)";
-        ctx.fillText("GOAL · 1 window-end guess @ best odds (<80%)", cx, cy);
+        ctx.fillText(isFrontTable(focusTable) ? (frontHighLine(state) + " · CLI") : "GOAL · 1 window-end guess @ best odds (<80%)", cx, cy);
         ctx.restore();
       }
     } catch (e) { /* keep drawing */ }
@@ -3270,7 +3385,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ranked = hier.map(r => r.agent).filter(a => a !== "law");
     const liveNames = agents.map(a => a.agent_name).filter(n => n && n !== "leader");
     const ethLive = typeof isEthTable === "function" && isEthTable(focusTable) && liveNames.length;
-    const order = ethLive
+    const frontLive = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    const frontNames = FRONT_SEAT_KEYS.filter(function (k) { return liveNames.indexOf(k) >= 0; });
+    const order = frontLive
+      ? (frontNames.length ? frontNames : FRONT_SEAT_KEYS.slice())
+      : ethLive
       ? (ranked.length
           ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
           : liveNames.filter(a => a !== "law"))
@@ -3570,7 +3689,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
     // Prefer locked_call so portrait matches the LOCKED plaque after the single call
     const _lc = (state.locked_call || (state.decision && state.decision.locked_call) || null);
-    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN") );
+    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN" || _lc.direction === "ABOVE" || _lc.direction === "BELOW" || _lc.direction === "BETWEEN") );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const leaderPulse = reduceMotion ? 1 : (1 + 0.02 * Math.sin(time * 0.0035));
@@ -3643,8 +3762,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       const whichChair = chairKeyOf(focusTable);
       noteChairLock(whichChair, _lc);
-      drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
-      drawLockIgnition(cx, cy, lr, whichChair);
+      drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: wxEye(leaderDir), locked: _hasLock, st: state });
+      if (!isFrontTable(focusTable)) drawLockIgnition(cx, cy, lr, whichChair);
     } catch (e) {}
 
     // Labels under portrait — tucked to the rim so GOAL / nameplate stay
@@ -3666,7 +3785,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = "#ffffff";
     ctx.shadowColor = scL;
     ctx.shadowBlur = 12;
-    ctx.fillText(leaderDir, cx, dirY);
+    ctx.fillText(isFrontTable(focusTable) ? displayDir(leaderDir) : leaderDir, cx, dirY);
     ctx.shadowBlur = 0;
     ctx.font = hudTight ? "10px Orbitron, sans-serif" : "11px Orbitron, sans-serif";
     ctx.fillStyle = "#e8f4ff";
@@ -3675,11 +3794,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         // ===== CLEAR LOCKED CALL plate for follower bots (GOAL: one call @ best odds) =====
     {
       const lc = state.locked_call || (state.decision && state.decision.locked_call) || {};
-      const isLocked = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
+      const isLocked = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN" || lc.direction === "ABOVE" || lc.direction === "BELOW" || lc.direction === "BETWEEN"));
       const showDir = (isLocked ? lc.direction : (leaderDir || "WAIT")).toUpperCase();
       const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
       const entryOdds = lc.entry_odds_pct;
-      const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
+      const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD"
+        || showDir === "ABOVE" || showDir === "BELOW" || showDir === "BETWEEN";
       const plateY = phoneHud ? 36 : (cy + lr * 0.90);
       const plateW = phoneHud ? 120 : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 220 : 200));
       const plateH = phoneHud ? 18 : 28;
@@ -3705,7 +3825,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       let lockLabel;
-      if (isLocked && isDir) {
+      if (isFrontTable(focusTable)) {
+        lockLabel = isLocked
+          ? (displayDir(showDir) + " · " + frontHighLine(state))
+          : (frontHighLine(state) + " · CLI");
+      } else if (isLocked && isDir) {
         const oddsPart = entryOdds != null ? ` @ ${Math.round(entryOdds)}¢` : "";
         lockLabel = `LOCKED ${showDir}${oddsPart} · ${showConf}% · FOLLOW`;
       } else {
@@ -3750,7 +3874,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`
       : "";
 
-    const agentCards = view.agents.map(a => {
+    const frontDash = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    const dashAgents = frontDash
+      ? view.agents.filter(function (a) {
+          return a && (a.agent_name === "leader" || isFrontSeatKey(a.agent_name));
+        })
+      : view.agents;
+    const agentCards = dashAgents.map(a => {
       const col = strongColor(a.direction);
       const callsign = labelOf(a);
       const title = titleOf(a);
@@ -3758,7 +3888,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const w = weights[a.agent_name];
       const wr = rec.win_rate != null ? Math.round(rec.win_rate * 100) + "%" : "—";
       const record = rec.n ? `${rec.correct}/${rec.n}` : "0/0";
-      const subHtml = (a.subs || []).map(sub => {
+      const shown = frontDash ? displayDir(a.direction) : a.direction;
+      const markSrc = a.mark || frontSeatMark(a.agent_name);
+      const markHtml = (frontDash && markSrc)
+        ? '<img class="dash-seat-mark" src="' + markSrc + '" alt="" width="28" height="28">'
+        : "";
+      const subHtml = frontDash ? "" : (a.subs || []).map(sub => {
         const sc = strongColor(sub.direction);
         return `<div class="sub-row" style="border-color:${sc}33">
           <span class="sub-name">${labelOf(sub)}</span>
@@ -3767,9 +3902,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }).join("");
       return `
         <div class="agent-card">
-          <div class="name">${callsign}</div>
+          <div class="name">${markHtml}${callsign}</div>
           ${title ? `<div class="title">${title}</div>` : ""}
-          <div class="dir" style="color:${lawLocked() ? "rgba(255,120,20,0.95)" : col}">${lawLocked() ? "LOCKED" : (a.direction + " · " + a.confidence + "%")}</div>
+          <div class="dir" style="color:${lawLocked() ? "rgba(255,120,20,0.95)" : col}">${lawLocked() ? "LOCKED" : (shown + " · " + a.confidence + "%")}</div>
           <div class="meta-row">
             <span>wt ${w != null ? Number(w).toFixed(3) : "—"}</span>
             <span>hit ${wr}</span>
@@ -3781,7 +3916,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         </div>`;
     }).join("");
 
-    overlay.innerHTML = `<div class="dash-focus-banner">${focusName}</div>` + pairCard + agentCards;
+    overlay.innerHTML = `<div class="dash-focus-banner">${focusName}${frontDash ? (" · " + frontHighLine(view)) : ""}</div>` + pairCard + agentCards;
   }
 
   function updateLaw(law) {
@@ -3857,7 +3992,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const label = (acc && acc.label) || (pct != null ? `${correct}/${total} · ${pct}%` : `${correct}/${total} · —`);
     const pctText = pct != null ? `${pct}%` : "—";
     let verdict = (acc && acc.verdict) || "COLLECTING";
-    if (!total) verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    if (!total) verdict = (typeof isFrontTable === "function" && isFrontTable(focusTable))
+      ? "FINISH-ONLY · WAITING ON DFW CLI"
+      : "FINISH-ONLY · WAITING ON HOUR CLOSE";
 
     if (accuracyPct) accuracyPct.textContent = pctText;
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
@@ -4115,7 +4252,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
 
-    let rows = hier.length ? hier.slice() : AGENT_ORDER.filter(n => n !== "law").map((n, i) => ({
+    let rows = hier.length ? hier.slice() : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law")).map((n, i) => ({
       agent: n, rank: i + 1, listen: 1, win_rate: null, correct: 0, wrong: 0, weight: 0
     }));
 
@@ -4125,7 +4262,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
       const conf = ag.confidence != null ? ag.confidence : "—";
-      const name = r.display_name || DISPLAY[r.agent] || r.agent.toUpperCase();
+      const name = r.display_name || DISPLAY[r.agent] || (isFrontSeatKey(r.agent) ? String(r.agent).toUpperCase() : r.agent.toUpperCase());
       const wr = r.win_rate != null ? `${Math.round(r.win_rate * 100)}%` : "—";
       const rec = `${r.correct || 0}/${(r.correct || 0) + (r.wrong || 0)}`;
       const listen = r.listen != null ? Math.round(r.listen * 100) : 100;
@@ -4141,7 +4278,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           <div class="hier-name">${name}</div>
           <div class="hier-meta">${rec} · ${wr} · listen ${listen}%${faded ? " · <span class=\"fade-tag\">FADE</span>" : ""}${isAntiWinner ? " · <span class=\"anti-tag\">ANTI✓</span>" : ""}${isAntiLoser ? " · <span class=\"anti-tag anti-lose\">ANTI✗</span>" : ""}</div>
         </div>
-        <span class="hier-dir ${dir}">${dir} ${conf}${conf !== "—" ? "%" : ""}</span>
+        <span class="hier-dir ${wxTone(dir)}">${(isFrontTable(focusTable) ? displayDir(dir) : dir)} ${conf}${conf !== "—" ? "%" : ""}</span>
       </div>`;
     }).join("");
     if (meta) meta.textContent = `${rows.length} seats · live ranks`;
@@ -4150,6 +4287,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 function drawCandleChart() {
     if (!candleCtx || !candleCanvas) return;
     if (deskCinematicOn()) return;
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) return;
 
     const market = (state && state.market) || {};
     const raw = market.candles || [];
@@ -4597,20 +4735,22 @@ function drawCandleChart() {
   }
   function syncChartHero() {
     const eth = (typeof isEthTable === "function") ? isEthTable(focusTable) : (focusTable === "ethereum");
-    document.body.classList.toggle("charts-hero-eth", !!eth);
-    document.body.classList.toggle("charts-hero-btc", !eth);
+    const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    document.body.classList.toggle("charts-hero-eth", !!eth && !front);
+    document.body.classList.toggle("charts-hero-btc", !eth && !front);
+    document.body.classList.toggle("charts-hero-front", !!front);
     try {
-      if (!isFrontTable(focusTable)) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
+      if (!front) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
     } catch (e) {}
     const btcCard = document.querySelector(".chart-card.chart-pair-btc");
     const ethCard = document.querySelector(".chart-card.chart-pair-eth");
     if (btcCard) {
-      btcCard.classList.toggle("chart-hero-off", !!eth);
-      btcCard.hidden = !!eth;
+      btcCard.classList.toggle("chart-hero-off", !!eth || !!front);
+      btcCard.hidden = !!eth || !!front;
     }
     if (ethCard) {
-      ethCard.classList.toggle("chart-hero-off", !eth);
-      ethCard.hidden = !eth;
+      ethCard.classList.toggle("chart-hero-off", !eth || !!front);
+      ethCard.hidden = !eth || !!front;
     }
   }
   function setChartNoFeed(canvas, empty) {
@@ -4991,9 +5131,13 @@ function drawCandleChart() {
   }
 
   function sideFromLockRow(r) {
-    const d = String((r && (r.direction || r.locked_call || r.side)) || "").toUpperCase();
+    const d = String((r && (r.direction || r.locked_call || r.side || r.lean)) || "").toUpperCase();
+    if (d.includes("ABOVE")) return "ABOVE";
+    if (d.includes("BELOW")) return "BELOW";
+    if (d.includes("BETWEEN")) return "BETWEEN";
     if (d.includes("UP")) return "UP";
     if (d.includes("DOWN")) return "DOWN";
+    if (d === "YES" || d === "NO") return wxWord(d, r && r.strike_type, null, r && r.floor_strike, r && r.cap_strike);
     return d || "—";
   }
 
@@ -5007,12 +5151,24 @@ function drawCandleChart() {
   }
 
   function windowLabelOf(r, ts) {
+    const tick = String((r && r.ticker) || (ts && ts.market && (ts.market.kalshi_ticker || ts.market.ticker)) || "");
+    const frontish = /KXHIGHTDAL/i.test(tick) || (ts && (ts.asset === "front" || ts._focusTable === "front"))
+      || (typeof isFrontTable === "function" && isFrontTable(focusTable) && ts && ts.market && ts.market.window_kind === "cli");
+    if (frontish) {
+      const d = tick.match(/(\d{2})([A-Z]{3})(\d{2})/);
+      if (d) return d[2] + " " + d[3];
+      const day = (ts && ts.market && ts.market.clock && ts.market.clock.day) || "";
+      if (day) {
+        const parts = String(day).split("-");
+        if (parts.length === 3) return parts[1] + "/" + parts[2];
+      }
+      return "CLI";
+    }
     const close = (r && (r.close_time || r.window_close)) || (ts && ts.market && ts.market.close_time);
     const ms = parseStampMs(close);
     if (ms != null) {
       return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     }
-    const tick = String((r && r.ticker) || (ts && ts.market && ts.market.kalshi_ticker) || "");
     const m = tick.match(/(\d{2})(\d{2})(?!.*\d)/);
     if (m) return m[1] + ":" + m[2];
     return "1H";
@@ -5045,6 +5201,61 @@ function drawCandleChart() {
     return { side, conf, seats };
   }
 
+  function fmtCliLeft(secs) {
+    if (secs == null || isNaN(secs)) return "--:--";
+    const s = Math.max(0, Math.floor(Number(secs)));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h >= 1) return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+    return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
+  }
+  function paintFrontWindowChrome() {
+    const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    const ledLabel = document.getElementById("ledWindowLabel");
+    const ledT = document.getElementById("ledWindowTime");
+    const ledSub = document.getElementById("ledWindowSub");
+    const dualSub = document.getElementById("dualWindowSub");
+    const wxStrip = document.getElementById("wxHighStrip");
+    const kh = document.getElementById("wxKalshiHigh");
+    const nh = document.getElementById("wxNwsHigh");
+    if (ledLabel) ledLabel.textContent = front ? "DFW HIGH" : "1H WINDOW";
+    if (wxStrip) wxStrip.hidden = !front;
+    if (!front) return;
+    const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
+    const m = ts.market || {};
+    const clock = m.clock || {};
+    const secs = clock.seconds_to_cli != null ? clock.seconds_to_cli : secondsLeftOf(m);
+    const display = fmtCliLeft(secs);
+    if (ledT) ledT.textContent = display;
+    const timEl = document.getElementById("windowTimer");
+    if (timEl) timEl.textContent = display;
+    if (ledSub) {
+      if (secs == null) ledSub.textContent = "waiting on DFW CLI";
+      else if (Number(secs) <= 0) ledSub.textContent = "CLI due";
+      else ledSub.textContent = "to CLI · next bet";
+    }
+    if (dualSub) {
+      const tick = m.kalshi_ticker || clock.ticker || "KXHIGHTDAL";
+      const br = clock.bracket || m.bracket || "";
+      dualSub.textContent = String(tick) + (br ? (" · " + br) : "");
+    }
+    if (kh) {
+      const kind = String(clock.strike_type || m.strike_type || "").toLowerCase();
+      if (kind === "between" && m.floor_strike != null && m.cap_strike != null) {
+        kh.textContent = Math.round(Number(m.floor_strike)) + "–" + Math.round(Number(m.cap_strike)) + "°F";
+      } else if (clock.kalshi_high != null) {
+        kh.textContent = Math.round(Number(clock.kalshi_high)) + "°F";
+      } else {
+        kh.textContent = clock.bracket || "—";
+      }
+    }
+    if (nh) nh.textContent = clock.nws_high != null ? (Math.round(Number(clock.nws_high)) + "°F") : "—";
+    const upEl = document.getElementById("liveUpPct");
+    const dnEl = document.getElementById("liveDownPct");
+    if (upEl) upEl.textContent = displayDir((ts.decision && ts.decision.direction) || "WAIT");
+    if (dnEl) dnEl.textContent = clock.bracket || "CLI";
+  }
   function dockWindowLed() {
     const led = document.getElementById("windowLed");
     if (!led) return;
@@ -5066,7 +5277,9 @@ function drawCandleChart() {
     const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
     if (list) {
       if (!locks.length) {
-        list.innerHTML = '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin</li>';
+        list.innerHTML = isFrontTable(focusTable)
+          ? '<li class="lock-tape-empty">No Dallas book — waiting on DFW CLI</li>'
+          : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin</li>';
       } else {
         list.innerHTML = locks.slice(0, 8).map(p => {
           const result = p.status === "OPEN"
@@ -5076,7 +5289,7 @@ function drawCandleChart() {
           const win = p.window || "1H";
           return `<li class="lock-tape-row ${p.status === "OPEN" ? "open" : "settled"}">`
             + `<span class="lt-pair">${p.pair}</span>`
-            + `<span class="lt-side ${p.side === "UP" ? "up" : "down"}">${p.side}</span>`
+            + `<span class="lt-side ${wxTone(p.side) === "UP" ? "up" : (wxTone(p.side) === "DOWN" ? "down" : "")}">${isFrontTable(focusTable) ? displayDir(p.side) : p.side}</span>`
             + `<span class="lt-conf">${conf}</span>`
             + `<span class="lt-win">${win}</span>`
             + `<span class="lt-res">${result}</span>`
@@ -5476,39 +5689,21 @@ function drawCandleChart() {
   }
   function renderBotsGuide() {
     if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+      try { renderFrontBotsGuide(typeof frontBoard !== "undefined" ? frontBoard : null); } catch (e) {}
       const grid = document.getElementById("botsGrid");
-      if (!grid) return;
-      const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
-      const seats = (ts.agents || []).filter(function (a) { return a && a.agent_name && a.agent_name !== "leader"; });
-      const hier = ts.hierarchy || [];
-      const rankMap = {};
-      hier.forEach(function (r) { rankMap[String(r.agent || "").toLowerCase()] = r; });
-      const blurbs = {
-        glass: "Official/NWS high for KDFW.",
-        pit: "Kalshi implied vs that number, after vig.",
-        frost: "Veto junk book / flip / SICK / thin n.",
-        bone: "Dallas climo. Seasonal base. Low weight.",
-      };
-      grid.innerHTML = seats.map(function (a) {
-        const key = String(a.agent_name || "").toLowerCase();
-        const r = rankMap[key] || {};
-        const rank = r.rank != null ? "#" + r.rank : "—";
-        const top = r.rank && r.rank <= 3;
-        const name = a.display_name || key.toUpperCase();
-        const title = a.title || "";
-        const hits = r.correct != null ? r.correct : 0;
-        const miss = r.wrong != null ? r.wrong : 0;
-        const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
-        const dir = a.direction || "—";
-        return '<article class="bot-card ' + (top ? "rank-top" : "") + '">' +
-          '<div class="bot-card-head"><span class="bot-callsign">' + name + '</span><span class="bot-rank-pill">' + rank + '</span></div>' +
-          '<div class="bot-title">' + title + '</div>' +
-          '<div class="bot-blurb">' + (blurbs[key] || title) + '</div>' +
-          '<div class="bot-subs">Dallas · KDFW · KXHIGHTDAL</div>' +
-          '<div class="bot-stats"><span>Hits <b>' + hits + '</b></span><span>Miss <b>' + miss + '</b></span><span>WR <b>' + wr + '</b></span><span class="hier-dir ' + dir + '">' + dir + '</span></div>' +
-          '</article>';
-      }).join("");
+      if (grid) {
+        grid.hidden = true;
+        grid.innerHTML = "";
+      }
+      const hero = document.querySelector("#botsView .info-hero p");
+      if (hero) hero.textContent = "Dallas daily high. GLASS reads NWS. PIT reads the Kalshi book. FROST vetoes junk. BONE is climo. Settles on NWS CLI for KDFW.";
       return;
+    }
+    const botsGrid = document.getElementById("botsGrid");
+    if (botsGrid) botsGrid.hidden = false;
+    const heroP = document.querySelector("#botsView .info-hero p");
+    if (heroP && /Dallas daily high/.test(heroP.textContent || "")) {
+      heroP.innerHTML = "Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.";
     }
     try { renderFrontBotsGuide(frontBoard); } catch (e) {}
     if (!frontBoard) {
@@ -5646,6 +5841,10 @@ function drawCandleChart() {
     const empty = !(m.kalshi_ticker || m.ticker) || (yb == null && ya == null);
     const wall99 = (yb != null && yb >= 99) || (down != null && down >= 99) || (ya != null && ya >= 99);
     const evBit = (ev != null && isFinite(ev)) ? ("EV " + (ev >= 0 ? "+" : "") + Math.round(ev) + "¢") : "";
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+      const lean = displayDir(locked ? lc.direction : (d.direction || "WAIT"));
+      return frontHighLine(view) + " · " + lean + (empty ? " · no Dallas book" : "");
+    }
     if (locked) {
       const extras = [];
       if (!empty && !wall99) extras.push("book has size");
@@ -6813,7 +7012,11 @@ function drawCandleChart() {
   }
   function paintFrontSeats(data) {
     const chairCall = document.getElementById("frontChairCall");
-    if (chairCall) chairCall.textContent = (data.chair && (data.chair.call || data.chair.bracket)) || "—";
+    if (chairCall) {
+      const lean = (data.chair && data.chair.lean) || wxWord(data.chair && data.chair.eye, data.clock && data.clock.strike_type, data.clock && data.clock.nws_high, data.clock && data.clock.floor_strike, data.clock && data.clock.cap_strike);
+      const high = frontHighLine({ market: { clock: data.clock || {}, strike_type: data.clock && data.clock.strike_type, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike, kalshi_high: data.chair && data.chair.kalshi_high, nws_high: data.clock && data.clock.nws_high, bracket: data.chair && data.chair.bracket } });
+      chairCall.textContent = high + " · " + lean;
+    }
     const chairImg = document.getElementById("frontChairImg");
     if (chairImg) {
       chairImg.src = raijinPortraitSrc(frontLockDir());
@@ -6861,6 +7064,14 @@ function drawCandleChart() {
       if (img.complete && !img.naturalWidth) window.frontMarkFail(img);
     });
     startFrontWx(wx);
+    if (typeof focusTable !== "undefined" && isFrontTable(focusTable)) {
+      try { paintFrontWindowChrome(); } catch (e) {}
+      try { if (mode === "art" || mode === "floor") drawArt(); } catch (e) {}
+      try { if (mode === "dashboard") renderDashboard(); } catch (e) {}
+      try { if (mode === "bots") renderBotsGuide(); } catch (e) {}
+      try { if (mode === "ranks") renderRanksBoard(); } catch (e) {}
+      try { paintTableHud(); } catch (e) {}
+    }
   }
   const frontSeatImgs = {};
   ["glass", "pit", "frost", "bone"].forEach(function (id) {
@@ -6875,8 +7086,8 @@ function drawCandleChart() {
   }
   function frontLeanOf(raw) {
     const d = String(raw || "WAIT").toUpperCase();
-    if (d === "UP" || d === "YES") return "UP";
-    if (d === "DOWN" || d === "NO" || d === "SKIP") return "DOWN";
+    if (d === "UP" || d === "YES" || d === "ABOVE" || d === "BETWEEN") return "UP";
+    if (d === "DOWN" || d === "NO" || d === "SKIP" || d === "BELOW") return "DOWN";
     return "WAIT";
   }
   function drawFrontTable(wxCtx, w, h) {
@@ -6992,18 +7203,20 @@ function drawCandleChart() {
       ctx.fillText(frontChairName(chair) + " · DFW", cx, portraitY + pr + 11);
       ctx.font = "700 12px Orbitron, monospace";
       const plateY = cy + radius + 14;
+      const wxDir = wxWord(dir, (data.clock && data.clock.strike_type) || (open && open.strike_type), data.clock && data.clock.nws_high, data.clock && data.clock.floor_strike, data.clock && data.clock.cap_strike);
+      const highLine = frontHighLine({ market: { clock: data.clock || {}, strike_type: data.clock && data.clock.strike_type, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike, kalshi_high: data.clock && data.clock.kalshi_high, nws_high: data.clock && data.clock.nws_high, bracket: open && open.bracket || chair.bracket } });
       if (locked) {
         ctx.fillStyle = "#7fe9ff";
-        ctx.fillText("LOCKED " + dir, cx, plateY);
+        ctx.fillText("LOCKED " + wxDir, cx, plateY);
         ctx.font = "600 10px Rajdhani, sans-serif";
         ctx.fillStyle = "rgba(180,200,220,0.85)";
-        ctx.fillText((open.bracket || chair.bracket || "—") + " · paper", cx, plateY + 14);
+        ctx.fillText(highLine + " · paper", cx, plateY + 14);
       } else {
         ctx.fillStyle = "#a8c0d8";
-        ctx.fillText(dir, cx, plateY);
+        ctx.fillText(wxDir, cx, plateY);
         ctx.font = "600 10px Rajdhani, sans-serif";
         ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText((conf || "—") + (conf ? "%" : "") + " · " + (chair.bracket || "waiting"), cx, plateY + 14);
+        ctx.fillText(highLine + " · " + (chair.bracket || "waiting on DFW CLI"), cx, plateY + 14);
       }
     } finally {
       ctx = prev;
@@ -7248,6 +7461,8 @@ function drawCandleChart() {
       const name = (r.agent === "leader" || r.agent === "chair")
         ? chairNameOf(focusTable)
         : (r.display_name || (AGENT_LABELS && AGENT_LABELS[r.agent]) || r.agent);
+      const markSrc = isFrontSeatKey(r.agent) ? frontSeatMark(r.agent) : "";
+      const markHtml = markSrc ? '<img class="rank-mark" src="' + markSrc + '" alt="" width="22" height="22">' : "";
       const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
       const listen = r.listen != null ? Math.round(r.listen * 100) + "%" : "—";
       const muted = (r.listen || 1) < 0.4;
@@ -7255,8 +7470,8 @@ function drawCandleChart() {
       const fadeNote = faded ? " <span class=\"fade-tag\">FADE " + Math.round((r.fade_strength || 0) * 100) + "%</span>" : "";
       const top = (r.rank || 99) <= 3;
       return '<div class="rank-row ' + (top ? "top " : "") + (muted ? "muted-rank" : "") + '" role="row">' +
-        '<span class="rk">#' + r.rank + '</span><span class="nm">' + name + '</span>' +
-        '<span class="dir-live ' + dir + '">' + dir + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
+        '<span class="rk">#' + r.rank + '</span><span class="nm">' + markHtml + name + '</span>' +
+        '<span class="dir-live ' + wxTone(dir) + '">' + (isFrontTable(focusTable) ? displayDir(dir) : dir) + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
         '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span class="listen-col">' + listen + '</span>' +
         '<span class="hide-sm">' + (r.weight != null ? Number(r.weight).toFixed(3) : "—") + '</span></div>';
     }).join("") || '<div class="rank-empty">No rank data yet.</div>';
@@ -7759,11 +7974,12 @@ function drawCandleChart() {
     const prevDir = decisionDir ? decisionDir.textContent : "";
     // Prefer locked_call so the strip matches the plaque / portrait after the single call
     const lc = state.locked_call || d.locked_call || null;
-    const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
+    const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN" || lc.direction === "ABOVE" || lc.direction === "BELOW" || lc.direction === "BETWEEN"));
     const rawDir = hasLock ? lc.direction : (d.direction || "WAIT");
     if (decisionDir) {
-      decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + lc.direction) : (d.display_direction || displayDir(rawDir)));
-      decisionDir.className = "dir " + rawDir;
+      const shown = displayDir(rawDir);
+      decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + shown) : (d.display_direction || shown));
+      decisionDir.className = "dir " + wxTone(rawDir);
     }
     // Status strip: phase + lock badge
     try {
@@ -7806,7 +8022,9 @@ function drawCandleChart() {
     const book = liveBookOdds(m);
     if (upEl) upEl.textContent = book ? book.up.toFixed(1) + "%" : "—";
     if (dnEl) dnEl.textContent = book ? book.down.toFixed(1) + "%" : "—";
-    if (timEl || document.getElementById("ledWindowTime")) {
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+      try { paintFrontWindowChrome(); } catch (e) {}
+    } else if (timEl || document.getElementById("ledWindowTime")) {
       let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
       if (secs == null && m.close_time) {
         secs = Math.max(0, Math.floor((new Date(m.close_time) - Date.now()) / 1000));
@@ -7827,6 +8045,8 @@ function drawCandleChart() {
       if (timEl) timEl.textContent = display;
       const ledT = document.getElementById("ledWindowTime");
       if (ledT) ledT.textContent = display;
+      const ledLabel = document.getElementById("ledWindowLabel");
+      if (ledLabel) ledLabel.textContent = "1H WINDOW";
       const ledSub = document.getElementById("ledWindowSub");
       if (ledSub) {
         const sNum = secs != null && !isNaN(secs) ? Math.max(0, Math.floor(Number(secs))) : null;
@@ -7849,7 +8069,8 @@ function drawCandleChart() {
         }
         dualSub.textContent = "BTC " + fmtLeft(tableState("bitcoin")) + " · ETH " + fmtLeft(tableState("ethereum"));
       }
-
+      const wxStrip = document.getElementById("wxHighStrip");
+      if (wxStrip) wxStrip.hidden = true;
     }
 
     if (lastUpdateEl) lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
@@ -8689,11 +8910,12 @@ function drawCandleChart() {
           : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")));
       }
       try { syncChartPairTitle(); } catch (e) {}
+      try { paintFrontWindowChrome(); } catch (e) {}
     }
 
     function setFocusTable(which) {
       const w = String(which || "").toLowerCase();
-      if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas") focusTable = "front";
+      if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") focusTable = "front";
       else if (w === "ethereum" || w === "eth" || w === "vitalik") focusTable = "ethereum";
       else focusTable = "bitcoin";
       try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}

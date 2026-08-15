@@ -208,6 +208,9 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
         self.assertIn('id="focusFront"', HTML)
         self.assertIn('data-focus="front"', HTML)
+        self.assertIn(">DWF</button>", HTML)
+        self.assertIn("Focus Dallas Weather Forecast / Raijin", HTML)
+        self.assertNotIn(">RAIJIN</button>", HTML)
         self.assertIn("function isFrontTable", JS)
         self.assertIn("function frontTableState", JS)
         self.assertIn('bind(focusFront, "front")', JS)
@@ -409,12 +412,20 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board["chair"]["id"], "RAIJIN")
         self.assertEqual(board["chair"]["name"], "RAIJIN")
         self.assertTrue(str(board["chair"]["name"]).strip())
-        self.assertTrue(all(s.get("dir") in ("UP", "DOWN", "WAIT") for s in board["seats"]))
+        self.assertTrue(all(s.get("dir") in ("ABOVE", "BELOW", "BETWEEN", "WAIT") for s in board["seats"]))
+        self.assertTrue(all(s.get("dir") not in ("UP", "DOWN", "YES", "NO") for s in board["seats"]))
         self.assertTrue(all("vote" in s for s in board["seats"]))
         self.assertTrue(all(s["mark"].endswith(".png") for s in board["seats"]))
         self.assertTrue(board["chair"]["portrait"].endswith("raijin-chair.png"))
         self.assertEqual(board["chair"]["eye"], "UP")
+        self.assertEqual(board["chair"]["lean"], "BETWEEN")
         self.assertTrue(board["chair"]["mark"].endswith("raijin-up.png"))
+        self.assertEqual(board["clock"]["kind"], "cli")
+        self.assertEqual(board["clock"]["label"], "DFW HIGH")
+        self.assertIn("KXHIGHTDAL", str(board["clock"].get("ticker") or ""))
+        self.assertIsNotNone(board["clock"].get("seconds_to_cli"))
+        self.assertIsNotNone(board["clock"].get("cli_at"))
+        self.assertNotIn("1H", str(board["clock"].get("label") or ""))
         self.assertEqual(board["weather"]["mode"], "HEAT")
         self.assertFalse(board["follower"])
         self.assertTrue(board["status"]["paper_default"])
@@ -611,6 +622,85 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(ok.get("arming"))
             self.assertFalse(desk_front.is_armed(1000.0))
             self.assertTrue(desk_front.is_armed(1010.0))
+
+
+class FrontFocusWeatherDeskTests(unittest.TestCase):
+    def test_gold_tab_letters_are_dwf_not_dfw_or_raijin(self):
+        row = HTML.split('id="modeTabs"', 1)[1].split('id="tabFloor"', 1)[0]
+        self.assertIn(">BTC</button>", row)
+        self.assertIn(">ETH</button>", row)
+        self.assertIn(">DWF</button>", row)
+        self.assertNotIn(">RAIJIN</button>", row)
+        self.assertNotIn(">DFW</button>", row)
+        self.assertNotIn(">FRONT</button>", row)
+        btn = HTML.split('id="focusFront"', 1)[1].split("</button>", 1)[0]
+        self.assertIn("Dallas Weather Forecast", btn)
+        self.assertNotIn("ZT", btn)
+        self.assertIn('data-focus="front"', btn)
+
+    def test_front_focus_roster_is_weather_only(self):
+        self.assertIn("const FRONT_SEAT_KEYS", JS)
+        self.assertIn('["glass", "pit", "frost", "bone"]', JS)
+        self.assertIn("frontLive", JS)
+        draw = JS.split("function drawArt()", 1)[1].split("function renderDashboard", 1)[0]
+        self.assertIn("frontLive", draw)
+        self.assertIn("FRONT_SEAT_KEYS", draw)
+        self.assertIn("glass: \"/static/bots/glass.png\"", JS)
+        self.assertIn("pit: \"/static/bots/pit.png\"", JS)
+        self.assertIn("frost: \"/static/bots/frost.png\"", JS)
+        self.assertIn("bone: \"/static/bots/bone.png\"", JS)
+        self.assertIn("function wxWord", JS)
+        self.assertIn("function frontHighLine", JS)
+        self.assertIn("KALSHI HIGH", JS)
+
+    def test_no_1h_chip_on_front_focus(self):
+        self.assertIn("function paintFrontWindowChrome", JS)
+        chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
+        self.assertIn('ledLabel.textContent = front ? "DFW HIGH" : "1H WINDOW"', JS)
+        self.assertIn('"DFW HIGH"', chrome)
+        self.assertIn("to CLI · next bet", chrome)
+        self.assertIn("waiting on DFW CLI", chrome)
+        self.assertIn("charts-hero-front", JS)
+        self.assertIn("window_kind: \"cli\"", JS)
+        self.assertIn("No Dallas book — waiting on DFW CLI", JS)
+        view = JS.split("function getViewState()", 1)[1].split("function deskLockSnapshot", 1)[0]
+        self.assertIn('isFrontTable(focusTable)', view)
+        self.assertIn('tableState("front")', view)
+
+    def test_above_below_never_up_down_on_front_hud(self):
+        self.assertIn("function wxWord", JS)
+        self.assertIn('return "ABOVE"', JS)
+        self.assertIn('return "BELOW"', JS)
+        self.assertIn('return "BETWEEN"', JS)
+        self.assertIn("def weather_dir", FRONT)
+        self.assertIn('"""HUD word for Dallas daily high. Never UP / DOWN / YES / NO."""', FRONT)
+        self.assertEqual(desk_front.weather_dir("YES", strike_type="greater"), "ABOVE")
+        self.assertEqual(desk_front.weather_dir("NO", strike_type="greater"), "BELOW")
+        self.assertEqual(desk_front.weather_dir("YES", strike_type="between"), "BETWEEN")
+        self.assertEqual(desk_front.weather_dir("NO", strike_type="between", forecast=100, floor_strike=103, cap_strike=104), "BELOW")
+        self.assertEqual(desk_front.weather_dir("WAIT"), "WAIT")
+        self.assertEqual(desk_front.weather_eye("ABOVE"), "UP")
+        self.assertEqual(desk_front.weather_eye("BELOW"), "DOWN")
+        self.assertEqual(desk_front.weather_eye("BETWEEN"), "UP")
+        self.assertEqual(desk_front.weather_eye("WAIT"), "WAIT")
+
+    def test_cli_clock_is_next_morning_not_hour(self):
+        day = date(2026, 8, 15)
+        cli = desk_front.cli_at_for(day)
+        self.assertEqual(cli.hour, 7)
+        self.assertEqual(cli.date(), date(2026, 8, 16))
+        clock = desk_front.build_clock(
+            day,
+            {"strike_type": "between", "floor_strike": 103, "cap_strike": 104, "bracket": "103–104°F", "ticker": "KXHIGHTDAL-26AUG15-B103104"},
+            datetime(2026, 8, 15, 16, 5, tzinfo=timezone.utc),
+            103,
+        )
+        self.assertEqual(clock["kind"], "cli")
+        self.assertEqual(clock["label"], "DFW HIGH")
+        self.assertEqual(clock["kalshi_high"], 104)
+        self.assertEqual(clock["nws_high"], 103)
+        self.assertGreater(clock["seconds_to_cli"], 3600)
+        self.assertNotIn("1H", clock["label"])
 
 
 if __name__ == "__main__":

@@ -3694,6 +3694,36 @@ body[data-focus-table="bitcoin"] #focusEth.focus-active,
 body[data-focus-table="bitcoin"] #focusFront.focus-active,
 body[data-focus-table="ethereum"] #focusBtc.focus-active,
 body[data-focus-table="ethereum"] #focusFront.focus-active,
+body[data-focus-table="front"] #stripBtcPx,
+body[data-focus-table="front"] #stripEthPx,
+body[data-focus-table="front"] #stripFunding,
+body[data-focus-table="front"] #ethDecisionStrip,
+body[data-focus-table="front"] #btcDecisionStrip,
+body[data-focus-table="front"] #dualVoteStrip,
+body[data-focus-table="front"] .odds-live {
+  display: none !important;
+}
+body[data-focus-table="front"] #wxHighStrip {
+  display: inline !important;
+}
+.dash-seat-mark,
+.rank-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.agent-card .name .dash-seat-mark {
+  width: 28px;
+  height: 28px;
+}
+.rank-row .nm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 body[data-focus-table="front"] #focusBtc.focus-active,
 body[data-focus-table="front"] #focusEth.focus-active {
   /* safety: never both */
@@ -7704,6 +7734,8 @@ body.mode-charts .chart-card.no-feed canvas {
 }
 html body.mode-charts .chart-card.chart-pair-eth.chart-hero-off,
 html body.mode-charts .chart-card.chart-pair-btc.chart-hero-off,
+html body.mode-charts.charts-hero-front .chart-card.chart-pair-btc,
+html body.mode-charts.charts-hero-front .chart-card.chart-pair-eth,
 html body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth,
 html body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
   display: none !important;
