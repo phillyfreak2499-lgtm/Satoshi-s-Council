@@ -8068,6 +8068,10 @@ function drawCandleChart() {
         stopSeatStorm("esc");
         return;
       }
+      if (typeof window.__dismissDeskIntro === "function" && window.__dismissDeskIntro()) {
+        e.preventDefault();
+        return;
+      }
       if (typeof window.__dismissLeaderClick === "function" && window.__dismissLeaderClick()) {
         e.preventDefault();
         return;
@@ -9993,10 +9997,96 @@ function drawCandleChart() {
   const ACCESS_PASSWORD = "Nakamoto"; // primary access code
   const passKey = "council_auth_ok";
 
+  const DESK_INTRO_KEY = "council_desk_intro_played";
+
+  function prefetchDeskIntroVideo() {
+    // Warm zt-intro.mp4 while the desk-code gate is up. Do not load() or swap src.
+    const vid = document.getElementById("deskIntroVideo");
+    if (vid) vid.preload = "auto";
+    try {
+      fetch("/zt-intro.mp4", { cache: "force-cache", credentials: "same-origin" }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function playDeskUnlockIntro() {
+    // Dedicated post-desk-code intro. Plays ONLY zt-intro.mp4.
+    // revealAppAfterDeskUnlock already ran — never re-lock, never hang on black.
+    try {
+      if (sessionStorage.getItem(DESK_INTRO_KEY) === "1") return;
+    } catch (e) {}
+    if (window.__deskIntroPlaying) return;
+    const wrap = document.getElementById("deskIntroWrap");
+    const vid = document.getElementById("deskIntroVideo");
+    const skipBtn = document.getElementById("deskIntroSkip");
+    try { sessionStorage.setItem(DESK_INTRO_KEY, "1"); } catch (e) {}
+    if (!wrap || !vid) return;
+    if (vid.currentSrc && !/zt-intro\.mp4/i.test(vid.currentSrc)) return;
+
+    window.__deskIntroPlaying = true;
+    wrap.classList.remove("hidden");
+    wrap.classList.add("active");
+    wrap.setAttribute("aria-hidden", "false");
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+    try { vid.currentTime = 0; } catch (e) {}
+
+    let safety = null;
+    const cleanup = function () {
+      if (!window.__deskIntroPlaying) return false;
+      window.__deskIntroPlaying = false;
+      if (safety) { clearTimeout(safety); safety = null; }
+      try { vid.pause(); } catch (e) {}
+      wrap.classList.add("hidden");
+      wrap.classList.remove("active");
+      wrap.setAttribute("aria-hidden", "true");
+      return true;
+    };
+    window.__dismissDeskIntro = function () {
+      if (!window.__deskIntroPlaying) return false;
+      return cleanup();
+    };
+
+    vid.onended = function () { cleanup(); };
+    vid.onerror = function () { cleanup(); };
+    if (skipBtn) skipBtn.onclick = function (e) { if (e) e.stopPropagation(); cleanup(); };
+    wrap.onclick = function () { cleanup(); };
+
+    safety = setTimeout(function () {
+      if (!window.__deskIntroPlaying) return;
+      if (vid.paused && vid.currentTime < 0.05) cleanup();
+    }, 10000);
+
+    const p = vid.play();
+    if (p && p.then) {
+      p.then(function () {
+        try { vid.muted = false; } catch (e) {}
+      }).catch(function () {
+        vid.muted = true;
+        const p2 = vid.play();
+        if (p2 && p2.then) {
+          p2.catch(function () { cleanup(); });
+        } else {
+          cleanup();
+        }
+      });
+    }
+  }
+  window.playDeskUnlockIntro = playDeskUnlockIntro;
+  window.prefetchDeskIntroVideo = prefetchDeskIntroVideo;
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && window.__deskIntroPlaying) {
+      e.preventDefault();
+      if (typeof window.__dismissDeskIntro === "function") window.__dismissDeskIntro();
+    }
+  });
+
   function showAppAfterAuth() {
     if (typeof window.revealAppAfterDeskUnlock === "function") {
       window.revealAppAfterDeskUnlock();
     }
+    try { playDeskUnlockIntro(); } catch (e) {}
     document.body.classList.remove("admin-unlocked");
     const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
     if (onboarded) {
@@ -10109,6 +10199,7 @@ function drawCandleChart() {
     };
     if (btn) btn.addEventListener("click", tryUnlock);
     if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+    try { prefetchDeskIntroVideo(); } catch (e) {}
   }
 
   function initLogoCredit() {

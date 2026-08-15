@@ -1236,7 +1236,7 @@ if STATIC_DIR.is_dir():
 
     @app.get("/zt-intro.mp4")
     async def zt_intro_video():
-        return _video_response(_first_video("zt-intro.mp4", "money-closeup.mp4"))
+        return _video_response(_first_video("zt-intro.mp4"))
 
     @app.get("/leader-click.mp4")
     async def leader_click_video():

@@ -3718,7 +3718,9 @@ body[data-focus-table="front"] #focusEth.focus-active {
 .celebrate-video-wrap,
 #summonVideoWrap,
 #celebrateVideoWrap,
-#leaderClickWrap {
+#leaderClickWrap,
+#deskIntroWrap,
+.desk-intro-wrap {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
@@ -3764,6 +3766,8 @@ body[data-focus-table="front"] #focusEth.focus-active {
 #summonVideo,
 #celebrateVideo,
 #leaderClickVideo,
+#deskIntroVideo,
+.desk-intro-wrap video,
 .summon-video {
   width: 100% !important;
   height: 100% !important;
@@ -3801,7 +3805,9 @@ body[data-focus-table="front"] #focusEth.focus-active {
 .summon-video-skip,
 .celebrate-skip,
 #celebrateVideoSkip,
-#summonVideoSkip {
+#summonVideoSkip,
+#deskIntroSkip,
+.desk-intro-skip {
   position: absolute !important;
   z-index: 10060 !important;
   bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
@@ -3809,12 +3815,78 @@ body[data-focus-table="front"] #focusEth.focus-active {
   top: auto !important;
 }
 
+/* ===== DESK UNLOCK INTRO — contain, never cover, never overflow ===== */
+#deskIntroWrap,
+.desk-intro-wrap {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 150000 !important;
+  background: #000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+#deskIntroWrap.hidden,
+#deskIntroWrap:not(.active),
+.desk-intro-wrap.hidden,
+.desk-intro-wrap:not(.active) {
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+#deskIntroWrap.active,
+.desk-intro-wrap.active {
+  display: flex !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+}
+#deskIntroVideo,
+.desk-intro-wrap video {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+  background: #000 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+#deskIntroSkip,
+.desk-intro-skip {
+  font-family: Orbitron, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.55);
+  color: #c8d8e8;
+  cursor: pointer;
+}
+
 /* Mobile / landscape safety */
 @media (orientation: landscape) and (max-height: 500px) {
   .summon-video-wrap video,
   .celebrate-video-wrap video,
   #summonVideo,
-  #celebrateVideo {
+  #celebrateVideo,
+  #deskIntroVideo,
+  .desk-intro-wrap video {
     object-fit: contain !important;
   }
 }
