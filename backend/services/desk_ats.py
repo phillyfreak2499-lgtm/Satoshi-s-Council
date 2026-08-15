@@ -5,8 +5,9 @@ One game. You do not pick the slate.
 Scan open Kalshi sports markets (verified series only).
 Keep 20–80 with measured depth. 10–90 is for the crypto Chairs only.
 v1: moneyline, spread (ATS), total. No player props.
-Rank by leftover after vig / half-spread. Best one is the table.
-Sport follows the calendar (CFB Sat, NFL Sun, whatever is liquid).
+Rank nearer kick first, then calendar sport, then leftover after vig / half-spread.
+A fat leftover a month out does not beat a nearer NFL/CFB book.
+Sport follows the calendar among similarly-near games (CFB Sat, NFL Sun).
 ICE: 99¢ chalk, empty book, stale, too early, no depth.
 empty/unknown-null is UNKNOWN not DEAD.
 Paper lock only. Cap a few per day. Follower OFF. No Live.
@@ -99,6 +100,8 @@ ARES_GATES: Tuple[str, ...] = (
 ARES_YES_LO = 20.0
 ARES_YES_HI = 80.0
 FOOTBALL_SPORTS = frozenset({"NFL", "CFB"})
+# ~30 days. September CFB does not lock when a nearer NFL/CFB book is live.
+MONTH_KICK_MINS = 30 * 24 * 60.0
 KEY_NUMBERS = frozenset({3.0, 7.0})
 KEY_NUMBER_MIN_LEFTOVER = 3.0
 LATE_HURT_MINS = 15.0
@@ -1106,7 +1109,75 @@ def public_tug(pick: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def rank_key(row: Dict[str, Any], priority: List[str]) -> Tuple:
+def kick_mins_left(row: Dict[str, Any], now: Optional[datetime] = None) -> Optional[float]:
+    """Minutes to close. Prefer close_time against `now` so ranking stays honest."""
+    close = _parse_iso(row.get("close_time"))
+    if close is not None:
+        n = now or datetime.now(timezone.utc)
+        if n.tzinfo is None:
+            n = n.replace(tzinfo=timezone.utc)
+        return (close - n).total_seconds() / 60.0
+    mins = row.get("mins_left")
+    if mins is None:
+        return None
+    try:
+        return float(mins)
+    except (TypeError, ValueError):
+        return None
+
+
+def kick_horizon(row: Dict[str, Any], now: Optional[datetime] = None) -> int:
+    """Coarse kick bucket. Smaller = nearer. A month-out leftover sits last."""
+    mins = kick_mins_left(row, now)
+    if mins is None:
+        return 5
+    try:
+        m = float(mins)
+    except (TypeError, ValueError):
+        return 5
+    if m <= 0:
+        return 99
+    if m < 2 * 24 * 60:
+        return 0
+    if m < 7 * 24 * 60:
+        return 1
+    if m < 14 * 24 * 60:
+        return 2
+    if m < MONTH_KICK_MINS:
+        return 3
+    return 4
+
+
+def month_out_kick(row: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    mins = kick_mins_left(row, now)
+    if mins is None:
+        return False
+    try:
+        return float(mins) >= MONTH_KICK_MINS
+    except (TypeError, ValueError):
+        return False
+
+
+def nearer_football_playable(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> bool:
+    """A nearer NFL/CFB book is on the table — do not lock a 30-day-out slate."""
+    for r in rows:
+        if r.get("ice"):
+            continue
+        if str(r.get("sport") or "").upper() not in FOOTBALL_SPORTS:
+            continue
+        mins = kick_mins_left(r, now)
+        if mins is None:
+            continue
+        try:
+            m = float(mins)
+        except (TypeError, ValueError):
+            continue
+        if 0 < m < MONTH_KICK_MINS:
+            return True
+    return False
+
+
+def rank_key(row: Dict[str, Any], priority: List[str], now: Optional[datetime] = None) -> Tuple:
     sport = str(row.get("sport") or "")
     try:
         pri = priority.index(sport)
@@ -1115,27 +1186,25 @@ def rank_key(row: Dict[str, Any], priority: List[str]) -> Tuple:
     left = brain_score(row)
     ice_pen = 40.0 if row.get("ice") else 0.0
     unk_pen = 2.0 if row.get("unknown_book") else 0.0
-    return (ice_pen, -left, pri, unk_pen)
+    return (ice_pen, kick_horizon(row, now), pri, -left, unk_pen)
 
 
 def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
-    """ONE TICKET: best leftover on one game. Calendar sport is a tie-break, not a lock."""
+    """ONE TICKET: nearer kick first. Calendar sport breaks ties among similarly-near books."""
     if not rows:
         return None
     pri = sport_priority(now)
     playable = [r for r in rows if r.get("leftover") is not None]
     if not playable:
         return None
-    # Prefer the calendar sport when it actually has leftover.
-    for sport in pri:
-        pack = [r for r in playable if r.get("sport") == sport and not r.get("ice")]
-        if pack:
-            pack.sort(key=lambda r: brain_score(r), reverse=True)
-            best = pack[0]
-            break
-    else:
-        playable.sort(key=lambda r: rank_key(r, pri))
-        best = playable[0]
+    clear = [r for r in playable if not r.get("ice")]
+    pack = clear or playable
+    if nearer_football_playable(pack, now):
+        near = [r for r in pack if not month_out_kick(r, now)]
+        if near:
+            pack = near
+    pack.sort(key=lambda r: rank_key(r, pri, now))
+    best = pack[0]
     game = best.get("game")
     siblings = [r for r in rows if r.get("game") == game]
     best["siblings"] = [
