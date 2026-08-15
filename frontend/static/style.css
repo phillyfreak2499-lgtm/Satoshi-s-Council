@@ -3740,6 +3740,9 @@ body[data-focus-table="front"] #wxSubStrip {
 body[data-focus-table="ats"] #atsGameStrip {
   display: inline !important;
 }
+body[data-focus-table="ats"] #atsSportChip {
+  display: inline-block !important;
+}
 body[data-focus-table="ats"] #dualWindowSub,
 body[data-focus-table="ats"] #tabNews,
 body[data-focus-table="ats"] #tabSchool,
@@ -3794,6 +3797,27 @@ body[data-focus-table="ats"] #ledWindowTime {
   letter-spacing: 0.08em;
   color: #f0c14a;
   text-shadow: 0 0 8px rgba(240, 193, 74, 0.4);
+}
+.ats-sport-chip {
+  display: none;
+  margin-right: 2px;
+  padding: 1px 8px;
+  border: 1px solid rgba(240, 193, 74, 0.75);
+  color: #ffe27a;
+  font-family: Orbitron, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.75);
+  box-shadow: 0 0 12px rgba(240, 193, 74, 0.28), inset 0 0 8px rgba(240, 193, 74, 0.14);
+  background: rgba(40, 24, 0, 0.62);
+}
+.ats-sport-chip[data-live="off"] {
+  border-color: rgba(140, 160, 180, 0.35);
+  color: #8aa0b4;
+  letter-spacing: 0.1em;
+  text-shadow: none;
+  box-shadow: none;
+  background: rgba(10, 16, 24, 0.45);
 }
 .front-sub-hud {
   display: grid;

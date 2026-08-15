@@ -531,6 +531,22 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertIn("function paintAtsGameStrip", JS)
         self.assertIn('GAME <b id="atsGameName"', HTML)
         self.assertIn('LINE <b id="atsGameLine"', HTML)
+        self.assertIn('id="atsSportChip"', HTML)
+        self.assertIn("ats-sport-chip", HTML + CSS)
+        strip = JS.split("function paintAtsGameStrip", 1)[1].split("function paintFrontWindowChrome", 1)[0]
+        self.assertIn("pick.sport", strip)
+        self.assertIn("clock.sport", strip)
+        self.assertIn("atsSportChip", strip)
+        self.assertIn("NO BOOK", strip)
+        self.assertIn("WAIT", strip)
+        self.assertIn("data-live", strip)
+        self.assertIn("nameEl.textContent = game", strip)
+        self.assertIn("lineEl.textContent = number", strip)
+        clock = desk_ats.build_game_clock(
+            {"close_time": "2026-08-16T00:00:00Z", "game": "OSU MICH", "number": "OSU -7", "sport": "CFB"},
+            now=NOW,
+        )
+        self.assertEqual(clock["sport"], "CFB")
         self.assertIn("function paintAtsWhy", JS)
         self.assertIn("function paintAtsWatch", JS)
         self.assertIn("body[data-focus-table=\"ats\"] .chart-window-chip", CSS)
