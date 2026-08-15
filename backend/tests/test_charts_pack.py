@@ -23,6 +23,8 @@ class ChartsMarkupTests(unittest.TestCase):
         self.assertIn("ETH · 1m", HTML)
         self.assertIn('id="chartBtcMeta"', HTML)
         self.assertIn('id="chartEthMeta"', HTML)
+        self.assertIn('id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">1H WINDOW</span>', HTML)
+        self.assertIn('id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">1H WINDOW</span>', HTML)
 
     def test_odds_tape_hitrate_labels(self):
         self.assertIn("KALSHI ODDS", HTML)
@@ -80,6 +82,8 @@ class ChartsJsTests(unittest.TestCase):
     def test_fit_canvas_has_real_height(self):
         self.assertIn("const minH = isPair ? 220", JS)
         self.assertIn("if (h < minH) h = minH", JS)
+        self.assertIn("const maxH = 220", JS)
+        self.assertIn("if (h > maxH) h = maxH", JS)
         self.assertIn('canvas.style.width = w + "px"', JS)
         self.assertIn("opts.rows", JS)
 
@@ -125,10 +129,16 @@ class ChartsJsTests(unittest.TestCase):
 
 class ChartsCssTests(unittest.TestCase):
     def test_canvases_not_zero_height(self):
-        self.assertIn("min-height: 140px", CSS)
+        self.assertIn("min-height: 160px", CSS)
         self.assertIn("min-height: 220px", CSS)
+        self.assertIn("max-height: 220px", CSS)
         self.assertIn("#chartEth", CSS)
         self.assertIn("CHARTS HUD", CSS)
+
+    def test_charts_wheel_scrolls_inside_view(self):
+        self.assertIn("chartsView.__deskWheel", JS)
+        self.assertIn("overscroll-behavior: contain !important", CSS)
+        self.assertIn("body.mode-charts #app", CSS)
 
     def test_mobile_charts_scroll_stacked(self):
         self.assertIn("body.mode-charts #chartsView.charts-view:not(.hidden)", CSS)
@@ -151,6 +161,94 @@ class ChartsCssTests(unittest.TestCase):
         self.assertNotIn("top: 40px", CSS)
         self.assertIn("html body.floor-mode #app > header #windowLed.led-float.led-window", CSS)
         self.assertIn("top: auto !important", CSS)
+
+    def test_one_hero_follows_book_tab(self):
+        self.assertIn("function syncChartHero()", JS)
+        self.assertIn('classList.toggle("charts-hero-eth"', JS)
+        self.assertIn('classList.toggle("charts-hero-btc"', JS)
+        self.assertIn("chart-hero-off", JS)
+        self.assertIn("body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth", CSS)
+        self.assertIn("body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc", CSS)
+        self.assertIn("display: none !important", CSS)
+
+    def test_pair_scale_chips_offscale_target(self):
+        self.assertIn("function setPairTargetChip", JS)
+        self.assertIn("K TARGET ", JS)
+        self.assertIn("setPairTargetChip(canvas, targetChip)", JS)
+        self.assertNotIn("grown <= span0 * 4", JS)
+
+    def test_empty_feed_collapses_not_collecting(self):
+        self.assertIn("function setChartNoFeed", JS)
+        self.assertIn('classList.toggle("no-feed"', JS)
+        self.assertIn('opts.emptyLabel || "no feed"', JS)
+        start = JS.find("function drawLineSeries")
+        end = JS.find("function parseStampMs", start)
+        self.assertNotIn("COLLECTING", JS[start:end])
+
+    def test_odds_keeps_half_and_ninety_nine(self):
+        self.assertIn("up > 1.5", JS)
+        self.assertIn("down > 1.5", JS)
+        self.assertIn("toFixed(1)", JS)
+
+    def test_tape_list_is_last_locks(self):
+        self.assertIn("chartTapeList", JS)
+        self.assertIn("VITALIK", JS)
+        self.assertIn("SATOSHI", JS)
+        tape = JS[JS.find("function drawChartTape()"):JS.find("function finishOnlyStats()")]
+        self.assertNotIn("p.side[0]", tape)
+        self.assertIn("NO CHAIR LOCKS YET", tape)
+
+    def test_weights_two_col_readable(self):
+        self.assertIn("7px Orbitron", JS)
+        self.assertIn("ranked.length > 4 ? 2 : 1", JS)
+        self.assertIn("1e-4", JS)
+
+    def test_canvas_capped_never_grows_with_points(self):
+        self.assertIn("Never let a canvas grow with data points", JS)
+        self.assertIn('canvas.style.maxHeight = maxH + "px"', JS)
+        self.assertIn('canvas.style.width = w + "px"', JS)
+        self.assertIn("max-height: 220px !important", CSS)
+        self.assertIn("flex: 0 0 auto !important", CSS)
+
+    def test_charts_wheel_moves_the_wall(self):
+        self.assertIn("chartsView.scrollTop += e.deltaY", JS)
+        self.assertIn("touch-action: pan-y", CSS)
+        self.assertIn("height: 0 !important", CSS)
+
+    def test_odds_sides_sum_near_100(self):
+        self.assertIn("Math.abs(up + down - 100)", JS)
+        self.assertIn("down = 100 - up", JS)
+
+    def test_funding_hides_zero_dummy(self):
+        self.assertIn("function realFundingPct", JS)
+        fund = JS[JS.find("function drawChartFunding()"):JS.find("function pairFromLockRow")]
+        self.assertIn("card.hidden = true", fund)
+        self.assertIn("Never push Number(mm.funding) when it is 0", fund)
+        self.assertIn("Number(mm.funding) === 0", fund)
+        self.assertNotIn("COLLECTING", fund)
+        self.assertNotIn("pushSeries(series.funding, { t: Date.now(), f: Math.abs(f)", fund)
+
+    def test_tape_uses_same_window_clock(self):
+        tape = JS[JS.find("function drawChartTape()"):JS.find("function finishOnlyStats()")]
+        self.assertIn("windowLabelOf(p)", tape)
+        self.assertNotIn("parseStampMs(p.t)", tape)
+        self.assertNotIn("fmtLockTime(p.t)", tape)
+        self.assertNotIn("fmtLockTime(called_at)", tape)
+
+    def test_pair_head_has_window_room(self):
+        hour = JS[JS.find("function drawHourWindowAndLock"):JS.find("function drawPairCandles")]
+        self.assertIn("1H WINDOW", JS)
+        self.assertIn("function setPairWindowChip", JS)
+        self.assertIn("chart-window-chip", JS)
+        self.assertIn('setPairWindowChip(canvas, "1H WINDOW")', JS)
+        self.assertNotIn("pad.t + 10", hour)
+        self.assertNotIn('fillText("1H WINDOW"', hour)
+
+    def test_offscale_target_is_chip_not_edge_line(self):
+        pair = JS[JS.find("function drawPairCandles"):JS.find("function drawChartBtc()")]
+        self.assertIn("Do not draw an edge line", pair)
+        self.assertIn("setPairTargetChip(canvas, targetChip)", pair)
+        self.assertIn("targetY = null", pair)
 
 
 class NoRegressionTests(unittest.TestCase):

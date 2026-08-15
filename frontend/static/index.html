@@ -15,6 +15,10 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
+  <link rel="preload" as="image" href="/static/bots/raijin-chair.png" />
+  <link rel="preload" as="image" href="/raijin-up.jpg" />
+  <link rel="preload" as="image" href="/raijin-down.jpg" />
+  <link rel="preload" as="image" href="/raijin-wait.jpg" />
   <script>
   /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
   (function () {
@@ -113,6 +117,21 @@
       <span id="rivalTrash" class="rival-trash"></span>
     </div>
     <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
+    <div id="closeRecap" class="close-recap hidden" hidden aria-hidden="true" role="dialog" aria-label="Hour close">
+      <div class="close-recap-card">
+        <div class="close-kicker">HOUR CLOSE</div>
+        <p id="closeSatoshi" class="close-line">SATOSHI · —</p>
+        <p id="closeVitalik" class="close-line">VITALIK · —</p>
+        <p id="closeBooks" class="close-books">BOOKS · —</p>
+        <p class="close-hint">tap or Esc skips</p>
+      </div>
+    </div>
+    <div id="healthStrip" class="health-strip" hidden aria-label="Feed health">
+      <span id="healthKalshi" class="health-dot" data-feed="kalshi">Kalshi</span>
+      <span id="healthSpot" class="health-dot" data-feed="spot">Spot</span>
+      <span id="healthGlass" class="health-dot" data-feed="coinglass">Glass</span>
+      <span id="healthAge" class="health-age">—</span>
+    </div>
     <!-- watermark removed; clean logo lives in header -->
     <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
     <header>
@@ -165,11 +184,19 @@
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
+        <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
         <button type="button" id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
         <button type="button" id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
         <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabTape" class="mode-tab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
+        <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
+        <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
+        <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
+        <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
+        <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
+        <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -236,6 +263,15 @@
           <div id="lightsaberLabel" class="lightsaber-label">0%</div>
         </div>
         <div id="dashboardOverlay" class="hidden"></div>
+        <div id="floorCrawl" class="floor-crawl" hidden aria-label="Last five locks">
+          <div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div>
+        </div>
+        <div id="chairWhy" class="chair-why" aria-live="polite">WAIT · —</div>
+        <button type="button" id="phoneScore" class="phone-score" hidden aria-label="Flip BTC / ETH">BTC 0–0</button>
+        <button type="button" id="floorRaijin" class="floor-raijin" title="THE FRONT · Raijin · Dallas DFW" aria-label="Open THE FRONT">
+          <img src="/static/bots/raijin-wait.png" alt="" width="44" height="44">
+          <span>RAIJIN</span>
+        </button>
       </div>
       <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 
@@ -438,6 +474,35 @@
           <p class="settings-foot" id="autoBetFollowNote">Follow leaders is a reserved mode for later. It does not place orders.</p>
         </div>
 
+        <div class="beast-card settings-card" id="frontSettingsCard">
+          <div class="beast-title">RAIJIN · THE FRONT</div>
+          <p class="settings-sub">Weather Chair. Dallas only (KXHIGHTDAL / KDFW / DFW — not Love Field). Hits count like Satoshi / Vitalik. Pending until NWS CLI. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks.</p>
+          <label class="set-check"><input type="checkbox" id="setFrontShowTab" checked /> Show Front tab</label>
+          <label class="set-check"><input type="checkbox" id="setFrontShowChair" checked /> Show small Floor chair</label>
+          <label class="set-check"><input type="radio" name="frontMode" id="setFrontPaper" value="paper" checked /> Paper (default)</label>
+          <label class="set-check"><input type="radio" name="frontMode" id="setFrontLive" value="live" disabled /> Live — type LIVE THE FRONT on the Front tab (v1 paper-only here)</label>
+          <label class="set-field">Min confidence to lock
+            <input type="number" step="1" min="0" max="99" id="setFrontMinConf" />
+          </label>
+          <label class="set-field">Max stake per WX tap $
+            <input type="number" step="1" min="1" max="100" id="setFrontMaxStake" />
+          </label>
+          <label class="set-field">Max daily WX paper/live loss $
+            <input type="number" step="1" min="1" max="500" id="setFrontDailyLoss" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setFrontNoLockFrost" checked /> No-lock when FROST / SICK</label>
+          <label class="set-check"><input type="checkbox" id="setFrontSound" checked /> Sound on WX lock (uses existing SFX toggles)</label>
+          <label class="set-check"><input type="checkbox" id="setFrontFadeOn" checked /> Fade underperformers</label>
+          <label class="set-field">Fade min graded samples
+            <input type="number" step="1" min="5" max="100" id="setFrontFadeMinN" />
+          </label>
+          <label class="set-field">Fade WR threshold (below → fade)
+            <input type="number" step="0.01" min="0.2" max="0.5" id="setFrontFadeWr" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setFrontDallas" checked disabled /> Dallas on (KXHIGHTDAL / DFW). No city picker in v1.</label>
+          <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only. This block is not Follower.</p>
+        </div>
+
         <div class="settings-actions">
           <button type="button" class="gate-btn gate-btn-summon" id="btnSaveSettings">Save settings</button>
           <button type="button" class="gate-btn gate-btn-ghost" id="btnResetSettings">Reset defaults</button>
@@ -459,6 +524,11 @@
         <h2>BOT FIELD GUIDE</h2>
         <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
       </div>
+      <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
+        <div class="front-guide-head">FRONT / RAIJIN</div>
+        <p class="front-bots-sub">Weather Chair. Dallas DFW daily high. Not mixed into WICK / TAPE.</p>
+        <div id="frontBotsGrid" class="bots-grid"></div>
+      </section>
       <div id="botsGrid" class="bots-grid"></div>
     </section>
 
@@ -480,6 +550,218 @@
       <div class="ranks-notes">
         <div class="panel-head"><span class="panel-title">LEARNING NOTES</span></div>
         <ul id="learnNotes" class="learn-notes"></ul>
+      </div>
+    </section>
+
+    <section id="tapeView" class="info-view hidden" aria-label="Chair paper tape">
+      <div class="info-hero">
+        <h2>CHAIR TAPE</h2>
+        <p>Auto-graded paper hours for the last 24 hours — Satoshi (BTC) and Vitalik (ETH). Official Kalshi <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
+      </div>
+      <div id="tapeCalib" class="tape-calib" aria-label="Calibration strip"></div>
+      <div class="panel-head"><span class="panel-title">LAST 24H</span><span class="panel-sub" id="tapeMeta">—</span></div>
+      <div id="tapeTable" class="tape-table" role="table"></div>
+    </section>
+
+    <section id="bookView" class="info-view hidden" aria-label="Kalshi book">
+      <div class="info-hero">
+        <h2>THE BOOK</h2>
+        <p>Live Kalshi depth for the current hours. A sick or empty book, or a ≥99¢ wall, is why the Chair can WAIT.</p>
+      </div>
+      <div class="book-dual">
+        <article id="bookSatoshi" class="book-card" aria-label="Satoshi BTC book">
+          <header class="book-card-head"><span>SATOSHI · BTC</span><span class="book-flag" id="bookBtcFlag">—</span></header>
+          <div id="bookBtcBody" class="book-body">Loading depth…</div>
+        </article>
+        <article id="bookVitalik" class="book-card" aria-label="Vitalik ETH book">
+          <header class="book-card-head"><span>VITALIK · ETH</span><span class="book-flag" id="bookEthFlag">—</span></header>
+          <div id="bookEthBody" class="book-body">Loading depth…</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="brainView" class="info-view hidden" aria-label="Huddle recap">
+      <div class="info-hero">
+        <h2>BRAIN</h2>
+        <p>Public recap of the last huddle / weight move. Which seats got louder, which got faded. Admin knobs stay in Settings.</p>
+      </div>
+      <p id="brainHeadline" class="brain-headline">—</p>
+      <div class="brain-dual">
+        <article class="brain-card">
+          <header>LOUDER</header>
+          <ul id="brainLouder" class="brain-list"></ul>
+        </article>
+        <article class="brain-card">
+          <header>FADED</header>
+          <ul id="brainFaded" class="brain-list"></ul>
+        </article>
+      </div>
+      <div class="brain-chairs">
+        <div id="brainSatoshi" class="brain-chair">SATOSHI · —</div>
+        <div id="brainVitalik" class="brain-chair">VITALIK · —</div>
+      </div>
+      <ul id="brainNotes" class="brain-notes"></ul>
+    </section>
+
+    <section id="newsView" class="info-view hidden" aria-label="Hour news">
+      <div class="info-hero">
+        <h2>NEWS</h2>
+        <p>Only BTC, ETH, and macro that can move a 1-hour window. Times in <b>America/Chicago</b>. Headlines do not change Chair locks.</p>
+      </div>
+      <p id="newsLiq" class="news-liq hidden"></p>
+      <div class="news-rails">
+        <article class="news-rail">
+          <header>COMING UP</header>
+          <ol id="newsComing" class="news-list"></ol>
+        </article>
+        <article class="news-rail">
+          <header>BREAKING</header>
+          <ol id="newsBreaking" class="news-list"></ol>
+        </article>
+      </div>
+    </section>
+
+    <section id="schoolView" class="info-view hidden" aria-label="School">
+      <div class="info-hero">
+        <h2>SCHOOL</h2>
+        <p>Short lessons for WAIT downtime. This desk only — 1-hour BTC/ETH Kalshi. Display only. Lessons do not change Chair locks.</p>
+      </div>
+      <button type="button" id="schoolContinue" class="school-continue">START · The hour</button>
+      <p id="schoolStreak" class="school-streak">0 lessons this week</p>
+      <ol id="schoolList" class="school-list"></ol>
+      <article id="schoolLesson" class="school-lesson hidden">
+        <header class="school-lesson-head">
+          <button type="button" id="schoolBack" class="school-back">BACK</button>
+          <h3 id="schoolTitle">The hour</h3>
+          <span id="schoolMins">6 min</span>
+        </header>
+        <p id="schoolIdea" class="school-idea">Kalshi is not “is Bitcoin going up forever.” It is one window.</p>
+        <div id="schoolBody" class="school-body"></div>
+        <figure class="school-board-wrap">
+          <canvas id="schoolBoard" width="640" height="220" aria-label="Chalkboard"></canvas>
+          <figcaption id="schoolCallout" class="school-callout">Strike is the line. Time left is the only clock.</figcaption>
+        </figure>
+        <div id="schoolQuiz" class="school-quiz" aria-label="Lesson quiz">
+          <p id="schoolQ"></p>
+          <div id="schoolChoices" class="school-choices"></div>
+          <p id="schoolGrade" class="school-grade" hidden></p>
+          <button type="button" id="schoolNextQ" class="school-next" hidden>NEXT</button>
+        </div>
+      </article>
+    </section>
+
+    <section id="sideView" class="info-view hidden" aria-label="Side Table">
+      <div class="info-hero">
+        <h2>SIDE TABLE</h2>
+        <p>15-minute arcade. Manual taps only. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+      </div>
+      <div id="sideHud" class="side-hud">
+        <div class="side-clock" id="sideClock">--:--</div>
+        <div class="side-mode-row">
+          <span class="side-badge paper" id="sideModeBadge">PAPER</span>
+          <span class="side-status" id="sideFeedStatus">loading</span>
+        </div>
+        <div class="side-pills" id="sidePills"></div>
+        <div class="side-size-row">
+          <span class="side-size-label">SIZE</span>
+          <button type="button" class="side-step on" data-size="5">$5</button>
+          <button type="button" class="side-step" data-size="10">$10</button>
+          <button type="button" class="side-step" data-size="25">$25</button>
+        </div>
+        <div id="sideArcade" class="side-arcade"></div>
+        <div class="side-hot-head">HOT STRIP · not the 1H Chair</div>
+        <div id="sideHot" class="side-hot"></div>
+        <div id="sideFills" class="side-fills"></div>
+        <div id="sideWhy" class="side-why"></div>
+        <details class="side-live-box">
+          <summary>LIVE (off · this tab only)</summary>
+          <p class="side-live-note">Default PAPER. Type the phrase, wait the delay, then tap. Kill switch kills Side Table live too. Same Kalshi keys already on the box. Never auto-bets.</p>
+          <input type="text" id="sideArmPhrase" class="side-arm-input" placeholder="LIVE SIDE TABLE" autocomplete="off" spellcheck="false">
+          <button type="button" class="side-arm-btn" id="sideArmBtn">ARM LIVE</button>
+          <button type="button" class="side-kill-btn" id="sideKillBtn">KILL LIVE</button>
+          <div id="sideArmStatus" class="side-arm-status"></div>
+        </details>
+      </div>
+    </section>
+
+    <section id="frontView" class="info-view hidden" aria-label="THE FRONT">
+      <div class="info-hero">
+        <h2>THE FRONT</h2>
+        <p>Raijin’s Floor. Dallas DFW daily high. Same ring as BTC / ETH. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+      </div>
+      <div id="frontHud" class="front-hud">
+        <div class="front-mode-row">
+          <span class="front-wx-badge" id="frontWxBadge">WX · —</span>
+          <span class="side-badge paper" id="frontModeBadge">PAPER</span>
+          <span class="side-status" id="frontFeedStatus">loading</span>
+        </div>
+        <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
+          <canvas id="frontWx" width="920" height="620" aria-label="Raijin Floor"></canvas>
+          <div class="front-chair" id="frontChair">
+            <span class="front-mark"><img id="frontChairImg" src="/raijin-wait.jpg" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+            <span class="front-name">RAIJIN</span>
+            <span class="front-call" id="frontChairCall">—</span>
+          </div>
+          <div id="frontRing" class="front-ring" aria-hidden="true">
+            <button type="button" class="front-seat" data-seat="GLASS" style="--a:-90">
+              <span class="front-mark"><img src="/static/bots/glass.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">GLASS</span>
+              <span class="front-call" data-call="GLASS">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="PIT" style="--a:0">
+              <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">PIT</span>
+              <span class="front-call" data-call="PIT">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="FROST" style="--a:90">
+              <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">FROST</span>
+              <span class="front-call" data-call="FROST">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="BONE" style="--a:180">
+              <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">BONE</span>
+              <span class="front-call" data-call="BONE">—</span>
+            </button>
+          </div>
+        </div>
+        <div class="side-size-row">
+          <span class="side-size-label">SIZE</span>
+          <button type="button" class="front-step on" data-size="5">$5</button>
+          <button type="button" class="front-step" data-size="10">$10</button>
+          <button type="button" class="front-step" data-size="25">$25</button>
+        </div>
+        <div id="frontBook" class="front-book"></div>
+        <div id="frontHitRate" class="front-hit-rate" aria-label="Raijin lifetime">
+          <div class="hr-big">
+            <span id="frontHrPct" class="hr-pct">—</span>
+            <span class="hr-pct-label">lifetime</span>
+          </div>
+          <div class="hr-stats">
+            <div class="hr-stat"><b id="frontHrRight">0</b><span>right</span></div>
+            <div class="hr-stat"><b id="frontHrWrong">0</b><span>wrong</span></div>
+            <div class="hr-stat"><b id="frontHrPending">0</b><span>open</span></div>
+          </div>
+          <div id="frontHrVerdict" class="hr-verdict">COLLECTING</div>
+        </div>
+        <section class="front-tape-card" aria-label="Last locks tape">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta">RAIJIN · DFW CLI</span></header>
+          <ol id="frontTape" class="lock-tape-list" aria-live="polite">
+            <li class="lock-tape-empty">No Raijin lock — waiting on DFW CLI</li>
+          </ol>
+        </section>
+        <div id="frontWhy" class="side-why"></div>
+        <div class="front-guide-head">BOT FIELD GUIDE · THE FRONT</div>
+        <div id="frontGuide" class="front-guide"></div>
+        <div id="frontFills" class="side-fills"></div>
+        <details class="side-live-box">
+          <summary>LIVE (off · this tab only)</summary>
+          <p class="side-live-note">Default PAPER. Type the phrase, wait the delay, then tap. Kill switch kills THE FRONT live too. Same Kalshi keys already on the box. Never auto-bets. Does not place 1H Chair locks.</p>
+          <input type="text" id="frontArmPhrase" class="side-arm-input" placeholder="LIVE THE FRONT" autocomplete="off" spellcheck="false">
+          <button type="button" class="side-arm-btn" id="frontArmBtn">ARM LIVE</button>
+          <button type="button" class="side-kill-btn" id="frontKillBtn">KILL LIVE</button>
+          <div id="frontArmStatus" class="side-arm-status"></div>
+        </details>
       </div>
     </section>
 
@@ -520,11 +802,11 @@
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
       <div class="charts-pairs">
         <article class="chart-card chart-wide chart-pair chart-pair-btc">
-          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
+          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
           <canvas id="chartBtc"></canvas>
         </article>
         <article class="chart-card chart-wide chart-pair chart-pair-eth">
-          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-meta" id="chartEthMeta">—</span></header>
+          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartEthMeta">—</span></header>
           <canvas id="chartEth"></canvas>
         </article>
       </div>

@@ -73,6 +73,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       if (typeof window.prefetchLeaderClickVideo === "function") window.prefetchLeaderClickVideo();
     } catch (e) {}
+    try {
+      if (typeof window.loadHealthStrip === "function") window.loadHealthStrip();
+    } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {
@@ -362,6 +365,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN;
     return vitalikImages.WAIT;
   }
+  const raijinImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
+  ["UP", "DOWN", "WAIT"].forEach(k => {
+    raijinImages[k].crossOrigin = "anonymous";
+    raijinImages[k].onload = _chairLoaded;
+    raijinImages[k].onerror = () => console.warn("Raijin image failed:", k);
+  });
+  raijinImages.UP.src = "/raijin-up.jpg";
+  raijinImages.DOWN.src = "/raijin-down.jpg";
+  raijinImages.WAIT.src = "/raijin-wait.jpg";
+  raijinImages.UP_HOLD = raijinImages.UP;
+  raijinImages.DOWN_HOLD = raijinImages.DOWN;
+  function raijinPortraitFor(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return raijinImages.UP;
+    if (d === "DOWN" || d === "DOWN_HOLD") return raijinImages.DOWN;
+    return raijinImages.WAIT;
+  }
+  function raijinPortraitSrc(dir) {
+    const d = String(dir || "WAIT").toUpperCase();
+    if (d === "UP" || d === "UP_HOLD") return "/raijin-up.jpg";
+    if (d === "DOWN" || d === "DOWN_HOLD") return "/raijin-down.jpg";
+    return "/raijin-wait.jpg";
+  }
   chairImages.UP_HOLD = chairImages.UP;
   chairImages.DOWN_HOLD = chairImages.DOWN;
   chairImages.SWAP = chairImages.WAIT;
@@ -495,6 +521,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       chk("setAutoBetEth", AB.eth !== false);
     }
     try { syncAutoBetVisibility(); } catch (e) {}
+    try { applyFrontSettings(s.front || {}); } catch (e) {}
     if (U.watermark_opacity != null) {
       document.documentElement.style.setProperty("--zt-watermark-opacity", U.watermark_opacity);
     }
@@ -563,7 +590,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     });
     drop.forEach(function (c) { document.body.classList.remove(c); });
     if (next) document.body.classList.add("mode-" + next);
-    document.body.classList.toggle("floor-mode", next === "floor");
+    document.body.classList.toggle("floor-mode", next === "floor" || next === "night");
+    document.body.classList.toggle("night-mode", next === "night");
+    const phoneFloor = (next === "floor" || next === "night") && (typeof isPhoneDesk === "function" ? isPhoneDesk() : false);
+    document.body.classList.toggle("phone-floor", phoneFloor);
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
@@ -791,10 +821,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     seatOrbitLastT = time;
     return seatOrbitHold;
   }
+  function floorLikeMode() {
+    return mode === "floor" || mode === "night";
+  }
+  function floorCameraOffset() {
+    // Slow room drift. No extra haze, particles, or purple.
+    if (reduceMotion || !floorLikeMode()) return { x: 0, y: 0 };
+    const t = (typeof time === "number" ? time : 0) * 0.00008;
+    return { x: Math.sin(t) * 22, y: Math.cos(t * 0.71) * 14 };
+  }
   function syncSeatSpinBtn() {
     const btn = document.getElementById("seatSpinBtn");
     if (!btn) return;
-    const on = mode === "floor" || mode === "art";
+    const on = (mode === "floor" || mode === "art") && mode !== "night";
     btn.hidden = !on;
     btn.setAttribute("aria-hidden", on ? "false" : "true");
     const spinning = !seatOrbitFrozen && !reduceMotion;
@@ -929,7 +968,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (key !== lastWindowKey) {
         lastWindowKey = key;
         lastClockBucket = bucket;
-        try { triggerHourSlam(); } catch (e) {}
+        try { beginHourCloseThenSlam(); } catch (e) { try { triggerHourSlam(); } catch (e2) {} }
         // Skip-window: previous chair was WAIT → awkward silence; else market bell
         try {
           const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
@@ -953,7 +992,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     if (bucket !== lastClockBucket) {
       lastClockBucket = bucket;
-      try { triggerHourSlam(); } catch (e) {}
+      try { beginHourCloseThenSlam(); } catch (e) { try { triggerHourSlam(); } catch (e2) {} }
       playMarketBell();
       playNewMarketMist();
     }
@@ -1469,6 +1508,111 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.closePath();
   }
 
+  let closeRecapTimer = 0;
+  let closeRecapOn = false;
+
+  function lastHourPrint(tableKey) {
+    const pair = tableKey === "ethereum" ? "ETH" : "BTC";
+    const ts = (typeof tableState === "function" ? tableState(tableKey) : null) || {};
+    const acc = ts.accuracy || {};
+    const open = Array.isArray(acc.open) && acc.open.length ? acc.open[0] : null;
+    const log = (acc.log || acc.recent || [])[0] || null;
+    const lc = (typeof pairLock === "function") ? pairLock(ts) : null;
+    const row = open || lc || log;
+    const lean = (typeof tableLean === "function") ? tableLean(ts) : { side: "WAIT", locked: false };
+    if (!row) {
+      return { pair: pair, side: lean.side || "WAIT", result: lean.locked ? "OPEN" : (lean.side === "WAIT" ? "WAIT" : "OPEN"), pnl: null };
+    }
+    const y = String(row.y_finish || "").toUpperCase();
+    const reason = String(row.settle_reason || "");
+    const official = (y === "UP" || y === "DOWN") && (reason === "finish_match" || reason === "finish_miss");
+    const side = (typeof sideFromLockRow === "function") ? sideFromLockRow(row) : (row.direction || lean.side || "WAIT");
+    if (!official) {
+      return { pair: pair, side: side || "WAIT", result: "OPEN", pnl: null };
+    }
+    const hit = row.correct === true || row.correct === 1;
+    return {
+      pair: pair,
+      side: side || "WAIT",
+      result: hit ? "HIT" : "MISS",
+      pnl: row.paper_pnl != null ? Number(row.paper_pnl) : (row.pnl != null ? Number(row.pnl) : null),
+    };
+  }
+
+  function formatCloseLine(chair, print) {
+    const side = print.side || "WAIT";
+    const res = print.result || "OPEN";
+    let paid = "OPEN";
+    if (res === "WAIT") paid = "WAIT";
+    else if (res === "OPEN") paid = "OPEN";
+    else if (print.pnl != null && isFinite(print.pnl)) {
+      paid = (print.pnl >= 0 ? "+$" : "-$") + Math.abs(print.pnl).toFixed(2);
+    } else {
+      paid = res;
+    }
+    return chair + " · " + (print.pair || "") + " " + side + " · " + paid;
+  }
+
+  function fillCloseRecap() {
+    const sat = document.getElementById("closeSatoshi");
+    const vit = document.getElementById("closeVitalik");
+    const books = document.getElementById("closeBooks");
+    const b = lastHourPrint("bitcoin");
+    const e = lastHourPrint("ethereum");
+    if (sat) sat.textContent = formatCloseLine("SATOSHI", b);
+    if (vit) vit.textContent = formatCloseLine("VITALIK", e);
+    const sc = (typeof scorecardFromState === "function") ? scorecardFromState() : {};
+    if (books) books.textContent = "BOOKS · " + (sc.match || "BTC 0 · ETH 0");
+  }
+
+  function hideCloseRecap() {
+    closeRecapOn = false;
+    if (closeRecapTimer) {
+      try { clearTimeout(closeRecapTimer); } catch (e) {}
+      closeRecapTimer = 0;
+    }
+    const el = document.getElementById("closeRecap");
+    if (el) {
+      el.classList.add("hidden");
+      el.hidden = true;
+      el.setAttribute("aria-hidden", "true");
+    }
+    document.body.classList.remove("close-recap-on");
+  }
+
+  function finishHourClose() {
+    hideCloseRecap();
+    try { triggerHourSlam(); } catch (e) {}
+  }
+
+  function dismissCloseRecap() {
+    if (!closeRecapOn) return false;
+    finishHourClose();
+    return true;
+  }
+  window.__dismissCloseRecap = dismissCloseRecap;
+
+  function beginHourCloseThenSlam() {
+    const onFloor = (typeof floorLikeMode === "function") ? floorLikeMode() : (mode === "floor");
+    if (!onFloor) {
+      try { triggerHourSlam(); } catch (e) {}
+      return;
+    }
+    fillCloseRecap();
+    closeRecapOn = true;
+    const el = document.getElementById("closeRecap");
+    if (el) {
+      el.classList.remove("hidden");
+      el.hidden = false;
+      el.setAttribute("aria-hidden", "false");
+    }
+    document.body.classList.add("close-recap-on");
+    if (closeRecapTimer) {
+      try { clearTimeout(closeRecapTimer); } catch (e) {}
+    }
+    closeRecapTimer = setTimeout(finishHourClose, 8000);
+  }
+
   function triggerHourSlam() {
     hourSlamUntil = Date.now() + 1100;
     document.body.classList.add("hour-slam");
@@ -1665,12 +1809,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const prev = _seatTick[k];
     if (!prev || prev.dir !== d || prev.conf !== c) {
       _seatTick[k] = { dir: d, conf: c, at: Date.now() };
+      try { bumpChairPulse(pulseKeyFromTick(k), 0.55); } catch (e) {}
       return true;
     }
     return (Date.now() - prev.at) < 2200;
   }
 
-  function drawPacketSpoke(x0, y0, x1, y1, color, conf, agree, fresh) {
+  function drawPacketSpoke(x0, y0, x1, y1, color, conf, agree, fresh, which) {
     const dx = x1 - x0, dy = y1 - y0;
     const dist = Math.hypot(dx, dy) || 1;
     ctx.save();
@@ -1691,10 +1836,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const speed = fast ? 0.0044 : 0.0019;
     const dash = 12;
     const gap = 18;
+    const clock = chairPulseTime(which);
     ctx.globalAlpha = fast ? 0.82 : 0.55;
     ctx.lineWidth = agree ? 2.3 : 1.45;
     ctx.setLineDash([dash, gap]);
-    ctx.lineDashOffset = -((time * speed * dist) % (dash + gap));
+    ctx.lineDashOffset = -((clock * speed * dist) % (dash + gap));
     ctx.shadowColor = color;
     ctx.shadowBlur = fast ? 16 : 8;
     ctx.beginPath();
@@ -1702,10 +1848,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineTo(x1, y1);
     ctx.stroke();
     ctx.setLineDash([]);
+    const phoneCheap = (typeof isPhoneDesk === "function") && isPhoneDesk();
+    if (phoneCheap) {
+      // Phone: one rate per chair, no per-segment sparkle
+      ctx.restore();
+      return;
+    }
     const n = fast ? 3 : 2;
     const nx = dx / dist, ny = dy / dist;
     for (let i = 0; i < n; i++) {
-      const t = ((time * speed * 0.62) + i / n) % 1;
+      const t = ((clock * speed * 0.62) + i / n) % 1;
       const x = x0 + dx * t;
       const y = y0 + dy * t;
       ctx.globalAlpha = 0.95;
@@ -1872,18 +2024,138 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!locked) _sealSeen[key] = "";
   }
 
+  const _chairPulse = { bitcoin: null, ethereum: null, front: null };
+  let _newsPulseSig = "";
+  function pulseKeyOf(which) {
+    const w = String(which || "").toLowerCase();
+    if (w === "front" || w === "raijin") return "front";
+    if (w === "ethereum" || w === "eth" || (typeof isEthTable === "function" && isEthTable(which))) return "ethereum";
+    return "bitcoin";
+  }
+  function pulseKeyFromTick(key) {
+    const k = String(key || "");
+    if (k.indexOf("front:") === 0) return "front";
+    if (k.indexOf("ethereum") === 0) return "ethereum";
+    if (k.indexOf("bitcoin") === 0) return "bitcoin";
+    if (k.indexOf("art:") === 0) return pulseKeyOf(typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    return pulseKeyOf(k.split(":")[0]);
+  }
+  function ensureChairPulse(which) {
+    const key = pulseKeyOf(which);
+    if (_chairPulse[key]) return _chairPulse[key];
+    const seed = key === "ethereum" ? 0.61 : (key === "front" ? 0.93 : 0.17);
+    _chairPulse[key] = {
+      key: key,
+      t: seed * 4000,
+      at: 0,
+      hz: 0.55 + seed * 0.35,
+      target: 0.55 + seed * 0.35,
+      heat: 0,
+      burstLeft: 0,
+      burstAcc: 0,
+      lullUntil: 0,
+      lastAct: 0,
+      lastPx: null,
+      lastLock: "",
+      wxSig: "",
+      walkAt: 0,
+    };
+    return _chairPulse[key];
+  }
+  function bumpChairPulse(which, amount) {
+    const p = ensureChairPulse(which);
+    p.lastAct = Date.now();
+    p.heat = Math.min(2.6, p.heat + Math.max(0.08, Number(amount) || 0.2));
+    if (p.burstLeft <= 0 && (typeof time !== "number" || time >= p.lullUntil) && Math.random() < 0.62) {
+      p.burstLeft = 2 + (Math.random() < 0.4 ? 1 : 0);
+      p.burstAcc = 0;
+    }
+  }
+  function stepChairPulse(which, now) {
+    // Each Chair has its own pulse clock. Packets, not a metronome.
+    const p = ensureChairPulse(which);
+    now = (now != null) ? now : (typeof time === "number" ? time : 0);
+    if (!p.at) p.at = now;
+    const dt = Math.max(0, Math.min(48, now - p.at));
+    p.at = now;
+    p.heat *= Math.pow(0.5, dt / 820);
+    if (p.burstLeft > 0) {
+      p.hz = 4.2 + Math.random() * 1.4;
+      p.burstAcc += dt;
+      if (p.burstAcc >= (1000 / Math.max(4, p.hz))) {
+        p.burstAcc = 0;
+        p.burstLeft -= 1;
+        if (p.burstLeft <= 0) p.lullUntil = now + 380 + Math.random() * 820;
+      }
+    } else if (p.lullUntil > now) {
+      p.hz = 0.34 + Math.random() * 0.18;
+    } else {
+      if (!p.walkAt || now - p.walkAt > 220 + Math.random() * 260) {
+        p.walkAt = now;
+        p.target += (Math.random() - 0.5) * 0.16;
+      }
+      const quiet = (Date.now() - (p.lastAct || 0)) > 1400;
+      if (quiet) p.target = Math.max(0.32, Math.min(1.05, p.target));
+      else p.target = Math.max(0.45, Math.min(3.2, p.target + p.heat * 0.9));
+      const want = Math.max(0.32, Math.min(5.6, p.target + p.heat * 1.8));
+      p.hz += (want - p.hz) * 0.14;
+    }
+    p.hz = Math.max(0.32, Math.min(5.6, p.hz));
+    p.t += dt * (p.hz / 2.72);
+    return p;
+  }
+  function stepAllChairPulses(now) {
+    stepChairPulse("bitcoin", now);
+    stepChairPulse("ethereum", now);
+    stepChairPulse("front", now);
+  }
+  function chairPulseTime(which) {
+    return ensureChairPulse(which).t;
+  }
+  function tasteChairActivity(which) {
+    const key = pulseKeyOf(which);
+    const p = ensureChairPulse(key);
+    if (key === "front") {
+      const wx = (typeof frontBoard !== "undefined" && frontBoard && frontBoard.weather) || {};
+      const sig = [wx.mode || "", wx.raw || wx.text || "", wx.held ? "1" : "0"].join("|");
+      if (p.wxSig && sig !== p.wxSig && (wx.mode || wx.raw || wx.text)) bumpChairPulse("front", 0.85);
+      p.wxSig = sig;
+      return;
+    }
+    const st = (typeof tableState === "function" ? tableState(key) : null) || (key === "bitcoin" ? state : null);
+    if (!st) return;
+    const px = Number((st.market || {}).price);
+    if (Number.isFinite(px) && p.lastPx != null && px !== p.lastPx) {
+      const d = Math.abs(px - p.lastPx) / Math.max(1, Math.abs(p.lastPx));
+      bumpChairPulse(key, Math.min(1.15, 0.22 + d * 48));
+    }
+    if (Number.isFinite(px)) p.lastPx = px;
+    const lc = st.locked_call || (st.decision && st.decision.locked_call) || {};
+    const lockKey = [lc.locked ? "1" : "0", lc.direction || "", lc.ticker || ""].join("|");
+    if (p.lastLock && p.lastLock !== lockKey) bumpChairPulse(key, 0.95);
+    p.lastLock = lockKey;
+  }
+
   function chairThinkRate(st, dir, locked, which) {
+    stepChairPulse(which);
+    tasteChairActivity(which);
+    const p = ensureChairPulse(which);
     const sfx = sealFX[chairKeyOf(which)];
     const punching = !!(sfx && sfx.until > Date.now());
     const huddle = (st && st.huddle) || (state && state.huddle) || {};
     const raw = String(dir || "WAIT").toUpperCase();
     const wait = !locked && raw.indexOf("WAIT") >= 0;
-    let rate = wait ? 0.52 : 1;
-    if (huddle.in_huddle) rate = 1.65;
-    else if (typeof beastMode !== "undefined" && beastMode && !wait) rate = 1.25;
+    let rate = p.hz / 1.15;
+    if (wait) rate = Math.min(rate, 0.72);
+    if (huddle.in_huddle) rate = Math.max(rate, 1.65);
+    else if (typeof beastMode !== "undefined" && beastMode && !wait) rate = Math.max(rate, 1.25);
     if (locked) rate = Math.max(rate, 1.15);
-    if (punching) rate = 2.2;
-    return rate;
+    if (punching) rate = Math.max(rate, 2.2);
+    return Math.max(0.32, Math.min(5.6, rate));
+  }
+  function pulseRate(st, dir, locked, which) {
+    // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×.
+    return chairThinkRate(st, dir, locked, which);
   }
 
   function drawChairThink(cx, cy, photoR, seatR, opts) {
@@ -1901,7 +2173,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const st = opts.st || {};
     const key = chairKeyOf(which);
     const phone = (typeof isPhoneDesk === "function") ? isPhoneDesk() : false;
-    const rate = chairThinkRate(st, dir, locked, which);
+    const rate = pulseRate(st, dir, locked, which);
+    const clock = chairPulseTime(which);
     const wait = !locked && dir.indexOf("WAIT") >= 0;
     const sfx = sealFX[key];
     const punching = !!(sfx && sfx.until > Date.now() && !reduceMotion);
@@ -1922,7 +2195,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.clip();
 
     if (!reduceMotion) {
-      const sweep = time * 0.00032 * rate;
+      const sweep = clock * 0.00032;
       const span = wait ? 0.70 : 0.95;
       ctx.strokeStyle = hue;
       ctx.lineCap = "round";
@@ -1941,7 +2214,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
     const n = (phone || reduceMotion) ? 6 : 12;
-    const orbit = reduceMotion ? 0 : (-time * 0.00018 * rate);
+    const orbit = reduceMotion ? 0 : (-clock * 0.00018);
     ctx.globalAlpha = wait ? 0.28 : 0.48;
     ctx.strokeStyle = hue;
     ctx.lineWidth = phone ? 1.2 : 1.6;
@@ -1958,7 +2231,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.restore();
 
-    const pulse = reduceMotion ? 0.7 : (0.55 + 0.45 * Math.sin(time * 0.0024 * rate));
+    const pulse = reduceMotion ? 0.7 : (0.55 + 0.45 * Math.sin(clock * 0.0024));
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, photoR + 1.2, 0, Math.PI * 2);
@@ -1975,7 +2248,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     if (!reduceMotion && !phone) {
       const seed = key === "ethereum" ? 2.1 : 0.7;
-      const phase = (time * 0.00105 * rate + seed) % (wait ? 11 : 7);
+      const phase = (clock * 0.00105 + seed) % (wait ? 11 : 7);
       if (phase < 0.14 || punching) {
         const eyeY = cy - photoR * 0.16;
         const spread = photoR * 0.21;
@@ -2044,7 +2317,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const up = dir === "UP";
     const glow = up ? "rgba(57, 255, 20, 0.9)" : "rgba(255, 45, 85, 0.9)";
     const core = up ? "rgba(210, 255, 200, 0.98)" : "rgba(255, 214, 220, 0.98)";
-    const dualFloor = mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle();
+    const dualFloor = floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle();
     const side = (dualFloor && key === "bitcoin") ? -1 : 1;
     const gap = Math.max(16, photoR * 0.22);
     const x = cx + side * (photoR + gap);
@@ -2166,8 +2439,98 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const btn = document.getElementById("floorExitBtn");
     if (!btn) return;
     const on = mode === "floor";
-    btn.hidden = !on;
+    btn.hidden = !on || mode === "night";
     btn.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+
+  function dualFloorTableR(w, h) {
+    // Satoshi/Vitalik stay dual. Shrink the rings so they do not crush at 1042.
+    const want = Math.min(w, h) * 0.26;
+    const gap = w * 0.50;
+    const seatR = 22;
+    const labelPad = 36;
+    const maxR = Math.max(72, (gap - 2 * (seatR + labelPad) - 20) / (2 * 1.48));
+    return Math.min(want, maxR);
+  }
+
+  function floorRaijinFit(w, h) {
+    // Smaller third Floor chair. Dual only. Phone tucks the HUD chip.
+    // Keep off GOAL, WIRE/EXHAUST/CASCADE, and SATOSHI/VITALIK nameplates.
+    const phone = w <= 480 || Math.min(w, h) <= 520;
+    const dual = !phone && w >= 720;
+    if (!dual) return { show: "chip", phone: phone, dual: false };
+    const R = dualFloorTableR(w, h);
+    const mid = !phone && w <= 1180;
+    const chromeBottom = mid ? 96 : 48;
+    const photoR = Math.max(18, Math.min(R * 0.20, 24));
+    const seatR = photoR * 1.26;
+    const ringTop = h * 0.52 - R * 1.48;
+    const y = Math.max(chromeBottom + seatR + 4, Math.min(ringTop - seatR - 8, chromeBottom + seatR + 8));
+    return { show: "chair", x: w * 0.50, y: y, photoR: photoR, seatR: seatR, dual: true, phone: false };
+  }
+
+  const raijinPortrait = new Image();
+  raijinPortrait.src = "/static/bots/raijin-chair.png";
+  raijinPortrait.onerror = function () {
+    // Same approved thunder-knight. No CORS, no neon mark, never leave the Chair empty.
+    try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    raijinPortrait.src = "/static/bots/raijin-chair.png";
+  };
+  function frontLockDir() {
+    const data = (typeof frontBoard !== "undefined" && frontBoard) || {};
+    const chair = data.chair || {};
+    const tape = Array.isArray(data.tape) ? data.tape : [];
+    const open = tape.find(function (p) { return String(p.result || "").toUpperCase() === "OPEN"; });
+    if (open) return (String(open.side || "").toUpperCase() === "NO" || String(open.side || "").toUpperCase() === "DOWN") ? "DOWN" : "UP";
+    if (typeof frontLeanOf === "function") return frontLeanOf(chair.eye);
+    const eye = String(chair.eye || "WAIT").toUpperCase();
+    if (eye === "UP" || eye === "YES") return "UP";
+    if (eye === "DOWN" || eye === "NO") return "DOWN";
+    return "WAIT";
+  }
+  function raijinFace(dir) {
+    const pic = raijinPortraitFor(dir != null ? dir : frontLockDir());
+    if (pic && pic.complete && pic.naturalWidth) return pic;
+    const el = document.getElementById("frontChairImg");
+    if (el && el.complete && el.naturalWidth) return el;
+    const chip = document.querySelector("#floorRaijin img");
+    if (chip && chip.complete && chip.naturalWidth) return chip;
+    if (raijinPortrait.complete && raijinPortrait.naturalWidth) return raijinPortrait;
+    return pic || el || raijinPortrait;
+  }
+
+  function drawFloorRaijinChair(w, h) {
+    if (document.body.classList.contains("front-chair-off")) return;
+    const fit = floorRaijinFit(w, h);
+    if (!fit || fit.show !== "chair") return;
+    const cx = fit.x, cy = fit.y, pr = fit.photoR, sr = fit.seatR;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.55)";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    const floorDir = frontLockDir();
+    if (!containPortrait(raijinPortraitFor(floorDir), cx, cy, pr)) {
+      if (!containPortrait(raijinPortrait, cx, cy, pr)) {
+        containPortrait(raijinFace(floorDir), cx, cy, pr);
+      }
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    try {
+      drawChairThink(cx, cy, pr, sr, { which: "front", dir: floorDir, locked: floorDir === "UP" || floorDir === "DOWN", st: {} });
+    } catch (e) {}
+    ctx.font = "700 8px Orbitron, monospace";
+    ctx.fillStyle = "#7fe9ff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(frontChairName(), cx, cy + pr + 3);
+    ctx.restore();
+    rememberChairHit(cx, cy, pr, "front");
   }
 
   function drawDualFloor(w, h) {
@@ -2175,6 +2538,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
     ctx.fillRect(0, 0, w, h);
 
+    const cam = floorCameraOffset();
+    ctx.save();
+    ctx.translate(cam.x, cam.y);
     const mid = w / 2;
     ctx.strokeStyle = "rgba(0, 220, 255, 0.22)";
     ctx.lineWidth = 1;
@@ -2183,9 +2549,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineTo(mid, h * 0.92);
     ctx.stroke();
 
-    const tableR = Math.min(w, h) * 0.26;
+    const tableR = dualFloorTableR(w, h);
     drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
     drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
+    drawFloorRaijinChair(w, h);
+    ctx.restore();
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
@@ -2243,7 +2611,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const end = spokeEnd(x, y, cx, portraitY, pr + 4);
       const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
       const fresh = markSeatTick((which || "t") + ":" + (a.agent_name || i), adir, confA);
-      drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh);
+      drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh, which);
       ctx.globalAlpha = focused ? 1 : 0.42;
       botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?", ang, adir });
     });
@@ -2283,7 +2651,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textAlign = "center";
     ctx.font = "700 11px Orbitron, monospace";
     ctx.fillStyle = locked ? gold : (which === "ethereum" ? "#9dffc0" : "#7fe9ff");
-    ctx.fillText((label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC"))) + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
+    // Inside the table, under the portrait — not in the top-arc seat ring (FOCUSWICK).
+    const dualNameY = portraitY + pr + 11;
+    ctx.fillText(label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC")), cx, dualNameY);
 
     ctx.font = "700 12px Orbitron, monospace";
     const plateY = cy + radius + 14;
@@ -2320,10 +2690,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const face = locked ? Math.atan2(portraitY - bp.y, cx - bp.x) : bp.ang;
         drawGameBot(bp.name, bp.x, bp.y, 22, bp.adir, bp.confA, face, i);
         const tag = labelOf(bp.a) || (bp.name || "?").toString();
-        ctx.font = "700 10px Orbitron, monospace";
+        const outA = Math.atan2(bp.y - cy, bp.x - cx);
+        ctx.font = "700 9px Orbitron, monospace";
         ctx.fillStyle = "rgba(220,235,250,0.95)";
         ctx.textAlign = "center";
-        ctx.fillText(String(tag).slice(0, 8), bp.x, bp.y + 34);
+        ctx.fillText(String(tag).slice(0, 8), bp.x + Math.cos(outA) * 16, bp.y + Math.sin(outA) * 16);
       });
     }
 
@@ -2445,29 +2816,46 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function floorChromeFit(w) {
     // TABLE HUD chip vs SATOSHI’S COUNCIL wordmark (1280) and ETH/BTC (390).
+    // Mid-width (~1040) drops PAPER/BOOKS + huddle/hit so they do not crush.
     // CSS --floor-table-rail reserves the left slot; rects must not intersect.
     const phone = w <= 480;
+    const mid = !phone && w <= 1180;
     const table = { x: 10, y: 10, w: 88, h: 44 };
     const rail = 96;
     const headerPad = 14;
     const logo = phone
       ? { x: 0, y: 0, w: 0, h: 0 }
-      : { x: headerPad + rail, y: 8, w: 280, h: 36 };
+      : { x: headerPad + rail, y: 8, w: mid ? 200 : 280, h: 36 };
     const focus = phone
       ? { x: headerPad + rail, y: 10, w: 220, h: 44 }
       : { x: headerPad + rail, y: 52, w: 220, h: 28 };
-    return { table, logo, focus, phone, rail };
+    const rivalW = mid ? 280 : 320;
+    const rivalry = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : mid
+        ? { x: w / 2 - rivalW / 2, y: 58, w: rivalW, h: 36 }
+        : { x: w / 2 - rivalW / 2, y: 10, w: rivalW, h: 32 };
+    const huddleW = mid ? 72 : 88;
+    const hitW = mid ? 70 : 120;
+    const huddle = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : { x: w - 16 - hitW - 8 - huddleW - (mid ? 36 : 72), y: 8, w: huddleW, h: 28 };
+    const hit = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : { x: w - 16 - hitW, y: 8, w: hitW, h: 28 };
+    return { table, logo, focus, rivalry, huddle, hit, phone, mid, rail };
   }
 
   function floorNameplateFit(w, h) {
     // Keep GOAL strip + Chair nameplate inside the table so they do not
     // cover bottom seat names (WICK / WIRE / EXHAUST / QUORUM) at 1280 or 390.
+    // Phone GOAL docks at the top rail (not a wide bar through the ring).
     const short = Math.min(w, h);
     const phone = !!(typeof isPhoneDesk === "function" && isPhoneDesk()) || w <= 420 || short <= 520;
     const seatR = phone ? 18 : 24;
     const labelStack = phone ? 28 : 42;
     const edgePad = phone ? 6 : 10;
-    const nameplateH = 60;
+    const nameplateH = phone ? 22 : 36;
     const ringMul = 1.15;
     const wantRadius = short * 0.40;
     const maxRing = short * 0.5 - seatR - labelStack - edgePad;
@@ -2479,6 +2867,91 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { radius, ringR, lrBase, seatR, labelStack, nameplateH, phone, ringMul };
   }
 
+  function floorHudGeometry(w, h, view) {
+    // Real AABBs: 1280 Table GOAL vs WIRE/CASCADE, Floor dual vs SATOSHI · BTC,
+    // phone 390 GOAL vs FADE/ORBIT/WHALE. view = "art" | "floor".
+    view = view || "floor";
+    const phone = w <= 480 || Math.min(w, h) <= 520;
+    const dual = view !== "art" && !phone && w >= 720;
+    const labels = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN", "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP", "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN"];
+    const out = { phone: phone, dual: dual, view: view, nameplates: [], goals: [], seats: [] };
+    function tw(s, px) { return Math.max(8, Math.round(String(s).length * px * 0.62)); }
+    function addSeats(cx, cy, ringR, seatR, nameOff, fontPx, side) {
+      const n = labels.length;
+      labels.forEach(function (lab, i) {
+        const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+        const sx = cx + Math.cos(ang) * ringR;
+        const sy = cy + Math.sin(ang) * ringR;
+        const lw = tw(lab, fontPx);
+        const lx = sx + Math.cos(ang) * (seatR + nameOff);
+        const ly = sy + Math.sin(ang) * (seatR + nameOff);
+        out.seats.push({ x: lx - lw / 2, y: ly - fontPx / 2, w: lw, h: fontPx + 4, name: lab, table: side || "" });
+      });
+    }
+    if (dual) {
+      const R = dualFloorTableR(w, h);
+      const pr = R * 0.80;
+      const cy = h * 0.52;
+      const portraitY = cy - 2;
+      const nameY = portraitY + pr + 11;
+      [
+        [w * 0.25, "SATOSHI · BTC", "btc"],
+        [w * 0.75, "VITALIK · ETH", "eth"],
+      ].forEach(function (pair) {
+        const cx = pair[0];
+        const t = pair[1];
+        const side = pair[2];
+        const nw = tw(t, 11);
+        out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
+        addSeats(cx, cy, R * 1.48, 22, 8, 9, side);
+      });
+      const rz = floorRaijinFit(w, h);
+      if (rz && rz.show === "chair") {
+        const nw = tw("RAIJIN", 8);
+        out.nameplates.push({
+          x: rz.x - Math.max(nw, rz.seatR * 2) / 2,
+          y: rz.y - rz.seatR,
+          w: Math.max(nw, rz.seatR * 2),
+          h: rz.seatR * 2 + 12,
+          text: "RAIJIN",
+          table: "front",
+        });
+      }
+    } else if (view === "art" && !phone) {
+      const radius = Math.min(w, h) * 0.32;
+      const ringR = radius * 1.18;
+      const lr = Math.min(w, h) * 0.24;
+      const cx = w / 2, cy = h / 2;
+      const goal = "GOAL · one guess @ best odds (<80%)";
+      const gw = 200;
+      const plateY = cy + lr * 0.90;
+      out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
+      const nw = tw("SATOSHI", 11);
+      out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 7, w: nw, h: 14, text: "SATOSHI" });
+      addSeats(cx, cy, ringR, 20, 12, 11);
+    } else {
+      const fit = floorNameplateFit(w, h);
+      const cx = w / 2, cy = h / 2;
+      const lr = fit.lrBase;
+      if (fit.phone) {
+        const goal = "GOAL · one guess @ best odds (<80%)";
+        out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
+        const nw = tw("SATOSHI", 10);
+        out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
+      } else {
+        const goal = "GOAL · one guess @ best odds (<80%)";
+        const gw = 200;
+        const plateY = cy + lr * 0.90;
+        out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
+        const nw = tw("SATOSHI", 10);
+        out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 8, w: nw, h: 12, text: "SATOSHI" });
+      }
+      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11);
+    }
+    return out;
+  }
+  window.__floorHudGeometry = floorHudGeometry;
+
   function drawArt() {
     if (!ctx || !canvas) return;
     chairHits = [];
@@ -2487,7 +2960,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const w = sz.w, h = sz.h;
 
     // Dual Floor only when the stage is wide enough — phone is always one table
-    if (mode === "floor" && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
+    if (floorLikeMode() && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
       try { drawTrailFX(ctx); } catch(e) {}
       return;
@@ -2502,11 +2975,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }
     } catch (e) {}
 
-    const cx = w / 2, cy = h / 2;
-    const floorFit = mode === "floor" ? floorNameplateFit(w, h) : null;
-    const radius = floorFit ? floorFit.radius : Math.min(w, h) * (mode === "floor" ? 0.40 : 0.32);
+    const cam = floorCameraOffset();
+    const cx = w / 2 + cam.x, cy = h / 2 + cam.y;
+    const floorFit = floorLikeMode() ? floorNameplateFit(w, h) : null;
+    const radius = floorFit ? floorFit.radius : Math.min(w, h) * (floorLikeMode() ? 0.40 : 0.32);
 
-    if (mode === "floor") {
+    if (floorLikeMode()) {
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
       ctx.fillRect(0, 0, w, h);
@@ -2658,9 +3132,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
     const ranked = hier.map(r => r.agent).filter(a => a !== "law");
-    const order = ranked.length
-      ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
-      : AGENT_ORDER.filter(a => a !== "law");
+    const liveNames = agents.map(a => a.agent_name).filter(n => n && n !== "leader");
+    const ethLive = typeof isEthTable === "function" && isEthTable(focusTable) && liveNames.length;
+    const order = ethLive
+      ? (ranked.length
+          ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
+          : liveNames.filter(a => a !== "law"))
+      : (ranked.length
+          ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
+          : AGENT_ORDER.filter(a => a !== "law"));
     const n = order.length || 1;
     const positions = {};
     const rankOf = {};
@@ -2843,7 +3323,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
       const fresh = markSeatTick("art:" + name, adir, conf);
       const end = spokeEnd(pos.x, pos.y, chairCore.x, chairCore.y, chairStop);
-      drawPacketSpoke(pos.x, pos.y, end.x, end.y, sc, conf, agree, fresh);
+      drawPacketSpoke(pos.x, pos.y, end.x, end.y, sc, conf, agree, fresh, focusTable);
       if (!reduceMotion && Math.random() < 0.03 + conf / 100 * 0.05) {
         spawnParticles(pos, end, sc);
       }
@@ -3033,10 +3513,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     // Labels under portrait — tucked to the rim so GOAL / nameplate stay
     // inside the seat ring (do not cover WICK / WIRE / EXHAUST / QUORUM).
-    const hudTight = !!(floorFit && mode === "floor");
-    const nameY = cy + lr + (hudTight ? 10 : 16);
-    const dirY = cy + lr + (hudTight ? 22 : 32);
-    const confY = cy + lr + (hudTight ? 32 : 46);
+    const hudTight = !!(floorFit && (mode === "floor" || mode === "night"));
+    const phoneHud = !!(floorFit && floorFit.phone);
+    const nameY = phoneHud ? (cy + lr * 0.50) : (cy + lr * 0.52);
+    const dirY = phoneHud ? (cy + lr * 0.64) : (cy + lr * 0.64);
+    const confY = phoneHud ? (cy + lr * 0.76) : (cy + lr * 0.74);
     ctx.font = hudTight ? "700 10px Orbitron, sans-serif" : "700 11px Orbitron, sans-serif";
     ctx.fillStyle = GOLD;
     ctx.textAlign = "center";
@@ -3063,16 +3544,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
       const entryOdds = lc.entry_odds_pct;
       const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
-      const plateY = cy + lr + (hudTight ? 46 : 68);
-      const plateW = hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 260 : 240);
-      const plateH = hudTight ? 28 : 38;
+      const plateY = phoneHud ? 36 : (cy + lr * 0.90);
+      const plateW = phoneHud ? 120 : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 220 : 200));
+      const plateH = phoneHud ? 18 : 28;
+      const plateX = phoneHud ? 68 : cx;
       ctx.beginPath();
       const rx = 8;
-      ctx.moveTo(cx - plateW/2 + rx, plateY - plateH/2);
-      ctx.arcTo(cx + plateW/2, plateY - plateH/2, cx + plateW/2, plateY + plateH/2, rx);
-      ctx.arcTo(cx + plateW/2, plateY + plateH/2, cx - plateW/2, plateY + plateH/2, rx);
-      ctx.arcTo(cx - plateW/2, plateY + plateH/2, cx - plateW/2, plateY - plateH/2, rx);
-      ctx.arcTo(cx - plateW/2, plateY - plateH/2, cx + plateW/2, plateY - plateH/2, rx);
+      ctx.moveTo(plateX - plateW/2 + rx, plateY - plateH/2);
+      ctx.arcTo(plateX + plateW/2, plateY - plateH/2, plateX + plateW/2, plateY + plateH/2, rx);
+      ctx.arcTo(plateX + plateW/2, plateY + plateH/2, plateX - plateW/2, plateY + plateH/2, rx);
+      ctx.arcTo(plateX - plateW/2, plateY + plateH/2, plateX - plateW/2, plateY - plateH/2, rx);
+      ctx.arcTo(plateX - plateW/2, plateY - plateH/2, plateX + plateW/2, plateY - plateH/2, rx);
       ctx.closePath();
       ctx.fillStyle = isDir ? "rgba(0, 20, 40, 0.94)" : "rgba(10, 12, 20, 0.88)";
       ctx.fill();
@@ -3082,7 +3564,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.shadowBlur = isDir ? 16 : 0;
       ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.font = "700 12px Orbitron, sans-serif";
+      ctx.font = phoneHud ? "700 8px Orbitron, sans-serif" : "700 12px Orbitron, sans-serif";
       ctx.fillStyle = isDir ? "#ffffff" : "rgba(180, 200, 220, 0.9)";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -3093,7 +3575,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       } else {
         lockLabel = "GOAL · one guess @ best odds (<80%)";
       }
-      ctx.fillText(lockLabel, cx, plateY);
+      ctx.fillText(lockLabel, plateX, plateY);
     }
 
     // Scanline overlay on canvas itself (subtle)
@@ -3711,20 +4193,43 @@ function drawCandleChart() {
   function liveBookOdds(m) {
     /* Same live book the footer uses — never invent 0.0% from a missing print. */
     if (!m) return null;
-    function pct(v) {
+    function raw(v) {
       if (v == null || v === "") return NaN;
       const n = Number(v);
       if (!Number.isFinite(n) || n === 0) return NaN;
-      return n > 0 && n <= 1.5 ? n * 100 : n;
+      return n;
     }
-    let up = pct(m.up_pct);
-    if (!Number.isFinite(up)) up = pct(m.up_mid);
-    if (!Number.isFinite(up)) up = pct(m.yes_price);
-    if (!Number.isFinite(up)) up = pct(m.kalshi_yes_bid);
-    if (!Number.isFinite(up)) up = pct(m.kalshi_yes_ask);
-    let down = pct(m.down_pct);
-    if (!Number.isFinite(down)) down = pct(m.no_price);
+    let up = raw(m.up_pct);
+    if (!Number.isFinite(up)) up = raw(m.up_mid);
+    if (!Number.isFinite(up)) up = raw(m.yes_price);
+    if (!Number.isFinite(up)) up = raw(m.kalshi_yes_bid);
+    if (!Number.isFinite(up)) up = raw(m.kalshi_yes_ask);
+    let down = raw(m.down_pct);
+    if (!Number.isFinite(down)) down = raw(m.no_price);
+    if (!Number.isFinite(down) && Number.isFinite(up) && up <= 1.5) down = 1 - up;
+    const upPct = Number.isFinite(up) && up > 1.5;
+    const downPct = Number.isFinite(down) && down > 1.5;
+    if (upPct || downPct) {
+      /* 0.5 / 99.5 stays 0.5 / 99.5 — do not turn 0.5 into 50. */
+    } else if (Number.isFinite(up) && Number.isFinite(down)) {
+      const s = up + down;
+      if (s > 0.85 && s < 1.15) {
+        up = up * 100;
+        down = down * 100;
+      } else {
+        up = up * 100;
+        down = 100 - up;
+      }
+    } else {
+      if (Number.isFinite(up)) up = up * 100;
+      if (Number.isFinite(down)) down = down * 100;
+    }
     if (!Number.isFinite(down) && Number.isFinite(up)) down = 100 - up;
+    if (!Number.isFinite(up) && Number.isFinite(down)) up = 100 - down;
+    if (Number.isFinite(up) && Number.isFinite(down) && Math.abs(up + down - 100) > 2) {
+      if (up > 0 && up < 100) down = 100 - up;
+      else if (down > 0 && down < 100) up = 100 - down;
+    }
     if (!Number.isFinite(up) || up <= 0 || up >= 100) return null;
     if (!Number.isFinite(down)) down = 100 - up;
     return { up, down };
@@ -3737,21 +4242,25 @@ function drawCandleChart() {
     const price = Number(m.price);
     const target = Number(m.kalshi_target);
     const book = liveBookOdds(m);
-    if (book) pushSeries(series.odds, { t, up: book.up, down: book.down });
-    if (Number.isFinite(price) && Number.isFinite(target)) {
+    const focusM = (typeof tableState === "function" && typeof focusTable !== "undefined")
+      ? ((tableState(focusTable) || {}).market || m)
+      : m;
+    const focusBook = liveBookOdds(focusM);
+    const useBook = focusBook || book;
+    if (useBook) pushSeries(series.odds, { t, up: useBook.up, down: useBook.down });
+    const focusPx = Number((focusM || {}).price);
+    const focusTgt = Number((focusM || {}).kalshi_target);
+    if (Number.isFinite(focusPx) && Number.isFinite(focusTgt)) {
+      pushSeries(series.delta, { t, d: focusPx - focusTgt });
+    } else if (Number.isFinite(price) && Number.isFinite(target)) {
       pushSeries(series.delta, { t, d: price - target });
     }
     function takeFunding(mm) {
-      if (!mm || mm.funding == null) return;
-      const f = Number(mm.funding);
-      if (!Number.isFinite(f)) return;
-      pushSeries(series.funding, { t, f: Math.abs(f) > 1 ? f : f * 100 });
+      const pct = realFundingPct(mm);
+      if (pct == null) return;
+      pushSeries(series.funding, { t, f: pct });
     }
     takeFunding(m);
-    if (typeof tableState === "function") {
-      takeFunding((tableState("bitcoin") || {}).market);
-      takeFunding((tableState("ethereum") || {}).market);
-    }
     const dir = (s.decision && s.decision.direction) || "WAIT";
     const conf = (s.decision && s.decision.confidence) || 0;
     const lastTape = series.tape[series.tape.length - 1];
@@ -3779,16 +4288,29 @@ function drawCandleChart() {
     const isPair = canvas.id === "chartBtc" || canvas.id === "chartEth";
     const minW = 160;
     const wantRows = (opts && opts.rows) || 0;
-    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? Math.max(160, wantRows * 15 + 20) : 140);
-    const w = Math.max(minW, parent.clientWidth || minW);
+    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? Math.max(160, Math.min(220, wantRows * 15 + 20)) : 160);
+    const maxH = 220;
+    /* Never let a canvas grow with data points — cap to the card (~160–220). */
+    const w = Math.min(1400, Math.max(minW, parent.clientWidth || minW));
     let h = (parent.clientHeight || 0) - (head ? head.offsetHeight : 0);
     if (h < minH) h = minH;
+    if (h > maxH) h = maxH;
+    const noFeed = parent.classList.contains("no-feed");
+    const compact = !isPair && (!!(opts && opts.compact) || noFeed || canvas.id === "chartTape");
+    if (compact) {
+      const cap = canvas.id === "chartTape" ? 36 : 32;
+      h = Math.max(28, Math.min(cap, maxH));
+    }
+    h = Math.min(h, maxH);
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
     }
     canvas.style.width = w + "px";
+    canvas.style.maxWidth = "100%";
     canvas.style.height = h + "px";
+    canvas.style.maxHeight = maxH + "px";
+    canvas.style.flex = "0 0 auto";
     return canvas.getContext("2d");
   }
 
@@ -3805,7 +4327,7 @@ function drawCandleChart() {
       ctx.fillStyle = "rgba(120,140,160,0.5)";
       ctx.font = "10px Orbitron, monospace";
       ctx.textAlign = "center";
-      ctx.fillText("COLLECTING…", w / 2, h / 2);
+      ctx.fillText(opts.emptyLabel || "no feed", w / 2, h / 2);
       return;
     }
     let min = Infinity, max = -Infinity;
@@ -3851,7 +4373,7 @@ function drawCandleChart() {
     // last point
     const last = points[points.length - 1];
     const lv = getY(last);
-    if (Number.isFinite(lv)) {
+    if (opts.dot !== false && Number.isFinite(lv) && lv >= min && lv <= max) {
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(xAt(points.length - 1), yAt(lv), 3, 0, Math.PI * 2);
@@ -3931,11 +4453,64 @@ function drawCandleChart() {
   }
 
   function syncChartPairTitle() {
-    // Both pairs stay on screen — do not retitle BTC to ETH on focus
+    // Both pair titles stay in the DOM — the inactive hero is hidden, not retitled.
     const btcTitle = document.getElementById("chartPairTitle") || document.getElementById("chartBtcTitle");
     const ethTitle = document.getElementById("chartEthTitle");
     if (btcTitle) btcTitle.textContent = "BTC · 1m";
     if (ethTitle) ethTitle.textContent = "ETH · 1m";
+  }
+  function syncChartHero() {
+    const eth = (typeof isEthTable === "function") ? isEthTable(focusTable) : (focusTable === "ethereum");
+    document.body.classList.toggle("charts-hero-eth", !!eth);
+    document.body.classList.toggle("charts-hero-btc", !eth);
+    try { document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin"; } catch (e) {}
+    const btcCard = document.querySelector(".chart-card.chart-pair-btc");
+    const ethCard = document.querySelector(".chart-card.chart-pair-eth");
+    if (btcCard) {
+      btcCard.classList.toggle("chart-hero-off", !!eth);
+      btcCard.hidden = !!eth;
+    }
+    if (ethCard) {
+      ethCard.classList.toggle("chart-hero-off", !eth);
+      ethCard.hidden = !eth;
+    }
+  }
+  function setChartNoFeed(canvas, empty) {
+    const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
+    if (card) card.classList.toggle("no-feed", !!empty);
+  }
+  function setPairHeadChip(canvas, cls, text) {
+    const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
+    if (!card) return;
+    let chip = card.querySelector("." + cls);
+    if (!text) {
+      if (chip) chip.remove();
+      return;
+    }
+    if (!chip) {
+      chip = document.createElement("span");
+      chip.className = cls;
+      const head = card.querySelector(".chart-card-head");
+      if (head) head.appendChild(chip);
+    }
+    chip.textContent = text;
+  }
+  function setPairTargetChip(canvas, text) {
+    setPairHeadChip(canvas, "chart-ktarget-chip", text);
+  }
+  function setPairWindowChip(canvas, text) {
+    const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
+    const head = card && card.querySelector(".chart-card-head");
+    if (!head) return;
+    let chip = head.querySelector(".chart-window-chip");
+    if (!chip) {
+      chip = document.createElement("span");
+      chip.className = "chart-window-chip";
+      const title = head.querySelector("#chartPairTitle, #chartEthTitle") || head.firstElementChild;
+      if (title && title.nextSibling) head.insertBefore(chip, title.nextSibling);
+      else head.insertBefore(chip, head.firstChild ? head.firstChild.nextSibling : null);
+    }
+    chip.textContent = text || "1H WINDOW";
   }
 
   function drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt) {
@@ -3957,10 +4532,7 @@ function drawCandleChart() {
     ctx.lineTo(right, h - pad.b);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(240, 193, 74, 0.75)";
-    ctx.font = "8px Orbitron, monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("1H WINDOW", left + 4, pad.t + 10);
+    /* 1H WINDOW lives on the card head — not fillText at pad.t+10 inside the plot. */
     const lc = pairLock(ts);
     const lockMs = (lc && parseStampMs(lc.locked_at)) || Date.now();
     const xLock = xAtTime(candles, lockMs, pad, w) || (w - pad.r - 8);
@@ -4018,7 +4590,9 @@ function drawCandleChart() {
         ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
         : "—";
     }
+    setPairWindowChip(canvas, "1H WINDOW");
     if (candles.length < 2) {
+      setPairTargetChip(canvas, "");
       const ctx0 = fitCanvas(canvas);
       if (!ctx0) return;
       const w0 = canvas.width, h0 = canvas.height;
@@ -4037,34 +4611,31 @@ function drawCandleChart() {
     const closes = candles.map(c => c.c).filter(n => Number.isFinite(n) && n > 0);
     let min = Math.min.apply(null, closes);
     let max = Math.max.apply(null, closes);
-    const spanC = (max - min) || Math.abs(max) * 0.002 || 1;
     candles.forEach(c => {
-      if (Number.isFinite(c.l) && c.l > 0 && (min - c.l) <= spanC * 2) min = Math.min(min, c.l);
-      if (Number.isFinite(c.h) && c.h > 0 && (c.h - max) <= spanC * 2) max = Math.max(max, c.h);
+      if (Number.isFinite(c.l) && c.l > 0) min = Math.min(min, c.l);
+      if (Number.isFinite(c.h) && c.h > 0) max = Math.max(max, c.h);
     });
     if (Number.isFinite(price) && price > 0 && price < 5e6) {
-      const mid = (min + max) / 2 || price;
-      if (price >= min && price <= max || Math.abs(price - mid) / (Math.abs(mid) || 1) < 0.08) {
-        min = Math.min(min, price);
-        max = Math.max(max, price);
-      }
-    }
-    let targetY = null;
-    if (Number.isFinite(target) && target > 0 && target < 5e6) {
-      const span0 = max - min || Math.abs(max) * 0.01 || 1;
-      const grown = Math.max(max, target) - Math.min(min, target);
-      if (grown <= span0 * 4) {
-        min = Math.min(min, target);
-        max = Math.max(max, target);
-        targetY = target;
-      } else {
-        targetY = target < min ? min : max;
-      }
+      min = Math.min(min, price);
+      max = Math.max(max, price);
     }
     const padAmt = (max - min) * 0.08 || Math.abs(max) * 0.002 || 1;
     min -= padAmt;
     max += padAmt;
-    const pad = { l: 6, r: 6, t: 14, b: 10 };
+    let targetY = null;
+    let targetChip = "";
+    if (Number.isFinite(target) && target > 0 && target < 5e6) {
+      if (target >= min && target <= max) {
+        targetY = target;
+      } else {
+        /* Off-scale: chip the head. Do not draw an edge line pinned to min/max. */
+        const delta = Number.isFinite(price) ? (price - target) : (max - target);
+        targetChip = "K TARGET " + Math.round(target) + " · " + (delta >= 0 ? "+" : "") + Math.round(delta);
+        targetY = null;
+      }
+    }
+    setPairTargetChip(canvas, targetChip);
+    const pad = { l: 8, r: 10, t: 40, b: 10 };
     const yAt = (p) => pad.t + (1 - (p - min) / (max - min || 1)) * (h - pad.t - pad.b);
     drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt);
     const cw = (w - pad.l - pad.r) / candles.length;
@@ -4081,16 +4652,19 @@ function drawCandleChart() {
       ctx.fillRect(x - Math.max(1, cw * 0.3), by, Math.max(2, cw * 0.6), bh);
     });
     ctx.globalAlpha = 1;
-    if (targetY != null) {
-      ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = "#f0c14a";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(pad.l, yAt(targetY)); ctx.lineTo(w - pad.r, yAt(targetY)); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#f0c14a";
-      ctx.font = "9px Orbitron";
-      ctx.textAlign = "left";
-      ctx.fillText("K TARGET", pad.l + 4, Math.max(pad.t + 10, yAt(targetY) - 4));
+    if (targetY != null && targetY >= min && targetY <= max) {
+      const ty = yAt(targetY);
+      if (ty >= pad.t && ty <= h - pad.b) {
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = "#f0c14a";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(pad.l, ty); ctx.lineTo(w - pad.r, ty); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#f0c14a";
+        ctx.font = "9px Orbitron";
+        ctx.textAlign = "right";
+        ctx.fillText("K TARGET", w - pad.r - 4, Math.min(h - pad.b - 2, Math.max(pad.t + 12, ty - 4)));
+      }
     }
     if (Number.isFinite(price) && price > 0 && price < 5e6) {
       const py = Math.min(max, Math.max(min, price));
@@ -4103,12 +4677,14 @@ function drawCandleChart() {
   function drawChartBtc() {
     if (deskCinematicOn()) return;
     syncChartPairTitle();
+    syncChartHero();
     drawPairCandles("chartBtc", "bitcoin", "chartBtcMeta");
   }
 
   function drawChartEth() {
     if (deskCinematicOn()) return;
     syncChartPairTitle();
+    syncChartHero();
     drawPairCandles("chartEth", "ethereum", "chartEthMeta");
   }
 
@@ -4118,8 +4694,17 @@ function drawCandleChart() {
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    const candles = ((state && state.market && state.market.candles) || []).slice(-48);
-    const vols = candles.map(c => Number(c.v) || 0);
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const candles = ((ts.market && ts.market.candles) || (state && state.market && state.market.candles) || []).slice(-48);
+    const vols = candles.map(c => Number(c.v != null ? c.v : c.volume) || 0);
+    setChartNoFeed(canvas, !vols.length);
+    if (!vols.length) {
+      ctx.fillStyle = "rgba(120,140,160,0.5)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("no feed", w / 2, h / 2);
+      return;
+    }
     const maxV = Math.max(...vols, 1);
     const pad = { l: 6, r: 6, t: 8, b: 8 };
     const bw = (w - pad.l - pad.r) / Math.max(vols.length, 1);
@@ -4140,7 +4725,8 @@ function drawCandleChart() {
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
     const meta = document.getElementById("chartOddsMeta");
-    const book = liveBookOdds((state && state.market) || {});
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const book = liveBookOdds((ts.market) || (state && state.market) || {});
     if (book && !series.odds.length) {
       pushSeries(series.odds, { t: Date.now(), up: book.up, down: book.down });
     }
@@ -4150,19 +4736,28 @@ function drawCandleChart() {
       ? Number(last.down)
       : (Number.isFinite(up) ? 100 - up : NaN));
     if (meta) {
-      meta.textContent = (Number.isFinite(Number(up)) && Number.isFinite(Number(down)))
-        ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
-        : "waiting on live book";
+      if (Number.isFinite(Number(up)) && Number.isFinite(Number(down))) {
+        const coarse = Math.abs(up - Math.round(up)) < 0.05 && Math.abs(down - Math.round(down)) < 0.05;
+        meta.textContent = coarse
+          ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
+          : (`UP ${Number(up).toFixed(1)}% · DOWN ${Number(down).toFixed(1)}%`);
+      } else {
+        meta.textContent = "waiting on live book";
+      }
     }
     if (!series.odds.length) {
+      setChartNoFeed(canvas, true);
       ctx.fillStyle = "rgba(120,140,160,0.5)";
       ctx.font = "10px Orbitron, monospace";
       ctx.textAlign = "center";
       ctx.fillText("waiting on live book", canvas.width / 2, canvas.height / 2);
       return;
     }
-    drawLineSeries(ctx, series.odds, p => p.up, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
-    drawLineSeries(ctx, series.odds, p => p.down, "#ff2d55", { yMin: 0, yMax: 100 });
+    setChartNoFeed(canvas, false);
+    const bookPts = series.odds.filter(p => Number.isFinite(p.up) && Number.isFinite(p.down) && Math.abs(p.up + p.down - 100) <= 8);
+    const pts = bookPts.length ? bookPts : series.odds;
+    drawLineSeries(ctx, pts, p => p.up, "#39ff14", { zero: 50, yMin: 0, yMax: 100, dot: false });
+    drawLineSeries(ctx, pts, p => p.down, "#ff2d55", { yMin: 0, yMax: 100, dot: false });
   }
 
   function drawChartDelta() {
@@ -4170,27 +4765,71 @@ function drawCandleChart() {
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
-    drawLineSeries(ctx, series.delta, p => p.d, "#f0c14a", { zero: 0 });
+    const pts = series.delta.slice(-36);
     const meta = document.getElementById("chartDeltaMeta");
-    const last = series.delta[series.delta.length - 1];
+    const last = pts[pts.length - 1];
+    if (!pts.length) {
+      setChartNoFeed(canvas, true);
+      ctx.fillStyle = "rgba(120,140,160,0.5)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("no feed", canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = "no feed";
+      return;
+    }
+    setChartNoFeed(canvas, false);
+    const recent = pts.slice(-12).map(p => p.d).filter(Number.isFinite);
+    let lo = Math.min.apply(null, recent);
+    let hi = Math.max.apply(null, recent);
+    if (!(hi > lo)) { lo -= 1; hi += 1; }
+    const mid = (lo + hi) / 2;
+    const span = (hi - lo) || 1;
+    const live = last && Number.isFinite(last.d) ? last.d : mid;
+    const off = Math.abs(live - mid) > span * 3;
+    if (!off && Number.isFinite(live)) {
+      lo = Math.min(lo, live);
+      hi = Math.max(hi, live);
+    }
+    const padAmt = (hi - lo) * 0.12 || 1;
+    drawLineSeries(ctx, pts, p => p.d, "#00e8ff", { zero: 0, yMin: lo - padAmt, yMax: hi + padAmt });
     if (meta && last) {
-      meta.textContent = `${last.d >= 0 ? "+" : ""}${last.d.toFixed(0)}`;
+      meta.textContent = (off ? "K Δ " : "") + `${last.d >= 0 ? "+" : ""}${last.d.toFixed(0)}`;
       meta.style.color = last.d >= 0 ? "#39ff14" : "#ff2d55";
     }
+  }
+
+  function realFundingPct(mm) {
+    if (!mm || mm.funding == null || mm.funding === "") return null;
+    const raw = mm.funding;
+    if (raw === 0 || raw === "0" || raw === "0.0" || raw === "0.0000" || raw === "0.0000%") return null;
+    const f = Number(raw);
+    if (!Number.isFinite(f) || f === 0) return null;
+    const pct = Math.abs(f) > 1 ? f : f * 100;
+    if (!Number.isFinite(pct) || Math.abs(pct) < 1e-4) return null;
+    return pct;
   }
 
   function drawChartFunding() {
     const canvas = document.getElementById("chartFunding");
     if (!canvas) return;
     const card = canvas.closest(".chart-card");
-    if (!series.funding.length) {
-      const mm = (state && state.market) || {};
-      const f = Number(mm.funding);
-      if (Number.isFinite(f)) {
-        pushSeries(series.funding, { t: Date.now(), f: Math.abs(f) > 1 ? f : f * 100 });
-      }
+    const mm = (state && state.market) || {};
+    /* Never push Number(mm.funding) when it is 0 / 0.0000% / null. */
+    if (mm.funding == null || mm.funding === "" || Number(mm.funding) === 0) {
+      if (card) card.hidden = true;
+      return;
     }
-    if (!series.funding.length) {
+    const live = realFundingPct(mm);
+    if (live == null) {
+      if (card) card.hidden = true;
+      return;
+    }
+    if (!series.funding.some(p => Math.abs(p.f) >= 1e-4)) {
+      pushSeries(series.funding, { t: Date.now(), f: live });
+    }
+    series.funding = series.funding.filter(p => p && Math.abs(Number(p.f)) >= 1e-4);
+    const last = series.funding.length ? series.funding[series.funding.length - 1] : null;
+    if (!last) {
       if (card) card.hidden = true;
       return;
     }
@@ -4200,8 +4839,7 @@ function drawCandleChart() {
     chartFrame(ctx, canvas.width, canvas.height);
     drawLineSeries(ctx, series.funding, p => p.f, "#a855f7", { zero: 0 });
     const meta = document.getElementById("chartFundMeta");
-    const last = series.funding[series.funding.length - 1];
-    if (meta) meta.textContent = last ? `${last.f.toFixed(4)}%` : "—";
+    if (meta) meta.textContent = `${last.f.toFixed(4)}%`;
   }
 
   function pairFromLockRow(r, fallback) {
@@ -4272,7 +4910,7 @@ function drawCandleChart() {
   function dockWindowLed() {
     const led = document.getElementById("windowLed");
     if (!led) return;
-    if (mode === "floor") {
+    if (mode === "floor" && mode !== "night") {
       const header = document.querySelector("#app > header");
       const tabs = header && header.querySelector(".mode-tabs");
       if (tabs && tabs.parentNode && led.previousElementSibling !== tabs) {
@@ -4378,6 +5016,7 @@ function drawCandleChart() {
         status: "OPEN",
         conf: r.confidence,
         window: windowLabelOf(r),
+        close_time: r.close_time || r.window_close,
         id: r.id,
         ticker: r.ticker,
       }));
@@ -4390,6 +5029,7 @@ function drawCandleChart() {
         grade: r.correct === true ? "HIT" : (r.correct === false ? "MISS" : ""),
         conf: r.confidence,
         window: windowLabelOf(r),
+        close_time: r.close_time || r.window_close,
         id: r.id,
         ticker: r.ticker,
       }));
@@ -4406,6 +5046,8 @@ function drawCandleChart() {
           status: "OPEN",
           conf: lc.confidence,
           window: windowLabelOf(lc, ts),
+          close_time: lc.close_time || (ts.market && ts.market.close_time),
+          window_close: lc.window_close,
           ticker: lc.ticker,
           id: "live:" + pair + ":" + (lc.ticker || lc.locked_at || ""),
         });
@@ -4419,13 +5061,15 @@ function drawCandleChart() {
 
   function drawChartTape() {
     const canvas = document.getElementById("chartTape");
-    const ctx = fitCanvas(canvas);
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
+    if (!canvas) return;
     const locks = collectChairLocks();
     const list = document.getElementById("chartTapeList");
     const meta = document.getElementById("chartTapeMeta");
+    setChartNoFeed(canvas, !locks.length);
+    const ctx = fitCanvas(canvas, { compact: true });
+    if (!ctx) return;
+    const w = canvas.width, h = canvas.height;
+    chartFrame(ctx, w, h);
     if (!locks.length) {
       ctx.fillStyle = "rgba(120,140,160,0.7)";
       ctx.font = "10px Orbitron";
@@ -4433,50 +5077,42 @@ function drawCandleChart() {
       ctx.fillText("NO CHAIR LOCKS YET", w / 2, h / 2);
       if (meta) meta.textContent = "no locks";
       if (list) {
-        list.innerHTML = '<li class="chart-lock-empty">No Chair locks yet — tape waits on a lock, not live lean.</li>';
+        list.innerHTML = '<li class="chart-lock-empty">NO CHAIR LOCKS YET</li>';
         list.classList.add("empty");
       }
       return;
     }
     if (list) list.classList.remove("empty");
     const pts = locks.slice(0, 16).reverse();
-    const pad = { l: 8, r: 8, t: 14, b: 12 };
+    const pad = { l: 6, r: 6, t: 4, b: 4 };
     const slot = (w - pad.l - pad.r) / Math.max(pts.length, 1);
-    const barW = Math.min(10, Math.max(3, slot * 0.35));
+    const barW = Math.min(8, Math.max(3, slot * 0.45));
     pts.forEach((p, i) => {
-      const col = p.side === "UP" ? "#39ff14" : (p.side === "DOWN" ? "#ff2d55" : "#8aa0b8");
+      const hit = p.grade === "HIT";
+      const miss = p.grade === "MISS";
+      const col = hit ? "#39ff14" : (miss ? "#ff2d55" : (p.side === "UP" ? "#39ff14" : (p.side === "DOWN" ? "#ff2d55" : "#8aa0b8")));
       const x = pad.l + i * slot + slot / 2;
-      const barH = p.status === "OPEN" ? (h - pad.t - pad.b) * 0.72 : (h - pad.t - pad.b) * 0.5;
+      const barH = h - pad.t - pad.b;
       ctx.globalAlpha = p.status === "OPEN" ? 0.9 : 0.55;
-      if (p.status === "OPEN") {
-        ctx.fillStyle = col;
-        ctx.fillRect(x - barW / 2, h - pad.b - barH, barW, barH);
-      } else {
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1.4;
-        ctx.strokeRect(x - barW / 2, h - pad.b - barH, barW, barH);
-      }
-      ctx.globalAlpha = 1;
       ctx.fillStyle = col;
-      ctx.font = "7px Orbitron";
-      ctx.textAlign = "center";
-      ctx.fillText((p.pair || "")[0] + p.side[0], x, h - pad.b - barH - 3);
+      ctx.fillRect(x - barW / 2, pad.t, barW, barH);
+      ctx.globalAlpha = 1;
     });
     const last = locks[0];
     if (meta && last) {
-      meta.textContent = `${last.pair} ${last.side} · ${last.status}${last.grade ? " · " + last.grade : ""}`;
+      const chair = last.pair === "ETH" ? "VITALIK" : "SATOSHI";
+      meta.textContent = `${chair} ${last.side} · ${last.status}${last.grade ? " · " + last.grade : ""}`;
     }
     if (list) {
-      list.innerHTML = locks.slice(0, 10).map(p => {
-        const when = fmtLockTime(p.t);
-        const grade = p.status === "SETTLED"
-          ? (p.grade ? p.grade : (p.outcome || "settled"))
-          : "open";
+      list.innerHTML = locks.slice(0, 8).map(p => {
+        const when = windowLabelOf(p);
+        const chair = p.pair === "ETH" ? "VITALIK" : "SATOSHI";
+        const mark = p.grade === "HIT" ? "HIT" : (p.grade === "MISS" ? "MISS" : (p.status === "OPEN" ? "OPEN" : "SETTLED"));
         return `<li class="chart-lock-row ${p.status === "OPEN" ? "lock-open" : "lock-settled"}">`
-          + `<span class="lock-pair">${p.pair}</span>`
-          + `<span class="lock-side ${p.side === "UP" ? "up" : "down"}">${p.side}</span>`
           + `<span class="lock-time">${when}</span>`
-          + `<span class="lock-status">${p.status === "OPEN" ? "OPEN" : "SETTLED"} · ${grade}</span>`
+          + `<span class="lock-chair">${chair}</span>`
+          + `<span class="lock-side ${p.side === "UP" ? "up" : (p.side === "DOWN" ? "down" : "wait")}">${p.side}</span>`
+          + `<span class="lock-status">${mark}</span>`
           + `</li>`;
       }).join("");
     }
@@ -4503,12 +5139,41 @@ function drawCandleChart() {
 
   function drawChartAccuracy() {
     const canvas = document.getElementById("chartAccuracy");
+    if (!canvas) return;
+    const stats = finishOnlyStats();
+    const acc = (state && state.accuracy) || {};
+    const focusAcc = ((typeof tableState === "function" ? tableState(focusTable) : null) || {}).accuracy || {};
+    let hits = stats.correct;
+    let total = stats.total;
+    let pct = stats.pct;
+    let tag = "finish-only";
+    if (total === 0 && (Number(focusAcc.total) || 0) > 0) {
+      hits = Number(focusAcc.correct) || Number(focusAcc.hits) || 0;
+      total = Number(focusAcc.total) || 0;
+      pct = total ? (hits / total) * 100 : null;
+      tag = "header";
+    } else if (total === 0 && (Number(acc.total) || 0) > 0) {
+      hits = Number(acc.correct) || Number(acc.hits) || 0;
+      total = Number(acc.total) || 0;
+      pct = acc.accuracy_pct != null ? Number(acc.accuracy_pct) : (total ? (hits / total) * 100 : null);
+      tag = "header";
+    }
+    if (total === 0) {
+      const frac = (document.getElementById("accuracyFrac") || {}).textContent || "";
+      const parsed = frac.match(/(\d+)\s*\/\s*(\d+)/);
+      if (parsed && Number(parsed[2]) > 0) {
+        hits = Number(parsed[1]);
+        total = Number(parsed[2]);
+        pct = (hits / total) * 100;
+        tag = "header";
+      }
+    }
+    const meta = document.getElementById("chartAccMeta");
+    setChartNoFeed(canvas, total === 0);
     const ctx = fitCanvas(canvas);
     if (!ctx) return;
     chartFrame(ctx, canvas.width, canvas.height);
-    const stats = finishOnlyStats();
-    const meta = document.getElementById("chartAccMeta");
-    if (stats.total === 0) {
+    if (total === 0) {
       ctx.fillStyle = "rgba(120,140,160,0.7)";
       ctx.font = "11px Orbitron";
       ctx.textAlign = "center";
@@ -4519,11 +5184,11 @@ function drawCandleChart() {
     const spark = series.accuracy.filter(p => p && p.n > 0 && Number.isFinite(p.pct));
     if (spark.length) {
       drawLineSeries(ctx, spark, p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
-    } else {
-      drawLineSeries(ctx, [{ t: 0, pct: stats.pct }], p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
+    } else if (Number.isFinite(pct)) {
+      drawLineSeries(ctx, [{ t: Date.now() - 60000, pct }, { t: Date.now(), pct }], p => p.pct, "#39ff14", { zero: 50, yMin: 0, yMax: 100 });
     }
     if (meta) {
-      meta.textContent = `${stats.correct}/${stats.total} finish-only`;
+      meta.textContent = `${hits}/${total} ${tag}` + (Number.isFinite(pct) ? ` · ${Math.round(pct)}%` : "");
     }
   }
 
@@ -4534,40 +5199,47 @@ function drawCandleChart() {
     const ranked = AGENT_ORDER
       .filter(k => k !== "law")
       .map(k => ({ k, w: Number(weights[k]) || 0, label: AGENT_LABELS[k] || k }))
+      .filter(e => Math.abs(e.w) >= 1e-4)
       .sort((a, b) => Math.abs(b.w) - Math.abs(a.w))
       .slice(0, 10);
+    setChartNoFeed(canvas, !ranked.length);
     const ctx = fitCanvas(canvas, { rows: ranked.length });
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     chartFrame(ctx, w, h);
-    if (!ranked.some(e => e.w !== 0)) {
+    if (!ranked.length) {
       ctx.fillStyle = "rgba(120,140,160,0.5)";
       ctx.font = "10px Orbitron";
       ctx.textAlign = "center";
       ctx.fillText("NO WEIGHTS", w / 2, h / 2);
       return;
     }
+    const cols = ranked.length > 4 ? 2 : 1;
+    const rows = Math.ceil(ranked.length / cols);
+    const pad = { l: 6, r: 8, t: 6, b: 6 };
+    const colW = (w - pad.l - pad.r) / cols;
+    const rowH = Math.max(16, (h - pad.t - pad.b) / rows);
     const maxW = Math.max(...ranked.map(e => Math.abs(e.w)), 0.01);
-    const pad = { l: 56, r: 8, t: 6, b: 6 };
-    const rowH = Math.max(14, (h - pad.t - pad.b) / ranked.length);
     ranked.forEach((e, i) => {
-      const y = pad.t + i * rowH;
-      const bw = (Math.abs(e.w) / maxW) * (w - pad.l - pad.r);
-      ctx.fillStyle = e.w >= 0 ? "rgba(0,232,255,0.55)" : "rgba(255,45,85,0.55)";
-      ctx.fillRect(pad.l, y + 2, Math.max(2, bw), Math.max(8, rowH - 4));
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x0 = pad.l + col * colW;
+      const y = pad.t + row * rowH;
       ctx.fillStyle = "#c0e8ff";
-      ctx.font = "8px Orbitron";
-      ctx.textAlign = "right";
-      ctx.fillText(e.label, pad.l - 4, y + rowH * 0.7);
+      ctx.font = "7px Orbitron, sans-serif";
       ctx.textAlign = "left";
-      ctx.fillStyle = bw > 40 ? "rgba(6,8,12,0.92)" : "rgba(200,220,240,0.75)";
-      ctx.fillText(e.w.toFixed(3), bw > 40 ? pad.l + 4 : pad.l + bw + 4, y + rowH * 0.7);
+      ctx.fillText(`${e.label} ${e.w >= 0 ? "+" : ""}${e.w.toFixed(2)}`, x0, y + 9);
+      const barMax = Math.max(12, colW - 8);
+      const bw = Math.max(8, (barMax * Math.abs(e.w)) / maxW);
+      ctx.fillStyle = e.w >= 0 ? "rgba(0,232,255,0.55)" : "rgba(255,45,85,0.55)";
+      ctx.fillRect(x0, y + 11, bw, Math.max(4, rowH - 14));
     });
   }
 
   function drawCharts() {
     if (mode !== "charts") return;
     if (deskCinematicOn()) return;
+    syncChartHero();
     syncChartPairTitle();
     drawChartBtc();
     drawChartEth();
@@ -4618,7 +5290,63 @@ function drawCandleChart() {
       '</span>';
   }
 
+  function frontBotMarkHtml(id, mark) {
+    const letter = String(id || "?").replace(/[^A-Za-z0-9]/g, "").charAt(0).toUpperCase() || "?";
+    const src = mark || "";
+    const letterSpan = '<span class="bot-mark-letter" aria-hidden="true">' + letter + "</span>";
+    if (!src) return '<span class="bot-mark-wrap no-art">' + letterSpan + "</span>";
+    return '<span class="bot-mark-wrap">' +
+      '<img class="bot-mark" src="' + src + '" alt="" width="40" height="40" onerror="this.style.display=\'none\';this.parentNode.classList.add(\'no-art\');" />' +
+      letterSpan +
+      "</span>";
+  }
+  function renderFrontBotsGuide(data) {
+    const grid = document.getElementById("frontBotsGrid");
+    if (!grid) return;
+    const fallback = [
+      { id: "GLASS", job: "Official/NWS high for the station.", mark: "/static/bots/glass.png" },
+      { id: "PIT", job: "Kalshi implied vs that number, after vig.", mark: "/static/bots/pit.png" },
+      { id: "FROST", job: "Veto junk book / flip / SICK / thin n.", mark: "/static/bots/frost.png" },
+      { id: "BONE", job: "This city’s history / climo. Seasonal base. Low weight.", mark: "/static/bots/bone.png" },
+    ];
+    const seats = ((data && data.seats) || []).filter(function (s) {
+      return s && (s.id === "GLASS" || s.id === "PIT" || s.id === "FROST" || s.id === "BONE");
+    });
+    const chair = (data && data.chair) || {
+      id: "RAIJIN",
+      name: "RAIJIN",
+      job: "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
+      mark: "/static/bots/raijin-chair.png",
+    };
+    chair.name = frontChairName(chair);
+    const rows = [chair].concat(seats.length ? seats : fallback);
+    grid.innerHTML = rows.map(function (s) {
+      const n = s.n != null ? s.n : 0;
+      const wr = s.wr != null ? (Math.round(Number(s.wr) * 100) + "%") : "—";
+      const rank = s.rank ? ("#" + s.rank) : "—";
+      const faded = s.faded ? " faded" : "";
+      const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
+      const face = (s.id === "RAIJIN") ? "/static/bots/raijin-chair.png" : s.mark;
+      return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
+        '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
+        '<span class="bot-callsign">' + callsign + "</span>" +
+        '<span class="bot-rank-pill">' + rank + "</span></div>" +
+        '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
+        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span></div>" +
+        "</article>";
+    }).join("");
+  }
   function renderBotsGuide() {
+    try { renderFrontBotsGuide(frontBoard); } catch (e) {}
+    if (!frontBoard) {
+      try {
+        if (typeof frontApi === "function") {
+          frontApi("/api/front").then(function (r) { return r && r.ok ? r.json() : null; }).then(function (data) {
+            if (data) renderFrontBotsGuide(data);
+          }).catch(function () { renderFrontBotsGuide(null); });
+        }
+      } catch (e) { renderFrontBotsGuide(null); }
+    }
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
     const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
@@ -4627,7 +5355,15 @@ function drawCandleChart() {
     const agents = (state && state.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    grid.innerHTML = Object.keys(BOT_GUIDE).map(key => {
+    let guideKeys = Object.keys(BOT_GUIDE);
+    if (typeof isEthTable === "function" && isEthTable(focusTable) && agents.length) {
+      const live = {};
+      agents.forEach(a => { if (a && a.agent_name) live[a.agent_name] = true; });
+      live.volatility = true;
+      live.exhaust = true;
+      guideKeys = guideKeys.filter(k => live[k]);
+    }
+    grid.innerHTML = guideKeys.map(key => {
       const g = BOT_GUIDE[key];
       const r = rankMap[key] || {};
       const ag = byName[key] || {};
@@ -4671,6 +5407,1631 @@ function drawCandleChart() {
       }
     } catch (e) {}
   }
+
+  function paintFloorCrawl() {
+    const wrap = document.getElementById("floorCrawl");
+    const track = document.getElementById("floorCrawlTrack");
+    if (!wrap || !track) return;
+    const show = floorLikeMode();
+    wrap.hidden = !show;
+    wrap.setAttribute("aria-hidden", show ? "false" : "true");
+    if (!show) return;
+    const chips = [];
+    function addChip(pair, side) {
+      const p = pair === "ETH" || pair === "ethereum" ? "ETH" : "BTC";
+      const s = side === "UP" || side === "DOWN" || side === "WAIT" ? side : "WAIT";
+      const chip = p + " " + s;
+      if (chips.indexOf(chip) < 0) chips.push(chip);
+    }
+    try {
+      const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
+      const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
+      if (!b.locked) addChip("BTC", "WAIT");
+      else addChip("BTC", b.side);
+      if (!e.locked) addChip("ETH", "WAIT");
+      else addChip("ETH", e.side);
+    } catch (err) {}
+    try {
+      const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
+      locks.forEach(function (p) {
+        if (chips.length >= 5) return;
+        addChip(p.pair, p.side);
+      });
+    } catch (err) {}
+    while (chips.length < 2) chips.push("BTC WAIT");
+    const line = chips.slice(0, 5).join(" · ");
+    track.textContent = line + " · " + line;
+  }
+
+  function chairWhyLineText(ts) {
+    const view = ts || (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const d = view.decision || {};
+    const m = view.market || {};
+    const h = view.health || (state && state.health) || {};
+    const lc = view.locked_call || d.locked_call || {};
+    const locked = !!(lc && lc.locked && lc.direction && /UP|DOWN/.test(String(lc.direction).toUpperCase()));
+    const raw = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
+    const side = raw.indexOf("UP") >= 0 ? "UP" : (raw.indexOf("DOWN") >= 0 ? "DOWN" : "WAIT");
+    const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
+    const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
+    const down = yb != null ? (100 - yb) : (m.down_pct != null ? Number(m.down_pct) : null);
+    const ev = lc.ev_cents != null ? Number(lc.ev_cents) : (d.ev_cents != null ? Number(d.ev_cents) : null);
+    const stale = !!(m.stale || h.stale || (h.quote_age_s != null && Number(h.quote_age_s) > 20));
+    const empty = !(m.kalshi_ticker || m.ticker) || (yb == null && ya == null);
+    const wall99 = (yb != null && yb >= 99) || (down != null && down >= 99) || (ya != null && ya >= 99);
+    const evBit = (ev != null && isFinite(ev)) ? ("EV " + (ev >= 0 ? "+" : "") + Math.round(ev) + "¢") : "";
+    if (locked) {
+      const extras = [];
+      if (!empty && !wall99) extras.push("book has size");
+      if (evBit) extras.push(evBit);
+      return extras.length ? ("LOCK " + side + " · " + extras.join(", ")) : ("LOCK " + side);
+    }
+    const bits = ["WAIT"];
+    if (wall99 && down != null && down >= 99) bits.push("DOWN is 99¢, no edge");
+    else if (wall99 && yb != null && yb >= 99) bits.push("UP is 99¢, no edge");
+    else if (wall99) bits.push("≥99¢ wall, no edge");
+    else if (empty) bits.push("empty book");
+    else if (stale) bits.push("stale quote");
+    else if (ev != null && ev <= 0) bits.push("no edge");
+    else if (/dead book/i.test(String(d.summary || ""))) bits.push("dead book");
+    else if (evBit) bits.push(evBit);
+    else bits.push("no edge");
+    return bits.slice(0, 3).join(" · ");
+  }
+
+  function paintChairWhy() {
+    const el = document.getElementById("chairWhy");
+    if (!el) return;
+    const show = mode === "art" || mode === "floor" || mode === "night";
+    el.hidden = !show;
+    if (!show) return;
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    el.textContent = chairWhyLineText(ts);
+  }
+
+  function paintPhoneScore() {
+    const el = document.getElementById("phoneScore");
+    if (!el) return;
+    const phoneFloor = (typeof isPhoneDesk === "function" && isPhoneDesk()) && (mode === "floor" || mode === "night");
+    el.hidden = !phoneFloor;
+    if (!phoneFloor) return;
+    const sc = (typeof scorecardFromState === "function") ? scorecardFromState() : {};
+    const eth = focusTable === "ethereum";
+    el.textContent = eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0");
+    el.setAttribute("aria-label", "Flip to " + (eth ? "Bitcoin / Satoshi" : "Ethereum / Vitalik"));
+  }
+
+  function paintHealthStrip(data) {
+    const strip = document.getElementById("healthStrip");
+    if (!strip) return;
+    const unlocked = (typeof hasDeskAuth === "function") ? hasDeskAuth() : true;
+    strip.hidden = !unlocked;
+    if (!unlocked || !data) return;
+    function setDot(id, ok) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("down", !ok);
+      el.classList.toggle("up", !!ok);
+    }
+    const kalshi = data.kalshi_ok != null ? !!data.kalshi_ok : !!(data.kalshi_btc_ok !== false);
+    setDot("healthKalshi", kalshi);
+    setDot("healthSpot", !!data.spot_ok);
+    setDot("healthGlass", !!data.coinglass_ok);
+    const ageEl = document.getElementById("healthAge");
+    const age = data.quote_age_s != null ? data.quote_age_s : data.state_age_s;
+    if (ageEl) ageEl.textContent = (age != null && isFinite(Number(age))) ? (Math.round(Number(age)) + "s") : "—";
+  }
+
+  async function loadHealthStrip() {
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/health", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      paintHealthStrip(await r.json());
+    } catch (e) {
+      paintHealthStrip({ kalshi_ok: false, spot_ok: false, coinglass_ok: false, quote_age_s: null });
+    }
+  }
+  window.loadHealthStrip = loadHealthStrip;
+
+  function fmtP(p) {
+    if (p == null || p === "") return "—";
+    const n = Number(p);
+    if (!isFinite(n)) return "—";
+    return (n <= 1 ? Math.round(n * 100) : Math.round(n)) + "%";
+  }
+  function fmtEv(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return (n >= 0 ? "+" : "") + n.toFixed(1) + "¢";
+  }
+  function fmtPnl(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return (n >= 0 ? "+$" : "-$") + Math.abs(n).toFixed(2);
+  }
+
+  async function loadChairTape() {
+    const table = document.getElementById("tapeTable");
+    const meta = document.getElementById("tapeMeta");
+    const calib = document.getElementById("tapeCalib");
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/tape", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      if (meta) meta.textContent = rows.length ? (rows.length + " hours") : "honest empty";
+      if (calib) {
+        const buckets = Array.isArray(data.calibration) ? data.calibration : [];
+        calib.innerHTML = buckets.map(function (b) {
+          const pred = b.predicted != null ? Math.round(b.predicted * 100) + "%" : "—";
+          const hit = b.realized != null ? Math.round(b.realized * 100) + "%" : "—";
+          const gap = b.gap != null && b.n ? (b.gap < 0 ? "miss" : "ok") : "";
+          return '<div class="calib-bucket ' + gap + '"><span class="cb-lab">' + b.bucket + '</span>'
+            + '<span class="cb-pred">said ' + pred + '</span>'
+            + '<span class="cb-hit">hit ' + hit + '</span>'
+            + '<span class="cb-n">n=' + (b.n || 0) + '</span></div>';
+        }).join("") || '<div class="calib-empty">No graded hours yet — calibration waits on official finishes.</div>';
+      }
+      if (table) {
+        if (!rows.length) {
+          table.innerHTML = '<div class="tape-empty">No Chair locks in the last 24 hours.</div>';
+        } else {
+          const head = '<div class="tape-row head"><span>WINDOW</span><span>ASSET</span><span>SIDE</span><span>P(FINISH)</span><span>EV</span><span>ODDS</span><span>RESULT</span><span>P&L</span></div>';
+          const body = rows.map(function (row) {
+            const res = row.result || "OPEN";
+            const cls = res === "HIT" ? "hit" : (res === "MISS" ? "miss" : "open");
+            return '<div class="tape-row ' + cls + '">'
+              + '<span>' + (row.window || "1H") + '</span>'
+              + '<span>' + String(row.asset || "").toUpperCase() + '</span>'
+              + '<span class="side-' + String(row.side || "").toLowerCase() + '">' + (row.side || "—") + '</span>'
+              + '<span>' + fmtP(row.p_finish) + '</span>'
+              + '<span>' + fmtEv(row.ev_cents) + '</span>'
+              + '<span>' + (row.odds != null ? Math.round(row.odds) + "¢" : "—") + '</span>'
+              + '<span class="tape-res">' + res + '</span>'
+              + '<span>' + (res === "OPEN" ? "—" : fmtPnl(row.pnl)) + '</span>'
+              + '</div>';
+          }).join("");
+          table.innerHTML = head + body;
+        }
+      }
+    } catch (e) {
+      if (table) table.innerHTML = '<div class="tape-empty">Tape feed quiet — try again.</div>';
+      if (meta) meta.textContent = "offline";
+    }
+  }
+
+  function renderBookSide(bodyId, flagId, side) {
+    const body = document.getElementById(bodyId);
+    const flag = document.getElementById(flagId);
+    if (!side) {
+      if (body) body.textContent = "No book yet.";
+      if (flag) flag.textContent = "empty";
+      return;
+    }
+    if (flag) {
+      flag.textContent = side.flag || (side.empty ? "empty book" : "live");
+      flag.className = "book-flag" + (side.flag ? " warn" : "");
+    }
+    if (!body) return;
+    const row = function (lab, val) {
+      return '<div class="book-kv"><span>' + lab + '</span><b>' + val + '</b></div>';
+    };
+    const cents = function (v) { return v != null ? Math.round(Number(v)) + "¢" : "—"; };
+    const sz = function (v) { return v != null ? String(Math.round(Number(v))) : "—"; };
+    body.innerHTML =
+      row("BID", cents(side.yes_bid)) +
+      row("ASK", cents(side.yes_ask)) +
+      row("SIZE", sz(side.yes_bid_sz) + " / " + sz(side.no_bid_sz)) +
+      row("SPREAD", side.spread != null ? side.spread + "¢" : "—") +
+      row("MID", cents(side.mid)) +
+      row("DEPTH", sz(side.yes_depth) + " yes · " + sz(side.no_depth) + " no") +
+      row("WINDOW", side.window || "—") +
+      (side.ticker ? row("TICKER", side.ticker) : "");
+  }
+
+  async function loadKalshiBook() {
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/book", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      renderBookSide("bookBtcBody", "bookBtcFlag", data.satoshi);
+      renderBookSide("bookEthBody", "bookEthFlag", data.vitalik);
+    } catch (e) {
+      renderBookSide("bookBtcBody", "bookBtcFlag", { flag: "empty book", empty: true });
+      renderBookSide("bookEthBody", "bookEthFlag", { flag: "empty book", empty: true });
+    }
+  }
+
+  async function loadBrainRecap() {
+    const head = document.getElementById("brainHeadline");
+    const louder = document.getElementById("brainLouder");
+    const faded = document.getElementById("brainFaded");
+    const sat = document.getElementById("brainSatoshi");
+    const vit = document.getElementById("brainVitalik");
+    const notes = document.getElementById("brainNotes");
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/brain/recap", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if (head) head.textContent = data.empty ? (data.note || "No huddle recap yet") : (data.headline || "Last huddle");
+      function list(el, rows, emptyTxt) {
+        if (!el) return;
+        if (!rows || !rows.length) {
+          el.innerHTML = "<li class=\"brain-empty\">" + emptyTxt + "</li>";
+          return;
+        }
+        el.innerHTML = rows.map(function (s) {
+          const wr = s.win_rate != null ? (" · " + Math.round(Number(s.win_rate) * 100) + "%") : "";
+          return "<li><b>" + (s.seat || "—") + "</b> <span>" + (s.table || "") + wr + (s.note ? " · " + s.note : "") + "</span></li>";
+        }).join("");
+      }
+      list(louder, data.louder, "No seat got louder.");
+      list(faded, data.faded, "No seat got faded.");
+      if (sat) {
+        const s = data.satoshi || {};
+        sat.textContent = "SATOSHI · " + (s.note || "—");
+      }
+      if (vit) {
+        const v = data.vitalik || {};
+        vit.textContent = "VITALIK · " + (v.note || "—");
+      }
+      if (notes) {
+        const bits = [].concat(data.went_well || [], data.went_poor || [], data.patterns || []);
+        notes.innerHTML = bits.slice(0, 8).map(function (n) { return "<li>" + n + "</li>"; }).join("")
+          || "<li>Honest empty — wait for the 3:00 AM CT huddle.</li>";
+      }
+    } catch (e) {
+      if (head) head.textContent = "Brain feed quiet";
+    }
+  }
+
+  async function loadDeskNews() {
+    const coming = document.getElementById("newsComing");
+    const breaking = document.getElementById("newsBreaking");
+    const liq = document.getElementById("newsLiq");
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/news", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if (liq) {
+        if (data.liq_burst) {
+          liq.textContent = data.liq_burst;
+          liq.classList.remove("hidden");
+        } else {
+          liq.classList.add("hidden");
+        }
+      }
+      if (coming) {
+        const rows = data.coming_up || [];
+        coming.innerHTML = rows.length
+          ? rows.map(function (e) {
+              return '<li><b>' + (e.kind || "PRINT") + '</b> ' + (e.title || "")
+                + '<span class="news-eta">' + (e.eta || "") + ' · ' + (e.when_ct || "") + '</span></li>';
+            }).join("")
+          : '<li class="news-empty">No upcoming print loaded.</li>';
+      }
+      if (breaking) {
+        const rows = data.breaking || [];
+        const newsSig = rows.map(function (h) { return h.title || ""; }).join("|") + "|" + (data.liq_burst || "");
+        if (newsSig && newsSig !== _newsPulseSig) {
+          _newsPulseSig = newsSig;
+          if (rows.length || data.liq_burst) {
+            try { bumpChairPulse("bitcoin", 0.42); bumpChairPulse("ethereum", 0.42); } catch (e) {}
+          }
+        }
+        breaking.innerHTML = rows.length
+          ? rows.map(function (h) {
+              const cls = (h.stale ? "stale" : "fresh") + (h.heat ? " heat" : "");
+              return '<li class="' + cls + '"><b>' + (h.source || "") + '</b> ' + (h.title || "")
+                + '<span class="news-eta">' + (h.when_ct || "") + (h.heat ? " · this hour" : "") + '</span></li>';
+            }).join("")
+          : '<li class="news-empty">No recent headline.</li>';
+      }
+    } catch (e) {
+      if (coming) coming.innerHTML = '<li class="news-empty">Calendar feed quiet.</li>';
+      if (breaking) breaking.innerHTML = '<li class="news-empty">Headline feed quiet.</li>';
+    }
+  }
+
+  const SCHOOL_KEY = "council_school_v1";
+  const SCHOOL_SNAP = {
+    strike: 100000,
+    seconds_left: 1840,
+    candles: [
+      { o: 99920, h: 100040, l: 99880, c: 100010 },
+      { o: 100010, h: 100120, l: 99980, c: 100080 },
+      { o: 100080, h: 100160, l: 100020, c: 100040 },
+      { o: 100040, h: 100090, l: 99950, c: 99970 },
+      { o: 99970, h: 100020, l: 99890, c: 99940 },
+    ],
+    book: { yes_bid: 48, yes_ask: 50, yes_sz: 22, no_bid: 51, no_sz: 18 },
+  };
+  const SCHOOL_TF = ["True", "False"];
+  const SCHOOL_LESSONS = [
+    { id: "hour", n: 1, title: "The hour", minutes: 6, idea: "Kalshi is not “is Bitcoin going up forever.” It is one window.", body: ["Kalshi is not “is Bitcoin going up forever.” It is one window. A strike is the line. UP means finish above it when the clock hits zero. DOWN means finish below. Forty minutes left is a different game than four. The Chair only has to be right at the bell, not the whole hour."], board: "window", callout: "A strike is the line.", quiz: [{ q: "This desk is guessing the next year of Bitcoin.", choices: SCHOOL_TF, answer: 1 }, { q: "UP means finish above the strike at the end of the hour.", choices: SCHOOL_TF, answer: 0 }, { q: "Time left does not change the trade.", choices: SCHOOL_TF, answer: 1 }] },
+    { id: "candle", n: 2, title: "Reading the candle", minutes: 7, idea: "The body is where price spent the time. The wick is the rejected poke.", body: ["The body is where price spent the time. The wick is the rejected poke. A long upper wick into the strike and a close back under it is not strength. It is a failed break. Watch close vs strike, not the loudest wick."], board: "candle", callout: "Watch close vs strike, not the loudest wick.", quiz: [{ q: "The wick is more important than the close.", choices: SCHOOL_TF, answer: 1 }, { q: "A long upper wick that closes back under the strike is a failed break.", choices: SCHOOL_TF, answer: 0 }, { q: "The body shows where price actually spent the time.", choices: SCHOOL_TF, answer: 0 }] },
+    { id: "book", n: 3, title: "The book", minutes: 8, idea: "Bid is what people will pay. Ask is what they will sell.", body: ["Bid is what people will pay. Ask is what they will sell. Size is whether that price is real. If DOWN is 99¢, the market already thinks it is over. Buying that is paying a dollar to maybe win a penny. That is why the Chair WAITs. An empty book is the same: no one there to take the other side."], board: "book", callout: "If DOWN is 99¢, the market already thinks it is over.", quiz: [{ q: "A 99¢ DOWN is a great lock because it is almost sure.", choices: SCHOOL_TF, answer: 1 }, { q: "Size tells you if the price is actually there.", choices: SCHOOL_TF, answer: 0 }, { q: "An empty book is a reason to WAIT.", choices: SCHOOL_TF, answer: 0 }] },
+    { id: "edge", n: 4, title: "Odds vs P(finish)", minutes: 8, idea: "Odds are the market’s price. P(finish) is the Chair’s guess you finish on that side.", body: ["Odds are the market’s price. P(finish) is the Chair’s guess you finish on that side. EV is the gap after the spread. If the Chair says 62% and DOWN costs 99¢, there is no edge. If it says 62% and UP costs 48¢ with size, that is a conversation. Never lock just because a seat is loud."], board: "edge", callout: "If the Chair says 62% and DOWN costs 99¢, there is no edge.", quiz: [{ q: "A high Chair confidence is enough to lock.", choices: SCHOOL_TF, answer: 1 }, { q: "EV is P(finish) versus the price you actually pay, after spread.", choices: SCHOOL_TF, answer: 0 }, { q: "Market odds and Chair P(finish) are the same number.", choices: SCHOOL_TF, answer: 1 }] },
+    { id: "seats", n: 5, title: "The seats", minutes: 6, idea: "WICK reads the candle. TAPE reads the flow. CARRY reads funding. CLOCK reads the session.", body: ["WICK reads the candle. TAPE reads the flow. CARRY reads funding. CLOCK reads the session. They vote. The Chair only listens as hard as their rank. A hot seat with a bad record gets quieter. You are not picking a favorite bot. You are watching who earned the mic."], board: "seats", callout: "The Chair only listens as hard as their rank.", quiz: [{ q: "The loudest seat should decide the lock.", choices: SCHOOL_TF, answer: 1 }, { q: "Rank is how hard the Chair hears that seat.", choices: SCHOOL_TF, answer: 0 }, { q: "WICK, TAPE, CARRY, and CLOCK each watch a different lane.", choices: SCHOOL_TF, answer: 0 }] },
+  ];
+  let schoolLessons = SCHOOL_LESSONS.slice();
+  let schoolOpenId = null;
+  let schoolQIndex = 0;
+  let schoolAnswered = false;
+
+  function schoolWeekId() {
+    try {
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", week: "numeric", year: "numeric" });
+      const parts = fmt.formatToParts(new Date());
+      const y = (parts.find(function (p) { return p.type === "year"; }) || {}).value;
+      const w = (parts.find(function (p) { return p.type === "week"; }) || {}).value;
+      if (y && w) return y + "-W" + String(w).padStart(2, "0");
+    } catch (e) {}
+    const d = new Date();
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((t - yearStart) / 86400000) + 1) / 7);
+    return t.getUTCFullYear() + "-W" + String(week).padStart(2, "0");
+  }
+  function loadSchoolProgress() {
+    try {
+      const raw = localStorage.getItem(SCHOOL_KEY);
+      const p = raw ? JSON.parse(raw) : {};
+      if (!p || typeof p !== "object") return { done: [], current: "hour", q: 0, week: { id: schoolWeekId(), n: 0 } };
+      if (!Array.isArray(p.done)) p.done = [];
+      if (!p.week || p.week.id !== schoolWeekId()) p.week = { id: schoolWeekId(), n: 0 };
+      return p;
+    } catch (e) {
+      return { done: [], current: "hour", q: 0, week: { id: schoolWeekId(), n: 0 } };
+    }
+  }
+  function saveSchoolProgress(p) {
+    try { localStorage.setItem(SCHOOL_KEY, JSON.stringify(p)); } catch (e) {}
+  }
+  function schoolById(id) {
+    return schoolLessons.find(function (l) { return l.id === id; }) || schoolLessons[0];
+  }
+  function schoolNextId(done) {
+    const have = done || [];
+    for (let i = 0; i < schoolLessons.length; i++) {
+      if (have.indexOf(schoolLessons[i].id) < 0) return schoolLessons[i].id;
+    }
+    return schoolLessons[0].id;
+  }
+  function schoolUnlocked(id, done) {
+    const idx = schoolLessons.findIndex(function (l) { return l.id === id; });
+    if (idx <= 0) return true;
+    return (done || []).indexOf(schoolLessons[idx - 1].id) >= 0;
+  }
+
+  function schoolLiveMarket() {
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    return ts.market || (state && state.market) || {};
+  }
+  function schoolLiveBook() {
+    const m = schoolLiveMarket();
+    const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
+    const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
+    if (yb == null && ya == null) return null;
+    return {
+      yes_bid: yb,
+      yes_ask: ya,
+      yes_sz: m.kalshi_yes_bid_sz != null ? m.kalshi_yes_bid_sz : null,
+      no_bid: yb != null ? Math.round((100 - yb) * 10) / 10 : null,
+      live: true,
+    };
+  }
+  function paintSchoolBoard(kind) {
+    const canvas = document.getElementById("schoolBoard");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 640;
+    const cssH = canvas.clientHeight || 220;
+    if (canvas.width !== Math.floor(cssW * dpr) || canvas.height !== Math.floor(cssH * dpr)) {
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = cssW, h = cssH;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(2, 6, 14, 0.92)";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.18)";
+    ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+    const m = schoolLiveMarket();
+    const liveCandles = (m.candles || []).slice(-16);
+    const candles = liveCandles.length >= 3 ? liveCandles : SCHOOL_SNAP.candles;
+    const strike = Number(m.kalshi_target) || SCHOOL_SNAP.strike;
+    const secs = m.seconds_left != null ? Number(m.seconds_left) : SCHOOL_SNAP.seconds_left;
+    const live = liveCandles.length >= 3;
+
+    function drawCandles(callouts) {
+      const pad = { l: 36, r: 10, t: 18, b: 16 };
+      const rows = candles.map(function (c) {
+        return { o: Number(c.o != null ? c.o : c.open), h: Number(c.h != null ? c.h : c.high), l: Number(c.l != null ? c.l : c.low), c: Number(c.c != null ? c.c : c.close) };
+      }).filter(function (c) { return isFinite(c.o) && isFinite(c.c); });
+      if (!rows.length) return;
+      let min = Math.min.apply(null, rows.map(function (c) { return Math.min(c.l, c.c, strike); }));
+      let max = Math.max.apply(null, rows.map(function (c) { return Math.max(c.h, c.c, strike); }));
+      const span = (max - min) || 1;
+      min -= span * 0.08; max += span * 0.08;
+      const yAt = function (p) { return pad.t + (1 - (p - min) / (max - min || 1)) * (h - pad.t - pad.b); };
+      ctx.strokeStyle = "rgba(240, 193, 74, 0.7)";
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(strike)); ctx.lineTo(w - pad.r, yAt(strike)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(240, 193, 74, 0.85)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("STRIKE", pad.l, yAt(strike) - 4);
+      const cw = (w - pad.l - pad.r) / rows.length;
+      rows.forEach(function (c, i) {
+        const x = pad.l + i * cw + cw / 2;
+        const up = c.c >= c.o;
+        ctx.strokeStyle = up ? "#39ff14" : "#ff2d55";
+        ctx.beginPath(); ctx.moveTo(x, yAt(c.h)); ctx.lineTo(x, yAt(c.l)); ctx.stroke();
+        const by = Math.min(yAt(c.o), yAt(c.c));
+        const bh = Math.max(2, Math.abs(yAt(c.c) - yAt(c.o)));
+        ctx.fillStyle = up ? "rgba(57,255,20,0.85)" : "rgba(255,45,85,0.85)";
+        ctx.fillRect(x - Math.max(2, cw * 0.28), by, Math.max(4, cw * 0.56), bh);
+      });
+      if (callouts) {
+        const last = rows[rows.length - 1];
+        ctx.fillStyle = "rgba(232,244,255,0.8)";
+        ctx.font = "11px Rajdhani, sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText("body", w - pad.r, Math.min(yAt(last.o), yAt(last.c)) - 2);
+        ctx.fillText("wick", w - pad.r, yAt(last.h) + 10);
+      }
+      ctx.fillStyle = "rgba(180,200,220,0.55)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(live ? "LIVE / LAST HOUR" : "STILL · last hour", pad.l, h - 4);
+    }
+
+    if (kind === "window") {
+      drawCandles(false);
+      ctx.fillStyle = "rgba(57,255,20,0.75)";
+      ctx.font = "12px Orbitron, monospace";
+      ctx.textAlign = "right";
+      ctx.fillText("UP", w - 12, 22);
+      ctx.fillStyle = "rgba(255,45,85,0.8)";
+      ctx.fillText("DOWN", w - 12, h - 20);
+      const mm = Math.max(0, Math.floor(secs / 60));
+      const ss = Math.max(0, Math.floor(secs % 60));
+      ctx.fillStyle = "#e8f4ff";
+      ctx.font = "13px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("THIS WINDOW · " + String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0"), w / 2, 16);
+    } else if (kind === "candle") {
+      drawCandles(true);
+    } else if (kind === "book") {
+      const liveB = schoolLiveBook();
+      const b = liveB || SCHOOL_SNAP.book;
+      const wall = (b.yes_bid != null && b.yes_bid >= 99) || (b.no_bid != null && b.no_bid >= 99);
+      function bar(y, label, px, sz, col) {
+        ctx.fillStyle = "rgba(200,220,240,0.7)";
+        ctx.font = "12px Orbitron, monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(label, 16, y + 12);
+        const ww = Math.max(8, ((px || 0) / 100) * (w - 160));
+        ctx.fillStyle = col;
+        ctx.fillRect(90, y, ww, 18);
+        ctx.fillStyle = "#e8f4ff";
+        ctx.fillText((px != null ? Math.round(px) + "¢" : "—") + (sz != null ? " × " + sz : ""), 96 + ww, y + 13);
+      }
+      bar(36, "BID", b.yes_bid, b.yes_sz, "rgba(57,255,20,0.55)");
+      bar(70, "ASK", b.yes_ask, null, "rgba(0,232,255,0.45)");
+      bar(104, "NO", b.no_bid, b.no_sz, "rgba(255,45,85,0.45)");
+      ctx.fillStyle = wall ? "#ffb000" : "rgba(200,220,240,0.7)";
+      ctx.font = "13px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(wall ? "99¢ WALL · WAIT" : ((liveB ? "LIVE BOOK" : "STILL · BOOK") + " · size is the truth"), w / 2, h - 16);
+    } else if (kind === "edge") {
+      const d = ((typeof tableState === "function" ? tableState(focusTable) : null) || state || {}).decision || {};
+      const p = d.p_finish != null ? Number(d.p_finish) : 0.62;
+      const pPct = p <= 1 ? p * 100 : p;
+      const ask = (schoolLiveBook() || SCHOOL_SNAP.book).yes_ask || 70;
+      ctx.fillStyle = "rgba(200,220,240,0.75)";
+      ctx.font = "12px Orbitron, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("P(FINISH)  " + Math.round(pPct) + "%", 20, 40);
+      ctx.fillRect(20, 50, Math.max(8, (pPct / 100) * (w - 40)), 16);
+      ctx.fillText("ASK / ODDS  " + Math.round(ask) + "¢", 20, 96);
+      ctx.fillStyle = "rgba(0,232,255,0.45)";
+      ctx.fillRect(20, 106, Math.max(8, (ask / 100) * (w - 40)), 16);
+      const ev = pPct - ask;
+      ctx.fillStyle = ev > 0 ? "#39ff14" : "#ffb000";
+      ctx.font = "14px Orbitron, monospace";
+      ctx.fillText(ev > 0 ? ("EDGE after spread · +" + ev.toFixed(0) + "¢") : "NO EDGE · WAIT", 20, 160);
+    } else if (kind === "seats") {
+      const seats = ["WICK", "TAPE", "CARRY", "CLOCK"];
+      const lines = ["candles", "book / prints", "funding", "session"];
+      seats.forEach(function (name, i) {
+        const x = 16 + i * ((w - 20) / 4);
+        ctx.fillStyle = "rgba(0, 232, 255, 0.08)";
+        ctx.fillRect(x, 28, (w - 40) / 4 - 8, h - 56);
+        ctx.fillStyle = "#e8f4ff";
+        ctx.font = "14px Orbitron, monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(name, x + ((w - 40) / 4 - 8) / 2, 70);
+        ctx.fillStyle = "rgba(180,200,220,0.7)";
+        ctx.font = "12px Rajdhani, sans-serif";
+        ctx.fillText(lines[i], x + ((w - 40) / 4 - 8) / 2, 96);
+      });
+      ctx.fillStyle = "rgba(240,193,74,0.8)";
+      ctx.font = "11px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("CHAIR LISTENS AS HARD AS RANK", w / 2, h - 16);
+    }
+  }
+
+  function paintSchoolHome() {
+    const p = loadSchoolProgress();
+    const nxt = schoolNextId(p.done);
+    const les = schoolById(nxt);
+    const cont = document.getElementById("schoolContinue");
+    const streak = document.getElementById("schoolStreak");
+    const list = document.getElementById("schoolList");
+    const nWeek = (p.week && p.week.n) || 0;
+    if (streak) streak.textContent = nWeek + " lesson" + (nWeek === 1 ? "" : "s") + " this week";
+    if (cont) {
+      cont.textContent = ((p.done || []).length ? "CONTINUE · " : "START · ") + les.title;
+      cont.dataset.lesson = les.id;
+    }
+    if (list) {
+      list.innerHTML = schoolLessons.map(function (l) {
+        const done = (p.done || []).indexOf(l.id) >= 0;
+        const open = schoolUnlocked(l.id, p.done);
+        return '<li class="' + (done ? "done" : (open ? "open" : "locked")) + '">'
+          + '<button type="button" class="school-pick" data-lesson="' + l.id + '" ' + (open ? "" : "disabled") + ">"
+          + '<span class="school-n">' + l.n + "</span> " + l.title
+          + '<span class="school-min">' + l.minutes + " min</span>"
+          + (done ? '<span class="school-done">IN</span>' : (open ? "" : '<span class="school-lock">WAIT</span>'))
+          + "</button></li>";
+      }).join("");
+    }
+  }
+
+  function showSchoolQuiz() {
+    const les = schoolById(schoolOpenId);
+    const quiz = (les && les.quiz) || [];
+    const item = quiz[schoolQIndex];
+    const qEl = document.getElementById("schoolQ");
+    const box = document.getElementById("schoolChoices");
+    const grade = document.getElementById("schoolGrade");
+    const next = document.getElementById("schoolNextQ");
+    schoolAnswered = false;
+    if (!item) return;
+    if (qEl) qEl.textContent = (schoolQIndex + 1) + " / " + quiz.length + " · " + item.q;
+    if (grade) { grade.hidden = true; grade.textContent = ""; grade.classList.remove("right", "wrong"); }
+    if (next) next.hidden = true;
+    if (box) {
+      box.innerHTML = item.choices.map(function (c, i) {
+        const lab = (i === 0 ? "A" : "B") + " · " + c;
+        return '<button type="button" class="school-choice" data-i="' + i + '">' + lab + "</button>";
+      }).join("");
+    }
+  }
+
+  function openSchoolLesson(id) {
+    const p = loadSchoolProgress();
+    if (!schoolUnlocked(id, p.done)) return;
+    const les = schoolById(id);
+    schoolOpenId = les.id;
+    schoolQIndex = (p.current === les.id && p.q != null && p.done.indexOf(les.id) < 0) ? Number(p.q) || 0 : 0;
+    p.current = les.id;
+    p.q = schoolQIndex;
+    saveSchoolProgress(p);
+    const wrap = document.getElementById("schoolLesson");
+    const list = document.getElementById("schoolList");
+    const cont = document.getElementById("schoolContinue");
+    if (wrap) wrap.classList.remove("hidden");
+    if (list) list.classList.add("hidden");
+    if (cont) cont.hidden = true;
+    const title = document.getElementById("schoolTitle");
+    const mins = document.getElementById("schoolMins");
+    const idea = document.getElementById("schoolIdea");
+    const body = document.getElementById("schoolBody");
+    const call = document.getElementById("schoolCallout");
+    if (title) title.textContent = les.title;
+    if (mins) mins.textContent = les.minutes + " min";
+    if (idea) idea.textContent = les.idea;
+    if (body) body.innerHTML = (les.body || []).map(function (t) { return "<p>" + t + "</p>"; }).join("");
+    if (call) call.textContent = les.callout || "";
+    try { paintSchoolBoard(les.board || "window"); } catch (e) {}
+    showSchoolQuiz();
+  }
+
+  function closeSchoolLesson() {
+    schoolOpenId = null;
+    const wrap = document.getElementById("schoolLesson");
+    const list = document.getElementById("schoolList");
+    const cont = document.getElementById("schoolContinue");
+    if (wrap) wrap.classList.add("hidden");
+    if (list) list.classList.remove("hidden");
+    if (cont) cont.hidden = false;
+    paintSchoolHome();
+  }
+
+  function finishSchoolLesson() {
+    const p = loadSchoolProgress();
+    if (schoolOpenId && p.done.indexOf(schoolOpenId) < 0) {
+      p.done.push(schoolOpenId);
+      if (!p.week || p.week.id !== schoolWeekId()) p.week = { id: schoolWeekId(), n: 0 };
+      p.week.n = (Number(p.week.n) || 0) + 1;
+    }
+    p.current = schoolNextId(p.done);
+    p.q = 0;
+    saveSchoolProgress(p);
+    closeSchoolLesson();
+  }
+  window.__finishSchoolLesson = finishSchoolLesson;
+
+  function gradeSchoolChoice(i) {
+    const les = schoolById(schoolOpenId);
+    const item = ((les && les.quiz) || [])[schoolQIndex];
+    if (!item || schoolAnswered) return;
+    schoolAnswered = true;
+    const ok = Number(i) === Number(item.answer);
+    const grade = document.getElementById("schoolGrade");
+    const next = document.getElementById("schoolNextQ");
+    const box = document.getElementById("schoolChoices");
+    if (box) {
+      Array.prototype.forEach.call(box.querySelectorAll(".school-choice"), function (btn) {
+        const idx = Number(btn.getAttribute("data-i"));
+        btn.disabled = true;
+        if (idx === item.answer) btn.classList.add("right");
+        if (idx === Number(i) && !ok) btn.classList.add("wrong");
+      });
+    }
+    if (grade) {
+      grade.hidden = false;
+      grade.classList.toggle("right", ok);
+      grade.classList.toggle("wrong", !ok);
+      grade.textContent = (ok ? "RIGHT · " : "WRONG · ") + (item.why || "");
+    }
+    if (next) {
+      next.hidden = false;
+      next.textContent = schoolQIndex >= ((les.quiz || []).length - 1) ? "IN · NEXT" : "NEXT";
+    }
+    const p = loadSchoolProgress();
+    p.current = schoolOpenId;
+    p.q = schoolQIndex;
+    saveSchoolProgress(p);
+  }
+  window.__gradeSchoolChoice = gradeSchoolChoice;
+
+  function schoolAdvance() {
+    const les = schoolById(schoolOpenId);
+    const n = ((les && les.quiz) || []).length;
+    if (schoolQIndex >= n - 1) {
+      finishSchoolLesson();
+      return;
+    }
+    schoolQIndex += 1;
+    const p = loadSchoolProgress();
+    p.current = schoolOpenId;
+    p.q = schoolQIndex;
+    saveSchoolProgress(p);
+    showSchoolQuiz();
+  }
+
+  function wireSchool() {
+    const root = document.getElementById("schoolView");
+    if (!root || root.__wired) return;
+    root.__wired = true;
+    const cont = document.getElementById("schoolContinue");
+    if (cont) cont.addEventListener("click", function () {
+      openSchoolLesson(cont.dataset.lesson || "hour");
+    });
+    const back = document.getElementById("schoolBack");
+    if (back) back.addEventListener("click", function () { closeSchoolLesson(); });
+    const next = document.getElementById("schoolNextQ");
+    if (next) next.addEventListener("click", function () { schoolAdvance(); });
+    root.addEventListener("click", function (e) {
+      const pick = e.target && e.target.closest ? e.target.closest(".school-pick") : null;
+      if (pick && pick.dataset.lesson) {
+        openSchoolLesson(pick.dataset.lesson);
+        return;
+      }
+      const ch = e.target && e.target.closest ? e.target.closest(".school-choice") : null;
+      if (ch && ch.dataset.i != null) gradeSchoolChoice(ch.dataset.i);
+    });
+  }
+
+  async function loadSchool() {
+    wireSchool();
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/school", { cache: "no-store" });
+      if (r.ok) {
+        const data = await r.json();
+        if (data && Array.isArray(data.lessons) && data.lessons.length) schoolLessons = data.lessons;
+      }
+    } catch (e) {}
+    paintSchoolHome();
+    if (schoolOpenId) {
+      try { paintSchoolBoard((schoolById(schoolOpenId) || {}).board || "window"); } catch (err) {}
+    }
+  }
+  window.loadSchool = loadSchool;
+
+  let sideBoard = null;
+  let sideStake = 5;
+  let sideFocus = "BTC";
+  let sidePollTimer = 0;
+  let sideClockTimer = 0;
+  let sideLastStamp = {};
+  let sideWired = false;
+
+  function sideApi(path, opt) {
+    const base = typeof API_BASE === "string" ? API_BASE : "";
+    return fetch(base + path, opt || { cache: "no-store" });
+  }
+  function sideFmtClock(secs) {
+    if (secs == null || !isFinite(secs)) return "--:--";
+    const s = Math.max(0, Math.floor(secs));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return String(m).padStart(2, "0") + ":" + String(r).padStart(2, "0");
+  }
+  function sideCents(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return Math.round(n) + "¢";
+  }
+  function playSidePunch() {
+    try {
+      const flash = document.createElement("div");
+      flash.className = "side-flash";
+      document.body.appendChild(flash);
+      setTimeout(function () { try { flash.remove(); } catch (e) {} }, 320);
+    } catch (e) {}
+    if (typeof soundMuted !== "undefined" && soundMuted) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      o.frequency.setValueAtTime(180, now);
+      o.frequency.exponentialRampToValueAtTime(70, now + 0.16);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.2, now + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(now); o.stop(now + 0.24);
+    } catch (e) {}
+  }
+  function sidePhoneOne() {
+    return !!(typeof isPhoneDesk === "function" && isPhoneDesk()) || (window.innerWidth || 0) <= 480;
+  }
+  function wireSideTable() {
+    if (sideWired) return;
+    sideWired = true;
+    document.querySelectorAll(".side-step").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        sideStake = Number(btn.getAttribute("data-size") || 5);
+        document.querySelectorAll(".side-step").forEach(function (b) {
+          b.classList.toggle("on", Number(b.getAttribute("data-size")) === sideStake);
+        });
+      });
+    });
+    const armBtn = document.getElementById("sideArmBtn");
+    const killBtn = document.getElementById("sideKillBtn");
+    if (armBtn) {
+      armBtn.addEventListener("click", async function () {
+        const phrase = (document.getElementById("sideArmPhrase") || {}).value || "";
+        try {
+          const r = await sideApi("/api/side/arm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ phrase: phrase }),
+          });
+          const data = await r.json();
+          paintSideArm(data);
+        } catch (e) {}
+      });
+    }
+    if (killBtn) {
+      killBtn.addEventListener("click", async function () {
+        try {
+          const r = await sideApi("/api/side/kill", {
+            method: "POST",
+            headers: { Accept: "application/json" },
+          });
+          const data = await r.json();
+          paintSideArm(data);
+          loadSideTable();
+        } catch (e) {}
+      });
+    }
+  }
+  function paintSideArm(st) {
+    const badge = document.getElementById("sideModeBadge");
+    const armSt = document.getElementById("sideArmStatus");
+    const live = !!(st && st.armed && !st.killed);
+    if (badge) {
+      badge.textContent = live ? "LIVE" : "PAPER";
+      badge.classList.toggle("live", live);
+      badge.classList.toggle("paper", !live);
+    }
+    if (armSt) {
+      if (!st) { armSt.textContent = ""; return; }
+      if (st.killed) armSt.textContent = "killed · paper only";
+      else if (st.armed) armSt.textContent = "armed · taps are live on this tab";
+      else if (st.arming) armSt.textContent = "arming · " + Math.ceil(st.arm_delay_s || 0) + "s";
+      else if (st.error) armSt.textContent = st.error;
+      else armSt.textContent = "paper default · live off";
+    }
+  }
+  function sideTapeDots(tape) {
+    const rows = Array.isArray(tape) ? tape.slice(0, 8) : [];
+    return '<div class="side-tape">' + rows.map(function (t) {
+      return '<span class="side-dot ' + String((t && t.result) || "") + '"></span>';
+    }).join("") + "</div>";
+  }
+  function sideCardHtml(card, punch) {
+    if (!card) return "";
+    const dont = !!card.dont_play;
+    const secs = card.secs_left;
+    const next = !!(card.next_arms && secs != null && secs <= 20);
+    const why = card.why || "";
+    return '<article class="side-card' + (dont ? " dont-play" : "") + (punch ? " side-punch" : "") + '" data-ticker="' + String(card.ticker || "") + '">' +
+      '<div class="side-card-head"><span class="side-asset">' + String(card.asset || card.title || "") + '</span>' +
+      '<span class="side-strike">' + (card.strike != null ? ("strike " + card.strike) : (card.minutes ? (card.minutes + "m") : "")) + "</span></div>" +
+      '<div class="side-count' + (next ? " next-arm" : "") + '">' + sideFmtClock(secs) + (next ? " · NEXT" : "") + "</div>" +
+      '<div class="side-odds"><span class="yes">YES ' + sideCents(card.yes_ask) + '</span><span class="no">NO ' + sideCents(card.no_ask) + "</span></div>" +
+      sideTapeDots(card.tape) +
+      '<div class="side-actions">' +
+      '<button type="button" class="side-yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
+      '<button type="button" class="side-no" data-side="NO"' + (dont ? " disabled" : "") + ">NO</button>" +
+      "</div>" +
+      (why ? '<div class="side-flag">' + why + "</div>" : "") +
+      "</article>";
+  }
+  function paintSideBoard(data) {
+    sideBoard = data || sideBoard;
+    if (!sideBoard) return;
+    const st = sideBoard.status || {};
+    paintSideArm(st);
+    const feed = document.getElementById("sideFeedStatus");
+    const arcade = Array.isArray(sideBoard.arcade) ? sideBoard.arcade : [];
+    const extras = Array.isArray(sideBoard.extras) ? sideBoard.extras : [];
+    const pills5 = Array.isArray(sideBoard.pills_5m) ? sideBoard.pills_5m : [];
+    if (feed) {
+      feed.textContent = arcade.length ? (arcade.length + " open · 15m") : "no open 15m";
+    }
+    const clock = document.getElementById("sideClock");
+    const focusCard = arcade.find(function (c) { return c.asset === sideFocus; }) || arcade[0];
+    if (clock) clock.textContent = sideFmtClock(focusCard && focusCard.secs_left);
+    const pillBox = document.getElementById("sidePills");
+    if (pillBox) {
+      const names = arcade.map(function (c) { return c.asset; }).concat(extras.map(function (c) { return c.asset; }));
+      const uniq = [];
+      names.forEach(function (n) { if (n && uniq.indexOf(n) < 0) uniq.push(n); });
+      pillBox.innerHTML = uniq.map(function (n) {
+        return '<button type="button" class="side-pill' + (n === sideFocus ? " on" : "") + '" data-asset="' + n + '">' + n + " 15M</button>";
+      }).join("") + pills5.map(function (n) {
+        return '<button type="button" class="side-pill" data-asset="' + n + '" data-min="5">' + n + " 5M</button>";
+      }).join("");
+      pillBox.querySelectorAll(".side-pill").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          sideFocus = btn.getAttribute("data-asset") || "BTC";
+          paintSideBoard(sideBoard);
+        });
+      });
+    }
+    const box = document.getElementById("sideArcade");
+    if (box) {
+      const cards = sidePhoneOne()
+        ? (arcade.concat(extras)).filter(function (c) { return c.asset === sideFocus; }).slice(0, 1)
+        : arcade.concat(extras);
+      const show = cards.length ? cards : arcade.slice(0, 1);
+      box.innerHTML = show.map(function (c) {
+        const key = String(c.ticker || c.asset);
+        const stamp = ((c.tape && c.tape[0]) || {}).result || "";
+        const punch = stamp && sideLastStamp[key] && sideLastStamp[key] !== stamp;
+        if (stamp) sideLastStamp[key] = stamp;
+        else if (!sideLastStamp[key]) sideLastStamp[key] = stamp;
+        return sideCardHtml(c, punch);
+      }).join("") || '<p class="side-flag">No open 15m books.</p>';
+      if (!sidePhoneOne() && Array.isArray(sideBoard.parked) && sideBoard.parked.length) {
+        box.innerHTML += '<article class="side-card parked"><div class="side-card-head">PARKED</div><div class="side-flag">empty</div></article>';
+      }
+      box.querySelectorAll(".side-card").forEach(function (el) {
+        if (el.classList.contains("side-punch")) playSidePunch();
+        const ticker = el.getAttribute("data-ticker");
+        const card = show.find(function (c) { return String(c.ticker) === ticker; }) || focusCard;
+        el.querySelectorAll("button[data-side]").forEach(function (btn) {
+          btn.addEventListener("click", function () { tapSide(card, btn.getAttribute("data-side")); });
+        });
+      });
+    }
+    const hotBox = document.getElementById("sideHot");
+    if (hotBox) {
+      const hot = Array.isArray(sideBoard.hot) ? sideBoard.hot : [];
+      hotBox.innerHTML = hot.map(function (h) {
+        const left = sideFmtClock(h.secs_left);
+        const vol = h.volume != null ? Math.round(Number(h.volume)).toLocaleString() : "—";
+        return '<div class="side-hot-row" data-ticker="' + String(h.ticker || "") + '">' +
+          '<div><div class="side-hot-title">' + String(h.title || h.ticker || "") + "</div>" +
+          '<div class="side-hot-meta">YES ' + sideCents(h.yes_ask) + " · NO " + sideCents(h.no_ask) + " · vol " + vol + " · " + left + "</div></div>" +
+          (h.why ? '<div class="side-hot-meta">' + h.why + "</div>" : "") +
+          '<div class="side-hot-taps">' +
+          '<button type="button" class="yes" data-side="YES"' + (h.dont_play ? " disabled" : "") + ">YES</button>" +
+          '<button type="button" class="no" data-side="NO"' + (h.dont_play ? " disabled" : "") + ">NO</button>" +
+          "</div></div>";
+      }).join("") || '<p class="side-hot-meta">No liquid open books.</p>';
+      hotBox.querySelectorAll(".side-hot-row").forEach(function (row) {
+        const ticker = row.getAttribute("data-ticker");
+        const card = hot.find(function (h) { return String(h.ticker) === ticker; });
+        row.querySelectorAll("button[data-side]").forEach(function (btn) {
+          btn.addEventListener("click", function () { tapSide(card, btn.getAttribute("data-side")); });
+        });
+      });
+    }
+    const fills = document.getElementById("sideFills");
+    if (fills) {
+      const rows = Array.isArray(sideBoard.fills) ? sideBoard.fills : [];
+      fills.innerHTML = rows.map(function (f) {
+        return '<div class="side-fill">' + (f.paper ? "PAPER" : "LIVE") + " " + (f.side || "") + " " + (f.ticker || "") +
+          " · $" + (f.stake || "") + " @ " + sideCents(f.fill_cents) + " · " + (f.result || "OPEN") +
+          (f.pnl != null ? (" · " + f.pnl) : "") + "</div>";
+      }).join("");
+    }
+    const whyEl = document.getElementById("sideWhy");
+    if (whyEl) whyEl.textContent = (focusCard && focusCard.why) || "";
+  }
+  async function tapSide(card, side) {
+    if (!card || !card.ticker) return;
+    const st = (sideBoard && sideBoard.status) || {};
+    const live = !!(st.armed && !st.killed && st.live_allowed);
+    const why = document.getElementById("sideWhy");
+    try {
+      const r = await sideApi("/api/side/tap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          ticker: card.ticker,
+          side: side,
+          stake: sideStake,
+          live: live,
+          yes_bid: card.yes_bid,
+          yes_ask: card.yes_ask,
+          secs_left: card.secs_left,
+          sick: !!card.dont_play,
+        }),
+      });
+      const data = await r.json();
+      if (why) why.textContent = data && data.ok ? ((live ? "LIVE" : "PAPER") + " " + side + " · " + (card.ticker || "")) : ((data && data.error) || "tap refused");
+      if (data && data.ok) playSidePunch();
+      loadSideTable();
+    } catch (e) {
+      if (why) why.textContent = "tap failed";
+    }
+  }
+  async function loadSideTable() {
+    wireSideTable();
+    try {
+      const r = await sideApi("/api/side");
+      if (r.ok) {
+        const data = await r.json();
+        paintSideBoard(data);
+      }
+    } catch (e) {}
+    if (sidePollTimer) clearInterval(sidePollTimer);
+    if (sideClockTimer) clearInterval(sideClockTimer);
+    sidePollTimer = setInterval(function () {
+      if (mode !== "side") return;
+      sideApi("/api/side").then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (data) paintSideBoard(data);
+      }).catch(function () {});
+    }, 6000);
+    sideClockTimer = setInterval(function () {
+      if (mode !== "side" || !sideBoard) return;
+      const arcade = (sideBoard.arcade || []).concat(sideBoard.extras || []);
+      arcade.forEach(function (c) {
+        if (c && c.secs_left != null) c.secs_left = Math.max(0, Number(c.secs_left) - 1);
+      });
+      (sideBoard.hot || []).forEach(function (h) {
+        if (h && h.secs_left != null) h.secs_left = Math.max(0, Number(h.secs_left) - 1);
+      });
+      paintSideBoard(sideBoard);
+    }, 1000);
+  }
+  window.loadSideTable = loadSideTable;
+
+  window.frontMarkFail = function (img) {
+    if (!img) return;
+    // Never blank the Chair face. Never invent a neon mark.
+    if (img.id === "frontChairImg") {
+      const wrap = img.closest ? img.closest(".front-mark") : img.parentElement;
+      if (wrap) wrap.classList.remove("blank");
+      img.src = raijinPortraitSrc(frontLockDir());
+      return;
+    }
+    const wrap = img.closest ? img.closest(".front-mark") : img.parentElement;
+    if (wrap) wrap.classList.add("blank");
+    try { img.removeAttribute("src"); } catch (e) {}
+    img.alt = "";
+  };
+
+  let frontBoard = null;
+  let frontStake = 5;
+  let frontPollTimer = 0;
+  let frontWxRaf = 0;
+  let frontWxBits = [];
+  let frontWxT = 0;
+  let frontLastMode = "";
+  let frontWired = false;
+  let frontBoltUntil = 0;
+  const frontWxRefreshMs = 180000; // live KDFW METAR/NWS every few minutes. Dead feed holds last mode.
+
+  function frontApi(path, opt) {
+    const base = typeof API_BASE === "string" ? API_BASE : "";
+    return fetch(base + path, opt || { cache: "no-store" });
+  }
+  function frontCents(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return Math.round(n) + "¢";
+  }
+  function frontWr(seat) {
+    const n = seat && seat.n != null ? Number(seat.n) : 0;
+    const wr = seat && seat.wr != null ? Math.round(Number(seat.wr) * 100) + "%" : "—";
+    return n + "/" + wr;
+  }
+  function wireFrontTable() {
+    if (frontWired) return;
+    frontWired = true;
+    document.querySelectorAll(".front-step").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        frontStake = Number(btn.getAttribute("data-size") || 5);
+        document.querySelectorAll(".front-step").forEach(function (b) {
+          b.classList.toggle("on", Number(b.getAttribute("data-size")) === frontStake);
+        });
+      });
+    });
+    const armBtn = document.getElementById("frontArmBtn");
+    const killBtn = document.getElementById("frontKillBtn");
+    if (armBtn) {
+      armBtn.addEventListener("click", async function () {
+        const phrase = (document.getElementById("frontArmPhrase") || {}).value || "";
+        try {
+          const r = await frontApi("/api/front/arm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ phrase: phrase }),
+          });
+          paintFrontArm(await r.json());
+        } catch (e) {}
+      });
+    }
+    if (killBtn) {
+      killBtn.addEventListener("click", async function () {
+        try {
+          const r = await frontApi("/api/front/kill", { method: "POST", headers: { Accept: "application/json" } });
+          paintFrontArm(await r.json());
+          loadFrontTable();
+        } catch (e) {}
+      });
+    }
+  }
+  function paintFrontArm(st) {
+    const badge = document.getElementById("frontModeBadge");
+    const armSt = document.getElementById("frontArmStatus");
+    const live = !!(st && st.armed && !st.killed);
+    if (badge) {
+      badge.textContent = live ? "LIVE" : "PAPER";
+      badge.classList.toggle("live", live);
+      badge.classList.toggle("paper", !live);
+    }
+    if (armSt) {
+      if (!st) { armSt.textContent = ""; return; }
+      if (st.killed) armSt.textContent = "killed · paper only";
+      else if (st.armed) armSt.textContent = "armed · taps are live on this tab";
+      else if (st.arming) armSt.textContent = "arming · " + Math.ceil(st.arm_delay_s || 0) + "s";
+      else if (st.error) armSt.textContent = st.error;
+      else armSt.textContent = "paper default · live off";
+    }
+  }
+  function paintFrontGuide(data) {
+    const box = document.getElementById("frontGuide");
+    if (!box) return;
+    const seats = ((data && data.seats) || []).slice();
+    if (data && data.chair) seats.unshift(data.chair);
+    box.innerHTML = seats.map(function (s) {
+      const isChair = !!(s && (s.id === "RAIJIN" || (data && data.chair && s.id && s.id === data.chair.id)));
+      const mark = isChair ? "/static/bots/raijin-chair.png" : String((s && s.mark) || "");
+      const label = isChair ? frontChairName(s) : String((s && (s.name || s.id)) || "");
+      return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
+        '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
+        "<div><h3>" + label + "</h3>" +
+        "<p>" + String((s && s.job) || "") + "</p>" +
+        '<div class="nw">' + frontWr(s) + (s && s.rank ? (" · #" + s.rank) : "") + (s && s.call ? (" · " + s.call) : "") + "</div></div></article>";
+    }).join("");
+  }
+  function paintFrontBook(data) {
+    const box = document.getElementById("frontBook");
+    if (!box) return;
+    const rows = Array.isArray(data && data.brackets) ? data.brackets : [];
+    if (!rows.length) {
+      const dropped = ((data && data.dropped) || []).join(" ");
+      box.innerHTML = '<p class="side-flag">' + (dropped ? ("series dropped · " + dropped) : "No open DFW book.") + "</p>";
+      return;
+    }
+    const best = rows.find(function (b) { return b.best; }) || rows[0];
+    const dont = !!(best && best.dont_play);
+    const open = ((data && data.tape) || []).some(function (p) { return String(p.result || "").toUpperCase() === "OPEN"; });
+    box.innerHTML = '<article class="front-bet best' + (dont ? " dont-play" : "") + '" data-ticker="' + String(best.ticker || "") + '">' +
+      '<div class="front-bet-head"><span>' + (open ? "LOCKED" : "BEST") + " · " + String(best.bracket || "") + "</span><span>" + (best.confidence != null ? (best.confidence + "%") : "—") + "</span></div>" +
+      "<div>YES " + frontCents(best.yes_ask) + " · NO " + frontCents(best.no_ask) + (best.volume != null ? (" · n " + Math.round(best.volume)) : "") + "</div>" +
+      (best.skip ? '<div class="side-flag">' + best.skip + "</div>" : "") +
+      '<button type="button" class="yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
+      '<button type="button" class="no" data-side="NO"' + (dont ? " disabled" : "") + ">NO</button>" +
+      "</article>";
+    box.querySelectorAll(".front-bet").forEach(function (el) {
+      const ticker = el.getAttribute("data-ticker");
+      const card = rows.find(function (b) { return String(b.ticker) === ticker; });
+      el.querySelectorAll("button[data-side]").forEach(function (btn) {
+        btn.addEventListener("click", function () { tapFront(card, btn.getAttribute("data-side")); });
+      });
+    });
+  }
+  function paintFrontScore(data) {
+    const acc = (data && data.accuracy) || {};
+    const pct = acc.accuracy_pct;
+    const right = acc.correct != null ? acc.correct : 0;
+    const wrong = acc.wrong != null ? acc.wrong : 0;
+    const pending = acc.pending != null ? acc.pending : 0;
+    const elPct = document.getElementById("frontHrPct");
+    const elRight = document.getElementById("frontHrRight");
+    const elWrong = document.getElementById("frontHrWrong");
+    const elPending = document.getElementById("frontHrPending");
+    const elVerdict = document.getElementById("frontHrVerdict");
+    if (elPct) elPct.textContent = pct != null ? (pct + "%") : "—";
+    if (elRight) elRight.textContent = String(right);
+    if (elWrong) elWrong.textContent = String(wrong);
+    if (elPending) elPending.textContent = String(pending);
+    if (elVerdict) elVerdict.textContent = acc.verdict || "COLLECTING";
+    const tape = document.getElementById("frontTape");
+    if (tape) {
+      const rows = Array.isArray(data && data.tape) ? data.tape : [];
+      if (!rows.length) {
+        tape.innerHTML = '<li class="lock-tape-empty">No Raijin lock — waiting on DFW CLI</li>';
+      } else {
+        tape.innerHTML = rows.map(function (p) {
+          const res = String(p.result || "OPEN").toUpperCase();
+          const pnl = p.pnl == null ? "" : ((Number(p.pnl) >= 0 ? "+" : "") + "$" + Number(p.pnl).toFixed(2));
+          return '<li class="lock-tape-row ' + (res === "OPEN" ? "open" : "settled") + '">' +
+            '<span class="lt-pair">' + String(p.city || "DAL") + "</span>" +
+            '<span class="lt-win">' + String(p.bracket || "—") + "</span>" +
+            '<span class="lt-conf">' + (p.best ? "BEST" : "lock") + "</span>" +
+            '<span class="lt-res">' + res + "</span>" +
+            '<span class="lt-side">' + (p.paper ? "PAPER " : "") + pnl + "</span>" +
+            "</li>";
+        }).join("");
+      }
+    }
+  }
+  function paintFrontSeats(data) {
+    const chairCall = document.getElementById("frontChairCall");
+    if (chairCall) chairCall.textContent = (data.chair && (data.chair.call || data.chair.bracket)) || "—";
+    const chairImg = document.getElementById("frontChairImg");
+    if (chairImg) {
+      chairImg.src = raijinPortraitSrc(frontLockDir());
+    }
+    (data.seats || []).forEach(function (s) {
+      const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
+      if (el) el.textContent = s.call || "—";
+    });
+  }
+  function paintFrontBoard(data) {
+    frontBoard = data || frontBoard;
+    if (!frontBoard) return;
+    paintFrontArm(frontBoard.status || {});
+    const wx = (frontBoard.weather && frontBoard.weather.mode) || "";
+    const held = !!(frontBoard.weather && frontBoard.weather.held);
+    const badge = document.getElementById("frontWxBadge");
+    if (badge) badge.textContent = wx ? ("WX · " + wx + (held ? " · HOLD" : " · KDFW")) : "WX · HOLD";
+    const wrap = document.getElementById("frontStageWrap");
+    if (wrap) wrap.setAttribute("data-wx", wx || "");
+    const feed = document.getElementById("frontFeedStatus");
+    const n = ((frontBoard.brackets || []).length);
+    if (feed) {
+      feed.textContent = n ? (n + " DFW brackets · KXHIGHTDAL") : ((frontBoard.dropped || []).length ? "series dropped" : "no open DFW book");
+    }
+    try { tasteChairActivity("front"); bumpChairPulse("front", 0.12); } catch (e) {}
+    paintFrontSeats(frontBoard);
+    paintFrontBook(frontBoard);
+    paintFrontGuide(frontBoard);
+    paintFrontScore(frontBoard);
+    const fills = document.getElementById("frontFills");
+    if (fills) {
+      fills.innerHTML = (frontBoard.fills || []).map(function (f) {
+        return '<div class="side-fill">' + (f.paper ? "PAPER" : "LIVE") + " " + (f.side || "") + " " + (f.ticker || "") +
+          " · $" + (f.stake || "") + " @ " + frontCents(f.fill_cents) + " · " + (f.result || "OPEN") + "</div>";
+      }).join("");
+    }
+    const why = document.getElementById("frontWhy");
+    const best = (frontBoard.brackets || []).find(function (b) { return b.best; });
+    if (why) why.textContent = (best && (best.skip || best.bracket)) || "";
+    document.querySelectorAll("#frontView .front-mark img").forEach(function (img) {
+      if (img.id === "frontChairImg") {
+        img.src = raijinPortraitSrc(frontLockDir());
+        return;
+      }
+      if (img.complete && !img.naturalWidth) window.frontMarkFail(img);
+    });
+    startFrontWx(wx);
+  }
+  const frontSeatImgs = {};
+  ["glass", "pit", "frost", "bone"].forEach(function (id) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = "/static/bots/" + id + ".png";
+    frontSeatImgs[id.toUpperCase()] = img;
+  });
+  function frontChairName(chair) {
+    const n = String((chair && (chair.name || chair.id)) || "RAIJIN").trim();
+    return n || "RAIJIN";
+  }
+  function frontLeanOf(raw) {
+    const d = String(raw || "WAIT").toUpperCase();
+    if (d === "UP" || d === "YES") return "UP";
+    if (d === "DOWN" || d === "NO" || d === "SKIP") return "DOWN";
+    return "WAIT";
+  }
+  function drawFrontTable(wxCtx, w, h) {
+    if (!wxCtx || !w || !h) return;
+    const prev = ctx;
+    ctx = wxCtx;
+    try {
+      const data = frontBoard || {};
+      const chair = data.chair || {};
+      const seats = Array.isArray(data.seats) ? data.seats : [];
+      const tape = Array.isArray(data.tape) ? data.tape : [];
+      const open = tape.find(function (p) { return String(p.result || "").toUpperCase() === "OPEN"; });
+      const locked = !!open;
+      const dir = locked
+        ? (String(open.side || "").toUpperCase() === "NO" ? "DOWN" : "UP")
+        : frontLeanOf(chair.eye);
+      const conf = chair.confidence != null ? chair.confidence : 0;
+      const cx = w / 2;
+      const cy = h / 2;
+      const short = Math.min(w, h);
+      const radius = short * 0.28;
+      const pr = radius * 0.80;
+      const ringR = radius * 1.48;
+      const portraitY = cy - 2;
+      const accent = locked ? "rgba(0, 220, 255, 0.95)" : "rgba(0, 220, 255, 0.55)";
+      const nowCt = new Date();
+      const frac = ((nowCt.getHours() % 24) + nowCt.getMinutes() / 60) / 24;
+      drawHourRing(cx, cy, radius * 1.72, frac, dir === "UP" ? ACID : dir === "DOWN" ? HOT_RED : CYAN);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(0, 220, 255, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      const named = ["GLASS", "PIT", "FROST", "BONE"].map(function (id) {
+        return seats.find(function (s) { return s.id === id; }) || { id: id, dir: "WAIT", call: "—" };
+      });
+      const n = named.length;
+      const orbit = (typeof seatOrbitAngle === "function") ? seatOrbitAngle() : 0;
+      const wrapEl = document.getElementById("frontStageWrap");
+      const wxNow = String((data.weather && data.weather.mode) || (wrapEl && wrapEl.getAttribute("data-wx")) || "").toUpperCase();
+      const windLean = wxNow === "WIND" ? -0.10 : 0;
+      named.forEach(function (s, i) {
+        const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
+        const x = cx + Math.cos(ang) * ringR;
+        const y = cy + Math.sin(ang) * ringR;
+        const adir = frontLeanOf(s.dir || s.vote);
+        let col = "rgba(0,232,255,0.95)";
+        if (adir === "UP") col = "rgba(0,255,120,0.95)";
+        if (adir === "DOWN") col = "rgba(255,55,90,0.95)";
+        const confA = Number(s.n) || 50;
+        const end = spokeEnd(x, y, cx, portraitY, pr + 4);
+        const agree = (adir === dir) && (adir === "UP" || adir === "DOWN");
+        const fresh = markSeatTick("front:" + s.id, adir, confA);
+        drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh, "front");
+        const face = locked ? Math.atan2(portraitY - y, cx - x) : ang;
+        if (wxNow === "SUN") {
+          ctx.save();
+          ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+          ctx.beginPath();
+          ctx.ellipse(x - 18, y + 22, 16, 5, -0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.save();
+        ctx.translate(x, y);
+        if (windLean) ctx.rotate(windLean);
+        ctx.translate(-x, -y);
+        const mark = frontSeatImgs[s.id];
+        if (!containPortrait(mark, x, y, 22)) {
+          drawGameBot(s.id, x, y, 22, adir, confA, face, i);
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y, 22, 0, Math.PI * 2);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        }
+        ctx.font = "700 9px Orbitron, monospace";
+        ctx.fillStyle = "rgba(220,235,250,0.95)";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        const outA = Math.atan2(y - cy, x - cx);
+        ctx.fillText(s.id, x + Math.cos(outA) * 16, y + Math.sin(outA) * 16);
+        ctx.restore();
+      });
+      if (!containPortrait(raijinPortraitFor(dir), cx, portraitY, pr)) {
+        if (!containPortrait(raijinPortrait, cx, portraitY, pr)) {
+          containPortrait(raijinFace(dir), cx, portraitY, pr);
+        }
+      }
+      const chairMark = document.querySelector("#frontStageWrap > #frontChair .front-mark");
+      if (chairMark) {
+        chairMark.style.width = (pr * 2) + "px";
+        chairMark.style.height = (pr * 2) + "px";
+      }
+      ctx.beginPath();
+      ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = locked ? "rgba(0,220,255,0.95)" : "rgba(0,220,255,0.9)";
+      ctx.lineWidth = locked ? 3.2 : 2.8;
+      ctx.stroke();
+      try {
+        drawChairThink(cx, portraitY, pr, radius, { which: "front", dir: dir, locked: locked, st: {} });
+      } catch (e) {}
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.font = "700 11px Orbitron, monospace";
+      ctx.fillStyle = "#7fe9ff";
+      ctx.fillText(frontChairName(chair) + " · DFW", cx, portraitY + pr + 11);
+      ctx.font = "700 12px Orbitron, monospace";
+      const plateY = cy + radius + 14;
+      if (locked) {
+        ctx.fillStyle = "#7fe9ff";
+        ctx.fillText("LOCKED " + dir, cx, plateY);
+        ctx.font = "600 10px Rajdhani, sans-serif";
+        ctx.fillStyle = "rgba(180,200,220,0.85)";
+        ctx.fillText((open.bracket || chair.bracket || "—") + " · paper", cx, plateY + 14);
+      } else {
+        ctx.fillStyle = "#a8c0d8";
+        ctx.fillText(dir, cx, plateY);
+        ctx.font = "600 10px Rajdhani, sans-serif";
+        ctx.fillStyle = "rgba(180,200,220,0.75)";
+        ctx.fillText((conf || "—") + (conf ? "%" : "") + " · " + (chair.bracket || "waiting"), cx, plateY + 14);
+      }
+    } finally {
+      ctx = prev;
+    }
+  }
+  function seedFrontWx(w, h, mode) {
+    frontWxBits = [];
+    const n = mode === "RAIN" || mode === "STORM" ? 90 : (mode === "WIND" ? 70 : 36);
+    for (let i = 0; i < n; i++) {
+      frontWxBits.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        s: 0.6 + Math.random() * 2.4,
+        a: 0.08 + Math.random() * 0.22,
+        l: 8 + Math.random() * 18,
+      });
+    }
+  }
+  function drawFrontWxFrame() {
+    const canvas = document.getElementById("frontWx");
+    if (!canvas || mode !== "front") {
+      frontWxRaf = 0;
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const wrap = document.getElementById("frontStageWrap");
+    const w = canvas.clientWidth || 920;
+    const h = canvas.clientHeight || 620;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      seedFrontWx(w, h, (wrap && wrap.getAttribute("data-wx")) || "");
+    }
+    const wx = (wrap && wrap.getAttribute("data-wx")) || "";
+    frontWxT += 1;
+    ctx.fillStyle = "#02040a";
+    ctx.fillRect(0, 0, w, h);
+    // CRT/neon KDFW backdrop. Never invent SUN when the feed is dead.
+    if (wx === "SUN") {
+      const g = ctx.createRadialGradient(w * 0.78, h * 0.10, 4, w * 0.42, h * 0.42, w * 0.85);
+      g.addColorStop(0, "rgba(255, 214, 74, 0.92)");
+      g.addColorStop(0.18, "rgba(255, 176, 40, 0.42)");
+      g.addColorStop(0.42, "rgba(0, 232, 255, 0.22)");
+      g.addColorStop(1, "rgba(2, 4, 10, 0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(255, 210, 80, 0.28)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.78, h * 0.10);
+      ctx.lineTo(w * 0.18, h * 0.92);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+      ctx.beginPath();
+      ctx.ellipse(w * 0.38, h * 0.86, w * 0.34, 22, -0.28, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (wx === "HEAT") {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, "rgba(255, 70, 10, 0.28)");
+      g.addColorStop(0.45, "rgba(180, 40, 0, 0.22)");
+      g.addColorStop(1, "rgba(60, 12, 0, 0.55)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(255, 120, 30, 0.22)";
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 12; i++) {
+        ctx.beginPath();
+        const y = (h * 0.12) + i * 26 + Math.sin((frontWxT + i * 12) / 14) * 8;
+        ctx.moveTo(0, y);
+        for (let x = 0; x <= w; x += 12) ctx.lineTo(x, y + Math.sin((x + frontWxT * 2.4 + i * 20) / 16) * 7);
+        ctx.stroke();
+      }
+    } else if (wx === "CLOUD") {
+      ctx.fillStyle = "rgba(70, 84, 98, 0.28)";
+      ctx.fillRect(0, 0, w, h);
+      const drift = (frontWxT * 0.08) % (w + 220);
+      ctx.fillStyle = "rgba(120, 130, 140, 0.20)";
+      ctx.beginPath();
+      ctx.ellipse(drift - 90, h * 0.24, 120, 34, 0, 0, Math.PI * 2);
+      ctx.ellipse(drift + 50, h * 0.32, 96, 26, 0, 0, Math.PI * 2);
+      ctx.ellipse(drift + 160, h * 0.22, 80, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.08)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.45, h * 0.18);
+      ctx.lineTo(w * 0.52, h * 0.36);
+      ctx.lineTo(w * 0.48, h * 0.36);
+      ctx.lineTo(w * 0.58, h * 0.56);
+      ctx.stroke();
+    } else if (wx === "RAIN" || wx === "STORM") {
+      ctx.fillStyle = wx === "STORM" ? "rgba(8, 12, 28, 0.62)" : "rgba(6, 14, 24, 0.40)";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = wx === "STORM" ? "rgba(0, 232, 255, 0.38)" : "rgba(0, 232, 255, 0.28)";
+      ctx.lineWidth = 1.1;
+      frontWxBits.forEach(function (d) {
+        d.x += d.s * 0.85;
+        d.y += d.s * 2.4;
+        if (d.y > h + 10) { d.y = -10; d.x = Math.random() * w; }
+        ctx.globalAlpha = d.a;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 7, d.y + d.l);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      const sheen = ctx.createLinearGradient(0, h * 0.68, 0, h);
+      sheen.addColorStop(0, "rgba(0, 232, 255, 0)");
+      sheen.addColorStop(0.55, "rgba(0, 232, 255, 0.08)");
+      sheen.addColorStop(1, "rgba(0, 232, 255, 0.20)");
+      ctx.fillStyle = sheen;
+      ctx.fillRect(0, h * 0.68, w, h * 0.32);
+      if (wx === "STORM") {
+        const flash = (Date.now() < frontBoltUntil) || (frontWxT % 180 === 0);
+        if (frontWxT % 180 === 0) frontBoltUntil = Date.now() + 160;
+        if (flash) {
+          ctx.fillStyle = "rgba(220, 240, 255, 0.28)";
+          ctx.fillRect(0, 0, w, h);
+          ctx.strokeStyle = "rgba(0, 232, 255, 0.98)";
+          ctx.lineWidth = 3.2;
+          ctx.beginPath();
+          ctx.moveTo(w * 0.52, h * 0.04);
+          ctx.lineTo(w * 0.46, h * 0.30);
+          ctx.lineTo(w * 0.56, h * 0.34);
+          ctx.lineTo(w * 0.40, h * 0.78);
+          ctx.stroke();
+          ctx.lineWidth = 1;
+          if (wrap) wrap.classList.add("bolt-punch");
+        } else if (wrap) wrap.classList.remove("bolt-punch");
+      }
+    } else if (wx === "WIND") {
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.26)";
+      ctx.lineWidth = 1.2;
+      frontWxBits.forEach(function (d) {
+        d.x += d.s * 3.6;
+        if (d.x > w + 20) { d.x = -20; d.y = Math.random() * h; }
+        ctx.globalAlpha = d.a;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x + d.l * 2.6, d.y);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = "rgba(0, 232, 255, 0.018)";
+    for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
+    drawFrontTable(ctx, w, h);
+    frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
+  }
+  function startFrontWx(mode) {
+    if (mode && mode !== frontLastMode) {
+      if (frontLastMode) {
+        try { bumpChairPulse("front", 0.85); } catch (e) {}
+      }
+      frontLastMode = mode;
+      const canvas = document.getElementById("frontWx");
+      if (canvas) seedFrontWx(canvas.clientWidth || 920, canvas.clientHeight || 620, mode);
+    }
+    if (!frontWxRaf) frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
+  }
+  async function tapFront(card, side) {
+    if (!card || !card.ticker) return;
+    const st = (frontBoard && frontBoard.status) || {};
+    const live = !!(st.armed && !st.killed && st.live_allowed);
+    const why = document.getElementById("frontWhy");
+    try {
+      const r = await frontApi("/api/front/tap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          ticker: card.ticker,
+          side: side,
+          stake: frontStake,
+          live: live,
+          yes_bid: card.yes_bid,
+          yes_ask: card.yes_ask,
+          sick: !!card.dont_play,
+          votes: card.votes || [],
+          bracket: card.bracket,
+          best: !!card.best,
+          strike_type: card.strike_type,
+          floor_strike: card.floor_strike,
+          cap_strike: card.cap_strike,
+        }),
+      });
+      const data = await r.json();
+      if (why) why.textContent = data && data.ok ? ((live ? "LIVE" : "PAPER") + " " + side + " · " + (card.ticker || "")) : ((data && data.error) || "tap refused");
+      if (data && data.ok) {
+        const soundEl = document.getElementById("setFrontSound");
+        const master = document.getElementById("setSoundOn");
+        if ((!soundEl || soundEl.checked) && (!master || master.checked)) {
+          try { playCallVoice(String(side || "").toUpperCase() === "NO" ? "DOWN" : "UP"); } catch (e) {}
+        }
+      }
+      loadFrontTable();
+    } catch (e) {
+      if (why) why.textContent = "tap failed";
+    }
+  }
+  async function loadFrontTable() {
+    wireFrontTable();
+    try {
+      const r = await frontApi("/api/front");
+      if (r.ok) paintFrontBoard(await r.json());
+    } catch (e) {}
+    if (frontPollTimer) clearInterval(frontPollTimer);
+    frontPollTimer = setInterval(function () {
+      if (mode !== "front") return;
+      frontApi("/api/front").then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (data) paintFrontBoard(data);
+      }).catch(function () {});
+    }, 20000); // book. Live KDFW weather refresh is frontWxRefreshMs / WX_REFRESH_S.
+  }
+  window.loadFrontTable = loadFrontTable;
 
   function renderRanksBoard() {
     const table = document.getElementById("ranksTable");
@@ -5027,8 +7388,14 @@ function drawCandleChart() {
         return;
       }
     }
+    if (next === "night" && mode === "night") {
+      next = "art";
+    }
     if (next === "follower" && !document.body.classList.contains("follower-unlocked")) {
       return;
+    }
+    if (next === "front" && document.body.classList.contains("front-tab-off")) {
+      next = "art";
     }
     try {
       if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
@@ -5045,7 +7412,7 @@ function drawCandleChart() {
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
-        window.__floorMusicOnMode(mode === "floor");
+        window.__floorMusicOnMode(mode === "floor" || mode === "night");
       }
     } catch (e) {}
     // Hierarchy only on ranks / dashboard
@@ -5055,19 +7422,40 @@ function drawCandleChart() {
     const paperView = document.getElementById("paperView");
     const settingsView = document.getElementById("settingsView");
     const followerView = document.getElementById("followerView");
+    const tapeView = document.getElementById("tapeView");
+    const bookView = document.getElementById("bookView");
+    const brainView = document.getElementById("brainView");
+    const newsView = document.getElementById("newsView");
+    const schoolView = document.getElementById("schoolView");
+    const sideView = document.getElementById("sideView");
+    const frontView = document.getElementById("frontView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
     const showPaper = mode === "paper";
     const showSettings = mode === "settings";
     const showFollower = mode === "follower";
-    const showMain = mode === "art" || mode === "dashboard" || mode === "floor";
+    const showTape = mode === "tape";
+    const showBook = mode === "book";
+    const showBrain = mode === "brain";
+    const showNews = mode === "news";
+    const showSchool = mode === "school";
+    const showSide = mode === "side";
+    const showFront = mode === "front";
+    const showMain = mode === "art" || mode === "dashboard" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
     if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
     if (followerView) followerView.classList.toggle("hidden", !showFollower);
+    if (tapeView) tapeView.classList.toggle("hidden", !showTape);
+    if (bookView) bookView.classList.toggle("hidden", !showBook);
+    if (brainView) brainView.classList.toggle("hidden", !showBrain);
+    if (newsView) newsView.classList.toggle("hidden", !showNews);
+    if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
+    if (sideView) sideView.classList.toggle("hidden", !showSide);
+    if (frontView) frontView.classList.toggle("hidden", !showFront);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
     try { dockWindowLed(); } catch (e) {}
@@ -5087,6 +7475,13 @@ function drawCandleChart() {
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
+    if (mode === "tape") loadChairTape();
+    if (mode === "book") loadKalshiBook();
+    if (mode === "brain") loadBrainRecap();
+    if (mode === "news") loadDeskNews();
+    if (mode === "school") loadSchool();
+    if (mode === "side") loadSideTable();
+    if (mode === "front") loadFrontTable();
     if (mode === "follower" && typeof window.renderFollower === "function") {
       try { window.renderFollower(); } catch (e) {}
     }
@@ -5094,10 +7489,14 @@ function drawCandleChart() {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
-    if (mode === "floor" || mode === "art") {
+    if (mode === "floor" || mode === "art" || mode === "night") {
       try { prefetchLeaderClickVideo(); } catch (e) {}
     }
+    try { paintFloorCrawl(); } catch (e) {}
+    try { paintChairWhy(); } catch (e) {}
+    try { paintPhoneScore(); } catch (e) {}
     if (mode === "charts") {
+      try { syncChartHero(); } catch (e) {}
       try { syncChartPairTitle(); } catch (e) {}
       // Layout after the view is visible, then draw (avoids 0×0 canvases)
       requestAnimationFrame(() => {
@@ -5113,9 +7512,19 @@ function drawCandleChart() {
     try { window.state = state; } catch (e) {}
     try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
     try { paintTableHud(); } catch (e) {}
+    try { paintFloorCrawl(); } catch (e) {}
+    try { paintChairWhy(); } catch (e) {}
+    try { paintPhoneScore(); } catch (e) {}
     try { dockWindowLed(); } catch (e) {}
     try {
+      tasteChairActivity("bitcoin");
+      tasteChairActivity("ethereum");
+      bumpChairPulse("bitcoin", 0.16);
+      bumpChairPulse("ethereum", 0.16);
+    } catch (e) {}
+    try {
       if (mode === "art" || mode === "floor") drawArt();
+    if (mode === "night") drawArt();
     } catch (e) {}
     const view = (typeof getViewState === "function") ? getViewState() : state;
     return tableHasLiveHour(view || state);
@@ -5339,7 +7748,9 @@ function drawCandleChart() {
 
   function loop(ts) {
     time = ts;
+    try { stepAllChairPulses(ts); } catch (e) {}
     if (mode === "art" || mode === "floor") drawArt();
+    if (mode === "night") drawArt();
     if (!document.hidden) {
       animId = requestAnimationFrame(loop);
     } else {
@@ -5353,6 +7764,7 @@ function drawCandleChart() {
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
       applyDeskState(payload);
+      try { loadHealthStrip(); } catch (e) {}
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
@@ -5458,7 +7870,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "dashboard", "bots", "ranks", "paper", "charts", "settings"];
+        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -5473,7 +7885,11 @@ function drawCandleChart() {
         e.preventDefault();
         return;
       }
-      if (mode === "floor") setMode("art");
+      if (typeof window.__dismissCloseRecap === "function" && window.__dismissCloseRecap()) {
+        e.preventDefault();
+        return;
+      }
+      if (mode === "floor" || mode === "night") setMode("art");
     }
     if (e.key === "0") setMode("floor");
     if (e.key === "1") setMode("art");
@@ -5496,6 +7912,9 @@ function drawCandleChart() {
   window.addEventListener("resize", () => {
     if (deskCinematicOn()) return;
     resizeRoundtable();
+    try { syncExclusiveBodyMode(mode); } catch (e) {}
+    try { paintPhoneScore(); } catch (e) {}
+    try { paintChairWhy(); } catch (e) {}
     if (mode === "settings") {
       const sv = document.getElementById("settingsView");
       if (sv) sv.classList.remove("hidden");
@@ -5599,6 +8018,12 @@ function drawCandleChart() {
       body: "Practice scorecard. Paper-track expectancy before any size. Quality over quantity. One high-edge guess per window. This desk does not place real orders.",
     },
     {
+      mode: "front",
+      target: "#tabFront",
+      title: "THE FRONT",
+      body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (official high) · PIT (Kalshi vs that number) · FROST (veto) · BONE (this city’s history / climo).\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
+    },
+    {
       mode: "charts",
       target: "#tabCharts",
       title: "CHARTS",
@@ -5608,7 +8033,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabSettings",
       title: "SETTINGS",
-      body: "BEAST MODE, sounds, and knobs. Settings stays behind the admin lock.",
+      body: "BEAST MODE, sounds, and knobs. RAIJIN / THE FRONT is its own block — show the Front tab, the small Floor chair, paper default, WX stake / daily loss, FROST / SICK no-lock, and fade underperformers. It is not Follower. Settings stays behind the admin lock.",
     },
     {
       mode: "art",
@@ -6060,7 +8485,7 @@ function drawCandleChart() {
       }
       const stage = document.getElementById("roundtable");
       if (stage) {
-        const dual = (typeof mode !== "undefined" && mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle());
+        const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
           ? "Floor — Satoshi BTC table and Vitalik ETH table"
           : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"));
@@ -6105,6 +8530,48 @@ function drawCandleChart() {
         e.stopPropagation();
         setMode("art");
       });
+    }
+    const closeRecap = document.getElementById("closeRecap");
+    if (closeRecap && !closeRecap.__wired) {
+      closeRecap.__wired = true;
+      closeRecap.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.__dismissCloseRecap === "function") window.__dismissCloseRecap();
+      });
+    }
+    const phoneScore = document.getElementById("phoneScore");
+    if (phoneScore && !phoneScore.__wired) {
+      phoneScore.__wired = true;
+      phoneScore.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = focusTable === "ethereum" ? "bitcoin" : "ethereum";
+        if (typeof setFocusTable === "function") setFocusTable(next);
+        try { paintPhoneScore(); } catch (err) {}
+        try { paintChairWhy(); } catch (err) {}
+      });
+    }
+    const stage = document.getElementById("tableStage");
+    if (stage && !stage.__phoneFlipWired) {
+      stage.__phoneFlipWired = true;
+      let sx = null;
+      stage.addEventListener("touchstart", function (e) {
+        if (!e.changedTouches || !e.changedTouches[0]) return;
+        sx = e.changedTouches[0].clientX;
+      }, { passive: true });
+      stage.addEventListener("touchend", function (e) {
+        if (sx == null || !e.changedTouches || !e.changedTouches[0]) return;
+        if (typeof isPhoneDesk === "function" && !isPhoneDesk()) return;
+        if (mode !== "floor" && mode !== "night") return;
+        const dx = e.changedTouches[0].clientX - sx;
+        sx = null;
+        if (Math.abs(dx) < 48) return;
+        const next = dx < 0 ? "ethereum" : "bitcoin";
+        if (typeof setFocusTable === "function") setFocusTable(next);
+        try { paintPhoneScore(); } catch (err) {}
+        try { paintChairWhy(); } catch (err) {}
+      }, { passive: true });
     }
     const seatSpin = document.getElementById("seatSpinBtn");
     if (seatSpin && !seatSpin.__wired) {
@@ -6748,9 +9215,14 @@ function drawCandleChart() {
       if ((mode !== "floor" && mode !== "art") || leaderClickPlaying || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
-      if (!pt || !chairHitAt(pt.x, pt.y)) return;
+      const hit = pt && chairHitAt(pt.x, pt.y);
+      if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
+      if (hit.which === "front") {
+        try { setMode("front"); } catch (err) {}
+        return;
+      }
       playLeaderClickVideo();
     };
     targets.forEach((el) => {
@@ -6820,6 +9292,62 @@ function drawCandleChart() {
   }
   wireZtCinematic(document.getElementById("ztLogoBtn"));
 
+  function collectFrontSettings() {
+    const num = (id, d) => {
+      const el = document.getElementById(id);
+      if (!el || el.value === "") return d;
+      const v = Number(el.value);
+      return Number.isFinite(v) ? v : d;
+    };
+    const on = (id) => {
+      const el = document.getElementById(id);
+      return el ? !!el.checked : true;
+    };
+    return {
+      show_tab: on("setFrontShowTab"),
+      show_floor_chair: on("setFrontShowChair"),
+      paper_only: true,
+      min_confidence: num("setFrontMinConf", 50),
+      max_stake: num("setFrontMaxStake", 25),
+      daily_loss_cap: num("setFrontDailyLoss", 50),
+      no_lock_frost_sick: on("setFrontNoLockFrost"),
+      sound_on_lock: on("setFrontSound"),
+      fade_underperformers: on("setFrontFadeOn"),
+      fade_min_n: num("setFrontFadeMinN", 20),
+      fade_wr_threshold: num("setFrontFadeWr", 0.42),
+      dallas: true,
+    };
+  }
+  function applyFrontSettings(F) {
+    F = F || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    chk("setFrontShowTab", F.show_tab !== false);
+    chk("setFrontShowChair", F.show_floor_chair !== false);
+    const paper = document.getElementById("setFrontPaper");
+    const live = document.getElementById("setFrontLive");
+    if (paper) paper.checked = true;
+    if (live) { live.checked = false; live.disabled = true; }
+    set("setFrontMinConf", F.min_confidence);
+    set("setFrontMaxStake", F.max_stake);
+    set("setFrontDailyLoss", F.daily_loss_cap);
+    chk("setFrontNoLockFrost", F.no_lock_frost_sick !== false);
+    chk("setFrontSound", F.sound_on_lock !== false);
+    chk("setFrontFadeOn", F.fade_underperformers !== false);
+    set("setFrontFadeMinN", F.fade_min_n);
+    set("setFrontFadeWr", F.fade_wr_threshold);
+    chk("setFrontDallas", true);
+    const dallas = document.getElementById("setFrontDallas");
+    if (dallas) dallas.disabled = true;
+    document.body.classList.toggle("front-tab-off", F.show_tab === false);
+    document.body.classList.toggle("front-chair-off", F.show_floor_chair === false);
+    if (F.show_tab === false && typeof mode !== "undefined" && mode === "front") {
+      try { setMode("art"); } catch (e) {}
+    }
+  }
+  window.collectFrontSettings = collectFrontSettings;
+  window.applyFrontSettings = applyFrontSettings;
+
   async function collectAndSaveSettings() {
     const num = (id, d) => {
       const el = document.getElementById(id);
@@ -6881,6 +9409,7 @@ function drawCandleChart() {
         call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
         team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
       },
+      front: collectFrontSettings(),
     };
     if (isAdminUnlocked()) {
       const modeEl = document.getElementById("setAutoBetMode");
@@ -6965,7 +9494,20 @@ function drawCandleChart() {
     });
   }
 
+  const floorRaijinBtn = document.getElementById("floorRaijin");
+  if (floorRaijinBtn && !floorRaijinBtn.__wired) {
+    floorRaijinBtn.__wired = true;
+    floorRaijinBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      try { setMode("front"); } catch (err) {}
+    });
+  }
+
   window.setMode = setMode;
+  window.__deskModeCycle = function () {
+    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "school", "side", "front", "charts", "settings"];
+  };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
   const settingsViewEl = document.getElementById("settingsView");
@@ -6986,6 +9528,17 @@ function drawCandleChart() {
     settingsViewEl.addEventListener("wheel", (e) => {
       e.stopPropagation();
     }, { capture: true, passive: true });
+  }
+  if (chartsView && !chartsView.__deskWheel) {
+    chartsView.__deskWheel = true;
+    chartsView.addEventListener("wheel", (e) => {
+      e.stopPropagation();
+      const room = chartsView.scrollHeight - chartsView.clientHeight;
+      if (room <= 1) return;
+      const prev = chartsView.scrollTop;
+      chartsView.scrollTop += e.deltaY;
+      if (chartsView.scrollTop !== prev) e.preventDefault();
+    }, { capture: true, passive: false });
   }
 
   // Default desk after unlock is Table + ETH. Cold visit stays on the desk-code gate.
@@ -7051,6 +9604,21 @@ function drawCandleChart() {
       set("setAutoBetSize", AB.size);
       chk("setAutoBetBtc", AB.btc !== false);
       chk("setAutoBetEth", AB.eth !== false);
+    }
+    if (typeof window.applyFrontSettings === "function") {
+      try { window.applyFrontSettings(s.front || {}); } catch (e) {}
+    } else {
+      const F = s.front || {};
+      chk("setFrontShowTab", F.show_tab !== false);
+      chk("setFrontShowChair", F.show_floor_chair !== false);
+      set("setFrontMinConf", F.min_confidence);
+      set("setFrontMaxStake", F.max_stake);
+      set("setFrontDailyLoss", F.daily_loss_cap);
+      chk("setFrontNoLockFrost", F.no_lock_frost_sick !== false);
+      chk("setFrontSound", F.sound_on_lock !== false);
+      chk("setFrontFadeOn", F.fade_underperformers !== false);
+      set("setFrontFadeMinN", F.fade_min_n);
+      set("setFrontFadeWr", F.fade_wr_threshold);
     }
     set("setIntervalInput", s.analysis_interval);
     set("setHotInput", s.analysis_interval_hot);
@@ -7119,6 +9687,20 @@ function drawCandleChart() {
         watermark_opacity: num("setWatermark", 0.18),
         call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
         team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
+      },
+      front: (typeof window.collectFrontSettings === "function") ? window.collectFrontSettings() : {
+        show_tab: on("setFrontShowTab"),
+        show_floor_chair: on("setFrontShowChair"),
+        paper_only: true,
+        min_confidence: num("setFrontMinConf", 50),
+        max_stake: num("setFrontMaxStake", 25),
+        daily_loss_cap: num("setFrontDailyLoss", 50),
+        no_lock_frost_sick: on("setFrontNoLockFrost"),
+        sound_on_lock: on("setFrontSound"),
+        fade_underperformers: on("setFrontFadeOn"),
+        fade_min_n: num("setFrontFadeMinN", 20),
+        fade_wr_threshold: num("setFrontFadeWr", 0.42),
+        dallas: true,
       },
     };
     const st = document.getElementById("settingsSaveStatus");

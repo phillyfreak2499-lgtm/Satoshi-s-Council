@@ -86,11 +86,43 @@ class ChairThinkTests(unittest.TestCase):
         think = JS.split("function chairThinkRate", 1)[1].split("function resizeRoundtable", 1)[0]
         self.assertIn("ctx.clip()", think)
         self.assertIn("in_huddle", think)
+        self.assertIn("function pulseRate", JS)
+        self.assertIn("return chairThinkRate(st, dir, locked, which)", JS)
+        self.assertIn("pulse-rate:", JS)
+        self.assertIn("const rate = pulseRate(st, dir, locked, which)", JS)
 
     def test_called_on_table_and_floor_chairs(self):
         self.assertIn("drawChairThink(cx, portraitY, pr, radius", JS)
         self.assertIn("drawChairThink(cx, cy, lr, radius", JS)
         self.assertIn("noteChairLock(whichChair, _lc)", JS)
+
+
+class ChairPulseCadenceTests(unittest.TestCase):
+    def test_each_chair_has_its_own_clock(self):
+        self.assertIn("function pulseKeyOf", JS)
+        self.assertIn("function chairPulseTime", JS)
+        self.assertIn("function stepAllChairPulses", JS)
+        self.assertIn("function bumpChairPulse", JS)
+        self.assertIn("function tasteChairActivity", JS)
+        self.assertIn('Each Chair has its own pulse clock', JS)
+        self.assertIn('Packets, not a metronome', JS)
+        self.assertIn('stepChairPulse("bitcoin"', JS)
+        self.assertIn('stepChairPulse("ethereum"', JS)
+        self.assertIn('stepChairPulse("front"', JS)
+        self.assertIn("chairPulseTime(which)", JS)
+        self.assertIn("Math.max(0.32, Math.min(5.6", JS)
+        self.assertIn("p.burstLeft = 2", JS)
+        self.assertIn("Phone: one rate per chair, no per-segment sparkle", JS)
+        self.assertIn('tasteChairActivity("bitcoin")', JS)
+        self.assertIn('tasteChairActivity("ethereum")', JS)
+        self.assertIn('tasteChairActivity("front")', JS)
+        self.assertIn('bumpChairPulse("front", 0.85)', JS)
+        self.assertIn("_newsPulseSig", JS)
+        self.assertIn("/api/news", JS)
+        self.assertNotIn("if (reduceMotion || soundMuted) return;", JS)
+        self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
+        self.assertIn("Never auto-starts", JS)
+        self.assertNotIn("from backend.services.follower_gate", JS)
 
 
 class BotsGuideMarkTests(unittest.TestCase):

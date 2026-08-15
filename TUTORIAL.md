@@ -1,6 +1,6 @@
 # Satoshi’s Council — New Operator Tutorial
 
-**Version:** 2026-08-14 (One-Call / Best-Odds Protocol)
+**Version:** 2026-08-15 (Raijin / THE FRONT)
 
 ## What this is
 A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).  
@@ -33,9 +33,20 @@ Calls are graded on **Kalshi odds path**, not only the final BTC print.
 Paper P&L is path-scaled. Only the single locked call per window is graded.
 
 ## Tabs
-Table · Floor · Dashboard · Bots · Ranks · Paper · Charts · Settings  
+Table · Floor · Dashboard · Bots · Ranks · Paper · Front · Charts · Settings  
 
 **Keys:** 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · **?** Help (replay this tutorial)
+
+## Raijin / THE FRONT
+Raijin is the weather Chair. THE FRONT is his Floor — a real ring table, not a city list.
+
+- **Dallas daily high only.** Series `KXHIGHTDAL`. Settle **DFW / KDFW**, not Love Field. Date lives in the ticker.
+- **Seats:** **GLASS** (official / NWS high) · **PIT** (Kalshi vs that number) · **FROST** (veto junk / SICK / thin book) · **BONE** (this city’s history / climo).
+- Hits count like BTC / ETH. Pending until NWS CLI posts the next morning.
+- Paper first. Live stays off until you arm this tab. Does not place 1H Chair locks. Never talks to Follower.
+- Small third chair on the shared Floor. Full-size ring on the Front tab.
+
+Do not look for other cities on this board. v1 is Dallas only.
 
 ## Follower bots
 Poll `/api/state` and read `locked_call` (or `decision.locked_call`):

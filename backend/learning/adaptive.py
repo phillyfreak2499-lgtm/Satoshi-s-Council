@@ -12,7 +12,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
-from backend.config import settings
+from backend.config import eth_core_agent_set, prior_weight, settings
 from backend.agents.roster import display_name
 from backend.learning.regime_keys import classify_regime, split_key
 from backend.agents.chair_gates import band_tighten, odds_band_key
@@ -35,10 +35,10 @@ class AdaptiveLearner:
     def __init__(self, asset: str | None = None):
         self.asset = (asset or "btc").lower()
         self.weights: Dict[str, float] = {
-            k: float(v) for k, v in settings.BASE_WEIGHTS.items()
+            k: prior_weight(self.asset, k)
+            for k, v in settings.BASE_WEIGHTS.items()
             if k not in NON_VOTERS
         }
-        self._normalize()
         # Per-agent track record
         self.correct: Dict[str, int] = defaultdict(int)
         self.wrong: Dict[str, int] = defaultdict(int)
@@ -77,10 +77,31 @@ class AdaptiveLearner:
         self.regime_weights: Dict[str, Dict[str, float]] = {}
         self.REGIME_BLEND: float = float(getattr(settings, 'REGIME_WEIGHT_BLEND', 0.55))
         self.REGIME_MIN_N: int = int(getattr(settings, 'REGIME_MIN_SAMPLES', 4))
+        self._trim_eth_roster_weights()
+        self._normalize()
 
     def _normalize(self) -> None:
         total = sum(self.weights.values()) or 1.0
         self.weights = {k: v / total for k, v in self.weights.items()}
+
+    def _eth_voter_names(self) -> set | None:
+        if self.asset != "eth":
+            return None
+        return {n for n in eth_core_agent_set() if n not in NON_VOTERS}
+
+    def _trim_eth_roster_weights(self) -> None:
+        """ETH brain stays on the thin roster. New seats start quiet until graded."""
+        voters = self._eth_voter_names()
+        if voters is None:
+            return
+        self.weights = {k: float(v) for k, v in self.weights.items() if k in voters}
+        quiet = getattr(settings, "ETH_QUIET_PRIORS", None) or {}
+        for name, prior in quiet.items():
+            if name not in voters:
+                continue
+            n = int(self.correct.get(name, 0)) + int(self.wrong.get(name, 0))
+            if n <= 0 or name not in self.weights:
+                self.weights[name] = float(prior)
 
 
     def learning_phase(self, chair_n: int | None = None) -> Dict[str, Any]:
@@ -112,9 +133,12 @@ class AdaptiveLearner:
             k for k in self.weights.keys()
             if k not in NON_VOTERS
         ]
-        # Include any base-weight voters not yet in weights
+        eth_voters = self._eth_voter_names()
+        # Include any base-weight voters not yet in weights (BTC full roster; ETH thin only)
         for k in settings.BASE_WEIGHTS:
             if k not in NON_VOTERS and k not in voters:
+                if eth_voters is not None and k not in eth_voters:
+                    continue
                 voters.append(k)
 
         rows = []
@@ -124,7 +148,7 @@ class AdaptiveLearner:
             n = c + w
             # Prior 0.5 strength 4 — cold start stays mid-pack
             wr = (c + 2) / (n + 4)
-            weight = float(self.weights.get(name, settings.BASE_WEIGHTS.get(name, 0.1)))
+            weight = float(self.weights.get(name, prior_weight(self.asset, name)))
             # Hierarchy score: win-rate dominates; weight breaks ties
             # WR-first hierarchy; volume of rights is a light tie-break only
             score = wr * 120.0 + weight * 6.0 + min(c, 200) * 0.05
@@ -355,10 +379,12 @@ class AdaptiveLearner:
         form_win = int(getattr(settings, "RECENT_FORM_WINDOW", 20))
         form_blend = float(getattr(settings, "RECENT_FORM_BLEND", 0.35))
         momentum = float(getattr(settings, "WEIGHT_MOMENTUM", 0.08))
-        base = settings.BASE_WEIGHTS
         for name, info in directional.items():
+            eth_voters = self._eth_voter_names()
+            if eth_voters is not None and name not in eth_voters:
+                continue
             if name not in self.weights:
-                self.weights[name] = float(base.get(name, 0.1))
+                self.weights[name] = prior_weight(self.asset, name)
             c = self.correct[name]
             w = self.wrong[name]
             n = c + w
@@ -375,7 +401,7 @@ class AdaptiveLearner:
             # Blend: more history → trust lifetime more, but never ignore form
             blend = form_blend if n >= form_win else form_blend * (n / max(1, form_win))
             wr = (1 - blend) * life_wr + blend * form_wr
-            b = float(base.get(name, 0.1))
+            b = prior_weight(self.asset, name)
             factor = 0.55 + wr * 0.9
             # Overconfidence penalty on recent high-conf misses
             if recent_hits and recent_confs:
@@ -816,6 +842,8 @@ class AdaptiveLearner:
                     self.calib_hits[k] = int(v.get("hits") or 0)
                     self.calib_tries[k] = int(v.get("tries") or 0)
             self._odds_band_restore(data.get("odds_calibration") or data.get("odds_band"))
+            self._trim_eth_roster_weights()
+            self._normalize()
             self._recompute_regime_weights()
             return True
         except Exception:
@@ -873,19 +901,23 @@ class AdaptiveLearner:
     def _recompute_regime_weights(self) -> None:
         """Build per-regime weight maps from regime win-rates × base weights."""
         base = settings.BASE_WEIGHTS
+        eth_voters = self._eth_voter_names()
         all_regimes = set(self.regime_correct.keys()) | set(self.regime_wrong.keys())
         out: Dict[str, Dict[str, float]] = {}
+        extra = [k for k in base if k not in NON_VOTERS and (eth_voters is None or k in eth_voters)]
         for reg in all_regimes:
             local: Dict[str, float] = {}
-            for name in list(self.weights.keys()) + [k for k in base if k not in NON_VOTERS]:
+            for name in list(self.weights.keys()) + extra:
                 if name in NON_VOTERS:
+                    continue
+                if eth_voters is not None and name not in eth_voters:
                     continue
                 c = int(self.regime_correct.get(reg, {}).get(name, 0))
                 w = int(self.regime_wrong.get(reg, {}).get(name, 0))
                 n = c + w
                 # Bayesian smoothed win rate
                 wr = (c + 2) / (n + 4)
-                b = float(base.get(name, 0.1))
+                b = prior_weight(self.asset, name)
                 # Same factor curve as global nudge
                 factor = 0.55 + wr * 0.9
                 local[name] = max(settings.MIN_WEIGHT, min(settings.MAX_WEIGHT, b * factor))
@@ -935,14 +967,13 @@ class AdaptiveLearner:
                     for a, c in agents.items():
                         agg_w[a] += c
             if agg_c or agg_w:
-                base = settings.BASE_WEIGHTS
                 tmp = {}
                 for name in self.weights:
                     c = agg_c.get(name, 0)
                     w = agg_w.get(name, 0)
                     n = c + w
                     wr = (c + 2) / (n + 4)
-                    b = float(base.get(name, 0.1))
+                    b = prior_weight(self.asset, name)
                     tmp[name] = max(settings.MIN_WEIGHT, min(settings.MAX_WEIGHT, b * (0.55 + wr * 0.9)))
                 tot = sum(tmp.values()) or 1.0
                 local_map = {k: v / tot for k, v in tmp.items()}

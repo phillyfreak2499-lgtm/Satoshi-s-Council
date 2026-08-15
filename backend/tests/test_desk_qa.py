@@ -198,7 +198,7 @@ class FloorNameplateOverlapTests(unittest.TestCase):
         self.assertIn("WICK / WIRE / EXHAUST / QUORUM", JS)
         for w, h in ((1280, 700), (1280, 620), (390, 390), (390, 520)):
             radius, ring_r, lr, seat_r, nameplate_h, phone = _floor_nameplate_fit(w, h)
-            plate_bottom = lr + 46 + 14
+            plate_bottom = (lr * 0.76 + 8) if phone else (lr + 46 + 14)
             seat_inner = ring_r - seat_r
             self.assertLess(
                 plate_bottom,
@@ -214,18 +214,140 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                 "outer seat labels clip at %sx%s" % (w, h),
             )
 
+    def test_real_rects_do_not_intersect_at_1280_and_390(self):
+        self.assertIn("function floorHudGeometry", JS)
+        self.assertIn("window.__floorHudGeometry", JS)
+        self.assertIn("dualNameY", JS)
+        self.assertIn("FOCUSWICK", JS)
+        self.assertIn('view === "art"', JS)
+        # Live collisions this pass — not the old WICK/QUORUM watch list.
+        table_hits = ("WIRE", "CASCADE")
+        floor_hits = ("WIRE", "EXHAUST", "VEL", "CHEAP")
+        phone_hits = ("FADE", "ORBIT", "WHALE")
+        for w, h in ((1280, 700), (1280, 620)):
+            table = _floor_hud_layout(w, h, "art")
+            self.assertFalse(table["dual"])
+            names = {s["name"] for s in table["seats"]}
+            for lab in table_hits:
+                self.assertIn(lab, names, "%s missing on Table %sx%s" % (lab, w, h))
+            hud = list(table["nameplates"]) + list(table["goals"])
+            for plate in hud:
+                for seat in table["seats"]:
+                    self.assertFalse(
+                        _rects_intersect(plate, seat),
+                        "Table %s overlaps %s at %sx%s plate=%s seat=%s"
+                        % (plate.get("text") or "HUD", seat["name"], w, h, plate, seat),
+                    )
+            for plate in table["nameplates"]:
+                for goal in table["goals"]:
+                    self.assertFalse(
+                        _rects_intersect(plate, goal),
+                        "nameplate sits on GOAL at Table %sx%s plate=%s goal=%s" % (w, h, plate, goal),
+                    )
+            floor = _floor_hud_layout(w, h, "floor")
+            self.assertTrue(floor["dual"])
+            fnames = {s["name"] for s in floor["seats"]}
+            for lab in floor_hits:
+                self.assertIn(lab, fnames, "%s missing on Floor %sx%s" % (lab, w, h))
+            satoshi = [p for p in floor["nameplates"] if "SATOSHI" in str(p.get("text") or "")]
+            self.assertTrue(satoshi)
+            raijin = [p for p in floor["nameplates"] if str(p.get("text") or "") == "RAIJIN"]
+            self.assertTrue(raijin, "Raijin third chair missing on Floor %sx%s" % (w, h))
+            vitalik = [p for p in floor["nameplates"] if "VITALIK" in str(p.get("text") or "")]
+            for plate in raijin:
+                for other in satoshi + vitalik:
+                    self.assertFalse(
+                        _rects_intersect(plate, other),
+                        "RAIJIN covers %s at Floor %sx%s" % (other.get("text"), w, h),
+                    )
+            cluster = [s for s in floor["seats"] if s["name"] in floor_hits]
+            for i, a in enumerate(cluster):
+                for b in cluster[i + 1 :]:
+                    if a.get("table") != b.get("table"):
+                        continue
+                    self.assertFalse(
+                        _rects_intersect(a, b),
+                        "Floor %s overlaps %s at %sx%s a=%s b=%s" % (a["name"], b["name"], w, h, a, b),
+                    )
+                for plate in satoshi:
+                    if a.get("table") and plate.get("table") and a["table"] != plate["table"]:
+                        continue
+                    self.assertFalse(
+                        _rects_intersect(plate, a),
+                        "SATOSHI · BTC overlaps %s at Floor %sx%s plate=%s seat=%s"
+                        % (a["name"], w, h, plate, a),
+                    )
+        for w, h in ((390, 390), (390, 520)):
+            phone = _floor_hud_layout(w, h, "floor")
+            names = {s["name"] for s in phone["seats"]}
+            for lab in phone_hits:
+                self.assertIn(lab, names, "%s missing on phone %sx%s" % (lab, w, h))
+            for plate in list(phone["nameplates"]) + list(phone["goals"]):
+                for seat in phone["seats"]:
+                    self.assertFalse(
+                        _rects_intersect(plate, seat),
+                        "phone %s overlaps %s at %sx%s plate=%s seat=%s"
+                        % (plate.get("text") or "HUD", seat["name"], w, h, plate, seat),
+                    )
+
+    def test_dual_tables_do_not_crush_at_1042(self):
+        self.assertIn("function dualFloorTableR", JS)
+        self.assertIn("function floorRaijinFit", JS)
+        self.assertIn("do not crush at 1042", JS)
+        self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin"', JS)
+        self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum"', JS)
+        for w, h in ((1042, 700), (1042, 800), (1042, 620), (1280, 700)):
+            layout = _floor_hud_layout(w, h)
+            self.assertTrue(layout["dual"], "ETH stays Satoshi/Vitalik dual at %sx%s" % (w, h))
+            btc = [s for s in layout["seats"] if s.get("table") == "btc"]
+            eth = [s for s in layout["seats"] if s.get("table") == "eth"]
+            self.assertTrue(btc and eth, "both councils missing at %sx%s" % (w, h))
+            for a in btc:
+                for b in eth:
+                    self.assertFalse(
+                        _rects_intersect(a, b),
+                        "1042 crush: %s/%s overlaps %s/%s at %sx%s a=%s b=%s"
+                        % (a["table"], a["name"], b["table"], b["name"], w, h, a, b),
+                    )
+            hud = list(layout["nameplates"]) + list(layout["goals"])
+            for plate in hud:
+                for seat in layout["seats"]:
+                    self.assertFalse(
+                        _rects_intersect(plate, seat),
+                        "%s overlaps %s at %sx%s" % (plate.get("text") or "HUD", seat["name"], w, h),
+                    )
+
+
+class SatoshiChairEmblemTests(unittest.TestCase):
+    def test_chair_art_may_keep_zt_crest(self):
+        js = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+        html = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("function coverSatoshiEmblem", js)
+        self.assertNotIn("gold ZT chest emblem", js)
+        self.assertIn('"/chair-up.jpg"', js)
+        self.assertIn('"/chair-down.jpg"', js)
+        self.assertIn('"/chair-wait.jpg"', js)
+        for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
+            self.assertTrue((ROOT / "frontend" / "static" / name).is_file(), name)
+        self.assertIn("Satoshi’s Council", html)
+        self.assertIn('src="/council-mark.png"', html)
+        self.assertNotIn("ZT ·", js)
+        self.assertNotIn("ZT ·", html)
+
 
 class FloorTableChromeOverlapTests(unittest.TestCase):
     def test_table_chip_misses_wordmark_and_focus(self):
         self.assertIn("function floorChromeFit", JS)
         self.assertIn("--floor-table-rail: 96px", CSS)
         self.assertIn("SATOSHI’S COUNCIL (1280) or ETH/BTC focus (390)", CSS)
+        self.assertIn("Mid-width (~1040)", JS)
+        self.assertIn("max-width: 1180px", CSS)
         self.assertIn('id="floorExitBtn"', HTML)
         self.assertIn('class="floor-exit-btn"', HTML)
         self.assertIn("TABLE", HTML.split('id="floorExitBtn"', 1)[1][:80])
         wired = JS.split("floorExit.__wired", 1)[1][:300]
         self.assertIn('setMode("art")', wired)
-        for w in (1280, 390):
+        for w in (1280, 1042, 1040, 390):
             fit = _floor_chrome_fit(w)
             self.assertFalse(
                 _rects_intersect(fit["table"], fit["logo"]),
@@ -235,6 +357,16 @@ class FloorTableChromeOverlapTests(unittest.TestCase):
                 _rects_intersect(fit["table"], fit["focus"]),
                 "TABLE overlaps ETH/BTC at %s" % w,
             )
+            chips = [fit["logo"], fit["rivalry"], fit["huddle"], fit["hit"]]
+            labels = ("wordmark", "PAPER/BOOKS", "HUDDLE", "HIT RATE")
+            for i, a in enumerate(chips):
+                for j, b in enumerate(chips):
+                    if j <= i:
+                        continue
+                    self.assertFalse(
+                        _rects_intersect(a, b),
+                        "%s overlaps %s at %s a=%s b=%s" % (labels[i], labels[j], w, a, b),
+                    )
 
 
 class _FakeClassList:
@@ -335,20 +467,51 @@ def _rects_intersect(a, b):
 
 def _floor_chrome_fit(w):
     phone = w <= 480
+    mid = (not phone) and w <= 1180
     table = {"x": 10, "y": 10, "w": 88, "h": 44}
     rail = 96
     header_pad = 14
     logo = (
         {"x": 0, "y": 0, "w": 0, "h": 0}
         if phone
-        else {"x": header_pad + rail, "y": 8, "w": 280, "h": 36}
+        else {"x": header_pad + rail, "y": 8, "w": 200 if mid else 280, "h": 36}
     )
     focus = (
         {"x": header_pad + rail, "y": 10, "w": 220, "h": 44}
         if phone
         else {"x": header_pad + rail, "y": 52, "w": 220, "h": 28}
     )
-    return {"table": table, "logo": logo, "focus": focus, "phone": phone, "rail": rail}
+    rival_w = 280 if mid else 320
+    if phone:
+        rivalry = {"x": 0, "y": 0, "w": 0, "h": 0}
+    elif mid:
+        rivalry = {"x": w / 2 - rival_w / 2, "y": 58, "w": rival_w, "h": 36}
+    else:
+        rivalry = {"x": w / 2 - rival_w / 2, "y": 10, "w": rival_w, "h": 32}
+    huddle_w = 72 if mid else 88
+    hit_w = 70 if mid else 120
+    if phone:
+        huddle = {"x": 0, "y": 0, "w": 0, "h": 0}
+        hit = {"x": 0, "y": 0, "w": 0, "h": 0}
+    else:
+        huddle = {
+            "x": w - 16 - hit_w - 8 - huddle_w - (36 if mid else 72),
+            "y": 8,
+            "w": huddle_w,
+            "h": 28,
+        }
+        hit = {"x": w - 16 - hit_w, "y": 8, "w": hit_w, "h": 28}
+    return {
+        "table": table,
+        "logo": logo,
+        "focus": focus,
+        "rivalry": rivalry,
+        "huddle": huddle,
+        "hit": hit,
+        "phone": phone,
+        "mid": mid,
+        "rail": rail,
+    }
 
 
 def _floor_nameplate_fit(w, h):
@@ -357,7 +520,7 @@ def _floor_nameplate_fit(w, h):
     seat_r = 18 if phone else 24
     label_stack = 28 if phone else 42
     edge_pad = 6 if phone else 10
-    nameplate_h = 60
+    nameplate_h = 22 if phone else 36
     ring_mul = 1.15
     want_radius = short * 0.40
     max_ring = short * 0.5 - seat_r - label_stack - edge_pad
@@ -367,6 +530,150 @@ def _floor_nameplate_fit(w, h):
     max_lr = max(40, ring_r - seat_r - nameplate_h - 10)
     lr_base = min(want_lr, max_lr)
     return radius, ring_r, lr_base, seat_r, nameplate_h, phone
+
+
+_SEAT_LABELS = (
+    "WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN",
+    "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP",
+    "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN",
+)
+
+
+def _text_w(s, px):
+    return max(8, round(len(str(s)) * px * 0.62))
+
+
+def _dual_floor_table_r(w, h):
+    want = min(w, h) * 0.26
+    gap = w * 0.50
+    seat_r = 22
+    label_pad = 36
+    max_r = max(72, (gap - 2 * (seat_r + label_pad) - 20) / (2 * 1.48))
+    return min(want, max_r)
+
+
+def _floor_raijin_fit(w, h):
+    phone = w <= 480 or min(w, h) <= 520
+    dual = (not phone) and w >= 720
+    if not dual:
+        return None
+    r = _dual_floor_table_r(w, h)
+    mid = (not phone) and w <= 1180
+    chrome_bottom = 96 if mid else 48
+    photo_r = max(18, min(r * 0.20, 24))
+    seat_r = photo_r * 1.26
+    ring_top = h * 0.52 - r * 1.48
+    y = max(chrome_bottom + seat_r + 4, min(ring_top - seat_r - 8, chrome_bottom + seat_r + 8))
+    return {"x": w * 0.50, "y": y, "photoR": photo_r, "seatR": seat_r}
+
+
+def _floor_hud_layout(w, h, view="floor"):
+    """Mirrors floorHudGeometry — real AABBs, not a radial-only fit."""
+    import math
+
+    phone = w <= 480 or min(w, h) <= 520
+    dual = view != "art" and (not phone) and w >= 720
+    nameplates = []
+    goals = []
+    seats = []
+
+    def add_seats(cx, cy, ring_r, seat_r, name_off, font_px, side=""):
+        n = len(_SEAT_LABELS)
+        for i, lab in enumerate(_SEAT_LABELS):
+            ang = -math.pi / 2 + (i / n) * math.pi * 2
+            sx = cx + math.cos(ang) * ring_r
+            sy = cy + math.sin(ang) * ring_r
+            lw = _text_w(lab, font_px)
+            lx = sx + math.cos(ang) * (seat_r + name_off)
+            ly = sy + math.sin(ang) * (seat_r + name_off)
+            seats.append(
+                {
+                    "x": lx - lw / 2,
+                    "y": ly - font_px / 2,
+                    "w": lw,
+                    "h": font_px + 4,
+                    "name": lab,
+                    "table": side,
+                }
+            )
+
+    if dual:
+        r = _dual_floor_table_r(w, h)
+        pr = r * 0.80
+        cy = h * 0.52
+        portrait_y = cy - 2
+        name_y = portrait_y + pr + 11
+        for cx, text, side in (
+            (w * 0.25, "SATOSHI · BTC", "btc"),
+            (w * 0.75, "VITALIK · ETH", "eth"),
+        ):
+            nw = _text_w(text, 11)
+            nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text, "table": side})
+            add_seats(cx, cy, r * 1.48, 22, 8, 9, side)
+        rz = _floor_raijin_fit(w, h)
+        if rz:
+            nw = _text_w("RAIJIN", 8)
+            box = max(nw, rz["seatR"] * 2)
+            nameplates.append(
+                {
+                    "x": rz["x"] - box / 2,
+                    "y": rz["y"] - rz["seatR"],
+                    "w": box,
+                    "h": rz["seatR"] * 2 + 12,
+                    "text": "RAIJIN",
+                    "table": "front",
+                }
+            )
+    elif view == "art" and not phone:
+        radius = min(w, h) * 0.32
+        ring_r = radius * 1.18
+        lr = min(w, h) * 0.24
+        cx, cy = w / 2.0, h / 2.0
+        gw = 200
+        plate_y = cy + lr * 0.90
+        goals.append(
+            {
+                "x": cx - gw / 2,
+                "y": plate_y - 14,
+                "w": gw,
+                "h": 28,
+                "text": "GOAL · one guess @ best odds (<80%)",
+            }
+        )
+        nw = _text_w("SATOSHI", 11)
+        nameplates.append({"x": cx - nw / 2, "y": cy + lr * 0.52 - 7, "w": nw, "h": 14, "text": "SATOSHI"})
+        add_seats(cx, cy, ring_r, 20, 12, 11)
+    else:
+        radius, ring_r, lr, seat_r, _nh, is_phone = _floor_nameplate_fit(w, h)
+        cx, cy = w / 2.0, h / 2.0
+        if is_phone:
+            goals.append(
+                {
+                    "x": 8,
+                    "y": 27,
+                    "w": 120,
+                    "h": 18,
+                    "text": "GOAL · one guess @ best odds (<80%)",
+                }
+            )
+            nw = _text_w("SATOSHI", 10)
+            nameplates.append({"x": cx - nw / 2, "y": cy + lr * 0.50 - 8, "w": nw, "h": 12, "text": "SATOSHI"})
+        else:
+            gw = 200
+            plate_y = cy + lr * 0.90
+            goals.append(
+                {
+                    "x": cx - gw / 2,
+                    "y": plate_y - 14,
+                    "w": gw,
+                    "h": 28,
+                    "text": "GOAL · one guess @ best odds (<80%)",
+                }
+            )
+            nw = _text_w("SATOSHI", 10)
+            nameplates.append({"x": cx - nw / 2, "y": cy + lr * 0.52 - 8, "w": nw, "h": 12, "text": "SATOSHI"})
+        add_seats(cx, cy, ring_r, seat_r, 8 if is_phone else 12, 9 if is_phone else 11)
+    return {"phone": phone, "dual": dual, "view": view, "nameplates": nameplates, "goals": goals, "seats": seats}
 
 
 class PacksNotDroppedTests(unittest.TestCase):

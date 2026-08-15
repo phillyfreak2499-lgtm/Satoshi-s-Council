@@ -89,6 +89,18 @@ async def health():
     eth_age = _age((eth or {}).get("timestamp")) if eth else None
     max_age = max(90.0, float(getattr(settings, "ANALYSIS_INTERVAL", 4.5)) * 10)
     healthy = bool(council.running) and (age is None or age < max_age)
+    btc_h = ((btc or {}).get("health") or {}) if isinstance(btc, dict) else {}
+    eth_h = ((eth or {}).get("health") or {}) if isinstance(eth, dict) else {}
+    from backend.data.spot_health import spot_feed_ok
+
+    spot_ok = bool(spot_feed_ok(btc_h, btc)) or bool(eth and spot_feed_ok(eth_h, eth))
+    kalshi_btc_ok = bool(btc_h.get("kalshi", True))
+    kalshi_eth_ok = bool(eth_h.get("kalshi", True)) if eth else None
+    kalshi_ok = kalshi_btc_ok and (kalshi_eth_ok is not False)
+    coinglass_ok = bool(btc_h.get("coinglass") or eth_h.get("coinglass"))
+    quote_age = btc_h.get("quote_age_s")
+    if quote_age is None:
+        quote_age = age
     return {
         "status": "ok" if healthy else "degraded",
         "service": settings.APP_NAME,
@@ -97,10 +109,14 @@ async def health():
         "state_age_s": round(age, 1) if age is not None else None,
         "btc_age_s": round(btc_age, 1) if btc_age is not None else None,
         "eth_age_s": round(eth_age, 1) if eth_age is not None else None,
-        "kalshi_btc_ok": bool(((btc or {}).get("health") or {}).get("kalshi", True)),
-        "kalshi_eth_ok": bool(((eth or {}).get("health") or {}).get("kalshi", True)) if eth else None,
+        "kalshi_btc_ok": kalshi_btc_ok,
+        "kalshi_eth_ok": kalshi_eth_ok,
+        "kalshi_ok": kalshi_ok,
+        "spot_ok": spot_ok,
+        "coinglass_ok": coinglass_ok,
+        "quote_age_s": round(float(quote_age), 1) if quote_age is not None else None,
         "analysis_interval_s": settings.ANALYSIS_INTERVAL,
-        "fetch_ms": (state.get("health") or {}).get("last_fetch_ms"),
+        "fetch_ms": (state.get("health") or {}).get("last_fetch_ms") or btc_h.get("last_fetch_ms"),
     }
 
 
@@ -203,6 +219,195 @@ async def paper_auto(asset: str | None = None):
     if a == "ethereum":
         a = "eth"
     return await council.store.paper_summary_by_asset(asset=a)
+
+
+@app.get("/api/tape")
+async def chair_tape():
+    """Auto-graded Chair paper tape — last 24h BTC + ETH. OPEN until official result."""
+    from backend.services.desk_pack import chair_tape_payload, load_chair_tape_rows
+
+    rows = await load_chair_tape_rows(council.store, hours=24)
+    return chair_tape_payload(rows, hours=24)
+
+
+@app.get("/api/book")
+async def kalshi_book():
+    """Live Kalshi depth for the current BTC (Satoshi) and ETH (Vitalik) hours."""
+    from backend.services.desk_pack import book_payload
+
+    btc = _table_for_asset("btc")
+    eth = _table_for_asset("eth")
+    return book_payload(
+        (btc.get("market") if isinstance(btc, dict) else None) or {},
+        (eth.get("market") if isinstance(eth, dict) else None) or {},
+    )
+
+
+@app.get("/api/brain/recap")
+async def brain_recap():
+    """Public last-huddle recap. Admin knobs stay in Settings."""
+    from backend.agents.chair_gates import floor_scorecard
+    from backend.services.desk_pack import brain_recap_from_report
+
+    report = getattr(council.huddle, "last_report", None)
+    hier_btc = []
+    hier_eth = []
+    try:
+        hier_btc = council.learner.hierarchy_ranks() if council.learner else []
+    except Exception:
+        hier_btc = []
+    try:
+        if getattr(council, "eth", None) is not None and getattr(council.eth, "learner", None):
+            hier_eth = council.eth.learner.hierarchy_ranks()
+    except Exception:
+        hier_eth = []
+    btc_acc = await council.store.get_accuracy(asset="btc")
+    eth_acc = await council.store.get_accuracy(asset="eth")
+    return brain_recap_from_report(
+        report,
+        hierarchy_btc=hier_btc,
+        hierarchy_eth=hier_eth,
+        scorecard=floor_scorecard(btc_acc, eth_acc),
+        btc_acc=btc_acc,
+        eth_acc=eth_acc,
+    )
+
+
+@app.get("/api/news")
+async def desk_news():
+    """Coming-up prints + breaking hour headlines. Display only — never locks."""
+    from backend.services.desk_news import fetch_news_desk
+
+    btc = _table_for_asset("btc")
+    market = (btc.get("market") if isinstance(btc, dict) else None) or {}
+    liq = None
+    try:
+        pipe = getattr(council, "pipeline", None)
+        last = getattr(pipe, "last_good", None) if pipe is not None else None
+        if isinstance(last, dict):
+            liq = last
+    except Exception:
+        liq = None
+    return await fetch_news_desk(hour_close=market.get("close_time"), liq_snap=liq)
+
+
+@app.get("/api/school")
+async def desk_school():
+    """Short Floor lessons. Display only — never locks."""
+    from backend.services.desk_school import school_payload
+
+    return school_payload()
+
+
+@app.get("/api/side")
+async def api_side():
+    """Side Table — 15m arcade + hot strip. Paper default. No Follower."""
+    from backend.services import desk_side
+
+    return await desk_side.build_board()
+
+
+@app.post("/api/side/tap")
+async def api_side_tap(request: Request):
+    """Manual paper (default) or armed live tap. Never auto."""
+    from backend.services import desk_side
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return await desk_side.tap(
+        ticker=str(body.get("ticker") or ""),
+        side=str(body.get("side") or ""),
+        stake=body.get("stake") if body.get("stake") is not None else body.get("size"),
+        live=bool(body.get("live")),
+        yes_bid=body.get("yes_bid"),
+        yes_ask=body.get("yes_ask"),
+        secs_left=body.get("secs_left"),
+        sick=bool(body.get("sick") or body.get("dont_play")),
+    )
+
+
+@app.post("/api/side/arm")
+async def api_side_arm(request: Request):
+    """Opt-in live on this tab only. Typed phrase + delay."""
+    from backend.services import desk_side
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return desk_side.arm_live(str(body.get("phrase") or ""))
+
+
+@app.post("/api/side/kill")
+async def api_side_kill():
+    """Kill switch — Side Table live off."""
+    from backend.services import desk_side
+
+    return desk_side.kill_live()
+
+
+@app.get("/api/front")
+async def api_front():
+    """THE FRONT — Dallas DFW weather council. Paper default. No Follower."""
+    from backend.services import desk_front
+
+    return await desk_front.build_board()
+
+
+@app.post("/api/front/tap")
+async def api_front_tap(request: Request):
+    """Manual paper (default) or armed live tap. Never auto."""
+    from backend.services import desk_front
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return await desk_front.tap(
+        ticker=str(body.get("ticker") or ""),
+        side=str(body.get("side") or "YES"),
+        stake=body.get("stake") if body.get("stake") is not None else body.get("size"),
+        live=bool(body.get("live")),
+        yes_bid=body.get("yes_bid"),
+        yes_ask=body.get("yes_ask"),
+        sick=bool(body.get("sick") or body.get("dont_play")),
+        votes=body.get("votes"),
+        bracket=body.get("bracket"),
+        best=bool(body.get("best")),
+        strike_type=body.get("strike_type"),
+        floor_strike=body.get("floor_strike"),
+        cap_strike=body.get("cap_strike"),
+    )
+
+
+@app.post("/api/front/arm")
+async def api_front_arm(request: Request):
+    """Opt-in live on this tab only. Typed phrase + delay."""
+    from backend.services import desk_front
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return desk_front.arm_live(str(body.get("phrase") or ""))
+
+
+@app.post("/api/front/kill")
+async def api_front_kill():
+    """Kill switch — THE FRONT live off."""
+    from backend.services import desk_front
+
+    return desk_front.kill_live()
 
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
@@ -1095,6 +1300,21 @@ if STATIC_DIR.is_dir():
     @app.get("/vitalik-wait.jpg")
     async def vitalik_wait():
         return FileResponse(STATIC_DIR / "vitalik-wait.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/raijin-up.jpg")
+    async def raijin_up():
+        return FileResponse(STATIC_DIR / "raijin-up.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/raijin-down.jpg")
+    async def raijin_down():
+        return FileResponse(STATIC_DIR / "raijin-down.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/raijin-wait.jpg")
+    async def raijin_wait():
+        return FileResponse(STATIC_DIR / "raijin-wait.jpg", media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/hive-egg.png")
