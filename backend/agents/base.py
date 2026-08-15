@@ -23,11 +23,12 @@ Direction = Literal["UP", "DOWN", "WAIT", "SWAP", "UP_HOLD", "DOWN_HOLD"]
 GOAL_CONTRACT = (
     "GOAL CONTRACT: Contribute to exactly ONE high-quality directional guess "
     "on how this Kalshi 15m BTC window ends (open→close UP or DOWN) at the "
-    "best available odds. Never push when chosen side ≥80¢. Once Chair locks, "
+    "best available odds. Never push when the book is outside 10–90¢ "
+    "or at the 99¢ / 1¢ wall. Once Chair locks, "
     "support/monitor only. WAIT preferred over low-edge noise."
 )
 
-GOAL_CONTRACT_SHORT = "GOAL · 1 window-end guess @ best odds (<80%)"
+GOAL_CONTRACT_SHORT = "GOAL · 1 window-end guess @ best odds (10–90¢)"
 
 
 @dataclass

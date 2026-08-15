@@ -177,9 +177,10 @@ class Settings(BaseSettings):
     CALL_MAX_AGE_SEC: float = 60 * 60  # hourly window
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
-    MAX_ENTRY_ODDS_PCT: float = 80.0
-    # Soft preferred label only. Live playable band is 20–80¢ + leftover after vig.
+    MAX_ENTRY_ODDS_PCT: float = 90.0
+    # Soft preferred label only. Paper playable band is 10–90¢ + leftover after vig.
     # Do NOT shrink the hard band to 45–55. Council shadow 45–60 is diagnostic.
+    # 99¢ / 1¢ wall stays a hard no. Does not loosen Follower / live gates.
     PREFERRED_ENTRY_ODDS_MIN: float = 40.0
     PREFERRED_ENTRY_ODDS_MAX: float = 65.0
     NEVER_LOCK_CENTS: float = 99.0           # never lock ≥99¢ / one-sided 100¢
@@ -194,8 +195,8 @@ class Settings(BaseSettings):
     MIN_EV_CENTS: float = 3.0
     # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
     EARLY_NO_LOCK_MINS: float = 10.0
-    PLAYABLE_MID_MIN: float = 20.0  # Zach hard band — two-sided, not 45–55
-    PLAYABLE_MID_MAX: float = 80.0
+    PLAYABLE_MID_MIN: float = 10.0  # Zach hard band — two-sided, not 45–55
+    PLAYABLE_MID_MAX: float = 90.0
     LATE_HOURLY_VOL_PCT: float = 0.40
     P_FINISH_COLD_N: int = 15
     P_FINISH_WARM_N: int = 40

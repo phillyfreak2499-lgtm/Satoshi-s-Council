@@ -7,7 +7,7 @@ gets an affinity bonus — the Chair "remembers" who is right together.
 
 GOAL CONTRACT (enforced here):
   Exactly ONE high-quality directional guess per Kalshi 15m window,
-  taken only when the chosen side offers best odds (market mid < MAX_ENTRY_ODDS_PCT).
+  taken only when the book is inside the playable 10–90¢ band (never 99¢ chalk).
   Once locked, the call is irreversible for that ticker.
 """
 from __future__ import annotations
@@ -1064,7 +1064,7 @@ class Leader:
             self._locked_ticker = ticker
 
         call_phase = None
-        max_odds = float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0))
+        max_odds = float(getattr(settings, "PLAYABLE_MID_MAX", getattr(settings, "MAX_ENTRY_ODDS_PCT", 90.0)))
 
         # Resolve underlying lean from HOLD/SWAP so we can lock a single side
         if lean not in ("UP", "DOWN"):
@@ -1221,13 +1221,13 @@ class Leader:
                 (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
                 lean,
                 (regime_features or {}).get("yes_mid"),
-                float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0)),
+                float(getattr(settings, "PLAYABLE_MID_MAX", getattr(settings, "MAX_ENTRY_ODDS_PCT", 90.0))),
             ):
                 why = dead_book_reason(
                     (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
                     lean,
                     (regime_features or {}).get("yes_mid"),
-                    float(getattr(settings, "MAX_ENTRY_ODDS_PCT", 80.0)),
+                    float(getattr(settings, "PLAYABLE_MID_MAX", getattr(settings, "MAX_ENTRY_ODDS_PCT", 90.0))),
                 )
                 direction = "WAIT"
                 lean = None
@@ -1322,7 +1322,7 @@ class Leader:
                         fill = odds_to_cents(side_odds)
                     if fill is not None:
                         leftover = leftover_after_vig(float(p_finish), float(fill))
-                # 20–80 + leftover after vig is playable. Do not shrink to 45–55.
+                # 10–90 + leftover after vig is playable. Do not shrink to 45–55.
                 # Explore paper: skip 4-category / preferred-band confluence extras.
                 skip_conf_extras = bool(explore_paper)
                 if (

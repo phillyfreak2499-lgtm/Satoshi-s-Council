@@ -3058,7 +3058,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ringR = radius * 1.18;
       const lr = Math.min(w, h) * 0.24;
       const cx = w / 2, cy = h / 2;
-      const goal = "GOAL · one guess @ best odds (<80%)";
+      const goal = "GOAL · one guess @ best odds (10–90¢)";
       const gw = 200;
       const plateY = cy + lr * 0.90;
       out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -3070,12 +3070,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const cx = w / 2, cy = h / 2;
       const lr = fit.lrBase;
       if (fit.phone) {
-        const goal = "GOAL · one guess @ best odds (<80%)";
+        const goal = "GOAL · one guess @ best odds (10–90¢)";
         out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
       } else {
-        const goal = "GOAL · one guess @ best odds (<80%)";
+        const goal = "GOAL · one guess @ best odds (10–90¢)";
         const gw = 200;
         const plateY = cy + lr * 0.90;
         out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -3242,7 +3242,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.fillText(sub, cx, cy + 14);
         ctx.font = "10px Orbitron, monospace";
         ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText("GOAL · best odds <80%", cx, cy + 30);
+        ctx.fillText("GOAL · best odds 10–90¢", cx, cy + 30);
         ctx.restore();
       } else {
         // Small goal reminder when not locked
@@ -3251,7 +3251,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.textBaseline = "middle";
         ctx.font = "10px Orbitron, monospace";
         ctx.fillStyle = "rgba(0, 200, 255, 0.45)";
-        ctx.fillText("GOAL · 1 window-end guess @ best odds (<80%)", cx, cy);
+        ctx.fillText("GOAL · 1 window-end guess @ best odds (10–90¢)", cx, cy);
         ctx.restore();
       }
     } catch (e) { /* keep drawing */ }
@@ -3709,7 +3709,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const oddsPart = entryOdds != null ? ` @ ${Math.round(entryOdds)}¢` : "";
         lockLabel = `LOCKED ${showDir}${oddsPart} · ${showConf}% · FOLLOW`;
       } else {
-        lockLabel = "GOAL · one guess @ best odds (<80%)";
+        lockLabel = "GOAL · one guess @ best odds (10–90¢)";
       }
       ctx.fillText(lockLabel, plateX, plateY);
     }
@@ -8146,13 +8146,13 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabScreensaver",
       title: "WHAT THIS IS",
-      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
       mode: "art",
       target: "#tableStage",
       title: "GOAL CONTRACT",
-      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (chosen side < 80¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
+      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (book inside 10–90¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
     },
     {
       mode: "art",
@@ -8176,7 +8176,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: chosen side must be under 80¢.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
+      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: book must be inside 10–90¢. Never play 99¢ chalk.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
     },
     {
       mode: "floor",

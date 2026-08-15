@@ -11,8 +11,8 @@ Contribute to exactly **one** high-quality directional guess on how the current 
    The Chair may lock only a single graded directional call per Kalshi ticker. Once locked, the call is irreversible for the remainder of the window. Revisions are disabled.
 
 2. **Best-odds filter.**  
-   A directional lock is permitted only when the chosen side’s Kalshi mid is **under 80¢**.  
-   Markets already priced ≥ 80¢ are treated as low-edge / near-certain territory → WAIT.
+   A directional lock is permitted only when the YES mid / ask is inside **10–90¢**.  
+   The 99¢ / 1¢ wall is a hard no. Do not shrink the band to 45–55.
 
 3. **Quality over quantity.**  
    WAIT is always preferred over a low-edge, noisy, early, or late call. One excellent guess beats three mediocre ones.

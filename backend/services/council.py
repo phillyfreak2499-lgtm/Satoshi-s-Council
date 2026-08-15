@@ -1065,7 +1065,7 @@ class Council:
             pass
 
         # Shadow book (diagnostic only): would a stricter 45–60¢ band have locked?
-        # Live playable band stays 20–80¢ + leftover — do not make 45–55 the live band.
+        # Paper playable band stays 10–90¢ + leftover — do not make 45–55 the live band.
         try:
             from backend.config import settings as _s
             so = None

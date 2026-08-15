@@ -39,17 +39,24 @@ from backend.data.cfbenchmarks import (
 
 
 class DeadBookTests(unittest.TestCase):
-    def test_mid_outside_20_80(self):
-        self.assertFalse(playable_yes_mid(12))
+    def test_mid_outside_10_90(self):
+        self.assertTrue(playable_yes_mid(12))
+        self.assertTrue(playable_yes_mid(88))
+        self.assertTrue(playable_yes_mid(10))
+        self.assertTrue(playable_yes_mid(90))
+        self.assertFalse(playable_yes_mid(9))
         self.assertFalse(playable_yes_mid(91))
         self.assertTrue(playable_yes_mid(50))
-        self.assertIn("outside 20–80", dead_book_reason(None, "UP", 96) or "")
+        self.assertIn("outside 10–90", dead_book_reason(None, "UP", 96) or "")
+        self.assertIsNone(dead_book_reason(None, "UP", 12))
+        self.assertIsNone(dead_book_reason(None, "UP", 88))
 
-    def test_chosen_side_already_80(self):
-        # 80¢ is still a playable mid; chosen-side cap is the skip
-        why = dead_book_reason(None, "UP", 80)
+    def test_chosen_side_already_90(self):
+        # 90¢ is still a playable mid; chosen-side cap is the skip
+        why = dead_book_reason(None, "UP", 90)
         self.assertIsNotNone(why)
         self.assertIn("already", why)
+        self.assertIsNone(dead_book_reason(None, "UP", 88))
 
     def test_one_sided_yes_depth_zero(self):
         depth = {"yes_depth": 0, "no_depth": 40, "yes_bid_px": 50, "no_bid_px": 50, "has_size": True}
@@ -173,19 +180,27 @@ class CfbSettleTests(unittest.TestCase):
 
 
 class ZachBarTests(unittest.TestCase):
-    def test_playable_band_stays_20_80_not_45_55(self):
+    def test_playable_band_stays_10_90_not_45_55(self):
         self.assertTrue(playable_yes_mid(25))
         self.assertTrue(playable_yes_mid(75))
         self.assertTrue(playable_yes_mid(50))
-        self.assertFalse(playable_yes_mid(12))
+        self.assertTrue(playable_yes_mid(12))
+        self.assertTrue(playable_yes_mid(88))
+        self.assertFalse(playable_yes_mid(9))
         self.assertFalse(playable_yes_mid(91))
-        # leftover at 25¢ / 75¢ is enough — do not require 45–55
+        # leftover at 12¢ / 88¢ is enough — do not require 45–55
+        self.assertIsNone(zach_bar_reason(12, 88, p_finish=0.62, fee_cents=1.0, yes_mid=12, side_ask=12))
+        self.assertIsNone(zach_bar_reason(88, 12, p_finish=0.95, fee_cents=1.0, yes_mid=88, side_ask=88))
         self.assertIsNone(zach_bar_reason(25, 75, p_finish=0.62, fee_cents=1.0, yes_mid=25, side_ask=25))
         self.assertIsNone(zach_bar_reason(75, 25, p_finish=0.85, fee_cents=1.0, yes_mid=75, side_ask=75))
         self.assertTrue(zach_band_skips_preferred(25, 10.0))
         self.assertTrue(zach_band_skips_preferred(75, 5.0))
+        self.assertTrue(zach_band_skips_preferred(12, 20.0))
+        self.assertTrue(zach_band_skips_preferred(88, 5.0))
         self.assertFalse(zach_band_skips_preferred(25, 0.0))
-        self.assertFalse(zach_band_skips_preferred(12, 20.0))
+        self.assertFalse(zach_band_skips_preferred(9, 20.0))
+        self.assertIn("≥99", never_lock_near_certain(99, 1) or "")
+        self.assertIsNotNone(zach_bar_reason(99, 1, p_finish=0.99, fee_cents=1.0, yes_mid=99, side_ask=99))
 
     def test_leftover_required_at_the_ask(self):
         self.assertGreater(leftover_after_vig(0.62, 25.0, fee_cents=1.0), 0.0)
