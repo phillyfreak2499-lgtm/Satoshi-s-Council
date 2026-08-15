@@ -160,6 +160,46 @@ class ChartsCssTests(unittest.TestCase):
         self.assertIn("html body.floor-mode #app > header #windowLed.led-float.led-window", CSS)
         self.assertIn("top: auto !important", CSS)
 
+    def test_one_hero_follows_book_tab(self):
+        self.assertIn("function syncChartHero()", JS)
+        self.assertIn('classList.toggle("charts-hero-eth"', JS)
+        self.assertIn('classList.toggle("charts-hero-btc"', JS)
+        self.assertIn("body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth", CSS)
+        self.assertIn("body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc", CSS)
+        self.assertIn("display: none !important", CSS)
+
+    def test_pair_scale_chips_offscale_target(self):
+        self.assertIn("function setPairTargetChip", JS)
+        self.assertIn("K TARGET ", JS)
+        self.assertIn("setPairTargetChip(canvas, targetChip)", JS)
+        self.assertNotIn("grown <= span0 * 4", JS)
+
+    def test_empty_feed_collapses_not_collecting(self):
+        self.assertIn("function setChartNoFeed", JS)
+        self.assertIn('classList.toggle("no-feed"', JS)
+        self.assertIn('opts.emptyLabel || "no feed"', JS)
+        start = JS.find("function drawLineSeries")
+        end = JS.find("function parseStampMs", start)
+        self.assertNotIn("COLLECTING", JS[start:end])
+
+    def test_odds_keeps_half_and_ninety_nine(self):
+        self.assertIn("up > 1.5", JS)
+        self.assertIn("down > 1.5", JS)
+        self.assertIn("toFixed(1)", JS)
+
+    def test_tape_list_is_last_locks(self):
+        self.assertIn("chartTapeList", JS)
+        self.assertIn("VITALIK", JS)
+        self.assertIn("SATOSHI", JS)
+        tape = JS[JS.find("function drawChartTape()"):JS.find("function finishOnlyStats()")]
+        self.assertNotIn("p.side[0]", tape)
+        self.assertIn("NO CHAIR LOCKS YET", tape)
+
+    def test_weights_two_col_readable(self):
+        self.assertIn("7px Orbitron", JS)
+        self.assertIn("ranked.length > 4 ? 2 : 1", JS)
+        self.assertIn("1e-4", JS)
+
 
 class NoRegressionTests(unittest.TestCase):
     def test_cold_visit_still_gated(self):

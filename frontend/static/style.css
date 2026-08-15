@@ -520,7 +520,7 @@ header {
 }
 .chart-lock-row {
   display: grid;
-  grid-template-columns: 36px 44px 1fr auto;
+  grid-template-columns: 44px 64px 1fr auto;
   gap: 8px;
   padding: 3px 0;
 }
@@ -7496,4 +7496,150 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
   .front-mark { width: 52px; height: 52px; }
   .front-bet button { min-height: 56px; }
   .front-step { min-height: 56px; }
+}
+
+/* ===== CHARTS WALL — one hero, tight panes, no empty-sky screensaver ===== */
+.chart-ktarget-chip {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid rgba(0, 232, 255, 0.45);
+  color: #7fe9ff;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 8px rgba(0, 232, 255, 0.45);
+  white-space: nowrap;
+}
+body.mode-charts .charts-view:not(.hidden),
+body.mode-charts #chartsView.charts-view:not(.hidden) {
+  min-height: 0 !important;
+  height: auto !important;
+}
+body.mode-charts .charts-pairs {
+  min-height: 0;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+body.mode-charts .charts-grid {
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: minmax(108px, auto);
+  gap: 8px;
+}
+body.mode-charts .chart-card {
+  min-height: 0;
+}
+body.mode-charts .chart-card:not(.chart-pair) {
+  min-height: 108px;
+}
+body.mode-charts .chart-card-head {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+body.mode-charts .chart-card:not(.chart-pair) canvas,
+body.mode-charts #chartOdds,
+body.mode-charts #chartVolume,
+body.mode-charts #chartDelta,
+body.mode-charts #chartFunding,
+body.mode-charts #chartAccuracy,
+body.mode-charts #chartWeights {
+  min-height: 72px !important;
+  height: 88px !important;
+  max-height: 110px !important;
+}
+body.mode-charts .chart-card.chart-pair {
+  min-height: 220px;
+}
+body.mode-charts .chart-card.chart-tape {
+  min-height: 0;
+}
+body.mode-charts .chart-card.chart-tape canvas,
+body.mode-charts #chartTape {
+  min-height: 28px !important;
+  height: 32px !important;
+  max-height: 36px !important;
+  flex: 0 0 auto;
+}
+body.mode-charts .chart-lock-list {
+  max-height: 76px;
+  font-size: 0.58rem;
+}
+body.mode-charts .chart-card.no-feed {
+  min-height: 0;
+}
+body.mode-charts .chart-card.no-feed canvas {
+  min-height: 28px !important;
+  height: 32px !important;
+  max-height: 36px !important;
+  flex: 0 0 auto;
+}
+body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth,
+body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
+  display: none !important;
+}
+@media (min-width: 900px) {
+  body.mode-charts.charts-hero-btc .charts-pairs,
+  body.mode-charts.charts-hero-eth .charts-pairs {
+    grid-template-columns: 1fr !important;
+  }
+}
+@media (max-width: 899px) {
+  body.mode-charts .charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  body.mode-charts .charts-pairs,
+  body.mode-charts .charts-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  body.mode-charts .chart-card,
+  body.mode-charts .chart-card.chart-pair,
+  body.mode-charts .chart-card.chart-wide {
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+  body.mode-charts .chart-card:not(.chart-pair) canvas {
+    min-height: 64px !important;
+    height: 72px !important;
+    max-height: 96px !important;
+  }
+  body.mode-charts .chart-card.chart-pair canvas,
+  body.mode-charts .chart-card.chart-wide canvas {
+    min-height: 180px !important;
+    height: 180px !important;
+    max-height: 200px !important;
+  }
+  body.mode-charts .chart-card.chart-tape canvas,
+  body.mode-charts .chart-card.no-feed canvas {
+    min-height: 28px !important;
+    height: 32px !important;
+    max-height: 36px !important;
+  }
+}
+
+/* Charts header at ~1042 — HUDDLE / HIT RATE / wordmark must not overlap */
+@media (max-width: 1180px) and (min-width: 481px) {
+  body.mode-charts #app > header .header-row {
+    flex-wrap: wrap !important;
+    gap: 6px 8px !important;
+  }
+  body.mode-charts #app > header .logo .title {
+    font-size: 0.58rem;
+    letter-spacing: 0.04em;
+  }
+  body.mode-charts #app > header .huddle-badge {
+    min-width: 0 !important;
+    padding: 3px 7px !important;
+  }
+  body.mode-charts #app > header .accuracy-badge {
+    min-width: 0 !important;
+    padding: 3px 7px !important;
+  }
+  body.mode-charts #app > header .accuracy-badge .acc-label {
+    display: none;
+  }
 }
