@@ -7510,10 +7510,31 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
   text-shadow: 0 0 8px rgba(0, 232, 255, 0.45);
   white-space: nowrap;
 }
-body.mode-charts .charts-view:not(.hidden),
-body.mode-charts #chartsView.charts-view:not(.hidden) {
+html body.mode-charts #app {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}
+html body.mode-charts #mainTable,
+html body.mode-charts #tableStage,
+html body.mode-charts #roundtable {
+  pointer-events: none !important;
+}
+html body.mode-charts #chartsView.charts-view:not(.hidden),
+html body.mode-charts .charts-view:not(.hidden) {
+  flex: 1 1 auto !important;
   min-height: 0 !important;
-  height: auto !important;
+  height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch;
+  z-index: 30 !important;
 }
 body.mode-charts .charts-pairs {
   min-height: 0;
@@ -7527,6 +7548,8 @@ body.mode-charts .charts-grid {
 }
 body.mode-charts .chart-card {
   min-height: 0;
+  max-height: 280px;
+  overflow: hidden;
 }
 body.mode-charts .chart-card:not(.chart-pair) {
   min-height: 108px;
@@ -7535,6 +7558,21 @@ body.mode-charts .chart-card-head {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
+}
+body.mode-charts .chart-card canvas,
+body.mode-charts #chartOdds,
+body.mode-charts #chartVolume,
+body.mode-charts #chartDelta,
+body.mode-charts #chartFunding,
+body.mode-charts #chartAccuracy,
+body.mode-charts #chartWeights,
+body.mode-charts #chartTape,
+body.mode-charts #chartBtc,
+body.mode-charts #chartEth {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 220px !important;
 }
 body.mode-charts .chart-card:not(.chart-pair) canvas,
 body.mode-charts #chartOdds,
@@ -7552,6 +7590,8 @@ body.mode-charts .chart-card.chart-pair {
 }
 body.mode-charts .chart-card.chart-tape {
   min-height: 0;
+  max-height: 200px;
+  overflow: hidden;
 }
 body.mode-charts .chart-card.chart-tape canvas,
 body.mode-charts #chartTape {
@@ -7561,7 +7601,9 @@ body.mode-charts #chartTape {
   flex: 0 0 auto;
 }
 body.mode-charts .chart-lock-list {
-  max-height: 76px;
+  max-height: 76px !important;
+  overflow-y: auto !important;
+  flex: 0 0 auto;
   font-size: 0.58rem;
 }
 body.mode-charts .chart-card.no-feed {

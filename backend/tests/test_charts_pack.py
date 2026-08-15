@@ -200,6 +200,35 @@ class ChartsCssTests(unittest.TestCase):
         self.assertIn("ranked.length > 4 ? 2 : 1", JS)
         self.assertIn("1e-4", JS)
 
+    def test_canvas_capped_never_grows_with_points(self):
+        self.assertIn("Never let a canvas grow with data points", JS)
+        self.assertIn('canvas.style.maxHeight = maxH + "px"', JS)
+        self.assertIn('canvas.style.width = "100%"', JS)
+        self.assertIn("max-height: 220px !important", CSS)
+        self.assertIn("flex: 0 0 auto !important", CSS)
+
+    def test_charts_wheel_moves_the_wall(self):
+        self.assertIn("chartsView.scrollTop += e.deltaY", JS)
+        self.assertIn("touch-action: pan-y", CSS)
+        self.assertIn("height: 0 !important", CSS)
+
+    def test_odds_sides_sum_near_100(self):
+        self.assertIn("Math.abs(up + down - 100)", JS)
+        self.assertIn("down = 100 - up", JS)
+
+    def test_funding_hides_zero_dummy(self):
+        fund = JS[JS.find("function drawChartFunding()"):JS.find("function pairFromLockRow")]
+        self.assertIn("Math.abs(f) >= 1e-8", fund)
+        self.assertIn("card.hidden = true", fund)
+
+    def test_tape_uses_same_window_clock(self):
+        tape = JS[JS.find("function drawChartTape()"):JS.find("function finishOnlyStats()")]
+        self.assertIn("p.window ||", tape)
+
+    def test_pair_head_has_window_room(self):
+        self.assertIn("t: 28", JS)
+        self.assertIn("1H WINDOW", JS)
+
 
 class NoRegressionTests(unittest.TestCase):
     def test_cold_visit_still_gated(self):
