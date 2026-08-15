@@ -6784,6 +6784,104 @@ function drawCandleChart() {
     }
   }
 
+  const WIRE_SEEN_KEY = "council_wire_seen";
+
+  function wireEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function wireEntries() {
+    const raw = window.COUNCIL_WIRE;
+    return Array.isArray(raw) ? raw.slice() : [];
+  }
+
+  function newestWire(entries) {
+    const rows = entries || wireEntries();
+    return rows[0] || null;
+  }
+
+  function readWireSeen() {
+    try {
+      const raw = localStorage.getItem(WIRE_SEEN_KEY);
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      if (!o || typeof o !== "object") return null;
+      return { id: String(o.id || ""), at: String(o.at || "") };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wireIsUnread(entries) {
+    const rows = entries || wireEntries();
+    if (!rows.length) return false;
+    const seen = readWireSeen();
+    if (!seen || !seen.id) return true;
+    const newest = newestWire(rows);
+    if (!newest) return false;
+    if (newest.id && newest.id !== seen.id) return true;
+    if (newest.at && seen.at && String(newest.at) > String(seen.at)) return true;
+    return false;
+  }
+
+  function markWireSeen(entries) {
+    const newest = newestWire(entries || wireEntries());
+    if (!newest) return;
+    try {
+      localStorage.setItem(WIRE_SEEN_KEY, JSON.stringify({ id: newest.id || "", at: newest.at || "" }));
+    } catch (e) {}
+  }
+
+  function formatWireDate(iso) {
+    try {
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return String(iso || "");
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(d);
+    } catch (e) {
+      return String(iso || "");
+    }
+  }
+
+  function syncWireHot(entries) {
+    const tab = document.getElementById("tabWire");
+    if (!tab) return;
+    const hot = (typeof mode === "undefined" || mode !== "wire") && wireIsUnread(entries || wireEntries());
+    tab.classList.toggle("wire-hot", hot);
+    tab.setAttribute("data-wire-hot", hot ? "1" : "0");
+  }
+
+  function paintWireLog() {
+    const list = document.getElementById("wireList");
+    if (!list) return;
+    const rows = wireEntries();
+    if (!rows.length) {
+      list.innerHTML = '<li class="wire-empty">No desk notes yet.</li>';
+      return;
+    }
+    list.innerHTML = rows.map(function (e) {
+      return '<li class="wire-item">'
+        + '<h3 class="wire-title">' + wireEsc(e.title) + '</h3>'
+        + '<p class="wire-why">' + wireEsc(e.why) + '</p>'
+        + '<time class="wire-date" datetime="' + wireEsc(e.at) + '">' + wireEsc(formatWireDate(e.at)) + '</time>'
+        + '</li>';
+    }).join("");
+  }
+
+  function loadDeskWire() {
+    paintWireLog();
+    markWireSeen(wireEntries());
+    syncWireHot();
+  }
+
   const SCHOOL_KEY = "council_school_v1";
   const SCHOOL_SNAP = {
     strike: 100000,
@@ -8576,6 +8674,7 @@ function drawCandleChart() {
     const bookView = document.getElementById("bookView");
     const brainView = document.getElementById("brainView");
     const newsView = document.getElementById("newsView");
+    const wireView = document.getElementById("wireView");
     const schoolView = document.getElementById("schoolView");
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
@@ -8589,6 +8688,7 @@ function drawCandleChart() {
     const showBook = mode === "book";
     const showBrain = mode === "brain";
     const showNews = mode === "news";
+    const showWire = mode === "wire";
     const showSchool = mode === "school";
     const showSide = mode === "side";
     const showFront = mode === "front";
@@ -8603,6 +8703,7 @@ function drawCandleChart() {
     if (bookView) bookView.classList.toggle("hidden", !showBook);
     if (brainView) brainView.classList.toggle("hidden", !showBrain);
     if (newsView) newsView.classList.toggle("hidden", !showNews);
+    if (wireView) wireView.classList.toggle("hidden", !showWire);
     if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
@@ -8629,6 +8730,7 @@ function drawCandleChart() {
     if (mode === "book") loadKalshiBook();
     if (mode === "brain") loadBrainRecap();
     if (mode === "news") loadDeskNews();
+    if (mode === "wire") loadDeskWire();
     if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
@@ -9031,7 +9133,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "charts", "settings"];
+        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "wire", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -10715,8 +10817,9 @@ function drawCandleChart() {
   }
 
   window.setMode = setMode;
+  try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "school", "side", "front", "charts", "settings"];
+    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "front", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
