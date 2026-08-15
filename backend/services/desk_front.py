@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from backend.agents.chair_gates import kalshi_taker_fee_cents
+from backend.agents.chair_gates import classify_wait_reason, kalshi_taker_fee_cents
 from backend.config import settings
 from backend.services.desk_side import (
     book_health,
@@ -481,6 +481,10 @@ def grade_seat_votes(row: Dict[str, Any], chair_hit: bool, yes_won: bool) -> Lis
 def chair_accuracy() -> Dict[str, Any]:
     rows = _load_fills()
     settled = [r for r in rows if str(r.get("result") or "").upper() in ("HIT", "MISS")]
+    waits = [
+        r for r in rows
+        if str(r.get("side") or "").upper() == "WAIT" and not r.get("superseded")
+    ]
     pending = [r for r in rows if not r.get("settled") or str(r.get("result") or "").upper() in ("OPEN", "PENDING", "")]
     newest = list(reversed(settled))
     correct = sum(1 for r in settled if str(r.get("result") or "").upper() == "HIT")
@@ -515,13 +519,32 @@ def chair_accuracy() -> Dict[str, Any]:
         "label": f"{correct}/{total} · {pct}%" if pct is not None else f"{correct}/{total} · —",
         "source": "nws_cli",
         "pending_until": "NWS CLI",
+        "wait_n": len(waits),
+        "wait_rate": (
+            round(len(waits) / (len(waits) + total), 3) if (len(waits) + total) else None
+        ),
+        "wait_reasons": _tally_wait_reasons(waits),
     }
+
+
+def _tally_wait_reasons(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for r in rows:
+        key = str(r.get("wait_reason") or "other")
+        out[key] = out.get(key, 0) + 1
+    return out
 
 
 def seat_records() -> List[Dict[str, Any]]:
     tallies = {s["id"]: {"correct": 0, "wrong": 0} for s in SEATS}
     for row in _load_fills():
-        if str(row.get("result") or "").upper() not in ("HIT", "MISS"):
+        res = str(row.get("result") or "").upper()
+        if res not in ("HIT", "MISS", "WAIT"):
+            continue
+        if res == "WAIT" and not any(
+            isinstance(v, dict) and v.get("result") in ("HIT", "MISS")
+            for v in (row.get("votes") or [])
+        ):
             continue
         for v in row.get("votes") or []:
             if not isinstance(v, dict):
@@ -581,8 +604,9 @@ def lock_tape() -> List[Dict[str, Any]]:
             "station": row.get("station") or "KDFW",
             "bracket": row.get("bracket") or "",
             "best": bool(row.get("best")),
-            "side": row.get("side"),
+            "side": row.get("side") or ("WAIT" if str(row.get("result") or "").upper() == "WAIT" else row.get("side")),
             "result": str(row.get("result") or "OPEN").upper(),
+            "wait_reason": row.get("wait_reason"),
             "pnl": row.get("pnl"),
             "paper": bool(row.get("paper", True)),
             "ticker": row.get("ticker"),
@@ -612,6 +636,16 @@ def apply_cli_settle(row: Dict[str, Any], high: float) -> bool:
     if yes is None:
         return False
     side = str(row.get("side") or "").upper()
+    if side == "WAIT":
+        row["settled"] = True
+        row["result"] = "WAIT"
+        row["cli_high"] = float(high)
+        row["settle_source"] = "nws_cli"
+        row["settle_reason"] = "wait_cli"
+        row["pnl"] = 0.0
+        row["y_finish"] = "YES" if yes else "NO"
+        row["votes"] = grade_seat_votes(row, False, yes)
+        return True
     hit = (side == "YES" and yes) or (side == "NO" and not yes)
     row["settled"] = True
     row["result"] = "HIT" if hit else "MISS"
@@ -730,6 +764,123 @@ def forecast_p(forecast: Optional[float], m: Dict[str, Any]) -> Optional[float]:
             return min(0.82, 0.56 + 0.08 * (edge - f))
         return max(0.04, 0.28 - 0.10 * (f - edge))
     return None
+
+
+def day_has_lock(day: date) -> bool:
+    key = day.isoformat()
+    for row in _load_fills():
+        if str(row.get("day") or "") != key:
+            continue
+        if str(row.get("side") or "").upper() in ("YES", "NO"):
+            return True
+    return False
+
+
+def classify_front_wait_reason(skip: Optional[str], flags: Optional[Dict[str, Any]] = None) -> str:
+    mapped = classify_wait_reason(skip, {"summary": skip}, {"skip": skip})
+    if mapped != "other":
+        return mapped
+    text = str(skip or "").lower()
+    flags = flags or {}
+    if flags.get("empty") or "empty" in text:
+        return "dead_book"
+    if flags.get("sick") or "sick" in text:
+        return "dead_book"
+    if "99" in text:
+        return "odds_outside_20_80"
+    if "thin" in text:
+        return "no_depth"
+    if "official" in text:
+        return "no_official_high"
+    if "flip" in text:
+        return "forecast_flip"
+    return "other"
+
+
+def record_wait_sample(
+    *,
+    day: date,
+    ticker: Optional[str] = None,
+    reason: Optional[str] = None,
+    skip: Optional[str] = None,
+    votes: Any = None,
+    book_depth: Any = None,
+    would_lock_if_strict: bool = False,
+    bracket: Any = None,
+    strike_type: Any = None,
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+    city: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """One WAIT row per Dallas day when Raijin does not lock. Paper P&L $0."""
+    if day_has_lock(day):
+        return None
+    city = city or DALLAS
+    key = day.isoformat()
+    existing = None
+    for row in _load_fills():
+        if str(row.get("day") or "") == key and str(row.get("side") or "").upper() == "WAIT":
+            existing = row
+            break
+    why = reason or classify_front_wait_reason(skip)
+    snap_votes = [dict(v) for v in votes if isinstance(v, dict)] if isinstance(votes, list) else []
+    if existing is not None:
+        existing["wait_reason"] = why
+        existing["skip"] = skip
+        existing["would_lock_if_strict"] = bool(would_lock_if_strict)
+        if ticker:
+            existing["ticker"] = ticker
+        if snap_votes:
+            existing["votes"] = snap_votes
+        if book_depth is not None:
+            existing["book_depth"] = book_depth
+        if bracket:
+            existing["bracket"] = bracket
+        if strike_type:
+            existing["strike_type"] = strike_type
+        if floor_strike is not None:
+            existing["floor_strike"] = floor_strike
+        if cap_strike is not None:
+            existing["cap_strike"] = cap_strike
+        existing["pnl"] = 0.0
+        _save_fills()
+        return existing
+    row = {
+        "id": str(uuid.uuid4())[:12],
+        "ticker": ticker or f"KXHIGHTDAL-{day.strftime('%y%b%d').upper()}",
+        "side": "WAIT",
+        "stake": 0.0,
+        "fill_cents": None,
+        "fee_cents": 0.0,
+        "live": False,
+        "paper": True,
+        "at": (now or datetime.now(timezone.utc)).isoformat(),
+        "settled": False,
+        "result": "OPEN",
+        "pnl": 0.0,
+        "follower": False,
+        "desk": "front",
+        "leader": "RAIJIN",
+        "city": city["id"],
+        "station": city["station"],
+        "place": city.get("place"),
+        "day": key,
+        "bracket": bracket,
+        "best": False,
+        "strike_type": strike_type or "between",
+        "floor_strike": floor_strike,
+        "cap_strike": cap_strike,
+        "votes": snap_votes,
+        "wait_reason": why,
+        "skip": skip,
+        "book_depth": book_depth,
+        "would_lock_if_strict": bool(would_lock_if_strict),
+        "settle_reason": "pending_cli",
+    }
+    _load_fills().append(row)
+    _save_fills()
+    return row
 
 
 def skip_reason(flags: Dict[str, Any], forecast: Optional[float], flipped: bool, n: float) -> Optional[str]:
@@ -1141,13 +1292,54 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
     return rows
 
 
+def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bool:
+    """
+    Shadow lock bar with skip/dont_play gates off.
+
+    Live play still sits WAIT on a gate. True only when the underlying
+    forecast vs book would have cleared min_c — the only reason we sat
+    was a gate, not a missing edge.
+    """
+    if not best:
+        return False
+    try:
+        pf = float(best["p_forecast"]) if best.get("p_forecast") is not None else 0.5
+    except (TypeError, ValueError):
+        pf = 0.5
+    try:
+        ask = float(best["yes_ask"]) if best.get("yes_ask") is not None else 50.0
+    except (TypeError, ValueError):
+        ask = 50.0
+    implied = ask / 100.0 if ask > 1.5 else ask
+    climo_p = None
+    try:
+        if best.get("climo") is not None:
+            climo_p = forecast_p(float(best["climo"]), {
+                "strike_type": best.get("strike_type"),
+                "floor_strike": best.get("floor_strike"),
+                "cap_strike": best.get("cap_strike"),
+            })
+    except (TypeError, ValueError):
+        climo_p = None
+    climo_align = 0.0
+    if climo_p is not None:
+        climo_align = 1.0 - min(1.0, abs(float(climo_p) - pf))
+    edge = pf - implied
+    conf = int(round(50 + 28 * (pf - 0.5) + 18 * edge + 4 * climo_align))
+    conf = max(0, min(99, conf))
+    try:
+        bar = int(min_c)
+    except (TypeError, ValueError):
+        bar = 50
+    return conf >= bar
+
+
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     acc = chair_accuracy()
     rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
-    if not best:
+    # Skip / dont_play is a WAIT, not a DOWN lock.
+    if not best or best.get("dont_play"):
         eye = "WAIT"
-    elif best.get("dont_play"):
-        eye = "DOWN"
     else:
         eye = "UP"
     # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
@@ -1262,6 +1454,32 @@ async def build_board(
     chair_best = best
     if best and not best.get("dont_play") and int(best.get("confidence") or 0) < min_c:
         chair_best = None
+    sit_out = chair_best is None or bool(best and best.get("dont_play"))
+    if day is not None and sit_out:
+        skip = (best or {}).get("skip") if best else "Don’t play · empty book"
+        would = front_would_lock_if_strict(best, min_c)
+        try:
+            record_wait_sample(
+                day=day,
+                ticker=None if not best else best.get("ticker"),
+                skip=skip,
+                votes=None if not best else best.get("votes"),
+                book_depth={
+                    "volume": None if not best else best.get("volume"),
+                    "spread": None if not best else best.get("spread"),
+                    "yes_ask": None if not best else best.get("yes_ask"),
+                    "yes_bid": None if not best else best.get("yes_bid"),
+                },
+                would_lock_if_strict=would,
+                bracket=None if not best else best.get("bracket"),
+                strike_type=None if not best else best.get("strike_type"),
+                floor_strike=None if not best else best.get("floor_strike"),
+                cap_strike=None if not best else best.get("cap_strike"),
+                city=DALLAS,
+                now=n,
+            )
+        except Exception:
+            pass
 
     if wx_obs is None:
         held = _load_wx_hold()
@@ -1452,6 +1670,11 @@ async def tap(
         "votes": [dict(v) for v in snap_votes if isinstance(v, dict)],
         "settle_reason": "pending_cli",
     }
+    if day is not None:
+        key = day.isoformat()
+        for old in _load_fills():
+            if str(old.get("day") or "") == key and str(old.get("side") or "").upper() == "WAIT":
+                old["superseded"] = True
     _load_fills().append(row)
     _save_fills()
     return {"ok": True, "fill": row, "status": arm_status(), "live": bool(row["live"])}

@@ -206,6 +206,16 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('rememberChairHit(cx, cy, pr, "front")', JS)
         self.assertIn("function syncSeatSpinBtn", JS)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
+        self.assertIn('id="focusFront"', HTML)
+        self.assertIn('data-focus="front"', HTML)
+        self.assertIn("function isFrontTable", JS)
+        self.assertIn("function frontTableState", JS)
+        self.assertIn('bind(focusFront, "front")', JS)
+        self.assertIn('setFocusTable("front")', JS)
+        wire = JS.split("function wireFloorChairClicks", 1)[1].split("wireFloorChairClicks();", 1)[0]
+        self.assertIn('hit.which === "front"', wire)
+        self.assertIn('setFocusTable("front")', wire)
+        self.assertNotIn('setMode("front")', wire)
 
     def test_front_paints_real_table_not_list(self):
         start = JS.find("function drawFrontTable(")
@@ -447,9 +457,10 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         up = desk_front.build_chair({"dont_play": False, "bracket": "103–104"})
         self.assertEqual(up["eye"], "UP")
         self.assertTrue(up["mark"].endswith("raijin-up.png"))
-        down = desk_front.build_chair({"dont_play": True, "skip": "thin book"})
-        self.assertEqual(down["eye"], "DOWN")
-        self.assertTrue(down["mark"].endswith("raijin-down.png"))
+        skip = desk_front.build_chair({"dont_play": True, "skip": "thin book"})
+        self.assertEqual(skip["eye"], "WAIT")
+        self.assertTrue(skip["mark"].endswith("raijin-wait.png"))
+        self.assertNotEqual(skip["eye"], "DOWN")
 
     async def test_inclusive_bracket_and_date_in_ticker(self):
         self.assertEqual(desk_front.date_from_ticker("KXHIGHTDAL-26AUG15-B103104"), date(2026, 8, 15))

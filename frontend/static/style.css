@@ -3691,7 +3691,11 @@ body.mode-art .led-window {
 }
 /* Only ONE of these can look active — force sibling off via body dataset */
 body[data-focus-table="bitcoin"] #focusEth.focus-active,
-body[data-focus-table="ethereum"] #focusBtc.focus-active {
+body[data-focus-table="bitcoin"] #focusFront.focus-active,
+body[data-focus-table="ethereum"] #focusBtc.focus-active,
+body[data-focus-table="ethereum"] #focusFront.focus-active,
+body[data-focus-table="front"] #focusBtc.focus-active,
+body[data-focus-table="front"] #focusEth.focus-active {
   /* safety: never both */
   opacity: 0.7 !important;
   color: #9ab0c8 !important;

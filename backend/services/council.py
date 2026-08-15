@@ -44,6 +44,7 @@ from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
+    classify_wait_reason,
     collect_official_results,
     lock_time_strike,
     eth_paper_lock_blocked,
@@ -131,6 +132,7 @@ class Council:
         self.running = False
         self._last_learned_ids: set = set()
         self._shadow_book: list = []
+        self._wait_snapshot: Dict[str, Any] | None = None
         self._last_settle_review = None
         self._last_spot: float | None = None
         self._btc_lead: Dict[str, Any] | None = None
@@ -1083,6 +1085,9 @@ class Council:
             down_pct=down_pct,
             asset=self.asset,
         )
+        await self._maybe_record_wait_sample(
+            decision, signals, ticker, close_time, market_data, up_pct, down_pct
+        )
         await self._maybe_record_eth_shadow(decision, ticker, close_time)
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
@@ -1223,6 +1228,129 @@ class Council:
         )
         return state
 
+    async def _maybe_record_wait_sample(
+        self,
+        decision: Dict[str, Any],
+        signals: List[Any],
+        ticker: str | None,
+        close_time: str | None,
+        market_data: Dict[str, Any],
+        up_pct: float | None,
+        down_pct: float | None,
+    ) -> None:
+        """Write a WAIT sample for this hour when nobody locked. Learning ≠ locking more."""
+        locked = bool(
+            decision.get("window_locked")
+            or (
+                isinstance(decision.get("locked_call"), dict)
+                and decision["locked_call"].get("locked")
+            )
+        )
+        direction = str(decision.get("direction") or "WAIT").upper()
+        prev = getattr(self, "_wait_snapshot", None)
+        if (
+            prev
+            and prev.get("ticker")
+            and not prev.get("locked")
+            and (
+                (ticker and prev.get("ticker") != ticker)
+                or (close_time and prev.get("close_time") and prev.get("close_time") != close_time)
+            )
+        ):
+            try:
+                await self.store.record_wait_sample(
+                    ticker=prev["ticker"],
+                    close_time=prev.get("close_time"),
+                    wait_reason=prev.get("wait_reason"),
+                    seat_split=prev.get("seat_split"),
+                    book_depth=prev.get("book_depth"),
+                    would_lock_if_strict=bool(prev.get("would_lock_if_strict")),
+                    asset=self.asset,
+                    confidence=int(prev.get("confidence") or 0),
+                    regime_key=prev.get("regime_key"),
+                    up_pct=prev.get("up_pct"),
+                    down_pct=prev.get("down_pct"),
+                )
+            except Exception as e:
+                logger.debug(f"WAIT flush skip: {e}")
+        if locked and direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+            self._wait_snapshot = {"ticker": ticker, "close_time": close_time, "locked": True}
+            return
+        tick = ticker or (f"WAIT-{self.asset}-{(close_time or '')[:16]}" if close_time else None)
+        if not tick:
+            return
+        reason = classify_wait_reason(decision.get("summary"), decision, market_data)
+        seat_split = {
+            "UP": sum(1 for s in signals if getattr(s, "direction", None) == "UP"),
+            "DOWN": sum(1 for s in signals if getattr(s, "direction", None) == "DOWN"),
+            "WAIT": sum(1 for s in signals if getattr(s, "direction", None) == "WAIT"),
+            "total": len(signals),
+        }
+        raw_depth = None
+        if isinstance(market_data, dict):
+            raw_depth = (
+                market_data.get("book_depth")
+                or market_data.get("kalshi_orderbook")
+                or market_data.get("orderbook")
+            )
+            rf = market_data.get("regime") if isinstance(market_data.get("regime"), dict) else None
+            if raw_depth is None and rf:
+                raw_depth = rf.get("book_depth") or rf.get("kalshi_orderbook")
+        depth = raw_depth if isinstance(raw_depth, dict) and "yes_depth" in raw_depth else parse_book_depth(raw_depth)
+        so = None
+        lean = decision.get("lean")
+        try:
+            if lean in ("UP", "DOWN") and up_pct is not None:
+                so = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
+        except (TypeError, ValueError):
+            so = None
+        would = bool(so is not None and 45.0 <= so <= 60.0 and lean in ("UP", "DOWN"))
+        snap = {
+            "ticker": tick,
+            "close_time": close_time,
+            "wait_reason": reason,
+            "seat_split": seat_split,
+            "book_depth": depth,
+            "would_lock_if_strict": would,
+            "asset": self.asset,
+            "confidence": int(decision.get("confidence") or 0),
+            "regime_key": decision.get("regime_key"),
+            "up_pct": up_pct,
+            "down_pct": down_pct,
+            "locked": False,
+        }
+        self._wait_snapshot = snap
+        try:
+            created = await self.store.record_wait_sample(
+                ticker=tick,
+                close_time=close_time,
+                wait_reason=reason,
+                seat_split=seat_split,
+                book_depth=depth,
+                would_lock_if_strict=would,
+                asset=self.asset,
+                confidence=int(decision.get("confidence") or 0),
+                regime_key=decision.get("regime_key"),
+                up_pct=up_pct,
+                down_pct=down_pct,
+            )
+        except Exception as e:
+            logger.debug(f"WAIT sample skip: {e}")
+            return
+        if created:
+            try:
+                self.learner.learn_from_wait(
+                    agent_votes={s.agent_name: s.to_dict() for s in signals if hasattr(s, "to_dict")},
+                    outcome=None,
+                    wait_reason=reason,
+                    would_lock_if_strict=would,
+                    regime=decision.get("regime_key"),
+                    count_wait=True,
+                )
+                self.learner.save()
+            except Exception as e:
+                logger.debug(f"WAIT learn skip: {e}")
+
     async def _learn_from_new_settlements(self, *, limit: int = 40, max_learn: int = 5) -> int:
         """
         Grade agent votes on any settled windows we haven't learned from yet.
@@ -1231,18 +1359,40 @@ class Council:
         """
         recent = await self.store.recent_settled_calls(limit=limit, asset=self.asset)
         learned = 0
+        wait_learned = 0
         FINISH = {"finish_match", "finish_miss"}
         for row in reversed(recent):  # chronological
             rid = row.get("id")
             if rid is None or rid in self._last_learned_ids:
                 continue
             settle_reason = row.get("settle_reason") or ""
+            direction = str(row.get("direction") or "").upper()
             outcome = row.get("y_finish") or row.get("actual_outcome") or row.get("outcome")
+            votes = row.get("agent_votes") or {}
+            if direction == "WAIT" or settle_reason == "wait_finish":
+                y = row.get("y_finish")
+                if y not in ("UP", "DOWN"):
+                    y = None
+                reg = row.get("regime") or row.get("regime_key")
+                if not reg:
+                    reg = regime_from_call(row.get("called_at"), row.get("close_time"))
+                self.learner.learn_from_wait(
+                    agent_votes=votes,
+                    outcome=y,
+                    wait_reason=row.get("wait_reason"),
+                    would_lock_if_strict=bool(row.get("would_lock_if_strict")),
+                    regime=reg,
+                    count_wait=False,
+                )
+                wait_learned += 1
+                self._last_learned_ids.add(rid)
+                if (learned + wait_learned) >= int(max_learn):
+                    break
+                continue
             # Never train on VOID / path-era / unresolved
             if outcome in ("VOID", None, "") or settle_reason not in FINISH:
                 self._last_learned_ids.add(rid)
                 continue
-            votes = row.get("agent_votes") or {}
             if outcome in ("UP", "DOWN"):
                 reg = row.get("regime") or row.get("regime_key")
                 if not reg:
@@ -1269,7 +1419,7 @@ class Council:
         if len(self._last_learned_ids) > 500:
             keep = set(sorted(self._last_learned_ids)[-300:])
             self._last_learned_ids = keep
-        if learned:
+        if learned or wait_learned:
             self.leader.sync_from_learner()
             # Persist brain so longer runs survive restarts
             try:

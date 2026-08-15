@@ -612,6 +612,119 @@ def decide_open_lock_grade(
     }
 
 
+WAIT_REASON_CODES = (
+    "stale_quote",
+    "first_10m",
+    "dead_book",
+    "no_depth",
+    "odds_outside_20_80",
+    "top_3_conflict",
+    "low_confluence",
+    "late_undecisive",
+    "eth_fade",
+    "spread",
+    "no_ev",
+    "near_certain",
+    "law_lockdown",
+    "empty_book",
+    "forecast_flip",
+    "no_official_high",
+    "other",
+)
+
+
+def classify_wait_reason(
+    summary: Any = None,
+    decision: Any = None,
+    market: Any = None,
+) -> str:
+    """Map a Chair WAIT line to a stable why-code. Does not change lock gates."""
+    dec = decision if isinstance(decision, dict) else {}
+    mkt = market if isinstance(market, dict) else {}
+    preset = str(dec.get("wait_reason") or "").strip().lower().replace(" ", "_")
+    if preset in WAIT_REASON_CODES:
+        return preset
+    text = " ".join(
+        str(x or "")
+        for x in (summary, dec.get("summary"), mkt.get("skip"), mkt.get("skip_reason"))
+    ).lower()
+    if dec.get("top_conflict") or "top-3" in text or "top 3" in text or "top_conflict" in text or "top conflict" in text:
+        return "top_3_conflict"
+    if bool(mkt.get("stale")) or "fresh quote" in text or "stale quote" in text or "stale kalshi" in text:
+        return "stale_quote"
+    if "first " in text and ("m of the hour" in text or "10m" in text or "first 10" in text):
+        return "first_10m"
+    if "dead book" in text or "one-sided" in text or "empty book" in text:
+        if "empty book" in text and "dead book" not in text:
+            return "empty_book"
+        return "dead_book"
+    if "thin book" in text or "no depth" in text or "need ≥" in text or "need >=" in text or "sample too thin" in text:
+        return "no_depth"
+    if "outside 20" in text or "outside 20–80" in text or "outside 20-80" in text:
+        return "odds_outside_20_80"
+    if "insufficient confluence" in text or "need stronger confluence" in text or "low confluence" in text:
+        return "low_confluence"
+    if "last 15" in text or "not decisive" in text:
+        return "late_undecisive"
+    if "eth fade" in text or "btc impulse" in text:
+        return "eth_fade"
+    if "spread" in text and ("no lock" in text or "junk" in text or ">" in text):
+        return "spread"
+    if "cannot price ev" in text or "no chosen-side" in text:
+        return "no_ev"
+    if "near certain" in text or "≥99" in text or ">=99" in text or "99¢ wall" in text:
+        return "near_certain"
+    if "lockdown" in text or "law " in text:
+        return "law_lockdown"
+    if "forecast" in text and "flip" in text:
+        return "forecast_flip"
+    if "no official" in text:
+        return "no_official_high"
+    if "confluence" in text:
+        return "low_confluence"
+    return "other"
+
+
+def decide_open_wait_grade(
+    *,
+    ticker: Any = None,
+    call_id: Any = None,
+    close_time: Any = None,
+    kalshi_result: Any = None,
+    now: datetime | None = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Grade a WAIT sample from the official Kalshi yes/no only.
+
+    Does not invent y_finish. Paper P&L stays 0. correct stays None
+    so lock hit-rate never counts a WAIT as a hit or miss.
+    """
+    live = kalshi_result if official_y_finish(kalshi_result) else None
+    live_final = bool(
+        live
+        and kalshi_market_finalized(kalshi_result)
+        and not is_known_official_snapshot(kalshi_result)
+    )
+    if not live_final and not official_window_due(close_time, now=now, ticker=ticker):
+        return None
+    official = live
+    if official is None:
+        official = known_official_market(ticker, call_id)
+    y_finish = official_y_finish(official)
+    if y_finish is None:
+        return None
+    ct = resolve_close_time(close_time, ticker)
+    return {
+        "y_finish": y_finish,
+        "correct": None,
+        "settle_reason": "wait_finish",
+        "asset": ticker_asset(ticker),
+        "floor_strike": strike_from_kalshi_ticker(ticker),
+        "close_iso": ct.isoformat() if ct is not None else None,
+        "paper_pnl": 0.0,
+    }
+
+
 def window_minutes_from_times(open_time: Any, close_time: Any) -> Optional[float]:
     start = parse_iso_utc(open_time)
     end = parse_iso_utc(close_time)
