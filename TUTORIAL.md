@@ -41,8 +41,8 @@ Table · Floor · Dashboard · Bots · Ranks · Paper · Front · Charts · Sett
 Raijin is the weather Chair. THE FRONT is his Floor — a real ring table, not a city list.
 
 - **Dallas daily high only.** Series `KXHIGHTDAL`. Settle **DFW / KDFW**, not Love Field. Date lives in the ticker.
-- **Seats:** **GLASS** (official / NWS high) · **PIT** (Kalshi vs that number) · **FROST** (veto junk / SICK / thin book) · **BONE** (this city’s history / climo) · **MESH** (multi-source median).
-- **Subs** (feed a chair, do not vote): **HEAT** (live KDFW METAR vs the high) · **ECHO** (yesterday’s Dallas CLI) · **CELL** (storms that cap the high).
+- **Seats:** **GLASS** (NWS PANE) · **PIT** (THE PIT) · **FROST** (FROST KILL) · **BONE** (BONE CLIMO) · **MESH** (THE WEB).
+- **Subs** (feed a chair, do not vote): **HEAT** (NOW VS THE HIGH) · **ECHO** (YDAY BONES) · **CELL** (STORM CAP).
 - Hits count like BTC / ETH. Pending until NWS CLI posts the next morning.
 - Paper first. Live stays off until you arm this tab. Does not place 1H Chair locks. Never talks to Follower.
 - Small third chair on the shared Floor. Full-size ring on the Front tab.

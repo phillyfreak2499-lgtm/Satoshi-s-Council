@@ -89,16 +89,16 @@ def city_for_ticker(ticker: Any) -> Optional[Dict[str, Any]]:
 
 
 SEATS: Tuple[Dict[str, Any], ...] = (
-    {"id": "GLASS", "job": "Official/NWS high for the station.", "mark": "/static/bots/glass.png", "weight": 1.0},
-    {"id": "PIT", "job": "Kalshi implied vs that number, after vig.", "mark": "/static/bots/pit.png", "weight": 1.0},
-    {"id": "FROST", "job": "Veto junk book / flip / SICK / thin n / mesh disagree.", "mark": "/static/bots/frost.png", "weight": 1.0},
-    {"id": "BONE", "job": "This city’s history / climo. Seasonal base. Low weight.", "mark": "/static/bots/bone.png", "weight": 0.25},
-    {"id": "MESH", "job": "Dallas high mesh — NWS grid, Open-Meteo, ensemble. Median vs the strike.", "mark": "/static/bots/mesh.png", "weight": 1.0},
+    {"id": "GLASS", "job": "NWS PANE", "mark": "/static/bots/glass.png", "weight": 1.0},
+    {"id": "PIT", "job": "THE PIT", "mark": "/static/bots/pit.png", "weight": 1.0},
+    {"id": "FROST", "job": "FROST KILL", "mark": "/static/bots/frost.png", "weight": 1.0},
+    {"id": "BONE", "job": "BONE CLIMO", "mark": "/static/bots/bone.png", "weight": 0.25},
+    {"id": "MESH", "job": "THE WEB", "mark": "/static/bots/mesh.png", "weight": 1.0},
 )
 SUBS: Tuple[Dict[str, Any], ...] = (
-    {"id": "HEAT", "parent": "GLASS", "feeds": ("GLASS", "FROST"), "job": "Live KDFW METAR vs the high.", "mark": "/static/bots/heat.png"},
-    {"id": "ECHO", "parent": "BONE", "feeds": ("BONE",), "job": "Yesterday’s official Dallas CLI. Persistence prior.", "mark": "/static/bots/wx-echo.png"},
-    {"id": "CELL", "parent": "FROST", "feeds": ("FROST",), "job": "Storms that cap the high. FROST kill input.", "mark": "/static/bots/cell.png"},
+    {"id": "HEAT", "parent": "GLASS", "feeds": ("GLASS", "FROST"), "job": "NOW VS THE HIGH", "mark": "/static/bots/heat.png"},
+    {"id": "ECHO", "parent": "BONE", "feeds": ("BONE",), "job": "YDAY BONES", "mark": "/static/bots/wx-echo.png"},
+    {"id": "CELL", "parent": "FROST", "feeds": ("FROST",), "job": "STORM CAP", "mark": "/static/bots/cell.png"},
 )
 CHAIR: Dict[str, str] = {
     "id": "RAIJIN",
@@ -547,6 +547,71 @@ def paper_pnl(row: Dict[str, Any], hit: bool) -> float:
     return round(-stake, 2)
 
 
+def frost_line(skip: Optional[str]) -> Optional[str]:
+    """FROST HUD. Kill one-liners — never help-desk."""
+    if not skip:
+        return None
+    text = str(skip).strip()
+    if not text:
+        return None
+    low = text.lower()
+    if low in ("clear", "ok"):
+        return "CLEAR"
+    if "sick" in low:
+        return "SICK BOOK"
+    if "99" in low:
+        return "99¢ WALL"
+    if "flip" in low:
+        return "FORECAST FLIP"
+    if "wide" in low or "disagree" in low or ("mesh" in low and "thin" not in low):
+        return "WIDE SPLIT · SIT"
+    if "cell" in low:
+        return "CELL CAP"
+    if "cooked" in low or "heat" in low:
+        return "DAY COOKED"
+    if "junk" in low or "spread" in low:
+        return "JUNK SPREAD"
+    if "empty" in low or "dead book" in low:
+        return "EMPTY BOOK"
+    if "thin" in low and "mesh" not in low:
+        return "THIN BOOK"
+    if "official" in low or "pane" in low:
+        return "NO PANE"
+    if text.startswith("Don’t play") or text.startswith("Don't play"):
+        tail = text.split("·", 1)[-1].strip().upper()
+        return tail or "FROST KILL"
+    return text.upper() if text == text.lower() else text
+
+
+def glass_call_line(forecast: Optional[float]) -> str:
+    if forecast is None:
+        return "NO PANE"
+    return f"GLASS READS {int(round(float(forecast)))}°"
+
+
+def pit_call_line(m: Optional[Dict[str, Any]]) -> str:
+    if not m:
+        return "NO BOOK"
+    kind = str(m.get("strike_type") or "").lower()
+    lo, hi = m.get("floor_strike"), m.get("cap_strike")
+    if kind == "between" and lo is not None and hi is not None:
+        return f"BOOK {int(float(lo))}–{int(float(hi))}°"
+    high = kalshi_high_f(m)
+    if high is None:
+        return "NO BOOK"
+    return f"BOOK {int(round(float(high)))}°"
+
+
+def bone_call_line(climo: Optional[float], echo_high: Optional[float] = None) -> str:
+    if climo is not None and echo_high is not None:
+        return f"30-YR {int(float(climo))}° · YDAY {int(float(echo_high))}°"
+    if climo is not None:
+        return f"30-YR {int(float(climo))}°"
+    if echo_high is not None:
+        return f"YDAY {int(float(echo_high))}°"
+    return "NO BONES"
+
+
 def vote_seats(
     m: Dict[str, Any],
     *,
@@ -571,14 +636,7 @@ def vote_seats(
         pit = "YES" if implied < 0.5 else "NO"
     frost = "SKIP" if skip else "CLEAR"
     bone = "WAIT" if climo_p is None else ("YES" if climo_p >= 0.5 else "NO")
-    if echo_high is not None and climo is not None:
-        bone_call = f"{climo}°F season · yday {float(echo_high):.0f}°"
-    elif echo_high is not None:
-        bone_call = f"yday {float(echo_high):.0f}°"
-    elif climo is not None:
-        bone_call = f"{climo}°F season"
-    else:
-        bone_call = "no climo"
+    bone_call = bone_call_line(climo, echo_high)
     pack = mesh if isinstance(mesh, dict) else empty_mesh()
     median = pack.get("median")
     thin = bool(pack.get("thin") or median is None)
@@ -592,9 +650,9 @@ def vote_seats(
             mesh_dir = "NO"
     mesh_conf = 12 if thin else (22 if wide else 64)
     return [
-        {"id": "GLASS", "dir": glass, "call": None if forecast is None else f"{forecast:.0f}°F {station}"},
-        {"id": "PIT", "dir": pit, "call": None if implied is None else f"{int(round(implied * 100))}¢ after vig"},
-        {"id": "FROST", "dir": frost, "call": skip or "clear"},
+        {"id": "GLASS", "dir": glass, "call": glass_call_line(forecast)},
+        {"id": "PIT", "dir": pit, "call": pit_call_line(m)},
+        {"id": "FROST", "dir": frost, "call": frost_line(skip) or "CLEAR"},
         {"id": "BONE", "dir": bone, "call": bone_call},
         {
             "id": "MESH",
@@ -953,9 +1011,9 @@ def classify_front_wait_reason(skip: Optional[str], flags: Optional[Dict[str, An
         return "odds_outside_20_80"
     if "thin" in text:
         return "no_depth"
-    if "official" in text:
+    if "official" in text or "pane" in text:
         return "no_official_high"
-    if "flip" in text or "disagree" in text or "mesh" in text or "cell" in text or "cooked" in text:
+    if "flip" in text or "disagree" in text or "mesh" in text or "cell" in text or "cooked" in text or "wide" in text or "split" in text:
         return "forecast_flip"
     return "other"
 
@@ -1056,26 +1114,26 @@ def skip_reason(
     cell: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     if flags.get("empty"):
-        return "Don’t play · empty book"
+        return "EMPTY BOOK"
     if flags.get("sick"):
-        return "Don’t play · sick book"
+        return "SICK BOOK"
     if flags.get("wall_99"):
-        return "Don’t play · ≥99¢ wall"
+        return "99¢ WALL"
     if flags.get("spread") is not None and flags["spread"] >= 6:
-        return "Don’t play · junk spread"
+        return "JUNK SPREAD"
     if flipped:
-        return "Don’t play · forecast just flipped"
+        return "FORECAST FLIP"
     if cell and cell.get("kill"):
-        return "Don’t play · cell cap"
+        return "CELL CAP"
     if heat and heat.get("blew_bracket"):
-        return "Don’t play · heat cooked"
+        return "DAY COOKED"
     if mesh and mesh.get("wide"):
-        return "Don’t play · mesh disagree"
+        return "WIDE SPLIT · SIT"
     if n < THIN_VOL:
-        return "Don’t play · sample too thin"
+        return "THIN BOOK"
     if forecast is None:
-        return "Don’t play · no official high"
-    return why_line(flags, None, 0)
+        return "NO PANE"
+    return frost_line(why_line(flags, None, 0))
 
 
 def classify_weather(obs: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -1332,17 +1390,18 @@ def mesh_call_line(pack: Optional[Dict[str, Any]]) -> str:
         for s in (pack.get("sources") or [])
         if isinstance(s, dict) and not s.get("ok")
     ]
-    miss_bit = (" · " + ", ".join(misses)) if misses else ""
+    miss_bit = (" · " + ", ".join(m.upper() for m in misses)) if misses else ""
     n = int(pack.get("n_live") or 0)
     if pack.get("thin") or pack.get("median") is None:
-        return f"thin{miss_bit}" if miss_bit else "thin"
-    src = "1 source" if n == 1 else f"{n} sources"
-    wide = " · wide" if pack.get("wide") else ""
+        return f"THIN MESH{miss_bit}" if miss_bit else "THIN MESH"
+    if pack.get("wide"):
+        return "WIDE SPLIT · SIT"
     try:
-        med = f"{float(pack['median']):.0f}°F"
+        med = f"{float(pack['median']):.0f}°"
     except (TypeError, ValueError):
-        return f"thin{miss_bit}" if miss_bit else "thin"
-    return f"{med} · {src}{wide}{miss_bit}"
+        return f"THIN MESH{miss_bit}" if miss_bit else "THIN MESH"
+    src = "1-SOURCE MEDIAN" if n == 1 else f"{n}-SOURCE MEDIAN"
+    return f"{src} · {med}{miss_bit}"
 
 
 def _median_f(xs: List[float]) -> Optional[float]:
@@ -1918,18 +1977,19 @@ def build_seats(
     climo = (DALLAS.get("climo") or {}).get(day.month) if day else None
     pack = mesh if isinstance(mesh, dict) else empty_mesh()
     sub_rows = [s for s in (subs or []) if isinstance(s, dict)]
+    echo_high = None
+    for s in sub_rows:
+        if str(s.get("id") or "") == "ECHO" and s.get("high") is not None:
+            echo_high = s.get("high")
     defaults = {
-        "GLASS": None if forecast is None else f"{forecast:.0f}°F KDFW",
-        "PIT": None,
-        "FROST": "clear",
-        "BONE": None if climo is None else f"{climo}°F season",
+        "GLASS": glass_call_line(forecast),
+        "PIT": pit_call_line(best),
+        "FROST": frost_line((best or {}).get("skip")) or "CLEAR",
+        "BONE": bone_call_line(climo, echo_high),
         "MESH": mesh_call_line(pack),
     }
     votes: Dict[str, Any] = {}
     if best:
-        if best.get("yes_ask") is not None:
-            defaults["PIT"] = f"{int(round(best['yes_ask']))}¢ {best.get('bracket') or ''}".strip()
-        defaults["FROST"] = best.get("skip") or "clear"
         votes = {v["id"]: v for v in (best.get("votes") or []) if isinstance(v, dict) and v.get("id")}
         for sid, row in votes.items():
             if row.get("call"):
@@ -2246,7 +2306,7 @@ async def build_board(
         chair_best = None
     sit_out = chair_best is None or bool(best and best.get("dont_play"))
     if day is not None and sit_out:
-        skip = (best or {}).get("skip") if best else "Don’t play · empty book"
+        skip = (best or {}).get("skip") if best else "EMPTY BOOK"
         would = front_would_lock_if_strict(best, min_c)
         try:
             record_wait_sample(

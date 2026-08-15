@@ -821,11 +821,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try { board = frontBoard; } catch (e) { board = null; }
     const chair = (board && board.chair) || {};
     const seats = (board && Array.isArray(board.seats) && board.seats.length) ? board.seats : [
-      { id: "GLASS", job: "Official/NWS high for the station.", dir: "WAIT", call: "", n: 0, wr: null, rank: 1 },
-      { id: "PIT", job: "Kalshi implied vs that number, after vig.", dir: "WAIT", call: "", n: 0, wr: null, rank: 2 },
-      { id: "FROST", job: "Veto junk book / flip / SICK / thin n / mesh disagree.", dir: "WAIT", call: "", n: 0, wr: null, rank: 3 },
-      { id: "BONE", job: "This city’s history / climo. Seasonal base.", dir: "WAIT", call: "", n: 0, wr: null, rank: 4 },
-      { id: "MESH", job: "Dallas high mesh — NWS grid, Open-Meteo, ensemble.", dir: "WAIT", call: "", n: 0, wr: null, rank: 5 },
+      { id: "GLASS", job: "NWS PANE", dir: "WAIT", call: "", n: 0, wr: null, rank: 1 },
+      { id: "PIT", job: "THE PIT", dir: "WAIT", call: "", n: 0, wr: null, rank: 2 },
+      { id: "FROST", job: "FROST KILL", dir: "WAIT", call: "", n: 0, wr: null, rank: 3 },
+      { id: "BONE", job: "BONE CLIMO", dir: "WAIT", call: "", n: 0, wr: null, rank: 4 },
+      { id: "MESH", job: "THE WEB", dir: "WAIT", call: "", n: 0, wr: null, rank: 5 },
     ];
     const acc = (board && (board.accuracy || board.chair_accuracy)) || {};
     const records = (board && board.seat_records) || seats;
@@ -5739,11 +5739,11 @@ function drawCandleChart() {
     const grid = document.getElementById("frontBotsGrid");
     if (!grid) return;
     const fallback = [
-      { id: "GLASS", job: "Official/NWS high for the station.", mark: "/static/bots/glass.png" },
-      { id: "PIT", job: "Kalshi implied vs that number, after vig.", mark: "/static/bots/pit.png" },
-      { id: "FROST", job: "Veto junk book / flip / SICK / thin n / mesh disagree.", mark: "/static/bots/frost.png" },
-      { id: "BONE", job: "This city’s history / climo. Seasonal base. Low weight.", mark: "/static/bots/bone.png" },
-      { id: "MESH", job: "Dallas high mesh — NWS grid, Open-Meteo, ensemble. Median vs the strike.", mark: "/static/bots/mesh.png" },
+      { id: "GLASS", job: "NWS PANE", mark: "/static/bots/glass.png" },
+      { id: "PIT", job: "THE PIT", mark: "/static/bots/pit.png" },
+      { id: "FROST", job: "FROST KILL", mark: "/static/bots/frost.png" },
+      { id: "BONE", job: "BONE CLIMO", mark: "/static/bots/bone.png" },
+      { id: "MESH", job: "THE WEB", mark: "/static/bots/mesh.png" },
     ];
     const seats = ((data && data.seats) || []).filter(function (s) {
       return s && (s.id === "GLASS" || s.id === "PIT" || s.id === "FROST" || s.id === "BONE" || s.id === "MESH");
@@ -5788,7 +5788,7 @@ function drawCandleChart() {
         grid.innerHTML = "";
       }
       const hero = document.querySelector("#botsView .info-hero p");
-      if (hero) hero.textContent = "Dallas daily high. Five chairs: GLASS · PIT · FROST · BONE · MESH. Subs HEAT / ECHO / CELL feed parents — they do not vote. Settles on NWS CLI for KDFW.";
+      if (hero) hero.textContent = "Five chairs. GLASS is the pane. MESH is the web. PIT is the book. FROST kills. BONE is old bones. HEAT / ECHO / CELL feed them. They do not vote.";
       return;
     }
     const botsGrid = document.getElementById("botsGrid");
@@ -8536,7 +8536,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (official high) · MESH (multi-source median) · PIT (Kalshi vs that number) · FROST (veto) · BONE (this city’s history / climo). Subs: HEAT (KDFW now) · ECHO (yday CLI) · CELL (storm cap). Subs feed parents. They do not vote.\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
+      body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (NWS PANE) · MESH (THE WEB) · PIT (THE PIT) · FROST (FROST KILL) · BONE (BONE CLIMO). Subs: HEAT · ECHO · CELL. They feed. They do not vote.\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",
