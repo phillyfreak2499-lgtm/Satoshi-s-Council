@@ -106,9 +106,14 @@ class KalshiClient:
 
     async def get_orderbook(self, ticker: str) -> Dict[str, Any]:
         url = f"{self.base}/markets/{ticker}/orderbook"
+        depth_n = max(1, int(getattr(settings, "KALSHI_ORDERBOOK_DEPTH", 10)))
         try:
-            data = await self._get_json(url)
+            data = await self._get_json(url, params={"depth": depth_n})
+            if isinstance(data.get("orderbook_fp"), dict):
+                return data["orderbook_fp"]
             book = data.get("orderbook") if isinstance(data.get("orderbook"), dict) else data
+            if isinstance(book, dict) and isinstance(book.get("orderbook_fp"), dict):
+                return book["orderbook_fp"]
             return book if isinstance(book, dict) else {}
         except Exception as e:
             self._note_fail("orderbook", e)
@@ -284,7 +289,18 @@ class KalshiClient:
             ticker = primary.get("ticker")
             orderbook: Dict[str, Any] = {}
             every = max(1, int(getattr(settings, "KALSHI_ORDERBOOK_EVERY", 4)))
-            want_ob = (cycle % every == 1) or (ticker != self._last_orderbook_ticker)
+            last_has_size = False
+            if ticker and self._last_orderbook_ticker == ticker and self._last_orderbook:
+                try:
+                    from backend.agents.chair_gates import parse_book_depth
+                    last_has_size = bool(parse_book_depth(self._last_orderbook).get("has_size"))
+                except Exception:
+                    last_has_size = False
+            want_ob = (
+                (cycle % every == 1)
+                or (ticker != self._last_orderbook_ticker)
+                or not last_has_size
+            )
             if want_ob and ticker:
                 orderbook = await self.get_orderbook(ticker)
                 if orderbook:

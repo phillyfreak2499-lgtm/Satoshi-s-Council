@@ -728,6 +728,9 @@ class PacksNotDroppedTests(unittest.TestCase):
             "def eth_shadow_pick",
             "def is_eth_shadow_row",
             "def floor_scorecard",
+            "def book_is_unknown",
+            "def explore_paper_lock_open",
+            "def explore_paper_lock_ok",
         ):
             self.assertIn(needle, gates)
         leader = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")
