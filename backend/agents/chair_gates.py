@@ -1080,11 +1080,12 @@ def _score_pair(correct: Any, wrong: Any) -> Dict[str, int]:
 
 def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
     """
-    Floor book match. Paper only. Not a leader card.
+    Floor book match. Paper only.
 
+    Not leader vs leader. Not Satoshi vs Vitalik. Not Chair vs seats.
     BTC score = sized Chair locks, finish-only from Kalshi market.result.
     ETH score = shadow picks (including vetoed), finish-only from market.result.
-    Head-to-head is settled correct vs wrong — two books, not two chairs.
+    Head-to-head is a game score of the two books — settled correct vs wrong.
     """
     btc_acc = btc_acc if isinstance(btc_acc, dict) else {}
     eth_acc = eth_acc if isinstance(eth_acc, dict) else {}
@@ -1105,20 +1106,18 @@ def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
     btc_c, eth_c = btc["correct"], eth["correct"]
     btc_w, eth_w = btc["wrong"], eth["wrong"]
     played = btc_c + btc_w + eth_c + eth_w
+    match = f"BTC {btc_c} · ETH {eth_c}"
     if btc_c > eth_c:
         ahead = "btc"
         lead = btc_c - eth_c
-        match = f"BTC LEADS {btc_c}–{eth_c}"
         line = "BTC book ahead on finishes."
     elif eth_c > btc_c:
         ahead = "eth"
         lead = eth_c - btc_c
-        match = f"ETH LEADS {eth_c}–{btc_c}"
         line = "ETH book ahead on finishes."
     else:
         ahead = "tied"
         lead = 0
-        match = f"TIED {btc_c}–{eth_c}"
         if played and btc_w < eth_w:
             line = "Even finishes. BTC book has fewer misses."
         elif played and eth_w < btc_w:

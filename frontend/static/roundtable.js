@@ -155,7 +155,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate and the Floor BTC vs ETH book scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
@@ -1696,16 +1696,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ethC = Number(sh.hits) || 0;
     const ethN = Number(sh.n) || 0;
     const ethW = sh.wrong != null ? Number(sh.wrong) || 0 : Math.max(0, ethN - ethC);
-    let match = "TIED " + btc.c + "–" + ethC;
+    const match = "BTC " + btc.c + " · ETH " + ethC;
     let line = "Even books. Waiting on the next finish.";
     let ahead = "tied";
     if (btc.c > ethC) {
       ahead = "btc";
-      match = "BTC LEADS " + btc.c + "–" + ethC;
       line = "BTC book ahead on finishes.";
     } else if (ethC > btc.c) {
       ahead = "eth";
-      match = "ETH LEADS " + ethC + "–" + btc.c;
       line = "ETH book ahead on finishes.";
     } else if ((btc.c + btc.w + ethC + ethW) > 0 && btc.w < ethW) {
       line = "Even finishes. BTC book has fewer misses.";
@@ -1736,7 +1734,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const trash = document.getElementById("rivalTrash");
     if (btcEl) btcEl.textContent = sc.btc_text || "BTC 0–0";
     if (ethEl) ethEl.textContent = sc.eth_text || "0–0 ETH";
-    if (lead) lead.textContent = sc.match || "TIED 0–0";
+    if (lead) lead.textContent = sc.match || "BTC 0 · ETH 0";
     if (trash) trash.textContent = sc.line || "";
     strip.classList.remove("ahead-btc", "ahead-eth", "ahead-tied");
     strip.classList.add("ahead-" + (sc.ahead || "tied"));
@@ -5316,7 +5314,7 @@ function drawCandleChart() {
       mode: "floor",
       target: "#tabFloor",
       title: "FLOOR",
-      body: "Floor is the immersive table. The outer ring is specialists still voting and ranking. ESC or TABLE returns to the desk.",
+      body: "Floor is the immersive table. The outer ring is specialists still voting and ranking. The strip is a paper match score for the two books — BTC sized locks vs ETH shadow picks, finish-only. Reset is in Settings. ESC or TABLE returns to the desk.",
     },
     {
       mode: "dashboard",
@@ -7487,7 +7485,7 @@ function drawCandleChart() {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate and the Floor BTC vs ETH book scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();

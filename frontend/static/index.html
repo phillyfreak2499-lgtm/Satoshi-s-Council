@@ -100,12 +100,13 @@
       <div id="ssRing" class="ss-ring" role="group" aria-label="Seat Storm ring"></div>
       <p id="ssStatus" class="ss-status">Tap the lit seat</p>
     </div>
-    <div id="rivalryStrip" class="rivalry-strip" hidden aria-label="Paper match score BTC vs ETH">
+    <div id="rivalryStrip" class="rivalry-strip" hidden aria-label="Paper book match · BTC sized locks vs ETH shadow picks" title="BTC sized locks vs ETH shadow picks · finish-only · reset in Settings">
       <span class="rival-tag">PAPER</span>
+      <span class="rival-tag">BOOKS</span>
       <span id="rivalBtc">BTC 0–0</span>
       <b class="rival-vs">VS</b>
       <span id="rivalEth">0–0 ETH</span>
-      <span id="rivalLead" class="rival-lead">TIED 0–0</span>
+      <span id="rivalLead" class="rival-lead">BTC 0 · ETH 0</span>
       <span id="rivalTrash" class="rival-trash"></span>
     </div>
     <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
@@ -665,7 +666,7 @@
   <template id="adminDeskTemplate">
     <div class="beast-card settings-card" id="adminToolsCard">
       <div class="beast-title">ADMIN TOOLS</div>
-      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities. Floor scorecard reset lives here — not on the public Floor.</p>
+      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities. Floor book-match reset lives here (BTC sized locks vs ETH shadow picks, finish-only) — not on the public Floor.</p>
       <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
         <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate &amp; Scorecard</button>
         <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
