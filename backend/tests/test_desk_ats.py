@@ -481,14 +481,35 @@ class AtsFloorChromeTests(unittest.TestCase):
         face_css = CSS[CSS.find(".ares-face"): CSS.find(".ats-sub")]
         self.assertIn("display: none !important", face_css)
 
+    def test_ats_rehomed_from_main(self):
+        self.assertIn('id="focusAts"', HTML)
+        self.assertIn('id="aresFace"', HTML)
+        self.assertIn("function atsTableState", JS)
+        self.assertIn('fetch("/api/ats"', JS)
+        self.assertIn("@app.get(\"/api/ats\")", MAIN)
+        self.assertIn("LINE", ATS)
+        self.assertIn("STEAM", ATS)
+        self.assertIn("FADE", ATS)
+        self.assertIn("HURT", ATS)
+        self.assertIn("ICE", ATS)
+        self.assertIn("function paintAtsWatch", JS)
+        self.assertIn("function paintAtsWhy", JS)
+        for name in ("ONE TICKET", "KEY NUMBERS", "SIT AFTER KICK", "SPORT BRAINS", "PUBLIC TUG"):
+            self.assertIn(name, ATS)
+
     def test_ats_window_is_game_kick_not_1h(self):
         self.assertIn("def build_game_clock", ATS)
         self.assertIn('"kind": "game"', ATS)
         self.assertIn("seconds_to_kick", ATS)
+        self.assertIn("function atsKickLine", JS)
         chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
-        self.assertIn('ledLabel.textContent = "KICK"', chrome)
-        self.assertIn("to kickoff · the game", chrome)
-        self.assertIn("seconds_to_kick", chrome)
+        self.assertIn('ledLabel.textContent = "CLOCK"', chrome)
+        self.assertIn("atsKickLine", chrome)
+        self.assertIn("THEY'RE OFF", JS)
+        self.assertIn("CLOCK IS DARK", JS)
+        self.assertIn("KICK IN", JS)
+        self.assertIn("dualSub.hidden = !!ats", chrome)
+        self.assertNotIn("3600", chrome)
         self.assertIn("window_kind: \"game\"", JS)
         pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
         self.assertIn("isAtsTable(focusTable)", pair)
@@ -502,6 +523,8 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertGreater(clock["seconds_to_kick"], 0)
         self.assertNotIn("1H", clock["label"])
         self.assertIn("KICK IN", clock["line"])
+        self.assertEqual(desk_ats.clock_line("2026-08-16T00:00:00Z", now=NOW), "KICK IN 4H 00M")
+        self.assertEqual(desk_ats.clock_line("2026-08-15T18:00:00Z", now=NOW), "THEY'RE OFF")
 
     def test_ats_bet_chrome_not_crypto(self):
         self.assertIn('id="atsGameStrip"', HTML)

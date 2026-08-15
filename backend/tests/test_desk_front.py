@@ -47,6 +47,7 @@ def _m(
         "yes_ask_dollars": yes_ask,
         "volume_fp": volume,
         "status": "active",
+        "close_time": "2026-08-16T04:00:00Z",
     }
 
 
@@ -467,11 +468,15 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board["chair"]["eye"], "UP")
         self.assertEqual(board["chair"]["lean"], "BETWEEN")
         self.assertTrue(board["chair"]["mark"].endswith("raijin-up.png"))
-        self.assertEqual(board["clock"]["kind"], "cli")
+        self.assertEqual(board["clock"]["kind"], "kalshi")
         self.assertEqual(board["clock"]["label"], "DFW HIGH")
+        self.assertEqual(board["clock"]["sub"], "settles 7:00 CT")
         self.assertIn("KXHIGHTDAL", str(board["clock"].get("ticker") or ""))
         self.assertIsNotNone(board["clock"].get("seconds_to_cli"))
         self.assertIsNotNone(board["clock"].get("cli_at"))
+        self.assertIsNotNone(board["clock"].get("close_time"))
+        self.assertNotEqual(board["clock"]["close_time"][:10], board["city"]["day"])
+        self.assertNotEqual(str(board["clock"]["close_time"]), str(board["clock"]["cli_at"]))
         self.assertNotIn("1H", str(board["clock"].get("label") or ""))
         self.assertEqual(board["weather"]["mode"], "HEAT")
         self.assertFalse(board["follower"])
@@ -708,14 +713,17 @@ class FrontFocusWeatherDeskTests(unittest.TestCase):
         chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
         self.assertIn('ledLabel.textContent = "DFW HIGH"', chrome)
         self.assertIn('"DFW HIGH"', chrome)
-        self.assertIn("to CLI · next bet", chrome)
-        self.assertIn("waiting on DFW CLI", chrome)
+        self.assertIn("settles 7:00 CT", chrome)
+        self.assertIn("seconds_to_close", chrome)
         self.assertIn("charts-hero-front", JS)
-        self.assertIn("window_kind: \"cli\"", JS)
+        self.assertIn("window_kind: clock.close_time ? \"kalshi\" : \"cli\"", JS)
         self.assertIn("No Dallas book — waiting on DFW CLI", JS)
+        self.assertNotIn("close_time: clock.cli_at", JS)
+        self.assertNotIn("board.city ? board.city.day", JS)
         self.assertIn('id="wxCity"', HTML)
         self.assertIn('id="wxCliWindow"', HTML)
         self.assertIn("DALLAS", HTML)
+        self.assertIn("BRACKET", HTML)
         self.assertIn("deskBook", JS)
         pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
         self.assertIn("isFrontTable(focusTable)", pair)
@@ -749,15 +757,28 @@ class FrontFocusWeatherDeskTests(unittest.TestCase):
         self.assertEqual(cli.date(), date(2026, 8, 16))
         clock = desk_front.build_clock(
             day,
-            {"strike_type": "between", "floor_strike": 103, "cap_strike": 104, "bracket": "103–104°F", "ticker": "KXHIGHTDAL-26AUG15-B103104"},
+            {
+                "strike_type": "between",
+                "floor_strike": 103,
+                "cap_strike": 104,
+                "bracket": "103–104°F",
+                "ticker": "KXHIGHTDAL-26AUG15-B103104",
+                "close_time": "2026-08-16T04:00:00Z",
+            },
             datetime(2026, 8, 15, 16, 5, tzinfo=timezone.utc),
             103,
         )
-        self.assertEqual(clock["kind"], "cli")
+        self.assertEqual(clock["kind"], "kalshi")
         self.assertEqual(clock["label"], "DFW HIGH")
+        self.assertEqual(clock["sub"], "settles 7:00 CT")
         self.assertEqual(clock["kalshi_high"], 104)
         self.assertEqual(clock["nws_high"], 103)
         self.assertGreater(clock["seconds_to_cli"], 3600)
+        self.assertIsNotNone(clock["close_time"])
+        self.assertNotEqual(str(clock["close_time"])[:10], "2026-08-15")
+        self.assertNotEqual(clock["close_time"], clock["cli_at"])
+        self.assertLess(clock["seconds_to_close"], clock["seconds_to_cli"])
+        self.assertIsNone(desk_front.market_close_of({"close_time": "2026-08-15"}))
         self.assertNotIn("1H", clock["label"])
 
 

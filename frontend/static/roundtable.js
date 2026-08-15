@@ -948,15 +948,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         now_f: clock.now_f,
         temp_stale: clock.temp_stale,
         clock: clock,
-        window_kind: "cli",
+        window_kind: clock.close_time ? "kalshi" : "cli",
         window_label: "DFW HIGH",
         kalshi_yes_bid: best.yes_bid,
         kalshi_yes_ask: best.yes_ask,
         up_pct: best.yes_ask,
         down_pct: best.yes_ask != null ? (100 - Number(best.yes_ask)) : null,
-        seconds_left: clock.seconds_to_cli,
-        time_remaining: clock.seconds_to_cli,
-        close_time: clock.cli_at || null,
+        seconds_left: clock.seconds_to_close != null ? clock.seconds_to_close : null,
+        time_remaining: clock.seconds_to_close != null ? clock.seconds_to_close : null,
+        mins_left: clock.mins_left,
+        close_time: clock.close_time || best.close_time || null,
+        cli_at: clock.cli_at || null,
         cli_span_s: clock.cli_span_s,
         stale: false,
       },
@@ -2086,7 +2088,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       secs = (new Date(m.close_time) - Date.now()) / 1000;
     }
     if (secs == null || isNaN(secs)) {
-      if (m.window_kind === "cli" || m.series_ticker === "KXHIGHTDAL") return null;
+      if (m.window_kind === "cli" || m.window_kind === "kalshi" || m.window_kind === "game"
+          || m.series_ticker === "KXHIGHTDAL"
+          || /KX(NFL|NCAAF|NBA|MLB|NHL)/i.test(String(m.series_ticker || m.ticker || ""))) {
+        return null;
+      }
       const bucket = 3600;
       secs = bucket - ((Date.now() / 1000) % bucket);
     }
@@ -5616,6 +5622,21 @@ function drawCandleChart() {
     if (h >= 1) return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
     return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
   }
+  function atsKickLine(closeTime, minsLeft) {
+    let secs = null;
+    if (minsLeft != null && !isNaN(Number(minsLeft))) secs = Number(minsLeft) * 60;
+    if (secs == null && closeTime) {
+      const ms = Date.parse(closeTime);
+      if (Number.isFinite(ms)) secs = (ms - Date.now()) / 1000;
+    }
+    if (secs == null || isNaN(secs)) return "CLOCK IS DARK";
+    if (secs <= 0) return "THEY'RE OFF";
+    const hrs = Math.floor(secs / 3600);
+    const mins = Math.floor((secs % 3600) / 60);
+    if (hrs >= 48) return "KICK IN " + Math.floor(hrs / 24) + "D";
+    if (hrs >= 1) return "KICK IN " + hrs + "H " + String(mins).padStart(2, "0") + "M";
+    return "KICK IN " + String(mins).padStart(2, "0") + "M";
+  }
   function paintAtsGameStrip(ts) {
     const strip = document.getElementById("atsGameStrip");
     const nameEl = document.getElementById("atsGameName");
@@ -5648,28 +5669,31 @@ function drawCandleChart() {
     if (wxStrip) wxStrip.hidden = !front;
     if (wxSubs) wxSubs.hidden = !front;
     if (atsStrip) atsStrip.hidden = !ats;
+    if (dualSub) dualSub.hidden = !!ats;
     if (front) {
       if (ledLabel) ledLabel.textContent = "DFW HIGH";
       const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
       const m = ts.market || {};
       const clock = m.clock || {};
-      const secs = clock.seconds_to_cli != null ? clock.seconds_to_cli : secondsLeftOf(m);
-      const display = fmtCliLeft(secs);
+      let secs = clock.seconds_to_close;
+      if (secs == null && m.mins_left != null) secs = Number(m.mins_left) * 60;
+      if (secs == null && (clock.close_time || m.close_time)) {
+        const ms = Date.parse(clock.close_time || m.close_time);
+        if (Number.isFinite(ms)) secs = (ms - Date.now()) / 1000;
+      }
+      const display = secs == null || isNaN(secs) ? "--:--" : fmtCliLeft(secs);
       if (ledT) ledT.textContent = display;
       const timEl = document.getElementById("windowTimer");
       if (timEl) timEl.textContent = display;
-      if (ledSub) {
-        if (secs == null) ledSub.textContent = "waiting on DFW CLI";
-        else if (Number(secs) <= 0) ledSub.textContent = "CLI due";
-        else ledSub.textContent = "to CLI · next bet";
-      }
+      if (ledSub) ledSub.textContent = "settles 7:00 CT";
       if (dualSub) {
+        dualSub.hidden = false;
         const tick = m.kalshi_ticker || clock.ticker || "KXHIGHTDAL";
         const br = clock.bracket || m.bracket || "";
         dualSub.textContent = "DALLAS · " + String(tick) + (br ? (" · " + br) : "");
       }
       if (cityEl) cityEl.textContent = "DFW";
-      if (cliEl) cliEl.textContent = display;
+      if (cliEl) cliEl.textContent = "7:00 CT";
       if (kh) {
         const kind = String(clock.strike_type || m.strike_type || "").toLowerCase();
         if (kind === "between" && m.floor_strike != null && m.cap_strike != null) {
@@ -5708,30 +5732,22 @@ function drawCandleChart() {
       return true;
     }
     if (ats) {
-      if (ledLabel) ledLabel.textContent = "KICK";
       const ts = (typeof tableState === "function" ? tableState("ats") : null) || {};
       const pick = ts.pick || {};
       const m = ts.market || {};
       const clock = m.clock || ts.clock || {};
-      let secs = clock.seconds_to_kick;
-      if (secs == null) secs = secondsLeftOf(m);
-      if (secs == null && (pick.close_time || clock.close_time || m.close_time)) {
-        const close = pick.close_time || clock.close_time || m.close_time;
-        secs = Math.floor((new Date(close) - Date.now()) / 1000);
-      }
-      const display = fmtCliLeft(secs);
-      if (ledT) ledT.textContent = display;
+      const line = clock.line || atsKickLine(
+        pick.close_time || clock.close_time || m.close_time,
+        pick.mins_left != null ? pick.mins_left : (clock.mins_left != null ? clock.mins_left : m.mins_left)
+      );
+      if (ledLabel) ledLabel.textContent = "CLOCK";
+      if (ledT) ledT.textContent = line;
       const timEl = document.getElementById("windowTimer");
-      if (timEl) timEl.textContent = display;
-      if (ledSub) {
-        if (secs == null) ledSub.textContent = "CLOCK IS DARK";
-        else if (Number(secs) <= 0) ledSub.textContent = "THEY'RE OFF";
-        else ledSub.textContent = "to kickoff · the game";
-      }
+      if (timEl) timEl.textContent = line;
+      if (ledSub) ledSub.textContent = pick.game || clock.game || "the game";
       if (dualSub) {
-        const game = pick.game || clock.game || "NO GAME";
-        const num = pick.number || clock.number || "";
-        dualSub.textContent = game + (num ? (" · " + num) : "");
+        dualSub.hidden = true;
+        dualSub.textContent = "";
       }
       try { paintAtsGameStrip(ts); } catch (e) {}
       return true;

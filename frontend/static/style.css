@@ -3740,6 +3740,29 @@ body[data-focus-table="front"] #wxSubStrip {
 body[data-focus-table="ats"] #atsGameStrip {
   display: inline !important;
 }
+body[data-focus-table="ats"] #dualWindowSub,
+body[data-focus-table="ats"] #tabNews,
+body[data-focus-table="ats"] #tabSchool,
+body[data-focus-table="ats"] #tabBook,
+body[data-focus-table="front"] #tabNews,
+body[data-focus-table="front"] #tabSchool,
+body[data-focus-table="front"] #tabBook,
+body[data-focus-table="ats"] #bookSatoshi,
+body[data-focus-table="ats"] #bookVitalik,
+body[data-focus-table="front"] #bookSatoshi,
+body[data-focus-table="front"] #bookVitalik,
+body[data-focus-table="ats"] .acc-strip,
+body[data-focus-table="front"] .acc-strip,
+body[data-focus-table="ats"] #paperAutoSummary,
+body[data-focus-table="front"] #paperAutoSummary,
+body[data-focus-table="ats"] #stripFunding,
+body[data-focus-table="front"] #kalshiTicker {
+  display: none !important;
+}
+body[data-focus-table="ats"] #ledWindowTime {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
 .wx-high-strip {
   display: none;
   font-family: Orbitron, monospace;

@@ -350,6 +350,30 @@ def cli_at_for(day: date) -> datetime:
     return datetime(day.year, day.month, day.day, CLI_HOUR_CT, 0, tzinfo=CT) + timedelta(days=1)
 
 
+def _parse_market_close(raw: Any) -> Optional[datetime]:
+    """Kalshi market close only. Date-only strings (city.day) are not a close_time."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def market_close_of(best: Optional[Dict[str, Any]]) -> Optional[datetime]:
+    if not isinstance(best, dict):
+        return None
+    return _parse_market_close(
+        best.get("close_time") or best.get("expiration_time") or best.get("market_close")
+    )
+
+
 def kalshi_high_f(best: Optional[Dict[str, Any]]) -> Optional[float]:
     if not best:
         return None
@@ -429,16 +453,20 @@ def build_clock(
 ) -> Dict[str, Any]:
     local = now.astimezone(CT) if now.tzinfo else now.replace(tzinfo=timezone.utc).astimezone(CT)
     cli_at = None if day is None else cli_at_for(day)
-    secs = None if cli_at is None else max(0, int((cli_at - local).total_seconds()))
+    secs_cli = None if cli_at is None else int((cli_at - local).total_seconds())
     span = None
     if day is not None and cli_at is not None:
         start = datetime(day.year, day.month, day.day, 0, 0, tzinfo=CT)
         span = max(1, int((cli_at - start).total_seconds()))
+    close_dt = market_close_of(best)
+    secs_close = None if close_dt is None else int((close_dt.astimezone(CT) - local).total_seconds())
     kind = str((best or {}).get("strike_type") or "").lower()
+    close_iso = None if close_dt is None else close_dt.isoformat()
+    cli_iso = None if cli_at is None else cli_at.isoformat()
     return {
-        "kind": "cli",
+        "kind": "kalshi" if close_dt is not None else "cli",
         "label": "DFW HIGH",
-        "sub": "to CLI" if secs else "CLI",
+        "sub": "settles 7:00 CT",
         "day": None if day is None else day.isoformat(),
         "strike_type": kind or None,
         "floor_strike": None if not best else best.get("floor_strike"),
@@ -447,9 +475,12 @@ def build_clock(
         "kalshi_high": kalshi_high_f(best),
         "nws_high": forecast,
         "ticker": None if not best else best.get("ticker"),
-        "cli_at": None if cli_at is None else cli_at.isoformat(),
-        "seconds_to_cli": secs,
-        "seconds_to_settle": secs,
+        "close_time": close_iso,
+        "seconds_to_close": secs_close,
+        "mins_left": None if secs_close is None else round(secs_close / 60.0, 1),
+        "cli_at": cli_iso,
+        "seconds_to_cli": secs_cli,
+        "seconds_to_settle": secs_cli,
         "cli_span_s": span,
     }
 
@@ -1928,6 +1959,7 @@ def score_bracket(
         "station": city["station"],
         "series": city["series"],
         "ticker": m.get("ticker"),
+        "close_time": m.get("close_time") or m.get("expiration_time"),
         "day": day.isoformat(),
         "strike_type": str(m.get("strike_type") or ""),
         "floor_strike": m.get("floor_strike"),
