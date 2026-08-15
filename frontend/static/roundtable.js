@@ -2322,8 +2322,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   const raijinPortrait = new Image();
-  raijinPortrait.crossOrigin = "anonymous";
   raijinPortrait.src = "/static/bots/raijin-chair.png";
+  raijinPortrait.onerror = function () {
+    // Same approved thunder-knight. No CORS, no neon mark, never leave the Chair empty.
+    try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    raijinPortrait.src = "/static/bots/raijin-chair.png";
+  };
+  function raijinFace() {
+    const el = document.getElementById("frontChairImg");
+    if (el && el.complete && el.naturalWidth) return el;
+    const chip = document.querySelector("#floorRaijin img");
+    if (chip && chip.complete && chip.naturalWidth) return chip;
+    if (raijinPortrait.complete && raijinPortrait.naturalWidth) return raijinPortrait;
+    return el || raijinPortrait;
+  }
 
   function drawFloorRaijinChair(w, h) {
     if (document.body.classList.contains("front-chair-off")) return;
@@ -2337,10 +2349,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1.6;
     ctx.stroke();
     if (!containPortrait(raijinPortrait, cx, cy, pr)) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, pr, 0, Math.PI * 2);
-      ctx.fillStyle = "#0a1220";
-      ctx.fill();
+      containPortrait(raijinFace(), cx, cy, pr);
     }
     ctx.beginPath();
     ctx.arc(cx, cy, pr, 0, Math.PI * 2);
@@ -4964,8 +4973,9 @@ function drawCandleChart() {
       const rank = s.rank ? ("#" + s.rank) : "—";
       const faded = s.faded ? " faded" : "";
       const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
+      const face = (s.id === "RAIJIN") ? "/static/bots/raijin-chair.png" : s.mark;
       return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
-        '<div class="bot-card-head">' + frontBotMarkHtml(callsign, s.mark) +
+        '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
         '<span class="bot-callsign">' + callsign + "</span>" +
         '<span class="bot-rank-pill">' + rank + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
@@ -6082,6 +6092,13 @@ function drawCandleChart() {
 
   window.frontMarkFail = function (img) {
     if (!img) return;
+    // Never blank the Chair face. Never invent a neon mark.
+    if (img.id === "frontChairImg") {
+      const wrap = img.closest ? img.closest(".front-mark") : img.parentElement;
+      if (wrap) wrap.classList.remove("blank");
+      img.src = "/static/bots/raijin-chair.png";
+      return;
+    }
     const wrap = img.closest ? img.closest(".front-mark") : img.parentElement;
     if (wrap) wrap.classList.add("blank");
     try { img.removeAttribute("src"); } catch (e) {}
@@ -6174,8 +6191,8 @@ function drawCandleChart() {
     const seats = ((data && data.seats) || []).slice();
     if (data && data.chair) seats.unshift(data.chair);
     box.innerHTML = seats.map(function (s) {
-      const mark = String((s && s.mark) || "");
       const isChair = !!(s && (s.id === "RAIJIN" || (data && data.chair && s.id && s.id === data.chair.id)));
+      const mark = isChair ? "/static/bots/raijin-chair.png" : String((s && s.mark) || "");
       const label = isChair ? frontChairName(s) : String((s && (s.name || s.id)) || "");
       return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
         '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
@@ -6251,8 +6268,8 @@ function drawCandleChart() {
     const chairCall = document.getElementById("frontChairCall");
     if (chairCall) chairCall.textContent = (data.chair && (data.chair.call || data.chair.bracket)) || "—";
     const chairImg = document.getElementById("frontChairImg");
-    if (chairImg && data.chair && data.chair.mark) {
-      chairImg.src = data.chair.mark;
+    if (chairImg) {
+      chairImg.src = "/static/bots/raijin-chair.png";
     }
     (data.seats || []).forEach(function (s) {
       const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
@@ -6289,6 +6306,10 @@ function drawCandleChart() {
     const best = (frontBoard.brackets || []).find(function (b) { return b.best; });
     if (why) why.textContent = (best && (best.skip || best.bracket)) || "";
     document.querySelectorAll("#frontView .front-mark img").forEach(function (img) {
+      if (img.id === "frontChairImg") {
+        img.src = "/static/bots/raijin-chair.png";
+        return;
+      }
       if (img.complete && !img.naturalWidth) window.frontMarkFail(img);
     });
     startFrontWx(wx);
@@ -6399,10 +6420,12 @@ function drawCandleChart() {
         ctx.restore();
       });
       if (!containPortrait(raijinPortrait, cx, portraitY, pr)) {
-        ctx.beginPath();
-        ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
-        ctx.fillStyle = "#0a1220";
-        ctx.fill();
+        containPortrait(raijinFace(), cx, portraitY, pr);
+      }
+      const chairMark = document.querySelector("#frontStageWrap > #frontChair .front-mark");
+      if (chairMark) {
+        chairMark.style.width = (pr * 2) + "px";
+        chairMark.style.height = (pr * 2) + "px";
       }
       ctx.beginPath();
       ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);

@@ -324,6 +324,27 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertEqual([c["series"] for c in desk_front.CITIES], ["KXHIGHTDAL"])
         self.assertIn("ARCADE_ASSETS = (\"BTC\",)", SIDE)
 
+    def test_chair_face_is_thunder_knight_not_empty_or_neon(self):
+        chair = BOTS / "raijin-chair.png"
+        self.assertTrue(chair.is_file())
+        self.assertGreater(chair.stat().st_size, 100000)
+        for name in ("raijin-wait.png", "raijin-up.png", "raijin-down.png"):
+            self.assertEqual(chair.read_bytes(), (BOTS / name).read_bytes(), name)
+        self.assertIn('href="/static/bots/raijin-chair.png"', HTML)
+        self.assertIn('id="frontChairImg" src="/static/bots/raijin-chair.png"', HTML)
+        self.assertLess(HTML.find('id="frontChair"'), HTML.find('id="frontRing"'))
+        self.assertIn("#frontStageWrap > #frontChair .front-mark", CSS)
+        self.assertIn("function raijinFace(", JS)
+        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png"', JS)
+        self.assertIn("containPortrait(raijinFace()", JS)
+        self.assertIn("Never blank the Chair face", JS)
+        self.assertIn('chairImg.src = "/static/bots/raijin-chair.png"', JS)
+        self.assertNotIn("front-thunder-mark", HTML + CSS + JS)
+        self.assertNotIn("front-raijin-slot", HTML + CSS + JS)
+        self.assertNotIn("ZT ·", HTML)
+        self.assertIn("SATOSHI’S COUNCIL", HTML)
+        self.assertIn('src="/council-mark.png"', HTML)
+
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

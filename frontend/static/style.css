@@ -7281,6 +7281,7 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
 }
 .front-stage-wrap {
   position: relative;
+  container-type: size;
   width: min(920px, 100%);
   height: min(620px, 78vw);
   margin: 0 auto 16px;
@@ -7321,8 +7322,25 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
   pointer-events: auto;
 }
 .front-chair {
-  transform: translate(-50%, -50%);
-  z-index: 2;
+  transform: translate(-50%, calc(-50% - 2px));
+  z-index: 3;
+  pointer-events: none;
+}
+#frontStageWrap > #frontChair .front-mark {
+  /* Match canvas chair: 2 * min(w,h) * 0.28 * 0.80. Never an empty neon slot. */
+  width: min(44.8cqw, 44.8cqh);
+  height: min(44.8cqw, 44.8cqh);
+  border-color: rgba(0, 220, 255, 0.85);
+  background: #02040a;
+}
+#frontStageWrap > #frontChair .front-name,
+#frontStageWrap > #frontChair .front-call {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
 }
 .front-seat {
   --a: 0;
@@ -7471,6 +7489,10 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
 @media (max-width: 480px) {
   .front-stage-wrap { height: 480px; }
   .front-chair .front-mark { width: 88px; height: 88px; }
+  #frontStageWrap > #frontChair .front-mark {
+    width: min(44.8cqw, 44.8cqh);
+    height: min(44.8cqw, 44.8cqh);
+  }
   .front-mark { width: 52px; height: 52px; }
   .front-bet button { min-height: 56px; }
   .front-step { min-height: 56px; }

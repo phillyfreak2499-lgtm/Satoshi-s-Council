@@ -15,6 +15,7 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
+  <link rel="preload" as="image" href="/static/bots/raijin-chair.png" />
   <script>
   /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
   (function () {
@@ -693,12 +694,12 @@
         </div>
         <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
           <canvas id="frontWx" width="920" height="620" aria-label="Raijin Floor"></canvas>
+          <div class="front-chair" id="frontChair">
+            <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-chair.png" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+            <span class="front-name">RAIJIN</span>
+            <span class="front-call" id="frontChairCall">—</span>
+          </div>
           <div id="frontRing" class="front-ring" aria-hidden="true">
-            <div class="front-chair" id="frontChair">
-              <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-chair.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
-              <span class="front-name">RAIJIN</span>
-              <span class="front-call" id="frontChairCall">—</span>
-            </div>
             <button type="button" class="front-seat" data-seat="GLASS" style="--a:-90">
               <span class="front-mark"><img src="/static/bots/glass.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">GLASS</span>
