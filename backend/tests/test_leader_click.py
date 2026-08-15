@@ -49,8 +49,8 @@ class LeaderClickGestureTests(unittest.TestCase):
         self.assertIn("function rememberChairHit", JS)
         self.assertIn('if (mode !== "floor") return;', JS.split("function rememberChairHit", 1)[1][:120])
         self.assertIn('rememberChairHit(cx, portraitY, pr, which)', JS)
-        self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", "SATOSHI · BTC"', JS)
-        self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", "VITALIK · ETH"', JS)
+        self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC"', JS)
+        self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH"', JS)
         self.assertIn('rememberChairHit(cx, cy, lr, focusTable === "ethereum" ? "ethereum" : "bitcoin")', JS)
 
     def test_gesture_only_from_chair_hit(self):

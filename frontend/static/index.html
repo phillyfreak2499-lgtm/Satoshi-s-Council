@@ -157,9 +157,9 @@
         </div>
       </div>
       <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
-        <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
-        <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
-        <span id="focusTableBadge" class="focus-table-badge" title="Focused table">ETH · VITALIK</span>
+        <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
+        <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
+        <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
@@ -223,7 +223,7 @@
 
       <!-- CENTER: Round table -->
 <div id="tableStage" class="table-stage">
-        <canvas id="roundtable" width="1100" height="780"></canvas>
+        <canvas id="roundtable" width="1100" height="780" role="img" aria-label="Vitalik ETH table"></canvas>
         <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
           <div id="lightsaberBar" class="lightsaber-bar">
             <div class="lightsaber-sparks" id="lightsaberSparks"></div>
@@ -452,7 +452,7 @@
     <section id="botsView" class="info-view hidden" aria-label="Bot field guide">
       <div class="info-hero">
         <h2>BOT FIELD GUIDE</h2>
-        <p>Each seat reads its own lane + its sub-bots. Satoshi only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
+        <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
       </div>
       <div id="botsGrid" class="bots-grid"></div>
     </section>
@@ -461,14 +461,14 @@
     <section id="ranksView" class="info-view hidden" aria-label="Rank board">
       <div class="info-hero">
         <h2>RANK BOARD</h2>
-        <p id="ranksPhase">Learning phase: collecting samples — Satoshi starts loose, then gets pickier as the lifetime log fills in.</p>
+        <p id="ranksPhase">Learning phase: collecting samples — the Chair starts loose, then gets pickier as the lifetime log fills in.</p>
       </div>
       <div class="ranks-legend">
         <span><b>#</b> rank</span>
         <span><b>HIT</b> right calls</span>
         <span><b>MISS</b> wrong calls</span>
         <span><b>WR%</b> win rate</span>
-        <span><b>LISTEN</b> how hard Satoshi hears them</span>
+        <span><b>LISTEN</b> how hard the Chair hears them</span>
         <span><b>WT</b> adaptive weight</span>
       </div>
       <div id="ranksTable" class="ranks-table" role="table"></div>

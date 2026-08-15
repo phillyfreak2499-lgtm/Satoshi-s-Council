@@ -31,9 +31,40 @@ class TablePortraitTests(unittest.TestCase):
     def test_portraits_fill_the_seat(self):
         self.assertIn("const pr = radius * 0.80", JS)
         self.assertIn("mode === \"floor\" ? 0.22 : 0.28", JS)
-        self.assertIn("contain + (cover - contain) * 0.82", JS)
+        self.assertIn("const scale = cover", JS)
+        self.assertIn("object-fit: cover", JS)
+        self.assertNotIn("contain + (cover - contain)", JS)
         self.assertIn('ctx.imageSmoothingQuality = "high"', JS)
         self.assertIn("const plateY = cy + radius + 14", JS)
+        self.assertIn("vitalikImages[k].onload = _chairLoaded", JS)
+        self.assertIn("function chairPortraitOf", JS)
+
+
+class EthChairNameTests(unittest.TestCase):
+    def test_eth_chair_says_vitalik_not_satoshi(self):
+        self.assertIn('return isEthTable(which) ? "VITALIK" : "SATOSHI"', JS)
+        self.assertIn('return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi"', JS)
+        self.assertIn('return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI"', JS)
+        self.assertIn('leader: "CHAIR"', JS)
+        self.assertIn('chair: "CHAIR"', JS)
+        self.assertNotIn('leader: "SATOSHI"', JS)
+        self.assertNotIn('chair: "SATOSHI"', JS)
+        self.assertNotIn('chair: "Satoshi"', JS)
+        self.assertIn("ctx.fillText(chairNameOf(focusTable)", JS)
+        self.assertIn('chairNameOf("ethereum") + " · ETH"', JS)
+        self.assertIn('chairNameOf("bitcoin") + " · BTC"', JS)
+        self.assertIn("const focusName = chairTitleOf(focusTable)", JS)
+        self.assertIn('chairTitleOf(focusTable) + " ranks (finish-only)"', JS)
+        self.assertIn('isEth ? "Vitalik ETH table" : "Satoshi BTC table"', JS)
+        self.assertIn('aria-label="ETH · Vitalik"', HTML)
+        self.assertIn('aria-label="Focus Ethereum / Vitalik"', HTML)
+        self.assertIn('aria-label="Vitalik ETH table"', HTML)
+        self.assertIn("ETH · VITALIK", HTML)
+        self.assertIn("The Chair only listens", HTML)
+        self.assertNotIn("Satoshi only listens", HTML)
+        self.assertNotIn("how hard Satoshi hears", HTML)
+        self.assertIn("Satoshi’s Council", HTML)
+        self.assertNotIn("ZT ·", HTML)
 
 
 class ChairThinkTests(unittest.TestCase):

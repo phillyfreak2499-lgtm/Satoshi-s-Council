@@ -313,6 +313,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   chairImages.WAIT.src = "/chair-wait.jpg";
 
   const vitalikImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
+  ["UP", "DOWN", "WAIT"].forEach(k => {
+    vitalikImages[k].crossOrigin = "anonymous";
+    vitalikImages[k].onload = _chairLoaded;
+    vitalikImages[k].onerror = () => console.warn("Vitalik image failed:", k);
+  });
   vitalikImages.UP.src = "/vitalik-up.jpg";
   vitalikImages.DOWN.src = "/vitalik-down.jpg";
   vitalikImages.WAIT.src = "/vitalik-wait.jpg";
@@ -1075,8 +1080,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     liq: "CASCADE",
     guardian: "WARDEN",
     law: "LAW",
-    leader: "SATOSHI",
-    chair: "SATOSHI",
+    leader: "CHAIR",
+    chair: "CHAIR",
   };
   const AGENT_TITLES = {
     candle: "Pattern Seer",
@@ -1100,7 +1105,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     guardian: "System Guard",
     law: "Enforcer",
     leader: "The Gavel",
-    chair: "Satoshi",
+    chair: "The Gavel",
   };
   const SUB_LABELS = {
     body: "CORE",
@@ -1124,10 +1129,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     kalshi_feed: "NODE-K",
   };
 
+  function isEthTable(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    return w === "ethereum" || w === "eth" || w === "vitalik";
+  }
+  function chairNameOf(which) {
+    return isEthTable(which) ? "VITALIK" : "SATOSHI";
+  }
+  function chairTitleOf(which) {
+    return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
+  }
+  function chairBadgeOf(which) {
+    return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
+  }
+  function chairPortraitOf(which, dir) {
+    return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+  }
+
   function labelOf(agent) {
     if (!agent) return "—";
-    if (agent.display_name) return agent.display_name;
     const key = agent.agent_name || agent;
+    if (key === "leader" || key === "chair") return chairNameOf(focusTable);
+    if (agent.display_name) return agent.display_name;
     if (AGENT_LABELS[key]) return AGENT_LABELS[key];
     if (typeof key === "string" && key.includes(".")) {
       const sid = key.split(".")[1];
@@ -1138,8 +1161,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function titleOf(agent) {
     if (!agent) return "";
-    if (agent.title) return agent.title;
     const key = agent.agent_name || agent;
+    if (key === "leader" || key === "chair") return isEthTable(focusTable) ? "Vitalik" : "Satoshi";
+    if (agent.title) return agent.title;
     return AGENT_TITLES[key] || "";
   }
 
@@ -1722,12 +1746,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!img || !img.complete || !img.naturalWidth) return false;
     const iw = img.naturalWidth, ih = img.naturalHeight;
     const side = r * 2;
-    const contain = Math.min(side / iw, side / ih);
     const cover = Math.max(side / iw, side / ih);
-    // Fill the Chair seat; slight cover kills the empty frame without chopping the face
-    const scale = contain + (cover - contain) * 0.82;
+    // object-fit: cover — fill the seat circle. No empty photo annulus.
+    // Nudge up so a cover crop keeps the face in the circle.
+    const scale = cover;
     const dw = iw * scale, dh = ih * scale;
-    const faceBias = Math.min(r * 0.08, Math.max(0, (dh - side) / 2));
+    const extraY = Math.max(0, (dh - side) / 2);
+    const faceBias = Math.min(r * 0.12, extraY * 0.35);
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -1740,7 +1765,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function chairKeyOf(which) {
-    return which === "ethereum" ? "ethereum" : "bitcoin";
+    return isEthTable(which) ? "ethereum" : "bitcoin";
   }
 
   function noteChairLock(which, lc) {
@@ -2006,8 +2031,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
 
     const tableR = Math.min(w, h) * 0.26;
-    drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", "SATOSHI · BTC", focusTable === "bitcoin");
-    drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", "VITALIK · ETH", focusTable === "ethereum");
+    drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
+    drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
@@ -2070,7 +2095,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       botPts.push({ a, x, y, col, confA, name: a.agent_name || a.name || "?", ang, adir });
     });
 
-    const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+    const img = chairPortraitOf(which, dir);
     if (!containPortrait(img, cx, portraitY, pr)) {
       ctx.beginPath();
       ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
@@ -2104,7 +2129,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textAlign = "center";
     ctx.font = "700 11px Orbitron, monospace";
     ctx.fillStyle = locked ? gold : (which === "ethereum" ? "#9dffc0" : "#7fe9ff");
-    ctx.fillText(label + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
+    ctx.fillText((label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC"))) + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
 
     ctx.font = "700 12px Orbitron, monospace";
     const plateY = cy + radius + 14;
@@ -2187,7 +2212,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    const img = which === "ethereum" ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+    const img = chairPortraitOf(which, dir);
     const pr = radius * 0.78;
     if (!containPortrait(img, cx, cy - 4, pr)) {
       ctx.beginPath();
@@ -2210,7 +2235,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.font = "700 12px Orbitron, monospace";
     ctx.fillStyle = which === "ethereum" ? "#9dffc0" : "#7fe9ff";
     ctx.textAlign = "center";
-    ctx.fillText(label, cx, cy - radius - 12);
+    ctx.fillText(label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC")), cx, cy - radius - 12);
 
     ctx.font = "700 14px Orbitron, monospace";
     if (locked) {
@@ -2776,14 +2801,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    const portrait = (focusTable === "ethereum") ? vitalikPortraitFor(leaderDir) : chairPortraitFor(leaderDir);
+    const portrait = chairPortraitOf(focusTable, leaderDir);
     if (!containPortrait(portrait, cx, cy, lr)) {
       ctx.beginPath();
       ctx.arc(cx, cy, lr, 0, Math.PI * 2);
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
       ctx.fill();
     }
-    rememberChairHit(cx, cy, lr, focusTable === "ethereum" ? "ethereum" : "bitcoin");
+    rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
     // Eye glow ring pulse (extra emphasis on call color)
     ctx.beginPath();
@@ -2802,7 +2827,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     try {
-      const whichChair = focusTable === "ethereum" ? "ethereum" : "bitcoin";
+      const whichChair = chairKeyOf(focusTable);
       noteChairLock(whichChair, _lc);
       drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
     } catch (e) {}
@@ -2814,7 +2839,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(240, 193, 74, 0.55)";
     ctx.shadowBlur = 8;
-    ctx.fillText(focusTable === "ethereum" ? "VITALIK" : "SATOSHI", cx, cy + lr + 16);
+    ctx.fillText(chairNameOf(focusTable), cx, cy + lr + 16);
     ctx.shadowBlur = 0;
     ctx.font = "700 13px Orbitron, sans-serif";
     ctx.fillStyle = "#ffffff";
@@ -2886,7 +2911,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const records = learning.records || {};
     const topPairs = learning.top_pairs || [];
     const weights = view.weights || learning.weights || {};
-    const focusName = focusTable === "ethereum" ? "ETH · Vitalik" : "BTC · Satoshi";
+    const focusName = chairTitleOf(focusTable);
 
     const pairCard = topPairs.length
       ? `<div class="agent-card pair-card">
@@ -4442,9 +4467,6 @@ function drawCandleChart() {
     const agents = (src.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    if (phaseEl) {
-      phaseEl.textContent = (focusTable === "ethereum" ? "ETH · Vitalik ranks (finish-only)" : "BTC · Satoshi ranks (finish-only)");
-    }
     const acc = (src.accuracy) || (state && state.accuracy) || {};
     const n = acc.total || 0;
     const thr = state && state.decision && state.decision.threshold_used;
@@ -4452,14 +4474,16 @@ function drawCandleChart() {
     const phase = n < 15
       ? ("COLD START · " + n + " settled — Chair is loose so the council can learn. Threshold " + (thr != null ? Number(thr).toFixed(2) : "—") + ".")
       : ("LEARNED · " + n + " settled · hit " + (acc.accuracy_pct != null ? acc.accuracy_pct + "%" : "—") + " · edge score " + (edge != null ? edge : "—") + " · thr " + (thr != null ? Number(thr).toFixed(2) : "—") + ".");
-    if (phaseEl) phaseEl.textContent = phase;
+    if (phaseEl) phaseEl.textContent = chairTitleOf(focusTable) + " ranks (finish-only) · " + phase;
     const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span class="listen-col">LISTEN</span><span class="hide-sm">WT</span></div>';
     const rows = hier.filter(r => r.agent !== "law");
     const body = rows.map(r => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
       const conf = ag.confidence != null ? ag.confidence : "—";
-      const name = r.display_name || (AGENT_LABELS && AGENT_LABELS[r.agent]) || r.agent;
+      const name = (r.agent === "leader" || r.agent === "chair")
+        ? chairNameOf(focusTable)
+        : (r.display_name || (AGENT_LABELS && AGENT_LABELS[r.agent]) || r.agent);
       const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
       const listen = r.listen != null ? Math.round(r.listen * 100) + "%" : "—";
       const muted = (r.listen || 1) < 0.4;
@@ -4801,6 +4825,7 @@ function drawCandleChart() {
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
     try { syncFloorExitBtn(); } catch (e) {}
+    try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
         window.__floorMusicOnMode(mode === "floor");
@@ -5231,7 +5256,7 @@ function drawCandleChart() {
     { name: "DRIFT", role: "Momentum", desc: "Short-term push: is BTC still running or stretched?" },
     { name: "TAPE", role: "Order flow", desc: "Who is hitting the book — buyers or sellers?" },
     { name: "CARRY", role: "Funding", desc: "Perp funding = how crowded the long/short side is." },
-    { name: "ORBIT", role: "Regime", desc: "Session + volatility — when Satoshi should be bold." },
+    { name: "ORBIT", role: "Regime", desc: "Session + volatility — when the Chair should be bold." },
     { name: "VOLT", role: "Volatility", desc: "How wild the range is right now." },
     { name: "CHAIN", role: "Open interest", desc: "OI pressure — squeeze / crowding risk." },
   ];
@@ -5255,7 +5280,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabScreensaver",
       title: "WHAT THIS IS",
-      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M). The Chair (Satoshi) locks exactly one high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
       mode: "art",
@@ -5756,7 +5781,7 @@ function drawCandleChart() {
     if (!focusBtc && !focusEth) return;
 
     function applyFocusChrome() {
-      const isEth = focusTable === "ethereum";
+      const isEth = isEthTable(focusTable);
       document.body.dataset.focusTable = isEth ? "ethereum" : "bitcoin";
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
@@ -5769,7 +5794,17 @@ function drawCandleChart() {
         else focusEth.classList.remove("focus-active");
       }
       const badge = document.getElementById("focusTableBadge");
-      if (badge) badge.textContent = isEth ? "ETH · VITALIK" : "BTC · SATOSHI";
+      if (badge) {
+        badge.textContent = chairBadgeOf(focusTable);
+        badge.setAttribute("aria-label", chairTitleOf(focusTable));
+      }
+      const stage = document.getElementById("roundtable");
+      if (stage) {
+        const dual = (typeof mode !== "undefined" && mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle());
+        stage.setAttribute("aria-label", dual
+          ? "Floor — Satoshi BTC table and Vitalik ETH table"
+          : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"));
+      }
       try { syncChartPairTitle(); } catch (e) {}
     }
 
@@ -5798,6 +5833,7 @@ function drawCandleChart() {
         setFocusTable(which);
       }, true); // capture — beat any mode-tab handler
     }
+    window.applyFocusChrome = applyFocusChrome;
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
     applyFocusChrome();

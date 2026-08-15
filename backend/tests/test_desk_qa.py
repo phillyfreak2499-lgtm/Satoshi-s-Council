@@ -224,7 +224,7 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("const pr = radius * 0.80", JS)
 
     def test_dashboard_follows_eth_focus(self):
-        self.assertIn('focusName = focusTable === "ethereum" ? "ETH · Vitalik"', JS)
+        self.assertIn("const focusName = chairTitleOf(focusTable)", JS)
         self.assertIn("dash-focus-banner", JS)
         self.assertIn("state.btc && state.eth", JS)
 
