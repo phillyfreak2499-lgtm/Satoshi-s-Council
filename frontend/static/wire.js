@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-floor-chairs",
+    "at": "2026-08-15T23:05:00-05:00",
+    "title": "Floor is leaders only + checkboxes",
+    "why": "Floor shows Chairs only — Satoshi, Vitalik, Ares, Raijin. Checkboxes pick who sits; leftover grow 1 / 50-50 / thirds / fourths. No seat-bot rings, not even lock-only. Bots stay on Seats and Table. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-coinglass-miss",
     "at": "2026-08-15T22:40:00-05:00",
     "title": "CoinGlass logs the real miss",

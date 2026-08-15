@@ -3348,6 +3348,141 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const cssW = (stage && stage.clientWidth) || window.innerWidth || 0;
     return cssW < 720;
   }
+
+  // Floor Chair leftover grow. Reuse rooms / rings. Scale the visible set.
+  const FLOOR_CHAIR_KEYS = ["bitcoin", "ethereum", "front", "ats"];
+  const FLOOR_CHAIR_STORE = "council_floor_chairs";
+  function loadFloorChairOn() {
+    const on = { bitcoin: true, ethereum: true, front: true, ats: true };
+    try {
+      const raw = localStorage.getItem(FLOOR_CHAIR_STORE);
+      if (!raw) return on;
+      const o = JSON.parse(raw);
+      FLOOR_CHAIR_KEYS.forEach(function (k) {
+        if (o && typeof o[k] === "boolean") on[k] = o[k];
+      });
+    } catch (e) {}
+    if (!FLOOR_CHAIR_KEYS.some(function (k) { return on[k]; })) on.bitcoin = true;
+    return on;
+  }
+  let floorChairOn = loadFloorChairOn();
+  function visibleFloorChairs() {
+    return FLOOR_CHAIR_KEYS.filter(function (k) { return floorChairOn[k] !== false; });
+  }
+  function floorChairLabelOf(which) {
+    if (which === "ethereum") return chairNameOf("ethereum") + " · ETH";
+    if (which === "front") return chairNameOf("front") + " · DWF";
+    if (which === "ats") return chairNameOf("ats") + " · ATS";
+    return chairNameOf("bitcoin") + " · BTC";
+  }
+  function floorSplitTableR(w, h, n) {
+    if (n <= 1) {
+      const want = Math.min(w, h) * 0.32;
+      const seatR = 22;
+      const labelPad = 36;
+      const maxR = Math.max(72, (Math.min(w, h) - 2 * (seatR + labelPad) - 24) / (2 * 1.48));
+      return Math.min(want, maxR);
+    }
+    if (n === 2) return dualFloorTableR(w, h);
+    if (n === 3) {
+      const want = Math.min(w, h) * 0.20;
+      const gapX = w / 3;
+      const seatR = 16;
+      const labelPad = 22;
+      const maxRx = Math.max(52, (gapX - 2 * (seatR + labelPad) - 12) / (2 * 1.42));
+      const maxRy = Math.max(52, (h * 0.70 - 2 * (seatR + labelPad) - 12) / (2 * 1.42));
+      return Math.min(want, maxRx, maxRy);
+    }
+    return quadFloorTableR(w, h);
+  }
+  function floorChairLayout(w, h, keys, phone) {
+    keys = keys || visibleFloorChairs();
+    const n = keys.length;
+    phone = !!phone;
+    const out = [];
+    if (n <= 0) return out;
+    // Phone: one big so 390 does not crush. Stack only when each cell is tall enough.
+    if (phone) {
+      if (n <= 1 || h / n < 200) {
+        let focusKey = keys[0];
+        try {
+          const cur = chairKeyOf(focusTable);
+          if (keys.indexOf(cur) >= 0) focusKey = cur;
+        } catch (e) {}
+        out.push({ key: focusKey, x: w * 0.50, y: h * 0.50, r: floorSplitTableR(w, h, 1), split: "one" });
+        return out;
+      }
+      const cellH = h / n;
+      const cellR = floorSplitTableR(w, cellH, 1);
+      const split = n === 2 ? "half" : (n === 3 ? "thirds" : "fourths");
+      for (let i = 0; i < n; i++) {
+        out.push({ key: keys[i], x: w * 0.50, y: cellH * (i + 0.5), r: cellR, split: split });
+      }
+      return out;
+    }
+    if (n === 1) {
+      out.push({ key: keys[0], x: w * 0.50, y: h * 0.50, r: floorSplitTableR(w, h, 1), split: "one" });
+      return out;
+    }
+    if (n === 2) {
+      const rr = floorSplitTableR(w, h, 2);
+      out.push({ key: keys[0], x: w * 0.28, y: h * 0.50, r: rr, split: "half" });
+      out.push({ key: keys[1], x: w * 0.72, y: h * 0.50, r: rr, split: "half" });
+      return out;
+    }
+    if (n === 3) {
+      const rr = floorSplitTableR(w, h, 3);
+      out.push({ key: keys[0], x: w * (1 / 6), y: h * 0.50, r: rr, split: "thirds" });
+      out.push({ key: keys[1], x: w * 0.50, y: h * 0.50, r: rr, split: "thirds" });
+      out.push({ key: keys[2], x: w * (5 / 6), y: h * 0.50, r: rr, split: "thirds" });
+      return out;
+    }
+    const rr = quadFloorTableR(w, h);
+    const slots = [
+      { key: "bitcoin", x: w * 0.28, y: h * 0.30 },
+      { key: "ethereum", x: w * 0.72, y: h * 0.30 },
+      { key: "front", x: w * 0.28, y: h * 0.72 },
+      { key: "ats", x: w * 0.72, y: h * 0.72 },
+    ];
+    keys.forEach(function (k) {
+      const slot = slots.filter(function (s) { return s.key === k; })[0];
+      if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fourths" });
+    });
+    return out;
+  }
+  function setFloorChairOn(key, on) {
+    key = chairKeyOf(key);
+    if (FLOOR_CHAIR_KEYS.indexOf(key) < 0) return visibleFloorChairs();
+    const next = Object.assign({}, floorChairOn);
+    next[key] = !!on;
+    if (!FLOOR_CHAIR_KEYS.some(function (k) { return next[k]; })) next[key] = true;
+    floorChairOn = next;
+    try { localStorage.setItem(FLOOR_CHAIR_STORE, JSON.stringify(floorChairOn)); } catch (e) {}
+    const vis = visibleFloorChairs();
+    try {
+      if (vis.indexOf(chairKeyOf(focusTable)) < 0 && vis[0] && typeof window.setFocusTable === "function") {
+        window.setFocusTable(vis[0]);
+      }
+    } catch (e) {}
+    try { syncFloorChairToggles(); } catch (e) {}
+    try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
+    return vis;
+  }
+  function syncFloorChairToggles() {
+    const el = document.getElementById("floorChairToggles");
+    if (!el) return;
+    const on = (typeof floorLikeMode === "function") ? floorLikeMode() : (mode === "floor" || mode === "night");
+    el.hidden = !on;
+    el.setAttribute("aria-hidden", on ? "false" : "true");
+    el.querySelectorAll("input[data-floor-chair]").forEach(function (inp) {
+      const k = inp.getAttribute("data-floor-chair");
+      inp.checked = floorChairOn[k] !== false;
+    });
+    try { document.body.dataset.floorChairs = String(visibleFloorChairs().length); } catch (e) {}
+  }
+  window.__floorChairLayout = floorChairLayout;
+  window.__visibleFloorChairs = visibleFloorChairs;
+  window.__setFloorChairOn = setFloorChairOn;
   function syncFloorExitBtn() {
     const btn = document.getElementById("floorExitBtn");
     if (!btn) return;
@@ -3572,21 +3707,44 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const cam = floorCameraOffset();
     ctx.save();
     ctx.translate(cam.x, cam.y);
+
+    const keys = visibleFloorChairs();
+    const phone = typeof isPhoneDesk === "function" && isPhoneDesk();
+    const slots = floorChairLayout(w, h, keys, phone);
+    const n = slots.length;
+
     ctx.strokeStyle = "rgba(0, 220, 255, 0.18)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(w / 2, h * 0.08);
-    ctx.lineTo(w / 2, h * 0.92);
-    ctx.moveTo(w * 0.08, h / 2);
-    ctx.lineTo(w * 0.92, h / 2);
+    if (n === 4 && !phone) {
+      ctx.moveTo(w / 2, h * 0.08);
+      ctx.lineTo(w / 2, h * 0.92);
+      ctx.moveTo(w * 0.08, h / 2);
+      ctx.lineTo(w * 0.92, h / 2);
+    } else if (n === 2 && !phone) {
+      ctx.moveTo(w / 2, h * 0.08);
+      ctx.lineTo(w / 2, h * 0.92);
+    } else if (n === 3 && !phone) {
+      ctx.moveTo(w / 3, h * 0.08);
+      ctx.lineTo(w / 3, h * 0.92);
+      ctx.moveTo((2 * w) / 3, h * 0.08);
+      ctx.lineTo((2 * w) / 3, h * 0.92);
+    }
     ctx.stroke();
 
-    const tableR = quadFloorTableR(w, h);
     const focus = String(focusTable || "");
-    drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
-    drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
-    drawTableWithBots(w * 0.28, h * 0.72, tableR, "front", chairNameOf("front") + " · DWF", isFrontTable(focus));
-    drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats", chairNameOf("ats") + " · ATS", isAtsTable(focus));
+    if (n === 4 && !phone) {
+      const tableR = quadFloorTableR(w, h);
+      drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
+      drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
+      drawTableWithBots(w * 0.28, h * 0.72, tableR, "front", chairNameOf("front") + " · DWF", isFrontTable(focus));
+      drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats", chairNameOf("ats") + " · ATS", isAtsTable(focus));
+    } else {
+      slots.forEach(function (s) {
+        const focused = chairKeyOf(focus) === s.key;
+        drawTableWithBots(s.x, s.y, s.r, s.key, floorChairLabelOf(s.key), focused);
+      });
+    }
     ctx.restore();
   }
 
@@ -3603,8 +3761,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
     const roster = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && !a.sub);
-    const hideWait = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor")) && floorCryptoTable(which);
-    const agents = hideWait ? floorLockedAgents(roster) : roster;
+    const onFloor = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor"));
+    // Floor is leaders only. No seat-bot rings — not even lock-only. Bots stay on Seats and Table.
+    const agents = onFloor ? [] : roster;
     const maj = majorityDirOf(roster);
     const wx = hourWeatherOf(st);
     const gold = "rgba(240, 193, 74, 0.95)";
@@ -3736,13 +3895,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       try { drawPublicTug(cx, cy, radius, st && st.tug); } catch (e) {}
     }
 
-    if (!botPts.length) {
+    if (onFloor) {
+      drawFloorAttractGlow(cx, cy, radius, which);
+    } else if (!botPts.length) {
       if (!roster.length) {
         ctx.font = "600 10px Rajdhani, sans-serif";
         ctx.fillStyle = "rgba(160,180,200,0.55)";
         ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
-      } else if (hideWait) {
-        drawFloorAttractGlow(cx, cy, radius, which);
       }
     } else {
       botPts.forEach((bp, i) => {
@@ -3950,27 +4109,38 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
     if (dual) {
-      const R = (typeof quadFloorTableR === "function" ? quadFloorTableR(w, h) : dualFloorTableR(w, h));
-      const pr = R * 0.80;
-      const chairs = [
-        [w * 0.28, h * 0.30, "SATOSHI · BTC", "btc"],
-        [w * 0.72, h * 0.30, "VITALIK · ETH", "eth"],
-        [w * 0.28, h * 0.72, "RAIJIN", "front"],
-        [w * 0.72, h * 0.72, "ARES", "ats"],
-      ];
-      chairs.forEach(function (pair) {
-        const cx = pair[0];
-        const cy = pair[1];
-        const t = pair[2];
-        const side = pair[3];
-        const nameY = cy - 2 + pr + 11;
-        const nw = tw(t, 11);
-        out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
-        if (side === "btc" || side === "eth") {
-          const live = (typeof floorLockedSeatLabels === "function") ? floorLockedSeatLabels(side) : null;
-          addSeats(cx, cy, R * 1.42, 16, 6, 8, side, live);
-        }
-      });
+      const keys = (typeof visibleFloorChairs === "function") ? visibleFloorChairs() : ["bitcoin", "ethereum", "front", "ats"];
+      if (keys.length === 4) {
+        const R = (typeof quadFloorTableR === "function" ? quadFloorTableR(w, h) : dualFloorTableR(w, h));
+        const pr = R * 0.80;
+        const chairs = [
+          [w * 0.28, h * 0.30, "SATOSHI · BTC", "btc"],
+          [w * 0.72, h * 0.30, "VITALIK · ETH", "eth"],
+          [w * 0.28, h * 0.72, "RAIJIN", "front"],
+          [w * 0.72, h * 0.72, "ARES", "ats"],
+        ];
+        chairs.forEach(function (pair) {
+          const cx = pair[0];
+          const cy = pair[1];
+          const t = pair[2];
+          const side = pair[3];
+          const nameY = cy - 2 + pr + 11;
+          const nw = tw(t, 11);
+          out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
+          // Floor is leaders only — no seat-bot rings on Floor HUD.
+        });
+      } else {
+        const slots = floorChairLayout(w, h, keys, false);
+        slots.forEach(function (s) {
+          const t = s.key === "bitcoin" ? "SATOSHI · BTC" : (s.key === "ethereum" ? "VITALIK · ETH" : (s.key === "front" ? "RAIJIN" : "ARES"));
+          const side = s.key === "bitcoin" ? "btc" : (s.key === "ethereum" ? "eth" : s.key);
+          const pr = s.r * 0.80;
+          const nameY = s.y - 2 + pr + 11;
+          const nw = tw(t, 11);
+          out.nameplates.push({ x: s.x - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
+          // Floor leftover grow — chairs only, no seat-bot rings.
+        });
+      }
     } else if (view === "art" && !phone) {
       const radius = Math.min(w, h) * 0.32;
       const ringR = radius * 1.18;
@@ -4000,10 +4170,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 8, w: nw, h: 12, text: "SATOSHI" });
       }
-      const live = (view !== "art" && typeof floorLockedSeatLabels === "function")
-        ? floorLockedSeatLabels((typeof focusTable !== "undefined" && floorCryptoTable(focusTable)) ? focusTable : "bitcoin")
-        : null;
-      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11, "", live);
+      if (view === "art") {
+        addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11, "", null);
+      }
     }
     return out;
   }
@@ -4195,15 +4364,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return;
     }
 
-    // Specialists on Floor and Table — packet lines + game-unit seats
-    if (mode === "floor" || mode === "art") {
+    // Floor is leaders only. Seat-bot rings stay on Table / Seats — not the Floor.
+    if (floorLikeMode()) {
+      drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable));
+    } else if (mode === "art") {
     let agents = state.agents.filter(a => a.agent_name !== "leader" && !a.sub);
-    const floorHideWait = floorLikeMode()
-      && !(typeof isFrontTable === "function" && isFrontTable(focusTable))
-      && !(typeof isAtsTable === "function" && isAtsTable(focusTable));
-    if (floorHideWait) {
-      agents = floorLockedAgents(agents);
-    }
+    const floorHideWait = false;
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
@@ -4242,8 +4408,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }));
     seatList.sort((a, b) => a.rank - b.rank || String(a.name).localeCompare(String(b.name)));
 
-    // Bots removed from the TABLE — they live on the FLOOR (outer ring).
-    // Table surface reserved for Chair + clear locked call for follower bots.
+    // Seat-bot rings live on Table / Seats. Floor is leaders only.
     const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
@@ -9186,6 +9351,7 @@ function drawCandleChart() {
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
     try { syncFloorExitBtn(); } catch (e) {}
+    try { syncFloorChairToggles(); } catch (e) {}
     try { syncSeatSpinBtn(); } catch (e) {}
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
@@ -11082,6 +11248,20 @@ function drawCandleChart() {
     });
   }
   wireFloorChairClicks();
+  function wireFloorChairToggles() {
+    const el = document.getElementById("floorChairToggles");
+    if (!el || el.__wired) return;
+    el.__wired = true;
+    el.addEventListener("change", function (e) {
+      const inp = e.target;
+      if (!inp || !inp.getAttribute) return;
+      const k = inp.getAttribute("data-floor-chair");
+      if (!k) return;
+      setFloorChairOn(k, inp.checked);
+    });
+    syncFloorChairToggles();
+  }
+  wireFloorChairToggles();
   initSeatStorm();
 
   function checkWinStreakCelebrate(acc) {
