@@ -351,6 +351,58 @@ async def api_side_kill():
 
     return desk_side.kill_live()
 
+
+@app.get("/api/front")
+async def api_front():
+    """THE FRONT — Dallas DFW weather council. Paper default. No Follower."""
+    from backend.services import desk_front
+
+    return await desk_front.build_board()
+
+
+@app.post("/api/front/tap")
+async def api_front_tap(request: Request):
+    """Manual paper (default) or armed live tap. Never auto."""
+    from backend.services import desk_front
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return await desk_front.tap(
+        ticker=str(body.get("ticker") or ""),
+        side=str(body.get("side") or "YES"),
+        stake=body.get("stake") if body.get("stake") is not None else body.get("size"),
+        live=bool(body.get("live")),
+        yes_bid=body.get("yes_bid"),
+        yes_ask=body.get("yes_ask"),
+        sick=bool(body.get("sick") or body.get("dont_play")),
+    )
+
+
+@app.post("/api/front/arm")
+async def api_front_arm(request: Request):
+    """Opt-in live on this tab only. Typed phrase + delay."""
+    from backend.services import desk_front
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return desk_front.arm_live(str(body.get("phrase") or ""))
+
+
+@app.post("/api/front/kill")
+async def api_front_kill():
+    """Kill switch — THE FRONT live off."""
+    from backend.services import desk_front
+
+    return desk_front.kill_live()
+
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
     ok = await council.store.delete_manual_trade(trade_id)

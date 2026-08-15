@@ -166,11 +166,14 @@ class SideBoardTests(unittest.IsolatedAsyncioTestCase):
         os.environ.pop("SIDE_TABLE_LIVE", None)
         os.environ.pop("SIDE_TABLE_KILL", None)
 
-    async def test_btc_and_eth_15m_paint(self):
+    async def test_btc_15m_only_second_parked(self):
         board = await desk_side.build_board(fetch=_fetch_factory(), now=NOW)
         assets = [c["asset"] for c in board["arcade"]]
-        self.assertIn("BTC", assets)
-        self.assertIn("ETH", assets)
+        self.assertEqual(assets, ["BTC"])
+        self.assertNotIn("ETH", assets)
+        self.assertNotIn("GOLD", assets)
+        self.assertTrue(board["parked"])
+        self.assertEqual(board["parked"][0]["status"], "parked")
         self.assertTrue(all(c["minutes"] == 15 for c in board["arcade"]))
         self.assertTrue(all(c["ticker"].startswith("KX") for c in board["arcade"]))
         btc = next(c for c in board["arcade"] if c["asset"] == "BTC")
@@ -180,6 +183,8 @@ class SideBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(board["follower"])
         self.assertTrue(board["status"]["paper_default"])
         self.assertFalse(board["status"]["armed"])
+        self.assertEqual(desk_side.ARCADE_ASSETS, ("BTC",))
+        self.assertNotIn("GOLD", desk_side.ARCADE_ASSETS)
 
     async def test_hot_strip_excludes_chair_1h_and_dead_books(self):
         hot = [

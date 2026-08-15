@@ -60,12 +60,14 @@ class MarkupTests(unittest.TestCase):
             'id="tabNews"',
             'id="tabSchool"',
             'id="tabSide"',
+            'id="tabFront"',
             'id="tapeView"',
             'id="bookView"',
             'id="brainView"',
             'id="newsView"',
             'id="schoolView"',
             'id="sideView"',
+            'id="frontView"',
             'id="floorCrawl"',
             "SATOSHI · BTC",
             "VITALIK · ETH",
@@ -109,12 +111,15 @@ class MarkupTests(unittest.TestCase):
             '@app.get("/api/news")',
             '@app.get("/api/school")',
             '@app.get("/api/side")',
+            '@app.get("/api/front")',
         ):
             self.assertIn(needle, MAIN)
         # catch-all still last
         self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/school'))
         self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/side'))
+        self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/front'))
         self.assertGreater(MAIN.find('/api/side'), MAIN.find('/api/school'))
+        self.assertGreater(MAIN.find('/api/front'), MAIN.find('/api/side'))
 
 
 class TapeLogicTests(unittest.TestCase):
@@ -324,6 +329,9 @@ class FreezeTests(unittest.TestCase):
         self.assertIn("function loadSideTable()", JS)
         self.assertIn("/api/side", JS)
         self.assertIn('"side"', JS)
+        self.assertIn("function loadFrontTable()", JS)
+        self.assertIn("/api/front", JS)
+        self.assertIn('"front"', JS)
 
 
 class WhyLineTests(unittest.TestCase):
@@ -530,6 +538,8 @@ class SchoolTests(unittest.TestCase):
         self.assertIn("body.mode-school #tabSchool", CSS)
         self.assertIn("body.night-mode #tabSide", CSS)
         self.assertIn("body.mode-side #tabSide", CSS)
+        self.assertIn("body.night-mode #tabFront", CSS)
+        self.assertIn("body.mode-front #tabFront", CSS)
 
     def test_school_does_not_lock(self):
         school = (ROOT / "backend" / "services" / "desk_school.py").read_text()

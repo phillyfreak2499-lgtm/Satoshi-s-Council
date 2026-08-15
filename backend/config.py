@@ -249,6 +249,14 @@ class Settings(BaseSettings):
     SIDE_TABLE_CUTOFF_SEC: float = 60.0
     SIDE_TABLE_ARM_PHRASE: str = "LIVE SIDE TABLE"
 
+    # THE FRONT — daily highs. Paper default. Never Follower. Never auto-bets.
+    FRONT_MAX_STAKE: float = 25.0
+    FRONT_DAILY_LOSS_CAP: float = 50.0
+    FRONT_LIVE: bool = False
+    FRONT_KILL: bool = False
+    FRONT_ARM_DELAY_S: float = 8.0
+    FRONT_ARM_PHRASE: str = "LIVE THE FRONT"
+
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80
 

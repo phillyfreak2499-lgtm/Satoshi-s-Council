@@ -22,7 +22,7 @@ from backend.services.desk_pack import book_flags
 
 CT = ZoneInfo("America/Chicago")
 CHAIR_1H_SERIES = ("KXBTCD", "KXETHD")
-ARCADE_ASSETS = ("BTC", "ETH")
+ARCADE_ASSETS = ("BTC",)
 EXTRA_15M = ("SOL", "XRP")
 LIQUID_MIN_VOL = 8000.0
 LIQUID_MAX_SPREAD = 3.0
@@ -551,6 +551,7 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         "ok": True,
         "mode": "paper",
         "arcade": arcade,
+        "parked": [{"slot": "B", "status": "parked", "note": "empty"}],
         "extras": extras,
         "pills_5m": pills_5m,
         "hot": hot,
