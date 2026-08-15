@@ -203,6 +203,7 @@
         <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
+        <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">WIRE</button>
         <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
         <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
         <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
@@ -636,6 +637,14 @@
       <ul id="brainNotes" class="brain-notes"></ul>
     </section>
 
+    <section id="wireView" class="info-view hidden" aria-label="WIRE">
+      <div class="info-hero">
+        <h2>WIRE</h2>
+        <p>What changed on Satoshi’s Council, and why. Times in <b>America/Chicago</b>. Paper. Follower OFF. Honest notes — not hype.</p>
+      </div>
+      <ol id="wireList" class="wire-list"></ol>
+    </section>
+
     <section id="newsView" class="info-view hidden" aria-label="Hour news">
       <div class="info-hero">
         <h2>NEWS</h2>
@@ -1002,6 +1011,7 @@
     </video>
   </div>
 
+  <script src="/wire.js"></script>
   <script src="/roundtable.js"></script>
 
     <!-- Hidden hive easter egg -->

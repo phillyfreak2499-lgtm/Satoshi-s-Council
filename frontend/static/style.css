@@ -403,6 +403,31 @@ header {
   background: rgba(0, 232, 255, 0.08);
   box-shadow: 0 0 14px rgba(0, 232, 255, 0.15);
 }
+@keyframes wire-hot-pulse {
+  0%, 100% {
+    color: #ffe49a;
+    border-color: rgba(240, 193, 74, 0.7);
+    box-shadow: 0 0 10px rgba(240, 193, 74, 0.35);
+  }
+  50% {
+    color: #00e8ff;
+    border-color: rgba(0, 232, 255, 0.75);
+    box-shadow: 0 0 18px rgba(0, 232, 255, 0.55);
+  }
+}
+#tabWire.wire-hot,
+body[class*="mode-"]:not(.mode-wire) #tabWire.wire-hot,
+body.beast-mode[class*="mode-"]:not(.mode-wire) #tabWire.wire-hot,
+#app > header #tabWire.wire-hot,
+body:not(.mode-wire) #app > header #tabWire.wire-hot,
+body:not(.mode-wire) #app > header #tabWire.wire-hot.active {
+  color: #ffe49a !important;
+  border-color: rgba(240, 193, 74, 0.75) !important;
+  background: rgba(240, 193, 74, 0.12) !important;
+  box-shadow: 0 0 16px rgba(240, 193, 74, 0.45) !important;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.55) !important;
+  animation: wire-hot-pulse 1.4s ease-in-out infinite;
+}
 #soundToggle {
   border: 1px solid rgba(0, 232, 255, 0.45);
   color: var(--blade);
@@ -3341,6 +3366,7 @@ body.mode-tape .led-float,
 body.mode-book .led-float,
 body.mode-brain .led-float,
 body.mode-news .led-float,
+body.mode-wire .led-float,
 body.night-mode .led-float,
 body.mode-night .led-float {
   opacity: 0 !important;
@@ -4273,6 +4299,7 @@ body.mode-tape .led-float,
 body.mode-book .led-float,
 body.mode-brain .led-float,
 body.mode-news .led-float,
+body.mode-wire .led-float,
 body.night-mode .led-float,
 body.mode-night .led-float {
   opacity: 0 !important;
@@ -4667,6 +4694,10 @@ body[class*="mode-"]:not(.mode-news) #tabNews,
 body[class*="mode-"]:not(.mode-news) #tabNews.active,
 body.beast-mode[class*="mode-"]:not(.mode-news) #tabNews,
 body.beast-mode[class*="mode-"]:not(.mode-news) #tabNews.active,
+body[class*="mode-"]:not(.mode-wire) #tabWire:not(.wire-hot),
+body[class*="mode-"]:not(.mode-wire) #tabWire.active:not(.wire-hot),
+body.beast-mode[class*="mode-"]:not(.mode-wire) #tabWire:not(.wire-hot),
+body.beast-mode[class*="mode-"]:not(.mode-wire) #tabWire.active:not(.wire-hot),
 body[class*="mode-"]:not(.mode-school) #tabSchool,
 body[class*="mode-"]:not(.mode-school) #tabSchool.active,
 body.beast-mode[class*="mode-"]:not(.mode-school) #tabSchool,
@@ -4715,6 +4746,8 @@ body.mode-brain #tabBrain,
 body.mode-brain #tabBrain.active,
 body.mode-news #tabNews,
 body.mode-news #tabNews.active,
+body.mode-wire #tabWire,
+body.mode-wire #tabWire.active,
 body.mode-school #tabSchool,
 body.mode-school #tabSchool.active,
 body.mode-side #tabSide,
@@ -4753,6 +4786,8 @@ body.beast-mode.mode-brain #tabBrain,
 body.beast-mode.mode-brain #tabBrain.active,
 body.beast-mode.mode-news #tabNews,
 body.beast-mode.mode-news #tabNews.active,
+body.beast-mode.mode-wire #tabWire,
+body.beast-mode.mode-wire #tabWire.active,
 body.beast-mode.mode-school #tabSchool,
 body.beast-mode.mode-school #tabSchool.active,
 body.beast-mode.mode-side #tabSide,
@@ -5337,6 +5372,8 @@ body.mode-brain #app > header #tabBrain,
 body.mode-brain #app > header #tabBrain.active,
 body.mode-news #app > header #tabNews,
 body.mode-news #app > header #tabNews.active,
+body.mode-wire #app > header #tabWire,
+body.mode-wire #app > header #tabWire.active,
 body.mode-school #app > header #tabSchool,
 body.mode-school #app > header #tabSchool.active,
 body.mode-side #app > header #tabSide,
@@ -5367,6 +5404,7 @@ body.beast-mode.mode-tape #app > header #tabTape,
 body.beast-mode.mode-book #app > header #tabBook,
 body.beast-mode.mode-brain #app > header #tabBrain,
 body.beast-mode.mode-news #app > header #tabNews,
+body.beast-mode.mode-wire #app > header #tabWire,
 body.beast-mode.mode-school #app > header #tabSchool,
 body.beast-mode.mode-side #app > header #tabSide,
 body.beast-mode.mode-front #app > header #tabFront,
@@ -5882,6 +5920,8 @@ body:not(.mode-brain) #app > header #tabBrain,
 body:not(.mode-brain) #app > header #tabBrain.active,
 body:not(.mode-news) #app > header #tabNews,
 body:not(.mode-news) #app > header #tabNews.active,
+body:not(.mode-wire) #app > header #tabWire:not(.wire-hot),
+body:not(.mode-wire) #app > header #tabWire.active:not(.wire-hot),
 body:not(.mode-school) #app > header #tabSchool,
 body:not(.mode-school) #app > header #tabSchool.active,
 body:not(.mode-side) #app > header #tabSide,
@@ -6768,6 +6808,47 @@ body.mode-art #debatePanel #seatStormTableBtn.seat-storm-table-btn:not(.hidden):
   letter-spacing: 0.08em;
 }
 
+.wire-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 760px;
+}
+.wire-item {
+  padding: 14px 16px 12px;
+  margin: 0 0 10px;
+  background: rgba(4, 14, 28, 0.78);
+  border: 1px solid rgba(0, 232, 255, 0.18);
+  border-left: 3px solid rgba(240, 193, 74, 0.65);
+  box-shadow: 0 0 18px rgba(0, 232, 255, 0.06);
+}
+.wire-title {
+  margin: 0 0 6px;
+  font-family: Orbitron, monospace;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: #ffe49a;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.35);
+}
+.wire-why {
+  margin: 0 0 8px;
+  color: rgba(200, 224, 240, 0.9);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.wire-date {
+  display: block;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 232, 255, 0.72);
+}
+.wire-empty {
+  color: rgba(180, 200, 220, 0.65);
+  font-size: 13px;
+  padding: 12px 0;
+}
+
 .floor-crawl {
   position: absolute;
   left: 6%;
@@ -6808,6 +6889,7 @@ body.night-mode #tabTape,
 body.night-mode #tabBook,
 body.night-mode #tabBrain,
 body.night-mode #tabNews,
+body.night-mode #tabWire,
 body.night-mode #tabSchool,
 body.night-mode #tabSide,
 body.night-mode #tabFront,
@@ -7068,6 +7150,7 @@ body.gate-locked .health-strip {
   body.phone-floor #tabBook,
   body.phone-floor #tabBrain,
   body.phone-floor #tabNews,
+  body.phone-floor #tabWire,
   body.phone-floor #tabSchool,
   body.phone-floor #tabSide,
   body.phone-floor #tabFront,

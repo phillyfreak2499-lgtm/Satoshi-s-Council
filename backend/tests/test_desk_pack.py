@@ -75,6 +75,7 @@ class MarkupTests(unittest.TestCase):
             'id="tabNight"',
             'id="tabBrain"',
             'id="tabNews"',
+            'id="tabWire"',
             'id="tabSchool"',
             'id="tabSide"',
             'id="tabFront"',
@@ -82,6 +83,7 @@ class MarkupTests(unittest.TestCase):
             'id="bookView"',
             'id="brainView"',
             'id="newsView"',
+            'id="wireView"',
             'id="schoolView"',
             'id="sideView"',
             'id="frontView"',
@@ -374,6 +376,7 @@ class FreezeTests(unittest.TestCase):
         self.assertIn("function loadKalshiBook()", JS)
         self.assertIn("function loadBrainRecap()", JS)
         self.assertIn("function loadDeskNews()", JS)
+        self.assertIn("function loadDeskWire()", JS)
         self.assertIn('mode === "night"', JS)
         self.assertIn("/api/tape", JS)
         self.assertIn("/api/book", JS)
@@ -592,6 +595,8 @@ class SchoolTests(unittest.TestCase):
         self.assertIn("Lessons do not change Chair locks", HTML)
         self.assertIn("body.night-mode #tabSchool", CSS)
         self.assertIn("body.mode-school #tabSchool", CSS)
+        self.assertIn("body.night-mode #tabWire", CSS)
+        self.assertIn("body.mode-wire #tabWire", CSS)
         self.assertIn("body.night-mode #tabSide", CSS)
         self.assertIn("body.mode-side #tabSide", CSS)
         self.assertIn("body.night-mode #tabFront", CSS)

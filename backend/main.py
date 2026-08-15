@@ -1181,6 +1181,14 @@ if STATIC_DIR.is_dir():
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
 
+    @app.get("/wire.js")
+    async def wire_js():
+        return FileResponse(
+            STATIC_DIR / "wire.js",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
     @app.get("/app.js")
     async def app_js_stub():
         path = STATIC_DIR / "app.js"

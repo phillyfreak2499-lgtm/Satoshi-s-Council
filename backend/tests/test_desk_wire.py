@@ -1,0 +1,119 @@
+"""WIRE tab: desk log of what changed and why."""
+from __future__ import annotations
+
+import json
+import re
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+HTML = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
+JS = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+CSS = (ROOT / "frontend" / "static" / "style.css").read_text(encoding="utf-8")
+WIRE_JS = (ROOT / "frontend" / "static" / "wire.js").read_text(encoding="utf-8")
+MAIN = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+GATES = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
+
+
+def _wire_entries() -> list[dict]:
+    m = re.search(r"window\.COUNCIL_WIRE\s*=\s*(\[[\s\S]*?\]);", WIRE_JS)
+    if not m:
+        raise AssertionError("COUNCIL_WIRE array not found")
+    return json.loads(m.group(1))
+
+
+class WireMarkupTests(unittest.TestCase):
+    def test_tab_and_view(self):
+        self.assertIn('id="tabWire"', HTML)
+        self.assertIn('data-mode="wire"', HTML)
+        self.assertIn(">WIRE</button>", HTML)
+        self.assertIn('id="wireView"', HTML)
+        self.assertIn('id="wireList"', HTML)
+        self.assertIn("<h2>WIRE</h2>", HTML)
+        self.assertNotIn("Changelog", HTML)
+        self.assertNotIn(">Updates</button>", HTML)
+        self.assertIn("Satoshi’s Council", HTML.split('id="wireView"', 1)[1][:400])
+        self.assertNotIn("ZT ·", HTML.split('id="wireView"', 1)[1][:800])
+        self.assertIn("Paper. Follower OFF.", HTML)
+        self.assertLess(HTML.find('id="tabNews"'), HTML.find('id="tabWire"'))
+        self.assertLess(HTML.find('id="tabWire"'), HTML.find('id="tabSchool"'))
+        self.assertIn('src="/wire.js"', HTML)
+
+    def test_js_unread_and_mode(self):
+        self.assertIn("council_wire_seen", JS)
+        self.assertIn("function loadDeskWire()", JS)
+        self.assertIn("function syncWireHot(", JS)
+        self.assertIn("function markWireSeen(", JS)
+        self.assertIn("function wireIsUnread(", JS)
+        self.assertIn("localStorage.setItem(WIRE_SEEN_KEY", JS)
+        self.assertIn("localStorage.getItem(WIRE_SEEN_KEY)", JS)
+        self.assertIn('mode === "wire"', JS)
+        self.assertIn('"wire"', JS)
+        self.assertIn("America/Chicago", JS.split("function formatWireDate", 1)[1][:400])
+        self.assertIn("function loadDeskWire()", JS)
+        cycle = JS.split("window.__deskModeCycle", 1)[1][:400]
+        self.assertIn('"wire"', cycle)
+
+    def test_css_hot_and_chrome(self):
+        self.assertIn("#tabWire.wire-hot", CSS)
+        self.assertIn("wire-hot-pulse", CSS)
+        self.assertIn("body.mode-wire #tabWire", CSS)
+        self.assertIn("body.night-mode #tabWire", CSS)
+        self.assertIn("body.phone-floor #tabWire", CSS)
+        self.assertIn(".wire-list", CSS)
+        self.assertIn(".wire-title", CSS)
+
+
+class WireLogTests(unittest.TestCase):
+    def test_comment_and_shape(self):
+        first = WIRE_JS.lstrip().splitlines()[0]
+        self.assertIn("Every Council PR that changes the desk must append a WIRE entry.", first)
+        self.assertIn("{ id, at, title, why }", WIRE_JS)
+        rows = _wire_entries()
+        self.assertGreaterEqual(len(rows), 9)
+        for row in rows:
+            self.assertEqual(set(row), {"id", "at", "title", "why"})
+            self.assertTrue(row["id"])
+            self.assertTrue(row["at"])
+            self.assertTrue(row["title"])
+            self.assertTrue(row["why"])
+            self.assertNotIn("\n", row["why"])
+        ats = [r["at"] for r in rows]
+        self.assertEqual(ats, sorted(ats, reverse=True))
+
+    def test_seed_facts(self):
+        blob = WIRE_JS
+        self.assertIn("72h", blob)
+        self.assertIn("HOU@TTU", blob)
+        self.assertIn("DAL -6.5", blob)
+        self.assertIn("BTC shadow", blob)
+        self.assertIn("ETH gates unchanged", blob)
+        self.assertIn("NFL/CFB", blob)
+        self.assertIn("NFL/CFB/NBA/MLB/NHL", blob)
+        self.assertIn("GAME · LINE", blob)
+        self.assertIn("fourth Floor seat", blob)
+        self.assertIn("Follower OFF", blob)
+        self.assertIn("10–90", blob)
+        self.assertIn("99¢", blob)
+        self.assertIn("20–80", blob)
+        self.assertIn("Satoshi’s Council", blob)
+        self.assertIn("hit slate", blob.lower())
+        self.assertIn("Bot memory stays", blob)
+        self.assertNotIn("KX", blob)
+        self.assertNotIn("ZT ·", blob)
+        self.assertNotIn("Changelog", blob)
+
+    def test_route_and_signed_untouched(self):
+        self.assertIn('@app.get("/wire.js")', MAIN)
+        self.assertIn("function atsKickLine(", JS)
+        self.assertIn('id="aresFace"', HTML)
+        self.assertIn("ats-sport-chip", CSS)
+        self.assertIn('id="atsSportChip"', HTML)
+        self.assertIn("def decide_open_lock_grade", GATES)
+        council = (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8")
+        self.assertIn("btc_shadow", council)
+        self.assertNotIn("from backend.services.desk_wire", GATES)
+
+
+if __name__ == "__main__":
+    unittest.main()
