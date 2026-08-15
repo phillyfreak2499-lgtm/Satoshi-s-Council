@@ -251,8 +251,10 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                 self.assertIn(lab, fnames, "%s missing on Floor %sx%s" % (lab, w, h))
             satoshi = [p for p in floor["nameplates"] if "SATOSHI" in str(p.get("text") or "")]
             self.assertTrue(satoshi)
-            raijin = [p for p in floor["nameplates"] if str(p.get("text") or "") == "RAIJIN"]
-            self.assertTrue(raijin, "Raijin third chair missing on Floor %sx%s" % (w, h))
+            raijin = [p for p in floor["nameplates"] if "RAIJIN" in str(p.get("text") or "")]
+            self.assertTrue(raijin, "Raijin chair missing on Floor %sx%s" % (w, h))
+            ares = [p for p in floor["nameplates"] if "ARES" in str(p.get("text") or "")]
+            self.assertTrue(ares, "Ares fourth chair missing on Floor %sx%s" % (w, h))
             vitalik = [p for p in floor["nameplates"] if "VITALIK" in str(p.get("text") or "")]
             for plate in raijin:
                 for other in satoshi + vitalik:
@@ -294,8 +296,10 @@ class FloorNameplateOverlapTests(unittest.TestCase):
         self.assertIn("function dualFloorTableR", JS)
         self.assertIn("function floorRaijinFit", JS)
         self.assertIn("do not crush at 1042", JS)
-        self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin"', JS)
-        self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum"', JS)
+        self.assertIn('drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin"', JS)
+        self.assertIn('drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum"', JS)
+        self.assertIn('drawTableWithBots(w * 0.28, h * 0.72, tableR, "front"', JS)
+        self.assertIn('drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats"', JS)
         for w, h in ((1042, 700), (1042, 800), (1042, 620), (1280, 700)):
             layout = _floor_hud_layout(w, h)
             self.assertTrue(layout["dual"], "ETH stays Satoshi/Vitalik dual at %sx%s" % (w, h))
@@ -552,6 +556,17 @@ def _dual_floor_table_r(w, h):
     return min(want, max_r)
 
 
+def _quad_floor_table_r(w, h):
+    want = min(w, h) * 0.18
+    gap_x = w * 0.44
+    gap_y = h * 0.38
+    seat_r = 16
+    label_pad = 22
+    max_rx = max(56, (gap_x - 2 * (seat_r + label_pad) - 12) / (2 * 1.42))
+    max_ry = max(56, (gap_y - 2 * (seat_r + label_pad) - 12) / (2 * 1.42))
+    return min(want, max_rx, max_ry)
+
+
 def _floor_raijin_fit(w, h):
     phone = w <= 480 or min(w, h) <= 520
     dual = (not phone) and w >= 720
@@ -598,32 +613,19 @@ def _floor_hud_layout(w, h, view="floor"):
             )
 
     if dual:
-        r = _dual_floor_table_r(w, h)
+        r = _quad_floor_table_r(w, h)
         pr = r * 0.80
-        cy = h * 0.52
-        portrait_y = cy - 2
-        name_y = portrait_y + pr + 11
-        for cx, text, side in (
-            (w * 0.25, "SATOSHI · BTC", "btc"),
-            (w * 0.75, "VITALIK · ETH", "eth"),
+        for cx, cy, text, side in (
+            (w * 0.28, h * 0.30, "SATOSHI · BTC", "btc"),
+            (w * 0.72, h * 0.30, "VITALIK · ETH", "eth"),
+            (w * 0.28, h * 0.72, "RAIJIN", "front"),
+            (w * 0.72, h * 0.72, "ARES", "ats"),
         ):
+            name_y = cy - 2 + pr + 11
             nw = _text_w(text, 11)
             nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text, "table": side})
-            add_seats(cx, cy, r * 1.48, 22, 8, 9, side)
-        rz = _floor_raijin_fit(w, h)
-        if rz:
-            nw = _text_w("RAIJIN", 8)
-            box = max(nw, rz["seatR"] * 2)
-            nameplates.append(
-                {
-                    "x": rz["x"] - box / 2,
-                    "y": rz["y"] - rz["seatR"],
-                    "w": box,
-                    "h": rz["seatR"] * 2 + 12,
-                    "text": "RAIJIN",
-                    "table": "front",
-                }
-            )
+            if side in ("btc", "eth"):
+                add_seats(cx, cy, r * 1.42, 16, 6, 8, side)
     elif view == "art" and not phone:
         radius = min(w, h) * 0.32
         ring_r = radius * 1.18
@@ -637,7 +639,7 @@ def _floor_hud_layout(w, h, view="floor"):
                 "y": plate_y - 14,
                 "w": gw,
                 "h": 28,
-                "text": "GOAL · one guess @ best odds (<80%)",
+                "text": "GOAL · one guess @ best odds (10–90¢)",
             }
         )
         nw = _text_w("SATOSHI", 11)
@@ -653,7 +655,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": 27,
                     "w": 120,
                     "h": 18,
-                    "text": "GOAL · one guess @ best odds (<80%)",
+                    "text": "GOAL · one guess @ best odds (10–90¢)",
                 }
             )
             nw = _text_w("SATOSHI", 10)
@@ -667,7 +669,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": plate_y - 14,
                     "w": gw,
                     "h": 28,
-                    "text": "GOAL · one guess @ best odds (<80%)",
+                    "text": "GOAL · one guess @ best odds (10–90¢)",
                 }
             )
             nw = _text_w("SATOSHI", 10)
@@ -728,6 +730,9 @@ class PacksNotDroppedTests(unittest.TestCase):
             "def eth_shadow_pick",
             "def is_eth_shadow_row",
             "def floor_scorecard",
+            "def book_is_unknown",
+            "def explore_paper_lock_open",
+            "def explore_paper_lock_ok",
         ):
             self.assertIn(needle, gates)
         leader = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")
@@ -749,8 +754,8 @@ class PacksNotDroppedTests(unittest.TestCase):
         liq = (ROOT / "backend" / "agents" / "liq.py").read_text(encoding="utf-8")
         self.assertIn("not_p_finish", liq)
         cfg = (ROOT / "backend" / "config.py").read_text(encoding="utf-8")
-        self.assertIn("PLAYABLE_MID_MIN: float = 20.0", cfg)
-        self.assertIn("PLAYABLE_MID_MAX: float = 80.0", cfg)
+        self.assertIn("PLAYABLE_MID_MIN: float = 10.0", cfg)
+        self.assertIn("PLAYABLE_MID_MAX: float = 90.0", cfg)
         self.assertIn("ETH_RELIABILITY_MIN_N", cfg)
         self.assertIn("Do NOT shrink the hard band to 45–55", cfg)
         gate = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encoding="utf-8")

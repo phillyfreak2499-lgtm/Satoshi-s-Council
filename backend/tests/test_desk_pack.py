@@ -180,9 +180,15 @@ class TapeLogicTests(unittest.TestCase):
 
 class BookLogicTests(unittest.TestCase):
     def test_empty_and_99_wall(self):
-        empty = book_flags(None)
-        self.assertTrue(empty["empty"])
-        self.assertEqual(empty["flag"], "empty book")
+        missing = book_flags(None)
+        self.assertTrue(missing["unknown"])
+        self.assertFalse(missing["empty"])
+        self.assertEqual(missing["flag"], "unknown book")
+        measured_empty = book_flags(
+            {"yes_depth": 0, "no_depth": 0, "has_size": False, "measured": True, "book_state": "dead"}
+        )
+        self.assertTrue(measured_empty["empty"])
+        self.assertEqual(measured_empty["flag"], "empty book")
         wall = book_flags(
             {"yes_depth": 10, "no_depth": 10, "has_size": True, "yes_bid_px": 1, "no_bid_px": 99},
             yes_bid=1,

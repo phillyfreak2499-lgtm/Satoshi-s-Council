@@ -1,16 +1,16 @@
 # Satoshi’s Council — New Operator Tutorial
 
-**Version:** 2026-08-15 (Raijin / THE FRONT)
+**Version:** 2026-08-15 (Ares / ATS)
 
 ## What this is
 A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).  
-The Chair (Satoshi) locks **exactly one** high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.
+The Chair (Satoshi) locks **exactly one** high-quality paper call per window — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.
 
 This is a research co-pilot. It does **not** place real orders.
 
 ## GOAL CONTRACT (non-negotiable)
 1. One directional guess per 15-minute window on how the window ends.
-2. Taken only at the best available odds (chosen side < 80¢).
+2. Taken only at the best available odds (book inside 10–90¢).
 3. Once locked → irreversible for that window.
 4. WAIT preferred over low-edge or noisy calls.
 
@@ -24,7 +24,7 @@ This is a research co-pilot. It does **not** place real orders.
 1. Specialists vote UP / DOWN / WAIT.
 2. Higher-ranked bots count more.
 3. Chair requires confluence + pair affinity.
-4. Odds gate: chosen side must be under 80¢.
+4. Odds gate: book must be inside 10–90¢. Never play 99¢ chalk.
 5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.
 6. After lock, the plaque is what followers and the UI follow.
 
@@ -45,7 +45,10 @@ Raijin is the weather Chair. THE FRONT is his Floor — a real ring table, not a
 - **Subs** (feed a chair, do not vote): **HEAT** (NOW VS THE HIGH) · **ECHO** (YDAY BONES) · **CELL** (STORM CAP).
 - Hits count like BTC / ETH. Pending until NWS CLI posts the next morning.
 - Paper first. Live stays off until you arm this tab. Does not place 1H Chair locks. Never talks to Follower.
-- Small third chair on the shared Floor. Full-size ring on the Front tab.
+- Equal chair on the shared Floor (Satoshi · Vitalik · Raijin · Ares). Full-size ring on the Front tab.
+
+## Ares / ATS
+Ares is the sports Chair. One game. Gold tab **ATS**. Calls are COVER / NO-COVER, the team name, or OVER / UNDER. WAIT stays WAIT. Seats: LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs. Paper only. Follower off.
 
 Do not look for other cities on this board. v1 is Dallas only.
 
@@ -60,7 +63,7 @@ Poll `/api/state` and read `locked_call` (or `decision.locked_call`):
   "entry_odds_pct": 61,
   "irreversible": true,
   "ticker": "KXBTC15M-...",
-  "goal": "GOAL · 1 window-end guess @ best odds (<80%)"
+  "goal": "GOAL · 1 window-end guess @ best odds (10–90¢)"
 }
 ```
 

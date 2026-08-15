@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     PARALLEL_AGENT_LIMIT: int = 5           # cap concurrency per table
     KALSHI_MAX_QUOTE_AGE_S: float = 25.0  # no ENTRY lock if quote older than this
     KALSHI_ORDERBOOK_EVERY: int = 4
+    KALSHI_ORDERBOOK_DEPTH: int = 10  # ask Kalshi for sized levels (orderbook_fp)
     SLOW_METRICS_TTL: float = 45.0
 
     # Agent base weights (sum ~1.0, Leader normalizes). Expanded roster for 15m factors.
@@ -176,9 +177,10 @@ class Settings(BaseSettings):
     CALL_MAX_AGE_SEC: float = 60 * 60  # hourly window
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
-    MAX_ENTRY_ODDS_PCT: float = 80.0
-    # Soft preferred label only. Live playable band is 20–80¢ + leftover after vig.
+    MAX_ENTRY_ODDS_PCT: float = 90.0
+    # Soft preferred label only. Paper playable band is 10–90¢ + leftover after vig.
     # Do NOT shrink the hard band to 45–55. Council shadow 45–60 is diagnostic.
+    # 99¢ / 1¢ wall stays a hard no. Does not loosen Follower / live gates.
     PREFERRED_ENTRY_ODDS_MIN: float = 40.0
     PREFERRED_ENTRY_ODDS_MAX: float = 65.0
     NEVER_LOCK_CENTS: float = 99.0           # never lock ≥99¢ / one-sided 100¢
@@ -193,14 +195,19 @@ class Settings(BaseSettings):
     MIN_EV_CENTS: float = 3.0
     # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
     EARLY_NO_LOCK_MINS: float = 10.0
-    PLAYABLE_MID_MIN: float = 20.0  # Zach hard band — two-sided, not 45–55
-    PLAYABLE_MID_MAX: float = 80.0
+    PLAYABLE_MID_MIN: float = 10.0  # Zach hard band — two-sided, not 45–55
+    PLAYABLE_MID_MAX: float = 90.0  # 10–90 does not drop EV ≥ 0 after half-spread
     LATE_HOURLY_VOL_PCT: float = 0.40
     P_FINISH_COLD_N: int = 15
     P_FINISH_WARM_N: int = 40
     CHAIR_HOT_BIN: float = 90.0
     CHAIR_HOT_BIN_MIN_N: int = 15  # fade 90%+ until this many actually settled hours
     ETH_RELIABILITY_MIN_N: int = 8  # no ETH paper lock until this many finish-graded ETH hours
+    # Explore paper locks (PAPER only — never arm Follower / live)
+    EXPLORE_RELIABILITY_N: int = 20  # explore path while reliability_n < this
+    EXPLORE_PAPER_MIN_P: float = 0.55
+    EXPLORE_PAPER_MIN_EV: float = 0.0  # EV ≥ 0 after half-spread
+    PAPER_LOCKS_PER_DAY: int = 5  # 1H BTC: a few, not 20/day, not 1/48h
     BTC_LEAD_IMPULSE_PCT: float = 0.15
     BTC_LEAD_STRONG_PCT: float = 0.25
     # Official Kalshi hourly settle: 60s CFB BRTI / ETHUSD_RTI (ERTI) average

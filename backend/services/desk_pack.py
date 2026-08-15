@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from backend.agents.chair_gates import (
+    book_is_unknown,
     close_time_from_kalshi_ticker,
     is_eth_shadow_row,
     odds_to_cents,
@@ -208,11 +209,15 @@ def book_flags(
     yes_depth = float(d.get("yes_depth") or 0.0)
     no_depth = float(d.get("no_depth") or 0.0)
     has_size = bool(d.get("has_size"))
-    empty = (not d) or (yes_depth <= 0 and no_depth <= 0) or not has_size
+    unknown = book_is_unknown(d) if d else True
+    # Measured empty = we saw the book and both sides have no size.
+    empty = (not unknown) and ((yes_depth <= 0 and no_depth <= 0) or (bool(d.get("measured")) and not has_size))
     wall = any(px is not None and px >= 99.0 for px in (yb, ya, nb, na))
-    sick = empty or (yes_depth <= 0) or (no_depth <= 0)
+    sick = (not unknown) and (empty or (yes_depth <= 0) or (no_depth <= 0))
     flag = None
-    if empty:
+    if unknown:
+        flag = "unknown book"
+    elif empty:
         flag = "empty book"
     elif wall:
         flag = "≥99¢ wall"
@@ -227,6 +232,7 @@ def book_flags(
         mid = yb
     return {
         "empty": empty,
+        "unknown": unknown,
         "sick": sick,
         "wall_99": wall,
         "flag": flag,
@@ -241,6 +247,7 @@ def book_flags(
         "spread": spread,
         "mid": mid,
         "has_size": has_size,
+        "book_state": d.get("book_state") or ("unknown" if unknown else ("empty" if empty else "ok")),
     }
 
 
@@ -520,6 +527,8 @@ def why_line(
         bits.append("≥99¢ wall, no edge")
     elif empty:
         bits.append("empty book")
+    elif flags.get("unknown"):
+        bits.append("unknown book")
     elif flags.get("sick"):
         bits.append("sick book")
     elif stale:

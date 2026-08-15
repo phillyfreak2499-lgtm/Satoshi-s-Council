@@ -43,8 +43,10 @@ class WaitReasonAndGradeTests(unittest.TestCase):
         self.assertEqual(classify_wait_reason("WAIT · fresh quote required (40s old)"), "stale_quote")
         self.assertEqual(classify_wait_reason("WAIT · first 10m of the hour — no lock"), "first_10m")
         self.assertEqual(classify_wait_reason("WAIT · dead book · YES mid 12¢ outside 20–80¢"), "dead_book")
+        self.assertEqual(classify_wait_reason("WAIT · unknown book — no lock"), "unknown_book")
         self.assertEqual(classify_wait_reason("WAIT · thin book (need ≥5 size) — no lock"), "no_depth")
         self.assertEqual(classify_wait_reason("WAIT · odds 18¢ outside 20–80¢"), "odds_outside_20_80")
+        self.assertEqual(classify_wait_reason("WAIT · odds 5¢ outside 10–90¢"), "odds_outside_20_80")
         self.assertEqual(
             classify_wait_reason("WAIT", {"top_conflict": True, "summary": "top-3 conflict"}),
             "top_3_conflict",
@@ -95,8 +97,10 @@ class WaitReasonAndGradeTests(unittest.TestCase):
         self.assertIn("EARLY_NO_LOCK_MINS", LEADER)
         self.assertIn("dead_book_reason", LEADER)
         self.assertTrue(playable_yes_mid(50))
-        self.assertFalse(playable_yes_mid(12))
-        self.assertIn("outside 20–80", dead_book_reason(None, "UP", 12) or "")
+        self.assertTrue(playable_yes_mid(12))
+        self.assertTrue(playable_yes_mid(88))
+        self.assertFalse(playable_yes_mid(9))
+        self.assertIn("outside 10–90", dead_book_reason(None, "UP", 5) or "")
         lock = decide_open_lock_grade(
             ticker="KXBTCD-26AUG1415-T62999.99",
             direction="WAIT",
@@ -380,12 +384,15 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn("Focus Dallas Weather Forecast / Raijin", HTML)
         self.assertNotIn(">RAIJIN</button>", HTML)
         self.assertNotIn(">DFW</button>", HTML)
+        self.assertIn('id="focusAts"', HTML)
+        self.assertIn(">ATS</button>", HTML)
         self.assertIn('id="focusBtc"', HTML)
         self.assertIn('id="focusEth"', HTML)
         row = HTML.split('id="modeTabs"', 1)[1].split('id="tabFloor"', 1)[0]
         self.assertIn("focusBtc", row)
         self.assertIn("focusEth", row)
         self.assertIn("focusFront", row)
+        self.assertIn("focusAts", row)
         self.assertIn('body[data-focus-table="front"]', CSS)
         self.assertIn("#focusFront.focus-active", CSS)
 
@@ -395,11 +402,11 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn('bind(focusFront, "front")', JS)
         self.assertIn('focusTable = "front"', JS)
         self.assertIn('if (mode === "front") setMode("art")', JS)
-        self.assertIn("raijinPortraitFor(dir)", JS)
+        self.assertIn("raijinPortraitFor(wxEye(dir))", JS)
         self.assertIn('chairPortraitOf(which, dir)', JS)
         self.assertIn("DFW · Raijin", JS)
         self.assertIn("DFW · RAIJIN", JS)
-        self.assertIn("waiting on Satoshi / Vitalik / Raijin", JS)
+        self.assertIn("waiting on Satoshi / Vitalik / Raijin / Ares", JS)
 
     def test_floor_raijin_focuses_table(self):
         wire = JS.split("function wireFloorChairClicks", 1)[1].split("wireFloorChairClicks();", 1)[0]

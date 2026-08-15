@@ -699,7 +699,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | dashboard | charts
   let state = null;
-  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front") return v; } catch(e){} return "ethereum"; })();
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableHasLiveHour(t) {
     if (!t || typeof t !== "object") return false;
@@ -815,6 +815,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       head += " · NOW " + Math.round(Number(nowF)) + "°F";
     }
     return head;
+  }
+  function isAtsTable(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    return w === "ats" || w === "ares" || w === "sports";
   }
   function frontTableState() {
     let board = null;
@@ -962,7 +966,122 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       learning: { hierarchy: hierarchy, records: hierarchy.reduce(function (m, r) { m[r.agent] = r; return m; }, {}) },
     };
   }
+  function atsTableState() {
+    let board = null;
+    try { board = atsBoard; } catch (e) { board = null; }
+    const chair = (board && board.chair) || {};
+    const seats = (board && Array.isArray(board.seats) && board.seats.length) ? board.seats : [
+      { id: "LINE", job: "The Kalshi book / the number.", dir: "WAIT", call: "THE NUMBER · —", n: 0 },
+      { id: "STEAM", job: "Line movement.", dir: "WAIT", call: "STEAM IS QUIET", n: 0 },
+      { id: "FADE", job: "Public vs sharp.", dir: "WAIT", call: "NO CROWD TO FADE", n: 0 },
+      { id: "HURT", job: "Injuries / out.", dir: "WAIT", call: "HURT · SIT · DARK", n: 0 },
+      { id: "ICE", job: "Veto.", dir: "WAIT", call: "ICE IS CLEAR", n: 0 },
+    ];
+    const subs = (board && Array.isArray(board.subs)) ? board.subs : [
+      { id: "CLOCK", parent: "LINE", call: "CLOCK IS DARK" },
+      { id: "FORM", parent: "FADE", call: "FORM · SIT · NO CARD" },
+      { id: "WX", parent: "ICE", call: "WX · DARK" },
+    ];
+    const acc = (board && board.accuracy) || {};
+    const tape = (board && board.tape) || [];
+    const pick = (board && board.pick) || {};
+    const eye = String(chair.eye || "WAIT").toUpperCase();
+    const agents = seats.map(function (s) {
+      return {
+        agent_name: String(s.id || "").toLowerCase(),
+        display_name: s.id,
+        title: s.job || "",
+        direction: s.dir || "WAIT",
+        confidence: s.confidence != null ? s.confidence : 50,
+        reasoning: s.call || "",
+        summary: s.call || "",
+        mark: s.mark,
+        sub: false,
+      };
+    });
+    subs.forEach(function (s) {
+      agents.push({
+        agent_name: String(s.id || "").toLowerCase(),
+        display_name: s.id,
+        title: s.job || "",
+        direction: "WAIT",
+        confidence: 30,
+        reasoning: s.call || "",
+        summary: s.call || "",
+        mark: s.mark,
+        sub: true,
+        parent: s.parent,
+      });
+    });
+    agents.unshift({
+      agent_name: "leader",
+      display_name: "ARES",
+      title: "ATS · Ares",
+      direction: eye,
+      confidence: chair.confidence || 0,
+      reasoning: chair.call || "",
+      summary: chair.call || "",
+    });
+    const hierarchy = seats.map(function (r, i) {
+      return {
+        agent: String(r.id || "").toLowerCase(),
+        display_name: r.id,
+        correct: r.correct || 0,
+        wrong: r.wrong || 0,
+        n: r.n || 0,
+        win_rate: r.wr,
+        rank: r.rank || (i + 1),
+        listen: 1,
+      };
+    });
+    const locked = !!(pick && pick.call && pick.call !== "WAIT" && !pick.ice);
+    return {
+      agents: agents,
+      decision: {
+        direction: eye,
+        confidence: chair.confidence || 0,
+        summary: chair.call || "WAIT · no game on the table",
+        locked_call: locked ? {
+          locked: true,
+          direction: eye,
+          ticker: pick.ticker,
+          confidence: chair.confidence,
+        } : null,
+      },
+      accuracy: {
+        correct: acc.correct || 0,
+        total: acc.total || 0,
+        wrong: acc.wrong || 0,
+        accuracy_pct: acc.accuracy_pct,
+        label: acc.label || "ARES · ATS",
+        wait_n: acc.wait_n || 0,
+        verdict: acc.verdict,
+        log: tape,
+        recent: acc.recent || tape,
+        pending: acc.pending || 0,
+      },
+      hierarchy: hierarchy,
+      locked_call: locked ? { locked: true, direction: eye, ticker: pick.ticker } : null,
+      market: {
+        ticker: pick.ticker,
+        kalshi_ticker: pick.ticker,
+        series_ticker: pick.sport,
+        close_time: pick.close_time,
+        stale: false,
+      },
+      leader_name: "ARES",
+      asset: "ats",
+      pick: pick,
+      eyes: (chair && chair.eyes) || pick.eyes,
+      watch: (chair && chair.watch) || pick.watch || (board && board.watch),
+      why: (chair && chair.why) || pick.why || (board && board.why),
+      tug: (chair && chair.tug) || pick.tug || (board && board.tug),
+      brains: (chair && chair.brains) || pick.brains || (board && board.brains),
+      learning: { hierarchy: hierarchy },
+    };
+  }
   function tableState(which) {
+    if (isAtsTable(which)) return atsTableState();
     if (isFrontTable(which)) return frontTableState();
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -996,7 +1115,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
     const focused = tableState(focusTable);
-    const other = tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
+    const other = (isFrontTable(focusTable) || isAtsTable(focusTable))
+      ? tableState("ethereum")
+      : tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
     // Prefer the focused table when it has seats/window. Otherwise use the
     // payload that actually has a live hour (root BTC back-compat, then sibling).
     const live = tableHasLiveHour(focused)
@@ -1037,7 +1158,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       };
     }
     return {
-      focus: isFrontTable(focusTable) ? "front" : (focusTable === "bitcoin" ? "btc" : "eth"),
+      focus: isAtsTable(focusTable) ? "ats" : (isFrontTable(focusTable) ? "front" : (focusTable === "bitcoin" ? "btc" : "eth")),
       btc: one(typeof tableState === "function" ? tableState("bitcoin") : state),
       eth: one(typeof tableState === "function" ? tableState("ethereum") : null),
     };
@@ -1480,6 +1601,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     law: "LAW",
     leader: "CHAIR",
     chair: "CHAIR",
+    line: "LINE",
+    steam: "STEAM",
+    fade: "FADE",
+    hurt: "HURT",
+    ice: "ICE",
+    clock: "CLOCK",
+    form: "FORM",
+    wx: "WX",
+    glass: "GLASS",
+    pit: "PIT",
+    frost: "FROST",
+    bone: "BONE",
   };
   const AGENT_TITLES = {
     candle: "Pattern Seer",
@@ -1532,18 +1665,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return w === "ethereum" || w === "eth" || w === "vitalik";
   }
   function chairNameOf(which) {
+    if (isAtsTable(which)) return "ARES";
     if (isFrontTable(which)) return "RAIJIN";
     return isEthTable(which) ? "VITALIK" : "SATOSHI";
   }
   function chairTitleOf(which) {
+    if (isAtsTable(which)) return "ATS · Ares";
     if (isFrontTable(which)) return "DFW · Raijin";
     return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
   }
   function chairBadgeOf(which) {
+    if (isAtsTable(which)) return "ATS · ARES";
     if (isFrontTable(which)) return "DFW · RAIJIN";
     return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
   }
   function chairPortraitOf(which, dir) {
+    if (isAtsTable(which)) return aresPortrait;
     if (isFrontTable(which)) return raijinPortraitFor(wxEye(dir));
     return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
   }
@@ -1564,7 +1701,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function titleOf(agent) {
     if (!agent) return "";
     const key = agent.agent_name || agent;
-    if (key === "leader" || key === "chair") return isFrontTable(focusTable) ? "Raijin" : (isEthTable(focusTable) ? "Vitalik" : "Satoshi");
+    if (key === "leader" || key === "chair") return isAtsTable(focusTable) ? "Ares" : (isFrontTable(focusTable) ? "Raijin" : (isEthTable(focusTable) ? "Vitalik" : "Satoshi"));
     if (agent.title) return agent.title;
     return AGENT_TITLES[key] || "";
   }
@@ -1644,6 +1781,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     liq: "/bots/cascade.png",
     guardian: "/bots/warden.png",
     law: "/bots/law.png",
+    line: "/static/bots/line.png",
+    steam: "/static/bots/steam.png",
+    fade: "/static/bots/fade.png",
+    hurt: "/static/bots/hurt.png",
+    ice: "/static/bots/ice.png",
     glass: "/static/bots/glass.png",
     pit: "/static/bots/pit.png",
     frost: "/static/bots/frost.png",
@@ -2253,6 +2395,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       btc_text: "BTC " + btc.c + "–" + btc.w,
       eth_text: ethC + "–" + ethW + " ETH",
       front_text: "DFW " + fr.c + "–" + fr.w,
+      ats_text: (function () {
+        const acc = ((typeof tableState === "function" ? tableState("ats") : null) || {}).accuracy || {};
+        return "ATS " + (acc.correct || 0) + "–" + (acc.wrong || 0);
+      })(),
     };
   }
 
@@ -2298,6 +2444,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function chairKeyOf(which) {
+    if (isAtsTable(which)) return "ats";
     if (isFrontTable(which)) return "front";
     return isEthTable(which) ? "ethereum" : "bitcoin";
   }
@@ -2761,6 +2908,108 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   const raijinPortrait = new Image();
   raijinPortrait.src = "/static/bots/raijin-chair.png";
+  const aresPortrait = new Image();
+  aresPortrait.src = "/static/ares-chair.png";
+  aresPortrait.onerror = function () {
+    try { aresPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    aresPortrait.src = "/static/ares-wait.png";
+  };
+  function aresEyeColors(eyes) {
+    const e = eyes || {};
+    const mode = String(e.mode || "wait").toLowerCase();
+    let a = e.primary || "#F5B942";
+    let b = e.secondary || a;
+    if (mode === "over") { a = "#FF6A1A"; b = "#FFC14A"; }
+    if (mode === "under") { a = "#3DE0FF"; b = "#00E8FF"; }
+    if (mode === "wait") { a = "#F5B942"; b = "#F5B942"; }
+    return { mode: mode, a: a, b: b };
+  }
+  function paintAresEyes(eyes) {
+    const face = document.getElementById("aresFace");
+    const cols = aresEyeColors(eyes);
+    if (face) {
+      face.dataset.eye = cols.mode;
+      face.style.setProperty("--ares-eye-a", cols.a);
+      face.style.setProperty("--ares-eye-b", cols.b);
+      const show = typeof isAtsTable === "function" && isAtsTable(focusTable) && mode === "art";
+      face.hidden = !show;
+      face.setAttribute("aria-hidden", show ? "false" : "true");
+    }
+    try {
+      document.body.style.setProperty("--ares-eye-a", cols.a);
+      document.body.style.setProperty("--ares-eye-b", cols.b);
+    } catch (e) {}
+  }
+  function drawAresEyeTint(cx, cy, pr, eyes) {
+    const cols = aresEyeColors(eyes);
+    const y = cy - pr * 0.08;
+    const dx = pr * 0.18;
+    const rx = pr * 0.09;
+    const ry = pr * 0.055;
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    [["l", -dx], ["r", dx]].forEach(function (pair) {
+      ctx.beginPath();
+      ctx.ellipse(cx + pair[1], y, rx, ry, 0, 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(cx + pair[1], y, 0, cx + pair[1], y, rx);
+      g.addColorStop(0, cols.a);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.shadowColor = cols.a;
+      ctx.shadowBlur = 10;
+      ctx.fill();
+    });
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr + 2, 0, Math.PI * 2);
+    ctx.strokeStyle = cols.a;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = cols.b;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawPublicTug(cx, cy, radius, tug) {
+    // Floor visual only. FADE one way, STEAM the other. Does not override Chair gates.
+    if (!tug || tug.visual_only === false) return;
+    const fade = String((tug && tug.fade) || "SIT").toUpperCase();
+    const steam = String((tug && tug.steam) || "SIT").toUpperCase();
+    if (fade === "SIT" && steam === "SIT") return;
+    const y = cy + radius * 0.18;
+    const x0 = cx - radius * 0.52;
+    const x1 = cx + radius * 0.52;
+    let lean = Number(tug && tug.lean);
+    if (!isFinite(lean)) lean = 0;
+    lean = Math.max(-1, Math.min(1, lean));
+    const knot = cx + lean * radius * 0.38;
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    const grad = ctx.createLinearGradient(x0, y, x1, y);
+    grad.addColorStop(0, "rgba(255,80,110,0.85)");
+    grad.addColorStop(0.5, "rgba(240,193,74,0.75)");
+    grad.addColorStop(1, "rgba(0,232,255,0.85)");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x1, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(knot, y, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#f0c14a";
+    ctx.shadowColor = "#f0c14a";
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.font = "700 7px Orbitron, monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#ff6a7a";
+    ctx.fillText("FADE " + fade.slice(0, 8), x0, y - 7);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#7fe9ff";
+    ctx.fillText("STEAM " + steam.slice(0, 8), x1, y - 7);
+    ctx.restore();
+  }
   raijinPortrait.onerror = function () {
     // Same approved thunder-knight. No CORS, no neon mark, never leave the Chair empty.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
@@ -2823,7 +3072,23 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     rememberChairHit(cx, cy, pr, "front");
   }
 
+  function quadFloorTableR(w, h) {
+    // Four equal chairs. Raijin is a full quadrant, not a chip.
+    const want = Math.min(w, h) * 0.18;
+    const gapX = w * 0.44;
+    const gapY = h * 0.38;
+    const seatR = 16;
+    const labelPad = 22;
+    const maxRx = Math.max(56, (gapX - 2 * (seatR + labelPad) - 12) / (2 * 1.42));
+    const maxRy = Math.max(56, (gapY - 2 * (seatR + labelPad) - 12) / (2 * 1.42));
+    return Math.min(want, maxRx, maxRy);
+  }
+
   function drawDualFloor(w, h) {
+    drawQuadFloor(w, h);
+  }
+
+  function drawQuadFloor(w, h) {
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
     ctx.fillRect(0, 0, w, h);
@@ -2831,18 +3096,21 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const cam = floorCameraOffset();
     ctx.save();
     ctx.translate(cam.x, cam.y);
-    const mid = w / 2;
-    ctx.strokeStyle = "rgba(0, 220, 255, 0.22)";
+    ctx.strokeStyle = "rgba(0, 220, 255, 0.18)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(mid, h * 0.08);
-    ctx.lineTo(mid, h * 0.92);
+    ctx.moveTo(w / 2, h * 0.08);
+    ctx.lineTo(w / 2, h * 0.92);
+    ctx.moveTo(w * 0.08, h / 2);
+    ctx.lineTo(w * 0.92, h / 2);
     ctx.stroke();
 
-    const tableR = dualFloorTableR(w, h);
-    drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
-    drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
-    drawFloorRaijinChair(w, h);
+    const tableR = quadFloorTableR(w, h);
+    const focus = String(focusTable || "");
+    drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
+    drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
+    drawTableWithBots(w * 0.28, h * 0.72, tableR, "front", chairNameOf("front") + " · DWF", isFrontTable(focus));
+    drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats", chairNameOf("ats") + " · ATS", isAtsTable(focus));
     ctx.restore();
   }
 
@@ -2858,7 +3126,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const dir = locked ? String(lc.direction) : String(d.direction || "WAIT");
     const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
     const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
-    const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader");
+    const agents = (st.agents || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && !a.sub);
     const maj = majorityDirOf(agents);
     const gold = "rgba(240, 193, 74, 0.95)";
     const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
@@ -2895,11 +3163,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const y = cy + Math.sin(ang) * ringR;
       const adir = String(a.direction || "WAIT").toUpperCase();
       let col = "rgba(0,232,255,0.95)";
-      if (adir === "UP" || adir === "UP_HOLD") col = "rgba(0,255,120,0.95)";
-      if (adir === "DOWN" || adir === "DOWN_HOLD") col = "rgba(255,55,90,0.95)";
+      if (adir === "UP" || adir === "UP_HOLD" || adir === "COVER" || adir === "OVER" || adir === "HOME") col = "rgba(0,255,120,0.95)";
+      if (adir === "DOWN" || adir === "DOWN_HOLD" || adir === "NO-COVER" || adir === "UNDER" || adir === "AWAY") col = "rgba(255,55,90,0.95)";
       const confA = Number(a.confidence) || 50;
       const end = spokeEnd(x, y, cx, portraitY, pr + 4);
-      const agree = (adir === chairLean) && (adir === "UP" || adir === "DOWN" || adir === "UP_HOLD" || adir === "DOWN_HOLD");
+      const agree = (adir === chairLean) && (adir !== "WAIT");
       const fresh = markSeatTick((which || "t") + ":" + (a.agent_name || i), adir, confA);
       drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh, which);
       ctx.globalAlpha = focused ? 1 : 0.42;
@@ -2912,6 +3180,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
       ctx.fillStyle = "#0a1220";
       ctx.fill();
+    }
+    if (which === "ats" || (typeof isAtsTable === "function" && isAtsTable(which))) {
+      try { drawAresEyeTint(cx, portraitY, pr, (st && st.eyes) || {}); } catch (e) {}
     }
     rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
@@ -2969,6 +3240,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(180,200,220,0.75)";
       ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, plateY + 14);
+    }
+    if (which === "ats" || (typeof isAtsTable === "function" && isAtsTable(which))) {
+      const watch = (st && st.watch) || {};
+      const wline = String(watch.line || "WATCH · DARK · NO LISTING");
+      ctx.font = "700 8px Orbitron, monospace";
+      ctx.fillStyle = watch.listed ? "#f0c14a" : "rgba(127,233,255,0.85)";
+      ctx.fillText(wline, cx, plateY + (locked ? 28 : 28));
+      try { drawPublicTug(cx, cy, radius, st && st.tug); } catch (e) {}
     }
 
     if (!botPts.length) {
@@ -3179,40 +3458,32 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
     if (dual) {
-      const R = dualFloorTableR(w, h);
+      const R = (typeof quadFloorTableR === "function" ? quadFloorTableR(w, h) : dualFloorTableR(w, h));
       const pr = R * 0.80;
-      const cy = h * 0.52;
-      const portraitY = cy - 2;
-      const nameY = portraitY + pr + 11;
-      [
-        [w * 0.25, "SATOSHI · BTC", "btc"],
-        [w * 0.75, "VITALIK · ETH", "eth"],
-      ].forEach(function (pair) {
+      const chairs = [
+        [w * 0.28, h * 0.30, "SATOSHI · BTC", "btc"],
+        [w * 0.72, h * 0.30, "VITALIK · ETH", "eth"],
+        [w * 0.28, h * 0.72, "RAIJIN", "front"],
+        [w * 0.72, h * 0.72, "ARES", "ats"],
+      ];
+      chairs.forEach(function (pair) {
         const cx = pair[0];
-        const t = pair[1];
-        const side = pair[2];
+        const cy = pair[1];
+        const t = pair[2];
+        const side = pair[3];
+        const nameY = cy - 2 + pr + 11;
         const nw = tw(t, 11);
         out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
-        addSeats(cx, cy, R * 1.48, 22, 8, 9, side);
+        if (side === "btc" || side === "eth") {
+          addSeats(cx, cy, R * 1.42, 16, 6, 8, side);
+        }
       });
-      const rz = floorRaijinFit(w, h);
-      if (rz && rz.show === "chair") {
-        const nw = tw("RAIJIN", 8);
-        out.nameplates.push({
-          x: rz.x - Math.max(nw, rz.seatR * 2) / 2,
-          y: rz.y - rz.seatR,
-          w: Math.max(nw, rz.seatR * 2),
-          h: rz.seatR * 2 + 12,
-          text: "RAIJIN",
-          table: "front",
-        });
-      }
     } else if (view === "art" && !phone) {
       const radius = Math.min(w, h) * 0.32;
       const ringR = radius * 1.18;
       const lr = Math.min(w, h) * 0.24;
       const cx = w / 2, cy = h / 2;
-      const goal = "GOAL · one guess @ best odds (<80%)";
+      const goal = "GOAL · one guess @ best odds (10–90¢)";
       const gw = 200;
       const plateY = cy + lr * 0.90;
       out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -3224,12 +3495,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const cx = w / 2, cy = h / 2;
       const lr = fit.lrBase;
       if (fit.phone) {
-        const goal = "GOAL · one guess @ best odds (<80%)";
+        const goal = "GOAL · one guess @ best odds (10–90¢)";
         out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
       } else {
-        const goal = "GOAL · one guess @ best odds (<80%)";
+        const goal = "GOAL · one guess @ best odds (10–90¢)";
         const gw = 200;
         const plateY = cy + lr * 0.90;
         out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -3365,7 +3636,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const lc = d.locked_call || state.locked_call || {};
       const locked = !!(lc && lc.locked && lc.direction);
       const lockDir = (lc.direction || d.locked_dir || d.entry_dir || "").toUpperCase();
-      if (locked && (lockDir === "UP" || lockDir === "DOWN" || lockDir === "ABOVE" || lockDir === "BELOW" || lockDir === "BETWEEN")) {
+      if (locked && lockDir && lockDir !== "WAIT") {
         const conf = lc.confidence || d.confidence || 0;
         const odds = lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : (d.entry_up_pct != null ? Math.round(lockDir === "UP" ? d.entry_up_pct : 100 - d.entry_up_pct) : null);
         // Glow plate
@@ -3396,7 +3667,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.fillText(sub, cx, cy + 14);
         ctx.font = "10px Orbitron, monospace";
         ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText(isFrontTable(focusTable) ? "GOAL · DFW HIGH · CLI" : "GOAL · best odds <80%", cx, cy + 30);
+        ctx.fillText(
+          isFrontTable(focusTable)
+            ? "GOAL · DFW HIGH · CLI"
+            : (isAtsTable(focusTable) ? "GOAL · one ticket · paper" : "GOAL · best odds 10–90¢"),
+          cx, cy + 30
+        );
         ctx.restore();
       } else {
         // Small goal reminder when not locked
@@ -3405,7 +3681,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.textBaseline = "middle";
         ctx.font = "10px Orbitron, monospace";
         ctx.fillStyle = "rgba(0, 200, 255, 0.45)";
-        ctx.fillText(isFrontTable(focusTable) ? (frontHighLine(state) + " · CLI") : "GOAL · 1 window-end guess @ best odds (<80%)", cx, cy);
+        ctx.fillText(
+          isFrontTable(focusTable)
+            ? (frontHighLine(state) + " · CLI")
+            : (isAtsTable(focusTable) ? "GOAL · one ticket @ 20–80¢" : "GOAL · 1 window-end guess @ best odds (10–90¢)"),
+          cx, cy
+        );
         ctx.restore();
       }
     } catch (e) { /* keep drawing */ }
@@ -3417,18 +3698,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     // Specialists on Floor and Table — packet lines + game-unit seats
     if (mode === "floor" || mode === "art") {
-    const agents = state.agents.filter(a => a.agent_name !== "leader");
+    const agents = state.agents.filter(a => a.agent_name !== "leader" && !a.sub);
     // Round table: rank order loops the ring. Rank #1 sits at the TOP.
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
     const ranked = hier.map(r => r.agent).filter(a => a !== "law");
     const liveNames = agents.map(a => a.agent_name).filter(n => n && n !== "leader");
     const ethLive = typeof isEthTable === "function" && isEthTable(focusTable) && liveNames.length;
+    const atsLive = typeof isAtsTable === "function" && isAtsTable(focusTable) && liveNames.length;
     const frontLive = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const frontNames = FRONT_SEAT_KEYS.filter(function (k) { return liveNames.indexOf(k) >= 0; });
     const order = frontLive
       ? (frontNames.length ? frontNames : FRONT_SEAT_KEYS.slice())
-      : ethLive
+      : (ethLive || atsLive)
       ? (ranked.length
           ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
           : liveNames.filter(a => a !== "law"))
@@ -3755,8 +4037,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
-      leaderDir === "UP" || leaderDir === "UP_HOLD" ? "rgba(0, 255, 100, 0.85)" :
-      leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" ? "rgba(255, 40, 70, 0.85)" :
+      leaderDir === "UP" || leaderDir === "UP_HOLD" || leaderDir === "COVER" || leaderDir === "OVER" || leaderDir === "HOME" ? "rgba(0, 255, 100, 0.85)" :
+      leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" || leaderDir === "NO-COVER" || leaderDir === "UNDER" || leaderDir === "AWAY" ? "rgba(255, 40, 70, 0.85)" :
       "rgba(220, 235, 255, 0.75)";
 
     // Soft aura matching call
@@ -3799,6 +4081,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.arc(cx, cy, lr, 0, Math.PI * 2);
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
       ctx.fill();
+    }
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+      try {
+        const eyes = ((typeof tableState === "function" ? tableState("ats") : null) || {}).eyes || {};
+        drawAresEyeTint(cx, cy, lr, eyes);
+        paintAresEyes(eyes);
+      } catch (e) {}
     }
     rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
@@ -3892,7 +4181,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const oddsPart = entryOdds != null ? ` @ ${Math.round(entryOdds)}¢` : "";
         lockLabel = `LOCKED ${showDir}${oddsPart} · ${showConf}% · FOLLOW`;
       } else {
-        lockLabel = "GOAL · one guess @ best odds (<80%)";
+        lockLabel = "GOAL · one guess @ best odds (10–90¢)";
       }
       ctx.fillText(lockLabel, plateX, plateY);
     }
@@ -4798,21 +5087,25 @@ function drawCandleChart() {
   function syncChartHero() {
     const eth = (typeof isEthTable === "function") ? isEthTable(focusTable) : (focusTable === "ethereum");
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
-    document.body.classList.toggle("charts-hero-eth", !!eth && !front);
-    document.body.classList.toggle("charts-hero-btc", !eth && !front);
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    document.body.classList.toggle("charts-hero-eth", !!eth && !front && !ats);
+    document.body.classList.toggle("charts-hero-btc", !eth && !front && !ats);
     document.body.classList.toggle("charts-hero-front", !!front);
+    document.body.classList.toggle("charts-hero-ats", !!ats);
+    const atsTape = document.getElementById("atsChartTape");
+    if (atsTape) atsTape.hidden = !ats;
     try {
-      if (!front) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
+      if (!front && !ats) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
     } catch (e) {}
     const btcCard = document.querySelector(".chart-card.chart-pair-btc");
     const ethCard = document.querySelector(".chart-card.chart-pair-eth");
     if (btcCard) {
-      btcCard.classList.toggle("chart-hero-off", !!eth || !!front);
-      btcCard.hidden = !!eth || !!front;
+      btcCard.classList.toggle("chart-hero-off", !!eth || !!front || !!ats);
+      btcCard.hidden = !!eth || !!front || !!ats;
     }
     if (ethCard) {
-      ethCard.classList.toggle("chart-hero-off", !eth || !!front);
-      ethCard.hidden = !eth || !!front;
+      ethCard.classList.toggle("chart-hero-off", !eth || !!front || !!ats);
+      ethCard.hidden = !eth || !!front || !!ats;
     }
   }
   function setChartNoFeed(canvas, empty) {
@@ -5186,9 +5479,12 @@ function drawCandleChart() {
     const a = String((r && r.asset) || "").toLowerCase();
     if (a === "eth" || a === "ethereum") return "ETH";
     if (a === "btc" || a === "bitcoin") return "BTC";
+    if (a === "ats" || a === "ares" || a === "sports") return "ATS";
+    if (a === "front" || a === "dfw") return "DFW";
     const tick = String((r && r.ticker) || "");
     if (/ETH/i.test(tick)) return "ETH";
     if (/BTC/i.test(tick)) return "BTC";
+    if (/KX(NFL|NCAAF|NBA|MLB|NHL)/i.test(tick)) return "ATS";
     return fallback || "—";
   }
 
@@ -5197,6 +5493,8 @@ function drawCandleChart() {
     if (d.includes("ABOVE")) return "ABOVE";
     if (d.includes("BELOW")) return "BELOW";
     if (d.includes("BETWEEN")) return "BETWEEN";
+    if (d === "COVER" || d === "NO-COVER" || d === "OVER" || d === "UNDER" || d === "HOME" || d === "AWAY") return d;
+    if (d && d !== "WAIT" && d !== "YES" && d !== "NO" && !d.includes("UP") && !d.includes("DOWN") && d.length <= 5) return d;
     if (d.includes("UP")) return "UP";
     if (d.includes("DOWN")) return "DOWN";
     if (d === "YES" || d === "NO") return wxWord(d, r && r.strike_type, null, r && r.floor_strike, r && r.cap_strike);
@@ -5243,6 +5541,12 @@ function drawCandleChart() {
     }
     const d = (ts && ts.decision) || {};
     const raw = String(d.direction || "WAIT").toUpperCase();
+    if (raw === "COVER" || raw === "NO-COVER" || raw === "OVER" || raw === "UNDER" || raw === "HOME" || raw === "AWAY") {
+      return { side: raw, locked: false, conf: d.confidence };
+    }
+    if (raw && raw !== "WAIT" && raw !== "YES" && raw !== "NO" && !raw.includes("UP") && !raw.includes("DOWN") && raw.length <= 5) {
+      return { side: raw, locked: false, conf: d.confidence };
+    }
     const side = raw.includes("UP") ? "UP" : (raw.includes("DOWN") ? "DOWN" : "WAIT");
     return { side, locked: false, conf: d.confidence };
   }
@@ -5252,14 +5556,16 @@ function drawCandleChart() {
     if (!lc) return null;
     const side = sideFromLockRow(lc);
     const conf = lc.confidence != null ? lc.confidence : "—";
-    const agents = ((ts && ts.agents) || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && a.agent_name !== "law");
+    const agents = ((ts && ts.agents) || []).filter(a => a && a.agent_name && a.agent_name !== "leader" && a.agent_name !== "law" && !a.sub);
     const allies = agents
       .filter(a => {
         const d = String(a.direction || "").toUpperCase();
-        return side === "UP" ? d.includes("UP") : (side === "DOWN" ? d.includes("DOWN") : false);
+        if (side === "UP") return d.includes("UP");
+        if (side === "DOWN") return d.includes("DOWN");
+        return d === side;
       })
       .sort((a, b) => (Number(b.confidence) || 0) - (Number(a.confidence) || 0));
-    const seats = allies.slice(0, 2).map(a => (AGENT_LABELS && AGENT_LABELS[a.agent_name]) || a.agent_name);
+    const seats = allies.slice(0, 2).map(a => (AGENT_LABELS && AGENT_LABELS[a.agent_name]) || a.display_name || a.agent_name);
     return { side, conf, seats };
   }
 
@@ -5363,7 +5669,9 @@ function drawCandleChart() {
       if (!locks.length) {
         list.innerHTML = isFrontTable(focusTable)
           ? '<li class="lock-tape-empty">No Dallas book — waiting on DFW CLI</li>'
-          : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin</li>';
+          : (isAtsTable(focusTable)
+            ? '<li class="lock-tape-empty">No Chair lock this hour — waiting on Ares</li>'
+            : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>');
       } else {
         list.innerHTML = locks.slice(0, 8).map(p => {
           const result = p.status === "OPEN"
@@ -5387,17 +5695,32 @@ function drawCandleChart() {
     const whyLine = document.getElementById("whyLockLine");
     const focused = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
     let why = whyThisLockLine(focused);
-    if (!why) {
+    if (!why && typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+      const d = (focused && focused.decision) || {};
+      const dir = String(d.direction || "WAIT").toUpperCase();
+      why = { side: dir === "WAIT" ? "WAIT" : dir, conf: d.confidence, seats: [], wait: dir === "WAIT", summary: d.summary };
+    }
+    if (!why && !(typeof isAtsTable === "function" && isAtsTable(focusTable)) && !(typeof isFrontTable === "function" && isFrontTable(focusTable))) {
       const other = focusTable === "ethereum" ? "bitcoin" : "ethereum";
       why = whyThisLockLine((typeof tableState === "function" ? tableState(other) : null) || {});
     }
     if (whyCard && whyLine) {
       if (why) {
         whyCard.classList.remove("hidden");
-        const seats = (why.seats && why.seats.length)
-          ? why.seats.join(" + ")
-          : "council majority";
-        whyLine.textContent = `${why.side} · ${why.conf}% · ${seats}`;
+        if (why.wait || why.side === "WAIT") {
+          whyLine.textContent = why.summary || "WAIT · no game on the table";
+        } else {
+          const seats = (why.seats && why.seats.length)
+            ? why.seats.join(" + ")
+            : (typeof isAtsTable === "function" && isAtsTable(focusTable) ? "one game · paper" : "council majority");
+          whyLine.textContent = `${why.side} · ${why.conf}% · ${seats}`;
+        }
+        if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+          const whyAts = (focused && focused.why) || {};
+          const watch = (focused && focused.watch) || {};
+          const extra = [whyAts.line, whyAts.strip, watch.line].filter(Boolean);
+          if (extra.length) whyLine.textContent = extra.join(" · ");
+        }
       } else {
         whyCard.classList.add("hidden");
         whyLine.textContent = "—";
@@ -5469,9 +5792,9 @@ function drawCandleChart() {
         ticker: r.ticker,
       }));
     }
-    ["bitcoin", "ethereum", "front"].forEach(key => {
+    ["bitcoin", "ethereum", "front", "ats"].forEach(key => {
       const ts = (typeof tableState === "function" ? tableState(key) : null) || {};
-      const pair = key === "front" ? "DFW" : (key === "ethereum" ? "ETH" : "BTC");
+      const pair = key === "ats" ? "ATS" : (key === "front" ? "DFW" : (key === "ethereum" ? "ETH" : "BTC"));
       const lc = pairLock(ts);
       if (lc) {
         add({
@@ -5780,6 +6103,32 @@ function drawCandleChart() {
     }).join("");
   }
   function renderBotsGuide() {
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+      const grid = document.getElementById("botsGrid");
+      if (!grid) return;
+      const ts = (typeof tableState === "function" ? tableState("ats") : null) || {};
+      const seats = (ts.agents || []).filter(function (a) { return a && a.agent_name && a.agent_name !== "leader" && !a.sub; });
+      const blurbs = {
+        line: "The Kalshi book / the number.",
+        steam: "Line movement. When the number runs, say so.",
+        fade: "Public vs sharp. Fade the loud side.",
+        hurt: "Injuries / out.",
+        ice: "Veto. 99¢ chalk, empty book, stale, too early, no depth.",
+      };
+      grid.innerHTML = seats.map(function (a) {
+        const key = String(a.agent_name || "").toLowerCase();
+        const name = a.display_name || key.toUpperCase();
+        const dir = a.direction || "WAIT";
+        return '<article class="bot-card">' +
+          '<div class="bot-card-head">' + botGuideMarkHtml(key, name) + '<span class="bot-callsign">' + name + '</span></div>' +
+          '<div class="bot-blurb">' + (blurbs[key] || a.title || "") + '</div>' +
+          '<div class="bot-subs">' + (key === "line" ? "CLOCK under LINE" : key === "fade" ? "FORM under FADE" : key === "ice" ? "WX under ICE" : "Seat") + '</div>' +
+          '<div class="bot-stats"><span class="hier-dir ' + dir + '">' + dir + '</span></div>' +
+          '</article>';
+      }).join("");
+      try { renderAtsBotsGuide(atsBoard); } catch (e) {}
+      return;
+    }
     if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
       try { renderFrontBotsGuide(typeof frontBoard !== "undefined" ? frontBoard : null); } catch (e) {}
       const grid = document.getElementById("botsGrid");
@@ -5849,6 +6198,19 @@ function drawCandleChart() {
 
   async function loadAutoPaper() {
     try {
+      if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+        const acc = ((typeof tableState === "function" ? tableState("ats") : null) || {}).accuracy || {};
+        const el = document.getElementById("paperAutoSummary");
+        if (el) el.textContent = "ATS paper · " + (acc.correct || 0) + "W/" + (acc.wrong || 0) + "L · WAIT " + (acc.wait_n || 0);
+        const list = document.getElementById("paperAutoList");
+        if (list) {
+          const rows = acc.recent || acc.log || [];
+          list.innerHTML = rows.slice(0, 12).map(function (row) {
+            return '<div class="paper-auto-row">' + (row.side || row.direction || "WAIT") + " · " + (row.ticker || "") + " · " + (row.result || row.outcome || "") + "</div>";
+          }).join("") || "<div class=\"paper-auto-row\">No Ares fills yet</div>";
+        }
+        return;
+      }
       if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
         const acc = ((typeof tableState === "function" ? tableState("front") : null) || {}).accuracy || {};
         const el = document.getElementById("paperAutoSummary");
@@ -5891,18 +6253,24 @@ function drawCandleChart() {
     if (!show) return;
     const chips = [];
     function addChip(pair, side) {
-      const p = pair === "ETH" || pair === "ethereum" ? "ETH" : "BTC";
-      const s = side === "UP" || side === "DOWN" || side === "WAIT" ? side : "WAIT";
+      const raw = String(pair || "").toUpperCase();
+      const p = raw === "ETH" || raw === "ETHEREUM" ? "ETH"
+        : (raw === "ATS" || raw === "ARES" ? "ATS"
+          : (raw === "DFW" || raw === "FRONT" ? "DFW" : "BTC"));
+      const s = side && side !== "—" ? String(side).toUpperCase() : "WAIT";
       const chip = p + " " + s;
       if (chips.indexOf(chip) < 0) chips.push(chip);
     }
     try {
       const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
       const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
+      const a = tableLean((typeof tableState === "function" ? tableState("ats") : null) || {});
       if (!b.locked) addChip("BTC", "WAIT");
       else addChip("BTC", b.side);
       if (!e.locked) addChip("ETH", "WAIT");
       else addChip("ETH", e.side);
+      if (a && a.side && a.side !== "WAIT") addChip("ATS", a.side);
+      else addChip("ATS", "WAIT");
     } catch (err) {}
     try {
       const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
@@ -5922,9 +6290,13 @@ function drawCandleChart() {
     const m = view.market || {};
     const h = view.health || (state && state.health) || {};
     const lc = view.locked_call || d.locked_call || {};
-    const locked = !!(lc && lc.locked && lc.direction && /UP|DOWN/.test(String(lc.direction).toUpperCase()));
+    const rawDir = String((lc && lc.direction) || d.direction || "WAIT").toUpperCase();
+    const sportsLock = !!(lc && lc.locked && rawDir && rawDir !== "WAIT" && !/^(UP|DOWN)/.test(rawDir));
+    const locked = !!(lc && lc.locked && lc.direction && (/UP|DOWN/.test(String(lc.direction).toUpperCase()) || sportsLock));
     const raw = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
-    const side = raw.indexOf("UP") >= 0 ? "UP" : (raw.indexOf("DOWN") >= 0 ? "DOWN" : "WAIT");
+    const side = (raw === "COVER" || raw === "NO-COVER" || raw === "OVER" || raw === "UNDER" || raw === "HOME" || raw === "AWAY" || (raw && raw !== "WAIT" && raw !== "YES" && raw !== "NO" && !raw.includes("UP") && !raw.includes("DOWN") && raw.length <= 5))
+      ? raw
+      : (raw.indexOf("UP") >= 0 ? "UP" : (raw.indexOf("DOWN") >= 0 ? "DOWN" : "WAIT"));
     const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
     const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
     const down = yb != null ? (100 - yb) : (m.down_pct != null ? Number(m.down_pct) : null);
@@ -5956,6 +6328,33 @@ function drawCandleChart() {
     return bits.slice(0, 3).join(" · ");
   }
 
+  function paintAtsWhy(ts) {
+    const wrap = document.getElementById("atsWhy");
+    const line = document.getElementById("atsWhyLine");
+    const strip = document.getElementById("atsWhyStrip");
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    const show = ats && (mode === "art" || mode === "floor" || mode === "night");
+    if (wrap) wrap.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
+    const why = view.why || (view.pick && view.pick.why) || {};
+    if (line) line.textContent = String(why.line || "WHY · DARK · NO GAME ON THE TABLE");
+    if (strip) strip.textContent = String(why.strip || "LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK");
+  }
+
+  function paintAtsWatch(ts) {
+    const el = document.getElementById("atsWatch");
+    if (!el) return;
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    const show = ats && (mode === "art" || mode === "floor" || mode === "night");
+    el.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
+    const watch = view.watch || (view.pick && view.pick.watch) || {};
+    el.textContent = String(watch.line || "WATCH · DARK · NO GAME ON THE TABLE");
+    el.dataset.listed = watch.listed ? "1" : "0";
+  }
+
   function paintChairWhy() {
     const el = document.getElementById("chairWhy");
     if (!el) return;
@@ -5963,7 +6362,14 @@ function drawCandleChart() {
     el.hidden = !show;
     if (!show) return;
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
-    el.textContent = chairWhyLineText(ts);
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+      const why = ts.why || (ts.pick && ts.pick.why) || {};
+      el.textContent = String(why.line || chairWhyLineText(ts));
+    } else {
+      el.textContent = chairWhyLineText(ts);
+    }
+    try { paintAtsWhy(ts); } catch (e) {}
+    try { paintAtsWatch(ts); } catch (e) {}
   }
 
   function paintPhoneScore() {
@@ -5975,8 +6381,9 @@ function drawCandleChart() {
     const sc = (typeof scorecardFromState === "function") ? scorecardFromState() : {};
     const eth = focusTable === "ethereum";
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
-    el.textContent = front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0"));
-    el.setAttribute("aria-label", "Flip to " + (front ? "Bitcoin / Satoshi" : (eth ? "Bitcoin / Satoshi" : "Ethereum / Vitalik")));
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    el.textContent = ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0")));
+    el.setAttribute("aria-label", "Flip focused Chair");
   }
 
   function paintHealthStrip(data) {
@@ -6034,6 +6441,36 @@ function drawCandleChart() {
     const table = document.getElementById("tapeTable");
     const meta = document.getElementById("tapeMeta");
     const calib = document.getElementById("tapeCalib");
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+      try { if (typeof loadAtsTable === "function") await loadAtsTable(); } catch (e) {}
+      const acc = ((typeof tableState === "function" ? tableState("ats") : null) || {}).accuracy || {};
+      const rows = acc.log || acc.recent || [];
+      if (meta) meta.textContent = rows.length ? (rows.length + " Ares prints") : "honest empty";
+      if (calib) calib.innerHTML = '<div class="calib-empty">Ares grades on the official finish — one game, paper only.</div>';
+      if (table) {
+        if (!rows.length) {
+          table.innerHTML = '<div class="tape-empty">No Ares paper locks yet. WAIT is a print.</div>';
+        } else {
+          const head = '<div class="tape-row head"><span>GAME</span><span>ASSET</span><span>SIDE</span><span>KIND</span><span>LEFTOVER</span><span>ODDS</span><span>RESULT</span><span>P&L</span></div>';
+          const body = rows.map(function (row) {
+            const res = row.result || "OPEN";
+            const cls = res === "HIT" ? "hit" : (res === "MISS" ? "miss" : "open");
+            return '<div class="tape-row ' + cls + '">'
+              + '<span>' + (row.number || row.title || row.game || "—") + '</span>'
+              + '<span>ATS</span>'
+              + '<span>' + (row.side || "WAIT") + '</span>'
+              + '<span>' + (row.kind || "—") + '</span>'
+              + '<span>' + (row.leftover != null ? (Number(row.leftover).toFixed(1) + "¢") : "—") + '</span>'
+              + '<span>' + (row.mid != null ? Math.round(Number(row.mid)) + "¢" : "—") + '</span>'
+              + '<span class="tape-res">' + res + '</span>'
+              + '<span>' + (res === "OPEN" ? "—" : (row.pnl != null ? row.pnl : "—")) + '</span>'
+              + '</div>';
+          }).join("");
+          table.innerHTML = head + body;
+        }
+      }
+      return;
+    }
     try {
       const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/tape", { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
@@ -7536,6 +7973,80 @@ function drawCandleChart() {
   }
   window.loadFrontTable = loadFrontTable;
 
+  let atsBoard = null;
+  let atsPollTimer = null;
+  async function loadAtsTable() {
+    try {
+      const r = await fetch("/api/ats", { cache: "no-store", headers: { Accept: "application/json" } });
+      if (r.ok) {
+        atsBoard = await r.json();
+        try { paintAresEyes((atsBoard.chair && atsBoard.chair.eyes) || (atsBoard.pick && atsBoard.pick.eyes)); } catch (e) {}
+        try { renderAtsBotsGuide(atsBoard); } catch (e) {}
+        try { paintAtsChartTape(atsBoard); } catch (e) {}
+        try { paintAtsWhy(atsBoard); } catch (e) {}
+        try { paintAtsWatch(atsBoard); } catch (e) {}
+        try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
+        try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
+      }
+    } catch (e) {}
+    if (atsPollTimer) clearInterval(atsPollTimer);
+    atsPollTimer = setInterval(function () {
+      if (mode !== "art" && mode !== "floor" && mode !== "dashboard" && mode !== "bots" && mode !== "ranks" && focusTable !== "ats") return;
+      fetch("/api/ats", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (!data) return;
+        atsBoard = data;
+        try { paintAresEyes((data.chair && data.chair.eyes) || (data.pick && data.pick.eyes)); } catch (e) {}
+        try { renderAtsBotsGuide(data); } catch (e) {}
+        try { paintAtsChartTape(data); } catch (e) {}
+        try { paintAtsWhy(data); } catch (e) {}
+        try { paintAtsWatch(data); } catch (e) {}
+      }).catch(function () {});
+    }, 20000);
+  }
+  window.loadAtsTable = loadAtsTable;
+  function renderAtsBotsGuide(data) {
+    const grid = document.getElementById("atsBotsGrid");
+    if (!grid) return;
+    const fallback = [
+      { id: "LINE", job: "The Kalshi book / the number.", mark: "/static/bots/line.png" },
+      { id: "STEAM", job: "Line movement.", mark: "/static/bots/steam.png" },
+      { id: "FADE", job: "Public vs sharp.", mark: "/static/bots/fade.png" },
+      { id: "HURT", job: "Injuries / out.", mark: "/static/bots/hurt.png" },
+      { id: "ICE", job: "Veto. 99¢ chalk, empty book, stale, too early, no depth.", mark: "/static/bots/ice.png" },
+    ];
+    const seats = ((data && data.seats) || fallback);
+    const chair = (data && data.chair) || { id: "ARES", name: "ARES", job: "Sports chair. One game.", mark: "/static/ares-chair.png" };
+    const subs = ((data && data.subs) || [
+      { id: "CLOCK", parent: "LINE", call: "Time to kick / tip / first pitch." },
+      { id: "FORM", parent: "FADE", call: "ATS / record." },
+      { id: "WX", parent: "ICE", call: "Outdoor weather that moves a total or spread." },
+    ]);
+    const rows = [chair].concat(seats);
+    grid.innerHTML = rows.map(function (s) {
+      const callsign = (s.id === "ARES" || s.name === "ARES") ? "ARES" : String(s.id || "");
+      const face = (callsign === "ARES") ? "/static/ares-chair.png" : s.mark;
+      const kids = subs.filter(function (sub) { return sub.parent === s.id; }).map(function (sub) {
+        return '<div class="ats-sub">' + sub.id + " · " + String(sub.call || sub.job || "") + "</div>";
+      }).join("");
+      return '<article class="bot-card front-bot-card" data-ats-seat="' + callsign + '">' +
+        '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
+        '<span class="bot-callsign">' + callsign + "</span></div>" +
+        '<div class="bot-blurb">' + String(s.job || s.call || "") + "</div>" +
+        kids +
+        "</article>";
+    }).join("");
+  }
+  function paintAtsChartTape(data) {
+    const line = document.getElementById("atsChartLine");
+    const meta = document.getElementById("atsChartMeta");
+    const pick = (data && data.pick) || {};
+    const chair = (data && data.chair) || {};
+    const watch = (data && data.watch) || chair.watch || pick.watch || {};
+    const why = (data && data.why) || chair.why || pick.why || {};
+    if (line) line.textContent = (chair.call || pick.number || "WAIT · no game on the table") + " · " + (why.line || "WHY · DARK") + " · " + (watch.line || "WATCH · DARK · NO LISTING");
+    if (meta) meta.textContent = (pick.sport || "ATS") + (pick.kind ? (" · " + pick.kind) : "");
+  }
+
   function renderRanksBoard() {
     const table = document.getElementById("ranksTable");
     const phaseEl = document.getElementById("ranksPhase");
@@ -7987,6 +8498,9 @@ function drawCandleChart() {
     if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
+    if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || mode === "dashboard" || mode === "bots" || mode === "ranks" || mode === "charts" || mode === "tape" || mode === "paper")) {
+      try { loadAtsTable(); } catch (e) {}
+    }
     if (mode === "follower" && typeof window.renderFollower === "function") {
       try { window.renderFollower(); } catch (e) {}
     }
@@ -8470,13 +8984,13 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabScreensaver",
       title: "WHAT THIS IS",
-      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
       mode: "art",
       target: "#tableStage",
       title: "GOAL CONTRACT",
-      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (chosen side < 80¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
+      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (book inside 10–90¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
     },
     {
       mode: "art",
@@ -8500,13 +9014,13 @@ function drawCandleChart() {
       mode: "art",
       target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: chosen side must be under 80¢.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
+      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: book must be inside 10–90¢. Never play 99¢ chalk.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
     },
     {
       mode: "floor",
       target: "#tabFloor",
       title: "FLOOR",
-      body: "Floor is the immersive table. The outer ring is specialists still voting and ranking. The strip is a paper match score for the two books — BTC sized locks vs ETH shadow picks, finish-only. Reset is in Settings. ESC or TABLE returns to the desk.",
+      body: "Floor is four equal chairs: Satoshi, Vitalik, Raijin, Ares. Tap a Chair to focus that table. The strip is a paper match score. Reset is in Settings. ESC or TABLE returns to the desk.",
     },
     {
       mode: "dashboard",
@@ -8539,6 +9053,12 @@ function drawCandleChart() {
       body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (NWS PANE) · MESH (THE WEB) · PIT (THE PIT) · FROST (FROST KILL) · BONE (BONE CLIMO). Subs: HEAT · ECHO · CELL. They feed. They do not vote.\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
     },
     {
+      mode: "art",
+      target: "#focusAts",
+      title: "ARES / ATS",
+      body: "Ares is the sports Chair. One ticket. You do not pick the slate.\n\nGold tab ATS. Calls are COVER / NO-COVER, HOME / AWAY or the team, OVER / UNDER. WAIT stays WAIT.\n\nSeats: LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs under a parent — not a sixth ring seat.\n\nGates: ONE TICKET · KEY NUMBERS · SIT AFTER KICK · SPORT BRAINS · PUBLIC TUG (floor visual only, does not override gates).\n\nPaper only. Follower off. Empty book is UNKNOWN, not DEAD. Sports band 20–80. 10–90 is crypto only.",
+    },
+    {
       mode: "charts",
       target: "#tabCharts",
       title: "CHARTS",
@@ -8548,7 +9068,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabSettings",
       title: "SETTINGS",
-      body: "BEAST MODE, sounds, and knobs. RAIJIN / THE FRONT is its own block — show the Front tab, the small Floor chair, paper default, WX stake / daily loss, FROST / SICK no-lock, and fade underperformers. It is not Follower. Settings stays behind the admin lock.",
+      body: "BEAST MODE, sounds, and knobs. RAIJIN / THE FRONT is its own block — show the Front tab, the equal Floor chair, paper default, WX stake / daily loss, FROST / SICK no-lock, and fade underperformers. It is not Follower. Settings stays behind the admin lock.",
     },
     {
       mode: "art",
@@ -8984,21 +9504,28 @@ function drawCandleChart() {
     function applyFocusChrome() {
       const isEth = isEthTable(focusTable);
       const isFront = isFrontTable(focusTable);
-      document.body.dataset.focusTable = isFront ? "front" : (isEth ? "ethereum" : "bitcoin");
+      const isAts = typeof isAtsTable === "function" && isAtsTable(focusTable);
+      document.body.dataset.focusTable = isAts ? "ats" : (isFront ? "front" : (isEth ? "ethereum" : "bitcoin"));
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
-        if (isEth || isFront) focusBtc.classList.remove("focus-active");
+        if (isEth || isFront || isAts) focusBtc.classList.remove("focus-active");
         else focusBtc.classList.add("focus-active");
       }
       if (focusEth) {
         focusEth.classList.remove("active", "mode-tab");
-        if (isEth && !isFront) focusEth.classList.add("focus-active");
+        if (isEth && !isFront && !isAts) focusEth.classList.add("focus-active");
         else focusEth.classList.remove("focus-active");
       }
       if (focusFront) {
         focusFront.classList.remove("active", "mode-tab");
         if (isFront) focusFront.classList.add("focus-active");
         else focusFront.classList.remove("focus-active");
+      }
+      const focusAts = document.getElementById("focusAts");
+      if (focusAts) {
+        focusAts.classList.remove("active", "mode-tab");
+        if (isAts) focusAts.classList.add("focus-active");
+        else focusAts.classList.remove("focus-active");
       }
       const badge = document.getElementById("focusTableBadge");
       if (badge) {
@@ -9009,8 +9536,8 @@ function drawCandleChart() {
       if (stage) {
         const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
-          ? "Floor — Satoshi BTC, Vitalik ETH, and Raijin DFW"
-          : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")));
+          ? "Floor — Satoshi BTC, Vitalik ETH, Raijin DFW, Ares ATS"
+          : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"))));
       }
       try { syncChartPairTitle(); } catch (e) {}
       try { paintFrontWindowChrome(); } catch (e) {}
@@ -9018,13 +9545,20 @@ function drawCandleChart() {
 
     function setFocusTable(which) {
       const w = String(which || "").toLowerCase();
-      if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") focusTable = "front";
+      if (w === "ats" || w === "ares" || w === "sports") focusTable = "ats";
+      else if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") focusTable = "front";
       else if (w === "ethereum" || w === "eth" || w === "vitalik") focusTable = "ethereum";
       else focusTable = "bitcoin";
       try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
       if (focusTable === "front") {
         try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
         try { if (mode === "front") setMode("art"); } catch (e) {}
+      }
+      if (focusTable === "ats") {
+        try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
+        try { paintAresEyes(((typeof tableState === "function" ? tableState("ats") : null) || {}).eyes); } catch (e) {}
+      } else {
+        try { paintAresEyes({ mode: "wait" }); } catch (e) {}
       }
       applyFocusChrome();
       try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
@@ -9052,7 +9586,10 @@ function drawCandleChart() {
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
     bind(focusFront, "front");
+    const focusAts = document.getElementById("focusAts");
+    bind(focusAts, "ats");
     applyFocusChrome();
+    try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
     const floorExit = document.getElementById("floorExitBtn");
     if (floorExit && !floorExit.__wired) {
       floorExit.__wired = true;
@@ -9077,7 +9614,7 @@ function drawCandleChart() {
       phoneScore.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const order = ["ethereum", "bitcoin", "front"];
+        const order = ["ethereum", "bitcoin", "front", "ats"];
         const idx = order.indexOf(focusTable);
         const next = order[(idx + 1) % order.length];
         if (typeof setFocusTable === "function") setFocusTable(next);
@@ -9754,6 +10291,10 @@ function drawCandleChart() {
       e.stopPropagation();
       if (hit.which === "front") {
         try { setFocusTable("front"); } catch (err) {}
+        return;
+      }
+      if (hit.which === "ats" || hit.which === "ares") {
+        try { setFocusTable("ats"); } catch (err) {}
         return;
       }
       playLeaderClickVideo();

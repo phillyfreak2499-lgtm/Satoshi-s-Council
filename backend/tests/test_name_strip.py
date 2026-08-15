@@ -33,6 +33,7 @@ class VisibleZtStripTests(unittest.TestCase):
         self.assertNotIn("SATOSHI’S COUNCIL / ZT", HTML)
 
     def test_visible_marks_use_hex_not_zt_logo(self):
+        # Slots stay /council-mark.png; the PICTURE is the city / candle / up-arrow mark.
         self.assertIn('src="/council-mark.png"', HTML)
         self.assertGreaterEqual(HTML.count('src="/council-mark.png"'), 4)
         self.assertNotIn('src="/zt-logo.jpg"', HTML)
@@ -40,9 +41,18 @@ class VisibleZtStripTests(unittest.TestCase):
         wm = HTML.split('id="ztWatermark"', 1)[1][:120]
         self.assertNotIn("zt-logo", wm)
         self.assertNotIn("src=", wm.split(">", 1)[0])
+        mark = ROOT / "frontend" / "static" / "council-mark.png"
+        jpg = ROOT / "frontend" / "static" / "zt-logo.jpg"
+        self.assertTrue(mark.is_file())
+        self.assertTrue(jpg.is_file())
+        self.assertGreater(mark.stat().st_size, 1_400_000)
+        self.assertGreater(jpg.stat().st_size, 260_000)
+        self.assertEqual(mark.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(jpg.read_bytes()[:2], b"\xff\xd8")
         fav = (ROOT / "frontend" / "static" / "favicon.svg").read_text(encoding="utf-8")
-        self.assertIn('stroke="#00e8ff"', fav)
-        self.assertNotIn("M8.2 10.2h9.2", fav)
+        self.assertIn('stroke="#f0c14a"', fav)
+        self.assertIn("#39ff14", fav)
+        self.assertNotIn('stroke="#00e8ff"', fav)
         self.assertNotIn("gold ZT", CSS)
 
     def test_logo_labels_have_no_zt(self):

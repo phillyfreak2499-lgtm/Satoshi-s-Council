@@ -6,8 +6,10 @@ from datetime import datetime, timedelta, timezone
 
 from backend.agents.chair_gates import (
     band_tighten,
+    book_is_unknown,
     book_too_thin,
     clamp_p_finish,
+    count_paper_locks_today,
     close_time_from_kalshi_ticker,
     collect_official_results,
     compute_ev_cents,
@@ -19,6 +21,8 @@ from backend.agents.chair_gates import (
     eth_paper_lock_blocked,
     eth_shadow_pick,
     ev_gate_blocks,
+    explore_paper_lock_ok,
+    explore_paper_lock_open,
     finish_outcome,
     known_official_market,
     kalshi_result_to_side,
@@ -32,6 +36,7 @@ from backend.agents.chair_gates import (
     late_spot_decisive,
     never_lock_near_certain,
     official_window_due,
+    paper_lock_day_ok,
     paper_stake_for_lock,
     pick_settle_spot,
     odds_band_key,
@@ -81,6 +86,9 @@ class ClampAndEvTests(unittest.TestCase):
         self.assertTrue(ev_gate_blocks(0.50, 10.0, 0.55, 3.0))
         self.assertTrue(ev_gate_blocks(0.70, 2.0, 0.55, 3.0))
         self.assertFalse(ev_gate_blocks(0.70, 18.0, 0.55, 3.0))
+        # Calibrate still requires EV ≥ 0 — 10–90 does not drop this gate.
+        self.assertTrue(ev_gate_blocks(0.70, -5.0, 0.55, 0.0))
+        self.assertFalse(ev_gate_blocks(0.70, 0.0, 0.55, 0.0))
 
 
 class TimeHurdleTests(unittest.TestCase):
@@ -124,6 +132,39 @@ class BookDepthTests(unittest.TestCase):
     def test_missing_book_does_not_wait(self):
         self.assertFalse(book_too_thin(parse_book_depth(None), "UP", 5.0))
         self.assertFalse(book_too_thin({"has_size": False}, "UP", 5.0))
+
+    def test_orderbook_fp_dollars_has_size(self):
+        book = {
+            "orderbook_fp": {
+                "yes_dollars": [["0.48", "20.00"], ["0.47", "10.00"]],
+                "no_dollars": [["0.51", "15.00"]],
+            }
+        }
+        d = parse_book_depth(book)
+        self.assertTrue(d["has_size"])
+        self.assertTrue(d["measured"])
+        self.assertEqual(d["book_state"], "ok")
+        self.assertGreaterEqual(d["yes_depth"], 20)
+        self.assertFalse(book_is_unknown(d))
+
+    def test_null_depth_is_unknown_not_dead(self):
+        unknown = parse_book_depth(None)
+        self.assertEqual(unknown["book_state"], "unknown")
+        self.assertTrue(book_is_unknown(unknown))
+        self.assertIsNone(dead_book_reason(unknown, "UP", 50))
+        both_zero = {"yes_depth": 0, "no_depth": 0, "has_size": False}
+        self.assertTrue(book_is_unknown(both_zero))
+        self.assertIsNone(dead_book_reason(both_zero, "UP", 50))
+        self.assertIsNone(dead_book_reason({"yes_depth": None, "no_depth": None, "has_size": False}, "DOWN", 48))
+
+    def test_measured_one_sided_is_dead(self):
+        depth = {"yes_depth": 0, "no_depth": 40, "yes_bid_px": 50, "no_bid_px": 50, "has_size": True, "measured": True}
+        why = dead_book_reason(depth, "UP", 50)
+        self.assertEqual(why, "one-sided book · yes_depth 0")
+        empty = parse_book_depth({"yes": [], "no": []})
+        self.assertTrue(empty["measured"])
+        self.assertEqual(empty["book_state"], "dead")
+        self.assertIn("empty book", dead_book_reason(empty, "UP", 50) or "")
 
 
 class WindowStrikeTests(unittest.TestCase):
@@ -494,6 +535,220 @@ class EthShadowPickTests(unittest.TestCase):
         )
         self.assertIsNone(out.get("eth_shadow_pick"))
         self.assertIsNone(eth_shadow_pick("btc", "UP", 80))
+
+
+class ExplorePaperLockTests(unittest.TestCase):
+    def _book(self):
+        return {
+            "yes_depth": 40,
+            "no_depth": 30,
+            "yes_bid_sz": 20,
+            "no_bid_sz": 15,
+            "yes_bid_px": 48,
+            "no_bid_px": 51,
+            "has_size": True,
+            "measured": True,
+            "book_state": "ok",
+        }
+
+    def _btc_regime(self, **over):
+        base = {
+            "asset": "btc",
+            "ticker": "KXBTCD-26AUG1616-T63000.00",
+            "mins_left": 35,
+            "window_minutes": 60,
+            "up_pct": 48,
+            "yes_ask": 50,
+            "no_ask": 52,
+            "yes_mid": 48,
+            "side_ask": 50,
+            "floor_strike": 63000.0,
+            "kalshi_healthy": True,
+            "settled_n": 3,
+            "reliability_n": 3,
+            "learning_phase": "explore",
+            "spread_cents": 2.0,
+            "book_depth": self._book(),
+            "paper_locks_today": 0,
+        }
+        base.update(over)
+        return base
+
+    def _mixed_signals(self):
+        from backend.agents.base import AgentSignal
+        return [
+            AgentSignal("candle", "UP", 80, "test", "candle"),
+            AgentSignal("strike", "DOWN", 80, "test", "strike"),
+            AgentSignal("odds", "UP", 78, "test", "odds"),
+            AgentSignal("whale", "DOWN", 70, "test", "whale"),
+            AgentSignal("volume", "UP", 72, "test", "volume"),
+            AgentSignal("momentum", "WAIT", 40, "test", "momentum"),
+        ]
+
+    def test_explore_helpers(self):
+        self.assertTrue(explore_paper_lock_open("explore", 3))
+        self.assertTrue(explore_paper_lock_open("calibrate", 12))
+        self.assertFalse(explore_paper_lock_open("calibrate", 20))
+        self.assertFalse(explore_paper_lock_open("exploit", 80))
+        self.assertTrue(explore_paper_lock_ok(0.62, 2.0, 48))
+        self.assertFalse(explore_paper_lock_ok(0.50, 4.0, 48))
+        self.assertFalse(explore_paper_lock_ok(0.62, -1.0, 48))
+        self.assertTrue(explore_paper_lock_ok(0.62, 2.0, 12))
+        # 10–90 opens the band; EV ≥ 0 is still required (explore and calibrate).
+        self.assertTrue(explore_paper_lock_ok(0.95, 4.0, 88))
+        self.assertTrue(explore_paper_lock_ok(0.90, 2.0, 82))
+        self.assertFalse(explore_paper_lock_ok(0.62, -8.0, 88))
+        self.assertFalse(explore_paper_lock_ok(0.62, -5.0, 82))
+        self.assertFalse(explore_paper_lock_ok(0.50, 4.0, 88))
+        self.assertFalse(explore_paper_lock_ok(0.62, 2.0, 9))
+        self.assertFalse(explore_paper_lock_ok(0.62, 2.0, 91))
+        self.assertFalse(explore_paper_lock_ok(0.99, 20.0, 99))
+        self.assertTrue(ev_gate_blocks(0.70, -5.0, 0.55, 0.0))
+        self.assertTrue(ev_gate_blocks(0.70, -5.0, 0.55, 3.0))
+        self.assertFalse(ev_gate_blocks(0.70, 4.0, 0.55, 0.0))
+        self.assertTrue(paper_lock_day_ok(0, 5))
+        self.assertTrue(paper_lock_day_ok(4, 5))
+        self.assertFalse(paper_lock_day_ok(5, 5))
+        today = datetime(2026, 8, 16, 18, 0, tzinfo=timezone.utc)
+        n = count_paper_locks_today(
+            [
+                {"direction": "UP", "called_at": "2026-08-16T16:10:00+00:00", "asset": "btc"},
+                {"direction": "WAIT", "called_at": "2026-08-16T17:10:00+00:00", "asset": "btc"},
+                {"direction": "DOWN", "called_at": "2026-08-15T16:10:00+00:00", "asset": "btc"},
+            ],
+            now=today,
+            asset="btc",
+        )
+        self.assertEqual(n, 1)
+
+    def test_explore_paper_locks_without_four_category_confluence(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        out = chair.synthesize(self._mixed_signals(), self._btc_regime())
+        self.assertIn(out["direction"], ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
+        self.assertTrue(out.get("window_locked") or (out.get("locked_call") or {}).get("locked"))
+        self.assertTrue(out.get("explore_paper"))
+        self.assertTrue(out.get("paper_only"))
+        self.assertIn("PAPER", out.get("summary") or "")
+        self.assertNotIn("dead book", (out.get("summary") or "").lower())
+
+    def test_unknown_book_is_not_dead_book_wait(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        out = chair.synthesize(
+            self._mixed_signals(),
+            self._btc_regime(book_depth={"yes_depth": 0, "no_depth": 0, "has_size": False}),
+        )
+        self.assertNotIn("dead book", (out.get("summary") or "").lower())
+        self.assertTrue(out.get("explore_paper"))
+
+    def test_measured_99_wall_still_waits(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        out = chair.synthesize(
+            self._mixed_signals(),
+            self._btc_regime(yes_ask=99, no_ask=1, up_pct=99, yes_mid=99, side_ask=99),
+        )
+        self.assertEqual(out["direction"], "WAIT")
+        self.assertFalse(out.get("window_locked"))
+
+    def _fresh_explore_chair(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        return chair
+
+    def _up_signals(self):
+        from backend.agents.base import AgentSignal
+        names = (
+            "candle", "volume", "momentum", "orderflow", "odds",
+            "strike", "quorum", "cheap", "whale",
+        )
+        return [AgentSignal(n, "UP", 82, "test", n) for n in names]
+
+    def test_explore_12c_and_88c_pass_band_99_hard_no(self):
+        cheap = self._fresh_explore_chair().synthesize(
+            self._mixed_signals(),
+            self._btc_regime(
+                up_pct=12,
+                yes_ask=13,
+                no_ask=88,
+                yes_mid=12,
+                side_ask=13,
+                book_depth={
+                    **self._book(),
+                    "yes_bid_px": 11,
+                    "no_bid_px": 87,
+                },
+            ),
+        )
+        self.assertNotIn("outside 10–90", (cheap.get("summary") or ""))
+        self.assertNotIn("dead book", (cheap.get("summary") or "").lower())
+        self.assertIn(cheap["direction"], ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
+        self.assertTrue(cheap.get("window_locked") or (cheap.get("locked_call") or {}).get("locked"))
+
+        # 88¢ is inside 10–90, but typical P(finish) makes EV < 0 after half-spread → WAIT.
+        rich = self._fresh_explore_chair().synthesize(
+            self._up_signals(),
+            self._btc_regime(
+                up_pct=88,
+                yes_ask=88,
+                no_ask=13,
+                yes_mid=88,
+                side_ask=88,
+                book_depth={
+                    **self._book(),
+                    "yes_bid_px": 87,
+                    "no_bid_px": 12,
+                },
+            ),
+        )
+        self.assertNotIn("outside 10–90", (rich.get("summary") or ""))
+        self.assertNotIn("already 88", (rich.get("summary") or "").lower())
+        self.assertEqual(rich["direction"], "WAIT")
+        self.assertFalse(rich.get("window_locked"))
+        self.assertIn("EV", rich.get("summary") or "")
+
+        wall = self._fresh_explore_chair().synthesize(
+            self._mixed_signals(),
+            self._btc_regime(yes_ask=99, no_ask=1, up_pct=99, yes_mid=99, side_ask=99),
+        )
+        self.assertEqual(wall["direction"], "WAIT")
+        self.assertFalse(wall.get("window_locked"))
+        self.assertTrue(
+            "99" in (wall.get("summary") or "") or "never lock" in (wall.get("summary") or "").lower()
+        )
+
+    def test_eth_explore_still_gated(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        out = chair.synthesize(
+            self._mixed_signals(),
+            self._btc_regime(
+                asset="eth",
+                ticker="KXETHD-26AUG1616-T2000.00",
+                floor_strike=2000.0,
+                eth_settled_n=0,
+            ),
+        )
+        self.assertEqual(out["direction"], "WAIT")
+        self.assertFalse(out.get("window_locked"))
+        self.assertIn("ETH", out.get("summary") or "")
+
+    def test_calibrated_path_keeps_confluence_gate(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({
+            "total": 25,
+            "reliability_n": 25,
+            "accuracy_pct": 52,
+            "verdict": "OK",
+        })
+        out = chair.synthesize(
+            self._mixed_signals(),
+            self._btc_regime(reliability_n=25, learning_phase="calibrate", settled_n=25),
+        )
+        # Live / calibrate still needs confluence — do not force a paper lock.
+        if out.get("explore_paper"):
+            self.fail("explore paper path must stay off when reliability_n >= 20")
 
 
 if __name__ == "__main__":

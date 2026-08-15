@@ -627,8 +627,10 @@ WAIT_REASON_CODES = (
     "near_certain",
     "law_lockdown",
     "empty_book",
+    "unknown_book",
     "forecast_flip",
     "no_official_high",
+    "paper_rate",
     "other",
 )
 
@@ -654,13 +656,24 @@ def classify_wait_reason(
         return "stale_quote"
     if "first " in text and ("m of the hour" in text or "10m" in text or "first 10" in text):
         return "first_10m"
+    if "unknown book" in text:
+        return "unknown_book"
+    if "paper lock rate" in text or "paper-lock rate" in text or "locks today" in text:
+        return "paper_rate"
     if "dead book" in text or "one-sided" in text or "empty book" in text:
         if "empty book" in text and "dead book" not in text:
             return "empty_book"
         return "dead_book"
     if "thin book" in text or "no depth" in text or "need ≥" in text or "need >=" in text or "sample too thin" in text:
         return "no_depth"
-    if "outside 20" in text or "outside 20–80" in text or "outside 20-80" in text:
+    if (
+        "outside 20" in text
+        or "outside 20–80" in text
+        or "outside 20-80" in text
+        or "outside 10" in text
+        or "outside 10–90" in text
+        or "outside 10-90" in text
+    ):
         return "odds_outside_20_80"
     if "insufficient confluence" in text or "need stronger confluence" in text or "low confluence" in text:
         return "low_confluence"
@@ -815,14 +828,48 @@ def _levels_from_side(raw: Any) -> list[tuple[float, float]]:
     return levels
 
 
+def _unwrap_kalshi_book(orderbook: Any) -> Optional[Dict[str, Any]]:
+    """Prefer Kalshi orderbook_fp (yes_dollars / no_dollars). Keep legacy yes/no."""
+    if not isinstance(orderbook, dict):
+        return None
+    if isinstance(orderbook.get("orderbook_fp"), dict):
+        return orderbook["orderbook_fp"]
+    inner = orderbook.get("orderbook")
+    if isinstance(inner, dict):
+        if isinstance(inner.get("orderbook_fp"), dict):
+            return inner["orderbook_fp"]
+        return inner
+    return orderbook
+
+
+def _side_raw(book: Dict[str, Any], *keys: str) -> Any:
+    """First key with parseable levels; else first present key (may be empty)."""
+    for k in keys:
+        raw = book.get(k)
+        if raw is None:
+            continue
+        if _levels_from_side(raw):
+            return raw
+    for k in keys:
+        if k in book:
+            return book.get(k)
+    return None
+
+
 def parse_book_depth(orderbook: Any) -> Dict[str, Any]:
     """
     Top-of-book + shallow depth from a Kalshi orderbook payload.
 
-    Accepts {orderbook: {yes, no}} or a bare {yes, no} / yes_dollars map.
-    Prices may be cents or dollars. Size is contracts.
+    Accepts orderbook_fp {yes_dollars, no_dollars}, {orderbook: {yes, no}},
+    or a bare {yes, no} / yes_dollars map. Prices may be cents or dollars.
+    Size is contracts.
+
+    book_state:
+      unknown — no payload / parse drop / both depths 0·null and not measured
+      ok — we saw size on at least one side
+      dead — we saw the book and it is empty (both sides present, no size)
     """
-    empty = {
+    unknown = {
         "yes_bid_px": None,
         "yes_bid_sz": None,
         "no_bid_px": None,
@@ -830,21 +877,27 @@ def parse_book_depth(orderbook: Any) -> Dict[str, Any]:
         "yes_depth": 0.0,
         "no_depth": 0.0,
         "has_size": False,
+        "book_state": "unknown",
+        "measured": False,
     }
     if not orderbook:
-        return dict(empty)
-    book = orderbook
-    if isinstance(orderbook, dict) and isinstance(orderbook.get("orderbook"), dict):
-        book = orderbook["orderbook"]
+        return dict(unknown)
+    book = _unwrap_kalshi_book(orderbook)
     if not isinstance(book, dict):
-        return dict(empty)
+        return dict(unknown)
 
-    yes_raw = book.get("yes") if book.get("yes") is not None else book.get("yes_dollars")
-    no_raw = book.get("no") if book.get("no") is not None else book.get("no_dollars")
+    yes_raw = _side_raw(book, "yes_dollars", "yes")
+    no_raw = _side_raw(book, "no_dollars", "no")
     yes_levels = _levels_from_side(yes_raw)
     no_levels = _levels_from_side(no_raw)
+    saw_sides = any(k in book for k in ("yes", "no", "yes_dollars", "no_dollars"))
     if not yes_levels and not no_levels:
-        return dict(empty)
+        if saw_sides:
+            out = dict(unknown)
+            out["book_state"] = "dead"
+            out["measured"] = True
+            return out
+        return dict(unknown)
 
     def _top_and_depth(levels: list[tuple[float, float]]) -> tuple[Optional[float], Optional[float], float]:
         if not levels:
@@ -866,14 +919,70 @@ def parse_book_depth(orderbook: Any) -> Dict[str, Any]:
         "yes_depth": yes_depth,
         "no_depth": no_depth,
         "has_size": has_size,
+        "book_state": "ok" if has_size else "dead",
+        "measured": True,
     }
 
 
-def playable_yes_mid(yes_mid: Any, lo: float = 20.0, hi: float = 80.0) -> bool:
-    """Only play hours where YES mid is roughly 20–80¢."""
+def book_is_unknown(depth: Dict[str, Any] | None) -> bool:
+    """
+    Null / missing / unparsed depth is UNKNOWN, not DEAD.
+    Both yes_depth and no_depth 0·null·missing with has_size false → unknown
+    unless we explicitly measured an empty book.
+    """
+    if not depth:
+        return True
+    state = str(depth.get("book_state") or "").strip().lower()
+    if state == "unknown":
+        return True
+    if state in ("ok", "dead", "one_sided"):
+        return False
+    if depth.get("measured") is True:
+        return False
+    if depth.get("measured") is False:
+        return True
+    if depth.get("has_size"):
+        return False
+    try:
+        yd = depth.get("yes_depth")
+        nd = depth.get("no_depth")
+        y0 = yd is None or float(yd) <= 0
+        n0 = nd is None or float(nd) <= 0
+    except (TypeError, ValueError):
+        return True
+    return bool(y0 and n0)
+
+
+def playable_band_cents() -> tuple[float, float]:
+    """Paper Chair YES-mid band. Single source: PLAYABLE_MID_MIN/MAX (10–90)."""
+    try:
+        from backend.config import settings
+        lo = float(getattr(settings, "PLAYABLE_MID_MIN", 10.0))
+        hi = float(getattr(settings, "PLAYABLE_MID_MAX", 90.0))
+    except Exception:
+        lo, hi = 10.0, 90.0
+    return lo, hi
+
+
+def playable_band_label(lo: float | None = None, hi: float | None = None) -> str:
+    blo, bhi = playable_band_cents()
+    if lo is None:
+        lo = blo
+    if hi is None:
+        hi = bhi
+    return f"{float(lo):.0f}–{float(hi):.0f}¢"
+
+
+def playable_yes_mid(yes_mid: Any, lo: float | None = None, hi: float | None = None) -> bool:
+    """Only play hours where YES mid is inside the 10–90¢ band."""
     mid = odds_to_cents(yes_mid)
     if mid is None:
         return False
+    blo, bhi = playable_band_cents()
+    if lo is None:
+        lo = blo
+    if hi is None:
+        hi = bhi
     return float(lo) <= mid <= float(hi)
 
 
@@ -922,30 +1031,46 @@ def dead_book_reason(
     depth: Dict[str, Any] | None,
     side: str | None,
     yes_mid: Any = None,
-    max_side: float = 80.0,
+    max_side: float | None = None,
 ) -> Optional[str]:
     """
-    Skip dead hours: chosen side ≥80¢, mid outside 20–80, or one-sided book
-    (yes_depth 0 / NO at 99¢).
+    Skip dead hours: chosen side ≥ playable cap, mid outside 10–90, or a book we
+    actually measured that is empty / one-sided (99¢ / 1¢ wall).
+
+    Null depth (both sides 0 / null / missing, not measured) is UNKNOWN.
+    Do not auto-WAIT on unknown — that is not a dead book.
     """
+    if max_side is None:
+        _, max_side = playable_band_cents()
     mid = odds_to_cents(yes_mid)
     if mid is not None and not playable_yes_mid(mid):
-        return f"YES mid {mid:.0f}¢ outside 20–80¢"
+        return f"YES mid {mid:.0f}¢ outside {playable_band_label()}"
     if side not in ("UP", "DOWN"):
         return None
     if mid is not None:
         side_mid = mid if side == "UP" else (100.0 - mid)
         if side_mid >= float(max_side):
             return f"{side} already {side_mid:.0f}¢"
+    if book_is_unknown(depth):
+        return None
     if not depth:
         return None
-    yes_depth = float(depth.get("yes_depth") or 0.0)
-    no_depth = float(depth.get("no_depth") or 0.0)
+    try:
+        yes_depth = float(depth.get("yes_depth") or 0.0)
+    except (TypeError, ValueError):
+        yes_depth = 0.0
+    try:
+        no_depth = float(depth.get("no_depth") or 0.0)
+    except (TypeError, ValueError):
+        no_depth = 0.0
     yes_bid = odds_to_cents(depth.get("yes_bid_px"))
     no_bid = odds_to_cents(depth.get("no_bid_px"))
-    if side == "UP" and yes_depth <= 0:
+    measured = bool(depth.get("measured") or depth.get("has_size") or depth.get("book_state") == "dead")
+    if measured and yes_depth <= 0 and no_depth <= 0:
+        return "empty book we measured"
+    if side == "UP" and yes_depth <= 0 and no_depth > 0:
         return "one-sided book · yes_depth 0"
-    if side == "DOWN" and no_depth <= 0:
+    if side == "DOWN" and no_depth <= 0 and yes_depth > 0:
         return "one-sided book · no_depth 0"
     if side == "UP" and no_bid is not None and no_bid >= 99.0:
         return "one-sided book · NO at 99¢"
@@ -963,7 +1088,7 @@ def never_lock_near_certain(
 ) -> Optional[str]:
     """
     Hard stop: never lock ≥99¢ or a one-sided 100¢ book.
-    Stays in force even if the 80¢ playable cap is later raised.
+    Stays in force even if the playable cap is later raised.
     """
     ya = odds_to_cents(yes_ask)
     na = odds_to_cents(no_ask)
@@ -987,7 +1112,7 @@ def never_lock_near_certain(
 
 def zach_band_skips_preferred(yes_mid: Any, leftover: Any, min_leftover: float = 0.0) -> bool:
     """
-    20–80¢ two-sided with leftover after vig is playable.
+    10–90¢ two-sided with leftover after vig is playable.
     Do not WAIT solely for sitting outside 40–65 / 45–55.
     """
     try:
@@ -1008,7 +1133,7 @@ def zach_bar_reason(
     side_ask: Any = None,
 ) -> Optional[str]:
     """
-    Zach’s bar: 20–80¢ two-sided + leftover at the ask after fee.
+    Zach’s bar: 10–90¢ two-sided + leftover at the ask after fee.
     Never a 45–55-only band. ≥99¢ / one-sided 100¢ never lock.
     """
     near = never_lock_near_certain(yes_ask, no_ask, side_odds=side_ask)
@@ -1017,7 +1142,7 @@ def zach_bar_reason(
     mid = yes_mid if yes_mid is not None else yes_ask
     mid_c = odds_to_cents(mid)
     if mid_c is not None and not playable_yes_mid(mid_c):
-        return f"YES mid {mid_c:.0f}¢ outside 20–80¢"
+        return f"YES mid {mid_c:.0f}¢ outside {playable_band_label()}"
     ask = odds_to_cents(side_ask if side_ask is not None else yes_ask)
     if ask is None or p_finish is None:
         return "no leftover at the ask after vig"
@@ -1280,12 +1405,130 @@ def paper_stake_for_lock(
     return full_amt
 
 
+def explore_paper_lock_open(
+    learning_phase: Any = None,
+    reliability_n: Any = None,
+    explore_until: int | None = None,
+) -> bool:
+    """
+    PAPER-only explore path: learning_phase is explore OR reliability_n < 20.
+    Does not loosen live / Follower gates.
+    """
+    if explore_until is None:
+        try:
+            from backend.config import settings
+            explore_until = int(getattr(settings, "EXPLORE_RELIABILITY_N", 20))
+        except Exception:
+            explore_until = 20
+    phase = str(learning_phase or "").strip().lower()
+    if phase == "explore":
+        return True
+    try:
+        n = int(reliability_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n < int(explore_until)
+
+
+def explore_paper_lock_ok(
+    p_finish: Any,
+    ev_cents: Any,
+    yes_mid: Any,
+    min_p: float | None = None,
+    min_ev: float | None = None,
+) -> bool:
+    """P(finish) ≥ 0.55, EV ≥ 0 after half-spread, 10–90 band.
+
+    The wider band does not drop the EV gate. 82¢ / 88¢ still FAIL when EV < 0.
+    """
+    if min_p is None:
+        try:
+            from backend.config import settings
+            min_p = float(getattr(settings, "EXPLORE_PAPER_MIN_P", 0.55))
+        except Exception:
+            min_p = 0.55
+    if min_ev is None:
+        try:
+            from backend.config import settings
+            min_ev = float(getattr(settings, "EXPLORE_PAPER_MIN_EV", 0.0))
+        except Exception:
+            min_ev = 0.0
+    try:
+        p = float(p_finish)
+        ev = float(ev_cents)
+    except (TypeError, ValueError):
+        return False
+    if p < float(min_p) or ev < float(min_ev):
+        return False
+    return playable_yes_mid(yes_mid)
+
+
+def count_paper_locks_today(
+    rows: Any,
+    now: datetime | None = None,
+    asset: Any = None,
+) -> int:
+    """Count Chair paper locks (not WAIT, not ETH shadow) on the CT day."""
+    try:
+        from zoneinfo import ZoneInfo
+        ct = ZoneInfo("America/Chicago")
+    except Exception:
+        ct = timezone.utc
+    when = now or datetime.now(ct)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    day = when.astimezone(ct).date()
+    want = str(asset or "").strip().lower()
+    n = 0
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("shadow") or row.get("kind") in ("eth_shadow", "wait"):
+            continue
+        d = str(row.get("direction") or "").upper()
+        if d not in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+            continue
+        if want:
+            a = str(row.get("asset") or ticker_asset(row.get("ticker")) or "").lower()
+            if a and a != want and not (want == "btc" and a in ("btc", "bitcoin", "")):
+                continue
+        raw = row.get("called_at") or row.get("locked_at") or row.get("timestamp")
+        if not raw:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts.astimezone(ct).date() == day:
+                n += 1
+        except (TypeError, ValueError):
+            continue
+    return n
+
+
+def paper_lock_day_ok(locks_today: Any, max_n: int | None = None) -> bool:
+    """A few paper locks per day on 1H BTC — not 20, not 1 per 48h."""
+    if max_n is None:
+        try:
+            from backend.config import settings
+            max_n = int(getattr(settings, "PAPER_LOCKS_PER_DAY", 5))
+        except Exception:
+            max_n = 5
+    try:
+        n = int(locks_today or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n < int(max_n)
+
+
 def book_too_thin(
     depth: Dict[str, Any] | None,
     side: str | None,
     min_size: float,
 ) -> bool:
     """True when we know size and the chosen side is thinner than min_size."""
+    if book_is_unknown(depth):
+        return False
     if not depth or not depth.get("has_size"):
         return False
     if side not in ("UP", "DOWN"):

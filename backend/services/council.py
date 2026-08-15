@@ -46,6 +46,7 @@ from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
     classify_wait_reason,
     collect_official_results,
+    count_paper_locks_today,
     lock_time_strike,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
@@ -597,7 +598,10 @@ class Council:
             pass
         # Refresh edge stats before synthesis so WAIT bar tracks lifetime log
         try:
-            self.leader.update_edge_from_accuracy(await self.store.get_accuracy(asset=self.asset))
+            acc = await self.store.get_accuracy(asset=self.asset)
+            self.leader.update_edge_from_accuracy(acc)
+            rows = list(acc.get("log") or []) + list(acc.get("open") or acc.get("open_log") or [])
+            self._paper_locks_today = count_paper_locks_today(rows, asset=self.asset)
         except Exception:
             pass
 
@@ -948,6 +952,22 @@ class Council:
             regime_features["eth_lock_blocked"] = bool(
                 eth_paper_lock_blocked(self.asset, regime_features["eth_settled_n"])
             )
+            try:
+                regime_features["reliability_n"] = int(
+                    (self.leader.edge or {}).get("reliability_n")
+                    or (self.leader.edge or {}).get("total")
+                    or 0
+                )
+            except (TypeError, ValueError):
+                regime_features["reliability_n"] = 0
+            try:
+                phase_info = self.learner.learning_phase(
+                    chair_n=int((self.leader.edge or {}).get("total") or 0)
+                ) or {}
+                regime_features["learning_phase"] = phase_info.get("phase")
+            except Exception:
+                regime_features["learning_phase"] = None
+            regime_features["paper_locks_today"] = int(getattr(self, "_paper_locks_today", 0) or 0)
             lead = market_data.get("btc_lead") or self._btc_lead
             if isinstance(lead, dict):
                 regime_features["btc_lead"] = lead
@@ -1045,7 +1065,7 @@ class Council:
             pass
 
         # Shadow book (diagnostic only): would a stricter 45–60¢ band have locked?
-        # Live playable band stays 20–80¢ + leftover — do not make 45–55 the live band.
+        # Paper playable band stays 10–90¢ + leftover — do not make 45–55 the live band.
         try:
             from backend.config import settings as _s
             so = None
