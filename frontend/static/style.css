@@ -2493,6 +2493,79 @@ body.admin-unlocked.mode-settings #autoBetCard {
 .gate-brand { font-family: Orbitron, sans-serif; font-size: 22px; color: #e9d5ff; margin-bottom: 28px; letter-spacing: 0.06em; }
 .gate-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .gate-hint { margin-top: 18px; color: #64748b; font-size: 12px; }
+.summon-status {
+  position: relative;
+  z-index: 3;
+  margin-top: 24px;
+  font-family: Orbitron, sans-serif;
+  letter-spacing: 0.12em;
+  color: #e9d5ff;
+  text-align: center;
+}
+.summon-status.hidden { display: none; }
+
+html body.tutorial-walk #app {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+html body.tutorial-walk #passwordGate,
+html body.tutorial-walk #summonGate {
+  display: none !important;
+}
+.coach-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11040;
+  pointer-events: none;
+}
+.coach-overlay.hidden { display: none !important; }
+.coach-hole {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgba(4, 2, 12, 0.74), 0 0 28px rgba(196, 181, 253, 0.35);
+  border: 1px solid rgba(196, 181, 253, 0.7);
+  border-radius: 10px;
+  pointer-events: none;
+}
+.coach-card {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+  width: min(420px, calc(100vw - 24px));
+  padding: 18px 20px 16px;
+  background: rgba(10, 14, 26, 0.96);
+  border: 1px solid rgba(167, 139, 250, 0.5);
+  color: #e2e8f0;
+  box-shadow: 0 0 40px rgba(88, 28, 135, 0.35);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.coach-step {
+  font-family: Orbitron, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #a5b4fc;
+  margin-bottom: 6px;
+}
+.coach-card h2 {
+  font-family: Orbitron, sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: #e9d5ff;
+  margin: 0 0 10px;
+}
+.coach-card p {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+.coach-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
 .gate-tutorial { position: relative; z-index: 3; }
 .gate-tutorial.hidden { display: none; }
 .tut-card {

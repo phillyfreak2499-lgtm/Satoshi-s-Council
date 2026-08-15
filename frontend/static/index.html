@@ -42,15 +42,15 @@
     <div class="password-card">
       <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
-      <div class="password-sub">Enter access code</div>
+      <div class="password-sub">Password-protected private desk · Enter access code</div>
       <input type="password" id="passwordInput" class="password-input" placeholder="Password" autocomplete="current-password" />
       <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon">Enter</button>
       <p id="passwordError" class="password-error hidden">Wrong password</p>
     </div>
   </div>
 
-  <!-- Startup: Tutorial or Summon -->
-  <div id="summonGate" class="summon-gate hidden">
+  <!-- First-login choice: Tutorial or Summon. Returning users skip this. -->
+  <div id="summonGate" class="summon-gate hidden" aria-label="First visit">
     <canvas id="gateFog" class="gate-fog"></canvas>
     <div id="gateInner" class="gate-inner">
       <img class="gate-mark" src="/council-mark.png" alt="" width="88" height="88" />
@@ -59,19 +59,25 @@
         <button type="button" id="btnTutorial" class="gate-btn gate-btn-ghost">Tutorial</button>
         <button type="button" id="btnSummon" class="gate-btn gate-btn-summon">Summon the Council</button>
       </div>
-      <p class="gate-hint">Password-protected private desk</p>
     </div>
-    <div id="gateTutorial" class="gate-tutorial hidden">
-      <div class="tut-card">
-        <div class="tut-step" id="tutStepLabel">1 / 5</div>
-        <h2 id="tutTitle">Welcome</h2>
-        <p id="tutBody"></p>
-        <div class="tut-actions">
-          <button type="button" id="tutSkip" class="gate-btn gate-btn-ghost">Skip</button>
-          <button type="button" id="tutNext" class="gate-btn gate-btn-summon">Next</button>
-        </div>
+    <div id="summonStatus" class="summon-status hidden" aria-live="polite">
+      <p id="summonLine"></p>
+    </div>
+    <div id="gateTutorial" class="gate-tutorial hidden"></div>
+  </div>
+
+  <div id="coachOverlay" class="coach-overlay hidden" hidden aria-hidden="true">
+    <div id="coachHole" class="coach-hole" aria-hidden="true"></div>
+    <aside id="coachCard" class="coach-card" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
+      <div class="coach-step" id="coachStep">1 / 1</div>
+      <h2 id="coachTitle">Tutorial</h2>
+      <p id="coachBody"></p>
+      <div class="coach-actions">
+        <button type="button" id="coachBack" class="gate-btn gate-btn-ghost">Back</button>
+        <button type="button" id="coachSkip" class="gate-btn gate-btn-ghost">Skip</button>
+        <button type="button" id="coachNext" class="gate-btn gate-btn-summon">Next</button>
       </div>
-    </div>
+    </aside>
   </div>
 
 
@@ -148,7 +154,7 @@
           <span id="lastUpdate">—</span>
         </div>
       </div>
-      <div class="mode-tabs" role="tablist" aria-label="View mode">
+      <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
         <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table">ETH · VITALIK</span>
@@ -612,7 +618,7 @@
   <div id="summonVideoWrap" class="summon-video-wrap" aria-hidden="true">
     <video id="summonVideo" playsinline webkit-playsinline preload="metadata">
       <source src="/summon-council.mp4" type="video/mp4" />
-      <source src="/zt-intro.mp4" type="video/mp4" />
+      <source src="/static/summon-council.mp4" type="video/mp4" />
     </video>
     <div id="summonFogOverlay" class="summon-fog-overlay"></div>
     <button type="button" id="summonVideoSkip" class="summon-video-skip">Skip</button>

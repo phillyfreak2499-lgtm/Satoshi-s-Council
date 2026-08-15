@@ -18,6 +18,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
   const DESK_KEY = "council_auth_ok";
+  const ONBOARD_KEY = "council_onboarded";
+  function hasOnboarded() {
+    try {
+      return localStorage.getItem(ONBOARD_KEY) === "1" || localStorage.getItem("council_entered") === "1";
+    } catch (e) { return false; }
+  }
+  function markOnboarded() {
+    try { localStorage.setItem(ONBOARD_KEY, "1"); } catch (e) {}
+    try { localStorage.setItem("council_entered", "1"); } catch (e) {}
+  }
+  window.hasOnboarded = hasOnboarded;
+  window.markOnboarded = markOnboarded;
   // Cold load: leftover storage must not paint privileged chrome.
   try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
   try { localStorage.removeItem(DESK_KEY); } catch (e) {}
@@ -5204,58 +5216,88 @@ function drawCandleChart() {
 
   const TUTORIAL_SLIDES = [
     {
-      title: "WHAT IS THIS?",
-      body: "Satoshi’s Council is a dual Round Table: Satoshi chairs Bitcoin hourly markets (KXBTCD) and Vitalik chairs Ethereum hourly markets (KXETHD).\n\nEach specialist bot has one job — candles, volume, odds, panic, cheap side, etc. Each Chair locks exactly ONE high-quality paper call per hourly window: UP or DOWN — or WAIT if there is no edge.\n\nUse BTC / ETH to focus Table, Ranks, and hit rate. Floor shows both tables. Research co-pilot only — no real orders.",
-      tip: "Think war room, not magic indicator. Quality over quantity.",
-      bots: null,
+      mode: "art",
+      target: "#tabScreensaver",
+      title: "WHAT THIS IS",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M). The Chair (Satoshi) locks exactly one high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
-      title: "THE ONE-CALL RULE",
-      body: "GOAL CONTRACT (non-negotiable):\n\n• Exactly one directional guess per hourly window on how that hour ends.\n• Taken only at the best available odds (side under 80¢).\n• Once the Chair locks the call, it is irreversible for that window.\n• WAIT is always preferred over a low-edge or noisy call.\n\nOne excellent guess beats three mediocre ones. BTC and ETH each get their own lock.",
-      tip: "Look for the big LOCKED plaque in the center of the table — that is the single decision a follower can trust.",
-      bots: null,
+      mode: "art",
+      target: "#tableStage",
+      title: "GOAL CONTRACT",
+      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (chosen side < 80¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
     },
     {
-      title: "THE 80% ODDS GATE",
-      body: "The Chair will only lock a call when the chosen side’s Kalshi price is under 80¢.\n\nWhy? Markets already priced at 80–99¢ offer poor payout for the risk. We want value — the side that still has room to run.\n\nIf the market is already expensive, the Council says WAIT even if bots are screaming.",
-      tip: "Best odds = higher potential payoff when we are right.",
-      bots: null,
+      mode: "art",
+      target: "#finalDecision",
+      title: "THE PLAQUE",
+      body: "The center plaque is the single source of truth when locked (LOCKED UP/DOWN @ XX¢ · FOLLOW THIS).\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
     },
     {
-      title: "TABLE vs FLOOR",
-      body: "• TABLE — clean decision stage. The center shows the LOCKED call (or the GOAL badge when waiting).\n• FLOOR — the specialists live here (outer ring, hierarchy panel, debate log, color tally).\n\nWhen a lock fires, the table becomes the single source of truth. Floor bots remain visible so you can still see the debate that led to the call.",
-      tip: "Press the Floor tab for the immersive full-screen view. ESC returns to Table.",
-      bots: null,
+      mode: "art",
+      target: "#accuracyBadge",
+      title: "HIT RATE",
+      body: "HIT RATE is Chair directional accuracy (WAIT excluded). Calls are graded on the Kalshi odds path, not only the final BTC print. Paper P&L is path-scaled. Only the single locked call per window is graded.",
     },
     {
+      mode: "art",
+      target: "#lawBadge",
+      title: "LAW",
+      body: "LAW is the enforcer badge after repeated misses. If LAW locks the table, wait — do not chase a new call.",
+    },
+    {
+      mode: "art",
+      target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. Specialists vote UP / DOWN / WAIT with confidence.\n2. Ranked bots closer to the Chair count more (hierarchy + adaptive weights).\n3. Chair synthesizes confluence + pair affinity.\n4. If edge exists AND chosen side < 80¢ → LOCK (one call, irreversible).\n5. Otherwise → WAIT.\n\nAfter lock, the plaque shows direction, confidence, entry ¢, and “FOLLOW THIS”.",
-      tip: "HIT RATE only counts directional locks (WAIT is not a call).",
-      bots: null,
+      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: chosen side must be under 80¢.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
     },
     {
-      title: "CORE vs EDGE BOTS",
-      body: "CORE seats read classic structure: candles (WICK), volume (PULSE), momentum (DRIFT), order flow (TAPE), funding, regime.\n\nEDGE / research seats lean on tape, cheap odds, panic fades, spot lag, exhaustion, whale, quorum.\n\nYou do not need every name — colors on the Floor show how they are voting live on each table.",
-      tip: "Open the Bots tab anytime for the full field guide.",
-      bots: "core",
+      mode: "floor",
+      target: "#tabFloor",
+      title: "FLOOR",
+      body: "Floor is the immersive table. The outer ring is specialists still voting and ranking. ESC or TABLE returns to the desk.",
     },
     {
-      title: "SCORING & PAPER",
-      body: "Hit rate is FINISH-ONLY.\n\nA call counts RIGHT only when the hourly window has closed and the final outcome matches the lock (UP or DOWN).\n\nPath moves and near-certain mid-window spikes do NOT count.\nLifetime may show 0/0 until the first hours settle — that is expected.\n\nSettings → Clear hit-rate starts a clean finish-only era (weights kept).",
-      tip: "Track average entry odds of locks — lower is usually better value.",
-      bots: null,
+      mode: "dashboard",
+      target: "#tabDashboard",
+      title: "DASHBOARD",
+      body: "Seat cards for the focused table. Use BTC / ETH to switch which Chair you are reading.",
     },
     {
-      title: "TABS & CONTROLS",
-      body: "• Table — living council map (LOCKED plaque)\n• Floor — immersive table-only view\n• Dashboard — seat cards\n• Bots — full specialist guide\n• Ranks — who the Chair trusts most\n• Paper — practice scorecard\n• Charts — price context\n• Settings — BEAST MODE, sounds, knobs\n\nKeys: 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · ? Help",
-      tip: "HIT RATE badge (top) = Chair directional accuracy. LAW badge = enforcer status.",
-      bots: null,
+      mode: "bots",
+      target: "#tabBots",
+      title: "BOTS",
+      body: "Field guide for every specialist. Each seat has one job. Colors on the Floor show how they are voting live.",
     },
     {
-      title: "YOU ARE READY",
-      body: "When you Summon the Council the fog lifts and the table comes alive.\n\nWatch the floor vote, wait for a clean LOCKED plaque under 80¢, and follow that single call. Everything else is context.\n\nPaper-track expectancy before any size. Quality over quantity. One high-edge guess per window.",
-      tip: "Re-open this tutorial anytime from the Help / ? button in the header.",
-      bots: null,
+      mode: "ranks",
+      target: "#tabRanks",
+      title: "RANKS",
+      body: "Who the Chair trusts most. Higher-ranked bots count more when a call is made.",
+    },
+    {
+      mode: "paper",
+      target: "#tabPaper",
+      title: "PAPER",
+      body: "Practice scorecard. Paper-track expectancy before any size. Quality over quantity. One high-edge guess per window. This desk does not place real orders.",
+    },
+    {
+      mode: "charts",
+      target: "#tabCharts",
+      title: "CHARTS",
+      body: "Price and odds context for the window. Charts are research — they do not place a call.",
+    },
+    {
+      mode: "art",
+      target: "#tabSettings",
+      title: "SETTINGS",
+      body: "BEAST MODE, sounds, and knobs. Settings stays behind the admin lock.",
+    },
+    {
+      mode: "art",
+      target: "#btnHelp",
+      title: "HELP",
+      body: "Press ? anytime to replay this walkthrough. Keys: 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · ? Help.",
     },
   ];
 
@@ -5268,7 +5310,7 @@ function drawCandleChart() {
   ];
 
   function initFog() {
-    const canvas = document.getElementById("fogCanvas");
+    const canvas = document.getElementById("gateFog") || document.getElementById("fogCanvas");
     if (!canvas) return null;
     const ctx = canvas.getContext("2d", { alpha: true });
     let w = 0, h = 0, raf = 0, t0 = performance.now();
@@ -5418,13 +5460,14 @@ function drawCandleChart() {
   }
 
 
-  function dismissGate(animated) {
+  function dismissGate(animated, land) {
     const gate = document.getElementById("summonGate");
-    document.body.classList.remove("gate-locked", "gate-revealing");
-    localStorage.setItem("council_entered", "1");
+    document.body.classList.remove("gate-locked", "gate-revealing", "tutorial-walk");
+    markOnboarded();
+    const dest = land || "art";
     function after() {
       try {
-        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode("art");
+        if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode(dest);
       } catch (e) {}
       try { resizeRoundtable(); } catch (e) {}
       try { drawArt(); } catch (e) {}
@@ -5449,13 +5492,14 @@ function drawCandleChart() {
     }
     if (wrap) {
       wrap.classList.add("hidden");
+      wrap.classList.remove("active");
       wrap.setAttribute("aria-hidden", "true");
     }
     // exit browser fullscreen if we entered it
     try {
       if (document.fullscreenElement) document.exitFullscreen();
     } catch (e) {}
-    dismissGate(true);
+    dismissGate(true, "floor");
     if (fog) fog.stop();
   }
 
@@ -5478,8 +5522,11 @@ function drawCandleChart() {
     // Prefer the cinematic video full-viewport
     if (vid && wrap) {
       wrap.classList.remove("hidden");
+      wrap.classList.add("active");
       wrap.setAttribute("aria-hidden", "false");
-      vid.currentTime = 0;
+      const fogBed = document.getElementById("summonFogOverlay");
+      if (fogBed) fogBed.style.opacity = "0.55";
+      try { vid.currentTime = 0; } catch (e) {}
       vid.muted = !!soundMuted;
       // Try true browser fullscreen on the video wrap
       const goFs = () => {
@@ -5548,121 +5595,88 @@ function drawCandleChart() {
     step();
   }
 
+  function placeCoach(targetSel) {
+    const hole = document.getElementById("coachHole");
+    const card = document.getElementById("coachCard");
+    if (!hole || !card) return;
+    const el = targetSel ? document.querySelector(targetSel) : null;
+    const pad = 8;
+    let top = 80, left = 24, width = 120, height = 44;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      top = Math.max(8, r.top - pad);
+      left = Math.max(8, r.left - pad);
+      width = Math.min(window.innerWidth - left - 8, r.width + pad * 2);
+      height = Math.min(window.innerHeight - top - 8, r.height + pad * 2);
+    }
+    hole.style.top = top + "px";
+    hole.style.left = left + "px";
+    hole.style.width = Math.max(36, width) + "px";
+    hole.style.height = Math.max(28, height) + "px";
+    const cardW = Math.min(420, window.innerWidth - 24);
+    let cardTop = top + height + 12;
+    let cardLeft = Math.min(left, window.innerWidth - cardW - 12);
+    if (cardTop + 220 > window.innerHeight) cardTop = Math.max(12, top - 230);
+    if (cardLeft < 12) cardLeft = 12;
+    card.style.top = cardTop + "px";
+    card.style.left = cardLeft + "px";
+  }
+
   function openTutorial(fromHelp) {
     ensureAudio();
     playSfxClick();
-    const gateAlive = !!document.getElementById("summonGate") && !fromHelp;
-    const fromGate = gateAlive && !fromHelp;
+    try { document.getElementById("helpTutorialOverlay")?.remove(); } catch (e) {}
+    const overlay = document.getElementById("coachOverlay");
+    const title = document.getElementById("coachTitle");
+    const body = document.getElementById("coachBody");
+    const stepEl = document.getElementById("coachStep");
+    const next = document.getElementById("coachNext");
+    const back = document.getElementById("coachBack");
+    const skip = document.getElementById("coachSkip");
+    if (!overlay) return;
 
-    // Desk help always gets its own veil so tutorial text cannot sit on the HUD.
-    // Unique IDs — never write into leftover #gateTutorial nodes under #summonGate.
-    let standalone = false;
-    let root = null;
-    if (fromHelp || !document.getElementById("summonGate")) {
-      standalone = true;
-      try { document.getElementById("helpTutorialOverlay")?.remove(); } catch (e) {}
-      const overlay = document.createElement("div");
-      overlay.id = "helpTutorialOverlay";
-      overlay.setAttribute("role", "dialog");
-      overlay.setAttribute("aria-modal", "true");
-      overlay.setAttribute("aria-label", "Council tutorial");
-      overlay.innerHTML = `
-        <div class="gate-tutorial" style="display:flex">
-          <div class="tut-card">
-            <div class="tut-step"><span data-tut="step">1</span> / <span data-tut="total">9</span></div>
-            <h2 class="tut-title" data-tut="title">Welcome</h2>
-            <p class="tut-body" data-tut="body"></p>
-            <p class="tut-tip" data-tut="tip"></p>
-            <div class="tut-bots" data-tut="bots" style="display:none"></div>
-            <div class="tut-actions">
-              <button type="button" data-tut="back" class="gate-btn gate-btn-ghost">Back</button>
-              <button type="button" data-tut="skip" class="gate-btn gate-btn-ghost">Close</button>
-              <button type="button" data-tut="next" class="gate-btn gate-btn-summon">Next</button>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      root = overlay;
-    } else {
-      root = document.getElementById("gateTutorial") || document.getElementById("summonGate");
+    const prevMode = mode;
+    const fromGate = !fromHelp;
+    if (fromGate) {
+      const sg = document.getElementById("summonGate");
+      if (sg) sg.classList.add("hidden");
+      document.body.classList.remove("gate-locked", "gate-revealing");
+      document.body.classList.add("tutorial-walk");
     }
 
-    const q = (name) => {
-      if (!root) return null;
-      const local = root.querySelector('[data-tut="' + name + '"]')
-        || root.querySelector("#tut" + name.charAt(0).toUpperCase() + name.slice(1));
-      if (local || standalone) return local;
-      return document.getElementById("tut" + name.charAt(0).toUpperCase() + name.slice(1));
-    };
-
-    const inner = document.getElementById("gateInner");
-    if (inner && !standalone) inner.classList.add("hidden");
-    if (root && !standalone) {
-      root.classList.remove("hidden");
-      root.style.display = "flex";
-    }
+    overlay.hidden = false;
+    overlay.classList.remove("hidden");
+    overlay.setAttribute("aria-hidden", "false");
 
     let step = 0;
     const total = TUTORIAL_SLIDES.length;
-    const title = q("title") || document.getElementById("tutTitle");
-    const body = q("body") || document.getElementById("tutBody");
-    const botsEl = q("bots") || document.getElementById("tutBots");
-    const stepEl = q("step") || document.getElementById("tutStep");
-    const totalEl = q("total") || document.getElementById("tutTotal");
-    const next = q("next") || document.getElementById("tutNext");
-    const back = q("back") || document.getElementById("tutBack");
-    const skip = q("skip") || document.getElementById("tutSkip");
-    if (totalEl) totalEl.textContent = String(total);
 
-    let tipEl = q("tip") || document.getElementById("tutTip");
-    if (!tipEl && body && body.parentNode) {
-      tipEl = document.createElement("p");
-      tipEl.className = "tut-tip";
-      tipEl.setAttribute("data-tut", "tip");
-      body.parentNode.insertBefore(tipEl, botsEl || body.nextSibling);
-    }
-
-    function closeStandalone() {
-      const ov = document.getElementById("helpTutorialOverlay");
-      if (ov) {
-        try { ov.remove(); } catch (e) {}
-      } else if (tut) {
-        tut.classList.add("hidden");
-        tut.style.display = "none";
+    function closeWalk(land) {
+      overlay.classList.add("hidden");
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("tutorial-walk");
+      if (fromGate) {
+        markOnboarded();
+        dismissGate(false, land || "art");
+      } else {
+        try { if (prevMode && typeof setMode === "function") setMode(prevMode); } catch (e) {}
       }
-    }
-
-    function renderBots(kind) {
-      if (!botsEl) return;
-      if (!kind) {
-        botsEl.innerHTML = "";
-        botsEl.style.display = "none";
-        return;
-      }
-      const list = kind === "core" ? TUT_BOTS_CORE : TUT_BOTS_EDGE;
-      botsEl.style.display = "grid";
-      botsEl.innerHTML = list.map(b =>
-        '<div class="tut-bot"><div class="tut-bot-name">' + b.name +
-        '</div><div class="tut-bot-role">' + b.role +
-        '</div><div class="tut-bot-desc">' + b.desc + '</div></div>'
-      ).join("");
     }
 
     function render() {
-      const s = TUTORIAL_SLIDES[step];
-      if (title) title.textContent = s.title;
-      if (body) body.textContent = s.body;
-      if (tipEl) tipEl.textContent = s.tip || "";
-      renderBots(s.bots);
-      if (stepEl) stepEl.textContent = String(step + 1);
-      if (back) back.style.visibility = step === 0 ? "hidden" : "visible";
-      if (next) {
-        if (fromGate) {
-          next.textContent = step >= total - 1 ? "Summon the Council" : "Next";
-        } else {
-          next.textContent = step >= total - 1 ? "Done" : "Next";
-        }
+      const s = TUTORIAL_SLIDES[step] || {};
+      if (s.mode && s.mode !== "settings" && typeof setMode === "function") {
+        try { setMode(s.mode); } catch (e) {}
       }
+      if (title) title.textContent = s.title || "";
+      if (body) body.textContent = s.body || "";
+      if (stepEl) stepEl.textContent = (step + 1) + " / " + total;
+      if (back) back.style.visibility = step === 0 ? "hidden" : "visible";
+      if (next) next.textContent = step >= total - 1 ? "Done" : "Next";
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => placeCoach(s.target));
+      });
     }
     render();
 
@@ -5678,12 +5692,7 @@ function drawCandleChart() {
     if (skip) {
       skip.onclick = () => {
         playSfxClick();
-        if (fromGate) {
-          if (tut) tut.classList.add("hidden");
-          runSummonSequence(window.__councilFog || null);
-        } else {
-          closeStandalone();
-        }
+        closeWalk("art");
       };
     }
     if (next) {
@@ -5694,16 +5703,14 @@ function drawCandleChart() {
           render();
         } else {
           playSfxClick();
-          if (fromGate) {
-            if (tut) tut.classList.add("hidden");
-            runSummonSequence(window.__councilFog || null);
-          } else {
-            closeStandalone();
-          }
+          closeWalk("art");
         }
       };
     }
   }
+  window.openTutorial = openTutorial;
+  window.runSummonSequence = runSummonSequence;
+  window.dismissGate = dismissGate;
 
 
   // BTC / ETH focus — exclusive, always wired (even if summon gate skipped)
@@ -5792,37 +5799,31 @@ function drawCandleChart() {
   function initSummonGate() {
     const gate = document.getElementById("summonGate");
     if (!gate) return;
-    // Returning visitors: short skip option still available; show gate once per session unless skip preferred
-    const quiet = (function () {
-      try { return sessionStorage.getItem("council_skip_gate") === "1"; } catch (e) { return false; }
-    })();
-    if (quiet) {
-      dismissGate(false);
+    if (hasOnboarded()) {
+      dismissGate(false, "art");
       return;
     }
+    gate.classList.remove("hidden");
     const fog = initFog();
     window.__councilFog = fog;
 
     const btnTut = document.getElementById("btnTutorial");
     const btnSum = document.getElementById("btnSummon");
-    const btnSkip = document.getElementById("btnSkipGate");
-    if (btnTut) btnTut.addEventListener("click", () => { ensureAudio(); openTutorial(false); });
-    // Permanent Help button (works after gate is dismissed)
+    if (btnTut && !btnTut.__wiredOnboard) {
+      btnTut.__wiredOnboard = true;
+      btnTut.addEventListener("click", () => { ensureAudio(); openTutorial(false); });
+    }
     const btnHelp = document.getElementById("btnHelp");
-    if (btnHelp) btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
-    // Focus tabs wired in wireFocusAndHelp() — always, even when gate is skipped
-
-    if (btnSum) btnSum.addEventListener("click", () => { ensureAudio(); playSfxClick(); runSummonSequence(fog); });
-    if (btnSkip) {
-      btnSkip.addEventListener("click", () => {
-        ensureAudio();
-        playSfxClick();
-        try { sessionStorage.setItem("council_skip_gate", "1"); } catch (e) {}
-        if (fog) fog.stop();
-        dismissGate(false);
-      });
+    if (btnHelp && !btnHelp.__wired) {
+      btnHelp.__wired = true;
+      btnHelp.addEventListener("click", () => { ensureAudio(); openTutorial(true); });
+    }
+    if (btnSum && !btnSum.__wiredOnboard) {
+      btnSum.__wiredOnboard = true;
+      btnSum.addEventListener("click", () => { ensureAudio(); playSfxClick(); runSummonSequence(fog); });
     }
   }
+  window.initSummonGate = initSummonGate;
 
   // Do not init summon / dismiss to Table before the desk-code gate.
   try { wireFocusAndHelp(); } catch (e) { console.warn('focus wire', e); }
@@ -6865,10 +6866,20 @@ function drawCandleChart() {
   function showAppAfterAuth() {
     const pg = document.getElementById("passwordGate");
     if (pg) pg.classList.add("hidden");
-    document.body.classList.add("gate-locked");
     document.body.classList.remove("admin-unlocked");
-    // Play intro video full-screen, then reveal summon gate
-    playZtIntroThenSummonGate();
+    const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
+    if (onboarded) {
+      document.body.classList.remove("gate-locked", "gate-revealing");
+      const sg = document.getElementById("summonGate");
+      if (sg) sg.classList.add("hidden");
+      try { if (typeof window.setMode === "function") window.setMode("art"); } catch (e) {}
+      return;
+    }
+    document.body.classList.add("gate-locked");
+    const sg = document.getElementById("summonGate");
+    if (sg) sg.classList.remove("hidden");
+    try { if (typeof window.initSummonGate === "function") window.initSummonGate(); } catch (e) {}
+    try { if (typeof wireFocusAndHelp === "function") wireFocusAndHelp(); } catch (e) {}
   }
 
   function playZtIntroThenSummonGate() {
@@ -6956,7 +6967,7 @@ function drawCandleChart() {
         try { localStorage.removeItem(passKey); } catch (e) {}
         window.__deskUnlockedThisPage = true;
         if (err) err.classList.add("hidden");
-        // Fresh password entry → intro video → summon gate
+        // Fresh password entry → first-login choice, or the desk if already onboarded
         showAppAfterAuth();
       } else {
         if (err) err.classList.remove("hidden");
@@ -7148,6 +7159,10 @@ function drawCandleChart() {
 /* ===== SUMMON VIDEO + FOG REVEAL ===== */
 (function () {
   function playSummonVideoThenReveal() {
+    if (typeof window.runSummonSequence === "function") {
+      window.runSummonSequence(window.__councilFog || null);
+      return;
+    }
     const gate = document.getElementById("summonGate");
     if (gate) {
       gate.classList.add("summoning");
