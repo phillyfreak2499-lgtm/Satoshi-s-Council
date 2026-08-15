@@ -28,6 +28,9 @@ from backend.data.coinglass import (
     ALLOWED_INTERVALS,
     PATHS,
     CoinGlassClient,
+    apply_hist_to_market,
+    empty_derivatives,
+    feeds_present,
     live_interval_order,
     summarize_derivatives,
 )
@@ -392,6 +395,91 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("https://open-api-v4.coinglass.com", CG_SRC)
         self.assertIn("start_time", CG_SRC)
         self.assertIn("end_time", CG_SRC)
+
+
+class CoinGlassHistReuseTests(unittest.IsolatedAsyncioTestCase):
+    """Hist backfill reuses the live client. Does not require a real key."""
+
+    def setUp(self):
+        reset_secret_cache()
+
+    def tearDown(self):
+        reset_secret_cache()
+        os.environ.pop("COINGLASS_API_KEY", None)
+
+    async def test_no_key_returns_empty_without_http(self):
+        with patch("backend.data.coinglass.load_coinglass_api_key", return_value=None):
+            cg = CoinGlassClient(symbol="BTCUSDT")
+            snap = await cg.get_historical_derivatives(1_700_000_000_000, 1_700_003_600_000)
+        self.assertFalse(snap["healthy"])
+        self.assertEqual(snap.get("skip_reason"), "no_key")
+        self.assertFalse(feeds_present(snap)["funding"])
+
+    async def test_empty_or_404_does_not_raise(self):
+        os.environ["COINGLASS_API_KEY"] = "dummy-cg-key-not-real"
+        reset_secret_cache("COINGLASS_API_KEY")
+        cg = CoinGlassClient(symbol="BTCUSDT")
+
+        async def empty_rows(*_a, **_k):
+            return []
+
+        with patch.object(cg, "_get_rows", side_effect=empty_rows):
+            snap = await cg.get_historical_derivatives(1_700_000_000_000, 1_700_003_600_000)
+        self.assertFalse(snap["healthy"])
+        self.assertEqual(snap.get("skip_reason"), "empty_or_404")
+        self.assertEqual(snap.get("missing_feeds"), ["funding", "open_interest", "liquidations"])
+
+    async def test_hist_tries_30m_then_1h_never_1m(self):
+        os.environ["COINGLASS_API_KEY"] = "dummy-cg-key-not-real"
+        reset_secret_cache("COINGLASS_API_KEY")
+        cg = CoinGlassClient(symbol="BTCUSDT")
+        seen: list[str] = []
+
+        async def rows(path, interval, limit=24, start_time=None, end_time=None):
+            seen.append(interval)
+            self.assertIn(path, PATHS)
+            self.assertNotEqual(interval, "1m")
+            if interval == "30m":
+                return []
+            if "funding" in path:
+                return [{"time": 1_700_000_000_000, "close": "0.001"}]
+            if "open-interest" in path:
+                return [{"time": 1, "close": "100"}, {"time": 2, "close": "110"}]
+            if "liquidation" in path:
+                return [{
+                    "time": 1,
+                    "long_liquidation_usd": "8000000",
+                    "short_liquidation_usd": "500000",
+                }]
+            return []
+
+        with patch.object(cg, "_get_rows", side_effect=rows):
+            snap = await cg.get_historical_derivatives(1_700_000_000_000, 1_700_003_600_000)
+        self.assertIn("30m", seen)
+        self.assertIn("1h", seen)
+        self.assertNotIn("1m", seen)
+        self.assertEqual(live_interval_order(), ["30m", "1h"])
+        self.assertTrue(snap["healthy"])
+        self.assertTrue(snap["feeds"]["funding"])
+        md = apply_hist_to_market({"candles": []}, snap)
+        self.assertAlmostEqual(md["funding_rate"], 0.001)
+        self.assertAlmostEqual(md["open_interest"], 110)
+        self.assertAlmostEqual(md["liq_long_usd"], 8_000_000)
+        empty = empty_derivatives("30m")
+        self.assertFalse(empty["healthy"])
+
+    async def test_live_hist_skipped_without_opt_in(self):
+        """No real key required. Live hist is opt-in; fixtures cover the three feeds."""
+        if os.environ.get("COINGLASS_HIST_LIVE", "").strip().lower() not in ("1", "true", "yes"):
+            self.skipTest("set COINGLASS_HIST_LIVE=1 to hit live CoinGlass; fixtures cover hist")
+        if not load_coinglass_api_key():
+            self.skipTest("COINGLASS_API_KEY missing")
+        cg = CoinGlassClient(symbol="BTCUSDT")
+        try:
+            snap = await cg.get_historical_derivatives(1_700_000_000_000, 1_700_007_200_000)
+        finally:
+            await cg.close()
+        self.assertIn("feeds", snap)
 
 
 if __name__ == "__main__":

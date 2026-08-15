@@ -83,6 +83,14 @@ class AdaptiveLearner:
         self.regime_weights: Dict[str, Dict[str, float]] = {}
         self.REGIME_BLEND: float = float(getattr(settings, 'REGIME_WEIGHT_BLEND', 0.55))
         self.REGIME_MIN_N: int = int(getattr(settings, 'REGIME_MIN_SAMPLES', 4))
+        # Kalshi seat backfill — same brain file, tagged so huddle can see it.
+        self.backfill: Dict[str, Any] = {
+            "tag": "backfill",
+            "hours_graded": 0,
+            "seat_samples": {},
+            "window_days": 90,
+            "tickers": [],
+        }
         self._trim_eth_roster_weights()
         self._normalize()
 
@@ -320,6 +328,7 @@ class AdaptiveLearner:
                 for k in sorted(self.calib_tries.keys())
             },
             "odds_calibration": self.odds_calibration_snapshot(),
+            "backfill": dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {},
         }
 
     def learn_from_settled(
@@ -329,11 +338,13 @@ class AdaptiveLearner:
         regime: str | None = None,
         credit: float = 1.0,
         count_as_lock: bool = True,
+        source: str | None = None,
     ) -> Dict[str, Any]:
         """
         Grade every directional agent vote against the market outcome,
         then nudge global weights + pair affinities + regime-split records.
         credit < 1.0 reduces the weight update (used for near_certain freebies).
+        source='backfill' tags the sample so huddle can see it. Does not wipe.
         """
         if outcome not in ("UP", "DOWN"):
             return {}
@@ -341,6 +352,7 @@ class AdaptiveLearner:
             self.lock_n += 1
         regime_key = regime or "UNKNOWN_MID"
         credit = max(0.05, min(1.0, float(credit or 1.0)))
+        src = str(source or "").strip().lower() or None
 
         notes: List[str] = []
         directional: Dict[str, Dict[str, Any]] = {}
@@ -562,6 +574,8 @@ class AdaptiveLearner:
                 f"({qs.get('best_size_wr', 0):.0%} of {qs.get('best_size_tries')} tries)"
             )
 
+        if src == "backfill":
+            notes.append("backfill")
         self.updates += 1
         self.last_notes = (self.last_notes + notes)[-12:]
         if notes:
@@ -570,7 +584,31 @@ class AdaptiveLearner:
             "notes": notes,
             "weights": dict(self.weights),
             "graded": len(directional),
+            "source": src,
         }
+
+    def note_backfill_hour(
+        self,
+        ticker: str | None = None,
+        seats: List[str] | None = None,
+        outcome: str | None = None,
+    ) -> None:
+        """Record that a backfill hour landed in this live brain. Merge, not wipe."""
+        rec = self.backfill if isinstance(self.backfill, dict) else {}
+        rec["tag"] = "backfill"
+        rec["hours_graded"] = int(rec.get("hours_graded") or 0) + 1
+        samples = rec.get("seat_samples") if isinstance(rec.get("seat_samples"), dict) else {}
+        for name in seats or []:
+            samples[name] = int(samples.get(name) or 0) + 1
+        rec["seat_samples"] = samples
+        rec["window_days"] = int(rec.get("window_days") or 90)
+        ticks = list(rec.get("tickers") or [])
+        if ticker:
+            ticks.append(str(ticker))
+        rec["tickers"] = ticks[-80:]
+        if outcome in ("UP", "DOWN"):
+            rec["last_outcome"] = outcome
+        self.backfill = rec
 
     def learn_from_wait(
         self,
@@ -778,6 +816,10 @@ class AdaptiveLearner:
             for rk, agents in (data.get("regime_wrong") or {}).items():
                 for a, c in agents.items():
                     self.regime_wrong[rk][a] = int(c)
+            if isinstance(data.get("backfill"), dict):
+                prev = dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {}
+                prev.update(data["backfill"])
+                self.backfill = prev
             try:
                 self._recompute_regime_weights()
             except Exception:
@@ -817,6 +859,7 @@ class AdaptiveLearner:
             "lock_n": int(self.lock_n),
             "wait_reasons": dict(self.wait_reasons),
             "when_not_to_lock": {k: dict(v) for k, v in self.when_not_to_lock.items()},
+            "backfill": dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {},
         }
 
     def save(self, path: "Path | None" = None) -> None:
@@ -858,6 +901,7 @@ class AdaptiveLearner:
             "lock_n": int(self.lock_n),
             "wait_reasons": dict(self.wait_reasons),
             "when_not_to_lock": {k: dict(v) for k, v in self.when_not_to_lock.items()},
+            "backfill": dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {},
         }
         if path.exists():
             try:
@@ -944,6 +988,11 @@ class AdaptiveLearner:
                         "strict_would_hit": int(rec.get("strict_would_hit") or 0),
                         "strict_would_miss": int(rec.get("strict_would_miss") or 0),
                     }
+            if isinstance(data.get("backfill"), dict):
+                prev = dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {}
+                incoming = data["backfill"]
+                prev.update(incoming)
+                self.backfill = prev
             self._trim_eth_roster_weights()
             self._normalize()
             self._recompute_regime_weights()
