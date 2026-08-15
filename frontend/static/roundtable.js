@@ -2011,8 +2011,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!locked) _sealSeen[key] = "";
   }
 
-  function pulseRate(st, dir, locked, which) {
-    // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×. No gold ZT.
+  function chairThinkRate(st, dir, locked, which) {
     const sfx = sealFX[chairKeyOf(which)];
     const punching = !!(sfx && sfx.until > Date.now());
     const huddle = (st && st.huddle) || (state && state.huddle) || {};
@@ -2025,8 +2024,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (punching) rate = 2.2;
     return rate;
   }
-  function chairThinkRate(st, dir, locked, which) {
-    return pulseRate(st, dir, locked, which);
+  function pulseRate(st, dir, locked, which) {
+    // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×. No gold ZT.
+    return chairThinkRate(st, dir, locked, which);
   }
 
   function drawChairThink(cx, cy, photoR, seatR, opts) {
@@ -2044,7 +2044,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const st = opts.st || {};
     const key = chairKeyOf(which);
     const phone = (typeof isPhoneDesk === "function") ? isPhoneDesk() : false;
-    const rate = chairThinkRate(st, dir, locked, which);
+    const rate = pulseRate(st, dir, locked, which);
     const wait = !locked && dir.indexOf("WAIT") >= 0;
     const sfx = sealFX[key];
     const punching = !!(sfx && sfx.until > Date.now() && !reduceMotion);
