@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-login-splash",
+    "at": "2026-08-15T23:55:00-05:00",
+    "title": "Login splash is the signed council table",
+    "why": "Signed Satoshi-center council table behind #passwordGate. Gate chrome is dark stone + amber/cyan. Type sits over the table, not the faces. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-raijin-cowboy-face",
     "at": "2026-08-15T23:50:00-05:00",
     "title": "Raijin cowboy is face-only now",
