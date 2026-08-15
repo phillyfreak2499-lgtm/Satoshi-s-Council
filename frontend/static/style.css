@@ -7266,8 +7266,8 @@ body.phone-floor .floor-raijin { display: inline-flex !important; }
 }
 .front-stage-wrap {
   position: relative;
-  width: min(720px, 100%);
-  height: min(520px, 72vw);
+  width: min(920px, 100%);
+  height: min(620px, 78vw);
   margin: 0 auto 16px;
   overflow: hidden;
   border: 1px solid rgba(0, 232, 255, 0.22);
@@ -7282,7 +7282,12 @@ body.phone-floor .floor-raijin { display: inline-flex !important; }
 }
 .front-ring {
   position: absolute;
-  inset: 8%;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
   pointer-events: none;
 }
 .front-chair,
@@ -7324,7 +7329,7 @@ body.phone-floor .floor-raijin { display: inline-flex !important; }
 .front-chair .front-mark {
   width: 112px;
   height: 112px;
-  border-color: rgba(240, 193, 74, 0.55);
+  border-color: rgba(0, 220, 255, 0.55);
 }
 .front-mark img {
   width: 100%;
@@ -7355,9 +7360,10 @@ body.phone-floor .floor-raijin { display: inline-flex !important; }
 }
 .front-book {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-  margin: 0 0 14px;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-width: 920px;
+  margin: 0 auto 14px;
 }
 .front-bet {
   padding: 12px;
@@ -7448,7 +7454,7 @@ body.phone-floor .floor-raijin { display: inline-flex !important; }
   background: rgba(0, 232, 255, 0.12);
 }
 @media (max-width: 480px) {
-  .front-stage-wrap { height: 420px; }
+  .front-stage-wrap { height: 480px; }
   .front-chair .front-mark { width: 88px; height: 88px; }
   .front-mark { width: 52px; height: 52px; }
   .front-bet button { min-height: 56px; }

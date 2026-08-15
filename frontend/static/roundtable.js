@@ -2322,7 +2322,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   const raijinPortrait = new Image();
   raijinPortrait.crossOrigin = "anonymous";
-  raijinPortrait.src = "/static/bots/raijin-wait.png";
+  raijinPortrait.src = "/static/bots/raijin-chair.png";
 
   function drawFloorRaijinChair(w, h) {
     const fit = floorRaijinFit(w, h);
@@ -6133,16 +6133,16 @@ function drawCandleChart() {
       box.innerHTML = '<p class="side-flag">' + (dropped ? ("series dropped · " + dropped) : "No open DFW book.") + "</p>";
       return;
     }
-    box.innerHTML = rows.map(function (b) {
-      const dont = !!b.dont_play;
-      return '<article class="front-bet' + (b.best ? " best" : "") + (dont ? " dont-play" : "") + '" data-ticker="' + String(b.ticker || "") + '">' +
-        '<div class="front-bet-head"><span>' + String(b.bracket || "") + "</span><span>" + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
-        "<div>YES " + frontCents(b.yes_ask) + " · NO " + frontCents(b.no_ask) + (b.volume != null ? (" · n " + Math.round(b.volume)) : "") + "</div>" +
-        (b.skip ? '<div class="side-flag">' + b.skip + "</div>" : "") +
-        '<button type="button" class="yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
-        '<button type="button" class="no" data-side="NO"' + (dont ? " disabled" : "") + ">NO</button>" +
-        "</article>";
-    }).join("");
+    const best = rows.find(function (b) { return b.best; }) || rows[0];
+    const dont = !!(best && best.dont_play);
+    const open = ((data && data.tape) || []).some(function (p) { return String(p.result || "").toUpperCase() === "OPEN"; });
+    box.innerHTML = '<article class="front-bet best' + (dont ? " dont-play" : "") + '" data-ticker="' + String(best.ticker || "") + '">' +
+      '<div class="front-bet-head"><span>' + (open ? "LOCKED" : "BEST") + " · " + String(best.bracket || "") + "</span><span>" + (best.confidence != null ? (best.confidence + "%") : "—") + "</span></div>" +
+      "<div>YES " + frontCents(best.yes_ask) + " · NO " + frontCents(best.no_ask) + (best.volume != null ? (" · n " + Math.round(best.volume)) : "") + "</div>" +
+      (best.skip ? '<div class="side-flag">' + best.skip + "</div>" : "") +
+      '<button type="button" class="yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
+      '<button type="button" class="no" data-side="NO"' + (dont ? " disabled" : "") + ">NO</button>" +
+      "</article>";
     box.querySelectorAll(".front-bet").forEach(function (el) {
       const ticker = el.getAttribute("data-ticker");
       const card = rows.find(function (b) { return String(b.ticker) === ticker; });
@@ -6233,6 +6233,129 @@ function drawCandleChart() {
     });
     startFrontWx(wx);
   }
+  const frontSeatImgs = {};
+  ["glass", "pit", "frost", "bone"].forEach(function (id) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = "/static/bots/" + id + ".png";
+    frontSeatImgs[id.toUpperCase()] = img;
+  });
+  function frontLeanOf(raw) {
+    const d = String(raw || "WAIT").toUpperCase();
+    if (d === "UP" || d === "YES") return "UP";
+    if (d === "DOWN" || d === "NO" || d === "SKIP") return "DOWN";
+    return "WAIT";
+  }
+  function drawFrontTable(wxCtx, w, h) {
+    if (!wxCtx || !w || !h) return;
+    const prev = ctx;
+    ctx = wxCtx;
+    try {
+      const data = frontBoard || {};
+      const chair = data.chair || {};
+      const seats = Array.isArray(data.seats) ? data.seats : [];
+      const tape = Array.isArray(data.tape) ? data.tape : [];
+      const open = tape.find(function (p) { return String(p.result || "").toUpperCase() === "OPEN"; });
+      const locked = !!open;
+      const dir = locked
+        ? (String(open.side || "").toUpperCase() === "NO" ? "DOWN" : "UP")
+        : frontLeanOf(chair.eye);
+      const conf = chair.confidence != null ? chair.confidence : 0;
+      const cx = w / 2;
+      const cy = h / 2;
+      const short = Math.min(w, h);
+      const radius = short * 0.28;
+      const pr = radius * 0.80;
+      const ringR = radius * 1.48;
+      const portraitY = cy - 2;
+      const accent = locked ? "rgba(0, 220, 255, 0.95)" : "rgba(0, 220, 255, 0.55)";
+      const nowCt = new Date();
+      const frac = ((nowCt.getHours() % 24) + nowCt.getMinutes() / 60) / 24;
+      drawHourRing(cx, cy, radius * 1.72, frac, dir === "UP" ? ACID : dir === "DOWN" ? HOT_RED : CYAN);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(0, 220, 255, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      const named = ["GLASS", "PIT", "FROST", "BONE"].map(function (id) {
+        return seats.find(function (s) { return s.id === id; }) || { id: id, dir: "WAIT", call: "—" };
+      });
+      const n = named.length;
+      const orbit = (typeof seatOrbitAngle === "function") ? seatOrbitAngle() : 0;
+      named.forEach(function (s, i) {
+        const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
+        const x = cx + Math.cos(ang) * ringR;
+        const y = cy + Math.sin(ang) * ringR;
+        const adir = frontLeanOf(s.dir || s.vote);
+        let col = "rgba(0,232,255,0.95)";
+        if (adir === "UP") col = "rgba(0,255,120,0.95)";
+        if (adir === "DOWN") col = "rgba(255,55,90,0.95)";
+        const confA = Number(s.n) || 50;
+        const end = spokeEnd(x, y, cx, portraitY, pr + 4);
+        const agree = (adir === dir) && (adir === "UP" || adir === "DOWN");
+        const fresh = markSeatTick("front:" + s.id, adir, confA);
+        drawPacketSpoke(x, y, end.x, end.y, col, confA, agree, fresh);
+        const face = locked ? Math.atan2(portraitY - y, cx - x) : ang;
+        const mark = frontSeatImgs[s.id];
+        if (!containPortrait(mark, x, y, 22)) {
+          drawGameBot(s.id, x, y, 22, adir, confA, face, i);
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y, 22, 0, Math.PI * 2);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        }
+        ctx.font = "700 9px Orbitron, monospace";
+        ctx.fillStyle = "rgba(220,235,250,0.95)";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        const outA = Math.atan2(y - cy, x - cx);
+        ctx.fillText(s.id, x + Math.cos(outA) * 16, y + Math.sin(outA) * 16);
+      });
+      if (!containPortrait(raijinPortrait, cx, portraitY, pr)) {
+        ctx.beginPath();
+        ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
+        ctx.fillStyle = "#0a1220";
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, portraitY, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = locked ? "rgba(0,220,255,0.95)" : "rgba(0,220,255,0.9)";
+      ctx.lineWidth = locked ? 3.2 : 2.8;
+      ctx.stroke();
+      try {
+        drawChairThink(cx, portraitY, pr, radius, { which: "front", dir: dir, locked: locked, st: {} });
+      } catch (e) {}
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.font = "700 11px Orbitron, monospace";
+      ctx.fillStyle = "#7fe9ff";
+      ctx.fillText("RAIJIN · DFW", cx, portraitY + pr + 11);
+      ctx.font = "700 12px Orbitron, monospace";
+      const plateY = cy + radius + 14;
+      if (locked) {
+        ctx.fillStyle = "#7fe9ff";
+        ctx.fillText("LOCKED " + dir, cx, plateY);
+        ctx.font = "600 10px Rajdhani, sans-serif";
+        ctx.fillStyle = "rgba(180,200,220,0.85)";
+        ctx.fillText((open.bracket || chair.bracket || "—") + " · paper", cx, plateY + 14);
+      } else {
+        ctx.fillStyle = "#a8c0d8";
+        ctx.fillText(dir, cx, plateY);
+        ctx.font = "600 10px Rajdhani, sans-serif";
+        ctx.fillStyle = "rgba(180,200,220,0.75)";
+        ctx.fillText((conf || "—") + (conf ? "%" : "") + " · " + (chair.bracket || "waiting"), cx, plateY + 14);
+      }
+    } finally {
+      ctx = prev;
+    }
+  }
   function seedFrontWx(w, h, mode) {
     frontWxBits = [];
     const n = mode === "RAIN" || mode === "STORM" ? 90 : (mode === "WIND" ? 70 : 36);
@@ -6255,8 +6378,8 @@ function drawCandleChart() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const wrap = document.getElementById("frontStageWrap");
-    const w = canvas.clientWidth || 720;
-    const h = canvas.clientHeight || 520;
+    const w = canvas.clientWidth || 920;
+    const h = canvas.clientHeight || 620;
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
@@ -6358,17 +6481,14 @@ function drawCandleChart() {
       });
       ctx.globalAlpha = 1;
     }
-    ctx.strokeStyle = "rgba(0, 232, 255, 0.28)";
-    ctx.beginPath();
-    ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.36, 0, Math.PI * 2);
-    ctx.stroke();
+    drawFrontTable(ctx, w, h);
     frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
   }
   function startFrontWx(mode) {
     if (mode && mode !== frontLastMode) {
       frontLastMode = mode;
       const canvas = document.getElementById("frontWx");
-      if (canvas) seedFrontWx(canvas.clientWidth || 720, canvas.clientHeight || 520, mode);
+      if (canvas) seedFrontWx(canvas.clientWidth || 920, canvas.clientHeight || 620, mode);
     }
     if (!frontWxRaf) frontWxRaf = requestAnimationFrame(drawFrontWxFrame);
   }
@@ -7397,7 +7517,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Weather page — not the crypto Floor. Raijin chairs Dallas DFW (KXHIGHTDAL / KDFW). GLASS, PIT, FROST, and BONE rank the book. Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
+      body: "Raijin’s Floor — same ring as BTC / ETH. Full-size Chair, GLASS, PIT, FROST, and BONE. Dallas DFW only (KXHIGHTDAL / KDFW). Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",

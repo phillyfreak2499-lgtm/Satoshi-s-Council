@@ -1049,13 +1049,25 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
             bone_call = votes["BONE"]["call"]
     rows = []
     calls = {"GLASS": glass_call, "PIT": pit_call, "FROST": frost_call, "BONE": bone_call}
+    votes = {}
+    if best:
+        votes = {v["id"]: v for v in (best.get("votes") or []) if isinstance(v, dict) and v.get("id")}
     for seat in SEATS:
         rec = recs.get(seat["id"]) or {"n": 0, "wr": None, "rank": 0, "correct": 0, "wrong": 0}
+        raw = str((votes.get(seat["id"]) or {}).get("dir") or "WAIT").upper()
+        if raw == "YES":
+            lean = "UP"
+        elif raw in ("NO", "SKIP"):
+            lean = "DOWN"
+        else:
+            lean = "WAIT"
         rows.append({
             "id": seat["id"],
             "job": seat["job"],
             "mark": seat["mark"],
             "call": calls.get(seat["id"]),
+            "dir": lean,
+            "vote": raw,
             "n": rec.get("n") or 0,
             "wr": rec.get("wr"),
             "rank": rec.get("rank") or 0,
