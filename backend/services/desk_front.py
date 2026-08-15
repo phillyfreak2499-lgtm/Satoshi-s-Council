@@ -95,6 +95,7 @@ SEATS: Tuple[Dict[str, Any], ...] = (
 )
 CHAIR: Dict[str, str] = {
     "id": "RAIJIN",
+    "name": "RAIJIN",
     "job": "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
     "mark": "/static/bots/raijin-chair.png",
 }
@@ -1157,6 +1158,7 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
     return {
         "id": CHAIR["id"],
+        "name": CHAIR["name"],
         "job": CHAIR["job"],
         "mark": marks.get(eye) or CHAIR["mark"],
         "portrait": CHAIR["mark"],

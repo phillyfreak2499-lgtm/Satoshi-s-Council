@@ -309,6 +309,21 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertIn('id="frontSettingsCard"', HTML)
         self.assertIn("Raijin / THE FRONT", (ROOT / "TUTORIAL.md").read_text(encoding="utf-8"))
 
+    def test_chair_name_is_raijin_never_blank(self):
+        self.assertEqual(desk_front.CHAIR["id"], "RAIJIN")
+        self.assertEqual(desk_front.CHAIR["name"], "RAIJIN")
+        self.assertTrue(str(desk_front.CHAIR["name"]).strip())
+        self.assertIn('"name": "RAIJIN"', FRONT)
+        self.assertIn("function frontChairName(", JS)
+        self.assertIn('return n || "RAIJIN"', JS)
+        self.assertIn("frontChairName(chair) + \" · DFW\"", JS)
+        self.assertIn("frontChairName()", JS)
+        self.assertIn('id="frontChairImg" src="/static/bots/raijin-chair.png"', HTML)
+        self.assertIn(">RAIJIN<", HTML)
+        self.assertNotIn("leave Chair name blank", JS + HTML + FRONT)
+        self.assertEqual([c["series"] for c in desk_front.CITIES], ["KXHIGHTDAL"])
+        self.assertIn("ARCADE_ASSETS = (\"BTC\",)", SIDE)
+
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -330,6 +345,8 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         ids = [s["id"] for s in board["seats"]]
         self.assertEqual(ids, ["GLASS", "PIT", "FROST", "BONE"])
         self.assertEqual(board["chair"]["id"], "RAIJIN")
+        self.assertEqual(board["chair"]["name"], "RAIJIN")
+        self.assertTrue(str(board["chair"]["name"]).strip())
         self.assertTrue(all(s.get("dir") in ("UP", "DOWN", "WAIT") for s in board["seats"]))
         self.assertTrue(all("vote" in s for s in board["seats"]))
         self.assertTrue(all(s["mark"].endswith(".png") for s in board["seats"]))
@@ -372,6 +389,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
     def test_chair_eyes_up_down_wait(self):
         wait = desk_front.build_chair(None)
         self.assertEqual(wait["eye"], "WAIT")
+        self.assertEqual(wait["name"], "RAIJIN")
         self.assertTrue(wait["mark"].endswith("raijin-wait.png"))
         self.assertTrue(wait["portrait"].endswith("raijin-chair.png"))
         up = desk_front.build_chair({"dont_play": False, "bracket": "103–104"})

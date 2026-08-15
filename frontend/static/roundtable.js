@@ -2354,7 +2354,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = "#7fe9ff";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText("RAIJIN", cx, cy + pr + 3);
+    ctx.fillText(frontChairName(), cx, cy + pr + 3);
     ctx.restore();
     rememberChairHit(cx, cy, pr, "front");
   }
@@ -4950,15 +4950,23 @@ function drawCandleChart() {
     const seats = ((data && data.seats) || []).filter(function (s) {
       return s && (s.id === "GLASS" || s.id === "PIT" || s.id === "FROST" || s.id === "BONE");
     });
-    const rows = seats.length ? seats : fallback;
+    const chair = (data && data.chair) || {
+      id: "RAIJIN",
+      name: "RAIJIN",
+      job: "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
+      mark: "/static/bots/raijin-chair.png",
+    };
+    chair.name = frontChairName(chair);
+    const rows = [chair].concat(seats.length ? seats : fallback);
     grid.innerHTML = rows.map(function (s) {
       const n = s.n != null ? s.n : 0;
       const wr = s.wr != null ? (Math.round(Number(s.wr) * 100) + "%") : "—";
       const rank = s.rank ? ("#" + s.rank) : "—";
       const faded = s.faded ? " faded" : "";
+      const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
       return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
-        '<div class="bot-card-head">' + frontBotMarkHtml(s.id, s.mark) +
-        '<span class="bot-callsign">' + String(s.id || "") + "</span>" +
+        '<div class="bot-card-head">' + frontBotMarkHtml(callsign, s.mark) +
+        '<span class="bot-callsign">' + callsign + "</span>" +
         '<span class="bot-rank-pill">' + rank + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
         '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span></div>" +
@@ -6167,9 +6175,11 @@ function drawCandleChart() {
     if (data && data.chair) seats.unshift(data.chair);
     box.innerHTML = seats.map(function (s) {
       const mark = String((s && s.mark) || "");
+      const isChair = !!(s && (s.id === "RAIJIN" || (data && data.chair && s.id && s.id === data.chair.id)));
+      const label = isChair ? frontChairName(s) : String((s && (s.name || s.id)) || "");
       return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
         '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
-        "<div><h3>" + String((s && s.id) || "") + "</h3>" +
+        "<div><h3>" + label + "</h3>" +
         "<p>" + String((s && s.job) || "") + "</p>" +
         '<div class="nw">' + frontWr(s) + (s && s.rank ? (" · #" + s.rank) : "") + (s && s.call ? (" · " + s.call) : "") + "</div></div></article>";
     }).join("");
@@ -6290,6 +6300,10 @@ function drawCandleChart() {
     img.src = "/static/bots/" + id + ".png";
     frontSeatImgs[id.toUpperCase()] = img;
   });
+  function frontChairName(chair) {
+    const n = String((chair && (chair.name || chair.id)) || "RAIJIN").trim();
+    return n || "RAIJIN";
+  }
   function frontLeanOf(raw) {
     const d = String(raw || "WAIT").toUpperCase();
     if (d === "UP" || d === "YES") return "UP";
@@ -6402,7 +6416,7 @@ function drawCandleChart() {
       ctx.textBaseline = "alphabetic";
       ctx.font = "700 11px Orbitron, monospace";
       ctx.fillStyle = "#7fe9ff";
-      ctx.fillText("RAIJIN · DFW", cx, portraitY + pr + 11);
+      ctx.fillText(frontChairName(chair) + " · DFW", cx, portraitY + pr + 11);
       ctx.font = "700 12px Orbitron, monospace";
       const plateY = cy + radius + 14;
       if (locked) {
