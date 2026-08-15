@@ -2725,7 +2725,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
     const chairCore = { x: cx, y: cy };
-    const chairR = floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28);
+    // Table Chair box is a notch under Floor so Satoshi/Vitalik don't eat the panel.
+    // Floor stays large via floorFit.lrBase / 0.22. Cover-fill still fills the circle.
+    const chairR = floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24);
     const chairStop = chairR + 6;
     const chairLean = String((state.decision && state.decision.direction) || "WAIT").toUpperCase();
     order.forEach((name, i) => {
@@ -2853,7 +2855,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const leaderPulse = reduceMotion ? 1 : (1 + 0.02 * Math.sin(time * 0.0035));
-    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28)) * leaderPulse;
+    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
       leaderDir === "UP" || leaderDir === "UP_HOLD" ? "rgba(0, 255, 100, 0.85)" :

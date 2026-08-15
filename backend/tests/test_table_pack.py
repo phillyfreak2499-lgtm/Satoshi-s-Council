@@ -30,7 +30,7 @@ class TableBeamTests(unittest.TestCase):
 class TablePortraitTests(unittest.TestCase):
     def test_portraits_fill_the_seat(self):
         self.assertIn("const pr = radius * 0.80", JS)
-        self.assertIn("mode === \"floor\" ? 0.22 : 0.28", JS)
+        self.assertIn("mode === \"floor\" ? 0.22 : 0.24", JS)
         self.assertIn("const scale = cover", JS)
         self.assertIn("object-fit: cover", JS)
         self.assertNotIn("contain + (cover - contain)", JS)
