@@ -151,15 +151,38 @@ _fills_loaded = False
 _dead_series: Dict[str, float] = {}
 _mids: Dict[str, List[Tuple[float, float]]] = {}
 _data_override: Optional[Path] = None
+_watch_cache: Dict[str, Dict[str, Any]] = {}
+
+# ESPN scoreboard header — public JSON ESPN.com uses for the scores strip.
+# site.api.espn.com 403s from some egress; this header endpoint does not.
+# Kalshi event metadata has no broadcast field (probed 2026-08-15).
+ESPN_HEADER = "https://site.web.api.espn.com/apis/v2/scoreboard/header"
+ESPN_LEAGUES: Dict[str, Tuple[str, str]] = {
+    "NFL": ("football", "nfl"),
+    "CFB": ("football", "college-football"),
+    "MLB": ("baseball", "mlb"),
+    "NBA": ("basketball", "nba"),
+    "NHL": ("hockey", "nhl"),
+}
+WATCH_TTL_S = 900.0
+WATCH_ALIASES: Dict[str, str] = {
+    "WAS": "WSH", "WSH": "WSH",
+    "JAC": "JAX", "JAX": "JAX",
+    "BAMA": "ALA", "ALA": "ALA",
+    "OKLA": "OU", "OU": "OU",
+    "MIZZ": "MIZ", "MIZ": "MIZ",
+    "NCAAST": "NCST", "NCST": "NCST",
+}
 
 
 def reset_for_tests(data_dir: Optional[Path] = None) -> None:
-    global _fills, _fills_loaded, _board_cache, _dead_series, _mids, _data_override
+    global _fills, _fills_loaded, _board_cache, _dead_series, _mids, _data_override, _watch_cache
     _fills = []
     _fills_loaded = True
     _board_cache = {"at": 0.0, "payload": None}
     _dead_series = {}
     _mids = {}
+    _watch_cache = {}
     _data_override = data_dir
 
 
@@ -925,7 +948,194 @@ def lock_tape() -> List[Dict[str, Any]]:
     return list(reversed(_load_fills()[-16:]))
 
 
-async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = None, force: bool = False) -> Dict[str, Any]:
+def team_watch_keys(code: Any) -> set:
+    c = str(code or "").upper().strip()
+    if not c:
+        return set()
+    keys = {c}
+    if c in WATCH_ALIASES:
+        keys.add(WATCH_ALIASES[c])
+    for src, dst in WATCH_ALIASES.items():
+        if dst == c:
+            keys.add(src)
+    return keys
+
+
+def dark_watch(why: str = "NO LISTING", *, down: bool = False, source: str = "espn-header") -> Dict[str, Any]:
+    line = "WATCH · DARK · FEED QUIET" if down else (
+        "WATCH · DARK · NO GAME ON THE TABLE" if why == "NO GAME" else "WATCH · DARK · NO LISTING"
+    )
+    return {
+        "line": line,
+        "network": None,
+        "networks": [],
+        "market": None,
+        "listed": False,
+        "source": source,
+        "why": why,
+        "down": down,
+    }
+
+
+def watch_copy(names: List[str], market: Optional[str]) -> str:
+    """One CRT line. Never invent a channel — names come from the listing."""
+    shown = " / ".join([n for n in names if n][:2])
+    if not shown:
+        return "WATCH · DARK · NO LISTING"
+    if market == "national":
+        return f"WATCH · {shown} · NATIONAL"
+    if market == "stream":
+        return f"WATCH · {shown} · STREAM"
+    if market == "local":
+        return f"WATCH · {shown} · LOCAL"
+    return f"WATCH · {shown}"
+
+
+def event_team_keys(ev: Dict[str, Any]) -> set:
+    out: set = set()
+    for c in ev.get("competitors") or []:
+        if not isinstance(c, dict):
+            continue
+        out |= team_watch_keys(c.get("abbreviation"))
+    if not out:
+        short = str(ev.get("shortName") or ev.get("name") or "").upper()
+        for tok in re.findall(r"[A-Z]{2,4}", short):
+            out |= team_watch_keys(tok)
+    return out
+
+
+def match_watch_event(events: List[Dict[str, Any]], home: Any, away: Any) -> Optional[Dict[str, Any]]:
+    """Both sides must hit. One team is not a listing."""
+    h, a = team_watch_keys(home), team_watch_keys(away)
+    if not h or not a:
+        return None
+    hits = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        have = event_team_keys(ev)
+        if (h & have) and (a & have):
+            hits.append(ev)
+    return hits[0] if hits else None
+
+
+def listing_from_event(ev: Dict[str, Any]) -> Dict[str, Any]:
+    rows = [b for b in (ev.get("broadcasts") or []) if isinstance(b, dict)]
+    def _name(b: Dict[str, Any]) -> str:
+        return str(b.get("shortName") or b.get("callLetters") or b.get("station") or b.get("name") or "").strip()
+
+    nat_tv = [b for b in rows if b.get("isNational") and str(b.get("type") or "").upper() == "TV"]
+    nat_st = [b for b in rows if b.get("isNational") and str(b.get("type") or "").upper() != "TV"]
+    loc_tv = [b for b in rows if (not b.get("isNational")) and str(b.get("type") or "").upper() == "TV"]
+    if nat_tv:
+        chosen, market = nat_tv, "national"
+    elif nat_st:
+        chosen, market = nat_st, "stream"
+    elif loc_tv:
+        chosen, market = loc_tv, "local"
+    else:
+        chosen, market = [], None
+    names: List[str] = []
+    for b in chosen[:2]:
+        n = _name(b)
+        if n and n not in names:
+            names.append(n)
+    if not names:
+        raw = str(ev.get("broadcast") or "").strip()
+        if raw:
+            names.append(raw)
+            market = market or "national"
+    if not names:
+        return dark_watch("NO LISTING")
+    game = str(ev.get("shortName") or ev.get("name") or "").strip() or None
+    return {
+        "line": watch_copy(names, market),
+        "network": names[0],
+        "networks": names,
+        "market": market,
+        "listed": True,
+        "source": "espn-header",
+        "game": game,
+        "why": None,
+        "down": False,
+    }
+
+
+def parse_espn_header(data: Any) -> List[Dict[str, Any]]:
+    if not isinstance(data, dict):
+        return []
+    out: List[Dict[str, Any]] = []
+    for sport in data.get("sports") or []:
+        if not isinstance(sport, dict):
+            continue
+        for lg in sport.get("leagues") or []:
+            if not isinstance(lg, dict):
+                continue
+            for ev in lg.get("events") or []:
+                if isinstance(ev, dict):
+                    out.append(ev)
+    return out
+
+
+async def _espn_header_fetch(sport: str, league: str) -> Dict[str, Any]:
+    import httpx
+
+    url = f"{ESPN_HEADER}?sport={sport}&league={league}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; SatoshiCouncil/1.0)",
+        "Accept": "application/json",
+        "Referer": "https://www.espn.com/",
+    }
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        r = await client.get(url, headers=headers)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, dict) else {}
+
+
+async def load_watch_events(sport: str, fetch: Optional[_Fetch] = None) -> Tuple[List[Dict[str, Any]], bool]:
+    """Cached ESPN header events. down=True when the feed failed."""
+    pair = ESPN_LEAGUES.get(str(sport or "").upper())
+    if not pair:
+        return [], False
+    key = f"{pair[0]}/{pair[1]}"
+    hit = _watch_cache.get(key)
+    if hit and time.time() - float(hit.get("at") or 0) < WATCH_TTL_S:
+        return list(hit.get("events") or []), bool(hit.get("down"))
+    if _data_override is not None and fetch is None:
+        return [], False
+    try:
+        if fetch:
+            data = await fetch("/watch", {"sport": pair[0], "league": pair[1]})
+        else:
+            data = await _espn_header_fetch(pair[0], pair[1])
+        events = parse_espn_header(data) if isinstance(data, dict) else []
+        _watch_cache[key] = {"at": time.time(), "events": events, "down": False}
+        return events, False
+    except Exception:
+        _watch_cache[key] = {"at": time.time(), "events": [], "down": True}
+        return [], True
+
+
+async def attach_watch(
+    pick: Optional[Dict[str, Any]],
+    fetch: Optional[_Fetch] = None,
+    events: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Where you can watch the picked game. Never invent a channel."""
+    if not pick:
+        return dark_watch("NO GAME")
+    if events is None:
+        events, down = await load_watch_events(str(pick.get("sport") or ""), fetch=fetch)
+        if down:
+            return dark_watch("FEED QUIET", down=True)
+    ev = match_watch_event(events or [], pick.get("home"), pick.get("away"))
+    if not ev:
+        return dark_watch("NO LISTING")
+    return listing_from_event(ev)
+
+
+async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = None, force: bool = False, watch_fetch: Optional[_Fetch] = None, watch_events: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     ttl = BOARD_TTL_S
     if not force and _board_cache.get("payload") and time.time() - float(_board_cache.get("at") or 0) < ttl:
         return _board_cache["payload"]
@@ -938,11 +1148,14 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
     chair = build_chair(pick)
     seats = build_seats(pick)
     subs = build_subs(pick)
+    watch = await attach_watch(pick, fetch=watch_fetch, events=watch_events)
+    chair["watch"] = watch
     acc = chair_accuracy()
     payload = {
         "chair": chair,
         "seats": seats,
         "subs": subs,
+        "watch": watch,
         "pick": None if not pick else {
             "ticker": pick.get("ticker"),
             "game": pick.get("game"),
@@ -961,6 +1174,7 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
             "close_time": pick.get("close_time"),
             "siblings": pick.get("siblings") or [],
             "eyes": chair.get("eyes"),
+            "watch": watch,
         },
         "accuracy": acc,
         "tape": lock_tape(),

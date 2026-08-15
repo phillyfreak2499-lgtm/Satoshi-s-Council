@@ -6699,6 +6699,29 @@ body.night-mode .table-stage {
   text-overflow: ellipsis;
 }
 .chair-why[hidden] { display: none !important; }
+.ats-watch {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: calc(14% - 22px);
+  z-index: 9;
+  pointer-events: none;
+  text-align: center;
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: #7fe9ff;
+  text-shadow: 0 0 10px rgba(0, 232, 255, 0.55), 0 1px 8px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-watch[data-listed="1"] { color: #f0c14a; text-shadow: 0 0 10px rgba(240, 193, 74, 0.55), 0 1px 8px rgba(0, 0, 0, 0.9); }
+.ats-watch[hidden] { display: none !important; }
+body.floor-mode .ats-watch,
+body.night-mode .ats-watch,
+body.mode-floor .ats-watch { bottom: calc(4% + 16px); }
+body:not([data-focus-table="ats"]) .ats-watch { display: none !important; }
 body.floor-mode .chair-why,
 body.night-mode .chair-why,
 body.mode-floor .chair-why {
@@ -6865,6 +6888,11 @@ body.gate-locked .health-strip {
   body.phone-floor .chair-why {
     bottom: calc(8% + 28px);
     font-size: 16px;
+    white-space: normal;
+  }
+  body.phone-floor .ats-watch {
+    bottom: calc(8% + 8px);
+    font-size: 11px;
     white-space: normal;
   }
   body.phone-floor.floor-mode #floorExitBtn:not([hidden]),

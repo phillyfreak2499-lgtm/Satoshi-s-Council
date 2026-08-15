@@ -292,6 +292,66 @@ class AtsPickTests(unittest.TestCase):
         self.assertNotIn("ZT", desk_ats.CHAIR["job"])
         self.assertEqual(desk_ats.CHAIR["name"], "ARES")
 
+    def test_watch_never_invents_a_channel(self):
+        dark = desk_ats.dark_watch("NO LISTING")
+        self.assertEqual(dark["line"], "WATCH · DARK · NO LISTING")
+        self.assertFalse(dark["listed"])
+        self.assertIsNone(dark["network"])
+        self.assertEqual(desk_ats.dark_watch("NO GAME")["line"], "WATCH · DARK · NO GAME ON THE TABLE")
+        self.assertEqual(desk_ats.dark_watch("FEED QUIET", down=True)["line"], "WATCH · DARK · FEED QUIET")
+        self.assertIsNone(desk_ats.match_watch_event([], "DAL", "SEA"))
+        self.assertIsNone(desk_ats.match_watch_event([{"shortName": "DAL @ SEA", "competitors": [
+            {"abbreviation": "DAL"}, {"abbreviation": "SEA"},
+        ], "broadcasts": []}], "ZZZ", "QQQ"))
+        listed = desk_ats.listing_from_event({
+            "shortName": "CLE @ CHI",
+            "broadcast": "NFL Net",
+            "broadcasts": [
+                {"type": "TV", "isNational": True, "shortName": "NFL Net", "name": "NFL Network"},
+                {"type": "TV", "isNational": False, "shortName": "FOX32", "name": "FOX32"},
+            ],
+        })
+        self.assertTrue(listed["listed"])
+        self.assertEqual(listed["network"], "NFL Net")
+        self.assertEqual(listed["line"], "WATCH · NFL Net · NATIONAL")
+        self.assertNotIn("ESPN", listed["line"])
+        empty = desk_ats.listing_from_event({"shortName": "MIN @ NYG", "broadcasts": []})
+        self.assertFalse(empty["listed"])
+        self.assertIn("DARK", empty["line"])
+        ev = {
+            "shortName": "DAL @ SEA",
+            "competitors": [{"abbreviation": "DAL"}, {"abbreviation": "SEA"}],
+            "broadcasts": [{"type": "TV", "isNational": True, "shortName": "FOX", "name": "FOX"}],
+        }
+        self.assertEqual(desk_ats.match_watch_event([ev], "SEA", "DAL")["shortName"], "DAL @ SEA")
+        self.assertEqual(desk_ats.watch_copy(["ESPN"], "national"), "WATCH · ESPN · NATIONAL")
+        self.assertEqual(desk_ats.watch_copy(["Prime"], "stream"), "WATCH · Prime · STREAM")
+        self.assertEqual(desk_ats.watch_copy(["WIVB", "WSOC"], "local"), "WATCH · WIVB / WSOC · LOCAL")
+
+    async def test_watch_attaches_to_pick_and_fails_soft(self):
+        events = [{
+            "shortName": "DAL @ SEA",
+            "competitors": [{"abbreviation": "DAL"}, {"abbreviation": "SEA"}],
+            "broadcasts": [{"type": "TV", "isNational": True, "shortName": "CBS", "name": "CBS"}],
+        }]
+        board = await desk_ats.build_board(fetch=_fetch_factory(), now=NOW, force=True, watch_events=events)
+        self.assertIn("watch", board)
+        self.assertEqual(board["watch"]["source"], "espn-header")
+        if board.get("pick") and board["pick"].get("home") in ("DAL", "SEA"):
+            self.assertTrue(board["watch"]["listed"])
+            self.assertEqual(board["watch"]["network"], "CBS")
+            self.assertIn("CBS", board["watch"]["line"])
+        quiet = await desk_ats.attach_watch({"home": "DAL", "away": "SEA", "sport": "NFL"}, events=[])
+        self.assertFalse(quiet["listed"])
+        self.assertIn("DARK", quiet["line"])
+        async def boom(path, params):
+            raise RuntimeError("espn down")
+        desk_ats._watch_cache.clear()
+        down = await desk_ats.attach_watch({"home": "DAL", "away": "SEA", "sport": "NFL"}, fetch=boom)
+        self.assertTrue(down["down"])
+        self.assertEqual(down["line"], "WATCH · DARK · FEED QUIET")
+        self.assertNotIn("ESPN", down["line"])
+
 
 class AtsFloorChromeTests(unittest.TestCase):
     def test_four_equal_floor_chairs(self):
@@ -308,6 +368,14 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertIn("SATOSHI", geo)
         self.assertIn("VITALIK", geo)
         self.assertIn("function floorHudGeometry", JS)
+
+    def test_watch_line_on_ats_hud(self):
+        self.assertIn('id="atsWatch"', HTML)
+        self.assertIn("function paintAtsWatch", JS)
+        self.assertIn("WATCH · DARK", HTML + JS + ATS)
+        self.assertIn("espn-header", ATS)
+        self.assertIn("Never invent a channel", ATS)
+        self.assertNotIn('"WATCH"', ATS.split("SEATS:", 1)[1].split("CHAIR:", 1)[0])
 
     def test_eyes_are_css_mask_not_32_faces(self):
         self.assertIn("ares-eye", CSS)

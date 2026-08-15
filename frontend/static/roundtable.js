@@ -952,6 +952,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       asset: "ats",
       pick: pick,
       eyes: (chair && chair.eyes) || pick.eyes,
+      watch: (chair && chair.watch) || pick.watch || (board && board.watch),
       learning: { hierarchy: hierarchy },
     };
   }
@@ -3043,6 +3044,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.font = "600 10px Rajdhani, sans-serif";
       ctx.fillStyle = "rgba(180,200,220,0.75)";
       ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, plateY + 14);
+    }
+    if (which === "ats" || (typeof isAtsTable === "function" && isAtsTable(which))) {
+      const watch = (st && st.watch) || {};
+      const wline = String(watch.line || "WATCH · DARK · NO LISTING");
+      ctx.font = "700 8px Orbitron, monospace";
+      ctx.fillStyle = watch.listed ? "#f0c14a" : "rgba(127,233,255,0.85)";
+      ctx.fillText(wline, cx, plateY + (locked ? 28 : 28));
     }
 
     if (!botPts.length) {
@@ -5356,6 +5364,10 @@ function drawCandleChart() {
             : (typeof isAtsTable === "function" && isAtsTable(focusTable) ? "one game · paper" : "council majority");
           whyLine.textContent = `${why.side} · ${why.conf}% · ${seats}`;
         }
+        if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
+          const watch = (focused && focused.watch) || {};
+          if (watch.line) whyLine.textContent = whyLine.textContent + " · " + watch.line;
+        }
       } else {
         whyCard.classList.add("hidden");
         whyLine.textContent = "—";
@@ -5969,6 +5981,19 @@ function drawCandleChart() {
     return bits.slice(0, 3).join(" · ");
   }
 
+  function paintAtsWatch(ts) {
+    const el = document.getElementById("atsWatch");
+    if (!el) return;
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    const show = ats && (mode === "art" || mode === "floor" || mode === "night");
+    el.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
+    const watch = view.watch || (view.pick && view.pick.watch) || {};
+    el.textContent = String(watch.line || "WATCH · DARK · NO GAME ON THE TABLE");
+    el.dataset.listed = watch.listed ? "1" : "0";
+  }
+
   function paintChairWhy() {
     const el = document.getElementById("chairWhy");
     if (!el) return;
@@ -5977,6 +6002,7 @@ function drawCandleChart() {
     if (!show) return;
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
     el.textContent = chairWhyLineText(ts);
+    try { paintAtsWatch(ts); } catch (e) {}
   }
 
   function paintPhoneScore() {
@@ -7565,6 +7591,7 @@ function drawCandleChart() {
         try { paintAresEyes((atsBoard.chair && atsBoard.chair.eyes) || (atsBoard.pick && atsBoard.pick.eyes)); } catch (e) {}
         try { renderAtsBotsGuide(atsBoard); } catch (e) {}
         try { paintAtsChartTape(atsBoard); } catch (e) {}
+        try { paintAtsWatch(atsBoard); } catch (e) {}
         try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
         try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
       }
@@ -7578,6 +7605,7 @@ function drawCandleChart() {
         try { paintAresEyes((data.chair && data.chair.eyes) || (data.pick && data.pick.eyes)); } catch (e) {}
         try { renderAtsBotsGuide(data); } catch (e) {}
         try { paintAtsChartTape(data); } catch (e) {}
+        try { paintAtsWatch(data); } catch (e) {}
       }).catch(function () {});
     }, 20000);
   }
@@ -7619,7 +7647,8 @@ function drawCandleChart() {
     const meta = document.getElementById("atsChartMeta");
     const pick = (data && data.pick) || {};
     const chair = (data && data.chair) || {};
-    if (line) line.textContent = chair.call || pick.number || "WAIT · no game on the table";
+    const watch = (data && data.watch) || chair.watch || pick.watch || {};
+    if (line) line.textContent = (chair.call || pick.number || "WAIT · no game on the table") + " · " + (watch.line || "WATCH · DARK · NO LISTING");
     if (meta) meta.textContent = (pick.sport || "ATS") + (pick.kind ? (" · " + pick.kind) : "");
   }
 
