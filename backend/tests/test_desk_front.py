@@ -420,9 +420,10 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "chair-up.jpg").read_bytes())
         self.assertNotEqual((static / "raijin-down.jpg").read_bytes(), (static / "chair-down.jpg").read_bytes())
         self.assertNotEqual((static / "raijin-wait.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
-        # One signed WAIT cowboy. UP/DOWN may be the same file; canvas tint does the eyes.
-        self.assertEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
-        self.assertEqual((static / "raijin-down.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
+        # Same cowboy face. WAIT white; UP/DOWN are that face with tinted eyes.
+        self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
+        self.assertNotEqual((static / "raijin-down.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
+        self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-down.jpg").read_bytes())
         self.assertIn("const raijinImages", JS)
         self.assertIn("function raijinPortraitFor(dir)", JS)
         self.assertIn("function vitalikPortraitFor(dir)", JS)

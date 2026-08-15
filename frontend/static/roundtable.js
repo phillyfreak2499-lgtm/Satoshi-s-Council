@@ -3604,11 +3604,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const cols = raijinEyeColors(dir);
     /* WAIT keeps the signed white storm glow. Do not turn WAIT gold. */
     if (cols.mode === "wait") return cols;
-    /* Soft feather on the glowing sockets only. Do not recolor lightning, hat, or coat. */
-    const y = cy - pr * 0.06;
-    const dx = pr * 0.155;
-    const rx = pr * 0.10;
-    const ry = pr * 0.06;
+    /* Soft feather on the glowing sockets only. Do not recolor hat or coat. */
+    const y = cy - pr * 0.10;
+    const dx = pr * 0.16;
+    const rx = pr * 0.09;
+    const ry = pr * 0.055;
     ctx.save();
     ctx.globalCompositeOperation = "screen";
     [["l", -dx], ["r", dx]].forEach(function (pair) {

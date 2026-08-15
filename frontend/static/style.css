@@ -7926,9 +7926,9 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
 .front-chair .front-mark { position: relative; }
 .front-chair .raijin-eye {
   position: absolute;
-  top: 44%;
-  width: 12%;
-  height: 8%;
+  top: 40%;
+  width: 11%;
+  height: 7%;
   border-radius: 50%;
   background: radial-gradient(circle, var(--raijin-eye-a, #FFFFFF) 0%, transparent 70%);
   mix-blend-mode: screen;
