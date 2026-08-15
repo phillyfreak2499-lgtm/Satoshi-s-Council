@@ -1015,6 +1015,57 @@ def eth_paper_lock_blocked(
     return "ETH paper lock waits for a settled reliability bin"
 
 
+def is_eth_shadow_row(row: Any) -> bool:
+    """True for an ETH shadow pick — grades the bin, does not size or go live."""
+    if row is None:
+        return False
+    if isinstance(row, dict):
+        if row.get("shadow") in (1, True, "1"):
+            return True
+        return str(row.get("kind") or "") == "eth_shadow"
+    return bool(getattr(row, "shadow", 0))
+
+
+def eth_shadow_pick(
+    asset: Any,
+    side: Any,
+    conf: Any = 0,
+    ask: Any = None,
+    strike: Any = None,
+    vetoed: bool = False,
+    ticker: Any = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    One ETH hour pick for the reliability bin.
+    Does not size, does not go live, does not override BTC-only Chair locks.
+    A BTC-impulse veto still records the pick so we can grade whether the veto was right.
+    """
+    a = str(asset or "").strip().upper()
+    if a not in ("ETH", "ETHEREUM"):
+        return None
+    s = normalize_side(side)
+    if s not in ("UP", "DOWN"):
+        return None
+    try:
+        confidence = int(conf or 0)
+    except (TypeError, ValueError):
+        confidence = 0
+    return {
+        "kind": "eth_shadow",
+        "asset": "eth",
+        "side": s,
+        "direction": s,
+        "confidence": confidence,
+        "ask": odds_to_cents(ask),
+        "strike": lock_time_strike(ticker=ticker, floor_strike=strike),
+        "ticker": ticker,
+        "vetoed": bool(vetoed),
+        "paper_stake": 0.0,
+        "counts_as_lock": False,
+        "shadow": True,
+    }
+
+
 def paper_stake_for_lock(
     direction: Any,
     lifetime_n: Any = 0,

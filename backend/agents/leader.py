@@ -24,6 +24,7 @@ from backend.agents.chair_gates import (
     estimate_p_finish,
     eth_fades_btc_impulse,
     eth_paper_lock_blocked,
+    eth_shadow_pick,
     ev_gate_blocks,
     late_spot_decisive,
     leftover_after_vig,
@@ -431,10 +432,12 @@ class Leader:
         self.cool_down_bump: float = 0.0
         self.edge = {
             "total": int(accuracy.get("total") or 0),
+            "reliability_n": int(accuracy.get("reliability_n") or accuracy.get("total") or 0),
             "accuracy_pct": accuracy.get("accuracy_pct"),
             "last_20_pct": (accuracy.get("last_20") or {}).get("accuracy_pct"),
             "verdict": accuracy.get("verdict") or "COLLECTING",
             "chair_bins": accuracy.get("chair_bins") or {},
+            "eth_shadow": accuracy.get("eth_shadow") or {},
         }
 
     def adaptive_thresholds(self) -> Dict[str, float]:
@@ -1078,6 +1081,10 @@ class Leader:
         side_odds = None
         if lean in ("UP", "DOWN") and up_pct is not None:
             side_odds = float(up_pct) if lean == "UP" else (100.0 - float(up_pct))
+        # ETH shadow pick keeps the intended side even if the counting lock WAITs.
+        shadow_side = lean if lean in ("UP", "DOWN") else None
+        shadow_conf = int(conf) if conf is not None else 0
+        shadow_vetoed = False
 
         edge = self._price_edge(conf, lean, side_odds, regime_features)
         p_finish = edge["p_finish"]
@@ -1211,6 +1218,7 @@ class Leader:
             elif (regime_features or {}).get("btc_fade_blocked") or eth_fades_btc_impulse(
                 lean, (regime_features or {}).get("btc_lead")
             ):
+                shadow_vetoed = True
                 direction = "WAIT"
                 lean = None
                 firm = False
@@ -1483,6 +1491,29 @@ class Leader:
             locked_call["p_finish"] = p_finish
         if locked_call and ev_cents is not None and locked_call.get("ev_cents") is None:
             locked_call["ev_cents"] = ev_cents
+        shadow_pick = None
+        try:
+            asset = (regime_features or {}).get("asset")
+            if shadow_side in ("UP", "DOWN"):
+                ask = None
+                if regime_features:
+                    if shadow_side == "UP":
+                        ask = regime_features.get("yes_ask") or regime_features.get("side_ask")
+                    else:
+                        ask = regime_features.get("no_ask") or regime_features.get("side_ask")
+                if ask is None:
+                    ask = live_odds
+                shadow_pick = eth_shadow_pick(
+                    asset,
+                    shadow_side,
+                    shadow_conf,
+                    ask=ask,
+                    strike=(regime_features or {}).get("floor_strike"),
+                    vetoed=shadow_vetoed,
+                    ticker=ticker,
+                )
+        except Exception:
+            shadow_pick = None
         return {
             "direction": direction,
             "confidence": conf,
@@ -1512,6 +1543,7 @@ class Leader:
             "call_phase": locals().get("call_phase"),
             # Follower-bot ready: only present when a real lock exists
             "locked_call": locked_call,
+            "eth_shadow_pick": shadow_pick,
             "p_finish": p_finish,
             "ev_cents": ev_cents,
             "ev_phase": ev_phase,
@@ -1540,6 +1572,7 @@ class Leader:
             "pair_bonus": 0.0,
             "pair_notes": [],
             "locked_call": self._build_locked_call(),
+            "eth_shadow_pick": None,
             "p_finish": self._last_p_finish,
             "ev_cents": self._last_ev_cents,
             "ev_phase": self._last_ev_phase,

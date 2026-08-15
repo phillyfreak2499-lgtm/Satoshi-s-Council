@@ -115,8 +115,12 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("def lock_time_strike", gates)
         db = (ROOT / "backend" / "storage" / "db.py").read_text(encoding="utf-8")
         self.assertIn("lock_time_strike", db)
+        self.assertIn("def record_eth_shadow_pick", db)
+        self.assertIn("reliability_n", db)
         self.assertIn("Never current_price vs strike", db)
         self.assertIn("every OPEN paper hour", council)
+        self.assertIn("def _maybe_record_eth_shadow", council)
+        self.assertIn("reliability_n", council)
         self.assertNotIn("tickers[:40]", council)
         self.assertIn("get_event", (ROOT / "backend" / "data" / "kalshi.py").read_text(encoding="utf-8"))
         self.assertIn("max_learn=2000", council)
@@ -139,6 +143,8 @@ class PacksNotDroppedTests(unittest.TestCase):
             "def lifetime_n_for_zach",
             "def eth_paper_lock_blocked",
             "def paper_stake_for_lock",
+            "def eth_shadow_pick",
+            "def is_eth_shadow_row",
         ):
             self.assertIn(needle, gates)
         leader = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")

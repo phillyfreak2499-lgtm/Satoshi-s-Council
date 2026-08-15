@@ -195,6 +195,62 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await c.stop()
 
+    async def test_eth_shadow_persists_and_skips_counting_lock(self):
+        c = self._council()
+        c.asset = "eth"
+        c.store.record_eth_shadow_pick = AsyncMock()
+        pick = {
+            "kind": "eth_shadow",
+            "side": "DOWN",
+            "confidence": 71,
+            "ask": 44,
+            "strike": 1874.99,
+            "vetoed": True,
+            "paper_stake": 0.0,
+            "counts_as_lock": False,
+        }
+        await c._maybe_record_eth_shadow(
+            {"eth_shadow_pick": pick, "window_locked": False},
+            "KXETHD-26AUG1516-T1874.99",
+            "2026-08-15T16:00:00+00:00",
+        )
+        c.store.record_eth_shadow_pick.assert_awaited()
+        kwargs = c.store.record_eth_shadow_pick.await_args.kwargs
+        self.assertEqual(kwargs["direction"], "DOWN")
+        self.assertEqual(kwargs["side_ask"], 44)
+        self.assertEqual(kwargs["floor_strike"], 1874.99)
+        self.assertTrue(kwargs["vetoed"])
+        c.store.record_eth_shadow_pick.reset_mock()
+        await c._maybe_record_eth_shadow(
+            {"eth_shadow_pick": pick, "window_locked": True},
+            "KXETHD-26AUG1516-T1874.99",
+            "2026-08-15T16:00:00+00:00",
+        )
+        c.store.record_eth_shadow_pick.assert_not_awaited()
+        c.asset = "btc"
+        await c._maybe_record_eth_shadow(
+            {"eth_shadow_pick": pick},
+            "KXBTCD-26AUG1516-T63000.00",
+            "2026-08-15T16:00:00+00:00",
+        )
+        c.store.record_eth_shadow_pick.assert_not_awaited()
+
+    async def test_restore_skips_eth_shadow(self):
+        c = self._council()
+        c.asset = "eth"
+        c.store.get_accuracy = AsyncMock(return_value={
+            "open": [{
+                "direction": "UP",
+                "ticker": "KXETHD-26AUG1516-T2000.00",
+                "confidence": 71,
+                "shadow": True,
+                "kind": "eth_shadow",
+            }]
+        })
+        c.leader._set_window_lock = MagicMock()
+        await c._restore_open_lock()
+        c.leader._set_window_lock.assert_not_called()
+
     def test_save_refuses_to_shrink_brain(self):
         import json
         import tempfile

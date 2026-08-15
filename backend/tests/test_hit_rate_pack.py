@@ -14,6 +14,8 @@ from backend.agents.chair_gates import (
     eth_fades_btc_impulse,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
+    eth_shadow_pick,
+    is_eth_shadow_row,
     hot_chair_bin_faded,
     is_actually_settled,
     late_spot_decisive,
@@ -211,6 +213,32 @@ class ZachBarTests(unittest.TestCase):
         # veto still independent of the reliability bin
         lead = {"direction": "UP", "impulse": True, "locked": True}
         self.assertTrue(eth_fades_btc_impulse("DOWN", lead))
+
+    def test_eth_shadow_pick_does_not_count_or_size(self):
+        pick = eth_shadow_pick(
+            "ETH",
+            "DOWN",
+            71,
+            ask=44,
+            strike=1874.99,
+            ticker="KXETHD-26AUG1516-T1874.99",
+        )
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["kind"], "eth_shadow")
+        self.assertEqual(pick["side"], "DOWN")
+        self.assertEqual(pick["confidence"], 71)
+        self.assertEqual(pick["ask"], 44)
+        self.assertEqual(pick["strike"], 1874.99)
+        self.assertEqual(pick["paper_stake"], 0.0)
+        self.assertFalse(pick["counts_as_lock"])
+        self.assertFalse(pick["vetoed"])
+        self.assertIsNone(eth_shadow_pick("BTC", "UP", 80, ask=50, strike=63000))
+        self.assertIsNone(eth_shadow_pick("ETH", "WAIT", 70))
+        vetoed = eth_shadow_pick("ETH", "UP", 68, ask=51, strike=2000, vetoed=True)
+        self.assertTrue(vetoed["vetoed"])
+        self.assertTrue(is_eth_shadow_row({"shadow": 1, "direction": "UP"}))
+        self.assertTrue(is_eth_shadow_row({"kind": "eth_shadow"}))
+        self.assertFalse(is_eth_shadow_row({"direction": "UP", "shadow": 0}))
 
     def test_never_lock_99_or_one_sided_100(self):
         self.assertIn("≥99", never_lock_near_certain(99, 1) or "")

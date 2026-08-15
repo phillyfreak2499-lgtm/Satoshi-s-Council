@@ -17,6 +17,7 @@ from backend.agents.chair_gates import (
     estimate_p_finish,
     eth_fades_btc_impulse,
     eth_paper_lock_blocked,
+    eth_shadow_pick,
     ev_gate_blocks,
     finish_outcome,
     known_official_market,
@@ -423,6 +424,76 @@ class LeaderPriceEdgeTests(unittest.TestCase):
         self.assertIsNotNone(eth_paper_lock_blocked("ETH", 0))
         self.assertEqual(paper_stake_for_lock("DOWN", 0, 91), 25.0)
         self.assertFalse(stuck_hours_open([]))
+
+
+class EthShadowPickTests(unittest.TestCase):
+    def _signals(self, side: str):
+        from backend.agents.base import AgentSignal
+        names = (
+            "candle", "volume", "momentum", "orderflow", "odds", "strike",
+            "quorum", "cheap", "panic", "spotlag", "exhaust", "whale",
+        )
+        return [
+            AgentSignal(n, side, 82, "test", n)
+            for n in names
+        ]
+
+    def _eth_regime(self, **over):
+        base = {
+            "asset": "eth",
+            "ticker": "KXETHD-26AUG1516-T2000.00",
+            "mins_left": 35,
+            "window_minutes": 60,
+            "up_pct": 48,
+            "yes_ask": 50,
+            "no_ask": 52,
+            "yes_mid": 48,
+            "floor_strike": 2000.0,
+            "kalshi_healthy": True,
+            "eth_settled_n": 0,
+            "settled_n": 0,
+            "spread_cents": 2.0,
+        }
+        base.update(over)
+        return base
+
+    def test_eth_wait_still_writes_shadow_pick(self):
+        chair = Leader()
+        out = chair.synthesize(self._signals("UP"), self._eth_regime())
+        self.assertEqual(out["direction"], "WAIT")
+        self.assertFalse(out.get("window_locked"))
+        self.assertFalse((out.get("locked_call") or {}).get("locked"))
+        pick = out.get("eth_shadow_pick")
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["side"], "UP")
+        self.assertEqual(pick["paper_stake"], 0.0)
+        self.assertFalse(pick["counts_as_lock"])
+        self.assertEqual(pick["strike"], 2000.0)
+        self.assertEqual(pick["ask"], 50)
+        self.assertFalse(pick["vetoed"])
+
+    def test_btc_impulse_veto_still_records_eth_shadow(self):
+        chair = Leader()
+        out = chair.synthesize(
+            self._signals("DOWN"),
+            self._eth_regime(btc_lead={"direction": "UP", "impulse": True, "locked": True}),
+        )
+        self.assertEqual(out["direction"], "WAIT")
+        pick = out.get("eth_shadow_pick")
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["side"], "DOWN")
+        self.assertTrue(pick["vetoed"])
+        self.assertEqual(pick["paper_stake"], 0.0)
+        self.assertFalse(pick["counts_as_lock"])
+
+    def test_btc_does_not_write_eth_shadow(self):
+        chair = Leader()
+        out = chair.synthesize(
+            self._signals("UP"),
+            self._eth_regime(asset="btc", ticker="KXBTCD-26AUG1516-T63000.00", floor_strike=63000.0),
+        )
+        self.assertIsNone(out.get("eth_shadow_pick"))
+        self.assertIsNone(eth_shadow_pick("btc", "UP", 80))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ Includes nested sub-council micro-bots behind each specialist.
 """
 from __future__ import annotations
 import asyncio
+import inspect
 import time
 from typing import Any, Dict, List
 from datetime import datetime, timezone
@@ -47,6 +48,7 @@ from backend.agents.chair_gates import (
     lock_time_strike,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
+    eth_shadow_pick,
     event_ticker_from_kalshi_ticker,
     known_official_market,
     lifetime_n_for_zach,
@@ -498,6 +500,57 @@ class Council:
             logger.debug(f"Adaptive learn skip: {e}")
         return settled_n
 
+    async def _maybe_record_eth_shadow(
+        self,
+        decision: Dict[str, Any] | None,
+        ticker: str | None,
+        close_time: str | None,
+    ) -> None:
+        """
+        Persist one ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
+        A BTC-impulse veto is stored so we can grade whether the veto was right.
+        """
+        if str(self.asset or "").lower() not in ("eth", "ethereum"):
+            return
+        if not ticker or not isinstance(decision, dict):
+            return
+        if decision.get("window_locked"):
+            return
+        lc = decision.get("locked_call")
+        if isinstance(lc, dict) and lc.get("locked"):
+            return
+        pick = decision.get("eth_shadow_pick")
+        if not isinstance(pick, dict):
+            side = decision.get("shadow_direction") or decision.get("lean")
+            pick = eth_shadow_pick(
+                self.asset,
+                side,
+                decision.get("shadow_confidence") or decision.get("confidence") or 0,
+                ask=None,
+                strike=decision.get("floor_strike"),
+                vetoed=False,
+                ticker=ticker,
+            )
+        if not pick:
+            return
+        fn = getattr(self.store, "record_eth_shadow_pick", None)
+        if not callable(fn):
+            return
+        try:
+            maybe = fn(
+                ticker=ticker,
+                direction=pick.get("side") or pick.get("direction"),
+                confidence=int(pick.get("confidence") or 0),
+                close_time=close_time,
+                side_ask=pick.get("ask"),
+                floor_strike=pick.get("strike") or decision.get("floor_strike"),
+                vetoed=bool(pick.get("vetoed")),
+            )
+            if inspect.isawaitable(maybe):
+                await maybe
+        except Exception as e:
+            logger.debug(f"ETH shadow persist skip: {e}")
+
     async def _restore_open_lock(self) -> None:
         """Persist one-call integrity across process restart."""
         if getattr(self, "_lock_restored", False):
@@ -507,11 +560,13 @@ class Council:
             if self.leader._entry_dir or self.leader._active_dir():
                 return
             acc = await self.store.get_accuracy(asset=self.asset)
-            opens = acc.get("open_log") or []
+            opens = acc.get("open") or acc.get("open_log") or []
             if not isinstance(opens, list):
                 return
             for row in opens:
                 if not isinstance(row, dict):
+                    continue
+                if row.get("shadow") or row.get("kind") == "eth_shadow":
                     continue
                 direction = row.get("direction") or ""
                 side = "UP" if direction in ("UP", "UP_HOLD") else ("DOWN" if direction in ("DOWN", "DOWN_HOLD") else None)
@@ -863,6 +918,11 @@ class Council:
                 raw_n = int((self.leader.edge or {}).get("total") or 0)
             except (TypeError, ValueError):
                 raw_n = 0
+            try:
+                # ETH reliability includes graded shadow picks, not just counting locks.
+                rel_n = int((self.leader.edge or {}).get("reliability_n") or 0)
+            except (TypeError, ValueError):
+                rel_n = 0
             stuck = stuck_hours_open(open_rows)
             regime_features["stuck_open"] = stuck
             regime_features["open_rows"] = [
@@ -881,7 +941,7 @@ class Council:
                     regime_features["chair_bin_settled_n"] = int(hot.get("settled") or 0)
                 except (TypeError, ValueError):
                     regime_features["chair_bin_settled_n"] = 0
-            eth_raw = raw_n if str(self.asset or "").lower() in ("eth", "ethereum") else 0
+            eth_raw = rel_n if str(self.asset or "").lower() in ("eth", "ethereum") else 0
             regime_features["eth_settled_n"] = eth_settled_n_for_zach(eth_raw, open_rows)
             regime_features["eth_lock_blocked"] = bool(
                 eth_paper_lock_blocked(self.asset, regime_features["eth_settled_n"])
@@ -927,6 +987,7 @@ class Council:
                 "lockdown": True,
                 "shadow_direction": shadow.get("direction"),
                 "shadow_confidence": shadow.get("confidence"),
+                "eth_shadow_pick": shadow.get("eth_shadow_pick"),
             }
             # Annotate debate UI after shadow capture
             signals = apply_find_out_to_signals(signals, self.law)
@@ -1022,6 +1083,7 @@ class Council:
             down_pct=down_pct,
             asset=self.asset,
         )
+        await self._maybe_record_eth_shadow(decision, ticker, close_time)
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
         # Feed lifetime edge into Chair so WAIT bar loosens as hit-rate proves out
@@ -1043,6 +1105,7 @@ class Council:
                 "lean": decision.get("lean"),  # underlying UP/DOWN when direction is SWAP/HOLD
                 "call_phase": decision.get("call_phase"),
                 "locked_call": decision.get("locked_call"),  # clear follower-readable lock
+                "eth_shadow_pick": decision.get("eth_shadow_pick"),
                 "p_finish": decision.get("p_finish"),
                 "ev_cents": decision.get("ev_cents"),
                 "ev_phase": decision.get("ev_phase"),
