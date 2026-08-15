@@ -54,6 +54,12 @@ class AdaptiveLearner:
         self.anti_tries: Dict[str, int] = defaultdict(int)
         self.anti_right: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
         self.updates: int = 0
+        self.wait_n: int = 0
+        self.lock_n: int = 0
+        self.wait_reasons: Dict[str, int] = defaultdict(int)
+        self.when_not_to_lock: Dict[str, Dict[str, int]] = defaultdict(
+            lambda: {"n": 0, "strict_would_hit": 0, "strict_would_miss": 0}
+        )
         self.last_notes: List[str] = []
         # Calibration: conf bucket -> {hits, tries}
         self.calib_hits: Dict[str, int] = defaultdict(int)
@@ -290,6 +296,13 @@ class AdaptiveLearner:
                 for ap in self.active_anti_pairs()[:5]
             ],
             "updates": self.updates,
+            "wait_n": int(self.wait_n),
+            "wait_rate": (
+                round(self.wait_n / (self.wait_n + self.lock_n), 3)
+                if (self.wait_n + self.lock_n) else None
+            ),
+            "wait_reasons": dict(self.wait_reasons),
+            "when_not_to_lock": {k: dict(v) for k, v in self.when_not_to_lock.items()},
             "learning_phase": self.learning_phase(),
             "notes": self.last_notes[-6:],
             "quorum": self.quorum_snapshot(),
@@ -315,6 +328,7 @@ class AdaptiveLearner:
         outcome: str,
         regime: str | None = None,
         credit: float = 1.0,
+        count_as_lock: bool = True,
     ) -> Dict[str, Any]:
         """
         Grade every directional agent vote against the market outcome,
@@ -323,6 +337,8 @@ class AdaptiveLearner:
         """
         if outcome not in ("UP", "DOWN"):
             return {}
+        if count_as_lock:
+            self.lock_n += 1
         regime_key = regime or "UNKNOWN_MID"
         credit = max(0.05, min(1.0, float(credit or 1.0)))
 
@@ -556,6 +572,70 @@ class AdaptiveLearner:
             "graded": len(directional),
         }
 
+    def learn_from_wait(
+        self,
+        agent_votes: Dict[str, Any] | None = None,
+        outcome: str | None = None,
+        wait_reason: str | None = None,
+        would_lock_if_strict: bool = False,
+        regime: str | None = None,
+        count_wait: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Learn from a closed WAIT hour. Paper P&L stays $0.
+
+        Always updates wait_rate / when-not-to-lock. Official y_finish
+        (never invented) also trains confluence, anti-pairs, and quorum
+        the same way a lock hit/miss does.
+        """
+        reason = str(wait_reason or "other").strip() or "other"
+        if count_wait:
+            self.wait_n += 1
+            self.wait_reasons[reason] += 1
+        bucket = self.when_not_to_lock[reason]
+        if count_wait:
+            bucket["n"] = int(bucket.get("n") or 0) + 1
+        notes = [f"WAIT · {reason}"]
+        graded = {}
+        if outcome in ("UP", "DOWN") and agent_votes:
+            graded = self.learn_from_settled(
+                agent_votes, outcome, regime=regime, credit=1.0, count_as_lock=False
+            )
+            if would_lock_if_strict:
+                hypo = None
+                up = 0
+                down = 0
+                for vote in (agent_votes or {}).values():
+                    if not isinstance(vote, dict):
+                        continue
+                    d = vote.get("direction")
+                    if d == "UP":
+                        up += 1
+                    elif d == "DOWN":
+                        down += 1
+                if up > down:
+                    hypo = "UP"
+                elif down > up:
+                    hypo = "DOWN"
+                if hypo == outcome:
+                    bucket["strict_would_hit"] = int(bucket.get("strict_would_hit") or 0) + 1
+                    notes.append("strict band would have HIT")
+                elif hypo in ("UP", "DOWN"):
+                    bucket["strict_would_miss"] = int(bucket.get("strict_would_miss") or 0) + 1
+                    notes.append("strict band would have MISS")
+        else:
+            self.updates += 1
+        self.last_notes = (self.last_notes + notes)[-12:]
+        return {
+            "notes": notes + list((graded or {}).get("notes") or []),
+            "wait_n": self.wait_n,
+            "wait_reason": reason,
+            "wait_rate": (
+                round(self.wait_n / (self.wait_n + self.lock_n), 3)
+                if (self.wait_n + self.lock_n) else None
+            ),
+        }
+
     def record_finish_calibration(
         self,
         side_odds: Any = None,
@@ -733,6 +813,10 @@ class AdaptiveLearner:
             "combo_tries": dict(list(self.combo_tries.items())[:400]),
             "regime_correct": {rk: dict(v) for rk, v in self.regime_correct.items()},
             "regime_wrong": {rk: dict(v) for rk, v in self.regime_wrong.items()},
+            "wait_n": int(self.wait_n),
+            "lock_n": int(self.lock_n),
+            "wait_reasons": dict(self.wait_reasons),
+            "when_not_to_lock": {k: dict(v) for k, v in self.when_not_to_lock.items()},
         }
 
     def save(self, path: "Path | None" = None) -> None:
@@ -770,6 +854,10 @@ class AdaptiveLearner:
             "combo_tries": dict(list(self.combo_tries.items())[:200]),
             "regime_correct": {rk: dict(v) for rk, v in self.regime_correct.items()},
             "regime_wrong": {rk: dict(v) for rk, v in self.regime_wrong.items()},
+            "wait_n": int(self.wait_n),
+            "lock_n": int(self.lock_n),
+            "wait_reasons": dict(self.wait_reasons),
+            "when_not_to_lock": {k: dict(v) for k, v in self.when_not_to_lock.items()},
         }
         if path.exists():
             try:
@@ -842,6 +930,20 @@ class AdaptiveLearner:
                     self.calib_hits[k] = int(v.get("hits") or 0)
                     self.calib_tries[k] = int(v.get("tries") or 0)
             self._odds_band_restore(data.get("odds_calibration") or data.get("odds_band"))
+            try:
+                self.wait_n = int(data.get("wait_n") or 0)
+                self.lock_n = int(data.get("lock_n") or 0)
+            except (TypeError, ValueError):
+                pass
+            for k, v in (data.get("wait_reasons") or {}).items():
+                self.wait_reasons[str(k)] = int(v)
+            for k, rec in (data.get("when_not_to_lock") or {}).items():
+                if isinstance(rec, dict):
+                    self.when_not_to_lock[str(k)] = {
+                        "n": int(rec.get("n") or 0),
+                        "strict_would_hit": int(rec.get("strict_would_hit") or 0),
+                        "strict_would_miss": int(rec.get("strict_would_miss") or 0),
+                    }
             self._trim_eth_roster_weights()
             self._normalize()
             self._recompute_regime_weights()
@@ -1179,8 +1281,24 @@ class AdaptiveLearner:
         ordered = list(reversed(recent))
         n = 0
         for row in ordered:
-            outcome = row.get("outcome")
+            direction = str(row.get("direction") or "").upper()
+            settle_reason = str(row.get("settle_reason") or "")
             votes = row.get("agent_votes") or {}
+            if direction == "WAIT" or settle_reason == "wait_finish":
+                y = row.get("y_finish")
+                if y not in ("UP", "DOWN"):
+                    y = None
+                self.learn_from_wait(
+                    agent_votes=votes,
+                    outcome=y,
+                    wait_reason=row.get("wait_reason"),
+                    would_lock_if_strict=bool(row.get("would_lock_if_strict")),
+                    regime=row.get("regime") or row.get("regime_key"),
+                    count_wait=True,
+                )
+                n += 1
+                continue
+            outcome = row.get("outcome")
             if outcome in ("UP", "DOWN") and votes:
                 reg = row.get("regime") or row.get("regime_key")
                 self.learn_from_settled(votes, outcome, regime=reg)

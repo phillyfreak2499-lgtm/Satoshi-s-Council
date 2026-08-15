@@ -206,6 +206,16 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('rememberChairHit(cx, cy, pr, "front")', JS)
         self.assertIn("function syncSeatSpinBtn", JS)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
+        self.assertIn('id="focusFront"', HTML)
+        self.assertIn('data-focus="front"', HTML)
+        self.assertIn("function isFrontTable", JS)
+        self.assertIn("function frontTableState", JS)
+        self.assertIn('bind(focusFront, "front")', JS)
+        self.assertIn('setFocusTable("front")', JS)
+        wire = JS.split("function wireFloorChairClicks", 1)[1].split("wireFloorChairClicks();", 1)[0]
+        self.assertIn('hit.which === "front"', wire)
+        self.assertIn('setFocusTable("front")', wire)
+        self.assertNotIn('setMode("front")', wire)
 
     def test_front_paints_real_table_not_list(self):
         start = JS.find("function drawFrontTable(")

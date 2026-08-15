@@ -16,6 +16,7 @@ from backend.config import settings
 from backend.agents.chair_gates import (
     chair_bins_from_settled,
     decide_open_lock_grade,
+    decide_open_wait_grade,
     known_official_market,
     is_eth_shadow_row,
     lock_time_strike,
@@ -23,6 +24,17 @@ from backend.agents.chair_gates import (
     ticker_asset,
 )
 from loguru import logger
+
+
+def _json_field(raw: Any) -> Any:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, (dict, list)):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
 
 
 class Base(DeclarativeBase):
@@ -55,16 +67,17 @@ class WeightHistory(Base):
 
 class WindowCall(Base):
     """
-    Graded Chair call (scalp path on Kalshi odds).
+    Graded Chair call (scalp path on Kalshi odds) or a closed-hour WAIT sample.
     Multiple calls allowed inside one 15m window.
-    direction: UP | DOWN | UP_HOLD | DOWN_HOLD
-    WAIT never stored. Graded on Kalshi odds path, not full-window BTC close.
+    direction: UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT
+    WAIT samples are stored so the Chairs learn from hours they sat out.
+    Locks grade on official Kalshi finish. WAIT paper P&L stays $0.
     """
     __tablename__ = "window_calls"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # Non-unique: many scalp calls can share a ticker/window
     ticker: Mapped[str] = mapped_column(String(80), index=True)
-    direction: Mapped[str] = mapped_column(String(16))  # UP | DOWN | UP_HOLD | DOWN_HOLD
+    direction: Mapped[str] = mapped_column(String(16))  # UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT
     confidence: Mapped[int] = mapped_column(Integer, default=0)
     entry_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     open_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # entry Kalshi side %
@@ -90,6 +103,10 @@ class WindowCall(Base):
     shadow: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = ETH shadow pick
     vetoed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = BTC-impulse veto
     side_ask: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # ask ¢ at pick time
+    wait_reason: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    seat_split: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    book_depth: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    would_lock_if_strict: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 
@@ -135,6 +152,10 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN shadow INTEGER",
                 "ALTER TABLE window_calls ADD COLUMN vetoed INTEGER",
                 "ALTER TABLE window_calls ADD COLUMN side_ask FLOAT",
+                "ALTER TABLE window_calls ADD COLUMN wait_reason VARCHAR(40)",
+                "ALTER TABLE window_calls ADD COLUMN seat_split TEXT",
+                "ALTER TABLE window_calls ADD COLUMN book_depth TEXT",
+                "ALTER TABLE window_calls ADD COLUMN would_lock_if_strict INTEGER",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -327,7 +348,8 @@ class PerformanceStore:
         Circuit breaker: max MAX_CALLS_PER_WINDOW (default 1) graded rows — one-call protocol
         per ticker per window — matches Chair ENTRY + MID + FINAL budget.
         Same-side refresh of an open call does NOT consume a new slot.
-        WAIT never recorded. Grades on Kalshi odds path.
+        WAIT samples use record_wait_sample (they do not consume a lock slot).
+        An open WAIT for this ticker is upgraded to a real lock.
         """
         side = self._grade_side(direction)
         if side is None:
@@ -359,6 +381,43 @@ class PerformanceStore:
 
             if active is not None:
                 active_side = self._grade_side(active.direction)
+                # Open WAIT for this hour upgrades to the first real lock.
+                if str(active.direction or "").upper() == "WAIT" and side in ("UP", "DOWN"):
+                    active.direction = direction
+                    active.confidence = confidence
+                    active.open_price = entry_side
+                    active.exit_price = entry_side
+                    active.path_move_pct = 0.0
+                    active.win_pct = win_pts
+                    active.paper_stake = self._default_stake(direction)
+                    active.paper_side = self._paper_side(direction)
+                    active.paper_pnl = None
+                    active.wait_reason = None
+                    if close_time:
+                        active.close_time = close_time
+                    if entry_price is not None:
+                        active.entry_price = entry_price
+                    if floor_strike is not None:
+                        try:
+                            active.floor_strike = float(floor_strike)
+                        except (TypeError, ValueError):
+                            pass
+                    if p_finish is not None:
+                        try:
+                            active.p_finish = float(p_finish)
+                        except (TypeError, ValueError):
+                            pass
+                    if ev_cents is not None:
+                        try:
+                            active.ev_cents = float(ev_cents)
+                        except (TypeError, ValueError):
+                            pass
+                    if regime_key:
+                        active.regime_key = regime_key
+                    if asset:
+                        active.asset = asset
+                    await session.commit()
+                    return
                 # Same side still open → refresh; upgrade HOLD → full if confluence strengthened
                 if active.direction == direction or active_side == side:
                     active.confidence = confidence
@@ -520,6 +579,114 @@ class PerformanceStore:
             ))
             await session.commit()
 
+    async def record_wait_sample(
+        self,
+        ticker: str,
+        close_time: str | None = None,
+        wait_reason: str | None = None,
+        seat_split: Any = None,
+        book_depth: Any = None,
+        would_lock_if_strict: bool = False,
+        asset: str | None = None,
+        confidence: int = 0,
+        regime_key: str | None = None,
+        up_pct: float | None = None,
+        down_pct: float | None = None,
+    ) -> bool:
+        """
+        Persist one WAIT sample per ticker/window so closed hours still train.
+
+        Does not consume a lock slot. Paper stake/P&L stay 0.
+        A real UP/DOWN lock for the same ticker wins — WAIT is not written over it.
+        """
+        if not ticker:
+            return False
+        now_iso = datetime.now(timezone.utc).isoformat()
+        split_txt = None
+        depth_txt = None
+        try:
+            if seat_split is not None:
+                split_txt = json.dumps(seat_split)
+        except Exception:
+            split_txt = None
+        try:
+            if book_depth is not None:
+                depth_txt = json.dumps(book_depth)
+        except Exception:
+            depth_txt = None
+        entry_side = None
+        try:
+            if up_pct is not None:
+                entry_side = float(up_pct)
+        except (TypeError, ValueError):
+            entry_side = None
+        if entry_side is None:
+            try:
+                if down_pct is not None:
+                    entry_side = max(0.0, min(100.0, 100.0 - float(down_pct)))
+            except (TypeError, ValueError):
+                entry_side = None
+
+        async with self.Session() as session:
+            result = await session.execute(
+                select(WindowCall)
+                .where(
+                    WindowCall.actual_outcome.is_(None),
+                    WindowCall.ticker == ticker,
+                    PerformanceStore._counting_lock_clause(),
+                )
+                .order_by(WindowCall.id.desc())
+                .limit(1)
+            )
+            active = result.scalar_one_or_none()
+            if active is not None and self._grade_side(active.direction) in ("UP", "DOWN"):
+                await session.commit()
+                return False
+            if active is not None and str(active.direction or "").upper() == "WAIT":
+                active.confidence = int(confidence or 0)
+                if close_time:
+                    active.close_time = close_time
+                if wait_reason:
+                    active.wait_reason = str(wait_reason)[:40]
+                if split_txt is not None:
+                    active.seat_split = split_txt
+                if depth_txt is not None:
+                    active.book_depth = depth_txt
+                active.would_lock_if_strict = 1 if would_lock_if_strict else 0
+                active.paper_stake = 0.0
+                active.paper_pnl = 0.0
+                if entry_side is not None:
+                    active.open_price = entry_side
+                if regime_key:
+                    active.regime_key = regime_key
+                if asset:
+                    active.asset = asset
+                await session.commit()
+                return False
+            session.add(WindowCall(
+                ticker=ticker,
+                direction="WAIT",
+                confidence=int(confidence or 0),
+                entry_price=None,
+                open_price=entry_side,
+                close_time=close_time,
+                called_at=now_iso,
+                win_pct=None,
+                path_move_pct=0.0,
+                exit_price=entry_side,
+                paper_stake=0.0,
+                paper_pnl=0.0,
+                paper_side=None,
+                regime_key=regime_key,
+                asset=(asset or None),
+                wait_reason=str(wait_reason)[:40] if wait_reason else None,
+                seat_split=split_txt,
+                book_depth=depth_txt,
+                would_lock_if_strict=1 if would_lock_if_strict else 0,
+            ))
+            await session.commit()
+            return True
+
     async def record_eth_shadow_pick(
         self,
         ticker: str,
@@ -636,6 +803,42 @@ class PerformanceStore:
                     if not inferred and not row_asset:
                         continue
                 side = self._grade_side(row.direction)
+                if str(row.direction or "").upper() == "WAIT":
+                    official = (
+                        results.get(row.ticker)
+                        or results.get(str(row.ticker or "").upper())
+                        or results.get(row.id)
+                        or results.get(str(row.id))
+                        or known_official_market(row.ticker, row.id)
+                    )
+                    grade = decide_open_wait_grade(
+                        ticker=row.ticker,
+                        call_id=row.id,
+                        close_time=row.close_time,
+                        kalshi_result=official,
+                        now=now,
+                    )
+                    if grade is None:
+                        continue
+                    y_finish = grade["y_finish"]
+                    if grade.get("close_iso") and not row.close_time:
+                        row.close_time = grade["close_iso"]
+                    if getattr(row, "floor_strike", None) is None and grade.get("floor_strike") is not None:
+                        row.floor_strike = grade["floor_strike"]
+                    if not row.asset and grade.get("asset"):
+                        row.asset = grade["asset"]
+                    try:
+                        row.y_finish = y_finish
+                    except Exception:
+                        pass
+                    row.actual_outcome = "WAIT"
+                    row.correct = None
+                    row.paper_stake = 0.0
+                    row.paper_pnl = 0.0
+                    row.settled_at = now.isoformat()
+                    row.settle_reason = grade.get("settle_reason") or "wait_finish"
+                    settled_n += 1
+                    continue
                 if side is None:
                     continue
 
@@ -758,7 +961,11 @@ class PerformanceStore:
             "shadow": bool(getattr(r, "shadow", 0)),
             "vetoed": bool(getattr(r, "vetoed", 0)),
             "side_ask": getattr(r, "side_ask", None),
-            "kind": "eth_shadow" if is_eth_shadow_row(r) else "chair",
+            "kind": "eth_shadow" if is_eth_shadow_row(r) else ("wait" if str(r.direction or "").upper() == "WAIT" else "chair"),
+            "wait_reason": getattr(r, "wait_reason", None),
+            "would_lock_if_strict": bool(getattr(r, "would_lock_if_strict", 0)),
+            "seat_split": _json_field(getattr(r, "seat_split", None)),
+            "book_depth": _json_field(getattr(r, "book_depth", None)),
         }
 
     async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
@@ -816,6 +1023,7 @@ class PerformanceStore:
             pending_filters = [
                 WindowCall.actual_outcome.is_(None),
                 PerformanceStore._counting_lock_clause(),
+                WindowCall.direction.in_(("UP", "DOWN", "UP_HOLD", "DOWN_HOLD")),
             ]
             if ac is not None:
                 pending_filters.append(ac)
@@ -834,6 +1042,12 @@ class PerformanceStore:
                     )
                 )
             ).scalar() or 0
+            wait_q = [WindowCall.direction == "WAIT"]
+            if ac is not None:
+                wait_q.append(ac)
+            wait_rows = (
+                await session.execute(select(WindowCall).where(*wait_q))
+            ).scalars().all()
             open_q = [WindowCall.actual_outcome.is_(None)]
             if ac is not None:
                 open_q.append(ac)
@@ -850,6 +1064,18 @@ class PerformanceStore:
         correct = sum(1 for r in settled if r.correct == 1)
         wrong = total - correct
         accuracy_pct = round(100.0 * correct / total, 1) if total else None
+        wait_n = len(wait_rows)
+        wait_open_n = sum(1 for r in wait_rows if r.actual_outcome is None)
+        wait_graded_n = sum(
+            1 for r in wait_rows if getattr(r, "y_finish", None) in ("UP", "DOWN")
+        )
+        wait_rate = (
+            round(wait_n / (wait_n + total), 3) if (wait_n + total) else None
+        )
+        wait_reasons: Dict[str, int] = {}
+        for r in wait_rows:
+            key = str(getattr(r, "wait_reason", None) or "other")
+            wait_reasons[key] = wait_reasons.get(key, 0) + 1
 
         # Path tallies: entry Kalshi % and favorable peak move (peak − entry)
         def _path_pts(r):
@@ -1023,6 +1249,11 @@ class PerformanceStore:
             "wrong_streak": wrong_streak,
             "total_signals": int(total_signals),
             "wait_signals": int(wait_signals),
+            "wait_n": int(wait_n),
+            "wait_open": int(wait_open_n),
+            "wait_graded": int(wait_graded_n),
+            "wait_rate": wait_rate,
+            "wait_reasons": wait_reasons,
             "verdict": verdict,
             "verdict_note": verdict_note,
             "shadow": shadow,
@@ -1370,12 +1601,18 @@ class PerformanceStore:
                     except Exception:
                         votes = None
                 # Learner truth is official y_finish, not a later-hour spot.
-                outcome = getattr(r, "y_finish", None) or r.actual_outcome
-                if outcome not in ("UP", "DOWN"):
-                    if r.correct == 1:
-                        outcome = "UP" if r.direction in ("UP", "UP_HOLD") else "DOWN" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
-                    else:
-                        outcome = "DOWN" if r.direction in ("UP", "UP_HOLD") else "UP" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
+                # WAIT never invents a finish from direction/correct.
+                outcome = getattr(r, "y_finish", None)
+                if str(r.direction or "").upper() == "WAIT":
+                    if outcome not in ("UP", "DOWN"):
+                        outcome = None
+                elif outcome not in ("UP", "DOWN"):
+                    outcome = r.actual_outcome if r.actual_outcome in ("UP", "DOWN") else None
+                    if outcome not in ("UP", "DOWN"):
+                        if r.correct == 1:
+                            outcome = "UP" if r.direction in ("UP", "UP_HOLD") else "DOWN" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
+                        else:
+                            outcome = "DOWN" if r.direction in ("UP", "UP_HOLD") else "UP" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
                 # Prefer stored regime; else derive from timestamps
                 reg = r.regime_key
                 if not reg:
@@ -1411,7 +1648,11 @@ class PerformanceStore:
                     "shadow": bool(getattr(r, "shadow", 0)),
                     "vetoed": bool(getattr(r, "vetoed", 0)),
                     "side_ask": getattr(r, "side_ask", None),
-                    "kind": "eth_shadow" if is_eth_shadow_row(r) else "chair",
+                    "kind": "eth_shadow" if is_eth_shadow_row(r) else ("wait" if str(r.direction or "").upper() == "WAIT" else "chair"),
+                    "wait_reason": getattr(r, "wait_reason", None),
+                    "would_lock_if_strict": bool(getattr(r, "would_lock_if_strict", 0)),
+                    "seat_split": _json_field(getattr(r, "seat_split", None)),
+                    "book_depth": _json_field(getattr(r, "book_depth", None)),
                 })
             return out
 

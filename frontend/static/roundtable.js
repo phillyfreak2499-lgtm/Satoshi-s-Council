@@ -597,7 +597,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
-      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp" || !btn.dataset.mode) {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "btnHelp" || !btn.dataset.mode) {
         btn.classList.remove("active");
         if (btn.hasAttribute("aria-selected")) btn.setAttribute("aria-selected", "false");
         return;
@@ -699,7 +699,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | dashboard | charts
   let state = null;
-  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "ethereum"; })();
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableHasLiveHour(t) {
     if (!t || typeof t !== "object") return false;
@@ -713,7 +713,136 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return !!(hasSeats || hasWindow);
   }
 
+  function isFrontTable(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    return w === "front" || w === "raijin" || w === "dfw" || w === "dallas";
+  }
+  function frontTableState() {
+    let board = null;
+    try { board = frontBoard; } catch (e) { board = null; }
+    const chair = (board && board.chair) || {};
+    const seats = (board && Array.isArray(board.seats) && board.seats.length) ? board.seats : [
+      { id: "GLASS", job: "Official/NWS high for the station.", dir: "WAIT", call: "", n: 0, wr: null, rank: 1 },
+      { id: "PIT", job: "Kalshi implied vs that number, after vig.", dir: "WAIT", call: "", n: 0, wr: null, rank: 2 },
+      { id: "FROST", job: "Veto junk book / flip / SICK / thin n.", dir: "WAIT", call: "", n: 0, wr: null, rank: 3 },
+      { id: "BONE", job: "This city’s history / climo. Seasonal base.", dir: "WAIT", call: "", n: 0, wr: null, rank: 4 },
+    ];
+    const acc = (board && (board.accuracy || board.chair_accuracy)) || {};
+    const records = (board && board.seat_records) || seats;
+    const fills = (board && board.fills) || [];
+    const tape = (board && board.tape) || [];
+    const best = ((board && board.brackets) || []).find(function (b) { return b && b.best; }) || {};
+    const locked = fills.find(function (f) {
+      const r = String((f && f.result) || "").toUpperCase();
+      const side = String((f && f.side) || "").toUpperCase();
+      return side !== "WAIT" && (r === "OPEN" || r === "PENDING" || (f && !f.settled && r !== "WAIT" && r !== "HIT" && r !== "MISS"));
+    });
+    const eye = String(chair.eye || "WAIT").toUpperCase();
+    const agents = seats.map(function (s) {
+      return {
+        agent_name: String(s.id || "").toLowerCase(),
+        display_name: s.id,
+        title: s.job || "",
+        direction: s.dir || "WAIT",
+        confidence: s.confidence != null ? s.confidence : 50,
+        reasoning: s.call || "",
+        summary: s.call || "",
+      };
+    });
+    agents.unshift({
+      agent_name: "leader",
+      display_name: "RAIJIN",
+      title: "DFW · Raijin",
+      direction: eye,
+      confidence: chair.confidence || 0,
+      reasoning: chair.call || "",
+      summary: chair.call || "",
+    });
+    const hierarchy = (records.length ? records : seats).map(function (r, i) {
+      return {
+        agent: String(r.id || "").toLowerCase(),
+        display_name: r.id,
+        correct: r.correct || 0,
+        wrong: r.wrong || 0,
+        n: r.n || 0,
+        win_rate: r.wr,
+        rank: r.rank || (i + 1),
+        listen: 1,
+        faded: !!r.faded,
+        invert: !!r.invert,
+        weight: r.weight,
+      };
+    });
+    const log = (tape.length ? tape : fills).map(function (f) {
+      const side = String(f.side || f.result || "WAIT").toUpperCase();
+      return {
+        direction: side === "YES" ? "UP" : (side === "NO" ? "DOWN" : "WAIT"),
+        outcome: f.result,
+        y_finish: f.y_finish,
+        correct: String(f.result || "").toUpperCase() === "HIT" ? true : (String(f.result || "").toUpperCase() === "MISS" ? false : null),
+        confidence: f.confidence,
+        ticker: f.ticker,
+        called_at: f.at,
+        settled_at: f.settled_at,
+        paper_pnl: f.pnl,
+        wait_reason: f.wait_reason,
+      };
+    });
+    return {
+      agents: agents,
+      decision: {
+        direction: eye,
+        confidence: chair.confidence || 0,
+        summary: chair.call || (best.skip || "WAIT · Dallas DFW"),
+        locked_call: locked ? {
+          locked: true,
+          direction: String(locked.side || "").toUpperCase() === "NO" ? "DOWN" : "UP",
+          ticker: locked.ticker,
+          confidence: locked.confidence,
+        } : null,
+      },
+      accuracy: {
+        correct: acc.correct || 0,
+        total: acc.total || 0,
+        wrong: acc.wrong || 0,
+        accuracy_pct: acc.accuracy_pct,
+        label: acc.label,
+        wait_n: acc.wait_n || 0,
+        wait_rate: acc.wait_rate,
+        verdict: acc.verdict,
+        verdict_note: acc.verdict_note,
+        last_20: acc.last_20,
+        last_50: acc.last_50,
+        pending: acc.pending || 0,
+        log: log,
+        recent: log,
+        open: fills.filter(function (f) { return !f.settled && String(f.result || "").toUpperCase() !== "HIT"; }),
+      },
+      hierarchy: hierarchy,
+      locked_call: locked ? {
+        locked: true,
+        direction: String(locked.side || "").toUpperCase() === "NO" ? "DOWN" : "UP",
+        ticker: locked.ticker,
+      } : null,
+      market: {
+        ticker: best.ticker || chair.ticker,
+        kalshi_ticker: best.ticker || chair.ticker,
+        series_ticker: "KXHIGHTDAL",
+        floor_strike: best.floor_strike,
+        kalshi_yes_bid: best.yes_bid,
+        kalshi_yes_ask: best.yes_ask,
+        up_pct: best.yes_ask,
+        down_pct: best.yes_ask != null ? (100 - Number(best.yes_ask)) : null,
+        close_time: board && board.city ? board.city.day : null,
+        stale: false,
+      },
+      leader_name: "RAIJIN",
+      asset: "front",
+      learning: { hierarchy: hierarchy, records: hierarchy.reduce(function (m, r) { m[r.agent] = r; return m; }, {}) },
+    };
+  }
   function tableState(which) {
+    if (isFrontTable(which)) return frontTableState();
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
     if (which === "bitcoin" && state.btc) return state.btc;
@@ -732,7 +861,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function getViewState() {
     if (!state) return null;
     const focused = tableState(focusTable);
-    const other = tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
+    const other = isFrontTable(focusTable)
+      ? tableState("ethereum")
+      : tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
     // Prefer the focused table when it has seats/window. Otherwise use the
     // payload that actually has a live hour (root BTC back-compat, then sibling).
     const live = tableHasLiveHour(focused)
@@ -773,7 +904,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       };
     }
     return {
-      focus: focusTable === "bitcoin" ? "btc" : "eth",
+      focus: isFrontTable(focusTable) ? "front" : (focusTable === "bitcoin" ? "btc" : "eth"),
       btc: one(typeof tableState === "function" ? tableState("bitcoin") : state),
       eth: one(typeof tableState === "function" ? tableState("ethereum") : null),
     };
@@ -1267,15 +1398,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return w === "ethereum" || w === "eth" || w === "vitalik";
   }
   function chairNameOf(which) {
+    if (isFrontTable(which)) return "RAIJIN";
     return isEthTable(which) ? "VITALIK" : "SATOSHI";
   }
   function chairTitleOf(which) {
+    if (isFrontTable(which)) return "DFW · Raijin";
     return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
   }
   function chairBadgeOf(which) {
+    if (isFrontTable(which)) return "DFW · RAIJIN";
     return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
   }
   function chairPortraitOf(which, dir) {
+    if (isFrontTable(which)) return raijinPortraitFor(dir);
     return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
   }
 
@@ -1295,7 +1430,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function titleOf(agent) {
     if (!agent) return "";
     const key = agent.agent_name || agent;
-    if (key === "leader" || key === "chair") return isEthTable(focusTable) ? "Vitalik" : "Satoshi";
+    if (key === "leader" || key === "chair") return isFrontTable(focusTable) ? "Raijin" : (isEthTable(focusTable) ? "Vitalik" : "Satoshi");
     if (agent.title) return agent.title;
     return AGENT_TITLES[key] || "";
   }
@@ -2009,6 +2144,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function chairKeyOf(which) {
+    if (isFrontTable(which)) return "front";
     return isEthTable(which) ? "ethereum" : "bitcoin";
   }
 
@@ -4463,7 +4599,9 @@ function drawCandleChart() {
     const eth = (typeof isEthTable === "function") ? isEthTable(focusTable) : (focusTable === "ethereum");
     document.body.classList.toggle("charts-hero-eth", !!eth);
     document.body.classList.toggle("charts-hero-btc", !eth);
-    try { document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin"; } catch (e) {}
+    try {
+      if (!isFrontTable(focusTable)) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
+    } catch (e) {}
     const btcCard = document.querySelector(".chart-card.chart-pair-btc");
     const ethCard = document.querySelector(".chart-card.chart-pair-eth");
     if (btcCard) {
@@ -4928,7 +5066,7 @@ function drawCandleChart() {
     const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
     if (list) {
       if (!locks.length) {
-        list.innerHTML = '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>';
+        list.innerHTML = '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin</li>';
       } else {
         list.innerHTML = locks.slice(0, 8).map(p => {
           const result = p.status === "OPEN"
@@ -5034,9 +5172,9 @@ function drawCandleChart() {
         ticker: r.ticker,
       }));
     }
-    ["bitcoin", "ethereum"].forEach(key => {
+    ["bitcoin", "ethereum", "front"].forEach(key => {
       const ts = (typeof tableState === "function" ? tableState(key) : null) || {};
-      const pair = key === "ethereum" ? "ETH" : "BTC";
+      const pair = key === "front" ? "DFW" : (key === "ethereum" ? "ETH" : "BTC");
       const lc = pairLock(ts);
       if (lc) {
         add({
@@ -5337,6 +5475,41 @@ function drawCandleChart() {
     }).join("");
   }
   function renderBotsGuide() {
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+      const grid = document.getElementById("botsGrid");
+      if (!grid) return;
+      const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
+      const seats = (ts.agents || []).filter(function (a) { return a && a.agent_name && a.agent_name !== "leader"; });
+      const hier = ts.hierarchy || [];
+      const rankMap = {};
+      hier.forEach(function (r) { rankMap[String(r.agent || "").toLowerCase()] = r; });
+      const blurbs = {
+        glass: "Official/NWS high for KDFW.",
+        pit: "Kalshi implied vs that number, after vig.",
+        frost: "Veto junk book / flip / SICK / thin n.",
+        bone: "Dallas climo. Seasonal base. Low weight.",
+      };
+      grid.innerHTML = seats.map(function (a) {
+        const key = String(a.agent_name || "").toLowerCase();
+        const r = rankMap[key] || {};
+        const rank = r.rank != null ? "#" + r.rank : "—";
+        const top = r.rank && r.rank <= 3;
+        const name = a.display_name || key.toUpperCase();
+        const title = a.title || "";
+        const hits = r.correct != null ? r.correct : 0;
+        const miss = r.wrong != null ? r.wrong : 0;
+        const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
+        const dir = a.direction || "—";
+        return '<article class="bot-card ' + (top ? "rank-top" : "") + '">' +
+          '<div class="bot-card-head"><span class="bot-callsign">' + name + '</span><span class="bot-rank-pill">' + rank + '</span></div>' +
+          '<div class="bot-title">' + title + '</div>' +
+          '<div class="bot-blurb">' + (blurbs[key] || title) + '</div>' +
+          '<div class="bot-subs">Dallas · KDFW · KXHIGHTDAL</div>' +
+          '<div class="bot-stats"><span>Hits <b>' + hits + '</b></span><span>Miss <b>' + miss + '</b></span><span>WR <b>' + wr + '</b></span><span class="hier-dir ' + dir + '">' + dir + '</span></div>' +
+          '</article>';
+      }).join("");
+      return;
+    }
     try { renderFrontBotsGuide(frontBoard); } catch (e) {}
     if (!frontBoard) {
       try {
@@ -5389,6 +5562,19 @@ function drawCandleChart() {
 
   async function loadAutoPaper() {
     try {
+      if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+        const acc = ((typeof tableState === "function" ? tableState("front") : null) || {}).accuracy || {};
+        const el = document.getElementById("paperAutoSummary");
+        if (el) el.textContent = "DFW paper · " + (acc.correct || 0) + "W/" + (acc.wrong || 0) + "L · WAIT " + (acc.wait_n || 0);
+        const list = document.getElementById("paperAutoList");
+        if (list) {
+          const rows = acc.recent || acc.log || [];
+          list.innerHTML = rows.slice(0, 12).map(function (row) {
+            return '<div class="paper-auto-row">' + (row.direction || "WAIT") + " · " + (row.ticker || "") + " · " + (row.outcome || "") + "</div>";
+          }).join("") || "<div class=\"paper-auto-row\">No Front fills yet</div>";
+        }
+        return;
+      }
       const asset = focusTable === "ethereum" ? "eth" : "btc";
       const r = await fetch("/api/paper/auto?asset=" + asset, { cache: "no-store" });
       if (!r.ok) return;
@@ -5497,8 +5683,9 @@ function drawCandleChart() {
     if (!phoneFloor) return;
     const sc = (typeof scorecardFromState === "function") ? scorecardFromState() : {};
     const eth = focusTable === "ethereum";
-    el.textContent = eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0");
-    el.setAttribute("aria-label", "Flip to " + (eth ? "Bitcoin / Satoshi" : "Ethereum / Vitalik"));
+    const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    el.textContent = front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0"));
+    el.setAttribute("aria-label", "Flip to " + (front ? "Bitcoin / Satoshi" : (eth ? "Bitcoin / Satoshi" : "Ethereum / Vitalik")));
   }
 
   function paintHealthStrip(data) {
@@ -7025,7 +7212,7 @@ function drawCandleChart() {
     } catch (e) {}
     if (frontPollTimer) clearInterval(frontPollTimer);
     frontPollTimer = setInterval(function () {
-      if (mode !== "front") return;
+      if (mode !== "front" && mode !== "floor" && focusTable !== "front") return;
       frontApi("/api/front").then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
         if (data) paintFrontBoard(data);
       }).catch(function () {});
@@ -7666,7 +7853,7 @@ function drawCandleChart() {
     }
 
     if (lastUpdateEl) lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
-    updateAccuracy(state.accuracy);
+    updateAccuracy(((typeof tableState === "function" ? tableState(focusTable) : null) || state || {}).accuracy || state.accuracy);
     try { paintTableHud(); } catch (e) {}
     updateLaw(state.law);
     if (!deskCinematicOn()) updateHuddle(state.huddle);
@@ -7781,7 +7968,7 @@ function drawCandleChart() {
     openChartsBtn.addEventListener("click", () => setMode("charts"));
   }
   modeTabs.forEach(btn => {
-    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth") return;
+    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront") return;
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -7794,7 +7981,7 @@ function drawCandleChart() {
     document.addEventListener("click", (e) => {
       if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
-      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "btnHelp") return;
+      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "btnHelp") return;
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -8463,20 +8650,27 @@ function drawCandleChart() {
   function wireFocusAndHelp() {
     const focusBtc = document.getElementById("focusBtc");
     const focusEth = document.getElementById("focusEth");
-    if (!focusBtc && !focusEth) return;
+    const focusFront = document.getElementById("focusFront");
+    if (!focusBtc && !focusEth && !focusFront) return;
 
     function applyFocusChrome() {
       const isEth = isEthTable(focusTable);
-      document.body.dataset.focusTable = isEth ? "ethereum" : "bitcoin";
+      const isFront = isFrontTable(focusTable);
+      document.body.dataset.focusTable = isFront ? "front" : (isEth ? "ethereum" : "bitcoin");
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
-        if (isEth) focusBtc.classList.remove("focus-active");
+        if (isEth || isFront) focusBtc.classList.remove("focus-active");
         else focusBtc.classList.add("focus-active");
       }
       if (focusEth) {
         focusEth.classList.remove("active", "mode-tab");
-        if (isEth) focusEth.classList.add("focus-active");
+        if (isEth && !isFront) focusEth.classList.add("focus-active");
         else focusEth.classList.remove("focus-active");
+      }
+      if (focusFront) {
+        focusFront.classList.remove("active", "mode-tab");
+        if (isFront) focusFront.classList.add("focus-active");
+        else focusFront.classList.remove("focus-active");
       }
       const badge = document.getElementById("focusTableBadge");
       if (badge) {
@@ -8487,15 +8681,22 @@ function drawCandleChart() {
       if (stage) {
         const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
-          ? "Floor — Satoshi BTC table and Vitalik ETH table"
-          : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"));
+          ? "Floor — Satoshi BTC, Vitalik ETH, and Raijin DFW"
+          : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")));
       }
       try { syncChartPairTitle(); } catch (e) {}
     }
 
     function setFocusTable(which) {
-      focusTable = (which === "ethereum" || which === "eth") ? "ethereum" : "bitcoin";
+      const w = String(which || "").toLowerCase();
+      if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas") focusTable = "front";
+      else if (w === "ethereum" || w === "eth" || w === "vitalik") focusTable = "ethereum";
+      else focusTable = "bitcoin";
       try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+      if (focusTable === "front") {
+        try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
+        try { if (mode === "front") setMode("art"); } catch (e) {}
+      }
       applyFocusChrome();
       try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
       try { drawArt(); } catch (e) { console.warn("focus drawArt", e); }
@@ -8521,6 +8722,7 @@ function drawCandleChart() {
     window.applyFocusChrome = applyFocusChrome;
     bind(focusBtc, "bitcoin");
     bind(focusEth, "ethereum");
+    bind(focusFront, "front");
     applyFocusChrome();
     const floorExit = document.getElementById("floorExitBtn");
     if (floorExit && !floorExit.__wired) {
@@ -8546,7 +8748,9 @@ function drawCandleChart() {
       phoneScore.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const next = focusTable === "ethereum" ? "bitcoin" : "ethereum";
+        const order = ["ethereum", "bitcoin", "front"];
+        const idx = order.indexOf(focusTable);
+        const next = order[(idx + 1) % order.length];
         if (typeof setFocusTable === "function") setFocusTable(next);
         try { paintPhoneScore(); } catch (err) {}
         try { paintChairWhy(); } catch (err) {}
@@ -9024,7 +9228,7 @@ function drawCandleChart() {
       const left = ss.playing ? Math.max(0, Math.ceil((ss.endsAt - Date.now()) / 1000)) : 0;
       cl.textContent = "0:" + String(left).padStart(2, "0");
     }
-    if (pair) pair.textContent = focusTable === "bitcoin" ? "BTC" : "ETH";
+    if (pair) pair.textContent = isFrontTable(focusTable) ? "DFW" : (focusTable === "bitcoin" ? "BTC" : "ETH");
   }
 
   function ssClearLit() {
@@ -9220,7 +9424,7 @@ function drawCandleChart() {
       e.preventDefault();
       e.stopPropagation();
       if (hit.which === "front") {
-        try { setMode("front"); } catch (err) {}
+        try { setFocusTable("front"); } catch (err) {}
         return;
       }
       playLeaderClickVideo();
@@ -9500,7 +9704,7 @@ function drawCandleChart() {
     floorRaijinBtn.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
-      try { setMode("front"); } catch (err) {}
+      try { setFocusTable("front"); } catch (err) {}
     });
   }
 

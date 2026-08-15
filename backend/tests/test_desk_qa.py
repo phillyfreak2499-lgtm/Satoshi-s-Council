@@ -701,6 +701,11 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertNotIn("tickers[:40]", council)
         self.assertIn("get_event", (ROOT / "backend" / "data" / "kalshi.py").read_text(encoding="utf-8"))
         self.assertIn("max_learn=2000", council)
+        self.assertIn("def decide_open_wait_grade", gates)
+        self.assertIn("def classify_wait_reason", gates)
+        self.assertIn("def record_wait_sample", db)
+        self.assertIn("learn_from_wait", council)
+        self.assertIn("_maybe_record_wait_sample", council)
 
     def test_hit_rate_spot_pack_keep_list(self):
         gates = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
