@@ -481,9 +481,11 @@ class CoinGlassHistBackfillTests(unittest.IsolatedAsyncioTestCase):
     async def test_fixture_grades_carry_chain_cascade(self):
         learner = AdaptiveLearner(asset="btc")
         snap = _cg_fixture_snap()
-        self.assertTrue(snap["feeds"]["funding"])
-        self.assertTrue(snap["feeds"]["open_interest"])
-        self.assertTrue(snap["feeds"]["liquidations"])
+        from backend.data.coinglass import feeds_present
+        feeds = feeds_present(snap)
+        self.assertTrue(feeds["funding"])
+        self.assertTrue(feeds["open_interest"])
+        self.assertTrue(feeds["liquidations"])
 
         async def ev(_ticker):
             return _official_event("KXBTCD-26AUG1016-T63999.99", "no"), None
