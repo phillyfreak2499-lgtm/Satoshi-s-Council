@@ -3165,7 +3165,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function drawLockIgnition(cx, cy, photoR, which) {
-    // Fat lock saber + table stamp: hard hit on Chair LOCK (~1s), then stays OFF. Not a fade.
+    // Fat lock saber: hard hit on Chair LOCK (~1s), then stays OFF. Not a fade.
     // Green UP / red DOWN / sports ticket. Next to the portrait — not over the face or seat labels.
     // Don't fire on WAIT.
     if (!ctx || !photoR) return;
@@ -3231,6 +3231,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     drawLockStamp(cx, cy, photoR, which, word, glow, alpha, t);
   }
   function drawLockStamp(cx, cy, photoR, which, word, glow, alpha, t) {
+    // Stamp slams the call onto the table. One beat. Not a fade.
     if (!ctx || !word || alpha <= 0) return;
     const phone = (typeof isPhoneDesk === "function") && isPhoneDesk();
     const slam = (!reduceMotion && t < 0.10) ? (1.18 - t * 1.6) : 1;

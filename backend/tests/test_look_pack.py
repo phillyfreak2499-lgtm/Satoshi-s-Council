@@ -204,19 +204,19 @@ class ChairRoomTests(unittest.TestCase):
         self.assertIn('return "satoshi"', JS.split("function chairRoomOf", 1)[1][:500])
         self.assertIn("function drawChairRoom(", JS)
         self.assertIn("function syncChairRoom(", JS)
-        self.assertIn("data-chair-room", JS)
-        self.assertIn('dataset.chairRoom', JS)
-        sat = CSS.split('data-chair-room="satoshi"', 1)[1][:500]
-        vit = CSS.split('data-chair-room="vitalik"', 1)[1][:500]
-        ares = CSS.split('data-chair-room="ares"', 1)[1][:500]
+        self.assertIn("dataset.chairRoom", JS)
+        self.assertIn("dataset.hourWeather", JS)
+        sat = CSS.split('data-chair-room="satoshi"', 1)[1][:900]
+        vit = CSS.split('data-chair-room="vitalik"', 1)[1][:900]
+        ares = CSS.split('data-chair-room="ares"', 1)[1][:900]
         self.assertIn("#1a1208", sat)
         self.assertIn("240, 176, 64", sat)
         self.assertIn("#061418", vit)
         self.assertIn("80, 230, 210", vit)
         self.assertIn("#071018", ares)
         self.assertIn("255, 230, 160", ares)
-        self.assertNotEqual(sat[:120], vit[:120])
-        self.assertNotEqual(vit[:120], ares[:120])
+        self.assertNotEqual(sat[:200], vit[:200])
+        self.assertNotEqual(vit[:200], ares[:200])
         self.assertIn("drawAresScorebug", JS)
         self.assertIn("atsKickLine", JS.split("function drawAresScorebug", 1)[1][:500])
         self.assertNotIn("id=\"tabAresScore\"", HTML)
