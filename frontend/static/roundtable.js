@@ -1265,11 +1265,100 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return null;
     }
   }
+  const ATTRACT_IDLE_MS = 24000;
+  let _attractLastAct = 0;
+  let _attractEntered = false;
+  let _attractWired = false;
+  function noteDeskActivity() {
+    _attractLastAct = Date.now();
+    _attractEntered = false;
+    try { document.body.classList.remove("floor-attract"); } catch (e) {}
+  }
+  function attractEnterBlocked() {
+    // Cabinet attract. Never steal Settings / Follower / gates / cinematics.
+    // Seat Storm still never auto-starts. Never auto-bet.
+    if (reduceMotion) return true;
+    if (typeof hasDeskAuth === "function" && !hasDeskAuth()) return true;
+    if (document.body.classList.contains("gate-locked")) return true;
+    if (document.body.classList.contains("gate-revealing")) return true;
+    if (mode === "settings" || mode === "follower" || mode === "night") return true;
+    if (typeof deskCinematicOn === "function" && deskCinematicOn()) return true;
+    if (document.body.classList.contains("leader-clip-on")) return true;
+    if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) return true;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable)) return true;
+    const blockedIds = ["adminGate", "passwordGate", "summonGate", "coachOverlay", "fgGate"];
+    for (let i = 0; i < blockedIds.length; i++) {
+      const el = document.getElementById(blockedIds[i]);
+      if (el && !el.classList.contains("hidden") && !el.hidden) return true;
+    }
+    return false;
+  }
+  function maybeAttractEnter() {
+    // Cabinet attract: idle auto-enter Floor. Not a packed WAIT roster.
+    if (document.hidden) return;
+    if (attractEnterBlocked()) return;
+    if (mode === "floor") return;
+    if (!_attractLastAct) _attractLastAct = Date.now();
+    if (Date.now() - _attractLastAct < ATTRACT_IDLE_MS) return;
+    _attractEntered = true;
+    try { setMode("floor"); } catch (e) {}
+    try { document.body.classList.add("floor-attract"); } catch (e) {}
+  }
+  function wireAttractIdle() {
+    if (_attractWired) return;
+    _attractWired = true;
+    _attractLastAct = Date.now();
+    const bump = function () { try { noteDeskActivity(); } catch (e) {} };
+    document.addEventListener("pointerdown", bump, { passive: true });
+    document.addEventListener("keydown", bump, { passive: true });
+    document.addEventListener("touchstart", bump, { passive: true });
+    document.addEventListener("wheel", bump, { passive: true });
+  }
   function floorCameraOffset() {
     // Slow room drift. No extra haze, particles, or purple.
     if (reduceMotion || !floorLikeMode()) return { x: 0, y: 0 };
-    const t = (typeof time === "number" ? time : 0) * 0.00008;
-    return { x: Math.sin(t) * 22, y: Math.cos(t * 0.71) * 14 };
+    const t = (typeof time === "number" ? time : 0) * 0.00007;
+    const amp = _attractEntered ? 1.2 : 1;
+    return { x: Math.sin(t) * 26 * amp, y: Math.cos(t * 0.71) * 16 * amp };
+  }
+  function chairBreatheScale(which, locked) {
+    if (reduceMotion) return 1;
+    const phase = which === "ethereum" ? 1.15 : (which === "front" ? 0.4 : (which === "ats" ? 0.85 : 0.2));
+    const amt = locked ? 0.018 : 0.06;
+    return 1 + amt * Math.sin((typeof time === "number" ? time : 0) * 0.0038 + phase);
+  }
+  function drawFloorAttractGlow(cx, cy, r, which) {
+    // WAIT Floor attract: motion/glow, not extra bots or seat nodes.
+    if (!ctx || !r || reduceMotion || !floorLikeMode()) return;
+    const clock = (typeof time === "number" ? time : 0);
+    const pulse = 0.55 + 0.45 * Math.sin(clock * 0.0021 + (which === "ethereum" ? 1.1 : 0.2));
+    const hue = which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.62)";
+    ctx.save();
+    ctx.strokeStyle = hue;
+    ctx.globalAlpha = 0.16 + 0.18 * pulse;
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = hue;
+    ctx.shadowBlur = 10 + 8 * pulse;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * (1.08 + 0.03 * pulse), 0, Math.PI * 2);
+    ctx.stroke();
+    const n = 8;
+    const orbit = clock * 0.00012;
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.22 + 0.12 * pulse;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = orbit + (i / n) * Math.PI * 2;
+      const c = Math.cos(a), s = Math.sin(a);
+      const r0 = r * 1.22;
+      const r1 = r * (i % 2 === 0 ? 1.34 : 1.28);
+      ctx.moveTo(cx + c * r0, cy + s * r0);
+      ctx.lineTo(cx + c * r1, cy + s * r1);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
   function syncSeatSpinBtn() {
     const btn = document.getElementById("seatSpinBtn");
@@ -2655,6 +2744,56 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return chairThinkRate(st, dir, locked, which);
   }
 
+  function thinkingRingAllowed(which) {
+    // Satoshi / Vitalik only. Ares and Front stay game / weather.
+    return floorCryptoTable(which);
+  }
+  function thinkingRingFrac(st) {
+    return hourFillFrac((st && st.market) || {});
+  }
+  function drawThinkingRing(cx, cy, photoR, seatR, opts) {
+    // 1H cook ring around Satoshi / Vitalik. Same neon / saber language.
+    // Cheap annulus stroke on the existing portrait ring. No extra images.
+    if (!ctx || !photoR || !seatR || seatR <= photoR + 3) return;
+    opts = opts || {};
+    if (!thinkingRingAllowed(opts.which)) return;
+    const frac = Math.max(0.02, Math.min(1, thinkingRingFrac(opts.st)));
+    const dir = String(opts.dir || "WAIT").toUpperCase();
+    const locked = !!opts.locked;
+    const phone = (typeof isPhoneDesk === "function") ? isPhoneDesk() : false;
+    const inner = photoR + 3;
+    const outer = seatR - 2;
+    const mid = (inner + outer) / 2;
+    const hue = locked ? "rgba(240, 193, 74, 0.95)"
+      : (dir === "UP" || dir === "UP_HOLD") ? "rgba(0, 255, 120, 0.82)"
+      : (dir === "DOWN" || dir === "DOWN_HOLD") ? "rgba(255, 55, 90, 0.82)"
+      : (String(opts.which || "") === "ethereum" ? "rgba(120, 255, 160, 0.70)" : "rgba(0, 220, 255, 0.78)");
+    const start = -Math.PI / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+    ctx.arc(cx, cy, inner, 0, Math.PI * 2, true);
+    ctx.clip();
+    ctx.strokeStyle = "rgba(180, 210, 230, 0.16)";
+    ctx.lineWidth = phone ? 3.2 : 4.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, mid, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = hue;
+    ctx.lineCap = "round";
+    ctx.lineWidth = phone ? 3.6 : 5.2;
+    ctx.globalAlpha = 0.88;
+    if (!phone && !reduceMotion) {
+      ctx.shadowColor = hue;
+      ctx.shadowBlur = 10;
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, mid, start, start + Math.PI * 2 * frac);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
   function drawChairThink(cx, cy, photoR, seatR, opts) {
     // Chair thinking HUD. Fills the empty annulus from the photo out to the
     // seat circle: slow radar sweep + orbiting ticks (game HUD, not a spinner gif).
@@ -2675,6 +2814,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const wait = !locked && dir.indexOf("WAIT") >= 0;
     const sfx = sealFX[key];
     const punching = !!(sfx && sfx.until > Date.now() && !reduceMotion);
+    try { drawThinkingRing(cx, cy, photoR, seatR, opts); } catch (e) {}
     const gold = "rgba(240, 193, 74, 0.95)";
     const hue = (locked || punching) ? gold
       : (dir === "UP" || dir === "UP_HOLD") ? "rgba(0, 255, 120, 0.75)"
@@ -2772,20 +2912,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
     if (punching) {
-      const a = Math.max(0, (sfx.until - Date.now()) / 1100);
+      // Lock is a punch — hard hit, not a fade.
       ctx.save();
-      ctx.globalAlpha = Math.min(0.95, a + 0.2);
+      ctx.globalAlpha = 0.92;
       ctx.strokeStyle = gold;
-      ctx.lineWidth = 2.8;
+      ctx.lineWidth = 3.4;
+      ctx.shadowColor = gold;
+      ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.arc(cx, cy, photoR + 6 + (1 - a) * 14, 0, Math.PI * 2);
+      ctx.arc(cx, cy, photoR + 8, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
   }
 
   function drawLockIgnition(cx, cy, photoR, which) {
-    // Fat lock saber: ignites ~1s on Chair LOCK, then stays OFF. Not always-on.
+    // Fat lock saber: hard hit on Chair LOCK (~1s), then stays OFF. Not a fade.
     // Green UP / red DOWN. Next to the portrait — not over the face or seat labels.
     if (!ctx || !photoR) return;
     const key = chairKeyOf(which);
@@ -2796,20 +2938,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const left = sfx.until - Date.now();
     const t = 1 - Math.max(0, Math.min(1, left / 1100));
     let grow = 1;
-    let alpha = 0.95;
+    let alpha = 0.98;
     if (!reduceMotion) {
-      if (t < 0.18) {
-        grow = t / 0.18;
-        alpha = 0.5 + 0.5 * grow;
-      } else if (t < 0.70) {
+      if (t < 0.08) {
+        grow = 1;
+        alpha = 1;
+      } else if (t < 0.88) {
         grow = 1;
         alpha = 1;
       } else {
         grow = 1;
-        alpha = Math.max(0, 1 - (t - 0.70) / 0.30);
+        alpha = t < 0.94 ? 1 : 0;
       }
     } else {
-      alpha = left > 180 ? 0.9 : left / 180;
+      alpha = left > 80 ? 0.95 : 0;
     }
     const up = dir === "UP";
     const glow = up ? "rgba(57, 255, 20, 0.9)" : "rgba(255, 45, 85, 0.9)";
@@ -3190,7 +3332,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const maj = majorityDirOf(roster);
     const gold = "rgba(240, 193, 74, 0.95)";
     const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
-    const pr = radius * 0.80;
+    const pr = radius * 0.80 * chairBreatheScale(which, locked);
     const portraitY = cy - 2;
     const ringR = radius * 1.48;
     const orbit = seatOrbitAngle();
@@ -3315,6 +3457,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ctx.font = "600 10px Rajdhani, sans-serif";
         ctx.fillStyle = "rgba(160,180,200,0.55)";
         ctx.fillText((which === "ethereum" ? "ETH council loading…" : "BTC council loading…"), cx, cy + radius + 44);
+      } else if (hideWait) {
+        drawFloorAttractGlow(cx, cy, radius, which);
       }
     } else {
       botPts.forEach((bp, i) => {
@@ -3796,6 +3940,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       agents.forEach(function (a) { if (a && a.agent_name) locked[a.agent_name] = true; });
       order = order.filter(function (n) { return locked[n]; });
     }
+    if (floorHideWait && !order.length) {
+      drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable));
+    }
     const n = order.length || 1;
     const positions = {};
     const rankOf = {};
@@ -4112,7 +4259,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN" || _lc.direction === "ABOVE" || _lc.direction === "BELOW" || _lc.direction === "BETWEEN") );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
-    const leaderPulse = reduceMotion ? 1 : (1 + 0.02 * Math.sin(time * 0.0035));
+    const waitFloor = floorLikeMode() && !_hasLock;
+    const leaderPulse = reduceMotion ? 1 : (1 + (waitFloor ? 0.055 : 0.02) * Math.sin(time * 0.0035));
     const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
@@ -9063,6 +9211,7 @@ function drawCandleChart() {
   function loop(ts) {
     time = ts;
     try { stepAllChairPulses(ts); } catch (e) {}
+    try { maybeAttractEnter(); } catch (e) {}
     if (mode === "art" || mode === "floor") drawArt();
     if (mode === "night") drawArt();
     if (!document.hidden) {
@@ -10915,6 +11064,7 @@ function drawCandleChart() {
   try { dockWindowLed(); } catch (e) {}
   try { paintTableHud(); } catch (e) {}
   try { syncAutoBetVisibility(); } catch (e) {}
+  try { wireAttractIdle(); } catch (e) {}
   poll();
   pollTimer = setInterval(poll, POLL_MS);
   animId = requestAnimationFrame(loop);
@@ -11402,7 +11552,7 @@ function drawCandleChart() {
       ctx.fillStyle = "rgba(2,4,10,0.35)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       for (const st of stars) {
-        st.y += st.z * 1.4;
+        st.y += st.z * 0.72;
         if (st.y > canvas.height) {
           st.y = 0;
           st.x = Math.random() * canvas.width;
