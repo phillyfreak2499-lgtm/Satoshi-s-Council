@@ -346,5 +346,19 @@ class SeatMoodRealLockTests(unittest.TestCase):
         self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
 
 
+class AresEyeTintTests(unittest.TestCase):
+    def test_eye_tint_sits_on_eyes_not_cheeks(self):
+        tint = JS.split("function drawAresEyeTint", 1)[1].split("function drawPublicTug", 1)[0]
+        self.assertIn("cy - pr * 0.18", tint)
+        self.assertNotIn("cy - pr * 0.08", tint)
+        self.assertIn("On the eyes, not the cheeks", tint)
+        paint = JS.split("function paintAresEyes", 1)[1].split("function drawAresEyeTint", 1)[0]
+        self.assertIn("face.hidden = true", paint)
+        self.assertIn("Never unhide the HTML overlay", paint)
+        self.assertIn('id="aresFace"', HTML)
+        self.assertNotIn("createElement", tint)
+        self.assertNotIn("new Image", tint)
+
+
 if __name__ == "__main__":
     unittest.main()

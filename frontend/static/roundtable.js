@@ -3417,7 +3417,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function drawAresEyeTint(cx, cy, pr, eyes) {
     const cols = aresEyeColors(eyes);
-    const y = cy - pr * 0.08;
+    // On the eyes, not the cheeks. 0.08 sat low on this square chair crop.
+    const y = cy - pr * 0.18;
     const dx = pr * 0.18;
     const rx = pr * 0.09;
     const ry = pr * 0.055;
