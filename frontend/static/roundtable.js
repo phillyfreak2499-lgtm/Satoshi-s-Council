@@ -5117,6 +5117,432 @@ function drawCandleChart() {
     }
   }
 
+  const SCHOOL_KEY = "council_school_v1";
+  const SCHOOL_SNAP = {
+    strike: 100000,
+    seconds_left: 1840,
+    candles: [
+      { o: 99920, h: 100040, l: 99880, c: 100010 },
+      { o: 100010, h: 100120, l: 99980, c: 100080 },
+      { o: 100080, h: 100160, l: 100020, c: 100040 },
+      { o: 100040, h: 100090, l: 99950, c: 99970 },
+      { o: 99970, h: 100020, l: 99890, c: 99940 },
+    ],
+    book: { yes_bid: 48, yes_ask: 50, yes_sz: 22, no_bid: 51, no_sz: 18 },
+  };
+  const SCHOOL_LESSONS = [
+    { id: "hour", n: 1, title: "The hour", minutes: 6, idea: "One Kalshi hour. One strike. UP or DOWN at the close — not the vibe.", body: ["Satoshi sits BTC. Vitalik sits ETH. Same game: a 1-hour contract, a strike printed on the ticker, and a clock that dies at minute 0.", "UP pays if the official finish is above the strike. DOWN pays if it finishes below. Mid-hour wicks do not grade the hour.", "“This window” is the contract on the 1H chip right now. When it slams, the next hour is a new book and a new Chair call. Last hour’s lock does not ride.", "If Kalshi has not posted market.result yet, the desk says OPEN. We do not invent HIT from spot."], board: "window", callout: "Strike is the line. Time left is the only clock.", quiz: [{ q: "UP means the hour finishes where, vs strike?", choices: ["Above the strike", "Below the strike", "Wherever it opened"], answer: 0, why: "UP is finish above strike. Wicks on the way do not pay." }, { q: "When this window ends, the next hour…", choices: ["Keeps the same strike", "Is a new contract", "Pays last hour’s WAIT"], answer: 1, why: "Minute 0 is a new book. New strike. New Chair call." }, { q: "If Kalshi has not graded yet, Close should say?", choices: ["HIT — spot looks good", "OPEN", "MISS — we guessed"], answer: 1, why: "OPEN until official market.result. No invented grade." }, { q: "Who sits the BTC hour on this desk?", choices: ["Vitalik", "Satoshi", "WICK"], answer: 1, why: "Satoshi is BTC. Vitalik is ETH. WICK is a seat, not the Chair." }] },
+    { id: "candle", n: 2, title: "Reading the candle", minutes: 7, idea: "Body is open-to-close. Wicks are the reach. Close vs strike is what pays.", body: ["A candle is a cheap story: open, high, low, close. The body is open-to-close. The wicks are how far it reached and got rejected.", "Green body = close above open. Red body = close below open. That is path, not the grade.", "The hour grades close vs strike. A long upper wick that tags above strike and dies back under is still DOWN if the finish is under.", "Read the last hour on Full Charts the same way: body first, wick second, strike last. If there is no live tape, the board holds a still of a dead hour."], board: "candle", callout: "Body = path. Close vs strike = the grade.", quiz: [{ q: "The candle body is…", choices: ["High to low", "Open to close", "Strike to close"], answer: 1, why: "Body is open-to-close. Wicks are the high/low reach." }, { q: "A long wick above strike that dies back under — if the finish is under, the hour is?", choices: ["UP — it tagged", "DOWN", "WAIT forever"], answer: 1, why: "Tags do not pay. Finish vs strike pays." }, { q: "What should you read first on this desk’s chart?", choices: ["Twitter", "Body, then wick, then strike", "Funding only"], answer: 1, why: "Same chalkboard as Full Charts. Body, wick, strike." }, { q: "WICK the seat is watching…", choices: ["Candle shape", "The Chair’s P&L", "Altcoin perps"], answer: 0, why: "WICK reads candles. The Chair still decides." }] },
+    { id: "book", n: 3, title: "The book", minutes: 8, idea: "Bid is what you can sell. Ask is what you pay. Size is whether anyone is there. 99¢ is a WAIT.", body: ["The Book tab is live Kalshi depth for this hour. Bid, ask, size, spread, mid. Satoshi’s BTC book and Vitalik’s ETH book.", "A fat bid with no size is a ghost. Empty book, sick book, or a one-tick wide desert — the Chair can WAIT. That is not fear. That is no fill.", "A 99¢ wall means the market already priced the finish. Buying the last penny is not edge. Why on the Floor will say it in one line: DOWN is 99¢, no edge.", "If the live book is quiet, the board shows a still. Same picture. Display only — this lesson does not lock."], board: "book", callout: "99¢ wall = WAIT. No edge left in the last penny.", quiz: [{ q: "Ask is…", choices: ["What you pay to buy", "What paid last hour", "The strike"], answer: 0, why: "Ask is the offer. Bid is what you can sell into." }, { q: "Why can the Chair WAIT at 99¢?", choices: ["Guaranteed edge if you smash it", "No edge left in the last penny", "Because Night mode is on"], answer: 1, why: "The book already priced the finish. Last penny is not a lock." }, { q: "Size on the book means…", choices: ["How loud WICK is", "Whether anyone is actually there", "P(finish)"], answer: 1, why: "No size = ghost quotes. Sick or empty book → WAIT is honest." }, { q: "This lesson can change the Chair’s lock?", choices: ["Yes, if you ace the quiz", "No. Display only", "Only on Live"], answer: 1, why: "School teaches. It does not lock. Paper only. Follower OFF." }] },
+    { id: "edge", n: 4, title: "Odds vs P(finish)", minutes: 8, idea: "Odds are the book’s price. P(finish) is the Chair’s read. EV is after spread — and it can be nothing.", body: ["Odds are what the book is charging for UP or DOWN. P(finish) is the Chair’s number for how likely that side finishes.", "If the book wants 70¢ and the Chair only has 62% P(finish), that is not a lock. You are paying more than you think you win.", "EV is the leftover after the spread. A pretty P with a fat ask still dies. Why will say no edge, stale quote, or sick book — one line, this hour only.", "There is no guaranteed edge on this desk. Paper only. The Chair can WAIT the whole hour and be right."], board: "edge", callout: "Edge = P(finish) minus what the book charges, after spread.", quiz: [{ q: "Odds on this desk are…", choices: ["The book’s price", "A promise you hit", "Yesterday’s hit rate"], answer: 0, why: "Odds are the book. P(finish) is the Chair’s read." }, { q: "Chair has edge when…", choices: ["P(finish) beats the ask after spread", "Any UP over 50%", "You feel it"], answer: 0, why: "P has to clear what you pay. Spread eats the cute ones." }, { q: "A fat spread does what to EV?", choices: ["Nothing", "Eats it", "Guarantees a lock"], answer: 1, why: "EV is after spread. Wide book, thin leftover." }, { q: "Is there a guaranteed edge here?", choices: ["Yes, if you finish School", "No", "On Live only"], answer: 1, why: "No guaranteed edge. WAIT is a real call." }] },
+    { id: "seats", n: 5, title: "The seats", minutes: 6, idea: "Four voices. Chair only listens as hard as rank.", body: ["WICK reads the candle — body, wick, reject. Not the Chair. A seat.", "TAPE walks the book — prints, size, whether the quote is real.", "CARRY watches funding / rate. Useful, not a crystal ball.", "CLOCK is session and time-of-day. The hour has a mood. It does not get a vote bigger than its rank.", "The Chair hears them in rank order. A faded seat can talk. It does not drive the lock. Rank is how hard they get listened to — not a trophy."], board: "seats", callout: "WICK · TAPE · CARRY · CLOCK — Chair listens as hard as rank.", quiz: [{ q: "WICK’s one job?", choices: ["Candle shape", "Funding", "The Close recap"], answer: 0, why: "WICK is the candle seat." }, { q: "TAPE is watching…", choices: ["The book / prints", "NFP only", "Your phone"], answer: 0, why: "TAPE walks the book." }, { q: "CARRY is the…", choices: ["Rate / funding seat", "Ring clock", "Paper Tracker"], answer: 0, why: "CARRY is funding. CLOCK is session." }, { q: "The Chair listens to a seat…", choices: ["As hard as its rank", "Only if you liked the lesson", "Always 100%"], answer: 0, why: "Rank is listen weight. Faded seats still speak. They do not drive." }] },
+  ];
+  let schoolLessons = SCHOOL_LESSONS.slice();
+  let schoolOpenId = null;
+  let schoolQIndex = 0;
+  let schoolAnswered = false;
+
+  function schoolWeekId() {
+    try {
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", week: "numeric", year: "numeric" });
+      const parts = fmt.formatToParts(new Date());
+      const y = (parts.find(function (p) { return p.type === "year"; }) || {}).value;
+      const w = (parts.find(function (p) { return p.type === "week"; }) || {}).value;
+      if (y && w) return y + "-W" + String(w).padStart(2, "0");
+    } catch (e) {}
+    const d = new Date();
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((t - yearStart) / 86400000) + 1) / 7);
+    return t.getUTCFullYear() + "-W" + String(week).padStart(2, "0");
+  }
+  function loadSchoolProgress() {
+    try {
+      const raw = localStorage.getItem(SCHOOL_KEY);
+      const p = raw ? JSON.parse(raw) : {};
+      if (!p || typeof p !== "object") return { done: [], current: "hour", q: 0, week: { id: schoolWeekId(), n: 0 } };
+      if (!Array.isArray(p.done)) p.done = [];
+      if (!p.week || p.week.id !== schoolWeekId()) p.week = { id: schoolWeekId(), n: 0 };
+      return p;
+    } catch (e) {
+      return { done: [], current: "hour", q: 0, week: { id: schoolWeekId(), n: 0 } };
+    }
+  }
+  function saveSchoolProgress(p) {
+    try { localStorage.setItem(SCHOOL_KEY, JSON.stringify(p)); } catch (e) {}
+  }
+  function schoolById(id) {
+    return schoolLessons.find(function (l) { return l.id === id; }) || schoolLessons[0];
+  }
+  function schoolNextId(done) {
+    const have = done || [];
+    for (let i = 0; i < schoolLessons.length; i++) {
+      if (have.indexOf(schoolLessons[i].id) < 0) return schoolLessons[i].id;
+    }
+    return schoolLessons[0].id;
+  }
+  function schoolUnlocked(id, done) {
+    const idx = schoolLessons.findIndex(function (l) { return l.id === id; });
+    if (idx <= 0) return true;
+    return (done || []).indexOf(schoolLessons[idx - 1].id) >= 0;
+  }
+
+  function schoolLiveMarket() {
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    return ts.market || (state && state.market) || {};
+  }
+  function schoolLiveBook() {
+    const m = schoolLiveMarket();
+    const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
+    const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
+    if (yb == null && ya == null) return null;
+    return {
+      yes_bid: yb,
+      yes_ask: ya,
+      yes_sz: m.kalshi_yes_bid_sz != null ? m.kalshi_yes_bid_sz : null,
+      no_bid: yb != null ? Math.round((100 - yb) * 10) / 10 : null,
+      live: true,
+    };
+  }
+  function paintSchoolBoard(kind) {
+    const canvas = document.getElementById("schoolBoard");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 640;
+    const cssH = canvas.clientHeight || 220;
+    if (canvas.width !== Math.floor(cssW * dpr) || canvas.height !== Math.floor(cssH * dpr)) {
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = cssW, h = cssH;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(2, 6, 14, 0.92)";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.18)";
+    ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+    const m = schoolLiveMarket();
+    const liveCandles = (m.candles || []).slice(-16);
+    const candles = liveCandles.length >= 3 ? liveCandles : SCHOOL_SNAP.candles;
+    const strike = Number(m.kalshi_target) || SCHOOL_SNAP.strike;
+    const secs = m.seconds_left != null ? Number(m.seconds_left) : SCHOOL_SNAP.seconds_left;
+    const live = liveCandles.length >= 3;
+
+    function drawCandles(callouts) {
+      const pad = { l: 36, r: 10, t: 18, b: 16 };
+      const rows = candles.map(function (c) {
+        return { o: Number(c.o != null ? c.o : c.open), h: Number(c.h != null ? c.h : c.high), l: Number(c.l != null ? c.l : c.low), c: Number(c.c != null ? c.c : c.close) };
+      }).filter(function (c) { return isFinite(c.o) && isFinite(c.c); });
+      if (!rows.length) return;
+      let min = Math.min.apply(null, rows.map(function (c) { return Math.min(c.l, c.c, strike); }));
+      let max = Math.max.apply(null, rows.map(function (c) { return Math.max(c.h, c.c, strike); }));
+      const span = (max - min) || 1;
+      min -= span * 0.08; max += span * 0.08;
+      const yAt = function (p) { return pad.t + (1 - (p - min) / (max - min || 1)) * (h - pad.t - pad.b); };
+      ctx.strokeStyle = "rgba(240, 193, 74, 0.7)";
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(strike)); ctx.lineTo(w - pad.r, yAt(strike)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(240, 193, 74, 0.85)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("STRIKE", pad.l, yAt(strike) - 4);
+      const cw = (w - pad.l - pad.r) / rows.length;
+      rows.forEach(function (c, i) {
+        const x = pad.l + i * cw + cw / 2;
+        const up = c.c >= c.o;
+        ctx.strokeStyle = up ? "#39ff14" : "#ff2d55";
+        ctx.beginPath(); ctx.moveTo(x, yAt(c.h)); ctx.lineTo(x, yAt(c.l)); ctx.stroke();
+        const by = Math.min(yAt(c.o), yAt(c.c));
+        const bh = Math.max(2, Math.abs(yAt(c.c) - yAt(c.o)));
+        ctx.fillStyle = up ? "rgba(57,255,20,0.85)" : "rgba(255,45,85,0.85)";
+        ctx.fillRect(x - Math.max(2, cw * 0.28), by, Math.max(4, cw * 0.56), bh);
+      });
+      if (callouts) {
+        const last = rows[rows.length - 1];
+        ctx.fillStyle = "rgba(232,244,255,0.8)";
+        ctx.font = "11px Rajdhani, sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText("body", w - pad.r, Math.min(yAt(last.o), yAt(last.c)) - 2);
+        ctx.fillText("wick", w - pad.r, yAt(last.h) + 10);
+      }
+      ctx.fillStyle = "rgba(180,200,220,0.55)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(live ? "LIVE / LAST HOUR" : "STILL · last hour", pad.l, h - 4);
+    }
+
+    if (kind === "window") {
+      drawCandles(false);
+      ctx.fillStyle = "rgba(57,255,20,0.75)";
+      ctx.font = "12px Orbitron, monospace";
+      ctx.textAlign = "right";
+      ctx.fillText("UP", w - 12, 22);
+      ctx.fillStyle = "rgba(255,45,85,0.8)";
+      ctx.fillText("DOWN", w - 12, h - 20);
+      const mm = Math.max(0, Math.floor(secs / 60));
+      const ss = Math.max(0, Math.floor(secs % 60));
+      ctx.fillStyle = "#e8f4ff";
+      ctx.font = "13px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("THIS WINDOW · " + String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0"), w / 2, 16);
+    } else if (kind === "candle") {
+      drawCandles(true);
+    } else if (kind === "book") {
+      const liveB = schoolLiveBook();
+      const b = liveB || SCHOOL_SNAP.book;
+      const wall = (b.yes_bid != null && b.yes_bid >= 99) || (b.no_bid != null && b.no_bid >= 99);
+      function bar(y, label, px, sz, col) {
+        ctx.fillStyle = "rgba(200,220,240,0.7)";
+        ctx.font = "12px Orbitron, monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(label, 16, y + 12);
+        const ww = Math.max(8, ((px || 0) / 100) * (w - 160));
+        ctx.fillStyle = col;
+        ctx.fillRect(90, y, ww, 18);
+        ctx.fillStyle = "#e8f4ff";
+        ctx.fillText((px != null ? Math.round(px) + "¢" : "—") + (sz != null ? " × " + sz : ""), 96 + ww, y + 13);
+      }
+      bar(36, "BID", b.yes_bid, b.yes_sz, "rgba(57,255,20,0.55)");
+      bar(70, "ASK", b.yes_ask, null, "rgba(0,232,255,0.45)");
+      bar(104, "NO", b.no_bid, b.no_sz, "rgba(255,45,85,0.45)");
+      ctx.fillStyle = wall ? "#ffb000" : "rgba(200,220,240,0.7)";
+      ctx.font = "13px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(wall ? "99¢ WALL · WAIT" : ((liveB ? "LIVE BOOK" : "STILL · BOOK") + " · size is the truth"), w / 2, h - 16);
+    } else if (kind === "edge") {
+      const d = ((typeof tableState === "function" ? tableState(focusTable) : null) || state || {}).decision || {};
+      const p = d.p_finish != null ? Number(d.p_finish) : 0.62;
+      const pPct = p <= 1 ? p * 100 : p;
+      const ask = (schoolLiveBook() || SCHOOL_SNAP.book).yes_ask || 70;
+      ctx.fillStyle = "rgba(200,220,240,0.75)";
+      ctx.font = "12px Orbitron, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("P(FINISH)  " + Math.round(pPct) + "%", 20, 40);
+      ctx.fillRect(20, 50, Math.max(8, (pPct / 100) * (w - 40)), 16);
+      ctx.fillText("ASK / ODDS  " + Math.round(ask) + "¢", 20, 96);
+      ctx.fillStyle = "rgba(0,232,255,0.45)";
+      ctx.fillRect(20, 106, Math.max(8, (ask / 100) * (w - 40)), 16);
+      const ev = pPct - ask;
+      ctx.fillStyle = ev > 0 ? "#39ff14" : "#ffb000";
+      ctx.font = "14px Orbitron, monospace";
+      ctx.fillText(ev > 0 ? ("EDGE after spread · +" + ev.toFixed(0) + "¢") : "NO EDGE · WAIT", 20, 160);
+    } else if (kind === "seats") {
+      const seats = ["WICK", "TAPE", "CARRY", "CLOCK"];
+      const lines = ["candles", "book / prints", "funding", "session"];
+      seats.forEach(function (name, i) {
+        const x = 16 + i * ((w - 20) / 4);
+        ctx.fillStyle = "rgba(0, 232, 255, 0.08)";
+        ctx.fillRect(x, 28, (w - 40) / 4 - 8, h - 56);
+        ctx.fillStyle = "#e8f4ff";
+        ctx.font = "14px Orbitron, monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(name, x + ((w - 40) / 4 - 8) / 2, 70);
+        ctx.fillStyle = "rgba(180,200,220,0.7)";
+        ctx.font = "12px Rajdhani, sans-serif";
+        ctx.fillText(lines[i], x + ((w - 40) / 4 - 8) / 2, 96);
+      });
+      ctx.fillStyle = "rgba(240,193,74,0.8)";
+      ctx.font = "11px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("CHAIR LISTENS AS HARD AS RANK", w / 2, h - 16);
+    }
+  }
+
+  function paintSchoolHome() {
+    const p = loadSchoolProgress();
+    const nxt = schoolNextId(p.done);
+    const les = schoolById(p.current && schoolUnlocked(p.current, p.done) && p.done.indexOf(p.current) < 0 ? p.current : nxt);
+    const cont = document.getElementById("schoolContinue");
+    const streak = document.getElementById("schoolStreak");
+    const list = document.getElementById("schoolList");
+    const nWeek = (p.week && p.week.n) || 0;
+    if (streak) streak.textContent = nWeek + " lesson" + (nWeek === 1 ? "" : "s") + " this week";
+    if (cont) {
+      const started = p.current && p.done.indexOf(p.current) < 0 && schoolById(p.current);
+      cont.textContent = started ? ("CONTINUE · " + schoolById(p.current).title) : ((p.done || []).length ? ("CONTINUE · " + les.title) : ("START · " + les.title));
+      cont.dataset.lesson = started ? p.current : les.id;
+    }
+    if (list) {
+      list.innerHTML = schoolLessons.map(function (l) {
+        const done = (p.done || []).indexOf(l.id) >= 0;
+        const open = schoolUnlocked(l.id, p.done);
+        return '<li class="' + (done ? "done" : (open ? "open" : "locked")) + '">'
+          + '<button type="button" class="school-pick" data-lesson="' + l.id + '" ' + (open ? "" : "disabled") + ">"
+          + '<span class="school-n">' + l.n + "</span> " + l.title
+          + '<span class="school-min">' + l.minutes + " min</span>"
+          + (done ? '<span class="school-done">IN</span>' : (open ? "" : '<span class="school-lock">WAIT</span>'))
+          + "</button></li>";
+      }).join("");
+    }
+  }
+
+  function showSchoolQuiz() {
+    const les = schoolById(schoolOpenId);
+    const quiz = (les && les.quiz) || [];
+    const item = quiz[schoolQIndex];
+    const qEl = document.getElementById("schoolQ");
+    const box = document.getElementById("schoolChoices");
+    const grade = document.getElementById("schoolGrade");
+    const next = document.getElementById("schoolNextQ");
+    schoolAnswered = false;
+    if (!item) return;
+    if (qEl) qEl.textContent = (schoolQIndex + 1) + " / " + quiz.length + " · " + item.q;
+    if (grade) { grade.hidden = true; grade.textContent = ""; grade.classList.remove("right", "wrong"); }
+    if (next) next.hidden = true;
+    if (box) {
+      box.innerHTML = item.choices.map(function (c, i) {
+        return '<button type="button" class="school-choice" data-i="' + i + '">' + c + "</button>";
+      }).join("");
+    }
+  }
+
+  function openSchoolLesson(id) {
+    const p = loadSchoolProgress();
+    if (!schoolUnlocked(id, p.done)) return;
+    const les = schoolById(id);
+    schoolOpenId = les.id;
+    schoolQIndex = (p.current === les.id && p.q != null && p.done.indexOf(les.id) < 0) ? Number(p.q) || 0 : 0;
+    p.current = les.id;
+    p.q = schoolQIndex;
+    saveSchoolProgress(p);
+    const wrap = document.getElementById("schoolLesson");
+    const list = document.getElementById("schoolList");
+    const cont = document.getElementById("schoolContinue");
+    if (wrap) wrap.classList.remove("hidden");
+    if (list) list.classList.add("hidden");
+    if (cont) cont.hidden = true;
+    const title = document.getElementById("schoolTitle");
+    const mins = document.getElementById("schoolMins");
+    const idea = document.getElementById("schoolIdea");
+    const body = document.getElementById("schoolBody");
+    const call = document.getElementById("schoolCallout");
+    if (title) title.textContent = les.title;
+    if (mins) mins.textContent = les.minutes + " min";
+    if (idea) idea.textContent = les.idea;
+    if (body) body.innerHTML = (les.body || []).map(function (t) { return "<p>" + t + "</p>"; }).join("");
+    if (call) call.textContent = les.callout || "";
+    try { paintSchoolBoard(les.board || "window"); } catch (e) {}
+    showSchoolQuiz();
+  }
+
+  function closeSchoolLesson() {
+    schoolOpenId = null;
+    const wrap = document.getElementById("schoolLesson");
+    const list = document.getElementById("schoolList");
+    const cont = document.getElementById("schoolContinue");
+    if (wrap) wrap.classList.add("hidden");
+    if (list) list.classList.remove("hidden");
+    if (cont) cont.hidden = false;
+    paintSchoolHome();
+  }
+
+  function finishSchoolLesson() {
+    const p = loadSchoolProgress();
+    if (schoolOpenId && p.done.indexOf(schoolOpenId) < 0) {
+      p.done.push(schoolOpenId);
+      if (!p.week || p.week.id !== schoolWeekId()) p.week = { id: schoolWeekId(), n: 0 };
+      p.week.n = (Number(p.week.n) || 0) + 1;
+    }
+    p.current = schoolNextId(p.done);
+    p.q = 0;
+    saveSchoolProgress(p);
+    closeSchoolLesson();
+  }
+  window.__finishSchoolLesson = finishSchoolLesson;
+
+  function gradeSchoolChoice(i) {
+    const les = schoolById(schoolOpenId);
+    const item = ((les && les.quiz) || [])[schoolQIndex];
+    if (!item || schoolAnswered) return;
+    schoolAnswered = true;
+    const ok = Number(i) === Number(item.answer);
+    const grade = document.getElementById("schoolGrade");
+    const next = document.getElementById("schoolNextQ");
+    const box = document.getElementById("schoolChoices");
+    if (box) {
+      Array.prototype.forEach.call(box.querySelectorAll(".school-choice"), function (btn) {
+        const idx = Number(btn.getAttribute("data-i"));
+        btn.disabled = true;
+        if (idx === item.answer) btn.classList.add("right");
+        if (idx === Number(i) && !ok) btn.classList.add("wrong");
+      });
+    }
+    if (grade) {
+      grade.hidden = false;
+      grade.classList.toggle("right", ok);
+      grade.classList.toggle("wrong", !ok);
+      grade.textContent = (ok ? "RIGHT · " : "WRONG · ") + (item.why || "");
+    }
+    if (next) {
+      next.hidden = false;
+      next.textContent = schoolQIndex >= ((les.quiz || []).length - 1) ? "IN · NEXT" : "NEXT";
+    }
+    const p = loadSchoolProgress();
+    p.current = schoolOpenId;
+    p.q = schoolQIndex;
+    saveSchoolProgress(p);
+  }
+  window.__gradeSchoolChoice = gradeSchoolChoice;
+
+  function schoolAdvance() {
+    const les = schoolById(schoolOpenId);
+    const n = ((les && les.quiz) || []).length;
+    if (schoolQIndex >= n - 1) {
+      finishSchoolLesson();
+      return;
+    }
+    schoolQIndex += 1;
+    const p = loadSchoolProgress();
+    p.current = schoolOpenId;
+    p.q = schoolQIndex;
+    saveSchoolProgress(p);
+    showSchoolQuiz();
+  }
+
+  function wireSchool() {
+    const root = document.getElementById("schoolView");
+    if (!root || root.__wired) return;
+    root.__wired = true;
+    const cont = document.getElementById("schoolContinue");
+    if (cont) cont.addEventListener("click", function () {
+      openSchoolLesson(cont.dataset.lesson || "hour");
+    });
+    const back = document.getElementById("schoolBack");
+    if (back) back.addEventListener("click", function () { closeSchoolLesson(); });
+    const next = document.getElementById("schoolNextQ");
+    if (next) next.addEventListener("click", function () { schoolAdvance(); });
+    root.addEventListener("click", function (e) {
+      const pick = e.target && e.target.closest ? e.target.closest(".school-pick") : null;
+      if (pick && pick.dataset.lesson) {
+        openSchoolLesson(pick.dataset.lesson);
+        return;
+      }
+      const ch = e.target && e.target.closest ? e.target.closest(".school-choice") : null;
+      if (ch && ch.dataset.i != null) gradeSchoolChoice(ch.dataset.i);
+    });
+  }
+
+  async function loadSchool() {
+    wireSchool();
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/school", { cache: "no-store" });
+      if (r.ok) {
+        const data = await r.json();
+        if (data && Array.isArray(data.lessons) && data.lessons.length) schoolLessons = data.lessons;
+      }
+    } catch (e) {}
+    paintSchoolHome();
+    if (schoolOpenId) {
+      try { paintSchoolBoard((schoolById(schoolOpenId) || {}).board || "window"); } catch (err) {}
+    }
+  }
+  window.loadSchool = loadSchool;
+
   function renderRanksBoard() {
     const table = document.getElementById("ranksTable");
     const phaseEl = document.getElementById("ranksPhase");
@@ -5507,6 +5933,7 @@ function drawCandleChart() {
     const bookView = document.getElementById("bookView");
     const brainView = document.getElementById("brainView");
     const newsView = document.getElementById("newsView");
+    const schoolView = document.getElementById("schoolView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
@@ -5517,6 +5944,7 @@ function drawCandleChart() {
     const showBook = mode === "book";
     const showBrain = mode === "brain";
     const showNews = mode === "news";
+    const showSchool = mode === "school";
     const showMain = mode === "art" || mode === "dashboard" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
@@ -5528,6 +5956,7 @@ function drawCandleChart() {
     if (bookView) bookView.classList.toggle("hidden", !showBook);
     if (brainView) brainView.classList.toggle("hidden", !showBrain);
     if (newsView) newsView.classList.toggle("hidden", !showNews);
+    if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
     try { dockWindowLed(); } catch (e) {}
@@ -5551,6 +5980,7 @@ function drawCandleChart() {
     if (mode === "book") loadKalshiBook();
     if (mode === "brain") loadBrainRecap();
     if (mode === "news") loadDeskNews();
+    if (mode === "school") loadSchool();
     if (mode === "follower" && typeof window.renderFollower === "function") {
       try { window.renderFollower(); } catch (e) {}
     }
@@ -7489,7 +7919,7 @@ function drawCandleChart() {
 
   window.setMode = setMode;
   window.__deskModeCycle = function () {
-    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "charts", "settings"];
+    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "school", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 

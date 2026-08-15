@@ -17,6 +17,13 @@ from backend.services.desk_news import (
     parse_ff_calendar,
     time_to_print_ct,
 )
+from backend.services.desk_school import (
+    LESSONS,
+    bump_week_streak,
+    grade_choice,
+    next_lesson_id,
+    school_payload,
+)
 from backend.services.desk_pack import (
     book_flags,
     book_payload,
@@ -51,10 +58,12 @@ class MarkupTests(unittest.TestCase):
             'id="tabNight"',
             'id="tabBrain"',
             'id="tabNews"',
+            'id="tabSchool"',
             'id="tapeView"',
             'id="bookView"',
             'id="brainView"',
             'id="newsView"',
+            'id="schoolView"',
             'id="floorCrawl"',
             "SATOSHI · BTC",
             "VITALIK · ETH",
@@ -96,10 +105,11 @@ class MarkupTests(unittest.TestCase):
             '@app.get("/api/book")',
             '@app.get("/api/brain/recap")',
             '@app.get("/api/news")',
+            '@app.get("/api/school")',
         ):
             self.assertIn(needle, MAIN)
         # catch-all still last
-        self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/news'))
+        self.assertGreater(MAIN.find("api_unknown"), MAIN.find('/api/school'))
 
 
 class TapeLogicTests(unittest.TestCase):
@@ -283,7 +293,10 @@ class FreezeTests(unittest.TestCase):
     def test_does_not_touch_follower_or_lock_math(self):
         self.assertNotIn("desk_pack", FOLLOWER)
         self.assertNotIn("desk_news", FOLLOWER)
+        self.assertNotIn("desk_school", FOLLOWER)
         self.assertNotIn("from backend.services.desk_pack", GATES)
+        self.assertNotIn("desk_school", GATES)
+        self.assertNotIn("desk_school", LEADER)
         self.assertIn("def decide_open_lock_grade", GATES)
         self.assertIn("function collectChairLocks()", JS)
 
@@ -297,6 +310,9 @@ class FreezeTests(unittest.TestCase):
         self.assertIn("/api/book", JS)
         self.assertIn("/api/brain/recap", JS)
         self.assertIn("/api/news", JS)
+        self.assertIn("function loadSchool()", JS)
+        self.assertIn("/api/school", JS)
+        self.assertIn('"school"', JS)
 
 
 class WhyLineTests(unittest.TestCase):
@@ -420,6 +436,72 @@ class HealthStripTests(unittest.TestCase):
         self.assertTrue(strip["spot"])
         self.assertFalse(strip["coinglass"])
         self.assertEqual(strip["quote_age_s"], 3)
+
+
+class SchoolTests(unittest.TestCase):
+    def test_five_lessons_in_order(self):
+        ids = [l["id"] for l in LESSONS]
+        self.assertEqual(ids, ["hour", "candle", "book", "edge", "seats"])
+        self.assertEqual([l["title"] for l in LESSONS], [
+            "The hour",
+            "Reading the candle",
+            "The book",
+            "Odds vs P(finish)",
+            "The seats",
+        ])
+        self.assertEqual(next_lesson_id([]), "hour")
+        self.assertEqual(next_lesson_id(["hour"]), "candle")
+
+    def test_lesson_one_playable_quiz(self):
+        hour = LESSONS[0]
+        self.assertGreaterEqual(len(hour["quiz"]), 3)
+        self.assertLessEqual(len(hour["quiz"]), 5)
+        self.assertTrue(hour["body"])
+        self.assertIn("strike", hour["idea"].lower() + " ".join(hour["body"]).lower())
+        right = grade_choice("hour", 0, hour["quiz"][0]["answer"])
+        self.assertTrue(right["ok"])
+        wrong = grade_choice("hour", 0, (hour["quiz"][0]["answer"] + 1) % 3)
+        self.assertFalse(wrong["ok"])
+        last = grade_choice("hour", len(hour["quiz"]) - 1, hour["quiz"][-1]["answer"])
+        self.assertTrue(last["done"])
+
+    def test_copy_is_this_desk_not_a_course(self):
+        blob = str(LESSONS).lower()
+        self.assertIn("wick", blob)
+        self.assertIn("tape", blob)
+        self.assertIn("carry", blob)
+        self.assertIn("clock", blob)
+        self.assertIn("99", blob)
+        self.assertIn("p(finish)", blob)
+        self.assertIn("no guaranteed edge", blob)
+        self.assertNotIn("certificate", blob)
+        self.assertNotIn("leverage", blob)
+        self.assertNotIn("zt ·", blob)
+        self.assertIn("Display only. Lessons do not change Chair locks.", school_payload()["note"])
+
+    def test_progress_and_tab_wire(self):
+        p = bump_week_streak({"week": {"id": "1999-W01", "n": 9}})
+        self.assertEqual(p["week"]["n"], 1)
+        self.assertIn('id="tabSchool"', HTML)
+        self.assertIn('id="schoolView"', HTML)
+        self.assertIn('id="schoolContinue"', HTML)
+        self.assertIn('id="schoolQuiz"', HTML)
+        self.assertIn('id="schoolBoard"', HTML)
+        self.assertIn("council_school_v1", JS)
+        self.assertIn("function loadSchool()", JS)
+        self.assertIn("function openSchoolLesson(", JS)
+        self.assertIn("function gradeSchoolChoice(", JS)
+        self.assertIn("function finishSchoolLesson()", JS)
+        self.assertIn("Lessons do not change Chair locks", HTML)
+        self.assertIn("body.night-mode #tabSchool", CSS)
+        self.assertIn("body.mode-school #tabSchool", CSS)
+
+    def test_school_does_not_lock(self):
+        school = (ROOT / "backend" / "services" / "desk_school.py").read_text()
+        self.assertNotIn("decide_open_lock_grade", school)
+        self.assertNotIn("follower_gate", school)
+        self.assertNotIn("from backend.services.follower", school)
+        self.assertIn("Does not lock", school)
 
 
 if __name__ == "__main__":

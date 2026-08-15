@@ -190,6 +190,7 @@
         <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
+        <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -574,6 +575,35 @@
           <ol id="newsBreaking" class="news-list"></ol>
         </article>
       </div>
+    </section>
+
+    <section id="schoolView" class="info-view hidden" aria-label="School">
+      <div class="info-hero">
+        <h2>SCHOOL</h2>
+        <p>Short lessons for WAIT downtime. This desk only — 1-hour BTC/ETH Kalshi. Display only. Lessons do not change Chair locks.</p>
+      </div>
+      <button type="button" id="schoolContinue" class="school-continue">START · The hour</button>
+      <p id="schoolStreak" class="school-streak">0 lessons this week</p>
+      <ol id="schoolList" class="school-list"></ol>
+      <article id="schoolLesson" class="school-lesson hidden">
+        <header class="school-lesson-head">
+          <button type="button" id="schoolBack" class="school-back">BACK</button>
+          <h3 id="schoolTitle">The hour</h3>
+          <span id="schoolMins">6 min</span>
+        </header>
+        <p id="schoolIdea" class="school-idea">One Kalshi hour. One strike. UP or DOWN at the close — not the vibe.</p>
+        <div id="schoolBody" class="school-body"></div>
+        <figure class="school-board-wrap">
+          <canvas id="schoolBoard" width="640" height="220" aria-label="Chalkboard"></canvas>
+          <figcaption id="schoolCallout" class="school-callout">Strike is the line. Time left is the only clock.</figcaption>
+        </figure>
+        <div id="schoolQuiz" class="school-quiz" aria-label="Lesson quiz">
+          <p id="schoolQ"></p>
+          <div id="schoolChoices" class="school-choices"></div>
+          <p id="schoolGrade" class="school-grade" hidden></p>
+          <button type="button" id="schoolNextQ" class="school-next" hidden>NEXT</button>
+        </div>
+      </article>
     </section>
 
     <!-- Paper trading journal -->

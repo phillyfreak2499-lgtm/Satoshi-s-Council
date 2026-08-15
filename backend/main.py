@@ -290,6 +290,14 @@ async def desk_news():
         liq = None
     return await fetch_news_desk(hour_close=market.get("close_time"), liq_snap=liq)
 
+
+@app.get("/api/school")
+async def desk_school():
+    """Short Floor lessons. Display only — never locks."""
+    from backend.services.desk_school import school_payload
+
+    return school_payload()
+
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
     ok = await council.store.delete_manual_trade(trade_id)
