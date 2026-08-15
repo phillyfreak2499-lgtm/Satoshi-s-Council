@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-raijin-signed-crop",
+    "at": "2026-08-16T00:10:00-05:00",
+    "title": "Cowboy WAIT is the signed square-crop",
+    "why": "Cowboy WAIT is the signed square-crop (not the 1024 generate). UP/DOWN tint that same face."
+  },
+  {
     "id": "2026-08-15-login-splash",
     "at": "2026-08-15T23:55:00-05:00",
     "title": "Login splash is the signed council table",
