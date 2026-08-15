@@ -954,6 +954,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       eyes: (chair && chair.eyes) || pick.eyes,
       watch: (chair && chair.watch) || pick.watch || (board && board.watch),
       why: (chair && chair.why) || pick.why || (board && board.why),
+      tug: (chair && chair.tug) || pick.tug || (board && board.tug),
+      brains: (chair && chair.brains) || pick.brains || (board && board.brains),
       learning: { hierarchy: hierarchy },
     };
   }
@@ -2815,6 +2817,47 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.restore();
   }
+  function drawPublicTug(cx, cy, radius, tug) {
+    // Floor visual only. FADE one way, STEAM the other. Does not override Chair gates.
+    if (!tug || tug.visual_only === false) return;
+    const fade = String((tug && tug.fade) || "SIT").toUpperCase();
+    const steam = String((tug && tug.steam) || "SIT").toUpperCase();
+    if (fade === "SIT" && steam === "SIT") return;
+    const y = cy + radius * 0.18;
+    const x0 = cx - radius * 0.52;
+    const x1 = cx + radius * 0.52;
+    let lean = Number(tug && tug.lean);
+    if (!isFinite(lean)) lean = 0;
+    lean = Math.max(-1, Math.min(1, lean));
+    const knot = cx + lean * radius * 0.38;
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    const grad = ctx.createLinearGradient(x0, y, x1, y);
+    grad.addColorStop(0, "rgba(255,80,110,0.85)");
+    grad.addColorStop(0.5, "rgba(240,193,74,0.75)");
+    grad.addColorStop(1, "rgba(0,232,255,0.85)");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x1, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(knot, y, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#f0c14a";
+    ctx.shadowColor = "#f0c14a";
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.font = "700 7px Orbitron, monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#ff6a7a";
+    ctx.fillText("FADE " + fade.slice(0, 8), x0, y - 7);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#7fe9ff";
+    ctx.fillText("STEAM " + steam.slice(0, 8), x1, y - 7);
+    ctx.restore();
+  }
   raijinPortrait.onerror = function () {
     // Same approved thunder-knight. No CORS, no neon mark, never leave the Chair empty.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
@@ -3052,6 +3095,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.font = "700 8px Orbitron, monospace";
       ctx.fillStyle = watch.listed ? "#f0c14a" : "rgba(127,233,255,0.85)";
       ctx.fillText(wline, cx, plateY + (locked ? 28 : 28));
+      try { drawPublicTug(cx, cy, radius, st && st.tug); } catch (e) {}
     }
 
     if (!botPts.length) {
@@ -8679,7 +8723,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#focusAts",
       title: "ARES / ATS",
-      body: "Ares is the sports Chair. One game. You do not pick the slate.\n\nGold tab ATS. Calls are COVER / NO-COVER, HOME / AWAY or the team, OVER / UNDER. WAIT stays WAIT.\n\nSeats: LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs under a parent — not a sixth ring seat.\n\nPaper only. Follower off. Empty book is UNKNOWN, not DEAD.",
+      body: "Ares is the sports Chair. One ticket. You do not pick the slate.\n\nGold tab ATS. Calls are COVER / NO-COVER, HOME / AWAY or the team, OVER / UNDER. WAIT stays WAIT.\n\nSeats: LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs under a parent — not a sixth ring seat.\n\nGates: ONE TICKET · KEY NUMBERS · SIT AFTER KICK · SPORT BRAINS · PUBLIC TUG (floor visual only, does not override gates).\n\nPaper only. Follower off. Empty book is UNKNOWN, not DEAD. Sports band 20–80. 10–90 is crypto only.",
     },
     {
       mode: "charts",

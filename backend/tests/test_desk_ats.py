@@ -477,6 +477,177 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertIn("BONE", HTML)
         self.assertIn("KXHIGHTDAL", HTML + JS)
 
+    def test_public_tug_is_floor_visual_only(self):
+        self.assertIn("function drawPublicTug", JS)
+        self.assertIn("Does not override Chair gates", JS + ATS)
+        self.assertIn("visual_only", ATS)
+        self.assertNotIn('"TUG"', ATS.split("SEATS:", 1)[1].split("CHAIR:", 1)[0])
+
+
+class AtsGateTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        desk_ats.reset_for_tests(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_five_gates_are_in_the_spec(self):
+        for name in ("ONE TICKET", "KEY NUMBERS", "SIT AFTER KICK", "SPORT BRAINS", "PUBLIC TUG"):
+            self.assertIn(name, desk_ats.ARES_GATES)
+            self.assertIn(name, ATS)
+            self.assertIn(name, HTML + JS)
+        self.assertEqual(len(desk_ats.SEATS), 5)
+        self.assertEqual([s["id"] for s in desk_ats.SEATS], ["LINE", "STEAM", "FADE", "HURT", "ICE"])
+        self.assertEqual([s["id"] for s in desk_ats.SUBS], ["CLOCK", "FORM", "WX"])
+        self.assertEqual(desk_ats.ARES_YES_LO, 20.0)
+        self.assertEqual(desk_ats.ARES_YES_HI, 80.0)
+        self.assertTrue(desk_ats.ares_playable_mid(50))
+        self.assertFalse(desk_ats.ares_playable_mid(12))
+        self.assertFalse(desk_ats.ares_playable_mid(91))
+        self.assertIn("10–90 is for the crypto Chairs only", ATS)
+        self.assertNotIn("WICK", desk_ats.SPORT_BRAINS["NFL"])
+        self.assertNotIn("PULSE", desk_ats.SPORT_BRAINS["NBA"])
+
+    def test_one_ticket_picks_one_side_then_sits(self):
+        self.assertTrue(desk_ats.is_prop_ticker("KXNFLPLAYER-26AUG15SEA-YDS"))
+        self.assertIsNone(desk_ats._normalize_market(
+            {**_m("KXNFLPLAYER-26AUG15DALSEA-YDS"), "series_ticker": "KXNFLPLAYER"},
+            "KXNFLPLAYER", "ml", "NFL",
+        ))
+        first = desk_ats.paper_lock_if_clear({
+            "ice": None, "call": "COVER", "leftover": 6.0, "game": "DALSEA",
+            "ticker": "KXNFLSPREAD-26AUG15DALSEA-SEA7", "sport": "NFL", "kind": "spread",
+            "mid": 46, "title": "x", "number": "SEA -6.5", "close_time": "2026-08-16T00:00:00Z",
+            "side": "YES",
+        }, now=NOW)
+        self.assertIsNotNone(first)
+        spray = desk_ats.paper_lock_if_clear({
+            "ice": None, "call": "OVER", "leftover": 8.0, "game": "KCNY",
+            "ticker": "KXNFLTOTAL-26AUG15KCNY-47", "sport": "NFL", "kind": "total",
+            "mid": 48, "title": "y", "number": "O/U 47", "close_time": "2026-08-16T00:00:00Z",
+            "side": "YES",
+        }, now=NOW)
+        self.assertIsNone(spray)
+        self.assertEqual(desk_ats.locks_today(NOW), 1)
+        other = {"ticker": "KXNFLGAME-26AUG15KCNY-KC", "game": "KCNY", "call": "KC", "ice": None}
+        self.assertEqual(desk_ats.one_ticket_gate(other), "ONE TICKET · ALREADY SAT")
+
+    def test_key_numbers_football_gate_nba_noop(self):
+        thin = {
+            "sport": "NFL", "kind": "spread", "floor_strike": 3.0, "side": "YES",
+            "call": "COVER", "leftover": 0.4, "quotes": {"yes_ask": 46.0, "no_ask": 56.0},
+            "ticker": "KXNFLSPREAD-26AUG15DALSEA-SEA3", "number": "SEA -3",
+        }
+        self.assertIn("KEY NUMBER", desk_ats.key_number_gate(thin) or "")
+        fat = dict(thin, leftover=8.0)
+        self.assertIsNone(desk_ats.key_number_gate(fat))
+        seven = dict(thin, floor_strike=7.0, leftover=0.2)
+        self.assertIn("7", desk_ats.key_number_gate(seven) or "")
+        getting = dict(thin, side="NO", call="NO-COVER")
+        self.assertIsNone(desk_ats.key_number_gate(getting))
+        nba = dict(thin, sport="NBA")
+        self.assertIsNone(desk_ats.key_number_gate(nba))
+        mlb = dict(thin, sport="MLB")
+        self.assertIsNone(desk_ats.key_number_gate(mlb))
+        total = dict(thin, kind="total", number="O/U 47")
+        self.assertIsNone(desk_ats.key_number_gate(total))
+
+    def test_sit_after_kick_and_late_hurt(self):
+        off = desk_ats.sit_after_kick(
+            {"close_time": "2026-08-15T18:00:00Z", "status": "active"}, now=NOW,
+        )
+        self.assertIn("SIT AFTER KICK", off or "")
+        live = desk_ats.sit_after_kick({"status": "in_play", "close_time": "2026-08-16T00:00:00Z"}, now=NOW)
+        self.assertIn("IN PLAY", live or "")
+        espn = desk_ats.sit_after_kick(
+            {"close_time": "2026-08-16T00:00:00Z", "status": "active"},
+            watch={"live": True, "line": "WATCH · FOX · NATIONAL"},
+            now=NOW,
+        )
+        self.assertIn("LIVE", espn or "")
+        self.assertTrue(desk_ats.event_is_live({"status": "in"}))
+        self.assertFalse(desk_ats.event_is_live({"status": "pre"}))
+        late = desk_ats.late_hurt_gate({
+            "hurt": "SEA OUT D. Metcalf",
+            "close_time": "2026-08-15T20:10:00Z",
+        }, now=NOW)
+        self.assertEqual(late, "LATE HURT · SIT")
+        early = desk_ats.late_hurt_gate({
+            "hurt": "SEA OUT D. Metcalf",
+            "close_time": "2026-08-16T00:00:00Z",
+        }, now=NOW)
+        self.assertIsNone(early)
+        iced = {"ice": "99¢ CHALK · ICE ON", "call": "WAIT", "sport": "NFL", "kind": "spread",
+                "floor_strike": 3.0, "leftover": 0.2, "side": "YES", "close_time": "2026-08-15T18:00:00Z"}
+        why = desk_ats.apply_ares_gates(iced, now=NOW)
+        self.assertIn("99¢", why or "")
+        self.assertEqual(iced["ice"], "99¢ CHALK · ICE ON")
+        self.assertIsNone(iced.get("gate"))
+
+    def test_sport_brains_are_not_crypto(self):
+        nfl = desk_ats.sport_brain("NFL")
+        nba = desk_ats.sport_brain("NBA")
+        mlb = desk_ats.sport_brain("MLB")
+        self.assertNotEqual(nfl["FADE"], nba["FADE"])
+        self.assertNotEqual(nfl["STEAM"], mlb["STEAM"])
+        self.assertGreater(nfl["FADE"], nba["FADE"])
+        tue = desk_ats.sport_priority(datetime(2026, 8, 18, 16, 0, tzinfo=timezone.utc))
+        self.assertIn(tue[0], ("MLB", "NBA", "NHL"))
+        self.assertNotEqual(tue[0], "NFL")
+        for crypto in ("WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT"):
+            self.assertNotIn(crypto, nfl)
+            self.assertNotIn(crypto, nba)
+        seats = desk_ats.build_seats({
+            "call": "DAL", "sport": "NFL", "number": "DAL @ SEA", "mid": 41,
+            "public": "SEA", "steam": 0.0, "ice": None,
+        })
+        fade = next(s for s in seats if s["id"] == "FADE")
+        self.assertEqual(fade["weight"], nfl["FADE"])
+
+    def test_public_tug_does_not_override_gates(self):
+        pick = {
+            "call": "DAL", "public": "SEA", "steam": 3.0, "mid": 41,
+            "sport": "NFL", "kind": "ml", "ice": None, "leftover": 7.0,
+        }
+        tug = desk_ats.public_tug(pick)
+        self.assertTrue(tug["visual_only"])
+        self.assertEqual(tug["fade"], "SEA")
+        self.assertEqual(tug["steam"], "DAL")
+        gated = {
+            "sport": "NFL", "kind": "spread", "floor_strike": 3.0, "side": "YES",
+            "call": "COVER", "leftover": 0.4, "quotes": {"yes_ask": 46.0},
+            "close_time": "2026-08-16T00:00:00Z", "ticker": "T", "game": "G",
+        }
+        desk_ats.apply_ares_gates(gated, now=NOW)
+        self.assertEqual(gated["call"], "WAIT")
+        self.assertIn("KEY NUMBER", gated.get("gate") or "")
+        tug2 = desk_ats.public_tug(gated)
+        self.assertTrue(tug2["visual_only"])
+        self.assertEqual(gated["call"], "WAIT")
+
+    async def test_gates_attach_on_board_and_sit_live(self):
+        events = [{
+            "id": "4018",
+            "shortName": "DAL @ SEA",
+            "status": "in",
+            "competitors": [{"abbreviation": "DAL"}, {"abbreviation": "SEA"}],
+            "broadcasts": [{"type": "TV", "isNational": True, "shortName": "FOX"}],
+        }]
+        board = await desk_ats.build_board(
+            fetch=_fetch_factory(), now=NOW, force=True, watch_events=events,
+        )
+        self.assertEqual(board["gates"], list(desk_ats.ARES_GATES))
+        self.assertTrue(board["tug"]["visual_only"])
+        self.assertIn("FADE", board["brains"])
+        self.assertTrue(board["watch"].get("live"))
+        self.assertFalse(board["follower"])
+        self.assertFalse(board["live"])
+        self.assertTrue(board["paper_only"])
+        if board.get("pick") and not board["pick"].get("ice"):
+            self.assertEqual(board["chair"]["eye"], "WAIT")
+            self.assertIn("SIT AFTER KICK", board["pick"].get("gate") or board["chair"]["call"])
+
 
 # unittest async helpers
 def _as_sync(fn):
@@ -501,3 +672,4 @@ def _bind_async_tests(cls):
             setattr(cls, name, (lambda f: (lambda self: asyncio.run(f(self))))(fn))
 
 _bind_async_tests(AtsPickTests)
+_bind_async_tests(AtsGateTests)

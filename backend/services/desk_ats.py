@@ -3,13 +3,20 @@ ARES — sports Chair. Paper only. Never talks to Follower.
 
 One game. You do not pick the slate.
 Scan open Kalshi sports markets (verified series only).
-Keep 20–80 with measured depth.
+Keep 20–80 with measured depth. 10–90 is for the crypto Chairs only.
 v1: moneyline, spread (ATS), total. No player props.
 Rank by leftover after vig / half-spread. Best one is the table.
 Sport follows the calendar (CFB Sat, NFL Sun, whatever is liquid).
 ICE: 99¢ chalk, empty book, stale, too early, no depth.
 empty/unknown-null is UNKNOWN not DEAD.
-Paper lock only. Cap a few per day.
+Paper lock only. Cap a few per day. Follower OFF. No Live.
+
+ARES GATES (Watcher / Zach — not chairs, not a sixth seat):
+1) ONE TICKET — one open Kalshi sports book, one side, then sit. No spraying the slate. Same one-call discipline as Satoshi. ML / spread / total only. No player props.
+2) KEY NUMBERS — football refuses to buy a 3 when the line is already 3, or a 7 when it is already 7, unless EV still clears after the juice. This is a GATE, not a sixth Chair. NBA/MLB can no-op.
+3) SIT AFTER KICK — hard clock. Once the game is live (or the Kalshi window is in-play), Ares WAITs. Late injury news also sits. ICE veto stays. Not a vibe.
+4) SPORT BRAINS — separate weights for NFL / NBA / MLB (and whatever Kalshi actually has open). Tuesday NBA is not Sunday NFL. Do not share Satoshi/Vitalik crypto weights.
+5) PUBLIC TUG — floor visual only: public money vs the line as a rope. FADE one way, STEAM the other. Does not override Chair gates.
 """
 from __future__ import annotations
 
@@ -76,9 +83,35 @@ SUBS: Tuple[Dict[str, Any], ...] = (
 CHAIR: Dict[str, str] = {
     "id": "ARES",
     "name": "ARES",
-    "job": "Sports chair. One game. Paper only. Does not talk to Follower.",
+    "job": "Sports chair. One ticket. Paper only. Does not talk to Follower.",
     "mark": "/static/ares-chair.png",
     "portrait": "/static/ares-chair.png",
+}
+
+# Five Watcher-greenlit gates. Not chairs. Subs still feed parents only.
+ARES_GATES: Tuple[str, ...] = (
+    "ONE TICKET",
+    "KEY NUMBERS",
+    "SIT AFTER KICK",
+    "SPORT BRAINS",
+    "PUBLIC TUG",
+)
+ARES_YES_LO = 20.0
+ARES_YES_HI = 80.0
+FOOTBALL_SPORTS = frozenset({"NFL", "CFB"})
+KEY_NUMBERS = frozenset({3.0, 7.0})
+KEY_NUMBER_MIN_LEFTOVER = 3.0
+LATE_HURT_MINS = 15.0
+IN_PLAY_STATUSES = frozenset({
+    "in_play", "inplay", "live", "open_in_play", "active_in_play",
+})
+# Tuesday NBA is not Sunday NFL. Do not share Satoshi/Vitalik crypto weights.
+SPORT_BRAINS: Dict[str, Dict[str, float]] = {
+    "NFL": {"LINE": 1.00, "STEAM": 1.05, "FADE": 1.20, "HURT": 0.90, "ICE": 1.00},
+    "CFB": {"LINE": 1.00, "STEAM": 1.00, "FADE": 1.15, "HURT": 0.85, "ICE": 1.00},
+    "NBA": {"LINE": 1.00, "STEAM": 1.25, "FADE": 0.80, "HURT": 0.55, "ICE": 1.00},
+    "MLB": {"LINE": 1.00, "STEAM": 0.85, "FADE": 0.70, "HURT": 0.45, "ICE": 1.00},
+    "NHL": {"LINE": 1.00, "STEAM": 1.00, "FADE": 0.75, "HURT": 0.60, "ICE": 1.00},
 }
 
 # NFL + major CFB. Unknown team → gold vs cyan.
@@ -416,6 +449,11 @@ def measured_depth(m: Dict[str, Any], orderbook: Any = None) -> Dict[str, Any]:
     }
 
 
+def ares_playable_mid(yes_mid: Any) -> bool:
+    """Sports band stays 20–80. Do not use the crypto 10–90 Chair band."""
+    return playable_yes_mid(yes_mid, ARES_YES_LO, ARES_YES_HI)
+
+
 def ice_reason(
     quotes: Dict[str, Any],
     depth: Dict[str, Any],
@@ -431,7 +469,7 @@ def ice_reason(
     if near:
         return "99¢ CHALK · ICE ON"
     mid = quotes.get("yes_mid")
-    if mid is not None and not playable_yes_mid(mid):
+    if mid is not None and not ares_playable_mid(mid):
         return f"{mid:.0f}¢ OUTSIDE 20–80 · ICE ON"
     if book_is_unknown(depth):
         return None
@@ -639,7 +677,8 @@ def build_seats(pick: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return rows
     ice = pick.get("ice")
     unknown = bool(pick.get("unknown_book"))
-    line_dir = pick.get("call") if not ice else "WAIT"
+    brains = sport_brain(pick.get("sport"))
+    line_dir = pick.get("call") if not ice and not pick.get("gate") else "WAIT"
     steam_run = pick.get("steam")
     steam_dir = "WAIT"
     if steam_run is not None and abs(float(steam_run)) >= 1.5:
@@ -662,7 +701,13 @@ def build_seats(pick: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
     for s in SEATS:
         d, call = packed[s["id"]]
-        out.append({**s, "dir": d or "WAIT", "call": call, "confidence": 62 if d and d != "WAIT" else 44})
+        out.append({
+            **s,
+            "dir": d or "WAIT",
+            "call": call,
+            "confidence": 62 if d and d != "WAIT" else 44,
+            "weight": float(brains.get(s["id"], s.get("weight") or 1.0)),
+        })
     return out
 
 
@@ -688,17 +733,20 @@ def build_chair(pick: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "follower": False,
         }
     ice = pick.get("ice")
-    call = "WAIT" if ice else (pick.get("call") or "WAIT")
+    gate = pick.get("gate")
+    call = "WAIT" if ice or gate else (pick.get("call") or "WAIT")
     eyes = eye_from_pick(call, pick.get("kind"), pick.get("team"), pick.get("home"), pick.get("away"))
     if ice:
         summary = f"WAIT · {ice}"
+    elif gate:
+        summary = f"WAIT · {gate}"
     elif call == "WAIT":
         summary = "WAIT · NO EDGE AFTER VIG"
     else:
         num = pick.get("number") or pick.get("title") or ""
         leftover = pick.get("leftover")
         ev = f" · LEFTOVER {leftover:.1f}¢" if leftover is not None else ""
-        summary = f"LOCKED {call} · {num}{ev} · PAPER · ONE GAME"
+        summary = f"LOCKED {call} · {num}{ev} · PAPER · ONE TICKET"
     return {
         **CHAIR,
         "eye": call,
@@ -750,7 +798,7 @@ def _normalize_market(m: Dict[str, Any], series: str, kind: str, sport: str) -> 
     else:
         number = str(m.get("title") or tick)
     ice = ice_reason(quotes, depth, stale=False, mins_left=mins_left, window_minutes=180.0 if mins_left and mins_left > 60 else 60.0)
-    if mid is not None and not playable_yes_mid(mid) and not ice:
+    if mid is not None and not ares_playable_mid(mid) and not ice:
         ice = f"{mid:.0f}¢ OUTSIDE 20–80 · ICE ON"
     unknown = book_is_unknown(depth)
     call = sports_call(kind, scored["side"], team, home, away)
@@ -791,6 +839,250 @@ def _normalize_market(m: Dict[str, Any], series: str, kind: str, sport: str) -> 
         "hurt": None,
         "form": None,
         "wx": None,
+        "status": str(m.get("status") or "active"),
+        "floor_strike": floor,
+        "gate": None,
+        "in_play": str(m.get("status") or "").lower().replace("-", "_") in IN_PLAY_STATUSES,
+    }
+
+
+def sport_brain(sport: Any) -> Dict[str, float]:
+    """Per-sport seat weights. Not Satoshi/Vitalik crypto weights."""
+    key = str(sport or "").upper()
+    hit = SPORT_BRAINS.get(key)
+    if hit:
+        return dict(hit)
+    return {"LINE": 1.0, "STEAM": 1.0, "FADE": 1.0, "HURT": 0.7, "ICE": 1.0}
+
+
+def brain_score(row: Dict[str, Any]) -> float:
+    """Leftover scaled by the sport brain. Does not share crypto adaptive weights."""
+    try:
+        left = float(row.get("leftover") or 0.0)
+    except (TypeError, ValueError):
+        left = 0.0
+    w = sport_brain(row.get("sport"))
+    pub = row.get("public")
+    call = row.get("call")
+    if pub and call and str(pub).upper() != str(call).upper():
+        left *= float(w.get("FADE") or 1.0)
+    steam = row.get("steam")
+    if steam is not None:
+        try:
+            if abs(float(steam)) >= 1.5:
+                left *= float(w.get("STEAM") or 1.0)
+        except (TypeError, ValueError):
+            pass
+    return left
+
+
+def spread_abs(pick: Dict[str, Any]) -> Optional[float]:
+    """Absolute spread from floor_strike, ticker tail, or the printed number."""
+    floor = pick.get("floor_strike")
+    if floor is not None:
+        try:
+            return abs(float(floor))
+        except (TypeError, ValueError):
+            pass
+    tick = str(pick.get("ticker") or "")
+    tail = tick.rsplit("-", 1)[-1] if tick else ""
+    m = re.match(r"^[A-Z]{2,4}(\d+(?:\.\d+)?)$", tail)
+    if m:
+        try:
+            return abs(float(m.group(1)))
+        except (TypeError, ValueError):
+            pass
+    num = str(pick.get("number") or "")
+    hit = re.search(r"(-?\d+(?:\.\d+)?)", num)
+    if hit and ("O/U" not in num.upper()):
+        try:
+            return abs(float(hit.group(1)))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def buying_the_key(pick: Dict[str, Any]) -> bool:
+    """YES / COVER on a minus number is buying the key. Getting +3/+7 is not."""
+    side = str(pick.get("side") or "").upper()
+    call = str(pick.get("call") or "").upper()
+    if side == "YES" or call == "COVER":
+        return True
+    return False
+
+
+def key_number_gate(pick: Dict[str, Any]) -> Optional[str]:
+    """Football only. Refuse to buy 3 or 7 unless leftover still clears juice."""
+    if str(pick.get("sport") or "").upper() not in FOOTBALL_SPORTS:
+        return None
+    if str(pick.get("kind") or "").lower() != "spread":
+        return None
+    n = spread_abs(pick)
+    if n not in KEY_NUMBERS:
+        return None
+    if not buying_the_key(pick):
+        return None
+    leftover = pick.get("leftover")
+    quotes = pick.get("quotes") if isinstance(pick.get("quotes"), dict) else {}
+    ask = quotes.get("yes_ask") if str(pick.get("side") or "").upper() != "NO" else quotes.get("no_ask")
+    juice = kalshi_taker_fee_cents(ask)
+    try:
+        left = float(leftover) if leftover is not None else None
+    except (TypeError, ValueError):
+        left = None
+    if left is not None and left > max(float(juice), KEY_NUMBER_MIN_LEFTOVER):
+        return None
+    return f"KEY NUMBER · {int(n)} · JUICE EATS IT"
+
+
+def event_is_live(ev: Any) -> bool:
+    """ESPN header / summary status. pre = not live. Never invent a kick."""
+    if not isinstance(ev, dict) or not ev:
+        return False
+    st = ev.get("status")
+    if isinstance(st, dict):
+        state = str(st.get("state") or st.get("type") or st.get("name") or "").lower()
+        if st.get("inProgress") or state in ("in", "inprogress", "live"):
+            return True
+    elif isinstance(st, str) and st.lower() in ("in", "inprogress", "live"):
+        return True
+    typ = ev.get("statusType") if isinstance(ev.get("statusType"), dict) else {}
+    if typ.get("inProgress") or str(typ.get("state") or "").lower() in ("in", "live", "inprogress"):
+        return True
+    return False
+
+
+def sit_after_kick(
+    pick: Dict[str, Any],
+    watch: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Optional[str]:
+    """Hard clock. Live game or in-play Kalshi window → WAIT."""
+    st = str(pick.get("status") or "").lower().replace("-", "_")
+    if pick.get("in_play") or st in IN_PLAY_STATUSES:
+        return "SIT AFTER KICK · IN PLAY"
+    mins = pick.get("mins_left")
+    close = _parse_iso(pick.get("close_time"))
+    if close is not None:
+        n = now or datetime.now(timezone.utc)
+        if n.tzinfo is None:
+            n = n.replace(tzinfo=timezone.utc)
+        mins = (close - n).total_seconds() / 60.0
+    if mins is not None:
+        try:
+            if float(mins) <= 0:
+                return "SIT AFTER KICK · THEY'RE OFF"
+        except (TypeError, ValueError):
+            pass
+    if watch and (watch.get("live") or event_is_live(watch.get("event") or {})):
+        return "SIT AFTER KICK · LIVE"
+    return None
+
+
+def late_hurt_gate(pick: Dict[str, Any], now: Optional[datetime] = None) -> Optional[str]:
+    """Late injury news sits. Not a lock-flip in the last minutes."""
+    if not pick.get("hurt"):
+        return None
+    mins = pick.get("mins_left")
+    close = _parse_iso(pick.get("close_time"))
+    if close is not None:
+        n = now or datetime.now(timezone.utc)
+        if n.tzinfo is None:
+            n = n.replace(tzinfo=timezone.utc)
+        mins = (close - n).total_seconds() / 60.0
+    if mins is None:
+        return None
+    try:
+        m = float(mins)
+    except (TypeError, ValueError):
+        return None
+    if 0 < m <= LATE_HURT_MINS:
+        return "LATE HURT · SIT"
+    return None
+
+
+def open_paper_ticket() -> Optional[Dict[str, Any]]:
+    """The one open paper ticket, if any. ONE TICKET sits after this."""
+    for r in _load_fills():
+        if str(r.get("side") or "").upper() == "WAIT":
+            continue
+        if str(r.get("result") or "").upper() in ("OPEN", "PENDING", ""):
+            return r
+    return None
+
+
+def one_ticket_gate(pick: Dict[str, Any], held: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Already sat on one book / one side. Do not spray the slate."""
+    ticket = held if held is not None else open_paper_ticket()
+    if not ticket:
+        return None
+    if pick.get("ticker") and ticket.get("ticker") and pick.get("ticker") == ticket.get("ticker"):
+        return None
+    if pick.get("game") and ticket.get("game") and pick.get("game") == ticket.get("game"):
+        return None
+    return "ONE TICKET · ALREADY SAT"
+
+
+def apply_ares_gates(
+    pick: Optional[Dict[str, Any]],
+    watch: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+    held: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """Run the five gates. ICE veto stays. PUBLIC TUG is visual-only and is not a gate here."""
+    if not pick:
+        return None
+    if pick.get("ice"):
+        return str(pick.get("ice"))
+    reason = sit_after_kick(pick, watch, now)
+    if not reason:
+        reason = late_hurt_gate(pick, now)
+    if not reason:
+        reason = key_number_gate(pick)
+    if not reason:
+        reason = one_ticket_gate(pick, held)
+    if reason:
+        pick["gate"] = reason
+        pick["call"] = "WAIT"
+    return reason
+
+
+def public_tug(pick: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Floor rope only. FADE one way, STEAM the other. Does not override gates."""
+    if not pick:
+        return {
+            "fade": "SIT",
+            "steam": "SIT",
+            "lean": 0.0,
+            "line": "TUG · DARK",
+            "visual_only": True,
+        }
+    pub = pick.get("public")
+    call = pick.get("call")
+    steam_run = pick.get("steam")
+    fade_side = str(pub).upper() if pub else "SIT"
+    steam_side = "SIT"
+    if steam_run is not None:
+        try:
+            if abs(float(steam_run)) >= 1.5 and call and str(call).upper() != "WAIT":
+                steam_side = str(call).upper()
+        except (TypeError, ValueError):
+            pass
+    if steam_side == "SIT" and call and pub and str(call).upper() != str(pub).upper() and str(call).upper() != "WAIT":
+        steam_side = str(call).upper()
+    lean = 0.0
+    mid = pick.get("mid")
+    if mid is not None:
+        try:
+            lean = max(-1.0, min(1.0, (float(mid) - 50.0) / 30.0))
+        except (TypeError, ValueError):
+            lean = 0.0
+    return {
+        "fade": fade_side,
+        "steam": steam_side,
+        "lean": round(lean, 3),
+        "line": f"TUG · PUBLIC {fade_side} · STEAM {steam_side}",
+        "visual_only": True,
     }
 
 
@@ -800,14 +1092,14 @@ def rank_key(row: Dict[str, Any], priority: List[str]) -> Tuple:
         pri = priority.index(sport)
     except ValueError:
         pri = 99
-    left = float(row.get("leftover") or -999)
+    left = brain_score(row)
     ice_pen = 40.0 if row.get("ice") else 0.0
     unk_pen = 2.0 if row.get("unknown_book") else 0.0
     return (ice_pen, -left, pri, unk_pen)
 
 
 def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
-    """Best leftover on one game. Calendar sport is a tie-break, not a lock."""
+    """ONE TICKET: best leftover on one game. Calendar sport is a tie-break, not a lock."""
     if not rows:
         return None
     pri = sport_priority(now)
@@ -818,7 +1110,7 @@ def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) ->
     for sport in pri:
         pack = [r for r in playable if r.get("sport") == sport and not r.get("ice")]
         if pack:
-            pack.sort(key=lambda r: float(r.get("leftover") or -999), reverse=True)
+            pack.sort(key=lambda r: brain_score(r), reverse=True)
             best = pack[0]
             break
     else:
@@ -878,8 +1170,13 @@ async def scan_open(fetch: Optional[_Fetch] = None) -> List[Dict[str, Any]]:
 
 
 def paper_lock_if_clear(pick: Optional[Dict[str, Any]], now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
-    """Paper only. Cap a few per day. Follower stays off."""
-    if not pick or pick.get("ice") or pick.get("call") in (None, "WAIT"):
+    """Paper only. Cap a few per day. Follower stays off. ONE TICKET sits after the first open fill."""
+    if not pick or pick.get("ice") or pick.get("gate") or pick.get("call") in (None, "WAIT"):
+        return None
+    held = open_paper_ticket()
+    if held and held.get("ticker") != pick.get("ticker"):
+        pick["gate"] = "ONE TICKET · ALREADY SAT"
+        pick["call"] = "WAIT"
         return None
     leftover = pick.get("leftover")
     if leftover is None or float(leftover) <= 0:
@@ -976,6 +1273,7 @@ def dark_watch(why: str = "NO LISTING", *, down: bool = False, source: str = "es
         "source": source,
         "why": why,
         "down": down,
+        "live": False,
     }
 
 
@@ -1048,7 +1346,10 @@ def listing_from_event(ev: Dict[str, Any]) -> Dict[str, Any]:
             names.append(raw)
             market = market or "national"
     if not names:
-        return dark_watch("NO LISTING")
+        dark = dark_watch("NO LISTING")
+        dark["live"] = event_is_live(ev)
+        dark["event"] = ev
+        return dark
     game = str(ev.get("shortName") or ev.get("name") or "").strip() or None
     return {
         "line": watch_copy(names, market),
@@ -1061,6 +1362,8 @@ def listing_from_event(ev: Dict[str, Any]) -> Dict[str, Any]:
         "event_id": ev.get("id"),
         "why": None,
         "down": False,
+        "live": event_is_live(ev),
+        "event": ev,
     }
 
 
@@ -1404,6 +1707,8 @@ def build_why(
     call = str(pick.get("call") or "WAIT").upper()
     if ice_on:
         head = f"WHY · ICE SAT · {pick.get('ice')}"
+    elif pick.get("gate"):
+        head = f"WHY · {pick.get('gate')}"
     elif call == "WAIT":
         head = "WHY · DARK · NO EDGE AFTER VIG"
     else:
@@ -1446,22 +1751,43 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         return _board_cache["payload"]
     rows = await scan_open(fetch=fetch)
     pick = pick_one_game(rows, now=now)
-    lock = paper_lock_if_clear(pick, now=now) if pick else None
-    if lock and pick and not pick.get("ice"):
-        pick = dict(pick)
-        pick["locked"] = True
+    held = open_paper_ticket()
+    if held and pick:
+        pinned = next((r for r in rows if r.get("ticker") == held.get("ticker")), None)
+        if pinned is None:
+            pinned = next((r for r in rows if r.get("game") == held.get("game")), None)
+        if pinned:
+            pick = dict(pinned)
+            pick["siblings"] = (pick.get("siblings") or [])
+            pick["locked"] = True
+            if held.get("side") and str(held.get("side")).upper() != "WAIT":
+                pick["call"] = held.get("side")
+        elif pick.get("ticker") != held.get("ticker"):
+            pick = dict(pick)
+            pick["gate"] = "ONE TICKET · ALREADY SAT"
+            pick["call"] = "WAIT"
     watch = await attach_watch(pick, fetch=watch_fetch, events=watch_events)
     if pick:
+        pick = dict(pick)
         summary = espn_summary
         if summary is None and watch.get("event_id"):
             summary = await load_espn_summary(pick.get("sport"), watch.get("event_id"), fetch=watch_fetch)
         apply_espn_facts(pick, summary)
+        if not pick.get("locked"):
+            apply_ares_gates(pick, watch=watch, now=now, held=held)
+    lock = paper_lock_if_clear(pick, now=now) if pick else None
+    if lock and pick and not pick.get("ice") and not pick.get("gate"):
+        pick["locked"] = True
+    tug = public_tug(pick)
+    brains = sport_brain((pick or {}).get("sport"))
     chair = build_chair(pick)
     seats = build_seats(pick)
     subs = build_subs(pick)
     why = build_why(pick, seats, subs)
     chair["watch"] = watch
     chair["why"] = why
+    chair["tug"] = tug
+    chair["brains"] = brains
     acc = chair_accuracy()
     payload = {
         "chair": chair,
@@ -1469,6 +1795,9 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         "subs": subs,
         "watch": watch,
         "why": why,
+        "tug": tug,
+        "brains": brains,
+        "gates": list(ARES_GATES),
         "pick": None if not pick else {
             "ticker": pick.get("ticker"),
             "game": pick.get("game"),
@@ -1492,6 +1821,10 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
             "hurt": pick.get("hurt"),
             "form": pick.get("form"),
             "wx": pick.get("wx"),
+            "gate": pick.get("gate"),
+            "tug": tug,
+            "brains": brains,
+            "status": pick.get("status"),
         },
         "accuracy": acc,
         "tape": lock_tape(),
