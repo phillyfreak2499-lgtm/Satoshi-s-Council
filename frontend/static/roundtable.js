@@ -11891,7 +11891,7 @@ function drawCandleChart() {
   }
 
   function playDeskUnlockIntro() {
-    // Parked on the live path. After SUMMON, do not play zt-intro / summon-council.
+    // Parked on the live path. After SUMMON, do not play unlock clips.
     return;
   }
   window.playDeskUnlockIntro = playDeskUnlockIntro;

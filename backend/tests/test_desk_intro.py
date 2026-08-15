@@ -173,8 +173,8 @@ class DeskIntroUnlockTests(unittest.TestCase):
         self.assertIn("Parked on the live path", play)
         self.assertIn("return;", play)
         self.assertNotIn("vid.play()", play)
-        self.assertNotIn("zt-intro", play)
-        self.assertNotIn("summon-council", play)
+        self.assertNotIn("getElementById(\"deskIntroVideo\")", play)
+        self.assertNotIn("getElementById(\"summonVideo\")", play)
         self.assertNotIn('classList.add("gate-locked")', play)
 
     def test_not_on_follower_or_settings_unlock(self):
