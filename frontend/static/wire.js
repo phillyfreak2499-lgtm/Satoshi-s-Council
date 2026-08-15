@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-gold-floor-mark",
+    "at": "2026-08-16T06:20:00-05:00",
+    "title": "Gold floor mark is the site logo",
+    "why": "Gold floor mark is the site logo everywhere except chair faces. City-candle is out. Gate, header, favicon, Floor, splash. Copy stays Satoshi’s Council. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-table-room-plates",
     "at": "2026-08-16T05:50:00-05:00",
     "title": "Chair rooms are signed plates now",
