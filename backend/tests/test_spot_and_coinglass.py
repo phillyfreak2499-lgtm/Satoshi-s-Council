@@ -26,11 +26,15 @@ from backend.data.binance import (
 from backend.data.cfbenchmarks import pick_research_spot, research_source_label
 from backend.data.coinglass import (
     ALLOWED_INTERVALS,
+    FEED_INTERVALS,
+    HOBBYIST_REASON,
     PATHS,
     CoinGlassClient,
     apply_hist_to_market,
     empty_derivatives,
+    feed_interval_order,
     feeds_present,
+    format_coinglass_reason,
     live_interval_order,
     summarize_derivatives,
 )
@@ -240,30 +244,24 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
             logger.remove(hid)
         text = buf.getvalue()
         self.assertFalse(snap["healthy"])
-        self.assertIn("400", str(snap.get("reason") or ""))
-        self.assertIn("interval not allowed", str(snap.get("reason") or ""))
         self.assertIn("400", text)
         self.assertIn("interval not allowed", text)
         self.assertIn("/api/futures/funding-rate/history", text)
-        self.assertIn("30m", text)
+        self.assertIn("1h", text)
+        self.assertNotIn("1m", text)
         self.assertNotIn("dummy-cg-key-not-real", text)
+        self.assertIn("no feed returned data", str(snap.get("reason") or ""))
         rows = await cg._get_rows(PATHS[0], "30m")
         self.assertEqual(rows, [])
         self.assertTrue(cg._cycle_misses)
 
-    async def test_30m_before_1h_never_1m(self):
+    async def test_1h_then_4h_never_1m(self):
         cg = self._client()
         seen: list[str] = []
 
         async def fake_get(url, params=None, headers=None):
             iv = str((params or {}).get("interval") or "")
             seen.append(iv)
-            if iv == "30m":
-                return _FakeCG(200, {
-                    "code": "400",
-                    "msg": "interval not allowed for your plan",
-                    "data": [],
-                })
             if iv == "1h":
                 return _FakeCG(200, {
                     "code": "0",
@@ -275,14 +273,72 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         cg.client.get = fake_get
         snap = await cg.get_derivatives()
         self.assertNotIn("1m", seen)
-        self.assertIn("30m", seen)
-        self.assertIn("1h", seen)
-        self.assertLess(seen.index("30m"), seen.index("1h"))
+        self.assertNotIn("30m", seen)
+        self.assertEqual(seen, ["1h", "1h", "1h"])
+        self.assertEqual(feed_interval_order(), ["1h", "4h"])
+        self.assertEqual(FEED_INTERVALS, ("1h", "4h"))
         self.assertEqual(live_interval_order(), ["30m", "1h"])
-        self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
         self.assertTrue(snap["healthy"])
-        self.assertIn("30m rejected", str(snap.get("reason") or ""))
-        self.assertIn("using 1h", str(snap.get("reason") or ""))
+        self.assertEqual(str(snap.get("reason") or ""), "1h ok")
+
+    async def test_upgrade_plan_1h_then_4h_per_path(self):
+        cg = self._client()
+        seen: list[tuple[str, str]] = []
+
+        async def fake_get(url, params=None, headers=None):
+            iv = str((params or {}).get("interval") or "")
+            path = str(url or "")
+            seen.append((path, iv))
+            if iv == "1h":
+                return _FakeCG(200, {"code": "401", "msg": "Upgrade plan", "data": []})
+            if iv == "4h":
+                return _FakeCG(200, {
+                    "code": "0",
+                    "msg": "success",
+                    "data": [{"time": 1_700_000_000_000, "close": "0.00012"}],
+                })
+            return _FakeCG(200, {"code": "0", "data": []})
+
+        cg.client.get = fake_get
+        buf, hid = self._capture_logs()
+        try:
+            snap = await cg.get_derivatives()
+        finally:
+            logger.remove(hid)
+        text = buf.getvalue()
+        intervals = [iv for _p, iv in seen]
+        self.assertNotIn("1m", intervals)
+        self.assertNotIn("30m", intervals)
+        self.assertEqual(intervals.count("1h"), 3)
+        self.assertEqual(intervals.count("4h"), 3)
+        for path in PATHS:
+            path_ivs = [iv for p, iv in seen if p.endswith(path)]
+            self.assertEqual(path_ivs, ["1h", "4h"], path)
+        self.assertTrue(snap["healthy"])
+        self.assertEqual(str(snap.get("reason") or ""), HOBBYIST_REASON)
+        for path in PATHS:
+            self.assertIn(path, text)
+        self.assertIn("interval=1h", text)
+        self.assertIn("interval=4h", text)
+        self.assertIn("http=200", text)
+        self.assertIn("code=401", text)
+        self.assertIn("Upgrade plan", text)
+        self.assertNotIn("dummy-cg-key-not-real", text)
+        self.assertNotIn("dummy-cg-key-not-real", str(snap.get("reason") or ""))
+
+    async def test_upgrade_plan_all_fail_reason(self):
+        cg = self._client()
+
+        async def fake_get(url, params=None, headers=None):
+            return _FakeCG(200, {"code": "401", "msg": "Upgrade plan", "data": []})
+
+        cg.client.get = fake_get
+        snap = await cg.get_derivatives()
+        self.assertFalse(snap["healthy"])
+        self.assertEqual(
+            str(snap.get("reason") or ""),
+            "Upgrade plan on 30m/1h/4h; no feed returned data",
+        )
 
     async def test_401_logs_without_key(self):
         secret = "SUPERSECRETKEYVALUE"
@@ -325,10 +381,30 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         for _url, params, headers in calls:
             self.assertEqual(params.get("exchange"), "Binance")
             self.assertEqual(params.get("symbol"), "BTCUSDT")
-            self.assertIn(params.get("interval"), ("30m", "1h"))
+            self.assertIn(params.get("interval"), ("1h", "4h"))
             self.assertNotEqual(params.get("interval"), "1m")
             self.assertEqual(headers.get("CG-API-KEY"), "dummy-cg-key-not-real")
             self.assertTrue(str(calls[0][0]).startswith("https://open-api-v4.coinglass.com"))
+
+
+class CoinGlassReasonFormatTests(unittest.TestCase):
+    def test_expected_health_strings(self):
+        self.assertEqual(
+            format_coinglass_reason(
+                upgrade_intervals=["1h"],
+                succeeded_intervals=["4h"],
+            ),
+            "Upgrade plan on 30m/1h; 4h ok — key looks Hobbyist",
+        )
+        self.assertEqual(HOBBYIST_REASON, "Upgrade plan on 30m/1h; 4h ok — key looks Hobbyist")
+        self.assertEqual(
+            format_coinglass_reason(succeeded_intervals=["1h"]),
+            "1h ok",
+        )
+        self.assertEqual(
+            format_coinglass_reason(upgrade_intervals=["1h", "4h"], succeeded_intervals=[]),
+            "Upgrade plan on 30m/1h/4h; no feed returned data",
+        )
 
 
 class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
@@ -373,8 +449,10 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
     def test_wire_note(self):
         self.assertIn("2026-08-15-coinglass-miss", WIRE_JS)
         self.assertIn("CoinGlass now logs the real miss + 30m/1h paths", WIRE_JS)
-        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-15-coinglass-miss", 1)[1][:400])
-        self.assertNotIn("cancel", WIRE_JS.split("2026-08-15-coinglass-miss", 1)[1][:400].lower())
+        self.assertIn("2026-08-15-coinglass-4h", WIRE_JS)
+        self.assertIn("1h then 4h", WIRE_JS.split("2026-08-15-coinglass-4h", 1)[1][:400])
+        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-15-coinglass-4h", 1)[1][:400])
+        self.assertNotIn("cancel", WIRE_JS.split("2026-08-15-coinglass-4h", 1)[1][:400].lower())
 
     def test_follower_untouched_and_floor_lock_only(self):
         self.assertNotIn("coinglass_reason", FOLLOWER_PY)
@@ -387,7 +465,9 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
 
     def test_live_paths_never_request_1m(self):
         self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
+        self.assertEqual(FEED_INTERVALS, ("1h", "4h"))
         self.assertNotIn("1m", ALLOWED_INTERVALS)
+        self.assertNotIn("1m", FEED_INTERVALS)
         self.assertIn("/api/futures/funding-rate/history", CG_SRC)
         self.assertIn("/api/futures/open-interest/history", CG_SRC)
         self.assertIn("/api/futures/liquidation/history", CG_SRC)

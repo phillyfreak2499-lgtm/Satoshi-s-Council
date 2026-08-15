@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-coinglass-4h",
+    "at": "2026-08-15T23:00:00-05:00",
+    "title": "CoinGlass tries 4h after Upgrade plan",
+    "why": "Funding, OI, and liq each try 1h then 4h. Never 1m. If 4h is the one that works, health says the key looks Hobbyist. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-coinglass-miss",
     "at": "2026-08-15T22:40:00-05:00",
     "title": "CoinGlass logs the real miss",

@@ -3,7 +3,7 @@ CoinGlass v4 — funding, open interest, liquidations for CARRY / CHAIN / CASCAD
 
 Key is loaded from env or the Render secret file. Never logged.
 Futures on Binance fapi can 451 in Oregon; this feed is the fill-in.
-Startup plan: 30m then 1h history (never 1m).
+Hist: 30m then 1h. Live feeds: 1h then 4h separately. Never 1m.
 """
 from __future__ import annotations
 
@@ -20,7 +20,9 @@ from backend.data.secrets import load_coinglass_api_key
 from backend.services.runtime_settings import runtime_settings
 
 BASE = "https://open-api-v4.coinglass.com"
-ALLOWED_INTERVALS = ("30m", "1h")  # Startup allows >=30m; never request 1m
+ALLOWED_INTERVALS = ("30m", "1h")  # hist: 30m then 1h, never 1m
+FEED_INTERVALS = ("1h", "4h")  # live funding/OI/liq each climb these; never 1m
+HOBBYIST_REASON = "Upgrade plan on 30m/1h; 4h ok — key looks Hobbyist"
 PATHS = (
     "/api/futures/funding-rate/history",
     "/api/futures/open-interest/history",
@@ -202,13 +204,54 @@ def is_plan_interval_error(code: Any, msg: Any) -> bool:
     return any(h in blob for h in _PLAN_INTERVAL_HINTS)
 
 
+def is_upgrade_plan_error(code: Any, msg: Any) -> bool:
+    blob = f"{code} {msg}".lower()
+    return "upgrade" in blob and "plan" in blob
+
+
 def live_interval_order(cached_ok: Optional[str] = None) -> List[str]:
-    """30m then 1h. Never 1m. A known-good interval may lead later cycles."""
+    """Hist helper: 30m then 1h. Never 1m."""
     order = [iv for iv in ALLOWED_INTERVALS if iv != "1m"]
     cached = str(cached_ok or "").strip().lower()
     if cached in ALLOWED_INTERVALS and cached != "1m":
         order = [cached] + [iv for iv in order if iv != cached]
     return order
+
+
+def feed_interval_order(cached_ok: Optional[str] = None) -> List[str]:
+    """Live funding / OI / liq separately: 1h then 4h. Never 1m."""
+    order = [iv for iv in FEED_INTERVALS if iv != "1m"]
+    cached = str(cached_ok or "").strip().lower()
+    if cached in FEED_INTERVALS and cached != "1m":
+        order = [cached] + [iv for iv in order if iv != cached]
+    return order
+
+
+def format_coinglass_reason(
+    last: Optional["_Fetch"] = None,
+    succeeded: Optional[str] = None,
+    upgrade_intervals: Optional[List[str]] = None,
+    succeeded_intervals: Optional[List[str]] = None,
+) -> str:
+    """Plain /health string. Hobbyist: 1h Upgrade plan and 4h ok."""
+    up = [str(x) for x in (upgrade_intervals or [])]
+    ok = [str(x) for x in (succeeded_intervals or [])]
+    if succeeded and succeeded not in ok:
+        ok = [succeeded] + ok
+    if "1h" in up and "4h" in ok:
+        return HOBBYIST_REASON
+    if ok:
+        return f"{','.join(ok)} ok"
+    if up:
+        return "Upgrade plan on 30m/1h/4h; no feed returned data"
+    if last is None:
+        return "no usable funding/OI/liq this cycle"
+    msg = _snippet(last.cg_msg, None)
+    return (
+        f"last={last.interval} path={last.path} "
+        f"http={last.http_status} code={last.cg_code} msg={msg}; "
+        f"succeeded=none"
+    )
 
 
 @dataclass
@@ -235,7 +278,9 @@ class CoinGlassClient:
         self._cache: Dict[str, Any] = {}
         self._cache_at: float = 0.0
         self._interval_ok: Optional[str] = None
+        self._interval_ok_by_path: Dict[str, str] = {}
         self._cycle_misses: List[_Fetch] = []
+        self._cycle_attempts: List[_Fetch] = []
 
     def configured(self) -> bool:
         return bool(load_coinglass_api_key())
@@ -252,44 +297,77 @@ class CoinGlassClient:
             "Accept": "application/json",
         }
 
+    def _note_attempt(self, got: _Fetch) -> None:
+        key = (got.path, got.interval)
+        if any((a.path, a.interval) == key for a in self._cycle_attempts):
+            return
+        self._cycle_attempts.append(got)
+        if not got.ok:
+            self._note_miss(got)
+
     def _note_miss(self, miss: _Fetch) -> None:
         key = (miss.path, miss.interval)
         if any((m.path, m.interval) == key for m in self._cycle_misses):
             return
         self._cycle_misses.append(miss)
 
-    def _format_miss(self, miss: _Fetch) -> str:
+    def _format_attempt(self, got: _Fetch) -> str:
         secret = load_coinglass_api_key()
-        msg = _snippet(miss.cg_msg, secret)
-        body = _snippet(miss.body, secret)
+        msg = _snippet(got.cg_msg, secret)
         return (
-            f"path={miss.path} interval={miss.interval} "
+            f"path={got.path} interval={got.interval} "
             f"symbol={self.symbol} exchange={self.exchange} "
-            f"http={miss.http_status} code={miss.cg_code} msg={msg} body={body}"
+            f"http={got.http_status} code={got.cg_code} msg={msg}"
         )
 
+    def _last_attempt(self) -> Optional[_Fetch]:
+        if not self._cycle_attempts:
+            return None
+        rank_iv = {iv: i for i, iv in enumerate(FEED_INTERVALS)}
+        rank_path = {p: i for i, p in enumerate(PATHS)}
+        return max(
+            self._cycle_attempts,
+            key=lambda a: (rank_iv.get(a.interval, -1), rank_path.get(a.path, -1)),
+        )
+
+    def _succeeded_intervals(self) -> List[str]:
+        found = {a.interval for a in self._cycle_attempts if a.ok and a.rows}
+        return [iv for iv in FEED_INTERVALS if iv in found]
+
+    def _upgrade_intervals(self) -> List[str]:
+        found = {
+            a.interval
+            for a in self._cycle_attempts
+            if is_upgrade_plan_error(a.cg_code, a.cg_msg) or a.plan_interval
+        }
+        return [iv for iv in ("30m", "1h", "4h") if iv in found]
+
     def _reason_for_health(self, snap: Dict[str, Any]) -> str:
-        if snap.get("healthy") and not self._cycle_misses:
-            return ""
-        if snap.get("healthy") and self._cycle_misses:
-            first = self._cycle_misses[0]
-            used = snap.get("interval") or self._interval_ok or "1h"
-            secret = load_coinglass_api_key()
-            return (
-                f"{first.interval} rejected (code={first.cg_code} "
-                f"msg={_snippet(first.cg_msg, secret)}); using {used}"
-            )
-        if self._cycle_misses:
-            return self._format_miss(self._cycle_misses[0])
-        return "no usable funding/OI/liq this cycle"
+        last = self._last_attempt()
+        ok = self._succeeded_intervals()
+        if snap.get("healthy") and not ok and snap.get("interval"):
+            ok = [str(snap.get("interval"))]
+        if last is None and not snap.get("healthy"):
+            return snap.get("reason") or "no usable funding/OI/liq this cycle"
+        secret = load_coinglass_api_key()
+        reason = format_coinglass_reason(
+            last,
+            None,
+            upgrade_intervals=self._upgrade_intervals(),
+            succeeded_intervals=ok,
+        )
+        return _redact(reason, secret)
 
     def _log_cycle_miss(self, snap: Dict[str, Any]) -> None:
-        if self._cycle_misses:
-            parts = [self._format_miss(m) for m in self._cycle_misses]
-            logger.warning(
-                "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE keep last/Binance "
-                + " || ".join(parts)
-            )
+        attempts = self._cycle_attempts or self._cycle_misses
+        if attempts:
+            secret = load_coinglass_api_key()
+            for a in attempts:
+                logger.warning(
+                    f"CoinGlass {a.path} interval={a.interval} "
+                    f"http={a.http_status} code={a.cg_code} "
+                    f"msg={_snippet(a.cg_msg, secret)}"
+                )
             return
         if snap.get("healthy"):
             return
@@ -310,7 +388,7 @@ class CoinGlassClient:
         headers = self._headers()
         if not headers:
             miss = _Fetch(path=path, interval=interval, reason="key missing")
-            self._note_miss(miss)
+            self._note_attempt(miss)
             return miss
         base = str(getattr(settings, "COINGLASS_BASE", BASE) or BASE)
         url = f"{base}{path}"
@@ -341,37 +419,44 @@ class CoinGlassClient:
                 body = {}
             miss.cg_code = body.get("code")
             miss.cg_msg = str(body.get("msg") or body.get("message") or "")
-            miss.plan_interval = is_plan_interval_error(miss.cg_code, miss.cg_msg)
-            if r.status_code in (401, 403):
+            miss.plan_interval = is_plan_interval_error(miss.cg_code, miss.cg_msg) or is_upgrade_plan_error(
+                miss.cg_code, miss.cg_msg
+            )
+            if r.status_code in (401, 403) and not miss.plan_interval:
                 miss.auth_fail = True
                 miss.reason = f"auth failed ({r.status_code})"
-                self._note_miss(miss)
+                self._note_attempt(miss)
                 return miss
-            if r.status_code >= 400:
+            if r.status_code >= 400 and not miss.plan_interval:
                 miss.reason = f"http {r.status_code}"
-                self._note_miss(miss)
+                self._note_attempt(miss)
+                return miss
+            if r.status_code >= 400 and miss.plan_interval:
+                miss.reason = f"http {r.status_code} plan/interval"
+                self._note_attempt(miss)
                 return miss
             code_s = "" if miss.cg_code is None else str(miss.cg_code)
             if code_s not in ("0", "200", ""):
                 miss.reason = f"coinglass code={code_s}"
-                self._note_miss(miss)
+                self._note_attempt(miss)
                 return miss
             data = body.get("data")
             if not isinstance(data, list):
                 miss.reason = "data not a list"
-                self._note_miss(miss)
+                self._note_attempt(miss)
                 return miss
             rows = [row for row in data if isinstance(row, dict)]
             if not rows:
                 miss.reason = "empty data"
-                self._note_miss(miss)
+                self._note_attempt(miss)
                 return miss
             miss.rows = rows
             miss.ok = True
+            self._note_attempt(miss)
             return miss
         except Exception as e:
             miss.reason = type(e).__name__
-            self._note_miss(miss)
+            self._note_attempt(miss)
             return miss
 
     async def _get_rows(
@@ -389,12 +474,13 @@ class CoinGlassClient:
         return list(got.rows)
 
     async def _rows_with_interval(self, path: str) -> Tuple[List[Dict[str, Any]], str]:
-        order = live_interval_order(self._interval_ok)
-        last_iv = order[0] if order else "30m"
+        order = feed_interval_order(self._interval_ok_by_path.get(path))
+        last_iv = order[0] if order else "1h"
         for iv in order:
             last_iv = iv
             got = await self._probe(path, iv)
             if got.ok and got.rows:
+                self._interval_ok_by_path[path] = iv
                 self._interval_ok = iv
                 return got.rows, iv
             if got.auth_fail:
@@ -421,6 +507,7 @@ class CoinGlassClient:
 
     async def get_derivatives(self) -> Dict[str, Any]:
         self._cycle_misses = []
+        self._cycle_attempts = []
         if not self.configured():
             snap = self._empty("key missing")
             self._log_cycle_miss(snap)
@@ -440,16 +527,13 @@ class CoinGlassClient:
                 self._rows_with_interval(PATHS[1]),
                 self._rows_with_interval(PATHS[2]),
             )
-            interval = fund_iv or oi_iv or liq_iv or "30m"
+            interval = fund_iv or oi_iv or liq_iv or "1h"
             snap = summarize_derivatives(fund_rows, oi_rows, liq_rows, interval)
             snap["reason"] = self._reason_for_health(snap)
             if snap.get("healthy"):
                 self._cache = snap
                 self._cache_at = now
-                if self._cycle_misses:
-                    self._log_cycle_miss(snap)
-            else:
-                self._log_cycle_miss(snap)
+            self._log_cycle_miss(snap)
             return snap
         except Exception as e:
             snap = self._empty(f"snapshot fail: {type(e).__name__}")

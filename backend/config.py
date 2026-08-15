@@ -214,7 +214,7 @@ class Settings(BaseSettings):
     CFB_INDEX_BTC: str = "BRTI"
     CFB_INDEX_ETH: str = "ETHUSD_RTI"
     # CoinGlass v4 — key from env or /etc/secrets/COINGLASS_API_KEY (never in git)
-    # Startup: try 30m then 1h (never 1m). Funding is an 8h clock (display only).
+    # Live feeds: 1h then 4h each. Hist: 30m then 1h. Never 1m.
     COINGLASS_BASE: str = "https://open-api-v4.coinglass.com"
     COINGLASS_EXCHANGE: str = "Binance"
     COINGLASS_INTERVAL: str = "30m"
