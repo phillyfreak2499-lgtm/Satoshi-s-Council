@@ -14,8 +14,10 @@ from backend.agents.chair_gates import (
     eth_fades_btc_impulse,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
+    btc_shadow_pick,
     eth_shadow_pick,
     floor_scorecard,
+    is_btc_shadow_row,
     is_eth_shadow_row,
     hot_chair_bin_faded,
     is_actually_settled,
@@ -265,6 +267,17 @@ class ZachBarTests(unittest.TestCase):
         self.assertTrue(is_eth_shadow_row({"shadow": 1, "direction": "UP"}))
         self.assertTrue(is_eth_shadow_row({"kind": "eth_shadow"}))
         self.assertFalse(is_eth_shadow_row({"direction": "UP", "shadow": 0}))
+        btc = btc_shadow_pick("BTC", "UP", 80, ask=50, strike=63000)
+        self.assertIsNotNone(btc)
+        self.assertEqual(btc["kind"], "btc_shadow")
+        self.assertFalse(btc["counts_as_lock"])
+        self.assertEqual(btc["paper_stake"], 0.0)
+        self.assertFalse(is_eth_shadow_row(btc))
+        self.assertTrue(is_btc_shadow_row(btc))
+        self.assertFalse(is_eth_shadow_row({"shadow": 1, "kind": "btc_shadow"}))
+        self.assertFalse(is_eth_shadow_row({"shadow": 1, "asset": "btc"}))
+        self.assertIsNone(btc_shadow_pick("ETH", "UP", 80))
+        self.assertIsNone(btc_shadow_pick("BTC", "WAIT", 70))
 
     def test_floor_scorecard_is_matchup_not_stats_dump(self):
         sc = floor_scorecard(
@@ -299,6 +312,14 @@ class ZachBarTests(unittest.TestCase):
         self.assertEqual(empty["btc_text"], "BTC 0–0")
         self.assertEqual(empty["eth_text"], "0–0 ETH")
         self.assertEqual(empty["match"], "BTC 0 · ETH 0")
+        # BTC shadow bin must not mix into sized Chair-lock score.
+        mixed = floor_scorecard(
+            {"correct": 4, "wrong": 2, "total": 6, "btc_shadow": {"n": 18, "hits": 10, "wrong": 8}},
+            {"eth_shadow": {"n": 5, "hits": 3, "wrong": 2}},
+        )
+        self.assertEqual(mixed["btc"]["correct"], 4)
+        self.assertEqual(mixed["btc"]["wrong"], 2)
+        self.assertEqual(mixed["eth"]["correct"], 3)
 
     def test_never_lock_99_or_one_sided_100(self):
         self.assertIn("≥99", never_lock_near_certain(99, 1) or "")

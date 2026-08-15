@@ -18,7 +18,10 @@ from backend.agents.chair_gates import (
     decide_open_lock_grade,
     decide_open_wait_grade,
     known_official_market,
+    is_btc_shadow_row,
     is_eth_shadow_row,
+    is_shadow_row,
+    shadow_row_kind,
     lock_time_strike,
     paper_stake_for_lock,
     ticker_asset,
@@ -100,7 +103,7 @@ class WindowCall(Base):
     p_finish: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     ev_cents: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     y_finish: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # official UP/DOWN
-    shadow: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = ETH shadow pick
+    shadow: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = ETH/BTC shadow pick
     vetoed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 = BTC-impulse veto
     side_ask: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # ask ¢ at pick time
     wait_reason: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
@@ -233,7 +236,7 @@ class PerformanceStore:
 
     @staticmethod
     def _counting_lock_clause():
-        """Chair locks that count — ETH shadows are a parallel tape."""
+        """Chair locks that count — ETH/BTC shadows are a parallel tape."""
         return or_(WindowCall.shadow.is_(None), WindowCall.shadow == 0)
 
     @staticmethod
@@ -687,7 +690,7 @@ class PerformanceStore:
             await session.commit()
             return True
 
-    async def record_eth_shadow_pick(
+    async def _record_shadow_pick(
         self,
         ticker: str,
         direction: str,
@@ -698,10 +701,14 @@ class PerformanceStore:
         vetoed: bool = False,
         asset: str = "eth",
     ) -> None:
-        """
-        One ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
-        A BTC-impulse veto is stored so we can grade whether the veto was right.
-        """
+        """One shadow pick per hour. Stake 0. Does not count as a Chair lock."""
+        book = str(asset or "").strip().lower()
+        if book in ("ethereum",):
+            book = "eth"
+        if book in ("bitcoin",):
+            book = "btc"
+        if book not in ("eth", "btc"):
+            return
         side = self._grade_side(direction)
         if side is None or not ticker:
             return
@@ -718,6 +725,7 @@ class PerformanceStore:
             q = select(WindowCall).where(
                 WindowCall.actual_outcome.is_(None),
                 WindowCall.shadow == 1,
+                WindowCall.asset == book,
             )
             if close_time:
                 q = q.where(WindowCall.close_time == close_time)
@@ -738,7 +746,7 @@ class PerformanceStore:
                 if close_time:
                     existing.close_time = close_time
                 existing.paper_stake = 0.0
-                existing.asset = "eth"
+                existing.asset = book
                 await session.commit()
                 return
             session.add(WindowCall(
@@ -755,13 +763,65 @@ class PerformanceStore:
                 paper_stake=0.0,
                 paper_pnl=0.0,
                 paper_side=self._paper_side(side),
-                asset="eth",
+                asset=book,
                 floor_strike=strike,
                 shadow=1,
                 vetoed=1 if vetoed else 0,
                 side_ask=ask,
             ))
             await session.commit()
+
+    async def record_eth_shadow_pick(
+        self,
+        ticker: str,
+        direction: str,
+        confidence: int,
+        close_time: str | None = None,
+        side_ask: float | None = None,
+        floor_strike: float | None = None,
+        vetoed: bool = False,
+        asset: str = "eth",
+    ) -> None:
+        """
+        One ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
+        A BTC-impulse veto is stored so we can grade whether the veto was right.
+        """
+        await self._record_shadow_pick(
+            ticker=ticker,
+            direction=direction,
+            confidence=confidence,
+            close_time=close_time,
+            side_ask=side_ask,
+            floor_strike=floor_strike,
+            vetoed=vetoed,
+            asset="eth",
+        )
+
+    async def record_btc_shadow_pick(
+        self,
+        ticker: str,
+        direction: str,
+        confidence: int,
+        close_time: str | None = None,
+        side_ask: float | None = None,
+        floor_strike: float | None = None,
+        vetoed: bool = False,
+        asset: str = "btc",
+    ) -> None:
+        """
+        One BTC WAIT-hour shadow pick. Stake 0. Does not count as a Chair lock.
+        Never becomes a sized lock or Follower order.
+        """
+        await self._record_shadow_pick(
+            ticker=ticker,
+            direction=direction,
+            confidence=confidence,
+            close_time=close_time,
+            side_ask=side_ask,
+            floor_strike=floor_strike,
+            vetoed=vetoed,
+            asset="btc",
+        )
 
     async def settle_expired_calls(
         self,
@@ -887,7 +947,7 @@ class PerformanceStore:
                 if not row.asset and grade.get("asset"):
                     row.asset = grade["asset"]
 
-                shadow = is_eth_shadow_row(row) or bool(getattr(row, "shadow", 0))
+                shadow = is_shadow_row(row) or bool(getattr(row, "shadow", 0))
                 if shadow:
                     stake = 0.0
                     row.paper_stake = 0.0
@@ -961,7 +1021,7 @@ class PerformanceStore:
             "shadow": bool(getattr(r, "shadow", 0)),
             "vetoed": bool(getattr(r, "vetoed", 0)),
             "side_ask": getattr(r, "side_ask", None),
-            "kind": "eth_shadow" if is_eth_shadow_row(r) else ("wait" if str(r.direction or "").upper() == "WAIT" else "chair"),
+            "kind": shadow_row_kind(r) or ("wait" if str(r.direction or "").upper() == "WAIT" else "chair"),
             "wait_reason": getattr(r, "wait_reason", None),
             "would_lock_if_strict": bool(getattr(r, "would_lock_if_strict", 0)),
             "seat_split": _json_field(getattr(r, "seat_split", None)),
@@ -1017,9 +1077,14 @@ class PerformanceStore:
                     or (not r.settle_reason)  # legacy graded rows
                 )
             ]
-            reliability = list(settled)
-            # Chair locks that count — ETH shadows fill the reliability bin only.
-            settled = [r for r in settled if not is_eth_shadow_row(r)]
+            all_finish = list(settled)
+            # Chair locks that count. ETH shadows fill the ETH reliability bin only.
+            # BTC shadows are a parallel paper bin — never mixed into sized-lock hit rate.
+            settled = [r for r in all_finish if not is_shadow_row(r)]
+            if (asset or "").lower() in ("eth", "ethereum"):
+                reliability = [r for r in all_finish if not is_btc_shadow_row(r)]
+            else:
+                reliability = settled
             pending_filters = [
                 WindowCall.actual_outcome.is_(None),
                 PerformanceStore._counting_lock_clause(),
@@ -1190,8 +1255,10 @@ class PerformanceStore:
         chair_bins = chair_bins_from_settled(
             reliability if (asset or "").lower() in ("eth", "ethereum") else settled
         )
-        shadow_rows = [r for r in reliability if is_eth_shadow_row(r)]
+        shadow_rows = [r for r in all_finish if is_eth_shadow_row(r)]
         shadow_hits = sum(1 for r in shadow_rows if r.correct == 1)
+        btc_shadow_rows = [r for r in all_finish if is_btc_shadow_row(r)]
+        btc_shadow_hits = sum(1 for r in btc_shadow_rows if r.correct == 1)
 
         return {
             # Lifetime primary stats
@@ -1241,6 +1308,15 @@ class PerformanceStore:
                 "wrong": max(0, len(shadow_rows) - shadow_hits),
                 "accuracy_pct": (
                     round(100.0 * shadow_hits / len(shadow_rows), 1) if shadow_rows else None
+                ),
+            },
+            "btc_shadow": {
+                "n": len(btc_shadow_rows),
+                "hits": btc_shadow_hits,
+                "wrong": max(0, len(btc_shadow_rows) - btc_shadow_hits),
+                "accuracy_pct": (
+                    round(100.0 * btc_shadow_hits / len(btc_shadow_rows), 1)
+                    if btc_shadow_rows else None
                 ),
             },
             "chair_bins": chair_bins,
@@ -1648,7 +1724,7 @@ class PerformanceStore:
                     "shadow": bool(getattr(r, "shadow", 0)),
                     "vetoed": bool(getattr(r, "vetoed", 0)),
                     "side_ask": getattr(r, "side_ask", None),
-                    "kind": "eth_shadow" if is_eth_shadow_row(r) else ("wait" if str(r.direction or "").upper() == "WAIT" else "chair"),
+                    "kind": shadow_row_kind(r) or ("wait" if str(r.direction or "").upper() == "WAIT" else "chair"),
                     "wait_reason": getattr(r, "wait_reason", None),
                     "would_lock_if_strict": bool(getattr(r, "would_lock_if_strict", 0)),
                     "seat_split": _json_field(getattr(r, "seat_split", None)),
@@ -1660,7 +1736,7 @@ class PerformanceStore:
         """
         Read-only Chair paper tape for the last `hours`.
         Includes OPEN locks. Does not grade, settle, or invent a result.
-        ETH shadow picks stay off this tape.
+        ETH/BTC shadow picks stay off this tape.
         """
         from datetime import timedelta
 
@@ -1677,7 +1753,7 @@ class PerformanceStore:
             ).scalars().all()
         out: List[Dict[str, Any]] = []
         for r in rows:
-            if is_eth_shadow_row(r):
+            if is_shadow_row(r):
                 continue
             open_row = r.actual_outcome is None
             stamp = r.called_at or r.close_time or r.settled_at or ""

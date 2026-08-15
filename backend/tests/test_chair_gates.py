@@ -19,7 +19,10 @@ from backend.agents.chair_gates import (
     estimate_p_finish,
     eth_fades_btc_impulse,
     eth_paper_lock_blocked,
+    btc_shadow_pick,
     eth_shadow_pick,
+    is_btc_shadow_row,
+    is_eth_shadow_row,
     ev_gate_blocks,
     explore_paper_lock_ok,
     explore_paper_lock_open,
@@ -535,6 +538,119 @@ class EthShadowPickTests(unittest.TestCase):
         )
         self.assertIsNone(out.get("eth_shadow_pick"))
         self.assertIsNone(eth_shadow_pick("btc", "UP", 80))
+
+
+class BtcShadowPickTests(unittest.TestCase):
+    def _signals(self, side: str):
+        from backend.agents.base import AgentSignal
+        names = (
+            "candle", "volume", "momentum", "orderflow", "odds", "strike",
+            "quorum", "cheap", "panic", "spotlag", "exhaust", "whale",
+        )
+        return [
+            AgentSignal(n, side, 82, "test", n)
+            for n in names
+        ]
+
+    def _btc_regime(self, **over):
+        base = {
+            "asset": "btc",
+            "ticker": "KXBTCD-26AUG1616-T63000.00",
+            "mins_left": 55,
+            "window_minutes": 60,
+            "up_pct": 48,
+            "yes_ask": 50,
+            "no_ask": 52,
+            "yes_mid": 48,
+            "side_ask": 50,
+            "floor_strike": 63000.0,
+            "kalshi_healthy": True,
+            "settled_n": 3,
+            "reliability_n": 3,
+            "learning_phase": "explore",
+            "spread_cents": 2.0,
+            "book_depth": {
+                "yes_depth": 40,
+                "no_depth": 30,
+                "yes_bid_sz": 20,
+                "no_bid_sz": 15,
+                "yes_bid_px": 48,
+                "no_bid_px": 51,
+                "has_size": True,
+                "measured": True,
+                "book_state": "ok",
+            },
+            "paper_locks_today": 0,
+        }
+        base.update(over)
+        return base
+
+    def test_btc_wait_writes_shadow_pick(self):
+        chair = Leader()
+        out = chair.synthesize(self._signals("UP"), self._btc_regime())
+        self.assertEqual(out["direction"], "WAIT")
+        self.assertFalse(out.get("window_locked"))
+        self.assertFalse((out.get("locked_call") or {}).get("locked"))
+        pick = out.get("btc_shadow_pick")
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["kind"], "btc_shadow")
+        self.assertEqual(pick["side"], "UP")
+        self.assertEqual(pick["paper_stake"], 0.0)
+        self.assertFalse(pick["counts_as_lock"])
+        self.assertTrue(pick["shadow"])
+        self.assertEqual(pick["strike"], 63000.0)
+        self.assertEqual(pick["ask"], 50)
+        self.assertIsNone(out.get("eth_shadow_pick"))
+        self.assertFalse(is_eth_shadow_row(pick))
+        self.assertTrue(is_btc_shadow_row(pick))
+
+    def test_btc_lock_still_only_via_existing_gates(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        locked = chair.synthesize(
+            self._signals("UP"),
+            self._btc_regime(mins_left=35),
+        )
+        self.assertIn(locked["direction"], ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
+        self.assertTrue(locked.get("window_locked") or (locked.get("locked_call") or {}).get("locked"))
+        pick = locked.get("btc_shadow_pick")
+        if pick:
+            self.assertFalse(pick["counts_as_lock"])
+            self.assertEqual(pick["paper_stake"], 0.0)
+
+        wall = Leader()
+        wall.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        out = wall.synthesize(
+            self._signals("UP"),
+            self._btc_regime(mins_left=35, yes_ask=99, no_ask=1, up_pct=99, yes_mid=99, side_ask=99),
+        )
+        self.assertEqual(out["direction"], "WAIT")
+        self.assertFalse(out.get("window_locked"))
+        self.assertFalse((out.get("locked_call") or {}).get("locked"))
+        shadow = out.get("btc_shadow_pick")
+        self.assertIsNotNone(shadow)
+        self.assertFalse(shadow["counts_as_lock"])
+
+    def test_eth_shadow_still_eth_only(self):
+        self.assertIsNone(btc_shadow_pick("ETH", "UP", 80))
+        self.assertIsNone(eth_shadow_pick("BTC", "DOWN", 80))
+        eth = eth_shadow_pick("ETH", "DOWN", 71, ask=44, strike=1874.99)
+        btc = btc_shadow_pick("BTC", "UP", 68, ask=50, strike=63000)
+        self.assertTrue(is_eth_shadow_row(eth))
+        self.assertFalse(is_eth_shadow_row(btc))
+        self.assertTrue(is_btc_shadow_row(btc))
+        self.assertFalse(is_btc_shadow_row(eth))
+
+    def test_is_eth_shadow_row_does_not_eat_btc_shadows(self):
+        self.assertTrue(is_eth_shadow_row({"shadow": 1, "direction": "UP"}))
+        self.assertTrue(is_eth_shadow_row({"kind": "eth_shadow"}))
+        self.assertFalse(is_eth_shadow_row({"shadow": 1, "kind": "btc_shadow"}))
+        self.assertFalse(is_eth_shadow_row({"shadow": 1, "asset": "btc"}))
+        self.assertFalse(is_eth_shadow_row({"shadow": True, "ticker": "KXBTCD-26AUG1616-T63000.00"}))
+        self.assertTrue(is_btc_shadow_row({"kind": "btc_shadow"}))
+        self.assertTrue(is_btc_shadow_row({"shadow": 1, "asset": "btc"}))
+        self.assertFalse(is_btc_shadow_row({"shadow": 1, "kind": "eth_shadow"}))
+        self.assertFalse(is_btc_shadow_row({"direction": "UP", "shadow": 0}))
 
 
 class ExplorePaperLockTests(unittest.TestCase):

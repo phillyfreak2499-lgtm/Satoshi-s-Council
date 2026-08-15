@@ -1253,15 +1253,115 @@ def eth_paper_lock_blocked(
     return "ETH paper lock waits for a settled reliability bin"
 
 
+def _row_get(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+
+def _row_kind(row: Any) -> str:
+    return str(_row_get(row, "kind") or "").strip().lower()
+
+
+def _row_asset(row: Any) -> str:
+    a = str(_row_get(row, "asset") or "").strip().lower()
+    if a in ("eth", "ethereum"):
+        return "eth"
+    if a in ("btc", "bitcoin"):
+        return "btc"
+    inferred = ticker_asset(_row_get(row, "ticker"))
+    return inferred or ""
+
+
+def _row_shadow_flag(row: Any) -> bool:
+    return _row_get(row, "shadow") in (1, True, "1")
+
+
 def is_eth_shadow_row(row: Any) -> bool:
-    """True for an ETH shadow pick — grades the bin, does not size or go live."""
+    """True for an ETH shadow pick — grades the bin, does not size or go live.
+
+    Legacy rows are `shadow=True` with no kind (ETH-only when this helper
+    was written). BTC shadows must not match.
+    """
     if row is None:
         return False
-    if isinstance(row, dict):
-        if row.get("shadow") in (1, True, "1"):
-            return True
-        return str(row.get("kind") or "") == "eth_shadow"
-    return bool(getattr(row, "shadow", 0))
+    kind = _row_kind(row)
+    if kind == "btc_shadow":
+        return False
+    if kind == "eth_shadow":
+        return True
+    if not _row_shadow_flag(row):
+        return False
+    return _row_asset(row) != "btc"
+
+
+def is_btc_shadow_row(row: Any) -> bool:
+    """True for a BTC shadow pick — grades the bin, does not size or go live."""
+    if row is None:
+        return False
+    kind = _row_kind(row)
+    if kind == "eth_shadow":
+        return False
+    if kind == "btc_shadow":
+        return True
+    if not _row_shadow_flag(row):
+        return False
+    return _row_asset(row) == "btc"
+
+
+def is_shadow_row(row: Any) -> bool:
+    """ETH or BTC shadow pick. Never a sized Chair lock."""
+    return is_eth_shadow_row(row) or is_btc_shadow_row(row)
+
+
+def shadow_row_kind(row: Any) -> Optional[str]:
+    """`eth_shadow` / `btc_shadow` / None. BTC checked first so it never looks like ETH."""
+    if is_btc_shadow_row(row):
+        return "btc_shadow"
+    if is_eth_shadow_row(row):
+        return "eth_shadow"
+    return None
+
+
+def _shadow_pick(
+    *,
+    kind: str,
+    asset_key: str,
+    allowed: tuple[str, ...],
+    asset: Any,
+    side: Any,
+    conf: Any = 0,
+    ask: Any = None,
+    strike: Any = None,
+    vetoed: bool = False,
+    ticker: Any = None,
+) -> Optional[Dict[str, Any]]:
+    a = str(asset or "").strip().upper()
+    if a not in allowed:
+        return None
+    s = normalize_side(side)
+    if s not in ("UP", "DOWN"):
+        return None
+    try:
+        confidence = int(conf or 0)
+    except (TypeError, ValueError):
+        confidence = 0
+    return {
+        "kind": kind,
+        "asset": asset_key,
+        "side": s,
+        "direction": s,
+        "confidence": confidence,
+        "ask": odds_to_cents(ask),
+        "strike": lock_time_strike(ticker=ticker, floor_strike=strike),
+        "ticker": ticker,
+        "vetoed": bool(vetoed),
+        "paper_stake": 0.0,
+        "counts_as_lock": False,
+        "shadow": True,
+    }
 
 
 def eth_shadow_pick(
@@ -1278,30 +1378,45 @@ def eth_shadow_pick(
     Does not size, does not go live, does not override BTC-only Chair locks.
     A BTC-impulse veto still records the pick so we can grade whether the veto was right.
     """
-    a = str(asset or "").strip().upper()
-    if a not in ("ETH", "ETHEREUM"):
-        return None
-    s = normalize_side(side)
-    if s not in ("UP", "DOWN"):
-        return None
-    try:
-        confidence = int(conf or 0)
-    except (TypeError, ValueError):
-        confidence = 0
-    return {
-        "kind": "eth_shadow",
-        "asset": "eth",
-        "side": s,
-        "direction": s,
-        "confidence": confidence,
-        "ask": odds_to_cents(ask),
-        "strike": lock_time_strike(ticker=ticker, floor_strike=strike),
-        "ticker": ticker,
-        "vetoed": bool(vetoed),
-        "paper_stake": 0.0,
-        "counts_as_lock": False,
-        "shadow": True,
-    }
+    return _shadow_pick(
+        kind="eth_shadow",
+        asset_key="eth",
+        allowed=("ETH", "ETHEREUM"),
+        asset=asset,
+        side=side,
+        conf=conf,
+        ask=ask,
+        strike=strike,
+        vetoed=vetoed,
+        ticker=ticker,
+    )
+
+
+def btc_shadow_pick(
+    asset: Any,
+    side: Any,
+    conf: Any = 0,
+    ask: Any = None,
+    strike: Any = None,
+    vetoed: bool = False,
+    ticker: Any = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    One BTC WAIT-hour pick for a parallel paper bin.
+    Does not size, does not go live, does not become a Chair lock.
+    """
+    return _shadow_pick(
+        kind="btc_shadow",
+        asset_key="btc",
+        allowed=("BTC", "BITCOIN"),
+        asset=asset,
+        side=side,
+        conf=conf,
+        ask=ask,
+        strike=strike,
+        vetoed=vetoed,
+        ticker=ticker,
+    )
 
 
 def _score_pair(correct: Any, wrong: Any) -> Dict[str, int]:
@@ -1483,7 +1598,7 @@ def count_paper_locks_today(
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        if row.get("shadow") or row.get("kind") in ("eth_shadow", "wait"):
+        if row.get("shadow") or row.get("kind") in ("eth_shadow", "btc_shadow", "wait"):
             continue
         d = str(row.get("direction") or "").upper()
         if d not in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):

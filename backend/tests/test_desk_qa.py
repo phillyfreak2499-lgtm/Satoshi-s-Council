@@ -695,10 +695,12 @@ class PacksNotDroppedTests(unittest.TestCase):
         db = (ROOT / "backend" / "storage" / "db.py").read_text(encoding="utf-8")
         self.assertIn("lock_time_strike", db)
         self.assertIn("def record_eth_shadow_pick", db)
+        self.assertIn("def record_btc_shadow_pick", db)
         self.assertIn("reliability_n", db)
         self.assertIn("Never current_price vs strike", db)
         self.assertIn("every OPEN paper hour", council)
         self.assertIn("def _maybe_record_eth_shadow", council)
+        self.assertIn("def _maybe_record_btc_shadow", council)
         self.assertIn("reliability_n", council)
         self.assertNotIn("tickers[:40]", council)
         self.assertIn("get_event", (ROOT / "backend" / "data" / "kalshi.py").read_text(encoding="utf-8"))
@@ -728,7 +730,9 @@ class PacksNotDroppedTests(unittest.TestCase):
             "def eth_paper_lock_blocked",
             "def paper_stake_for_lock",
             "def eth_shadow_pick",
+            "def btc_shadow_pick",
             "def is_eth_shadow_row",
+            "def is_btc_shadow_row",
             "def floor_scorecard",
             "def book_is_unknown",
             "def explore_paper_lock_open",

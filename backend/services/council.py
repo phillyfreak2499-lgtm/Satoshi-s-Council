@@ -50,7 +50,10 @@ from backend.agents.chair_gates import (
     lock_time_strike,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
+    btc_shadow_pick,
     eth_shadow_pick,
+    is_btc_shadow_row,
+    is_shadow_row,
     event_ticker_from_kalshi_ticker,
     known_official_market,
     lifetime_n_for_zach,
@@ -503,17 +506,36 @@ class Council:
             logger.debug(f"Adaptive learn skip: {e}")
         return settled_n
 
-    async def _maybe_record_eth_shadow(
+    async def _maybe_record_shadow(
         self,
         decision: Dict[str, Any] | None,
         ticker: str | None,
         close_time: str | None,
+        *,
+        book: str,
     ) -> None:
         """
-        Persist one ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
-        A BTC-impulse veto is stored so we can grade whether the veto was right.
+        Persist one shadow pick per hour. Stake 0. Does not count as a Chair lock.
+        ETH: a BTC-impulse veto is stored so we can grade whether the veto was right.
+        BTC: WAIT-hour lean only — never becomes a Chair lock or Follower order.
         """
-        if str(self.asset or "").lower() not in ("eth", "ethereum"):
+        book = str(book or "").strip().lower()
+        asset = str(self.asset or "").lower()
+        if book == "eth":
+            if asset not in ("eth", "ethereum"):
+                return
+            pick_key = "eth_shadow_pick"
+            build = eth_shadow_pick
+            store_fn = "record_eth_shadow_pick"
+            label = "ETH"
+        elif book == "btc":
+            if asset not in ("btc", "bitcoin"):
+                return
+            pick_key = "btc_shadow_pick"
+            build = btc_shadow_pick
+            store_fn = "record_btc_shadow_pick"
+            label = "BTC"
+        else:
             return
         if not ticker or not isinstance(decision, dict):
             return
@@ -522,10 +544,10 @@ class Council:
         lc = decision.get("locked_call")
         if isinstance(lc, dict) and lc.get("locked"):
             return
-        pick = decision.get("eth_shadow_pick")
+        pick = decision.get(pick_key)
         if not isinstance(pick, dict):
             side = decision.get("shadow_direction") or decision.get("lean")
-            pick = eth_shadow_pick(
+            pick = build(
                 self.asset,
                 side,
                 decision.get("shadow_confidence") or decision.get("confidence") or 0,
@@ -536,7 +558,7 @@ class Council:
             )
         if not pick:
             return
-        fn = getattr(self.store, "record_eth_shadow_pick", None)
+        fn = getattr(self.store, store_fn, None)
         if not callable(fn):
             return
         try:
@@ -552,7 +574,31 @@ class Council:
             if inspect.isawaitable(maybe):
                 await maybe
         except Exception as e:
-            logger.debug(f"ETH shadow persist skip: {e}")
+            logger.debug(f"{label} shadow persist skip: {e}")
+
+    async def _maybe_record_eth_shadow(
+        self,
+        decision: Dict[str, Any] | None,
+        ticker: str | None,
+        close_time: str | None,
+    ) -> None:
+        """
+        Persist one ETH shadow pick per hour. Stake 0. Does not count as a Chair lock.
+        A BTC-impulse veto is stored so we can grade whether the veto was right.
+        """
+        await self._maybe_record_shadow(decision, ticker, close_time, book="eth")
+
+    async def _maybe_record_btc_shadow(
+        self,
+        decision: Dict[str, Any] | None,
+        ticker: str | None,
+        close_time: str | None,
+    ) -> None:
+        """
+        Persist one BTC WAIT-hour shadow pick. Stake 0. Does not count as a Chair lock.
+        Never auto-locks BTC and never arms Follower.
+        """
+        await self._maybe_record_shadow(decision, ticker, close_time, book="btc")
 
     async def _restore_open_lock(self) -> None:
         """Persist one-call integrity across process restart."""
@@ -569,7 +615,7 @@ class Council:
             for row in opens:
                 if not isinstance(row, dict):
                     continue
-                if row.get("shadow") or row.get("kind") == "eth_shadow":
+                if is_shadow_row(row) or row.get("shadow") or row.get("kind") in ("eth_shadow", "btc_shadow"):
                     continue
                 direction = row.get("direction") or ""
                 side = "UP" if direction in ("UP", "UP_HOLD") else ("DOWN" if direction in ("DOWN", "DOWN_HOLD") else None)
@@ -1010,6 +1056,7 @@ class Council:
                 "shadow_direction": shadow.get("direction"),
                 "shadow_confidence": shadow.get("confidence"),
                 "eth_shadow_pick": shadow.get("eth_shadow_pick"),
+                "btc_shadow_pick": shadow.get("btc_shadow_pick"),
             }
             # Annotate debate UI after shadow capture
             signals = apply_find_out_to_signals(signals, self.law)
@@ -1109,6 +1156,7 @@ class Council:
             decision, signals, ticker, close_time, market_data, up_pct, down_pct
         )
         await self._maybe_record_eth_shadow(decision, ticker, close_time)
+        await self._maybe_record_btc_shadow(decision, ticker, close_time)
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
         # Feed lifetime edge into Chair so WAIT bar loosens as hit-rate proves out
@@ -1131,6 +1179,7 @@ class Council:
                 "call_phase": decision.get("call_phase"),
                 "locked_call": decision.get("locked_call"),  # clear follower-readable lock
                 "eth_shadow_pick": decision.get("eth_shadow_pick"),
+                "btc_shadow_pick": decision.get("btc_shadow_pick"),
                 "p_finish": decision.get("p_finish"),
                 "ev_cents": decision.get("ev_cents"),
                 "ev_phase": decision.get("ev_phase"),
@@ -1389,6 +1438,10 @@ class Council:
             direction = str(row.get("direction") or "").upper()
             outcome = row.get("y_finish") or row.get("actual_outcome") or row.get("outcome")
             votes = row.get("agent_votes") or {}
+            # BTC WAIT shadow is a parallel paper bin — do not train Chair lock weights from it.
+            if is_btc_shadow_row(row):
+                self._last_learned_ids.add(rid)
+                continue
             if direction == "WAIT" or settle_reason == "wait_finish":
                 y = row.get("y_finish")
                 if y not in ("UP", "DOWN"):
