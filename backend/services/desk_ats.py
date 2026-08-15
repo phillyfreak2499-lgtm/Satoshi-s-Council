@@ -602,6 +602,26 @@ def clock_line(close_time: Any, now: Optional[datetime] = None) -> str:
     return f"KICK IN {mins:02d}M"
 
 
+def build_game_clock(pick: Optional[Dict[str, Any]] = None, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Countdown to the game they bet on — pick close / kickoff. Not the crypto 1H hour."""
+    pick = pick or {}
+    close = _parse_iso(pick.get("close_time"))
+    n = now or datetime.now(timezone.utc)
+    secs = None if close is None else int((close - n).total_seconds())
+    return {
+        "kind": "game",
+        "label": "KICK",
+        "close_time": pick.get("close_time"),
+        "seconds_to_kick": secs,
+        "line": clock_line(pick.get("close_time"), now=n),
+        "game": pick.get("game"),
+        "number": pick.get("number"),
+        "sport": pick.get("sport"),
+        "title": pick.get("title"),
+        "kind_bet": pick.get("kind"),
+    }
+
+
 def one_liner(seat: str, **kw: Any) -> str:
     """CRT one-liners. No spreadsheet voice."""
     s = seat.upper()
@@ -1832,6 +1852,7 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         "scanned": len(rows),
         "series": [s for _sp, s, _k in V1_SERIES if s not in _dead_series],
         "dead_series": sorted(_dead_series.keys()),
+        "clock": build_game_clock(pick),
         "paper_only": True,
         "follower": False,
         "live": False,

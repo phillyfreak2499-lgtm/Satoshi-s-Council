@@ -985,6 +985,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const acc = (board && board.accuracy) || {};
     const tape = (board && board.tape) || [];
     const pick = (board && board.pick) || {};
+    const clock = (board && board.clock) || {};
     const eye = String(chair.eye || "WAIT").toUpperCase();
     const agents = seats.map(function (s) {
       return {
@@ -1066,7 +1067,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         ticker: pick.ticker,
         kalshi_ticker: pick.ticker,
         series_ticker: pick.sport,
-        close_time: pick.close_time,
+        close_time: pick.close_time || (clock && clock.close_time),
+        clock: clock,
+        window_kind: "game",
+        window_label: "KICK",
+        seconds_left: clock.seconds_to_kick,
+        time_remaining: clock.seconds_to_kick,
+        game: pick.game || clock.game,
+        number: pick.number || clock.number,
+        title: pick.title || clock.title,
         stale: false,
       },
       leader_name: "ARES",
@@ -1112,6 +1121,23 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         learning: focused.learning || {},
         weights: focused.weights || {},
         _focusTable: "front",
+      });
+    }
+    if (isAtsTable(focusTable)) {
+      const focused = tableState("ats") || atsTableState();
+      return Object.assign({}, state, {
+        decision: focused.decision || {},
+        locked_call: focused.locked_call || null,
+        agents: Array.isArray(focused.agents) ? focused.agents : [],
+        market: focused.market || {},
+        accuracy: focused.accuracy || {},
+        hierarchy: focused.hierarchy || [],
+        learning: focused.learning || {},
+        weights: focused.weights || {},
+        pick: focused.pick || {},
+        watch: focused.watch || {},
+        why: focused.why || {},
+        _focusTable: "ats",
       });
     }
     const focused = tableState(focusTable);
@@ -2927,18 +2953,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function paintAresEyes(eyes) {
     const face = document.getElementById("aresFace");
     const cols = aresEyeColors(eyes);
+    /* One portrait only: canvas aresPortrait + drawAresEyeTint. Never unhide the HTML overlay. */
     if (face) {
-      face.dataset.eye = cols.mode;
-      face.style.setProperty("--ares-eye-a", cols.a);
-      face.style.setProperty("--ares-eye-b", cols.b);
-      const show = typeof isAtsTable === "function" && isAtsTable(focusTable) && mode === "art";
-      face.hidden = !show;
-      face.setAttribute("aria-hidden", show ? "false" : "true");
+      face.hidden = true;
+      face.setAttribute("aria-hidden", "true");
     }
     try {
       document.body.style.setProperty("--ares-eye-a", cols.a);
       document.body.style.setProperty("--ares-eye-b", cols.b);
     } catch (e) {}
+    return cols;
   }
   function drawAresEyeTint(cx, cy, pr, eyes) {
     const cols = aresEyeColors(eyes);
@@ -5143,7 +5167,11 @@ function drawCandleChart() {
       if (title && title.nextSibling) head.insertBefore(chip, title.nextSibling);
       else head.insertBefore(chip, head.firstChild ? head.firstChild.nextSibling : null);
     }
-    chip.textContent = text || "1H WINDOW";
+    if (!text) {
+      if (chip) chip.remove();
+      return;
+    }
+    chip.textContent = text;
   }
 
   function drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt) {
@@ -5222,6 +5250,13 @@ function drawCandleChart() {
       meta.textContent = Number.isFinite(price)
         ? price.toLocaleString(undefined, { maximumFractionDigits: 1 })
         : "—";
+    }
+    const deskBook = (typeof isAtsTable === "function" && isAtsTable(focusTable))
+      || (typeof isFrontTable === "function" && isFrontTable(focusTable));
+    if (deskBook) {
+      setPairWindowChip(canvas, "");
+      setPairTargetChip(canvas, "");
+      return;
     }
     setPairWindowChip(canvas, "1H WINDOW");
     if (candles.length < 2) {
@@ -5524,6 +5559,9 @@ function drawCandleChart() {
       }
       return "CLI";
     }
+    const atsish = /KX(NFL|NCAAF|NBA|MLB|NHL)/i.test(tick) || (ts && (ts.asset === "ats" || ts._focusTable === "ats"))
+      || (typeof isAtsTable === "function" && isAtsTable(focusTable) && ts && ts.market && ts.market.window_kind === "game");
+    if (atsish) return "KICK";
     const close = (r && (r.close_time || r.window_close)) || (ts && ts.market && ts.market.close_time);
     const ms = parseStampMs(close);
     if (ms != null) {
@@ -5578,73 +5616,129 @@ function drawCandleChart() {
     if (h >= 1) return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
     return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
   }
+  function paintAtsGameStrip(ts) {
+    const strip = document.getElementById("atsGameStrip");
+    const nameEl = document.getElementById("atsGameName");
+    const lineEl = document.getElementById("atsGameLine");
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
+    if (strip) strip.hidden = !ats;
+    if (!ats) return;
+    const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
+    const pick = view.pick || {};
+    const clock = (view.market && view.market.clock) || view.clock || {};
+    const game = pick.game || clock.game || "NO GAME";
+    const number = pick.number || clock.number || pick.title || "NO LINE";
+    if (nameEl) nameEl.textContent = game;
+    if (lineEl) lineEl.textContent = number;
+  }
   function paintFrontWindowChrome() {
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
     const ledLabel = document.getElementById("ledWindowLabel");
     const ledT = document.getElementById("ledWindowTime");
     const ledSub = document.getElementById("ledWindowSub");
     const dualSub = document.getElementById("dualWindowSub");
     const wxStrip = document.getElementById("wxHighStrip");
     const wxSubs = document.getElementById("wxSubStrip");
+    const atsStrip = document.getElementById("atsGameStrip");
     const kh = document.getElementById("wxKalshiHigh");
     const nh = document.getElementById("wxNwsHigh");
-    if (ledLabel) ledLabel.textContent = front ? "DFW HIGH" : "1H WINDOW";
+    const cityEl = document.getElementById("wxCity");
+    const cliEl = document.getElementById("wxCliWindow");
     if (wxStrip) wxStrip.hidden = !front;
     if (wxSubs) wxSubs.hidden = !front;
-    if (!front) return;
-    const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
-    const m = ts.market || {};
-    const clock = m.clock || {};
-    const secs = clock.seconds_to_cli != null ? clock.seconds_to_cli : secondsLeftOf(m);
-    const display = fmtCliLeft(secs);
-    if (ledT) ledT.textContent = display;
-    const timEl = document.getElementById("windowTimer");
-    if (timEl) timEl.textContent = display;
-    if (ledSub) {
-      if (secs == null) ledSub.textContent = "waiting on DFW CLI";
-      else if (Number(secs) <= 0) ledSub.textContent = "CLI due";
-      else ledSub.textContent = "to CLI · next bet";
-    }
-    if (dualSub) {
-      const tick = m.kalshi_ticker || clock.ticker || "KXHIGHTDAL";
-      const br = clock.bracket || m.bracket || "";
-      dualSub.textContent = String(tick) + (br ? (" · " + br) : "");
-    }
-    if (kh) {
-      const kind = String(clock.strike_type || m.strike_type || "").toLowerCase();
-      if (kind === "between" && m.floor_strike != null && m.cap_strike != null) {
-        kh.textContent = Math.round(Number(m.floor_strike)) + "–" + Math.round(Number(m.cap_strike)) + "°F";
-      } else if (clock.kalshi_high != null) {
-        kh.textContent = Math.round(Number(clock.kalshi_high)) + "°F";
-      } else {
-        kh.textContent = clock.bracket || "—";
+    if (atsStrip) atsStrip.hidden = !ats;
+    if (front) {
+      if (ledLabel) ledLabel.textContent = "DFW HIGH";
+      const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
+      const m = ts.market || {};
+      const clock = m.clock || {};
+      const secs = clock.seconds_to_cli != null ? clock.seconds_to_cli : secondsLeftOf(m);
+      const display = fmtCliLeft(secs);
+      if (ledT) ledT.textContent = display;
+      const timEl = document.getElementById("windowTimer");
+      if (timEl) timEl.textContent = display;
+      if (ledSub) {
+        if (secs == null) ledSub.textContent = "waiting on DFW CLI";
+        else if (Number(secs) <= 0) ledSub.textContent = "CLI due";
+        else ledSub.textContent = "to CLI · next bet";
       }
-    }
-    if (nh) nh.textContent = clock.nws_high != null ? (Math.round(Number(clock.nws_high)) + "°F") : "—";
-    const nowEl = document.getElementById("wxNowTemp");
-    if (nowEl) {
-      if (clock.now_f != null && isFinite(Number(clock.now_f))) {
-        nowEl.textContent = Math.round(Number(clock.now_f)) + "°F" + (clock.temp_stale ? " · STALE" : "");
-      } else {
-        nowEl.textContent = clock.temp_stale ? "STALE" : "—";
+      if (dualSub) {
+        const tick = m.kalshi_ticker || clock.ticker || "KXHIGHTDAL";
+        const br = clock.bracket || m.bracket || "";
+        dualSub.textContent = "DALLAS · " + String(tick) + (br ? (" · " + br) : "");
       }
-    }
-    if (wxSubs) {
-      wxSubs.hidden = !front;
-      const subs = frontSubsOf((typeof frontBoard !== "undefined" ? frontBoard : null) || ts);
-      FRONT_SUB_IDS.forEach(function (id) {
-        const el = wxSubs.querySelector('[data-wx-sub="' + id + '"]');
-        const row = subs.find(function (s) { return String(s.id || "").toUpperCase() === id; });
-        if (el) {
-          el.textContent = id + " " + ((row && row.line) || "—");
-          el.setAttribute("data-tone", (row && row.tone) || "miss");
+      if (cityEl) cityEl.textContent = "DFW";
+      if (cliEl) cliEl.textContent = display;
+      if (kh) {
+        const kind = String(clock.strike_type || m.strike_type || "").toLowerCase();
+        if (kind === "between" && m.floor_strike != null && m.cap_strike != null) {
+          kh.textContent = Math.round(Number(m.floor_strike)) + "–" + Math.round(Number(m.cap_strike)) + "°F";
+        } else if (clock.kalshi_high != null) {
+          kh.textContent = Math.round(Number(clock.kalshi_high)) + "°F";
+        } else {
+          kh.textContent = clock.bracket || "—";
         }
-      });
+      }
+      if (nh) nh.textContent = clock.nws_high != null ? (Math.round(Number(clock.nws_high)) + "°F") : "—";
+      const nowEl = document.getElementById("wxNowTemp");
+      if (nowEl) {
+        if (clock.now_f != null && isFinite(Number(clock.now_f))) {
+          nowEl.textContent = Math.round(Number(clock.now_f)) + "°F" + (clock.temp_stale ? " · STALE" : "");
+        } else {
+          nowEl.textContent = clock.temp_stale ? "STALE" : "—";
+        }
+      }
+      if (wxSubs) {
+        wxSubs.hidden = !front;
+        const subs = frontSubsOf((typeof frontBoard !== "undefined" ? frontBoard : null) || ts);
+        FRONT_SUB_IDS.forEach(function (id) {
+          const el = wxSubs.querySelector('[data-wx-sub="' + id + '"]');
+          const row = subs.find(function (s) { return String(s.id || "").toUpperCase() === id; });
+          if (el) {
+            el.textContent = id + " " + ((row && row.line) || "—");
+            el.setAttribute("data-tone", (row && row.tone) || "miss");
+          }
+        });
+      }
+      const upEl = document.getElementById("liveUpPct");
+      const dnEl = document.getElementById("liveDownPct");
+      if (upEl) upEl.textContent = displayDir((ts.decision && ts.decision.direction) || "WAIT");
+      if (dnEl) dnEl.textContent = clock.bracket || "CLI";
+      return true;
     }
-    const upEl = document.getElementById("liveUpPct");
-    const dnEl = document.getElementById("liveDownPct");
-    if (upEl) upEl.textContent = displayDir((ts.decision && ts.decision.direction) || "WAIT");
-    if (dnEl) dnEl.textContent = clock.bracket || "CLI";
+    if (ats) {
+      if (ledLabel) ledLabel.textContent = "KICK";
+      const ts = (typeof tableState === "function" ? tableState("ats") : null) || {};
+      const pick = ts.pick || {};
+      const m = ts.market || {};
+      const clock = m.clock || ts.clock || {};
+      let secs = clock.seconds_to_kick;
+      if (secs == null) secs = secondsLeftOf(m);
+      if (secs == null && (pick.close_time || clock.close_time || m.close_time)) {
+        const close = pick.close_time || clock.close_time || m.close_time;
+        secs = Math.floor((new Date(close) - Date.now()) / 1000);
+      }
+      const display = fmtCliLeft(secs);
+      if (ledT) ledT.textContent = display;
+      const timEl = document.getElementById("windowTimer");
+      if (timEl) timEl.textContent = display;
+      if (ledSub) {
+        if (secs == null) ledSub.textContent = "CLOCK IS DARK";
+        else if (Number(secs) <= 0) ledSub.textContent = "THEY'RE OFF";
+        else ledSub.textContent = "to kickoff · the game";
+      }
+      if (dualSub) {
+        const game = pick.game || clock.game || "NO GAME";
+        const num = pick.number || clock.number || "";
+        dualSub.textContent = game + (num ? (" · " + num) : "");
+      }
+      try { paintAtsGameStrip(ts); } catch (e) {}
+      return true;
+    }
+    if (ledLabel) ledLabel.textContent = "1H WINDOW";
+    if (atsStrip) atsStrip.hidden = true;
+    return false;
   }
   function dockWindowLed() {
     const led = document.getElementById("windowLed");
@@ -8639,8 +8733,10 @@ function drawCandleChart() {
     const book = liveBookOdds(m);
     if (upEl) upEl.textContent = book ? book.up.toFixed(1) + "%" : "—";
     if (dnEl) dnEl.textContent = book ? book.down.toFixed(1) + "%" : "—";
-    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
-      try { paintFrontWindowChrome(); } catch (e) {}
+    let deskChrome = false;
+    try { deskChrome = !!paintFrontWindowChrome(); } catch (e) { deskChrome = false; }
+    if (deskChrome) {
+      /* Front CLI / ATS kick — do not stamp the crypto 1H hour clock. */
     } else if (timEl || document.getElementById("ledWindowTime")) {
       let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
       if (secs == null && m.close_time) {

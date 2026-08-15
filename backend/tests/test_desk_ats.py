@@ -470,6 +470,49 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertNotIn("ares-kc.jpg", JS + HTML)
         self.assertNotIn("ares-dal.jpg", JS + HTML)
 
+    def test_one_ares_portrait_not_stacked(self):
+        paint = JS.split("function paintAresEyes", 1)[1].split("function drawAresEyeTint", 1)[0]
+        self.assertIn("face.hidden = true", paint)
+        self.assertNotIn("face.hidden = !show", paint)
+        self.assertIn("Never unhide the HTML overlay", paint)
+        self.assertIn("function drawAresEyeTint", JS)
+        self.assertIn('aresPortrait.src = "/static/ares-chair.png"', JS)
+        self.assertIn("containPortrait(img", JS)
+        face_css = CSS[CSS.find(".ares-face"): CSS.find(".ats-sub")]
+        self.assertIn("display: none !important", face_css)
+
+    def test_ats_window_is_game_kick_not_1h(self):
+        self.assertIn("def build_game_clock", ATS)
+        self.assertIn('"kind": "game"', ATS)
+        self.assertIn("seconds_to_kick", ATS)
+        chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
+        self.assertIn('ledLabel.textContent = "KICK"', chrome)
+        self.assertIn("to kickoff · the game", chrome)
+        self.assertIn("seconds_to_kick", chrome)
+        self.assertIn("window_kind: \"game\"", JS)
+        pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
+        self.assertIn("isAtsTable(focusTable)", pair)
+        self.assertIn('setPairWindowChip(canvas, "")', pair)
+        clock = desk_ats.build_game_clock(
+            {"close_time": "2026-08-16T00:00:00Z", "game": "DAL SEA", "number": "SEA -6.5"},
+            now=NOW,
+        )
+        self.assertEqual(clock["kind"], "game")
+        self.assertEqual(clock["label"], "KICK")
+        self.assertGreater(clock["seconds_to_kick"], 0)
+        self.assertNotIn("1H", clock["label"])
+        self.assertIn("KICK IN", clock["line"])
+
+    def test_ats_bet_chrome_not_crypto(self):
+        self.assertIn('id="atsGameStrip"', HTML)
+        self.assertIn("function paintAtsGameStrip", JS)
+        self.assertIn('GAME <b id="atsGameName"', HTML)
+        self.assertIn('LINE <b id="atsGameLine"', HTML)
+        self.assertIn("function paintAtsWhy", JS)
+        self.assertIn("function paintAtsWatch", JS)
+        self.assertIn("body[data-focus-table=\"ats\"] .chart-window-chip", CSS)
+        self.assertIn("body[data-focus-table=\"ats\"] .chart-ktarget-chip", CSS)
+
     def test_front_weather_seats_not_stripped(self):
         self.assertIn("GLASS", HTML)
         self.assertIn("PIT", HTML)

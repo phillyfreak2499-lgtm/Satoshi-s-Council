@@ -8036,6 +8036,8 @@ html body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
 .ares-face[data-eye="over"] { --ares-eye-a: #FF6A1A; --ares-eye-b: #FFC14A; }
 .ares-face[data-eye="under"] { --ares-eye-a: #3DE0FF; --ares-eye-b: #00E8FF; }
 .ares-face[data-eye="team"] { --ares-eye-a: var(--ares-eye-a); --ares-eye-b: var(--ares-eye-b); }
+/* Canvas portrait + eye tint only — never stack the HTML Ares photo on top. */
+.ares-face,
 body:not([data-focus-table="ats"]) .ares-face,
 body.mode-floor .ares-face,
 body.mode-night .ares-face,
@@ -8058,6 +8060,16 @@ body.charts-hero-ats .chart-card.chart-pair-eth {
 body[data-focus-table="ats"] #atsChartTape,
 body.charts-hero-ats #atsChartTape {
   display: block !important;
+}
+body[data-focus-table="front"] .chart-window-chip,
+body[data-focus-table="ats"] .chart-window-chip,
+body[data-focus-table="front"] .chart-ktarget-chip,
+body[data-focus-table="ats"] .chart-ktarget-chip,
+body.charts-hero-front .chart-window-chip,
+body.charts-hero-ats .chart-window-chip,
+body.charts-hero-front .chart-ktarget-chip,
+body.charts-hero-ats .chart-ktarget-chip {
+  display: none !important;
 }
 .ats-chart-line {
   font-family: Orbitron, monospace;

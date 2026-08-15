@@ -706,13 +706,21 @@ class FrontFocusWeatherDeskTests(unittest.TestCase):
     def test_no_1h_chip_on_front_focus(self):
         self.assertIn("function paintFrontWindowChrome", JS)
         chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
-        self.assertIn('ledLabel.textContent = front ? "DFW HIGH" : "1H WINDOW"', JS)
+        self.assertIn('ledLabel.textContent = "DFW HIGH"', chrome)
         self.assertIn('"DFW HIGH"', chrome)
         self.assertIn("to CLI · next bet", chrome)
         self.assertIn("waiting on DFW CLI", chrome)
         self.assertIn("charts-hero-front", JS)
         self.assertIn("window_kind: \"cli\"", JS)
         self.assertIn("No Dallas book — waiting on DFW CLI", JS)
+        self.assertIn('id="wxCity"', HTML)
+        self.assertIn('id="wxCliWindow"', HTML)
+        self.assertIn("DALLAS", HTML)
+        self.assertIn("deskBook", JS)
+        pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
+        self.assertIn("isFrontTable(focusTable)", pair)
+        self.assertIn('setPairWindowChip(canvas, "1H WINDOW")', JS)
+        self.assertIn('setPairWindowChip(canvas, "")', pair)
         view = JS.split("function getViewState()", 1)[1].split("function deskLockSnapshot", 1)[0]
         self.assertIn('isFrontTable(focusTable)', view)
         self.assertIn('tableState("front")', view)
