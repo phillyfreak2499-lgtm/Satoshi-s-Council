@@ -4,13 +4,13 @@
 
 ## What this is
 A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).  
-The Chair (Satoshi) locks **exactly one** high-quality paper call per window — UP or DOWN — only when the chosen side offers best odds (under 80¢). Otherwise WAIT.
+The Chair (Satoshi) locks **exactly one** high-quality paper call per window — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.
 
 This is a research co-pilot. It does **not** place real orders.
 
 ## GOAL CONTRACT (non-negotiable)
 1. One directional guess per 15-minute window on how the window ends.
-2. Taken only at the best available odds (chosen side < 80¢).
+2. Taken only at the best available odds (book inside 10–90¢).
 3. Once locked → irreversible for that window.
 4. WAIT preferred over low-edge or noisy calls.
 
@@ -24,7 +24,7 @@ This is a research co-pilot. It does **not** place real orders.
 1. Specialists vote UP / DOWN / WAIT.
 2. Higher-ranked bots count more.
 3. Chair requires confluence + pair affinity.
-4. Odds gate: chosen side must be under 80¢.
+4. Odds gate: book must be inside 10–90¢. Never play 99¢ chalk.
 5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.
 6. After lock, the plaque is what followers and the UI follow.
 
@@ -59,7 +59,7 @@ Poll `/api/state` and read `locked_call` (or `decision.locked_call`):
   "entry_odds_pct": 61,
   "irreversible": true,
   "ticker": "KXBTC15M-...",
-  "goal": "GOAL · 1 window-end guess @ best odds (<80%)"
+  "goal": "GOAL · 1 window-end guess @ best odds (10–90¢)"
 }
 ```
 

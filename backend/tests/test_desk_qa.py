@@ -637,7 +637,7 @@ def _floor_hud_layout(w, h, view="floor"):
                 "y": plate_y - 14,
                 "w": gw,
                 "h": 28,
-                "text": "GOAL · one guess @ best odds (<80%)",
+                "text": "GOAL · one guess @ best odds (10–90¢)",
             }
         )
         nw = _text_w("SATOSHI", 11)
@@ -653,7 +653,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": 27,
                     "w": 120,
                     "h": 18,
-                    "text": "GOAL · one guess @ best odds (<80%)",
+                    "text": "GOAL · one guess @ best odds (10–90¢)",
                 }
             )
             nw = _text_w("SATOSHI", 10)
@@ -667,7 +667,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": plate_y - 14,
                     "w": gw,
                     "h": 28,
-                    "text": "GOAL · one guess @ best odds (<80%)",
+                    "text": "GOAL · one guess @ best odds (10–90¢)",
                 }
             )
             nw = _text_w("SATOSHI", 10)
@@ -752,8 +752,8 @@ class PacksNotDroppedTests(unittest.TestCase):
         liq = (ROOT / "backend" / "agents" / "liq.py").read_text(encoding="utf-8")
         self.assertIn("not_p_finish", liq)
         cfg = (ROOT / "backend" / "config.py").read_text(encoding="utf-8")
-        self.assertIn("PLAYABLE_MID_MIN: float = 20.0", cfg)
-        self.assertIn("PLAYABLE_MID_MAX: float = 80.0", cfg)
+        self.assertIn("PLAYABLE_MID_MIN: float = 10.0", cfg)
+        self.assertIn("PLAYABLE_MID_MAX: float = 90.0", cfg)
         self.assertIn("ETH_RELIABILITY_MIN_N", cfg)
         self.assertIn("Do NOT shrink the hard band to 45–55", cfg)
         gate = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encoding="utf-8")

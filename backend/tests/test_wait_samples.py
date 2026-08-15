@@ -46,6 +46,7 @@ class WaitReasonAndGradeTests(unittest.TestCase):
         self.assertEqual(classify_wait_reason("WAIT · unknown book — no lock"), "unknown_book")
         self.assertEqual(classify_wait_reason("WAIT · thin book (need ≥5 size) — no lock"), "no_depth")
         self.assertEqual(classify_wait_reason("WAIT · odds 18¢ outside 20–80¢"), "odds_outside_20_80")
+        self.assertEqual(classify_wait_reason("WAIT · odds 5¢ outside 10–90¢"), "odds_outside_20_80")
         self.assertEqual(
             classify_wait_reason("WAIT", {"top_conflict": True, "summary": "top-3 conflict"}),
             "top_3_conflict",
@@ -96,8 +97,10 @@ class WaitReasonAndGradeTests(unittest.TestCase):
         self.assertIn("EARLY_NO_LOCK_MINS", LEADER)
         self.assertIn("dead_book_reason", LEADER)
         self.assertTrue(playable_yes_mid(50))
-        self.assertFalse(playable_yes_mid(12))
-        self.assertIn("outside 20–80", dead_book_reason(None, "UP", 12) or "")
+        self.assertTrue(playable_yes_mid(12))
+        self.assertTrue(playable_yes_mid(88))
+        self.assertFalse(playable_yes_mid(9))
+        self.assertIn("outside 10–90", dead_book_reason(None, "UP", 5) or "")
         lock = decide_open_lock_grade(
             ticker="KXBTCD-26AUG1415-T62999.99",
             direction="WAIT",

@@ -86,6 +86,9 @@ class ClampAndEvTests(unittest.TestCase):
         self.assertTrue(ev_gate_blocks(0.50, 10.0, 0.55, 3.0))
         self.assertTrue(ev_gate_blocks(0.70, 2.0, 0.55, 3.0))
         self.assertFalse(ev_gate_blocks(0.70, 18.0, 0.55, 3.0))
+        # Calibrate still requires EV ≥ 0 — 10–90 does not drop this gate.
+        self.assertTrue(ev_gate_blocks(0.70, -5.0, 0.55, 0.0))
+        self.assertFalse(ev_gate_blocks(0.70, 0.0, 0.55, 0.0))
 
 
 class TimeHurdleTests(unittest.TestCase):
@@ -590,7 +593,19 @@ class ExplorePaperLockTests(unittest.TestCase):
         self.assertTrue(explore_paper_lock_ok(0.62, 2.0, 48))
         self.assertFalse(explore_paper_lock_ok(0.50, 4.0, 48))
         self.assertFalse(explore_paper_lock_ok(0.62, -1.0, 48))
-        self.assertFalse(explore_paper_lock_ok(0.62, 2.0, 12))
+        self.assertTrue(explore_paper_lock_ok(0.62, 2.0, 12))
+        # 10–90 opens the band; EV ≥ 0 is still required (explore and calibrate).
+        self.assertTrue(explore_paper_lock_ok(0.95, 4.0, 88))
+        self.assertTrue(explore_paper_lock_ok(0.90, 2.0, 82))
+        self.assertFalse(explore_paper_lock_ok(0.62, -8.0, 88))
+        self.assertFalse(explore_paper_lock_ok(0.62, -5.0, 82))
+        self.assertFalse(explore_paper_lock_ok(0.50, 4.0, 88))
+        self.assertFalse(explore_paper_lock_ok(0.62, 2.0, 9))
+        self.assertFalse(explore_paper_lock_ok(0.62, 2.0, 91))
+        self.assertFalse(explore_paper_lock_ok(0.99, 20.0, 99))
+        self.assertTrue(ev_gate_blocks(0.70, -5.0, 0.55, 0.0))
+        self.assertTrue(ev_gate_blocks(0.70, -5.0, 0.55, 3.0))
+        self.assertFalse(ev_gate_blocks(0.70, 4.0, 0.55, 0.0))
         self.assertTrue(paper_lock_day_ok(0, 5))
         self.assertTrue(paper_lock_day_ok(4, 5))
         self.assertFalse(paper_lock_day_ok(5, 5))
@@ -636,6 +651,72 @@ class ExplorePaperLockTests(unittest.TestCase):
         )
         self.assertEqual(out["direction"], "WAIT")
         self.assertFalse(out.get("window_locked"))
+
+    def _fresh_explore_chair(self):
+        chair = Leader()
+        chair.update_edge_from_accuracy({"total": 3, "reliability_n": 3, "verdict": "COLLECTING"})
+        return chair
+
+    def _up_signals(self):
+        from backend.agents.base import AgentSignal
+        names = (
+            "candle", "volume", "momentum", "orderflow", "odds",
+            "strike", "quorum", "cheap", "whale",
+        )
+        return [AgentSignal(n, "UP", 82, "test", n) for n in names]
+
+    def test_explore_12c_and_88c_pass_band_99_hard_no(self):
+        cheap = self._fresh_explore_chair().synthesize(
+            self._mixed_signals(),
+            self._btc_regime(
+                up_pct=12,
+                yes_ask=13,
+                no_ask=88,
+                yes_mid=12,
+                side_ask=13,
+                book_depth={
+                    **self._book(),
+                    "yes_bid_px": 11,
+                    "no_bid_px": 87,
+                },
+            ),
+        )
+        self.assertNotIn("outside 10–90", (cheap.get("summary") or ""))
+        self.assertNotIn("dead book", (cheap.get("summary") or "").lower())
+        self.assertIn(cheap["direction"], ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
+        self.assertTrue(cheap.get("window_locked") or (cheap.get("locked_call") or {}).get("locked"))
+
+        # 88¢ is inside 10–90, but typical P(finish) makes EV < 0 after half-spread → WAIT.
+        rich = self._fresh_explore_chair().synthesize(
+            self._up_signals(),
+            self._btc_regime(
+                up_pct=88,
+                yes_ask=88,
+                no_ask=13,
+                yes_mid=88,
+                side_ask=88,
+                book_depth={
+                    **self._book(),
+                    "yes_bid_px": 87,
+                    "no_bid_px": 12,
+                },
+            ),
+        )
+        self.assertNotIn("outside 10–90", (rich.get("summary") or ""))
+        self.assertNotIn("already 88", (rich.get("summary") or "").lower())
+        self.assertEqual(rich["direction"], "WAIT")
+        self.assertFalse(rich.get("window_locked"))
+        self.assertIn("EV", rich.get("summary") or "")
+
+        wall = self._fresh_explore_chair().synthesize(
+            self._mixed_signals(),
+            self._btc_regime(yes_ask=99, no_ask=1, up_pct=99, yes_mid=99, side_ask=99),
+        )
+        self.assertEqual(wall["direction"], "WAIT")
+        self.assertFalse(wall.get("window_locked"))
+        self.assertTrue(
+            "99" in (wall.get("summary") or "") or "never lock" in (wall.get("summary") or "").lower()
+        )
 
     def test_eth_explore_still_gated(self):
         chair = Leader()

@@ -2,7 +2,7 @@
 
 Implemented:
 - MAX_CALLS_PER_WINDOW = 1 (hard, irreversible)
-- MAX_ENTRY_ODDS_PCT = 80.0 — only lock if chosen side mid < 80¢
+- MAX_ENTRY_ODDS_PCT = 90.0 — paper lock band is 10–90¢ (never 99¢ chalk)
 - GOAL_CONTRACT in base.py + leader summaries + DOCTRINE.md
 - locked_call object on decision /api/state for follower bots
 - UI: specialist bots moved to outer FLOOR ring; table reserved for Chair + LOCKED plaque with “FOLLOW” label

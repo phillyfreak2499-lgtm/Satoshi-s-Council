@@ -666,7 +666,14 @@ def classify_wait_reason(
         return "dead_book"
     if "thin book" in text or "no depth" in text or "need ≥" in text or "need >=" in text or "sample too thin" in text:
         return "no_depth"
-    if "outside 20" in text or "outside 20–80" in text or "outside 20-80" in text:
+    if (
+        "outside 20" in text
+        or "outside 20–80" in text
+        or "outside 20-80" in text
+        or "outside 10" in text
+        or "outside 10–90" in text
+        or "outside 10-90" in text
+    ):
         return "odds_outside_20_80"
     if "insufficient confluence" in text or "need stronger confluence" in text or "low confluence" in text:
         return "low_confluence"
@@ -946,11 +953,36 @@ def book_is_unknown(depth: Dict[str, Any] | None) -> bool:
     return bool(y0 and n0)
 
 
-def playable_yes_mid(yes_mid: Any, lo: float = 20.0, hi: float = 80.0) -> bool:
-    """Only play hours where YES mid is roughly 20–80¢."""
+def playable_band_cents() -> tuple[float, float]:
+    """Paper Chair YES-mid band. Single source: PLAYABLE_MID_MIN/MAX (10–90)."""
+    try:
+        from backend.config import settings
+        lo = float(getattr(settings, "PLAYABLE_MID_MIN", 10.0))
+        hi = float(getattr(settings, "PLAYABLE_MID_MAX", 90.0))
+    except Exception:
+        lo, hi = 10.0, 90.0
+    return lo, hi
+
+
+def playable_band_label(lo: float | None = None, hi: float | None = None) -> str:
+    blo, bhi = playable_band_cents()
+    if lo is None:
+        lo = blo
+    if hi is None:
+        hi = bhi
+    return f"{float(lo):.0f}–{float(hi):.0f}¢"
+
+
+def playable_yes_mid(yes_mid: Any, lo: float | None = None, hi: float | None = None) -> bool:
+    """Only play hours where YES mid is inside the 10–90¢ band."""
     mid = odds_to_cents(yes_mid)
     if mid is None:
         return False
+    blo, bhi = playable_band_cents()
+    if lo is None:
+        lo = blo
+    if hi is None:
+        hi = bhi
     return float(lo) <= mid <= float(hi)
 
 
@@ -999,18 +1031,20 @@ def dead_book_reason(
     depth: Dict[str, Any] | None,
     side: str | None,
     yes_mid: Any = None,
-    max_side: float = 80.0,
+    max_side: float | None = None,
 ) -> Optional[str]:
     """
-    Skip dead hours: chosen side ≥80¢, mid outside 20–80, or a book we
+    Skip dead hours: chosen side ≥ playable cap, mid outside 10–90, or a book we
     actually measured that is empty / one-sided (99¢ / 1¢ wall).
 
     Null depth (both sides 0 / null / missing, not measured) is UNKNOWN.
     Do not auto-WAIT on unknown — that is not a dead book.
     """
+    if max_side is None:
+        _, max_side = playable_band_cents()
     mid = odds_to_cents(yes_mid)
     if mid is not None and not playable_yes_mid(mid):
-        return f"YES mid {mid:.0f}¢ outside 20–80¢"
+        return f"YES mid {mid:.0f}¢ outside {playable_band_label()}"
     if side not in ("UP", "DOWN"):
         return None
     if mid is not None:
@@ -1054,7 +1088,7 @@ def never_lock_near_certain(
 ) -> Optional[str]:
     """
     Hard stop: never lock ≥99¢ or a one-sided 100¢ book.
-    Stays in force even if the 80¢ playable cap is later raised.
+    Stays in force even if the playable cap is later raised.
     """
     ya = odds_to_cents(yes_ask)
     na = odds_to_cents(no_ask)
@@ -1078,7 +1112,7 @@ def never_lock_near_certain(
 
 def zach_band_skips_preferred(yes_mid: Any, leftover: Any, min_leftover: float = 0.0) -> bool:
     """
-    20–80¢ two-sided with leftover after vig is playable.
+    10–90¢ two-sided with leftover after vig is playable.
     Do not WAIT solely for sitting outside 40–65 / 45–55.
     """
     try:
@@ -1099,7 +1133,7 @@ def zach_bar_reason(
     side_ask: Any = None,
 ) -> Optional[str]:
     """
-    Zach’s bar: 20–80¢ two-sided + leftover at the ask after fee.
+    Zach’s bar: 10–90¢ two-sided + leftover at the ask after fee.
     Never a 45–55-only band. ≥99¢ / one-sided 100¢ never lock.
     """
     near = never_lock_near_certain(yes_ask, no_ask, side_odds=side_ask)
@@ -1108,7 +1142,7 @@ def zach_bar_reason(
     mid = yes_mid if yes_mid is not None else yes_ask
     mid_c = odds_to_cents(mid)
     if mid_c is not None and not playable_yes_mid(mid_c):
-        return f"YES mid {mid_c:.0f}¢ outside 20–80¢"
+        return f"YES mid {mid_c:.0f}¢ outside {playable_band_label()}"
     ask = odds_to_cents(side_ask if side_ask is not None else yes_ask)
     if ask is None or p_finish is None:
         return "no leftover at the ask after vig"
@@ -1403,7 +1437,10 @@ def explore_paper_lock_ok(
     min_p: float | None = None,
     min_ev: float | None = None,
 ) -> bool:
-    """P(finish) ≥ 0.55, EV ≥ 0 after half-spread, 20–80 band."""
+    """P(finish) ≥ 0.55, EV ≥ 0 after half-spread, 10–90 band.
+
+    The wider band does not drop the EV gate. 82¢ / 88¢ still FAIL when EV < 0.
+    """
     if min_p is None:
         try:
             from backend.config import settings

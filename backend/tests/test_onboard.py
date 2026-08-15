@@ -89,7 +89,7 @@ class GuidedTutorialTests(unittest.TestCase):
         self.assertIn("KXBTC15M", JS)
         self.assertIn("research co-pilot", JS)
         self.assertIn("does not place real orders", JS)
-        self.assertIn("under 80¢", JS)
+        self.assertIn("10–90¢", JS)
         self.assertIn("locked_call", JS)
         self.assertIn("HIT RATE", JS)
         self.assertIn("WAIT excluded", JS)
