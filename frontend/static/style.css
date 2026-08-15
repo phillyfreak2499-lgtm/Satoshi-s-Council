@@ -3613,7 +3613,8 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 .summon-video-wrap,
 .celebrate-video-wrap,
 #summonVideoWrap,
-#celebrateVideoWrap {
+#celebrateVideoWrap,
+#leaderClickWrap {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
@@ -3635,6 +3636,7 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 .summon-video-wrap.hidden,
 .celebrate-video-wrap.hidden,
 #celebrateVideoWrap.hidden,
+#leaderClickWrap.hidden,
 #summonVideoWrap:not(.active),
 #summonVideoWrap.hidden,
 .summon-video-wrap:not(.active) {
@@ -3657,6 +3659,7 @@ body[data-focus-table="ethereum"] #focusBtc.focus-active {
 .celebrate-video-wrap video,
 #summonVideo,
 #celebrateVideo,
+#leaderClickVideo,
 .summon-video {
   width: 100% !important;
   height: 100% !important;
@@ -4347,12 +4350,25 @@ body.beast-mode.mode-art #tabScreensaver.active {
 }
 
 /* Cinematic is an overlay only — never take over layout / resize the desk */
-body.zt-cinematic #celebrateVideoWrap:not(.hidden),
-body.zt-cinematic #leaderClickWrap:not(.hidden) {
+body.zt-cinematic #celebrateVideoWrap:not(.hidden) {
   z-index: 10080 !important;
+}
+body.leader-clip-on #leaderClickWrap:not(.hidden),
+#leaderClickWrap.active {
+  z-index: 10080 !important;
+  cursor: pointer;
 }
 #leaderClickWrap {
   cursor: pointer;
+}
+#leaderClickFallback {
+  display: none !important;
+}
+body.floor-mode #roundtable,
+body.mode-floor #roundtable,
+body.floor-mode #tableStage,
+body.mode-floor #tableStage {
+  pointer-events: auto !important;
 }
 #roundtable.chair-hot {
   cursor: pointer;

@@ -5995,6 +5995,8 @@ function drawCandleChart() {
 
   let leaderClickPlaying = false;
   function playLeaderClickVideo() {
+    // Gesture-only Floor clip. Uses frontend/static/leader-click.mp4.
+    // No title card. Portraits keep drawing underneath. Esc/click dismiss.
     const wrap = document.getElementById("leaderClickWrap");
     const vid = document.getElementById("leaderClickVideo");
     const skipBtn = document.getElementById("leaderClickSkip");
@@ -6002,18 +6004,22 @@ function drawCandleChart() {
     if (!wrap || !vid) return;
     if (leaderClickPlaying || celebratePlaying) return;
     if (document.body.classList.contains("gate-locked")) return;
+    if (mode !== "floor") return;
 
     leaderClickPlaying = true;
-    document.body.classList.add("zt-cinematic");
+    document.body.classList.add("leader-clip-on");
+    document.body.classList.remove("zt-cinematic");
     ensureAudio();
     wrap.classList.remove("hidden");
     wrap.classList.add("active");
     wrap.setAttribute("aria-hidden", "false");
     if (fallback) {
-      fallback.hidden = false;
+      fallback.hidden = true;
       fallback.textContent = "";
     }
-    fitVideoToScreen(vid);
+    if (typeof fitVideoToScreen === "function") {
+      try { fitVideoToScreen(vid); } catch (e) {}
+    }
     vid.muted = !!soundMuted;
     vid.playsInline = true;
     vid.setAttribute("playsinline", "");
@@ -6026,13 +6032,17 @@ function drawCandleChart() {
     const cleanup = () => {
       if (!leaderClickPlaying) return false;
       leaderClickPlaying = false;
+      document.body.classList.remove("leader-clip-on");
       document.body.classList.remove("zt-cinematic");
       try { vid.pause(); } catch (e) {}
       try { vid.currentTime = 0; } catch (e) {}
       wrap.classList.add("hidden");
       wrap.classList.remove("active");
       wrap.setAttribute("aria-hidden", "true");
-      if (fallback) fallback.hidden = true;
+      if (fallback) {
+        fallback.hidden = true;
+        fallback.textContent = "";
+      }
       try {
         if (typeof window.__floorMusicUnduck === "function") window.__floorMusicUnduck();
       } catch (e) {}
@@ -6044,8 +6054,7 @@ function drawCandleChart() {
       return true;
     };
 
-    const onEnded = () => cleanup();
-    vid.onended = onEnded;
+    vid.onended = () => cleanup();
     if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
     wrap.onclick = () => cleanup();
 
@@ -6070,7 +6079,7 @@ function drawCandleChart() {
     const tryNext = () => {
       if (!leaderClickPlaying) return;
       if (srcIdx >= sources.length) {
-        if (fallback) fallback.hidden = false;
+        if (fallback) fallback.hidden = true;
         return;
       }
       const url = sources[srcIdx++];
@@ -6079,7 +6088,7 @@ function drawCandleChart() {
       vid.src = url;
       try { vid.load(); } catch (e) { tryNext(); }
     };
-    if (vid.readyState >= 2 && vid.currentSrc) {
+    if (vid.readyState >= 2 && vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc)) {
       playReady();
     } else {
       tryNext();
@@ -6397,17 +6406,20 @@ function drawCandleChart() {
   }
 
   function wireFloorChairClicks() {
-    if (!canvas || canvas.__chairClickWired) return;
-    canvas.__chairClickWired = true;
-    canvas.addEventListener("pointermove", (e) => {
+    const stage = document.getElementById("tableStage");
+    const targets = [canvas, stage].filter(Boolean);
+    const already = targets.every((el) => el.__chairClickWired);
+    if (!targets.length || already) return;
+    const onMove = (e) => {
+      if (!canvas) return;
       if (mode !== "floor" || leaderClickPlaying) {
         canvas.classList.remove("chair-hot");
         return;
       }
       const pt = canvasCssPoint(e);
       canvas.classList.toggle("chair-hot", !!(pt && chairHitAt(pt.x, pt.y)));
-    });
-    canvas.addEventListener("click", (e) => {
+    };
+    const onGesture = (e) => {
       if (mode !== "floor" || leaderClickPlaying || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
@@ -6415,6 +6427,13 @@ function drawCandleChart() {
       e.preventDefault();
       e.stopPropagation();
       playLeaderClickVideo();
+    };
+    targets.forEach((el) => {
+      if (el.__chairClickWired) return;
+      el.__chairClickWired = true;
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onGesture);
+      el.addEventListener("click", onGesture);
     });
   }
   wireFloorChairClicks();
