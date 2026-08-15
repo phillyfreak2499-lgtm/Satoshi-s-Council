@@ -3756,7 +3756,12 @@ body[data-focus-table="front"] .acc-strip,
 body[data-focus-table="ats"] #paperAutoSummary,
 body[data-focus-table="front"] #paperAutoSummary,
 body[data-focus-table="ats"] #stripFunding,
-body[data-focus-table="front"] #kalshiTicker {
+body[data-focus-table="ats"] #dualFightCard,
+body[data-focus-table="front"] #dualFightCard,
+body[data-focus-table="ats"] #stripKalshi,
+body[data-focus-table="front"] #stripKalshi,
+body[data-focus-table="ats"] .window-timer,
+body[data-focus-table="front"] .window-timer {
   display: none !important;
 }
 body[data-focus-table="ats"] #ledWindowTime {
@@ -8077,7 +8082,19 @@ body.mode-settings .ares-face { display: none !important; }
 body[data-focus-table="ats"] .chart-card.chart-pair-btc,
 body[data-focus-table="ats"] .chart-card.chart-pair-eth,
 body.charts-hero-ats .chart-card.chart-pair-btc,
-body.charts-hero-ats .chart-card.chart-pair-eth {
+body.charts-hero-ats .chart-card.chart-pair-eth,
+body[data-focus-table="ats"] .chart-card.chart-crypto-odds,
+body[data-focus-table="ats"] .chart-card.chart-crypto-delta,
+body[data-focus-table="ats"] .chart-card.chart-crypto-funding,
+body.charts-hero-ats .chart-card.chart-crypto-odds,
+body.charts-hero-ats .chart-card.chart-crypto-delta,
+body.charts-hero-ats .chart-card.chart-crypto-funding,
+body[data-focus-table="front"] .chart-card.chart-crypto-odds,
+body[data-focus-table="front"] .chart-card.chart-crypto-delta,
+body[data-focus-table="front"] .chart-card.chart-crypto-funding,
+body.charts-hero-front .chart-card.chart-crypto-odds,
+body.charts-hero-front .chart-card.chart-crypto-delta,
+body.charts-hero-front .chart-card.chart-crypto-funding {
   display: none !important;
 }
 body[data-focus-table="ats"] #atsChartTape,

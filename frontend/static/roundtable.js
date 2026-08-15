@@ -5137,6 +5137,10 @@ function drawCandleChart() {
       ethCard.classList.toggle("chart-hero-off", !eth || !!front || !!ats);
       ethCard.hidden = !eth || !!front || !!ats;
     }
+    document.querySelectorAll(".chart-card.chart-crypto-odds, .chart-card.chart-crypto-delta, .chart-card.chart-crypto-funding").forEach(function (card) {
+      card.classList.toggle("chart-hero-off", !!front || !!ats);
+      card.hidden = !!front || !!ats;
+    });
   }
   function setChartNoFeed(canvas, empty) {
     const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
@@ -5837,6 +5841,11 @@ function drawCandleChart() {
       }
     }
 
+    const fightCard = document.getElementById("dualFightCard");
+    const deskBook = (typeof isAtsTable === "function" && isAtsTable(focusTable))
+      || (typeof isFrontTable === "function" && isFrontTable(focusTable));
+    if (fightCard) fightCard.hidden = !!deskBook;
+    if (deskBook) return;
     const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
     const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
     const btcEl = document.getElementById("dualFightBtc");

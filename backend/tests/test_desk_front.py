@@ -725,6 +725,11 @@ class FrontFocusWeatherDeskTests(unittest.TestCase):
         self.assertIn("DALLAS", HTML)
         self.assertIn("BRACKET", HTML)
         self.assertIn("deskBook", JS)
+        self.assertIn("body[data-focus-table=\"front\"] #dualFightCard", CSS)
+        self.assertIn("body[data-focus-table=\"front\"] #stripKalshi", CSS)
+        self.assertIn("body[data-focus-table=\"front\"] .window-timer", CSS)
+        self.assertIn("chart-crypto-odds", HTML + CSS + JS)
+        self.assertIn("body[data-focus-table=\"front\"] .chart-card.chart-crypto-funding", CSS)
         pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
         self.assertIn("isFrontTable(focusTable)", pair)
         self.assertIn('setPairWindowChip(canvas, "1H WINDOW")', JS)

@@ -535,6 +535,18 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertIn("function paintAtsWatch", JS)
         self.assertIn("body[data-focus-table=\"ats\"] .chart-window-chip", CSS)
         self.assertIn("body[data-focus-table=\"ats\"] .chart-ktarget-chip", CSS)
+        self.assertIn('id="dualFightCard"', HTML)
+        self.assertIn('id="stripKalshi"', HTML)
+        self.assertIn("body[data-focus-table=\"ats\"] #dualFightCard", CSS)
+        self.assertIn("body[data-focus-table=\"ats\"] #stripKalshi", CSS)
+        self.assertIn("body[data-focus-table=\"ats\"] .window-timer", CSS)
+        self.assertIn("chart-crypto-odds", HTML + CSS + JS)
+        self.assertIn("chart-crypto-delta", HTML + CSS + JS)
+        self.assertIn("chart-crypto-funding", HTML + CSS + JS)
+        hud = JS.split("function paintTableHud", 1)[1].split("function collectChairLocks", 1)[0]
+        self.assertIn("fightCard.hidden = !!deskBook", hud)
+        self.assertIn("if (deskBook) return", hud)
+        self.assertNotIn("atsKickLine", hud)
 
     def test_front_weather_seats_not_stripped(self):
         self.assertIn("GLASS", HTML)
