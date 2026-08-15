@@ -199,9 +199,13 @@ def hour_weather_of(st):
 class ChairRoomTests(unittest.TestCase):
     def test_three_distinct_room_skins(self):
         self.assertIn("function chairRoomOf(", JS)
-        self.assertIn('return "ares"', JS.split("function chairRoomOf", 1)[1][:400])
-        self.assertIn('return "vitalik"', JS.split("function chairRoomOf", 1)[1][:400])
-        self.assertIn('return "satoshi"', JS.split("function chairRoomOf", 1)[1][:500])
+        room_fn = JS.split("function chairRoomOf", 1)[1][:500]
+        self.assertIn('return "ares"', room_fn)
+        self.assertIn('return "vitalik"', room_fn)
+        self.assertIn('return "raijin"', room_fn)
+        self.assertIn('return "satoshi"', room_fn)
+        self.assertNotIn('return ""', room_fn)
+        self.assertNotIn("oracle", room_fn.lower())
         self.assertIn("function drawChairRoom(", JS)
         self.assertIn("function syncChairRoom(", JS)
         self.assertIn("dataset.chairRoom", JS)
@@ -209,19 +213,52 @@ class ChairRoomTests(unittest.TestCase):
         sat = CSS.split('data-chair-room="satoshi"', 1)[1][:900]
         vit = CSS.split('data-chair-room="vitalik"', 1)[1][:900]
         ares = CSS.split('data-chair-room="ares"', 1)[1][:900]
-        self.assertIn("#1a1208", sat)
-        self.assertIn("240, 176, 64", sat)
-        self.assertIn("#061418", vit)
-        self.assertIn("80, 230, 210", vit)
-        self.assertIn("#071018", ares)
-        self.assertIn("255, 230, 160", ares)
+        rai = CSS.split('data-chair-room="raijin"', 1)[1][:900]
+        self.assertIn("/static/room-satoshi.jpg", sat)
+        self.assertIn("/static/room-vitalik.jpg", vit)
+        self.assertIn("/static/room-ares.jpg", ares)
+        self.assertIn("/static/room-raijin.jpg", rai)
+        self.assertIn("rgba(2, 4, 8,", sat)
+        self.assertNotIn("240, 176, 64", sat)
+        self.assertNotIn("#1a1208", sat)
+        self.assertNotIn("240, 193, 74", sat)
+        self.assertNotIn("gold", sat.lower())
+        self.assertIn("rgba(2, 8, 12,", vit)
+        self.assertIn("rgba(1, 3, 8,", ares)
+        self.assertIn("rgba(4, 2, 10,", rai)
         self.assertNotEqual(sat[:200], vit[:200])
         self.assertNotEqual(vit[:200], ares[:200])
+        self.assertNotEqual(ares[:200], rai[:200])
         self.assertIn("drawAresScorebug", JS)
         self.assertIn("atsKickLine", JS.split("function drawAresScorebug", 1)[1][:500])
         self.assertNotIn("id=\"tabAresScore\"", HTML)
         self.assertNotIn("id=\"tabScorebug\"", HTML)
         self.assertIn("Same table, different world", JS)
+        self.assertIn("onFloor ? [] : roster", JS)
+        self.assertIn("Floor is leaders only", JS)
+
+    def test_signed_photos_are_table_backs_not_floor(self):
+        self.assertIn("Signed table rooms", CSS)
+        self.assertIn("Not Floor", CSS)
+        self.assertIn("No gold on shrine", CSS)
+        draw = JS.split("function drawChairRoom", 1)[1][:2200]
+        self.assertIn('classList.contains("night-mode")', draw)
+        self.assertIn("don't paint a wash over them", draw)
+        self.assertNotIn("240, 176, 64", draw)
+        self.assertIn('room === "raijin"', draw)
+        self.assertNotIn('body.floor-mode[data-chair-room="satoshi"] #app', CSS)
+        self.assertNotIn('body.night-mode[data-chair-room="satoshi"] #app', CSS)
+        table_css = CSS.split("Signed table rooms", 1)[1].split("Floor keeps a cheap wash", 1)[0]
+        self.assertIn("#tableStage", table_css)
+        self.assertNotIn("#app", table_css)
+        self.assertIn("max-width: 430px", table_css)
+        for name in ("satoshi", "vitalik", "ares", "raijin"):
+            path = ROOT / "frontend" / "static" / f"room-{name}.jpg"
+            self.assertTrue(path.is_file(), name)
+            raw = path.read_bytes()
+            self.assertTrue(raw.startswith(b"\xff\xd8"), name)
+            self.assertGreater(path.stat().st_size, 20000)
+            self.assertLess(path.stat().st_size, 900000)
 
     def test_rooms_under_wisps_screensaver_first(self):
         self.assertIn("UNDER majority wisps", JS)
@@ -233,6 +270,7 @@ class ChairRoomTests(unittest.TestCase):
         self.assertIn("body.night-mode[data-chair-room=\"satoshi\"]", CSS)
         self.assertIn("body.night-mode[data-chair-room=\"vitalik\"]", CSS)
         self.assertIn("body.night-mode[data-chair-room=\"ares\"]", CSS)
+        self.assertIn("body.night-mode[data-chair-room=\"raijin\"]", CSS)
 
 
 class LockStampTests(unittest.TestCase):

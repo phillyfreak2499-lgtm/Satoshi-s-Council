@@ -1408,6 +1408,26 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "raijin-wait.jpg", media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/room-satoshi.jpg")
+    async def room_satoshi():
+        return FileResponse(STATIC_DIR / "room-satoshi.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/room-vitalik.jpg")
+    async def room_vitalik():
+        return FileResponse(STATIC_DIR / "room-vitalik.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/room-ares.jpg")
+    async def room_ares():
+        return FileResponse(STATIC_DIR / "room-ares.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/room-raijin.jpg")
+    async def room_raijin():
+        return FileResponse(STATIC_DIR / "room-raijin.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/ares-chair.png")
     async def ares_chair_png():
         return FileResponse(STATIC_DIR / "ares-chair.png", media_type="image/png",

@@ -1366,9 +1366,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const _hourWx = { level: 0, mode: "calm", motion: 1, range: 0, volt: 0, book: 0, chop: 0 };
   function chairRoomOf(which) {
     const key = (typeof chairKeyOf === "function") ? chairKeyOf(which) : String(which || "").toLowerCase();
-    if (key === "ats") return "ares";
-    if (key === "ethereum") return "vitalik";
-    if (key === "front") return "";
+    if (key === "ats" || key === "ares") return "ares";
+    if (key === "ethereum" || key === "vitalik") return "vitalik";
+    if (key === "front" || key === "raijin") return "raijin";
     return "satoshi";
   }
   function chairLockIsReal(lc) {
@@ -1467,7 +1467,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function drawChairRoom(w, h, which, weather, cx, cy, tableR) {
     // Room wash UNDER wisps. Cheap CSS/canvas. Phone: wash only, no extra strokes.
+    // Table tab uses signed photos + scrim on #tableStage — don't paint a wash over them.
     if (!ctx || !w || !h) return;
+    try {
+      if (document.body && document.body.classList.contains("night-mode")) return;
+    } catch (e) {}
     const room = chairRoomOf(which);
     if (!room) return;
     const wx = weather || _hourWx;
@@ -1494,10 +1498,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       c0 = "rgba(255, 224, 140," + (0.08 + 0.10 * storm) + ")";
       c1 = "rgba(8, 14, 28," + (0.50 + 0.08 * storm) + ")";
       c2 = "rgba(1, 4, 10, 0.62)";
+    } else if (room === "raijin") {
+      c0 = "rgba(150, 70, 210," + (0.08 + 0.10 * storm) + ")";
+      c1 = "rgba(18, 8, 32," + (0.48 + 0.10 * storm) + ")";
+      c2 = "rgba(4, 2, 10, 0.60)";
     } else {
-      c0 = "rgba(240, 176, 64," + (0.12 + 0.12 * storm) + ")";
-      c1 = "rgba(36, 20, 6," + (0.48 + 0.10 * storm) + ")";
-      c2 = "rgba(6, 3, 2, 0.58)";
+      c0 = "rgba(40, 160, 200," + (0.08 + 0.08 * storm) + ")";
+      c1 = "rgba(28, 10, 12," + (0.48 + 0.10 * storm) + ")";
+      c2 = "rgba(4, 3, 4, 0.58)";
     }
     const gx = (cx != null) ? cx : w * 0.50;
     const gy = (cy != null) ? (cy - (tableR || h * 0.2) * 0.35) : h * 0.18;
@@ -1513,7 +1521,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     ctx.globalAlpha = 0.10 + 0.10 * storm;
     if (room === "satoshi") {
-      ctx.strokeStyle = "rgba(240, 186, 74, 0.55)";
+      ctx.strokeStyle = "rgba(80, 180, 210, 0.40)";
       ctx.lineWidth = 1;
       const sway = Math.sin(clock * 0.0004 * (wx.motion || 1)) * 4 * storm;
       for (let i = 0; i < 3; i++) {
