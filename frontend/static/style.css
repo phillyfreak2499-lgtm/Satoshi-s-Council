@@ -2681,6 +2681,10 @@ html body.tutorial-walk #summonGate {
 body.mode-floor #starfield {
   display: block;
 }
+body.mode-floor #app::after,
+body.floor-mode #app::after {
+  opacity: 0.48;
+}
 #starfield {
   display: none; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background: radial-gradient(ellipse at center, #0b1020 0%, #02040a 100%);
