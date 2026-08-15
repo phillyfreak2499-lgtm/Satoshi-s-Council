@@ -151,7 +151,8 @@ class SummonGateFreezeTests(unittest.TestCase):
         self.assertIn("btc_shadow", (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8"))
         self.assertIn("def decide_open_lock_grade", GATES)
         self.assertIn("function wireIsUnread(", JS)
-        self.assertIn("Eagles", JS)
+        ats = (ROOT / "backend" / "services" / "desk_ats.py").read_text(encoding="utf-8")
+        self.assertIn("def eagles_ticket", ats)
         self.assertIn("function maybeAttractEnter()", JS)
         self.assertIn("function drawThinkingRing(", JS)
 
