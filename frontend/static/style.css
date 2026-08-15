@@ -5203,15 +5203,18 @@ body.majority-wait.mode-floor::before {
   background: none !important;
 }
 
-/* Floor exit — always tappable, phones have no Esc */
+/* Floor exit — always tappable, phones have no Esc.
+   HUD chip stays in a reserved left rail so it does not sit on
+   SATOSHI’S COUNCIL (1280) or ETH/BTC focus (390). See floorChromeFit. */
 .floor-exit-btn {
   display: none;
   position: fixed;
   top: max(10px, env(safe-area-inset-top, 10px));
   left: max(10px, env(safe-area-inset-left, 10px));
-  z-index: 90;
+  z-index: 220;
   min-height: 44px;
   min-width: 72px;
+  width: 88px;
   padding: 10px 14px;
   border-radius: 10px;
   border: 1px solid rgba(0, 232, 255, 0.55);
@@ -5942,6 +5945,22 @@ html body.mode-floor #app > header {
   flex-direction: column !important;
   overflow: visible !important;
   pointer-events: auto !important;
+}
+
+/* Floor TABLE rail — wordmark / ETH-BTC start after the HUD chip */
+html body.floor-mode,
+html body.mode-floor {
+  --floor-table-rail: 96px;
+}
+html body.floor-mode .floor-exit-btn:not([hidden]),
+html body.mode-floor .floor-exit-btn:not([hidden]) {
+  z-index: 220 !important;
+}
+html body.floor-mode #app > header .header-row,
+html body.mode-floor #app > header .header-row,
+html body.floor-mode #app > header .mode-tabs,
+html body.mode-floor #app > header .mode-tabs {
+  padding-left: var(--floor-table-rail, 96px) !important;
 }
 
 /* Floor music sits in header controls — never over Bell */

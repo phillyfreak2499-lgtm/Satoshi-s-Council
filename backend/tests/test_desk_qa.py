@@ -168,6 +168,28 @@ class FloorNameplateOverlapTests(unittest.TestCase):
             )
 
 
+class FloorTableChromeOverlapTests(unittest.TestCase):
+    def test_table_chip_misses_wordmark_and_focus(self):
+        self.assertIn("function floorChromeFit", JS)
+        self.assertIn("--floor-table-rail: 96px", CSS)
+        self.assertIn("SATOSHI’S COUNCIL (1280) or ETH/BTC focus (390)", CSS)
+        self.assertIn('id="floorExitBtn"', HTML)
+        self.assertIn('class="floor-exit-btn"', HTML)
+        self.assertIn("TABLE", HTML.split('id="floorExitBtn"', 1)[1][:80])
+        wired = JS.split("floorExit.__wired", 1)[1][:300]
+        self.assertIn('setMode("art")', wired)
+        for w in (1280, 390):
+            fit = _floor_chrome_fit(w)
+            self.assertFalse(
+                _rects_intersect(fit["table"], fit["logo"]),
+                "TABLE overlaps wordmark at %s" % w,
+            )
+            self.assertFalse(
+                _rects_intersect(fit["table"], fit["focus"]),
+                "TABLE overlaps ETH/BTC at %s" % w,
+            )
+
+
 class _FakeClassList:
     def __init__(self, start):
         self._s = set(start)
@@ -217,6 +239,35 @@ def _load_reveal_fn(html, body, app, gate):
             app.style.setProperty("pointer-events", "auto", "important")
 
     return revealAppAfterDeskUnlock
+
+
+def _rects_intersect(a, b):
+    if not a or not b or a["w"] <= 0 or a["h"] <= 0 or b["w"] <= 0 or b["h"] <= 0:
+        return False
+    return (
+        a["x"] < b["x"] + b["w"]
+        and a["x"] + a["w"] > b["x"]
+        and a["y"] < b["y"] + b["h"]
+        and a["y"] + a["h"] > b["y"]
+    )
+
+
+def _floor_chrome_fit(w):
+    phone = w <= 480
+    table = {"x": 10, "y": 10, "w": 88, "h": 44}
+    rail = 96
+    header_pad = 14
+    logo = (
+        {"x": 0, "y": 0, "w": 0, "h": 0}
+        if phone
+        else {"x": header_pad + rail, "y": 8, "w": 280, "h": 36}
+    )
+    focus = (
+        {"x": header_pad + rail, "y": 10, "w": 220, "h": 44}
+        if phone
+        else {"x": header_pad + rail, "y": 52, "w": 220, "h": 28}
+    )
+    return {"table": table, "logo": logo, "focus": focus, "phone": phone, "rail": rail}
 
 
 def _floor_nameplate_fit(w, h):

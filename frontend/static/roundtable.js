@@ -2317,6 +2317,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return null;
   }
 
+  function floorChromeFit(w) {
+    // TABLE HUD chip vs SATOSHI’S COUNCIL wordmark (1280) and ETH/BTC (390).
+    // CSS --floor-table-rail reserves the left slot; rects must not intersect.
+    const phone = w <= 480;
+    const table = { x: 10, y: 10, w: 88, h: 44 };
+    const rail = 96;
+    const headerPad = 14;
+    const logo = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : { x: headerPad + rail, y: 8, w: 280, h: 36 };
+    const focus = phone
+      ? { x: headerPad + rail, y: 10, w: 220, h: 44 }
+      : { x: headerPad + rail, y: 52, w: 220, h: 28 };
+    return { table, logo, focus, phone, rail };
+  }
+
   function floorNameplateFit(w, h) {
     // Keep GOAL strip + Chair nameplate inside the table so they do not
     // cover bottom seat names (WICK / WIRE / EXHAUST / QUORUM) at 1280 or 390.
