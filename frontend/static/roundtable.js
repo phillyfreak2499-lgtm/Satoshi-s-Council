@@ -6086,7 +6086,7 @@ function drawCandleChart() {
     box.innerHTML = rows.map(function (b) {
       const dont = !!b.dont_play;
       return '<article class="front-bet' + (b.best ? " best" : "") + (dont ? " dont-play" : "") + '" data-ticker="' + String(b.ticker || "") + '">' +
-        '<div class="front-bet-head"><span>' + String(b.bracket || "") + "</span><span>" + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
+        '<div class="front-bet-head"><span>' + String(b.city || "") + " · " + String(b.place || b.station || "") + " · " + String(b.bracket || "") + "</span><span>" + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
         "<div>YES " + frontCents(b.yes_ask) + " · NO " + frontCents(b.no_ask) + (b.volume != null ? (" · n " + Math.round(b.volume)) : "") + "</div>" +
         (b.skip ? '<div class="side-flag">' + b.skip + "</div>" : "") +
         '<button type="button" class="yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
@@ -6162,7 +6162,7 @@ function drawCandleChart() {
     const feed = document.getElementById("frontFeedStatus");
     const n = ((frontBoard.brackets || []).length);
     if (feed) {
-      feed.textContent = n ? (n + " DFW brackets · KXHIGHTDAL") : ((frontBoard.dropped || []).length ? "series dropped" : "no open DFW book");
+      feed.textContent = n ? (n + " brackets · DAL DFW first · NYC Central Park") : ((frontBoard.dropped || []).length ? "series dropped" : "no open v1 book");
     }
     paintFrontSeats(frontBoard);
     paintFrontBook(frontBoard);
@@ -7347,7 +7347,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Weather page — not the crypto Floor. Raijin chairs Dallas DFW (KXHIGHTDAL / KDFW). GLASS, PIT, FROST, and BONE rank the book. Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
+      body: "Weather page — not the crypto Floor. Raijin chairs board v1. Dallas DFW first (KXHIGHTDAL / KDFW, not Love Field). NYC Central Park second (KXHIGHNY). Chicago later. GLASS, PIT, FROST, and BONE rank the book. Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",

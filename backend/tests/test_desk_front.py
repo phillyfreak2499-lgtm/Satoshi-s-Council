@@ -28,6 +28,7 @@ NOW = datetime(2026, 8, 15, 16, 5, tzinfo=timezone.utc)
 def _m(
     ticker: str,
     *,
+    series: str = "KXHIGHTDAL",
     strike_type: str = "between",
     floor: float | None = 103,
     cap: float | None = 104,
@@ -37,7 +38,7 @@ def _m(
 ) -> dict:
     return {
         "ticker": ticker,
-        "series_ticker": "KXHIGHTDAL",
+        "series_ticker": series,
         "title": ticker,
         "strike_type": strike_type,
         "floor_strike": floor,
@@ -61,19 +62,32 @@ def _fetch_factory(extra: dict | None = None):
                 _m("KXHIGHTDAL-26AUG15-B103104"),
                 _m("KXHIGHTDAL-26AUG15-B101102", floor=101, cap=102, yes_bid="0.22", yes_ask="0.24"),
             ]}
+        if series == "KXHIGHNY":
+            return {"markets": extra.get("nyc") or [
+                _m("KXHIGHNY-26AUG15-B8485", series=series, floor=84, cap=85),
+            ]}
+        if series == "KXHIGHCHI":
+            return {"markets": extra.get("chi") or [
+                _m("KXHIGHCHI-26AUG15-B8384", series=series, floor=83, cap=84),
+            ]}
         return {"markets": []}
 
     return fetch
 
 
 async def _nws_high_only(url: str):
+    high = 103
+    if "/stations/KNYC" in url and "/observations" not in url:
+        return {"geometry": {"coordinates": [-73.9692, 40.7789]}}
     if "/stations/KDFW" in url and "/observations" not in url:
         return {"geometry": {"coordinates": [-97.02196, 32.89743]}}
+    if "/stations/KNYC" in url:
+        high = 84
     if "/points/" in url:
-        return {"properties": {"forecast": "https://api.weather.gov/gridpoints/FWD/1,1/forecast"}}
+        return {"properties": {"forecast": "https://api.weather.gov/gridpoints/X/1,1/forecast"}}
     if "forecast" in url:
         return {"properties": {"periods": [
-            {"isDaytime": True, "startTime": "2026-08-15T06:00:00-05:00", "temperature": 103, "temperatureUnit": "F"},
+            {"isDaytime": True, "startTime": "2026-08-15T06:00:00-05:00", "temperature": high, "temperatureUnit": "F"},
         ]}}
     return {}
 
@@ -96,19 +110,22 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertNotIn("FORECAST", HTML)
         self.assertNotIn("CLIMO", HTML)
         self.assertNotIn("CHI Midway", HTML)
-        self.assertNotIn("NYC Central Park", HTML)
-        self.assertNotIn("KXHIGHCHI", HTML)
-        self.assertNotIn("KXHIGHNY", FRONT)
+        self.assertIn("NYC Central Park", HTML)
+        self.assertIn("KXHIGHNY", HTML + FRONT)
+        self.assertNotIn("KXHIGHCHI", HTML + JS)
+        self.assertNotIn("KXHIGHCHI", [c["series"] for c in desk_front.CITIES])
         self.assertNotIn("CHI / NY", HTML)
         self.assertNotIn("KXHIGHTCHI", HTML)
         self.assertNotIn("front-city-card", HTML + JS + CSS)
         self.assertNotIn("front-thunder-mark", HTML + CSS)
         self.assertNotIn("front-raijin-slot", HTML + CSS)
         self.assertNotIn("CHI Midway", JS)
-        self.assertNotIn("NYC Central Park", JS)
-        self.assertNotIn("KXHIGHMIA", FRONT)
-        self.assertNotIn("KXHIGHAUS", FRONT)
-        self.assertNotIn("KXHIGHTPHX", FRONT)
+        self.assertEqual(desk_front.DALLAS["station"], "KDFW")
+        self.assertEqual(desk_front.DALLAS["market"], "DFW")
+        self.assertTrue(all(c["station"] != "KDAL" for c in desk_front.CITIES))
+        self.assertNotIn("KXHIGHMIA", [c["series"] for c in desk_front.CITIES])
+        self.assertNotIn("KXHIGHAUS", [c["series"] for c in desk_front.CITIES])
+        self.assertNotIn("KXHIGHTPHX", [c["series"] for c in desk_front.CITIES])
         self.assertNotIn('{"id": "FORECAST"', FRONT)
         self.assertNotIn('{"id": "MARKET"', FRONT)
         self.assertLess(HTML.find('id="tabSide"'), HTML.find('id="tabFront"'))
@@ -237,7 +254,14 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(board["follower"])
         self.assertTrue(board["status"]["paper_default"])
         self.assertIn("KXHIGHTDAL-26AUG15-B103104", [b["ticker"] for b in board["brackets"]])
+        self.assertIn("KXHIGHNY-26AUG15-B8485", [b["ticker"] for b in board["brackets"]])
+        cities = [b["city"] for b in board["brackets"]]
+        self.assertLess(cities.index("DAL"), cities.index("NYC"))
+        self.assertNotIn("CHI", cities)
+        self.assertEqual([c["id"] for c in board["cities"]], ["DAL", "NYC"])
+        self.assertEqual(board["home"], "DAL")
         self.assertTrue(any(b.get("best") for b in board["brackets"]))
+        self.assertEqual(next(b for b in board["brackets"] if b.get("best"))["city"], "DAL")
         self.assertEqual([v["id"] for v in board["brackets"][0]["votes"]], ["GLASS", "PIT", "FROST", "BONE"])
         self.assertEqual(board["accuracy"]["leader"], "RAIJIN")
         self.assertIn("pending", board["accuracy"])
@@ -310,6 +334,11 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(desk_front.parse_cli_high(text, day=date(2026, 8, 15)), 103)
         self.assertIsNone(desk_front.parse_cli_high(text, day=date(2026, 8, 14)))
         self.assertIsNone(desk_front.parse_cli_high("MAXIMUM TEMPERATURE (F)\n 103\n"))
+        love = "THE DALLAS LOVE FIELD CLIMATE SUMMARY FOR AUGUST 15 2026\nMAXIMUM TEMPERATURE (F)\n 99\n"
+        self.assertIsNone(desk_front.parse_cli_high(love, station="KDFW", day=date(2026, 8, 15)))
+        nyc = "THE NEW YORK CITY CENTRAL PARK CLIMATE SUMMARY FOR AUGUST 15 2026\nMAXIMUM TEMPERATURE (F)\n 84\n"
+        self.assertEqual(desk_front.parse_cli_high(nyc, station="KNYC", day=date(2026, 8, 15)), 84)
+        self.assertIsNone(desk_front.parse_cli_high(nyc, station="KDFW", day=date(2026, 8, 15)))
         m = _m("KXHIGHTDAL-26AUG15-B103104")
         self.assertTrue(desk_front.official_yes(103, market=m))
         self.assertTrue(desk_front.official_yes(104, market=m))
@@ -371,6 +400,19 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(miss["fill"]["result"], "MISS")
         rows = [r for r in desk_front._load_fills() if r.get("result") == "MISS"]
         self.assertEqual(len(rows), 1)
+
+    async def test_chicago_not_v1(self):
+        board = await desk_front.build_board(
+            fetch=_fetch_factory(),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 82},
+        )
+        self.assertNotIn("KXHIGHCHI", [c["series"] for c in board["cities"]])
+        self.assertNotIn("CHI", [b["city"] for b in board["brackets"]])
+        blocked = await desk_front.tap(ticker="KXHIGHCHI-26AUG15-B8384", side="YES", stake=5, yes_bid=48, yes_ask=50)
+        self.assertFalse(blocked["ok"])
+        self.assertIn("not v1", blocked["error"])
 
     async def test_arm_phrase(self):
         miss = desk_front.arm_live("nope")

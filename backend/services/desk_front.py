@@ -1,11 +1,15 @@
 """
-THE FRONT — Dallas DFW daily-high weather council.
+THE FRONT — board v1. Home city Dallas.
+
+Dallas first: KXHIGHTDAL, settle KDFW / DFW (not Love Field).
+NYC second: KXHIGHNY, Central Park.
+Chicago later — do not ship KXHIGHCHI in v1.
 
 Named seats (RAIJIN / GLASS / PIT / FROST / BONE), not a crypto Floor.
-Dallas only: KXHIGHTDAL / KDFW. If that series 404s, drop it. Do not fake cities.
+If a series 404s, drop it. Do not fake cities.
 
 Paper by default. Never auto-bets. Never talks to Follower.
-Does not place Chair 1H locks. Settlement is NWS CLI for KDFW.
+Does not place Chair 1H locks. Settlement is NWS CLI for the station.
 Date lives in the ticker. Read strike_type from the API every time.
 """
 from __future__ import annotations
@@ -43,13 +47,58 @@ TICK_DATE = re.compile(r"-(\d{2})([A-Z]{3})(\d{2})(?:-|$)")
 DALLAS: Dict[str, Any] = {
     "id": "DAL",
     "name": "DALLAS",
+    "place": "DFW",
     "series": "KXHIGHTDAL",
     "station": "KDFW",
     "icao": "KDFW",
     "market": "DFW",
+    "cli_office": "FWD",
     "tz": "America/Chicago",
+    "order": 0,
     "climo": {8: 96, 7: 97, 9: 90, 6: 94, 10: 81},
 }
+NYC: Dict[str, Any] = {
+    "id": "NYC",
+    "name": "NEW YORK",
+    "place": "Central Park",
+    "series": "KXHIGHNY",
+    "station": "KNYC",
+    "icao": "KNYC",
+    "market": "NYC",
+    "cli_office": "OKX",
+    "tz": "America/New_York",
+    "order": 1,
+    "climo": {8: 84, 7: 85, 9: 77, 6: 80, 10: 66},
+}
+CITIES: Tuple[Dict[str, Any], ...] = (DALLAS, NYC)
+BLOCKED_SERIES: Tuple[str, ...] = ("KXHIGHCHI", "KXHIGHTCHI")
+LOVE_FIELD = ("LOVE FIELD", "KDAL", "DALLAS LOVE")
+
+def city_by_id(cid: Any) -> Optional[Dict[str, Any]]:
+    key = str(cid or "").upper()
+    for c in CITIES:
+        if c["id"] == key:
+            return c
+    return None
+
+
+def city_for_series(series: Any) -> Optional[Dict[str, Any]]:
+    key = str(series or "").upper()
+    for c in CITIES:
+        if c["series"] == key:
+            return c
+    return None
+
+
+def city_for_ticker(ticker: Any) -> Optional[Dict[str, Any]]:
+    tick = str(ticker or "").upper()
+    if any(bad in tick for bad in BLOCKED_SERIES):
+        return None
+    for c in CITIES:
+        if tick.startswith(str(c["series"])):
+            return c
+    return None
+
 
 SEATS: Tuple[Dict[str, Any], ...] = (
     {"id": "GLASS", "job": "Official/NWS high for the station.", "mark": "/static/bots/glass.png", "weight": 1.0},
@@ -277,23 +326,54 @@ def official_yes(
     return None
 
 
+def _cli_section(up: str, station: str) -> Optional[str]:
+    st = str(station or "KDFW").upper()
+    if st == "KDFW":
+        if any(tag in up for tag in LOVE_FIELD) and "DFW" not in up and "FORT WORTH" not in up and "FT WORTH" not in up:
+            return None
+        start = -1
+        for tag in ("DALLAS-FORT WORTH", "DALLAS FT WORTH", "DFW AIRPORT", "FORT WORTH", " DFW "):
+            i = up.find(tag)
+            if i >= 0:
+                start = i
+                break
+        if start < 0 and "DFW" in up:
+            start = up.find("DFW")
+        if start < 0:
+            return None
+        chunk = up[start:]
+        love = chunk.find("LOVE FIELD")
+        if love > 20:
+            chunk = chunk[:love]
+        return chunk
+    if st == "KNYC":
+        for tag in ("CENTRAL PARK", "NEW YORK CITY CENTRAL", "NYC CENTRAL"):
+            i = up.find(tag)
+            if i >= 0:
+                return up[i:]
+        return None
+    return None
+
+
 def parse_cli_high(text: Any, *, station: str = "KDFW", day: Optional[date] = None) -> Optional[float]:
-    """Read MAXIMUM TEMPERATURE from an NWS CLI product. Never a forecast."""
+    """Read MAXIMUM TEMPERATURE from the station's NWS CLI. Never Love Field for Dallas."""
     blob = str(text or "")
     if not blob.strip():
         return None
     up = blob.upper()
-    if not any(tag in up for tag in ("DFW", "DALLAS", "FORT WORTH", "FT WORTH")):
+    section = _cli_section(up, station)
+    if not section:
         return None
     if day is not None:
         month = day.strftime("%B").upper()
-        if month not in up or str(day.year) not in up:
+        hay = up
+        if month not in hay or str(day.year) not in hay:
             return None
-        if not re.search(rf"{month}\s+0?{day.day}\b", up):
+        if not re.search(rf"{month}\s+0?{day.day}\b", hay):
             return None
-    m = re.search(r"MAXIMUM\s+TEMPERATURE[^\n]*\n\s*(\d{2,3})\b", blob, re.I)
+    m = re.search(r"MAXIMUM\s+TEMPERATURE[^\n]*\n\s*(\d{2,3})\b", section, re.I)
     if not m:
-        m = re.search(r"MAXIMUM\s+(\d{2,3})\b", blob, re.I)
+        m = re.search(r"MAXIMUM\s+(\d{2,3})\b", section, re.I)
     if not m:
         return None
     try:
@@ -324,6 +404,7 @@ def vote_seats(
     forecast: Optional[float],
     climo: Optional[float],
     skip: Optional[str],
+    station: str = "KDFW",
 ) -> List[Dict[str, Any]]:
     p = forecast_p(forecast, m)
     q = market_quotes(m)
@@ -338,7 +419,7 @@ def vote_seats(
     frost = "SKIP" if skip else "CLEAR"
     bone = "WAIT" if climo_p is None else ("YES" if climo_p >= 0.5 else "NO")
     return [
-        {"id": "GLASS", "dir": glass, "call": None if forecast is None else f"{forecast:.0f}°F KDFW"},
+        {"id": "GLASS", "dir": glass, "call": None if forecast is None else f"{forecast:.0f}°F {station}"},
         {"id": "PIT", "dir": pit, "call": None if implied is None else f"{int(round(implied * 100))}¢ after vig"},
         {"id": "FROST", "dir": frost, "call": skip or "clear"},
         {"id": "BONE", "dir": bone, "call": None if climo is None else f"{climo}°F season"},
@@ -500,15 +581,21 @@ def apply_cli_settle(row: Dict[str, Any], high: float) -> bool:
     return True
 
 
-async def fetch_cli_high(day: date, nws: Optional[_Nws] = None) -> Optional[float]:
-    """Official KDFW CLI max for that ticker date. None until the next-morning print."""
-    key = day.isoformat()
+async def fetch_cli_high(
+    day: date,
+    nws: Optional[_Nws] = None,
+    *,
+    station: str = "KDFW",
+    office: str = "FWD",
+) -> Optional[float]:
+    """Official CLI max for that station/date. None until the next-morning print."""
+    key = f"{station}:{day.isoformat()}"
     if key in _cli_cache:
         return _cli_cache[key]
     fn = nws or _nws_get
     high: Optional[float] = None
     try:
-        listing = await fn("https://api.weather.gov/products/types/CLI/locations/FWD")
+        listing = await fn(f"https://api.weather.gov/products/types/CLI/locations/{office}")
         graph = []
         if isinstance(listing, dict):
             graph = listing.get("@graph") or listing.get("graph") or listing.get("products") or []
@@ -526,7 +613,7 @@ async def fetch_cli_high(day: date, nws: Optional[_Nws] = None) -> Optional[floa
                 text = str(prod.get("productText") or prod.get("text") or "")
             elif isinstance(prod, str):
                 text = prod
-            high = parse_cli_high(text, station="KDFW", day=day)
+            high = parse_cli_high(text, station=station, day=day)
             if high is not None:
                 break
     except Exception:
@@ -548,11 +635,19 @@ async def settle_open_fills(
         day = date_from_ticker(row.get("ticker"))
         if day is None:
             continue
+        city = city_for_ticker(row.get("ticker")) or city_by_id(row.get("city")) or DALLAS
+        station = str(row.get("station") or city["station"])
+        office = str(city.get("cli_office") or "FWD")
         high = None
-        if cli_highs and day.isoformat() in cli_highs:
-            high = cli_highs[day.isoformat()]
-        else:
-            high = await fetch_cli_high(day, nws)
+        if cli_highs:
+            high = (
+                cli_highs.get(f"{city['id']}:{day.isoformat()}")
+                or cli_highs.get(f"{station}:{day.isoformat()}")
+            )
+            if high is None and city["id"] == "DAL":
+                high = cli_highs.get(day.isoformat())
+        if high is None:
+            high = await fetch_cli_high(day, nws, station=station, office=office)
         if high is None:
             row["result"] = "OPEN"
             row["settle_reason"] = "pending_cli"
@@ -876,6 +971,7 @@ def seat_stats() -> Dict[str, Dict[str, Any]]:
 def score_bracket(
     m: Dict[str, Any],
     *,
+    city: Dict[str, Any],
     forecast: Optional[float],
     flipped: bool,
     day: date,
@@ -884,7 +980,7 @@ def score_bracket(
     flags = book_health(m)
     vol = float(flags.get("volume") or 0)
     p = forecast_p(forecast, m)
-    climo = (DALLAS.get("climo") or {}).get(day.month)
+    climo = (city.get("climo") or {}).get(day.month)
     climo_p = forecast_p(float(climo), m) if climo is not None else None
     skip = skip_reason(flags, forecast, flipped, vol)
     implied = (q.get("yes_ask") or 50) / 100.0
@@ -904,10 +1000,11 @@ def score_bracket(
         conf = int(round(50 + 28 * ((p or 0.5) - 0.5) + 18 * edge + 4 * climo_align))
         conf = max(0, min(99, conf))
     return {
-        "city": DALLAS["id"],
-        "name": DALLAS["name"],
-        "station": DALLAS["station"],
-        "series": DALLAS["series"],
+        "city": city["id"],
+        "name": city["name"],
+        "place": city.get("place"),
+        "station": city["station"],
+        "series": city["series"],
         "ticker": m.get("ticker"),
         "day": day.isoformat(),
         "strike_type": str(m.get("strike_type") or ""),
@@ -928,7 +1025,7 @@ def score_bracket(
         "confidence": conf,
         "dont_play": bool(skip),
         "skip": skip,
-        "votes": vote_seats(m, forecast=forecast, climo=climo, skip=skip),
+        "votes": vote_seats(m, forecast=forecast, climo=climo, skip=skip, station=str(city["station"])),
         "best": False,
         "follower": False,
     }
@@ -939,7 +1036,11 @@ def pick_best(scored: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         return None
     playable = [b for b in scored if not b.get("dont_play")]
     pool = playable or scored
-    pool.sort(key=lambda b: (-int(b.get("confidence") or 0), -(b.get("ev_cents") or -99)))
+    pool.sort(key=lambda b: (
+        0 if b.get("city") == "DAL" else 1,
+        -int(b.get("confidence") or 0),
+        -(b.get("ev_cents") or -99),
+    ))
     return pool[0]
 
 
@@ -1053,19 +1154,30 @@ async def build_board(
     forecast = None
     day = None
 
-    rows, missing = await fetch_series(str(DALLAS["series"]), fetch)
-    if missing or not rows:
-        dropped.append(str(DALLAS["series"]))
-    else:
-        day = pick_event_day(rows, n, str(DALLAS["tz"]))
-        if day is None:
-            dropped.append(str(DALLAS["series"]))
-        else:
-            today = [m for m in rows if date_from_ticker(m.get("ticker")) == day]
-            forecast = await nws_high(str(DALLAS["station"]), day, nws)
-            flipped = note_forecast(str(DALLAS["station"]), day, forecast)
-            brackets = [score_bracket(m, forecast=forecast, flipped=flipped, day=day) for m in today]
-            brackets.sort(key=lambda b: (-int(b.get("confidence") or 0), -(b.get("ev_cents") or -99)))
+    for city in CITIES:
+        rows, missing = await fetch_series(str(city["series"]), fetch)
+        if missing or not rows:
+            dropped.append(str(city["series"]))
+            continue
+        event_day = pick_event_day(rows, n, str(city["tz"]))
+        if event_day is None:
+            dropped.append(str(city["series"]))
+            continue
+        today = [m for m in rows if date_from_ticker(m.get("ticker")) == event_day]
+        if not today:
+            dropped.append(str(city["series"]))
+            continue
+        city_fc = await nws_high(str(city["station"]), event_day, nws)
+        flipped = note_forecast(str(city["station"]), event_day, city_fc)
+        scored = [
+            score_bracket(m, city=city, forecast=city_fc, flipped=flipped, day=event_day)
+            for m in today
+        ]
+        scored.sort(key=lambda b: (-int(b.get("confidence") or 0), -(b.get("ev_cents") or -99)))
+        brackets.extend(scored)
+        if city["id"] == "DAL":
+            forecast = city_fc
+            day = event_day
 
     best = pick_best(brackets)
     if best:
@@ -1092,15 +1204,28 @@ async def build_board(
         "ok": True,
         "mode": "paper",
         "title": "THE FRONT",
+        "home": "DAL",
         "city": {
             "id": DALLAS["id"],
             "name": DALLAS["name"],
+            "place": DALLAS["place"],
             "station": DALLAS["station"],
             "icao": DALLAS["icao"],
             "market": DALLAS["market"],
             "series": DALLAS["series"],
             "day": None if day is None else day.isoformat(),
         },
+        "cities": [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "place": c["place"],
+                "station": c["station"],
+                "series": c["series"],
+                "order": c["order"],
+            }
+            for c in CITIES
+        ],
         "weather": weather,
         "chair": build_chair(best),
         "seats": build_seats(best, forecast, day),
@@ -1114,7 +1239,7 @@ async def build_board(
         "product": "Satoshi’s Council",
         "follower": False,
         "auto_bets": False,
-        "note": "Dallas DFW only. NWS CLI / KDFW. Date is in the ticker. Not the crypto Floor.",
+        "note": "Board v1. Dallas DFW first, NYC Central Park second. No Chicago. Date is in the ticker.",
     }
     _board_cache["at"] = time.time()
     _board_cache["payload"] = payload
@@ -1165,6 +1290,11 @@ async def tap(
         return {"ok": False, "error": "no ticker"}
     if tick.startswith("KXBTCD-") or tick.startswith("KXETHD-"):
         return {"ok": False, "error": "Chair 1H stays on Floor"}
+    if any(bad in tick for bad in BLOCKED_SERIES):
+        return {"ok": False, "error": "Chicago later · not v1"}
+    city = city_for_ticker(tick)
+    if city is None:
+        return {"ok": False, "error": "not a v1 Front book"}
     if sick:
         return {"ok": False, "error": "Don’t play · sick book", "dont_play": True}
     q = paper_quote(side, yes_bid, yes_ask)
@@ -1213,8 +1343,9 @@ async def tap(
         "follower": False,
         "desk": "front",
         "leader": "RAIJIN",
-        "city": "DAL",
-        "station": "KDFW",
+        "city": city["id"],
+        "station": city["station"],
+        "place": city.get("place"),
         "day": None if day is None else day.isoformat(),
         "bracket": bracket or cached.get("bracket"),
         "best": bool(best or cached.get("best")),
