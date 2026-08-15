@@ -7199,40 +7199,141 @@ body.gate-locked .health-strip {
 }
 .side-card.parked .side-card-head { letter-spacing: 0.16em; color: rgba(180, 200, 220, 0.55); }
 
-/* Small Raijin on shared Floor / Table. Does not change seat orbit or STILL. */
-.floor-raijin {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  z-index: 6;
-  display: none;
+/* THE FRONT — Raijin weather chair + city cards + four WX seats. */
+.front-hud { max-width: 980px; }
+.front-raijin {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 18px;
   align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 4px 8px 4px 4px;
-  border: 1px solid rgba(0, 232, 255, 0.35);
-  background: rgba(4, 8, 16, 0.72);
-  color: #7fe9ff;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(0, 232, 255, 0.4);
+  background: rgba(4, 10, 18, 0.92);
+  box-shadow: 0 0 24px rgba(0, 232, 255, 0.08);
+}
+.front-raijin-slot {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 232, 255, 0.55);
+  background: radial-gradient(circle, rgba(0, 40, 56, 0.45), #02040a 72%);
+  box-shadow: 0 0 22px rgba(0, 232, 255, 0.22);
+  overflow: hidden;
+}
+.front-raijin-slot.filled .front-thunder-mark { display: none; }
+.front-raijin-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.front-thunder-mark {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.front-raijin-name {
   font-family: Orbitron, monospace;
-  font-size: 9px;
+  font-size: 28px;
+  letter-spacing: 0.18em;
+  color: #e8f4ff;
+  text-shadow: 0 0 16px rgba(0, 232, 255, 0.45);
+}
+.front-raijin-role {
+  margin-top: 4px;
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: #7fe9ff;
+}
+.front-raijin-peer {
+  margin-top: 6px;
+  font-size: 13px;
+  color: rgba(200, 220, 240, 0.78);
+}
+.front-raijin-call {
+  margin-top: 10px;
+  font-family: Share Tech Mono, monospace;
+  font-size: 14px;
+  color: #7fe9ff;
+}
+.front-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.front-seat-card {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 10, 18, 0.85);
+}
+.front-seat-card h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
   letter-spacing: 0.12em;
+  font-family: Orbitron, monospace;
+}
+.front-seat-card p { margin: 0; font-size: 12px; color: rgba(200, 220, 240, 0.75); }
+.front-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.front-card {
+  padding: 12px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 12, 22, 0.88);
+}
+.front-card.best { border-color: rgba(57, 255, 20, 0.55); box-shadow: 0 0 16px rgba(57, 255, 20, 0.12); }
+.front-card.dont-play { border-color: rgba(255, 176, 0, 0.5); }
+.front-card-head {
+  display: flex;
+  justify-content: space-between;
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+.front-bracket { font-size: 16px; color: #7fe9ff; margin-bottom: 6px; }
+.front-votes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.front-vote {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 232, 255, 0.25);
+  color: rgba(200, 220, 240, 0.85);
+}
+.front-honesty {
+  font-family: Share Tech Mono, monospace;
+  font-size: 12px;
+  color: rgba(180, 210, 230, 0.8);
+  margin: 6px 0 8px;
+}
+.front-card button {
+  min-height: 44px;
+  min-width: 72px;
+  margin-right: 8px;
+  margin-top: 4px;
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  background: rgba(0, 232, 255, 0.08);
+  color: #e8f4ff;
+  font-family: Orbitron, monospace;
   cursor: pointer;
 }
-.floor-raijin img {
-  width: 36px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: 50%;
-  border: 1px solid rgba(240, 193, 74, 0.45);
+.front-card button.yes { border-color: rgba(57, 255, 20, 0.45); color: #39ff14; }
+.front-card button.no { border-color: rgba(255, 45, 85, 0.45); color: #ff2d55; }
+.front-card button:disabled { opacity: 0.35; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .front-card button { min-height: 56px; }
 }
-body.mode-floor .floor-raijin,
-body.mode-art .floor-raijin { display: inline-flex; }
-body.night-mode .floor-raijin,
-body.phone-floor .floor-raijin { display: none !important; }
 
-/* THE FRONT — Dallas weather ring. CRT/neon, not a city list. */
-.front-hud { max-width: 980px; }
 .front-mode-row {
   display: flex;
   flex-wrap: wrap;
@@ -7240,76 +7341,15 @@ body.phone-floor .floor-raijin { display: none !important; }
   gap: 10px;
   margin-bottom: 12px;
 }
-.front-wx-badge {
-  font-family: Orbitron, monospace;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  padding: 6px 10px;
-  border: 1px solid rgba(0, 232, 255, 0.4);
-  color: #7fe9ff;
-  background: rgba(0, 232, 255, 0.08);
-}
-.front-stage-wrap {
-  position: relative;
-  width: min(720px, 100%);
-  height: min(520px, 72vw);
-  margin: 0 auto 16px;
-  overflow: hidden;
-  border: 1px solid rgba(0, 232, 255, 0.22);
-  background: #02040a;
-  box-shadow: inset 0 0 40px rgba(0, 232, 255, 0.06);
-}
-#frontWx {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-.front-ring {
-  position: absolute;
-  inset: 8%;
-  pointer-events: none;
-}
-.front-chair,
-.front-seat {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: transparent;
-  border: 0;
-  color: #e8f4ff;
-  font-family: Orbitron, monospace;
-  pointer-events: auto;
-}
-.front-chair {
-  transform: translate(-50%, -50%);
-  z-index: 2;
-}
-.front-seat {
-  --a: 0;
-  transform: translate(-50%, -50%) rotate(calc(var(--a) * 1deg)) translateY(-42%) rotate(calc(var(--a) * -1deg)) rotate(var(--front-lean, 0deg));
-  min-width: 72px;
-  min-height: 56px;
-  cursor: default;
-}
 .front-mark {
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid rgba(0, 232, 255, 0.45);
   overflow: hidden;
   background: radial-gradient(circle, rgba(0, 20, 36, 0.9), #02040a);
   box-shadow: 0 0 12px rgba(0, 232, 255, 0.18);
   display: block;
-}
-.front-chair .front-mark {
-  width: 112px;
-  height: 112px;
-  border-color: rgba(240, 193, 74, 0.55);
 }
 .front-mark img {
   width: 100%;
@@ -7322,86 +7362,6 @@ body.phone-floor .floor-raijin { display: none !important; }
   box-shadow: inset 0 0 0 2px rgba(0, 232, 255, 0.35), 0 0 10px rgba(0, 232, 255, 0.12);
 }
 .front-mark.blank img { display: none; }
-.front-name {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
-}
-.front-call {
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  color: rgba(180, 210, 230, 0.8);
-  max-width: 110px;
-  text-align: center;
-}
-.front-stage-wrap[data-wx="WIND"] .front-seat { --front-lean: -6deg; }
-.front-stage-wrap[data-wx="STORM"].bolt-punch .front-chair .front-mark {
-  box-shadow: 0 0 28px rgba(0, 232, 255, 0.85), 0 0 48px rgba(255, 176, 0, 0.35);
-}
-.front-book {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-  margin: 0 0 14px;
-}
-.front-bet {
-  padding: 12px;
-  border: 1px solid rgba(0, 232, 255, 0.22);
-  background: rgba(4, 12, 22, 0.88);
-}
-.front-bet.best { border-color: rgba(57, 255, 20, 0.55); box-shadow: 0 0 16px rgba(57, 255, 20, 0.12); }
-.front-bet.dont-play { border-color: rgba(255, 176, 0, 0.5); }
-.front-bet-head {
-  display: flex;
-  justify-content: space-between;
-  font-family: Orbitron, monospace;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
-}
-.front-bet button {
-  min-height: 44px;
-  min-width: 72px;
-  margin-right: 8px;
-  margin-top: 8px;
-  border: 1px solid rgba(0, 232, 255, 0.35);
-  background: rgba(0, 232, 255, 0.08);
-  color: #e8f4ff;
-  font-family: Orbitron, monospace;
-  cursor: pointer;
-}
-.front-bet button.yes { border-color: rgba(57, 255, 20, 0.45); color: #39ff14; }
-.front-bet button.no { border-color: rgba(255, 45, 85, 0.45); color: #ff2d55; }
-.front-bet button:disabled { opacity: 0.35; cursor: not-allowed; }
-.front-guide-head {
-  font-family: Orbitron, monospace;
-  letter-spacing: 0.14em;
-  font-size: 12px;
-  color: #7fe9ff;
-  margin: 16px 0 8px;
-}
-.front-guide {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-}
-.front-guide-card {
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid rgba(0, 232, 255, 0.2);
-  background: rgba(4, 10, 18, 0.85);
-}
-.front-guide-card .front-mark { width: 56px; height: 56px; }
-.front-guide-card h3 {
-  margin: 0 0 4px;
-  font-size: 13px;
-  letter-spacing: 0.12em;
-  font-family: Orbitron, monospace;
-}
-.front-guide-card p { margin: 0; font-size: 12px; color: rgba(200, 220, 240, 0.75); }
-.front-guide-card .nw { font-family: Share Tech Mono, monospace; font-size: 11px; color: #7fe9ff; margin-top: 4px; }
 .front-step {
   min-height: 44px;
   min-width: 56px;
@@ -7416,9 +7376,8 @@ body.phone-floor .floor-raijin { display: none !important; }
   background: rgba(0, 232, 255, 0.12);
 }
 @media (max-width: 480px) {
-  .front-stage-wrap { height: 420px; }
-  .front-chair .front-mark { width: 88px; height: 88px; }
-  .front-mark { width: 52px; height: 52px; }
-  .front-bet button { min-height: 56px; }
+  .front-raijin { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .front-raijin-name { font-size: 24px; }
+  .front-card button { min-height: 56px; }
   .front-step { min-height: 56px; }
 }
