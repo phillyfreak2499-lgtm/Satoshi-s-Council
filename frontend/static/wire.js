@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-rooms-qa",
+    "at": "2026-08-15T22:15:00-05:00",
+    "title": "Rooms QA: Ares/ETH mood + weather stays on Floor",
+    "why": "Seat mood now follows a real Chair lock — COVER / HOME / OVER and ABOVE / BELOW glow. WAIT stays dim. Hour weather no longer leaks onto Table / Dashboard / Charts."
+  },
+  {
     "id": "2026-08-15-chair-rooms",
     "at": "2026-08-15T21:30:00-05:00",
     "title": "Chair rooms change the Floor",

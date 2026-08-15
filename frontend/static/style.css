@@ -8272,27 +8272,30 @@ body.night-mode[data-chair-room="ares"] .table-stage {
     radial-gradient(ellipse at 88% 0%, rgba(255, 230, 160, 0.14) 0%, transparent 36%),
     linear-gradient(180deg, #071018 0%, #02060e 52%, #010308 100%) !important;
 }
-body[data-hour-weather="wild"][data-chair-room="satoshi"] #tableStage {
+body.floor-mode[data-hour-weather="wild"][data-chair-room="satoshi"] #tableStage,
+body.night-mode[data-hour-weather="wild"][data-chair-room="satoshi"] #tableStage {
   box-shadow: inset 0 0 80px rgba(255, 170, 40, 0.16);
 }
-body[data-hour-weather="wild"][data-chair-room="vitalik"] #tableStage {
+body.floor-mode[data-hour-weather="wild"][data-chair-room="vitalik"] #tableStage,
+body.night-mode[data-hour-weather="wild"][data-chair-room="vitalik"] #tableStage {
   box-shadow: inset 0 0 80px rgba(60, 255, 220, 0.14);
 }
-body[data-hour-weather="wild"][data-chair-room="ares"] #tableStage {
+body.floor-mode[data-hour-weather="wild"][data-chair-room="ares"] #tableStage,
+body.night-mode[data-hour-weather="wild"][data-chair-room="ares"] #tableStage {
   box-shadow: inset 0 0 80px rgba(255, 220, 120, 0.12);
 }
-body[data-hour-weather="dead"] #tableStage,
-body[data-hour-weather="dead"] .table-stage {
+body.floor-mode[data-hour-weather="dead"] #tableStage,
+body.night-mode[data-hour-weather="dead"] #tableStage,
+body.floor-mode[data-hour-weather="dead"] .table-stage,
+body.night-mode[data-hour-weather="dead"] .table-stage {
   filter: brightness(0.72);
 }
-body.phone-floor[data-hour-weather="wild"] #tableStage,
-body.phone-floor[data-hour-weather="dead"] #tableStage {
+body.floor-mode.phone-floor[data-hour-weather="wild"] #tableStage,
+body.night-mode.phone-floor[data-hour-weather="wild"] #tableStage,
+body.floor-mode.phone-floor[data-hour-weather="dead"] #tableStage,
+body.night-mode.phone-floor[data-hour-weather="dead"] #tableStage {
   box-shadow: none;
   filter: none;
-}
-body.night-mode header .header-row,
-body.night-mode footer {
-  display: none !important;
 }
 body.floor-mode[data-chair-room="ares"] #atsSportChip,
 body.floor-mode[data-chair-room="ares"] #atsGameStrip {

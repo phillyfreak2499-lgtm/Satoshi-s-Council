@@ -296,9 +296,54 @@ class HourWeatherTests(unittest.TestCase):
         self.assertNotIn("createElement", room)
         self.assertNotIn("new Image", room)
         self.assertIn("if (phone) return", JS.split("function drawAresScorebug", 1)[1][:400])
-        self.assertIn("body.phone-floor[data-hour-weather=\"wild\"]", CSS)
+        self.assertIn("body.floor-mode.phone-floor[data-hour-weather=\"wild\"]", CSS)
         stamp = JS.split("function drawLockStamp", 1)[1].split("function resizeRoundtable", 1)[0]
         self.assertNotIn("particles.push", stamp)
+
+    def test_hour_weather_css_stays_on_floor(self):
+        self.assertIn('body.floor-mode[data-hour-weather="wild"]', CSS)
+        self.assertIn('body.night-mode[data-hour-weather="wild"]', CSS)
+        self.assertIn('body.floor-mode[data-hour-weather="dead"]', CSS)
+        self.assertIn('body.night-mode[data-hour-weather="dead"]', CSS)
+        self.assertNotIn('body[data-hour-weather="wild"][data-chair-room="satoshi"] #tableStage {', CSS)
+        self.assertNotIn('body[data-hour-weather="dead"] #tableStage,', CSS)
+        self.assertEqual(CSS.count("body.night-mode header .header-row"), 1)
+
+
+def chair_lock_is_real(lc):
+    if not lc or not lc.get("locked"):
+        return False
+    side = str(lc.get("direction") or "").upper()
+    if not side or side in ("WAIT", "SIT", "HOLD", "EMPTY"):
+        return False
+    return True
+
+
+def seat_mood_locked(dir_):
+    return chair_lock_is_real({"locked": True, "direction": dir_})
+
+
+class SeatMoodRealLockTests(unittest.TestCase):
+    def test_ares_and_eth_dirs_count_as_locked(self):
+        mood = JS.split("function seatMoodOf", 1)[1].split("function drawChairRoom", 1)[0]
+        self.assertIn("chairLockIsReal({ locked: true, direction: dir })", mood)
+        self.assertNotIn("floorSeatDirLocked", mood)
+        self.assertTrue(seat_mood_locked("COVER"))
+        self.assertTrue(seat_mood_locked("HOME"))
+        self.assertTrue(seat_mood_locked("OVER"))
+        self.assertTrue(seat_mood_locked("ABOVE"))
+        self.assertTrue(seat_mood_locked("BELOW"))
+        self.assertTrue(seat_mood_locked("UP"))
+        self.assertTrue(seat_mood_locked("DOWN"))
+        self.assertFalse(seat_mood_locked("WAIT"))
+        self.assertFalse(seat_mood_locked("SIT"))
+        self.assertFalse(chair_lock_is_real({"locked": True, "direction": "WAIT"}))
+        self.assertFalse(chair_lock_is_real({"locked": False, "direction": "COVER"}))
+        self.assertTrue(chair_lock_is_real({"locked": True, "direction": "COVER"}))
+        self.assertTrue(chair_lock_is_real({"locked": True, "direction": "ABOVE"}))
+        self.assertIn("chairLockIsReal(lc)", JS.split("function noteChairLock", 1)[1].split("const _chairPulse", 1)[0])
+        self.assertIn("function floorSeatDirLocked(", JS)
+        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
 
 
 if __name__ == "__main__":

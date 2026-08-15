@@ -1459,7 +1459,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { room: room, wx: wx };
   }
   function seatMoodOf(dir, conf) {
-    const locked = (typeof floorSeatDirLocked === "function") ? floorSeatDirLocked(dir) : false;
+    // Same real-lock predicate as the stamp. COVER / HOME / OVER / ABOVE / BELOW glow. WAIT stays dim.
+    const locked = chairLockIsReal({ locked: true, direction: dir });
     const c = Number(conf) || 0;
     if (!locked) return { glow: 0.14, lean: 0.84, alpha: 0.40, loud: false };
     const loud = c >= 62;
