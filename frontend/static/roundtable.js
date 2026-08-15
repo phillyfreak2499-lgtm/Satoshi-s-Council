@@ -1976,6 +1976,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return true;
   }
 
+  function coverSatoshiEmblem(cx, cy, r) {
+    // Cover the gold ZT chest emblem. Face stays. Vitalik is already clean.
+    if (!ctx || !r) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    const ex = cx;
+    const ey = cy + r * 0.58;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, r * 0.48, r * 0.38, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(6, 8, 14, 0.97)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(80, 88, 98, 0.45)";
+    ctx.lineWidth = Math.max(1, r * 0.025);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function chairKeyOf(which) {
     return isEthTable(which) ? "ethereum" : "bitcoin";
   }
@@ -2379,6 +2398,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
+    if (!isEthTable(which)) coverSatoshiEmblem(cx, portraitY, pr);
     rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
     ctx.beginPath();
@@ -2407,7 +2427,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textAlign = "center";
     ctx.font = "700 11px Orbitron, monospace";
     ctx.fillStyle = locked ? gold : (which === "ethereum" ? "#9dffc0" : "#7fe9ff");
-    ctx.fillText((label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC"))) + (focused ? " · FOCUS" : ""), cx, cy - radius - 10);
+    // Inside the table, under the portrait — not in the top-arc seat ring (FOCUSWICK).
+    const dualNameY = portraitY + pr + 11;
+    ctx.fillText((label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC"))) + (focused ? " · FOCUS" : ""), cx, dualNameY);
 
     ctx.font = "700 12px Orbitron, monospace";
     const plateY = cy + radius + 14;
@@ -2498,6 +2520,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "#0a1220";
       ctx.fill();
     }
+    if (!isEthTable(which)) coverSatoshiEmblem(cx, cy - 4, pr);
     ctx.beginPath();
     ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
     ctx.strokeStyle = (dir === "UP" || dir === "UP_HOLD") ? "rgba(0,255,100,0.7)" :
@@ -2586,12 +2609,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function floorNameplateFit(w, h) {
     // Keep GOAL strip + Chair nameplate inside the table so they do not
     // cover bottom seat names (WICK / WIRE / EXHAUST / QUORUM) at 1280 or 390.
+    // Phone GOAL docks at the top rail (not a wide bar through the ring).
     const short = Math.min(w, h);
     const phone = !!(typeof isPhoneDesk === "function" && isPhoneDesk()) || w <= 420 || short <= 520;
     const seatR = phone ? 18 : 24;
     const labelStack = phone ? 28 : 42;
     const edgePad = phone ? 6 : 10;
-    const nameplateH = 60;
+    const nameplateH = phone ? 22 : 36;
     const ringMul = 1.15;
     const wantRadius = short * 0.40;
     const maxRing = short * 0.5 - seatR - labelStack - edgePad;
@@ -2602,6 +2626,64 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lrBase = Math.min(wantLr, maxLr);
     return { radius, ringR, lrBase, seatR, labelStack, nameplateH, phone, ringMul };
   }
+
+  function floorHudGeometry(w, h) {
+    // Real AABBs for 1280 dual nameplates and 390 GOAL vs seat labels.
+    const phone = w <= 480 || Math.min(w, h) <= 520;
+    const dual = !phone && w >= 720;
+    const labels = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN", "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP", "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN"];
+    const out = { phone: phone, dual: dual, nameplates: [], goals: [], seats: [] };
+    function tw(s, px) { return Math.max(8, Math.round(String(s).length * px * 0.62)); }
+    function addSeats(cx, cy, ringR, seatR, nameOff, fontPx) {
+      const n = labels.length;
+      labels.forEach(function (lab, i) {
+        const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+        const sx = cx + Math.cos(ang) * ringR;
+        const sy = cy + Math.sin(ang) * ringR;
+        const lw = tw(lab, fontPx);
+        const ly = sy + seatR + nameOff;
+        out.seats.push({ x: sx - lw / 2, y: ly - fontPx, w: lw, h: fontPx + 4, name: lab });
+      });
+    }
+    if (dual) {
+      const R = Math.min(w, h) * 0.26;
+      const pr = R * 0.80;
+      const cy = h * 0.52;
+      const portraitY = cy - 2;
+      const nameY = portraitY + pr + 11;
+      [
+        [w * 0.25, "SATOSHI · BTC · FOCUS"],
+        [w * 0.75, "VITALIK · ETH"],
+      ].forEach(function (pair) {
+        const cx = pair[0];
+        const t = pair[1];
+        const nw = tw(t, 11);
+        out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t });
+        addSeats(cx, cy, R * 1.48, 22, 12, 10);
+      });
+    } else {
+      const fit = floorNameplateFit(w, h);
+      const cx = w / 2, cy = h / 2;
+      const lr = fit.lrBase;
+      if (fit.phone) {
+        const goal = "GOAL · one guess @ best odds (<80%)";
+        const gw = Math.min(w - 118, 260);
+        out.goals.push({ x: 108, y: 8, w: gw, h: 22, text: goal });
+        const nw = tw("SATOSHI", 10);
+        out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
+      } else {
+        const goal = "GOAL · one guess @ best odds (<80%)";
+        const gw = 200;
+        const plateY = cy + lr + 46;
+        out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
+        const nw = tw("SATOSHI", 10);
+        out.nameplates.push({ x: cx - nw / 2, y: cy + lr + 10 - 8, w: nw, h: 12, text: "SATOSHI" });
+      }
+      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 14 : 18, fit.phone ? 9 : 11);
+    }
+    return out;
+  }
+  window.__floorHudGeometry = floorHudGeometry;
 
   function drawArt() {
     if (!ctx || !canvas) return;
@@ -3131,6 +3213,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = colorFor(leaderDir, Math.max(leaderConf, 45));
       ctx.fill();
     }
+    if (!isEthTable(focusTable)) coverSatoshiEmblem(cx, cy, lr);
     rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
     // Eye glow ring pulse (extra emphasis on call color)
@@ -3158,10 +3241,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     // Labels under portrait — tucked to the rim so GOAL / nameplate stay
     // inside the seat ring (do not cover WICK / WIRE / EXHAUST / QUORUM).
-    const hudTight = !!(floorFit && mode === "floor");
-    const nameY = cy + lr + (hudTight ? 10 : 16);
-    const dirY = cy + lr + (hudTight ? 22 : 32);
-    const confY = cy + lr + (hudTight ? 32 : 46);
+    const hudTight = !!(floorFit && (mode === "floor" || mode === "night"));
+    const phoneHud = !!(hudTight && floorFit.phone);
+    const nameY = phoneHud ? (cy + lr * 0.50) : (cy + lr + (hudTight ? 10 : 16));
+    const dirY = phoneHud ? (cy + lr * 0.64) : (cy + lr + (hudTight ? 22 : 32));
+    const confY = phoneHud ? (cy + lr * 0.76) : (cy + lr + (hudTight ? 32 : 46));
     ctx.font = hudTight ? "700 10px Orbitron, sans-serif" : "700 11px Orbitron, sans-serif";
     ctx.fillStyle = GOLD;
     ctx.textAlign = "center";
@@ -3188,16 +3272,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
       const entryOdds = lc.entry_odds_pct;
       const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
-      const plateY = cy + lr + (hudTight ? 46 : 68);
-      const plateW = hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 260 : 240);
-      const plateH = hudTight ? 28 : 38;
+      const plateY = phoneHud ? 19 : (cy + lr + (hudTight ? 46 : 68));
+      const plateW = phoneHud ? Math.min(w - 118, 260) : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 260 : 240));
+      const plateH = phoneHud ? 22 : (hudTight ? 28 : 38);
+      const plateX = phoneHud ? (108 + plateW / 2) : cx;
       ctx.beginPath();
       const rx = 8;
-      ctx.moveTo(cx - plateW/2 + rx, plateY - plateH/2);
-      ctx.arcTo(cx + plateW/2, plateY - plateH/2, cx + plateW/2, plateY + plateH/2, rx);
-      ctx.arcTo(cx + plateW/2, plateY + plateH/2, cx - plateW/2, plateY + plateH/2, rx);
-      ctx.arcTo(cx - plateW/2, plateY + plateH/2, cx - plateW/2, plateY - plateH/2, rx);
-      ctx.arcTo(cx - plateW/2, plateY - plateH/2, cx + plateW/2, plateY - plateH/2, rx);
+      ctx.moveTo(plateX - plateW/2 + rx, plateY - plateH/2);
+      ctx.arcTo(plateX + plateW/2, plateY - plateH/2, plateX + plateW/2, plateY + plateH/2, rx);
+      ctx.arcTo(plateX + plateW/2, plateY + plateH/2, plateX - plateW/2, plateY + plateH/2, rx);
+      ctx.arcTo(plateX - plateW/2, plateY + plateH/2, plateX - plateW/2, plateY - plateH/2, rx);
+      ctx.arcTo(plateX - plateW/2, plateY - plateH/2, plateX + plateW/2, plateY - plateH/2, rx);
       ctx.closePath();
       ctx.fillStyle = isDir ? "rgba(0, 20, 40, 0.94)" : "rgba(10, 12, 20, 0.88)";
       ctx.fill();
@@ -3207,7 +3292,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.shadowBlur = isDir ? 16 : 0;
       ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.font = "700 12px Orbitron, sans-serif";
+      ctx.font = phoneHud ? "700 8px Orbitron, sans-serif" : "700 12px Orbitron, sans-serif";
       ctx.fillStyle = isDir ? "#ffffff" : "rgba(180, 200, 220, 0.9)";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -3218,7 +3303,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       } else {
         lockLabel = "GOAL · one guess @ best odds (<80%)";
       }
-      ctx.fillText(lockLabel, cx, plateY);
+      ctx.fillText(lockLabel, plateX, plateY);
     }
 
     // Scanline overlay on canvas itself (subtle)

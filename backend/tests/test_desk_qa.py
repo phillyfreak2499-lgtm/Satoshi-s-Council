@@ -198,7 +198,7 @@ class FloorNameplateOverlapTests(unittest.TestCase):
         self.assertIn("WICK / WIRE / EXHAUST / QUORUM", JS)
         for w, h in ((1280, 700), (1280, 620), (390, 390), (390, 520)):
             radius, ring_r, lr, seat_r, nameplate_h, phone = _floor_nameplate_fit(w, h)
-            plate_bottom = lr + 46 + 14
+            plate_bottom = (lr * 0.76 + 8) if phone else (lr + 46 + 14)
             seat_inner = ring_r - seat_r
             self.assertLess(
                 plate_bottom,
@@ -213,6 +213,67 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                 h - 4,
                 "outer seat labels clip at %sx%s" % (w, h),
             )
+
+    def test_real_rects_do_not_intersect_at_1280_and_390(self):
+        self.assertIn("function floorHudGeometry", JS)
+        self.assertIn("window.__floorHudGeometry", JS)
+        self.assertIn("dualNameY", JS)
+        self.assertIn("FOCUSWICK", JS)
+        hits_1280 = ("WICK", "CASCADE", "CARRY", "ODDS", "STREAK")
+        hits_390 = ("QUORUM", "WICK", "EXHAUST", "CLOCK", "WARDEN", "DRIFT")
+        for w, h, watch in ((1280, 700, hits_1280), (1280, 620, hits_1280), (390, 390, hits_390), (390, 520, hits_390)):
+            layout = _floor_hud_layout(w, h)
+            hud = list(layout["nameplates"]) + list(layout["goals"])
+            names = {s["name"] for s in layout["seats"]}
+            for lab in watch:
+                self.assertIn(lab, names, "%s missing at %sx%s" % (lab, w, h))
+            for plate in hud:
+                for seat in layout["seats"]:
+                    self.assertFalse(
+                        _rects_intersect(plate, seat),
+                        "%s overlaps %s at %sx%s plate=%s seat=%s"
+                        % (plate.get("text") or "HUD", seat["name"], w, h, plate, seat),
+                    )
+
+
+class SatoshiChairEmblemTests(unittest.TestCase):
+    def test_cover_satoshi_emblem_hides_zt_on_chair_art(self):
+        js = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+        html = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function coverSatoshiEmblem(cx, cy, r)", js)
+        self.assertIn("gold ZT chest emblem", js)
+        self.assertIn("coverSatoshiEmblem(cx, portraitY, pr)", js)
+        self.assertIn("coverSatoshiEmblem(cx, cy, lr)", js)
+        self.assertIn("coverSatoshiEmblem(cx, cy - 4, pr)", js)
+        self.assertIn('"/chair-up.jpg"', js)
+        self.assertIn('"/chair-down.jpg"', js)
+        self.assertIn('"/chair-wait.jpg"', js)
+        for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
+            self.assertTrue((ROOT / "frontend" / "static" / name).is_file(), name)
+        self.assertIn("Satoshi’s Council", html)
+        self.assertNotIn("ZT ·", js)
+        self.assertNotIn("ZT ·", html)
+
+    def test_satoshi_chair_jpgs_have_no_gold_zt_on_chest(self):
+        from PIL import Image
+
+        def is_emblem(p):
+            r, g, b = p[:3]
+            if r > 140 and g > 95 and b < 100 and r > b + 50:
+                return True
+            if g > 100 and g > r + 30 and g > b + 15 and r < 150:
+                return True
+            return False
+
+        for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
+            im = Image.open(ROOT / "frontend" / "static" / name).convert("RGB")
+            w, h = im.size
+            gold = 0
+            for y in range(int(h * 0.68), int(h * 0.90)):
+                for x in range(int(w * 0.38), int(w * 0.62)):
+                    if is_emblem(im.getpixel((x, y))):
+                        gold += 1
+            self.assertLess(gold, 80, "%s still has gold/ZT chest pixels (%s)" % (name, gold))
 
 
 class FloorTableChromeOverlapTests(unittest.TestCase):
@@ -357,7 +418,7 @@ def _floor_nameplate_fit(w, h):
     seat_r = 18 if phone else 24
     label_stack = 28 if phone else 42
     edge_pad = 6 if phone else 10
-    nameplate_h = 60
+    nameplate_h = 22 if phone else 36
     ring_mul = 1.15
     want_radius = short * 0.40
     max_ring = short * 0.5 - seat_r - label_stack - edge_pad
@@ -367,6 +428,83 @@ def _floor_nameplate_fit(w, h):
     max_lr = max(40, ring_r - seat_r - nameplate_h - 10)
     lr_base = min(want_lr, max_lr)
     return radius, ring_r, lr_base, seat_r, nameplate_h, phone
+
+
+_SEAT_LABELS = (
+    "WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN",
+    "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP",
+    "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN",
+)
+
+
+def _text_w(s, px):
+    return max(8, round(len(str(s)) * px * 0.62))
+
+
+def _floor_hud_layout(w, h):
+    """Mirrors floorHudGeometry — real AABBs, not a radial-only fit."""
+    import math
+
+    phone = w <= 480 or min(w, h) <= 520
+    dual = (not phone) and w >= 720
+    nameplates = []
+    goals = []
+    seats = []
+
+    def add_seats(cx, cy, ring_r, seat_r, name_off, font_px):
+        n = len(_SEAT_LABELS)
+        for i, lab in enumerate(_SEAT_LABELS):
+            ang = -math.pi / 2 + (i / n) * math.pi * 2
+            sx = cx + math.cos(ang) * ring_r
+            sy = cy + math.sin(ang) * ring_r
+            lw = _text_w(lab, font_px)
+            ly = sy + seat_r + name_off
+            seats.append(
+                {"x": sx - lw / 2, "y": ly - font_px, "w": lw, "h": font_px + 4, "name": lab}
+            )
+
+    if dual:
+        r = min(w, h) * 0.26
+        pr = r * 0.80
+        cy = h * 0.52
+        portrait_y = cy - 2
+        name_y = portrait_y + pr + 11
+        for cx, text in ((w * 0.25, "SATOSHI · BTC · FOCUS"), (w * 0.75, "VITALIK · ETH")):
+            nw = _text_w(text, 11)
+            nameplates.append({"x": cx - nw / 2, "y": name_y - 11, "w": nw, "h": 14, "text": text})
+            add_seats(cx, cy, r * 1.48, 22, 12, 10)
+    else:
+        radius, ring_r, lr, seat_r, _nh, is_phone = _floor_nameplate_fit(w, h)
+        cx, cy = w / 2.0, h / 2.0
+        if is_phone:
+            gw = min(w - 118, 260)
+            goals.append(
+                {
+                    "x": 108,
+                    "y": 8,
+                    "w": gw,
+                    "h": 22,
+                    "text": "GOAL · one guess @ best odds (<80%)",
+                }
+            )
+            nw = _text_w("SATOSHI", 10)
+            nameplates.append({"x": cx - nw / 2, "y": cy + lr * 0.50 - 8, "w": nw, "h": 12, "text": "SATOSHI"})
+        else:
+            gw = 200
+            plate_y = cy + lr + 46
+            goals.append(
+                {
+                    "x": cx - gw / 2,
+                    "y": plate_y - 14,
+                    "w": gw,
+                    "h": 28,
+                    "text": "GOAL · one guess @ best odds (<80%)",
+                }
+            )
+            nw = _text_w("SATOSHI", 10)
+            nameplates.append({"x": cx - nw / 2, "y": cy + lr + 10 - 8, "w": nw, "h": 12, "text": "SATOSHI"})
+        add_seats(cx, cy, ring_r, seat_r, 14 if is_phone else 18, 9 if is_phone else 11)
+    return {"phone": phone, "dual": dual, "nameplates": nameplates, "goals": goals, "seats": seats}
 
 
 class PacksNotDroppedTests(unittest.TestCase):
