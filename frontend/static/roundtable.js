@@ -2876,9 +2876,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // Hierarchy / listen weights / learning unchanged — only seat placement is circular again.
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
     const ranked = hier.map(r => r.agent).filter(a => a !== "law");
-    const order = ranked.length
-      ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
-      : AGENT_ORDER.filter(a => a !== "law");
+    const liveNames = agents.map(a => a.agent_name).filter(n => n && n !== "leader");
+    const ethLive = typeof isEthTable === "function" && isEthTable(focusTable) && liveNames.length;
+    const order = ethLive
+      ? (ranked.length
+          ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
+          : liveNames.filter(a => a !== "law"))
+      : (ranked.length
+          ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
+          : AGENT_ORDER.filter(a => a !== "law"));
     const n = order.length || 1;
     const positions = {};
     const rankOf = {};
@@ -4848,7 +4854,15 @@ function drawCandleChart() {
     const agents = (state && state.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    grid.innerHTML = Object.keys(BOT_GUIDE).map(key => {
+    let guideKeys = Object.keys(BOT_GUIDE);
+    if (typeof isEthTable === "function" && isEthTable(focusTable) && agents.length) {
+      const live = {};
+      agents.forEach(a => { if (a && a.agent_name) live[a.agent_name] = true; });
+      live.volatility = true;
+      live.exhaust = true;
+      guideKeys = guideKeys.filter(k => live[k]);
+    }
+    grid.innerHTML = guideKeys.map(key => {
       const g = BOT_GUIDE[key];
       const r = rankMap[key] || {};
       const ag = byName[key] || {};

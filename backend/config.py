@@ -231,8 +231,14 @@ class Settings(BaseSettings):
     HOURLY_EARLY_MIN: float = 35.0
     HOURLY_LATE_MIN: float = 20.0
     HOURLY_HARD_LATE_MIN: float = 8.0
-    # ETH uses a thinner specialist set
-    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq"
+    # ETH uses a thinner specialist set. Append VOLT + EXHAUST only — not ORBIT/STREAK/VEL/WIRE.
+    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq,volatility,exhaust"
+    # ETH-only priors for the new seats. Not Satoshi's BTC BASE_WEIGHTS (0.07 / 0.09).
+    # Stay quiet until each seat has its own graded ETH hours.
+    ETH_QUIET_PRIORS: Dict[str, float] = {
+        "volatility": 0.018,
+        "exhaust": 0.016,
+    }
 
     # Quiet-period directional confidence floor (used by Leader adaptive path)
     QUIET_MIN_DIRECTIONAL_CONF: int = 80
@@ -281,6 +287,24 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def eth_core_agent_set() -> set:
+    raw = str(getattr(settings, "ETH_CORE_AGENTS", "") or "")
+    core = {x.strip().lower() for x in raw.split(",") if x.strip()}
+    core |= {"guardian", "law"}
+    return core
+
+
+def prior_weight(asset: str, name: str) -> float:
+    """Per-table prior. ETH VOLT/EXHAUST use quiet ETH numbers, not Satoshi's."""
+    asset = (asset or "btc").lower()
+    name = (name or "").lower()
+    if asset == "eth":
+        quiet = getattr(settings, "ETH_QUIET_PRIORS", None) or {}
+        if name in quiet:
+            return float(quiet[name])
+    return float(settings.BASE_WEIGHTS.get(name, 0.1))
 
 
 def effective(section: str, key: str, fallback: float | int | bool | str | None = None):

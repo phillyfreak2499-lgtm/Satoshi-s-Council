@@ -111,7 +111,7 @@ class Council:
             core = {
                 x.strip().lower()
                 for x in str(getattr(settings, "ETH_CORE_AGENTS",
-                    "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale")).split(",")
+                    "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq,volatility,exhaust")).split(",")
                 if x.strip()
             }
             # Always keep guardian + law
