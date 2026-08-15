@@ -16,6 +16,12 @@
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
   <link rel="preload" as="image" href="/static/bots/raijin-chair.png" />
+  <link rel="preload" as="image" href="/static/ares-chair.png" />
+  <link rel="preload" as="image" href="/static/bots/line.png" />
+  <link rel="preload" as="image" href="/static/bots/steam.png" />
+  <link rel="preload" as="image" href="/static/bots/fade.png" />
+  <link rel="preload" as="image" href="/static/bots/hurt.png" />
+  <link rel="preload" as="image" href="/static/bots/ice.png" />
   <link rel="preload" as="image" href="/raijin-up.jpg" />
   <link rel="preload" as="image" href="/raijin-down.jpg" />
   <link rel="preload" as="image" href="/raijin-wait.jpg" />
@@ -183,7 +189,8 @@
       <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
         <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
-        <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas / Raijin" aria-label="Focus Dallas / Raijin" data-focus="front">RAIJIN</button>
+        <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas Weather Forecast / Raijin" aria-label="Focus Dallas Weather Forecast / Raijin" data-focus="front">DWF</button>
+        <button type="button" id="focusAts" class="focus-tab" title="Focus ATS / Ares" aria-label="Focus ATS / Ares" data-focus="ats">ATS</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
@@ -269,6 +276,12 @@
           <div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div>
         </div>
         <div id="chairWhy" class="chair-why" aria-live="polite">WAIT · —</div>
+        <div id="aresFace" class="ares-face" data-eye="wait" hidden aria-hidden="true">
+          <img id="aresChairImg" src="/static/ares-chair.png" alt="Ares">
+          <span class="ares-eye ares-eye-l" aria-hidden="true"></span>
+          <span class="ares-eye ares-eye-r" aria-hidden="true"></span>
+          <span class="ares-rim" aria-hidden="true"></span>
+        </div>
         <button type="button" id="phoneScore" class="phone-score" hidden aria-label="Flip BTC / ETH">BTC 0–0</button>
         <button type="button" id="floorRaijin" class="floor-raijin" title="THE FRONT · Raijin · Dallas DFW" aria-label="Open THE FRONT">
           <img src="/static/bots/raijin-wait.png" alt="" width="44" height="44">
@@ -282,7 +295,7 @@
         <section id="lockTapeCard" class="hud-card lock-tape-card" aria-label="Last locks tape">
           <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
           <ol id="lockTapeList" class="lock-tape-list" aria-live="polite">
-            <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik</li>
+            <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>
           </ol>
         </section>
         <section id="whyLockCard" class="hud-card why-lock-card hidden" aria-label="Why this lock">
@@ -476,6 +489,14 @@
           <p class="settings-foot" id="autoBetFollowNote">Follow leaders is a reserved mode for later. It does not place orders.</p>
         </div>
 
+        <div class="beast-card settings-card" id="atsSettingsCard">
+          <div class="beast-title">ARES · ATS</div>
+          <p class="settings-sub">Sports Chair. One game. Kalshi moneyline / spread / total — no player props. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Dallas / Front stays untouched.</p>
+          <label class="set-check"><input type="radio" name="atsMode" id="setAtsPaper" value="paper" checked /> Paper (default)</label>
+          <label class="set-check"><input type="radio" name="atsMode" id="setAtsLive" value="live" disabled /> Live — off. Ares is paper only.</label>
+          <p class="settings-foot">Follower OFF. A few paper locks per day. Empty book is UNKNOWN, not DEAD.</p>
+        </div>
+
         <div class="beast-card settings-card" id="frontSettingsCard">
           <div class="beast-title">RAIJIN · THE FRONT</div>
           <p class="settings-sub">Weather Chair. Dallas only (KXHIGHTDAL / KDFW / DFW — not Love Field). Hits count like Satoshi / Vitalik. Pending until NWS CLI. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks.</p>
@@ -531,6 +552,11 @@
         <p class="front-bots-sub">Weather Chair. Dallas DFW daily high. Not mixed into WICK / TAPE.</p>
         <div id="frontBotsGrid" class="bots-grid"></div>
       </section>
+      <section id="atsBotsGuide" class="front-bots-guide" aria-label="ATS / ARES">
+        <div class="front-guide-head">ATS / ARES</div>
+        <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
+        <div id="atsBotsGrid" class="bots-grid"></div>
+      </section>
       <div id="botsGrid" class="bots-grid"></div>
     </section>
 
@@ -558,7 +584,7 @@
     <section id="tapeView" class="info-view hidden" aria-label="Chair paper tape">
       <div class="info-hero">
         <h2>CHAIR TAPE</h2>
-        <p>Auto-graded paper hours for the last 24 hours — Satoshi (BTC) and Vitalik (ETH). Official Kalshi <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
+        <p>Auto-graded paper hours for the last 24 hours — Satoshi (BTC), Vitalik (ETH), and Ares (ATS) when focused. Official Kalshi <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
       </div>
       <div id="tapeCalib" class="tape-calib" aria-label="Calibration strip"></div>
       <div class="panel-head"><span class="panel-title">LAST 24H</span><span class="panel-sub" id="tapeMeta">—</span></div>
@@ -802,6 +828,10 @@
 
 <!-- Charts tab: game HUD wall — BTC and ETH 1m both visible -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
+      <article id="atsChartTape" class="chart-card chart-wide chart-ats-tape" hidden>
+        <header class="chart-card-head"><span>ARES · GAME TAPE</span><span class="chart-meta" id="atsChartMeta">one game</span></header>
+        <p id="atsChartLine" class="ats-chart-line">WAIT · no game on the table</p>
+      </article>
       <div class="charts-pairs">
         <article class="chart-card chart-wide chart-pair chart-pair-btc">
           <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartBtcMeta">—</span></header>

@@ -1,6 +1,6 @@
 # Satoshi’s Council — New Operator Tutorial
 
-**Version:** 2026-08-15 (Raijin / THE FRONT)
+**Version:** 2026-08-15 (Ares / ATS)
 
 ## What this is
 A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M).  
@@ -44,7 +44,10 @@ Raijin is the weather Chair. THE FRONT is his Floor — a real ring table, not a
 - **Seats:** **GLASS** (official / NWS high) · **PIT** (Kalshi vs that number) · **FROST** (veto junk / SICK / thin book) · **BONE** (this city’s history / climo).
 - Hits count like BTC / ETH. Pending until NWS CLI posts the next morning.
 - Paper first. Live stays off until you arm this tab. Does not place 1H Chair locks. Never talks to Follower.
-- Small third chair on the shared Floor. Full-size ring on the Front tab.
+- Equal chair on the shared Floor (Satoshi · Vitalik · Raijin · Ares). Full-size ring on the Front tab.
+
+## Ares / ATS
+Ares is the sports Chair. One game. Gold tab **ATS**. Calls are COVER / NO-COVER, the team name, or OVER / UNDER. WAIT stays WAIT. Seats: LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs. Paper only. Follower off.
 
 Do not look for other cities on this board. v1 is Dallas only.
 

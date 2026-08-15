@@ -409,6 +409,14 @@ async def api_front_kill():
 
     return desk_front.kill_live()
 
+
+@app.get("/api/ats")
+async def api_ats():
+    """Ares — one-game sports Chair. Paper only. No Follower. No Live."""
+    from backend.services import desk_ats
+
+    return await desk_ats.build_board()
+
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
     ok = await council.store.delete_manual_trade(trade_id)
@@ -1315,6 +1323,19 @@ if STATIC_DIR.is_dir():
     @app.get("/raijin-wait.jpg")
     async def raijin_wait():
         return FileResponse(STATIC_DIR / "raijin-wait.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/ares-chair.png")
+    async def ares_chair_png():
+        return FileResponse(STATIC_DIR / "ares-chair.png", media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/ares-wait.png")
+    async def ares_wait_png():
+        path = STATIC_DIR / "ares-wait.png"
+        if not path.exists():
+            path = STATIC_DIR / "ares-chair.png"
+        return FileResponse(path, media_type="image/png",
                             headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/hive-egg.png")
