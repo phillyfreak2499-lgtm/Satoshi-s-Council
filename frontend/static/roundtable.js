@@ -6224,7 +6224,7 @@ function drawCandleChart() {
   window.prefetchLeaderClickVideo = prefetchLeaderClickVideo;
 
   function playLeaderClickVideo() {
-    // Gesture clip from Floor or Table Chair photos. Same overlay, no title card, no ZT.
+    // Gesture clip from Floor or Table Chair photos. Same overlay, no title card.
     const wrap = document.getElementById("leaderClickWrap");
     const vid = document.getElementById("leaderClickVideo");
     const skipBtn = document.getElementById("leaderClickSkip");
