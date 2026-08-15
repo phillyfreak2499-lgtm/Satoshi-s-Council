@@ -51,7 +51,7 @@ class LeaderClickGestureTests(unittest.TestCase):
         self.assertIn('rememberChairHit(cx, portraitY, pr, which)', JS)
         self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC"', JS)
         self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH"', JS)
-        self.assertIn('rememberChairHit(cx, cy, lr, focusTable === "ethereum" ? "ethereum" : "bitcoin")', JS)
+        self.assertIn("rememberChairHit(cx, cy, lr, chairKeyOf(focusTable))", JS)
 
     def test_gesture_only_from_chair_hit(self):
         wire = _wire_fn()

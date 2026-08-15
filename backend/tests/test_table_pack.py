@@ -54,7 +54,7 @@ class EthChairNameTests(unittest.TestCase):
         self.assertIn('chairNameOf("ethereum") + " · ETH"', JS)
         self.assertIn('chairNameOf("bitcoin") + " · BTC"', JS)
         self.assertIn("const focusName = chairTitleOf(focusTable)", JS)
-        self.assertIn('chairTitleOf(focusTable) + " ranks (finish-only)"', JS)
+        self.assertIn('chairTitleOf(focusTable) + " ranks (finish-only) · " + phase', JS)
         self.assertIn('isEth ? "Vitalik ETH table" : "Satoshi BTC table"', JS)
         self.assertIn('aria-label="ETH · Vitalik"', HTML)
         self.assertIn('aria-label="Focus Ethereum / Vitalik"', HTML)
