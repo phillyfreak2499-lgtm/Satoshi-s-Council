@@ -649,16 +649,17 @@
     <section id="helpView" class="info-view hidden" aria-label="HELP">
       <div class="info-hero">
         <h2>HELP</h2>
-        <p>Something’s wrong. Add this. A new idea. Zach reads these — nothing ships until he says so. Paper. Follower OFF.</p>
+        <p>Something’s wrong. Add this. A new idea. Shout. Zach reads these — nothing ships until he says so. Paper. Follower OFF.</p>
       </div>
       <form id="helpForm" class="help-desk" autocomplete="off">
         <div class="help-kinds" role="group" aria-label="Kind">
           <button type="button" class="help-kind" data-kind="WRONG" aria-pressed="false">WRONG</button>
           <button type="button" class="help-kind" data-kind="ADD" aria-pressed="false">ADD</button>
           <button type="button" class="help-kind" data-kind="IDEA" aria-pressed="false">IDEA</button>
+          <button type="button" class="help-kind" data-kind="SHOUT" aria-pressed="false">SHOUT</button>
         </div>
         <label class="help-field" for="helpText">What’s on the desk</label>
-        <textarea id="helpText" class="help-text" name="note" maxlength="280" rows="3" placeholder="Short. What’s wrong, what to add, or the idea."></textarea>
+        <textarea id="helpText" class="help-text" name="note" maxlength="280" rows="3" placeholder="Short. What’s wrong, what to add, the idea, or a shout."></textarea>
         <button type="submit" id="helpSend" class="gate-btn gate-btn-summon help-send">FILE IT</button>
         <p id="helpStatus" class="help-status" aria-live="polite"></p>
       </form>

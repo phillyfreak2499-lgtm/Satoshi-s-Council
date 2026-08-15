@@ -39,6 +39,8 @@ class HelpMarkupTests(unittest.TestCase):
         self.assertIn('data-kind="WRONG"', HTML)
         self.assertIn('data-kind="ADD"', HTML)
         self.assertIn('data-kind="IDEA"', HTML)
+        self.assertIn('data-kind="SHOUT"', HTML)
+        self.assertNotIn("venmo", HTML.lower())
         self.assertIn("FILE IT", HTML)
         self.assertNotIn("bug report", HTML.lower())
         self.assertIn("<title>Satoshi’s Council</title>", HTML)
@@ -88,7 +90,8 @@ class HelpPersistTests(unittest.TestCase):
         reset_rate_limits()
         self._tmp.cleanup()
 
-    def test_wrong_add_idea_persist(self):
+    def test_wrong_add_idea_shout_persist(self):
+        self.assertIn("SHOUT", KINDS)
         pings = []
         now = 1_700_000_000.0
         for i, kind in enumerate(KINDS):
@@ -101,16 +104,20 @@ class HelpPersistTests(unittest.TestCase):
             )
             self.assertTrue(out["ok"], out)
         rows = list_tickets()
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), len(KINDS))
         kinds = [r["kind"] for r in rows]
-        self.assertEqual(kinds, ["IDEA", "ADD", "WRONG"])
+        self.assertEqual(kinds, list(reversed(KINDS)))
         texts = {r["text"] for r in rows}
-        self.assertEqual(texts, {"WRONG on the desk", "ADD on the desk", "IDEA on the desk"})
+        self.assertEqual(texts, {"%s on the desk" % k for k in KINDS})
         for row in rows:
             self.assertIn("time", row)
             self.assertIn("at", row)
             self.assertNotIn("ip", row)
-        self.assertEqual([p[0] for p in pings], ["WRONG", "ADD", "IDEA"])
+        self.assertEqual([p[0] for p in pings], list(KINDS))
+        shout = [r for r in rows if r["kind"] == "SHOUT"]
+        self.assertEqual(len(shout), 1)
+        self.assertEqual(shout[0]["text"], "SHOUT on the desk")
+        self.assertEqual(pings[-1][0], "SHOUT")
 
     def test_optional_kind_and_empty_rejected(self):
         ok = submit("1.1.1.1", "", "just a note", now=10.0, ping=False)
@@ -146,6 +153,7 @@ class HelpContactAndScopeTests(unittest.TestCase):
             low = blob.lower()
             for needle in CONTACT_NEEDLES:
                 self.assertNotIn(needle, low)
+            self.assertNotIn("venmo", low)
 
     def test_leak_needles_catch_a_paste(self):
         sample = "ping mailto:desk@example.com sms:+15550100 tel:+15550100 twilio @gmail.com"
@@ -173,8 +181,10 @@ class HelpContactAndScopeTests(unittest.TestCase):
 
     def test_wire_note(self):
         self.assertIn("HELP tab — tickets to Zach", WIRE_JS)
+        self.assertIn("HELP gained SHOUT", WIRE_JS)
         self.assertIn("Zach approves before anything ships", WIRE_JS)
         self.assertIn("WRONG / ADD / IDEA", WIRE_JS)
+        self.assertIn("SHOUT", WIRE_JS)
         self.assertIn("Follower OFF", WIRE_JS)
         self.assertNotIn("ZT ·", WIRE_JS.split("2026-08-15-help-tab", 1)[1][:400])
 

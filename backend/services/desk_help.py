@@ -1,5 +1,5 @@
 """
-HELP — desk tickets for Zach. WRONG / ADD / IDEA.
+HELP — desk tickets for Zach. WRONG / ADD / IDEA / SHOUT.
 
 Persists under DATA_DIR. Optional ping via HELP_PING_URL (then LOCK_PING_URL).
 Does not lock, size, grade, or change Chair math.
@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 CT = ZoneInfo("America/Chicago")
-KINDS = ("WRONG", "ADD", "IDEA")
+KINDS = ("WRONG", "ADD", "IDEA", "SHOUT")
 GENERIC = "Could not send."
 COOLDOWN_S = 20.0
 HOUR_CAP = 8
