@@ -9,6 +9,7 @@ from backend.agents.chair_gates import (
     book_too_thin,
     clamp_p_finish,
     close_time_from_kalshi_ticker,
+    collect_official_results,
     compute_ev_cents,
     decide_open_lock_grade,
     dead_book_reason,
@@ -21,6 +22,8 @@ from backend.agents.chair_gates import (
     known_official_market,
     kalshi_result_to_side,
     kalshi_taker_fee_cents,
+    event_ticker_from_kalshi_ticker,
+    kalshi_market_finalized,
     leftover_after_vig,
     lifetime_n_for_zach,
     official_y_finish,
@@ -35,6 +38,7 @@ from backend.agents.chair_gates import (
     resolve_finish_side,
     stuck_hours_open,
     strike_from_kalshi_ticker,
+    tape_backfill_stats,
     ticker_asset,
     time_ev_hurdles,
     build_btc_lead,
@@ -207,6 +211,70 @@ class WindowStrikeTests(unittest.TestCase):
             kalshi_result={"status": "active"},
             now=after,
         ))
+
+    def test_finalized_tape_grades_without_known_ids(self):
+        """Every finalized paper hour — not just 1062/1063. No guessed side."""
+        live = {
+            "ticker": "KXBTCD-26AUG1000-T60000.00",
+            "status": "finalized",
+            "result": "yes",
+        }
+        self.assertTrue(kalshi_market_finalized(live))
+        grade = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1000-T60000.00",
+            call_id=44,
+            close_time=None,
+            direction="UP",
+            kalshi_result=live,
+        )
+        self.assertIsNotNone(grade)
+        self.assertEqual(grade["y_finish"], "UP")
+        self.assertTrue(grade["correct"])
+        no_guess = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1000-T60000.00",
+            call_id=44,
+            close_time=None,
+            direction="UP",
+            kalshi_result=None,
+        )
+        self.assertIsNone(no_guess)
+        still_open = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1000-T60000.00",
+            call_id=44,
+            close_time=None,
+            direction="UP",
+            kalshi_result={"ticker": "KXBTCD-26AUG1000-T60000.00", "status": "active", "result": "yes"},
+        )
+        self.assertIsNone(still_open)
+
+    def test_event_payload_collects_every_finalized_strike(self):
+        self.assertEqual(
+            event_ticker_from_kalshi_ticker("KXBTCD-26AUG1415-T62999.99"),
+            "KXBTCD-26AUG1415",
+        )
+        body = {
+            "event": {"event_ticker": "KXBTCD-26AUG1000", "status": "determined"},
+            "markets": [
+                {"ticker": "KXBTCD-26AUG1000-T60000.00", "status": "finalized", "result": "yes"},
+                {"ticker": "KXBTCD-26AUG1000-T61000.00", "status": "finalized", "result": "no"},
+                {"ticker": "KXBTCD-26AUG1000-T62000.00", "status": "active"},
+            ],
+        }
+        pulled = collect_official_results(body)
+        self.assertEqual(official_y_finish(pulled["KXBTCD-26AUG1000-T60000.00"]), "UP")
+        self.assertEqual(official_y_finish(pulled["KXBTCD-26AUG1000-T61000.00"]), "DOWN")
+        self.assertNotIn("KXBTCD-26AUG1000-T62000.00", pulled)
+        stats = tape_backfill_stats(
+            [
+                {"id": 1, "ticker": "KXBTCD-26AUG1000-T60000.00"},
+                {"id": 2, "ticker": "KXBTCD-26AUG1000-T61000.00"},
+                {"id": 3, "ticker": "KXBTCD-26AUG1000-T62000.00"},
+            ],
+            pulled,
+        )
+        self.assertEqual(stats["open_n"], 3)
+        self.assertEqual(stats["unique_tickers"], 3)
+        self.assertEqual(stats["finalized_tickers"], 2)
 
     def test_exact_strike_finish(self):
         self.assertEqual(finish_outcome(100_100, 100_000), "UP")

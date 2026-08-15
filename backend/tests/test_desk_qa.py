@@ -106,7 +106,16 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("def decide_open_lock_grade", gates)
         self.assertIn("KNOWN_OFFICIAL_FINISH", gates)
         self.assertIn("KXBTCD-26AUG1415-T62999.99", gates)
-        self.assertIn("learn_from_settled", (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8"))
+        council = (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8")
+        self.assertIn("learn_from_settled", council)
+        self.assertIn("def collect_official_results", gates)
+        self.assertIn("def kalshi_market_finalized", gates)
+        self.assertIn("def event_ticker_from_kalshi_ticker", gates)
+        self.assertIn("def tape_backfill_stats", gates)
+        self.assertIn("every OPEN paper hour", council)
+        self.assertNotIn("tickers[:40]", council)
+        self.assertIn("get_event", (ROOT / "backend" / "data" / "kalshi.py").read_text(encoding="utf-8"))
+        self.assertIn("max_learn=2000", council)
 
     def test_hit_rate_spot_pack_keep_list(self):
         gates = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")

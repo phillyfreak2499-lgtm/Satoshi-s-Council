@@ -5,7 +5,7 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from backend.agents.chair_gates import official_y_finish
+from backend.agents.chair_gates import official_y_finish, tape_backfill_stats
 
 sys.modules.setdefault("httpx", MagicMock())
 sys.modules.setdefault("tenacity", MagicMock())
@@ -98,6 +98,48 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
         results = await c._official_results_for_opens()
         self.assertEqual(official_y_finish(results["KXBTCD-26AUG1415-T62999.99"]), "DOWN")
         self.assertEqual(official_y_finish(results[1062]), "DOWN")
+
+    async def test_sweep_fetches_every_open_ticker_not_first_40(self):
+        c = self._council()
+        opens = [
+            {"id": 100 + i, "ticker": f"KXBTCD-26AUG10{i:02d}-T60000.00"}
+            for i in range(45)
+        ]
+        c.store.list_open_calls = AsyncMock(return_value=opens)
+
+        class _Stub:
+            def __init__(self):
+                self.markets = []
+                self.events = []
+
+            async def get_event(self, event_ticker: str):
+                self.events.append(event_ticker)
+                return {
+                    "event": {"event_ticker": event_ticker, "status": "determined"},
+                    "markets": [{
+                        "ticker": f"{event_ticker}-T60000.00",
+                        "status": "finalized",
+                        "result": "no",
+                    }],
+                }
+
+            async def get_market(self, ticker: str):
+                self.markets.append(ticker)
+                return {"ticker": ticker, "status": "finalized", "result": "no"}
+
+        stub = _Stub()
+        c.pipeline = type("P", (), {"kalshi": stub})()
+        results = await c._official_results_for_opens()
+        self.assertGreaterEqual(len(stub.events), 45)
+        self.assertEqual(len(stub.markets), 0)
+        self.assertEqual(official_y_finish(results["KXBTCD-26AUG1000-T60000.00"]), "DOWN")
+        self.assertEqual(official_y_finish(results["KXBTCD-26AUG1044-T60000.00"]), "DOWN")
+        stats = tape_backfill_stats(opens, results)
+        self.assertEqual(stats["open_n"], 45)
+        self.assertEqual(stats["unique_tickers"], 45)
+        self.assertEqual(stats["finalized_tickers"], 45)
+        self.assertEqual(c._last_tape_backfill["open_n"], 45)
+        self.assertEqual(c._last_tape_backfill["finalized_tickers"], 45)
 
     async def test_learn_from_settled_called_for_1062(self):
         c = self._council()

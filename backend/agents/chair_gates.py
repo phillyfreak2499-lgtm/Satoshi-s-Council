@@ -378,6 +378,106 @@ def known_official_market(ticker: Any = None, call_id: Any = None) -> Optional[D
     return dict(rec)
 
 
+def event_ticker_from_kalshi_ticker(ticker: Any) -> Optional[str]:
+    """KXBTCD-26AUG1415-T62999.99 → KXBTCD-26AUG1415. Event, not a guessed side."""
+    import re
+
+    text = str(ticker or "").strip()
+    if not text:
+        return None
+    m = re.match(r"^(KX(?:BTC|ETH)D-\d{2}[A-Z]{3}\d{4})", text, re.I)
+    if m:
+        return m.group(1).upper()
+    if "-T" in text:
+        return text.rsplit("-T", 1)[0]
+    return None
+
+
+def kalshi_market_finalized(raw: Any) -> bool:
+    """True when Kalshi marks the market or event finalized/determined/settled."""
+    if not isinstance(raw, dict):
+        return False
+    inner = raw.get("market") if isinstance(raw.get("market"), dict) else raw
+    status = str(inner.get("status") or "").strip().lower()
+    if status in _LIVE_STATUS:
+        return False
+    if status in _FINAL_STATUS:
+        return True
+    event = inner.get("event") if isinstance(inner.get("event"), dict) else raw.get("event")
+    if isinstance(event, dict):
+        es = str(event.get("status") or "").strip().lower()
+        if es in _LIVE_STATUS:
+            return False
+        if es in _FINAL_STATUS:
+            return True
+    return bool(official_y_finish(inner) and status not in _LIVE_STATUS)
+
+
+def is_known_official_snapshot(raw: Any) -> bool:
+    """Documented 1062/1063 snapshot — not a live Kalshi fetch."""
+    if not isinstance(raw, dict):
+        return False
+    t = str(raw.get("ticker") or "").strip()
+    return bool(t in KNOWN_OFFICIAL_FINISH and raw.get("ids"))
+
+
+def collect_official_results(payload: Any) -> Dict[str, Any]:
+    """
+    Pull finalized markets out of a get_market or get_event body.
+    yes→UP / no→DOWN only. No model. No spot.
+    """
+    out: Dict[str, Any] = {}
+    if not isinstance(payload, dict):
+        return out
+    markets: list = []
+    inner = payload.get("market") if isinstance(payload.get("market"), dict) else payload
+    if isinstance(payload.get("markets"), list):
+        markets.extend(payload["markets"])
+    if isinstance(inner.get("markets"), list):
+        markets.extend(inner["markets"])
+    event = payload.get("event") if isinstance(payload.get("event"), dict) else None
+    if event is None and isinstance(inner.get("event"), dict):
+        event = inner["event"]
+    if isinstance(event, dict) and isinstance(event.get("markets"), list):
+        markets.extend(event["markets"])
+    if inner.get("ticker") and (inner.get("result") is not None or inner.get("status")):
+        markets.append(inner)
+    for m in markets:
+        if not isinstance(m, dict):
+            continue
+        t = m.get("ticker")
+        if not t:
+            continue
+        if official_y_finish(m):
+            out[str(t)] = m
+    return out
+
+
+def tape_backfill_stats(open_rows: Any, results: Any = None) -> Dict[str, int]:
+    """OPEN paper rows vs unique tickers vs tickers with an official yes/no."""
+    rows = list(open_rows or [])
+    tickers: list[str] = []
+    for row in rows:
+        if isinstance(row, dict):
+            t = row.get("ticker")
+        else:
+            t = getattr(row, "ticker", None)
+        if t:
+            tickers.append(str(t).strip())
+    unique = sorted({t for t in tickers if t})
+    finalized = 0
+    recs = results if isinstance(results, dict) else {}
+    for t in unique:
+        rec = recs.get(t) or recs.get(t.upper())
+        if official_y_finish(rec):
+            finalized += 1
+    return {
+        "open_n": len(rows),
+        "unique_tickers": len(unique),
+        "finalized_tickers": finalized,
+    }
+
+
 def official_y_finish(raw: Any) -> Optional[str]:
     """
     y_finish from an official Kalshi result only.
@@ -438,15 +538,25 @@ def decide_open_lock_grade(
     Grade an OPEN paper lock after the official Kalshi hour close.
 
     y_finish comes from the official yes/no result (or a documented
-    known finish). Later-hour spot is never used. Returns None if the
-    hour is still open or Kalshi has not finalized.
+    known finish). Later-hour spot is never used. A live Kalshi
+    finalized/determined/settled result grades the whole tape, not
+    just 1062/1063. Returns None if the hour is still open or Kalshi
+    has not finalized.
     """
-    if not official_window_due(close_time, now=now, ticker=ticker):
-        return None
     side = normalize_side(direction)
     if side not in ("UP", "DOWN"):
         return None
-    official = kalshi_result if official_y_finish(kalshi_result) else None
+    live = kalshi_result if official_y_finish(kalshi_result) else None
+    live_final = bool(
+        live
+        and kalshi_market_finalized(kalshi_result)
+        and not is_known_official_snapshot(kalshi_result)
+    )
+    # Live Kalshi finalized/determined/settled + yes/no is enough.
+    # Documented 1062/1063 snapshots still wait for the official hour clock.
+    if not live_final and not official_window_due(close_time, now=now, ticker=ticker):
+        return None
+    official = live
     if official is None:
         official = known_official_market(ticker, call_id)
     y_finish = official_y_finish(official)

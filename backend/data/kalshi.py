@@ -163,6 +163,18 @@ class KalshiClient:
             self._note_fail("market", e)
             return {}
 
+    async def get_event(self, event_ticker: str) -> Dict[str, Any]:
+        """Hour event + all strikes (finalized markets carry official result)."""
+        if not event_ticker:
+            return {}
+        url = f"{self.base}/events/{event_ticker}"
+        try:
+            data = await self._get_json(url)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            self._note_fail("event", e)
+            return {}
+
     def _strike_of(self, m: Dict[str, Any]) -> Optional[float]:
         for k in ("floor_strike", "cap_strike", "strike_price"):
             v = m.get(k)

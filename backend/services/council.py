@@ -43,8 +43,10 @@ from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
+    collect_official_results,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
+    event_ticker_from_kalshi_ticker,
     known_official_market,
     lifetime_n_for_zach,
     official_y_finish,
@@ -52,6 +54,7 @@ from backend.agents.chair_gates import (
     parse_book_depth,
     pick_settle_spot,
     stuck_hours_open,
+    tape_backfill_stats,
     window_minutes_from_times,
 )
 
@@ -304,7 +307,7 @@ class Council:
         return spot
 
     async def _official_results_for_opens(self) -> Dict[str, Any]:
-        """Fetch finalized Kalshi markets for every OPEN paper hour. No model."""
+        """Fetch official Kalshi yes/no for every OPEN paper hour. No model. No 40-cap."""
         import inspect
         results: Dict[str, Any] = {}
         opens = []
@@ -326,20 +329,86 @@ class Council:
                 if row.get("id") is not None:
                     results[row["id"]] = known
             if t:
-                tickers.append(t)
+                tickers.append(str(t).strip())
+        unique = []
+        seen = set()
+        for t in tickers:
+            if t and t not in seen:
+                seen.add(t)
+                unique.append(t)
         client = getattr(getattr(self, "pipeline", None), "kalshi", None)
-        fn = getattr(client, "get_market", None) if client is not None else None
-        if callable(fn):
-            for ticker in tickers[:40]:
+
+        def _kalshi_fn(name: str):
+            if client is None:
+                return None
+            if not callable(getattr(type(client), name, None)):
+                return None
+            fn = getattr(client, name, None)
+            return fn if callable(fn) else None
+
+        fn_event = _kalshi_fn("get_event")
+        fn_market = _kalshi_fn("get_market")
+
+        async def _await(maybe):
+            return await maybe if inspect.isawaitable(maybe) else (maybe or {})
+
+        # One event fetch per hour covers every strike on that tape.
+        events = []
+        ev_seen = set()
+        leftover = []
+        for t in unique:
+            ev = event_ticker_from_kalshi_ticker(t)
+            if ev and ev not in ev_seen:
+                ev_seen.add(ev)
+                events.append(ev)
+            if not ev:
+                leftover.append(t)
+        if callable(fn_event):
+            for ev in events:
                 try:
-                    maybe = fn(ticker)
-                    market = await maybe if inspect.isawaitable(maybe) else (maybe or {})
+                    body = await _await(fn_event(ev))
+                except Exception:
+                    body = {}
+                pulled = collect_official_results(body)
+                for ticker, market in pulled.items():
+                    results[ticker] = market
+            have = {str(k) for k in results if official_y_finish(results.get(k))}
+            leftover.extend([t for t in unique if t not in have])
+        elif callable(fn_market):
+            leftover = list(unique)
+        # Dedup leftover while keeping order
+        rest = []
+        rest_seen = set()
+        for t in leftover:
+            if t and t not in rest_seen:
+                rest_seen.add(t)
+                rest.append(t)
+        if callable(fn_market):
+            for ticker in rest:
+                if official_y_finish(results.get(ticker)):
+                    continue
+                try:
+                    market = await _await(fn_market(ticker))
                 except Exception:
                     market = {}
-                # Live fetch wins only when Kalshi has an official yes/no.
-                # A flap or still-active body must not clobber a known official.
-                if isinstance(market, dict) and official_y_finish(market):
+                pulled = collect_official_results(market) if isinstance(market, dict) else {}
+                if pulled:
+                    for tk, mk in pulled.items():
+                        results[tk] = mk
+                elif isinstance(market, dict) and official_y_finish(market):
                     results[ticker] = market
+        for row in opens:
+            if not isinstance(row, dict):
+                continue
+            t = row.get("ticker")
+            if t and official_y_finish(results.get(t)) and row.get("id") is not None:
+                results[row["id"]] = results[t]
+        stats = tape_backfill_stats(opens, results)
+        self._last_tape_backfill = dict(stats)
+        logger.info(
+            f"[{self.asset}] Tape scan: {stats['open_n']} OPEN rows · "
+            f"{stats['unique_tickers']} tickers · {stats['finalized_tickers']} finalized"
+        )
         return results
 
     async def sweep_official_finishes(self) -> int:
@@ -360,9 +429,20 @@ class Council:
         except Exception as e:
             logger.debug(f"Settle skip: {e}")
         try:
-            await self._learn_from_new_settlements()
+            # Whole tape, not the first 5. This is the calibration set.
+            await self._learn_from_new_settlements(limit=2000, max_learn=2000)
         except Exception as e:
             logger.debug(f"Adaptive learn skip: {e}")
+        stats = dict(getattr(self, "_last_tape_backfill", {}) or {})
+        stats["graded_n"] = int(settled_n or 0)
+        self._last_tape_backfill = stats
+        if settled_n or stats.get("open_n"):
+            logger.info(
+                f"[{self.asset}] Tape backfill graded {settled_n} hour(s) "
+                f"(OPEN {stats.get('open_n', 0)} · "
+                f"tickers {stats.get('unique_tickers', 0)} · "
+                f"finalized {stats.get('finalized_tickers', 0)})"
+            )
         return settled_n
 
     async def settle_due_windows(
@@ -1062,12 +1142,13 @@ class Council:
         )
         return state
 
-    async def _learn_from_new_settlements(self) -> int:
+    async def _learn_from_new_settlements(self, *, limit: int = 40, max_learn: int = 5) -> int:
         """
         Grade agent votes on any settled windows we haven't learned from yet.
         Drives continuous weight drift + pair affinity.
+        Tape backfill passes a high limit so weeks of NULL hours can train.
         """
-        recent = await self.store.recent_settled_calls(limit=40, asset=self.asset)
+        recent = await self.store.recent_settled_calls(limit=limit, asset=self.asset)
         learned = 0
         FINISH = {"finish_match", "finish_miss"}
         for row in reversed(recent):  # chronological
@@ -1101,7 +1182,7 @@ class Council:
                         pass
                 learned += 1
             self._last_learned_ids.add(rid)
-            if learned >= 5:
+            if learned >= int(max_learn):
                 break
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:
