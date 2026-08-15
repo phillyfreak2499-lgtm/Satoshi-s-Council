@@ -498,6 +498,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       chk("setAutoBetEth", AB.eth !== false);
     }
     try { syncAutoBetVisibility(); } catch (e) {}
+    try { applyFrontSettings(s.front || {}); } catch (e) {}
     if (U.watermark_opacity != null) {
       document.documentElement.style.setProperty("--zt-watermark-opacity", U.watermark_opacity);
     }
@@ -2325,6 +2326,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   raijinPortrait.src = "/static/bots/raijin-chair.png";
 
   function drawFloorRaijinChair(w, h) {
+    if (document.body.classList.contains("front-chair-off")) return;
     const fit = floorRaijinFit(w, h);
     if (!fit || fit.show !== "chair") return;
     const cx = fit.x, cy = fit.y, pr = fit.photoR, sr = fit.seatR;
@@ -4926,7 +4928,54 @@ function drawCandleChart() {
       '</span>';
   }
 
+  function frontBotMarkHtml(id, mark) {
+    const letter = String(id || "?").replace(/[^A-Za-z0-9]/g, "").charAt(0).toUpperCase() || "?";
+    const src = mark || "";
+    const letterSpan = '<span class="bot-mark-letter" aria-hidden="true">' + letter + "</span>";
+    if (!src) return '<span class="bot-mark-wrap no-art">' + letterSpan + "</span>";
+    return '<span class="bot-mark-wrap">' +
+      '<img class="bot-mark" src="' + src + '" alt="" width="40" height="40" onerror="this.style.display=\'none\';this.parentNode.classList.add(\'no-art\');" />' +
+      letterSpan +
+      "</span>";
+  }
+  function renderFrontBotsGuide(data) {
+    const grid = document.getElementById("frontBotsGrid");
+    if (!grid) return;
+    const fallback = [
+      { id: "GLASS", job: "Official/NWS high for the station.", mark: "/static/bots/glass.png" },
+      { id: "PIT", job: "Kalshi implied vs that number, after vig.", mark: "/static/bots/pit.png" },
+      { id: "FROST", job: "Veto junk book / flip / SICK / thin n.", mark: "/static/bots/frost.png" },
+      { id: "BONE", job: "This city’s history / climo. Seasonal base. Low weight.", mark: "/static/bots/bone.png" },
+    ];
+    const seats = ((data && data.seats) || []).filter(function (s) {
+      return s && (s.id === "GLASS" || s.id === "PIT" || s.id === "FROST" || s.id === "BONE");
+    });
+    const rows = seats.length ? seats : fallback;
+    grid.innerHTML = rows.map(function (s) {
+      const n = s.n != null ? s.n : 0;
+      const wr = s.wr != null ? (Math.round(Number(s.wr) * 100) + "%") : "—";
+      const rank = s.rank ? ("#" + s.rank) : "—";
+      const faded = s.faded ? " faded" : "";
+      return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
+        '<div class="bot-card-head">' + frontBotMarkHtml(s.id, s.mark) +
+        '<span class="bot-callsign">' + String(s.id || "") + "</span>" +
+        '<span class="bot-rank-pill">' + rank + "</span></div>" +
+        '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
+        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span></div>" +
+        "</article>";
+    }).join("");
+  }
   function renderBotsGuide() {
+    try { renderFrontBotsGuide(frontBoard); } catch (e) {}
+    if (!frontBoard) {
+      try {
+        if (typeof frontApi === "function") {
+          frontApi("/api/front").then(function (r) { return r && r.ok ? r.json() : null; }).then(function (data) {
+            if (data) renderFrontBotsGuide(data);
+          }).catch(function () { renderFrontBotsGuide(null); });
+        }
+      } catch (e) { renderFrontBotsGuide(null); }
+    }
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
     const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
@@ -6519,6 +6568,13 @@ function drawCandleChart() {
       });
       const data = await r.json();
       if (why) why.textContent = data && data.ok ? ((live ? "LIVE" : "PAPER") + " " + side + " · " + (card.ticker || "")) : ((data && data.error) || "tap refused");
+      if (data && data.ok) {
+        const soundEl = document.getElementById("setFrontSound");
+        const master = document.getElementById("setSoundOn");
+        if ((!soundEl || soundEl.checked) && (!master || master.checked)) {
+          try { playCallVoice(String(side || "").toUpperCase() === "NO" ? "DOWN" : "UP"); } catch (e) {}
+        }
+      }
       loadFrontTable();
     } catch (e) {
       if (why) why.textContent = "tap failed";
@@ -6900,6 +6956,9 @@ function drawCandleChart() {
     }
     if (next === "follower" && !document.body.classList.contains("follower-unlocked")) {
       return;
+    }
+    if (next === "front" && document.body.classList.contains("front-tab-off")) {
+      next = "art";
     }
     try {
       if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
@@ -7517,7 +7576,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Raijin’s Floor — same ring as BTC / ETH. Full-size Chair, GLASS, PIT, FROST, and BONE. Dallas DFW only (KXHIGHTDAL / KDFW). Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
+      body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (official high) · PIT (Kalshi vs that number) · FROST (veto) · BONE (this city’s history / climo).\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",
@@ -7529,7 +7588,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabSettings",
       title: "SETTINGS",
-      body: "BEAST MODE, sounds, and knobs. Settings stays behind the admin lock.",
+      body: "BEAST MODE, sounds, and knobs. RAIJIN / THE FRONT is its own block — show the Front tab, the small Floor chair, paper default, WX stake / daily loss, FROST / SICK no-lock, and fade underperformers. It is not Follower. Settings stays behind the admin lock.",
     },
     {
       mode: "art",
@@ -8788,6 +8847,62 @@ function drawCandleChart() {
   }
   wireZtCinematic(document.getElementById("ztLogoBtn"));
 
+  function collectFrontSettings() {
+    const num = (id, d) => {
+      const el = document.getElementById(id);
+      if (!el || el.value === "") return d;
+      const v = Number(el.value);
+      return Number.isFinite(v) ? v : d;
+    };
+    const on = (id) => {
+      const el = document.getElementById(id);
+      return el ? !!el.checked : true;
+    };
+    return {
+      show_tab: on("setFrontShowTab"),
+      show_floor_chair: on("setFrontShowChair"),
+      paper_only: true,
+      min_confidence: num("setFrontMinConf", 50),
+      max_stake: num("setFrontMaxStake", 25),
+      daily_loss_cap: num("setFrontDailyLoss", 50),
+      no_lock_frost_sick: on("setFrontNoLockFrost"),
+      sound_on_lock: on("setFrontSound"),
+      fade_underperformers: on("setFrontFadeOn"),
+      fade_min_n: num("setFrontFadeMinN", 20),
+      fade_wr_threshold: num("setFrontFadeWr", 0.42),
+      dallas: true,
+    };
+  }
+  function applyFrontSettings(F) {
+    F = F || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    chk("setFrontShowTab", F.show_tab !== false);
+    chk("setFrontShowChair", F.show_floor_chair !== false);
+    const paper = document.getElementById("setFrontPaper");
+    const live = document.getElementById("setFrontLive");
+    if (paper) paper.checked = true;
+    if (live) { live.checked = false; live.disabled = true; }
+    set("setFrontMinConf", F.min_confidence);
+    set("setFrontMaxStake", F.max_stake);
+    set("setFrontDailyLoss", F.daily_loss_cap);
+    chk("setFrontNoLockFrost", F.no_lock_frost_sick !== false);
+    chk("setFrontSound", F.sound_on_lock !== false);
+    chk("setFrontFadeOn", F.fade_underperformers !== false);
+    set("setFrontFadeMinN", F.fade_min_n);
+    set("setFrontFadeWr", F.fade_wr_threshold);
+    chk("setFrontDallas", true);
+    const dallas = document.getElementById("setFrontDallas");
+    if (dallas) dallas.disabled = true;
+    document.body.classList.toggle("front-tab-off", F.show_tab === false);
+    document.body.classList.toggle("front-chair-off", F.show_floor_chair === false);
+    if (F.show_tab === false && typeof mode !== "undefined" && mode === "front") {
+      try { setMode("art"); } catch (e) {}
+    }
+  }
+  window.collectFrontSettings = collectFrontSettings;
+  window.applyFrontSettings = applyFrontSettings;
+
   async function collectAndSaveSettings() {
     const num = (id, d) => {
       const el = document.getElementById(id);
@@ -8849,6 +8964,7 @@ function drawCandleChart() {
         call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
         team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
       },
+      front: collectFrontSettings(),
     };
     if (isAdminUnlocked()) {
       const modeEl = document.getElementById("setAutoBetMode");
@@ -9039,6 +9155,21 @@ function drawCandleChart() {
       chk("setAutoBetBtc", AB.btc !== false);
       chk("setAutoBetEth", AB.eth !== false);
     }
+    if (typeof window.applyFrontSettings === "function") {
+      try { window.applyFrontSettings(s.front || {}); } catch (e) {}
+    } else {
+      const F = s.front || {};
+      chk("setFrontShowTab", F.show_tab !== false);
+      chk("setFrontShowChair", F.show_floor_chair !== false);
+      set("setFrontMinConf", F.min_confidence);
+      set("setFrontMaxStake", F.max_stake);
+      set("setFrontDailyLoss", F.daily_loss_cap);
+      chk("setFrontNoLockFrost", F.no_lock_frost_sick !== false);
+      chk("setFrontSound", F.sound_on_lock !== false);
+      chk("setFrontFadeOn", F.fade_underperformers !== false);
+      set("setFrontFadeMinN", F.fade_min_n);
+      set("setFrontFadeWr", F.fade_wr_threshold);
+    }
     set("setIntervalInput", s.analysis_interval);
     set("setHotInput", s.analysis_interval_hot);
     set("setFlatInput", s.analysis_interval_flat);
@@ -9106,6 +9237,20 @@ function drawCandleChart() {
         watermark_opacity: num("setWatermark", 0.18),
         call_sfx: !!(document.getElementById("callSfxToggle") && document.getElementById("callSfxToggle").checked),
         team_loops: !!(document.getElementById("teamLoopToggle") && document.getElementById("teamLoopToggle").checked),
+      },
+      front: (typeof window.collectFrontSettings === "function") ? window.collectFrontSettings() : {
+        show_tab: on("setFrontShowTab"),
+        show_floor_chair: on("setFrontShowChair"),
+        paper_only: true,
+        min_confidence: num("setFrontMinConf", 50),
+        max_stake: num("setFrontMaxStake", 25),
+        daily_loss_cap: num("setFrontDailyLoss", 50),
+        no_lock_frost_sick: on("setFrontNoLockFrost"),
+        sound_on_lock: on("setFrontSound"),
+        fade_underperformers: on("setFrontFadeOn"),
+        fade_min_n: num("setFrontFadeMinN", 20),
+        fade_wr_threshold: num("setFrontFadeWr", 0.42),
+        dallas: true,
       },
     };
     const st = document.getElementById("settingsSaveStatus");

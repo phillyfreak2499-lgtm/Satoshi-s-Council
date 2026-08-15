@@ -91,6 +91,21 @@ DEFAULTS: Dict[str, Any] = {
         "prune_days": 90,
         "law_bump_hours": 6,
     },
+    # --- THE FRONT / Raijin (not Follower). Paper default. Dallas only. ---
+    "front": {
+        "show_tab": True,
+        "show_floor_chair": True,
+        "paper_only": True,
+        "min_confidence": 50,
+        "max_stake": 25.0,
+        "daily_loss_cap": 50.0,
+        "no_lock_frost_sick": True,
+        "sound_on_lock": True,
+        "fade_underperformers": True,
+        "fade_min_n": 20,
+        "fade_wr_threshold": 0.42,
+        "dallas": True,
+    },
     # --- Auto-bet setup (admin Settings only). No live orders. ---
     # mode slot: off | paper_chair | follow_leaders (follow_leaders is reserved).
     "auto_bet": {
@@ -119,6 +134,47 @@ DEFAULTS: Dict[str, Any] = {
 
 
 AUTO_BET_MODES = ("off", "paper_chair", "follow_leaders")
+FRONT_KEYS = (
+    "show_tab", "show_floor_chair", "paper_only", "min_confidence",
+    "max_stake", "daily_loss_cap", "no_lock_frost_sick", "sound_on_lock",
+    "fade_underperformers", "fade_min_n", "fade_wr_threshold", "dallas",
+)
+
+
+def _sanitize_front(patch: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only known Front knobs. Never store Follower, cities, or gold."""
+    if not isinstance(patch, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in FRONT_KEYS:
+        if key not in patch:
+            continue
+        val = patch[key]
+        if key in ("show_tab", "show_floor_chair", "paper_only", "no_lock_frost_sick", "sound_on_lock", "fade_underperformers", "dallas"):
+            out[key] = bool(val)
+        elif key == "min_confidence":
+            try:
+                out[key] = max(0, min(99, int(float(val))))
+            except Exception:
+                pass
+        elif key in ("max_stake", "daily_loss_cap"):
+            try:
+                out[key] = max(1.0, min(500.0, float(val)))
+            except Exception:
+                pass
+        elif key == "fade_min_n":
+            try:
+                out[key] = max(5, min(100, int(float(val))))
+            except Exception:
+                pass
+        elif key == "fade_wr_threshold":
+            try:
+                out[key] = max(0.2, min(0.5, float(val)))
+            except Exception:
+                pass
+    out["paper_only"] = True
+    out["dallas"] = True
+    return out
 
 
 def _sanitize_auto_bet(patch: Dict[str, Any]) -> Dict[str, Any]:
@@ -240,6 +296,12 @@ class RuntimeSettings:
     def auto_bet(self) -> Dict[str, Any]:
         return dict(self._data.get("auto_bet") or DEFAULTS["auto_bet"])
 
+    def front(self) -> Dict[str, Any]:
+        raw = dict(self._data.get("front") or DEFAULTS["front"])
+        raw["paper_only"] = True
+        raw["dallas"] = True
+        return raw
+
     def knobs(self, section: str, key: str, default: Any = None) -> Any:
         """Read a nested knob with fallback to DEFAULTS then `default`."""
         sec = self._data.get(section) or DEFAULTS.get(section) or {}
@@ -248,7 +310,7 @@ class RuntimeSettings:
         return (DEFAULTS.get(section) or {}).get(key, default)
 
     def update_section(self, section: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-        if section not in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet"):
+        if section not in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet", "front"):
             raise ValueError(f"Unknown section: {section}")
         with self._lock:
             cur = dict(self._data.get(section) or DEFAULTS.get(section) or {})
@@ -290,11 +352,13 @@ class RuntimeSettings:
             return self.reset_to_defaults()
         if "beast_mode" in body:
             self.set_beast_mode(bool(body["beast_mode"]))
-        for sec in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet"):
+        for sec in ("learning", "trading", "huddle", "ui", "beast", "normal", "auto_bet", "front"):
             if isinstance(body.get(sec), dict):
                 patch = body[sec]
                 if sec == "auto_bet":
                     patch = _sanitize_auto_bet(patch)
+                if sec == "front":
+                    patch = _sanitize_front(patch)
                 self.update_section(sec, patch)
         # flat aliases for convenience
         flat_map = {
@@ -339,6 +403,7 @@ class RuntimeSettings:
             "huddle": self.huddle(),
             "ui": self.ui(),
             "auto_bet": self.auto_bet(),
+            "front": self.front(),
             "label": "BEAST MODE" if self.beast_mode else "STANDARD",
             "blurb": (
                 "Max refresh · dual spot · parallel seats · premium HUD"
@@ -354,6 +419,7 @@ class RuntimeSettings:
                 "huddle": DEFAULTS["huddle"],
                 "ui": DEFAULTS["ui"],
                 "auto_bet": DEFAULTS["auto_bet"],
+                "front": DEFAULTS["front"],
             },
         }
 

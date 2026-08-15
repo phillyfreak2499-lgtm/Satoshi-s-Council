@@ -77,6 +77,7 @@ class GuidedTutorialTests(unittest.TestCase):
             "#tabBots",
             "#tabRanks",
             "#tabPaper",
+            "#tabFront",
             "#tabCharts",
             "#tabSettings",
             "#btnHelp",
@@ -93,6 +94,16 @@ class GuidedTutorialTests(unittest.TestCase):
         self.assertIn("HIT RATE", JS)
         self.assertIn("WAIT excluded", JS)
         self.assertIn("15-minute", JS)
+        self.assertIn("Raijin / THE FRONT", TUT)
+        self.assertIn("KXHIGHTDAL", TUT)
+        self.assertIn("KDFW", TUT)
+        self.assertIn("not Love Field", TUT)
+        self.assertIn("GLASS", TUT)
+        self.assertIn("PIT", TUT)
+        self.assertIn("FROST", TUT)
+        self.assertIn("BONE", TUT)
+        self.assertNotIn("KXGOLD15M", TUT)
+        self.assertNotIn("KXHIGHNY", TUT)
 
     def test_help_replays_without_forcing_choice(self):
         self.assertIn("openTutorial(true)", JS)

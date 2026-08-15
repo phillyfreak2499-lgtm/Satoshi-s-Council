@@ -91,7 +91,7 @@ SEATS: Tuple[Dict[str, Any], ...] = (
     {"id": "GLASS", "job": "Official/NWS high for the station.", "mark": "/static/bots/glass.png", "weight": 1.0},
     {"id": "PIT", "job": "Kalshi implied vs that number, after vig.", "mark": "/static/bots/pit.png", "weight": 1.0},
     {"id": "FROST", "job": "Veto junk book / flip / SICK / thin n.", "mark": "/static/bots/frost.png", "weight": 1.0},
-    {"id": "BONE", "job": "Seasonal base. Low weight.", "mark": "/static/bots/bone.png", "weight": 0.25},
+    {"id": "BONE", "job": "This city’s history / climo. Seasonal base. Low weight.", "mark": "/static/bots/bone.png", "weight": 0.25},
 )
 CHAIR: Dict[str, str] = {
     "id": "RAIJIN",
@@ -193,6 +193,49 @@ def _env_bool(name: str, default: bool) -> bool:
     return bool(default)
 
 
+def front_knobs() -> Dict[str, Any]:
+    """Runtime Front knobs. Paper default. Never Follower. Dallas stays on."""
+    try:
+        from backend.services.runtime_settings import runtime_settings
+
+        kn = runtime_settings.front()
+        if isinstance(kn, dict):
+            kn = dict(kn)
+            kn["paper_only"] = True
+            kn["dallas"] = True
+            return kn
+    except Exception:
+        pass
+    return {
+        "show_tab": True,
+        "show_floor_chair": True,
+        "paper_only": True,
+        "min_confidence": 50,
+        "max_stake": float(getattr(settings, "FRONT_MAX_STAKE", 25.0)),
+        "daily_loss_cap": float(getattr(settings, "FRONT_DAILY_LOSS_CAP", 50.0)),
+        "no_lock_frost_sick": True,
+        "sound_on_lock": True,
+        "fade_underperformers": True,
+        "fade_min_n": 20,
+        "fade_wr_threshold": 0.42,
+        "dallas": True,
+    }
+
+
+def front_max_stake() -> float:
+    try:
+        return max(1.0, min(500.0, float(front_knobs().get("max_stake") or getattr(settings, "FRONT_MAX_STAKE", 25.0))))
+    except (TypeError, ValueError):
+        return float(getattr(settings, "FRONT_MAX_STAKE", 25.0))
+
+
+def front_daily_loss_cap() -> float:
+    try:
+        return max(1.0, min(500.0, float(front_knobs().get("daily_loss_cap") or getattr(settings, "FRONT_DAILY_LOSS_CAP", 50.0))))
+    except (TypeError, ValueError):
+        return float(getattr(settings, "FRONT_DAILY_LOSS_CAP", 50.0))
+
+
 def live_allowed() -> bool:
     if _env_bool("FRONT_KILL", bool(getattr(settings, "FRONT_KILL", False))):
         return False
@@ -252,8 +295,8 @@ def arm_status(now: Optional[float] = None) -> Dict[str, Any]:
         "arm_delay_s": delay_left,
         "creds_ready": creds,
         "phrase": str(getattr(settings, "FRONT_ARM_PHRASE", "LIVE THE FRONT")),
-        "max_stake": float(getattr(settings, "FRONT_MAX_STAKE", 25.0)),
-        "daily_loss_cap": float(getattr(settings, "FRONT_DAILY_LOSS_CAP", 50.0)),
+        "max_stake": front_max_stake(),
+        "daily_loss_cap": front_daily_loss_cap(),
         "follower": False,
         "auto_bets": False,
     }
@@ -506,8 +549,22 @@ def seat_records() -> List[Dict[str, Any]]:
         })
     order = sorted(ranked, key=lambda r: (-(r["wr"] if r["wr"] is not None else -1.0), -int(r["n"])))
     rank_of = {r["id"]: i + 1 for i, r in enumerate(order)}
+    kn = front_knobs()
+    fade_on = bool(kn.get("fade_underperformers", True))
+    try:
+        fade_n = int(kn.get("fade_min_n") or 20)
+    except (TypeError, ValueError):
+        fade_n = 20
+    try:
+        fade_wr = float(kn.get("fade_wr_threshold") or 0.42)
+    except (TypeError, ValueError):
+        fade_wr = 0.42
     for r in ranked:
         r["rank"] = rank_of[r["id"]]
+        wr = r.get("wr")
+        faded = bool(fade_on and int(r.get("n") or 0) >= fade_n and wr is not None and float(wr) < fade_wr)
+        r["faded"] = faded
+        r["invert"] = faded
     return ranked
 
 
@@ -1073,6 +1130,8 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
             "rank": rec.get("rank") or 0,
             "correct": rec.get("correct") or 0,
             "wrong": rec.get("wrong") or 0,
+            "faded": bool(rec.get("faded")),
+            "invert": bool(rec.get("invert")),
             "letter": None,
         })
     return rows
@@ -1178,6 +1237,13 @@ async def build_board(
     best = pick_best(brackets)
     if best:
         best["best"] = True
+    try:
+        min_c = int(front_knobs().get("min_confidence") or 50)
+    except (TypeError, ValueError):
+        min_c = 50
+    chair_best = best
+    if best and not best.get("dont_play") and int(best.get("confidence") or 0) < min_c:
+        chair_best = None
 
     if wx_obs is None:
         held = _load_wx_hold()
@@ -1223,7 +1289,7 @@ async def build_board(
             for c in CITIES
         ],
         "weather": weather,
-        "chair": build_chair(best),
+        "chair": build_chair(chair_best),
         "seats": build_seats(best, forecast, day),
         "brackets": brackets,
         "best": None if best is None else best.get("ticker"),
@@ -1235,6 +1301,7 @@ async def build_board(
         "product": "Satoshi’s Council",
         "follower": False,
         "auto_bets": False,
+        "knobs": front_knobs(),
         "note": "Board v1. Dallas DFW only (KXHIGHTDAL / KDFW). Not Love Field. NYC and Chicago later.",
     }
     _board_cache["at"] = time.time()
@@ -1291,13 +1358,14 @@ async def tap(
     city = city_for_ticker(tick)
     if city is None:
         return {"ok": False, "error": "not a v1 Front book"}
+    kn = front_knobs()
     if sick:
         return {"ok": False, "error": "Don’t play · sick book", "dont_play": True}
     q = paper_quote(side, yes_bid, yes_ask)
     if not q.get("ok"):
         return {"ok": False, "error": q.get("error") or "no quote"}
-    dollars = min(float(getattr(settings, "FRONT_MAX_STAKE", 25.0)), clamp_stake(stake))
-    cap = float(getattr(settings, "FRONT_DAILY_LOSS_CAP", 50.0))
+    dollars = min(front_max_stake(), clamp_stake(stake))
+    cap = front_daily_loss_cap()
     if daily_loss(now) + dollars > cap + 1e-6:
         return {"ok": False, "error": "daily WX loss cap", "dont_play": True}
     want_live = bool(live)
@@ -1322,6 +1390,21 @@ async def tap(
     snap_votes = votes if isinstance(votes, list) else cached.get("votes")
     if not isinstance(snap_votes, list):
         snap_votes = []
+    if kn.get("no_lock_frost_sick", True):
+        for v in snap_votes:
+            if isinstance(v, dict) and str(v.get("id") or "").upper() == "FROST" and str(v.get("dir") or "").upper() == "SKIP":
+                return {"ok": False, "error": "FROST veto · no lock", "dont_play": True}
+    try:
+        min_c = int(kn.get("min_confidence") or 50)
+    except (TypeError, ValueError):
+        min_c = 50
+    conf = cached.get("confidence")
+    if conf is not None:
+        try:
+            if int(conf) < min_c:
+                return {"ok": False, "error": "below min confidence", "dont_play": True}
+        except (TypeError, ValueError):
+            pass
     day = date_from_ticker(tick)
     row = {
         "id": str(uuid.uuid4())[:12],

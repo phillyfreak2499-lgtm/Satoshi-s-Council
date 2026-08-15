@@ -173,6 +173,26 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('id="frontHrRight"', HTML)
         self.assertIn('id="frontTape"', HTML)
         self.assertIn("LAST LOCKS", HTML)
+        self.assertIn('id="frontSettingsCard"', HTML)
+        self.assertIn('id="setFrontShowTab"', HTML)
+        self.assertIn('id="setFrontShowChair"', HTML)
+        self.assertIn('id="setFrontPaper"', HTML)
+        self.assertIn('id="setFrontLive"', HTML)
+        self.assertIn('id="setFrontMinConf"', HTML)
+        self.assertIn('id="setFrontMaxStake"', HTML)
+        self.assertIn('id="setFrontDailyLoss"', HTML)
+        self.assertIn('id="setFrontNoLockFrost"', HTML)
+        self.assertIn('id="setFrontSound"', HTML)
+        self.assertIn('id="setFrontFadeOn"', HTML)
+        self.assertIn("No city picker in v1", HTML)
+        self.assertIn("function collectFrontSettings", JS)
+        self.assertIn("function applyFrontSettings", JS)
+        self.assertIn('id="frontBotsGuide"', HTML)
+        self.assertIn("FRONT / RAIJIN", HTML)
+        self.assertIn("Not mixed into WICK / TAPE", HTML)
+        self.assertIn("function renderFrontBotsGuide", JS)
+        self.assertIn("function frontBotMarkHtml", JS)
+        self.assertNotIn("front-letter", HTML + JS + CSS)
 
     def test_floor_raijin_small_presence(self):
         self.assertIn('id="floorRaijin"', HTML)
@@ -459,6 +479,18 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         blocked = await desk_front.tap(ticker="KXHIGHCHI-26AUG15-B8384", side="YES", stake=5, yes_bid=48, yes_ask=50)
         self.assertFalse(blocked["ok"])
         self.assertIn("not v1", blocked["error"])
+
+    async def test_frost_veto_no_lock(self):
+        miss = await desk_front.tap(
+            ticker="KXHIGHTDAL-26AUG15-B103104",
+            side="YES",
+            stake=5,
+            yes_bid=48,
+            yes_ask=50,
+            votes=[{"id": "FROST", "dir": "SKIP"}],
+        )
+        self.assertFalse(miss["ok"])
+        self.assertIn("FROST", miss["error"])
 
     async def test_arm_phrase(self):
         miss = desk_front.arm_live("nope")

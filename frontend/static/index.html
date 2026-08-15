@@ -472,8 +472,31 @@
 
         <div class="beast-card settings-card" id="frontSettingsCard">
           <div class="beast-title">RAIJIN · THE FRONT</div>
-          <p class="settings-sub">Board v1. Dallas only (KXHIGHTDAL / KDFW / DFW — not Love Field). NYC and Chicago later. Raijin chairs GLASS, PIT, FROST, BONE. Hits count like Satoshi / Vitalik. Pending until NWS CLI. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
-          <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only.</p>
+          <p class="settings-sub">Weather Chair. Dallas only (KXHIGHTDAL / KDFW / DFW — not Love Field). Hits count like Satoshi / Vitalik. Pending until NWS CLI. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks.</p>
+          <label class="set-check"><input type="checkbox" id="setFrontShowTab" checked /> Show Front tab</label>
+          <label class="set-check"><input type="checkbox" id="setFrontShowChair" checked /> Show small Floor chair</label>
+          <label class="set-check"><input type="radio" name="frontMode" id="setFrontPaper" value="paper" checked /> Paper (default)</label>
+          <label class="set-check"><input type="radio" name="frontMode" id="setFrontLive" value="live" disabled /> Live — type LIVE THE FRONT on the Front tab (v1 paper-only here)</label>
+          <label class="set-field">Min confidence to lock
+            <input type="number" step="1" min="0" max="99" id="setFrontMinConf" />
+          </label>
+          <label class="set-field">Max stake per WX tap $
+            <input type="number" step="1" min="1" max="100" id="setFrontMaxStake" />
+          </label>
+          <label class="set-field">Max daily WX paper/live loss $
+            <input type="number" step="1" min="1" max="500" id="setFrontDailyLoss" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setFrontNoLockFrost" checked /> No-lock when FROST / SICK</label>
+          <label class="set-check"><input type="checkbox" id="setFrontSound" checked /> Sound on WX lock (uses existing SFX toggles)</label>
+          <label class="set-check"><input type="checkbox" id="setFrontFadeOn" checked /> Fade underperformers</label>
+          <label class="set-field">Fade min graded samples
+            <input type="number" step="1" min="5" max="100" id="setFrontFadeMinN" />
+          </label>
+          <label class="set-field">Fade WR threshold (below → fade)
+            <input type="number" step="0.01" min="0.2" max="0.5" id="setFrontFadeWr" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setFrontDallas" checked disabled /> Dallas on (KXHIGHTDAL / DFW). No city picker in v1.</label>
+          <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only. This block is not Follower.</p>
         </div>
 
         <div class="settings-actions">
@@ -497,6 +520,11 @@
         <h2>BOT FIELD GUIDE</h2>
         <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
       </div>
+      <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
+        <div class="front-guide-head">FRONT / RAIJIN</div>
+        <p class="front-bots-sub">Weather Chair. Dallas DFW daily high. Not mixed into WICK / TAPE.</p>
+        <div id="frontBotsGrid" class="bots-grid"></div>
+      </section>
       <div id="botsGrid" class="bots-grid"></div>
     </section>
 

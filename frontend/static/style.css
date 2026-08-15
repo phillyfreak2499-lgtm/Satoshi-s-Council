@@ -1051,6 +1051,17 @@ footer {
   font-size: 13px;
   line-height: 1.5;
 }
+.front-bots-guide {
+  margin: 0 0 22px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid rgba(0, 232, 255, 0.16);
+}
+.front-bots-sub {
+  margin: 0 0 12px;
+  color: rgba(180, 210, 235, 0.8);
+  font-size: 13px;
+}
+.front-bot-card.faded { opacity: 0.62; }
 .bots-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -7245,6 +7256,10 @@ body.mode-floor .floor-raijin,
 body.mode-art .floor-raijin { display: none; }
 body.night-mode .floor-raijin { display: none !important; }
 body.phone-floor .floor-raijin { display: inline-flex !important; }
+body.front-tab-off #tabFront,
+body.front-tab-off #tabFront.active { display: none !important; }
+body.front-chair-off .floor-raijin,
+body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
 
 /* THE FRONT — Dallas weather ring. CRT/neon, not a city list. */
 .front-hud { max-width: 980px; }
