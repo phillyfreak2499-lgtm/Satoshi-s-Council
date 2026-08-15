@@ -66,6 +66,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         app.style.setProperty("pointer-events", "auto", "important");
       }
     } catch (e) {}
+    // First live hour after unlock — do not sit on an empty cached desk.
+    try {
+      if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour();
+    } catch (e) {}
+    try {
+      if (typeof window.prefetchLeaderClickVideo === "function") window.prefetchLeaderClickVideo();
+    } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {
@@ -664,6 +671,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let state = null;
   let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
+  function tableHasLiveHour(t) {
+    if (!t || typeof t !== "object") return false;
+    const agents = t.agents;
+    const hasSeats = Array.isArray(agents) && agents.some(function (a) {
+      return a && a.agent_name && a.agent_name !== "leader";
+    });
+    const m = t.market || {};
+    const hasWindow = m.seconds_left != null || m.time_remaining != null
+      || m.close_time || m.mins_left != null;
+    return !!(hasSeats || hasWindow);
+  }
+
   function tableState(which) {
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -683,19 +702,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function getViewState() {
     if (!state) return null;
     const focused = tableState(focusTable);
-    if (!focused) {
+    const other = tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
+    // Prefer the focused table when it has seats/window. Otherwise use the
+    // payload that actually has a live hour (root BTC back-compat, then sibling).
+    const live = tableHasLiveHour(focused)
+      ? focused
+      : (tableHasLiveHour(state) ? state
+        : (tableHasLiveHour(other) ? other : focused));
+    if (!live) {
       return Object.assign({}, state, { _focusTable: focusTable });
     }
-    const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
+    const lc = live.locked_call || (live.decision && live.decision.locked_call) || null;
     return Object.assign({}, state, {
-      decision: focused.decision || {},
-      locked_call: lc || null,
-      agents: Array.isArray(focused.agents) ? focused.agents : [],
-      market: focused.market || {},
-      accuracy: focused.accuracy || {},
-      hierarchy: focused.hierarchy || [],
-      learning: focused.learning || {},
-      weights: focused.weights || (focused.learning && focused.learning.weights) || {},
+      decision: live.decision || state.decision || {},
+      locked_call: lc || state.locked_call || null,
+      agents: Array.isArray(live.agents) ? live.agents : (state.agents || []),
+      market: live.market || state.market || {},
+      accuracy: live.accuracy || state.accuracy || {},
+      hierarchy: live.hierarchy || state.hierarchy || [],
+      learning: live.learning || state.learning || {},
+      weights: live.weights || (live.learning && live.learning.weights) || state.weights || {},
       _focusTable: focusTable,
     });
   }
@@ -746,6 +772,44 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let hourSlamUntil = 0;
   let debateHistory = [];
   const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const SEAT_ORBIT_SPEED = 0.00007; // half of the old 0.00014 fidget spin
+  const SEAT_SPIN_KEY = "council_seat_spin";
+  let seatOrbitFrozen = false;
+  let seatOrbitHold = 0;
+  let seatOrbitLastT = 0;
+  try {
+    seatOrbitFrozen = localStorage.getItem(SEAT_SPIN_KEY) === "0";
+  } catch (e) {}
+  function seatOrbitAngle() {
+    // Screensaver pace. Freeze keeps the last angle so unfreeze does not jump.
+    if (reduceMotion) return 0;
+    if (!seatOrbitLastT) seatOrbitLastT = time;
+    if (!seatOrbitFrozen) {
+      const dt = Math.max(0, time - seatOrbitLastT);
+      seatOrbitHold += dt * SEAT_ORBIT_SPEED;
+    }
+    seatOrbitLastT = time;
+    return seatOrbitHold;
+  }
+  function syncSeatSpinBtn() {
+    const btn = document.getElementById("seatSpinBtn");
+    if (!btn) return;
+    const on = mode === "floor" || mode === "art";
+    btn.hidden = !on;
+    btn.setAttribute("aria-hidden", on ? "false" : "true");
+    const spinning = !seatOrbitFrozen && !reduceMotion;
+    btn.textContent = spinning ? "SPIN" : "STILL";
+    btn.setAttribute("aria-pressed", spinning ? "true" : "false");
+    btn.title = spinning ? "Freeze seat orbit" : "Resume seat orbit";
+    btn.setAttribute("aria-label", spinning ? "Seat orbit on — click to freeze" : "Seat orbit still — click to spin");
+  }
+  function setSeatSpin(on) {
+    seatOrbitFrozen = !on;
+    try { localStorage.setItem(SEAT_SPIN_KEY, on ? "1" : "0"); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
+  }
+  window.setSeatSpin = setSeatSpin;
+  window.seatOrbitAngle = seatOrbitAngle;
   let _tableEmberUntil = 0;
   let _tableEmberKey = "";
   let _tableEmberDir = "WAIT";
@@ -1950,6 +2014,67 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
   }
 
+  function drawLockIgnition(cx, cy, photoR, which) {
+    // Fat lock saber: ignites ~1s on Chair LOCK, then stays OFF. Not always-on.
+    // Green UP / red DOWN. Next to the portrait — not over the face or seat labels.
+    if (!ctx || !photoR) return;
+    const key = chairKeyOf(which);
+    const sfx = sealFX[key];
+    if (!sfx || !(sfx.until > Date.now())) return;
+    const dir = String(sfx.dir || "").toUpperCase();
+    if (dir !== "UP" && dir !== "DOWN") return;
+    const left = sfx.until - Date.now();
+    const t = 1 - Math.max(0, Math.min(1, left / 1100));
+    let grow = 1;
+    let alpha = 0.95;
+    if (!reduceMotion) {
+      if (t < 0.18) {
+        grow = t / 0.18;
+        alpha = 0.5 + 0.5 * grow;
+      } else if (t < 0.70) {
+        grow = 1;
+        alpha = 1;
+      } else {
+        grow = 1;
+        alpha = Math.max(0, 1 - (t - 0.70) / 0.30);
+      }
+    } else {
+      alpha = left > 180 ? 0.9 : left / 180;
+    }
+    const up = dir === "UP";
+    const glow = up ? "rgba(57, 255, 20, 0.9)" : "rgba(255, 45, 85, 0.9)";
+    const core = up ? "rgba(210, 255, 200, 0.98)" : "rgba(255, 214, 220, 0.98)";
+    const dualFloor = mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle();
+    const side = (dualFloor && key === "bitcoin") ? -1 : 1;
+    const gap = Math.max(16, photoR * 0.22);
+    const x = cx + side * (photoR + gap);
+    const hiltY = cy + photoR * 0.36;
+    const full = Math.min(photoR * 1.42, 118);
+    const len = full * grow;
+    const thick = Math.max(14, Math.min(22, photoR * 0.24));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = thick;
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.moveTo(x, hiltY);
+    ctx.lineTo(x, hiltY - len);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = core;
+    ctx.lineWidth = Math.max(5, thick * 0.36);
+    ctx.beginPath();
+    ctx.moveTo(x, hiltY);
+    ctx.lineTo(x, hiltY - len);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(18, 14, 10, 0.95)";
+    ctx.fillRect(x - thick * 0.42, hiltY - 2, thick * 0.84, 7);
+    ctx.restore();
+  }
+
 
   function resizeRoundtable() {
     if (!canvas) return;
@@ -2082,7 +2207,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const pr = radius * 0.80;
     const portraitY = cy - 2;
     const ringR = radius * 1.48;
-    const orbit = reduceMotion ? 0 : time * 0.00014;
+    const orbit = seatOrbitAngle();
     drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
     drawHourSlamRings(cx, cy, radius);
 
@@ -2151,6 +2276,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       noteChairLock(which, lc);
       drawChairThink(cx, portraitY, pr, radius, { which, dir, locked, st });
+      drawLockIgnition(cx, portraitY, pr, which);
     } catch (e) {}
 
     // Labels
@@ -2299,7 +2425,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let chairHits = [];
   function rememberChairHit(x, y, r, which) {
-    if (mode !== "floor") return;
+    if (mode !== "floor" && mode !== "art") return;
     chairHits.push({
       x: x,
       y: y,
@@ -2315,6 +2441,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       if (dx * dx + dy * dy <= h.r * h.r) return h;
     }
     return null;
+  }
+
+  function floorChromeFit(w) {
+    // TABLE HUD chip vs SATOSHI’S COUNCIL wordmark (1280) and ETH/BTC (390).
+    // CSS --floor-table-rail reserves the left slot; rects must not intersect.
+    const phone = w <= 480;
+    const table = { x: 10, y: 10, w: 88, h: 44 };
+    const rail = 96;
+    const headerPad = 14;
+    const logo = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : { x: headerPad + rail, y: 8, w: 280, h: 36 };
+    const focus = phone
+      ? { x: headerPad + rail, y: 10, w: 220, h: 44 }
+      : { x: headerPad + rail, y: 52, w: 220, h: 28 };
+    return { table, logo, focus, phone, rail };
   }
 
   function floorNameplateFit(w, h) {
@@ -2536,7 +2678,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ringR = radius * (mode === "floor" ? 1.15 : 1.18); // outside table = floor (tighter to avoid clip)
     seatList.forEach((item, i) => {
       // Top of screen = -π/2; then clockwise around the full circle
-      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + (reduceMotion ? 0 : time * 0.00014);
+      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + seatOrbitAngle();
       // Subtle hierarchy: top-3 sit a hair closer to the Chair (still one ring)
       const rk = item.rank;
       // Stay fully on the floor ring — no inward hierarchy pull onto the table
@@ -2686,7 +2828,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
     const chairCore = { x: cx, y: cy };
-    const chairR = floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28);
+    // Table Chair box is a notch under Floor so Satoshi/Vitalik don't eat the panel.
+    // Floor stays large via floorFit.lrBase / 0.22. Cover-fill still fills the circle.
+    const chairR = floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24);
     const chairStop = chairR + 6;
     const chairLean = String((state.decision && state.decision.direction) || "WAIT").toUpperCase();
     order.forEach((name, i) => {
@@ -2814,7 +2958,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const leaderPulse = reduceMotion ? 1 : (1 + 0.02 * Math.sin(time * 0.0035));
-    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.28)) * leaderPulse;
+    const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse;
     const scL = strongColor(leaderDir);
     const eyeGlow =
       leaderDir === "UP" || leaderDir === "UP_HOLD" ? "rgba(0, 255, 100, 0.85)" :
@@ -2884,6 +3028,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const whichChair = chairKeyOf(focusTable);
       noteChairLock(whichChair, _lc);
       drawChairThink(cx, cy, lr, radius, { which: whichChair, dir: leaderDir, locked: _hasLock, st: state });
+      drawLockIgnition(cx, cy, lr, whichChair);
     } catch (e) {}
 
     // Labels under portrait — tucked to the rim so GOAL / nameplate stay
@@ -4461,6 +4606,18 @@ function drawCandleChart() {
     law: { blurb: "Enforcer. After repeated wrong calls can lock the table into LET'S FIND OUT mode.", subs: "—" },
   };
 
+  function botGuideMarkHtml(key, name) {
+    // Same /bots/*.png map Floor seats use. Letter fallback if a file is missing.
+    const letter = String(name || key || "?").replace(/[^A-Za-z0-9]/g, "").charAt(0).toUpperCase() || "?";
+    const src = (typeof BOT_ICON_FILES !== "undefined" && BOT_ICON_FILES[key]) || "";
+    const letterSpan = '<span class="bot-mark-letter" aria-hidden="true">' + letter + '</span>';
+    if (!src) return '<span class="bot-mark-wrap no-art">' + letterSpan + '</span>';
+    return '<span class="bot-mark-wrap">' +
+      '<img class="bot-mark" src="' + src + '" alt="" width="40" height="40" onerror="this.style.display=\'none\';this.parentNode.classList.add(\'no-art\');" />' +
+      letterSpan +
+      '</span>';
+  }
+
   function renderBotsGuide() {
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
@@ -4484,7 +4641,7 @@ function drawCandleChart() {
       const listen = r.listen != null ? Math.round(r.listen * 100) + "%" : "—";
       const dir = ag.direction || "—";
       return '<article class="bot-card ' + (top ? "rank-top" : "") + '">' +
-        '<div class="bot-card-head"><span class="bot-callsign">' + name + '</span><span class="bot-rank-pill">' + rank + '</span></div>' +
+        '<div class="bot-card-head">' + botGuideMarkHtml(key, name) + '<span class="bot-callsign">' + name + '</span><span class="bot-rank-pill">' + rank + '</span></div>' +
         '<div class="bot-title">' + title + '</div>' +
         '<div class="bot-blurb">' + g.blurb + '</div>' +
         '<div class="bot-subs">' + g.subs + '</div>' +
@@ -4884,6 +5041,7 @@ function drawCandleChart() {
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
     try { syncFloorExitBtn(); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
@@ -4936,6 +5094,9 @@ function drawCandleChart() {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
+    if (mode === "floor" || mode === "art") {
+      try { prefetchLeaderClickVideo(); } catch (e) {}
+    }
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
       // Layout after the view is visible, then draw (avoids 0×0 canvases)
@@ -4945,6 +5106,36 @@ function drawCandleChart() {
       });
     }
   }
+
+  function applyDeskState(payload) {
+    if (!payload || typeof payload !== "object") return false;
+    state = payload;
+    try { window.state = state; } catch (e) {}
+    try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
+    try { paintTableHud(); } catch (e) {}
+    try { dockWindowLed(); } catch (e) {}
+    try {
+      if (mode === "art" || mode === "floor") drawArt();
+    } catch (e) {}
+    const view = (typeof getViewState === "function") ? getViewState() : state;
+    return tableHasLiveHour(view || state);
+  }
+  window.applyDeskState = applyDeskState;
+
+  async function hydrateLiveHour() {
+    try {
+      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const payload = await r.json();
+      applyDeskState(payload);
+    } catch (e) {
+      console.warn("hydrateLiveHour failed", e);
+    }
+    try {
+      if (!pollTimer) pollTimer = setInterval(poll, POLL_MS);
+    } catch (e) {}
+  }
+  window.hydrateLiveHour = hydrateLiveHour;
 
   function updateUI() {
     if (!state) return;
@@ -4969,13 +5160,15 @@ function drawCandleChart() {
       else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
     }
     const d = state.decision || {};
-    const prevDir = decisionDir.textContent;
+    const prevDir = decisionDir ? decisionDir.textContent : "";
     // Prefer locked_call so the strip matches the plaque / portrait after the single call
     const lc = state.locked_call || d.locked_call || null;
     const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
     const rawDir = hasLock ? lc.direction : (d.direction || "WAIT");
-    decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + lc.direction) : (d.display_direction || displayDir(rawDir)));
-    decisionDir.className = "dir " + rawDir;
+    if (decisionDir) {
+      decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + lc.direction) : (d.display_direction || displayDir(rawDir)));
+      decisionDir.className = "dir " + rawDir;
+    }
     // Status strip: phase + lock badge
     try {
       const sum = String(d.summary || "");
@@ -4995,17 +5188,21 @@ function drawCandleChart() {
     } catch (e) { /* non-fatal */ }
 
     // Prefer locked confidence so strip matches plaque/portrait
-    decisionConf.textContent = (hasLock && lc && lc.confidence != null)
-      ? (lc.confidence + "%")
-      : (d.confidence != null ? d.confidence + "%" : "—");
-    decisionSummary.textContent = d.summary || "";
-    if (d.regime_key) {
-      decisionSummary.textContent = (decisionSummary.textContent || "") +
-        (decisionSummary.textContent ? " · " : "") + "regime " + d.regime_key;
+    if (decisionConf) {
+      decisionConf.textContent = (hasLock && lc && lc.confidence != null)
+        ? (lc.confidence + "%")
+        : (d.confidence != null ? d.confidence + "%" : "—");
     }
-    btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
-    fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
-    kalshiTicker.textContent = state.market?.kalshi_ticker || "—";
+    if (decisionSummary) {
+      decisionSummary.textContent = d.summary || "";
+      if (d.regime_key) {
+        decisionSummary.textContent = (decisionSummary.textContent || "") +
+          (decisionSummary.textContent ? " · " : "") + "regime " + d.regime_key;
+      }
+    }
+    if (btcPrice) btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
+    if (fundingEl) fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
+    if (kalshiTicker) kalshiTicker.textContent = state.market?.kalshi_ticker || "—";
     const upEl = document.getElementById("liveUpPct");
     const dnEl = document.getElementById("liveDownPct");
     const timEl = document.getElementById("windowTimer");
@@ -5059,7 +5256,7 @@ function drawCandleChart() {
 
     }
 
-    lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
+    if (lastUpdateEl) lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
     try { paintTableHud(); } catch (e) {}
     updateLaw(state.law);
@@ -5081,7 +5278,7 @@ function drawCandleChart() {
     if (mode === "charts" && !deskCinematicOn()) drawCharts();
 
     const healthy = state.health?.binance || state.health?.kalshi;
-    statusDot.className = "dot " + (healthy ? "live" : "warn");
+    if (statusDot) statusDot.className = "dot " + (healthy ? "live" : "warn");
 
     try { syncSeatStorm(); } catch (e) {}
     try {
@@ -5152,20 +5349,20 @@ function drawCandleChart() {
 
   async function poll() {
     try {
-      const r = await fetch(`${API_BASE}/api/state`);
+      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
-      state = await r.json();
-      try { window.state = state; } catch (e) {}
-      updateUI();
+      const payload = await r.json();
+      applyDeskState(payload);
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
       if (mode === "dashboard") renderDashboard();
     } catch (e) {
-      statusDot.className = "dot err";
+      if (statusDot) statusDot.className = "dot err";
       console.warn("Council poll failed", e);
     }
   }
+  window.poll = poll;
 
   const openChartsBtn = document.getElementById("openChartsBtn");
   if (openChartsBtn) {
@@ -5909,6 +6106,16 @@ function drawCandleChart() {
         setMode("art");
       });
     }
+    const seatSpin = document.getElementById("seatSpinBtn");
+    if (seatSpin && !seatSpin.__wired) {
+      seatSpin.__wired = true;
+      seatSpin.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSeatSpin(seatOrbitFrozen);
+      });
+    }
+    try { syncSeatSpinBtn(); } catch (e) {}
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
@@ -6129,9 +6336,20 @@ function drawCandleChart() {
   window.playCelebrateVideo = playCelebrateVideo;
 
   let leaderClickPlaying = false;
+  function prefetchLeaderClickVideo() {
+    // Warm /leader-click.mp4 when Floor or Table is visible so the first click is buffered.
+    const vid = document.getElementById("leaderClickVideo");
+    if (!vid || leaderClickPlaying) return;
+    if (mode !== "floor" && mode !== "art") return;
+    vid.preload = "auto";
+    if (vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc) && vid.readyState >= 2) return;
+    try { vid.load(); } catch (e) {}
+  }
+  window.prefetchLeaderClickVideo = prefetchLeaderClickVideo;
+
   function playLeaderClickVideo() {
-    // Gesture-only Floor clip. Uses frontend/static/leader-click.mp4.
-    // No title card. Portraits keep drawing underneath. Esc/click dismiss.
+    // Gesture clip from Floor or Table Chair photos. Same overlay, no title card.
+    // Never load() or swap src on click — that is the stutter. Prefetch warms it.
     const wrap = document.getElementById("leaderClickWrap");
     const vid = document.getElementById("leaderClickVideo");
     const skipBtn = document.getElementById("leaderClickSkip");
@@ -6139,12 +6357,15 @@ function drawCandleChart() {
     if (!wrap || !vid) return;
     if (leaderClickPlaying || celebratePlaying) return;
     if (document.body.classList.contains("gate-locked")) return;
-    if (mode !== "floor") return;
+    if (mode !== "floor" && mode !== "art") return;
+    if (!(vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc))) {
+      try { prefetchLeaderClickVideo(); } catch (e) {}
+      return;
+    }
 
     leaderClickPlaying = true;
     document.body.classList.add("leader-clip-on");
     document.body.classList.remove("zt-cinematic");
-    ensureAudio();
     wrap.classList.remove("hidden");
     wrap.classList.add("active");
     wrap.setAttribute("aria-hidden", "false");
@@ -6152,10 +6373,7 @@ function drawCandleChart() {
       fallback.hidden = true;
       fallback.textContent = "";
     }
-    if (typeof fitVideoToScreen === "function") {
-      try { fitVideoToScreen(vid); } catch (e) {}
-    }
-    vid.muted = !!soundMuted;
+    vid.muted = true;
     vid.playsInline = true;
     vid.setAttribute("playsinline", "");
     vid.setAttribute("webkit-playsinline", "");
@@ -6193,40 +6411,12 @@ function drawCandleChart() {
     if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
     wrap.onclick = () => cleanup();
 
-    const sources = ["/leader-click.mp4", "/static/leader-click.mp4"];
-    let srcIdx = 0;
-    const playReady = () => {
-      if (!leaderClickPlaying) return;
-      const p = vid.play();
-      if (p && p.then) {
-        p.then(() => {
-          if (fallback) fallback.hidden = true;
-          if (!soundMuted) {
-            try { vid.muted = false; } catch (e) {}
-          }
-        }).catch(() => {
-          vid.muted = true;
-          const p2 = vid.play();
-          if (p2 && p2.then) p2.catch(() => {});
-        });
-      }
-    };
-    const tryNext = () => {
-      if (!leaderClickPlaying) return;
-      if (srcIdx >= sources.length) {
-        if (fallback) fallback.hidden = true;
-        return;
-      }
-      const url = sources[srcIdx++];
-      vid.onerror = tryNext;
-      vid.oncanplay = playReady;
-      vid.src = url;
-      try { vid.load(); } catch (e) { tryNext(); }
-    };
-    if (vid.readyState >= 2 && vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc)) {
-      playReady();
-    } else {
-      tryNext();
+    const p = vid.play();
+    if (p && p.then) {
+      p.catch(() => {
+        if (!leaderClickPlaying) return;
+        cleanup();
+      });
     }
   }
   window.playLeaderClickVideo = playLeaderClickVideo;
@@ -6547,7 +6737,7 @@ function drawCandleChart() {
     if (!targets.length || already) return;
     const onMove = (e) => {
       if (!canvas) return;
-      if (mode !== "floor" || leaderClickPlaying) {
+      if ((mode !== "floor" && mode !== "art") || leaderClickPlaying) {
         canvas.classList.remove("chair-hot");
         return;
       }
@@ -6555,7 +6745,7 @@ function drawCandleChart() {
       canvas.classList.toggle("chair-hot", !!(pt && chairHitAt(pt.x, pt.y)));
     };
     const onGesture = (e) => {
-      if (mode !== "floor" || leaderClickPlaying || celebratePlaying) return;
+      if ((mode !== "floor" && mode !== "art") || leaderClickPlaying || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
       if (!pt || !chairHitAt(pt.x, pt.y)) return;
@@ -7027,6 +7217,7 @@ function drawCandleChart() {
       const sg = document.getElementById("summonGate");
       if (sg) sg.classList.add("hidden");
       try { if (typeof window.setMode === "function") window.setMode("art"); } catch (e) {}
+      try { if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour(); } catch (e) {}
       return;
     }
     // First-login choice overlays the desk. Do not re-lock html/body —
@@ -7193,61 +7384,13 @@ function drawCandleChart() {
     tick();
   }
 
-  // Lightsaber from Chair confidence
-    window.updateLightsaber = function updateLightsaber(state) {
-    const bar = document.getElementById("lightsaberBar");
-    const lab = document.getElementById("lightsaberLabel");
-    if (!bar || !lab) return;
-    const conf = Math.max(0, Math.min(100, Number((state && state.decision && state.decision.confidence) || (state && state.confidence) || 0)));
-    const dir = String((state && state.decision && state.decision.direction) || (state && state.direction) || "WAIT").toUpperCase();
-    const pct = conf;
-    lab.textContent = pct + "%";
-    // Height scales with confidence
-    bar.style.height = Math.max(28, Math.round(40 + pct * 1.1)) + "px";
-
-    bar.classList.remove("red", "up", "lit", "wait-blade");
-    if (dir === "UP" || dir === "UP_HOLD") {
-      bar.classList.add("up", "lit");
-      bar.style.background = "";
-    } else if (dir === "DOWN" || dir === "DOWN_HOLD" || dir === "SWAP") {
-      bar.classList.add("red");
-      bar.style.background = "";
-    } else {
-      bar.classList.add("wait-blade");
-      bar.style.background = "";
+  // Thin always-on DOM saber is retired. Lock punch is canvas drawLockIgnition.
+    window.updateLightsaber = function updateLightsaber() {
+    const wrap = document.getElementById("lightsaberWrap");
+    if (wrap) {
+      wrap.classList.add("hidden");
+      wrap.setAttribute("aria-hidden", "true");
     }
-
-    // Kylo Ren unstable sparks — denser when high confidence / directional
-    try {
-      let sparks = document.getElementById("lightsaberSparks");
-      if (!sparks) {
-        sparks = document.createElement("div");
-        sparks.id = "lightsaberSparks";
-        sparks.className = "lightsaber-sparks";
-        bar.appendChild(sparks);
-      }
-      // throttle particle spawn
-      const now = Date.now();
-      if (!window.__lsSparkAt) window.__lsSparkAt = 0;
-      const interval = dir === "WAIT" ? 220 : 90;
-      if (now - window.__lsSparkAt < interval) return;
-      window.__lsSparkAt = now;
-      const n = dir === "WAIT" ? 1 : (pct > 70 ? 3 : 2);
-      for (let i = 0; i < n; i++) {
-        const s = document.createElement("span");
-        s.className = "ls-spark";
-        const y = 8 + Math.random() * 84; // along blade
-        const side = Math.random() < 0.5 ? -1 : 1;
-        s.style.left = "50%";
-        s.style.top = y + "%";
-        s.style.setProperty("--sx", (side * (6 + Math.random() * 16)) + "px");
-        s.style.setProperty("--sy", (-8 - Math.random() * 18) + "px");
-        sparks.appendChild(s);
-        setTimeout(() => { try { s.remove(); } catch (e) {} }, 600);
-      }
-      // keep DOM light
-      while (sparks.children.length > 18) sparks.removeChild(sparks.firstChild);
-    } catch (e) {}
   }
 
   // Cha-ching / warning on graded outcomes

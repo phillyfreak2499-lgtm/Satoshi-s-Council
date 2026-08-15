@@ -228,6 +228,7 @@
       <!-- CENTER: Round table -->
 <div id="tableStage" class="table-stage">
         <canvas id="roundtable" width="1100" height="780" role="img" aria-label="Vitalik ETH table"></canvas>
+        <button type="button" id="seatSpinBtn" class="seat-spin-btn" hidden aria-pressed="true" title="Freeze seat orbit">SPIN</button>
         <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
           <div id="lightsaberBar" class="lightsaber-bar">
             <div class="lightsaber-sparks" id="lightsaberSparks"></div>
@@ -641,7 +642,7 @@
     <button type="button" id="celebrateVideoSkip" class="celebrate-skip">Skip</button>
   </div>
   <div id="leaderClickWrap" class="celebrate-video-wrap leader-click-wrap hidden" aria-hidden="true">
-    <video id="leaderClickVideo" playsinline webkit-playsinline preload="none">
+    <video id="leaderClickVideo" playsinline webkit-playsinline preload="metadata">
       <source src="/leader-click.mp4" type="video/mp4" />
       <source src="/static/leader-click.mp4" type="video/mp4" />
     </video>

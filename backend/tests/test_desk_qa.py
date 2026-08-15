@@ -144,6 +144,53 @@ class DeskUnlockRevealTests(unittest.TestCase):
         self.assertIn("visibility: hidden !important", CSS)
 
 
+class DeskHydrateAfterUnlockTests(unittest.TestCase):
+    def test_unlock_kicks_live_hour_hydrate(self):
+        self.assertIn("function applyDeskState", JS)
+        self.assertIn("function hydrateLiveHour", JS)
+        self.assertIn("function tableHasLiveHour", JS)
+        self.assertIn('fetch(`${API_BASE}/api/state`, { cache: "no-store" })', JS)
+        reveal = JS.split("function revealAppAfterDeskUnlock", 1)[1].split("\n  function ", 1)[0]
+        self.assertIn("hydrateLiveHour", reveal)
+        auth = JS.split("function showAppAfterAuth", 1)[1].split("function playZtIntroThenSummonGate", 1)[0]
+        self.assertIn("hydrateLiveHour", auth)
+        self.assertIn('sessionStorage.removeItem("council_auth_ok")', HTML)
+        self.assertIn('id="passwordGate"', HTML)
+
+    def test_apply_fixture_paints_seats_and_1h(self):
+        """Unlock then apply a fixture state → seats and 1H appear (empty ETH focus)."""
+        seats = [
+            {"agent_name": "candle", "direction": "WAIT", "confidence": 40},
+            {"agent_name": "news", "direction": "WAIT", "confidence": 38},
+            {"agent_name": "exhaust", "direction": "WAIT", "confidence": 36},
+            {"agent_name": "quorum", "direction": "WAIT", "confidence": 35},
+        ]
+        fixture = {
+            "decision": {"direction": "WAIT", "summary": "Chair WAIT"},
+            "agents": seats,
+            "market": {"seconds_left": 660},
+            "accuracy": {"correct": 2, "total": 3, "hydrated": True},
+            "btc": {
+                "agents": seats,
+                "market": {"seconds_left": 660},
+                "accuracy": {"correct": 2, "total": 3},
+            },
+            "eth": {"agents": [], "market": {}},
+            "dual": True,
+        }
+        view = _live_hour_view(fixture, "ethereum")
+        names = {a["agent_name"] for a in (view.get("agents") or [])}
+        self.assertIn("candle", names)
+        self.assertIn("news", names)
+        self.assertIn("exhaust", names)
+        self.assertIn("quorum", names)
+        self.assertEqual((view.get("market") or {}).get("seconds_left"), 660)
+        secs = int(view["market"]["seconds_left"])
+        self.assertEqual("%02d:%02d" % (secs // 60, secs % 60), "11:00")
+        self.assertEqual((view.get("accuracy") or {}).get("total"), 3)
+        self.assertTrue(_table_has_live_hour(view))
+
+
 class FloorNameplateOverlapTests(unittest.TestCase):
     def test_fit_helper_keeps_goal_off_seat_names(self):
         self.assertIn("function floorNameplateFit", JS)
@@ -165,6 +212,28 @@ class FloorNameplateOverlapTests(unittest.TestCase):
                 label_bottom,
                 h - 4,
                 "outer seat labels clip at %sx%s" % (w, h),
+            )
+
+
+class FloorTableChromeOverlapTests(unittest.TestCase):
+    def test_table_chip_misses_wordmark_and_focus(self):
+        self.assertIn("function floorChromeFit", JS)
+        self.assertIn("--floor-table-rail: 96px", CSS)
+        self.assertIn("SATOSHI’S COUNCIL (1280) or ETH/BTC focus (390)", CSS)
+        self.assertIn('id="floorExitBtn"', HTML)
+        self.assertIn('class="floor-exit-btn"', HTML)
+        self.assertIn("TABLE", HTML.split('id="floorExitBtn"', 1)[1][:80])
+        wired = JS.split("floorExit.__wired", 1)[1][:300]
+        self.assertIn('setMode("art")', wired)
+        for w in (1280, 390):
+            fit = _floor_chrome_fit(w)
+            self.assertFalse(
+                _rects_intersect(fit["table"], fit["logo"]),
+                "TABLE overlaps wordmark at %s" % w,
+            )
+            self.assertFalse(
+                _rects_intersect(fit["table"], fit["focus"]),
+                "TABLE overlaps ETH/BTC at %s" % w,
             )
 
 
@@ -217,6 +286,69 @@ def _load_reveal_fn(html, body, app, gate):
             app.style.setProperty("pointer-events", "auto", "important")
 
     return revealAppAfterDeskUnlock
+
+
+def _table_has_live_hour(t):
+    if not t or not isinstance(t, dict):
+        return False
+    agents = t.get("agents") or []
+    has_seats = any(a and a.get("agent_name") and a.get("agent_name") != "leader" for a in agents)
+    m = t.get("market") or {}
+    has_window = (
+        m.get("seconds_left") is not None
+        or m.get("time_remaining") is not None
+        or m.get("close_time")
+        or m.get("mins_left") is not None
+    )
+    return bool(has_seats or has_window)
+
+
+def _live_hour_view(state, focus="ethereum"):
+    focused = state.get("eth") if focus == "ethereum" else state.get("btc")
+    other = state.get("btc") if focus == "ethereum" else state.get("eth")
+    if _table_has_live_hour(focused):
+        live = focused
+    elif _table_has_live_hour(state):
+        live = state
+    elif _table_has_live_hour(other):
+        live = other
+    else:
+        live = focused or state
+    return {
+        "agents": live.get("agents") or state.get("agents") or [],
+        "market": live.get("market") or state.get("market") or {},
+        "accuracy": live.get("accuracy") or state.get("accuracy") or {},
+        "decision": live.get("decision") or state.get("decision") or {},
+    }
+
+
+def _rects_intersect(a, b):
+    if not a or not b or a["w"] <= 0 or a["h"] <= 0 or b["w"] <= 0 or b["h"] <= 0:
+        return False
+    return (
+        a["x"] < b["x"] + b["w"]
+        and a["x"] + a["w"] > b["x"]
+        and a["y"] < b["y"] + b["h"]
+        and a["y"] + a["h"] > b["y"]
+    )
+
+
+def _floor_chrome_fit(w):
+    phone = w <= 480
+    table = {"x": 10, "y": 10, "w": 88, "h": 44}
+    rail = 96
+    header_pad = 14
+    logo = (
+        {"x": 0, "y": 0, "w": 0, "h": 0}
+        if phone
+        else {"x": header_pad + rail, "y": 8, "w": 280, "h": 36}
+    )
+    focus = (
+        {"x": header_pad + rail, "y": 10, "w": 220, "h": 44}
+        if phone
+        else {"x": header_pad + rail, "y": 52, "w": 220, "h": 28}
+    )
+    return {"table": table, "logo": logo, "focus": focus, "phone": phone, "rail": rail}
 
 
 def _floor_nameplate_fit(w, h):

@@ -29,7 +29,12 @@ def _wire_fn() -> str:
 class LeaderClickFileTests(unittest.TestCase):
     def test_clip_already_on_disk_not_a_new_upload(self):
         self.assertTrue(CLIP.is_file())
-        self.assertGreater(CLIP.stat().st_size, 1_000_000)
+        size = CLIP.stat().st_size
+        self.assertGreater(size, 1_000_000)
+        self.assertLess(size, 8_000_000)
+        head = CLIP.read_bytes()[:4096]
+        self.assertEqual(head[4:8], b"ftyp")
+        self.assertIn(b"moov", head)
         self.assertIn('_first_video("leader-click.mp4")', MAIN)
         self.assertIn('@app.get("/leader-click.mp4")', MAIN)
 
@@ -37,6 +42,8 @@ class LeaderClickFileTests(unittest.TestCase):
         wrap = HTML.split('id="leaderClickWrap"', 1)[1].split("floorMoneyRain", 1)[0]
         self.assertIn("/leader-click.mp4", wrap)
         self.assertIn("/static/leader-click.mp4", wrap)
+        self.assertIn('preload="metadata"', wrap)
+        self.assertNotIn('preload="none"', wrap)
         self.assertNotIn("zt-intro", wrap)
         self.assertNotIn("money-closeup", wrap)
         self.assertNotIn("CINEMATIC", wrap)
@@ -47,7 +54,8 @@ class LeaderClickFileTests(unittest.TestCase):
 class LeaderClickGestureTests(unittest.TestCase):
     def test_floor_satoshi_and_vitalik_register_hits(self):
         self.assertIn("function rememberChairHit", JS)
-        self.assertIn('if (mode !== "floor") return;', JS.split("function rememberChairHit", 1)[1][:120])
+        hit = JS.split("function rememberChairHit", 1)[1][:180]
+        self.assertIn('if (mode !== "floor" && mode !== "art") return;', hit)
         self.assertIn('rememberChairHit(cx, portraitY, pr, which)', JS)
         self.assertIn('drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC"', JS)
         self.assertIn('drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH"', JS)
@@ -58,8 +66,17 @@ class LeaderClickGestureTests(unittest.TestCase):
         self.assertIn("chairHitAt", wire)
         self.assertIn("playLeaderClickVideo()", wire)
         self.assertIn("pointerup", wire)
+        self.assertIn('mode !== "art"', wire)
         play = _play_fn()
-        self.assertIn('if (mode !== "floor") return;', play)
+        self.assertIn('if (mode !== "floor" && mode !== "art") return;', play)
+        self.assertIn("vid.currentSrc && /leader-click\\.mp4/i.test(vid.currentSrc)", play)
+        self.assertIn("vid.currentTime = 0", play)
+        self.assertIn("vid.play()", play)
+        self.assertNotIn("vid.load()", play)
+        self.assertNotIn("vid.src =", play)
+        self.assertNotIn("const sources", play)
+        self.assertIn("function prefetchLeaderClickVideo", JS)
+        self.assertIn("prefetchLeaderClickVideo()", JS)
         before = JS.split("function playLeaderClickVideo", 1)[0]
         self.assertNotIn("playLeaderClickVideo();", before)
 

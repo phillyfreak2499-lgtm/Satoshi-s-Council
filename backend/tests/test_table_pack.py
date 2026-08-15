@@ -30,7 +30,7 @@ class TableBeamTests(unittest.TestCase):
 class TablePortraitTests(unittest.TestCase):
     def test_portraits_fill_the_seat(self):
         self.assertIn("const pr = radius * 0.80", JS)
-        self.assertIn("mode === \"floor\" ? 0.22 : 0.28", JS)
+        self.assertIn("mode === \"floor\" ? 0.22 : 0.24", JS)
         self.assertIn("const scale = cover", JS)
         self.assertIn("object-fit: cover", JS)
         self.assertNotIn("contain + (cover - contain)", JS)
@@ -91,6 +91,61 @@ class ChairThinkTests(unittest.TestCase):
         self.assertIn("drawChairThink(cx, portraitY, pr, radius", JS)
         self.assertIn("drawChairThink(cx, cy, lr, radius", JS)
         self.assertIn("noteChairLock(whichChair, _lc)", JS)
+
+
+class BotsGuideMarkTests(unittest.TestCase):
+    def test_field_guide_uses_existing_bot_map(self):
+        self.assertIn("function botGuideMarkHtml", JS)
+        self.assertIn("function renderBotsGuide", JS)
+        self.assertIn("botGuideMarkHtml(key, name)", JS)
+        self.assertIn("BOT_ICON_FILES[key]", JS)
+        self.assertIn('class="bot-mark"', JS)
+        self.assertIn("/bots/wick.png", JS)
+        self.assertIn("bot-mark-letter", JS)
+        self.assertIn("no-art", JS)
+        self.assertIn(".bot-mark-wrap", CSS)
+        self.assertIn("width: 40px", CSS.split(".bot-mark-wrap", 1)[1][:200])
+        self.assertIn("margin-left: auto", CSS.split(".bot-rank-pill", 1)[1][:180])
+        self.assertNotIn("zt-logo", JS.split("function botGuideMarkHtml", 1)[1][:400].lower())
+
+
+class SeatOrbitTests(unittest.TestCase):
+    def test_seat_orbit_is_slower_and_can_freeze(self):
+        self.assertIn("function seatOrbitAngle", JS)
+        self.assertIn("const SEAT_ORBIT_SPEED = 0.00007", JS)
+        self.assertIn('SEAT_SPIN_KEY = "council_seat_spin"', JS)
+        self.assertIn("function setSeatSpin", JS)
+        self.assertIn("function syncSeatSpinBtn", JS)
+        self.assertIn("seatOrbitAngle()", JS)
+        self.assertNotIn("time * 0.00014", JS)
+        self.assertIn('id="seatSpinBtn"', HTML)
+        self.assertIn(">SPIN</button>", HTML)
+        self.assertIn("Freeze seat orbit", HTML)
+        self.assertIn(".seat-spin-btn", CSS)
+        self.assertIn("body.mode-art .seat-spin-btn", CSS)
+        self.assertIn("localStorage.setItem(SEAT_SPIN_KEY", JS)
+        self.assertIn("seatOrbitHold += dt * SEAT_ORBIT_SPEED", JS)
+
+
+class LockIgnitionTests(unittest.TestCase):
+    def test_fat_lock_beam_not_always_on(self):
+        self.assertIn("function drawLockIgnition", JS)
+        self.assertIn("drawLockIgnition(cx, portraitY, pr, which)", JS)
+        self.assertIn("drawLockIgnition(cx, cy, lr, whichChair)", JS)
+        self.assertIn("Fat lock saber: ignites ~1s on Chair LOCK, then stays OFF", JS)
+        self.assertIn('dir !== "UP" && dir !== "DOWN"', JS.split("function drawLockIgnition", 1)[1][:800])
+        self.assertIn("rgba(57, 255, 20", JS.split("function drawLockIgnition", 1)[1][:1600])
+        self.assertIn("rgba(255, 45, 85", JS.split("function drawLockIgnition", 1)[1][:1600])
+        ign = JS.split("function drawLockIgnition", 1)[1].split("function resizeRoundtable", 1)[0]
+        self.assertNotIn("purple", ign.lower())
+        self.assertNotIn("168, 85, 247", ign)
+        self.assertIn("Math.max(14, Math.min(22", ign)
+        self.assertIn("not over the face or seat labels", ign)
+        self.assertIn("Date.now() + 1100", JS)
+        wrap = CSS.split("Thin always-on saber retired", 1)[1][:280]
+        self.assertIn("display: none !important", wrap)
+        self.assertNotIn("ls-spark", JS.split("window.updateLightsaber", 1)[1][:500])
+        self.assertNotIn("wait-blade", JS.split("window.updateLightsaber", 1)[1][:500])
 
 
 class TableFeedTests(unittest.TestCase):

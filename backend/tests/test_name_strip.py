@@ -40,6 +40,10 @@ class VisibleZtStripTests(unittest.TestCase):
         wm = HTML.split('id="ztWatermark"', 1)[1][:120]
         self.assertNotIn("zt-logo", wm)
         self.assertNotIn("src=", wm.split(">", 1)[0])
+        fav = (ROOT / "frontend" / "static" / "favicon.svg").read_text(encoding="utf-8")
+        self.assertIn('stroke="#00e8ff"', fav)
+        self.assertNotIn("M8.2 10.2h9.2", fav)
+        self.assertNotIn("gold ZT", CSS)
 
     def test_logo_labels_have_no_zt(self):
         self.assertIn('aria-label="Satoshi’s Council"', HTML)
