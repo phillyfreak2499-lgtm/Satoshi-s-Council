@@ -3518,7 +3518,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   const raijinPortrait = new Image();
-  raijinPortrait.src = "/static/bots/raijin-chair.png";
+  raijinPortrait.src = "/raijin-wait.jpg";
   const aresPortrait = new Image();
   aresPortrait.src = "/static/ares-chair.png";
   aresPortrait.onerror = function () {
@@ -3578,6 +3578,54 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.stroke();
     ctx.restore();
   }
+  function raijinEyeColors(dir) {
+    const d = (typeof wxEye === "function") ? wxEye(dir) : String(dir || "WAIT").toUpperCase();
+    if (d === "UP") return { mode: "up", a: "#39ff14", b: "#00ff78" };
+    if (d === "DOWN") return { mode: "down", a: "#ff3b5c", b: "#ff1a4a" };
+    return { mode: "wait", a: "#FFFFFF", b: "#E8F4FF" };
+  }
+  function paintRaijinEyes(dir) {
+    const cols = raijinEyeColors(dir);
+    const overlay = document.getElementById("raijinFace");
+    /* One portrait only: canvas cowboy + drawRaijinEyeTint. Never unhide a stacked HTML face. */
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+    }
+    const chair = document.getElementById("frontChair");
+    if (chair) chair.setAttribute("data-eye", cols.mode);
+    try {
+      document.body.style.setProperty("--raijin-eye-a", cols.a);
+      document.body.style.setProperty("--raijin-eye-b", cols.b);
+    } catch (e) {}
+    return cols;
+  }
+  function drawRaijinEyeTint(cx, cy, pr, dir) {
+    const cols = raijinEyeColors(dir);
+    /* WAIT keeps the signed white storm glow. Do not turn WAIT gold. */
+    if (cols.mode === "wait") return cols;
+    /* Soft feather on the glowing sockets only. Do not recolor lightning, hat, or coat. */
+    const y = cy - pr * 0.06;
+    const dx = pr * 0.155;
+    const rx = pr * 0.10;
+    const ry = pr * 0.06;
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    [["l", -dx], ["r", dx]].forEach(function (pair) {
+      ctx.beginPath();
+      ctx.ellipse(cx + pair[1], y, rx, ry, 0, 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(cx + pair[1], y, 0, cx + pair[1], y, rx);
+      g.addColorStop(0, cols.a);
+      g.addColorStop(0.55, cols.b);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.shadowColor = cols.a;
+      ctx.shadowBlur = 12;
+      ctx.fill();
+    });
+    ctx.restore();
+    return cols;
+  }
   function drawPublicTug(cx, cy, radius, tug) {
     // Floor visual only. FADE one way, STEAM the other. Does not override Chair gates.
     if (!tug || tug.visual_only === false) return;
@@ -3620,9 +3668,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.restore();
   }
   raijinPortrait.onerror = function () {
-    // Same approved thunder-knight. No CORS, no neon mark, never leave the Chair empty.
+    // Same signed Dallas storm cowboy. No CORS, no neon mark, never leave the Chair empty.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    raijinPortrait.src = "/static/bots/raijin-chair.png";
+    raijinPortrait.src = "/raijin-wait.jpg";
   };
   function frontLockDir() {
     const data = (typeof frontBoard !== "undefined" && frontBoard) || {};
@@ -3664,6 +3712,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         containPortrait(raijinFace(floorDir), cx, cy, pr);
       }
     }
+    try { drawRaijinEyeTint(cx, cy, pr, floorDir); paintRaijinEyes(floorDir); } catch (e) {}
     ctx.beginPath();
     ctx.arc(cx, cy, pr, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(0, 220, 255, 0.85)";
@@ -3824,6 +3873,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (which === "ats" || (typeof isAtsTable === "function" && isAtsTable(which))) {
       try { drawAresEyeTint(cx, portraitY, pr, (st && st.eyes) || {}); } catch (e) {}
     }
+    if (typeof isFrontTable === "function" && isFrontTable(which)) {
+      try { drawRaijinEyeTint(cx, portraitY, pr, dir); paintRaijinEyes(dir); } catch (e) {}
+    }
     rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
     ctx.beginPath();
@@ -3962,6 +4014,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
       ctx.fillStyle = "#0a1220";
       ctx.fill();
+    }
+    if (typeof isFrontTable === "function" && isFrontTable(which)) {
+      try { drawRaijinEyeTint(cx, cy - 4, pr, dir); paintRaijinEyes(dir); } catch (e) {}
     }
     ctx.beginPath();
     ctx.arc(cx, cy - 4, pr, 0, Math.PI * 2);
@@ -4771,6 +4826,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         drawAresEyeTint(cx, cy, lr, eyes);
         paintAresEyes(eyes);
       } catch (e) {}
+    }
+    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
+      try { drawRaijinEyeTint(cx, cy, lr, leaderDir); paintRaijinEyes(leaderDir); } catch (e) {}
     }
     rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
@@ -6862,7 +6920,7 @@ function drawCandleChart() {
       id: "RAIJIN",
       name: "RAIJIN",
       job: "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
-      mark: "/static/bots/raijin-chair.png",
+      mark: "/raijin-wait.jpg",
     };
     chair.name = frontChairName(chair);
     const rows = [chair].concat(seats.length ? seats : fallback);
@@ -6872,7 +6930,7 @@ function drawCandleChart() {
       const rank = s.rank ? ("#" + s.rank) : "—";
       const faded = s.faded ? " faded" : "";
       const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
-      const face = (s.id === "RAIJIN") ? "/static/bots/raijin-chair.png" : s.mark;
+      const face = (s.id === "RAIJIN") ? raijinPortraitSrc((s && s.eye) || frontLockDir()) : s.mark;
       const kids = (s.id === "RAIJIN") ? [] : subsForParent(frontSubsOf(data), s.id);
       const subHtml = kids.length ? ('<div class="front-sub-under">' + kids.map(function (sub) {
         return '<div class="front-sub-row" data-tone="' + String(sub.tone || "") + '">' +
@@ -8354,7 +8412,7 @@ function drawCandleChart() {
     if (data && data.chair) seats.unshift(data.chair);
     box.innerHTML = seats.map(function (s) {
       const isChair = !!(s && (s.id === "RAIJIN" || (data && data.chair && s.id && s.id === data.chair.id)));
-      const mark = isChair ? "/static/bots/raijin-chair.png" : String((s && s.mark) || "");
+      const mark = isChair ? raijinPortraitSrc((s && s.eye) || frontLockDir()) : String((s && s.mark) || "");
       const label = isChair ? frontChairName(s) : String((s && (s.name || s.id)) || "");
       return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
         '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
@@ -8437,6 +8495,7 @@ function drawCandleChart() {
     if (chairImg) {
       chairImg.src = raijinPortraitSrc(frontLockDir());
     }
+    try { paintRaijinEyes(frontLockDir()); } catch (e) {}
     (data.seats || []).forEach(function (s) {
       const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
       if (el) el.textContent = s.call || "—";
@@ -8608,6 +8667,7 @@ function drawCandleChart() {
           containPortrait(raijinFace(dir), cx, portraitY, pr);
         }
       }
+      try { drawRaijinEyeTint(cx, portraitY, pr, dir); paintRaijinEyes(dir); } catch (e) {}
       const chairMark = document.querySelector("#frontStageWrap > #frontChair .front-mark");
       if (chairMark) {
         chairMark.style.width = (pr * 2) + "px";

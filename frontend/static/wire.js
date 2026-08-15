@@ -8,6 +8,12 @@ window.COUNCIL_WIRE = [
     "why": "Satoshi chair is a new signed close-up (UP green / DOWN red / HOLD amber). Gold SELL cut parked, not live. Face-only, no shrine. Not Floor. Not rooms."
   },
   {
+    "id": "2026-08-15-raijin-cowboy",
+    "at": "2026-08-15T23:30:00-05:00",
+    "title": "Raijin is now the Dallas storm cowboy",
+    "why": "One signed WAIT cut; UP/DOWN eyes tint like Ares (green/red). Name stays Raijin. No Cowboys star. Not Floor. Not ORACLE."
+  },
+  {
     "id": "2026-08-15-vitalik-face",
     "at": "2026-08-15T23:10:00-05:00",
     "title": "Vitalik chair got a new signed face",
