@@ -6153,6 +6153,42 @@ html body.mode-floor #app > header .mode-tabs {
   padding-left: var(--floor-table-rail, 96px) !important;
 }
 
+/* Mid-width (~1040) Floor top bar — PAPER/BOOKS, huddle, hit rate miss the wordmark */
+@media (max-width: 1180px) and (min-width: 481px) {
+  body.floor-mode .rivalry-strip:not([hidden]),
+  body.mode-floor .rivalry-strip:not([hidden]) {
+    top: 58px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    max-width: min(420px, calc(100vw - 220px));
+    padding: 4px 10px;
+    gap: 6px 8px;
+    z-index: 50;
+    flex-wrap: wrap;
+    white-space: normal;
+    justify-content: center;
+  }
+  body.floor-mode .rivalry-strip .rival-trash,
+  body.mode-floor .rivalry-strip .rival-trash {
+    display: none;
+  }
+  #app > header .logo .title {
+    font-size: 0.62rem;
+    letter-spacing: 0.05em;
+  }
+  #app > header .accuracy-badge {
+    min-width: 0 !important;
+    padding: 3px 7px !important;
+  }
+  #app > header .accuracy-badge .acc-label {
+    display: none;
+  }
+  #app > header .huddle-badge {
+    min-width: 0 !important;
+    padding: 3px 7px !important;
+  }
+}
+
 /* Floor music sits in header controls — never over Bell */
 html body.floor-mode #floorMusicBtn.floor-music-btn,
 html body.mode-floor #floorMusicBtn.floor-music-btn {

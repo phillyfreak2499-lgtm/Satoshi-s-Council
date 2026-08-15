@@ -2439,7 +2439,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = locked ? gold : (which === "ethereum" ? "#9dffc0" : "#7fe9ff");
     // Inside the table, under the portrait — not in the top-arc seat ring (FOCUSWICK).
     const dualNameY = portraitY + pr + 11;
-    ctx.fillText((label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC"))) + (focused ? " · FOCUS" : ""), cx, dualNameY);
+    ctx.fillText(label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC")), cx, dualNameY);
 
     ctx.font = "700 12px Orbitron, monospace";
     const plateY = cy + radius + 14;
@@ -2476,10 +2476,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const face = locked ? Math.atan2(portraitY - bp.y, cx - bp.x) : bp.ang;
         drawGameBot(bp.name, bp.x, bp.y, 22, bp.adir, bp.confA, face, i);
         const tag = labelOf(bp.a) || (bp.name || "?").toString();
-        ctx.font = "700 10px Orbitron, monospace";
+        const outA = Math.atan2(bp.y - cy, bp.x - cx);
+        ctx.font = "700 9px Orbitron, monospace";
         ctx.fillStyle = "rgba(220,235,250,0.95)";
         ctx.textAlign = "center";
-        ctx.fillText(String(tag).slice(0, 8), bp.x, bp.y + 34);
+        ctx.fillText(String(tag).slice(0, 8), bp.x + Math.cos(outA) * 16, bp.y + Math.sin(outA) * 16);
       });
     }
 
@@ -2602,18 +2603,34 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function floorChromeFit(w) {
     // TABLE HUD chip vs SATOSHI’S COUNCIL wordmark (1280) and ETH/BTC (390).
+    // Mid-width (~1040) drops PAPER/BOOKS + huddle/hit so they do not crush.
     // CSS --floor-table-rail reserves the left slot; rects must not intersect.
     const phone = w <= 480;
+    const mid = !phone && w <= 1180;
     const table = { x: 10, y: 10, w: 88, h: 44 };
     const rail = 96;
     const headerPad = 14;
     const logo = phone
       ? { x: 0, y: 0, w: 0, h: 0 }
-      : { x: headerPad + rail, y: 8, w: 280, h: 36 };
+      : { x: headerPad + rail, y: 8, w: mid ? 200 : 280, h: 36 };
     const focus = phone
       ? { x: headerPad + rail, y: 10, w: 220, h: 44 }
       : { x: headerPad + rail, y: 52, w: 220, h: 28 };
-    return { table, logo, focus, phone, rail };
+    const rivalW = mid ? 280 : 320;
+    const rivalry = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : mid
+        ? { x: w / 2 - rivalW / 2, y: 58, w: rivalW, h: 36 }
+        : { x: w / 2 - rivalW / 2, y: 10, w: rivalW, h: 32 };
+    const huddleW = mid ? 72 : 88;
+    const hitW = mid ? 70 : 120;
+    const huddle = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : { x: w - 16 - hitW - 8 - huddleW - (mid ? 36 : 72), y: 8, w: huddleW, h: 28 };
+    const hit = phone
+      ? { x: 0, y: 0, w: 0, h: 0 }
+      : { x: w - 16 - hitW, y: 8, w: hitW, h: 28 };
+    return { table, logo, focus, rivalry, huddle, hit, phone, mid, rail };
   }
 
   function floorNameplateFit(w, h) {
@@ -2637,12 +2654,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { radius, ringR, lrBase, seatR, labelStack, nameplateH, phone, ringMul };
   }
 
-  function floorHudGeometry(w, h) {
-    // Real AABBs for 1280 dual nameplates and 390 GOAL vs seat labels.
+  function floorHudGeometry(w, h, view) {
+    // Real AABBs: 1280 Table GOAL vs WIRE/CASCADE, Floor dual vs SATOSHI · BTC,
+    // phone 390 GOAL vs FADE/ORBIT/WHALE. view = "art" | "floor".
+    view = view || "floor";
     const phone = w <= 480 || Math.min(w, h) <= 520;
-    const dual = !phone && w >= 720;
+    const dual = view !== "art" && !phone && w >= 720;
     const labels = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN", "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP", "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN"];
-    const out = { phone: phone, dual: dual, nameplates: [], goals: [], seats: [] };
+    const out = { phone: phone, dual: dual, view: view, nameplates: [], goals: [], seats: [] };
     function tw(s, px) { return Math.max(8, Math.round(String(s).length * px * 0.62)); }
     function addSeats(cx, cy, ringR, seatR, nameOff, fontPx, side) {
       const n = labels.length;
@@ -2651,8 +2670,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const sx = cx + Math.cos(ang) * ringR;
         const sy = cy + Math.sin(ang) * ringR;
         const lw = tw(lab, fontPx);
-        const ly = sy + seatR + nameOff;
-        out.seats.push({ x: sx - lw / 2, y: ly - fontPx, w: lw, h: fontPx + 4, name: lab, table: side || "" });
+        const lx = sx + Math.cos(ang) * (seatR + nameOff);
+        const ly = sy + Math.sin(ang) * (seatR + nameOff);
+        out.seats.push({ x: lx - lw / 2, y: ly - fontPx / 2, w: lw, h: fontPx + 4, name: lab, table: side || "" });
       });
     }
     if (dual) {
@@ -2662,7 +2682,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const portraitY = cy - 2;
       const nameY = portraitY + pr + 11;
       [
-        [w * 0.25, "SATOSHI · BTC · FOCUS", "btc"],
+        [w * 0.25, "SATOSHI · BTC", "btc"],
         [w * 0.75, "VITALIK · ETH", "eth"],
       ].forEach(function (pair) {
         const cx = pair[0];
@@ -2670,27 +2690,38 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         const side = pair[2];
         const nw = tw(t, 11);
         out.nameplates.push({ x: cx - nw / 2, y: nameY - 11, w: nw, h: 14, text: t, table: side });
-        addSeats(cx, cy, R * 1.48, 22, 12, 10, side);
+        addSeats(cx, cy, R * 1.48, 22, 8, 9, side);
       });
+    } else if (view === "art" && !phone) {
+      const radius = Math.min(w, h) * 0.32;
+      const ringR = radius * 1.18;
+      const lr = Math.min(w, h) * 0.24;
+      const cx = w / 2, cy = h / 2;
+      const goal = "GOAL · one guess @ best odds (<80%)";
+      const gw = 200;
+      const plateY = cy + lr * 0.90;
+      out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
+      const nw = tw("SATOSHI", 11);
+      out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 7, w: nw, h: 14, text: "SATOSHI" });
+      addSeats(cx, cy, ringR, 20, 12, 11);
     } else {
       const fit = floorNameplateFit(w, h);
       const cx = w / 2, cy = h / 2;
       const lr = fit.lrBase;
       if (fit.phone) {
         const goal = "GOAL · one guess @ best odds (<80%)";
-        const gw = Math.min(w - 118, 260);
-        out.goals.push({ x: 108, y: 8, w: gw, h: 22, text: goal });
+        out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
       } else {
         const goal = "GOAL · one guess @ best odds (<80%)";
         const gw = 200;
-        const plateY = cy + lr + 46;
+        const plateY = cy + lr * 0.90;
         out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
         const nw = tw("SATOSHI", 10);
-        out.nameplates.push({ x: cx - nw / 2, y: cy + lr + 10 - 8, w: nw, h: 12, text: "SATOSHI" });
+        out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.52 - 8, w: nw, h: 12, text: "SATOSHI" });
       }
-      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 14 : 18, fit.phone ? 9 : 11);
+      addSeats(cx, cy, fit.ringR, fit.seatR, fit.phone ? 8 : 12, fit.phone ? 9 : 11);
     }
     return out;
   }
@@ -3259,10 +3290,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // Labels under portrait — tucked to the rim so GOAL / nameplate stay
     // inside the seat ring (do not cover WICK / WIRE / EXHAUST / QUORUM).
     const hudTight = !!(floorFit && (mode === "floor" || mode === "night"));
-    const phoneHud = !!(hudTight && floorFit.phone);
-    const nameY = phoneHud ? (cy + lr * 0.50) : (cy + lr + (hudTight ? 10 : 16));
-    const dirY = phoneHud ? (cy + lr * 0.64) : (cy + lr + (hudTight ? 22 : 32));
-    const confY = phoneHud ? (cy + lr * 0.76) : (cy + lr + (hudTight ? 32 : 46));
+    const phoneHud = !!(floorFit && floorFit.phone);
+    const nameY = phoneHud ? (cy + lr * 0.50) : (cy + lr * 0.52);
+    const dirY = phoneHud ? (cy + lr * 0.64) : (cy + lr * 0.64);
+    const confY = phoneHud ? (cy + lr * 0.76) : (cy + lr * 0.74);
     ctx.font = hudTight ? "700 10px Orbitron, sans-serif" : "700 11px Orbitron, sans-serif";
     ctx.fillStyle = GOLD;
     ctx.textAlign = "center";
@@ -3289,10 +3320,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
       const entryOdds = lc.entry_odds_pct;
       const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD";
-      const plateY = phoneHud ? 19 : (cy + lr + (hudTight ? 46 : 68));
-      const plateW = phoneHud ? Math.min(w - 118, 260) : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 260 : 240));
-      const plateH = phoneHud ? 22 : (hudTight ? 28 : 38);
-      const plateX = phoneHud ? (108 + plateW / 2) : cx;
+      const plateY = phoneHud ? 36 : (cy + lr * 0.90);
+      const plateW = phoneHud ? 120 : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 220 : 200));
+      const plateH = phoneHud ? 18 : 28;
+      const plateX = phoneHud ? 68 : cx;
       ctx.beginPath();
       const rx = 8;
       ctx.moveTo(plateX - plateW/2 + rx, plateY - plateH/2);
