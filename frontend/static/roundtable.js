@@ -103,6 +103,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     try { wireAdminTools(); } catch (e) {}
     try { wireBrain(); } catch (e) {}
+    try { if (typeof window.wireHelpAdmin === "function") window.wireHelpAdmin(); } catch (e) {}
   }
   window.mountAdminDesk = mountAdminDesk;
   let pendingAdminCb = null;
@@ -184,6 +185,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
     return fetch(url, opts);
   }
+  window.adminFetch = adminFetch;
   function wireAdminTools() {
     const st = () => document.getElementById("adminToolsStatus");
     const clearHit = document.getElementById("btnClearHitRate");
@@ -1281,7 +1283,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (typeof hasDeskAuth === "function" && !hasDeskAuth()) return true;
     if (document.body.classList.contains("gate-locked")) return true;
     if (document.body.classList.contains("gate-revealing")) return true;
-    if (mode === "settings" || mode === "follower" || mode === "night") return true;
+    if (mode === "settings" || mode === "follower" || mode === "night" || mode === "help") return true;
     if (typeof deskCinematicOn === "function" && deskCinematicOn()) return true;
     if (document.body.classList.contains("leader-clip-on")) return true;
     if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) return true;
@@ -8874,6 +8876,7 @@ function drawCandleChart() {
     const brainView = document.getElementById("brainView");
     const newsView = document.getElementById("newsView");
     const wireView = document.getElementById("wireView");
+    const helpView = document.getElementById("helpView");
     const schoolView = document.getElementById("schoolView");
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
@@ -8888,6 +8891,7 @@ function drawCandleChart() {
     const showBrain = mode === "brain";
     const showNews = mode === "news";
     const showWire = mode === "wire";
+    const showHelp = mode === "help";
     const showSchool = mode === "school";
     const showSide = mode === "side";
     const showFront = mode === "front";
@@ -8903,6 +8907,7 @@ function drawCandleChart() {
     if (brainView) brainView.classList.toggle("hidden", !showBrain);
     if (newsView) newsView.classList.toggle("hidden", !showNews);
     if (wireView) wireView.classList.toggle("hidden", !showWire);
+    if (helpView) helpView.classList.toggle("hidden", !showHelp);
     if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
@@ -8930,6 +8935,7 @@ function drawCandleChart() {
     if (mode === "brain") loadBrainRecap();
     if (mode === "news") loadDeskNews();
     if (mode === "wire") loadDeskWire();
+    if (mode === "help" && typeof window.loadHelpDesk === "function") window.loadHelpDesk();
     if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
@@ -9333,7 +9339,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "wire", "charts", "settings"];
+        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "wire", "help", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -11019,7 +11025,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "front", "charts", "settings"];
+    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "wire", "help", "school", "side", "front", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 

@@ -64,6 +64,8 @@ services:
       # Dashboard. Never put the values in this file.
       # Optional lock ping: LOCK_PING_URL (or FOLLOWER_PING_URL) in the Dashboard.
       # Fired on Follower unlock and Live on/off. Never put the URL in this file.
+      # Optional HELP ping: HELP_PING_URL in the Dashboard (falls back to LOCK_PING_URL).
+      # Fired when a HELP ticket is filed. A separate Bot texts Zach. Never put the URL here.
 
   # Nightly huddle + keep-alive (Starter doesn't sleep, but Cron guarantees 3 AM CT run)
   - type: cron

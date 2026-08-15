@@ -299,6 +299,24 @@ async def desk_school():
     return school_payload()
 
 
+@app.post("/api/help")
+async def api_help_submit(request: Request):
+    """Desk ticket. Frontend desk-code is the gate. Rate-limit on the server."""
+    from backend.services import desk_help
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return desk_help.submit(
+        ip=_client_ip(request),
+        kind=body.get("kind"),
+        text=body.get("text"),
+    )
+
+
 @app.get("/api/side")
 async def api_side():
     """Side Table — 15m arcade + hot strip. Paper default. No Follower."""
@@ -927,6 +945,17 @@ async def admin_verify(request: Request):
     return {"ok": ok}
 
 
+@app.get("/api/admin/help")
+async def api_help_list(request: Request, limit: int = 80):
+    """Admin-only ticket list. Same Settings password. Not desk-code-only."""
+    if not _admin_ok(request):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "admin password required"}, status_code=401)
+    from backend.services import desk_help
+
+    return {"ok": True, "tickets": desk_help.list_tickets(limit=limit)}
+
+
 @app.get("/api/desk/extensions")
 async def desk_extensions(request: Request):
     """Admin-only fragments. Desk-code-only users get 404 — no Follower label."""
@@ -1185,6 +1214,14 @@ if STATIC_DIR.is_dir():
     async def wire_js():
         return FileResponse(
             STATIC_DIR / "wire.js",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
+    @app.get("/help.js")
+    async def help_js():
+        return FileResponse(
+            STATIC_DIR / "help.js",
             media_type="application/javascript",
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
         )

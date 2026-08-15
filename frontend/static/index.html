@@ -204,6 +204,7 @@
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
         <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">WIRE</button>
+        <button type="button" id="tabHelp" class="mode-tab" data-mode="help" title="Something's wrong, add this, or a new idea">HELP</button>
         <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
         <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
         <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
@@ -645,6 +646,24 @@
       <ol id="wireList" class="wire-list"></ol>
     </section>
 
+    <section id="helpView" class="info-view hidden" aria-label="HELP">
+      <div class="info-hero">
+        <h2>HELP</h2>
+        <p>Something’s wrong. Add this. A new idea. Zach reads these — nothing ships until he says so. Paper. Follower OFF.</p>
+      </div>
+      <form id="helpForm" class="help-desk" autocomplete="off">
+        <div class="help-kinds" role="group" aria-label="Kind">
+          <button type="button" class="help-kind" data-kind="WRONG" aria-pressed="false">WRONG</button>
+          <button type="button" class="help-kind" data-kind="ADD" aria-pressed="false">ADD</button>
+          <button type="button" class="help-kind" data-kind="IDEA" aria-pressed="false">IDEA</button>
+        </div>
+        <label class="help-field" for="helpText">What’s on the desk</label>
+        <textarea id="helpText" class="help-text" name="note" maxlength="280" rows="3" placeholder="Short. What’s wrong, what to add, or the idea."></textarea>
+        <button type="submit" id="helpSend" class="gate-btn gate-btn-summon help-send">FILE IT</button>
+        <p id="helpStatus" class="help-status" aria-live="polite"></p>
+      </form>
+    </section>
+
     <section id="newsView" class="info-view hidden" aria-label="Hour news">
       <div class="info-hero">
         <h2>NEWS</h2>
@@ -1012,6 +1031,7 @@
   </div>
 
   <script src="/wire.js"></script>
+  <script src="/help.js"></script>
   <script src="/roundtable.js"></script>
 
     <!-- Hidden hive easter egg -->
@@ -1032,6 +1052,14 @@
         <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
       </div>
       <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
+    </div>
+    <div class="beast-card settings-card" id="helpAdminCard">
+      <div class="beast-title">HELP TICKETS</div>
+      <p class="settings-sub">Desk notes for Zach. Approve before anything ships. Not a graffiti wall. Paper. Follower OFF.</p>
+      <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
+        <button type="button" class="gate-btn gate-btn-ghost" id="helpAdminRefresh">Refresh tickets</button>
+      </div>
+      <ol id="helpAdminList" class="help-admin-list"></ol>
     </div>
     <div class="brain-card" id="brainCard">
       <div class="beast-title">LEARNING BRAIN</div>

@@ -6853,6 +6853,153 @@ body.mode-art #debatePanel #seatStormTableBtn.seat-storm-table-btn:not(.hidden):
   padding: 12px 0;
 }
 
+/* HELP — CRT desk note. Same .mode-tab chrome as Floor / Table / WIRE. */
+body.mode-help .led-float {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+body[class*="mode-"]:not(.mode-help) #tabHelp,
+body[class*="mode-"]:not(.mode-help) #tabHelp.active,
+body.beast-mode[class*="mode-"]:not(.mode-help) #tabHelp,
+body.beast-mode[class*="mode-"]:not(.mode-help) #tabHelp.active,
+body:not(.mode-help) #app > header #tabHelp,
+body:not(.mode-help) #app > header #tabHelp.active {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+body.mode-help #tabHelp,
+body.mode-help #tabHelp.active,
+body.mode-help #app > header #tabHelp,
+body.mode-help #app > header #tabHelp.active {
+  color: var(--blade) !important;
+  border-color: rgba(0, 232, 255, 0.5) !important;
+  background: rgba(0, 232, 255, 0.08) !important;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+}
+body.beast-mode.mode-help #tabHelp,
+body.beast-mode.mode-help #tabHelp.active,
+body.beast-mode.mode-help #app > header #tabHelp {
+  border-color: rgba(240, 193, 74, 0.7) !important;
+  color: #ffe49a !important;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.4) !important;
+}
+body.night-mode #tabHelp,
+body.phone-floor #tabHelp {
+  display: none !important;
+}
+.help-desk {
+  max-width: 520px;
+  padding: 18px 18px 16px;
+  background: rgba(4, 14, 28, 0.82);
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  border-left: 3px solid rgba(240, 193, 74, 0.7);
+  box-shadow: 0 0 22px rgba(0, 232, 255, 0.08);
+}
+.help-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.help-kind {
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(0, 232, 255, 0.78);
+  background: transparent;
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.help-kind:hover {
+  color: #ffe49a;
+  border-color: rgba(240, 193, 74, 0.45);
+}
+.help-kind.on {
+  color: #041018;
+  background: #00e8ff;
+  border-color: #00e8ff;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.35);
+}
+.help-field {
+  display: block;
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(0, 232, 255, 0.7);
+  margin: 0 0 6px;
+}
+.help-text {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 88px;
+  resize: vertical;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #d8ecff;
+  background: rgba(2, 8, 16, 0.72);
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+.help-text:focus {
+  outline: none;
+  border-color: rgba(240, 193, 74, 0.65);
+  box-shadow: 0 0 12px rgba(240, 193, 74, 0.18);
+}
+.help-send {
+  min-width: 120px;
+}
+.help-status {
+  min-height: 1.2em;
+  margin: 10px 0 0;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: rgba(180, 200, 220, 0.7);
+}
+.help-status.help-ok { color: #39ff14; }
+.help-status.help-err { color: #ff6b6b; }
+.help-admin-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.help-admin-item {
+  padding: 10px 0;
+  border-top: 1px solid rgba(0, 232, 255, 0.12);
+}
+.help-admin-kind {
+  font-family: Orbitron, monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #ffe49a;
+}
+.help-admin-text {
+  margin: 4px 0;
+  color: rgba(200, 224, 240, 0.9);
+  font-size: 13px;
+}
+.help-admin-time {
+  display: block;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 11px;
+  color: rgba(0, 232, 255, 0.7);
+}
+.help-admin-empty {
+  color: rgba(180, 200, 220, 0.65);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
 .floor-crawl {
   position: absolute;
   left: 6%;
