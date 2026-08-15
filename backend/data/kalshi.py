@@ -116,6 +116,40 @@ class KalshiClient:
                 return dict(self._last_orderbook)
             return {}
 
+    async def get_cfbenchmarks_values(self, index_id: str) -> Dict[str, Any]:
+        """
+        Kalshi /cfbenchmarks passthrough → CFB RTI prints (BRTI / ETHUSD_RTI).
+        Public first; signed retry if keys exist. Never logs credentials.
+        A 401 here must not trip the markets backoff.
+        """
+        if not index_id:
+            return {}
+        url = f"{self.base}/cfbenchmarks/values"
+        params = {"id": index_id}
+        try:
+            r = await self.client.get(url, params=params)
+            if r.status_code == 200:
+                data = r.json()
+                return data if isinstance(data, dict) else {}
+            if r.status_code not in (401, 403, 404):
+                logger.debug(f"Kalshi cfbenchmarks {index_id} HTTP {r.status_code}")
+        except Exception as e:
+            logger.debug(f"Kalshi cfbenchmarks flap: {type(e).__name__}")
+        try:
+            from backend.data.kalshi_trade import KalshiTradeClient
+            trade = KalshiTradeClient.from_settings()
+            if not trade.ready():
+                return {}
+            rel = "/cfbenchmarks/values"
+            headers = trade._headers("GET", rel)
+            r = await self.client.get(f"{self.base}{rel}", params=params, headers=headers)
+            if r.status_code == 200:
+                data = r.json()
+                return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logger.debug(f"Kalshi cfbenchmarks signed skip: {type(e).__name__}")
+        return {}
+
     async def get_market(self, ticker: str) -> Dict[str, Any]:
         """Single contract, including closed/settled (for hour-close grade)."""
         if not ticker:

@@ -60,6 +60,9 @@ class ClampAndEvTests(unittest.TestCase):
         warm = estimate_p_finish(91, 80)
         self.assertLessEqual(warm, 0.80)
         self.assertGreater(warm, p)
+        # 90%+ bin stays faded until that bin has enough actually settled hours
+        faded = estimate_p_finish(91, 80, bin_settled_n=0)
+        self.assertLessEqual(faded, 0.62)
 
     def test_ev_gate_wait(self):
         self.assertTrue(ev_gate_blocks(0.50, 10.0, 0.55, 3.0))

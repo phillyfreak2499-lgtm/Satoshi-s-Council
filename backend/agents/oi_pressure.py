@@ -113,6 +113,15 @@ class OIPressureSpecialist(BaseSpecialist):
         except (TypeError, ValueError):
             fund = 0.0
 
+        cg = market_data.get("coinglass") if isinstance(market_data.get("coinglass"), dict) else {}
+        cg_interval = str(cg.get("interval") or market_data.get("cg_interval") or "")
+        daily_heat = bool(cg.get("daily_heatmap") or market_data.get("cg_daily_heatmap"))
+        oi_d1h = cg.get("oi_delta_1h")
+        if oi_d1h is None:
+            oi_d1h = market_data.get("oi_delta_1h")
+        hourly_oi = cg_interval.lower() in ("1h", "60m") and oi_d1h is not None
+        # Funding extreme / daily heatmap cannot force a 1h lock. 1h OI Δ may inform.
+        lock_force = bool(hourly_oi and not daily_heat)
         features: Dict[str, Any] = {
             "oi": oi_info.get("oi"),
             "ret_8": round(float(ret8), 5),
@@ -120,10 +129,15 @@ class OIPressureSpecialist(BaseSpecialist):
             "funding": fund,
             "oi_chg_3m": round(oi_info["chg_3m"], 4) if oi_info.get("chg_3m") is not None else None,
             "oi_chg_10m": round(oi_info["chg_10m"], 4) if oi_info.get("chg_10m") is not None else None,
+            "oi_delta_1h": oi_d1h,
             "phase": phase,
             "horizon": "entry" if phase == "entry" else "revision",
             "path_move": path,
             "entry_dir": entry,
+            "lock_force": lock_force,
+            "advisory": not lock_force,
+            "cg_interval": cg_interval,
+            "daily_heatmap": daily_heat,
             "subs": [
                 {"name": "RET8", "detail": f"{ret8*100:+.2f}%"},
                 {"name": "FUND", "detail": f"{fund*100:.3f}%"},
@@ -178,6 +192,13 @@ class OIPressureSpecialist(BaseSpecialist):
             notes.append("mild short pressure")
         else:
             notes.append("OI pressure neutral")
+
+        funding_extreme = abs(fund) > 0.00018 and local_dir in ("UP", "DOWN")
+        if daily_heat or funding_extreme or not hourly_oi:
+            features["lock_force"] = False
+            features["advisory"] = True
+        if local_dir and features.get("lock_force"):
+            local_conf = min(int(local_conf), 58)
 
         direction = "WAIT"
         conf = 46

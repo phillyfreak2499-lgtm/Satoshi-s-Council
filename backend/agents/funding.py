@@ -125,6 +125,10 @@ class FundingSpecialist(BaseSpecialist):
             "path_move": path,
             "entry_dir": entry,
             "quiet": quiet,
+            # Funding is an 8h clock — display only; never force a 1h lock
+            "lock_force": False,
+            "advisory": True,
+            "clock": "8h",
         }
 
         notes = []

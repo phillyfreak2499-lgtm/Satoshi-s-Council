@@ -90,12 +90,12 @@ class BinanceClient:
     def __init__(self, symbol: str | None = None):
         from backend.config import settings
         self.symbol = symbol or getattr(settings, 'SYMBOL', 'BTCUSDT')
-        # Prefer vision (worldwide) then .us; .com last — Oregon often 451/403
+        # Research rank after CFB: vision, then Coinbase. api.binance.us is a
+        # separate book — never a vision substitute / same print.
         self.spot_bases = [
             "https://data-api.binance.vision",
-            "https://api.binance.us",
-            "https://api.binance.com",
         ]
+        self.us_book_base = "https://api.binance.us"
         self._last_spot_source: str | None = None
         self.futures_bases = [
             "https://fapi.binance.com",

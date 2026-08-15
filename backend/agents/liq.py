@@ -115,6 +115,9 @@ class LiqSpecialist(BaseSpecialist):
                     if liq_short_f > liq_long_f * 2.0:
                         hard_cascade = True
 
+        cg = market_data.get("coinglass") if isinstance(market_data.get("coinglass"), dict) else {}
+        cg_interval = cg.get("interval") or market_data.get("cg_interval")
+        daily_heat = bool(cg.get("daily_heatmap") or market_data.get("cg_daily_heatmap"))
         features = {
             "vol_spike": round(vol_spike, 2),
             "ret_3m_pct": round(ret, 3),
@@ -130,6 +133,13 @@ class LiqSpecialist(BaseSpecialist):
             "horizon": "entry" if phase == "entry" else "revision",
             "path_move": path,
             "entry_dir": entry,
+            # 1h liq spike = local flush, not P(finish). Daily heatmap cannot lock.
+            "lock_force": False,
+            "advisory": True,
+            "not_p_finish": True,
+            "local_flush": bool(cascade or hard_cascade),
+            "cg_interval": cg_interval,
+            "daily_heatmap": daily_heat,
             "subs": [
                 {"name": "VOL", "detail": f"×{vol_spike:.1f}"},
                 {"name": "RET", "detail": f"{ret:+.2f}%"},

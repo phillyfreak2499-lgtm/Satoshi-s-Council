@@ -259,14 +259,28 @@ class Council:
         except Exception:
             return None
 
-    def _usable_spot(self, price: Any = None) -> float | None:
-        """Cache the last good print; settle with it when this cycle's spot is missing."""
+    def _usable_spot(self, price: Any = None, market_data: Dict[str, Any] | None = None) -> float | None:
+        """Prefer the 60s CFB research print; never persist a lone last-tick wick as official."""
+        md = market_data if isinstance(market_data, dict) else {}
+        research = pick_settle_spot(
+            md.get("research_spot") or md.get("cfb_avg_60s") or price,
+            None,
+        )
+        if research is not None:
+            self._last_spot = research
+            try:
+                self._persist_last_spot(research)
+            except Exception:
+                pass
+            return research
         pipe = getattr(self, "pipeline", None)
         last_good = getattr(pipe, "last_good", None) if pipe is not None else None
         lg_price = None
         if isinstance(last_good, dict):
             lg_price = (
-                last_good.get("current_price")
+                last_good.get("research_spot")
+                or last_good.get("cfb_avg_60s")
+                or last_good.get("current_price")
                 or last_good.get("binance_price")
                 or last_good.get("coinbase_price")
             )
@@ -506,7 +520,12 @@ class Council:
         if isinstance(km, dict):
             ticker = km.get("ticker")
             close_time = km.get("close_time")
-        entry_price = self._usable_spot(market_data.get("current_price"))
+        entry_price = self._usable_spot(
+            market_data.get("research_spot")
+            or market_data.get("cfb_avg_60s")
+            or market_data.get("current_price"),
+            market_data,
+        )
         if entry_price is not None:
             market_data["current_price"] = entry_price
 
@@ -711,18 +730,42 @@ class Council:
                 regime_features["yes_mid"] = (yb + ya) / 2.0
             elif up_pct is not None:
                 regime_features["yes_mid"] = float(up_pct)
-            spot = market_data.get("current_price") or market_data.get("spot_price")
+            spot = (
+                market_data.get("research_spot")
+                or market_data.get("cfb_avg_60s")
+                or market_data.get("current_price")
+                or market_data.get("spot_price")
+            )
             try:
                 if spot is not None and float(spot) > 0:
                     regime_features["spot_price"] = float(spot)
                     regime_features["current_price"] = float(spot)
             except (TypeError, ValueError):
                 pass
+            try:
+                rs = market_data.get("research_spot") or market_data.get("cfb_avg_60s")
+                if rs is not None and float(rs) > 0:
+                    regime_features["research_spot"] = float(rs)
+                    regime_features["cfb_avg_60s"] = float(
+                        market_data.get("cfb_avg_60s") or rs
+                    )
+            except (TypeError, ValueError):
+                pass
+            if market_data.get("research_spot_kind"):
+                regime_features["research_spot_kind"] = market_data.get("research_spot_kind")
+                regime_features["kind"] = market_data.get("research_spot_kind")
+            if market_data.get("research_spot_source"):
+                regime_features["research_spot_source"] = market_data.get("research_spot_source")
             regime_features["asset"] = self.asset
             try:
                 regime_features["settled_n"] = int((self.leader.edge or {}).get("total") or 0)
             except (TypeError, ValueError):
                 regime_features["settled_n"] = 0
+            try:
+                hot = ((self.leader.edge or {}).get("chair_bins") or {}).get("90+") or {}
+                regime_features["chair_bin_settled_n"] = int(hot.get("settled") or 0)
+            except (TypeError, ValueError):
+                regime_features["chair_bin_settled_n"] = 0
             lead = market_data.get("btc_lead") or self._btc_lead
             if isinstance(lead, dict):
                 regime_features["btc_lead"] = lead

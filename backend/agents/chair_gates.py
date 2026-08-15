@@ -32,16 +32,128 @@ def clamp_p_finish(conf: Any) -> float:
     return max(0.01, min(0.99, raw))
 
 
-def estimate_p_finish(conf: Any, settled_n: int = 0) -> float:
+def chair_conf_bin(conf: Any) -> str:
+    """Chair confidence bin. 90%+ is its own bucket (fade until settled)."""
+    try:
+        c = float(conf)
+    except (TypeError, ValueError):
+        return "unknown"
+    if c >= 90.0:
+        return "90+"
+    if c >= 80.0:
+        return "80-90"
+    if c >= 70.0:
+        return "70-80"
+    if c >= 60.0:
+        return "60-70"
+    if c >= 50.0:
+        return "50-60"
+    return "0-50"
+
+
+def hot_chair_bin_faded(conf: Any, bin_settled_n: Any, min_n: int | None = None) -> bool:
+    """
+    Fade any 90%+ Chair bin until that bin has enough actually settled hours.
+    OPEN rows (including live 1062/1063 while OPEN) do not count — pass only
+    finish-graded hours into bin_settled_n.
+    """
+    try:
+        c = float(conf)
+    except (TypeError, ValueError):
+        return False
+    if c < 90.0:
+        return False
+    if bin_settled_n is None:
+        return False
+    try:
+        n = int(bin_settled_n)
+    except (TypeError, ValueError):
+        n = 0
+    need = min_n
+    if need is None:
+        try:
+            from backend.config import settings
+            need = int(getattr(settings, "CHAIR_HOT_BIN_MIN_N", getattr(settings, "P_FINISH_COLD_N", 15)))
+        except Exception:
+            need = 15
+    return n < int(need)
+
+
+def is_actually_settled(row: Any) -> bool:
+    """
+    True only for an official finish-graded hour.
+    OPEN 1062/1063 (and any OPEN / path-era row) do not count.
+    """
+    if row is None:
+        return False
+    if isinstance(row, dict):
+        cid = row.get("id")
+        y = row.get("y_finish") or row.get("actual_outcome")
+        settled_at = row.get("settled_at")
+        reason = row.get("settle_reason")
+        status = row.get("status")
+    else:
+        cid = getattr(row, "id", None)
+        y = getattr(row, "y_finish", None) or getattr(row, "actual_outcome", None)
+        settled_at = getattr(row, "settled_at", None)
+        reason = getattr(row, "settle_reason", None)
+        status = getattr(row, "status", None)
+    if str(status or "").strip().lower() in ("open", "active", "initialized"):
+        return False
+    try:
+        if int(cid) in KNOWN_OFFICIAL_BY_ID and not settled_at:
+            return False
+    except (TypeError, ValueError):
+        pass
+    if y not in ("UP", "DOWN"):
+        return False
+    if reason and str(reason) not in ("finish_match", "finish_miss"):
+        return False
+    return True
+
+
+def chair_bin_settled_count(rows: Any, bin_key: str = "90+") -> int:
+    """Count actually settled hours in one Chair confidence bin."""
+    n = 0
+    for row in rows or []:
+        if not is_actually_settled(row):
+            continue
+        if isinstance(row, dict):
+            conf = row.get("confidence")
+        else:
+            conf = getattr(row, "confidence", None)
+        if chair_conf_bin(conf) == bin_key:
+            n += 1
+    return n
+
+
+def chair_bins_from_settled(rows: Any) -> Dict[str, Any]:
+    """Per-bin settled counts. 90%+ starts faded until CHAIR_HOT_BIN_MIN_N."""
+    bins = ("90+", "80-90", "70-80", "60-70", "50-60", "0-50")
+    out: Dict[str, Any] = {}
+    for key in bins:
+        settled = chair_bin_settled_count(rows, key)
+        faded = key == "90+" and hot_chair_bin_faded(91, settled)
+        out[key] = {"settled": settled, "faded": faded}
+    return out
+
+
+def estimate_p_finish(conf: Any, settled_n: int = 0, bin_settled_n: Any = None) -> float:
     """
     Shrink Chair confidence toward a coin-flip until enough finish-graded hours.
     91% Chair on a cold book is the lesson — that is not P(finish).
+    A 90%+ Chair bin stays faded until that bin has enough actually settled hours.
     """
     raw = clamp_p_finish(conf)
     try:
         n = int(settled_n or 0)
     except (TypeError, ValueError):
         n = 0
+    if hot_chair_bin_faded(conf, bin_settled_n):
+        try:
+            n = min(n, int(bin_settled_n or 0))
+        except (TypeError, ValueError):
+            n = 0
     cold_n, warm_n = 15, 40
     try:
         from backend.config import settings
@@ -57,6 +169,32 @@ def estimate_p_finish(conf: Any, settled_n: int = 0) -> float:
         shrink, cap = 0.85, 0.80
     p = 0.50 + (raw - 0.50) * float(shrink)
     return max(0.01, min(float(cap), p))
+
+
+def lock_force_allowed(features: Any) -> bool:
+    """CARRY/CHAIN/CASCADE may display; lock_force=False cannot force a lock."""
+    if not isinstance(features, dict):
+        return True
+    if features.get("lock_force") is False:
+        return False
+    if features.get("advisory") is True and features.get("lock_force") is not True:
+        return False
+    return True
+
+
+def cg_interval_is_daily_heatmap(interval: Any) -> bool:
+    text = str(interval or "").strip().lower()
+    return text in ("1d", "24h", "4h", "12h", "1w", "7d", "daily")
+
+
+def funding_cannot_force_lock() -> bool:
+    """Funding is an 8h clock — never a 1h UP/DOWN lock tell."""
+    return True
+
+
+def liq_spike_is_not_p_finish() -> bool:
+    """A 1h long/short liq spike is a local flush, not P(finish)."""
+    return True
 
 
 def kalshi_taker_fee_cents(ask_cents: Any) -> float:
@@ -491,7 +629,8 @@ def late_spot_decisive(
     k: float = 1.0,
 ) -> bool:
     """
-    Last-15 lock only if spot vs strike already beats remaining vol.
+    Last-15 lock only if the 60s CFB (or ranked 60s) average vs strike
+    already beats remaining vol. Pass the 60s average, not a last-tick wick.
     Missing spot/strike → not decisive (WAIT).
     """
     try:

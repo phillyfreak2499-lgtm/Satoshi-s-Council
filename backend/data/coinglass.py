@@ -19,7 +19,7 @@ from backend.data.secrets import load_coinglass_api_key
 from backend.services.runtime_settings import runtime_settings
 
 BASE = "https://open-api-v4.coinglass.com"
-_INTERVALS = ("30m", "1h", "4h")
+_INTERVALS = ("1h", "30m")  # 1h OI/liq only; never a daily heatmap as a 1h tell
 
 
 def _f(v: Any) -> Optional[float]:
@@ -94,6 +94,14 @@ def summarize_derivatives(
     last_liq = liq_hist[-1] if liq_hist else None
     long_usd = last_liq["long_usd"] if last_liq else None
     short_usd = last_liq["short_usd"] if last_liq else None
+    oi_delta_1h = None
+    iv = str(interval or "").strip().lower()
+    if iv in ("1h", "60m") and len(oi_hist) >= 2:
+        try:
+            oi_delta_1h = float(oi_hist[-1][1]) - float(oi_hist[-2][1])
+        except (TypeError, ValueError, IndexError):
+            oi_delta_1h = None
+    daily_heatmap = iv in ("1d", "24h", "4h", "12h", "1w", "7d", "daily")
     healthy = funding is not None or oi is not None or last_liq is not None
     return {
         "source": "coinglass",
@@ -101,6 +109,8 @@ def summarize_derivatives(
         "interval": interval,
         "funding_rate": funding,
         "open_interest": oi,
+        "oi_delta_1h": oi_delta_1h,
+        "daily_heatmap": daily_heatmap,
         "liq_long_usd": long_usd,
         "liq_short_usd": short_usd,
         "liq_net_usd": (
@@ -185,6 +195,8 @@ class CoinGlassClient:
             "healthy": False,
             "funding_rate": None,
             "open_interest": None,
+            "oi_delta_1h": None,
+            "daily_heatmap": False,
             "liq_long_usd": None,
             "liq_short_usd": None,
             "liq_net_usd": None,

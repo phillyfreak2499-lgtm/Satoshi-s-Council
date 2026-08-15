@@ -196,12 +196,18 @@ class Settings(BaseSettings):
     LATE_HOURLY_VOL_PCT: float = 0.40
     P_FINISH_COLD_N: int = 15
     P_FINISH_WARM_N: int = 40
+    CHAIR_HOT_BIN: float = 90.0
+    CHAIR_HOT_BIN_MIN_N: int = 15  # fade 90%+ until this many actually settled hours
     BTC_LEAD_IMPULSE_PCT: float = 0.15
     BTC_LEAD_STRONG_PCT: float = 0.25
+    # Official Kalshi hourly settle: 60s CFB BRTI / ETHUSD_RTI (ERTI) average
+    CFB_INDEX_BTC: str = "BRTI"
+    CFB_INDEX_ETH: str = "ETHUSD_RTI"
     # CoinGlass v4 — key from env or /etc/secrets/COINGLASS_API_KEY (never in git)
+    # Prefer 1h OI Δ / 1h liqs. Funding is an 8h clock (display only).
     COINGLASS_BASE: str = "https://open-api-v4.coinglass.com"
     COINGLASS_EXCHANGE: str = "Binance"
-    COINGLASS_INTERVAL: str = "30m"
+    COINGLASS_INTERVAL: str = "1h"
     COINGLASS_TTL: float = 60.0
     # Top-of-book depth: known thin size → WAIT (spread still hard-gated above)
     MIN_BOOK_SIZE: float = 5.0

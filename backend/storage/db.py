@@ -14,6 +14,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer, Text, select, func
 from backend.config import settings
 from backend.agents.chair_gates import (
+    chair_bins_from_settled,
     decide_open_lock_grade,
     known_official_market,
     ticker_asset,
@@ -833,6 +834,7 @@ class PerformanceStore:
 
         first_at = settled[0].settled_at or settled[0].called_at if settled else None
         last_at = newest_first[0].settled_at or newest_first[0].called_at if newest_first else None
+        chair_bins = chair_bins_from_settled(settled)
 
         return {
             # Lifetime primary stats
@@ -875,6 +877,7 @@ class PerformanceStore:
             "open": int(pending),
             "calls_logged": int(pending) + int(total),
             "calls_settled": int(total),
+            "chair_bins": chair_bins,
 
             "streak": streak,
             "wrong_streak": wrong_streak,

@@ -108,6 +108,37 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("KXBTCD-26AUG1415-T62999.99", gates)
         self.assertIn("learn_from_settled", (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8"))
 
+    def test_hit_rate_spot_pack_keep_list(self):
+        gates = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
+        for needle in (
+            "def dead_book_reason",
+            "def early_lock_blocked",
+            "def late_spot_decisive",
+            "def estimate_p_finish",
+            "def eth_fades_btc_impulse",
+            "def hot_chair_bin_faded",
+            "def is_actually_settled",
+        ):
+            self.assertIn(needle, gates)
+        leader = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")
+        self.assertIn("yes_ask", leader)
+        self.assertIn("lock_force_allowed", leader)
+        self.assertIn("60s CFB avg", leader)
+        bn = (ROOT / "backend" / "data" / "binance.py").read_text(encoding="utf-8")
+        self.assertIn("data-api.binance.vision", bn)
+        self.assertIn("separate book", bn)
+        cfb = (ROOT / "backend" / "data" / "cfbenchmarks.py").read_text(encoding="utf-8")
+        self.assertIn("BRTI", cfb)
+        self.assertIn("ETHUSD_RTI", cfb)
+        self.assertIn("/cfbenchmarks", cfb)
+        kalshi = (ROOT / "backend" / "data" / "kalshi.py").read_text(encoding="utf-8")
+        self.assertIn("get_cfbenchmarks_values", kalshi)
+        fund = (ROOT / "backend" / "agents" / "funding.py").read_text(encoding="utf-8")
+        self.assertIn('"lock_force": False', fund)
+        self.assertIn("8h", fund)
+        liq = (ROOT / "backend" / "agents" / "liq.py").read_text(encoding="utf-8")
+        self.assertIn("not_p_finish", liq)
+
     def test_follower_stays_off_public_surface(self):
         for needle in ("tabFollower", "FOLLOWER_PASSWORD", "/api/follower/unlock", "/api/follower/order"):
             self.assertNotIn(needle, HTML)

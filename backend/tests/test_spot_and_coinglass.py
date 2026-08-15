@@ -11,13 +11,15 @@ from unittest.mock import MagicMock, patch
 sys.modules.setdefault("httpx", MagicMock())
 
 from backend.data.binance import (
+    BinanceClient,
     coinbase_product_for_symbol,
     snapshot_from_parts,
     spot_source_from_base,
 )
+from backend.data.cfbenchmarks import pick_research_spot, research_source_label
 from backend.data.coinglass import summarize_derivatives
 from backend.data.secrets import load_secret_string, reset_secret_cache
-from backend.data.spot_health import spot_feed_ok
+from backend.data.spot_health import research_spot_ok, spot_feed_ok, spot_source_label
 
 
 class CoinbaseProductTests(unittest.TestCase):
@@ -50,14 +52,33 @@ class SnapshotHealthTests(unittest.TestCase):
         self.assertEqual(spot_source_from_base("https://data-api.binance.vision"), "vision")
         self.assertEqual(spot_source_from_base("https://api.binance.us"), "binance.us")
         self.assertEqual(spot_source_from_base("https://api.binance.com"), "binance.com")
+        self.assertEqual(spot_source_label("BRTI"), "cfb")
+        self.assertEqual(research_source_label("cfbenchmarks"), "cfb")
+        self.assertTrue(research_spot_ok("vision"))
+        self.assertTrue(research_spot_ok("cfb"))
+        self.assertTrue(research_spot_ok("coinbase"))
+        self.assertFalse(research_spot_ok("binance.us"))
+
+    def test_vision_not_us_in_research_bases(self):
+        client = BinanceClient(symbol="BTCUSDT")
+        self.assertEqual(client.spot_bases, ["https://data-api.binance.vision"])
+        self.assertIn("binance.us", client.us_book_base)
+        self.assertNotIn("https://api.binance.us", client.spot_bases)
 
 
 class SpotFeedOkTests(unittest.TestCase):
     def test_coinbase_or_vision_counts(self):
         self.assertTrue(spot_feed_ok({"binance": False, "coinbase": True}))
         self.assertTrue(spot_feed_ok({"binance": False, "spot_source": "vision"}))
+        self.assertTrue(spot_feed_ok({"binance": False, "cfb": True, "spot_source": "cfb"}))
         self.assertTrue(spot_feed_ok({}, {"candles": [{"c": 1}], "current_price": 99_000}))
         self.assertFalse(spot_feed_ok({"binance": False, "coinbase": False}, {}))
+
+    def test_us_is_not_the_research_print(self):
+        picked = pick_research_spot(vision=100_000, coinbase=99_900, binance_us=98_000)
+        self.assertNotEqual(picked.get("source"), "binance.us")
+        ranked = pick_research_spot(cfb_avg_60s=100_050, vision=100_000, coinbase=99_900)
+        self.assertEqual(ranked["source"], "cfb")
 
 
 class SecretLoadTests(unittest.TestCase):
@@ -112,6 +133,21 @@ class CoinGlassParseTests(unittest.TestCase):
         self.assertAlmostEqual(snap["liq_long_usd"], 4_000_000)
         self.assertAlmostEqual(snap["liq_net_usd"], -3_000_000)
         self.assertEqual(len(snap["funding_history"]), 1)
+        daily = summarize_derivatives(
+            [{"time": 1, "close": "0.00012"}],
+            [{"time": 1, "close": "9000000000"}],
+            [{"time": 1, "long_liquidation_usd": "4000000", "short_liquidation_usd": "1000000"}],
+            "1d",
+        )
+        self.assertTrue(daily["daily_heatmap"])
+        hourly = summarize_derivatives(
+            [{"time": 1, "close": "0.00012"}],
+            [{"time": 1, "close": "100"}, {"time": 2, "close": "110"}],
+            [{"time": 1, "long_liquidation_usd": "1", "short_liquidation_usd": "1"}],
+            "1h",
+        )
+        self.assertFalse(hourly["daily_heatmap"])
+        self.assertAlmostEqual(hourly["oi_delta_1h"], 10.0)
 
 
 if __name__ == "__main__":

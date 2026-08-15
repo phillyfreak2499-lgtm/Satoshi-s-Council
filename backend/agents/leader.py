@@ -25,10 +25,12 @@ from backend.agents.chair_gates import (
     eth_fades_btc_impulse,
     ev_gate_blocks,
     late_spot_decisive,
+    lock_force_allowed,
     odds_to_cents,
     parse_book_depth,
     time_ev_hurdles,
 )
+from backend.data.cfbenchmarks import last15_spot
 from loguru import logger
 import copy
 import time
@@ -332,7 +334,24 @@ class Leader:
                 settled_n = int(regime_features["settled_n"])
             except (TypeError, ValueError):
                 pass
-        p_finish = estimate_p_finish(conf, settled_n) if lean in ("UP", "DOWN") else None
+        bin_n = None
+        if regime_features and regime_features.get("chair_bin_settled_n") is not None:
+            try:
+                bin_n = int(regime_features["chair_bin_settled_n"])
+            except (TypeError, ValueError):
+                bin_n = 0
+        elif isinstance(self.edge, dict):
+            hot = ((self.edge.get("chair_bins") or {}).get("90+") or {})
+            if hot.get("settled") is not None:
+                try:
+                    bin_n = int(hot.get("settled") or 0)
+                except (TypeError, ValueError):
+                    bin_n = 0
+        p_finish = (
+            estimate_p_finish(conf, settled_n, bin_settled_n=bin_n)
+            if lean in ("UP", "DOWN")
+            else None
+        )
         fill_ask = None
         if regime_features:
             fill_ask = odds_to_cents(regime_features.get("side_ask"))
@@ -401,6 +420,7 @@ class Leader:
             "accuracy_pct": accuracy.get("accuracy_pct"),
             "last_20_pct": (accuracy.get("last_20") or {}).get("accuracy_pct"),
             "verdict": accuracy.get("verdict") or "COLLECTING",
+            "chair_bins": accuracy.get("chair_bins") or {},
         }
 
     def adaptive_thresholds(self) -> Dict[str, float]:
@@ -597,10 +617,12 @@ class Leader:
             conf_w = (max(0.0, min(100.0, float(s.confidence or 0))) / 100.0) ** power
             signed = 0.0
             d = (s.direction or "WAIT").upper()
-            if d in ("UP", "UP_HOLD"):
-                signed = conf_w
-            elif d in ("DOWN", "DOWN_HOLD"):
-                signed = -conf_w
+            can_force = lock_force_allowed(getattr(s, "features", None))
+            if can_force:
+                if d in ("UP", "UP_HOLD"):
+                    signed = conf_w
+                elif d in ("DOWN", "DOWN_HOLD"):
+                    signed = -conf_w
             effective_dir = d
             if invert and signed != 0.0:
                 signed = -signed
@@ -611,7 +633,8 @@ class Leader:
                 elif "DOWN" in d:
                     effective_dir = "UP" if d == "DOWN" else "UP_HOLD"
             score += signed * w
-            weight_sum += w
+            if can_force:
+                weight_sum += w
             cat_dir = effective_dir if invert else s.direction
             category_dirs.setdefault(s.category, []).append(cat_dir)
             details.append({
@@ -633,11 +656,13 @@ class Leader:
                 "faded": invert,
                 "invert": invert,
                 "fade_strength": round(fade_strength, 3),
+                "lock_force": can_force,
+                "advisory": not can_force,
             })
 
         # Cap total influence of inverted (faded) bots so one loser can't steer the Chair
         max_share = float(getattr(settings, "FADE_MAX_WEIGHT_SHARE", 0.18))
-        inv = [d for d in details if d.get("invert")]
+        inv = [d for d in details if d.get("invert") and d.get("lock_force") is not False]
         if inv and weight_sum > 0:
             inv_w = sum(float(d["weight"]) for d in inv)
             share = inv_w / weight_sum
@@ -647,6 +672,8 @@ class Leader:
                 score = 0.0
                 weight_sum = 0.0
                 for d in details:
+                    if d.get("lock_force") is False:
+                        continue
                     w = float(d["weight"])
                     if d.get("invert"):
                         w *= scale
@@ -1123,7 +1150,12 @@ class Leader:
                 conf = max(int(conf), 72)
                 summary = f"WAIT · dead book · {why} — no lock · {summary}"
             elif ev_phase == "late" and not late_spot_decisive(
-                (regime_features or {}).get("spot_price"),
+                last15_spot({
+                    "spot": (regime_features or {}).get("research_spot")
+                    or (regime_features or {}).get("cfb_avg_60s"),
+                    "kind": (regime_features or {}).get("research_spot_kind")
+                    or (regime_features or {}).get("kind"),
+                }),
                 (regime_features or {}).get("floor_strike"),
                 (regime_features or {}).get("mins_left"),
                 float(getattr(settings, "LATE_HOURLY_VOL_PCT", 0.40)),
@@ -1133,7 +1165,7 @@ class Leader:
                 firm = False
                 conf = max(int(conf), 70)
                 summary = (
-                    f"WAIT · last 15m — spot not decisive vs strike · {summary}"
+                    f"WAIT · last 15m — 60s CFB avg not decisive vs strike · {summary}"
                 )
             elif (regime_features or {}).get("btc_fade_blocked") or eth_fades_btc_impulse(
                 lean, (regime_features or {}).get("btc_lead")

@@ -11,8 +11,14 @@ from backend.data.binance import BinanceClient, coinbase_product_for_symbol
 from backend.data.kalshi import KalshiClient
 from backend.data.coinbase import CoinbaseClient
 from backend.data.coinglass import CoinGlassClient
-from backend.data.spot_health import coalesce_spot_price, spot_feed_ok
-from backend.services.runtime_settings import runtime_settings
+from backend.data.cfbenchmarks import (
+    RtiWindow,
+    last15_spot,
+    parse_cfb_values,
+    pick_research_spot,
+    rti_id_for_asset,
+)
+from backend.data.spot_health import coalesce_spot_price, research_spot_ok, spot_feed_ok
 from backend.config import settings
 
 
@@ -52,11 +58,14 @@ class DataPipeline:
             "kalshi": True,
             "coinbase": False,
             "coinglass": False,
+            "cfb": False,
             "spot_source": None,
+            "research_spot_source": None,
             "last_error": None,
             "last_fetch_ms": None,
         }
         self._cycle = 0
+        self._rti = RtiWindow()
 
     async def close(self):
         await self.binance.close()
@@ -71,19 +80,22 @@ class DataPipeline:
         t0 = time.perf_counter()
         self._cycle += 1
 
+        cfb_id = rti_id_for_asset(self.asset)
         tasks = [
             self.binance.get_snapshot(),
             self.kalshi.get_current_market_state(cycle=self._cycle),
             self.coinbase.get_spot(),
+            self.kalshi.get_cfbenchmarks_values(cfb_id),
         ]
         if self.coinglass.configured():
             tasks.append(self.coinglass.get_derivatives())
         results = await asyncio.gather(*tasks, return_exceptions=True)
         binance_data, kalshi_data = results[0], results[1]
         coinbase_data = results[2]
+        cfb_raw = results[3]
         cg_data: Dict[str, Any] = {"source": "coinglass", "healthy": False}
-        if len(results) > 3:
-            cg_data = results[3] if not isinstance(results[3], Exception) else cg_data
+        if len(results) > 4:
+            cg_data = results[4] if not isinstance(results[4], Exception) else cg_data
 
         # Shared spot cache (both tables)
         import time as _t
@@ -124,6 +136,8 @@ class DataPipeline:
                 }
         if isinstance(coinbase_data, Exception):
             coinbase_data = {"source": "coinbase", "healthy": False, "error": str(coinbase_data)}
+        if isinstance(cfb_raw, Exception):
+            cfb_raw = {}
         if not isinstance(cg_data, dict):
             cg_data = {"source": "coinglass", "healthy": False}
 
@@ -158,11 +172,46 @@ class DataPipeline:
             if spot_source:
                 binance_data["spot_source"] = spot_source
 
-        # Spot is OK when vision/us/coinbase candles+price (or Coinbase ticker) are live
-        spot_ok = bool(binance_data.get("healthy")) or bn_candles_ok or cb_ok
+        cfb_snap = parse_cfb_values(cfb_raw if isinstance(cfb_raw, dict) else {}, asset=self.asset)
+        now_ts = time.time()
+        if cfb_snap.get("prints"):
+            for ts, px in cfb_snap["prints"]:
+                self._rti.add(ts, px, "cfb")
+        elif cfb_snap.get("rti"):
+            self._rti.add(now_ts, cfb_snap["rti"], "cfb")
+        elif bn_price and (spot_source == "vision" or not spot_source):
+            self._rti.add(now_ts, bn_price, "vision")
+            if not spot_source:
+                spot_source = "vision"
+        elif cb_ok and cb_price:
+            self._rti.add(now_ts, cb_price, "coinbase")
 
-        # Re-pick ATM strike with live spot
-        spot = bn_price or cb_price
+        cfb_win = self._rti.stats(("cfb",), now=now_ts)
+        vis_win = self._rti.stats(("vision",), now=now_ts)
+        cb_win = self._rti.stats(("coinbase",), now=now_ts)
+        research = pick_research_spot(
+            cfb_avg_60s=cfb_snap.get("avg_60s"),
+            cfb_rti=cfb_snap.get("rti"),
+            cfb_window=cfb_win,
+            vision=bn_price if (spot_source == "vision" or not spot_source) else None,
+            vision_window=vis_win,
+            coinbase=cb_price,
+            coinbase_window=cb_win,
+            binance_us=None,
+            last_tick=bn_price or cb_price,
+        )
+        research_px = last15_spot(research)
+        display_px = research_px or research.get("display_spot") or bn_price or cb_price
+        if research.get("source") and research_spot_ok(research.get("source")):
+            spot_source = research["source"]
+
+        # Spot is OK when CFB / vision / Coinbase candles+price are live.
+        # api.binance.us is a separate book — not this research print.
+        cfb_ok = bool(cfb_snap.get("healthy"))
+        spot_ok = bool(binance_data.get("healthy")) or bn_candles_ok or cb_ok or cfb_ok
+
+        # Re-pick ATM strike with the research print (60s CFB avg when we have it)
+        spot = research_px or display_px or bn_price or cb_price
         if spot and kalshi_data.get("healthy"):
             try:
                 kalshi_data = await self.kalshi.get_current_market_state(
@@ -175,7 +224,9 @@ class DataPipeline:
         self.health["kalshi"] = bool(kalshi_data.get("healthy", False))
         self.health["coinbase"] = bool(cb_ok)
         self.health["coinglass"] = bool(cg_data.get("healthy", False))
-        self.health["spot_source"] = spot_source or ("coinbase" if cb_ok else None)
+        self.health["cfb"] = bool(cfb_ok)
+        self.health["spot_source"] = spot_source or ("cfb" if cfb_ok else ("coinbase" if cb_ok else None))
+        self.health["research_spot_source"] = research.get("source")
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         self.health["last_fetch_ms"] = elapsed_ms
         self.health["last_error"] = binance_data.get("error") or kalshi_data.get("error")
@@ -207,12 +258,21 @@ class DataPipeline:
             "coinbase_price": cb_price,
             "coinbase": coinbase_data if isinstance(coinbase_data, dict) else {},
             "coinglass": cg_data,
+            "cfb": cfb_snap,
+            "cfb_rti": cfb_snap.get("rti"),
+            "cfb_avg_60s": cfb_snap.get("avg_60s") or research_px,
+            "research_spot": research_px,
+            "research_spot_source": research.get("source"),
+            "research_spot_kind": research.get("kind"),
             "spot_source": self.health["spot_source"],
             "funding_rate": funding_rate,
             "open_interest": open_interest,
             "liq_long_usd": cg_data.get("liq_long_usd"),
             "liq_short_usd": cg_data.get("liq_short_usd"),
             "liq_net_usd": cg_data.get("liq_net_usd"),
+            "oi_delta_1h": cg_data.get("oi_delta_1h"),
+            "cg_interval": cg_data.get("interval"),
+            "cg_daily_heatmap": bool(cg_data.get("daily_heatmap")),
             "funding_history": cg_data.get("funding_history") or [],
             "oi_history": cg_data.get("oi_history") or [],
             "liq_history": cg_data.get("liq_history") or [],
@@ -239,8 +299,12 @@ class DataPipeline:
                 divergence_bps = abs(float(bp) - float(cp)) / float(bp) * 10000.0
                 snapshot["spot_divergence_bps"] = round(divergence_bps, 2)
                 snapshot["spot_mid"] = mid
-                dual = bool(runtime_settings.get("dual_spot", True))
-                snapshot["current_price"] = mid if (dual and divergence_bps < 25) else float(bp)
+            # last-15 / P(finish) use the 60s CFB (or ranked 60s) average, not a
+            # Coinbase/Binance mid or a last-tick wick.
+            if research_px:
+                snapshot["current_price"] = float(research_px)
+            elif display_px:
+                snapshot["current_price"] = float(display_px)
             elif cp and float(cp) > 0 and not bp:
                 snapshot["current_price"] = float(cp)
         except Exception:
