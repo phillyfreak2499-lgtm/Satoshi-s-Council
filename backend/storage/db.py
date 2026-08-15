@@ -14,10 +14,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer, Text, select, func
 from backend.config import settings
 from backend.agents.chair_gates import (
+    decide_open_lock_grade,
     known_official_market,
-    official_y_finish,
-    resolve_close_time,
-    strike_from_kalshi_ticker,
     ticker_asset,
 )
 from loguru import logger
@@ -555,24 +553,33 @@ class PerformanceStore:
                     or results.get(str(row.id))
                     or known_official_market(row.ticker, row.id)
                 )
-                y_finish = official_y_finish(official)
-                if y_finish is None:
-                    # Not finalized — leave OPEN. Do not invent from a later-hour spot.
+                # Hour-close only. Official Kalshi yes/no → y_finish.
+                # Live 1062/1063 stayed OPEN because floor_strike was null and
+                # later-hour spot was not an honest closer.
+                grade = decide_open_lock_grade(
+                    ticker=row.ticker,
+                    call_id=row.id,
+                    close_time=row.close_time,
+                    direction=row.direction,
+                    kalshi_result=official,
+                    now=now,
+                )
+                if grade is None:
                     continue
-                resolved_ct = resolve_close_time(row.close_time, row.ticker)
-                if resolved_ct is not None and not row.close_time:
-                    row.close_time = resolved_ct.isoformat()
-                if getattr(row, "floor_strike", None) is None:
-                    inferred_k = strike_from_kalshi_ticker(row.ticker)
-                    if inferred_k is not None:
-                        row.floor_strike = inferred_k
+                y_finish = grade["y_finish"]
+                if grade.get("close_iso") and not row.close_time:
+                    row.close_time = grade["close_iso"]
+                if getattr(row, "floor_strike", None) is None and grade.get("floor_strike") is not None:
+                    row.floor_strike = grade["floor_strike"]
+                if not row.asset and grade.get("asset"):
+                    row.asset = grade["asset"]
 
                 stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
                 row.paper_stake = stake
                 if not row.paper_side:
                     row.paper_side = self._paper_side(row.direction)
 
-                matched = y_finish == side
+                matched = bool(grade.get("correct"))
                 row.actual_outcome = y_finish
                 try:
                     row.y_finish = y_finish
@@ -580,7 +587,9 @@ class PerformanceStore:
                     pass
                 row.correct = 1 if matched else 0
                 row.settled_at = now.isoformat()
-                row.settle_reason = "finish_match" if matched else "finish_miss"
+                row.settle_reason = grade.get("settle_reason") or (
+                    "finish_match" if matched else "finish_miss"
+                )
                 try:
                     entry = float(row.open_price) if row.open_price is not None else 50.0
                     if matched and 1.0 < entry < 99.0:
@@ -1185,16 +1194,20 @@ class PerformanceStore:
     async def recent_settled_calls(self, limit: int = 20, asset: str | None = None) -> List[Dict[str, Any]]:
         """Newest-first settled window calls, with agent votes when available."""
         async with self.Session() as session:
-            filters = [WindowCall.actual_outcome.isnot(None)]
-            if asset:
-                filters.append(WindowCall.asset == asset.lower())
             result = await session.execute(
                 select(WindowCall)
-                .where(*filters)
+                .where(WindowCall.actual_outcome.isnot(None))
                 .order_by(WindowCall.id.desc())
-                .limit(limit)
+                .limit(max(int(limit) * 3, 40))
             )
             rows = result.scalars().all()
+            if asset:
+                want = asset.lower()
+                rows = [
+                    r for r in rows
+                    if (r.asset or ticker_asset(r.ticker) or "").lower() == want
+                ]
+            rows = rows[: max(1, int(limit))]
             out = []
             for r in rows:
                 votes = None
@@ -1211,12 +1224,13 @@ class PerformanceStore:
                         votes = json.loads(sig.agent_votes)
                     except Exception:
                         votes = None
-                # outcome for learner: winning side label UP/DOWN
-                if r.correct == 1:
-                    outcome = "UP" if r.direction in ("UP", "UP_HOLD") else "DOWN" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
-                else:
-                    # miss → opposite of call side for grading agent votes against truth
-                    outcome = "DOWN" if r.direction in ("UP", "UP_HOLD") else "UP" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
+                # Learner truth is official y_finish, not a later-hour spot.
+                outcome = getattr(r, "y_finish", None) or r.actual_outcome
+                if outcome not in ("UP", "DOWN"):
+                    if r.correct == 1:
+                        outcome = "UP" if r.direction in ("UP", "UP_HOLD") else "DOWN" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
+                    else:
+                        outcome = "DOWN" if r.direction in ("UP", "UP_HOLD") else "UP" if r.direction in ("DOWN", "DOWN_HOLD") else r.actual_outcome
                 # Prefer stored regime; else derive from timestamps
                 reg = r.regime_key
                 if not reg:
@@ -1231,6 +1245,7 @@ class PerformanceStore:
                     "direction": r.direction,
                     "confidence": r.confidence,
                     "actual_outcome": r.actual_outcome,
+                    "y_finish": getattr(r, "y_finish", None) or r.actual_outcome,
                     "outcome": outcome,
                     "correct": r.correct,
                     "entry_price": r.entry_price,

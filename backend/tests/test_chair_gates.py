@@ -10,6 +10,7 @@ from backend.agents.chair_gates import (
     clamp_p_finish,
     close_time_from_kalshi_ticker,
     compute_ev_cents,
+    decide_open_lock_grade,
     dead_book_reason,
     early_lock_blocked,
     estimate_p_finish,
@@ -150,6 +151,52 @@ class WindowStrikeTests(unittest.TestCase):
         self.assertEqual(resolve_finish_side(ticker="KXBTCD-26AUG1415-T62999.99"), "DOWN")
         # id 1062 with a different ticker must not apply
         self.assertIsNone(known_official_market("KXBTCD-OTHER", 1062))
+
+    def test_live_1062_1063_grade_after_19utc_close(self):
+        """Live stuck OPEN rows: null strike, hour already closed, official no."""
+        after = datetime(2026, 8, 14, 21, 17, tzinfo=timezone.utc)
+        before = datetime(2026, 8, 14, 18, 50, tzinfo=timezone.utc)
+        btc = decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1415-T62999.99",
+            call_id=1062,
+            close_time="2026-08-14T19:00:00Z",
+            direction="DOWN",
+            now=after,
+        )
+        self.assertIsNotNone(btc)
+        self.assertEqual(btc["y_finish"], "DOWN")
+        self.assertTrue(btc["correct"])
+        self.assertEqual(btc["settle_reason"], "finish_match")
+        self.assertEqual(btc["asset"], "btc")
+        self.assertEqual(btc["floor_strike"], 62999.99)
+        eth = decide_open_lock_grade(
+            ticker="KXETHD-26AUG1415-T1874.99",
+            call_id=1063,
+            close_time="2026-08-14T19:00:00Z",
+            direction="UP",
+            now=after,
+        )
+        self.assertIsNotNone(eth)
+        self.assertEqual(eth["y_finish"], "DOWN")
+        self.assertFalse(eth["correct"])
+        self.assertEqual(eth["settle_reason"], "finish_miss")
+        self.assertEqual(eth["asset"], "eth")
+        self.assertIsNone(decide_open_lock_grade(
+            ticker="KXBTCD-26AUG1415-T62999.99",
+            call_id=1062,
+            close_time="2026-08-14T19:00:00Z",
+            direction="DOWN",
+            now=before,
+        ))
+        # Later-hour spot must not be a closer — no spot argument exists.
+        self.assertIsNone(decide_open_lock_grade(
+            ticker="KXBTCD-26AUG9999-T1",
+            call_id=1,
+            close_time="2026-08-14T19:00:00Z",
+            direction="DOWN",
+            kalshi_result={"status": "active"},
+            now=after,
+        ))
 
     def test_exact_strike_finish(self):
         self.assertEqual(finish_outcome(100_100, 100_000), "UP")

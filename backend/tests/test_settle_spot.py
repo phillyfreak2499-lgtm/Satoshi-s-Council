@@ -99,6 +99,74 @@ class SettleSpotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(official_y_finish(results["KXBTCD-26AUG1415-T62999.99"]), "DOWN")
         self.assertEqual(official_y_finish(results[1062]), "DOWN")
 
+    async def test_learn_from_settled_called_for_1062(self):
+        c = self._council()
+        c.store.recent_settled_calls = AsyncMock(return_value=[{
+            "id": 1062,
+            "ticker": "KXBTCD-26AUG1415-T62999.99",
+            "y_finish": "DOWN",
+            "actual_outcome": "DOWN",
+            "outcome": "DOWN",
+            "settle_reason": "finish_match",
+            "agent_votes": {"candle": {"direction": "DOWN", "confidence": 70}},
+            "regime": "US_PM_EARLY",
+        }])
+        c.learner.learn_from_settled = MagicMock(return_value={})
+        c.learner.save = MagicMock()
+        n = await c._learn_from_new_settlements()
+        self.assertGreaterEqual(n, 1)
+        c.learner.learn_from_settled.assert_called()
+        self.assertEqual(c.learner.learn_from_settled.call_args[0][1], "DOWN")
+
+    async def test_learn_from_settled_called_without_votes(self):
+        c = self._council()
+        c.store.recent_settled_calls = AsyncMock(return_value=[{
+            "id": 1063,
+            "ticker": "KXETHD-26AUG1415-T1874.99",
+            "y_finish": "DOWN",
+            "actual_outcome": "DOWN",
+            "outcome": "DOWN",
+            "settle_reason": "finish_miss",
+            "agent_votes": {},
+        }])
+        c.learner.learn_from_settled = MagicMock(return_value={})
+        c.learner.save = MagicMock()
+        n = await c._learn_from_new_settlements()
+        self.assertGreaterEqual(n, 1)
+        c.learner.learn_from_settled.assert_called()
+
+    async def test_start_loads_brain_and_does_not_rebuild(self):
+        c = self._council()
+        c.store.init = AsyncMock()
+        c.store.recent_settled_calls = AsyncMock(return_value=[])
+        c.learner.load = MagicMock(return_value=True)
+        c.learner.rebuild_from_store = AsyncMock(return_value=99)
+        c.hydrate_persisted_desk = AsyncMock(return_value={})
+        c.sweep_official_finishes = AsyncMock(return_value=2)
+        c.leader.sync_from_learner = MagicMock()
+        c.pipeline.close = AsyncMock()
+        c.store.close = AsyncMock()
+        await c.start()
+        try:
+            c.learner.rebuild_from_store.assert_not_awaited()
+            c.sweep_official_finishes.assert_awaited()
+        finally:
+            await c.stop()
+
+    def test_save_refuses_to_shrink_brain(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from backend.learning.adaptive import AdaptiveLearner
+        c = AdaptiveLearner(asset="btc")
+        c.updates = 2
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "council-learning-btc.json"
+            path.write_text(json.dumps({"updates": 17777, "weights": {"candle": 0.1}}), encoding="utf-8")
+            c.save(path)
+            disk = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(disk["updates"], 17777)
+
 
 if __name__ == "__main__":
     unittest.main()

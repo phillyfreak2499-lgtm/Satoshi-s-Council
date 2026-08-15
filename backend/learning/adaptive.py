@@ -745,6 +745,24 @@ class AdaptiveLearner:
             "regime_correct": {rk: dict(v) for rk, v in self.regime_correct.items()},
             "regime_wrong": {rk: dict(v) for rk, v in self.regime_wrong.items()},
         }
+        if path.exists():
+            try:
+                prev = json.loads(path.read_text(encoding="utf-8"))
+                disk_updates = int((prev or {}).get("updates") or 0)
+            except Exception:
+                disk_updates = 0
+                bak = path.with_suffix(".json.bak")
+                try:
+                    if not bak.exists():
+                        path.replace(bak)
+                except Exception:
+                    pass
+            if disk_updates > int(self.updates or 0):
+                logger.warning(
+                    f"Refusing to overwrite brain {path.name} "
+                    f"(disk updates={disk_updates} > memory={self.updates})"
+                )
+                return
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def load(self, path: "Path | None" = None) -> bool:

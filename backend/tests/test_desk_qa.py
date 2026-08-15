@@ -103,8 +103,10 @@ class PacksNotDroppedTests(unittest.TestCase):
     def test_official_closer_still_present(self):
         gates = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
         self.assertIn("def official_y_finish", gates)
+        self.assertIn("def decide_open_lock_grade", gates)
         self.assertIn("KNOWN_OFFICIAL_FINISH", gates)
         self.assertIn("KXBTCD-26AUG1415-T62999.99", gates)
+        self.assertIn("learn_from_settled", (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8"))
 
     def test_follower_stays_off_public_surface(self):
         for needle in ("tabFollower", "FOLLOWER_PASSWORD", "/api/follower/unlock", "/api/follower/order"):

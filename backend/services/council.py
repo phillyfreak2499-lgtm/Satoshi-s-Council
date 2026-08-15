@@ -144,17 +144,24 @@ class Council:
                 logger.info(f"WindowMemory seeded with {n} settled windows")
         except Exception as e:
             logger.debug(f"WindowMemory seed: {e}")
-        # Rebuild adaptive weights + pair affinities from history
+        # Load the on-disk brain. Do not rebuild over it — a short replay
+        # of recent settles would wipe a long-run learner (seen live: 17777 → 2).
         try:
+            loaded = False
             try:
-                self.learner.load()
+                loaded = bool(self.learner.load())
             except Exception:
-                pass
-            n = await self.learner.rebuild_from_store(self.store)
-            self.leader.sync_from_learner()
-            logger.info(f"Adaptive weights restored from {n} windows")
+                loaded = False
+            if loaded:
+                self.leader.sync_from_learner()
+                logger.info("Adaptive learner loaded from disk — not rebuilding")
+            else:
+                logger.info(
+                    "Adaptive learner file missing — leaving weights; "
+                    "learn_from_settled runs on new hour-close grades only"
+                )
         except Exception as e:
-            logger.debug(f"Adaptive rebuild: {e}")
+            logger.debug(f"Adaptive load: {e}")
         # Paint lifetime log / huddle from disk before the first analyze_once.
         # Does not create, truncate, or delete SQLite / brain files.
         try:
@@ -991,13 +998,13 @@ class Council:
             if rid is None or rid in self._last_learned_ids:
                 continue
             settle_reason = row.get("settle_reason") or ""
-            outcome = row.get("outcome")
+            outcome = row.get("y_finish") or row.get("actual_outcome") or row.get("outcome")
             # Never train on VOID / path-era / unresolved
             if outcome in ("VOID", None, "") or settle_reason not in FINISH:
                 self._last_learned_ids.add(rid)
                 continue
             votes = row.get("agent_votes") or {}
-            if outcome in ("UP", "DOWN") and votes:
+            if outcome in ("UP", "DOWN"):
                 reg = row.get("regime") or row.get("regime_key")
                 if not reg:
                     reg = regime_from_call(row.get("called_at"), row.get("close_time"))

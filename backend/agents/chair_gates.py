@@ -277,6 +277,45 @@ def resolve_finish_side(
     return official_y_finish(known)
 
 
+def decide_open_lock_grade(
+    *,
+    ticker: Any = None,
+    call_id: Any = None,
+    close_time: Any = None,
+    direction: Any = None,
+    kalshi_result: Any = None,
+    now: datetime | None = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Grade an OPEN paper lock after the official Kalshi hour close.
+
+    y_finish comes from the official yes/no result (or a documented
+    known finish). Later-hour spot is never used. Returns None if the
+    hour is still open or Kalshi has not finalized.
+    """
+    if not official_window_due(close_time, now=now, ticker=ticker):
+        return None
+    side = normalize_side(direction)
+    if side not in ("UP", "DOWN"):
+        return None
+    official = kalshi_result if official_y_finish(kalshi_result) else None
+    if official is None:
+        official = known_official_market(ticker, call_id)
+    y_finish = official_y_finish(official)
+    if y_finish is None:
+        return None
+    ct = resolve_close_time(close_time, ticker)
+    matched = y_finish == side
+    return {
+        "y_finish": y_finish,
+        "correct": matched,
+        "settle_reason": "finish_match" if matched else "finish_miss",
+        "asset": ticker_asset(ticker),
+        "floor_strike": strike_from_kalshi_ticker(ticker),
+        "close_iso": ct.isoformat() if ct is not None else None,
+    }
+
+
 def window_minutes_from_times(open_time: Any, close_time: Any) -> Optional[float]:
     start = parse_iso_utc(open_time)
     end = parse_iso_utc(close_time)
