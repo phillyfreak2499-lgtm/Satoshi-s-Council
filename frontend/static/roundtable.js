@@ -11823,13 +11823,24 @@ function drawCandleChart() {
     const input = document.getElementById("passwordInput");
     const btn = document.getElementById("passwordSubmit");
     const err = document.getElementById("passwordError");
+    const agree = document.getElementById("gateAgree");
     if (!pg) return;
     pg.classList.remove("hidden");
     document.documentElement.classList.add("gate-locked");
     document.body.classList.add("gate-locked");
     document.body.classList.remove("admin-unlocked");
     document.body.setAttribute("data-password-protected", "true");
+    const syncDeskGateSummon = () => {
+      const sealed = !!(agree && agree.checked);
+      if (btn) {
+        btn.disabled = !sealed;
+        btn.textContent = "SUMMON THE COUNCIL";
+        btn.setAttribute("aria-disabled", sealed ? "false" : "true");
+      }
+      return sealed;
+    };
     const tryUnlock = () => {
+      if (!syncDeskGateSummon()) return;
       const v = (input && input.value) || "";
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
         try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
@@ -11842,6 +11853,8 @@ function drawCandleChart() {
         if (err) err.classList.remove("hidden");
       }
     };
+    if (agree) agree.addEventListener("change", syncDeskGateSummon);
+    syncDeskGateSummon();
     if (btn) btn.addEventListener("click", tryUnlock);
     if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
     try { prefetchDeskIntroVideo(); } catch (e) {}

@@ -56,9 +56,21 @@
     <div class="password-card">
       <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
-      <div class="password-sub">Password-protected private desk · Enter access code</div>
-      <input type="password" id="passwordInput" class="password-input" placeholder="Password" autocomplete="current-password" />
-      <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon">Enter</button>
+      <div class="password-sub">Password-protected private desk · Enter access code. Then seal the pact.</div>
+      <input type="password" id="passwordInput" class="password-input" placeholder="Desk code" autocomplete="current-password" />
+      <ul class="gate-oath" id="gateOath">
+        <li>PAPER ONLY. Ink on the slate — not cash on the wire.</li>
+        <li>NOT FINANCIAL ADVICE. The Chair talks. You still own the click.</li>
+        <li>18+ · grown seats only. No kids at this table.</li>
+        <li>NOT KALSHI. This desk is not Kalshi.</li>
+        <li>YOU CAN LOSE THE FULL STAKE. The whole chip can vanish.</li>
+        <li>NO PAST SCORE IS A PROMISE. Last hour does not own the next.</li>
+      </ul>
+      <label class="gate-agree" for="gateAgree">
+        <input type="checkbox" id="gateAgree" />
+        <span>I agree. Paper. 18+. Eyes open.</span>
+      </label>
+      <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" disabled aria-disabled="true">SUMMON THE COUNCIL</button>
       <p id="passwordError" class="password-error hidden">Wrong password</p>
     </div>
   </div>
