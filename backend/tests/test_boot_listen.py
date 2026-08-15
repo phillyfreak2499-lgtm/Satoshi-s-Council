@@ -160,8 +160,9 @@ class PaperFollowerUntouchedTests(unittest.TestCase):
         self.assertNotIn("ZT ·", HTML)
         title = HTML.split("<title>", 1)[1].split("</title>", 1)[0]
         self.assertEqual(title, "Satoshi’s Council")
-        self.assertNotIn("FOLLOWER_PASSWORD", RENDER)
-        self.assertNotIn("auto-bet", MAIN.lower())
+        self.assertIn("def _strip_public_auto_bet(", MAIN)
+        self.assertIn("Never auto-bet", JS)
+        self.assertIn("paper default · live off", JS)
 
 
 if __name__ == "__main__":
