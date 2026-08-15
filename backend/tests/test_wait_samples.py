@@ -376,10 +376,10 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn('id="focusFront"', HTML)
         self.assertIn('class="focus-tab"', HTML)
         self.assertIn('data-focus="front"', HTML)
-        self.assertIn(">DFW</button>", HTML)
-        self.assertIn("Focus DFW / Raijin", HTML)
+        self.assertIn(">DWF</button>", HTML)
+        self.assertIn("Focus Dallas Weather Forecast / Raijin", HTML)
         self.assertNotIn(">RAIJIN</button>", HTML)
-        self.assertNotIn(">DWF</button>", HTML)
+        self.assertNotIn(">DFW</button>", HTML)
         self.assertIn('id="focusBtc"', HTML)
         self.assertIn('id="focusEth"', HTML)
         row = HTML.split('id="modeTabs"', 1)[1].split('id="tabFloor"', 1)[0]
