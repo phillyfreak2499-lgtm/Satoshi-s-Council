@@ -123,6 +123,11 @@ async def health():
     kalshi_eth_ok = bool(eth_h.get("kalshi", True)) if eth else None
     kalshi_ok = kalshi_btc_ok and (kalshi_eth_ok is not False)
     coinglass_ok = bool(btc_h.get("coinglass") or eth_h.get("coinglass"))
+    coinglass_reason = btc_h.get("coinglass_reason") or (eth_h.get("coinglass_reason") if eth else None)
+    if not coinglass_ok and not coinglass_reason and council.running:
+        coinglass_reason = "no usable funding/OI/liq this cycle"
+    if coinglass_reason is not None:
+        coinglass_reason = str(coinglass_reason)
     quote_age = btc_h.get("quote_age_s")
     if quote_age is None:
         quote_age = age
@@ -139,6 +144,7 @@ async def health():
         "kalshi_ok": kalshi_ok,
         "spot_ok": spot_ok,
         "coinglass_ok": coinglass_ok,
+        "coinglass_reason": coinglass_reason,
         "quote_age_s": round(float(quote_age), 1) if quote_age is not None else None,
         "analysis_interval_s": settings.ANALYSIS_INTERVAL,
         "fetch_ms": (state.get("health") or {}).get("last_fetch_ms") or btc_h.get("last_fetch_ms"),

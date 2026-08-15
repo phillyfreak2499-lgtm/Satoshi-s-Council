@@ -492,7 +492,7 @@ class PhoneFloorTests(unittest.TestCase):
 
 class HealthStripTests(unittest.TestCase):
     def test_matches_health_endpoint(self):
-        for key in ('"kalshi_ok"', '"spot_ok"', '"coinglass_ok"', '"quote_age_s"'):
+        for key in ('"kalshi_ok"', '"spot_ok"', '"coinglass_ok"', '"coinglass_reason"', '"quote_age_s"'):
             self.assertIn(key, MAIN)
         self.assertIn('id="healthStrip"', HTML)
         self.assertIn('id="healthKalshi"', HTML)

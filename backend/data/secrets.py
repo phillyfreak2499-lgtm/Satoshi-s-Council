@@ -14,12 +14,19 @@ from loguru import logger
 _CACHE: dict[str, Tuple[Optional[str], str]] = {}
 
 
+def _clean_secret(text: Optional[str]) -> Optional[str]:
+    """Strip BOM / whitespace / newlines so a trailing \\n cannot 401."""
+    if text is None:
+        return None
+    cleaned = str(text).replace("\ufeff", "").strip()
+    return cleaned or None
+
+
 def _read_key_file(path: str) -> Optional[str]:
     try:
         if not path or not os.path.isfile(path):
             return None
-        text = Path(path).read_text(encoding="utf-8").strip()
-        return text or None
+        return _clean_secret(Path(path).read_text(encoding="utf-8"))
     except OSError:
         return None
 
@@ -62,7 +69,7 @@ def load_secret_string(env_name: str, file_name: str | None = None) -> Tuple[Opt
     Never log the value.
     """
     file_name = file_name or env_name
-    raw = (os.environ.get(env_name) or "").strip()
+    raw = _clean_secret(os.environ.get(env_name) or "")
     if raw:
         if os.path.isfile(raw):
             val = _read_key_file(raw)

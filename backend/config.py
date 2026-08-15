@@ -214,10 +214,10 @@ class Settings(BaseSettings):
     CFB_INDEX_BTC: str = "BRTI"
     CFB_INDEX_ETH: str = "ETHUSD_RTI"
     # CoinGlass v4 — key from env or /etc/secrets/COINGLASS_API_KEY (never in git)
-    # Prefer 1h OI Δ / 1h liqs. Funding is an 8h clock (display only).
+    # Startup: try 30m then 1h (never 1m). Funding is an 8h clock (display only).
     COINGLASS_BASE: str = "https://open-api-v4.coinglass.com"
     COINGLASS_EXCHANGE: str = "Binance"
-    COINGLASS_INTERVAL: str = "1h"
+    COINGLASS_INTERVAL: str = "30m"
     COINGLASS_TTL: float = 60.0
     # Top-of-book depth: known thin size → WAIT (spread still hard-gated above)
     MIN_BOOK_SIZE: float = 5.0

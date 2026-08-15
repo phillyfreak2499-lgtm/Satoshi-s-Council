@@ -3,12 +3,13 @@ CoinGlass v4 — funding, open interest, liquidations for CARRY / CHAIN / CASCAD
 
 Key is loaded from env or the Render secret file. Never logged.
 Futures on Binance fapi can 451 in Oregon; this feed is the fill-in.
-Startup plan: 30m / 1h history (no 1m backtest).
+Startup plan: 30m then 1h history (never 1m).
 """
 from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -19,7 +20,24 @@ from backend.data.secrets import load_coinglass_api_key
 from backend.services.runtime_settings import runtime_settings
 
 BASE = "https://open-api-v4.coinglass.com"
-_INTERVALS = ("1h", "30m")  # 1h OI/liq only; never a daily heatmap as a 1h tell
+ALLOWED_INTERVALS = ("30m", "1h")  # Startup allows >=30m; never request 1m
+PATHS = (
+    "/api/futures/funding-rate/history",
+    "/api/futures/open-interest/history",
+    "/api/futures/liquidation/history",
+)
+_PLAN_INTERVAL_HINTS = (
+    "interval",
+    "plan",
+    "upgrade",
+    "permission",
+    "not allowed",
+    "not support",
+    "hobbyist",
+    "startup",
+    "timeframe",
+    "resolution",
+)
 
 
 def _f(v: Any) -> Optional[float]:
@@ -119,7 +137,48 @@ def summarize_derivatives(
         "funding_history": fund_hist[-24:],
         "oi_history": oi_hist[-24:],
         "liq_history": liq_hist[-24:],
+        "reason": "",
     }
+
+
+def _redact(text: Any, secret: Optional[str]) -> str:
+    s = "" if text is None else str(text)
+    if secret:
+        s = s.replace(secret, "[redacted]")
+    return s
+
+
+def _snippet(text: Any, secret: Optional[str], n: int = 200) -> str:
+    return _redact(text, secret)[:n]
+
+
+def is_plan_interval_error(code: Any, msg: Any) -> bool:
+    blob = f"{code} {msg}".lower()
+    return any(h in blob for h in _PLAN_INTERVAL_HINTS)
+
+
+def live_interval_order(cached_ok: Optional[str] = None) -> List[str]:
+    """30m then 1h. Never 1m. A known-good interval may lead later cycles."""
+    order = [iv for iv in ALLOWED_INTERVALS if iv != "1m"]
+    cached = str(cached_ok or "").strip().lower()
+    if cached in ALLOWED_INTERVALS and cached != "1m":
+        order = [cached] + [iv for iv in order if iv != cached]
+    return order
+
+
+@dataclass
+class _Fetch:
+    rows: List[Dict[str, Any]] = field(default_factory=list)
+    ok: bool = False
+    path: str = ""
+    interval: str = ""
+    http_status: Optional[int] = None
+    cg_code: Any = None
+    cg_msg: str = ""
+    body: str = ""
+    reason: str = ""
+    auth_fail: bool = False
+    plan_interval: bool = False
 
 
 class CoinGlassClient:
@@ -131,7 +190,7 @@ class CoinGlassClient:
         self._cache: Dict[str, Any] = {}
         self._cache_at: float = 0.0
         self._interval_ok: Optional[str] = None
-        self._logged_empty = False
+        self._cycle_misses: List[_Fetch] = []
 
     def configured(self) -> bool:
         return bool(load_coinglass_api_key())
@@ -148,51 +207,160 @@ class CoinGlassClient:
             "Accept": "application/json",
         }
 
-    async def _get_rows(self, path: str, interval: str, limit: int = 24) -> List[Dict[str, Any]]:
+    def _note_miss(self, miss: _Fetch) -> None:
+        key = (miss.path, miss.interval)
+        if any((m.path, m.interval) == key for m in self._cycle_misses):
+            return
+        self._cycle_misses.append(miss)
+
+    def _format_miss(self, miss: _Fetch) -> str:
+        secret = load_coinglass_api_key()
+        msg = _snippet(miss.cg_msg, secret)
+        body = _snippet(miss.body, secret)
+        return (
+            f"path={miss.path} interval={miss.interval} "
+            f"symbol={self.symbol} exchange={self.exchange} "
+            f"http={miss.http_status} code={miss.cg_code} msg={msg} body={body}"
+        )
+
+    def _reason_for_health(self, snap: Dict[str, Any]) -> str:
+        if snap.get("healthy") and not self._cycle_misses:
+            return ""
+        if snap.get("healthy") and self._cycle_misses:
+            first = self._cycle_misses[0]
+            used = snap.get("interval") or self._interval_ok or "1h"
+            secret = load_coinglass_api_key()
+            return (
+                f"{first.interval} rejected (code={first.cg_code} "
+                f"msg={_snippet(first.cg_msg, secret)}); using {used}"
+            )
+        if self._cycle_misses:
+            return self._format_miss(self._cycle_misses[0])
+        return "no usable funding/OI/liq this cycle"
+
+    def _log_cycle_miss(self, snap: Dict[str, Any]) -> None:
+        if self._cycle_misses:
+            parts = [self._format_miss(m) for m in self._cycle_misses]
+            logger.warning(
+                "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE keep last/Binance "
+                + " || ".join(parts)
+            )
+            return
+        if snap.get("healthy"):
+            return
+        reason = snap.get("reason") or "no usable funding/OI/liq this cycle"
+        logger.warning(
+            "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE keep last/Binance "
+            f"symbol={self.symbol} exchange={self.exchange} {reason}"
+        )
+
+    async def _probe(
+        self,
+        path: str,
+        interval: str,
+        limit: int = 24,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> _Fetch:
         headers = self._headers()
         if not headers:
-            return []
-        url = f"{BASE}{path}"
-        params = {
+            miss = _Fetch(path=path, interval=interval, reason="key missing")
+            self._note_miss(miss)
+            return miss
+        base = str(getattr(settings, "COINGLASS_BASE", BASE) or BASE)
+        url = f"{base}{path}"
+        params: Dict[str, Any] = {
             "exchange": self.exchange,
             "symbol": self.symbol,
             "interval": interval,
             "limit": limit,
         }
+        if start_time is not None:
+            params["start_time"] = start_time
+        if end_time is not None:
+            params["end_time"] = end_time
+        miss = _Fetch(path=path, interval=interval)
         try:
             r = await self.client.get(url, params=params, headers=headers)
+            miss.http_status = r.status_code
+            try:
+                miss.body = r.text or ""
+            except Exception:
+                miss.body = ""
+            body: Any = {}
+            try:
+                body = r.json() if getattr(r, "content", None) is not None else {}
+            except Exception:
+                body = {}
+            if not isinstance(body, dict):
+                body = {}
+            miss.cg_code = body.get("code")
+            miss.cg_msg = str(body.get("msg") or body.get("message") or "")
+            miss.plan_interval = is_plan_interval_error(miss.cg_code, miss.cg_msg)
             if r.status_code in (401, 403):
-                logger.warning(f"CoinGlass {path} auth failed ({r.status_code})")
-                return []
-            r.raise_for_status()
-            body = r.json()
+                miss.auth_fail = True
+                miss.reason = f"auth failed ({r.status_code})"
+                self._note_miss(miss)
+                return miss
+            if r.status_code >= 400:
+                miss.reason = f"http {r.status_code}"
+                self._note_miss(miss)
+                return miss
+            code_s = "" if miss.cg_code is None else str(miss.cg_code)
+            if code_s not in ("0", "200", ""):
+                miss.reason = f"coinglass code={code_s}"
+                self._note_miss(miss)
+                return miss
+            data = body.get("data")
+            if not isinstance(data, list):
+                miss.reason = "data not a list"
+                self._note_miss(miss)
+                return miss
+            rows = [row for row in data if isinstance(row, dict)]
+            if not rows:
+                miss.reason = "empty data"
+                self._note_miss(miss)
+                return miss
+            miss.rows = rows
+            miss.ok = True
+            return miss
         except Exception as e:
-            logger.debug(f"CoinGlass {path} {interval} fail: {type(e).__name__}")
-            return []
-        code = str(body.get("code", ""))
-        if code not in ("0", "200", ""):
-            return []
-        data = body.get("data")
-        if not isinstance(data, list):
-            return []
-        return [row for row in data if isinstance(row, dict)]
+            miss.reason = type(e).__name__
+            self._note_miss(miss)
+            return miss
+
+    async def _get_rows(
+        self,
+        path: str,
+        interval: str,
+        limit: int = 24,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Hist-safe: returns rows (possibly empty). Miss reason stays on the client."""
+        got = await self._probe(
+            path, interval, limit=limit, start_time=start_time, end_time=end_time
+        )
+        return list(got.rows)
 
     async def _rows_with_interval(self, path: str) -> Tuple[List[Dict[str, Any]], str]:
-        preferred = str(getattr(settings, "COINGLASS_INTERVAL", "30m") or "30m")
-        order = [preferred] + [iv for iv in _INTERVALS if iv != preferred]
-        if self._interval_ok:
-            order = [self._interval_ok] + [iv for iv in order if iv != self._interval_ok]
+        order = live_interval_order(self._interval_ok)
+        last_iv = order[0] if order else "30m"
         for iv in order:
-            rows = await self._get_rows(path, iv)
-            if rows:
+            last_iv = iv
+            got = await self._probe(path, iv)
+            if got.ok and got.rows:
                 self._interval_ok = iv
-                return rows, iv
-        return [], preferred
+                return got.rows, iv
+            if got.auth_fail:
+                return [], iv
+        return [], last_iv
 
-    async def get_derivatives(self) -> Dict[str, Any]:
-        empty = {
+    def _empty(self, reason: str = "") -> Dict[str, Any]:
+        return {
             "source": "coinglass",
             "healthy": False,
+            "interval": None,
             "funding_rate": None,
             "open_interest": None,
             "oi_delta_1h": None,
@@ -203,9 +371,15 @@ class CoinGlassClient:
             "funding_history": [],
             "oi_history": [],
             "liq_history": [],
+            "reason": reason,
         }
+
+    async def get_derivatives(self) -> Dict[str, Any]:
+        self._cycle_misses = []
         if not self.configured():
-            return empty
+            snap = self._empty("key missing")
+            self._log_cycle_miss(snap)
+            return snap
         ttl = float(
             runtime_settings.get(
                 "slow_metrics_ttl",
@@ -217,20 +391,22 @@ class CoinGlassClient:
             return dict(self._cache)
         try:
             (fund_rows, fund_iv), (oi_rows, oi_iv), (liq_rows, liq_iv) = await asyncio.gather(
-                self._rows_with_interval("/api/futures/funding-rate/history"),
-                self._rows_with_interval("/api/futures/open-interest/history"),
-                self._rows_with_interval("/api/futures/liquidation/history"),
+                self._rows_with_interval(PATHS[0]),
+                self._rows_with_interval(PATHS[1]),
+                self._rows_with_interval(PATHS[2]),
             )
             interval = fund_iv or oi_iv or liq_iv or "30m"
             snap = summarize_derivatives(fund_rows, oi_rows, liq_rows, interval)
+            snap["reason"] = self._reason_for_health(snap)
             if snap.get("healthy"):
                 self._cache = snap
                 self._cache_at = now
-                self._logged_empty = False
-            elif not self._logged_empty:
-                logger.info("CoinGlass derivatives empty this cycle — CARRY/CHAIN keep last/Binance")
-                self._logged_empty = True
+                if self._cycle_misses:
+                    self._log_cycle_miss(snap)
+            else:
+                self._log_cycle_miss(snap)
             return snap
         except Exception as e:
-            logger.debug(f"CoinGlass snapshot fail: {type(e).__name__}")
-            return empty
+            snap = self._empty(f"snapshot fail: {type(e).__name__}")
+            self._log_cycle_miss(snap)
+            return snap
