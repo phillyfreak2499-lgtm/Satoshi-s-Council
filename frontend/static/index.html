@@ -19,6 +19,7 @@
   <link rel="preload" as="image" href="/raijin-up.jpg" />
   <link rel="preload" as="image" href="/raijin-down.jpg" />
   <link rel="preload" as="image" href="/raijin-wait.jpg" />
+  <link rel="preload" as="video" href="/zt-intro.mp4" />
   <script>
   /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
   (function () {
@@ -904,6 +905,14 @@
   </div>
 
   
+  <!-- Post-desk-code intro. Silent chrome. Sources are zt-intro.mp4 only. -->
+  <div id="deskIntroWrap" class="desk-intro-wrap hidden" aria-hidden="true">
+    <video id="deskIntroVideo" playsinline webkit-playsinline muted preload="auto">
+      <source src="/zt-intro.mp4" type="video/mp4" />
+      <source src="/static/zt-intro.mp4" type="video/mp4" />
+    </video>
+    <button type="button" id="deskIntroSkip" class="desk-intro-skip">SKIP</button>
+  </div>
   <!-- Win-streak celebrate (fullscreen close-up money) -->
   <div id="summonVideoWrap" class="summon-video-wrap" aria-hidden="true">
     <video id="summonVideo" playsinline webkit-playsinline preload="metadata">
