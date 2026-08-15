@@ -8,6 +8,12 @@ window.COUNCIL_WIRE = [
     "why": "Zach wants the room to change with the Chair — Satoshi vault, Vitalik glass, Ares stadium — so you know who you are watching before you read a name. Seat mood and hour weather sit under the majority wisps. Paper. Follower OFF."
   },
   {
+    "id": "2026-08-15-boot-listen",
+    "at": "2026-08-15T21:10:00-05:00",
+    "title": "Boot no longer blocks the port",
+    "why": "Merges don’t 502 the desk. Why: Zach."
+  },
+  {
     "id": "2026-08-15-wire-tab",
     "at": "2026-08-15T20:00:00-05:00",
     "title": "WIRE tab is live",

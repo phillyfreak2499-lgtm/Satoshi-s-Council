@@ -20,6 +20,9 @@ services:
     # workers=1 required — analysis loop is in-process
     startCommand: PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*' --timeout-keep-alive 75
     healthCheckPath: /health
+    # Persistent disk = single-instance swap. Render cannot attach one disk
+    # to two instances, so classic two-instance zero-downtime is not available.
+    # Keep the disk. Bind $PORT before hydrate so /health answers during the swap.
     disk:
       name: council-data
       mountPath: /opt/render/project/src/data
