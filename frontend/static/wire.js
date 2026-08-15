@@ -14,6 +14,12 @@ window.COUNCIL_WIRE = [
     "why": "90-day Kalshi tape replay merged into seat brains (3,053 hours; BTC 1,508 / ETH 1,545). WICK/STRIKE/CLOCK/DRIFT got the most. CARRY/CHAIN/CASCADE stayed empty (CoinGlass Upgrade plan). Displayed Chair hit count reset so the old 2/7 doesn’t sit on the new weights. Paper only. Follower OFF."
   },
   {
+    "id": "2026-08-15-phone-gate-se",
+    "at": "2026-08-16T00:45:00-05:00",
+    "title": "Short phones keep SUMMON on screen",
+    "why": "SE / Safari chrome at 390×667 lost SUMMON under a 36vh pad and a flex-end overlay iOS will not scroll. Short height drops the pad. SUMMON is a real footer. Agree-off now says seal the pact. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-phone-gate-nav",
     "at": "2026-08-15T23:58:00-05:00",
     "title": "Phone gate and nav use the real device width",

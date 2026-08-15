@@ -12049,10 +12049,19 @@ function drawCandleChart() {
         btn.textContent = "SUMMON THE COUNCIL";
         btn.setAttribute("aria-disabled", sealed ? "false" : "true");
       }
+      if (sealed && err && err.textContent === "Seal the pact first.") {
+        err.classList.add("hidden");
+      }
       return sealed;
     };
     const tryUnlock = () => {
-      if (!syncDeskGateSummon()) return;
+      if (!syncDeskGateSummon()) {
+        if (err) {
+          err.textContent = "Seal the pact first.";
+          err.classList.remove("hidden");
+        }
+        return;
+      }
       const v = (input && input.value) || "";
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
         try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
@@ -12062,12 +12071,24 @@ function drawCandleChart() {
         // Fresh password entry → first-login choice, or the desk if already onboarded
         showAppAfterAuth();
       } else {
-        if (err) err.classList.remove("hidden");
+        if (err) {
+          err.textContent = "Wrong password";
+          err.classList.remove("hidden");
+        }
       }
     };
     if (agree) agree.addEventListener("change", syncDeskGateSummon);
     syncDeskGateSummon();
     if (btn) btn.addEventListener("click", tryUnlock);
+    const summonHit = document.getElementById("gateSummonHit");
+    if (summonHit) {
+      summonHit.addEventListener("click", function (e) {
+        if (btn && btn.disabled) {
+          e.preventDefault();
+          tryUnlock();
+        }
+      });
+    }
     if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
     try { prefetchDeskIntroVideo(); } catch (e) {}
   }

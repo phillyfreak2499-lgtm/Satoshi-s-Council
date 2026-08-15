@@ -87,20 +87,41 @@ class PhoneGateStickyTests(unittest.TestCase):
 
     def test_sticky_css_and_keyboard_viewport(self):
         splash = _splash_css()
-        self.assertIn("position: sticky", splash)
+        self.assertIn("position: fixed", splash)
         self.assertIn("bottom: 0", splash)
-        self.assertIn("100svh", splash)
-        self.assertIn("100dvh", splash)
+        self.assertIn("overflow-y: hidden", splash)
+        self.assertIn("overflow: visible", splash)
         self.assertIn("env(safe-area-inset-bottom", splash)
         self.assertIn("padding-top: 36vh", splash)
+        self.assertIn("min-height: 740px", splash)
+        self.assertIn("max-height: 739px", splash)
+
+    def test_short_height_drops_36vh_and_flex_end(self):
+        splash = _splash_css()
+        short = splash.split("max-height: 739px", 1)[1][:400]
+        self.assertIn("justify-content: flex-start", short)
+        self.assertNotIn("padding-top: 36vh", short[:200])
+        tall = splash.split("min-height: 740px", 1)[1][:300]
+        self.assertIn("padding-top: 36vh", tall)
+        self.assertIn("justify-content: flex-end", tall)
 
     def test_agree_row_is_44px_tap_target(self):
         splash = _splash_css()
-        phone = splash.split("@media (max-width: 480px)", 1)[1]
-        agree = phone.split("#passwordGate .gate-agree", 1)[1][:400]
+        agree = splash.split("#passwordGate .gate-agree", 1)[1][:500]
         self.assertIn("min-height: 44px", agree)
         self.assertIn("min-width: 44px", agree)
+        box = splash.split("#passwordGate .gate-agree input", 1)[1][:200]
+        self.assertIn("width: 22px", box)
+        self.assertIn("height: 22px", box)
         self.assertIn('for="gateAgree"', _password_gate())
+        self.assertIn('id="gateSummonHit"', _password_gate())
+
+    def test_agree_off_shows_error(self):
+        init = JS.split("function initPasswordGate", 1)[1].split("function initLogoCredit", 1)[0]
+        self.assertIn("Seal the pact first.", init)
+        self.assertIn("gateSummonHit", init)
+        self.assertIn("if (!syncDeskGateSummon())", init)
+        self.assertNotIn("if (!syncDeskGateSummon()) return;", init)
 
     def test_pact_type_is_16px_on_phone_only(self):
         splash = _splash_css()
@@ -160,10 +181,16 @@ class PhoneFloorChromeTests(unittest.TestCase):
 
 class PhoneWireAndFreezeTests(unittest.TestCase):
     def test_wire_note_newest_first(self):
+        self.assertIn("2026-08-15-phone-gate-se", WIRE_JS)
         self.assertIn("2026-08-15-phone-gate-nav", WIRE_JS)
         self.assertIn("100% / 100dvw", WIRE_JS)
         self.assertIn("Paper. Follower OFF.", WIRE_JS)
-        self.assertNotIn("ZT", WIRE_JS.split("2026-08-15-phone-gate-nav", 1)[1].split("2026-08-15-login-splash", 1)[0])
+        self.assertIn("seal the pact", WIRE_JS)
+        self.assertNotIn("ZT", WIRE_JS.split("2026-08-15-phone-gate-se", 1)[1].split("2026-08-15-login-splash", 1)[0])
+        self.assertLess(
+            WIRE_JS.find("2026-08-15-phone-gate-se"),
+            WIRE_JS.find("2026-08-15-phone-gate-nav"),
+        )
         self.assertLess(
             WIRE_JS.find("2026-08-15-phone-gate-nav"),
             WIRE_JS.find("2026-08-15-login-splash"),
