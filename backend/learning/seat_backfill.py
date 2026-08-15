@@ -31,13 +31,21 @@ from backend.agents.chair_gates import (
 )
 from backend.agents.cheap import CheapSpecialist
 from backend.agents.exhaust import ExhaustSpecialist
+from backend.agents.funding import FundingSpecialist
+from backend.agents.liq import LiqSpecialist
 from backend.agents.momentum import MomentumSpecialist
 from backend.agents.odds import OddsSpecialist
+from backend.agents.oi_pressure import OIPressureSpecialist
 from backend.agents.session_tod import SessionTodSpecialist
 from backend.agents.strike import StrikeSpecialist
 from backend.agents.volatility import VolatilitySpecialist
 from backend.agents.volume import VolumeSpecialist
 from backend.config import settings
+from backend.data.coinglass import (
+    apply_hist_to_market,
+    empty_derivatives,
+    feeds_present,
+)
 from backend.learning.adaptive import AdaptiveLearner
 from backend.learning.regime_keys import regime_from_call
 from backend.services.huddle import PRUNE_DAYS
@@ -53,7 +61,7 @@ SERIES_ETH = "KXETHD"
 BACKFILL_SERIES = (SERIES_BTC, SERIES_ETH)
 
 # Seats that can vote from historical 1m candles + strike + clock. No live book.
-REBUILDABLE_SEATS: Tuple[str, ...] = (
+CANDLE_SEATS: Tuple[str, ...] = (
     "candle",       # WICK
     "momentum",     # DRIFT
     "volume",       # PULSE
@@ -64,6 +72,13 @@ REBUILDABLE_SEATS: Tuple[str, ...] = (
     "exhaust",      # EXHAUST
     "volatility",   # VOLT
 )
+# Same CoinGlass client as live. Grade only when that hist feed answered.
+COINGLASS_SEATS: Tuple[str, ...] = (
+    "funding",      # CARRY ← funding
+    "oi_pressure",  # CHAIN ← open interest / OI change
+    "liq",          # CASCADE ← liquidations
+)
+REBUILDABLE_SEATS: Tuple[str, ...] = CANDLE_SEATS + COINGLASS_SEATS
 REBUILDABLE_CALLSIGNS = {
     "candle": "WICK",
     "momentum": "DRIFT",
@@ -74,14 +89,24 @@ REBUILDABLE_CALLSIGNS = {
     "cheap": "CHEAP",
     "exhaust": "EXHAUST",
     "volatility": "VOLT",
+    "funding": "CARRY",
+    "oi_pressure": "CHAIN",
+    "liq": "CASCADE",
 }
-# Live-book / missing-feed seats — never reconstructed.
+COINGLASS_FEED_TO_SEAT = {
+    "funding": "CARRY",
+    "open_interest": "CHAIN",
+    "liquidations": "CASCADE",
+}
+# Live-book seats we still do not have hist for.
 SKIP_SEATS: Dict[str, str] = {
     "orderflow": "TAPE depth needs a live book",
-    "funding": "CARRY needs hist funding (not on this tape)",
     "whale": "WHALE needs a live tape",
 }
+SKIP_CALLSIGNS = {"orderflow": "TAPE", "whale": "WHALE"}
 LIVE_ONLY_SEATS = tuple(SKIP_SEATS.keys())
+CG_LOOKBACK_HOURS = 8
+CG_HIST_LIMIT = 12
 
 STATUS_NAME = "seat-backfill-status.json"
 DONE_NAME = "seat-backfill.done"
@@ -125,9 +150,22 @@ def backfill_contract() -> Dict[str, Any]:
         "seats_rebuilt": [REBUILDABLE_CALLSIGNS[k] for k in REBUILDABLE_SEATS],
         "seats_rebuilt_keys": list(REBUILDABLE_SEATS),
         "seats_skipped": [
-            {"key": k, "callsign": {"orderflow": "TAPE", "funding": "CARRY", "whale": "WHALE"}[k], "why": why}
+            {"key": k, "callsign": SKIP_CALLSIGNS[k], "why": why}
             for k, why in SKIP_SEATS.items()
         ],
+        "coinglass": {
+            "base": "https://open-api-v4.coinglass.com",
+            "header": "CG-API-KEY",
+            "key_load": "env COINGLASS_API_KEY first, else /etc/secrets/COINGLASS_API_KEY",
+            "key_in_git": False,
+            "seats": ["CARRY", "CHAIN", "CASCADE"],
+            "map": dict(COINGLASS_FEED_TO_SEAT),
+            "interval_order": ["30m", "1h"],
+            "never": "1m",
+            "optional": True,
+            "blocks_candle_replay": False,
+            "reuses_live_client": True,
+        },
         "official_result_only": True,
         "impute_missing_result": False,
         "impute_429": False,
@@ -157,7 +195,9 @@ def print_contract(report: Dict[str, Any] | None = None) -> str:
         f"Days pulled: {c['days']} (huddle prune window)",
         f"Series: {', '.join(c['series'])} (BTC + ETH)",
         f"Seats rebuilt: {', '.join(c['seats_rebuilt'])}",
-        "Seats skipped: TAPE (live book), CARRY (no hist funding), WHALE (live tape)",
+        "Seats skipped: TAPE (live book), WHALE (live tape)",
+        "CoinGlass hist: CARRY (funding), CHAIN (OI), CASCADE (liq) — 30m then 1h, never 1m.",
+        "Grade when the feed answers. Empty hist does not block WICK/DRIFT/PULSE/STRIKE/ODDS/CLOCK/CHEAP/EXHAUST/VOLT.",
         "Official market.result only. Missing result → skip hour. 429 → backoff + skip hour.",
         "Merge into live council-learning-{btc,eth}.json. Tag: backfill. Do not wipe.",
         "No window_calls (hit-rate untouched). Paper. Follower OFF. No live orders. LAW LOCK untouched.",
@@ -169,6 +209,12 @@ def print_contract(report: Dict[str, Any] | None = None) -> str:
             f"skipped_no_result={report.get('hours_skipped_no_result')} "
             f"skipped_429={report.get('hours_skipped_429')} "
             f"assets={report.get('assets')}"
+        )
+        cg = report.get("coinglass") if isinstance(report.get("coinglass"), dict) else {}
+        samples = cg.get("seats_with_samples") or []
+        lines.append(
+            f"CoinGlass samples: {', '.join(samples) if samples else 'none'} "
+            f"feeds={cg.get('feeds')}"
         )
     text = "\n".join(lines)
     print(text)
@@ -212,6 +258,41 @@ def is_rebuildable_seat(name: str) -> bool:
 
 def is_live_only_seat(name: str) -> bool:
     return str(name or "") in LIVE_ONLY_SEATS
+
+
+def is_coinglass_seat(name: str) -> bool:
+    return str(name or "") in COINGLASS_SEATS
+
+
+def callsigns_from_feeds(feeds: Dict[str, Any] | None) -> List[str]:
+    out: List[str] = []
+    for feed, callsign in COINGLASS_FEED_TO_SEAT.items():
+        if (feeds or {}).get(feed):
+            out.append(callsign)
+    return out
+
+
+def _cg_seat_allowed(name: str, feeds: Dict[str, bool] | None) -> bool:
+    """CARRY/CHAIN/CASCADE vote only when that hist feed returned bars."""
+    if name not in COINGLASS_SEATS:
+        return True
+    feeds = feeds or {}
+    if name == "funding":
+        return bool(feeds.get("funding"))
+    if name == "oi_pressure":
+        return bool(feeds.get("open_interest"))
+    if name == "liq":
+        return bool(feeds.get("liquidations"))
+    return False
+
+
+def merge_feeds(*rows: Dict[str, bool] | None) -> Dict[str, bool]:
+    out = {"funding": False, "open_interest": False, "liquidations": False}
+    for row in rows:
+        for key in out:
+            if (row or {}).get(key):
+                out[key] = True
+    return out
 
 
 def filter_rebuildable_votes(votes: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -347,14 +428,23 @@ def _agent_factory() -> Dict[str, Any]:
         "cheap": CheapSpecialist,
         "exhaust": ExhaustSpecialist,
         "volatility": VolatilitySpecialist,
+        "funding": FundingSpecialist,
+        "oi_pressure": OIPressureSpecialist,
+        "liq": LiqSpecialist,
     }
 
 
-async def vote_rebuildable_seats(market_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Run only offline seats. Live-only seats are never constructed."""
+async def vote_rebuildable_seats(
+    market_data: Dict[str, Any],
+    *,
+    cg_feeds: Dict[str, bool] | None = None,
+) -> Dict[str, Any]:
+    """Run offline seats. CoinGlass seats only when that hist feed answered."""
     votes: Dict[str, Any] = {}
     for name, cls in _agent_factory().items():
         if not is_rebuildable_seat(name):
+            continue
+        if not _cg_seat_allowed(name, cg_feeds):
             continue
         agent = cls()
         try:
@@ -368,6 +458,48 @@ async def vote_rebuildable_seats(market_data: Dict[str, Any]) -> Dict[str, Any]:
         d["source"] = BACKFILL_TAG
         votes[name] = d
     return filter_rebuildable_votes(votes)
+
+
+async def fetch_historical_coinglass(
+    start_ms: int,
+    end_ms: int,
+    *,
+    client: Any = None,
+    symbol: str | None = None,
+    limit: int = CG_HIST_LIMIT,
+) -> Dict[str, Any]:
+    """
+    Same CoinGlassClient as live. 404 / no key / flap → empty. Never invents.
+    Never logs the API key.
+    """
+    empty = empty_derivatives("1h")
+    cg = client
+    own = False
+    try:
+        if cg is None:
+            from backend.data.coinglass import CoinGlassClient
+            from backend.data.secrets import load_coinglass_api_key
+            if not load_coinglass_api_key():
+                empty["skip_reason"] = "no_key"
+                return empty
+            cg = CoinGlassClient(symbol=symbol)
+            own = True
+        getter = getattr(cg, "get_historical_derivatives", None)
+        if not callable(getter):
+            empty["skip_reason"] = "no_client"
+            return empty
+        snap = await getter(start_ms, end_ms, limit=limit)
+        return snap if isinstance(snap, dict) else empty
+    except Exception as e:
+        logger.debug(f"CoinGlass hist skip: {type(e).__name__}")
+        empty["skip_reason"] = "error"
+        return empty
+    finally:
+        if own and cg is not None and hasattr(cg, "close"):
+            try:
+                await cg.close()
+            except Exception:
+                pass
 
 
 def merge_backfill_into_learner(
@@ -571,10 +703,13 @@ async def grade_one_hour(
     already: set[str] | None = None,
     fetch_event: Callable | None = None,
     fetch_candles: Callable | None = None,
+    fetch_coinglass: Callable | None = None,
+    coinglass: Any = None,
 ) -> Dict[str, Any]:
     """
     One settled hour → rebuildable votes → merge into learner.
     Skip (do not fake) on missing official result, 429, or missing candles.
+    CoinGlass hist is optional — 404 / no key never blocks candle seats.
     """
     event = event_ticker_for_hour(series, hour_et)
     if already and event in already:
@@ -638,13 +773,42 @@ async def grade_one_hour(
         as_of=as_of,
         up_pct=up_pct,
     )
-    votes = await vote_rebuildable_seats(md)
+    cg_start = int((snap_end - timedelta(hours=CG_LOOKBACK_HOURS)).timestamp() * 1000)
+    cg_end = int(snap_end.timestamp() * 1000)
+    cg_snap = empty_derivatives("1h")
+    try:
+        if fetch_coinglass is not None:
+            cg_snap = await fetch_coinglass(cg_start, cg_end)
+        elif coinglass is not None:
+            cg_snap = await fetch_historical_coinglass(
+                cg_start, cg_end, client=coinglass, symbol=candle_symbol
+            )
+        else:
+            cg_snap = empty_derivatives("1h")
+            cg_snap["skip_reason"] = "no_client"
+    except Exception as e:
+        logger.debug(f"CoinGlass hist skip: {type(e).__name__}")
+        cg_snap = empty_derivatives("1h")
+        cg_snap["skip_reason"] = "error"
+    if not isinstance(cg_snap, dict):
+        cg_snap = empty_derivatives("1h")
+        cg_snap["skip_reason"] = "error"
+    md = apply_hist_to_market(md, cg_snap)
+    cg_feeds = feeds_present(cg_snap)
+    votes = await vote_rebuildable_seats(md, cg_feeds=cg_feeds)
     directional = {
         k: v for k, v in votes.items()
         if isinstance(v, dict) and v.get("direction") in ("UP", "DOWN")
     }
     if not directional:
-        return {"status": "skip", "reason": "no_directional_votes", "event": event, "ticker": ticker}
+        return {
+            "status": "skip",
+            "reason": "no_directional_votes",
+            "event": event,
+            "ticker": ticker,
+            "coinglass_feeds": cg_feeds,
+            "coinglass_skip": cg_snap.get("skip_reason"),
+        }
 
     called_at = as_of.isoformat()
     reg = regime_from_call(called_at, close_utc.isoformat())
@@ -659,6 +823,9 @@ async def grade_one_hour(
         "seats": sorted(directional.keys()),
         "tag": BACKFILL_TAG,
         "asset": ticker_asset(ticker) or asset_for_series(series),
+        "coinglass_feeds": cg_feeds,
+        "coinglass_skip": cg_snap.get("skip_reason"),
+        "coinglass_seats": callsigns_from_feeds(cg_feeds),
     }
 
 
@@ -673,6 +840,8 @@ async def run_asset_backfill(
     already: set[str] | None = None,
     fetch_event: Callable | None = None,
     fetch_candles: Callable | None = None,
+    fetch_coinglass: Callable | None = None,
+    coinglass: Any = None,
     max_hours: int | None = None,
     data_root: Path | None = None,
 ) -> Dict[str, Any]:
@@ -691,43 +860,64 @@ async def run_asset_backfill(
     seat_n: Dict[str, int] = {k: 0 for k in REBUILDABLE_SEATS}
     tickers: List[str] = []
     events: List[str] = []
+    feeds_any = {"funding": False, "open_interest": False, "liquidations": False}
+    cg_skips: set[str] = set()
+    own_cg = False
+    if fetch_coinglass is None and coinglass is None:
+        from backend.data.secrets import load_coinglass_api_key
+        if load_coinglass_api_key():
+            from backend.data.coinglass import CoinGlassClient
+            coinglass = CoinGlassClient(symbol=symbol)
+            own_cg = True
 
-    for hour in slots:
-        try:
-            rec = await grade_one_hour(
-                series=series,
-                hour_et=hour,
-                learner=learner,
-                kalshi=kalshi,
-                candle_symbol=symbol,
-                already=seen,
-                fetch_event=fetch_event,
-                fetch_candles=fetch_candles,
-            )
-        except KalshiHourSkip as e:
-            rec = {"status": "skip", "reason": e.reason, "event": e.hour}
-        except Exception as e:
-            logger.debug(f"backfill hour fail {series} {hour}: {e}")
-            rec = {"status": "skip", "reason": "error"}
-        if rec.get("status") == "graded":
-            graded += 1
-            ev = rec.get("event")
-            if ev:
-                seen.add(str(ev))
-                events.append(str(ev))
-            if rec.get("ticker"):
-                tickers.append(str(rec["ticker"]))
-            for name in rec.get("seats") or []:
-                if name in seat_n:
-                    seat_n[name] += 1
-        else:
-            reason = rec.get("reason") or "other"
-            if reason == RATE_LIMIT:
-                skip_429 += 1
-            elif reason in ("no_official_result", "empty_event"):
-                skip_result += 1
-            elif reason != "already_graded":
-                skip_other += 1
+    try:
+        for hour in slots:
+            try:
+                rec = await grade_one_hour(
+                    series=series,
+                    hour_et=hour,
+                    learner=learner,
+                    kalshi=kalshi,
+                    candle_symbol=symbol,
+                    already=seen,
+                    fetch_event=fetch_event,
+                    fetch_candles=fetch_candles,
+                    fetch_coinglass=fetch_coinglass,
+                    coinglass=coinglass,
+                )
+            except KalshiHourSkip as e:
+                rec = {"status": "skip", "reason": e.reason, "event": e.hour}
+            except Exception as e:
+                logger.debug(f"backfill hour fail {series} {hour}: {e}")
+                rec = {"status": "skip", "reason": "error"}
+            feeds_any = merge_feeds(feeds_any, rec.get("coinglass_feeds"))
+            if rec.get("coinglass_skip"):
+                cg_skips.add(str(rec["coinglass_skip"]))
+            if rec.get("status") == "graded":
+                graded += 1
+                ev = rec.get("event")
+                if ev:
+                    seen.add(str(ev))
+                    events.append(str(ev))
+                if rec.get("ticker"):
+                    tickers.append(str(rec["ticker"]))
+                for name in rec.get("seats") or []:
+                    if name in seat_n:
+                        seat_n[name] += 1
+            else:
+                reason = rec.get("reason") or "other"
+                if reason == RATE_LIMIT:
+                    skip_429 += 1
+                elif reason in ("no_official_result", "empty_event"):
+                    skip_result += 1
+                elif reason != "already_graded":
+                    skip_other += 1
+    finally:
+        if own_cg and coinglass is not None and hasattr(coinglass, "close"):
+            try:
+                await coinglass.close()
+            except Exception:
+                pass
 
     if persist and hasattr(learner, "save"):
         if data_root is not None:
@@ -749,6 +939,11 @@ async def run_asset_backfill(
         "events": events,
         "tag": BACKFILL_TAG,
         "merge": True,
+        "coinglass": {
+            "feeds": feeds_any,
+            "seats_with_samples": callsigns_from_feeds(feeds_any),
+            "skip_reasons": sorted(cg_skips),
+        },
     }
 
 
@@ -756,12 +951,14 @@ async def run_seat_backfill(
     *,
     learners: Dict[str, AdaptiveLearner] | None = None,
     kalshi_clients: Dict[str, Any] | None = None,
+    coinglass_clients: Dict[str, Any] | None = None,
     days: int = BACKFILL_DAYS,
     persist: bool = True,
     data_root: Path | None = None,
     now: datetime | None = None,
     fetch_event: Callable | None = None,
     fetch_candles: Callable | None = None,
+    fetch_coinglass: Callable | None = None,
     max_hours: int | None = None,
     force: bool = False,
 ) -> Dict[str, Any]:
@@ -807,12 +1004,23 @@ async def run_seat_backfill(
             already=already_by_asset.get(asset),
             fetch_event=fetch_event,
             fetch_candles=fetch_candles,
+            fetch_coinglass=fetch_coinglass,
+            coinglass=(coinglass_clients or {}).get(asset),
             max_hours=max_hours,
             data_root=root if data_root is not None else None,
         )
         per[asset] = rec
         already_by_asset[asset].update(rec.get("events") or [])
 
+    cg_merged = merge_feeds(
+        ((per.get("btc") or {}).get("coinglass") or {}).get("feeds"),
+        ((per.get("eth") or {}).get("coinglass") or {}).get("feeds"),
+    )
+    cg_skips: List[str] = []
+    for a in assets:
+        for reason in ((per.get(a) or {}).get("coinglass") or {}).get("skip_reasons") or []:
+            if reason not in cg_skips:
+                cg_skips.append(reason)
     report = {
         "ok": True,
         "tag": BACKFILL_TAG,
@@ -823,6 +1031,13 @@ async def run_seat_backfill(
         "assets": per,
         "seats_rebuilt": contract["seats_rebuilt"],
         "seats_skipped": contract["seats_skipped"],
+        "coinglass": {
+            "feeds": cg_merged,
+            "seats_with_samples": callsigns_from_feeds(cg_merged),
+            "skip_reasons": cg_skips,
+            "btc": (per.get("btc") or {}).get("coinglass"),
+            "eth": (per.get("eth") or {}).get("coinglass"),
+        },
         "merge": True,
         "wipe_live_brain": False,
         "paper": True,
@@ -857,6 +1072,7 @@ async def maybe_run_boot_backfill(dual: Any) -> Dict[str, Any]:
         return {"ok": True, "skipped": "already_done"}
     learners = {}
     clients = {}
+    cg_clients = {}
     for c in getattr(dual, "_councils", lambda: [])():
         asset = getattr(c, "asset", None)
         if not asset:
@@ -865,8 +1081,14 @@ async def maybe_run_boot_backfill(dual: Any) -> Dict[str, Any]:
         pipe = getattr(c, "pipeline", None)
         if pipe is not None:
             clients[asset] = getattr(pipe, "kalshi", None)
+            cg_clients[asset] = getattr(pipe, "coinglass", None)
     try:
-        report = await run_seat_backfill(learners=learners, kalshi_clients=clients, persist=True)
+        report = await run_seat_backfill(
+            learners=learners,
+            kalshi_clients=clients,
+            coinglass_clients=cg_clients,
+            persist=True,
+        )
         for c in getattr(dual, "_councils", lambda: [])():
             try:
                 if hasattr(c, "leader") and hasattr(c.leader, "sync_from_learner"):

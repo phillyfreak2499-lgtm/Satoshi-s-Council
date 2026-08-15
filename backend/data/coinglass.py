@@ -141,6 +141,51 @@ def summarize_derivatives(
     }
 
 
+def empty_derivatives(interval: str = "30m") -> Dict[str, Any]:
+    """Empty hist snapshot. Does not rewrite the live client empty shape."""
+    snap = summarize_derivatives([], [], [], interval)
+    snap["healthy"] = False
+    snap["feeds"] = {"funding": False, "open_interest": False, "liquidations": False}
+    snap["skip_reason"] = ""
+    return snap
+
+
+def feeds_present(cg: Dict[str, Any] | None) -> Dict[str, bool]:
+    """Which of the three hist feeds actually returned bars. Never invents a print."""
+    if not isinstance(cg, dict):
+        return {"funding": False, "open_interest": False, "liquidations": False}
+    feeds = cg.get("feeds") if isinstance(cg.get("feeds"), dict) else {}
+    return {
+        "funding": bool(feeds.get("funding") or cg.get("funding_rate") is not None),
+        "open_interest": bool(feeds.get("open_interest") or cg.get("open_interest") is not None),
+        "liquidations": bool(
+            feeds.get("liquidations")
+            or cg.get("liq_long_usd") is not None
+            or cg.get("liq_short_usd") is not None
+        ),
+    }
+
+
+def apply_hist_to_market(market: Dict[str, Any], cg: Dict[str, Any]) -> Dict[str, Any]:
+    """Inject CoinGlass hist fields the live pipeline already uses. Merge, don't wipe."""
+    out = dict(market or {})
+    if not isinstance(cg, dict):
+        return out
+    out["coinglass"] = cg
+    out["funding_rate"] = cg.get("funding_rate")
+    out["open_interest"] = cg.get("open_interest")
+    out["oi_delta_1h"] = cg.get("oi_delta_1h")
+    out["funding_history"] = list(cg.get("funding_history") or [])
+    out["oi_history"] = list(cg.get("oi_history") or [])
+    out["liq_long_usd"] = cg.get("liq_long_usd")
+    out["liq_short_usd"] = cg.get("liq_short_usd")
+    out["liq_net_usd"] = cg.get("liq_net_usd")
+    out["liq_history"] = list(cg.get("liq_history") or [])
+    out["cg_interval"] = cg.get("interval") or "30m"
+    out["cg_daily_heatmap"] = bool(cg.get("daily_heatmap"))
+    return out
+
+
 def _redact(text: Any, secret: Optional[str]) -> str:
     s = "" if text is None else str(text)
     if secret:
@@ -410,3 +455,80 @@ class CoinGlassClient:
             snap = self._empty(f"snapshot fail: {type(e).__name__}")
             self._log_cycle_miss(snap)
             return snap
+
+    async def _hist_rows(
+        self,
+        path: str,
+        start_ms: int,
+        end_ms: int,
+        limit: int,
+    ) -> Tuple[List[Dict[str, Any]], str]:
+        """Reuse live _get_rows. 30m then 1h. Never 1m."""
+        last_iv = "30m"
+        for iv in live_interval_order():
+            if iv == "1m":
+                continue
+            last_iv = iv
+            rows = await self._get_rows(
+                path,
+                iv,
+                limit=limit,
+                start_time=int(start_ms),
+                end_time=int(end_ms),
+            )
+            if rows:
+                return rows, iv
+        return [], last_iv
+
+    async def get_historical_derivatives(
+        self,
+        start_ms: int,
+        end_ms: int,
+        limit: int = 24,
+    ) -> Dict[str, Any]:
+        """
+        Hist funding / OI / liq for a settled hour. Reuses live PATHS + _get_rows.
+        Tries 30m then 1h. Never 1m. Empty → skip_reason. Never invents prints.
+        Never logs the API key. Does not rewrite live cycle logging / health.
+        """
+        empty = empty_derivatives("30m")
+        if not self.configured():
+            empty["skip_reason"] = "no_key"
+            empty["reason"] = "key missing"
+            return empty
+        if start_ms <= 0 or end_ms <= 0 or end_ms <= start_ms:
+            empty["skip_reason"] = "bad_window"
+            return empty
+        saved = list(getattr(self, "_cycle_misses", []) or [])
+        self._cycle_misses = []
+        try:
+            (fund_rows, fund_iv), (oi_rows, oi_iv), (liq_rows, liq_iv) = await asyncio.gather(
+                self._hist_rows(PATHS[0], start_ms, end_ms, limit),
+                self._hist_rows(PATHS[1], start_ms, end_ms, limit),
+                self._hist_rows(PATHS[2], start_ms, end_ms, limit),
+            )
+            interval = fund_iv or oi_iv or liq_iv or "30m"
+            snap = summarize_derivatives(fund_rows, oi_rows, liq_rows, interval)
+            snap["feeds"] = {
+                "funding": bool(fund_rows),
+                "open_interest": bool(oi_rows),
+                "liquidations": bool(liq_rows),
+            }
+            missing = []
+            if not fund_rows:
+                missing.append("funding")
+            if not oi_rows:
+                missing.append("open_interest")
+            if not liq_rows:
+                missing.append("liquidations")
+            if missing:
+                snap["missing_feeds"] = missing
+            if not snap.get("healthy"):
+                snap["skip_reason"] = "empty_or_404"
+            return snap
+        except Exception as e:
+            empty["skip_reason"] = "error"
+            empty["reason"] = type(e).__name__
+            return empty
+        finally:
+            self._cycle_misses = saved

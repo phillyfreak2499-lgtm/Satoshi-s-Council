@@ -174,26 +174,43 @@ class SeatFilterTests(unittest.TestCase):
         c = sb.backfill_contract()
         self.assertEqual(
             c["seats_rebuilt"],
-            ["WICK", "DRIFT", "PULSE", "STRIKE", "ODDS", "CLOCK", "CHEAP", "EXHAUST", "VOLT"],
+            [
+                "WICK", "DRIFT", "PULSE", "STRIKE", "ODDS", "CLOCK",
+                "CHEAP", "EXHAUST", "VOLT", "CARRY", "CHAIN", "CASCADE",
+            ],
         )
         skipped = {row["callsign"] for row in c["seats_skipped"]}
-        self.assertEqual(skipped, {"TAPE", "CARRY", "WHALE"})
+        self.assertEqual(skipped, {"TAPE", "WHALE"})
+        self.assertNotIn("CARRY", skipped)
         self.assertTrue(sb.is_rebuildable_seat("candle"))
+        self.assertTrue(sb.is_rebuildable_seat("funding"))
+        self.assertTrue(sb.is_rebuildable_seat("oi_pressure"))
+        self.assertTrue(sb.is_rebuildable_seat("liq"))
         self.assertTrue(sb.is_live_only_seat("orderflow"))
-        self.assertTrue(sb.is_live_only_seat("funding"))
+        self.assertFalse(sb.is_live_only_seat("funding"))
         self.assertTrue(sb.is_live_only_seat("whale"))
+        self.assertEqual(c["coinglass"]["seats"], ["CARRY", "CHAIN", "CASCADE"])
+        self.assertEqual(c["coinglass"]["interval_order"], ["30m", "1h"])
+        self.assertEqual(c["coinglass"]["never"], "1m")
+        self.assertTrue(c["coinglass"]["reuses_live_client"])
+        self.assertFalse(c["coinglass"]["blocks_candle_replay"])
+        self.assertFalse(c["coinglass"]["key_in_git"])
 
     def test_filter_drops_live_only(self):
         votes = sb.filter_rebuildable_votes({
             "candle": {"direction": "UP", "confidence": 70},
             "orderflow": {"direction": "UP", "confidence": 80},
             "funding": {"direction": "DOWN", "confidence": 80},
+            "oi_pressure": {"direction": "UP", "confidence": 70},
+            "liq": {"direction": "DOWN", "confidence": 75},
             "whale": {"direction": "UP", "confidence": 80},
             "law": {"direction": "UP", "confidence": 90},
         })
         self.assertIn("candle", votes)
+        self.assertIn("funding", votes)
+        self.assertIn("oi_pressure", votes)
+        self.assertIn("liq", votes)
         self.assertNotIn("orderflow", votes)
-        self.assertNotIn("funding", votes)
         self.assertNotIn("whale", votes)
         self.assertNotIn("law", votes)
 
@@ -354,10 +371,15 @@ class TriggerAndWireTests(unittest.TestCase):
 
     def test_wire_note(self):
         self.assertIn("2026-08-15-seat-backfill", WIRE_JS)
-        chunk = WIRE_JS.split("2026-08-15-seat-backfill", 1)[1][:500]
+        chunk = WIRE_JS.split("2026-08-15-seat-backfill", 1)[1][:700]
         self.assertIn("90-day Kalshi seat backfill", chunk)
         self.assertIn("Merge into the live brain", chunk)
         self.assertIn("Follower OFF", chunk)
+        self.assertIn("CoinGlass hist", chunk)
+        self.assertIn("30m then 1h", chunk)
+        self.assertIn("CARRY", chunk)
+        self.assertIn("CHAIN", chunk)
+        self.assertIn("CASCADE", chunk)
         self.assertNotIn("ZT ·", chunk)
         self.assertNotIn("KXBTCD", chunk)
         self.assertNotIn("KXETHD", chunk)
@@ -369,11 +391,22 @@ class TriggerAndWireTests(unittest.TestCase):
         self.assertIn("note_backfill_hour", ADAPTIVE_PY)
 
     def test_print_contract_mentions_hours_and_seats(self):
-        text = sb.print_contract({"hours_graded": 12, "hours_skipped_no_result": 3, "hours_skipped_429": 1, "assets": "btc+eth"})
+        text = sb.print_contract({
+            "hours_graded": 12,
+            "hours_skipped_no_result": 3,
+            "hours_skipped_429": 1,
+            "assets": "btc+eth",
+            "coinglass": {
+                "feeds": {"funding": True, "open_interest": False, "liquidations": True},
+                "seats_with_samples": ["CARRY", "CASCADE"],
+            },
+        })
         self.assertIn("90-day", text)
         self.assertIn("WICK", text)
         self.assertIn("TAPE", text)
+        self.assertIn("CARRY", text)
         self.assertIn("hours_graded=12", text)
+        self.assertIn("CoinGlass samples: CARRY, CASCADE", text)
 
 
 class ReconstructMidTests(unittest.TestCase):
@@ -385,6 +418,191 @@ class ReconstructMidTests(unittest.TestCase):
         self.assertIsNone(sb.reconstructed_yes_mid(None, 64000))
         # result is not an argument — cannot leak finish into mid
         self.assertNotIn("official_y_finish", sb.reconstructed_yes_mid.__code__.co_names)
+
+
+def _cg_fixture_snap():
+    from backend.data.coinglass import summarize_derivatives
+    t0 = 1_775_000_000_000
+    return summarize_derivatives(
+        [
+            {"time": t0, "close": "0.00040"},
+            {"time": t0 + 3_600_000, "close": "0.00100"},
+        ],
+        [
+            {"time": t0, "close": "9000000000"},
+            {"time": t0 + 3_600_000, "close": "9300000000"},
+        ],
+        [{
+            "time": t0 + 3_600_000,
+            "long_liquidation_usd": "8000000",
+            "short_liquidation_usd": "500000",
+        }],
+        "1h",
+    )
+
+
+def _roll_candles(n=80, close=64100.0):
+    """Last bars drop so CHAIN can see crowded longs + roll."""
+    start = datetime(2026, 8, 10, 18, 0, tzinfo=UTC)
+    rows = []
+    px = float(close)
+    for i in range(n):
+        t = start + timedelta(minutes=i)
+        if i >= n - 4:
+            px = px - 50
+        rows.append({
+            "open_time": int(t.timestamp() * 1000),
+            "open": px + 20,
+            "high": px + 30,
+            "low": px - 10,
+            "close": px,
+            "volume": 10.0 + i,
+            "close_time": int(t.timestamp() * 1000) + 59999,
+        })
+    return rows
+
+
+class CoinGlassHistBackfillTests(unittest.IsolatedAsyncioTestCase):
+    def test_no_real_key_in_repo(self):
+        self.assertNotIn("COINGLASS_API_KEY=", BACKFILL_PY)
+        self.assertNotIn("CG-API-KEY:", BACKFILL_PY)
+        src = (ROOT / "backend" / "data" / "coinglass.py").read_text(encoding="utf-8")
+        self.assertIn("Never logged", src)
+        self.assertIn("Never logs the API key", src)
+        self.assertNotIn("sk_live", src + BACKFILL_PY)
+        self.assertIn("from backend.data.coinglass import", BACKFILL_PY)
+        self.assertNotIn("class CoinGlass", BACKFILL_PY)
+        self.assertIn("get_historical_derivatives", src)
+        self.assertIn("live_interval_order", src)
+        self.assertIn("PATHS", src)
+        self.assertIn("30m then 1h", src)
+        self.assertIn("Never 1m", src)
+
+    async def test_fixture_grades_carry_chain_cascade(self):
+        learner = AdaptiveLearner(asset="btc")
+        snap = _cg_fixture_snap()
+        self.assertTrue(snap["feeds"]["funding"])
+        self.assertTrue(snap["feeds"]["open_interest"])
+        self.assertTrue(snap["feeds"]["liquidations"])
+
+        async def ev(_ticker):
+            return _official_event("KXBTCD-26AUG1016-T63999.99", "no"), None
+
+        async def candles():
+            return _roll_candles()
+
+        async def cg(_start, _end):
+            return snap
+
+        rec = await sb.grade_one_hour(
+            series="KXBTCD",
+            hour_et=_hour_et(2026, 8, 10, 15),
+            learner=learner,
+            kalshi=None,
+            candle_symbol="BTCUSDT",
+            fetch_event=ev,
+            fetch_candles=candles,
+            fetch_coinglass=cg,
+        )
+        self.assertEqual(rec.get("coinglass_seats"), ["CARRY", "CHAIN", "CASCADE"])
+        self.assertEqual(rec["coinglass_feeds"]["funding"], True)
+        if rec.get("status") != "graded":
+            self.fail(f"expected graded hour, got {rec}")
+        cg_voted = {s for s in rec["seats"] if s in sb.COINGLASS_SEATS}
+        self.assertTrue(
+            cg_voted,
+            f"CARRY/CHAIN/CASCADE should vote from fixture, seats={rec['seats']}",
+        )
+        n = sum(
+            int(learner.correct.get(s) or 0) + int(learner.wrong.get(s) or 0)
+            for s in sb.COINGLASS_SEATS
+        )
+        self.assertGreater(n, 0)
+
+    async def test_coinglass_404_does_not_block_candle_seats(self):
+        learner = AdaptiveLearner(asset="btc")
+
+        async def ev(_ticker):
+            return _official_event("KXBTCD-26AUG1016-T63999.99", "yes"), None
+
+        async def empty_cg(_start, _end):
+            from backend.data.coinglass import empty_derivatives
+            out = empty_derivatives("1h")
+            out["skip_reason"] = "empty_or_404"
+            return out
+
+        rec = await sb.grade_one_hour(
+            series="KXBTCD",
+            hour_et=_hour_et(2026, 8, 10, 15),
+            learner=learner,
+            kalshi=None,
+            candle_symbol="BTCUSDT",
+            fetch_event=ev,
+            fetch_candles=_async_candles(64010.0),
+            fetch_coinglass=empty_cg,
+        )
+        self.assertEqual(rec.get("coinglass_feeds"), {
+            "funding": False, "open_interest": False, "liquidations": False,
+        })
+        if rec.get("status") == "graded":
+            self.assertTrue(any(s in sb.CANDLE_SEATS for s in rec["seats"]))
+            self.assertFalse(any(s in sb.COINGLASS_SEATS for s in rec["seats"]))
+            n = sum(
+                int(learner.correct.get(s) or 0) + int(learner.wrong.get(s) or 0)
+                for s in sb.CANDLE_SEATS
+            )
+            self.assertGreater(n, 0)
+        else:
+            self.assertIn(rec.get("reason"), ("no_directional_votes", "graded"))
+
+    async def test_no_key_skips_cg_seats_not_candles(self):
+        from backend.data.coinglass import empty_derivatives
+        learner = AdaptiveLearner(asset="eth")
+
+        async def ev(_ticker):
+            return _official_event("KXETHD-26AUG1016-T1874.99", "no"), None
+
+        async def no_key(_start, _end):
+            out = empty_derivatives("1h")
+            out["skip_reason"] = "no_key"
+            return out
+
+        rec = await sb.grade_one_hour(
+            series="KXETHD",
+            hour_et=_hour_et(2026, 8, 10, 15),
+            learner=learner,
+            kalshi=None,
+            candle_symbol="ETHUSDT",
+            fetch_event=ev,
+            fetch_candles=_async_candles(1870.0),
+            fetch_coinglass=no_key,
+        )
+        self.assertEqual(rec.get("coinglass_skip") or "no_key", "no_key")
+        if rec.get("status") == "graded":
+            self.assertNotIn("funding", rec["seats"])
+            self.assertNotIn("oi_pressure", rec["seats"])
+            self.assertNotIn("liq", rec["seats"])
+
+    async def test_vote_uses_existing_client_fields(self):
+        from backend.data.coinglass import apply_hist_to_market
+        md = sb.build_market_data(
+            candles=_roll_candles(),
+            spot=63900.0,
+            strike=63999.99,
+            ticker="KXBTCD-26AUG1016-T63999.99",
+            close_time=datetime(2026, 8, 10, 20, 0, tzinfo=UTC),
+            as_of=datetime(2026, 8, 10, 19, 20, tzinfo=UTC),
+            up_pct=42.0,
+        )
+        md = apply_hist_to_market(md, _cg_fixture_snap())
+        votes = await sb.vote_rebuildable_seats(
+            md,
+            cg_feeds={"funding": True, "open_interest": True, "liquidations": True},
+        )
+        self.assertIn("funding", votes)
+        self.assertIn("liq", votes)
+        self.assertIn(votes["funding"].get("direction"), ("UP", "DOWN"))
+        self.assertIn(votes["liq"].get("direction"), ("UP", "DOWN"))
 
 
 if __name__ == "__main__":

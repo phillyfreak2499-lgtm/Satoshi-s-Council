@@ -920,14 +920,17 @@ async def admin_seat_backfill(request: Request):
     from backend.learning.seat_backfill import run_seat_backfill
     learners = {}
     clients = {}
+    cg_clients = {}
     for c in council._councils():
         learners[c.asset] = c.learner
         pipe = getattr(c, "pipeline", None)
         if pipe is not None:
             clients[c.asset] = getattr(pipe, "kalshi", None)
+            cg_clients[c.asset] = getattr(pipe, "coinglass", None)
     report = await run_seat_backfill(
         learners=learners,
         kalshi_clients=clients,
+        coinglass_clients=cg_clients,
         persist=True,
         force=force,
     )

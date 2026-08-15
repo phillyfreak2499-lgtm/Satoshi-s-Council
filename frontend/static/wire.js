@@ -11,7 +11,7 @@ window.COUNCIL_WIRE = [
     "id": "2026-08-15-seat-backfill",
     "at": "2026-08-15T22:30:00-05:00",
     "title": "90-day Kalshi seat backfill",
-    "why": "BTC and ETH brains get settled 1h tape they never sat through. Merge into the live brain. Paper. Follower OFF."
+    "why": "BTC and ETH brains get settled 1h tape they never sat through. CoinGlass hist (30m then 1h) grades CARRY, CHAIN, and CASCADE when the feed answers. Merge into the live brain. Paper. Follower OFF."
   },
   {
     "id": "2026-08-15-summon-oath",
