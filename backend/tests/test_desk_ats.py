@@ -1038,6 +1038,259 @@ class AtsGateTests(unittest.TestCase):
             self.assertIn("SIT AFTER KICK", board["pick"].get("gate") or board["chair"]["call"])
 
 
+class AtsEaglesRankTests(unittest.TestCase):
+    """Prefer PHI among tickets that already cleared Ares v1 gates. Ranking only."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        desk_ats.reset_for_tests(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _row(self, **kw):
+        base = {
+            "kind": "ml",
+            "leftover": 6.0,
+            "ice": None,
+            "unknown_book": False,
+            "side": "YES",
+        }
+        base.update(kw)
+        return base
+
+    def test_parse_already_has_nfl_phi(self):
+        blob, away, home = desk_ats.parse_event_teams("KXNFLGAME-26AUG17PHIDAL")
+        self.assertEqual((blob, away, home), ("PHIDAL", "PHI", "DAL"))
+        self.assertEqual(desk_ats.ticker_side_code("KXNFLGAME-26AUG17PHIDAL-PHI"), "PHI")
+        self.assertIn("PHI", desk_ats.TEAM_COLORS)
+        self.assertTrue(desk_ats.eagles_ticket({
+            "ticker": "KXNFLGAME-26AUG17PHIDAL-PHI",
+            "event": "KXNFLGAME-26AUG17PHIDAL",
+            "sport": "NFL",
+            "home": "DAL",
+            "away": "PHI",
+        }))
+        self.assertTrue(desk_ats.eagles_ticket({
+            "ticker": "KXNFLGAME-26AUG17DALPHI-DAL",
+            "event": "KXNFLGAME-26AUG17DALPHI",
+            "sport": "NFL",
+            "home": "PHI",
+            "away": "DAL",
+        }))
+        self.assertTrue(desk_ats.eagles_ticket({
+            "ticker": "KXNFLGAME-26AUG17PHIEAGNYG-PHI",
+            "event": "KXNFLGAME-26AUG17PHIEAGNYG",
+            "game": "PHIEAGNYG",
+            "sport": "NFL",
+        }))
+        self.assertTrue(desk_ats.eagles_ticket({
+            "ticker": "KXNFLGAME-26AUG17NYGDAL-NYG",
+            "sport": "NFL",
+            "title": "Will the Eagles cover?",
+        }))
+        self.assertFalse(desk_ats.eagles_ticket({
+            "ticker": "KXNFLGAME-26AUG15DALSEA-SEA",
+            "sport": "NFL",
+            "home": "SEA",
+            "away": "DAL",
+        }))
+        self.assertFalse(desk_ats.eagles_ticket({
+            "ticker": "KXNBAGAME-26AUG16PHINYK-PHI",
+            "sport": "NBA",
+            "home": "NYK",
+            "away": "PHI",
+            "title": "Will Philadelphia win the 76ers game?",
+        }))
+
+    def test_eligible_phi_beats_nearer_non_phi_inside_72h(self):
+        dal = self._row(
+            ticker="KXNFLGAME-26AUG15DALSEA-SEA",
+            game="DALSEA",
+            sport="NFL",
+            call="SEA",
+            home="SEA",
+            away="DAL",
+            leftover=3.0,
+            close_time="2026-08-16T00:00:00Z",
+        )
+        phi = self._row(
+            ticker="KXNFLGAME-26AUG17PHIDAL-PHI",
+            event="KXNFLGAME-26AUG17PHIDAL",
+            game="PHIDAL",
+            sport="NFL",
+            call="PHI",
+            home="DAL",
+            away="PHI",
+            leftover=4.0,
+            close_time="2026-08-17T20:00:00Z",
+        )
+        self.assertTrue(desk_ats.playable_kick(dal, NOW))
+        self.assertTrue(desk_ats.playable_kick(phi, NOW))
+        self.assertLess(desk_ats.kick_mins_left(dal, NOW), desk_ats.kick_mins_left(phi, NOW))
+        pick = desk_ats.pick_one_game([dal, phi], now=NOW)
+        self.assertEqual(pick["game"], "PHIDAL")
+        self.assertTrue(desk_ats.eagles_ticket(pick))
+        phieag = self._row(
+            ticker="KXNFLSPREAD-26AUG17PHIEAGNYG-PHI3",
+            event="KXNFLSPREAD-26AUG17PHIEAGNYG",
+            game="PHIEAGNYG",
+            sport="NFL",
+            kind="spread",
+            call="COVER",
+            leftover=5.0,
+            close_time="2026-08-17T18:00:00Z",
+        )
+        self.assertEqual(desk_ats.pick_one_game([dal, phieag], now=NOW)["game"], "PHIEAGNYG")
+
+    def test_phi_outside_72h_is_not_selected(self):
+        far_phi = self._row(
+            ticker="KXNFLGAME-26SEP18PHINYG-PHI",
+            event="KXNFLGAME-26SEP18PHINYG",
+            game="PHINYG",
+            sport="NFL",
+            call="PHI",
+            home="NYG",
+            away="PHI",
+            leftover=18.0,
+            close_time="2026-09-18T23:59:00Z",
+        )
+        dal = self._row(
+            ticker="KXNFLGAME-26AUG15DALSEA-SEA",
+            game="DALSEA",
+            sport="NFL",
+            call="SEA",
+            leftover=3.0,
+            close_time="2026-08-16T00:00:00Z",
+        )
+        self.assertTrue(desk_ats.beyond_kick_cap(far_phi, NOW))
+        self.assertFalse(desk_ats.playable_kick(far_phi, NOW))
+        self.assertEqual(desk_ats.pick_one_game([far_phi, dal], now=NOW)["game"], "DALSEA")
+        self.assertIsNone(desk_ats.pick_one_game([far_phi], now=NOW))
+        locked = dict(far_phi)
+        self.assertIsNone(desk_ats.paper_lock_if_clear(locked, now=NOW))
+        self.assertEqual(locked["call"], "WAIT")
+        self.assertIn("72H", locked.get("gate") or "")
+
+    def test_no_eagles_keeps_nearer_kick_dal(self):
+        dal = self._row(
+            ticker="KXNFLSPREAD-26AUG15DALSEA-SEA7",
+            game="DALSEA",
+            sport="NFL",
+            kind="spread",
+            call="COVER",
+            leftover=3.0,
+            close_time="2026-08-16T00:00:00Z",
+            number="SEA -6.5",
+        )
+        later = self._row(
+            ticker="KXNFLGAME-26AUG17KCNY-KC",
+            game="KCNY",
+            sport="NFL",
+            call="KC",
+            leftover=11.0,
+            close_time="2026-08-17T20:00:00Z",
+        )
+        self.assertEqual(desk_ats.pick_one_game([later, dal], now=NOW)["game"], "DALSEA")
+        iced = self._row(
+            ticker="KXNFLGAME-26AUG17PHIDAL-PHI",
+            game="PHIDAL",
+            sport="NFL",
+            call="PHI",
+            home="DAL",
+            away="PHI",
+            leftover=9.0,
+            ice="99¢ CHALK · ICE ON",
+            close_time="2026-08-17T20:00:00Z",
+        )
+        self.assertEqual(desk_ats.pick_one_game([iced, dal], now=NOW)["game"], "DALSEA")
+
+    def test_why_and_watch_say_bird_first(self):
+        pick = {
+            "call": "PHI", "kind": "ml", "number": "PHI @ DAL", "mid": 53, "leftover": 6.2,
+            "public": "DAL", "steam": 0.0, "ice": None,
+            "ticker": "KXNFLGAME-26AUG17PHIDAL-PHI",
+            "event": "KXNFLGAME-26AUG17PHIDAL",
+            "sport": "NFL", "home": "DAL", "away": "PHI",
+            "title": "Will Philadelphia win?",
+            "close_time": "2026-08-17T20:00:00Z",
+        }
+        why = desk_ats.build_why(pick, desk_ats.build_seats(pick), desk_ats.build_subs(pick))
+        self.assertIn("BIRD FIRST", why["line"])
+        self.assertIn("WHY · BIRD FIRST · PHI", why["line"])
+        listed = desk_ats.bird_first_watch({
+            "line": "WATCH · FOX · NATIONAL", "listed": True, "network": "FOX",
+        }, pick)
+        self.assertEqual(listed["line"], "WATCH · FOX · NATIONAL · BIRD FIRST")
+        self.assertEqual(listed["network"], "FOX")
+        dark = desk_ats.bird_first_watch(desk_ats.dark_watch("NO LISTING"), pick)
+        self.assertIn("BIRD FIRST", dark["line"])
+        self.assertNotIn("ESPN", dark["line"])
+        other = desk_ats.bird_first_watch({
+            "line": "WATCH · FOX · NATIONAL", "listed": True, "network": "FOX",
+        }, {"sport": "NFL", "home": "SEA", "away": "DAL", "ticker": "KXNFLGAME-26AUG15DALSEA-SEA"})
+        self.assertEqual(other["line"], "WATCH · FOX · NATIONAL")
+
+    def test_no_follower_live_path_and_ares_weights_off_1h(self):
+        self.assertNotIn("desk_ats", FOLLOWER)
+        self.assertNotIn("desk_ats", LEADER)
+        self.assertIn('"follower": False', ATS)
+        self.assertIn("Never talks to Follower", ATS)
+        self.assertNotIn("/api/follower/order", JS)
+        self.assertIn("paper_only", ATS)
+        self.assertNotIn("btc_shadow", ATS)
+        self.assertNotIn("eth_shadow", ATS)
+        for crypto in ("WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT"):
+            self.assertNotIn(crypto, desk_ats.SPORT_BRAINS["NFL"])
+            self.assertNotIn(crypto, desk_ats.SPORT_BRAINS["NBA"])
+        self.assertNotIn("ARES", GATES)
+        self.assertNotIn("eagles_ticket", GATES)
+        self.assertNotIn("BIRD FIRST", GATES)
+
+    async def test_board_prefers_eagles_and_stays_paper(self):
+        extra = {
+            "KXNFLGAME": [
+                _m(
+                    "KXNFLGAME-26AUG15DALSEA-SEA",
+                    event="KXNFLGAME-26AUG15DALSEA",
+                    title="Will Seattle win the Dallas vs Seattle Pro Football game?",
+                    yes_bid="0.58",
+                    yes_ask="0.59",
+                    volume="94000",
+                    close="2026-08-16T00:00:00Z",
+                ),
+                _m(
+                    "KXNFLGAME-26AUG17PHIDAL-PHI",
+                    event="KXNFLGAME-26AUG17PHIDAL",
+                    title="Will Philadelphia win the Philadelphia vs Dallas Pro Football game?",
+                    yes_bid="0.52",
+                    yes_ask="0.54",
+                    volume="88000",
+                    close="2026-08-17T20:00:00Z",
+                ),
+            ],
+            "KXNFLSPREAD": [],
+            "KXNFLTOTAL": [],
+        }
+        events = [{
+            "shortName": "PHI @ DAL",
+            "competitors": [{"abbreviation": "PHI"}, {"abbreviation": "DAL"}],
+            "broadcasts": [{"type": "TV", "isNational": True, "shortName": "FOX", "name": "FOX"}],
+        }]
+        board = await desk_ats.build_board(
+            fetch=_fetch_factory(extra), now=NOW, force=True, watch_events=events,
+        )
+        pick = board["pick"]
+        self.assertIsNotNone(pick)
+        self.assertEqual(pick["game"], "PHIDAL")
+        self.assertIn("BIRD FIRST", (board.get("why") or {}).get("line") or "")
+        self.assertIn("BIRD FIRST", (board.get("watch") or {}).get("line") or "")
+        self.assertTrue(board["paper_only"])
+        self.assertFalse(board["follower"])
+        self.assertFalse(board["live"])
+        self.assertEqual(board["leader"], "ARES")
+
+
 # unittest async helpers
 def _as_sync(fn):
     import asyncio
@@ -1062,3 +1315,4 @@ def _bind_async_tests(cls):
 
 _bind_async_tests(AtsPickTests)
 _bind_async_tests(AtsGateTests)
+_bind_async_tests(AtsEaglesRankTests)

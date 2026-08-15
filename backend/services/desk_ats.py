@@ -8,6 +8,9 @@ v1: moneyline, spread (ATS), total. No player props.
 Rank nearer kick first, then calendar sport, then leftover after vig / half-spread.
 Hard cap: do not lock or paper-fill a kick more than 72 hours out.
 Prefer same-day / next 24h. NFL/CFB still preferred inside that window.
+Among tickets that already clear every Ares v1 gate, a Philadelphia Eagles
+book (PHI / Eagles / PHIEAG, home or away) ranks first inside the 72h window.
+Ranking only — lock math, EV, and seats stay put. Far Eagles still sit.
 Nothing playable inside 72h → WAIT. Do not fall back to a month-out book.
 An OPEN paper fill whose kick is more than 72h is sat so it cannot pin the chair.
 Sport follows the calendar among similarly-near games (CFB Sat, NFL Sun).
@@ -220,6 +223,13 @@ WATCH_ALIASES: Dict[str, str] = {
     "MIZZ": "MIZ", "MIZ": "MIZ",
     "NCAAST": "NCST", "NCST": "NCST",
 }
+# Zach's bird. Ranking only. NFL PHI / PHIEAG / Eagles — not Sixers / Flyers / Phillies.
+EAGLES_CODES = frozenset({"PHI", "PHIEAG"})
+EAGLES_SPORTS = frozenset({"NFL"})
+_PHIEAG_RE = re.compile(r"PHIEAG")
+_EAGLES_WORD_RE = re.compile(r"\bEAGLES\b")
+_PHILA_WORD_RE = re.compile(r"\bPHILADELPHIA\b")
+BIRD_FIRST = "BIRD FIRST"
 
 
 def reset_for_tests(data_dir: Optional[Path] = None) -> None:
@@ -395,6 +405,41 @@ def ticker_side_code(ticker: Any) -> Optional[str]:
     if tail.replace(".", "", 1).isdigit():
         return None
     return tail if tail.isalpha() and 2 <= len(tail) <= 4 else None
+
+
+def eagles_ticket(row: Optional[Dict[str, Any]]) -> bool:
+    """Philadelphia Eagles book — Kalshi ticker + team names, home or away.
+
+    PHI is already an NFL abbrev in TEAM_COLORS / parse_event_teams (PHIDAL → PHI, DAL).
+    PHIEAG is a longer Kalshi blob that the 3+3 split can miss. NBA/MLB/NHL PHI is not the bird.
+    """
+    if not row:
+        return False
+    tick = str(row.get("ticker") or "").upper()
+    event = str(row.get("event") or "").upper()
+    game = str(row.get("game") or "").upper()
+    title = str(row.get("title") or "").upper()
+    number = str(row.get("number") or "").upper()
+    blob = " ".join((tick, event, game, title, number))
+    if _PHIEAG_RE.search(blob.replace(" ", "")) or _EAGLES_WORD_RE.search(blob):
+        return True
+    sport = str(row.get("sport") or "").upper()
+    codes = {
+        str(row.get("home") or "").upper(),
+        str(row.get("away") or "").upper(),
+        str(row.get("team") or "").upper(),
+        str(ticker_side_code(tick) or "").upper(),
+    }
+    src = event or (tick.rsplit("-", 1)[0] if tick else "")
+    if src:
+        _blob, away, home = parse_event_teams(src)
+        codes.add(str(away or "").upper())
+        codes.add(str(home or "").upper())
+        if _blob:
+            codes.add(str(_blob).upper())
+    if codes & EAGLES_CODES:
+        return sport in EAGLES_SPORTS or not sport
+    return sport in EAGLES_SPORTS and bool(_PHILA_WORD_RE.search(blob))
 
 
 def market_quotes(m: Dict[str, Any]) -> Dict[str, Optional[float]]:
@@ -1255,11 +1300,13 @@ def rank_key(row: Dict[str, Any], priority: List[str], now: Optional[datetime] =
     left = brain_score(row)
     ice_pen = 40.0 if row.get("ice") else 0.0
     unk_pen = 2.0 if row.get("unknown_book") else 0.0
-    return (ice_pen, kick_horizon(row, now), pri, -left, unk_pen)
+    # Bird first among tickets that already cleared the gates. 72h still filters the pack.
+    bird_pen = 0 if eagles_ticket(row) else 1
+    return (ice_pen, bird_pen, kick_horizon(row, now), pri, -left, unk_pen)
 
 
 def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
-    """ONE TICKET: 72h hard cap. Prefer same-day / next 24h, then calendar sport."""
+    """ONE TICKET: 72h hard cap. Eagles first among eligible, then nearer kick / calendar."""
     if not rows:
         return None
     pri = sport_priority(now)
@@ -1453,6 +1500,23 @@ def watch_copy(names: List[str], market: Optional[str]) -> str:
     return f"WATCH · {shown}"
 
 
+def bird_first_watch(watch: Dict[str, Any], pick: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Punchy ranking tag. Does not invent a channel."""
+    if not watch or not eagles_ticket(pick):
+        return watch
+    line = str(watch.get("line") or "")
+    if BIRD_FIRST in line:
+        return watch
+    out = dict(watch)
+    if watch.get("listed") and line:
+        out["line"] = f"{line} · {BIRD_FIRST}"
+    elif "DARK" in line.upper():
+        out["line"] = f"WATCH · {BIRD_FIRST} · IN THE WINDOW"
+    else:
+        out["line"] = f"{line} · {BIRD_FIRST}" if line else f"WATCH · {BIRD_FIRST}"
+    return out
+
+
 def event_team_keys(ev: Dict[str, Any]) -> set:
     out: set = set()
     for c in ev.get("competitors") or []:
@@ -1596,11 +1660,11 @@ async def attach_watch(
     if events is None:
         events, down = await load_watch_events(str(pick.get("sport") or ""), fetch=fetch)
         if down:
-            return dark_watch("FEED QUIET", down=True)
+            return bird_first_watch(dark_watch("FEED QUIET", down=True), pick)
     ev = match_watch_event(events or [], pick.get("home"), pick.get("away"))
     if not ev:
-        return dark_watch("NO LISTING")
-    return listing_from_event(ev)
+        return bird_first_watch(dark_watch("NO LISTING"), pick)
+    return bird_first_watch(listing_from_event(ev), pick)
 
 
 HURT_STATUSES = ("out", "doubtful", "injured reserve")
@@ -1867,6 +1931,7 @@ def build_why(
         rows.append(row("WX", "WAIT", "WX · DARK", False))
 
     call = str(pick.get("call") or "WAIT").upper()
+    bird = eagles_ticket(pick)
     if ice_on:
         head = f"WHY · ICE SAT · {pick.get('ice')}"
     elif pick.get("gate"):
@@ -1874,7 +1939,7 @@ def build_why(
     elif call == "WAIT":
         head = "WHY · DARK · NO EDGE AFTER VIG"
     else:
-        bits = [f"WHY · {call}"]
+        bits = [f"WHY · {BIRD_FIRST} · {call}"] if bird else [f"WHY · {call}"]
         pub = pick.get("public")
         if pub and str(pub).upper() != call:
             bits.append(f"FADE {pub}")
