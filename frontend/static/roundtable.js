@@ -11891,69 +11891,8 @@ function drawCandleChart() {
   }
 
   function playDeskUnlockIntro() {
-    // Dedicated post-desk-code intro. Plays ONLY zt-intro.mp4.
-    // revealAppAfterDeskUnlock already ran — never re-lock, never hang on black.
-    try {
-      if (sessionStorage.getItem(DESK_INTRO_KEY) === "1") return;
-    } catch (e) {}
-    if (window.__deskIntroPlaying) return;
-    const wrap = document.getElementById("deskIntroWrap");
-    const vid = document.getElementById("deskIntroVideo");
-    const skipBtn = document.getElementById("deskIntroSkip");
-    try { sessionStorage.setItem(DESK_INTRO_KEY, "1"); } catch (e) {}
-    if (!wrap || !vid) return;
-    if (vid.currentSrc && !/zt-intro\.mp4/i.test(vid.currentSrc)) return;
-
-    window.__deskIntroPlaying = true;
-    wrap.classList.remove("hidden");
-    wrap.classList.add("active");
-    wrap.setAttribute("aria-hidden", "false");
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.setAttribute("playsinline", "");
-    vid.setAttribute("webkit-playsinline", "");
-    try { vid.currentTime = 0; } catch (e) {}
-
-    let safety = null;
-    const cleanup = function () {
-      if (!window.__deskIntroPlaying) return false;
-      window.__deskIntroPlaying = false;
-      if (safety) { clearTimeout(safety); safety = null; }
-      try { vid.pause(); } catch (e) {}
-      wrap.classList.add("hidden");
-      wrap.classList.remove("active");
-      wrap.setAttribute("aria-hidden", "true");
-      return true;
-    };
-    window.__dismissDeskIntro = function () {
-      if (!window.__deskIntroPlaying) return false;
-      return cleanup();
-    };
-
-    vid.onended = function () { cleanup(); };
-    vid.onerror = function () { cleanup(); };
-    if (skipBtn) skipBtn.onclick = function (e) { if (e) e.stopPropagation(); cleanup(); };
-    wrap.onclick = function () { cleanup(); };
-
-    safety = setTimeout(function () {
-      if (!window.__deskIntroPlaying) return;
-      if (vid.paused && vid.currentTime < 0.05) cleanup();
-    }, 10000);
-
-    const p = vid.play();
-    if (p && p.then) {
-      p.then(function () {
-        try { vid.muted = false; } catch (e) {}
-      }).catch(function () {
-        vid.muted = true;
-        const p2 = vid.play();
-        if (p2 && p2.then) {
-          p2.catch(function () { cleanup(); });
-        } else {
-          cleanup();
-        }
-      });
-    }
+    // Parked on the live path. After SUMMON, do not play zt-intro / summon-council.
+    return;
   }
   window.playDeskUnlockIntro = playDeskUnlockIntro;
   window.prefetchDeskIntroVideo = prefetchDeskIntroVideo;
@@ -11968,7 +11907,6 @@ function drawCandleChart() {
     if (typeof window.revealAppAfterDeskUnlock === "function") {
       window.revealAppAfterDeskUnlock();
     }
-    try { playDeskUnlockIntro(); } catch (e) {}
     document.body.classList.remove("admin-unlocked");
     const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
     if (onboarded) {
@@ -12050,6 +11988,8 @@ function drawCandleChart() {
   }
 
   function initPasswordGate() {
+    if (initPasswordGate.__wired) return;
+    initPasswordGate.__wired = true;
     // Never skip the desk code from leftover storage. Cold tab / hard refresh
     // must see the access overlay. A leftover unlocked session is not the public default.
     try { localStorage.removeItem(passKey); } catch (e) {}

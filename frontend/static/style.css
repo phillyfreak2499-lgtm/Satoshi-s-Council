@@ -8597,7 +8597,6 @@ body.mode-seats #mainTable { display: none !important; }
 }
 
 /* ===== LOGIN SPLASH — #passwordGate only. Dark stone + amber/cyan. Type over the table. ===== */
-#passwordGate.password-gate,
 #passwordGate.password-gate:not(.hidden) {
   display: flex !important;
   flex-direction: column !important;
@@ -8611,6 +8610,11 @@ body.mode-seats #mainTable { display: none !important; }
   background-size: cover !important;
   background-position: center 18% !important;
   background-repeat: no-repeat !important;
+}
+#passwordGate.password-gate.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 #passwordGate.password-gate::after {
   content: "";
@@ -8705,7 +8709,6 @@ body.mode-seats #mainTable { display: none !important; }
   color: #e07070;
 }
 @media (max-width: 480px) {
-  #passwordGate.password-gate,
   #passwordGate.password-gate:not(.hidden) {
     justify-content: flex-end !important;
     align-items: center !important;

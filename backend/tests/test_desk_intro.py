@@ -162,14 +162,20 @@ class DeskIntroFitTests(unittest.TestCase):
 
 
 class DeskIntroUnlockTests(unittest.TestCase):
-    def test_fires_after_reveal_on_desk_code_only(self):
+    def test_parked_on_live_unlock_path(self):
         auth = _auth_fn()
         self.assertIn("revealAppAfterDeskUnlock", auth)
-        self.assertIn("playDeskUnlockIntro()", auth)
-        self.assertLess(auth.find("revealAppAfterDeskUnlock"), auth.find("playDeskUnlockIntro()"))
+        self.assertNotIn("playDeskUnlockIntro()", auth)
         self.assertNotIn("playZtIntroThenSummonGate()", auth)
         self.assertNotIn('document.body.classList.add("gate-locked")', auth)
-        self.assertEqual(JS.count("playDeskUnlockIntro();"), 1)
+        self.assertEqual(JS.count("playDeskUnlockIntro();"), 0)
+        play = _play_fn()
+        self.assertIn("Parked on the live path", play)
+        self.assertIn("return;", play)
+        self.assertNotIn("vid.play()", play)
+        self.assertNotIn("zt-intro", play)
+        self.assertNotIn("summon-council", play)
+        self.assertNotIn('classList.add("gate-locked")', play)
 
     def test_not_on_follower_or_settings_unlock(self):
         self.assertNotIn("playDeskUnlockIntro", FOLLOWER_JS)
@@ -184,29 +190,15 @@ class DeskIntroUnlockTests(unittest.TestCase):
         self.assertNotIn("money-closeup", play)
         self.assertNotIn("money-rain", play)
 
-    def test_once_per_session_and_no_src_swap(self):
-        play = _play_fn()
-        self.assertIn('const DESK_INTRO_KEY = "council_desk_intro_played"', JS)
-        self.assertIn("sessionStorage.getItem(DESK_INTRO_KEY)", play)
-        self.assertIn("sessionStorage.setItem(DESK_INTRO_KEY", play)
-        self.assertNotIn("vid.load()", play)
-        self.assertNotIn("vid.src =", play)
-        self.assertIn("vid.muted = true", play)
-        self.assertIn("playsinline", play)
-        self.assertIn("wrap.onclick", play)
-        self.assertIn("skipBtn.onclick", play)
-        self.assertIn("__dismissDeskIntro", JS)
-        self.assertIn('e.key === "Escape" && window.__deskIntroPlaying', JS)
-
     def test_missing_video_still_reveals_desk(self):
-        """Unlock must clear gate-locked even when the intro node is missing."""
+        """Unlock must clear gate-locked even when the intro is parked."""
         reveal = _reveal_fn()
         self.assertIn('document.documentElement.classList.remove("gate-locked", "gate-revealing")', reveal)
         self.assertIn('document.body.classList.remove("gate-locked", "gate-revealing")', reveal)
         self.assertIn('getElementById("passwordGate")', reveal)
         self.assertIn('setProperty("visibility", "visible", "important")', reveal)
         play = _play_fn()
-        self.assertIn("if (!wrap || !vid) return;", play)
+        self.assertIn("return;", play)
         self.assertNotIn('classList.add("gate-locked")', play)
         self.assertNotIn("gate-revealing", play)
 
@@ -216,11 +208,6 @@ class DeskIntroUnlockTests(unittest.TestCase):
         gate = _FakeEl([])
         revealAppAfterDeskUnlock = _load_reveal_fn(html, body, app, gate)
         revealAppAfterDeskUnlock()
-        # Intro path with no wrap/vid is a no-op — desk stays revealed.
-        wrap = None
-        vid = None
-        if not wrap or not vid:
-            pass
         self.assertFalse(html.classList.contains("gate-locked"))
         self.assertFalse(html.classList.contains("gate-revealing"))
         self.assertFalse(body.classList.contains("gate-locked"))
@@ -229,13 +216,6 @@ class DeskIntroUnlockTests(unittest.TestCase):
         self.assertTrue(body.classList.contains("desk-unlocked"))
         self.assertTrue(gate.classList.contains("hidden"))
         self.assertEqual(app.style.get("visibility"), "visible")
-
-    def test_error_and_autoplay_block_dismiss(self):
-        play = _play_fn()
-        self.assertIn("vid.onerror", play)
-        self.assertIn(".catch(function () {", play)
-        self.assertIn("cleanup()", play)
-        self.assertIn("vid.play()", play)
 
 
 class DeskIntroLeaderClickUntouchedTests(unittest.TestCase):
