@@ -5,7 +5,7 @@ KXHIGHTDAL, settle KDFW / DFW (not Love Field).
 NYC later — do not ship KXHIGHNY in v1.
 Chicago later — do not ship KXHIGHCHI in v1.
 
-Named seats (RAIJIN / GLASS / PIT / FROST / BONE), not a crypto Floor.
+Named seats (RAIJIN / GLASS / PIT / FROST / BONE / MESH), not a crypto Floor.
 If a series 404s, drop it. Do not fake cities. No city-card board.
 
 Paper by default. Never auto-bets. Never talks to Follower.
@@ -19,7 +19,7 @@ import os
 import re
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -37,6 +37,7 @@ from backend.services.desk_side import (
 CT = ZoneInfo("America/Chicago")
 _Fetch = Callable[[str, Dict[str, Any]], Any]
 _Nws = Callable[[str], Any]
+_Http = Callable[[str], Any]
 
 MONTHS = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -88,10 +89,16 @@ def city_for_ticker(ticker: Any) -> Optional[Dict[str, Any]]:
 
 
 SEATS: Tuple[Dict[str, Any], ...] = (
-    {"id": "GLASS", "job": "Official/NWS high for the station.", "mark": "/static/bots/glass.png", "weight": 1.0},
-    {"id": "PIT", "job": "Kalshi implied vs that number, after vig.", "mark": "/static/bots/pit.png", "weight": 1.0},
-    {"id": "FROST", "job": "Veto junk book / flip / SICK / thin n.", "mark": "/static/bots/frost.png", "weight": 1.0},
-    {"id": "BONE", "job": "This city’s history / climo. Seasonal base. Low weight.", "mark": "/static/bots/bone.png", "weight": 0.25},
+    {"id": "GLASS", "job": "NWS PANE", "mark": "/static/bots/glass.png", "weight": 1.0},
+    {"id": "PIT", "job": "THE PIT", "mark": "/static/bots/pit.png", "weight": 1.0},
+    {"id": "FROST", "job": "FROST KILL", "mark": "/static/bots/frost.png", "weight": 1.0},
+    {"id": "BONE", "job": "BONE CLIMO", "mark": "/static/bots/bone.png", "weight": 0.25},
+    {"id": "MESH", "job": "THE WEB", "mark": "/static/bots/mesh.png", "weight": 1.0},
+)
+SUBS: Tuple[Dict[str, Any], ...] = (
+    {"id": "HEAT", "parent": "GLASS", "feeds": ("GLASS", "FROST"), "job": "NOW VS THE HIGH", "mark": "/static/bots/heat.png"},
+    {"id": "ECHO", "parent": "BONE", "feeds": ("BONE",), "job": "YDAY BONES", "mark": "/static/bots/wx-echo.png"},
+    {"id": "CELL", "parent": "FROST", "feeds": ("FROST",), "job": "STORM CAP", "mark": "/static/bots/cell.png"},
 )
 CHAIR: Dict[str, str] = {
     "id": "RAIJIN",
@@ -103,9 +110,14 @@ CHAIR: Dict[str, str] = {
 WX_MODES = ("SUN", "HEAT", "CLOUD", "RAIN", "WIND", "STORM")
 THIN_VOL = 200.0
 FLIP_F = 2.0
+MESH_WIDE_F = 4.0
+MESH_MIN_LIVE = 2
+KDFW_LAT = 32.89743
+KDFW_LON = -97.02196
 BOARD_TTL_S = 20.0
 WX_TTL_S = 180.0
 WX_REFRESH_S = 180.0  # live KDFW METAR/NWS every few minutes. Dead feed holds last mode.
+CLI_HOUR_CT = 7  # NWS CLI for KDFW / FWD posts the next morning. Not a 1H close.
 NWS_UA = "SatoshiCouncil/1.0 (the-front; dallas-kdfw)"
 NWS_OBS_URL = "https://api.weather.gov/stations/KDFW/observations/latest"
 METAR_URL = "https://aviationweather.gov/api/data/metar?ids=KDFW&format=json"
@@ -333,6 +345,146 @@ def strike_label(m: Dict[str, Any]) -> str:
     return str(m.get("title") or m.get("ticker") or "—")
 
 
+def cli_at_for(day: date) -> datetime:
+    """NWS CLI for that station/day. Next morning 07:00 CT — not a 1H close_time."""
+    return datetime(day.year, day.month, day.day, CLI_HOUR_CT, 0, tzinfo=CT) + timedelta(days=1)
+
+
+def _parse_market_close(raw: Any) -> Optional[datetime]:
+    """Kalshi market close only. Date-only strings (city.day) are not a close_time."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def market_close_of(best: Optional[Dict[str, Any]]) -> Optional[datetime]:
+    if not isinstance(best, dict):
+        return None
+    return _parse_market_close(
+        best.get("close_time") or best.get("expiration_time") or best.get("market_close")
+    )
+
+
+def kalshi_high_f(best: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not best:
+        return None
+    kind = str(best.get("strike_type") or "").lower()
+    lo, hi = best.get("floor_strike"), best.get("cap_strike")
+    try:
+        if kind == "between" and hi is not None:
+            return float(hi)
+        if kind in ("greater", "greater_or_equal") and lo is not None:
+            return float(lo)
+        if kind in ("less", "less_or_equal") and hi is not None:
+            return float(hi)
+        if lo is not None:
+            return float(lo)
+        if hi is not None:
+            return float(hi)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def weather_dir(
+    raw: Any,
+    *,
+    strike_type: Any = "",
+    forecast: Optional[float] = None,
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+) -> str:
+    """HUD word for Dallas daily high. Never UP / DOWN / YES / NO."""
+    d = str(raw or "WAIT").upper()
+    if d in ("ABOVE", "BELOW", "BETWEEN", "WAIT"):
+        return d
+    if d in ("WAIT", "CLEAR", "SKIP", ""):
+        return "WAIT"
+    kind = str(strike_type or "").lower()
+    yes = d in ("YES", "UP", "UP_HOLD")
+    no = d in ("NO", "DOWN", "DOWN_HOLD", "OUT")
+    if not yes and not no:
+        return "WAIT"
+    if kind == "between":
+        if yes:
+            return "BETWEEN"
+        if forecast is not None and cap_strike is not None:
+            try:
+                if float(forecast) > float(cap_strike):
+                    return "ABOVE"
+            except (TypeError, ValueError):
+                pass
+        if forecast is not None and floor_strike is not None:
+            try:
+                if float(forecast) < float(floor_strike):
+                    return "BELOW"
+            except (TypeError, ValueError):
+                pass
+        return "BELOW"
+    if kind in ("less", "less_or_equal"):
+        return "BELOW" if yes else "ABOVE"
+    return "ABOVE" if yes else "BELOW"
+
+
+def weather_eye(word: Any) -> str:
+    """Portrait eyes only. Green / red / white — HUD still uses weather words."""
+    w = str(word or "WAIT").upper()
+    if w in ("ABOVE", "BETWEEN", "UP", "YES", "UP_HOLD"):
+        return "UP"
+    if w in ("BELOW", "DOWN", "NO", "DOWN_HOLD"):
+        return "DOWN"
+    return "WAIT"
+
+
+def build_clock(
+    day: Optional[date],
+    best: Optional[Dict[str, Any]],
+    now: datetime,
+    forecast: Optional[float] = None,
+) -> Dict[str, Any]:
+    local = now.astimezone(CT) if now.tzinfo else now.replace(tzinfo=timezone.utc).astimezone(CT)
+    cli_at = None if day is None else cli_at_for(day)
+    secs_cli = None if cli_at is None else int((cli_at - local).total_seconds())
+    span = None
+    if day is not None and cli_at is not None:
+        start = datetime(day.year, day.month, day.day, 0, 0, tzinfo=CT)
+        span = max(1, int((cli_at - start).total_seconds()))
+    close_dt = market_close_of(best)
+    secs_close = None if close_dt is None else int((close_dt.astimezone(CT) - local).total_seconds())
+    kind = str((best or {}).get("strike_type") or "").lower()
+    close_iso = None if close_dt is None else close_dt.isoformat()
+    cli_iso = None if cli_at is None else cli_at.isoformat()
+    return {
+        "kind": "kalshi" if close_dt is not None else "cli",
+        "label": "DFW HIGH",
+        "sub": "settles 7:00 CT",
+        "day": None if day is None else day.isoformat(),
+        "strike_type": kind or None,
+        "floor_strike": None if not best else best.get("floor_strike"),
+        "cap_strike": None if not best else best.get("cap_strike"),
+        "bracket": None if not best else best.get("bracket"),
+        "kalshi_high": kalshi_high_f(best),
+        "nws_high": forecast,
+        "ticker": None if not best else best.get("ticker"),
+        "close_time": close_iso,
+        "seconds_to_close": secs_close,
+        "mins_left": None if secs_close is None else round(secs_close / 60.0, 1),
+        "cli_at": cli_iso,
+        "seconds_to_cli": secs_cli,
+        "seconds_to_settle": secs_cli,
+        "cli_span_s": span,
+    }
+
+
 def official_yes(
     high: Optional[float],
     *,
@@ -426,6 +578,71 @@ def paper_pnl(row: Dict[str, Any], hit: bool) -> float:
     return round(-stake, 2)
 
 
+def frost_line(skip: Optional[str]) -> Optional[str]:
+    """FROST HUD. Kill one-liners — never help-desk."""
+    if not skip:
+        return None
+    text = str(skip).strip()
+    if not text:
+        return None
+    low = text.lower()
+    if low in ("clear", "ok"):
+        return "CLEAR"
+    if "sick" in low:
+        return "SICK BOOK"
+    if "99" in low:
+        return "99¢ WALL"
+    if "flip" in low:
+        return "FORECAST FLIP"
+    if "wide" in low or "disagree" in low or ("mesh" in low and "thin" not in low):
+        return "WIDE SPLIT · SIT"
+    if "cell" in low:
+        return "CELL CAP"
+    if "cooked" in low or "heat" in low:
+        return "DAY COOKED"
+    if "junk" in low or "spread" in low:
+        return "JUNK SPREAD"
+    if "empty" in low or "dead book" in low:
+        return "EMPTY BOOK"
+    if "thin" in low and "mesh" not in low:
+        return "THIN BOOK"
+    if "official" in low or "pane" in low:
+        return "NO PANE"
+    if text.startswith("Don’t play") or text.startswith("Don't play"):
+        tail = text.split("·", 1)[-1].strip().upper()
+        return tail or "FROST KILL"
+    return text.upper() if text == text.lower() else text
+
+
+def glass_call_line(forecast: Optional[float]) -> str:
+    if forecast is None:
+        return "NO PANE"
+    return f"GLASS READS {int(round(float(forecast)))}°"
+
+
+def pit_call_line(m: Optional[Dict[str, Any]]) -> str:
+    if not m:
+        return "NO BOOK"
+    kind = str(m.get("strike_type") or "").lower()
+    lo, hi = m.get("floor_strike"), m.get("cap_strike")
+    if kind == "between" and lo is not None and hi is not None:
+        return f"BOOK {int(float(lo))}–{int(float(hi))}°"
+    high = kalshi_high_f(m)
+    if high is None:
+        return "NO BOOK"
+    return f"BOOK {int(round(float(high)))}°"
+
+
+def bone_call_line(climo: Optional[float], echo_high: Optional[float] = None) -> str:
+    if climo is not None and echo_high is not None:
+        return f"30-YR {int(float(climo))}° · YDAY {int(float(echo_high))}°"
+    if climo is not None:
+        return f"30-YR {int(float(climo))}°"
+    if echo_high is not None:
+        return f"YDAY {int(float(echo_high))}°"
+    return "NO BONES"
+
+
 def vote_seats(
     m: Dict[str, Any],
     *,
@@ -433,11 +650,15 @@ def vote_seats(
     climo: Optional[float],
     skip: Optional[str],
     station: str = "KDFW",
+    mesh: Optional[Dict[str, Any]] = None,
+    echo: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     p = forecast_p(forecast, m)
     q = market_quotes(m)
     implied = None if q.get("yes_ask") is None else q["yes_ask"] / 100.0
-    climo_p = forecast_p(float(climo), m) if climo is not None else None
+    echo_high = echo.get("high") if isinstance(echo, dict) else None
+    bone_src = echo_high if echo_high is not None else climo
+    climo_p = forecast_p(float(bone_src), m) if bone_src is not None else None
     glass = "WAIT" if p is None else ("YES" if p >= 0.5 else "NO")
     pit = "WAIT"
     if implied is not None and p is not None:
@@ -446,11 +667,36 @@ def vote_seats(
         pit = "YES" if implied < 0.5 else "NO"
     frost = "SKIP" if skip else "CLEAR"
     bone = "WAIT" if climo_p is None else ("YES" if climo_p >= 0.5 else "NO")
+    bone_call = bone_call_line(climo, echo_high)
+    pack = mesh if isinstance(mesh, dict) else empty_mesh()
+    median = pack.get("median")
+    thin = bool(pack.get("thin") or median is None)
+    wide = bool(pack.get("wide"))
+    mesh_dir = "WAIT"
+    if not thin and not wide:
+        yes = official_yes(float(median), market=m)
+        if yes is True:
+            mesh_dir = "YES"
+        elif yes is False:
+            mesh_dir = "NO"
+    mesh_conf = 12 if thin else (22 if wide else 64)
     return [
-        {"id": "GLASS", "dir": glass, "call": None if forecast is None else f"{forecast:.0f}°F {station}"},
-        {"id": "PIT", "dir": pit, "call": None if implied is None else f"{int(round(implied * 100))}¢ after vig"},
-        {"id": "FROST", "dir": frost, "call": skip or "clear"},
-        {"id": "BONE", "dir": bone, "call": None if climo is None else f"{climo}°F season"},
+        {"id": "GLASS", "dir": glass, "call": glass_call_line(forecast)},
+        {"id": "PIT", "dir": pit, "call": pit_call_line(m)},
+        {"id": "FROST", "dir": frost, "call": frost_line(skip) or "CLEAR"},
+        {"id": "BONE", "dir": bone, "call": bone_call},
+        {
+            "id": "MESH",
+            "dir": mesh_dir,
+            "call": mesh_call_line(pack),
+            "median": median,
+            "spread": pack.get("spread"),
+            "n_sources": pack.get("n_live") or 0,
+            "thin": thin,
+            "wide": wide,
+            "sources": list(pack.get("sources") or []),
+            "confidence": mesh_conf,
+        },
     ]
 
 
@@ -605,6 +851,12 @@ def lock_tape() -> List[Dict[str, Any]]:
             "bracket": row.get("bracket") or "",
             "best": bool(row.get("best")),
             "side": row.get("side") or ("WAIT" if str(row.get("result") or "").upper() == "WAIT" else row.get("side")),
+            "lean": weather_dir(
+                row.get("side") or "WAIT",
+                strike_type=row.get("strike_type"),
+                floor_strike=row.get("floor_strike"),
+                cap_strike=row.get("cap_strike"),
+            ),
             "result": str(row.get("result") or "OPEN").upper(),
             "wait_reason": row.get("wait_reason"),
             "pnl": row.get("pnl"),
@@ -790,9 +1042,9 @@ def classify_front_wait_reason(skip: Optional[str], flags: Optional[Dict[str, An
         return "odds_outside_20_80"
     if "thin" in text:
         return "no_depth"
-    if "official" in text:
+    if "official" in text or "pane" in text:
         return "no_official_high"
-    if "flip" in text:
+    if "flip" in text or "disagree" in text or "mesh" in text or "cell" in text or "cooked" in text or "wide" in text or "split" in text:
         return "forecast_flip"
     return "other"
 
@@ -883,22 +1135,36 @@ def record_wait_sample(
     return row
 
 
-def skip_reason(flags: Dict[str, Any], forecast: Optional[float], flipped: bool, n: float) -> Optional[str]:
+def skip_reason(
+    flags: Dict[str, Any],
+    forecast: Optional[float],
+    flipped: bool,
+    n: float,
+    mesh: Optional[Dict[str, Any]] = None,
+    heat: Optional[Dict[str, Any]] = None,
+    cell: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
     if flags.get("empty"):
-        return "Don’t play · empty book"
+        return "EMPTY BOOK"
     if flags.get("sick"):
-        return "Don’t play · sick book"
+        return "SICK BOOK"
     if flags.get("wall_99"):
-        return "Don’t play · ≥99¢ wall"
+        return "99¢ WALL"
     if flags.get("spread") is not None and flags["spread"] >= 6:
-        return "Don’t play · junk spread"
+        return "JUNK SPREAD"
     if flipped:
-        return "Don’t play · forecast just flipped"
+        return "FORECAST FLIP"
+    if cell and cell.get("kill"):
+        return "CELL CAP"
+    if heat and heat.get("blew_bracket"):
+        return "DAY COOKED"
+    if mesh and mesh.get("wide"):
+        return "WIDE SPLIT · SIT"
     if n < THIN_VOL:
-        return "Don’t play · sample too thin"
+        return "THIN BOOK"
     if forecast is None:
-        return "Don’t play · no official high"
-    return why_line(flags, None, 0)
+        return "NO PANE"
+    return frost_line(why_line(flags, None, 0))
 
 
 def classify_weather(obs: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -1135,6 +1401,492 @@ async def nws_high(station: str, day: date, nws: Optional[_Nws] = None) -> Optio
     return None
 
 
+def empty_mesh() -> Dict[str, Any]:
+    return {
+        "median": None,
+        "spread": None,
+        "n_live": 0,
+        "thin": True,
+        "wide": False,
+        "sources": [],
+        "station": "KDFW",
+        "place": "DFW",
+    }
+
+
+def mesh_call_line(pack: Optional[Dict[str, Any]]) -> str:
+    pack = pack if isinstance(pack, dict) else empty_mesh()
+    misses = [
+        f"{s.get('id') or 'src'} {s.get('miss') or 'miss'}"
+        for s in (pack.get("sources") or [])
+        if isinstance(s, dict) and not s.get("ok")
+    ]
+    miss_bit = (" · " + ", ".join(m.upper() for m in misses)) if misses else ""
+    n = int(pack.get("n_live") or 0)
+    if pack.get("thin") or pack.get("median") is None:
+        return f"THIN MESH{miss_bit}" if miss_bit else "THIN MESH"
+    if pack.get("wide"):
+        return "WIDE SPLIT · SIT"
+    try:
+        med = f"{float(pack['median']):.0f}°"
+    except (TypeError, ValueError):
+        return f"THIN MESH{miss_bit}" if miss_bit else "THIN MESH"
+    src = "1-SOURCE MEDIAN" if n == 1 else f"{n}-SOURCE MEDIAN"
+    return f"{src} · {med}{miss_bit}"
+
+
+def _median_f(xs: List[float]) -> Optional[float]:
+    ys = sorted(float(x) for x in xs)
+    if not ys:
+        return None
+    n = len(ys)
+    if n % 2:
+        return ys[n // 2]
+    return (ys[n // 2 - 1] + ys[n // 2]) / 2.0
+
+
+def _valid_ct_day(vt: Any) -> Optional[date]:
+    start = str(vt or "").split("/")[0]
+    try:
+        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(CT).date()
+    except Exception:
+        if len(start) >= 10:
+            try:
+                return date.fromisoformat(start[:10])
+            except Exception:
+                return None
+    return None
+
+
+def _grid_to_f(val: Any, uom: Any = "") -> Optional[float]:
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return None
+    u = str(uom or "").lower()
+    if "degc" in u or u.endswith(":c") or u == "c":
+        v = v * 9.0 / 5.0 + 32.0
+    elif "degf" in u or u.endswith(":f") or u == "f":
+        pass
+    elif v <= 55:
+        v = v * 9.0 / 5.0 + 32.0
+    if v < 20 or v > 140:
+        return None
+    return v
+
+
+def parse_gridpoint_max(data: Any, day: date) -> Optional[float]:
+    props = data.get("properties") if isinstance(data, dict) else None
+    if not isinstance(props, dict):
+        return None
+    series = props.get("maxTemperature")
+    if not isinstance(series, dict):
+        return None
+    return _series_high_for_day(series, day)
+
+
+def parse_nbm_max(data: Any, day: date) -> Optional[float]:
+    """Use NBM only when the gridpoint payload already carries a distinct NBM max."""
+    props = data.get("properties") if isinstance(data, dict) else None
+    if not isinstance(props, dict):
+        return None
+    for key, series in props.items():
+        lk = str(key or "").lower()
+        if not isinstance(series, dict):
+            continue
+        if lk == "maxtemperature":
+            continue
+        if "nbm" in lk and "max" in lk and "temp" in lk:
+            high = _series_high_for_day(series, day)
+            if high is not None:
+                return high
+    return None
+
+
+def _series_high_for_day(series: Dict[str, Any], day: date) -> Optional[float]:
+    uom = series.get("uom") or series.get("unit") or ""
+    for row in series.get("values") or []:
+        if not isinstance(row, dict) or row.get("value") is None:
+            continue
+        if _valid_ct_day(row.get("validTime")) != day:
+            continue
+        return _grid_to_f(row.get("value"), uom)
+    return None
+
+
+def parse_open_meteo_daily_max(data: Any, day: date) -> Optional[float]:
+    daily = data.get("daily") if isinstance(data, dict) else None
+    if not isinstance(daily, dict):
+        return None
+    times = daily.get("time") or []
+    highs = daily.get("temperature_2m_max") or []
+    want = day.isoformat()
+    for t, h in zip(times, highs):
+        if str(t)[:10] != want or h is None:
+            continue
+        try:
+            val = float(h)
+        except (TypeError, ValueError):
+            return None
+        if val < 20 or val > 140:
+            return None
+        return val
+    return None
+
+
+def parse_open_meteo_ensemble_mean(data: Any, day: date) -> Optional[float]:
+    daily = data.get("daily") if isinstance(data, dict) else None
+    if not isinstance(daily, dict):
+        return None
+    times = daily.get("time") or []
+    want = day.isoformat()
+    idx = None
+    for i, t in enumerate(times):
+        if str(t)[:10] == want:
+            idx = i
+            break
+    if idx is None:
+        return None
+    member_keys = [
+        k for k in daily
+        if str(k).startswith("temperature_2m_max_member") or str(k).startswith("temperature_2m_max_")
+    ]
+    keys = member_keys or (["temperature_2m_max"] if "temperature_2m_max" in daily else [])
+    vals: List[float] = []
+    for k in keys:
+        arr = daily.get(k)
+        if not isinstance(arr, list) or idx >= len(arr) or arr[idx] is None:
+            continue
+        try:
+            val = float(arr[idx])
+        except (TypeError, ValueError):
+            continue
+        if 20 <= val <= 140:
+            vals.append(val)
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+def finish_mesh(sources: List[Dict[str, Any]]) -> Dict[str, Any]:
+    live = [s for s in sources if isinstance(s, dict) and s.get("ok") and s.get("high") is not None]
+    highs = [float(s["high"]) for s in live]
+    median = _median_f(highs)
+    spread = None if len(highs) < 2 else round(max(highs) - min(highs), 1)
+    n_live = len(live)
+    thin = n_live < MESH_MIN_LIVE or median is None
+    wide = (not thin) and spread is not None and spread >= MESH_WIDE_F
+    return {
+        "median": None if median is None else round(float(median), 1),
+        "spread": spread,
+        "n_live": n_live,
+        "thin": thin,
+        "wide": wide,
+        "sources": sources,
+        "station": "KDFW",
+        "place": "DFW",
+    }
+
+
+def _mesh_miss(sid: str, why: str) -> Dict[str, Any]:
+    return {"id": sid, "ok": False, "miss": why, "high": None}
+
+
+def _mesh_hit(sid: str, high: float) -> Dict[str, Any]:
+    return {"id": sid, "ok": True, "miss": None, "high": round(float(high), 1)}
+
+
+def _miss_why(exc: BaseException) -> str:
+    text = str(exc or "").lower()
+    name = type(exc).__name__.lower()
+    if "404" in text:
+        return "404"
+    if "timeout" in text or "timeout" in name:
+        return "timeout"
+    return "miss"
+
+
+async def _mesh_get(
+    url: str,
+    *,
+    nws: Optional[_Nws],
+    http: Optional[_Http],
+) -> Any:
+    if "weather.gov" in url:
+        fn = nws or _nws_get
+        return await fn(url)
+    if nws is not None and http is None:
+        return await nws(url)
+    fn = http or _http_get
+    return await fn(url)
+
+
+async def fetch_mesh_highs(
+    day: date,
+    *,
+    nws: Optional[_Nws] = None,
+    http: Optional[_Http] = None,
+    lat: float = KDFW_LAT,
+    lon: float = KDFW_LON,
+) -> Dict[str, Any]:
+    """Dallas / KDFW daily high from public APIs. Drop 404/timeout. Never invent a high."""
+    sources: List[Dict[str, Any]] = []
+    grid_data: Any = None
+    use_lat, use_lon = float(lat), float(lon)
+
+    try:
+        st = await _mesh_get(f"https://api.weather.gov/stations/KDFW", nws=nws, http=http)
+        coords = ((st or {}).get("geometry") or {}).get("coordinates") if isinstance(st, dict) else None
+        if isinstance(coords, list) and len(coords) >= 2:
+            use_lon, use_lat = float(coords[0]), float(coords[1])
+        pts = await _mesh_get(f"https://api.weather.gov/points/{use_lat:.4f},{use_lon:.4f}", nws=nws, http=http)
+        props = ((pts or {}).get("properties") or {}) if isinstance(pts, dict) else {}
+        grid_url = props.get("forecastGridData")
+        if not grid_url:
+            gid = props.get("gridId") or props.get("cwa")
+            gx, gy = props.get("gridX"), props.get("gridY")
+            if gid is not None and gx is not None and gy is not None:
+                grid_url = f"https://api.weather.gov/gridpoints/{gid}/{int(gx)},{int(gy)}"
+        if not grid_url:
+            sources.append(_mesh_miss("nws", "404"))
+        else:
+            grid_data = await _mesh_get(str(grid_url), nws=nws, http=http)
+            high = parse_gridpoint_max(grid_data, day)
+            if high is None:
+                sources.append(_mesh_miss("nws", "no high" if grid_data else "empty"))
+            else:
+                sources.append(_mesh_hit("nws", high))
+    except Exception as exc:
+        sources.append(_mesh_miss("nws", _miss_why(exc)))
+        grid_data = None
+
+    nbm = parse_nbm_max(grid_data, day) if isinstance(grid_data, dict) else None
+    if nbm is not None:
+        sources.append(_mesh_hit("nbm", nbm))
+
+    om_url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={use_lat:.4f}&longitude={use_lon:.4f}"
+        "&daily=temperature_2m_max&temperature_unit=fahrenheit"
+        "&timezone=America%2FChicago&forecast_days=3"
+    )
+    try:
+        om = await _mesh_get(om_url, nws=nws, http=http)
+        high = parse_open_meteo_daily_max(om, day)
+        if high is None:
+            sources.append(_mesh_miss("open-meteo", "no high" if om else "empty"))
+        else:
+            sources.append(_mesh_hit("open-meteo", high))
+    except Exception as exc:
+        sources.append(_mesh_miss("open-meteo", _miss_why(exc)))
+
+    ens_url = (
+        "https://ensemble-api.open-meteo.com/v1/ensemble"
+        f"?latitude={use_lat:.4f}&longitude={use_lon:.4f}"
+        "&daily=temperature_2m_max&temperature_unit=fahrenheit"
+        "&timezone=America%2FChicago&forecast_days=3"
+    )
+    try:
+        ens = await _mesh_get(ens_url, nws=nws, http=http)
+        high = parse_open_meteo_ensemble_mean(ens, day)
+        if high is None:
+            sources.append(_mesh_miss("ensemble", "no high" if ens else "empty"))
+        else:
+            sources.append(_mesh_hit("ensemble", high))
+    except Exception as exc:
+        sources.append(_mesh_miss("ensemble", _miss_why(exc)))
+
+    return finish_mesh(sources)
+
+
+def _sub_meta(sid: str) -> Dict[str, Any]:
+    for s in SUBS:
+        if s["id"] == sid:
+            return dict(s)
+    return {"id": sid, "parent": None, "feeds": (), "job": "", "mark": ""}
+
+
+def build_heat(
+    *,
+    now_f: Optional[float],
+    nws_high: Optional[float] = None,
+    kalshi_high: Optional[float] = None,
+    stale: bool = False,
+    strike_type: Any = "",
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+    market: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Live KDFW METAR vs the high. Honest miss if the temp is gone."""
+    m = market or {}
+    kind = str(strike_type or m.get("strike_type") or "").lower()
+    lo = floor_strike if floor_strike is not None else m.get("floor_strike")
+    hi = cap_strike if cap_strike is not None else m.get("cap_strike")
+    target = nws_high if nws_high is not None else kalshi_high
+    meta = _sub_meta("HEAT")
+    blew = False
+    if now_f is not None and hi is not None:
+        try:
+            blew = float(now_f) > float(hi)
+        except (TypeError, ValueError):
+            blew = False
+    cooked = False
+    if now_f is not None and target is not None:
+        try:
+            cooked = float(now_f) >= float(target)
+        except (TypeError, ValueError):
+            cooked = False
+    if now_f is None:
+        line = "METAR STALE" if stale else "METAR DEAD"
+        tone = "miss"
+        ok = False
+    elif cooked or blew:
+        line = "DAY IS COOKED" + (" · STALE" if stale else "")
+        tone = "cooked"
+        ok = True
+    elif target is not None:
+        line = f"CAN WE STILL HIT {int(round(float(target)))}°" + (" · STALE" if stale else "")
+        tone = "live"
+        ok = True
+    else:
+        line = f"KDFW {int(round(float(now_f)))}° · NO TARGET"
+        tone = "live"
+        ok = True
+    return {
+        **meta,
+        "line": line,
+        "tone": tone,
+        "ok": ok,
+        "cooked": bool(cooked or blew),
+        "blew_bracket": bool(blew and kind == "between"),
+        "now_f": None if now_f is None else round(float(now_f), 1),
+        "target_f": None if target is None else round(float(target), 1),
+        "stale": bool(stale),
+        "vote": False,
+        "chair": False,
+    }
+
+
+def build_echo(yday_high: Optional[float], yday: Optional[date] = None) -> Dict[str, Any]:
+    """Yesterday’s official Dallas CLI. Never invent a prior."""
+    meta = _sub_meta("ECHO")
+    if yday_high is None:
+        return {
+            **meta,
+            "line": "NO YDAY CLI",
+            "tone": "miss",
+            "ok": False,
+            "high": None,
+            "day": None if yday is None else yday.isoformat(),
+            "vote": False,
+            "chair": False,
+        }
+    return {
+        **meta,
+        "line": f"YDAY {int(round(float(yday_high)))}°",
+        "tone": "live",
+        "ok": True,
+        "high": round(float(yday_high), 1),
+        "day": None if yday is None else yday.isoformat(),
+        "vote": False,
+        "chair": False,
+    }
+
+
+def parse_alert_event(data: Any) -> Optional[str]:
+    feats = []
+    if isinstance(data, dict):
+        feats = data.get("features") or []
+    elif isinstance(data, list):
+        feats = data
+    for feat in feats:
+        if not isinstance(feat, dict):
+            continue
+        props = feat.get("properties") if isinstance(feat.get("properties"), dict) else feat
+        ev = str(props.get("event") or props.get("headline") or "").lower()
+        if any(tag in ev for tag in ("thunderstorm", "tornado", "funnel", "severe thunderstorm")):
+            return str(props.get("event") or "STORMS")
+    return None
+
+
+def build_cell(
+    obs: Optional[Dict[str, Any]],
+    *,
+    alerts_ok: bool,
+    alert_event: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Storms / precip that cap the high. Miss if both feeds are dead — never invent a cell."""
+    meta = _sub_meta("CELL")
+    raw = str((obs or {}).get("raw") or "").upper()
+    text = str((obs or {}).get("text") or "").lower()
+    tokens = re.findall(r"[A-Z+]+", raw)
+    metar_ok = bool(raw or text)
+    storm_tok = {"TS", "VCTS", "SQ", "FC", "TSRA", "+TSRA", "-TSRA"}
+    metar_storm = any(t in storm_tok for t in tokens) or any(w in text for w in ("thunder", "tstm", "lightning"))
+    heavy_rain = "+RA" in tokens or ("heavy" in text and "rain" in text)
+    kill = bool(alert_event or metar_storm or heavy_rain)
+    if kill:
+        return {
+            **meta,
+            "line": "CELL UP · HIGH CAPPED",
+            "tone": "kill",
+            "ok": True,
+            "kill": True,
+            "event": alert_event or "STORMS",
+            "vote": False,
+            "chair": False,
+        }
+    if alerts_ok or metar_ok:
+        return {
+            **meta,
+            "line": "SKY CLEAR · NO CELL",
+            "tone": "clear",
+            "ok": True,
+            "kill": False,
+            "event": None,
+            "vote": False,
+            "chair": False,
+        }
+    return {
+        **meta,
+        "line": "NO CELL FEED",
+        "tone": "miss",
+        "ok": False,
+        "kill": False,
+        "event": None,
+        "vote": False,
+        "chair": False,
+    }
+
+
+def build_subs(
+    heat: Optional[Dict[str, Any]] = None,
+    echo: Optional[Dict[str, Any]] = None,
+    cell: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    rows = [heat or build_heat(now_f=None), echo or build_echo(None), cell or build_cell(None, alerts_ok=False)]
+    return rows
+
+
+async def fetch_kdfw_alerts(
+    nws: Optional[_Nws] = None,
+    *,
+    lat: float = KDFW_LAT,
+    lon: float = KDFW_LON,
+) -> Dict[str, Any]:
+    url = f"https://api.weather.gov/alerts/active?point={lat:.4f},{lon:.4f}"
+    try:
+        data = await (nws or _nws_get)(url)
+        if not isinstance(data, dict):
+            return {"ok": False, "miss": "empty", "event": None}
+        return {"ok": True, "miss": None, "event": parse_alert_event(data), "data": data}
+    except Exception as exc:
+        return {"ok": False, "miss": _miss_why(exc), "event": None}
+
+
 def note_forecast(station: str, day: date, high: Optional[float]) -> bool:
     if high is None:
         return False
@@ -1170,14 +1922,20 @@ def score_bracket(
     forecast: Optional[float],
     flipped: bool,
     day: date,
+    mesh: Optional[Dict[str, Any]] = None,
+    heat: Optional[Dict[str, Any]] = None,
+    echo: Optional[Dict[str, Any]] = None,
+    cell: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     q = market_quotes(m)
     flags = book_health(m)
     vol = float(flags.get("volume") or 0)
     p = forecast_p(forecast, m)
     climo = (city.get("climo") or {}).get(day.month)
-    climo_p = forecast_p(float(climo), m) if climo is not None else None
-    skip = skip_reason(flags, forecast, flipped, vol)
+    echo_high = echo.get("high") if isinstance(echo, dict) else None
+    bone_src = echo_high if echo_high is not None else climo
+    climo_p = forecast_p(float(bone_src), m) if bone_src is not None else None
+    skip = skip_reason(flags, forecast, flipped, vol, mesh=mesh, heat=heat, cell=cell)
     implied = (q.get("yes_ask") or 50) / 100.0
     fee = kalshi_taker_fee_cents(q.get("yes_ask"))
     half = (float(flags.get("spread") or 0) / 2.0)
@@ -1201,6 +1959,7 @@ def score_bracket(
         "station": city["station"],
         "series": city["series"],
         "ticker": m.get("ticker"),
+        "close_time": m.get("close_time") or m.get("expiration_time"),
         "day": day.isoformat(),
         "strike_type": str(m.get("strike_type") or ""),
         "floor_strike": m.get("floor_strike"),
@@ -1220,7 +1979,7 @@ def score_bracket(
         "confidence": conf,
         "dont_play": bool(skip),
         "skip": skip,
-        "votes": vote_seats(m, forecast=forecast, climo=climo, skip=skip, station=str(city["station"])),
+        "votes": vote_seats(m, forecast=forecast, climo=climo, skip=skip, station=str(city["station"]), mesh=mesh, echo=echo),
         "best": False,
         "follower": False,
     }
@@ -1239,46 +1998,58 @@ def pick_best(scored: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return pool[0]
 
 
-def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: Optional[date]) -> List[Dict[str, Any]]:
+def build_seats(
+    best: Optional[Dict[str, Any]],
+    forecast: Optional[float],
+    day: Optional[date],
+    mesh: Optional[Dict[str, Any]] = None,
+    subs: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
     recs = {r["id"]: r for r in seat_records()}
     climo = (DALLAS.get("climo") or {}).get(day.month) if day else None
-    glass_call = None if forecast is None else f"{forecast:.0f}°F KDFW"
-    pit_call = None
-    frost_call = "clear"
-    bone_call = None if climo is None else f"{climo}°F season"
-    if best:
-        if best.get("yes_ask") is not None:
-            pit_call = f"{int(round(best['yes_ask']))}¢ {best.get('bracket') or ''}".strip()
-        frost_call = best.get("skip") or "clear"
-        votes = {v["id"]: v for v in (best.get("votes") or []) if isinstance(v, dict)}
-        if votes.get("GLASS", {}).get("call"):
-            glass_call = votes["GLASS"]["call"]
-        if votes.get("PIT", {}).get("call"):
-            pit_call = votes["PIT"]["call"]
-        if votes.get("FROST", {}).get("call"):
-            frost_call = votes["FROST"]["call"]
-        if votes.get("BONE", {}).get("call"):
-            bone_call = votes["BONE"]["call"]
-    rows = []
-    calls = {"GLASS": glass_call, "PIT": pit_call, "FROST": frost_call, "BONE": bone_call}
-    votes = {}
+    pack = mesh if isinstance(mesh, dict) else empty_mesh()
+    sub_rows = [s for s in (subs or []) if isinstance(s, dict)]
+    echo_high = None
+    for s in sub_rows:
+        if str(s.get("id") or "") == "ECHO" and s.get("high") is not None:
+            echo_high = s.get("high")
+    defaults = {
+        "GLASS": glass_call_line(forecast),
+        "PIT": pit_call_line(best),
+        "FROST": frost_line((best or {}).get("skip")) or "CLEAR",
+        "BONE": bone_call_line(climo, echo_high),
+        "MESH": mesh_call_line(pack),
+    }
+    votes: Dict[str, Any] = {}
     if best:
         votes = {v["id"]: v for v in (best.get("votes") or []) if isinstance(v, dict) and v.get("id")}
+        for sid, row in votes.items():
+            if row.get("call"):
+                defaults[sid] = row["call"]
+    rows = []
     for seat in SEATS:
         rec = recs.get(seat["id"]) or {"n": 0, "wr": None, "rank": 0, "correct": 0, "wrong": 0}
-        raw = str((votes.get(seat["id"]) or {}).get("dir") or "WAIT").upper()
-        if raw == "YES":
-            lean = "UP"
-        elif raw in ("NO", "SKIP"):
-            lean = "DOWN"
-        else:
-            lean = "WAIT"
-        rows.append({
+        vote = votes.get(seat["id"]) or {}
+        raw = str(vote.get("dir") or "WAIT").upper()
+        fc = forecast
+        if seat["id"] == "MESH" and vote.get("median") is not None:
+            fc = vote.get("median")
+        elif seat["id"] == "MESH" and pack.get("median") is not None:
+            fc = pack.get("median")
+        lean = weather_dir(
+            raw,
+            strike_type=None if not best else best.get("strike_type"),
+            forecast=fc,
+            floor_strike=None if not best else best.get("floor_strike"),
+            cap_strike=None if not best else best.get("cap_strike"),
+        )
+        row = {
             "id": seat["id"],
             "job": seat["job"],
             "mark": seat["mark"],
-            "call": calls.get(seat["id"]),
+            "call": defaults.get(seat["id"]),
             "dir": lean,
+            "eye": weather_eye(lean),
             "vote": raw,
             "n": rec.get("n") or 0,
             "wr": rec.get("wr"),
@@ -1288,7 +2059,22 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
             "faded": bool(rec.get("faded")),
             "invert": bool(rec.get("invert")),
             "letter": None,
-        })
+        }
+        if seat["id"] == "MESH":
+            row["median"] = vote.get("median") if vote.get("median") is not None else pack.get("median")
+            row["spread"] = vote.get("spread") if vote.get("spread") is not None else pack.get("spread")
+            row["n_sources"] = vote.get("n_sources") if vote.get("n_sources") is not None else pack.get("n_live")
+            row["thin"] = bool(vote.get("thin") if "thin" in vote else pack.get("thin"))
+            row["wide"] = bool(vote.get("wide") if "wide" in vote else pack.get("wide"))
+            row["sources"] = list(vote.get("sources") or pack.get("sources") or [])
+            row["confidence"] = vote.get("confidence") if vote.get("confidence") is not None else (12 if row["thin"] else (22 if row["wide"] else 64))
+        kids = [
+            s for s in sub_rows
+            if str(s.get("parent") or "") == seat["id"]
+            or seat["id"] in {str(x) for x in (s.get("feeds") or ())}
+        ]
+        row["subs"] = kids
+        rows.append(row)
     return rows
 
 
@@ -1337,11 +2123,19 @@ def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bo
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     acc = chair_accuracy()
     rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
-    # Skip / dont_play is a WAIT, not a DOWN lock.
+    # Skip / dont_play is a WAIT, not a BELOW lock. Portraits still use UP/WAIT eyes.
     if not best or best.get("dont_play"):
+        lean = "WAIT"
         eye = "WAIT"
     else:
-        eye = "UP"
+        lean = weather_dir(
+            "YES",
+            strike_type=best.get("strike_type"),
+            forecast=best.get("forecast"),
+            floor_strike=best.get("floor_strike"),
+            cap_strike=best.get("cap_strike"),
+        )
+        eye = weather_eye(lean)
     # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
     marks = {
         "UP": "/static/bots/raijin-up.png",
@@ -1355,8 +2149,11 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "mark": marks.get(eye) or CHAIR["mark"],
         "portrait": CHAIR["mark"],
         "eye": eye,
+        "lean": lean,
         "call": None if not best else (best.get("skip") or best.get("bracket")),
         "bracket": None if not best else best.get("bracket"),
+        "strike_type": None if not best else best.get("strike_type"),
+        "kalshi_high": None if not best else kalshi_high_f(best),
         "ticker": None if not best else best.get("ticker"),
         "confidence": None if not best else best.get("confidence"),
         "dont_play": bool(best.get("dont_play")) if best else True,
@@ -1371,6 +2168,11 @@ async def build_board(
     now: Optional[datetime] = None,
     wx_obs: Optional[Dict[str, Any]] = None,
     cli_highs: Optional[Dict[str, float]] = None,
+    http: Optional[_Http] = None,
+    mesh: Optional[Dict[str, Any]] = None,
+    echo: Optional[Dict[str, Any]] = None,
+    cell: Optional[Dict[str, Any]] = None,
+    heat: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if fetch is None and nws is None and now is None and wx_obs is None and cli_highs is None:
         cached = _board_cache.get("payload")
@@ -1381,6 +2183,25 @@ async def build_board(
             out["accuracy"] = chair_accuracy()
             out["tape"] = lock_tape()
             out["fills"] = list(reversed(_load_fills()[-12:]))
+            try:
+                day_s = ((out.get("city") or {}).get("day"))
+                day_d = date.fromisoformat(str(day_s)) if day_s else None
+                best_row = None
+                for b in out.get("brackets") or []:
+                    if isinstance(b, dict) and b.get("best"):
+                        best_row = b
+                        break
+                fc = None
+                if best_row and best_row.get("forecast") is not None:
+                    fc = best_row.get("forecast")
+                clock = build_clock(day_d, best_row, datetime.now(timezone.utc), fc)
+                wx = out.get("weather") if isinstance(out.get("weather"), dict) else {}
+                obs = wx.get("obs") if isinstance(wx.get("obs"), dict) else {}
+                clock["now_f"] = obs.get("temp_f")
+                clock["temp_stale"] = bool(wx.get("held"))
+                out["clock"] = clock
+            except Exception:
+                pass
             recs = {r["id"]: r for r in seat_records()}
             seats = []
             for s in out.get("seats") or []:
@@ -1418,6 +2239,30 @@ async def build_board(
     brackets: List[Dict[str, Any]] = []
     forecast = None
     day = None
+    mesh_pack = mesh if isinstance(mesh, dict) else empty_mesh()
+    if wx_obs is None:
+        held = _load_wx_hold()
+        age = time.time() - float(held.get("at") or 0)
+        if held.get("mode") in WX_MODES and 0 < age < WX_REFRESH_S:
+            weather = {
+                "mode": held.get("mode"),
+                "held": False,
+                "live": True,
+                "station": "KDFW",
+                "obs": held.get("obs"),
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            weather = remember_weather(await fetch_kdfw_obs(nws))
+    else:
+        weather = remember_weather(wx_obs)
+    obs = weather.get("obs") if isinstance(weather.get("obs"), dict) else None
+    now_f = None if not obs else obs.get("temp_f")
+    echo_pack = echo if isinstance(echo, dict) else None
+    cell_pack = cell if isinstance(cell, dict) else None
+    if cell_pack is None:
+        alerts = await fetch_kdfw_alerts(nws)
+        cell_pack = build_cell(obs, alerts_ok=bool(alerts.get("ok")), alert_event=alerts.get("event"))
 
     for city in CITIES:
         rows, missing = await fetch_series(str(city["series"]), fetch)
@@ -1433,16 +2278,53 @@ async def build_board(
             dropped.append(str(city["series"]))
             continue
         city_fc = await nws_high(str(city["station"]), event_day, nws)
+        if city["id"] == "DAL":
+            forecast = city_fc
+            day = event_day
+            if mesh is None:
+                mesh_pack = await fetch_mesh_highs(event_day, nws=nws, http=http)
+            if echo_pack is None:
+                yday = event_day - timedelta(days=1)
+                yhigh = None
+                if cli_highs:
+                    yhigh = (
+                        cli_highs.get(f"DAL:{yday.isoformat()}")
+                        or cli_highs.get(f"KDFW:{yday.isoformat()}")
+                        or cli_highs.get(yday.isoformat())
+                    )
+                if yhigh is None:
+                    yhigh = await fetch_cli_high(yday, nws, station="KDFW", office="FWD")
+                echo_pack = build_echo(yhigh, yday)
         flipped = note_forecast(str(city["station"]), event_day, city_fc)
         scored = [
-            score_bracket(m, city=city, forecast=city_fc, flipped=flipped, day=event_day)
+            score_bracket(
+                m,
+                city=city,
+                forecast=city_fc,
+                flipped=flipped,
+                day=event_day,
+                mesh=mesh_pack if city["id"] == "DAL" else None,
+                heat=build_heat(
+                    now_f=now_f,
+                    nws_high=city_fc,
+                    kalshi_high=kalshi_high_f(m),
+                    stale=bool(weather.get("held")),
+                    market=m,
+                ) if heat is None else heat,
+                echo=echo_pack if city["id"] == "DAL" else None,
+                cell=cell_pack if city["id"] == "DAL" else None,
+            )
             for m in today
         ]
         scored.sort(key=lambda b: (-int(b.get("confidence") or 0), -(b.get("ev_cents") or -99)))
         brackets.extend(scored)
-        if city["id"] == "DAL":
-            forecast = city_fc
-            day = event_day
+
+    if mesh is None and (not mesh_pack.get("sources")):
+        try:
+            mesh_day = day or n.astimezone(CT).date()
+        except Exception:
+            mesh_day = day or n.date()
+        mesh_pack = await fetch_mesh_highs(mesh_day, nws=nws, http=http)
 
     best = pick_best(brackets)
     if best:
@@ -1456,7 +2338,7 @@ async def build_board(
         chair_best = None
     sit_out = chair_best is None or bool(best and best.get("dont_play"))
     if day is not None and sit_out:
-        skip = (best or {}).get("skip") if best else "Don’t play · empty book"
+        skip = (best or {}).get("skip") if best else "EMPTY BOOK"
         would = front_would_lock_if_strict(best, min_c)
         try:
             record_wait_sample(
@@ -1481,22 +2363,23 @@ async def build_board(
         except Exception:
             pass
 
-    if wx_obs is None:
-        held = _load_wx_hold()
-        age = time.time() - float(held.get("at") or 0)
-        if held.get("mode") in WX_MODES and 0 < age < WX_REFRESH_S:
-            weather = {
-                "mode": held.get("mode"),
-                "held": False,
-                "live": True,
-                "station": "KDFW",
-                "obs": held.get("obs"),
-                "at": datetime.now(timezone.utc).isoformat(),
-            }
-        else:
-            weather = remember_weather(await fetch_kdfw_obs(nws))
-    else:
-        weather = remember_weather(wx_obs)
+    if echo_pack is None:
+        try:
+            echo_day = (day or n.astimezone(CT).date()) - timedelta(days=1)
+        except Exception:
+            echo_day = (day or n.date()) - timedelta(days=1)
+        echo_pack = build_echo(await fetch_cli_high(echo_day, nws, station="KDFW", office="FWD"), echo_day)
+    heat_pack = heat if isinstance(heat, dict) else build_heat(
+        now_f=now_f,
+        nws_high=forecast,
+        kalshi_high=None if not best else kalshi_high_f(best),
+        stale=bool(weather.get("held")),
+        market=best,
+    )
+    sub_rows = build_subs(heat_pack, echo_pack, cell_pack)
+    clock = build_clock(day, best, n, forecast)
+    clock["now_f"] = None if now_f is None else now_f
+    clock["temp_stale"] = bool(weather.get("held"))
 
     payload = {
         "ok": True,
@@ -1525,8 +2408,11 @@ async def build_board(
             for c in CITIES
         ],
         "weather": weather,
+        "clock": clock,
         "chair": build_chair(chair_best),
-        "seats": build_seats(best, forecast, day),
+        "seats": build_seats(best, forecast, day, mesh=mesh_pack, subs=sub_rows),
+        "mesh": mesh_pack,
+        "subs": sub_rows,
         "brackets": brackets,
         "best": None if best is None else best.get("ticker"),
         "dropped": dropped,

@@ -47,6 +47,7 @@ def _m(
         "yes_ask_dollars": yes_ask,
         "volume_fp": volume,
         "status": "active",
+        "close_time": "2026-08-16T04:00:00Z",
     }
 
 
@@ -83,8 +84,34 @@ async def _nws_high_only(url: str):
         return {"geometry": {"coordinates": [-97.02196, 32.89743]}}
     if "/stations/KNYC" in url:
         high = 84
+    if "/alerts/active" in url:
+        return {"features": []}
+    if "/products/types/CLI/" in url:
+        return {"@graph": [{"@id": "https://api.weather.gov/products/CLI-YDAY"}]}
+    if "CLI-YDAY" in url or url.rstrip("/").endswith("/products/CLI-YDAY"):
+        return {"productText": "THE DALLAS-FORT WORTH CLIMATE SUMMARY FOR AUGUST 14 2026\nMAXIMUM TEMPERATURE (F)\n 102    104\n"}
     if "/points/" in url:
-        return {"properties": {"forecast": "https://api.weather.gov/gridpoints/X/1,1/forecast"}}
+        return {"properties": {
+            "forecast": "https://api.weather.gov/gridpoints/FWD/79,105/forecast",
+            "forecastGridData": "https://api.weather.gov/gridpoints/FWD/79,105",
+            "gridId": "FWD",
+            "gridX": 79,
+            "gridY": 105,
+            "cwa": "FWD",
+        }}
+    if "/gridpoints/" in url and not url.rstrip("/").endswith("/forecast"):
+        return {"properties": {"maxTemperature": {
+            "uom": "wmoUnit:degC",
+            "values": [{"validTime": "2026-08-15T12:00:00+00:00/P1D", "value": 39.444}],
+        }}}
+    if "ensemble" in url and "open-meteo" in url:
+        return {"daily": {
+            "time": ["2026-08-15"],
+            "temperature_2m_max_member01": [102],
+            "temperature_2m_max_member02": [104],
+        }}
+    if "open-meteo.com" in url:
+        return {"daily": {"time": ["2026-08-15"], "temperature_2m_max": [103]}}
     if "forecast" in url:
         return {"properties": {"periods": [
             {"isDaytime": True, "startTime": "2026-08-15T06:00:00-05:00", "temperature": high, "temperatureUnit": "F"},
@@ -112,6 +139,14 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("PIT", HTML)
         self.assertIn("FROST", HTML)
         self.assertIn("BONE", HTML)
+        self.assertIn("MESH", HTML)
+        self.assertIn("HEAT", HTML)
+        self.assertIn("ECHO", HTML)
+        self.assertIn("CELL", HTML)
+        self.assertNotIn('data-seat="HEAT"', HTML)
+        self.assertNotIn('data-seat="ECHO"', HTML)
+        self.assertNotIn('data-seat="CELL"', HTML)
+        self.assertEqual(HTML.count('class="front-seat"'), 5)
         self.assertNotIn("FORECAST", HTML)
         self.assertNotIn("CLIMO", HTML)
         self.assertNotIn("CHI Midway", HTML)
@@ -140,7 +175,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertLess(HTML.find('id="tabFront"'), HTML.find('id="tabCharts"'))
 
     def test_bot_marks_are_pngs_no_letter_fallback(self):
-        for name in ("glass.png", "pit.png", "frost.png", "bone.png", "raijin-chair.png", "raijin-up.png", "raijin-down.png", "raijin-wait.png"):
+        for name in ("glass.png", "pit.png", "frost.png", "bone.png", "mesh.png", "heat.png", "wx-echo.png", "cell.png", "raijin-chair.png", "raijin-up.png", "raijin-down.png", "raijin-wait.png"):
             path = BOTS / name
             self.assertTrue(path.is_file(), name)
             self.assertGreater(path.stat().st_size, 1000)
@@ -148,6 +183,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("/static/bots/pit.png", HTML)
         self.assertIn("/static/bots/frost.png", HTML)
         self.assertIn("/static/bots/bone.png", HTML)
+        self.assertIn("/static/bots/mesh.png", HTML)
         self.assertIn("frontMarkFail", JS)
         self.assertIn("frontChairImg", JS)
         self.assertIn("raijin-up.png", FRONT)
@@ -166,10 +202,20 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('title: "THE FRONT"', JS)
         self.assertIn("Raijin’s Floor — same ring as BTC / ETH", JS)
         self.assertIn("Hits count like Satoshi / Vitalik", JS)
-        self.assertIn("Official/NWS high for the station.", FRONT)
-        self.assertIn("Kalshi implied vs that number, after vig.", FRONT)
-        self.assertIn("Veto junk book / flip / SICK / thin n.", FRONT)
-        self.assertIn("Seasonal base. Low weight.", FRONT)
+        self.assertIn('"job": "NWS PANE"', FRONT)
+        self.assertIn('"job": "THE PIT"', FRONT)
+        self.assertIn('"job": "FROST KILL"', FRONT)
+        self.assertIn('"job": "BONE CLIMO"', FRONT)
+        self.assertIn('"job": "THE WEB"', FRONT)
+        self.assertNotIn("forecast source", FRONT + JS + HTML)
+        self.assertNotIn("Kalshi implied", FRONT + JS + HTML)
+        self.assertNotIn("skip reason", FRONT + JS + HTML)
+        self.assertNotIn("seasonal base", FRONT + JS + HTML)
+        self.assertNotIn("multi-source aggregate", FRONT + JS + HTML)
+        self.assertIn('{"id": "HEAT"', FRONT)
+        self.assertIn('{"id": "ECHO"', FRONT)
+        self.assertIn('{"id": "CELL"', FRONT)
+        self.assertIn("id=\"frontSubHud\"", HTML)
         self.assertIn('id="frontHrRight"', HTML)
         self.assertIn('id="frontTape"', HTML)
         self.assertIn("LAST LOCKS", HTML)
@@ -208,6 +254,10 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
         self.assertIn('id="focusFront"', HTML)
         self.assertIn('data-focus="front"', HTML)
+        self.assertIn(">DWF</button>", HTML)
+        self.assertIn("Focus Dallas Weather Forecast / Raijin", HTML)
+        self.assertNotIn(">RAIJIN</button>", HTML)
+        self.assertNotIn(">DFW</button>", HTML)
         self.assertIn("function isFrontTable", JS)
         self.assertIn("function frontTableState", JS)
         self.assertIn('bind(focusFront, "front")', JS)
@@ -233,6 +283,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('"PIT"', body)
         self.assertIn('"FROST"', body)
         self.assertIn('"BONE"', body)
+        self.assertIn('"MESH"', body)
         self.assertIn("LOCKED ", body)
         self.assertNotIn("drawLockIgnition(", body)
         self.assertNotIn("rgba(240, 193, 74", body)
@@ -405,16 +456,28 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board["city"]["series"], "KXHIGHTDAL")
         self.assertNotIn("cards", board)
         ids = [s["id"] for s in board["seats"]]
-        self.assertEqual(ids, ["GLASS", "PIT", "FROST", "BONE"])
+        self.assertEqual(ids, ["GLASS", "PIT", "FROST", "BONE", "MESH"])
         self.assertEqual(board["chair"]["id"], "RAIJIN")
         self.assertEqual(board["chair"]["name"], "RAIJIN")
         self.assertTrue(str(board["chair"]["name"]).strip())
-        self.assertTrue(all(s.get("dir") in ("UP", "DOWN", "WAIT") for s in board["seats"]))
+        self.assertTrue(all(s.get("dir") in ("ABOVE", "BELOW", "BETWEEN", "WAIT") for s in board["seats"]))
+        self.assertTrue(all(s.get("dir") not in ("UP", "DOWN", "YES", "NO") for s in board["seats"]))
         self.assertTrue(all("vote" in s for s in board["seats"]))
         self.assertTrue(all(s["mark"].endswith(".png") for s in board["seats"]))
         self.assertTrue(board["chair"]["portrait"].endswith("raijin-chair.png"))
         self.assertEqual(board["chair"]["eye"], "UP")
+        self.assertEqual(board["chair"]["lean"], "BETWEEN")
         self.assertTrue(board["chair"]["mark"].endswith("raijin-up.png"))
+        self.assertEqual(board["clock"]["kind"], "kalshi")
+        self.assertEqual(board["clock"]["label"], "DFW HIGH")
+        self.assertEqual(board["clock"]["sub"], "settles 7:00 CT")
+        self.assertIn("KXHIGHTDAL", str(board["clock"].get("ticker") or ""))
+        self.assertIsNotNone(board["clock"].get("seconds_to_cli"))
+        self.assertIsNotNone(board["clock"].get("cli_at"))
+        self.assertIsNotNone(board["clock"].get("close_time"))
+        self.assertNotEqual(board["clock"]["close_time"][:10], board["city"]["day"])
+        self.assertNotEqual(str(board["clock"]["close_time"]), str(board["clock"]["cli_at"]))
+        self.assertNotIn("1H", str(board["clock"].get("label") or ""))
         self.assertEqual(board["weather"]["mode"], "HEAT")
         self.assertFalse(board["follower"])
         self.assertTrue(board["status"]["paper_default"])
@@ -429,7 +492,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board["home"], "DAL")
         self.assertTrue(any(b.get("best") for b in board["brackets"]))
         self.assertEqual(next(b for b in board["brackets"] if b.get("best"))["city"], "DAL")
-        self.assertEqual([v["id"] for v in board["brackets"][0]["votes"]], ["GLASS", "PIT", "FROST", "BONE"])
+        self.assertEqual([v["id"] for v in board["brackets"][0]["votes"]], ["GLASS", "PIT", "FROST", "BONE", "MESH"])
         self.assertEqual(board["accuracy"]["leader"], "RAIJIN")
         self.assertIn("pending", board["accuracy"])
         self.assertTrue(all(s.get("rank") for s in board["seats"]))
@@ -446,7 +509,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(board["best"])
         self.assertEqual(board["chair"]["eye"], "WAIT")
         self.assertTrue(board["chair"]["mark"].endswith("raijin-wait.png"))
-        self.assertEqual([s["id"] for s in board["seats"]], ["GLASS", "PIT", "FROST", "BONE"])
+        self.assertEqual([s["id"] for s in board["seats"]], ["GLASS", "PIT", "FROST", "BONE", "MESH"])
 
     def test_chair_eyes_up_down_wait(self):
         wait = desk_front.build_chair(None)
@@ -533,7 +596,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ok["fill"]["result"], "OPEN")
         self.assertEqual(ok["fill"]["leader"], "RAIJIN")
         self.assertEqual(ok["fill"]["city"], "DAL")
-        self.assertEqual([v["id"] for v in ok["fill"]["votes"]], ["GLASS", "PIT", "FROST", "BONE"])
+        self.assertEqual([v["id"] for v in ok["fill"]["votes"]], ["GLASS", "PIT", "FROST", "BONE", "MESH"])
         await desk_front.settle_open_fills(nws=_nws_high_only)
         acc = desk_front.chair_accuracy()
         self.assertEqual(acc["pending"], 1)
@@ -551,7 +614,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tape[0]["city"], "DAL")
         self.assertTrue(tape[0]["paper"])
         recs = {r["id"]: r for r in desk_front.seat_records()}
-        self.assertEqual(set(recs), {"GLASS", "PIT", "FROST", "BONE"})
+        self.assertEqual(set(recs), {"GLASS", "PIT", "FROST", "BONE", "MESH"})
         self.assertTrue(all(r["rank"] >= 1 for r in recs.values()))
         self.assertGreaterEqual(recs["GLASS"]["n"], 1)
         miss = await desk_front.tap(
@@ -611,6 +674,258 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(ok.get("arming"))
             self.assertFalse(desk_front.is_armed(1000.0))
             self.assertTrue(desk_front.is_armed(1010.0))
+
+
+class FrontFocusWeatherDeskTests(unittest.TestCase):
+    def test_gold_tab_letters_are_dwf_not_dfw_or_raijin(self):
+        row = HTML.split('id="modeTabs"', 1)[1].split('id="tabFloor"', 1)[0]
+        self.assertIn(">BTC</button>", row)
+        self.assertIn(">ETH</button>", row)
+        self.assertIn(">DWF</button>", row)
+        self.assertNotIn(">RAIJIN</button>", row)
+        self.assertNotIn(">DFW</button>", row)
+        self.assertNotIn(">FRONT</button>", row)
+        btn = HTML.split('id="focusFront"', 1)[1].split("</button>", 1)[0]
+        self.assertIn("Focus Dallas Weather Forecast / Raijin", btn)
+        self.assertNotIn("ZT", btn)
+        self.assertIn('data-focus="front"', btn)
+
+    def test_front_focus_roster_is_weather_only(self):
+        self.assertIn("const FRONT_SEAT_KEYS", JS)
+        self.assertIn('["glass", "pit", "frost", "bone", "mesh"]', JS)
+        self.assertIn('["HEAT", "ECHO", "CELL"]', JS)
+        self.assertNotIn('"heat"', JS.split("const FRONT_SEAT_KEYS", 1)[1].split(";", 1)[0])
+        self.assertIn("frontLive", JS)
+        draw = JS.split("function drawArt()", 1)[1].split("function renderDashboard", 1)[0]
+        self.assertIn("frontLive", draw)
+        self.assertIn("FRONT_SEAT_KEYS", draw)
+        self.assertIn("glass: \"/static/bots/glass.png\"", JS)
+        self.assertIn("pit: \"/static/bots/pit.png\"", JS)
+        self.assertIn("frost: \"/static/bots/frost.png\"", JS)
+        self.assertIn("bone: \"/static/bots/bone.png\"", JS)
+        self.assertIn("mesh: \"/static/bots/mesh.png\"", JS)
+        self.assertIn("function wxWord", JS)
+        self.assertIn("function frontHighLine", JS)
+        self.assertIn("KALSHI HIGH", JS)
+
+    def test_no_1h_chip_on_front_focus(self):
+        self.assertIn("function paintFrontWindowChrome", JS)
+        chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
+        self.assertIn('ledLabel.textContent = "DFW HIGH"', chrome)
+        self.assertIn('"DFW HIGH"', chrome)
+        self.assertIn("settles 7:00 CT", chrome)
+        self.assertIn("seconds_to_close", chrome)
+        self.assertIn("charts-hero-front", JS)
+        self.assertIn("window_kind: clock.close_time ? \"kalshi\" : \"cli\"", JS)
+        self.assertIn("No Dallas book — waiting on DFW CLI", JS)
+        self.assertNotIn("close_time: clock.cli_at", JS)
+        self.assertNotIn("board.city ? board.city.day", JS)
+        self.assertIn('id="wxCity"', HTML)
+        self.assertIn('id="wxCliWindow"', HTML)
+        self.assertIn("DALLAS", HTML)
+        self.assertIn("BRACKET", HTML)
+        self.assertIn("deskBook", JS)
+        self.assertIn("body[data-focus-table=\"front\"] #dualFightCard", CSS)
+        self.assertIn("body[data-focus-table=\"front\"] #stripKalshi", CSS)
+        self.assertIn("body[data-focus-table=\"front\"] .window-timer", CSS)
+        self.assertIn("chart-crypto-odds", HTML + CSS + JS)
+        self.assertIn("body[data-focus-table=\"front\"] .chart-card.chart-crypto-funding", CSS)
+        pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
+        self.assertIn("isFrontTable(focusTable)", pair)
+        self.assertIn('setPairWindowChip(canvas, "1H WINDOW")', JS)
+        self.assertIn('setPairWindowChip(canvas, "")', pair)
+        view = JS.split("function getViewState()", 1)[1].split("function deskLockSnapshot", 1)[0]
+        self.assertIn('isFrontTable(focusTable)', view)
+        self.assertIn('tableState("front")', view)
+
+    def test_above_below_never_up_down_on_front_hud(self):
+        self.assertIn("function wxWord", JS)
+        self.assertIn('return "ABOVE"', JS)
+        self.assertIn('return "BELOW"', JS)
+        self.assertIn('return "BETWEEN"', JS)
+        self.assertIn("def weather_dir", FRONT)
+        self.assertIn('"""HUD word for Dallas daily high. Never UP / DOWN / YES / NO."""', FRONT)
+        self.assertEqual(desk_front.weather_dir("YES", strike_type="greater"), "ABOVE")
+        self.assertEqual(desk_front.weather_dir("NO", strike_type="greater"), "BELOW")
+        self.assertEqual(desk_front.weather_dir("YES", strike_type="between"), "BETWEEN")
+        self.assertEqual(desk_front.weather_dir("NO", strike_type="between", forecast=100, floor_strike=103, cap_strike=104), "BELOW")
+        self.assertEqual(desk_front.weather_dir("WAIT"), "WAIT")
+        self.assertEqual(desk_front.weather_eye("ABOVE"), "UP")
+        self.assertEqual(desk_front.weather_eye("BELOW"), "DOWN")
+        self.assertEqual(desk_front.weather_eye("BETWEEN"), "UP")
+        self.assertEqual(desk_front.weather_eye("WAIT"), "WAIT")
+
+    def test_cli_clock_is_next_morning_not_hour(self):
+        day = date(2026, 8, 15)
+        cli = desk_front.cli_at_for(day)
+        self.assertEqual(cli.hour, 7)
+        self.assertEqual(cli.date(), date(2026, 8, 16))
+        clock = desk_front.build_clock(
+            day,
+            {
+                "strike_type": "between",
+                "floor_strike": 103,
+                "cap_strike": 104,
+                "bracket": "103–104°F",
+                "ticker": "KXHIGHTDAL-26AUG15-B103104",
+                "close_time": "2026-08-16T04:00:00Z",
+            },
+            datetime(2026, 8, 15, 16, 5, tzinfo=timezone.utc),
+            103,
+        )
+        self.assertEqual(clock["kind"], "kalshi")
+        self.assertEqual(clock["label"], "DFW HIGH")
+        self.assertEqual(clock["sub"], "settles 7:00 CT")
+        self.assertEqual(clock["kalshi_high"], 104)
+        self.assertEqual(clock["nws_high"], 103)
+        self.assertGreater(clock["seconds_to_cli"], 3600)
+        self.assertIsNotNone(clock["close_time"])
+        self.assertNotEqual(str(clock["close_time"])[:10], "2026-08-15")
+        self.assertNotEqual(clock["close_time"], clock["cli_at"])
+        self.assertLess(clock["seconds_to_close"], clock["seconds_to_cli"])
+        self.assertIsNone(desk_front.market_close_of({"close_time": "2026-08-15"}))
+        self.assertNotIn("1H", clock["label"])
+
+
+class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        desk_front.reset_for_tests(self.tmp)
+
+    async def test_mesh_median_three_sources_not_glass(self):
+        board = await desk_front.build_board(
+            fetch=_fetch_factory(),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 96, "wind_kt": 6},
+        )
+        mesh = next(s for s in board["seats"] if s["id"] == "MESH")
+        glass = next(s for s in board["seats"] if s["id"] == "GLASS")
+        self.assertGreaterEqual(mesh["n_sources"], 2)
+        self.assertFalse(mesh["thin"])
+        self.assertEqual(mesh["median"], 103)
+        self.assertIn("3-SOURCE MEDIAN", mesh["call"])
+        self.assertEqual(mesh["dir"], "BETWEEN")
+        self.assertIn("GLASS READS 103°", glass["call"] or "")
+        self.assertNotEqual(mesh["job"], glass["job"])
+        self.assertTrue(mesh["mark"].endswith("mesh.png"))
+        self.assertNotIn("Love", str(board.get("mesh")))
+        self.assertNotIn("KDAL", str(board.get("mesh")))
+
+    async def test_mesh_thin_on_misses_never_fakes(self):
+        async def dead(url: str):
+            raise TimeoutError("timeout")
+
+        pack = await desk_front.fetch_mesh_highs(date(2026, 8, 15), nws=dead)
+        self.assertTrue(pack["thin"])
+        self.assertIsNone(pack["median"])
+        self.assertGreaterEqual(len(pack["sources"]), 2)
+        self.assertTrue(all(not s.get("ok") for s in pack["sources"] if s["id"] != "nbm"))
+        self.assertIn("THIN MESH", desk_front.mesh_call_line(pack))
+
+    def test_mesh_wide_frost_veto(self):
+        mesh = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 98),
+            desk_front._mesh_hit("open-meteo", 108),
+        ])
+        self.assertTrue(mesh["wide"])
+        self.assertGreaterEqual(mesh["spread"], 4)
+        skip = desk_front.skip_reason({}, 103, False, 4000, mesh=mesh)
+        self.assertIn("WIDE SPLIT · SIT", skip)
+
+    def test_heat_still_hit_and_cooked(self):
+        live = desk_front.build_heat(now_f=96, nws_high=103, kalshi_high=104)
+        self.assertIn("CAN WE STILL HIT 103°", live["line"])
+        self.assertFalse(live["cooked"])
+        cooked = desk_front.build_heat(
+            now_f=105, nws_high=103, kalshi_high=104,
+            strike_type="between", floor_strike=103, cap_strike=104,
+        )
+        self.assertEqual(cooked["line"], "DAY IS COOKED")
+        self.assertTrue(cooked["blew_bracket"])
+        miss = desk_front.build_heat(now_f=None)
+        self.assertEqual(miss["line"], "METAR DEAD")
+        self.assertFalse(miss["ok"])
+        skip = desk_front.skip_reason({}, 103, False, 4000, heat=cooked)
+        self.assertIn("DAY COOKED", skip)
+
+    def test_echo_yday_feeds_bone_not_a_seat(self):
+        echo = desk_front.build_echo(102, date(2026, 8, 14))
+        self.assertEqual(echo["line"], "YDAY 102°")
+        self.assertEqual(echo["parent"], "BONE")
+        self.assertFalse(echo["vote"])
+        miss = desk_front.build_echo(None)
+        self.assertEqual(miss["line"], "NO YDAY CLI")
+        ids = [s["id"] for s in desk_front.SEATS]
+        self.assertEqual(ids, ["GLASS", "PIT", "FROST", "BONE", "MESH"])
+        self.assertNotIn("ECHO", ids)
+        self.assertNotIn("HEAT", ids)
+        self.assertNotIn("CELL", ids)
+
+    def test_cell_kill_and_honest_miss(self):
+        kill = desk_front.build_cell({"raw": "KDFW TSRA", "text": "Thunderstorm"}, alerts_ok=True)
+        self.assertTrue(kill["kill"])
+        self.assertIn("CELL UP", kill["line"])
+        skip = desk_front.skip_reason({}, 103, False, 4000, cell=kill)
+        self.assertIn("CELL CAP", skip)
+        clear = desk_front.build_cell({"raw": "KDFW CLR", "text": "Clear"}, alerts_ok=True)
+        self.assertFalse(clear["kill"])
+        self.assertIn("SKY CLEAR", clear["line"])
+        miss = desk_front.build_cell(None, alerts_ok=False)
+        self.assertEqual(miss["line"], "NO CELL FEED")
+        self.assertFalse(miss["kill"])
+
+    async def test_board_has_five_chairs_and_three_subs(self):
+        board = await desk_front.build_board(
+            fetch=_fetch_factory(),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 96, "wind_kt": 6},
+        )
+        self.assertEqual([s["id"] for s in board["seats"]], ["GLASS", "PIT", "FROST", "BONE", "MESH"])
+        self.assertEqual([s["id"] for s in board["subs"]], ["HEAT", "ECHO", "CELL"])
+        self.assertTrue(all(not s.get("vote") and not s.get("chair") for s in board["subs"]))
+        heat = next(s for s in board["subs"] if s["id"] == "HEAT")
+        echo = next(s for s in board["subs"] if s["id"] == "ECHO")
+        cell = next(s for s in board["subs"] if s["id"] == "CELL")
+        self.assertIn("CAN WE STILL HIT", heat["line"])
+        self.assertEqual(echo["line"], "YDAY 102°")
+        self.assertIn("SKY CLEAR", cell["line"])
+        glass = next(s for s in board["seats"] if s["id"] == "GLASS")
+        pit = next(s for s in board["seats"] if s["id"] == "PIT")
+        frost = next(s for s in board["seats"] if s["id"] == "FROST")
+        bone = next(s for s in board["seats"] if s["id"] == "BONE")
+        mesh = next(s for s in board["seats"] if s["id"] == "MESH")
+        self.assertEqual(glass["job"], "NWS PANE")
+        self.assertEqual(pit["job"], "THE PIT")
+        self.assertEqual(frost["job"], "FROST KILL")
+        self.assertEqual(bone["job"], "BONE CLIMO")
+        self.assertEqual(mesh["job"], "THE WEB")
+        self.assertEqual(glass["call"], "GLASS READS 103°")
+        self.assertIn("BOOK ", pit["call"] or "")
+        self.assertIn("30-YR", bone["call"] or "")
+        self.assertIn("SOURCE MEDIAN", mesh["call"] or "")
+        self.assertTrue(any(x["id"] == "HEAT" for x in glass["subs"]))
+        self.assertTrue(any(x["id"] == "CELL" for x in frost["subs"]))
+        self.assertTrue(any(x["id"] == "ECHO" for x in bone["subs"]))
+        self.assertEqual(board["clock"].get("now_f"), 96)
+        self.assertNotIn("1H", str(board["clock"].get("label")))
+        self.assertFalse(board["follower"])
+
+    def test_ui_subs_are_not_ring_chairs(self):
+        self.assertIn("frontSubHud", HTML + JS)
+        self.assertIn("FRONT_SUB_IDS", JS)
+        self.assertIn("paintFrontSubs", JS)
+        self.assertNotIn('data-seat="HEAT"', HTML)
+        self.assertNotIn('data-seat="ECHO"', HTML)
+        self.assertNotIn('data-seat="CELL"', HTML)
+        keys = JS.split("const FRONT_SEAT_KEYS", 1)[1].split(";", 1)[0]
+        self.assertIn("mesh", keys)
+        self.assertNotIn("heat", keys)
+        self.assertNotIn("echo", keys)
+        self.assertNotIn("cell", keys)
+        self.assertIn("wxNowTemp", HTML + JS)
+        self.assertIn("wxSubStrip", HTML + JS)
 
 
 if __name__ == "__main__":

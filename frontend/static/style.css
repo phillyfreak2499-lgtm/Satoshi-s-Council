@@ -3717,7 +3717,165 @@ body[data-focus-table="ats"] #focusFront.focus-active {
   padding: 0.25rem 0.5rem;
   border-left: 1px solid rgba(240, 193, 74, 0.35);
 }
-
+body[data-focus-table="front"] #stripBtcPx,
+body[data-focus-table="front"] #stripEthPx,
+body[data-focus-table="front"] #stripFunding,
+body[data-focus-table="front"] #ethDecisionStrip,
+body[data-focus-table="front"] #btcDecisionStrip,
+body[data-focus-table="front"] #dualVoteStrip,
+body[data-focus-table="front"] .odds-live,
+body[data-focus-table="ats"] #stripBtcPx,
+body[data-focus-table="ats"] #stripEthPx,
+body[data-focus-table="ats"] #stripFunding,
+body[data-focus-table="ats"] #ethDecisionStrip,
+body[data-focus-table="ats"] #btcDecisionStrip,
+body[data-focus-table="ats"] #dualVoteStrip,
+body[data-focus-table="ats"] .odds-live {
+  display: none !important;
+}
+body[data-focus-table="front"] #wxHighStrip,
+body[data-focus-table="front"] #wxSubStrip {
+  display: inline !important;
+}
+body[data-focus-table="ats"] #atsGameStrip {
+  display: inline !important;
+}
+body[data-focus-table="ats"] #dualWindowSub,
+body[data-focus-table="ats"] #tabNews,
+body[data-focus-table="ats"] #tabSchool,
+body[data-focus-table="ats"] #tabBook,
+body[data-focus-table="front"] #tabNews,
+body[data-focus-table="front"] #tabSchool,
+body[data-focus-table="front"] #tabBook,
+body[data-focus-table="ats"] #bookSatoshi,
+body[data-focus-table="ats"] #bookVitalik,
+body[data-focus-table="front"] #bookSatoshi,
+body[data-focus-table="front"] #bookVitalik,
+body[data-focus-table="ats"] .acc-strip,
+body[data-focus-table="front"] .acc-strip,
+body[data-focus-table="ats"] #paperAutoSummary,
+body[data-focus-table="front"] #paperAutoSummary,
+body[data-focus-table="ats"] #stripFunding,
+body[data-focus-table="ats"] #dualFightCard,
+body[data-focus-table="front"] #dualFightCard,
+body[data-focus-table="ats"] #stripKalshi,
+body[data-focus-table="front"] #stripKalshi,
+body[data-focus-table="ats"] .window-timer,
+body[data-focus-table="front"] .window-timer {
+  display: none !important;
+}
+body[data-focus-table="ats"] #ledWindowTime {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.wx-high-strip {
+  display: none;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  color: #f0d78a;
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.4);
+}
+.wx-sub-strip {
+  display: none;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  color: #7fe9ff;
+  text-shadow: 0 0 8px rgba(0, 232, 255, 0.45);
+}
+.wx-sub-strip span {
+  margin-right: 10px;
+}
+.wx-sub-strip span[data-tone="kill"],
+.wx-sub-strip span[data-tone="cooked"] { color: #ffb000; }
+.wx-sub-strip span[data-tone="miss"] { color: #8aa0b4; }
+.ats-game-strip {
+  display: none;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  color: #f0c14a;
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.4);
+}
+.front-sub-hud {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  max-width: 920px;
+  margin: 8px auto 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  background: rgba(2, 8, 16, 0.88);
+  box-shadow: inset 0 0 18px rgba(0, 232, 255, 0.08);
+  font-family: Orbitron, monospace;
+}
+.front-sub {
+  display: grid;
+  grid-template-columns: 14px auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #c8ecff;
+}
+.front-sub b { color: #7fe9ff; }
+.front-sub i { font-style: normal; color: rgba(180, 210, 230, 0.55); font-size: 9px; }
+.front-sub-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #7fe9ff, #0a2030 70%);
+  box-shadow: 0 0 8px rgba(0, 232, 255, 0.7);
+}
+.front-sub[data-tone="cooked"] .front-sub-mark,
+.front-sub[data-tone="kill"] .front-sub-mark {
+  background: radial-gradient(circle, #ffb000, #3a2000 70%);
+  box-shadow: 0 0 8px rgba(255, 176, 0, 0.7);
+}
+.front-sub[data-tone="miss"] .front-sub-mark {
+  background: radial-gradient(circle, #6a7a88, #121820 70%);
+  box-shadow: none;
+}
+.front-sub-under {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(0, 232, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.front-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #9ad8ff;
+}
+.front-sub-row img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.front-sub-row b { color: #7fe9ff; }
+.dash-seat-mark,
+.rank-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.agent-card .name .dash-seat-mark {
+  width: 28px;
+  height: 28px;
+}
+.rank-row .nm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 /* ===== ALL VIDEOS FIT TO SCREEN (final override) ===== */
 .summon-video-wrap,
@@ -7779,6 +7937,8 @@ body.mode-charts .chart-card.no-feed canvas {
 }
 html body.mode-charts .chart-card.chart-pair-eth.chart-hero-off,
 html body.mode-charts .chart-card.chart-pair-btc.chart-hero-off,
+html body.mode-charts.charts-hero-front .chart-card.chart-pair-btc,
+html body.mode-charts.charts-hero-front .chart-card.chart-pair-eth,
 html body.mode-charts.charts-hero-btc .chart-card.chart-pair-eth,
 html body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
   display: none !important;
@@ -7904,6 +8064,8 @@ html body.mode-charts.charts-hero-eth .chart-card.chart-pair-btc {
 .ares-face[data-eye="over"] { --ares-eye-a: #FF6A1A; --ares-eye-b: #FFC14A; }
 .ares-face[data-eye="under"] { --ares-eye-a: #3DE0FF; --ares-eye-b: #00E8FF; }
 .ares-face[data-eye="team"] { --ares-eye-a: var(--ares-eye-a); --ares-eye-b: var(--ares-eye-b); }
+/* Canvas portrait + eye tint only — never stack the HTML Ares photo on top. */
+.ares-face,
 body:not([data-focus-table="ats"]) .ares-face,
 body.mode-floor .ares-face,
 body.mode-night .ares-face,
@@ -7920,12 +8082,34 @@ body.mode-settings .ares-face { display: none !important; }
 body[data-focus-table="ats"] .chart-card.chart-pair-btc,
 body[data-focus-table="ats"] .chart-card.chart-pair-eth,
 body.charts-hero-ats .chart-card.chart-pair-btc,
-body.charts-hero-ats .chart-card.chart-pair-eth {
+body.charts-hero-ats .chart-card.chart-pair-eth,
+body[data-focus-table="ats"] .chart-card.chart-crypto-odds,
+body[data-focus-table="ats"] .chart-card.chart-crypto-delta,
+body[data-focus-table="ats"] .chart-card.chart-crypto-funding,
+body.charts-hero-ats .chart-card.chart-crypto-odds,
+body.charts-hero-ats .chart-card.chart-crypto-delta,
+body.charts-hero-ats .chart-card.chart-crypto-funding,
+body[data-focus-table="front"] .chart-card.chart-crypto-odds,
+body[data-focus-table="front"] .chart-card.chart-crypto-delta,
+body[data-focus-table="front"] .chart-card.chart-crypto-funding,
+body.charts-hero-front .chart-card.chart-crypto-odds,
+body.charts-hero-front .chart-card.chart-crypto-delta,
+body.charts-hero-front .chart-card.chart-crypto-funding {
   display: none !important;
 }
 body[data-focus-table="ats"] #atsChartTape,
 body.charts-hero-ats #atsChartTape {
   display: block !important;
+}
+body[data-focus-table="front"] .chart-window-chip,
+body[data-focus-table="ats"] .chart-window-chip,
+body[data-focus-table="front"] .chart-ktarget-chip,
+body[data-focus-table="ats"] .chart-ktarget-chip,
+body.charts-hero-front .chart-window-chip,
+body.charts-hero-ats .chart-window-chip,
+body.charts-hero-front .chart-ktarget-chip,
+body.charts-hero-ats .chart-ktarget-chip {
+  display: none !important;
 }
 .ats-chart-line {
   font-family: Orbitron, monospace;

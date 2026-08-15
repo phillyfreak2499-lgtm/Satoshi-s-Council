@@ -217,7 +217,7 @@
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
         <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
           <div class="led-bezel">
-            <div class="led-label">1H WINDOW</div>
+            <div class="led-label" id="ledWindowLabel">1H WINDOW</div>
             <div id="ledWindowTime" class="led-digits led-time">--:--</div>
             <div class="led-foot" id="ledWindowSub">until close</div>
             <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
@@ -554,7 +554,7 @@
       </div>
       <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
         <div class="front-guide-head">FRONT / RAIJIN</div>
-        <p class="front-bots-sub">Weather Chair. Dallas DFW daily high. Not mixed into WICK / TAPE.</p>
+        <p class="front-bots-sub">Five chairs. Three subs. Dallas high only. Not mixed into WICK / TAPE.</p>
         <div id="frontBotsGrid" class="bots-grid"></div>
       </section>
       <section id="atsBotsGuide" class="front-bots-guide" aria-label="ATS / ARES">
@@ -741,22 +741,32 @@
               <span class="front-name">GLASS</span>
               <span class="front-call" data-call="GLASS">—</span>
             </button>
-            <button type="button" class="front-seat" data-seat="PIT" style="--a:0">
+            <button type="button" class="front-seat" data-seat="PIT" style="--a:-18">
               <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">PIT</span>
               <span class="front-call" data-call="PIT">—</span>
             </button>
-            <button type="button" class="front-seat" data-seat="FROST" style="--a:90">
+            <button type="button" class="front-seat" data-seat="FROST" style="--a:54">
               <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">FROST</span>
               <span class="front-call" data-call="FROST">—</span>
             </button>
-            <button type="button" class="front-seat" data-seat="BONE" style="--a:180">
+            <button type="button" class="front-seat" data-seat="BONE" style="--a:126">
               <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">BONE</span>
               <span class="front-call" data-call="BONE">—</span>
             </button>
+            <button type="button" class="front-seat" data-seat="MESH" style="--a:198">
+              <span class="front-mark"><img src="/static/bots/mesh.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">MESH</span>
+              <span class="front-call" data-call="MESH">—</span>
+            </button>
           </div>
+        </div>
+        <div id="frontSubHud" class="front-sub-hud" aria-label="Front subs">
+          <div class="front-sub" data-sub="HEAT"><span class="front-sub-mark" aria-hidden="true"></span><b>HEAT</b><span data-sub-line="HEAT">—</span><i>→ GLASS / FROST</i></div>
+          <div class="front-sub" data-sub="ECHO"><span class="front-sub-mark" aria-hidden="true"></span><b>ECHO</b><span data-sub-line="ECHO">—</span><i>→ BONE</i></div>
+          <div class="front-sub" data-sub="CELL"><span class="front-sub-mark" aria-hidden="true"></span><b>CELL</b><span data-sub-line="CELL">—</span><i>→ FROST</i></div>
         </div>
         <div class="side-size-row">
           <span class="side-size-label">SIZE</span>
@@ -852,15 +862,15 @@
           <header class="chart-card-head"><span>VOLUME</span><span class="chart-meta" id="chartVolMeta">—</span></header>
           <canvas id="chartVolume"></canvas>
         </article>
-        <article class="chart-card">
+        <article class="chart-card chart-crypto-odds">
           <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">UP — · DOWN —</span></header>
           <canvas id="chartOdds"></canvas>
         </article>
-        <article class="chart-card">
+        <article class="chart-card chart-crypto-delta">
           <header class="chart-card-head"><span>VS TARGET</span><span class="chart-meta" id="chartDeltaMeta">—</span></header>
           <canvas id="chartDelta"></canvas>
         </article>
-        <article class="chart-card">
+        <article class="chart-card chart-crypto-funding">
           <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
           <canvas id="chartFunding"></canvas>
         </article>
@@ -923,16 +933,23 @@
         <span id="decisionSummary" class="decision-summary"></span>
       </div>
       <div id="marketStrip">
-        <span>BTC <b id="btcPrice">—</b></span>
-        <span>ETH <b id="ethPrice">—</b></span>
+        <span id="stripBtcPx">BTC <b id="btcPrice">—</b></span>
+        <span id="stripEthPx">ETH <b id="ethPrice">—</b></span>
+        <span id="wxHighStrip" class="wx-high-strip" hidden>DALLAS <b id="wxCity">DFW</b> · NOW <b id="wxNowTemp">—</b> · NWS <b id="wxNwsHigh">—</b> · BRACKET <b id="wxKalshiHigh">—</b> · SETTLES <b id="wxCliWindow">7:00 CT</b></span>
+        <span id="atsGameStrip" class="ats-game-strip" hidden>GAME <b id="atsGameName">—</b> · LINE <b id="atsGameLine">—</b></span>
+        <span id="wxSubStrip" class="wx-sub-strip" hidden>
+          <span data-wx-sub="HEAT">HEAT —</span>
+          <span data-wx-sub="ECHO">ECHO —</span>
+          <span data-wx-sub="CELL">CELL —</span>
+        </span>
         <span id="ethDecisionStrip" class="eth-decision-strip">ETH <b id="ethDir">—</b> <b id="ethConf"></b></span>
         <span id="btcDecisionStrip" class="btc-decision-strip">BTC <b id="btcDir">—</b> <b id="btcConf"></b></span>
         <span class="odds-live">UP <b id="liveUpPct">—</b></span>
         <span class="odds-live down">DOWN <b id="liveDownPct">—</b></span>
         <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
         <span id="dualVoteStrip" class="dual-vote-strip">BTC <b id="btcVotes">—</b> · ETH <b id="ethVotes">—</b></span>
-        <span>Funding <b id="funding">—</b></span>
-        <span>Kalshi <b id="kalshiTicker">—</b></span>
+        <span id="stripFunding">Funding <b id="funding">—</b></span>
+        <span id="stripKalshi">Kalshi <b id="kalshiTicker">—</b></span>
         <span class="acc-strip">BTC <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
         <span id="paperAutoSummary" class="paper-auto-summary">auto —</span>
       </div>

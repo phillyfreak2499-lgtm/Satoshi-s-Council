@@ -102,6 +102,10 @@ class GuidedTutorialTests(unittest.TestCase):
         self.assertIn("PIT", TUT)
         self.assertIn("FROST", TUT)
         self.assertIn("BONE", TUT)
+        self.assertIn("MESH", TUT)
+        self.assertIn("HEAT", TUT)
+        self.assertIn("ECHO", TUT)
+        self.assertIn("CELL", TUT)
         self.assertNotIn("KXGOLD15M", TUT)
         self.assertNotIn("KXHIGHNY", TUT)
 

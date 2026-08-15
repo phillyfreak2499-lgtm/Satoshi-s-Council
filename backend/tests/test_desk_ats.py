@@ -470,6 +470,84 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertNotIn("ares-kc.jpg", JS + HTML)
         self.assertNotIn("ares-dal.jpg", JS + HTML)
 
+    def test_one_ares_portrait_not_stacked(self):
+        paint = JS.split("function paintAresEyes", 1)[1].split("function drawAresEyeTint", 1)[0]
+        self.assertIn("face.hidden = true", paint)
+        self.assertNotIn("face.hidden = !show", paint)
+        self.assertIn("Never unhide the HTML overlay", paint)
+        self.assertIn("function drawAresEyeTint", JS)
+        self.assertIn('aresPortrait.src = "/static/ares-chair.png"', JS)
+        self.assertIn("containPortrait(img", JS)
+        face_css = CSS[CSS.find(".ares-face"): CSS.find(".ats-sub")]
+        self.assertIn("display: none !important", face_css)
+
+    def test_ats_rehomed_from_main(self):
+        self.assertIn('id="focusAts"', HTML)
+        self.assertIn('id="aresFace"', HTML)
+        self.assertIn("function atsTableState", JS)
+        self.assertIn('fetch("/api/ats"', JS)
+        self.assertIn("@app.get(\"/api/ats\")", MAIN)
+        self.assertIn("LINE", ATS)
+        self.assertIn("STEAM", ATS)
+        self.assertIn("FADE", ATS)
+        self.assertIn("HURT", ATS)
+        self.assertIn("ICE", ATS)
+        self.assertIn("function paintAtsWatch", JS)
+        self.assertIn("function paintAtsWhy", JS)
+        for name in ("ONE TICKET", "KEY NUMBERS", "SIT AFTER KICK", "SPORT BRAINS", "PUBLIC TUG"):
+            self.assertIn(name, ATS)
+
+    def test_ats_window_is_game_kick_not_1h(self):
+        self.assertIn("def build_game_clock", ATS)
+        self.assertIn('"kind": "game"', ATS)
+        self.assertIn("seconds_to_kick", ATS)
+        self.assertIn("function atsKickLine", JS)
+        chrome = JS.split("function paintFrontWindowChrome", 1)[1].split("function dockWindowLed", 1)[0]
+        self.assertIn('ledLabel.textContent = "CLOCK"', chrome)
+        self.assertIn("atsKickLine", chrome)
+        self.assertIn("THEY'RE OFF", JS)
+        self.assertIn("CLOCK IS DARK", JS)
+        self.assertIn("KICK IN", JS)
+        self.assertIn("dualSub.hidden = !!ats", chrome)
+        self.assertNotIn("3600", chrome)
+        self.assertIn("window_kind: \"game\"", JS)
+        pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
+        self.assertIn("isAtsTable(focusTable)", pair)
+        self.assertIn('setPairWindowChip(canvas, "")', pair)
+        clock = desk_ats.build_game_clock(
+            {"close_time": "2026-08-16T00:00:00Z", "game": "DAL SEA", "number": "SEA -6.5"},
+            now=NOW,
+        )
+        self.assertEqual(clock["kind"], "game")
+        self.assertEqual(clock["label"], "KICK")
+        self.assertGreater(clock["seconds_to_kick"], 0)
+        self.assertNotIn("1H", clock["label"])
+        self.assertIn("KICK IN", clock["line"])
+        self.assertEqual(desk_ats.clock_line("2026-08-16T00:00:00Z", now=NOW), "KICK IN 4H 00M")
+        self.assertEqual(desk_ats.clock_line("2026-08-15T18:00:00Z", now=NOW), "THEY'RE OFF")
+
+    def test_ats_bet_chrome_not_crypto(self):
+        self.assertIn('id="atsGameStrip"', HTML)
+        self.assertIn("function paintAtsGameStrip", JS)
+        self.assertIn('GAME <b id="atsGameName"', HTML)
+        self.assertIn('LINE <b id="atsGameLine"', HTML)
+        self.assertIn("function paintAtsWhy", JS)
+        self.assertIn("function paintAtsWatch", JS)
+        self.assertIn("body[data-focus-table=\"ats\"] .chart-window-chip", CSS)
+        self.assertIn("body[data-focus-table=\"ats\"] .chart-ktarget-chip", CSS)
+        self.assertIn('id="dualFightCard"', HTML)
+        self.assertIn('id="stripKalshi"', HTML)
+        self.assertIn("body[data-focus-table=\"ats\"] #dualFightCard", CSS)
+        self.assertIn("body[data-focus-table=\"ats\"] #stripKalshi", CSS)
+        self.assertIn("body[data-focus-table=\"ats\"] .window-timer", CSS)
+        self.assertIn("chart-crypto-odds", HTML + CSS + JS)
+        self.assertIn("chart-crypto-delta", HTML + CSS + JS)
+        self.assertIn("chart-crypto-funding", HTML + CSS + JS)
+        hud = JS.split("function paintTableHud", 1)[1].split("function collectChairLocks", 1)[0]
+        self.assertIn("fightCard.hidden = !!deskBook", hud)
+        self.assertIn("if (deskBook) return", hud)
+        self.assertNotIn("atsKickLine", hud)
+
     def test_front_weather_seats_not_stripped(self):
         self.assertIn("GLASS", HTML)
         self.assertIn("PIT", HTML)
