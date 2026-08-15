@@ -70,6 +70,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour();
     } catch (e) {}
+    try {
+      if (typeof window.prefetchLeaderClickVideo === "function") window.prefetchLeaderClickVideo();
+    } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {
@@ -2322,7 +2325,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let chairHits = [];
   function rememberChairHit(x, y, r, which) {
-    if (mode !== "floor") return;
+    if (mode !== "floor" && mode !== "art") return;
     chairHits.push({
       x: x,
       y: y,
@@ -4977,6 +4980,9 @@ function drawCandleChart() {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
+    if (mode === "floor" || mode === "art") {
+      try { prefetchLeaderClickVideo(); } catch (e) {}
+    }
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
       // Layout after the view is visible, then draw (avoids 0×0 canvases)
@@ -6206,9 +6212,19 @@ function drawCandleChart() {
   window.playCelebrateVideo = playCelebrateVideo;
 
   let leaderClickPlaying = false;
+  function prefetchLeaderClickVideo() {
+    // Warm /leader-click.mp4 when Floor or Table is visible so the first click is buffered.
+    const vid = document.getElementById("leaderClickVideo");
+    if (!vid || leaderClickPlaying) return;
+    if (mode !== "floor" && mode !== "art") return;
+    vid.preload = "auto";
+    if (vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc) && vid.readyState >= 2) return;
+    try { vid.load(); } catch (e) {}
+  }
+  window.prefetchLeaderClickVideo = prefetchLeaderClickVideo;
+
   function playLeaderClickVideo() {
-    // Gesture-only Floor clip. Uses frontend/static/leader-click.mp4.
-    // No title card. Portraits keep drawing underneath. Esc/click dismiss.
+    // Gesture clip from Floor or Table Chair photos. Same overlay, no title card, no ZT.
     const wrap = document.getElementById("leaderClickWrap");
     const vid = document.getElementById("leaderClickVideo");
     const skipBtn = document.getElementById("leaderClickSkip");
@@ -6216,7 +6232,7 @@ function drawCandleChart() {
     if (!wrap || !vid) return;
     if (leaderClickPlaying || celebratePlaying) return;
     if (document.body.classList.contains("gate-locked")) return;
-    if (mode !== "floor") return;
+    if (mode !== "floor" && mode !== "art") return;
 
     leaderClickPlaying = true;
     document.body.classList.add("leader-clip-on");
@@ -6270,8 +6286,6 @@ function drawCandleChart() {
     if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
     wrap.onclick = () => cleanup();
 
-    const sources = ["/leader-click.mp4", "/static/leader-click.mp4"];
-    let srcIdx = 0;
     const playReady = () => {
       if (!leaderClickPlaying) return;
       const p = vid.play();
@@ -6288,6 +6302,14 @@ function drawCandleChart() {
         });
       }
     };
+    // Prefetched element: do not load() or walk <source> again.
+    if (vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc)) {
+      try { vid.currentTime = 0; } catch (e) {}
+      playReady();
+      return;
+    }
+    const sources = ["/leader-click.mp4", "/static/leader-click.mp4"];
+    let srcIdx = 0;
     const tryNext = () => {
       if (!leaderClickPlaying) return;
       if (srcIdx >= sources.length) {
@@ -6300,11 +6322,7 @@ function drawCandleChart() {
       vid.src = url;
       try { vid.load(); } catch (e) { tryNext(); }
     };
-    if (vid.readyState >= 2 && vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc)) {
-      playReady();
-    } else {
-      tryNext();
-    }
+    tryNext();
   }
   window.playLeaderClickVideo = playLeaderClickVideo;
 
@@ -6624,7 +6642,7 @@ function drawCandleChart() {
     if (!targets.length || already) return;
     const onMove = (e) => {
       if (!canvas) return;
-      if (mode !== "floor" || leaderClickPlaying) {
+      if ((mode !== "floor" && mode !== "art") || leaderClickPlaying) {
         canvas.classList.remove("chair-hot");
         return;
       }
@@ -6632,7 +6650,7 @@ function drawCandleChart() {
       canvas.classList.toggle("chair-hot", !!(pt && chairHitAt(pt.x, pt.y)));
     };
     const onGesture = (e) => {
-      if (mode !== "floor" || leaderClickPlaying || celebratePlaying) return;
+      if ((mode !== "floor" && mode !== "art") || leaderClickPlaying || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
       if (!pt || !chairHitAt(pt.x, pt.y)) return;
