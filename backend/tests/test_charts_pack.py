@@ -23,6 +23,8 @@ class ChartsMarkupTests(unittest.TestCase):
         self.assertIn("ETH · 1m", HTML)
         self.assertIn('id="chartBtcMeta"', HTML)
         self.assertIn('id="chartEthMeta"', HTML)
+        self.assertIn('id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">1H WINDOW</span>', HTML)
+        self.assertIn('id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">1H WINDOW</span>', HTML)
 
     def test_odds_tape_hitrate_labels(self):
         self.assertIn("KALSHI ODDS", HTML)

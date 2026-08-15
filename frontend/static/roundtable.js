@@ -4499,7 +4499,18 @@ function drawCandleChart() {
     setPairHeadChip(canvas, "chart-ktarget-chip", text);
   }
   function setPairWindowChip(canvas, text) {
-    setPairHeadChip(canvas, "chart-window-chip", text || "1H WINDOW");
+    const card = canvas && canvas.closest ? canvas.closest(".chart-card") : null;
+    const head = card && card.querySelector(".chart-card-head");
+    if (!head) return;
+    let chip = head.querySelector(".chart-window-chip");
+    if (!chip) {
+      chip = document.createElement("span");
+      chip.className = "chart-window-chip";
+      const title = head.querySelector("#chartPairTitle, #chartEthTitle") || head.firstElementChild;
+      if (title && title.nextSibling) head.insertBefore(chip, title.nextSibling);
+      else head.insertBefore(chip, head.firstChild ? head.firstChild.nextSibling : null);
+    }
+    chip.textContent = text || "1H WINDOW";
   }
 
   function drawHourWindowAndLock(ctx, candles, ts, pad, w, h, yAt) {
