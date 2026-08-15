@@ -44,6 +44,7 @@ from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
     collect_official_results,
+    lock_time_strike,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
     event_ticker_from_kalshi_ticker,
@@ -743,7 +744,13 @@ class Council:
                 regime_features["kalshi_healthy"] = bool((market_data.get("health") or {}).get("kalshi", True))
                 # strike / series for plaque identity
                 regime_features["series_ticker"] = market_data.get("series_ticker") or (market_data.get("kalshi") or {}).get("series_ticker")
-                regime_features["floor_strike"] = market_data.get("kalshi_floor_strike")
+                km0 = market_data.get("kalshi_market") if isinstance(market_data.get("kalshi_market"), dict) else {}
+                regime_features["floor_strike"] = lock_time_strike(
+                    ticker=ticker,
+                    floor_strike=market_data.get("kalshi_floor_strike"),
+                    cap_strike=market_data.get("kalshi_cap_strike") or km0.get("cap_strike"),
+                    strike_price=km0.get("strike_price"),
+                )
                 regime_features["kalshi_title"] = market_data.get("kalshi_title")
             except Exception:
                 pass
@@ -937,8 +944,15 @@ class Council:
                 except Exception:
                     pass
 
-        # Attach Kalshi target so settlement grades against floor_strike
-        decision["kalshi_target"] = market_data.get("kalshi_floor_strike")
+        # Lock-time strike on the paper row. Closer still uses official result,
+        # not current_price vs strike.
+        _lock_strike = lock_time_strike(
+            ticker=ticker,
+            floor_strike=market_data.get("kalshi_floor_strike"),
+            cap_strike=market_data.get("kalshi_cap_strike"),
+        )
+        decision["kalshi_target"] = _lock_strike
+        decision["floor_strike"] = _lock_strike
 
         # Lock quality score (0–100): confluence × odds band × spread
         try:
@@ -999,7 +1013,11 @@ class Council:
             market_ticker=ticker,
             entry_price=entry_price,
             close_time=close_time,
-            kalshi_target=market_data.get("kalshi_floor_strike"),
+            kalshi_target=lock_time_strike(
+                ticker=ticker,
+                floor_strike=market_data.get("kalshi_floor_strike"),
+                cap_strike=market_data.get("kalshi_cap_strike"),
+            ),
             up_pct=up_pct,
             down_pct=down_pct,
             asset=self.asset,
@@ -1051,7 +1069,7 @@ class Council:
                 "kalshi_ticker": ticker,
                 "ticker": ticker,
                 "series_ticker": market_data.get("series_ticker") or (market_data.get("kalshi") or {}).get("series_ticker"),
-                "floor_strike": market_data.get("kalshi_floor_strike"),
+                "floor_strike": _lock_strike,
                 "stale": bool(market_data.get("stale") or (market_data.get("kalshi") or {}).get("stale")),
                 "kalshi_yes_bid": market_data.get("kalshi_yes_bid"),
                 "kalshi_yes_ask": market_data.get("kalshi_yes_ask"),
@@ -1062,7 +1080,7 @@ class Council:
                 "mins_left": market_data.get("mins_left"),
                 "seconds_left": (float(market_data["mins_left"]) * 60.0) if market_data.get("mins_left") is not None else None,
                 # Kalshi settlement threshold (YES if asset finishes above this)
-                "kalshi_target": market_data.get("kalshi_floor_strike"),
+                "kalshi_target": _lock_strike,
                 "kalshi_title": market_data.get("kalshi_title"),
                 # Slim candle series for right-side live chart (last ~60 × 1m)
                 "candles": [

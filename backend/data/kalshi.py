@@ -213,11 +213,13 @@ class KalshiClient:
         stale: bool = False,
     ) -> Dict[str, Any]:
         ticker = primary.get("ticker")
-        floor_strike = primary.get("floor_strike")
-        try:
-            floor_strike = float(floor_strike) if floor_strike is not None else None
-        except (TypeError, ValueError):
-            floor_strike = None
+        from backend.agents.chair_gates import lock_time_strike
+        floor_strike = lock_time_strike(
+            ticker=ticker,
+            floor_strike=primary.get("floor_strike"),
+            cap_strike=primary.get("cap_strike"),
+            strike_price=primary.get("strike_price"),
+        )
         return {
             "source": "kalshi",
             "healthy": True,

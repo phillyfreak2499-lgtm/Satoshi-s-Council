@@ -26,6 +26,7 @@ from backend.agents.chair_gates import (
     kalshi_market_finalized,
     leftover_after_vig,
     lifetime_n_for_zach,
+    lock_time_strike,
     official_y_finish,
     late_spot_decisive,
     never_lock_near_certain,
@@ -147,6 +148,12 @@ class WindowStrikeTests(unittest.TestCase):
         self.assertEqual(strike_from_kalshi_ticker(ticker), 1874.99)
         self.assertEqual(ticker_asset(ticker), "eth")
         self.assertEqual(ticker_asset("KXBTCD-26AUG1415-T62999.99"), "btc")
+        # 1062/1063 had null floor_strike — ticker still has the lock-time strike
+        self.assertEqual(lock_time_strike(ticker="KXBTCD-26AUG1415-T62999.99"), 62999.99)
+        self.assertEqual(lock_time_strike(ticker="KXETHD-26AUG1415-T1874.99"), 1874.99)
+        self.assertEqual(lock_time_strike(floor_strike=64000, ticker="KXBTCD-26AUG1415-T62999.99"), 64000.0)
+        self.assertEqual(lock_time_strike(cap_strike=1875, ticker="KXETHD-26AUG1415-T1874.99"), 1875.0)
+        self.assertIsNone(lock_time_strike(ticker="KXBTCD-NOSTRIKE"))
 
     def test_official_y_finish_only_from_kalshi_result(self):
         self.assertEqual(kalshi_result_to_side("yes"), "UP")

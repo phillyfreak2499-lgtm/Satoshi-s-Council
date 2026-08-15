@@ -307,6 +307,44 @@ def strike_from_kalshi_ticker(ticker: Any) -> Optional[float]:
     return px if px > 0 else None
 
 
+def lock_time_strike(
+    ticker: Any = None,
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+    strike_price: Any = None,
+    kalshi_result: Any = None,
+) -> Optional[float]:
+    """
+    Strike to persist on a paper row at lock time.
+
+    Prefer Kalshi floor / cap / strike_price, else the -T value baked
+    into the ticker. 1062/1063 stayed null because only live floor_strike
+    was stored. This is identity, not an outcome — never a later-hour spot.
+    """
+    cands: list[Any] = [floor_strike, cap_strike, strike_price]
+    inner = None
+    if isinstance(kalshi_result, dict):
+        inner = kalshi_result.get("market") if isinstance(kalshi_result.get("market"), dict) else kalshi_result
+        if isinstance(inner, dict):
+            cands.extend([
+                inner.get("floor_strike"),
+                inner.get("cap_strike"),
+                inner.get("strike_price"),
+            ])
+            if not ticker:
+                ticker = inner.get("ticker")
+    for raw in cands:
+        try:
+            if raw is None or raw == "":
+                continue
+            px = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return strike_from_kalshi_ticker(ticker)
+
+
 def kalshi_result_to_side(raw: Any) -> Optional[str]:
     """Official Kalshi market result → UP (yes) / DOWN (no)."""
     if raw is None:

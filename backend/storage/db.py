@@ -17,6 +17,7 @@ from backend.agents.chair_gates import (
     chair_bins_from_settled,
     decide_open_lock_grade,
     known_official_market,
+    lock_time_strike,
     paper_stake_for_lock,
     ticker_asset,
 )
@@ -188,10 +189,13 @@ class PerformanceStore:
                 down_pct=down_pct,
                 regime_key=decision.get("regime_key"),
                 asset=asset,
-                floor_strike=(
-                    decision.get("floor_strike")
-                    or (lc or {}).get("floor_strike")
-                    or kalshi_target
+                floor_strike=lock_time_strike(
+                    ticker=market_ticker,
+                    floor_strike=(
+                        decision.get("floor_strike")
+                        or (lc or {}).get("floor_strike")
+                        or kalshi_target
+                    ),
                 ),
                 p_finish=decision.get("p_finish") if decision.get("p_finish") is not None else (lc or {}).get("p_finish"),
                 ev_cents=decision.get("ev_cents") if decision.get("ev_cents") is not None else (lc or {}).get("ev_cents"),
@@ -319,6 +323,8 @@ class PerformanceStore:
         entry_side = self._side_pct(side, up_pct, down_pct)
         if entry_side is None:
             return  # need Kalshi odds to open a graded call
+        # Persist lock-time strike even when live Kalshi floor_strike is null.
+        floor_strike = lock_time_strike(ticker=ticker, floor_strike=floor_strike)
 
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat()
@@ -352,6 +358,10 @@ class PerformanceStore:
                             active.floor_strike = float(floor_strike)
                         except (TypeError, ValueError):
                             pass
+                    elif getattr(active, "floor_strike", None) is None:
+                        filled = lock_time_strike(ticker=ticker)
+                        if filled is not None:
+                            active.floor_strike = filled
                     if p_finish is not None:
                         try:
                             active.p_finish = float(p_finish)
@@ -554,9 +564,14 @@ class PerformanceStore:
                     or results.get(str(row.id))
                     or known_official_market(row.ticker, row.id)
                 )
+                # Persist missing lock-time strike (1062/1063 were null).
+                # Identity only — y_finish still comes from official result.
+                if getattr(row, "floor_strike", None) is None:
+                    filled = lock_time_strike(ticker=row.ticker, kalshi_result=official)
+                    if filled is not None:
+                        row.floor_strike = filled
                 # Hour-close only. Official Kalshi yes/no → y_finish.
-                # Live 1062/1063 stayed OPEN because floor_strike was null and
-                # later-hour spot was not an honest closer.
+                # Never current_price vs strike. Never invent an outcome.
                 grade = decide_open_lock_grade(
                     ticker=row.ticker,
                     call_id=row.id,
@@ -1539,6 +1554,10 @@ class PerformanceStore:
                     paper_pnl=row.get("paper_pnl"),
                     settle_reason=row.get("settle_reason"),
                     regime_key=row.get("regime_key"),
+                    floor_strike=lock_time_strike(
+                        ticker=row.get("ticker"),
+                        floor_strike=row.get("floor_strike"),
+                    ),
                 ))
                 imported += 1
                 existing.add(key)
