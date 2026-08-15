@@ -487,14 +487,16 @@ header {
 .chart-card canvas {
   flex: 1 1 auto;
   width: 100%;
-  min-height: 140px;
-  height: 140px;
+  min-height: 160px;
+  height: 160px;
+  max-height: 220px;
   display: block;
 }
 .chart-card.chart-pair canvas,
 .chart-card.chart-wide canvas {
   min-height: 220px;
   height: 220px;
+  max-height: 220px;
 }
 .chart-card.chart-tape {
   min-height: 220px;
@@ -5027,11 +5029,13 @@ body.mode-settings #settingsView #adminToolsCard {
   .chart-card canvas {
     min-height: 160px !important;
     height: 160px !important;
+    max-height: 220px !important;
   }
   .chart-card.chart-pair canvas,
   .chart-card.chart-wide canvas {
     min-height: 220px !important;
     height: 220px !important;
+    max-height: 220px !important;
   }
 }
 
@@ -6048,26 +6052,36 @@ body.mode-art .seat-storm-table-btn:not(.hidden):not([hidden]) { display: inline
 }
 
 /* ===== CHARTS HUD — real canvas height, both pairs, 390 scroll ===== */
+body.mode-charts #app {
+  overflow: hidden !important;
+}
 body.mode-charts #chartsView.charts-view:not(.hidden) {
   display: block !important;
   visibility: visible !important;
   position: relative !important;
   left: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
   height: auto !important;
   max-height: none !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  pointer-events: auto !important;
 }
 #chartBtc, #chartEth, #chartOdds, #chartTape, #chartAccuracy, #chartWeights,
 #chartVolume, #chartDelta, #chartFunding {
   min-width: 160px;
-  min-height: 140px;
+  min-height: 160px;
+  max-height: 220px;
 }
 #chartBtc, #chartEth {
   min-height: 220px;
+  max-height: 220px;
 }
 #chartWeights {
   min-height: 160px;
+  max-height: 220px;
 }
 
 /* ===== COLD-LOAD GATES — last word, do not ship unlocked ===== */

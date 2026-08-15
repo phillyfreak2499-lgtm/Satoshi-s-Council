@@ -110,10 +110,13 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertNotIn("FORECAST", HTML)
         self.assertNotIn("CLIMO", HTML)
         self.assertNotIn("CHI Midway", HTML)
-        self.assertIn("NYC Central Park", HTML)
-        self.assertIn("KXHIGHNY", HTML + FRONT)
+        self.assertNotIn("NYC Central Park", HTML)
+        self.assertNotIn("Dallas first, NYC second", HTML + JS)
+        self.assertNotIn("KXHIGHNY", HTML + JS)
         self.assertNotIn("KXHIGHCHI", HTML + JS)
-        self.assertNotIn("KXHIGHCHI", [c["series"] for c in desk_front.CITIES])
+        self.assertEqual([c["series"] for c in desk_front.CITIES], ["KXHIGHTDAL"])
+        self.assertIn("KXHIGHNY", desk_front.BLOCKED_SERIES)
+        self.assertIn("KXHIGHCHI", desk_front.BLOCKED_SERIES)
         self.assertNotIn("CHI / NY", HTML)
         self.assertNotIn("KXHIGHTCHI", HTML)
         self.assertNotIn("front-city-card", HTML + JS + CSS)
@@ -254,11 +257,13 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(board["follower"])
         self.assertTrue(board["status"]["paper_default"])
         self.assertIn("KXHIGHTDAL-26AUG15-B103104", [b["ticker"] for b in board["brackets"]])
-        self.assertIn("KXHIGHNY-26AUG15-B8485", [b["ticker"] for b in board["brackets"]])
+        self.assertTrue(all(b["ticker"].startswith("KXHIGHTDAL") for b in board["brackets"]))
+        self.assertNotIn("KXHIGHNY-26AUG15-B8485", [b["ticker"] for b in board["brackets"]])
         cities = [b["city"] for b in board["brackets"]]
-        self.assertLess(cities.index("DAL"), cities.index("NYC"))
+        self.assertEqual(set(cities), {"DAL"})
+        self.assertNotIn("NYC", cities)
         self.assertNotIn("CHI", cities)
-        self.assertEqual([c["id"] for c in board["cities"]], ["DAL", "NYC"])
+        self.assertEqual([c["id"] for c in board["cities"]], ["DAL"])
         self.assertEqual(board["home"], "DAL")
         self.assertTrue(any(b.get("best") for b in board["brackets"]))
         self.assertEqual(next(b for b in board["brackets"] if b.get("best"))["city"], "DAL")
@@ -337,7 +342,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         love = "THE DALLAS LOVE FIELD CLIMATE SUMMARY FOR AUGUST 15 2026\nMAXIMUM TEMPERATURE (F)\n 99\n"
         self.assertIsNone(desk_front.parse_cli_high(love, station="KDFW", day=date(2026, 8, 15)))
         nyc = "THE NEW YORK CITY CENTRAL PARK CLIMATE SUMMARY FOR AUGUST 15 2026\nMAXIMUM TEMPERATURE (F)\n 84\n"
-        self.assertEqual(desk_front.parse_cli_high(nyc, station="KNYC", day=date(2026, 8, 15)), 84)
+        self.assertIsNone(desk_front.parse_cli_high(nyc, station="KNYC", day=date(2026, 8, 15)))
         self.assertIsNone(desk_front.parse_cli_high(nyc, station="KDFW", day=date(2026, 8, 15)))
         m = _m("KXHIGHTDAL-26AUG15-B103104")
         self.assertTrue(desk_front.official_yes(103, market=m))
@@ -401,15 +406,21 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         rows = [r for r in desk_front._load_fills() if r.get("result") == "MISS"]
         self.assertEqual(len(rows), 1)
 
-    async def test_chicago_not_v1(self):
+    async def test_later_cities_not_v1(self):
         board = await desk_front.build_board(
             fetch=_fetch_factory(),
             nws=_nws_high_only,
             now=NOW,
             wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 82},
         )
+        self.assertEqual([c["series"] for c in board["cities"]], ["KXHIGHTDAL"])
+        self.assertNotIn("KXHIGHNY", [c["series"] for c in board["cities"]])
         self.assertNotIn("KXHIGHCHI", [c["series"] for c in board["cities"]])
+        self.assertNotIn("NYC", [b["city"] for b in board["brackets"]])
         self.assertNotIn("CHI", [b["city"] for b in board["brackets"]])
+        nyc = await desk_front.tap(ticker="KXHIGHNY-26AUG15-B8485", side="YES", stake=5, yes_bid=48, yes_ask=50)
+        self.assertFalse(nyc["ok"])
+        self.assertIn("not v1", nyc["error"])
         blocked = await desk_front.tap(ticker="KXHIGHCHI-26AUG15-B8384", side="YES", stake=5, yes_bid=48, yes_ask=50)
         self.assertFalse(blocked["ok"])
         self.assertIn("not v1", blocked["error"])

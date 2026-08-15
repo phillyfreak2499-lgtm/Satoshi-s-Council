@@ -80,6 +80,8 @@ class ChartsJsTests(unittest.TestCase):
     def test_fit_canvas_has_real_height(self):
         self.assertIn("const minH = isPair ? 220", JS)
         self.assertIn("if (h < minH) h = minH", JS)
+        self.assertIn("const maxH = 220", JS)
+        self.assertIn("if (h > maxH) h = maxH", JS)
         self.assertIn('canvas.style.width = w + "px"', JS)
         self.assertIn("opts.rows", JS)
 
@@ -125,10 +127,16 @@ class ChartsJsTests(unittest.TestCase):
 
 class ChartsCssTests(unittest.TestCase):
     def test_canvases_not_zero_height(self):
-        self.assertIn("min-height: 140px", CSS)
+        self.assertIn("min-height: 160px", CSS)
         self.assertIn("min-height: 220px", CSS)
+        self.assertIn("max-height: 220px", CSS)
         self.assertIn("#chartEth", CSS)
         self.assertIn("CHARTS HUD", CSS)
+
+    def test_charts_wheel_scrolls_inside_view(self):
+        self.assertIn("chartsView.__deskWheel", JS)
+        self.assertIn("overscroll-behavior: contain !important", CSS)
+        self.assertIn("body.mode-charts #app", CSS)
 
     def test_mobile_charts_scroll_stacked(self):
         self.assertIn("body.mode-charts #chartsView.charts-view:not(.hidden)", CSS)

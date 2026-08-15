@@ -86,6 +86,9 @@ class ChairThinkTests(unittest.TestCase):
         think = JS.split("function chairThinkRate", 1)[1].split("function resizeRoundtable", 1)[0]
         self.assertIn("ctx.clip()", think)
         self.assertIn("in_huddle", think)
+        self.assertIn("function pulseRate", JS)
+        self.assertIn("return pulseRate(st, dir, locked, which)", JS)
+        self.assertIn("pulse-rate:", JS)
 
     def test_called_on_table_and_floor_chairs(self):
         self.assertIn("drawChairThink(cx, portraitY, pr, radius", JS)

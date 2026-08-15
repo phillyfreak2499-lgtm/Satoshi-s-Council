@@ -1,15 +1,15 @@
 """
-THE FRONT — board v1. Home city Dallas.
+THE FRONT — board v1. Dallas only.
 
-Dallas first: KXHIGHTDAL, settle KDFW / DFW (not Love Field).
-NYC second: KXHIGHNY, Central Park.
+KXHIGHTDAL, settle KDFW / DFW (not Love Field).
+NYC later — do not ship KXHIGHNY in v1.
 Chicago later — do not ship KXHIGHCHI in v1.
 
 Named seats (RAIJIN / GLASS / PIT / FROST / BONE), not a crypto Floor.
-If a series 404s, drop it. Do not fake cities.
+If a series 404s, drop it. Do not fake cities. No city-card board.
 
 Paper by default. Never auto-bets. Never talks to Follower.
-Does not place Chair 1H locks. Settlement is NWS CLI for the station.
+Does not place Chair 1H locks. Settlement is NWS CLI for KDFW.
 Date lives in the ticker. Read strike_type from the API every time.
 """
 from __future__ import annotations
@@ -57,21 +57,8 @@ DALLAS: Dict[str, Any] = {
     "order": 0,
     "climo": {8: 96, 7: 97, 9: 90, 6: 94, 10: 81},
 }
-NYC: Dict[str, Any] = {
-    "id": "NYC",
-    "name": "NEW YORK",
-    "place": "Central Park",
-    "series": "KXHIGHNY",
-    "station": "KNYC",
-    "icao": "KNYC",
-    "market": "NYC",
-    "cli_office": "OKX",
-    "tz": "America/New_York",
-    "order": 1,
-    "climo": {8: 84, 7: 85, 9: 77, 6: 80, 10: 66},
-}
-CITIES: Tuple[Dict[str, Any], ...] = (DALLAS, NYC)
-BLOCKED_SERIES: Tuple[str, ...] = ("KXHIGHCHI", "KXHIGHTCHI")
+CITIES: Tuple[Dict[str, Any], ...] = (DALLAS,)
+BLOCKED_SERIES: Tuple[str, ...] = ("KXHIGHNY", "KXHIGHCHI", "KXHIGHTCHI")
 LOVE_FIELD = ("LOVE FIELD", "KDAL", "DALLAS LOVE")
 
 def city_by_id(cid: Any) -> Optional[Dict[str, Any]]:
@@ -346,12 +333,6 @@ def _cli_section(up: str, station: str) -> Optional[str]:
         if love > 20:
             chunk = chunk[:love]
         return chunk
-    if st == "KNYC":
-        for tag in ("CENTRAL PARK", "NEW YORK CITY CENTRAL", "NYC CENTRAL"):
-            i = up.find(tag)
-            if i >= 0:
-                return up[i:]
-        return None
     return None
 
 
@@ -635,7 +616,9 @@ async def settle_open_fills(
         day = date_from_ticker(row.get("ticker"))
         if day is None:
             continue
-        city = city_for_ticker(row.get("ticker")) or city_by_id(row.get("city")) or DALLAS
+        city = city_for_ticker(row.get("ticker")) or city_by_id(row.get("city"))
+        if city is None:
+            continue
         station = str(row.get("station") or city["station"])
         office = str(city.get("cli_office") or "FWD")
         high = None
@@ -1239,7 +1222,7 @@ async def build_board(
         "product": "Satoshi’s Council",
         "follower": False,
         "auto_bets": False,
-        "note": "Board v1. Dallas DFW first, NYC Central Park second. No Chicago. Date is in the ticker.",
+        "note": "Board v1. Dallas DFW only (KXHIGHTDAL / KDFW). Not Love Field. NYC and Chicago later.",
     }
     _board_cache["at"] = time.time()
     _board_cache["payload"] = payload
@@ -1291,7 +1274,7 @@ async def tap(
     if tick.startswith("KXBTCD-") or tick.startswith("KXETHD-"):
         return {"ok": False, "error": "Chair 1H stays on Floor"}
     if any(bad in tick for bad in BLOCKED_SERIES):
-        return {"ok": False, "error": "Chicago later · not v1"}
+        return {"ok": False, "error": "later · not v1"}
     city = city_for_ticker(tick)
     if city is None:
         return {"ok": False, "error": "not a v1 Front book"}

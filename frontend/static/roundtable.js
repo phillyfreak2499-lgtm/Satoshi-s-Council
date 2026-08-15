@@ -2011,7 +2011,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!locked) _sealSeen[key] = "";
   }
 
-  function chairThinkRate(st, dir, locked, which) {
+  function pulseRate(st, dir, locked, which) {
+    // pulse-rate: WAIT ambient, lean 1×, huddle/lock faster, punch 2.2×. No gold ZT.
     const sfx = sealFX[chairKeyOf(which)];
     const punching = !!(sfx && sfx.until > Date.now());
     const huddle = (st && st.huddle) || (state && state.huddle) || {};
@@ -2023,6 +2024,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (locked) rate = Math.max(rate, 1.15);
     if (punching) rate = 2.2;
     return rate;
+  }
+  function chairThinkRate(st, dir, locked, which) {
+    return pulseRate(st, dir, locked, which);
   }
 
   function drawChairThink(cx, cy, photoR, seatR, opts) {
@@ -4037,10 +4041,12 @@ function drawCandleChart() {
     const isPair = canvas.id === "chartBtc" || canvas.id === "chartEth";
     const minW = 160;
     const wantRows = (opts && opts.rows) || 0;
-    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? Math.max(160, wantRows * 15 + 20) : 140);
+    const minH = isPair ? 220 : (canvas.id === "chartWeights" ? Math.max(160, Math.min(220, wantRows * 15 + 20)) : 160);
+    const maxH = 220;
     const w = Math.max(minW, parent.clientWidth || minW);
     let h = (parent.clientHeight || 0) - (head ? head.offsetHeight : 0);
     if (h < minH) h = minH;
+    if (h > maxH) h = maxH;
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
@@ -6086,7 +6092,7 @@ function drawCandleChart() {
     box.innerHTML = rows.map(function (b) {
       const dont = !!b.dont_play;
       return '<article class="front-bet' + (b.best ? " best" : "") + (dont ? " dont-play" : "") + '" data-ticker="' + String(b.ticker || "") + '">' +
-        '<div class="front-bet-head"><span>' + String(b.city || "") + " · " + String(b.place || b.station || "") + " · " + String(b.bracket || "") + "</span><span>" + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
+        '<div class="front-bet-head"><span>' + String(b.bracket || "") + "</span><span>" + (b.confidence != null ? (b.confidence + "%") : "—") + "</span></div>" +
         "<div>YES " + frontCents(b.yes_ask) + " · NO " + frontCents(b.no_ask) + (b.volume != null ? (" · n " + Math.round(b.volume)) : "") + "</div>" +
         (b.skip ? '<div class="side-flag">' + b.skip + "</div>" : "") +
         '<button type="button" class="yes" data-side="YES"' + (dont ? " disabled" : "") + ">YES</button>" +
@@ -6162,7 +6168,7 @@ function drawCandleChart() {
     const feed = document.getElementById("frontFeedStatus");
     const n = ((frontBoard.brackets || []).length);
     if (feed) {
-      feed.textContent = n ? (n + " brackets · DAL DFW first · NYC Central Park") : ((frontBoard.dropped || []).length ? "series dropped" : "no open v1 book");
+      feed.textContent = n ? (n + " DFW brackets · KXHIGHTDAL") : ((frontBoard.dropped || []).length ? "series dropped" : "no open DFW book");
     }
     paintFrontSeats(frontBoard);
     paintFrontBook(frontBoard);
@@ -7347,7 +7353,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Weather page — not the crypto Floor. Raijin chairs board v1. Dallas DFW first (KXHIGHTDAL / KDFW, not Love Field). NYC Central Park second (KXHIGHNY). Chicago later. GLASS, PIT, FROST, and BONE rank the book. Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
+      body: "Weather page — not the crypto Floor. Raijin chairs Dallas DFW (KXHIGHTDAL / KDFW). GLASS, PIT, FROST, and BONE rank the book. Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",
@@ -8790,6 +8796,12 @@ function drawCandleChart() {
       e.stopPropagation();
     }, true);
     settingsViewEl.addEventListener("wheel", (e) => {
+      e.stopPropagation();
+    }, { capture: true, passive: true });
+  }
+  if (chartsView && !chartsView.__deskWheel) {
+    chartsView.__deskWheel = true;
+    chartsView.addEventListener("wheel", (e) => {
       e.stopPropagation();
     }, { capture: true, passive: true });
   }
