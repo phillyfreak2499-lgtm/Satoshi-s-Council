@@ -35,7 +35,8 @@ class FirstLoginChoiceTests(unittest.TestCase):
         self.assertIn('council_onboarded', JS)
         auth = JS.split("function showAppAfterAuth", 1)[1].split("function playZtIntroThenSummonGate", 1)[0]
         self.assertIn("if (onboarded)", auth)
-        self.assertIn('window.setMode("art")', auth)
+        self.assertIn("window.setMode", auth)
+        self.assertIn('|| "art"', auth)
 
     def test_password_still_required_cold(self):
         self.assertRegex(HTML, r'<body class="gate-locked"')
@@ -73,9 +74,7 @@ class GuidedTutorialTests(unittest.TestCase):
             "#accuracyBadge",
             "#lawBadge",
             "#tabFloor",
-            "#tabDashboard",
-            "#tabBots",
-            "#tabRanks",
+            "#tabSeats",
             "#tabPaper",
             "#tabFront",
             "#tabCharts",

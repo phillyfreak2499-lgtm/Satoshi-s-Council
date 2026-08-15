@@ -195,9 +195,7 @@
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
-        <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
-        <button type="button" id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
-        <button type="button" id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
+        <button type="button" id="tabSeats" class="mode-tab" data-mode="seats" title="Same people — who they are, how they sit, the cards">Seats</button>
         <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
         <button type="button" id="tabTape" class="mode-tab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
         <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
@@ -272,7 +270,6 @@
           </div>
           <div id="lightsaberLabel" class="lightsaber-label">0%</div>
         </div>
-        <div id="dashboardOverlay" class="hidden"></div>
         <div id="floorCrawl" class="floor-crawl" hidden aria-label="Last five locks">
           <div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div>
         </div>
@@ -547,44 +544,61 @@
 
 
 
-    <!-- Bots tab: learn what each specialist does -->
-    <section id="botsView" class="info-view hidden" aria-label="Bot field guide">
-      <div class="info-hero">
-        <h2>BOT FIELD GUIDE</h2>
-        <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
+    <!-- Seats: field guide + rank board + live cards. Same people, one door. -->
+    <section id="seatsView" class="info-view seats-view hidden" aria-label="Seats — who they are, how they sit">
+      <div class="info-hero seats-hero">
+        <h2>SEATS</h2>
+        <p>Same council. Field guide on the strip. Rank board under that. Live cards for the lean. One door — not three.</p>
       </div>
-      <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
-        <div class="front-guide-head">FRONT / RAIJIN</div>
-        <p class="front-bots-sub">Five chairs. Three subs. Dallas high only. Not mixed into WICK / TAPE.</p>
-        <div id="frontBotsGrid" class="bots-grid"></div>
-      </section>
-      <section id="atsBotsGuide" class="front-bots-guide" aria-label="ATS / ARES">
-        <div class="front-guide-head">ATS / ARES</div>
-        <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
-        <div id="atsBotsGrid" class="bots-grid"></div>
-      </section>
-      <div id="botsGrid" class="bots-grid"></div>
-    </section>
 
-    <!-- Ranks tab: hierarchy + hit counts + learning phase -->
-    <section id="ranksView" class="info-view hidden" aria-label="Rank board">
-      <div class="info-hero">
-        <h2>RANK BOARD</h2>
-        <p id="ranksPhase">Learning phase: collecting samples — the Chair starts loose, then gets pickier as the lifetime log fills in.</p>
-      </div>
-      <div class="ranks-legend">
-        <span><b>#</b> rank</span>
-        <span><b>HIT</b> right calls</span>
-        <span><b>MISS</b> wrong calls</span>
-        <span><b>WR%</b> win rate</span>
-        <span><b>LISTEN</b> how hard the Chair hears them</span>
-        <span><b>WT</b> adaptive weight</span>
-      </div>
-      <div id="ranksTable" class="ranks-table" role="table"></div>
-      <div class="ranks-notes">
-        <div class="panel-head"><span class="panel-title">LEARNING NOTES</span></div>
-        <ul id="learnNotes" class="learn-notes"></ul>
-      </div>
+      <!-- Bots field guide (was its own tab) -->
+      <section id="botsView" class="seats-strip" aria-label="Bot field guide">
+        <div class="info-hero">
+          <h2>BOT FIELD GUIDE</h2>
+          <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
+        </div>
+        <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
+          <div class="front-guide-head">FRONT / RAIJIN</div>
+          <p class="front-bots-sub">Five chairs. Three subs. Dallas high only. Not mixed into WICK / TAPE.</p>
+          <div id="frontBotsGrid" class="bots-grid"></div>
+        </section>
+        <section id="atsBotsGuide" class="front-bots-guide" aria-label="ATS / ARES">
+          <div class="front-guide-head">ATS / ARES</div>
+          <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
+          <div id="atsBotsGrid" class="bots-grid"></div>
+        </section>
+        <div id="botsGrid" class="bots-grid"></div>
+      </section>
+
+      <!-- Rank board (was its own tab) -->
+      <section id="ranksView" class="seats-board" aria-label="Rank board">
+        <div class="info-hero">
+          <h2>RANK BOARD</h2>
+          <p id="ranksPhase">Learning phase: collecting samples — the Chair starts loose, then gets pickier as the lifetime log fills in.</p>
+        </div>
+        <div class="ranks-legend">
+          <span><b>#</b> rank</span>
+          <span><b>HIT</b> right calls</span>
+          <span><b>MISS</b> wrong calls</span>
+          <span><b>WR%</b> win rate</span>
+          <span><b>LISTEN</b> how hard the Chair hears them</span>
+          <span><b>WT</b> adaptive weight</span>
+        </div>
+        <div id="ranksTable" class="ranks-table" role="table"></div>
+        <div class="ranks-notes">
+          <div class="panel-head"><span class="panel-title">LEARNING NOTES</span></div>
+          <ul id="learnNotes" class="learn-notes"></ul>
+        </div>
+      </section>
+
+      <!-- Seat cards (was Dashboard overlay) — compact row, toggle inside Seats -->
+      <section class="seats-cards-block" aria-label="Seat cards">
+        <div class="seats-cards-head">
+          <h2>SEAT CARDS</h2>
+          <button type="button" id="seatsCardsToggle" class="seats-cards-toggle" aria-pressed="true" title="Show or stash the live cards">CARDS ON</button>
+        </div>
+        <div id="dashboardOverlay"></div>
+      </section>
     </section>
 
     <section id="tapeView" class="info-view hidden" aria-label="Chair paper tape">
