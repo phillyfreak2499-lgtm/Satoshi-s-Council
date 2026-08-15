@@ -66,6 +66,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         app.style.setProperty("pointer-events", "auto", "important");
       }
     } catch (e) {}
+    // First live hour after unlock — do not sit on an empty cached desk.
+    try {
+      if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour();
+    } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {
@@ -664,6 +668,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let state = null;
   let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
+  function tableHasLiveHour(t) {
+    if (!t || typeof t !== "object") return false;
+    const agents = t.agents;
+    const hasSeats = Array.isArray(agents) && agents.some(function (a) {
+      return a && a.agent_name && a.agent_name !== "leader";
+    });
+    const m = t.market || {};
+    const hasWindow = m.seconds_left != null || m.time_remaining != null
+      || m.close_time || m.mins_left != null;
+    return !!(hasSeats || hasWindow);
+  }
+
   function tableState(which) {
     if (!state) return null;
     if (state.tables && state.tables[which]) return state.tables[which];
@@ -683,19 +699,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function getViewState() {
     if (!state) return null;
     const focused = tableState(focusTable);
-    if (!focused) {
+    const other = tableState(focusTable === "bitcoin" ? "ethereum" : "bitcoin");
+    // Prefer the focused table when it has seats/window. Otherwise use the
+    // payload that actually has a live hour (root BTC back-compat, then sibling).
+    const live = tableHasLiveHour(focused)
+      ? focused
+      : (tableHasLiveHour(state) ? state
+        : (tableHasLiveHour(other) ? other : focused));
+    if (!live) {
       return Object.assign({}, state, { _focusTable: focusTable });
     }
-    const lc = focused.locked_call || (focused.decision && focused.decision.locked_call) || null;
+    const lc = live.locked_call || (live.decision && live.decision.locked_call) || null;
     return Object.assign({}, state, {
-      decision: focused.decision || {},
-      locked_call: lc || null,
-      agents: Array.isArray(focused.agents) ? focused.agents : [],
-      market: focused.market || {},
-      accuracy: focused.accuracy || {},
-      hierarchy: focused.hierarchy || [],
-      learning: focused.learning || {},
-      weights: focused.weights || (focused.learning && focused.learning.weights) || {},
+      decision: live.decision || state.decision || {},
+      locked_call: lc || state.locked_call || null,
+      agents: Array.isArray(live.agents) ? live.agents : (state.agents || []),
+      market: live.market || state.market || {},
+      accuracy: live.accuracy || state.accuracy || {},
+      hierarchy: live.hierarchy || state.hierarchy || [],
+      learning: live.learning || state.learning || {},
+      weights: live.weights || (live.learning && live.learning.weights) || state.weights || {},
       _focusTable: focusTable,
     });
   }
@@ -4962,6 +4985,36 @@ function drawCandleChart() {
     }
   }
 
+  function applyDeskState(payload) {
+    if (!payload || typeof payload !== "object") return false;
+    state = payload;
+    try { window.state = state; } catch (e) {}
+    try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
+    try { paintTableHud(); } catch (e) {}
+    try { dockWindowLed(); } catch (e) {}
+    try {
+      if (mode === "art" || mode === "floor") drawArt();
+    } catch (e) {}
+    const view = (typeof getViewState === "function") ? getViewState() : state;
+    return tableHasLiveHour(view || state);
+  }
+  window.applyDeskState = applyDeskState;
+
+  async function hydrateLiveHour() {
+    try {
+      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const payload = await r.json();
+      applyDeskState(payload);
+    } catch (e) {
+      console.warn("hydrateLiveHour failed", e);
+    }
+    try {
+      if (!pollTimer) pollTimer = setInterval(poll, POLL_MS);
+    } catch (e) {}
+  }
+  window.hydrateLiveHour = hydrateLiveHour;
+
   function updateUI() {
     if (!state) return;
     // Prefer focused table when dual API is present (read-only view — keep tables intact)
@@ -4985,13 +5038,15 @@ function drawCandleChart() {
       else if (typeof state.beast_mode === "boolean") applyBeastChrome(state.beast_mode);
     }
     const d = state.decision || {};
-    const prevDir = decisionDir.textContent;
+    const prevDir = decisionDir ? decisionDir.textContent : "";
     // Prefer locked_call so the strip matches the plaque / portrait after the single call
     const lc = state.locked_call || d.locked_call || null;
     const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN"));
     const rawDir = hasLock ? lc.direction : (d.direction || "WAIT");
-    decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + lc.direction) : (d.display_direction || displayDir(rawDir)));
-    decisionDir.className = "dir " + rawDir;
+    if (decisionDir) {
+      decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + lc.direction) : (d.display_direction || displayDir(rawDir)));
+      decisionDir.className = "dir " + rawDir;
+    }
     // Status strip: phase + lock badge
     try {
       const sum = String(d.summary || "");
@@ -5011,17 +5066,21 @@ function drawCandleChart() {
     } catch (e) { /* non-fatal */ }
 
     // Prefer locked confidence so strip matches plaque/portrait
-    decisionConf.textContent = (hasLock && lc && lc.confidence != null)
-      ? (lc.confidence + "%")
-      : (d.confidence != null ? d.confidence + "%" : "—");
-    decisionSummary.textContent = d.summary || "";
-    if (d.regime_key) {
-      decisionSummary.textContent = (decisionSummary.textContent || "") +
-        (decisionSummary.textContent ? " · " : "") + "regime " + d.regime_key;
+    if (decisionConf) {
+      decisionConf.textContent = (hasLock && lc && lc.confidence != null)
+        ? (lc.confidence + "%")
+        : (d.confidence != null ? d.confidence + "%" : "—");
     }
-    btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
-    fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
-    kalshiTicker.textContent = state.market?.kalshi_ticker || "—";
+    if (decisionSummary) {
+      decisionSummary.textContent = d.summary || "";
+      if (d.regime_key) {
+        decisionSummary.textContent = (decisionSummary.textContent || "") +
+          (decisionSummary.textContent ? " · " : "") + "regime " + d.regime_key;
+      }
+    }
+    if (btcPrice) btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
+    if (fundingEl) fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
+    if (kalshiTicker) kalshiTicker.textContent = state.market?.kalshi_ticker || "—";
     const upEl = document.getElementById("liveUpPct");
     const dnEl = document.getElementById("liveDownPct");
     const timEl = document.getElementById("windowTimer");
@@ -5075,7 +5134,7 @@ function drawCandleChart() {
 
     }
 
-    lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
+    if (lastUpdateEl) lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(state.accuracy);
     try { paintTableHud(); } catch (e) {}
     updateLaw(state.law);
@@ -5097,7 +5156,7 @@ function drawCandleChart() {
     if (mode === "charts" && !deskCinematicOn()) drawCharts();
 
     const healthy = state.health?.binance || state.health?.kalshi;
-    statusDot.className = "dot " + (healthy ? "live" : "warn");
+    if (statusDot) statusDot.className = "dot " + (healthy ? "live" : "warn");
 
     try { syncSeatStorm(); } catch (e) {}
     try {
@@ -5168,20 +5227,20 @@ function drawCandleChart() {
 
   async function poll() {
     try {
-      const r = await fetch(`${API_BASE}/api/state`);
+      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
-      state = await r.json();
-      try { window.state = state; } catch (e) {}
-      updateUI();
+      const payload = await r.json();
+      applyDeskState(payload);
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
       if (mode === "dashboard") renderDashboard();
     } catch (e) {
-      statusDot.className = "dot err";
+      if (statusDot) statusDot.className = "dot err";
       console.warn("Council poll failed", e);
     }
   }
+  window.poll = poll;
 
   const openChartsBtn = document.getElementById("openChartsBtn");
   if (openChartsBtn) {
@@ -7043,6 +7102,7 @@ function drawCandleChart() {
       const sg = document.getElementById("summonGate");
       if (sg) sg.classList.add("hidden");
       try { if (typeof window.setMode === "function") window.setMode("art"); } catch (e) {}
+      try { if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour(); } catch (e) {}
       return;
     }
     // First-login choice overlays the desk. Do not re-lock html/body —
