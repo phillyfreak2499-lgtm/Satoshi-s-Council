@@ -5645,16 +5645,24 @@ function drawCandleChart() {
     const strip = document.getElementById("atsGameStrip");
     const nameEl = document.getElementById("atsGameName");
     const lineEl = document.getElementById("atsGameLine");
+    const sportEl = document.getElementById("atsSportChip");
     const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
     if (strip) strip.hidden = !ats;
+    if (sportEl) sportEl.hidden = !ats;
     if (!ats) return;
     const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
     const pick = view.pick || {};
     const clock = (view.market && view.market.clock) || view.clock || {};
     const game = pick.game || clock.game || "NO GAME";
     const number = pick.number || clock.number || pick.title || "NO LINE";
+    const sport = String(pick.sport || clock.sport || "").trim().toUpperCase();
     if (nameEl) nameEl.textContent = game;
     if (lineEl) lineEl.textContent = number;
+    if (sportEl) {
+      const hasBook = !!(pick.ticker || pick.game || pick.title || pick.number || clock.game);
+      sportEl.textContent = sport || (hasBook ? "WAIT" : "NO BOOK");
+      sportEl.setAttribute("data-live", sport ? "on" : "off");
+    }
   }
   function paintFrontWindowChrome() {
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
@@ -5666,6 +5674,7 @@ function drawCandleChart() {
     const wxStrip = document.getElementById("wxHighStrip");
     const wxSubs = document.getElementById("wxSubStrip");
     const atsStrip = document.getElementById("atsGameStrip");
+    const atsSport = document.getElementById("atsSportChip");
     const kh = document.getElementById("wxKalshiHigh");
     const nh = document.getElementById("wxNwsHigh");
     const cityEl = document.getElementById("wxCity");
@@ -5673,6 +5682,7 @@ function drawCandleChart() {
     if (wxStrip) wxStrip.hidden = !front;
     if (wxSubs) wxSubs.hidden = !front;
     if (atsStrip) atsStrip.hidden = !ats;
+    if (atsSport) atsSport.hidden = !ats;
     if (dualSub) dualSub.hidden = !!ats;
     if (front) {
       if (ledLabel) ledLabel.textContent = "DFW HIGH";
@@ -5748,7 +5758,11 @@ function drawCandleChart() {
       if (ledT) ledT.textContent = line;
       const timEl = document.getElementById("windowTimer");
       if (timEl) timEl.textContent = line;
-      if (ledSub) ledSub.textContent = pick.game || clock.game || "the game";
+      if (ledSub) {
+        const sport = String(pick.sport || clock.sport || "").trim().toUpperCase();
+        const game = pick.game || clock.game || "the game";
+        ledSub.textContent = sport ? (sport + " · " + game) : game;
+      }
       if (dualSub) {
         dualSub.hidden = true;
         dualSub.textContent = "";
@@ -5758,6 +5772,7 @@ function drawCandleChart() {
     }
     if (ledLabel) ledLabel.textContent = "1H WINDOW";
     if (atsStrip) atsStrip.hidden = true;
+    if (atsSport) atsSport.hidden = true;
     return false;
   }
   function dockWindowLed() {
