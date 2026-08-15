@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-coinglass-miss",
+    "at": "2026-08-15T22:40:00-05:00",
+    "title": "CoinGlass logs the real miss",
+    "why": "CoinGlass now logs the real miss + 30m/1h paths. CARRY/CHAIN/CASCADE stay dark only with a reason. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-summon-oath",
     "at": "2026-08-15T22:10:00-05:00",
     "title": "Gate now SUMMON THE COUNCIL after agree",

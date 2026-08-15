@@ -95,7 +95,16 @@ class DataPipeline:
         cfb_raw = results[3]
         cg_data: Dict[str, Any] = {"source": "coinglass", "healthy": False}
         if len(results) > 4:
-            cg_data = results[4] if not isinstance(results[4], Exception) else cg_data
+            if isinstance(results[4], Exception):
+                cg_data = {
+                    "source": "coinglass",
+                    "healthy": False,
+                    "reason": type(results[4]).__name__,
+                }
+            else:
+                cg_data = results[4]
+        elif not self.coinglass.configured():
+            cg_data = {"source": "coinglass", "healthy": False, "reason": "key missing"}
 
         # Shared spot cache (both tables)
         import time as _t
@@ -139,7 +148,7 @@ class DataPipeline:
         if isinstance(cfb_raw, Exception):
             cfb_raw = {}
         if not isinstance(cg_data, dict):
-            cg_data = {"source": "coinglass", "healthy": False}
+            cg_data = {"source": "coinglass", "healthy": False, "reason": "bad payload"}
 
         if not isinstance(binance_data, dict):
             binance_data = {"source": "binance", "healthy": False}
@@ -224,6 +233,10 @@ class DataPipeline:
         self.health["kalshi"] = bool(kalshi_data.get("healthy", False))
         self.health["coinbase"] = bool(cb_ok)
         self.health["coinglass"] = bool(cg_data.get("healthy", False))
+        cg_reason = cg_data.get("reason") or cg_data.get("coinglass_reason") or ""
+        if not self.health["coinglass"] and not cg_reason:
+            cg_reason = "no usable funding/OI/liq this cycle"
+        self.health["coinglass_reason"] = str(cg_reason) if cg_reason else None
         self.health["cfb"] = bool(cfb_ok)
         self.health["spot_source"] = spot_source or ("cfb" if cfb_ok else ("coinbase" if cb_ok else None))
         self.health["research_spot_source"] = research.get("source")

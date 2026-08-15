@@ -1,6 +1,8 @@
 """Binance/Coinbase spot health + CoinGlass key/parse. No live network, no real keys."""
 from __future__ import annotations
 
+import io
+import json
 import os
 import sys
 import tempfile
@@ -8,13 +10,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-sys.modules.setdefault("httpx", MagicMock())
-
 # Sibling tests may have mocked these; load the real modules for this file.
 for _name in ("backend.data.binance", "backend.data.cfbenchmarks", "backend.data.coinglass"):
     mod = sys.modules.get(_name)
     if mod is None or isinstance(mod, MagicMock):
         sys.modules.pop(_name, None)
+
+from loguru import logger
 
 from backend.data.binance import (
     coinbase_product_for_symbol,
@@ -22,9 +24,35 @@ from backend.data.binance import (
     spot_source_from_base,
 )
 from backend.data.cfbenchmarks import pick_research_spot, research_source_label
-from backend.data.coinglass import summarize_derivatives
-from backend.data.secrets import load_secret_string, reset_secret_cache
+from backend.data.coinglass import (
+    ALLOWED_INTERVALS,
+    PATHS,
+    CoinGlassClient,
+    live_interval_order,
+    summarize_derivatives,
+)
+from backend.data.secrets import load_coinglass_api_key, load_secret_string, reset_secret_cache
 from backend.data.spot_health import research_spot_ok, spot_feed_ok, spot_source_label
+
+ROOT = Path(__file__).resolve().parents[2]
+WIRE_JS = (ROOT / "frontend" / "static" / "wire.js").read_text(encoding="utf-8")
+FOLLOWER_PY = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encoding="utf-8")
+FOLLOWER_ROUTE = (ROOT / "backend" / "services" / "follower_route.py").read_text(encoding="utf-8")
+FOLLOWER_JS = (ROOT / "frontend" / "protected" / "follower_gate.js").read_text(encoding="utf-8")
+GATES = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
+JS = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+CG_SRC = (ROOT / "backend" / "data" / "coinglass.py").read_text(encoding="utf-8")
+
+
+class _FakeCG:
+    def __init__(self, status_code, payload=None, text=None):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {}
+        self.text = text if text is not None else json.dumps(self._payload)
+        self.content = self.text.encode("utf-8")
+
+    def json(self):
+        return self._payload
 
 
 class CoinbaseProductTests(unittest.TestCase):
@@ -114,6 +142,23 @@ class SecretLoadTests(unittest.TestCase):
             self.assertEqual(src, "file")
             self.assertEqual(val, "file-dummy-not-real")
 
+    def test_secret_file_trailing_newline_still_authenticates(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "COINGLASS_API_KEY"
+            path.write_text("file-dummy-not-real\n", encoding="utf-8")
+            env = {"COINGLASS_API_KEY_FILE": str(path)}
+            with patch.dict(os.environ, env, clear=False):
+                os.environ.pop("COINGLASS_API_KEY", None)
+                reset_secret_cache("COINGLASS_API_KEY")
+                key = load_coinglass_api_key()
+                cg = CoinGlassClient(symbol="BTCUSDT")
+                headers = cg._headers()
+            self.assertEqual(key, "file-dummy-not-real")
+            self.assertIsNotNone(headers)
+            self.assertEqual(headers["CG-API-KEY"], "file-dummy-not-real")
+            self.assertNotIn("\n", headers["CG-API-KEY"])
+            self.assertNotIn("\r", headers["CG-API-KEY"])
+
     def test_env_path_reads_file(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "COINGLASS_API_KEY"
@@ -157,6 +202,196 @@ class CoinGlassParseTests(unittest.TestCase):
         )
         self.assertFalse(hourly["daily_heatmap"])
         self.assertAlmostEqual(hourly["oi_delta_1h"], 10.0)
+
+
+class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        reset_secret_cache()
+
+    def tearDown(self):
+        reset_secret_cache()
+        os.environ.pop("COINGLASS_API_KEY", None)
+
+    def _client(self, key: str = "dummy-cg-key-not-real") -> CoinGlassClient:
+        os.environ["COINGLASS_API_KEY"] = key
+        reset_secret_cache("COINGLASS_API_KEY")
+        return CoinGlassClient(symbol="BTCUSDT")
+
+    def _capture_logs(self):
+        buf = io.StringIO()
+        hid = logger.add(buf, format="{message}")
+        return buf, hid
+
+    async def test_nonzero_code_logged_and_sets_reason(self):
+        cg = self._client()
+        payload = {"code": "400", "msg": "interval not allowed for your plan", "data": []}
+
+        async def fake_get(url, params=None, headers=None):
+            return _FakeCG(200, payload)
+
+        cg.client.get = fake_get
+        buf, hid = self._capture_logs()
+        try:
+            snap = await cg.get_derivatives()
+        finally:
+            logger.remove(hid)
+        text = buf.getvalue()
+        self.assertFalse(snap["healthy"])
+        self.assertIn("400", str(snap.get("reason") or ""))
+        self.assertIn("interval not allowed", str(snap.get("reason") or ""))
+        self.assertIn("400", text)
+        self.assertIn("interval not allowed", text)
+        self.assertIn("/api/futures/funding-rate/history", text)
+        self.assertIn("30m", text)
+        self.assertNotIn("dummy-cg-key-not-real", text)
+        rows = await cg._get_rows(PATHS[0], "30m")
+        self.assertEqual(rows, [])
+        self.assertTrue(cg._cycle_misses)
+
+    async def test_30m_before_1h_never_1m(self):
+        cg = self._client()
+        seen: list[str] = []
+
+        async def fake_get(url, params=None, headers=None):
+            iv = str((params or {}).get("interval") or "")
+            seen.append(iv)
+            if iv == "30m":
+                return _FakeCG(200, {
+                    "code": "400",
+                    "msg": "interval not allowed for your plan",
+                    "data": [],
+                })
+            if iv == "1h":
+                return _FakeCG(200, {
+                    "code": "0",
+                    "msg": "success",
+                    "data": [{"time": 1_700_000_000_000, "close": "0.00012"}],
+                })
+            return _FakeCG(200, {"code": "0", "data": []})
+
+        cg.client.get = fake_get
+        snap = await cg.get_derivatives()
+        self.assertNotIn("1m", seen)
+        self.assertIn("30m", seen)
+        self.assertIn("1h", seen)
+        self.assertLess(seen.index("30m"), seen.index("1h"))
+        self.assertEqual(live_interval_order(), ["30m", "1h"])
+        self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
+        self.assertTrue(snap["healthy"])
+        self.assertIn("30m rejected", str(snap.get("reason") or ""))
+        self.assertIn("using 1h", str(snap.get("reason") or ""))
+
+    async def test_401_logs_without_key(self):
+        secret = "SUPERSECRETKEYVALUE"
+        cg = self._client(secret)
+
+        async def fake_get(url, params=None, headers=None):
+            self.assertEqual((headers or {}).get("CG-API-KEY"), secret)
+            return _FakeCG(401, {"code": "401", "msg": "Invalid API key", "data": []})
+
+        cg.client.get = fake_get
+        buf, hid = self._capture_logs()
+        try:
+            snap = await cg.get_derivatives()
+        finally:
+            logger.remove(hid)
+        text = buf.getvalue()
+        self.assertFalse(snap["healthy"])
+        self.assertIn("401", text)
+        self.assertIn("401", str(snap.get("reason") or ""))
+        self.assertNotIn(secret, text)
+        self.assertNotIn(secret, str(snap.get("reason") or ""))
+        self.assertNotIn("1m", text)
+
+    async def test_v4_paths_and_params(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append((url, dict(params or {}), dict(headers or {})))
+            return _FakeCG(200, {"code": "0", "msg": "success", "data": [
+                {"time": 1_700_000_000_000, "close": "1"},
+            ]})
+
+        cg.client.get = fake_get
+        snap = await cg.get_derivatives()
+        self.assertTrue(snap["healthy"])
+        paths = [u.split("coinglass.com", 1)[-1] for u, _p, _h in calls]
+        for path in PATHS:
+            self.assertTrue(any(p.endswith(path) for p in paths), path)
+        for _url, params, headers in calls:
+            self.assertEqual(params.get("exchange"), "Binance")
+            self.assertEqual(params.get("symbol"), "BTCUSDT")
+            self.assertIn(params.get("interval"), ("30m", "1h"))
+            self.assertNotEqual(params.get("interval"), "1m")
+            self.assertEqual(headers.get("CG-API-KEY"), "dummy-cg-key-not-real")
+            self.assertTrue(str(calls[0][0]).startswith("https://open-api-v4.coinglass.com"))
+
+
+class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_health_surfaces_coinglass_reason(self):
+        from backend import main as m
+
+        prev = m.council.running
+        m.council.running = True
+        try:
+            with patch.object(
+                m.council,
+                "get_state",
+                return_value={
+                    "timestamp": "2026-08-15T21:00:00+00:00",
+                    "tables": {
+                        "bitcoin": {
+                            "timestamp": "2026-08-15T21:00:00+00:00",
+                            "health": {
+                                "coinglass": False,
+                                "coinglass_reason": (
+                                    "path=/api/futures/funding-rate/history interval=30m "
+                                    "symbol=BTCUSDT exchange=Binance http=401 code=401 "
+                                    "msg=Invalid API key body="
+                                ),
+                                "kalshi": True,
+                                "binance": True,
+                            },
+                        }
+                    },
+                },
+            ):
+                body = await m.health()
+            self.assertFalse(body["coinglass_ok"])
+            self.assertIn("401", body["coinglass_reason"])
+            self.assertIn("30m", body["coinglass_reason"])
+            self.assertNotIn("SUPERSECRET", str(body["coinglass_reason"]))
+        finally:
+            m.council.running = prev
+
+
+class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
+    def test_wire_note(self):
+        self.assertIn("2026-08-15-coinglass-miss", WIRE_JS)
+        self.assertIn("CoinGlass now logs the real miss + 30m/1h paths", WIRE_JS)
+        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-15-coinglass-miss", 1)[1][:400])
+        self.assertNotIn("cancel", WIRE_JS.split("2026-08-15-coinglass-miss", 1)[1][:400].lower())
+
+    def test_follower_untouched_and_floor_lock_only(self):
+        self.assertNotIn("coinglass_reason", FOLLOWER_PY)
+        self.assertNotIn("coinglass_reason", FOLLOWER_ROUTE)
+        self.assertNotIn("coinglass_reason", FOLLOWER_JS)
+        self.assertIn("def decide_open_lock_grade", GATES)
+        self.assertIn("function floorSeatDirLocked(", JS)
+        self.assertIn("function floorLockedAgents(", JS)
+        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
+
+    def test_live_paths_never_request_1m(self):
+        self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
+        self.assertNotIn("1m", ALLOWED_INTERVALS)
+        self.assertIn("/api/futures/funding-rate/history", CG_SRC)
+        self.assertIn("/api/futures/open-interest/history", CG_SRC)
+        self.assertIn("/api/futures/liquidation/history", CG_SRC)
+        self.assertIn("CG-API-KEY", CG_SRC)
+        self.assertIn("https://open-api-v4.coinglass.com", CG_SRC)
+        self.assertIn("start_time", CG_SRC)
+        self.assertIn("end_time", CG_SRC)
 
 
 if __name__ == "__main__":
