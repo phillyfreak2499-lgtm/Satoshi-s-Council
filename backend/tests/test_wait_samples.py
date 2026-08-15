@@ -288,7 +288,7 @@ class FrontWaitTests(unittest.TestCase):
         self.assertEqual(row["pnl"], 0.0)
         self.assertEqual(row["city"], "DAL")
         self.assertEqual(row["station"], "KDFW")
-        self.assertEqual(row["wait_reason"], "dead_book")
+        self.assertEqual(row["wait_reason"], "empty_book")
         self.assertTrue(desk_front.apply_cli_settle(row, 103.0))
         self.assertEqual(row["result"], "WAIT")
         self.assertEqual(row["pnl"], 0.0)
