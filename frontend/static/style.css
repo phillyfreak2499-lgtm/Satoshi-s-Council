@@ -1070,21 +1070,62 @@ footer {
 .bot-card-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
+.bot-mark-wrap {
+  position: relative;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 12, 22, 0.95);
+  border: 1px solid rgba(0, 232, 255, 0.35);
+}
+.bot-mark-wrap > * { grid-area: 1 / 1; }
+.bot-mark {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+.bot-mark-letter {
+  display: none;
+  font-family: Orbitron, monospace;
+  font-weight: 700;
+  font-size: 14px;
+  color: #7fe9ff;
+  line-height: 1;
+}
+.bot-mark-wrap.no-art .bot-mark-letter { display: block; }
 .bot-callsign {
   font-family: Orbitron, monospace;
   font-weight: 700;
   font-size: 14px;
   color: #d8f0ff;
   letter-spacing: 0.06em;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .bot-rank-pill {
   font-family: Orbitron, monospace;
   font-size: 11px;
   color: #ffb000;
   font-weight: 700;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+@media (max-width: 480px) {
+  .bot-mark-wrap,
+  .bot-mark {
+    width: 36px;
+    height: 36px;
+  }
+  .bot-mark-wrap { flex-basis: 36px; }
 }
 .bot-title {
   font-size: 11px;

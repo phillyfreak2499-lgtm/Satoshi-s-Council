@@ -93,6 +93,22 @@ class ChairThinkTests(unittest.TestCase):
         self.assertIn("noteChairLock(whichChair, _lc)", JS)
 
 
+class BotsGuideMarkTests(unittest.TestCase):
+    def test_field_guide_uses_existing_bot_map(self):
+        self.assertIn("function botGuideMarkHtml", JS)
+        self.assertIn("function renderBotsGuide", JS)
+        self.assertIn("botGuideMarkHtml(key, name)", JS)
+        self.assertIn("BOT_ICON_FILES[key]", JS)
+        self.assertIn('class="bot-mark"', JS)
+        self.assertIn("/bots/wick.png", JS)
+        self.assertIn("bot-mark-letter", JS)
+        self.assertIn("no-art", JS)
+        self.assertIn(".bot-mark-wrap", CSS)
+        self.assertIn("width: 40px", CSS.split(".bot-mark-wrap", 1)[1][:200])
+        self.assertIn("margin-left: auto", CSS.split(".bot-rank-pill", 1)[1][:180])
+        self.assertNotIn("zt-logo", JS.split("function botGuideMarkHtml", 1)[1][:400].lower())
+
+
 class SeatOrbitTests(unittest.TestCase):
     def test_seat_orbit_is_slower_and_can_freeze(self):
         self.assertIn("function seatOrbitAngle", JS)

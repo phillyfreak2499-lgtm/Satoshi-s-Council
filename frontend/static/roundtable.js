@@ -4606,6 +4606,18 @@ function drawCandleChart() {
     law: { blurb: "Enforcer. After repeated wrong calls can lock the table into LET'S FIND OUT mode.", subs: "—" },
   };
 
+  function botGuideMarkHtml(key, name) {
+    // Same /bots/*.png map Floor seats use. Letter fallback if a file is missing.
+    const letter = String(name || key || "?").replace(/[^A-Za-z0-9]/g, "").charAt(0).toUpperCase() || "?";
+    const src = (typeof BOT_ICON_FILES !== "undefined" && BOT_ICON_FILES[key]) || "";
+    const letterSpan = '<span class="bot-mark-letter" aria-hidden="true">' + letter + '</span>';
+    if (!src) return '<span class="bot-mark-wrap no-art">' + letterSpan + '</span>';
+    return '<span class="bot-mark-wrap">' +
+      '<img class="bot-mark" src="' + src + '" alt="" width="40" height="40" onerror="this.style.display=\'none\';this.parentNode.classList.add(\'no-art\');" />' +
+      letterSpan +
+      '</span>';
+  }
+
   function renderBotsGuide() {
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
@@ -4629,7 +4641,7 @@ function drawCandleChart() {
       const listen = r.listen != null ? Math.round(r.listen * 100) + "%" : "—";
       const dir = ag.direction || "—";
       return '<article class="bot-card ' + (top ? "rank-top" : "") + '">' +
-        '<div class="bot-card-head"><span class="bot-callsign">' + name + '</span><span class="bot-rank-pill">' + rank + '</span></div>' +
+        '<div class="bot-card-head">' + botGuideMarkHtml(key, name) + '<span class="bot-callsign">' + name + '</span><span class="bot-rank-pill">' + rank + '</span></div>' +
         '<div class="bot-title">' + title + '</div>' +
         '<div class="bot-blurb">' + g.blurb + '</div>' +
         '<div class="bot-subs">' + g.subs + '</div>' +
