@@ -156,6 +156,149 @@ class PaperFollowerUntouchedTests(unittest.TestCase):
         self.assertEqual(title, "Satoshi’s Council")
         self.assertIn("SATOSHI’S COUNCIL", HTML.split('id="passwordGate"', 1)[1][:400])
         self.assertIn("SATOSHI’S COUNCIL", HTML.split('id="summonGate"', 1)[1][:500])
+        self.assertNotIn("drawChairRoom", FOLLOWER_PY)
+        self.assertNotIn("hourWeatherOf", FOLLOWER_PY)
+        self.assertNotIn("drawLockStamp", FOLLOWER_ROUTE)
+        self.assertNotIn("chairRoomOf", FOLLOWER_JS)
+
+
+def hour_weather_of(st):
+    """Mirror of hourWeatherOf — range / VOLT / book spread / time-left. No weather API."""
+    m = (st or {}).get("market") or {}
+    agents = (st or {}).get("agents") or []
+    range_score = 0.0
+    candles = m.get("candles") or []
+    if len(candles) >= 2:
+        hi = max(float(c.get("h", c.get("high", 0)) or 0) for c in candles)
+        lo = min(float(c.get("l", c.get("low", 0)) or 0) for c in candles)
+        last = float(candles[-1].get("c", candles[-1].get("close", 0)) or 0)
+        if last > 0 and hi > lo:
+            range_score = min(1.0, ((hi - lo) / last) / 0.012)
+    volt_score = 0.0
+    for a in agents:
+        if a and a.get("agent_name") == "volatility":
+            d = str(a.get("direction") or "").upper()
+            c = float(a.get("confidence") or 0)
+            if d and d not in ("WAIT", "SIT"):
+                volt_score = min(1.0, c / 100.0)
+            break
+    yb = m.get("kalshi_yes_bid", m.get("up_pct"))
+    ya = m.get("kalshi_yes_ask")
+    book_score = 0.0
+    if yb is not None and ya is not None:
+        book_score = min(1.0, abs(float(ya) - float(yb)) / 8.0)
+    secs = m.get("seconds_left")
+    chop_score = 0.0
+    if secs is not None and secs < 720:
+        chop_score = (1 - secs / 720) * max(range_score, volt_score, 0.25)
+    level = max(0.0, min(1.0, range_score * 0.38 + volt_score * 0.28 + book_score * 0.18 + chop_score * 0.16))
+    mode = "wild" if level >= 0.62 else ("dead" if level <= 0.22 else "calm")
+    return {"level": level, "mode": mode}
+
+
+class ChairRoomTests(unittest.TestCase):
+    def test_three_distinct_room_skins(self):
+        self.assertIn("function chairRoomOf(", JS)
+        self.assertIn('return "ares"', JS.split("function chairRoomOf", 1)[1][:400])
+        self.assertIn('return "vitalik"', JS.split("function chairRoomOf", 1)[1][:400])
+        self.assertIn('return "satoshi"', JS.split("function chairRoomOf", 1)[1][:500])
+        self.assertIn("function drawChairRoom(", JS)
+        self.assertIn("function syncChairRoom(", JS)
+        self.assertIn("dataset.chairRoom", JS)
+        self.assertIn("dataset.hourWeather", JS)
+        sat = CSS.split('data-chair-room="satoshi"', 1)[1][:900]
+        vit = CSS.split('data-chair-room="vitalik"', 1)[1][:900]
+        ares = CSS.split('data-chair-room="ares"', 1)[1][:900]
+        self.assertIn("#1a1208", sat)
+        self.assertIn("240, 176, 64", sat)
+        self.assertIn("#061418", vit)
+        self.assertIn("80, 230, 210", vit)
+        self.assertIn("#071018", ares)
+        self.assertIn("255, 230, 160", ares)
+        self.assertNotEqual(sat[:200], vit[:200])
+        self.assertNotEqual(vit[:200], ares[:200])
+        self.assertIn("drawAresScorebug", JS)
+        self.assertIn("atsKickLine", JS.split("function drawAresScorebug", 1)[1][:500])
+        self.assertNotIn("id=\"tabAresScore\"", HTML)
+        self.assertNotIn("id=\"tabScorebug\"", HTML)
+        self.assertIn("Same table, different world", JS)
+
+    def test_rooms_under_wisps_screensaver_first(self):
+        self.assertIn("UNDER majority wisps", JS)
+        self.assertIn("UNDER wisps", JS)
+        self.assertIn("drawChairRoom(w, h, focusTable, _hourWx)", JS)
+        smoke = JS.split("function drawTableSmoke", 1)[1].split("function drawMajorityHaze", 1)[0]
+        self.assertIn("smokeTone(dir)", smoke)
+        self.assertIn("w.drift * motion", smoke)
+        self.assertIn("body.night-mode[data-chair-room=\"satoshi\"]", CSS)
+        self.assertIn("body.night-mode[data-chair-room=\"vitalik\"]", CSS)
+        self.assertIn("body.night-mode[data-chair-room=\"ares\"]", CSS)
+
+
+class LockStampTests(unittest.TestCase):
+    def test_stamp_only_on_real_lock_not_wait(self):
+        self.assertIn("function chairLockIsReal(", JS)
+        self.assertIn("function lockStampWord(", JS)
+        self.assertIn("function drawLockStamp(", JS)
+        real = JS.split("function chairLockIsReal", 1)[1].split("function lockStampWord", 1)[0]
+        self.assertIn('side === "WAIT"', real)
+        self.assertIn("return false", real)
+        note = JS.split("function noteChairLock", 1)[1].split("const _chairPulse", 1)[0]
+        self.assertIn("chairLockIsReal(lc)", note)
+        ign = JS.split("function drawLockIgnition", 1)[1].split("function drawLockStamp", 1)[0]
+        self.assertIn("Don't fire on WAIT", ign)
+        self.assertIn('dir === "WAIT"', ign)
+        self.assertIn("drawLockStamp(", ign)
+        stamp = JS.split("function drawLockStamp", 1)[1].split("function resizeRoundtable", 1)[0]
+        self.assertIn("Stamp slams the call onto the table", JS)
+        self.assertIn("One beat", stamp)
+        self.assertNotIn("particles.push", stamp)
+        self.assertNotIn("new Image", stamp)
+
+
+class HourWeatherTests(unittest.TestCase):
+    def test_weather_tied_to_existing_signal(self):
+        self.assertIn("function hourWeatherOf(", JS)
+        wx = JS.split("function hourWeatherOf", 1)[1].split("function syncChairRoom", 1)[0]
+        self.assertIn("m.candles", wx)
+        self.assertIn('agent_name !== "volatility"', wx)
+        self.assertIn("kalshi_yes_bid", wx)
+        self.assertIn("kalshi_yes_ask", wx)
+        self.assertIn("secondsLeftOf", wx)
+        self.assertIn("No weather API", JS)
+        self.assertNotIn("weatherapi", JS.lower())
+        self.assertNotIn("openweathermap", JS.lower())
+        dead = hour_weather_of({
+            "market": {
+                "candles": [{"h": 100.1, "l": 99.95, "c": 100}, {"h": 100.08, "l": 99.98, "c": 100.02}],
+                "kalshi_yes_bid": 49, "kalshi_yes_ask": 50, "seconds_left": 2400,
+            },
+            "agents": [{"agent_name": "volatility", "direction": "WAIT", "confidence": 10}],
+        })
+        wild = hour_weather_of({
+            "market": {
+                "candles": [{"h": 104, "l": 98, "c": 100}, {"h": 105, "l": 97, "c": 101}],
+                "kalshi_yes_bid": 40, "kalshi_yes_ask": 52, "seconds_left": 180,
+            },
+            "agents": [{"agent_name": "volatility", "direction": "UP", "confidence": 88}],
+        })
+        self.assertEqual(dead["mode"], "dead")
+        self.assertEqual(wild["mode"], "wild")
+        self.assertGreater(wild["level"], dead["level"])
+        self.assertIn('dataset.hourWeather', JS)
+        self.assertIn("data-hour-weather", CSS)
+
+    def test_phone_path_no_heavy_particles(self):
+        room = JS.split("function drawChairRoom", 1)[1].split("function drawAresScorebug", 1)[0]
+        self.assertIn("Phone: wash only", room)
+        self.assertIn("isPhoneDesk", room)
+        self.assertNotIn("particles.push", room)
+        self.assertNotIn("createElement", room)
+        self.assertNotIn("new Image", room)
+        self.assertIn("if (phone) return", JS.split("function drawAresScorebug", 1)[1][:400])
+        self.assertIn("body.phone-floor[data-hour-weather=\"wild\"]", CSS)
+        stamp = JS.split("function drawLockStamp", 1)[1].split("function resizeRoundtable", 1)[0]
+        self.assertNotIn("particles.push", stamp)
 
 
 if __name__ == "__main__":

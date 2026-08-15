@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-chair-rooms",
+    "at": "2026-08-15T21:30:00-05:00",
+    "title": "Chair rooms change the Floor",
+    "why": "Zach wants the room to change with the Chair — Satoshi vault, Vitalik glass, Ares stadium — so you know who you are watching before you read a name. Seat mood and hour weather sit under the majority wisps. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-wire-tab",
     "at": "2026-08-15T20:00:00-05:00",
     "title": "WIRE tab is live",
