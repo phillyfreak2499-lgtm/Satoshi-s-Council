@@ -437,6 +437,36 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertIn("@app.get(\"/raijin-wait.jpg\")", MAIN)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
 
+    def test_satoshi_signed_face_keeps_mapping(self):
+        static = ROOT / "frontend" / "static"
+        for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
+            path = static / name
+            self.assertTrue(path.is_file(), name)
+            self.assertGreater(path.stat().st_size, 20000)
+            self.assertEqual(path.read_bytes()[:2], b"\xff\xd8")
+        self.assertNotEqual((static / "chair-up.jpg").read_bytes(), (static / "chair-down.jpg").read_bytes())
+        self.assertNotEqual((static / "chair-up.jpg").read_bytes(), (static / "chair-wait.jpg").read_bytes())
+        self.assertNotEqual((static / "chair-down.jpg").read_bytes(), (static / "chair-wait.jpg").read_bytes())
+        sell = static / "chair-sell.jpg"
+        self.assertTrue(sell.is_file(), "chair-sell.jpg")
+        self.assertGreater(sell.stat().st_size, 20000)
+        self.assertEqual(sell.read_bytes()[:2], b"\xff\xd8")
+        self.assertNotEqual(sell.read_bytes(), (static / "chair-wait.jpg").read_bytes())
+        self.assertIn('chairImages.UP.src = "/chair-up.jpg"', JS)
+        self.assertIn('chairImages.DOWN.src = "/chair-down.jpg"', JS)
+        self.assertIn('chairImages.WAIT.src = "/chair-wait.jpg"', JS)
+        self.assertIn("chairImages.SWAP = chairImages.WAIT", JS)
+        self.assertNotIn("chair-sell", JS)
+        self.assertNotIn("satoshi-sell", JS)
+        self.assertNotIn('chairImages.UP.src = "/chair-sell.jpg"', JS)
+        self.assertIn('if (d === "UP" || d === "UP_HOLD") return chairImages.UP', JS)
+        self.assertIn('if (d === "DOWN" || d === "DOWN_HOLD") return chairImages.DOWN', JS)
+        fn = JS.split("function chairPortraitFor(dir)", 1)[1][:400]
+        self.assertNotIn("HOLD\") return chairImages.WAIT", fn)
+        self.assertIn("return chairImages.WAIT", fn)
+        self.assertNotIn("SALE", fn)
+        self.assertNotIn("SELL", fn)
+
     def test_vitalik_signed_face_keeps_mapping(self):
         static = ROOT / "frontend" / "static"
         for name in ("vitalik-up.jpg", "vitalik-down.jpg", "vitalik-wait.jpg"):
