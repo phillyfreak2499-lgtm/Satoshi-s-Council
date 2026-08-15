@@ -1075,8 +1075,8 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         eye = "DOWN"
     else:
         eye = "UP"
-        # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
-        marks = {
+    # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
+    marks = {
         "UP": "/static/bots/raijin-up.png",
         "DOWN": "/static/bots/raijin-down.png",
         "WAIT": "/static/bots/raijin-wait.png",
