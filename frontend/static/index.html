@@ -192,7 +192,7 @@
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
         <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
         <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
-        <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Raijin weather chair. CHI / NY / DAL cards. Paper taps only.">Front</button>
+        <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -264,6 +264,10 @@
         </div>
         <div id="chairWhy" class="chair-why" aria-live="polite">WAIT · —</div>
         <button type="button" id="phoneScore" class="phone-score" hidden aria-label="Flip BTC / ETH">BTC 0–0</button>
+        <button type="button" id="floorRaijin" class="floor-raijin" title="THE FRONT · Raijin · Dallas DFW" aria-label="Open THE FRONT">
+          <img src="/static/bots/raijin-chair.png" alt="" width="44" height="44">
+          <span>RAIJIN</span>
+        </button>
       </div>
       <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 
@@ -468,8 +472,8 @@
 
         <div class="beast-card settings-card" id="frontSettingsCard">
           <div class="beast-title">RAIJIN · THE FRONT</div>
-          <p class="settings-sub">Weather chair Raijin — same weight as Satoshi / Vitalik on this tab. CHI Midway, NYC Central Park, DAL DFW. FORECAST / MARKET / SKIP / CLIMO vote. One BEST lock. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
-          <p class="settings-foot">Fillable chair slot or neon thunder-god mark. Not gold ZT. Settlement is NWS CLI. Date is in the ticker. Desk-code only.</p>
+          <p class="settings-sub">Dallas DFW daily high (KXHIGHTDAL / KDFW). Weather council — GLASS, PIT, FROST, BONE. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
+          <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only.</p>
         </div>
 
         <div class="settings-actions">
@@ -651,40 +655,54 @@
     <section id="frontView" class="info-view hidden" aria-label="THE FRONT">
       <div class="info-hero">
         <h2>THE FRONT</h2>
-        <p>Raijin chairs this weather page — same weight as Satoshi / Vitalik. CHI / NY / DAL cards. FORECAST / MARKET / SKIP / CLIMO vote. One BEST lock. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+        <p>Dallas DFW daily high. Weather council — not the crypto Floor. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
       </div>
       <div id="frontHud" class="front-hud">
         <div class="front-mode-row">
+          <span class="front-wx-badge" id="frontWxBadge">WX · —</span>
           <span class="side-badge paper" id="frontModeBadge">PAPER</span>
           <span class="side-status" id="frontFeedStatus">loading</span>
         </div>
-        <figure class="front-raijin" id="frontRaijin" aria-label="Raijin weather chair">
-          <div class="front-raijin-slot" id="frontRaijinSlot" data-slot="/static/bots/raijin.png">
-            <img id="frontRaijinImg" class="front-raijin-photo" alt="" hidden>
-            <svg class="front-thunder-mark" viewBox="0 0 120 120" aria-hidden="true">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(0,232,255,0.55)" stroke-width="2"></circle>
-              <path d="M62 28 40 64h16l-8 32 34-42H66z" fill="#7fe9ff"></path>
-              <path d="M60 86c6 0 10 4 10 9s-4 9-10 9-10-4-10-9 4-9 10-9z" fill="none" stroke="#7fe9ff" stroke-width="2"></path>
-              <path d="M38 78c5-3 11-1 14 4 2 4 0 9-5 12-4 2-9 0-12-4-2-4 0-9 3-12z" fill="none" stroke="#7fe9ff" stroke-width="2"></path>
-              <path d="M82 78c-5-3-11-1-14 4-2 4 0 9 5 12 4 2 9 0 12-4 2-4 0-9-3-12z" fill="none" stroke="#7fe9ff" stroke-width="2"></path>
-            </svg>
+        <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
+          <canvas id="frontWx" width="720" height="520" aria-hidden="true"></canvas>
+          <div id="frontRing" class="front-ring" aria-label="Raijin weather table">
+            <div class="front-chair" id="frontChair">
+              <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-wait.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">RAIJIN</span>
+              <span class="front-call" id="frontChairCall">—</span>
+            </div>
+            <button type="button" class="front-seat" data-seat="GLASS" style="--a:-90">
+              <span class="front-mark"><img src="/static/bots/glass.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">GLASS</span>
+              <span class="front-call" data-call="GLASS">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="PIT" style="--a:0">
+              <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">PIT</span>
+              <span class="front-call" data-call="PIT">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="FROST" style="--a:90">
+              <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">FROST</span>
+              <span class="front-call" data-call="FROST">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="BONE" style="--a:180">
+              <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">BONE</span>
+              <span class="front-call" data-call="BONE">—</span>
+            </button>
           </div>
-          <figcaption class="front-raijin-meta">
-            <div class="front-raijin-name">RAIJIN</div>
-            <div class="front-raijin-role">WEATHER CHAIR · THE FRONT</div>
-            <div class="front-raijin-peer">Same weight as Satoshi / Vitalik</div>
-            <div class="front-raijin-call" id="frontRaijinCall">—</div>
-          </figcaption>
-        </figure>
-        <div id="frontSeats" class="front-seats" aria-label="Weather seats"></div>
+        </div>
         <div class="side-size-row">
           <span class="side-size-label">SIZE</span>
           <button type="button" class="front-step on" data-size="5">$5</button>
           <button type="button" class="front-step" data-size="10">$10</button>
           <button type="button" class="front-step" data-size="25">$25</button>
         </div>
-        <div id="frontCards" class="front-cards"></div>
+        <div id="frontBook" class="front-book"></div>
         <div id="frontWhy" class="side-why"></div>
+        <div class="front-guide-head">BOT FIELD GUIDE · THE FRONT</div>
+        <div id="frontGuide" class="front-guide"></div>
         <div id="frontFills" class="side-fills"></div>
         <details class="side-live-box">
           <summary>LIVE (off · this tab only)</summary>
