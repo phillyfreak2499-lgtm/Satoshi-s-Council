@@ -12,11 +12,20 @@ from backend.agents.chair_gates import (
     early_lock_blocked,
     estimate_p_finish,
     eth_fades_btc_impulse,
+    eth_paper_lock_blocked,
+    eth_settled_n_for_zach,
     hot_chair_bin_faded,
     is_actually_settled,
     late_spot_decisive,
+    leftover_after_vig,
+    lifetime_n_for_zach,
     lock_force_allowed,
+    never_lock_near_certain,
+    paper_stake_for_lock,
     playable_yes_mid,
+    stuck_hours_open,
+    zach_band_skips_preferred,
+    zach_bar_reason,
 )
 from backend.data.cfbenchmarks import (
     last15_spot,
@@ -154,6 +163,62 @@ class CfbSettleTests(unittest.TestCase):
         self.assertTrue(late_spot_decisive(100_400, 100_000, 10, 0.40))
         # wick last tick is not passed — 60s avg still at strike
         self.assertFalse(late_spot_decisive(100_000, 100_000, 10, 0.40))
+
+
+class ZachBarTests(unittest.TestCase):
+    def test_playable_band_stays_20_80_not_45_55(self):
+        self.assertTrue(playable_yes_mid(25))
+        self.assertTrue(playable_yes_mid(75))
+        self.assertTrue(playable_yes_mid(50))
+        self.assertFalse(playable_yes_mid(12))
+        self.assertFalse(playable_yes_mid(91))
+        # leftover at 25¢ / 75¢ is enough — do not require 45–55
+        self.assertIsNone(zach_bar_reason(25, 75, p_finish=0.62, fee_cents=1.0, yes_mid=25, side_ask=25))
+        self.assertIsNone(zach_bar_reason(75, 25, p_finish=0.85, fee_cents=1.0, yes_mid=75, side_ask=75))
+        self.assertTrue(zach_band_skips_preferred(25, 10.0))
+        self.assertTrue(zach_band_skips_preferred(75, 5.0))
+        self.assertFalse(zach_band_skips_preferred(25, 0.0))
+        self.assertFalse(zach_band_skips_preferred(12, 20.0))
+
+    def test_leftover_required_at_the_ask(self):
+        self.assertGreater(leftover_after_vig(0.62, 25.0, fee_cents=1.0), 0.0)
+        self.assertLess(leftover_after_vig(0.55, 75.0, fee_cents=1.0), 0.0)
+        why = zach_bar_reason(75, 25, p_finish=0.55, fee_cents=1.0, yes_mid=75, side_ask=75)
+        self.assertIn("leftover", why or "")
+
+    def test_n0_until_1062_1063_settle(self):
+        opens = [
+            {"id": 1062, "ticker": "KXBTCD-26AUG1415-T62999.99"},
+            {"id": 1063, "ticker": "KXETHD-26AUG1415-T1874.99"},
+        ]
+        self.assertTrue(stuck_hours_open(opens))
+        self.assertEqual(lifetime_n_for_zach(80, opens), 0)
+        self.assertEqual(lifetime_n_for_zach(80, []), 80)
+        self.assertEqual(eth_settled_n_for_zach(12, opens), 0)
+        self.assertEqual(eth_settled_n_for_zach(12, [{"id": 1062, "ticker": "KXBTCD-26AUG1415-T62999.99"}]), 12)
+
+    def test_chair_conf_does_not_size(self):
+        self.assertEqual(paper_stake_for_lock("UP", 0, 91), paper_stake_for_lock("UP", 0, 50))
+        self.assertEqual(paper_stake_for_lock("UP", 0, 91), 25.0)
+        self.assertEqual(paper_stake_for_lock("UP", 80, 91), 25.0)
+        self.assertEqual(paper_stake_for_lock("UP_HOLD", 0, 91), 10.0)
+
+    def test_eth_paper_lock_needs_reliability_bin(self):
+        self.assertIsNotNone(eth_paper_lock_blocked("ETH", 0))
+        self.assertIsNotNone(eth_paper_lock_blocked("ETH", 7))
+        self.assertIsNone(eth_paper_lock_blocked("ETH", 8))
+        self.assertIsNone(eth_paper_lock_blocked("BTC", 0))
+        # veto still independent of the reliability bin
+        lead = {"direction": "UP", "impulse": True, "locked": True}
+        self.assertTrue(eth_fades_btc_impulse("DOWN", lead))
+
+    def test_never_lock_99_or_one_sided_100(self):
+        self.assertIn("≥99", never_lock_near_certain(99, 1) or "")
+        self.assertIn("≥99", never_lock_near_certain(1, 99) or "")
+        self.assertIsNotNone(never_lock_near_certain(100, None))
+        self.assertIsNotNone(never_lock_near_certain(None, 100))
+        self.assertIsNotNone(never_lock_near_certain(side_odds=99.5))
+        self.assertIsNone(never_lock_near_certain(52, 48, side_odds=52))
 
 
 class CoinGlassDisplayOnlyTests(unittest.TestCase):

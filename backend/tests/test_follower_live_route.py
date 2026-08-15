@@ -129,11 +129,12 @@ class GateStillDoesNotPlaceTests(unittest.TestCase):
         )
         ok, _, token, _ = g.unlock("1.1.1.1", "admin-dummy", "two-dummy", "three-dummy")
         self.assertTrue(ok)
-        g.set_live(token, "LIVE", on=True)
+        g.set_live(token, "LIVE", on=True, lifetime_n=20)
         rec = g.evaluate_order(
             token,
             {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": True, "confirm_first": "LIVE"},
             {"law_locked": False, "huddle": False, "sick_feed": True, "mins_left": 40},
+            lifetime_n=20,
         )
         self.assertFalse(rec["accepted"])
         self.assertEqual(rec["refuse"], "sick_feed")

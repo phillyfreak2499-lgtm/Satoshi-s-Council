@@ -23,12 +23,17 @@ from backend.agents.chair_gates import (
     early_lock_blocked,
     estimate_p_finish,
     eth_fades_btc_impulse,
+    eth_paper_lock_blocked,
     ev_gate_blocks,
     late_spot_decisive,
+    leftover_after_vig,
     lock_force_allowed,
+    never_lock_near_certain,
     odds_to_cents,
     parse_book_depth,
+    stuck_hours_open,
     time_ev_hurdles,
+    zach_band_skips_preferred,
 )
 from backend.data.cfbenchmarks import last15_spot
 from loguru import logger
@@ -306,8 +311,10 @@ class Leader:
             "goal": GOAL_CONTRACT_SHORT,
             "p_finish": self._locked_p_finish,
             "ev_cents": self._locked_ev_cents,
+            "leftover_after_vig": self._locked_ev_cents,
             "floor_strike": self._locked_floor_strike,
             "close_time": self._locked_close_time,
+            "paper_only": True,
         }
 
     def _price_edge(
@@ -347,6 +354,13 @@ class Leader:
                     bin_n = int(hot.get("settled") or 0)
                 except (TypeError, ValueError):
                     bin_n = 0
+        # 1062/1063 still OPEN → n=0. Chair conf is not P(finish).
+        if regime_features and (
+            regime_features.get("stuck_open")
+            or stuck_hours_open(regime_features.get("open_rows") or [])
+        ):
+            settled_n = 0
+            bin_n = 0
         p_finish = (
             estimate_p_finish(conf, settled_n, bin_settled_n=bin_n)
             if lean in ("UP", "DOWN")
@@ -1072,6 +1086,18 @@ class Leader:
         self._last_p_finish = p_finish
         self._last_ev_cents = ev_cents
         self._last_ev_phase = ev_phase
+        eth_n_for_lock = 0
+        if regime_features:
+            if regime_features.get("eth_settled_n") is not None:
+                try:
+                    eth_n_for_lock = int(regime_features["eth_settled_n"])
+                except (TypeError, ValueError):
+                    eth_n_for_lock = 0
+            elif str(regime_features.get("asset") or "").upper() in ("ETH", "ETHEREUM"):
+                try:
+                    eth_n_for_lock = int(regime_features.get("settled_n") or 0)
+                except (TypeError, ValueError):
+                    eth_n_for_lock = 0
 
         # ══════════════════════════════════════════════════════════════
         # GOAL CONTRACT: one irreversible call per window. No flipping.
@@ -1132,6 +1158,21 @@ class Leader:
                     f"WAIT · first {float(getattr(settings, 'EARLY_NO_LOCK_MINS', 10.0)):.0f}m "
                     f"of the hour — no lock · {summary}"
                 )
+            elif never_lock_near_certain(
+                (regime_features or {}).get("yes_ask"),
+                (regime_features or {}).get("no_ask"),
+                side_odds=side_odds,
+            ):
+                why = never_lock_near_certain(
+                    (regime_features or {}).get("yes_ask"),
+                    (regime_features or {}).get("no_ask"),
+                    side_odds=side_odds,
+                )
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 72)
+                summary = f"WAIT · {why} — no lock · {summary}"
             elif dead_book_reason(
                 (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
                 lean,
@@ -1177,6 +1218,19 @@ class Leader:
                 summary = (
                     f"WAIT · ETH fade of BTC impulse blocked · {summary}"
                 )
+            elif eth_paper_lock_blocked(
+                (regime_features or {}).get("asset"),
+                eth_n_for_lock,
+            ):
+                why = eth_paper_lock_blocked(
+                    (regime_features or {}).get("asset"),
+                    eth_n_for_lock,
+                )
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 70)
+                summary = f"WAIT · {why} — ETH may still vote · {summary}"
             elif side_odds is not None and side_odds >= max_odds:
                 refused_side = lean
                 direction = "WAIT"
@@ -1213,7 +1267,20 @@ class Leader:
                     elif ml <= late:
                         need = need * 0.92
                 abs_score = abs(float(score)) if score is not None else 0.0
-                if abs_score < need and not in_band:
+                zach_mid = (regime_features or {}).get("yes_mid")
+                if zach_mid is None:
+                    zach_mid = side_odds
+                leftover = ev_cents
+                if leftover is None and p_finish is not None:
+                    fill = odds_to_cents((regime_features or {}).get("side_ask"))
+                    if fill is None:
+                        fill = odds_to_cents(side_odds)
+                    if fill is not None:
+                        leftover = leftover_after_vig(float(p_finish), float(fill))
+                # 20–80 + leftover after vig is playable. Do not shrink to 45–55.
+                if abs_score < need and not in_band and not zach_band_skips_preferred(
+                    zach_mid, leftover
+                ):
                     direction = "WAIT"
                     lean = None
                     firm = False

@@ -79,6 +79,14 @@ def confirm_live(word: Any) -> bool:
     return str(word or "").strip().upper() == LIVE_WORD
 
 
+def empty_lifetime(lifetime_n: Any) -> bool:
+    """Do not arm Live or size off an empty lifetime (n=0 until 1062/1063 settle)."""
+    try:
+        return int(lifetime_n or 0) <= 0
+    except (TypeError, ValueError):
+        return True
+
+
 def _ct_day(now: float | None = None) -> str:
     if now is None:
         return datetime.now(CT).strftime("%Y-%m-%d")
@@ -375,11 +383,26 @@ class FollowerGate:
             "runtime": self.runtime.snapshot(),
         }
 
-    def set_live(self, token: str | None, confirm: Any, *, on: bool) -> Tuple[bool, str, Optional[dict]]:
+    def set_live(
+        self,
+        token: str | None,
+        confirm: Any,
+        *,
+        on: bool,
+        lifetime_n: Any = 0,
+    ) -> Tuple[bool, str, Optional[dict]]:
         sess = self.touch(token)
         if sess is None:
             return False, "session", None
         if on:
+            if empty_lifetime(lifetime_n):
+                self.audit.write("live", ok=False, reason="empty_lifetime", on=True)
+                view = self.session_view(token)
+                if view:
+                    view["live"] = False
+                    view["armed"] = False
+                    view["refuse"] = "empty_lifetime"
+                return False, "empty_lifetime", view
             if not confirm_live(confirm):
                 self.audit.write("live", ok=False, reason="confirm", on=True)
                 return False, "confirm", self.session_view(token)
@@ -408,6 +431,7 @@ class FollowerGate:
         world: Dict[str, Any],
         *,
         commit: bool = True,
+        lifetime_n: Any = None,
     ) -> dict:
         """
         Server-side refuse. Live cannot bypass LAW / huddle / sick-feed / caps.
@@ -426,6 +450,14 @@ class FollowerGate:
             "contracts": _contracts(intent.get("contracts")),
         }
         if sess is None:
+            self.audit.write("order", **rec)
+            return rec
+
+        if lifetime_n is None:
+            lifetime_n = world.get("lifetime_n", 0) if isinstance(world, dict) else 0
+        if want_live and empty_lifetime(lifetime_n):
+            rec["refuse"] = "empty_lifetime"
+            rec["live"] = False
             self.audit.write("order", **rec)
             return rec
 

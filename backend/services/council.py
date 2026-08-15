@@ -43,11 +43,15 @@ from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
+    eth_paper_lock_blocked,
+    eth_settled_n_for_zach,
     known_official_market,
+    lifetime_n_for_zach,
     official_y_finish,
     odds_to_cents,
     parse_book_depth,
     pick_settle_spot,
+    stuck_hours_open,
     window_minutes_from_times,
 )
 
@@ -628,6 +632,17 @@ class Council:
 
         # Regime features for Leader
         # (find-out annotation applied after shadow capture when locked)
+        open_rows: list = []
+        try:
+            import inspect
+            getter = getattr(self.store, "list_open_calls", None)
+            if callable(getter):
+                maybe = getter()
+                open_rows = await maybe if inspect.isawaitable(maybe) else (maybe or [])
+            if not isinstance(open_rows, list):
+                open_rows = []
+        except Exception:
+            open_rows = []
         regime_sig = next((s for s in signals if s.agent_name == "regime"), None)
         regime_features = dict(regime_sig.features) if regime_sig else {}
         # Enrich with split-weight key (session × window phase)
@@ -758,14 +773,32 @@ class Council:
                 regime_features["research_spot_source"] = market_data.get("research_spot_source")
             regime_features["asset"] = self.asset
             try:
-                regime_features["settled_n"] = int((self.leader.edge or {}).get("total") or 0)
+                raw_n = int((self.leader.edge or {}).get("total") or 0)
             except (TypeError, ValueError):
-                regime_features["settled_n"] = 0
-            try:
-                hot = ((self.leader.edge or {}).get("chair_bins") or {}).get("90+") or {}
-                regime_features["chair_bin_settled_n"] = int(hot.get("settled") or 0)
-            except (TypeError, ValueError):
+                raw_n = 0
+            stuck = stuck_hours_open(open_rows)
+            regime_features["stuck_open"] = stuck
+            regime_features["open_rows"] = [
+                {"id": r.get("id"), "ticker": r.get("ticker")}
+                for r in open_rows
+                if isinstance(r, dict)
+            ][:24]
+            # n=0 until 1062/1063 settle. Chair conf is not P(finish).
+            regime_features["settled_n"] = lifetime_n_for_zach(raw_n, open_rows)
+            regime_features["lifetime_n"] = regime_features["settled_n"]
+            if stuck:
                 regime_features["chair_bin_settled_n"] = 0
+            else:
+                try:
+                    hot = ((self.leader.edge or {}).get("chair_bins") or {}).get("90+") or {}
+                    regime_features["chair_bin_settled_n"] = int(hot.get("settled") or 0)
+                except (TypeError, ValueError):
+                    regime_features["chair_bin_settled_n"] = 0
+            eth_raw = raw_n if str(self.asset or "").lower() in ("eth", "ethereum") else 0
+            regime_features["eth_settled_n"] = eth_settled_n_for_zach(eth_raw, open_rows)
+            regime_features["eth_lock_blocked"] = bool(
+                eth_paper_lock_blocked(self.asset, regime_features["eth_settled_n"])
+            )
             lead = market_data.get("btc_lead") or self._btc_lead
             if isinstance(lead, dict):
                 regime_features["btc_lead"] = lead
@@ -854,7 +887,8 @@ class Council:
         except Exception:
             pass
 
-        # Shadow book: would a stricter 45–60¢ band have locked?
+        # Shadow book (diagnostic only): would a stricter 45–60¢ band have locked?
+        # Live playable band stays 20–80¢ + leftover — do not make 45–55 the live band.
         try:
             from backend.config import settings as _s
             so = None

@@ -118,6 +118,14 @@ class PacksNotDroppedTests(unittest.TestCase):
             "def eth_fades_btc_impulse",
             "def hot_chair_bin_faded",
             "def is_actually_settled",
+            "def leftover_after_vig",
+            "def zach_bar_reason",
+            "def zach_band_skips_preferred",
+            "def never_lock_near_certain",
+            "def stuck_hours_open",
+            "def lifetime_n_for_zach",
+            "def eth_paper_lock_blocked",
+            "def paper_stake_for_lock",
         ):
             self.assertIn(needle, gates)
         leader = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")
@@ -138,6 +146,14 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("8h", fund)
         liq = (ROOT / "backend" / "agents" / "liq.py").read_text(encoding="utf-8")
         self.assertIn("not_p_finish", liq)
+        cfg = (ROOT / "backend" / "config.py").read_text(encoding="utf-8")
+        self.assertIn("PLAYABLE_MID_MIN: float = 20.0", cfg)
+        self.assertIn("PLAYABLE_MID_MAX: float = 80.0", cfg)
+        self.assertIn("ETH_RELIABILITY_MIN_N", cfg)
+        self.assertIn("Do NOT shrink the hard band to 45–55", cfg)
+        gate = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encoding="utf-8")
+        self.assertIn("empty_lifetime", gate)
+        self.assertIn("lifetime_n", (ROOT / "backend" / "main.py").read_text(encoding="utf-8"))
 
     def test_follower_stays_off_public_surface(self):
         for needle in ("tabFollower", "FOLLOWER_PASSWORD", "/api/follower/unlock", "/api/follower/order"):

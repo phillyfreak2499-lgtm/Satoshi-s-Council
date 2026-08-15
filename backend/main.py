@@ -540,6 +540,29 @@ def _follower_world(asset: str) -> dict:
     }
 
 
+async def _zach_lifetime_n() -> int:
+    """n=0 until 1062/1063 settle. Do not arm Live off an empty lifetime."""
+    from backend.agents.chair_gates import lifetime_n_for_zach
+
+    opens: list = []
+    raw = 0
+    try:
+        store = getattr(council, "store", None)
+        if store is not None:
+            getter = getattr(store, "list_open_calls", None)
+            if callable(getter):
+                maybe = getter()
+                import inspect
+                opens = await maybe if inspect.isawaitable(maybe) else (maybe or [])
+            if not isinstance(opens, list):
+                opens = []
+            acc = await store.get_accuracy()
+            raw = int((acc or {}).get("total") or 0)
+    except Exception:
+        opens, raw = [], 0
+    return lifetime_n_for_zach(raw, opens)
+
+
 def _table_quotes(asset: str) -> dict:
     table = _table_for_asset(asset)
     market = table.get("market") if isinstance(table, dict) and isinstance(table.get("market"), dict) else {}
@@ -799,7 +822,10 @@ async def follower_live(request: Request):
     if not isinstance(body, dict):
         body = {}
     confirm = body.get("confirm") or body.get("word") or ""
-    ok, err, view = follower_gate.set_live(_follower_token(request), confirm, on=True)
+    lifetime_n = await _zach_lifetime_n()
+    ok, err, view = follower_gate.set_live(
+        _follower_token(request), confirm, on=True, lifetime_n=lifetime_n
+    )
     if not ok:
         return {"ok": False, "error": "refused", "reason": err}
     return {"ok": True, **(view or {})}
@@ -856,11 +882,15 @@ async def follower_order(request: Request):
         "confirm_first": body.get("confirm_first") or body.get("confirm") or "",
     }
     want_live = bool(intent["live"])
+    lifetime_n = await _zach_lifetime_n()
+    world = _follower_world(asset)
+    world["lifetime_n"] = lifetime_n
     result = follower_gate.evaluate_order(
         _follower_token(request),
         intent,
-        _follower_world(asset),
+        world,
         commit=not want_live,
+        lifetime_n=lifetime_n,
     )
     if result.get("accepted") and want_live:
         route_lock = dict(quotes)

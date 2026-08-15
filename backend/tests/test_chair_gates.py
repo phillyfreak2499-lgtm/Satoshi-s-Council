@@ -15,23 +15,30 @@ from backend.agents.chair_gates import (
     early_lock_blocked,
     estimate_p_finish,
     eth_fades_btc_impulse,
+    eth_paper_lock_blocked,
     ev_gate_blocks,
     finish_outcome,
     known_official_market,
     kalshi_result_to_side,
     kalshi_taker_fee_cents,
+    leftover_after_vig,
+    lifetime_n_for_zach,
     official_y_finish,
     late_spot_decisive,
+    never_lock_near_certain,
     official_window_due,
+    paper_stake_for_lock,
     pick_settle_spot,
     odds_band_key,
     parse_book_depth,
     playable_yes_mid,
     resolve_finish_side,
+    stuck_hours_open,
     strike_from_kalshi_ticker,
     ticker_asset,
     time_ev_hurdles,
     build_btc_lead,
+    zach_bar_reason,
 )
 from backend.agents.leader import Leader
 from backend.config import settings
@@ -305,7 +312,42 @@ class LeaderPriceEdgeTests(unittest.TestCase):
         self.assertTrue(lc["locked"])
         self.assertEqual(lc["p_finish"], 0.72)
         self.assertEqual(lc["ev_cents"], 19.0)
+        self.assertEqual(lc["leftover_after_vig"], 19.0)
+        self.assertTrue(lc["paper_only"])
         self.assertEqual(lc["floor_strike"], 100000.0)
+
+    def test_stuck_open_forces_n0_p_finish(self):
+        chair = Leader()
+        chair.edge["total"] = 80
+        warm = chair._price_edge(
+            70, "UP", 50.0,
+            {"spread_cents": 4.0, "mins_left": 30, "window_minutes": 60, "settled_n": 80},
+        )
+        cold = chair._price_edge(
+            70, "UP", 50.0,
+            {
+                "spread_cents": 4.0,
+                "mins_left": 30,
+                "window_minutes": 60,
+                "settled_n": 80,
+                "stuck_open": True,
+                "open_rows": [{"id": 1062, "ticker": "KXBTCD-26AUG1415-T62999.99"}],
+            },
+        )
+        self.assertLessEqual(cold["p_finish"], 0.62)
+        self.assertLess(cold["p_finish"], warm["p_finish"])
+        self.assertEqual(lifetime_n_for_zach(80, [{"id": 1063}]), 0)
+
+    def test_zach_leftover_matches_ask_ev(self):
+        self.assertAlmostEqual(
+            leftover_after_vig(0.70, 50.0, 4.0),
+            compute_ev_cents(0.70, 50.0, 4.0),
+        )
+        self.assertIsNone(zach_bar_reason(25, 75, p_finish=0.62, fee_cents=1.0, yes_mid=25, side_ask=25))
+        self.assertIsNotNone(never_lock_near_certain(99, 1))
+        self.assertIsNotNone(eth_paper_lock_blocked("ETH", 0))
+        self.assertEqual(paper_stake_for_lock("DOWN", 0, 91), 25.0)
+        self.assertFalse(stuck_hours_open([]))
 
 
 if __name__ == "__main__":

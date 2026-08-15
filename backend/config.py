@@ -177,9 +177,11 @@ class Settings(BaseSettings):
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
     MAX_ENTRY_ODDS_PCT: float = 80.0
-    # Soft preferred band — still allow up to MAX but raise bar outside preferred
+    # Soft preferred label only. Live playable band is 20–80¢ + leftover after vig.
+    # Do NOT shrink the hard band to 45–55. Council shadow 45–60 is diagnostic.
     PREFERRED_ENTRY_ODDS_MIN: float = 40.0
     PREFERRED_ENTRY_ODDS_MAX: float = 65.0
+    NEVER_LOCK_CENTS: float = 99.0           # never lock ≥99¢ / one-sided 100¢
     # Next-layer edge gates
     ANTI_CHASE_PTS: float = 4.0          # if side mid jumped this many ¢ recently → WAIT
     ANTI_CHASE_LOOKBACK_S: float = 180.0
@@ -191,13 +193,14 @@ class Settings(BaseSettings):
     MIN_EV_CENTS: float = 3.0
     # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
     EARLY_NO_LOCK_MINS: float = 10.0
-    PLAYABLE_MID_MIN: float = 20.0
+    PLAYABLE_MID_MIN: float = 20.0  # Zach hard band — two-sided, not 45–55
     PLAYABLE_MID_MAX: float = 80.0
     LATE_HOURLY_VOL_PCT: float = 0.40
     P_FINISH_COLD_N: int = 15
     P_FINISH_WARM_N: int = 40
     CHAIR_HOT_BIN: float = 90.0
     CHAIR_HOT_BIN_MIN_N: int = 15  # fade 90%+ until this many actually settled hours
+    ETH_RELIABILITY_MIN_N: int = 8  # no ETH paper lock until this many finish-graded ETH hours
     BTC_LEAD_IMPULSE_PCT: float = 0.15
     BTC_LEAD_STRONG_PCT: float = 0.25
     # Official Kalshi hourly settle: 60s CFB BRTI / ETHUSD_RTI (ERTI) average

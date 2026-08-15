@@ -11,8 +11,11 @@ from backend.services.follower_gate import (
     FollowerAudit,
     FollowerGate,
     FollowerRuntime,
+    empty_lifetime,
     sanitize_audit,
 )
+
+LIVE_N = 20
 
 
 class FollowerGateTests(unittest.TestCase):
@@ -111,10 +114,42 @@ class FollowerGateTests(unittest.TestCase):
         g.revoke(token)
         self.assertFalse(g.session_ok(token))
 
+    def test_default_session_is_paper_not_live(self):
+        g = self._gate()
+        token = self._open(g)
+        view = g.session_view(token)
+        self.assertFalse(view["live"])
+        self.assertFalse(view["armed"])
+        self.assertTrue(empty_lifetime(0))
+        self.assertFalse(empty_lifetime(LIVE_N))
+
+    def test_refuse_live_when_lifetime_empty(self):
+        g = self._gate()
+        token = self._open(g)
+        ok, err, view = g.set_live(token, "LIVE", on=True, lifetime_n=0)
+        self.assertFalse(ok)
+        self.assertEqual(err, "empty_lifetime")
+        self.assertFalse(view["live"])
+        rec = g.evaluate_order(
+            token,
+            {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": True, "confirm_first": "LIVE"},
+            self._world(),
+            lifetime_n=0,
+        )
+        self.assertFalse(rec["accepted"])
+        self.assertEqual(rec["refuse"], "empty_lifetime")
+        paper = g.evaluate_order(
+            token,
+            {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": False},
+            self._world(),
+            lifetime_n=0,
+        )
+        self.assertTrue(paper["accepted"])
+
     def test_idle_relock_drops_live(self):
         g = self._gate()
         token = self._open(g)
-        ok, err, view = g.set_live(token, "LIVE", on=True)
+        ok, err, view = g.set_live(token, "LIVE", on=True, lifetime_n=LIVE_N)
         self.assertTrue(ok)
         self.assertTrue(view["live"])
         g._clock["t"] = 500.0
@@ -125,10 +160,10 @@ class FollowerGateTests(unittest.TestCase):
     def test_live_needs_typed_confirm_and_delay(self):
         g = self._gate()
         token = self._open(g)
-        ok, err, _ = g.set_live(token, "yes", on=True)
+        ok, err, _ = g.set_live(token, "yes", on=True, lifetime_n=LIVE_N)
         self.assertFalse(ok)
         self.assertEqual(err, "confirm")
-        ok, err, view = g.set_live(token, "LIVE", on=True)
+        ok, err, view = g.set_live(token, "LIVE", on=True, lifetime_n=LIVE_N)
         self.assertTrue(ok)
         self.assertTrue(view["live"])
         self.assertFalse(view["armed"])
@@ -136,6 +171,7 @@ class FollowerGateTests(unittest.TestCase):
             token,
             {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": True, "confirm_first": "LIVE"},
             self._world(),
+            lifetime_n=LIVE_N,
         )
         self.assertFalse(rec["accepted"])
         self.assertEqual(rec["refuse"], "arm")
@@ -144,6 +180,7 @@ class FollowerGateTests(unittest.TestCase):
             token,
             {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": True},
             self._world(),
+            lifetime_n=LIVE_N,
         )
         self.assertFalse(rec["accepted"])
         self.assertEqual(rec["refuse"], "confirm")
@@ -152,6 +189,7 @@ class FollowerGateTests(unittest.TestCase):
             {"asset": "btc", "side": "UP", "stake": 10, "contracts": 1, "live": True, "confirm_first": "LIVE"},
             self._world(),
             commit=False,
+            lifetime_n=LIVE_N,
         )
         self.assertTrue(rec["accepted"])
         self.assertFalse(rec["routed"])
@@ -160,7 +198,7 @@ class FollowerGateTests(unittest.TestCase):
     def test_law_huddle_sick_refuse_even_when_live(self):
         g = self._gate()
         token = self._open(g)
-        g.set_live(token, "LIVE", on=True)
+        g.set_live(token, "LIVE", on=True, lifetime_n=LIVE_N)
         g._clock["t"] = 9.0
         intent = {
             "asset": "btc",
@@ -170,9 +208,18 @@ class FollowerGateTests(unittest.TestCase):
             "live": True,
             "confirm_first": "LIVE",
         }
-        self.assertEqual(g.evaluate_order(token, intent, self._world(law_locked=True))["refuse"], "law")
-        self.assertEqual(g.evaluate_order(token, intent, self._world(huddle=True))["refuse"], "huddle")
-        self.assertEqual(g.evaluate_order(token, intent, self._world(sick_feed=True))["refuse"], "sick_feed")
+        self.assertEqual(
+            g.evaluate_order(token, intent, self._world(law_locked=True), lifetime_n=LIVE_N)["refuse"],
+            "law",
+        )
+        self.assertEqual(
+            g.evaluate_order(token, intent, self._world(huddle=True), lifetime_n=LIVE_N)["refuse"],
+            "huddle",
+        )
+        self.assertEqual(
+            g.evaluate_order(token, intent, self._world(sick_feed=True), lifetime_n=LIVE_N)["refuse"],
+            "sick_feed",
+        )
 
     def test_caps_refuse(self):
         g = self._gate()
@@ -208,7 +255,7 @@ class FollowerGateTests(unittest.TestCase):
         g = self._gate()
         token = self._open(g)
         self.assertIn("follower_unlocked", g._pings)
-        g.set_live(token, "LIVE", on=True)
+        g.set_live(token, "LIVE", on=True, lifetime_n=LIVE_N)
         self.assertIn("live_on", g._pings)
         g.live_off(token)
         self.assertIn("live_off", g._pings)

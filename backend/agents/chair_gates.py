@@ -224,6 +224,16 @@ def compute_ev_cents(
     return float(100.0 * float(p_finish) - ask - fee - half)
 
 
+def leftover_after_vig(
+    p_finish: float,
+    side_ask: float,
+    spread_cents: float | None = None,
+    fee_cents: float | None = None,
+) -> float:
+    """Zach leftover at the real ask: 100*P(finish) − ask − fee − half-spread."""
+    return compute_ev_cents(p_finish, side_ask, spread_cents, fee_cents)
+
+
 def ev_gate_blocks(p_finish: float, ev_cents: float, min_p: float, min_ev: float) -> bool:
     """WAIT if p_finish or EV is under the (possibly time-tightened) hurdle."""
     return float(p_finish) < float(min_p) or float(ev_cents) < float(min_ev)
@@ -683,6 +693,207 @@ def dead_book_reason(
     if side == "UP" and yes_bid is not None and yes_bid <= 1.0:
         return "one-sided book · YES ≤1¢"
     return None
+
+
+def never_lock_near_certain(
+    yes_ask: Any = None,
+    no_ask: Any = None,
+    side_odds: Any = None,
+) -> Optional[str]:
+    """
+    Hard stop: never lock ≥99¢ or a one-sided 100¢ book.
+    Stays in force even if the 80¢ playable cap is later raised.
+    """
+    ya = odds_to_cents(yes_ask)
+    na = odds_to_cents(no_ask)
+    so = odds_to_cents(side_odds)
+    if so is not None and so >= 99.0:
+        return "never lock ≥99¢"
+    if ya is not None and ya >= 99.0:
+        return "never lock ≥99¢"
+    if na is not None and na >= 99.0:
+        return "never lock ≥99¢"
+    if ya is not None and ya >= 100.0:
+        return "never lock one-sided 100¢"
+    if na is not None and na >= 100.0:
+        return "never lock one-sided 100¢"
+    if (ya is None and na is not None and na >= 99.0) or (
+        na is None and ya is not None and ya >= 99.0
+    ):
+        return "never lock one-sided 100¢"
+    return None
+
+
+def zach_band_skips_preferred(yes_mid: Any, leftover: Any, min_leftover: float = 0.0) -> bool:
+    """
+    20–80¢ two-sided with leftover after vig is playable.
+    Do not WAIT solely for sitting outside 40–65 / 45–55.
+    """
+    try:
+        left = float(leftover)
+    except (TypeError, ValueError):
+        return False
+    return playable_yes_mid(yes_mid) and left > float(min_leftover)
+
+
+def zach_bar_reason(
+    yes_ask: Any,
+    no_ask: Any = None,
+    p_finish: Any = None,
+    spread_cents: float | None = None,
+    fee_cents: float | None = None,
+    min_leftover: float | None = None,
+    yes_mid: Any = None,
+    side_ask: Any = None,
+) -> Optional[str]:
+    """
+    Zach’s bar: 20–80¢ two-sided + leftover at the ask after fee.
+    Never a 45–55-only band. ≥99¢ / one-sided 100¢ never lock.
+    """
+    near = never_lock_near_certain(yes_ask, no_ask, side_odds=side_ask)
+    if near:
+        return near
+    mid = yes_mid if yes_mid is not None else yes_ask
+    mid_c = odds_to_cents(mid)
+    if mid_c is not None and not playable_yes_mid(mid_c):
+        return f"YES mid {mid_c:.0f}¢ outside 20–80¢"
+    ask = odds_to_cents(side_ask if side_ask is not None else yes_ask)
+    if ask is None or p_finish is None:
+        return "no leftover at the ask after vig"
+    if min_leftover is None:
+        try:
+            from backend.config import settings
+            min_leftover = float(getattr(settings, "MIN_EV_CENTS", 3.0))
+        except Exception:
+            min_leftover = 3.0
+    leftover = leftover_after_vig(float(p_finish), float(ask), spread_cents, fee_cents)
+    if leftover < float(min_leftover):
+        return "no leftover at the ask after vig"
+    return None
+
+
+def _open_row_id_ticker(row: Any) -> tuple:
+    if isinstance(row, dict):
+        return row.get("id"), row.get("ticker")
+    return getattr(row, "id", None), getattr(row, "ticker", None)
+
+
+def stuck_hours_open(open_rows: Any) -> bool:
+    """True while 1062/1063 (or their official tickers) are still OPEN."""
+    for row in open_rows or []:
+        rid, ticker = _open_row_id_ticker(row)
+        try:
+            if int(rid) in KNOWN_OFFICIAL_BY_ID:
+                return True
+        except (TypeError, ValueError):
+            pass
+        if str(ticker or "").strip() in KNOWN_OFFICIAL_FINISH:
+            return True
+    return False
+
+
+def lifetime_n_for_zach(settled_n: Any, open_rows: Any = None) -> int:
+    """n=0 until 1062/1063 settle. Do not treat Chair conf as a lifetime."""
+    if stuck_hours_open(open_rows or []):
+        return 0
+    try:
+        return max(0, int(settled_n or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def eth_hour_still_open(open_rows: Any) -> bool:
+    """True while the stuck ETH official hour (1063) is still OPEN."""
+    for row in open_rows or []:
+        rid, ticker = _open_row_id_ticker(row)
+        try:
+            if int(rid) == 1063:
+                return True
+        except (TypeError, ValueError):
+            pass
+        t = str(ticker or "").strip()
+        if t == "KXETHD-26AUG1415-T1874.99":
+            return True
+        if t in KNOWN_OFFICIAL_FINISH and t.startswith("KXETHD"):
+            return True
+    return False
+
+
+def eth_settled_n_for_zach(eth_settled_n: Any, open_rows: Any = None) -> int:
+    """ETH reliability n is 0 while 1063 is OPEN."""
+    if eth_hour_still_open(open_rows or []):
+        return 0
+    try:
+        return max(0, int(eth_settled_n or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def eth_reliability_ready(eth_settled_n: Any, min_n: int | None = None) -> bool:
+    """ETH paper lock needs a finish-graded reliability bin."""
+    if min_n is None:
+        try:
+            from backend.config import settings
+            min_n = int(
+                getattr(
+                    settings,
+                    "ETH_RELIABILITY_MIN_N",
+                    getattr(settings, "CALIB_BAND_MIN_N", 8),
+                )
+            )
+        except Exception:
+            min_n = 8
+    try:
+        n = int(eth_settled_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n >= int(min_n)
+
+
+def eth_paper_lock_blocked(
+    asset: Any,
+    eth_settled_n: Any,
+    min_n: int | None = None,
+) -> Optional[str]:
+    """
+    BTC-only paper locks until ETH has a settled reliability bin.
+    ETH specialists may still vote / Chair may WAIT. ETH veto stays elsewhere.
+    """
+    a = str(asset or "").strip().upper()
+    if a not in ("ETH", "ETHEREUM"):
+        return None
+    if eth_reliability_ready(eth_settled_n, min_n):
+        return None
+    return "ETH paper lock waits for a settled reliability bin"
+
+
+def paper_stake_for_lock(
+    direction: Any,
+    lifetime_n: Any = 0,
+    chair_conf: Any = None,
+) -> float:
+    """
+    Flat paper stake. Chair conf is not P(finish) and must not size the ticket.
+    Empty lifetime never sizes up.
+    """
+    _ = chair_conf
+    try:
+        n = int(lifetime_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    d = str(direction or "").upper()
+    hold = d in ("UP_HOLD", "DOWN_HOLD", "HOLD")
+    try:
+        from backend.config import settings
+        hold_amt = float(getattr(settings, "PAPER_STAKE_HOLD", 10.0))
+        full_amt = float(getattr(settings, "PAPER_STAKE_DEFAULT", 25.0))
+    except Exception:
+        hold_amt, full_amt = 10.0, 25.0
+    if hold:
+        return hold_amt
+    if n <= 0:
+        return full_amt
+    return full_amt
 
 
 def book_too_thin(

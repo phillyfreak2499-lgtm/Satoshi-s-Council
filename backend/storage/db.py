@@ -17,6 +17,7 @@ from backend.agents.chair_gates import (
     chair_bins_from_settled,
     decide_open_lock_grade,
     known_official_market,
+    paper_stake_for_lock,
     ticker_asset,
 )
 from loguru import logger
@@ -214,9 +215,8 @@ class PerformanceStore:
 
     @staticmethod
     def _default_stake(direction: str) -> float:
-        if direction in ("UP_HOLD", "DOWN_HOLD"):
-            return float(getattr(settings, "PAPER_STAKE_HOLD", 10.0))
-        return float(getattr(settings, "PAPER_STAKE_DEFAULT", 25.0))
+        # Flat paper stake. Chair conf is not a size multiplier.
+        return paper_stake_for_lock(direction, lifetime_n=0, chair_conf=None)
 
     @staticmethod
     def _paper_side(direction: str) -> str:
