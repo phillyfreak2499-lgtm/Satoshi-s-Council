@@ -204,6 +204,76 @@ async def paper_auto(asset: str | None = None):
         a = "eth"
     return await council.store.paper_summary_by_asset(asset=a)
 
+
+@app.get("/api/tape")
+async def chair_tape():
+    """Auto-graded Chair paper tape — last 24h BTC + ETH. OPEN until official result."""
+    from backend.services.desk_pack import chair_tape_payload, load_chair_tape_rows
+
+    rows = await load_chair_tape_rows(council.store, hours=24)
+    return chair_tape_payload(rows, hours=24)
+
+
+@app.get("/api/book")
+async def kalshi_book():
+    """Live Kalshi depth for the current BTC (Satoshi) and ETH (Vitalik) hours."""
+    from backend.services.desk_pack import book_payload
+
+    btc = _table_for_asset("btc")
+    eth = _table_for_asset("eth")
+    return book_payload(
+        (btc.get("market") if isinstance(btc, dict) else None) or {},
+        (eth.get("market") if isinstance(eth, dict) else None) or {},
+    )
+
+
+@app.get("/api/brain/recap")
+async def brain_recap():
+    """Public last-huddle recap. Admin knobs stay in Settings."""
+    from backend.agents.chair_gates import floor_scorecard
+    from backend.services.desk_pack import brain_recap_from_report
+
+    report = getattr(council.huddle, "last_report", None)
+    hier_btc = []
+    hier_eth = []
+    try:
+        hier_btc = council.learner.hierarchy_ranks() if council.learner else []
+    except Exception:
+        hier_btc = []
+    try:
+        if getattr(council, "eth", None) is not None and getattr(council.eth, "learner", None):
+            hier_eth = council.eth.learner.hierarchy_ranks()
+    except Exception:
+        hier_eth = []
+    btc_acc = await council.store.get_accuracy(asset="btc")
+    eth_acc = await council.store.get_accuracy(asset="eth")
+    return brain_recap_from_report(
+        report,
+        hierarchy_btc=hier_btc,
+        hierarchy_eth=hier_eth,
+        scorecard=floor_scorecard(btc_acc, eth_acc),
+        btc_acc=btc_acc,
+        eth_acc=eth_acc,
+    )
+
+
+@app.get("/api/news")
+async def desk_news():
+    """Coming-up prints + breaking hour headlines. Display only — never locks."""
+    from backend.services.desk_news import fetch_news_desk
+
+    btc = _table_for_asset("btc")
+    market = (btc.get("market") if isinstance(btc, dict) else None) or {}
+    liq = None
+    try:
+        pipe = getattr(council, "pipeline", None)
+        last = getattr(pipe, "last_good", None) if pipe is not None else None
+        if isinstance(last, dict):
+            liq = last
+    except Exception:
+        liq = None
+    return await fetch_news_desk(hour_close=market.get("close_time"), liq_snap=liq)
+
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
     ok = await council.store.delete_manual_trade(trade_id)

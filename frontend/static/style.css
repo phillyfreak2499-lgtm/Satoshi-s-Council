@@ -3323,7 +3323,13 @@ body.floor-mode .led-window {
 body.mode-bots .led-float,
 body.mode-ranks .led-float,
 body.mode-charts .led-float,
-body.mode-settings .led-float {
+body.mode-settings .led-float,
+body.mode-tape .led-float,
+body.mode-book .led-float,
+body.mode-brain .led-float,
+body.mode-news .led-float,
+body.night-mode .led-float,
+body.mode-night .led-float {
   opacity: 0 !important;
   visibility: hidden !important;
 }
@@ -3985,7 +3991,13 @@ body.mode-paper .led-float,
 body.mode-bots .led-float,
 body.mode-ranks .led-float,
 body.mode-charts .led-float,
-body.mode-settings .led-float {
+body.mode-settings .led-float,
+body.mode-tape .led-float,
+body.mode-book .led-float,
+body.mode-brain .led-float,
+body.mode-news .led-float,
+body.night-mode .led-float,
+body.mode-night .led-float {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
@@ -4358,6 +4370,26 @@ body[class*="mode-"]:not(.mode-floor) #tabFloor,
 body[class*="mode-"]:not(.mode-floor) #tabFloor.active,
 body.beast-mode[class*="mode-"]:not(.mode-floor) #tabFloor,
 body.beast-mode[class*="mode-"]:not(.mode-floor) #tabFloor.active,
+body[class*="mode-"]:not(.mode-night) #tabNight,
+body[class*="mode-"]:not(.mode-night) #tabNight.active,
+body.beast-mode[class*="mode-"]:not(.mode-night) #tabNight,
+body.beast-mode[class*="mode-"]:not(.mode-night) #tabNight.active,
+body[class*="mode-"]:not(.mode-tape) #tabTape,
+body[class*="mode-"]:not(.mode-tape) #tabTape.active,
+body.beast-mode[class*="mode-"]:not(.mode-tape) #tabTape,
+body.beast-mode[class*="mode-"]:not(.mode-tape) #tabTape.active,
+body[class*="mode-"]:not(.mode-book) #tabBook,
+body[class*="mode-"]:not(.mode-book) #tabBook.active,
+body.beast-mode[class*="mode-"]:not(.mode-book) #tabBook,
+body.beast-mode[class*="mode-"]:not(.mode-book) #tabBook.active,
+body[class*="mode-"]:not(.mode-brain) #tabBrain,
+body[class*="mode-"]:not(.mode-brain) #tabBrain.active,
+body.beast-mode[class*="mode-"]:not(.mode-brain) #tabBrain,
+body.beast-mode[class*="mode-"]:not(.mode-brain) #tabBrain.active,
+body[class*="mode-"]:not(.mode-news) #tabNews,
+body[class*="mode-"]:not(.mode-news) #tabNews.active,
+body.beast-mode[class*="mode-"]:not(.mode-news) #tabNews,
+body.beast-mode[class*="mode-"]:not(.mode-news) #tabNews.active,
 body[class*="mode-"]:not(.mode-art) #tabScreensaver,
 body[class*="mode-"]:not(.mode-art) #tabScreensaver.active,
 body.beast-mode[class*="mode-"]:not(.mode-art) #tabScreensaver,
@@ -4384,6 +4416,16 @@ body.mode-settings #tabSettings,
 body.mode-settings #tabSettings.active,
 body.mode-floor #tabFloor,
 body.mode-floor #tabFloor.active,
+body.mode-night #tabNight,
+body.mode-night #tabNight.active,
+body.mode-tape #tabTape,
+body.mode-tape #tabTape.active,
+body.mode-book #tabBook,
+body.mode-book #tabBook.active,
+body.mode-brain #tabBrain,
+body.mode-brain #tabBrain.active,
+body.mode-news #tabNews,
+body.mode-news #tabNews.active,
 body.mode-art #tabScreensaver,
 body.mode-art #tabScreensaver.active {
   color: var(--blade) !important;
@@ -4406,6 +4448,16 @@ body.beast-mode.mode-settings #tabSettings,
 body.beast-mode.mode-settings #tabSettings.active,
 body.beast-mode.mode-floor #tabFloor,
 body.beast-mode.mode-floor #tabFloor.active,
+body.beast-mode.mode-night #tabNight,
+body.beast-mode.mode-night #tabNight.active,
+body.beast-mode.mode-tape #tabTape,
+body.beast-mode.mode-tape #tabTape.active,
+body.beast-mode.mode-book #tabBook,
+body.beast-mode.mode-book #tabBook.active,
+body.beast-mode.mode-brain #tabBrain,
+body.beast-mode.mode-brain #tabBrain.active,
+body.beast-mode.mode-news #tabNews,
+body.beast-mode.mode-news #tabNews.active,
 body.beast-mode.mode-art #tabScreensaver,
 body.beast-mode.mode-art #tabScreensaver.active {
   border-color: rgba(240, 193, 74, 0.7) !important;
@@ -4613,6 +4665,10 @@ body.mode-settings #botsView,
 body.mode-settings #ranksView,
 body.mode-settings #chartsView,
 body.mode-settings #paperView,
+body.mode-settings #tapeView,
+body.mode-settings #bookView,
+body.mode-settings #brainView,
+body.mode-settings #newsView,
 body.mode-settings #dashboardOverlay,
 body.mode-settings #openChartsBtn,
 body.mode-settings #hierarchyPanel {
@@ -4965,6 +5021,16 @@ body.mode-art #app > header #tabScreensaver,
 body.mode-art #app > header #tabScreensaver.active,
 body.mode-floor #app > header #tabFloor,
 body.mode-floor #app > header #tabFloor.active,
+body.mode-night #app > header #tabNight,
+body.mode-night #app > header #tabNight.active,
+body.mode-tape #app > header #tabTape,
+body.mode-tape #app > header #tabTape.active,
+body.mode-book #app > header #tabBook,
+body.mode-book #app > header #tabBook.active,
+body.mode-brain #app > header #tabBrain,
+body.mode-brain #app > header #tabBrain.active,
+body.mode-news #app > header #tabNews,
+body.mode-news #app > header #tabNews.active,
 body.mode-dashboard #app > header #tabDashboard,
 body.mode-dashboard #app > header #tabDashboard.active,
 body.mode-bots #app > header #tabBots,
@@ -4984,6 +5050,11 @@ body.mode-settings #app > header #tabSettings.active {
 }
 body.beast-mode.mode-art #app > header #tabScreensaver,
 body.beast-mode.mode-floor #app > header #tabFloor,
+body.beast-mode.mode-night #app > header #tabNight,
+body.beast-mode.mode-tape #app > header #tabTape,
+body.beast-mode.mode-book #app > header #tabBook,
+body.beast-mode.mode-brain #app > header #tabBrain,
+body.beast-mode.mode-news #app > header #tabNews,
 body.beast-mode.mode-dashboard #app > header #tabDashboard,
 body.beast-mode.mode-bots #app > header #tabBots,
 body.beast-mode.mode-ranks #app > header #tabRanks,
@@ -5486,6 +5557,16 @@ body:not(.mode-art) #app > header #tabScreensaver,
 body:not(.mode-art) #app > header #tabScreensaver.active,
 body:not(.mode-floor) #app > header #tabFloor,
 body:not(.mode-floor) #app > header #tabFloor.active,
+body:not(.mode-night) #app > header #tabNight,
+body:not(.mode-night) #app > header #tabNight.active,
+body:not(.mode-tape) #app > header #tabTape,
+body:not(.mode-tape) #app > header #tabTape.active,
+body:not(.mode-book) #app > header #tabBook,
+body:not(.mode-book) #app > header #tabBook.active,
+body:not(.mode-brain) #app > header #tabBrain,
+body:not(.mode-brain) #app > header #tabBrain.active,
+body:not(.mode-news) #app > header #tabNews,
+body:not(.mode-news) #app > header #tabNews.active,
 body:not(.mode-dashboard) #app > header #tabDashboard,
 body:not(.mode-dashboard) #app > header #tabDashboard.active,
 body:not(.mode-bots) #app > header #tabBots,
@@ -6218,4 +6299,190 @@ body.mode-art #lifetimePanel #windowLed.led-float {
 }
 body.mode-art #debatePanel #seatStormTableBtn.seat-storm-table-btn:not(.hidden):not([hidden]) {
   display: inline-flex !important;
+}
+
+/* ===== Desk pack: Tape / Book / Brain / News / Night / Floor crawl ===== */
+.tape-calib {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.calib-bucket {
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(4, 14, 28, 0.75);
+  border: 1px solid rgba(0, 232, 255, 0.16);
+  font-size: 11px;
+}
+.calib-bucket.miss { border-color: rgba(255, 45, 85, 0.45); }
+.calib-bucket.ok { border-color: rgba(57, 255, 20, 0.35); }
+.cb-lab { display: block; font-family: Orbitron, monospace; color: rgba(0, 232, 255, 0.8); letter-spacing: 0.08em; }
+.cb-pred, .cb-hit, .cb-n { display: block; color: rgba(200, 220, 240, 0.8); }
+.calib-empty, .tape-empty, .brain-empty, .news-empty {
+  color: rgba(180, 200, 220, 0.65);
+  padding: 12px 4px;
+}
+.tape-table { display: flex; flex-direction: column; gap: 4px; max-height: 62vh; overflow: auto; }
+.tape-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.5fr 0.5fr 0.7fr 0.6fr 0.5fr 0.6fr 0.7fr;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(4, 14, 28, 0.75);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.tape-row.head {
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 232, 255, 0.7);
+  background: transparent;
+}
+.tape-row.open .tape-res { color: #f0d78a; }
+.tape-row.hit .tape-res { color: #39ff14; }
+.tape-row.miss .tape-res { color: #ff2d55; }
+.side-up { color: #39ff14; }
+.side-down { color: #ff2d55; }
+
+.book-dual, .brain-dual, .news-rails {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.book-card, .brain-card, .news-rail {
+  background: rgba(4, 14, 28, 0.75);
+  border: 1px solid rgba(0, 232, 255, 0.16);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.book-card-head, .brain-card header, .news-rail header {
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 232, 255, 0.85);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.book-flag.warn { color: #ffb000; }
+.book-kv { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.book-kv b { font-variant-numeric: tabular-nums; color: #e8f0ff; }
+
+.brain-headline { color: #e8f0ff; font-size: 16px; margin: 0 0 14px; }
+.brain-list, .brain-notes, .news-list { list-style: none; margin: 0; padding: 0; }
+.brain-list li, .brain-notes li, .news-list li { padding: 6px 0; border-bottom: 1px solid rgba(0, 232, 255, 0.08); font-size: 13px; }
+.brain-chairs { display: flex; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+.brain-chair {
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 232, 255, 0.2);
+  border-radius: 8px;
+}
+
+.news-liq { color: #ffb000; font-family: Orbitron, monospace; font-size: 12px; letter-spacing: 0.06em; }
+.news-eta { display: block; color: rgba(180, 200, 220, 0.65); font-size: 11px; }
+.news-list li.stale { opacity: 0.42; color: rgba(160, 176, 192, 0.8); }
+.news-list li.fresh { color: #e8f0ff; }
+.news-list li.heat::after {
+  content: " · HEAT";
+  color: #ffb000;
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.floor-crawl {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 4%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 8;
+  height: 28px;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.floor-crawl-track {
+  display: inline-block;
+  white-space: nowrap;
+  font-family: Orbitron, monospace;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: rgba(220, 236, 255, 0.72);
+  animation: floor-crawl-marquee 28s linear infinite;
+}
+@keyframes floor-crawl-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+body.floor-mode #floorCrawl:not([hidden]),
+body.night-mode #floorCrawl:not([hidden]) { display: block; }
+
+/* Night: chrome gone. One Night button. Password still gates. */
+body.night-mode header .header-row,
+body.night-mode #beastBadge,
+body.night-mode #btnHelp,
+body.night-mode #tabSettings,
+body.night-mode #tabBots,
+body.night-mode #tabDashboard,
+body.night-mode #tabRanks,
+body.night-mode #tabPaper,
+body.night-mode #tabTape,
+body.night-mode #tabBook,
+body.night-mode #tabBrain,
+body.night-mode #tabNews,
+body.night-mode #tabCharts,
+body.night-mode #tabFloor,
+body.night-mode #tabScreensaver,
+body.night-mode .focus-tab,
+body.night-mode .focus-table-badge,
+body.night-mode footer,
+body.night-mode #debatePanel,
+body.night-mode #lifetimePanel,
+body.night-mode #hierarchyPanel,
+body.night-mode #huddleBanner,
+body.night-mode #rivalryStrip,
+body.night-mode .floor-hint,
+body.night-mode #floorExitBtn,
+body.night-mode #openChartsBtn,
+body.night-mode #seatSpinBtn {
+  display: none !important;
+}
+body.night-mode #modeTabs {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 80;
+  background: transparent;
+}
+body.night-mode #tabNight,
+body.night-mode #app > header #tabNight,
+body.night-mode #app > header #tabNight.active {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  color: rgba(200, 220, 240, 0.55) !important;
+  border-color: rgba(0, 232, 255, 0.25) !important;
+  background: rgba(2, 6, 14, 0.35) !important;
+}
+body.night-mode #mainTable {
+  grid-template-columns: 1fr !important;
+  grid-template-areas: "table" !important;
+  height: 100vh !important;
+}
+body.night-mode #tableStage,
+body.night-mode .table-stage {
+  min-height: 100vh !important;
+  height: 100vh !important;
+}
+
+@media (max-width: 720px) {
+  .book-dual, .brain-dual, .news-rails { grid-template-columns: 1fr; }
+  .tape-row { grid-template-columns: 1fr 1fr; }
+  .tape-row.head { display: none; }
 }

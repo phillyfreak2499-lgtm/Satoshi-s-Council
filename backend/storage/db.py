@@ -1415,6 +1415,58 @@ class PerformanceStore:
                 })
             return out
 
+    async def chair_tape_24h(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """
+        Read-only Chair paper tape for the last `hours`.
+        Includes OPEN locks. Does not grade, settle, or invent a result.
+        ETH shadow picks stay off this tape.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, int(hours)))
+        cutoff_iso = cutoff.isoformat()
+        async with self.Session() as session:
+            rows = (
+                await session.execute(
+                    select(WindowCall)
+                    .where(PerformanceStore._counting_lock_clause())
+                    .order_by(WindowCall.id.desc())
+                    .limit(400)
+                )
+            ).scalars().all()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            if is_eth_shadow_row(r):
+                continue
+            open_row = r.actual_outcome is None
+            stamp = r.called_at or r.close_time or r.settled_at or ""
+            if not open_row and stamp and stamp < cutoff_iso:
+                continue
+            status = "open" if open_row else "settled"
+            out.append(self._row_to_log(r, status=status))
+        return out
+
+    async def recent_weight_moves(self, limit: int = 40) -> List[Dict[str, Any]]:
+        """Read-only recent seat weight changes (huddle / learn)."""
+        async with self.Session() as session:
+            rows = (
+                await session.execute(
+                    select(WeightHistory)
+                    .order_by(WeightHistory.id.desc())
+                    .limit(max(1, int(limit)))
+                )
+            ).scalars().all()
+        return [
+            {
+                "agent": r.agent_name,
+                "old": r.old_weight,
+                "new": r.new_weight,
+                "reason": r.reason,
+                "at": r.timestamp,
+            }
+            for r in rows
+        ]
+
     async def settle_signal(self, signal_id: int, outcome: str, paper_pnl: float | None = None):
         async with self.Session() as session:
             result = await session.execute(

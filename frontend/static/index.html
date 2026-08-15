@@ -165,11 +165,16 @@
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
+        <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
         <button type="button" id="tabBots" class="mode-tab" data-mode="bots" title="Specialist bots — switch BTC/ETH focus">Bots</button>
         <button type="button" id="tabRanks" class="mode-tab" data-mode="ranks" title="Ranks & hits — switch BTC/ETH focus">Ranks</button>
         <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabTape" class="mode-tab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
+        <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
+        <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
+        <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
@@ -236,6 +241,9 @@
           <div id="lightsaberLabel" class="lightsaber-label">0%</div>
         </div>
         <div id="dashboardOverlay" class="hidden"></div>
+        <div id="floorCrawl" class="floor-crawl" hidden aria-label="Last five locks">
+          <div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div>
+        </div>
       </div>
       <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
 
@@ -480,6 +488,74 @@
       <div class="ranks-notes">
         <div class="panel-head"><span class="panel-title">LEARNING NOTES</span></div>
         <ul id="learnNotes" class="learn-notes"></ul>
+      </div>
+    </section>
+
+    <section id="tapeView" class="info-view hidden" aria-label="Chair paper tape">
+      <div class="info-hero">
+        <h2>CHAIR TAPE</h2>
+        <p>Auto-graded paper hours for the last 24 hours — Satoshi (BTC) and Vitalik (ETH). Official Kalshi <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
+      </div>
+      <div id="tapeCalib" class="tape-calib" aria-label="Calibration strip"></div>
+      <div class="panel-head"><span class="panel-title">LAST 24H</span><span class="panel-sub" id="tapeMeta">—</span></div>
+      <div id="tapeTable" class="tape-table" role="table"></div>
+    </section>
+
+    <section id="bookView" class="info-view hidden" aria-label="Kalshi book">
+      <div class="info-hero">
+        <h2>THE BOOK</h2>
+        <p>Live Kalshi depth for the current hours. A sick or empty book, or a ≥99¢ wall, is why the Chair can WAIT.</p>
+      </div>
+      <div class="book-dual">
+        <article id="bookSatoshi" class="book-card" aria-label="Satoshi BTC book">
+          <header class="book-card-head"><span>SATOSHI · BTC</span><span class="book-flag" id="bookBtcFlag">—</span></header>
+          <div id="bookBtcBody" class="book-body">Loading depth…</div>
+        </article>
+        <article id="bookVitalik" class="book-card" aria-label="Vitalik ETH book">
+          <header class="book-card-head"><span>VITALIK · ETH</span><span class="book-flag" id="bookEthFlag">—</span></header>
+          <div id="bookEthBody" class="book-body">Loading depth…</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="brainView" class="info-view hidden" aria-label="Huddle recap">
+      <div class="info-hero">
+        <h2>BRAIN</h2>
+        <p>Public recap of the last huddle / weight move. Which seats got louder, which got faded. Admin knobs stay in Settings.</p>
+      </div>
+      <p id="brainHeadline" class="brain-headline">—</p>
+      <div class="brain-dual">
+        <article class="brain-card">
+          <header>LOUDER</header>
+          <ul id="brainLouder" class="brain-list"></ul>
+        </article>
+        <article class="brain-card">
+          <header>FADED</header>
+          <ul id="brainFaded" class="brain-list"></ul>
+        </article>
+      </div>
+      <div class="brain-chairs">
+        <div id="brainSatoshi" class="brain-chair">SATOSHI · —</div>
+        <div id="brainVitalik" class="brain-chair">VITALIK · —</div>
+      </div>
+      <ul id="brainNotes" class="brain-notes"></ul>
+    </section>
+
+    <section id="newsView" class="info-view hidden" aria-label="Hour news">
+      <div class="info-hero">
+        <h2>NEWS</h2>
+        <p>Only BTC, ETH, and macro that can move a 1-hour window. Times in <b>America/Chicago</b>. Headlines do not change Chair locks.</p>
+      </div>
+      <p id="newsLiq" class="news-liq hidden"></p>
+      <div class="news-rails">
+        <article class="news-rail">
+          <header>COMING UP</header>
+          <ol id="newsComing" class="news-list"></ol>
+        </article>
+        <article class="news-rail">
+          <header>BREAKING</header>
+          <ol id="newsBreaking" class="news-list"></ol>
+        </article>
       </div>
     </section>
 

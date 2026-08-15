@@ -563,7 +563,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     });
     drop.forEach(function (c) { document.body.classList.remove(c); });
     if (next) document.body.classList.add("mode-" + next);
-    document.body.classList.toggle("floor-mode", next === "floor");
+    document.body.classList.toggle("floor-mode", next === "floor" || next === "night");
+    document.body.classList.toggle("night-mode", next === "night");
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
@@ -791,10 +792,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     seatOrbitLastT = time;
     return seatOrbitHold;
   }
+  function floorLikeMode() {
+    return mode === "floor" || mode === "night";
+  }
+  function floorCameraOffset() {
+    // Slow room drift. No extra haze, particles, or purple.
+    if (reduceMotion || !floorLikeMode()) return { x: 0, y: 0 };
+    const t = (typeof time === "number" ? time : 0) * 0.00008;
+    return { x: Math.sin(t) * 22, y: Math.cos(t * 0.71) * 14 };
+  }
   function syncSeatSpinBtn() {
     const btn = document.getElementById("seatSpinBtn");
     if (!btn) return;
-    const on = mode === "floor" || mode === "art";
+    const on = (mode === "floor" || mode === "art") && mode !== "night";
     btn.hidden = !on;
     btn.setAttribute("aria-hidden", on ? "false" : "true");
     const spinning = !seatOrbitFrozen && !reduceMotion;
@@ -2044,7 +2054,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const up = dir === "UP";
     const glow = up ? "rgba(57, 255, 20, 0.9)" : "rgba(255, 45, 85, 0.9)";
     const core = up ? "rgba(210, 255, 200, 0.98)" : "rgba(255, 214, 220, 0.98)";
-    const dualFloor = mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle();
+    const dualFloor = floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle();
     const side = (dualFloor && key === "bitcoin") ? -1 : 1;
     const gap = Math.max(16, photoR * 0.22);
     const x = cx + side * (photoR + gap);
@@ -2166,7 +2176,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const btn = document.getElementById("floorExitBtn");
     if (!btn) return;
     const on = mode === "floor";
-    btn.hidden = !on;
+    btn.hidden = !on || mode === "night";
     btn.setAttribute("aria-hidden", on ? "false" : "true");
   }
 
@@ -2175,6 +2185,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
     ctx.fillRect(0, 0, w, h);
 
+    const cam = floorCameraOffset();
+    ctx.save();
+    ctx.translate(cam.x, cam.y);
     const mid = w / 2;
     ctx.strokeStyle = "rgba(0, 220, 255, 0.22)";
     ctx.lineWidth = 1;
@@ -2186,6 +2199,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const tableR = Math.min(w, h) * 0.26;
     drawTableWithBots(w * 0.25, h * 0.52, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focusTable));
     drawTableWithBots(w * 0.75, h * 0.52, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focusTable));
+    ctx.restore();
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
@@ -2487,7 +2501,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const w = sz.w, h = sz.h;
 
     // Dual Floor only when the stage is wide enough — phone is always one table
-    if (mode === "floor" && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
+    if (floorLikeMode() && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
       drawDualFloor(w, h);
       try { drawTrailFX(ctx); } catch(e) {}
       return;
@@ -2502,11 +2516,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }
     } catch (e) {}
 
-    const cx = w / 2, cy = h / 2;
-    const floorFit = mode === "floor" ? floorNameplateFit(w, h) : null;
-    const radius = floorFit ? floorFit.radius : Math.min(w, h) * (mode === "floor" ? 0.40 : 0.32);
+    const cam = floorCameraOffset();
+    const cx = w / 2 + cam.x, cy = h / 2 + cam.y;
+    const floorFit = floorLikeMode() ? floorNameplateFit(w, h) : null;
+    const radius = floorFit ? floorFit.radius : Math.min(w, h) * (floorLikeMode() ? 0.40 : 0.32);
 
-    if (mode === "floor") {
+    if (floorLikeMode()) {
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = "rgba(2, 4, 10, 0.22)";
       ctx.fillRect(0, 0, w, h);
@@ -4272,7 +4287,7 @@ function drawCandleChart() {
   function dockWindowLed() {
     const led = document.getElementById("windowLed");
     if (!led) return;
-    if (mode === "floor") {
+    if (mode === "floor" && mode !== "night") {
       const header = document.querySelector("#app > header");
       const tabs = header && header.querySelector(".mode-tabs");
       if (tabs && tabs.parentNode && led.previousElementSibling !== tabs) {
@@ -4672,6 +4687,236 @@ function drawCandleChart() {
     } catch (e) {}
   }
 
+  function paintFloorCrawl() {
+    const wrap = document.getElementById("floorCrawl");
+    const track = document.getElementById("floorCrawlTrack");
+    if (!wrap || !track) return;
+    const show = floorLikeMode();
+    wrap.hidden = !show;
+    wrap.setAttribute("aria-hidden", show ? "false" : "true");
+    if (!show) return;
+    const chips = [];
+    function addChip(pair, side) {
+      const p = pair === "ETH" || pair === "ethereum" ? "ETH" : "BTC";
+      const s = side === "UP" || side === "DOWN" || side === "WAIT" ? side : "WAIT";
+      const chip = p + " " + s;
+      if (chips.indexOf(chip) < 0) chips.push(chip);
+    }
+    try {
+      const b = tableLean((typeof tableState === "function" ? tableState("bitcoin") : null) || {});
+      const e = tableLean((typeof tableState === "function" ? tableState("ethereum") : null) || {});
+      if (!b.locked) addChip("BTC", "WAIT");
+      else addChip("BTC", b.side);
+      if (!e.locked) addChip("ETH", "WAIT");
+      else addChip("ETH", e.side);
+    } catch (err) {}
+    try {
+      const locks = (typeof collectChairLocks === "function") ? collectChairLocks() : [];
+      locks.forEach(function (p) {
+        if (chips.length >= 5) return;
+        addChip(p.pair, p.side);
+      });
+    } catch (err) {}
+    while (chips.length < 2) chips.push("BTC WAIT");
+    const line = chips.slice(0, 5).join(" · ");
+    track.textContent = line + " · " + line;
+  }
+
+  function fmtP(p) {
+    if (p == null || p === "") return "—";
+    const n = Number(p);
+    if (!isFinite(n)) return "—";
+    return (n <= 1 ? Math.round(n * 100) : Math.round(n)) + "%";
+  }
+  function fmtEv(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return (n >= 0 ? "+" : "") + n.toFixed(1) + "¢";
+  }
+  function fmtPnl(v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return (n >= 0 ? "+$" : "-$") + Math.abs(n).toFixed(2);
+  }
+
+  async function loadChairTape() {
+    const table = document.getElementById("tapeTable");
+    const meta = document.getElementById("tapeMeta");
+    const calib = document.getElementById("tapeCalib");
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/tape", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      if (meta) meta.textContent = rows.length ? (rows.length + " hours") : "honest empty";
+      if (calib) {
+        const buckets = Array.isArray(data.calibration) ? data.calibration : [];
+        calib.innerHTML = buckets.map(function (b) {
+          const pred = b.predicted != null ? Math.round(b.predicted * 100) + "%" : "—";
+          const hit = b.realized != null ? Math.round(b.realized * 100) + "%" : "—";
+          const gap = b.gap != null && b.n ? (b.gap < 0 ? "miss" : "ok") : "";
+          return '<div class="calib-bucket ' + gap + '"><span class="cb-lab">' + b.bucket + '</span>'
+            + '<span class="cb-pred">said ' + pred + '</span>'
+            + '<span class="cb-hit">hit ' + hit + '</span>'
+            + '<span class="cb-n">n=' + (b.n || 0) + '</span></div>';
+        }).join("") || '<div class="calib-empty">No graded hours yet — calibration waits on official finishes.</div>';
+      }
+      if (table) {
+        if (!rows.length) {
+          table.innerHTML = '<div class="tape-empty">No Chair locks in the last 24 hours.</div>';
+        } else {
+          const head = '<div class="tape-row head"><span>WINDOW</span><span>ASSET</span><span>SIDE</span><span>P(FINISH)</span><span>EV</span><span>ODDS</span><span>RESULT</span><span>P&L</span></div>';
+          const body = rows.map(function (row) {
+            const res = row.result || "OPEN";
+            const cls = res === "HIT" ? "hit" : (res === "MISS" ? "miss" : "open");
+            return '<div class="tape-row ' + cls + '">'
+              + '<span>' + (row.window || "1H") + '</span>'
+              + '<span>' + String(row.asset || "").toUpperCase() + '</span>'
+              + '<span class="side-' + String(row.side || "").toLowerCase() + '">' + (row.side || "—") + '</span>'
+              + '<span>' + fmtP(row.p_finish) + '</span>'
+              + '<span>' + fmtEv(row.ev_cents) + '</span>'
+              + '<span>' + (row.odds != null ? Math.round(row.odds) + "¢" : "—") + '</span>'
+              + '<span class="tape-res">' + res + '</span>'
+              + '<span>' + (res === "OPEN" ? "—" : fmtPnl(row.pnl)) + '</span>'
+              + '</div>';
+          }).join("");
+          table.innerHTML = head + body;
+        }
+      }
+    } catch (e) {
+      if (table) table.innerHTML = '<div class="tape-empty">Tape feed quiet — try again.</div>';
+      if (meta) meta.textContent = "offline";
+    }
+  }
+
+  function renderBookSide(bodyId, flagId, side) {
+    const body = document.getElementById(bodyId);
+    const flag = document.getElementById(flagId);
+    if (!side) {
+      if (body) body.textContent = "No book yet.";
+      if (flag) flag.textContent = "empty";
+      return;
+    }
+    if (flag) {
+      flag.textContent = side.flag || (side.empty ? "empty book" : "live");
+      flag.className = "book-flag" + (side.flag ? " warn" : "");
+    }
+    if (!body) return;
+    const row = function (lab, val) {
+      return '<div class="book-kv"><span>' + lab + '</span><b>' + val + '</b></div>';
+    };
+    const cents = function (v) { return v != null ? Math.round(Number(v)) + "¢" : "—"; };
+    const sz = function (v) { return v != null ? String(Math.round(Number(v))) : "—"; };
+    body.innerHTML =
+      row("BID", cents(side.yes_bid)) +
+      row("ASK", cents(side.yes_ask)) +
+      row("SIZE", sz(side.yes_bid_sz) + " / " + sz(side.no_bid_sz)) +
+      row("SPREAD", side.spread != null ? side.spread + "¢" : "—") +
+      row("MID", cents(side.mid)) +
+      row("DEPTH", sz(side.yes_depth) + " yes · " + sz(side.no_depth) + " no") +
+      row("WINDOW", side.window || "—") +
+      (side.ticker ? row("TICKER", side.ticker) : "");
+  }
+
+  async function loadKalshiBook() {
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/book", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      renderBookSide("bookBtcBody", "bookBtcFlag", data.satoshi);
+      renderBookSide("bookEthBody", "bookEthFlag", data.vitalik);
+    } catch (e) {
+      renderBookSide("bookBtcBody", "bookBtcFlag", { flag: "empty book", empty: true });
+      renderBookSide("bookEthBody", "bookEthFlag", { flag: "empty book", empty: true });
+    }
+  }
+
+  async function loadBrainRecap() {
+    const head = document.getElementById("brainHeadline");
+    const louder = document.getElementById("brainLouder");
+    const faded = document.getElementById("brainFaded");
+    const sat = document.getElementById("brainSatoshi");
+    const vit = document.getElementById("brainVitalik");
+    const notes = document.getElementById("brainNotes");
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/brain/recap", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if (head) head.textContent = data.empty ? (data.note || "No huddle recap yet") : (data.headline || "Last huddle");
+      function list(el, rows, emptyTxt) {
+        if (!el) return;
+        if (!rows || !rows.length) {
+          el.innerHTML = "<li class=\"brain-empty\">" + emptyTxt + "</li>";
+          return;
+        }
+        el.innerHTML = rows.map(function (s) {
+          const wr = s.win_rate != null ? (" · " + Math.round(Number(s.win_rate) * 100) + "%") : "";
+          return "<li><b>" + (s.seat || "—") + "</b> <span>" + (s.table || "") + wr + (s.note ? " · " + s.note : "") + "</span></li>";
+        }).join("");
+      }
+      list(louder, data.louder, "No seat got louder.");
+      list(faded, data.faded, "No seat got faded.");
+      if (sat) {
+        const s = data.satoshi || {};
+        sat.textContent = "SATOSHI · " + (s.note || "—");
+      }
+      if (vit) {
+        const v = data.vitalik || {};
+        vit.textContent = "VITALIK · " + (v.note || "—");
+      }
+      if (notes) {
+        const bits = [].concat(data.went_well || [], data.went_poor || [], data.patterns || []);
+        notes.innerHTML = bits.slice(0, 8).map(function (n) { return "<li>" + n + "</li>"; }).join("")
+          || "<li>Honest empty — wait for the 3:00 AM CT huddle.</li>";
+      }
+    } catch (e) {
+      if (head) head.textContent = "Brain feed quiet";
+    }
+  }
+
+  async function loadDeskNews() {
+    const coming = document.getElementById("newsComing");
+    const breaking = document.getElementById("newsBreaking");
+    const liq = document.getElementById("newsLiq");
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/news", { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if (liq) {
+        if (data.liq_burst) {
+          liq.textContent = data.liq_burst;
+          liq.classList.remove("hidden");
+        } else {
+          liq.classList.add("hidden");
+        }
+      }
+      if (coming) {
+        const rows = data.coming_up || [];
+        coming.innerHTML = rows.length
+          ? rows.map(function (e) {
+              return '<li><b>' + (e.kind || "PRINT") + '</b> ' + (e.title || "")
+                + '<span class="news-eta">' + (e.eta || "") + ' · ' + (e.when_ct || "") + '</span></li>';
+            }).join("")
+          : '<li class="news-empty">No upcoming print loaded.</li>';
+      }
+      if (breaking) {
+        const rows = data.breaking || [];
+        breaking.innerHTML = rows.length
+          ? rows.map(function (h) {
+              const cls = (h.stale ? "stale" : "fresh") + (h.heat ? " heat" : "");
+              return '<li class="' + cls + '"><b>' + (h.source || "") + '</b> ' + (h.title || "")
+                + '<span class="news-eta">' + (h.when_ct || "") + (h.heat ? " · this hour" : "") + '</span></li>';
+            }).join("")
+          : '<li class="news-empty">No recent headline.</li>';
+      }
+    } catch (e) {
+      if (coming) coming.innerHTML = '<li class="news-empty">Calendar feed quiet.</li>';
+      if (breaking) breaking.innerHTML = '<li class="news-empty">Headline feed quiet.</li>';
+    }
+  }
+
   function renderRanksBoard() {
     const table = document.getElementById("ranksTable");
     const phaseEl = document.getElementById("ranksPhase");
@@ -5027,6 +5272,9 @@ function drawCandleChart() {
         return;
       }
     }
+    if (next === "night" && mode === "night") {
+      next = "art";
+    }
     if (next === "follower" && !document.body.classList.contains("follower-unlocked")) {
       return;
     }
@@ -5045,7 +5293,7 @@ function drawCandleChart() {
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
-        window.__floorMusicOnMode(mode === "floor");
+        window.__floorMusicOnMode(mode === "floor" || mode === "night");
       }
     } catch (e) {}
     // Hierarchy only on ranks / dashboard
@@ -5055,19 +5303,31 @@ function drawCandleChart() {
     const paperView = document.getElementById("paperView");
     const settingsView = document.getElementById("settingsView");
     const followerView = document.getElementById("followerView");
+    const tapeView = document.getElementById("tapeView");
+    const bookView = document.getElementById("bookView");
+    const brainView = document.getElementById("brainView");
+    const newsView = document.getElementById("newsView");
     const showCharts = mode === "charts";
     const showBots = mode === "bots";
     const showRanks = mode === "ranks";
     const showPaper = mode === "paper";
     const showSettings = mode === "settings";
     const showFollower = mode === "follower";
-    const showMain = mode === "art" || mode === "dashboard" || mode === "floor";
+    const showTape = mode === "tape";
+    const showBook = mode === "book";
+    const showBrain = mode === "brain";
+    const showNews = mode === "news";
+    const showMain = mode === "art" || mode === "dashboard" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
     if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
     if (followerView) followerView.classList.toggle("hidden", !showFollower);
+    if (tapeView) tapeView.classList.toggle("hidden", !showTape);
+    if (bookView) bookView.classList.toggle("hidden", !showBook);
+    if (brainView) brainView.classList.toggle("hidden", !showBrain);
+    if (newsView) newsView.classList.toggle("hidden", !showNews);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
     try { dockWindowLed(); } catch (e) {}
@@ -5087,6 +5347,10 @@ function drawCandleChart() {
     if (mode === "paper") {
       fetchPaper().then(() => renderPaper());
     }
+    if (mode === "tape") loadChairTape();
+    if (mode === "book") loadKalshiBook();
+    if (mode === "brain") loadBrainRecap();
+    if (mode === "news") loadDeskNews();
     if (mode === "follower" && typeof window.renderFollower === "function") {
       try { window.renderFollower(); } catch (e) {}
     }
@@ -5094,9 +5358,10 @@ function drawCandleChart() {
       fetchSettings().then((s) => { if (s) applySettingsSnapshot(s, { localToggles: true }); });
     }
     try { syncAutoBetVisibility(); } catch (e) {}
-    if (mode === "floor" || mode === "art") {
+    if (mode === "floor" || mode === "art" || mode === "night") {
       try { prefetchLeaderClickVideo(); } catch (e) {}
     }
+    try { paintFloorCrawl(); } catch (e) {}
     if (mode === "charts") {
       try { syncChartPairTitle(); } catch (e) {}
       // Layout after the view is visible, then draw (avoids 0×0 canvases)
@@ -5113,9 +5378,11 @@ function drawCandleChart() {
     try { window.state = state; } catch (e) {}
     try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
     try { paintTableHud(); } catch (e) {}
+    try { paintFloorCrawl(); } catch (e) {}
     try { dockWindowLed(); } catch (e) {}
     try {
       if (mode === "art" || mode === "floor") drawArt();
+    if (mode === "night") drawArt();
     } catch (e) {}
     const view = (typeof getViewState === "function") ? getViewState() : state;
     return tableHasLiveHour(view || state);
@@ -5340,6 +5607,7 @@ function drawCandleChart() {
   function loop(ts) {
     time = ts;
     if (mode === "art" || mode === "floor") drawArt();
+    if (mode === "night") drawArt();
     if (!document.hidden) {
       animId = requestAnimationFrame(loop);
     } else {
@@ -5458,7 +5726,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "dashboard", "bots", "ranks", "paper", "charts", "settings"];
+        : ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "brain", "news", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -5473,7 +5741,7 @@ function drawCandleChart() {
         e.preventDefault();
         return;
       }
-      if (mode === "floor") setMode("art");
+      if (mode === "floor" || mode === "night") setMode("art");
     }
     if (e.key === "0") setMode("floor");
     if (e.key === "1") setMode("art");
@@ -6060,7 +6328,7 @@ function drawCandleChart() {
       }
       const stage = document.getElementById("roundtable");
       if (stage) {
-        const dual = (typeof mode !== "undefined" && mode === "floor" && typeof floorIsSingle === "function" && !floorIsSingle());
+        const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
           ? "Floor — Satoshi BTC table and Vitalik ETH table"
           : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"));
@@ -6966,6 +7234,9 @@ function drawCandleChart() {
   }
 
   window.setMode = setMode;
+  window.__deskModeCycle = function () {
+    return ["art", "dashboard", "bots", "ranks", "paper", "tape", "book", "night", "brain", "news", "charts", "settings"];
+  };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
   const settingsViewEl = document.getElementById("settingsView");
