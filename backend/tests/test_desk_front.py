@@ -140,6 +140,14 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("Does not place 1H Chair locks", HTML)
         self.assertIn('title: "THE FRONT"', JS)
         self.assertIn("Weather page — not the crypto Floor", JS)
+        self.assertIn("Hits count like Satoshi / Vitalik", JS)
+        self.assertIn("Official/NWS high for the station.", FRONT)
+        self.assertIn("Kalshi implied vs that number, after vig.", FRONT)
+        self.assertIn("Veto junk book / flip / SICK / thin n.", FRONT)
+        self.assertIn("Seasonal base. Low weight.", FRONT)
+        self.assertIn('id="frontHrRight"', HTML)
+        self.assertIn('id="frontTape"', HTML)
+        self.assertIn("LAST LOCKS", HTML)
 
     def test_floor_raijin_small_presence(self):
         self.assertIn('id="floorRaijin"', HTML)
@@ -230,6 +238,10 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(board["status"]["paper_default"])
         self.assertIn("KXHIGHTDAL-26AUG15-B103104", [b["ticker"] for b in board["brackets"]])
         self.assertTrue(any(b.get("best") for b in board["brackets"]))
+        self.assertEqual([v["id"] for v in board["brackets"][0]["votes"]], ["GLASS", "PIT", "FROST", "BONE"])
+        self.assertEqual(board["accuracy"]["leader"], "RAIJIN")
+        self.assertIn("pending", board["accuracy"])
+        self.assertTrue(all(s.get("rank") for s in board["seats"]))
 
     async def test_404_drops_series(self):
         board = await desk_front.build_board(
@@ -292,6 +304,73 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         chair = await desk_front.tap(ticker="KXBTCD-26AUG1516-T1", side="YES", stake=5, yes_bid=48, yes_ask=50)
         self.assertFalse(chair["ok"])
         self.assertIn("Chair 1H", chair["error"])
+
+    def test_cli_parse_and_official_yes(self):
+        text = "THE DALLAS-FORT WORTH CLIMATE SUMMARY FOR AUGUST 15 2026\nMAXIMUM TEMPERATURE (F)\n 103    104\n"
+        self.assertEqual(desk_front.parse_cli_high(text, day=date(2026, 8, 15)), 103)
+        self.assertIsNone(desk_front.parse_cli_high(text, day=date(2026, 8, 14)))
+        self.assertIsNone(desk_front.parse_cli_high("MAXIMUM TEMPERATURE (F)\n 103\n"))
+        m = _m("KXHIGHTDAL-26AUG15-B103104")
+        self.assertTrue(desk_front.official_yes(103, market=m))
+        self.assertTrue(desk_front.official_yes(104, market=m))
+        self.assertFalse(desk_front.official_yes(102, market=m))
+        self.assertIsNone(desk_front.official_yes(None, market=m))
+
+    async def test_hits_pending_until_cli_not_forecast(self):
+        await desk_front.build_board(
+            fetch=_fetch_factory(),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101},
+        )
+        ok = await desk_front.tap(
+            ticker="KXHIGHTDAL-26AUG15-B103104",
+            side="YES",
+            stake=10,
+            yes_bid=48,
+            yes_ask=50,
+            now=NOW,
+        )
+        self.assertTrue(ok["ok"], ok)
+        self.assertEqual(ok["fill"]["result"], "OPEN")
+        self.assertEqual(ok["fill"]["leader"], "RAIJIN")
+        self.assertEqual(ok["fill"]["city"], "DAL")
+        self.assertEqual([v["id"] for v in ok["fill"]["votes"]], ["GLASS", "PIT", "FROST", "BONE"])
+        await desk_front.settle_open_fills(nws=_nws_high_only)
+        acc = desk_front.chair_accuracy()
+        self.assertEqual(acc["pending"], 1)
+        self.assertEqual(acc["total"], 0)
+        self.assertEqual(acc["verdict"], "COLLECTING")
+        n = await desk_front.settle_open_fills(cli_highs={"2026-08-15": 103})
+        self.assertEqual(n, 1)
+        acc = desk_front.chair_accuracy()
+        self.assertEqual(acc["correct"], 1)
+        self.assertEqual(acc["wrong"], 0)
+        self.assertEqual(acc["pending"], 0)
+        self.assertEqual(acc["accuracy_pct"], 100.0)
+        tape = desk_front.lock_tape()
+        self.assertEqual(tape[0]["result"], "HIT")
+        self.assertEqual(tape[0]["city"], "DAL")
+        self.assertTrue(tape[0]["paper"])
+        recs = {r["id"]: r for r in desk_front.seat_records()}
+        self.assertEqual(set(recs), {"GLASS", "PIT", "FROST", "BONE"})
+        self.assertTrue(all(r["rank"] >= 1 for r in recs.values()))
+        self.assertGreaterEqual(recs["GLASS"]["n"], 1)
+        miss = await desk_front.tap(
+            ticker="KXHIGHTDAL-26AUG15-B103104",
+            side="YES",
+            stake=5,
+            yes_bid=48,
+            yes_ask=50,
+            now=NOW,
+        )
+        await desk_front.settle_open_fills(cli_highs={"2026-08-15": 100})
+        acc = desk_front.chair_accuracy()
+        self.assertEqual(acc["correct"], 1)
+        self.assertEqual(acc["wrong"], 1)
+        self.assertEqual(miss["fill"]["result"], "MISS")
+        rows = [r for r in desk_front._load_fills() if r.get("result") == "MISS"]
+        self.assertEqual(len(rows), 1)
 
     async def test_arm_phrase(self):
         miss = desk_front.arm_live("nope")

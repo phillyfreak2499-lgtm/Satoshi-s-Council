@@ -379,6 +379,12 @@ async def api_front_tap(request: Request):
         yes_bid=body.get("yes_bid"),
         yes_ask=body.get("yes_ask"),
         sick=bool(body.get("sick") or body.get("dont_play")),
+        votes=body.get("votes"),
+        bracket=body.get("bracket"),
+        best=bool(body.get("best")),
+        strike_type=body.get("strike_type"),
+        floor_strike=body.get("floor_strike"),
+        cap_strike=body.get("cap_strike"),
     )
 
 

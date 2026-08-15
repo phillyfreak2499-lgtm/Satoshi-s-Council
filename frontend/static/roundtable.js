@@ -6071,7 +6071,7 @@ function drawCandleChart() {
         '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
         "<div><h3>" + String((s && s.id) || "") + "</h3>" +
         "<p>" + String((s && s.job) || "") + "</p>" +
-        '<div class="nw">' + frontWr(s) + (s && s.call ? (" · " + s.call) : "") + "</div></div></article>";
+        '<div class="nw">' + frontWr(s) + (s && s.rank ? (" · #" + s.rank) : "") + (s && s.call ? (" · " + s.call) : "") + "</div></div></article>";
     }).join("");
   }
   function paintFrontBook(data) {
@@ -6100,6 +6100,42 @@ function drawCandleChart() {
         btn.addEventListener("click", function () { tapFront(card, btn.getAttribute("data-side")); });
       });
     });
+  }
+  function paintFrontScore(data) {
+    const acc = (data && data.accuracy) || {};
+    const pct = acc.accuracy_pct;
+    const right = acc.correct != null ? acc.correct : 0;
+    const wrong = acc.wrong != null ? acc.wrong : 0;
+    const pending = acc.pending != null ? acc.pending : 0;
+    const elPct = document.getElementById("frontHrPct");
+    const elRight = document.getElementById("frontHrRight");
+    const elWrong = document.getElementById("frontHrWrong");
+    const elPending = document.getElementById("frontHrPending");
+    const elVerdict = document.getElementById("frontHrVerdict");
+    if (elPct) elPct.textContent = pct != null ? (pct + "%") : "—";
+    if (elRight) elRight.textContent = String(right);
+    if (elWrong) elWrong.textContent = String(wrong);
+    if (elPending) elPending.textContent = String(pending);
+    if (elVerdict) elVerdict.textContent = acc.verdict || "COLLECTING";
+    const tape = document.getElementById("frontTape");
+    if (tape) {
+      const rows = Array.isArray(data && data.tape) ? data.tape : [];
+      if (!rows.length) {
+        tape.innerHTML = '<li class="lock-tape-empty">No Raijin lock — waiting on DFW CLI</li>';
+      } else {
+        tape.innerHTML = rows.map(function (p) {
+          const res = String(p.result || "OPEN").toUpperCase();
+          const pnl = p.pnl == null ? "" : ((Number(p.pnl) >= 0 ? "+" : "") + "$" + Number(p.pnl).toFixed(2));
+          return '<li class="lock-tape-row ' + (res === "OPEN" ? "open" : "settled") + '">' +
+            '<span class="lt-pair">' + String(p.city || "DAL") + "</span>" +
+            '<span class="lt-win">' + String(p.bracket || "—") + "</span>" +
+            '<span class="lt-conf">' + (p.best ? "BEST" : "lock") + "</span>" +
+            '<span class="lt-res">' + res + "</span>" +
+            '<span class="lt-side">' + (p.paper ? "PAPER " : "") + pnl + "</span>" +
+            "</li>";
+        }).join("");
+      }
+    }
   }
   function paintFrontSeats(data) {
     const chairCall = document.getElementById("frontChairCall");
@@ -6131,6 +6167,7 @@ function drawCandleChart() {
     paintFrontSeats(frontBoard);
     paintFrontBook(frontBoard);
     paintFrontGuide(frontBoard);
+    paintFrontScore(frontBoard);
     const fills = document.getElementById("frontFills");
     if (fills) {
       fills.innerHTML = (frontBoard.fills || []).map(function (f) {
@@ -6302,6 +6339,12 @@ function drawCandleChart() {
           yes_bid: card.yes_bid,
           yes_ask: card.yes_ask,
           sick: !!card.dont_play,
+          votes: card.votes || [],
+          bracket: card.bracket,
+          best: !!card.best,
+          strike_type: card.strike_type,
+          floor_strike: card.floor_strike,
+          cap_strike: card.cap_strike,
         }),
       });
       const data = await r.json();
@@ -7304,7 +7347,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Weather page — not the crypto Floor. Raijin chairs Dallas DFW (KXHIGHTDAL / KDFW). GLASS, PIT, FROST, and BONE rank the book. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
+      body: "Weather page — not the crypto Floor. Raijin chairs Dallas DFW (KXHIGHTDAL / KDFW). GLASS, PIT, FROST, and BONE rank the book. Hits count like Satoshi / Vitalik. Pending until NWS CLI posts. Paper taps only. Live stays off until you arm this tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",

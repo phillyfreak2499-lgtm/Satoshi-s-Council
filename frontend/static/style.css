@@ -7373,6 +7373,23 @@ body.phone-floor .floor-raijin { display: none !important; }
 .front-bet button.yes { border-color: rgba(57, 255, 20, 0.45); color: #39ff14; }
 .front-bet button.no { border-color: rgba(255, 45, 85, 0.45); color: #ff2d55; }
 .front-bet button:disabled { opacity: 0.35; cursor: not-allowed; }
+.front-hit-rate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 10, 18, 0.88);
+}
+.front-tape-card {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 10, 18, 0.88);
+}
+.front-tape-card .lock-tape-list { margin: 8px 0 0; }
 .front-guide-head {
   font-family: Orbitron, monospace;
   letter-spacing: 0.14em;

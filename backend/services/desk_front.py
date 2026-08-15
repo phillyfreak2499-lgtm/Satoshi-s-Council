@@ -51,15 +51,15 @@ DALLAS: Dict[str, Any] = {
     "climo": {8: 96, 7: 97, 9: 90, 6: 94, 10: 81},
 }
 
-SEATS: Tuple[Dict[str, str], ...] = (
-    {"id": "GLASS", "job": "Official high. Reads the NWS/CLI print for KDFW.", "mark": "/static/bots/glass.png"},
-    {"id": "PIT", "job": "Market book. Implied cents after vig and spread.", "mark": "/static/bots/pit.png"},
-    {"id": "FROST", "job": "Skip freeze. Sick book, flip, thin sample, junk spread.", "mark": "/static/bots/frost.png"},
-    {"id": "BONE", "job": "Climo bones. Seasonal DFW high vs the live bracket.", "mark": "/static/bots/bone.png"},
+SEATS: Tuple[Dict[str, Any], ...] = (
+    {"id": "GLASS", "job": "Official/NWS high for the station.", "mark": "/static/bots/glass.png", "weight": 1.0},
+    {"id": "PIT", "job": "Kalshi implied vs that number, after vig.", "mark": "/static/bots/pit.png", "weight": 1.0},
+    {"id": "FROST", "job": "Veto junk book / flip / SICK / thin n.", "mark": "/static/bots/frost.png", "weight": 1.0},
+    {"id": "BONE", "job": "Seasonal base. Low weight.", "mark": "/static/bots/bone.png", "weight": 0.25},
 )
 CHAIR: Dict[str, str] = {
     "id": "RAIJIN",
-    "job": "Weather chair. Ranks the DFW book. Does not lock the 1H Chair.",
+    "job": "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
     "mark": "/static/bots/raijin-chair.png",
 }
 
@@ -78,17 +78,19 @@ _fills: List[Dict[str, Any]] = []
 _fills_loaded = False
 _forecast_prev: Dict[str, float] = {}
 _wx_hold: Dict[str, Any] = {"mode": None, "obs": None, "at": 0.0}
+_cli_cache: Dict[str, Optional[float]] = {}
 _data_override: Optional[Path] = None
 
 
 def reset_for_tests(data_dir: Optional[Path] = None) -> None:
-    global _fills, _fills_loaded, _board_cache, _arm, _forecast_prev, _wx_hold, _data_override
+    global _fills, _fills_loaded, _board_cache, _arm, _forecast_prev, _wx_hold, _cli_cache, _data_override
     _fills = []
     _fills_loaded = True
     _board_cache = {"at": 0.0, "payload": None}
     _arm = {"phrase_ok": False, "armed_at": 0.0, "kill": False}
     _forecast_prev = {}
     _wx_hold = {"mode": None, "obs": None, "at": 0.0}
+    _cli_cache = {}
     _data_override = data_dir
 
 
@@ -246,6 +248,320 @@ def strike_label(m: Dict[str, Any]) -> str:
     if kind in ("less", "less_or_equal") and hi is not None:
         return f"<{int(float(hi))}°F"
     return str(m.get("title") or m.get("ticker") or "—")
+
+
+def official_yes(
+    high: Optional[float],
+    *,
+    strike_type: Any = "",
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+    market: Optional[Dict[str, Any]] = None,
+) -> Optional[bool]:
+    """YES wins only against the NWS CLI high. Inclusive both ends on 2°F brackets."""
+    if high is None:
+        return None
+    m = market or {}
+    kind = str(strike_type or m.get("strike_type") or "").lower()
+    lo = floor_strike if floor_strike is not None else m.get("floor_strike")
+    hi = cap_strike if cap_strike is not None else m.get("cap_strike")
+    f = float(high)
+    if kind == "between" and lo is not None and hi is not None:
+        return float(lo) <= f <= float(hi)
+    if kind in ("greater", "greater_or_equal") and lo is not None:
+        edge = float(lo)
+        return f > edge or (kind.endswith("equal") and f >= edge)
+    if kind in ("less", "less_or_equal") and hi is not None:
+        edge = float(hi)
+        return f < edge or (kind.endswith("equal") and f <= edge)
+    return None
+
+
+def parse_cli_high(text: Any, *, station: str = "KDFW", day: Optional[date] = None) -> Optional[float]:
+    """Read MAXIMUM TEMPERATURE from an NWS CLI product. Never a forecast."""
+    blob = str(text or "")
+    if not blob.strip():
+        return None
+    up = blob.upper()
+    if not any(tag in up for tag in ("DFW", "DALLAS", "FORT WORTH", "FT WORTH")):
+        return None
+    if day is not None:
+        month = day.strftime("%B").upper()
+        if month not in up or str(day.year) not in up:
+            return None
+        if not re.search(rf"{month}\s+0?{day.day}\b", up):
+            return None
+    m = re.search(r"MAXIMUM\s+TEMPERATURE[^\n]*\n\s*(\d{2,3})\b", blob, re.I)
+    if not m:
+        m = re.search(r"MAXIMUM\s+(\d{2,3})\b", blob, re.I)
+    if not m:
+        return None
+    try:
+        val = float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+    if val < 20 or val > 140:
+        return None
+    return val
+
+
+def paper_pnl(row: Dict[str, Any], hit: bool) -> float:
+    try:
+        stake = float(row.get("stake") or 0)
+        fill = float(row.get("fill_cents") or 50) / 100.0
+    except (TypeError, ValueError):
+        return 0.0
+    if stake <= 0 or fill <= 0:
+        return 0.0
+    if hit:
+        return round(stake / fill - stake, 2)
+    return round(-stake, 2)
+
+
+def vote_seats(
+    m: Dict[str, Any],
+    *,
+    forecast: Optional[float],
+    climo: Optional[float],
+    skip: Optional[str],
+) -> List[Dict[str, Any]]:
+    p = forecast_p(forecast, m)
+    q = market_quotes(m)
+    implied = None if q.get("yes_ask") is None else q["yes_ask"] / 100.0
+    climo_p = forecast_p(float(climo), m) if climo is not None else None
+    glass = "WAIT" if p is None else ("YES" if p >= 0.5 else "NO")
+    pit = "WAIT"
+    if implied is not None and p is not None:
+        pit = "YES" if p >= implied else "NO"
+    elif implied is not None:
+        pit = "YES" if implied < 0.5 else "NO"
+    frost = "SKIP" if skip else "CLEAR"
+    bone = "WAIT" if climo_p is None else ("YES" if climo_p >= 0.5 else "NO")
+    return [
+        {"id": "GLASS", "dir": glass, "call": None if forecast is None else f"{forecast:.0f}°F KDFW"},
+        {"id": "PIT", "dir": pit, "call": None if implied is None else f"{int(round(implied * 100))}¢ after vig"},
+        {"id": "FROST", "dir": frost, "call": skip or "clear"},
+        {"id": "BONE", "dir": bone, "call": None if climo is None else f"{climo}°F season"},
+    ]
+
+
+def grade_seat_votes(row: Dict[str, Any], chair_hit: bool, yes_won: bool) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for v in row.get("votes") or []:
+        if not isinstance(v, dict):
+            continue
+        rec = dict(v)
+        sid = str(rec.get("id") or "")
+        d = str(rec.get("dir") or "").upper()
+        hit: Optional[bool] = None
+        if sid == "FROST":
+            if d == "SKIP":
+                hit = not chair_hit
+            elif d == "CLEAR":
+                hit = chair_hit
+        elif d in ("YES", "NO"):
+            hit = (d == "YES" and yes_won) or (d == "NO" and not yes_won)
+        if hit is None:
+            rec["result"] = None
+        else:
+            rec["result"] = "HIT" if hit else "MISS"
+        out.append(rec)
+    return out
+
+
+def chair_accuracy() -> Dict[str, Any]:
+    rows = _load_fills()
+    settled = [r for r in rows if str(r.get("result") or "").upper() in ("HIT", "MISS")]
+    pending = [r for r in rows if not r.get("settled") or str(r.get("result") or "").upper() in ("OPEN", "PENDING", "")]
+    newest = list(reversed(settled))
+    correct = sum(1 for r in settled if str(r.get("result") or "").upper() == "HIT")
+    total = len(settled)
+    wrong = total - correct
+    pct = None if not total else round(100.0 * correct / total, 1)
+
+    def window(xs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        n = len(xs)
+        c = sum(1 for r in xs if str(r.get("result") or "").upper() == "HIT")
+        return {"correct": c, "wrong": n - c, "total": n, "accuracy_pct": None if not n else round(100.0 * c / n, 1)}
+
+    if total < 10:
+        verdict, note = "COLLECTING", f"Need ~10 settled CLI grades ({total} so far)"
+    elif pct is not None and pct >= 55:
+        verdict, note = "HEALTHY", "Lifetime at or above 55% — edge looks alive"
+    elif pct is not None and pct >= 48:
+        verdict, note = "WATCH", "Near coin-flip — monitor last-20 vs lifetime"
+    else:
+        verdict, note = "NEEDS WORK", "Below 48% lifetime — review the DFW book"
+    return {
+        "leader": "RAIJIN",
+        "correct": correct,
+        "wrong": wrong,
+        "total": total,
+        "pending": len(pending),
+        "accuracy_pct": pct,
+        "last_20": window(newest[:20]),
+        "last_50": window(newest[:50]),
+        "verdict": verdict,
+        "verdict_note": note,
+        "label": f"{correct}/{total} · {pct}%" if pct is not None else f"{correct}/{total} · —",
+        "source": "nws_cli",
+        "pending_until": "NWS CLI",
+    }
+
+
+def seat_records() -> List[Dict[str, Any]]:
+    tallies = {s["id"]: {"correct": 0, "wrong": 0} for s in SEATS}
+    for row in _load_fills():
+        if str(row.get("result") or "").upper() not in ("HIT", "MISS"):
+            continue
+        for v in row.get("votes") or []:
+            if not isinstance(v, dict):
+                continue
+            sid = str(v.get("id") or "")
+            if sid not in tallies:
+                continue
+            res = str(v.get("result") or "").upper()
+            if res == "HIT":
+                tallies[sid]["correct"] += 1
+            elif res == "MISS":
+                tallies[sid]["wrong"] += 1
+    ranked: List[Dict[str, Any]] = []
+    for s in SEATS:
+        c = tallies[s["id"]]["correct"]
+        w = tallies[s["id"]]["wrong"]
+        n = c + w
+        wr = None if n < 1 else round(c / n, 3)
+        ranked.append({
+            "id": s["id"],
+            "job": s["job"],
+            "mark": s["mark"],
+            "weight": s.get("weight"),
+            "n": n,
+            "wr": wr,
+            "correct": c,
+            "wrong": w,
+            "rank": 0,
+        })
+    order = sorted(ranked, key=lambda r: (-(r["wr"] if r["wr"] is not None else -1.0), -int(r["n"])))
+    rank_of = {r["id"]: i + 1 for i, r in enumerate(order)}
+    for r in ranked:
+        r["rank"] = rank_of[r["id"]]
+    return ranked
+
+
+def lock_tape() -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in reversed(_load_fills()[-12:]):
+        out.append({
+            "leader": "RAIJIN",
+            "city": row.get("city") or "DAL",
+            "station": row.get("station") or "KDFW",
+            "bracket": row.get("bracket") or "",
+            "best": bool(row.get("best")),
+            "side": row.get("side"),
+            "result": str(row.get("result") or "OPEN").upper(),
+            "pnl": row.get("pnl"),
+            "paper": bool(row.get("paper", True)),
+            "ticker": row.get("ticker"),
+            "cli_high": row.get("cli_high"),
+        })
+    return out
+
+
+def _bracket_from_cache(ticker: str) -> Optional[Dict[str, Any]]:
+    payload = _board_cache.get("payload") if isinstance(_board_cache, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    for b in payload.get("brackets") or []:
+        if isinstance(b, dict) and str(b.get("ticker") or "") == ticker:
+            return b
+    return None
+
+
+def apply_cli_settle(row: Dict[str, Any], high: float) -> bool:
+    """Grade one OPEN lock from an NWS CLI high. Forecast must never call this."""
+    yes = official_yes(
+        high,
+        strike_type=row.get("strike_type"),
+        floor_strike=row.get("floor_strike"),
+        cap_strike=row.get("cap_strike"),
+    )
+    if yes is None:
+        return False
+    side = str(row.get("side") or "").upper()
+    hit = (side == "YES" and yes) or (side == "NO" and not yes)
+    row["settled"] = True
+    row["result"] = "HIT" if hit else "MISS"
+    row["cli_high"] = float(high)
+    row["settle_source"] = "nws_cli"
+    row["settle_reason"] = "cli_match" if hit else "cli_miss"
+    row["pnl"] = paper_pnl(row, hit)
+    row["votes"] = grade_seat_votes(row, hit, yes)
+    return True
+
+
+async def fetch_cli_high(day: date, nws: Optional[_Nws] = None) -> Optional[float]:
+    """Official KDFW CLI max for that ticker date. None until the next-morning print."""
+    key = day.isoformat()
+    if key in _cli_cache:
+        return _cli_cache[key]
+    fn = nws or _nws_get
+    high: Optional[float] = None
+    try:
+        listing = await fn("https://api.weather.gov/products/types/CLI/locations/FWD")
+        graph = []
+        if isinstance(listing, dict):
+            graph = listing.get("@graph") or listing.get("graph") or listing.get("products") or []
+        if isinstance(listing, list):
+            graph = listing
+        for item in graph[:8]:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("@id") or item.get("id") or item.get("url")
+            if not url:
+                continue
+            prod = await fn(str(url))
+            text = ""
+            if isinstance(prod, dict):
+                text = str(prod.get("productText") or prod.get("text") or "")
+            elif isinstance(prod, str):
+                text = prod
+            high = parse_cli_high(text, station="KDFW", day=day)
+            if high is not None:
+                break
+    except Exception:
+        high = None
+    _cli_cache[key] = high
+    return high
+
+
+async def settle_open_fills(
+    *,
+    cli_highs: Optional[Dict[str, float]] = None,
+    nws: Optional[_Nws] = None,
+) -> int:
+    """Pending until NWS CLI posts. Do not mark a hit off a forecast."""
+    changed = 0
+    for row in _load_fills():
+        if row.get("settled") or str(row.get("result") or "").upper() in ("HIT", "MISS"):
+            continue
+        day = date_from_ticker(row.get("ticker"))
+        if day is None:
+            continue
+        high = None
+        if cli_highs and day.isoformat() in cli_highs:
+            high = cli_highs[day.isoformat()]
+        else:
+            high = await fetch_cli_high(day, nws)
+        if high is None:
+            row["result"] = "OPEN"
+            row["settle_reason"] = "pending_cli"
+            continue
+        if apply_cli_settle(row, float(high)):
+            changed += 1
+    if changed:
+        _save_fills()
+    return changed
 
 
 def forecast_p(forecast: Optional[float], m: Dict[str, Any]) -> Optional[float]:
@@ -612,6 +928,7 @@ def score_bracket(
         "confidence": conf,
         "dont_play": bool(skip),
         "skip": skip,
+        "votes": vote_seats(m, forecast=forecast, climo=climo, skip=skip),
         "best": False,
         "follower": False,
     }
@@ -627,7 +944,7 @@ def pick_best(scored: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 
 def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: Optional[date]) -> List[Dict[str, Any]]:
-    stats = seat_stats()
+    recs = {r["id"]: r for r in seat_records()}
     climo = (DALLAS.get("climo") or {}).get(day.month) if day else None
     glass_call = None if forecast is None else f"{forecast:.0f}°F KDFW"
     pit_call = None
@@ -637,24 +954,37 @@ def build_seats(best: Optional[Dict[str, Any]], forecast: Optional[float], day: 
         if best.get("yes_ask") is not None:
             pit_call = f"{int(round(best['yes_ask']))}¢ {best.get('bracket') or ''}".strip()
         frost_call = best.get("skip") or "clear"
+        votes = {v["id"]: v for v in (best.get("votes") or []) if isinstance(v, dict)}
+        if votes.get("GLASS", {}).get("call"):
+            glass_call = votes["GLASS"]["call"]
+        if votes.get("PIT", {}).get("call"):
+            pit_call = votes["PIT"]["call"]
+        if votes.get("FROST", {}).get("call"):
+            frost_call = votes["FROST"]["call"]
+        if votes.get("BONE", {}).get("call"):
+            bone_call = votes["BONE"]["call"]
     rows = []
     calls = {"GLASS": glass_call, "PIT": pit_call, "FROST": frost_call, "BONE": bone_call}
     for seat in SEATS:
-        rec = stats.get(seat["id"]) or seat_record(0, None)
+        rec = recs.get(seat["id"]) or {"n": 0, "wr": None, "rank": 0, "correct": 0, "wrong": 0}
         rows.append({
             "id": seat["id"],
             "job": seat["job"],
             "mark": seat["mark"],
             "call": calls.get(seat["id"]),
-            "n": rec["n"],
-            "wr": rec["wr"],
+            "n": rec.get("n") or 0,
+            "wr": rec.get("wr"),
+            "rank": rec.get("rank") or 0,
+            "correct": rec.get("correct") or 0,
+            "wrong": rec.get("wrong") or 0,
             "letter": None,
         })
     return rows
 
 
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    rec = seat_stats().get("RAIJIN") or seat_record(0, None)
+    acc = chair_accuracy()
+    rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
     if not best:
         eye = "WAIT"
     elif best.get("dont_play"):
@@ -687,15 +1017,37 @@ async def build_board(
     nws: Optional[_Nws] = None,
     now: Optional[datetime] = None,
     wx_obs: Optional[Dict[str, Any]] = None,
+    cli_highs: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
-    if fetch is None and nws is None and now is None and wx_obs is None:
+    if fetch is None and nws is None and now is None and wx_obs is None and cli_highs is None:
         cached = _board_cache.get("payload")
         if cached and (time.time() - float(_board_cache.get("at") or 0)) < BOARD_TTL_S:
+            await settle_open_fills()
             out = dict(cached)
             out["status"] = arm_status()
+            out["accuracy"] = chair_accuracy()
+            out["tape"] = lock_tape()
+            out["fills"] = list(reversed(_load_fills()[-12:]))
+            recs = {r["id"]: r for r in seat_records()}
+            seats = []
+            for s in out.get("seats") or []:
+                rec = recs.get(s.get("id")) or {}
+                row = dict(s)
+                for k in ("n", "wr", "rank", "correct", "wrong"):
+                    if k in rec:
+                        row[k] = rec[k]
+                seats.append(row)
+            out["seats"] = seats
+            if isinstance(out.get("chair"), dict):
+                acc = out["accuracy"]
+                chair = dict(out["chair"])
+                chair["n"] = acc.get("total") or 0
+                chair["wr"] = None if not acc.get("total") else (acc.get("correct") or 0) / acc["total"]
+                out["chair"] = chair
             return out
 
     n = now or datetime.now(timezone.utc)
+    await settle_open_fills(cli_highs=cli_highs, nws=nws)
     dropped: List[str] = []
     brackets: List[Dict[str, Any]] = []
     forecast = None
@@ -755,6 +1107,8 @@ async def build_board(
         "brackets": brackets,
         "best": None if best is None else best.get("ticker"),
         "dropped": dropped,
+        "accuracy": chair_accuracy(),
+        "tape": lock_tape(),
         "fills": list(reversed(_load_fills()[-12:])),
         "status": arm_status(),
         "product": "Satoshi’s Council",
@@ -798,6 +1152,12 @@ async def tap(
     yes_ask: Any = None,
     sick: bool = False,
     now: Optional[datetime] = None,
+    votes: Any = None,
+    bracket: Any = None,
+    best: bool = False,
+    strike_type: Any = None,
+    floor_strike: Any = None,
+    cap_strike: Any = None,
 ) -> Dict[str, Any]:
     """Manual paper (default) or armed live tap. Never auto. Never Follower."""
     tick = str(ticker or "").strip()
@@ -832,6 +1192,11 @@ async def tap(
                 return {"ok": False, "error": "live refused", "refuse": routed.get("refuse"), "live": False}
         except Exception:
             return {"ok": False, "error": "live refused", "live": False}
+    cached = _bracket_from_cache(tick) or {}
+    snap_votes = votes if isinstance(votes, list) else cached.get("votes")
+    if not isinstance(snap_votes, list):
+        snap_votes = []
+    day = date_from_ticker(tick)
     row = {
         "id": str(uuid.uuid4())[:12],
         "ticker": tick,
@@ -847,6 +1212,17 @@ async def tap(
         "pnl": None,
         "follower": False,
         "desk": "front",
+        "leader": "RAIJIN",
+        "city": "DAL",
+        "station": "KDFW",
+        "day": None if day is None else day.isoformat(),
+        "bracket": bracket or cached.get("bracket"),
+        "best": bool(best or cached.get("best")),
+        "strike_type": strike_type or cached.get("strike_type") or "between",
+        "floor_strike": floor_strike if floor_strike is not None else cached.get("floor_strike"),
+        "cap_strike": cap_strike if cap_strike is not None else cached.get("cap_strike"),
+        "votes": [dict(v) for v in snap_votes if isinstance(v, dict)],
+        "settle_reason": "pending_cli",
     }
     _load_fills().append(row)
     _save_fills()

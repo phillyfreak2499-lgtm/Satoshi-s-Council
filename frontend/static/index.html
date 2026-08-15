@@ -472,7 +472,7 @@
 
         <div class="beast-card settings-card" id="frontSettingsCard">
           <div class="beast-title">RAIJIN · THE FRONT</div>
-          <p class="settings-sub">Dallas DFW daily high (KXHIGHTDAL / KDFW). Weather council — GLASS, PIT, FROST, BONE. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
+          <p class="settings-sub">Dallas DFW daily high (KXHIGHTDAL / KDFW). Raijin chairs GLASS, PIT, FROST, BONE. Hits count like Satoshi / Vitalik. Pending until NWS CLI. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks. Live stays off until you arm this tab.</p>
           <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only.</p>
         </div>
 
@@ -700,6 +700,24 @@
           <button type="button" class="front-step" data-size="25">$25</button>
         </div>
         <div id="frontBook" class="front-book"></div>
+        <div id="frontHitRate" class="front-hit-rate" aria-label="Raijin lifetime">
+          <div class="hr-big">
+            <span id="frontHrPct" class="hr-pct">—</span>
+            <span class="hr-pct-label">lifetime</span>
+          </div>
+          <div class="hr-stats">
+            <div class="hr-stat"><b id="frontHrRight">0</b><span>right</span></div>
+            <div class="hr-stat"><b id="frontHrWrong">0</b><span>wrong</span></div>
+            <div class="hr-stat"><b id="frontHrPending">0</b><span>open</span></div>
+          </div>
+          <div id="frontHrVerdict" class="hr-verdict">COLLECTING</div>
+        </div>
+        <section class="front-tape-card" aria-label="Last locks tape">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta">RAIJIN · DFW CLI</span></header>
+          <ol id="frontTape" class="lock-tape-list" aria-live="polite">
+            <li class="lock-tape-empty">No Raijin lock — waiting on DFW CLI</li>
+          </ol>
+        </section>
         <div id="frontWhy" class="side-why"></div>
         <div class="front-guide-head">BOT FIELD GUIDE · THE FRONT</div>
         <div id="frontGuide" class="front-guide"></div>
