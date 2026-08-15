@@ -102,6 +102,12 @@ class WireLogTests(unittest.TestCase):
         self.assertNotIn("KX", blob)
         self.assertNotIn("ZT ·", blob)
         self.assertNotIn("Changelog", blob)
+        self.assertIn("2026-08-15-vitalik-face", blob)
+        self.assertIn("Vitalik chair got a new signed face", blob)
+        self.assertIn("UP green / DOWN red / WAIT teal", blob)
+        self.assertIn("Not Floor. Not ORACLE.", blob)
+        self.assertIn("2026-08-15-floor-chairs", blob)
+        self.assertIn("Floor is leaders only + checkboxes", blob)
 
     def test_route_and_signed_untouched(self):
         self.assertIn('@app.get("/wire.js")', MAIN)

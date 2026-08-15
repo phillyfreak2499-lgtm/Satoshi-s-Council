@@ -437,6 +437,25 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertIn("@app.get(\"/raijin-wait.jpg\")", MAIN)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
 
+    def test_vitalik_signed_face_keeps_mapping(self):
+        static = ROOT / "frontend" / "static"
+        for name in ("vitalik-up.jpg", "vitalik-down.jpg", "vitalik-wait.jpg"):
+            path = static / name
+            self.assertTrue(path.is_file(), name)
+            self.assertGreater(path.stat().st_size, 20000)
+            self.assertEqual(path.read_bytes()[:2], b"\xff\xd8")
+        self.assertNotEqual((static / "vitalik-up.jpg").read_bytes(), (static / "vitalik-down.jpg").read_bytes())
+        self.assertNotEqual((static / "vitalik-up.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
+        self.assertNotEqual((static / "vitalik-down.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
+        self.assertIn('vitalikImages.UP.src = "/vitalik-up.jpg"', JS)
+        self.assertIn('vitalikImages.DOWN.src = "/vitalik-down.jpg"', JS)
+        self.assertIn('vitalikImages.WAIT.src = "/vitalik-wait.jpg"', JS)
+        self.assertIn('if (d === "UP" || d === "UP_HOLD") return vitalikImages.UP', JS)
+        self.assertIn('if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN', JS)
+        fn = JS.split("function vitalikPortraitFor(dir)", 1)[1][:400]
+        self.assertNotIn("HOLD\") return vitalikImages.WAIT", fn)
+        self.assertIn("return vitalikImages.WAIT", fn)
+
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

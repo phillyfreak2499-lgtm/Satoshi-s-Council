@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-vitalik-face",
+    "at": "2026-08-15T23:10:00-05:00",
+    "title": "Vitalik chair got a new signed face",
+    "why": "UP green / DOWN red / WAIT teal. Same mapping. Not Floor. Not ORACLE."
+  },
+  {
     "id": "2026-08-15-floor-chairs",
     "at": "2026-08-15T23:05:00-05:00",
     "title": "Floor is leaders only + checkboxes",
