@@ -7231,8 +7231,84 @@ body.mode-art .floor-raijin { display: inline-flex; }
 body.night-mode .floor-raijin,
 body.phone-floor .floor-raijin { display: none !important; }
 
-/* THE FRONT — Dallas weather ring. CRT/neon, not a city list. */
+/* THE FRONT — city cards + four weather seats. CRT/neon, not Floor seats. */
 .front-hud { max-width: 980px; }
+.front-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.front-seat-card {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 10, 18, 0.85);
+}
+.front-seat-card h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  font-family: Orbitron, monospace;
+}
+.front-seat-card p { margin: 0; font-size: 12px; color: rgba(200, 220, 240, 0.75); }
+.front-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.front-card {
+  padding: 12px;
+  border: 1px solid rgba(0, 232, 255, 0.22);
+  background: rgba(4, 12, 22, 0.88);
+}
+.front-card.best { border-color: rgba(57, 255, 20, 0.55); box-shadow: 0 0 16px rgba(57, 255, 20, 0.12); }
+.front-card.dont-play { border-color: rgba(255, 176, 0, 0.5); }
+.front-card-head {
+  display: flex;
+  justify-content: space-between;
+  font-family: Orbitron, monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+.front-bracket { font-size: 16px; color: #7fe9ff; margin-bottom: 6px; }
+.front-votes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.front-vote {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 232, 255, 0.25);
+  color: rgba(200, 220, 240, 0.85);
+}
+.front-honesty {
+  font-family: Share Tech Mono, monospace;
+  font-size: 12px;
+  color: rgba(180, 210, 230, 0.8);
+  margin: 6px 0 8px;
+}
+.front-card button {
+  min-height: 44px;
+  min-width: 72px;
+  margin-right: 8px;
+  margin-top: 4px;
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  background: rgba(0, 232, 255, 0.08);
+  color: #e8f4ff;
+  font-family: Orbitron, monospace;
+  cursor: pointer;
+}
+.front-card button.yes { border-color: rgba(57, 255, 20, 0.45); color: #39ff14; }
+.front-card button.no { border-color: rgba(255, 45, 85, 0.45); color: #ff2d55; }
+.front-card button:disabled { opacity: 0.35; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .front-card button { min-height: 56px; }
+}
+
+/* leftover ring helpers kept inert */
+.front-hud-legacy { max-width: 980px; }
 .front-mode-row {
   display: flex;
   flex-wrap: wrap;

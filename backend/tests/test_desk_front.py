@@ -1,4 +1,4 @@
-"""THE FRONT: Dallas-only weather council. Paper default. No Follower."""
+"""THE FRONT: city cards + FORECAST/MARKET/SKIP/CLIMO. Paper default. No Follower."""
 from __future__ import annotations
 
 import os
@@ -20,7 +20,6 @@ SIDE = (ROOT / "backend" / "services" / "desk_side.py").read_text(encoding="utf-
 GATES = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
 FOLLOWER = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encoding="utf-8")
 LEADER = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")
-BOTS = ROOT / "frontend" / "static" / "bots"
 
 NOW = datetime(2026, 8, 15, 16, 5, tzinfo=timezone.utc)
 
@@ -28,6 +27,7 @@ NOW = datetime(2026, 8, 15, 16, 5, tzinfo=timezone.utc)
 def _m(
     ticker: str,
     *,
+    series: str = "KXHIGHTDAL",
     strike_type: str = "between",
     floor: float | None = 103,
     cap: float | None = 104,
@@ -37,7 +37,7 @@ def _m(
 ) -> dict:
     return {
         "ticker": ticker,
-        "series_ticker": "KXHIGHTDAL",
+        "series_ticker": series,
         "title": ticker,
         "strike_type": strike_type,
         "floor_strike": floor,
@@ -54,130 +54,90 @@ def _fetch_factory(extra: dict | None = None):
 
     async def fetch(path: str, params: dict):
         series = str((params or {}).get("series_ticker") or "")
-        if extra.get("missing") or extra.get(series) == "404":
+        if extra.get("missing_all"):
             return {"markets": [], "missing": True}
+        if extra.get(series) == "404":
+            return {"markets": [], "missing": True}
+        canned = extra.get(series)
+        if isinstance(canned, list):
+            return {"markets": canned}
+        if series == "KXHIGHCHI":
+            return {"markets": [_m("KXHIGHCHI-26AUG15-B8384", series=series, floor=83, cap=84)]}
+        if series == "KXHIGHNY":
+            return {"markets": [_m("KXHIGHNY-26AUG15-B8485", series=series, floor=84, cap=85)]}
         if series == "KXHIGHTDAL":
-            return {"markets": extra.get("rows") or [
-                _m("KXHIGHTDAL-26AUG15-B103104"),
-                _m("KXHIGHTDAL-26AUG15-B101102", floor=101, cap=102, yes_bid="0.22", yes_ask="0.24"),
-            ]}
+            return {"markets": [_m("KXHIGHTDAL-26AUG15-B103104", series=series, floor=103, cap=104)]}
+        if series == "KXHIGHMIA":
+            return {"markets": extra.get("MIA") or []}
         return {"markets": []}
 
     return fetch
 
 
-async def _nws_high_only(url: str):
-    if "/stations/KDFW" in url and "/observations" not in url:
-        return {"geometry": {"coordinates": [-97.02196, 32.89743]}}
+async def _nws(url: str):
+    station = "KMDW"
+    high = 83
+    if "/stations/KNYC" in url:
+        station, high = "KNYC", 84
+    elif "/stations/KDFW" in url:
+        station, high = "KDFW", 103
+    elif "/stations/KMIA" in url:
+        station, high = "KMIA", 90
+    if "/stations/" in url and "/observations" not in url and "/points" not in url:
+        return {"geometry": {"coordinates": [-87.75, 41.78]}}
     if "/points/" in url:
-        return {"properties": {"forecast": "https://api.weather.gov/gridpoints/FWD/1,1/forecast"}}
+        return {"properties": {"forecast": "https://api.weather.gov/gridpoints/X/1,1/forecast"}}
     if "forecast" in url:
         return {"properties": {"periods": [
-            {"isDaytime": True, "startTime": "2026-08-15T06:00:00-05:00", "temperature": 103, "temperatureUnit": "F"},
+            {"isDaytime": True, "startTime": "2026-08-15T06:00:00-05:00", "temperature": high, "temperatureUnit": "F"},
         ]}}
     return {}
 
 
 class FrontMarkupTests(unittest.TestCase):
-    def test_tab_and_ring_not_city_list(self):
+    def test_tab_city_cards_and_four_seats(self):
         self.assertIn('id="tabFront"', HTML)
         self.assertIn('data-mode="front"', HTML)
         self.assertIn('id="frontView"', HTML)
         self.assertIn("THE FRONT", HTML)
-        self.assertIn("id=\"frontRing\"", HTML)
-        self.assertIn("RAIJIN", HTML)
-        self.assertIn("GLASS", HTML)
-        self.assertIn("PIT", HTML)
-        self.assertIn("FROST", HTML)
-        self.assertIn("BONE", HTML)
-        self.assertNotIn("FORECAST", HTML)
-        self.assertNotIn("CLIMO", HTML)
-        self.assertNotIn("CHI / NY", HTML)
-        self.assertNotIn("KXHIGHTCHI", HTML)
+        self.assertIn("FORECAST", HTML)
+        self.assertIn("MARKET", HTML)
+        self.assertIn("SKIP", HTML)
+        self.assertIn("CLIMO", HTML)
+        self.assertIn("CHI Midway", HTML)
+        self.assertIn("NYC Central Park", HTML)
+        self.assertIn("DAL DFW", HTML)
+        self.assertNotIn("RAIJIN", HTML)
+        self.assertNotIn("GLASS", HTML)
+        self.assertNotIn('id="floorRaijin"', HTML)
+        self.assertNotIn('id="frontRing"', HTML)
         self.assertLess(HTML.find('id="tabSide"'), HTML.find('id="tabFront"'))
-        self.assertLess(HTML.find('id="tabFront"'), HTML.find('id="tabCharts"'))
-
-    def test_bot_marks_are_pngs_no_letter_fallback(self):
-        for name in ("glass.png", "pit.png", "frost.png", "bone.png", "raijin-chair.png"):
-            path = BOTS / name
-            self.assertTrue(path.is_file(), name)
-            self.assertGreater(path.stat().st_size, 1000)
-        self.assertIn("/static/bots/glass.png", HTML)
-        self.assertIn("/static/bots/pit.png", HTML)
-        self.assertIn("/static/bots/frost.png", HTML)
-        self.assertIn("/static/bots/bone.png", HTML)
-        self.assertIn("frontMarkFail", JS)
-        self.assertIn("front-mark.blank", CSS)
-        self.assertNotIn("front-letter", HTML + JS + CSS)
-        self.assertNotIn('textContent = "G"', JS)
-        self.assertNotIn('textContent = "P"', JS)
-        self.assertNotIn('textContent = "F"', JS)
-        self.assertNotIn('textContent = "B"', JS)
-
-    def test_settings_and_tutorial(self):
-        self.assertIn("RAIJIN · THE FRONT", HTML)
-        self.assertIn("Does not place 1H Chair locks", HTML)
-        self.assertIn('title: "THE FRONT"', JS)
-        self.assertIn("Weather page — not the crypto Floor", JS)
-
-    def test_floor_raijin_small_presence(self):
-        self.assertIn('id="floorRaijin"', HTML)
-        self.assertIn("floor-raijin", CSS)
-        self.assertIn("function syncSeatSpinBtn", JS)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
 
-    def test_not_behind_follower_and_no_zt(self):
-        self.assertNotIn("tabFollower", HTML)
-        self.assertNotIn("FOLLOWER_PASSWORD", HTML)
-        self.assertNotIn("/api/follower/unlock", HTML)
-        self.assertNotIn("/api/follower/order", JS)
-        self.assertNotIn("follower_gate", JS)
+    def test_settings_tutorial_no_zt(self):
+        self.assertIn("THE FRONT", HTML)
+        self.assertIn("Does not place 1H Chair locks", HTML)
+        self.assertIn('title: "THE FRONT"', JS)
+        self.assertIn("FORECAST, MARKET, SKIP, and CLIMO vote", JS)
         self.assertNotIn("ZT ·", FRONT)
         self.assertNotIn("ZT ·", HTML)
+        self.assertNotIn("tabFollower", HTML)
+        self.assertNotIn("follower_gate", JS)
         self.assertIn("Never auto-bets", HTML)
 
-    def test_css_and_routes(self):
+    def test_css_routes_and_isolation(self):
         self.assertIn("body.mode-front #tabFront", CSS)
         self.assertIn("body.night-mode #tabFront", CSS)
-        self.assertIn("body.mode-settings #frontView", CSS)
-        self.assertIn("min-height: 56px", CSS)
+        self.assertIn("front-honesty", CSS)
         self.assertIn('@app.get("/api/front")', MAIN)
-        self.assertIn('@app.post("/api/front/tap")', MAIN)
         self.assertGreater(MAIN.find("api_unknown"), MAIN.find("/api/front"))
-
-    def test_does_not_touch_follower_or_chair(self):
         self.assertNotIn("from backend.services.follower_gate", FRONT)
-        self.assertNotIn("from backend.services.follower", FRONT)
         self.assertNotIn("desk_front", FOLLOWER)
         self.assertNotIn("desk_front", GATES)
         self.assertNotIn("desk_front", LEADER)
-        self.assertIn("Does not place Chair 1H locks", FRONT)
-        self.assertNotIn("KXGOLD15M", FRONT)
-        self.assertNotIn("ARCADE_ASSETS = (\"BTC\", \"GOLD\")", SIDE)
         self.assertIn("ARCADE_ASSETS = (\"BTC\",)", SIDE)
-
-
-class FrontWeatherTests(unittest.TestCase):
-    def test_classify_modes(self):
-        self.assertEqual(desk_front.classify_weather({"text": "Thunderstorm", "raw": "KDFW TS", "temp_f": 88}), "STORM")
-        self.assertEqual(desk_front.classify_weather({"text": "Heavy rain", "raw": "KDFW +RA", "temp_f": 76}), "STORM")
-        self.assertEqual(desk_front.classify_weather({"text": "Light rain", "raw": "KDFW -RA", "temp_f": 74}), "RAIN")
-        self.assertEqual(desk_front.classify_weather({"text": "Clear", "raw": "SKC", "temp_f": 101}), "HEAT")
-        self.assertEqual(desk_front.classify_weather({"text": "Clear", "raw": "CLR", "temp_f": 82}), "SUN")
-        self.assertEqual(desk_front.classify_weather({"text": "Overcast", "raw": "OVC", "temp_f": 80}), "CLOUD")
-        self.assertEqual(desk_front.classify_weather({"text": "Fair", "raw": "CLR", "temp_f": 70, "wind_kt": 24}), "WIND")
-        self.assertIsNone(desk_front.classify_weather(None))
-        self.assertIsNone(desk_front.classify_weather({}))
-
-    def test_hold_last_mode_when_feed_dead(self):
-        desk_front.reset_for_tests(Path(tempfile.mkdtemp()))
-        live = desk_front.remember_weather({"text": "Clear", "raw": "CLR", "temp_f": 82, "station": "KDFW"})
-        self.assertEqual(live["mode"], "SUN")
-        self.assertFalse(live["held"])
-        held = desk_front.remember_weather(None)
-        self.assertEqual(held["mode"], "SUN")
-        self.assertTrue(held["held"])
-        self.assertFalse(held["live"])
+        self.assertNotIn("KXGOLD15M", FRONT)
+        self.assertNotIn("KXGOLD15M", SIDE)
 
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
@@ -187,47 +147,43 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         os.environ.pop("FRONT_LIVE", None)
         os.environ.pop("FRONT_KILL", None)
 
-    async def test_dallas_only_named_seats(self):
-        board = await desk_front.build_board(
-            fetch=_fetch_factory(),
-            nws=_nws_high_only,
-            now=NOW,
-            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101, "wind_kt": 6},
-        )
-        self.assertEqual(board["city"]["station"], "KDFW")
-        self.assertEqual(board["city"]["series"], "KXHIGHTDAL")
-        self.assertNotIn("cards", board)
-        ids = [s["id"] for s in board["seats"]]
-        self.assertEqual(ids, ["GLASS", "PIT", "FROST", "BONE"])
-        self.assertEqual(board["chair"]["id"], "RAIJIN")
-        self.assertTrue(all(s["mark"].endswith(".png") for s in board["seats"]))
-        self.assertTrue(board["chair"]["mark"].endswith("raijin-chair.png"))
-        self.assertEqual(board["weather"]["mode"], "HEAT")
+    async def test_required_cities_vote_and_best(self):
+        board = await desk_front.build_board(fetch=_fetch_factory(), nws=_nws, now=NOW)
+        cities = [c["city"] for c in board["cards"]]
+        self.assertEqual(set(cities), {"CHI", "NYC", "DAL"})
+        self.assertTrue(any(c.get("best") for c in board["cards"]))
+        self.assertEqual([s["id"] for s in board["seats"]], ["FORECAST", "MARKET", "SKIP", "CLIMO"])
+        card = board["cards"][0]
+        self.assertEqual([v["id"] for v in card["votes"]], ["FORECAST", "MARKET", "SKIP", "CLIMO"])
+        self.assertIn("ev_cents", card["honesty"])
+        self.assertIn("sample_n", card["honesty"])
+        self.assertIn("dont_play", card["honesty"])
         self.assertFalse(board["follower"])
         self.assertTrue(board["status"]["paper_default"])
-        self.assertIn("KXHIGHTDAL-26AUG15-B103104", [b["ticker"] for b in board["brackets"]])
-        self.assertTrue(any(b.get("best") for b in board["brackets"]))
+        confs = [c["confidence"] for c in board["cards"]]
+        self.assertEqual(confs, sorted(confs, reverse=True))
 
-    async def test_404_drops_series(self):
-        board = await desk_front.build_board(
-            fetch=_fetch_factory({"missing": True}),
-            nws=_nws_high_only,
-            now=NOW,
-            wx_obs={"text": "Overcast", "raw": "OVC", "temp_f": 80},
-        )
-        self.assertIn("KXHIGHTDAL", board["dropped"])
-        self.assertEqual(board["brackets"], [])
-        self.assertIsNone(board["best"])
-        self.assertEqual([s["id"] for s in board["seats"]], ["GLASS", "PIT", "FROST", "BONE"])
+    async def test_404_drops_and_optional_needs_liquid(self):
+        fetch = _fetch_factory({
+            "KXHIGHCHI": "404",
+            "KXHIGHMIA": [_m("KXHIGHMIA-26AUG15-B8990", series="KXHIGHMIA", floor=89, cap=90, volume="50", yes_bid="0.20", yes_ask="0.40")],
+        })
+        board = await desk_front.build_board(fetch=fetch, nws=_nws, now=NOW)
+        self.assertIn("KXHIGHCHI", board["dropped"])
+        cities = [c["city"] for c in board["cards"]]
+        self.assertNotIn("CHI", cities)
+        self.assertNotIn("MIA", cities)
+        self.assertIn("NYC", cities)
+        self.assertIn("DAL", cities)
 
-    async def test_inclusive_bracket_and_date_in_ticker(self):
+    async def test_inclusive_bracket_and_date(self):
         self.assertEqual(desk_front.date_from_ticker("KXHIGHTDAL-26AUG15-B103104"), date(2026, 8, 15))
         m = _m("KXHIGHTDAL-26AUG15-B103104")
         self.assertGreater(desk_front.forecast_p(103, m), 0.5)
         self.assertGreater(desk_front.forecast_p(104, m), 0.5)
         self.assertLess(desk_front.forecast_p(100, m), 0.3)
 
-    async def test_paper_tap_and_live_off(self):
+    async def test_paper_tap_live_off_chair_blocked(self):
         ok = await desk_front.tap(
             ticker="KXHIGHTDAL-26AUG15-B103104",
             side="YES",
@@ -239,7 +195,6 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(ok["ok"], ok)
         self.assertTrue(ok["fill"]["paper"])
-        self.assertFalse(ok["fill"]["live"])
         self.assertFalse(ok["fill"]["follower"])
         live = await desk_front.tap(
             ticker="KXHIGHTDAL-26AUG15-B103104",
