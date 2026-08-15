@@ -454,16 +454,38 @@ class SchoolTests(unittest.TestCase):
 
     def test_lesson_one_playable_quiz(self):
         hour = LESSONS[0]
-        self.assertGreaterEqual(len(hour["quiz"]), 3)
-        self.assertLessEqual(len(hour["quiz"]), 5)
-        self.assertTrue(hour["body"])
-        self.assertIn("strike", hour["idea"].lower() + " ".join(hour["body"]).lower())
-        right = grade_choice("hour", 0, hour["quiz"][0]["answer"])
+        self.assertEqual(len(hour["quiz"]), 3)
+        self.assertEqual(
+            hour["body"][0],
+            "Kalshi is not “is Bitcoin going up forever.” It is one window. A strike is the line. UP means finish above it when the clock hits zero. DOWN means finish below. Forty minutes left is a different game than four. The Chair only has to be right at the bell, not the whole hour.",
+        )
+        self.assertEqual([q["answer"] for q in hour["quiz"]], [1, 0, 1])
+        self.assertEqual(hour["quiz"][0]["choices"], ["True", "False"])
+        right = grade_choice("hour", 0, 1)
         self.assertTrue(right["ok"])
-        wrong = grade_choice("hour", 0, (hour["quiz"][0]["answer"] + 1) % 3)
+        wrong = grade_choice("hour", 0, 0)
         self.assertFalse(wrong["ok"])
-        last = grade_choice("hour", len(hour["quiz"]) - 1, hour["quiz"][-1]["answer"])
+        last = grade_choice("hour", 2, 1)
         self.assertTrue(last["done"])
+
+    def test_exact_quiz_keys(self):
+        keys = {
+            "hour": [1, 0, 1],
+            "candle": [1, 0, 0],
+            "book": [1, 0, 0],
+            "edge": [1, 0, 1],
+            "seats": [1, 0, 0],
+        }
+        for lid, answers in keys.items():
+            les = next(l for l in LESSONS if l["id"] == lid)
+            self.assertEqual([q["answer"] for q in les["quiz"]], answers, lid)
+            self.assertTrue(les["quiz"][0]["q"])
+        self.assertIn("This desk is guessing the next year of Bitcoin.", JS)
+        self.assertIn("The wick is more important than the close.", JS)
+        self.assertIn("A 99¢ DOWN is a great lock because it is almost sure.", JS)
+        self.assertIn("A high Chair confidence is enough to lock.", JS)
+        self.assertIn("The loudest seat should decide the lock.", JS)
+        self.assertIn("schoolNextId(p.done)", JS)
 
     def test_copy_is_this_desk_not_a_course(self):
         blob = str(LESSONS).lower()
@@ -473,7 +495,7 @@ class SchoolTests(unittest.TestCase):
         self.assertIn("clock", blob)
         self.assertIn("99", blob)
         self.assertIn("p(finish)", blob)
-        self.assertIn("no guaranteed edge", blob)
+        self.assertIn("there is no edge", blob)
         self.assertNotIn("certificate", blob)
         self.assertNotIn("leverage", blob)
         self.assertNotIn("zt ·", blob)
