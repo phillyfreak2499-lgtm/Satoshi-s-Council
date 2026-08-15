@@ -208,9 +208,10 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
         self.assertIn('id="focusFront"', HTML)
         self.assertIn('data-focus="front"', HTML)
-        self.assertIn(">DWF</button>", HTML)
-        self.assertIn("Focus Dallas Weather Forecast / Raijin", HTML)
+        self.assertIn(">DFW</button>", HTML)
+        self.assertIn("Focus DFW / Raijin", HTML)
         self.assertNotIn(">RAIJIN</button>", HTML)
+        self.assertNotIn(">DWF</button>", HTML)
         self.assertIn("function isFrontTable", JS)
         self.assertIn("function frontTableState", JS)
         self.assertIn('bind(focusFront, "front")', JS)
@@ -625,16 +626,16 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
 
 
 class FrontFocusWeatherDeskTests(unittest.TestCase):
-    def test_gold_tab_letters_are_dwf_not_dfw_or_raijin(self):
+    def test_gold_tab_letters_are_dfw_not_dwf_or_raijin(self):
         row = HTML.split('id="modeTabs"', 1)[1].split('id="tabFloor"', 1)[0]
         self.assertIn(">BTC</button>", row)
         self.assertIn(">ETH</button>", row)
-        self.assertIn(">DWF</button>", row)
+        self.assertIn(">DFW</button>", row)
         self.assertNotIn(">RAIJIN</button>", row)
-        self.assertNotIn(">DFW</button>", row)
+        self.assertNotIn(">DWF</button>", row)
         self.assertNotIn(">FRONT</button>", row)
         btn = HTML.split('id="focusFront"', 1)[1].split("</button>", 1)[0]
-        self.assertIn("Dallas Weather Forecast", btn)
+        self.assertIn("Focus DFW / Raijin", btn)
         self.assertNotIn("ZT", btn)
         self.assertIn('data-focus="front"', btn)
 
