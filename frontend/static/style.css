@@ -8595,3 +8595,129 @@ body.mode-seats #mainTable { display: none !important; }
     grid-template-columns: 28px minmax(0, 1fr) 52px 36px 36px 44px !important;
   }
 }
+
+/* ===== LOGIN SPLASH — #passwordGate only. Dark stone + amber/cyan. Type over the table. ===== */
+#passwordGate.password-gate,
+#passwordGate.password-gate:not(.hidden) {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  padding: 0 16px max(18px, env(safe-area-inset-bottom, 18px)) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background-color: #08080a !important;
+  background-image: url("/login-council.jpg") !important;
+  background-size: cover !important;
+  background-position: center 18% !important;
+  background-repeat: no-repeat !important;
+}
+#passwordGate.password-gate::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(6, 6, 8, 0.08) 0%,
+    rgba(6, 6, 8, 0) 22%,
+    rgba(6, 6, 8, 0) 52%,
+    rgba(10, 9, 8, 0.42) 68%,
+    rgba(8, 7, 6, 0.78) 100%
+  );
+}
+#passwordGate .password-card {
+  position: relative !important;
+  z-index: 1;
+  margin: 0 auto 2vh !important;
+  width: min(440px, 92vw) !important;
+  padding: 18px 20px 16px !important;
+  text-align: center;
+  background: rgba(22, 20, 18, 0.82) !important;
+  border: 1px solid rgba(201, 148, 62, 0.28) !important;
+  border-radius: 14px;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.62),
+    0 0 22px rgba(0, 196, 212, 0.08) !important;
+  backdrop-filter: blur(3px);
+}
+#passwordGate .password-card::before {
+  background: none !important;
+  mix-blend-mode: normal;
+}
+#passwordGate .gate-mark {
+  display: none !important;
+}
+#passwordGate .password-title {
+  color: #e8b86a !important;
+  text-shadow: 0 0 12px rgba(201, 148, 62, 0.28) !important;
+  letter-spacing: 0.12em;
+}
+#passwordGate .password-sub {
+  color: #9bb8c4 !important;
+  text-shadow: none !important;
+}
+#passwordGate .password-input {
+  border: 1px solid rgba(201, 148, 62, 0.32) !important;
+  background: rgba(10, 9, 8, 0.88) !important;
+  color: #f3efe6 !important;
+  margin-bottom: 10px;
+}
+#passwordGate .password-input:focus {
+  outline: none;
+  border-color: rgba(0, 196, 212, 0.45) !important;
+  box-shadow: 0 0 0 1px rgba(0, 196, 212, 0.22);
+}
+#passwordGate .gate-oath {
+  border: 1px solid rgba(0, 196, 212, 0.18) !important;
+  background: rgba(8, 8, 10, 0.62) !important;
+  box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.35) !important;
+  margin-bottom: 10px;
+}
+#passwordGate .gate-oath li {
+  color: #c9d4d8 !important;
+  text-shadow: none !important;
+}
+#passwordGate .gate-oath li::before {
+  color: #c9943e !important;
+}
+#passwordGate .gate-agree {
+  color: #e6d3b0 !important;
+  border: 1px solid rgba(201, 148, 62, 0.28) !important;
+  background: rgba(14, 12, 10, 0.7) !important;
+  margin-bottom: 10px;
+}
+#passwordGate .gate-agree input {
+  accent-color: #c9943e;
+}
+#passwordGate .gate-btn-summon {
+  background: linear-gradient(180deg, rgba(36, 30, 24, 0.96), rgba(16, 14, 12, 0.96)) !important;
+  border-color: rgba(201, 148, 62, 0.42) !important;
+  color: #e8b86a !important;
+  text-shadow: 0 0 8px rgba(201, 148, 62, 0.22) !important;
+  box-shadow: 0 0 16px rgba(0, 196, 212, 0.08) !important;
+}
+#passwordGate .gate-btn-summon:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(0, 196, 212, 0.14), 0 0 12px rgba(201, 148, 62, 0.16) !important;
+}
+#passwordGate .password-error {
+  color: #e07070;
+}
+@media (max-width: 480px) {
+  #passwordGate.password-gate,
+  #passwordGate.password-gate:not(.hidden) {
+    justify-content: flex-end !important;
+    align-items: center !important;
+    padding-top: 36vh !important;
+  }
+  #passwordGate .password-card {
+    width: min(420px, 94vw) !important;
+    padding: 14px 14px 12px !important;
+    margin-bottom: 1vh !important;
+  }
+  #passwordGate .gate-oath li {
+    font-size: 10px;
+    margin-bottom: 6px;
+  }
+}

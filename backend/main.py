@@ -1430,6 +1430,11 @@ if STATIC_DIR.is_dir():
         return FileResponse(path, media_type="image/png",
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/login-council.jpg")
+    async def login_council_jpg():
+        return FileResponse(STATIC_DIR / "login-council.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
 
 if __name__ == "__main__":
     import uvicorn
