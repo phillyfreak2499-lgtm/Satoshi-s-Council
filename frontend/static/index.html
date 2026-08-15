@@ -710,22 +710,32 @@
               <span class="front-name">GLASS</span>
               <span class="front-call" data-call="GLASS">—</span>
             </button>
-            <button type="button" class="front-seat" data-seat="PIT" style="--a:0">
+            <button type="button" class="front-seat" data-seat="PIT" style="--a:-18">
               <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">PIT</span>
               <span class="front-call" data-call="PIT">—</span>
             </button>
-            <button type="button" class="front-seat" data-seat="FROST" style="--a:90">
+            <button type="button" class="front-seat" data-seat="FROST" style="--a:54">
               <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">FROST</span>
               <span class="front-call" data-call="FROST">—</span>
             </button>
-            <button type="button" class="front-seat" data-seat="BONE" style="--a:180">
+            <button type="button" class="front-seat" data-seat="BONE" style="--a:126">
               <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">BONE</span>
               <span class="front-call" data-call="BONE">—</span>
             </button>
+            <button type="button" class="front-seat" data-seat="MESH" style="--a:198">
+              <span class="front-mark"><img src="/static/bots/mesh.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">MESH</span>
+              <span class="front-call" data-call="MESH">—</span>
+            </button>
           </div>
+        </div>
+        <div id="frontSubHud" class="front-sub-hud" aria-label="Front subs">
+          <div class="front-sub" data-sub="HEAT"><span class="front-sub-mark" aria-hidden="true"></span><b>HEAT</b><span data-sub-line="HEAT">—</span><i>→ GLASS / FROST</i></div>
+          <div class="front-sub" data-sub="ECHO"><span class="front-sub-mark" aria-hidden="true"></span><b>ECHO</b><span data-sub-line="ECHO">—</span><i>→ BONE</i></div>
+          <div class="front-sub" data-sub="CELL"><span class="front-sub-mark" aria-hidden="true"></span><b>CELL</b><span data-sub-line="CELL">—</span><i>→ FROST</i></div>
         </div>
         <div class="side-size-row">
           <span class="side-size-label">SIZE</span>
@@ -890,7 +900,12 @@
       <div id="marketStrip">
         <span id="stripBtcPx">BTC <b id="btcPrice">—</b></span>
         <span id="stripEthPx">ETH <b id="ethPrice">—</b></span>
-        <span id="wxHighStrip" class="wx-high-strip" hidden>KALSHI <b id="wxKalshiHigh">—</b> · NWS <b id="wxNwsHigh">—</b></span>
+        <span id="wxHighStrip" class="wx-high-strip" hidden>NOW <b id="wxNowTemp">—</b> · KALSHI <b id="wxKalshiHigh">—</b> · NWS <b id="wxNwsHigh">—</b></span>
+        <span id="wxSubStrip" class="wx-sub-strip" hidden>
+          <span data-wx-sub="HEAT">HEAT —</span>
+          <span data-wx-sub="ECHO">ECHO —</span>
+          <span data-wx-sub="CELL">CELL —</span>
+        </span>
         <span id="ethDecisionStrip" class="eth-decision-strip">ETH <b id="ethDir">—</b> <b id="ethConf"></b></span>
         <span id="btcDecisionStrip" class="btc-decision-strip">BTC <b id="btcDir">—</b> <b id="btcConf"></b></span>
         <span class="odds-live">UP <b id="liveUpPct">—</b></span>

@@ -717,8 +717,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
     return w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf";
   }
-  const FRONT_SEAT_IDS = ["GLASS", "PIT", "FROST", "BONE"];
-  const FRONT_SEAT_KEYS = ["glass", "pit", "frost", "bone"];
+  const FRONT_SEAT_IDS = ["GLASS", "PIT", "FROST", "BONE", "MESH"];
+  const FRONT_SEAT_KEYS = ["glass", "pit", "frost", "bone", "mesh"];
+  const FRONT_SUB_IDS = ["HEAT", "ECHO", "CELL"];
   function frontSeatMark(id) {
     const k = String(id || "").toLowerCase();
     if (FRONT_SEAT_KEYS.indexOf(k) >= 0) return "/static/bots/" + k + ".png";
@@ -727,6 +728,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function isFrontSeatKey(name) {
     const k = String(name || "").toLowerCase();
     return FRONT_SEAT_KEYS.indexOf(k) >= 0;
+  }
+  function isFrontSubKey(name) {
+    const k = String(name || "").toUpperCase();
+    return FRONT_SUB_IDS.indexOf(k) >= 0;
+  }
+  function frontSubsOf(board) {
+    if (board && Array.isArray(board.subs) && board.subs.length) return board.subs;
+    const seats = (board && board.seats) || [];
+    const out = [];
+    seats.forEach(function (s) {
+      (s && s.subs || []).forEach(function (sub) {
+        if (sub && FRONT_SUB_IDS.indexOf(String(sub.id || "").toUpperCase()) >= 0) out.push(sub);
+      });
+    });
+    const seen = {};
+    return out.filter(function (s) {
+      const id = String(s.id || "").toUpperCase();
+      if (seen[id]) return false;
+      seen[id] = true;
+      return true;
+    });
+  }
+  function subsForParent(subs, id) {
+    const want = String(id || "").toUpperCase();
+    return (subs || []).filter(function (s) {
+      if (!s) return false;
+      if (String(s.parent || "").toUpperCase() === want) return true;
+      return (s.feeds || []).some(function (f) { return String(f).toUpperCase() === want; });
+    });
   }
   function wxWord(dir, strikeType, forecast, floor, cap) {
     const d = String(dir || "WAIT").toUpperCase();
@@ -780,6 +810,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (nws != null && isFinite(Number(nws))) {
       head += " · NWS " + Math.round(Number(nws)) + "°F";
     }
+    const nowF = clock.now_f != null ? clock.now_f : m.now_f;
+    if (nowF != null && isFinite(Number(nowF))) {
+      head += " · NOW " + Math.round(Number(nowF)) + "°F";
+    }
     return head;
   }
   function frontTableState() {
@@ -789,8 +823,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const seats = (board && Array.isArray(board.seats) && board.seats.length) ? board.seats : [
       { id: "GLASS", job: "Official/NWS high for the station.", dir: "WAIT", call: "", n: 0, wr: null, rank: 1 },
       { id: "PIT", job: "Kalshi implied vs that number, after vig.", dir: "WAIT", call: "", n: 0, wr: null, rank: 2 },
-      { id: "FROST", job: "Veto junk book / flip / SICK / thin n.", dir: "WAIT", call: "", n: 0, wr: null, rank: 3 },
+      { id: "FROST", job: "Veto junk book / flip / SICK / thin n / mesh disagree.", dir: "WAIT", call: "", n: 0, wr: null, rank: 3 },
       { id: "BONE", job: "This city’s history / climo. Seasonal base.", dir: "WAIT", call: "", n: 0, wr: null, rank: 4 },
+      { id: "MESH", job: "Dallas high mesh — NWS grid, Open-Meteo, ensemble.", dir: "WAIT", call: "", n: 0, wr: null, rank: 5 },
     ];
     const acc = (board && (board.accuracy || board.chair_accuracy)) || {};
     const records = (board && board.seat_records) || seats;
@@ -906,6 +941,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         bracket: clock.bracket || best.bracket,
         kalshi_high: clock.kalshi_high,
         nws_high: clock.nws_high,
+        now_f: clock.now_f,
+        temp_stale: clock.temp_stale,
         clock: clock,
         window_kind: "cli",
         window_label: "DFW HIGH",
@@ -921,6 +958,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       },
       leader_name: "RAIJIN",
       asset: "front",
+      subs: frontSubsOf(board),
       learning: { hierarchy: hierarchy, records: hierarchy.reduce(function (m, r) { m[r.agent] = r; return m; }, {}) },
     };
   }
@@ -1610,6 +1648,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     pit: "/static/bots/pit.png",
     frost: "/static/bots/frost.png",
     bone: "/static/bots/bone.png",
+    mesh: "/static/bots/mesh.png",
   };
   const botIconCache = {}; // name -> HTMLImageElement | null
   let botIconsReady = false;
@@ -3682,6 +3721,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillText(lawLocked() ? "LOCKED" : `${showDir} ${agent.confidence}%`, pos.x, Math.min(h - 6, pos.y + r + dirOff));
     });
     ctx.globalAlpha = 1;
+    if (frontLive) {
+      const subs = frontSubsOf(typeof frontBoard !== "undefined" ? frontBoard : null);
+      ctx.save();
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.font = "700 10px Orbitron, monospace";
+      const hudY = Math.max(18, h - 42);
+      let hx = 16;
+      FRONT_SUB_IDS.forEach(function (id) {
+        const row = subs.find(function (s) { return String(s.id || "").toUpperCase() === id; });
+        const line = id + "  " + ((row && row.line) || "—");
+        const tone = (row && row.tone) || "miss";
+        ctx.fillStyle = tone === "kill" || tone === "cooked" ? "#ffb000" : (tone === "miss" ? "rgba(160,180,200,0.7)" : "#7fe9ff");
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 8;
+        ctx.fillText(line, hx, hudY);
+        hx += ctx.measureText(line).width + 22;
+      });
+      ctx.restore();
+    }
 
     } // end floor-only specialists
     ctx.globalAlpha = 1;
@@ -3893,7 +3952,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const markHtml = (frontDash && markSrc)
         ? '<img class="dash-seat-mark" src="' + markSrc + '" alt="" width="28" height="28">'
         : "";
-      const subHtml = frontDash ? "" : (a.subs || []).map(sub => {
+      const wxKids = frontDash ? subsForParent(view.subs || frontSubsOf(typeof frontBoard !== "undefined" ? frontBoard : null), a.display_name || a.agent_name) : [];
+      const subHtml = frontDash ? wxKids.map(function (sub) {
+        return '<div class="sub-row front-sub-row"><span class="sub-name">' + String(sub.id || "") + '</span><span class="sub-dir">' + String(sub.line || "—") + "</span></div>";
+      }).join("") : (a.subs || []).map(sub => {
         const sc = strongColor(sub.direction);
         return `<div class="sub-row" style="border-color:${sc}33">
           <span class="sub-name">${labelOf(sub)}</span>
@@ -5217,10 +5279,12 @@ function drawCandleChart() {
     const ledSub = document.getElementById("ledWindowSub");
     const dualSub = document.getElementById("dualWindowSub");
     const wxStrip = document.getElementById("wxHighStrip");
+    const wxSubs = document.getElementById("wxSubStrip");
     const kh = document.getElementById("wxKalshiHigh");
     const nh = document.getElementById("wxNwsHigh");
     if (ledLabel) ledLabel.textContent = front ? "DFW HIGH" : "1H WINDOW";
     if (wxStrip) wxStrip.hidden = !front;
+    if (wxSubs) wxSubs.hidden = !front;
     if (!front) return;
     const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
     const m = ts.market || {};
@@ -5251,6 +5315,26 @@ function drawCandleChart() {
       }
     }
     if (nh) nh.textContent = clock.nws_high != null ? (Math.round(Number(clock.nws_high)) + "°F") : "—";
+    const nowEl = document.getElementById("wxNowTemp");
+    if (nowEl) {
+      if (clock.now_f != null && isFinite(Number(clock.now_f))) {
+        nowEl.textContent = Math.round(Number(clock.now_f)) + "°F" + (clock.temp_stale ? " · STALE" : "");
+      } else {
+        nowEl.textContent = clock.temp_stale ? "STALE" : "—";
+      }
+    }
+    if (wxSubs) {
+      wxSubs.hidden = !front;
+      const subs = frontSubsOf((typeof frontBoard !== "undefined" ? frontBoard : null) || ts);
+      FRONT_SUB_IDS.forEach(function (id) {
+        const el = wxSubs.querySelector('[data-wx-sub="' + id + '"]');
+        const row = subs.find(function (s) { return String(s.id || "").toUpperCase() === id; });
+        if (el) {
+          el.textContent = id + " " + ((row && row.line) || "—");
+          el.setAttribute("data-tone", (row && row.tone) || "miss");
+        }
+      });
+    }
     const upEl = document.getElementById("liveUpPct");
     const dnEl = document.getElementById("liveDownPct");
     if (upEl) upEl.textContent = displayDir((ts.decision && ts.decision.direction) || "WAIT");
@@ -5657,11 +5741,12 @@ function drawCandleChart() {
     const fallback = [
       { id: "GLASS", job: "Official/NWS high for the station.", mark: "/static/bots/glass.png" },
       { id: "PIT", job: "Kalshi implied vs that number, after vig.", mark: "/static/bots/pit.png" },
-      { id: "FROST", job: "Veto junk book / flip / SICK / thin n.", mark: "/static/bots/frost.png" },
+      { id: "FROST", job: "Veto junk book / flip / SICK / thin n / mesh disagree.", mark: "/static/bots/frost.png" },
       { id: "BONE", job: "This city’s history / climo. Seasonal base. Low weight.", mark: "/static/bots/bone.png" },
+      { id: "MESH", job: "Dallas high mesh — NWS grid, Open-Meteo, ensemble. Median vs the strike.", mark: "/static/bots/mesh.png" },
     ];
     const seats = ((data && data.seats) || []).filter(function (s) {
-      return s && (s.id === "GLASS" || s.id === "PIT" || s.id === "FROST" || s.id === "BONE");
+      return s && (s.id === "GLASS" || s.id === "PIT" || s.id === "FROST" || s.id === "BONE" || s.id === "MESH");
     });
     const chair = (data && data.chair) || {
       id: "RAIJIN",
@@ -5678,12 +5763,19 @@ function drawCandleChart() {
       const faded = s.faded ? " faded" : "";
       const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
       const face = (s.id === "RAIJIN") ? "/static/bots/raijin-chair.png" : s.mark;
+      const kids = (s.id === "RAIJIN") ? [] : subsForParent(frontSubsOf(data), s.id);
+      const subHtml = kids.length ? ('<div class="front-sub-under">' + kids.map(function (sub) {
+        return '<div class="front-sub-row" data-tone="' + String(sub.tone || "") + '">' +
+          (sub.mark ? '<img src="' + sub.mark + '" alt="">' : '<span class="front-sub-mark"></span>') +
+          "<b>" + String(sub.id || "") + "</b><span>" + String(sub.line || "—") + "</span></div>";
+      }).join("") + "</div>") : "";
       return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
         '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
         '<span class="bot-callsign">' + callsign + "</span>" +
         '<span class="bot-rank-pill">' + rank + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
         '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span></div>" +
+        subHtml +
         "</article>";
     }).join("");
   }
@@ -5696,7 +5788,7 @@ function drawCandleChart() {
         grid.innerHTML = "";
       }
       const hero = document.querySelector("#botsView .info-hero p");
-      if (hero) hero.textContent = "Dallas daily high. GLASS reads NWS. PIT reads the Kalshi book. FROST vetoes junk. BONE is climo. Settles on NWS CLI for KDFW.";
+      if (hero) hero.textContent = "Dallas daily high. Five chairs: GLASS · PIT · FROST · BONE · MESH. Subs HEAT / ECHO / CELL feed parents — they do not vote. Settles on NWS CLI for KDFW.";
       return;
     }
     const botsGrid = document.getElementById("botsGrid");
@@ -7025,6 +7117,17 @@ function drawCandleChart() {
       const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
       if (el) el.textContent = s.call || "—";
     });
+    paintFrontSubs(data);
+  }
+  function paintFrontSubs(data) {
+    const subs = frontSubsOf(data);
+    FRONT_SUB_IDS.forEach(function (id) {
+      const row = subs.find(function (s) { return String(s.id || "").toUpperCase() === id; });
+      const line = document.querySelector('[data-sub-line="' + id + '"]');
+      const wrap = document.querySelector('.front-sub[data-sub="' + id + '"]');
+      if (line) line.textContent = (row && row.line) || "—";
+      if (wrap) wrap.setAttribute("data-tone", (row && row.tone) || "miss");
+    });
   }
   function paintFrontBoard(data) {
     frontBoard = data || frontBoard;
@@ -7074,7 +7177,7 @@ function drawCandleChart() {
     }
   }
   const frontSeatImgs = {};
-  ["glass", "pit", "frost", "bone"].forEach(function (id) {
+  ["glass", "pit", "frost", "bone", "mesh"].forEach(function (id) {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = "/static/bots/" + id + ".png";
@@ -7126,7 +7229,7 @@ function drawCandleChart() {
       ctx.strokeStyle = "rgba(0, 220, 255, 0.12)";
       ctx.lineWidth = 1;
       ctx.stroke();
-      const named = ["GLASS", "PIT", "FROST", "BONE"].map(function (id) {
+      const named = ["GLASS", "PIT", "FROST", "BONE", "MESH"].map(function (id) {
         return seats.find(function (s) { return s.id === id; }) || { id: id, dir: "WAIT", call: "—" };
       });
       const n = named.length;
@@ -8433,7 +8536,7 @@ function drawCandleChart() {
       mode: "front",
       target: "#tabFront",
       title: "THE FRONT",
-      body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (official high) · PIT (Kalshi vs that number) · FROST (veto) · BONE (this city’s history / climo).\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
+      body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (official high) · MESH (multi-source median) · PIT (Kalshi vs that number) · FROST (veto) · BONE (this city’s history / climo). Subs: HEAT (KDFW now) · ECHO (yday CLI) · CELL (storm cap). Subs feed parents. They do not vote.\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
     },
     {
       mode: "charts",

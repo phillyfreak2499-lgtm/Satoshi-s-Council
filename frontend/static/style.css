@@ -3703,9 +3703,86 @@ body[data-focus-table="front"] #dualVoteStrip,
 body[data-focus-table="front"] .odds-live {
   display: none !important;
 }
-body[data-focus-table="front"] #wxHighStrip {
+body[data-focus-table="front"] #wxHighStrip,
+body[data-focus-table="front"] #wxSubStrip {
   display: inline !important;
 }
+.wx-sub-strip {
+  display: none;
+  font-family: Orbitron, monospace;
+  letter-spacing: 0.08em;
+  color: #7fe9ff;
+  text-shadow: 0 0 8px rgba(0, 232, 255, 0.45);
+}
+.wx-sub-strip span {
+  margin-right: 10px;
+}
+.wx-sub-strip span[data-tone="kill"],
+.wx-sub-strip span[data-tone="cooked"] { color: #ffb000; }
+.wx-sub-strip span[data-tone="miss"] { color: #8aa0b4; }
+.front-sub-hud {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  max-width: 920px;
+  margin: 8px auto 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  background: rgba(2, 8, 16, 0.88);
+  box-shadow: inset 0 0 18px rgba(0, 232, 255, 0.08);
+  font-family: Orbitron, monospace;
+}
+.front-sub {
+  display: grid;
+  grid-template-columns: 14px auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #c8ecff;
+}
+.front-sub b { color: #7fe9ff; }
+.front-sub i { font-style: normal; color: rgba(180, 210, 230, 0.55); font-size: 9px; }
+.front-sub-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #7fe9ff, #0a2030 70%);
+  box-shadow: 0 0 8px rgba(0, 232, 255, 0.7);
+}
+.front-sub[data-tone="cooked"] .front-sub-mark,
+.front-sub[data-tone="kill"] .front-sub-mark {
+  background: radial-gradient(circle, #ffb000, #3a2000 70%);
+  box-shadow: 0 0 8px rgba(255, 176, 0, 0.7);
+}
+.front-sub[data-tone="miss"] .front-sub-mark {
+  background: radial-gradient(circle, #6a7a88, #121820 70%);
+  box-shadow: none;
+}
+.front-sub-under {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(0, 232, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.front-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #9ad8ff;
+}
+.front-sub-row img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.front-sub-row b { color: #7fe9ff; }
 .dash-seat-mark,
 .rank-mark {
   width: 22px;
