@@ -2,10 +2,22 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-raijin-cowboy-face",
+    "at": "2026-08-15T23:50:00-05:00",
+    "title": "Raijin cowboy is face-only now",
+    "why": "Cowboy face-only WAIT + Ares-style green/red eye tint; Dallas lives on the room plate."
+  },
+  {
     "id": "2026-08-15-satoshi-face",
     "at": "2026-08-15T23:45:00-05:00",
     "title": "Satoshi chair face swap",
     "why": "Satoshi chair is a new signed close-up (UP green / DOWN red / HOLD amber). Gold SELL cut parked, not live. Face-only, no shrine. Not Floor. Not rooms."
+  },
+  {
+    "id": "2026-08-15-raijin-cowboy",
+    "at": "2026-08-15T23:30:00-05:00",
+    "title": "Raijin is now the Dallas storm cowboy",
+    "why": "One signed WAIT cut; UP/DOWN eyes tint like Ares (green/red). Name stays Raijin. No Cowboys star. Not Floor. Not ORACLE."
   },
   {
     "id": "2026-08-15-vitalik-face",

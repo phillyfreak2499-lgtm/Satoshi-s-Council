@@ -128,7 +128,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("id=\"frontRing\"", HTML)
         self.assertIn('id="frontChairImg"', HTML)
         self.assertIn('id="frontChairImg" src="/raijin-wait.jpg"', HTML)
-        self.assertIn("/static/bots/raijin-wait.png", HTML)
+        self.assertIn("/raijin-wait.jpg", HTML)
         self.assertIn("/static/bots/raijin-chair.png", FRONT)
         self.assertIn("function drawFrontTable(", JS)
         self.assertIn("drawFrontTable(ctx, w, h)", JS)
@@ -245,10 +245,10 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("floor-raijin", CSS)
         self.assertIn("function floorRaijinFit", JS)
         self.assertIn("function drawFloorRaijinChair", JS)
-        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png"', JS)
+        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn("function raijinPortraitFor", JS)
         self.assertIn('raijinImages.UP.src = "/raijin-up.jpg"', JS)
-        self.assertIn("/static/bots/raijin-wait.png", HTML)
+        self.assertIn("/raijin-wait.jpg", HTML)
         self.assertIn('rememberChairHit(cx, cy, pr, "front")', JS)
         self.assertIn("function syncSeatSpinBtn", JS)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
@@ -389,18 +389,18 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertEqual([c["series"] for c in desk_front.CITIES], ["KXHIGHTDAL"])
         self.assertIn("ARCADE_ASSETS = (\"BTC\",)", SIDE)
 
-    def test_chair_face_is_thunder_knight_not_empty_or_neon(self):
+    def test_chair_face_is_storm_cowboy_not_empty_or_neon(self):
         chair = BOTS / "raijin-chair.png"
         self.assertTrue(chair.is_file())
         self.assertGreater(chair.stat().st_size, 100000)
         for name in ("raijin-wait.png", "raijin-up.png", "raijin-down.png"):
             self.assertEqual(chair.read_bytes(), (BOTS / name).read_bytes(), name)
-        self.assertIn('href="/static/bots/raijin-chair.png"', HTML)
+        self.assertIn('href="/raijin-wait.jpg"', HTML)
         self.assertIn('id="frontChairImg" src="/raijin-wait.jpg"', HTML)
         self.assertLess(HTML.find('id="frontChair"'), HTML.find('id="frontRing"'))
         self.assertIn("#frontStageWrap > #frontChair .front-mark", CSS)
         self.assertIn("function raijinFace(", JS)
-        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png"', JS)
+        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn("containPortrait(raijinFace(", JS)
         self.assertIn("Never blank the Chair face", JS)
         self.assertIn("chairImg.src = raijinPortraitSrc(frontLockDir())", JS)
@@ -416,9 +416,13 @@ class FrontWeatherTests(unittest.TestCase):
             path = static / name
             self.assertTrue(path.is_file(), name)
             self.assertGreater(path.stat().st_size, 20000)
+            self.assertEqual(path.read_bytes()[:2], b"\xff\xd8")
         self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "chair-up.jpg").read_bytes())
         self.assertNotEqual((static / "raijin-down.jpg").read_bytes(), (static / "chair-down.jpg").read_bytes())
         self.assertNotEqual((static / "raijin-wait.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
+        # Same cowboy face. WAIT white; UP/DOWN are that face with tinted eyes.
+        self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
+        self.assertNotEqual((static / "raijin-down.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
         self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-down.jpg").read_bytes())
         self.assertIn("const raijinImages", JS)
         self.assertIn("function raijinPortraitFor(dir)", JS)
@@ -436,6 +440,24 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertIn("@app.get(\"/raijin-down.jpg\")", MAIN)
         self.assertIn("@app.get(\"/raijin-wait.jpg\")", MAIN)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
+        self.assertIn("function paintRaijinEyes", JS)
+        self.assertIn("function drawRaijinEyeTint", JS)
+        self.assertIn("function raijinEyeColors", JS)
+        tint = JS.split("function raijinEyeColors", 1)[1].split("function drawPublicTug", 1)[0]
+        self.assertIn('#39ff14', tint)
+        self.assertIn('#ff3b5c', tint)
+        self.assertIn('#FFFFFF', tint)
+        self.assertNotIn("#F5B942", tint)
+        self.assertIn("Do not turn WAIT gold", tint)
+        self.assertIn("Soft feather on the glowing sockets only", tint)
+        self.assertIn("drawRaijinEyeTint(cx, portraitY, pr, dir)", JS)
+        self.assertIn("drawRaijinEyeTint(cx, cy, lr, leaderDir)", JS)
+        wx = JS.split("function wxEye(word)", 1)[1][:400]
+        self.assertIn('w === "ABOVE" || w === "BETWEEN" || w === "UP"', wx)
+        self.assertIn('w === "BELOW" || w === "DOWN"', wx)
+        self.assertIn('return "WAIT"', wx)
+        self.assertIn("raijinPortraitFor(wxEye(dir))", JS)
+        self.assertNotIn("/static/bots/raijin-chair.png", JS)
 
     def test_satoshi_signed_face_keeps_mapping(self):
         static = ROOT / "frontend" / "static"
