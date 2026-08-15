@@ -2553,6 +2553,17 @@ body.admin-unlocked.mode-settings #autoBetCard {
 
 /* ===== FULL UPDATE: logo, password, summon, lightsaber, floor space ===== */
 .zt-watermark { display: none !important; }
+.zt-watermark img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  background: transparent;
+}
+body.floor-mode .zt-watermark,
+body.mode-floor .zt-watermark {
+  display: block !important;
+}
 .zt-header-logo {
   background: none; border: none; padding: 0; cursor: pointer;
   border-radius: 8px; overflow: hidden; line-height: 0;
@@ -9048,7 +9059,13 @@ body.mode-seats #mainTable { display: none !important; }
   mix-blend-mode: normal;
 }
 #passwordGate .gate-mark {
-  display: none !important;
+  display: block !important;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 10px;
+  background: #02040a;
+  border-radius: 12px;
+  box-shadow: 0 0 16px rgba(201, 148, 62, 0.28);
 }
 #passwordGate .password-title {
   color: #e8b86a !important;

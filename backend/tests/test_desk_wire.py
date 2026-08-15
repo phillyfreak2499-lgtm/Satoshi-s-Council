@@ -160,6 +160,7 @@ class WireLogTests(unittest.TestCase):
         self.assertIn("Gold floor mark is the site logo", blob)
         self.assertIn("everywhere except chair faces", blob)
         self.assertIn("city-candle is out", blob)
+        self.assertIn("Floor, splash", blob)
         self.assertLess(blob.find("2026-08-16-gold-floor-mark"), blob.find("2026-08-16-table-room-plates"))
         self.assertIn("2026-08-16-desk-unlock-stay", blob)
         self.assertIn("Unlock stays on the desk", blob)

@@ -86,9 +86,12 @@ class LoginSplashChromeTests(unittest.TestCase):
 
     def test_gate_mark_does_not_fight_faces(self):
         css = _gate_css()
-        self.assertIn("#passwordGate .gate-mark", css)
-        self.assertIn("display: none", css)
+        mark = css.split("#passwordGate .gate-mark", 1)[1][:280]
+        self.assertIn("display: block", mark)
+        self.assertNotIn("display: none", mark)
+        self.assertIn("64px", mark)
         gate = _password_gate()
+        self.assertIn('class="gate-mark" src="/council-mark.png"', gate)
         self.assertNotIn("ZT", gate)
         self.assertNotIn("zt-logo", gate)
         title = HTML.split("<title>", 1)[1].split("</title>", 1)[0]

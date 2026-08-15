@@ -29,18 +29,20 @@ class VisibleZtStripTests(unittest.TestCase):
         self.assertIn('property="og:title" content="Satoshi’s Council"', HTML)
         self.assertIn('name="description" content="Satoshi’s Council"', HTML)
         self.assertIn('property="og:image" content="/council-mark.png"', HTML)
+        self.assertIn('name="twitter:image" content="/council-mark.png"', HTML)
         self.assertNotIn("Satoshi’s Council / ZT", HTML)
         self.assertNotIn("SATOSHI’S COUNCIL / ZT", HTML)
 
     def test_visible_marks_use_hex_not_zt_logo(self):
         # Slots stay /council-mark.png; the PICTURE is the isolated gold floor mark.
         self.assertIn('src="/council-mark.png"', HTML)
-        self.assertGreaterEqual(HTML.count('src="/council-mark.png"'), 4)
+        self.assertGreaterEqual(HTML.count('src="/council-mark.png"'), 5)
         self.assertNotIn('src="/zt-logo.jpg"', HTML)
         self.assertIn('id="ztWatermark"', HTML)
-        wm = HTML.split('id="ztWatermark"', 1)[1][:120]
+        wm = HTML.split('id="ztWatermark"', 1)[1][:180]
         self.assertNotIn("zt-logo", wm)
         self.assertNotIn("src=", wm.split(">", 1)[0])
+        self.assertIn('src="/council-mark.png"', wm)
         mark = ROOT / "frontend" / "static" / "council-mark.png"
         jpg = ROOT / "frontend" / "static" / "zt-logo.jpg"
         self.assertTrue(mark.is_file())
@@ -62,6 +64,8 @@ class VisibleZtStripTests(unittest.TestCase):
         self.assertIn("#39ff14", fav)
         self.assertNotIn('stroke="#00e8ff"', fav)
         self.assertNotIn("gold ZT", CSS)
+        self.assertIn("body.floor-mode .zt-watermark", CSS)
+        self.assertIn("body.mode-floor .zt-watermark", CSS)
         ico = ROOT / "frontend" / "static" / "favicon.ico"
         self.assertTrue(ico.is_file())
         self.assertGreater(ico.stat().st_size, 200)
