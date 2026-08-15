@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-header-still",
+    "at": "2026-08-15T23:20:00-05:00",
+    "title": "Header STILL sits next to mute",
+    "why": "Header STILL next to mute for slow pipes. Cuts seat orbit, money rain, intro thrash, starfield, lock beams, and attract wander — same freeze the Floor already honors. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-coinglass-miss",
     "at": "2026-08-15T22:40:00-05:00",
     "title": "CoinGlass logs the real miss",

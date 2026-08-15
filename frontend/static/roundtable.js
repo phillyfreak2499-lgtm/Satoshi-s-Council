@@ -313,6 +313,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const candleCtx = candleCanvas ? candleCanvas.getContext("2d") : null;
   const candlePriceTag = document.getElementById("candlePriceTag");
   const soundToggle = document.getElementById("soundToggle");
+  const stillToggle = document.getElementById("stillToggle");
   const chartsView = document.getElementById("chartsView");
   const mainTable = document.getElementById("mainTable");
   const modeTabs = document.querySelectorAll(".mode-tab");
@@ -1214,7 +1215,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let glitchUntil = 0;
   let hourSlamUntil = 0;
   let debateHistory = [];
-  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const systemReduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const SEAT_ORBIT_SPEED = 0.00007; // half of the old 0.00014 fidget spin
   const SEAT_SPIN_KEY = "council_seat_spin";
   let seatOrbitFrozen = false;
@@ -1223,9 +1224,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try {
     seatOrbitFrozen = localStorage.getItem(SEAT_SPIN_KEY) === "0";
   } catch (e) {}
+  // Header STILL and Floor SPIN share this flag. STILL on = same path as prefers-reduced-motion.
+  let reduceMotion = systemReduceMotion || seatOrbitFrozen;
   function seatOrbitAngle() {
     // Screensaver pace. Freeze keeps the last angle so unfreeze does not jump.
-    if (reduceMotion) return 0;
+    if (systemReduceMotion) return 0;
     if (!seatOrbitLastT) seatOrbitLastT = time;
     if (!seatOrbitFrozen) {
       const dt = Math.max(0, time - seatOrbitLastT);
@@ -1604,13 +1607,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.title = spinning ? "Freeze seat orbit" : "Resume seat orbit";
     btn.setAttribute("aria-label", spinning ? "Seat orbit on — click to freeze" : "Seat orbit still — click to spin");
   }
+  function syncStillBtn() {
+    const btn = stillToggle || document.getElementById("stillToggle");
+    if (!btn) return;
+    const on = !!seatOrbitFrozen;
+    btn.classList.toggle("still-on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = "STILL";
+    btn.title = on
+      ? "STILL on — motion cut for a thin pipe. Click to restore."
+      : "STILL — cut orbit and heavy FX for slow connections";
+    btn.setAttribute("aria-label", on
+      ? "STILL on — reduced motion. Click to restore motion"
+      : "STILL — reduce motion for slow connections");
+  }
+  function applyMotionFreeze() {
+    // One freeze. Header STILL drives the same flag Floor already respects.
+    reduceMotion = systemReduceMotion || seatOrbitFrozen;
+    try { document.body.classList.toggle("reduce-motion", reduceMotion); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
+    try { syncStillBtn(); } catch (e) {}
+    if (reduceMotion) {
+      try { if (typeof window.__setFloorMoneyRain === "function") window.__setFloorMoneyRain(false); } catch (e) {}
+    }
+  }
   function setSeatSpin(on) {
     seatOrbitFrozen = !on;
     try { localStorage.setItem(SEAT_SPIN_KEY, on ? "1" : "0"); } catch (e) {}
-    try { syncSeatSpinBtn(); } catch (e) {}
+    try { applyMotionFreeze(); } catch (e) {}
+  }
+  function setStill(on) {
+    setSeatSpin(!on);
   }
   window.setSeatSpin = setSeatSpin;
+  window.setStill = setStill;
   window.seatOrbitAngle = seatOrbitAngle;
+  try { applyMotionFreeze(); } catch (e) {}
   let _tableEmberUntil = 0;
   let _tableEmberKey = "";
   let _tableEmberDir = "WAIT";
@@ -9547,10 +9579,11 @@ function drawCandleChart() {
     try { maybeAttractEnter(); } catch (e) {}
     if (mode === "art" || mode === "floor") drawArt();
     if (mode === "night") drawArt();
-    if (!document.hidden) {
+    if (!document.hidden && !reduceMotion) {
       animId = requestAnimationFrame(loop);
     } else {
-      animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, 500);
+      const wait = document.hidden ? 500 : 180;
+      animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, wait);
     }
   }
 
@@ -9632,6 +9665,15 @@ function drawCandleChart() {
       if (!soundMuted) playMarketBell();
     });
   }
+  if (stillToggle && !stillToggle.__wired) {
+    stillToggle.__wired = true;
+    stillToggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setStill(!seatOrbitFrozen);
+    });
+  }
+  try { syncStillBtn(); } catch (e) {}
 
   // Unlock audio on first interaction anywhere (browser policy)
   const armAudioOnce = () => {
@@ -10426,7 +10468,17 @@ function drawCandleChart() {
         setSeatSpin(seatOrbitFrozen);
       });
     }
+    const stillBtn = document.getElementById("stillToggle");
+    if (stillBtn && !stillBtn.__wired) {
+      stillBtn.__wired = true;
+      stillBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setStill(!seatOrbitFrozen);
+      });
+    }
     try { syncSeatSpinBtn(); } catch (e) {}
+    try { syncStillBtn(); } catch (e) {}
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
@@ -10499,6 +10551,7 @@ function drawCandleChart() {
   }
 
   function playCelebrateVideo(reason) {
+    if (document.body && document.body.classList.contains("reduce-motion")) return;
     const wrap = document.getElementById("celebrateVideoWrap");
     const vid = document.getElementById("celebrateVideo");
     const skipBtn = document.getElementById("celebrateVideoSkip");
@@ -11097,7 +11150,7 @@ function drawCandleChart() {
     // 5+ win streak → fullscreen close-up money video (once per milestone)
     if (streak >= 5 && streak % 5 === 0 && streak !== lastCelebratedStreak) {
       lastCelebratedStreak = streak;
-      playCelebrateVideo("streak");
+      if (!reduceMotion) playCelebrateVideo("streak");
     }
     if (streak === 0) lastCelebratedStreak = 0;
 
@@ -11656,6 +11709,7 @@ function drawCandleChart() {
     try {
       if (sessionStorage.getItem(DESK_INTRO_KEY) === "1") return;
     } catch (e) {}
+    if (document.body && document.body.classList.contains("reduce-motion")) return;
     if (window.__deskIntroPlaying) return;
     const wrap = document.getElementById("deskIntroWrap");
     const vid = document.getElementById("deskIntroVideo");
@@ -11782,7 +11836,7 @@ function drawCandleChart() {
       try { wireFocusAndHelp(); } catch (e) { console.warn(e); }
     };
 
-    if (!vid) { finish(); return; }
+    if (!vid || (document.body && document.body.classList.contains("reduce-motion"))) { finish(); return; }
     vid.muted = false;
     vid.volume = 0.9;
     const onEnd = () => { vid.removeEventListener("ended", onEnd); finish(); };
@@ -11897,24 +11951,29 @@ function drawCandleChart() {
     resize();
     window.addEventListener("resize", resize);
     function tick() {
+      const still = document.body.classList.contains("reduce-motion");
       if (!document.body.classList.contains("mode-floor") && !document.body.classList.contains("floor-mode")) {
-        requestAnimationFrame(tick);
+        if (still) setTimeout(tick, 800);
+        else requestAnimationFrame(tick);
         return;
       }
       ctx.fillStyle = "rgba(2,4,10,0.35)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       for (const st of stars) {
-        st.y += st.z * 0.72;
-        if (st.y > canvas.height) {
-          st.y = 0;
-          st.x = Math.random() * canvas.width;
+        if (!still) {
+          st.y += st.z * 0.72;
+          if (st.y > canvas.height) {
+            st.y = 0;
+            st.x = Math.random() * canvas.width;
+          }
         }
         ctx.beginPath();
         ctx.fillStyle = `hsla(${200 + st.z * 40}, 90%, ${60 + st.z * 15}%, ${0.5 + st.z * 0.25})`;
         ctx.arc(st.x, st.y, st.s, 0, Math.PI * 2);
         ctx.fill();
       }
-      requestAnimationFrame(tick);
+      if (still) setTimeout(tick, 800);
+      else requestAnimationFrame(tick);
     }
     tick();
   }
@@ -12483,7 +12542,12 @@ function drawCandleChart() {
     return { wrap, vid: vid || document.getElementById("floorMoneyRainVideo") };
   }
 
+  function motionStill() {
+    return !!(document.body && document.body.classList.contains("reduce-motion"));
+  }
+
   function startRain() {
+    if (motionStill()) return;
     const { wrap, vid } = ensureEls();
     if (!wrap || !vid) return;
     active = true;
@@ -12514,7 +12578,7 @@ function drawCandleChart() {
   }
 
   window.__setFloorMoneyRain = function (on) {
-    if (on) startRain();
+    if (on && !motionStill()) startRain();
     else stopRain();
   };
 
@@ -12524,7 +12588,7 @@ function drawCandleChart() {
     if (typeof prev === "function") {
       try { prev(isFloor); } catch (e) {}
     }
-    if (isFloor && active) {
+    if (isFloor && active && !motionStill()) {
       const vid = document.getElementById("floorMoneyRainVideo");
       if (vid) {
         const p = vid.play();
