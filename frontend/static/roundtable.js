@@ -6225,6 +6225,7 @@ function drawCandleChart() {
 
   function playLeaderClickVideo() {
     // Gesture clip from Floor or Table Chair photos. Same overlay, no title card.
+    // Never load() or swap src on click — that is the stutter. Prefetch warms it.
     const wrap = document.getElementById("leaderClickWrap");
     const vid = document.getElementById("leaderClickVideo");
     const skipBtn = document.getElementById("leaderClickSkip");
@@ -6233,11 +6234,14 @@ function drawCandleChart() {
     if (leaderClickPlaying || celebratePlaying) return;
     if (document.body.classList.contains("gate-locked")) return;
     if (mode !== "floor" && mode !== "art") return;
+    if (!(vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc))) {
+      try { prefetchLeaderClickVideo(); } catch (e) {}
+      return;
+    }
 
     leaderClickPlaying = true;
     document.body.classList.add("leader-clip-on");
     document.body.classList.remove("zt-cinematic");
-    ensureAudio();
     wrap.classList.remove("hidden");
     wrap.classList.add("active");
     wrap.setAttribute("aria-hidden", "false");
@@ -6245,10 +6249,7 @@ function drawCandleChart() {
       fallback.hidden = true;
       fallback.textContent = "";
     }
-    if (typeof fitVideoToScreen === "function") {
-      try { fitVideoToScreen(vid); } catch (e) {}
-    }
-    vid.muted = !!soundMuted;
+    vid.muted = true;
     vid.playsInline = true;
     vid.setAttribute("playsinline", "");
     vid.setAttribute("webkit-playsinline", "");
@@ -6286,43 +6287,13 @@ function drawCandleChart() {
     if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
     wrap.onclick = () => cleanup();
 
-    const playReady = () => {
-      if (!leaderClickPlaying) return;
-      const p = vid.play();
-      if (p && p.then) {
-        p.then(() => {
-          if (fallback) fallback.hidden = true;
-          if (!soundMuted) {
-            try { vid.muted = false; } catch (e) {}
-          }
-        }).catch(() => {
-          vid.muted = true;
-          const p2 = vid.play();
-          if (p2 && p2.then) p2.catch(() => {});
-        });
-      }
-    };
-    // Prefetched element: do not load() or walk <source> again.
-    if (vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc)) {
-      try { vid.currentTime = 0; } catch (e) {}
-      playReady();
-      return;
+    const p = vid.play();
+    if (p && p.then) {
+      p.catch(() => {
+        if (!leaderClickPlaying) return;
+        cleanup();
+      });
     }
-    const sources = ["/leader-click.mp4", "/static/leader-click.mp4"];
-    let srcIdx = 0;
-    const tryNext = () => {
-      if (!leaderClickPlaying) return;
-      if (srcIdx >= sources.length) {
-        if (fallback) fallback.hidden = true;
-        return;
-      }
-      const url = sources[srcIdx++];
-      vid.onerror = tryNext;
-      vid.oncanplay = playReady;
-      vid.src = url;
-      try { vid.load(); } catch (e) { tryNext(); }
-    };
-    tryNext();
   }
   window.playLeaderClickVideo = playLeaderClickVideo;
 

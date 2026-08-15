@@ -71,8 +71,10 @@ class LeaderClickGestureTests(unittest.TestCase):
         self.assertIn('if (mode !== "floor" && mode !== "art") return;', play)
         self.assertIn("vid.currentSrc && /leader-click\\.mp4/i.test(vid.currentSrc)", play)
         self.assertIn("vid.currentTime = 0", play)
-        already = play.split("currentSrc", 1)[1].split("const sources", 1)[0]
-        self.assertNotIn("vid.load()", already)
+        self.assertIn("vid.play()", play)
+        self.assertNotIn("vid.load()", play)
+        self.assertNotIn("vid.src =", play)
+        self.assertNotIn("const sources", play)
         self.assertIn("function prefetchLeaderClickVideo", JS)
         self.assertIn("prefetchLeaderClickVideo()", JS)
         before = JS.split("function playLeaderClickVideo", 1)[0]
