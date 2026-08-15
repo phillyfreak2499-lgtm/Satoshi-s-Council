@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-15-help-shout-venmo",
+    "at": "2026-08-15T21:24:00-05:00",
+    "title": "HELP: SHOUT + Venmo",
+    "why": "SHOUT kind plus a Venmo tip to @zachery-Teas-1. Zach still approves before anything ships. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-help-shout",
     "at": "2026-08-15T21:22:00-05:00",
     "title": "HELP gained SHOUT",

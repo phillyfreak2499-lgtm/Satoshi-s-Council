@@ -40,7 +40,12 @@ class HelpMarkupTests(unittest.TestCase):
         self.assertIn('data-kind="ADD"', HTML)
         self.assertIn('data-kind="IDEA"', HTML)
         self.assertIn('data-kind="SHOUT"', HTML)
-        self.assertNotIn("venmo", HTML.lower())
+        self.assertIn('id="helpVenmo"', HTML)
+        self.assertIn('href="https://venmo.com/u/zachery-Teas-1"', HTML)
+        self.assertIn("@zachery-Teas-1", HTML)
+        self.assertIn("Tip Zach", HTML)
+        self.assertEqual(HTML.count("zachery-Teas-1"), 2)
+        self.assertNotIn("text me", HTML.lower())
         self.assertIn("FILE IT", HTML)
         self.assertNotIn("bug report", HTML.lower())
         self.assertIn("<title>Satoshi’s Council</title>", HTML)
@@ -77,6 +82,8 @@ class HelpMarkupTests(unittest.TestCase):
         self.assertIn("body.phone-floor #tabHelp", CSS)
         self.assertIn(".help-desk", CSS)
         self.assertIn(".help-kind", CSS)
+        self.assertIn(".help-venmo", CSS)
+        self.assertIn(".help-venmo-handle", CSS)
 
 
 class HelpPersistTests(unittest.TestCase):
@@ -153,7 +160,6 @@ class HelpContactAndScopeTests(unittest.TestCase):
             low = blob.lower()
             for needle in CONTACT_NEEDLES:
                 self.assertNotIn(needle, low)
-            self.assertNotIn("venmo", low)
 
     def test_leak_needles_catch_a_paste(self):
         sample = "ping mailto:desk@example.com sms:+15550100 tel:+15550100 twilio @gmail.com"
@@ -182,6 +188,8 @@ class HelpContactAndScopeTests(unittest.TestCase):
     def test_wire_note(self):
         self.assertIn("HELP tab — tickets to Zach", WIRE_JS)
         self.assertIn("HELP gained SHOUT", WIRE_JS)
+        self.assertIn("HELP: SHOUT + Venmo", WIRE_JS)
+        self.assertIn("@zachery-Teas-1", WIRE_JS)
         self.assertIn("Zach approves before anything ships", WIRE_JS)
         self.assertIn("WRONG / ADD / IDEA", WIRE_JS)
         self.assertIn("SHOUT", WIRE_JS)
