@@ -52,9 +52,13 @@ class DeadBookTests(unittest.TestCase):
         self.assertIn("already", why)
 
     def test_one_sided_yes_depth_zero(self):
-        depth = {"yes_depth": 0, "no_depth": 40, "yes_bid_px": 50, "no_bid_px": 50}
+        depth = {"yes_depth": 0, "no_depth": 40, "yes_bid_px": 50, "no_bid_px": 50, "has_size": True}
         why = dead_book_reason(depth, "UP", 50)
         self.assertEqual(why, "one-sided book · yes_depth 0")
+
+    def test_both_zero_null_is_unknown_not_dead(self):
+        self.assertIsNone(dead_book_reason({"yes_depth": 0, "no_depth": 0, "has_size": False}, "UP", 50))
+        self.assertIsNone(dead_book_reason(None, "UP", 50))
 
     def test_no_at_99(self):
         depth = {"yes_depth": 10, "no_depth": 10, "yes_bid_px": 1, "no_bid_px": 99}

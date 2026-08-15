@@ -43,6 +43,7 @@ class WaitReasonAndGradeTests(unittest.TestCase):
         self.assertEqual(classify_wait_reason("WAIT · fresh quote required (40s old)"), "stale_quote")
         self.assertEqual(classify_wait_reason("WAIT · first 10m of the hour — no lock"), "first_10m")
         self.assertEqual(classify_wait_reason("WAIT · dead book · YES mid 12¢ outside 20–80¢"), "dead_book")
+        self.assertEqual(classify_wait_reason("WAIT · unknown book — no lock"), "unknown_book")
         self.assertEqual(classify_wait_reason("WAIT · thin book (need ≥5 size) — no lock"), "no_depth")
         self.assertEqual(classify_wait_reason("WAIT · odds 18¢ outside 20–80¢"), "odds_outside_20_80")
         self.assertEqual(
