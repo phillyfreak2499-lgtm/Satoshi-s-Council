@@ -1012,6 +1012,7 @@ class PerformanceStore:
             "eth_shadow": {
                 "n": len(shadow_rows),
                 "hits": shadow_hits,
+                "wrong": max(0, len(shadow_rows) - shadow_hits),
                 "accuracy_pct": (
                     round(100.0 * shadow_hits / len(shadow_rows), 1) if shadow_rows else None
                 ),

@@ -1066,6 +1066,78 @@ def eth_shadow_pick(
     }
 
 
+def _score_pair(correct: Any, wrong: Any) -> Dict[str, int]:
+    try:
+        c = max(0, int(correct or 0))
+    except (TypeError, ValueError):
+        c = 0
+    try:
+        w = max(0, int(wrong or 0))
+    except (TypeError, ValueError):
+        w = 0
+    return {"correct": c, "wrong": w}
+
+
+def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
+    """
+    Floor matchup. Paper only.
+
+    BTC score = sized Chair locks, finish-only from Kalshi market.result.
+    ETH score = shadow picks (including vetoed), finish-only from market.result.
+    Head-to-head is settled correct vs wrong — a matchup, not a stats dump.
+    """
+    btc_acc = btc_acc if isinstance(btc_acc, dict) else {}
+    eth_acc = eth_acc if isinstance(eth_acc, dict) else {}
+    btc = _score_pair(btc_acc.get("correct"), btc_acc.get("wrong"))
+    shadow = eth_acc.get("eth_shadow") if isinstance(eth_acc.get("eth_shadow"), dict) else {}
+    try:
+        eth_n = max(0, int(shadow.get("n") or 0))
+    except (TypeError, ValueError):
+        eth_n = 0
+    try:
+        eth_hits = max(0, int(shadow.get("hits") or 0))
+    except (TypeError, ValueError):
+        eth_hits = 0
+    if shadow.get("wrong") is not None:
+        eth = _score_pair(eth_hits, shadow.get("wrong"))
+    else:
+        eth = _score_pair(eth_hits, max(0, eth_n - eth_hits))
+    btc_c, eth_c = btc["correct"], eth["correct"]
+    btc_w, eth_w = btc["wrong"], eth["wrong"]
+    played = btc_c + btc_w + eth_c + eth_w
+    if btc_c > eth_c:
+        ahead = "satoshi"
+        lead = btc_c - eth_c
+        match = f"SATOSHI LEADS {btc_c}–{eth_c}"
+        line = "Satoshi is printing. Vitalik is watching."
+    elif eth_c > btc_c:
+        ahead = "vitalik"
+        lead = eth_c - btc_c
+        match = f"VITALIK LEADS {eth_c}–{btc_c}"
+        line = "Vitalik took the night. Satoshi can chase."
+    else:
+        ahead = "tied"
+        lead = 0
+        match = f"TIED {btc_c}–{eth_c}"
+        if played and btc_w < eth_w:
+            line = "Tied on hits. Fewer scars on the BTC table."
+        elif played and eth_w < btc_w:
+            line = "Tied on hits. ETH table is cleaner tonight."
+        else:
+            line = "Split night. Neither chair blinks."
+    return {
+        "paper": True,
+        "btc": {**btc, "label": f"{btc_c}–{btc_w}"},
+        "eth": {**eth, "label": f"{eth_c}–{eth_w}"},
+        "ahead": ahead,
+        "lead": lead,
+        "match": match,
+        "line": line,
+        "satoshi": f"SATOSHI {btc_c}–{btc_w}",
+        "vitalik": f"{eth_c}–{eth_w} VITALIK",
+    }
+
+
 def paper_stake_for_lock(
     direction: Any,
     lifetime_n: Any = 0,

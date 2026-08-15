@@ -101,9 +101,11 @@
       <p id="ssStatus" class="ss-status">Tap the lit seat</p>
     </div>
     <div id="rivalryStrip" class="rivalry-strip" hidden>
+      <span class="rival-tag">PAPER</span>
       <span id="rivalSat">SATOSHI 0–0</span>
       <b class="rival-vs">VS</b>
       <span id="rivalVit">0–0 VITALIK</span>
+      <span id="rivalLead" class="rival-lead">TIED 0–0</span>
       <span id="rivalTrash" class="rival-trash"></span>
     </div>
     <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
@@ -663,9 +665,9 @@
   <template id="adminDeskTemplate">
     <div class="beast-card settings-card" id="adminToolsCard">
       <div class="beast-title">ADMIN TOOLS</div>
-      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities.</p>
+      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities. Floor scorecard reset lives here — not on the public Floor.</p>
       <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
-        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate</button>
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate &amp; Scorecard</button>
         <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
         <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
       </div>

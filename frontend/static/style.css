@@ -5043,10 +5043,25 @@ body.floor-mode .rivalry-strip:not([hidden]),
 body.mode-floor .rivalry-strip:not([hidden]) {
   display: flex !important;
 }
+.rivalry-strip .rival-tag {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: #7fe9ff;
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
 .rivalry-strip .rival-vs {
   color: #00e8ff;
   font-size: 11px;
 }
+.rivalry-strip .rival-lead {
+  color: #f0c14a;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.rivalry-strip.ahead-satoshi #rivalSat { color: #f0d78a; }
+.rivalry-strip.ahead-vitalik #rivalVit { color: #9dffc0; }
 .rivalry-strip .rival-trash {
   color: #9ec8e0;
   font-family: Rajdhani, sans-serif;

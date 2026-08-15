@@ -145,6 +145,7 @@ class PacksNotDroppedTests(unittest.TestCase):
             "def paper_stake_for_lock",
             "def eth_shadow_pick",
             "def is_eth_shadow_row",
+            "def floor_scorecard",
         ):
             self.assertIn(needle, gates)
         leader = (ROOT / "backend" / "agents" / "leader.py").read_text(encoding="utf-8")
@@ -173,6 +174,27 @@ class PacksNotDroppedTests(unittest.TestCase):
         gate = (ROOT / "backend" / "services" / "follower_gate.py").read_text(encoding="utf-8")
         self.assertIn("empty_lifetime", gate)
         self.assertIn("lifetime_n", (ROOT / "backend" / "main.py").read_text(encoding="utf-8"))
+
+    def test_floor_scorecard_reuses_rivalry_strip(self):
+        live = HTML.split('<template id="adminDeskTemplate">')[0]
+        self.assertIn('id="rivalryStrip"', live)
+        self.assertIn('id="rivalSat"', live)
+        self.assertIn('id="rivalVit"', live)
+        self.assertIn('id="rivalLead"', live)
+        self.assertIn("PAPER", live.split('id="rivalryStrip"', 1)[1].split('id="hourSlam"', 1)[0])
+        self.assertNotIn("btnClearHitRate", live)
+        self.assertNotIn("Reset Floor scorecard", live)
+        admin = HTML.split('<template id="adminDeskTemplate">', 1)[1]
+        self.assertIn("Clear Hit Rate", admin)
+        self.assertIn("Scorecard", admin)
+        self.assertIn("function scorecardFromState", JS)
+        self.assertIn("function updateRivalryStrip", JS)
+        self.assertIn("eth_shadow", JS.split("function scorecardFromState", 1)[1][:900])
+        self.assertIn("SATOSHI LEADS", JS)
+        self.assertNotIn("ZT", HTML.split('id="rivalryStrip"', 1)[1].split('id="hourSlam"', 1)[0])
+        dual = (ROOT / "backend" / "services" / "dual.py").read_text(encoding="utf-8")
+        self.assertIn("floor_scorecard", dual)
+        self.assertIn("scorecard", (ROOT / "backend" / "main.py").read_text(encoding="utf-8"))
 
     def test_follower_stays_off_public_surface(self):
         for needle in ("tabFollower", "FOLLOWER_PASSWORD", "/api/follower/unlock", "/api/follower/order"):

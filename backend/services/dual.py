@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from loguru import logger
 from backend.config import settings
 from backend.services.council import Council
-from backend.agents.chair_gates import build_btc_lead
+from backend.agents.chair_gates import build_btc_lead, floor_scorecard
 
 DUAL_FLOOR_S = 2.0
 BEAST_FLOOR_S = 1.2
@@ -279,6 +279,8 @@ class DualOrchestrator:
         eth_state = self.eth.get_state() if self.eth else None
         # Back-compat top-level = BTC so older UI still renders
         base = {k: v for k, v in btc_state.items() if k not in ("tables", "btc", "eth", "dual")}
+        btc_acc = (btc_state or {}).get("accuracy") or {}
+        eth_acc = (eth_state or {}).get("accuracy") or {}
         base.update({
             "mode": "dual",
             "dual": True,
@@ -292,6 +294,7 @@ class DualOrchestrator:
                 "bitcoin": "satoshi",
                 "ethereum": "vitalik" if self.eth else None,
             },
+            "scorecard": floor_scorecard(btc_acc, eth_acc),
         })
         return base
 

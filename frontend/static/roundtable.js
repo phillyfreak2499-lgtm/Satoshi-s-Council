@@ -155,11 +155,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate to start a clean FINISH-ONLY era? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor Satoshi vs Vitalik scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
-            if (st()) st().textContent = data.ok ? ("Hit rate cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
+            if (st()) st().textContent = data.ok ? ("Hit rate & scorecard cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
           } catch (e) {
             if (st()) st().textContent = "Clear failed: " + e;
           }
@@ -1661,25 +1661,60 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { c, w };
   }
 
+  function scorecardFromState() {
+    if (state && state.scorecard && typeof state.scorecard === "object") {
+      return state.scorecard;
+    }
+    const btcAcc = ((typeof tableState === "function" ? tableState("bitcoin") : null) || state || {}).accuracy || {};
+    const ethAcc = ((typeof tableState === "function" ? tableState("ethereum") : null) || {}).accuracy || {};
+    const btc = accRecord(btcAcc);
+    const sh = (ethAcc && ethAcc.eth_shadow) || {};
+    const ethC = Number(sh.hits) || 0;
+    const ethN = Number(sh.n) || 0;
+    const ethW = sh.wrong != null ? Number(sh.wrong) || 0 : Math.max(0, ethN - ethC);
+    let match = "TIED " + btc.c + "–" + ethC;
+    let line = "Split night. Neither chair blinks.";
+    let ahead = "tied";
+    if (btc.c > ethC) {
+      ahead = "satoshi";
+      match = "SATOSHI LEADS " + btc.c + "–" + ethC;
+      line = "Satoshi is printing. Vitalik is watching.";
+    } else if (ethC > btc.c) {
+      ahead = "vitalik";
+      match = "VITALIK LEADS " + ethC + "–" + btc.c;
+      line = "Vitalik took the night. Satoshi can chase.";
+    } else if ((btc.c + btc.w + ethC + ethW) > 0 && btc.w < ethW) {
+      line = "Tied on hits. Fewer scars on the BTC table.";
+    } else if ((btc.c + btc.w + ethC + ethW) > 0 && ethW < btc.w) {
+      line = "Tied on hits. ETH table is cleaner tonight.";
+    }
+    return {
+      paper: true,
+      ahead: ahead,
+      match: match,
+      line: line,
+      satoshi: "SATOSHI " + btc.c + "–" + btc.w,
+      vitalik: ethC + "–" + ethW + " VITALIK",
+    };
+  }
+
   function updateRivalryStrip() {
     const strip = document.getElementById("rivalryStrip");
     if (!strip) return;
     const onFloor = mode === "floor";
     strip.hidden = !onFloor;
     if (!onFloor) return;
-    const btc = accRecord((tableState("bitcoin") || state || {}).accuracy);
-    const eth = accRecord((tableState("ethereum") || {}).accuracy);
+    const sc = scorecardFromState();
     const sat = document.getElementById("rivalSat");
     const vit = document.getElementById("rivalVit");
+    const lead = document.getElementById("rivalLead");
     const trash = document.getElementById("rivalTrash");
-    if (sat) sat.textContent = "SATOSHI " + btc.c + "–" + btc.w;
-    if (vit) vit.textContent = eth.c + "–" + eth.w + " VITALIK";
-    let line = "Split night. Neither chair blinks.";
-    if (btc.c > eth.c) line = "Satoshi is printing. Vitalik is watching.";
-    else if (eth.c > btc.c) line = "Vitalik took the night. Satoshi can chase.";
-    else if (btc.w < eth.w && (btc.c + btc.w + eth.c + eth.w) > 0) line = "Fewer scars on the BTC table.";
-    else if (eth.w < btc.w && (btc.c + btc.w + eth.c + eth.w) > 0) line = "ETH table is cleaner tonight.";
-    if (trash) trash.textContent = line;
+    if (sat) sat.textContent = sc.satoshi || "SATOSHI 0–0";
+    if (vit) vit.textContent = sc.vitalik || "0–0 VITALIK";
+    if (lead) lead.textContent = sc.match || "TIED 0–0";
+    if (trash) trash.textContent = sc.line || "";
+    strip.classList.remove("ahead-satoshi", "ahead-vitalik", "ahead-tied");
+    strip.classList.add("ahead-" + (sc.ahead || "tied"));
   }
 
   function containPortrait(img, cx, cy, r) {
@@ -7415,11 +7450,11 @@ function drawCandleChart() {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate to start a clean FINISH-ONLY era? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
+          if (!confirm("Reset hit-rate and the Floor Satoshi vs Vitalik scorecard? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
-            if (st()) st().textContent = data.ok ? "Hit rate cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
+            if (st()) st().textContent = data.ok ? "Hit rate & scorecard cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
             // Refresh UI accuracy display
             try {
               const s = await (await fetch("/api/state")).json();

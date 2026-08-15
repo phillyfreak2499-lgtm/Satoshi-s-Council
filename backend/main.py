@@ -143,7 +143,15 @@ async def accuracy():
     btc = await store.get_accuracy(asset="btc")
     eth = await store.get_accuracy(asset="eth")
     all_ = await store.get_accuracy(asset=None)
-    return {"btc": btc, "eth": eth, "combined": all_, "finish_only": True, **all_}
+    from backend.agents.chair_gates import floor_scorecard
+    return {
+        "btc": btc,
+        "eth": eth,
+        "combined": all_,
+        "finish_only": True,
+        "scorecard": floor_scorecard(btc, eth),
+        **all_,
+    }
 
 
 @app.get("/api/huddle")
