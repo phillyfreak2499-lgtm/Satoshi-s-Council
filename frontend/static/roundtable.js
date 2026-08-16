@@ -1172,6 +1172,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         _focusTable: "ats",
       });
     }
+    if (typeof isOracleTable === "function" && isOracleTable(focusTable)) {
+      const focused = tableState("oracle") || oracleTableState();
+      return Object.assign({}, state, {
+        decision: focused.decision || {},
+        locked_call: focused.locked_call || null,
+        agents: Array.isArray(focused.agents) ? focused.agents : [],
+        market: focused.market || {},
+        accuracy: focused.accuracy || {},
+        hierarchy: focused.hierarchy || [],
+        learning: focused.learning || {},
+        weights: focused.weights || {},
+        _focusTable: "oracle",
+      });
+    }
     const focused = tableState(focusTable);
     const other = (isFrontTable(focusTable) || isAtsTable(focusTable))
       ? tableState("ethereum")
@@ -1399,6 +1413,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (key === "ats") return "ares";
     if (key === "ethereum") return "vitalik";
     if (key === "front") return "";
+    if (key === "oracle") return "";
     return "satoshi";
   }
   function chairLockIsReal(lc) {
@@ -3545,7 +3560,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const btn = document.getElementById("phoneBackBtn");
     if (!btn) return;
     const phone = typeof isPhoneDesk === "function" && isPhoneDesk();
-    const show = !!(phone && mode !== "floor" && mode !== "night" && typeof hasDeskAuth === "function" && hasDeskAuth());
+    const show = !!(phone && mode !== "floor" && typeof hasDeskAuth === "function" && hasDeskAuth());
     btn.hidden = !show;
     btn.setAttribute("aria-hidden", show ? "false" : "true");
     btn.textContent = "← FLOOR";
@@ -7380,7 +7395,8 @@ function drawCandleChart() {
     const eth = focusTable === "ethereum";
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
-    el.textContent = ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0")));
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    el.textContent = oracle ? "ORACLE · WATCH" : (ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0"))));
     el.setAttribute("aria-label", "Flip focused Chair");
   }
 
@@ -10637,16 +10653,17 @@ function drawCandleChart() {
       const isEth = isEthTable(focusTable);
       const isFront = isFrontTable(focusTable);
       const isAts = typeof isAtsTable === "function" && isAtsTable(focusTable);
-      document.body.dataset.focusTable = isAts ? "ats" : (isFront ? "front" : (isEth ? "ethereum" : "bitcoin"));
+      const isOracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+      document.body.dataset.focusTable = isOracle ? "oracle" : (isAts ? "ats" : (isFront ? "front" : (isEth ? "ethereum" : "bitcoin")));
       try { syncChairRoom(focusTable, (typeof tableState === "function" ? tableState(focusTable) : null) || state); } catch (e) {}
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
-        if (isEth || isFront || isAts) focusBtc.classList.remove("focus-active");
+        if (isEth || isFront || isAts || isOracle) focusBtc.classList.remove("focus-active");
         else focusBtc.classList.add("focus-active");
       }
       if (focusEth) {
         focusEth.classList.remove("active", "mode-tab");
-        if (isEth && !isFront && !isAts) focusEth.classList.add("focus-active");
+        if (isEth && !isFront && !isAts && !isOracle) focusEth.classList.add("focus-active");
         else focusEth.classList.remove("focus-active");
       }
       if (focusFront) {
@@ -10669,8 +10686,8 @@ function drawCandleChart() {
       if (stage) {
         const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
-          ? "Floor — Satoshi BTC, Vitalik ETH, Raijin DFW, Ares ATS"
-          : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"))));
+          ? "Floor — Satoshi BTC, Vitalik ETH, Raijin DFW, Ares ATS, ORACLE"
+          : (isOracle ? "ORACLE watch table" : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")))));
       }
       try { syncChartPairTitle(); } catch (e) {}
       try { paintFrontWindowChrome(); } catch (e) {}
@@ -10678,7 +10695,8 @@ function drawCandleChart() {
 
     function setFocusTable(which) {
       const w = String(which || "").toLowerCase();
-      if (w === "ats" || w === "ares" || w === "sports") focusTable = "ats";
+      if (w === "oracle" || w === "crt") focusTable = "oracle";
+      else if (w === "ats" || w === "ares" || w === "sports") focusTable = "ats";
       else if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") focusTable = "front";
       else if (w === "ethereum" || w === "eth" || w === "vitalik") focusTable = "ethereum";
       else focusTable = "bitcoin";
@@ -10745,7 +10763,7 @@ function drawCandleChart() {
       phoneScore.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const order = ["ethereum", "bitcoin", "front", "ats"];
+        const order = ["ethereum", "bitcoin", "front", "ats", "oracle"];
         const idx = order.indexOf(focusTable);
         const next = order[(idx + 1) % order.length];
         if (typeof setFocusTable === "function") setFocusTable(next);

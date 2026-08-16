@@ -122,6 +122,10 @@ class FiveLeadersAndClocksTests(unittest.TestCase):
         self.assertIn("function drawOracleCrtHud", JS)
         self.assertTrue((ROOT / "frontend" / "static" / "oracle-wait.jpg").is_file())
         self.assertIn("/oracle-wait.jpg", JS)
+        focus = JS.split("function setFocusTable", 1)[1][:500]
+        self.assertIn('focusTable = "oracle"', focus)
+        self.assertIn('_focusTable: "oracle"', JS)
+        self.assertIn('if (key === "oracle") return ""', JS)
 
     def test_per_leader_timers_exist(self):
         self.assertIn('id="floorLeaderClocks"', HTML)
@@ -138,6 +142,9 @@ class PhoneBackTests(unittest.TestCase):
         self.assertIn("function syncPhoneBackBtn", JS)
         self.assertIn("function wirePhoneBackBtn", JS)
         self.assertIn("setMode(\"floor\")", JS.split("function wirePhoneBackBtn", 1)[1][:400])
+        sync = JS.split("function syncPhoneBackBtn", 1)[1][:500]
+        self.assertIn("mode !== \"floor\"", sync)
+        self.assertNotIn("mode !== \"night\"", sync)
         css = CSS.split(".phone-back-btn", 1)[1][:500]
         self.assertIn("min-height: 44px", css)
         self.assertIn("min-width: 44px", css)

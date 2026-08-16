@@ -7824,7 +7824,8 @@ body.phone-floor .floor-raijin { display: inline-flex !important; }
 body.front-tab-off #tabFront,
 body.front-tab-off #tabFront.active,
 #app > header #tabFront,
-#app > header #tabFront.active { display: none !important; }
+#app > header #tabFront.active,
+#app > header button#tabFront[data-mode="front"] { display: none !important; visibility: hidden !important; pointer-events: none !important; }
 body.mode-floor #windowLed,
 body.floor-mode #windowLed,
 body.phone-floor #windowLed { display: none !important; }
