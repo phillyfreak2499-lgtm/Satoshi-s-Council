@@ -185,7 +185,8 @@ class PhoneWireAndFreezeTests(unittest.TestCase):
         self.assertIn("2026-08-15-phone-gate-nav", WIRE_JS)
         self.assertIn("100% / 100dvw", WIRE_JS)
         self.assertIn("Paper. Follower OFF.", WIRE_JS)
-        self.assertIn("seal the pact", WIRE_JS)
+        self.assertIn("Seal the pact first.", WIRE_JS)
+        self.assertNotIn("Check the pact first.", WIRE_JS)
         self.assertNotIn("ZT", WIRE_JS.split("2026-08-15-phone-gate-se", 1)[1].split("2026-08-15-login-splash", 1)[0])
         self.assertLess(
             WIRE_JS.find("2026-08-15-phone-gate-se"),

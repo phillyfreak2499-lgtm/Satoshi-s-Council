@@ -86,7 +86,7 @@ def floor_chair_layout(w, h, keys, phone=False):
             return out
         cell_h = h / n
         cell_r = _floor_split_table_r(w, cell_h, 1)
-        split = "half" if n == 2 else ("thirds" if n == 3 else "fourths")
+        split = "half" if n == 2 else ("thirds" if n == 3 else ("fourths" if n == 4 else "fifths"))
         for i, k in enumerate(keys):
             out.append({"key": k, "x": w * 0.50, "y": cell_h * (i + 0.5), "r": cell_r, "split": split})
         return out
@@ -104,17 +104,38 @@ def floor_chair_layout(w, h, keys, phone=False):
         out.append({"key": keys[1], "x": w * 0.50, "y": h * 0.50, "r": rr, "split": "thirds"})
         out.append({"key": keys[2], "x": w * (5 / 6), "y": h * 0.50, "r": rr, "split": "thirds"})
         return out
-    rr = _quad_floor_table_r(w, h)
-    slots = {
-        "bitcoin": (w * 0.28, h * 0.30),
-        "ethereum": (w * 0.72, h * 0.30),
-        "front": (w * 0.28, h * 0.72),
-        "ats": (w * 0.72, h * 0.72),
-    }
-    for k in keys:
-        if k in slots:
-            x, y = slots[k]
-            out.append({"key": k, "x": x, "y": y, "r": rr, "split": "fourths"})
+    if n == 4:
+        rr = _quad_floor_table_r(w, h)
+        slots = {
+            "bitcoin": (w * 0.28, h * 0.30),
+            "ethereum": (w * 0.72, h * 0.30),
+            "front": (w * 0.28, h * 0.72),
+            "ats": (w * 0.72, h * 0.72),
+        }
+        for k in keys:
+            if k in slots:
+                x, y = slots[k]
+                out.append({"key": k, "x": x, "y": y, "r": rr, "split": "fourths"})
+        return out
+    want = min(w, h) * 0.15
+    gap_x = w * 0.30
+    gap_y = h * 0.38
+    seat_r = 14
+    label_pad = 20
+    max_rx = max(48, (gap_x - 2 * (seat_r + label_pad) - 10) / (2 * 1.42))
+    max_ry = max(48, (gap_y - 2 * (seat_r + label_pad) - 10) / (2 * 1.42))
+    rr = min(want, max_rx, max_ry)
+    slots5 = [
+        (w * 0.20, h * 0.30),
+        (w * 0.50, h * 0.30),
+        (w * 0.80, h * 0.30),
+        (w * 0.32, h * 0.72),
+        (w * 0.68, h * 0.72),
+    ]
+    for i, k in enumerate(keys):
+        if i < len(slots5):
+            x, y = slots5[i]
+            out.append({"key": k, "x": x, "y": y, "r": rr, "split": "fifths"})
     return out
 
 
@@ -144,10 +165,12 @@ class FloorChairToggleMarkupTests(unittest.TestCase):
         self.assertIn('data-floor-chair="ethereum"', HTML)
         self.assertIn('data-floor-chair="ats"', HTML)
         self.assertIn('data-floor-chair="front"', HTML)
+        self.assertIn('data-floor-chair="oracle"', HTML)
         self.assertIn(">SATOSHI</span>", HTML)
         self.assertIn(">VITALIK</span>", HTML)
         self.assertIn(">ARES</span>", HTML)
         self.assertIn(">RAIJIN</span>", HTML)
+        self.assertIn(">ORACLE</span>", HTML)
         self.assertIn("function visibleFloorChairs(", JS)
         self.assertIn("function floorChairLayout(", JS)
         self.assertIn("function setFloorChairOn(", JS)
@@ -162,9 +185,9 @@ class FloorChairToggleMarkupTests(unittest.TestCase):
         self.assertNotIn('id="floorChairToggles"', HTML.split('id="tabScreensaver"', 1)[1].split('id="settingsView"', 1)[0][:80])
 
     def test_default_all_on(self):
-        self.assertIn("bitcoin: true, ethereum: true, front: true, ats: true", JS)
+        self.assertIn("bitcoin: true, ethereum: true, front: true, ats: true, oracle: true", JS)
         checks = HTML.split('id="floorChairToggles"', 1)[1].split("</div>", 1)[0]
-        self.assertEqual(checks.count("checked"), 4)
+        self.assertEqual(checks.count("checked"), 5)
 
 
 class LeftoverGrowLayoutTests(unittest.TestCase):
@@ -263,8 +286,12 @@ class FloorLeadersOnlyTests(unittest.TestCase):
         self.assertIn("if (floorLikeMode())", art)
         self.assertIn("drawFloorAttractGlow(cx, cy, radius, chairKeyOf(focusTable))", art)
         self.assertIn("Seat-bot rings stay on Table / Seats", art)
-        self.assertNotIn("ORA", JS.split("const FLOOR_CHAIR_KEYS", 1)[1][:400])
-        self.assertNotIn("oracle", JS.split("const FLOOR_CHAIR_KEYS", 1)[1][:400].lower())
+        keys = JS.split("const FLOOR_CHAIR_KEYS", 1)[1][:400]
+        self.assertIn("oracle", keys.lower())
+        self.assertIn("bitcoin", keys)
+        self.assertIn("ethereum", keys)
+        self.assertIn("front", keys)
+        self.assertIn("ats", keys)
         self.assertIn("function chairLockIsReal(", JS)
         self.assertIn("function drawThinkingRing(", JS)
         self.assertIn("function drawLockIgnition(", JS)

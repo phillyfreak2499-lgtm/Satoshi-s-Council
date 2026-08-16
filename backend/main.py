@@ -1408,6 +1408,11 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "raijin-wait.jpg", media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/oracle-wait.jpg")
+    async def oracle_wait():
+        return FileResponse(STATIC_DIR / "oracle-wait.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/ares-chair.png")
     async def ares_chair_png():
         return FileResponse(STATIC_DIR / "ares-chair.png", media_type="image/png",

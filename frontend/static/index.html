@@ -135,7 +135,39 @@
         <input type="checkbox" data-floor-chair="front" checked />
         <span>RAIJIN</span>
       </label>
+      <label class="floor-chair-tog" title="Oracle on the Floor">
+        <input type="checkbox" data-floor-chair="oracle" checked />
+        <span>ORACLE</span>
+      </label>
     </div>
+    <div id="floorLeaderClocks" class="floor-leader-clocks" hidden aria-label="Per-leader window clocks">
+      <div class="floor-leader-clock" data-floor-clock="bitcoin" hidden>
+        <span class="flc-name">SATOSHI</span>
+        <span class="flc-win">1H</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="ethereum" hidden>
+        <span class="flc-name">VITALIK</span>
+        <span class="flc-win">1H</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="front" hidden>
+        <span class="flc-name">RAIJIN</span>
+        <span class="flc-win">DFW</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="ats" hidden>
+        <span class="flc-name">ARES</span>
+        <span class="flc-win">KICK</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="oracle" hidden>
+        <span class="flc-name">ORACLE</span>
+        <span class="flc-win">WATCH</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+    </div>
+    <button type="button" id="phoneBackBtn" class="phone-back-btn" hidden aria-label="Back to Floor">← FLOOR</button>
     <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden aria-label="Start Seat Storm">KILL TIME / PLAY</button>
     <div id="seatStormPlay" class="seat-storm-play hidden" hidden aria-hidden="true">
       <div class="ss-hud">
@@ -241,7 +273,7 @@
         <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">WIRE</button>
         <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
         <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
-        <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
+        <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden aria-hidden="true" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>

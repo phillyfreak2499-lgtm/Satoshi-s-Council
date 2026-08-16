@@ -7822,7 +7822,63 @@ body.mode-art .floor-raijin { display: none; }
 body.night-mode .floor-raijin { display: none !important; }
 body.phone-floor .floor-raijin { display: inline-flex !important; }
 body.front-tab-off #tabFront,
-body.front-tab-off #tabFront.active { display: none !important; }
+body.front-tab-off #tabFront.active,
+#app > header #tabFront,
+#app > header #tabFront.active { display: none !important; }
+body.mode-floor #windowLed,
+body.floor-mode #windowLed,
+body.phone-floor #windowLed { display: none !important; }
+.floor-leader-clocks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+}
+body:not(.mode-floor):not(.floor-mode) .floor-leader-clocks { display: none !important; }
+.floor-leader-clock {
+  position: absolute;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 4px 8px;
+  transform: translate(-50%, 0);
+  background: rgba(6, 10, 14, 0.82);
+  border: 1px solid rgba(0, 232, 255, 0.35);
+  box-shadow: 0 0 12px rgba(0, 232, 255, 0.16);
+  color: #7fe9ff;
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  line-height: 1.2;
+}
+.floor-leader-clock[data-floor-clock="oracle"] {
+  border-color: rgba(255, 80, 200, 0.45);
+  color: #f0b8ff;
+  box-shadow: 0 0 14px rgba(255, 80, 200, 0.22), inset 0 0 10px rgba(0, 232, 255, 0.08);
+}
+.floor-leader-clock .flc-name { display: block; opacity: 0.8; }
+.floor-leader-clock .flc-win { display: block; font-size: 9px; opacity: 0.7; }
+.floor-leader-clock .flc-time { display: block; font-size: 14px; color: #e8b86a; }
+.phone-back-btn {
+  display: none;
+  position: fixed;
+  left: max(8px, env(safe-area-inset-left, 8px));
+  bottom: max(12px, env(safe-area-inset-bottom, 12px));
+  z-index: 80;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 14px;
+  border: 1px solid rgba(201, 148, 62, 0.45);
+  background: rgba(14, 12, 10, 0.92);
+  color: #e8b86a;
+  font-family: Orbitron, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .phone-back-btn:not([hidden]) { display: inline-flex !important; align-items: center; }
+}
 body.front-chair-off .floor-raijin,
 body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
 
@@ -8731,6 +8787,16 @@ body.mode-seats #mainTable { display: none !important; }
 #passwordGate .gate-btn-summon:hover:not(:disabled) {
   box-shadow: 0 0 20px rgba(0, 196, 212, 0.14), 0 0 12px rgba(201, 148, 62, 0.16) !important;
 }
+#passwordGate .gate-summon-hit {
+  display: block;
+  width: 100%;
+  pointer-events: auto;
+}
+#passwordGate .gate-btn-summon:disabled,
+#passwordGate .gate-btn-summon[disabled],
+#passwordGate #passwordSubmit:disabled {
+  pointer-events: none;
+}
 #passwordGate .password-error {
   color: #e07070;
 }
@@ -8832,6 +8898,12 @@ body.mode-seats #mainTable { display: none !important; }
   #passwordGate .gate-summon-hit {
     display: block;
     width: 100%;
+    pointer-events: auto;
+  }
+  #passwordGate .gate-btn-summon:disabled,
+  #passwordGate .gate-btn-summon[disabled],
+  #passwordGate #passwordSubmit:disabled {
+    pointer-events: none;
   }
   #passwordGate .gate-btn-summon {
     min-height: 44px;

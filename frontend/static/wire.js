@@ -2,6 +2,54 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-phone-oracle",
+    "at": "2026-08-16T02:20:00-05:00",
+    "title": "ORACLE sits as the fifth Floor leader",
+    "why": "Floor is five equal chairs: Satoshi, Vitalik, Raijin, Ares, ORACLE. CRT/neon HUD. Face-only placeholder — no signed ORACLE portrait in the repo. SIBYL/PIT/VEIL/MARBLE roster is not parked here. ORACLE does not place orders. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-floor-clocks",
+    "at": "2026-08-16T02:15:00-05:00",
+    "title": "Each Floor leader keeps its own clock",
+    "why": "One middle hour LED hid the real windows. BTC and ETH keep 1H. Raijin keeps DFW high. Ares keeps kick. ORACLE is WATCH. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-phone-back",
+    "at": "2026-08-16T02:10:00-05:00",
+    "title": "Phone views get a Floor back control",
+    "why": "On a 390 phone every tab needed a way out. A 44px ← FLOOR hit sits one-handed. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-front-tab-off",
+    "at": "2026-08-16T02:05:00-05:00",
+    "title": "THE FRONT leaves the nav",
+    "why": "Front is not a tab. Raijin stays a Floor chair. Weather table stays in the tree. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-park-intro",
+    "at": "2026-08-16T02:00:00-05:00",
+    "title": "SUMMON skips the parked clips",
+    "why": "Zach is remaking the openings. After agree + code + SUMMON the desk stays. No clip. No fullscreen. Gate stays hidden. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-phone-gate-pact-err",
+    "at": "2026-08-16T01:50:00-05:00",
+    "title": "Agree-off now speaks",
+    "why": "Enter or SUMMON with the pact open used to do nothing. Disabled SUMMON no longer swallows the tap. The gate now says Seal the pact first. on the error line next to agree. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-15-phone-gate-se",
+    "at": "2026-08-16T01:40:00-05:00",
+    "title": "Short phones keep SUMMON on screen",
+    "why": "SE / Safari chrome at 390×667 lost SUMMON under a 36vh pad and a flex-end overlay iOS will not scroll. Short height drops the pad. Tall phones keep 36vh + flex-end on a hidden overlay, not a scroll. SUMMON is a real footer. Agree-off now says Seal the pact first. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-15-phone-gate-nav",
+    "at": "2026-08-16T01:30:00-05:00",
+    "title": "Phone gate and nav use the real device width",
+    "why": "iPhone 390 had a dead side strip and SUMMON dropped under the fold and the keyboard. Body now follows 100% / 100dvw — no 375 lock. Agree + SUMMON stick to the bottom with a 44px tap row. Pact type is 16px on phone. Tab row scrolls with fade and arrows. Floor is one-handed and the leader stays tappable. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-desk-unlock-stay",
     "at": "2026-08-16T00:20:00-05:00",
     "title": "Unlock stays on the desk",
@@ -12,18 +60,6 @@ window.COUNCIL_WIRE = [
     "at": "2026-08-15T23:59:00-05:00",
     "title": "Chair hit slate reset after tape",
     "why": "90-day Kalshi tape replay merged into seat brains (3,053 hours; BTC 1,508 / ETH 1,545). WICK/STRIKE/CLOCK/DRIFT got the most. CARRY/CHAIN/CASCADE stayed empty (CoinGlass Upgrade plan). Displayed Chair hit count reset so the old 2/7 doesn’t sit on the new weights. Paper only. Follower OFF."
-  },
-  {
-    "id": "2026-08-15-phone-gate-se",
-    "at": "2026-08-16T00:45:00-05:00",
-    "title": "Short phones keep SUMMON on screen",
-    "why": "SE / Safari chrome at 390×667 lost SUMMON under a 36vh pad and a flex-end overlay iOS will not scroll. Short height drops the pad. SUMMON is a real footer. Agree-off now says seal the pact. Paper. Follower OFF."
-  },
-  {
-    "id": "2026-08-15-phone-gate-nav",
-    "at": "2026-08-15T23:58:00-05:00",
-    "title": "Phone gate and nav use the real device width",
-    "why": "iPhone 390 had a dead side strip and SUMMON dropped under the fold and the keyboard. Body now follows 100% / 100dvw — no 375 lock. Agree + SUMMON stick to the bottom with a 44px tap row. Pact type is 16px on phone. Tab row scrolls with fade and arrows. Floor is one-handed and the leader stays tappable. Paper. Follower OFF."
   },
   {
     "id": "2026-08-15-login-splash",

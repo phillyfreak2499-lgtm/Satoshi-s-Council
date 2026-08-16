@@ -13,6 +13,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     console.error("roundtable canvas missing");
   }
   const ctx = canvas ? canvas.getContext("2d") : null;
+  try { document.body.classList.add("front-tab-off"); } catch (e) {}
 
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
   const ADMIN_PASSWORD = "5152622439";
@@ -387,6 +388,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (d === "UP" || d === "UP_HOLD") return "/raijin-up.jpg";
     if (d === "DOWN" || d === "DOWN_HOLD") return "/raijin-down.jpg";
     return "/raijin-wait.jpg";
+  }
+  const oraclePortrait = new Image();
+  oraclePortrait.crossOrigin = "anonymous";
+  oraclePortrait.src = "/oracle-wait.jpg";
+  function isOracleTable(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    return w === "oracle" || w === "sibyl";
   }
   chairImages.UP_HOLD = chairImages.UP;
   chairImages.DOWN_HOLD = chairImages.DOWN;
@@ -1092,7 +1100,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       learning: { hierarchy: hierarchy },
     };
   }
+  function oracleTableState() {
+    return {
+      agents: [{
+        agent_name: "leader",
+        display_name: "ORACLE",
+        title: "CRT · Oracle",
+        direction: "WAIT",
+        confidence: 0,
+        reasoning: "ORACLE does not place orders.",
+        summary: "WATCH · no ticket",
+      }],
+      decision: { direction: "WAIT", confidence: 0, summary: "ORACLE does not place orders." },
+      locked_call: null,
+      market: { window_kind: "watch", window_label: "WATCH", seconds_left: null, time_remaining: null },
+      leader_name: "ORACLE",
+      asset: "oracle",
+      accuracy: { correct: 0, total: 0, wrong: 0, label: "ORACLE · WATCH" },
+      hierarchy: [],
+    };
+  }
   function tableState(which) {
+    if (isOracleTable(which)) return oracleTableState();
     if (isAtsTable(which)) return atsTableState();
     if (isFrontTable(which)) return frontTableState();
     if (!state) return null;
@@ -2045,21 +2074,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return w === "ethereum" || w === "eth" || w === "vitalik";
   }
   function chairNameOf(which) {
+    if (isOracleTable(which)) return "ORACLE";
     if (isAtsTable(which)) return "ARES";
     if (isFrontTable(which)) return "RAIJIN";
     return isEthTable(which) ? "VITALIK" : "SATOSHI";
   }
   function chairTitleOf(which) {
+    if (isOracleTable(which)) return "CRT · Oracle";
     if (isAtsTable(which)) return "ATS · Ares";
     if (isFrontTable(which)) return "DFW · Raijin";
     return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
   }
   function chairBadgeOf(which) {
+    if (isOracleTable(which)) return "CRT · ORACLE";
     if (isAtsTable(which)) return "ATS · ARES";
     if (isFrontTable(which)) return "DFW · RAIJIN";
     return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
   }
   function chairPortraitOf(which, dir) {
+    if (isOracleTable(which)) return oraclePortrait;
     if (isAtsTable(which)) return aresPortrait;
     if (isFrontTable(which)) return raijinPortraitFor(wxEye(dir));
     return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
@@ -2831,6 +2864,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function chairKeyOf(which) {
+    if (isOracleTable(which)) return "oracle";
     if (isAtsTable(which)) return "ats";
     if (isFrontTable(which)) return "front";
     return isEthTable(which) ? "ethereum" : "bitcoin";
@@ -3351,10 +3385,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   // Floor Chair leftover grow. Reuse rooms / rings. Scale the visible set.
-  const FLOOR_CHAIR_KEYS = ["bitcoin", "ethereum", "front", "ats"];
+  const FLOOR_CHAIR_KEYS = ["bitcoin", "ethereum", "front", "ats", "oracle"];
   const FLOOR_CHAIR_STORE = "council_floor_chairs";
   function loadFloorChairOn() {
-    const on = { bitcoin: true, ethereum: true, front: true, ats: true };
+    const on = { bitcoin: true, ethereum: true, front: true, ats: true, oracle: true };
     try {
       const raw = localStorage.getItem(FLOOR_CHAIR_STORE);
       if (!raw) return on;
@@ -3374,6 +3408,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (which === "ethereum") return chairNameOf("ethereum") + " · ETH";
     if (which === "front") return chairNameOf("front") + " · DWF";
     if (which === "ats") return chairNameOf("ats") + " · ATS";
+    if (which === "oracle") return chairNameOf("oracle") + " · CRT";
     return chairNameOf("bitcoin") + " · BTC";
   }
   function floorSplitTableR(w, h, n) {
@@ -3415,7 +3450,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }
       const cellH = h / n;
       const cellR = floorSplitTableR(w, cellH, 1);
-      const split = n === 2 ? "half" : (n === 3 ? "thirds" : "fourths");
+      const split = n === 2 ? "half" : (n === 3 ? "thirds" : (n === 4 ? "fourths" : "fifths"));
       for (let i = 0; i < n; i++) {
         out.push({ key: keys[i], x: w * 0.50, y: cellH * (i + 0.5), r: cellR, split: split });
       }
@@ -3438,16 +3473,31 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       out.push({ key: keys[2], x: w * (5 / 6), y: h * 0.50, r: rr, split: "thirds" });
       return out;
     }
-    const rr = quadFloorTableR(w, h);
-    const slots = [
-      { key: "bitcoin", x: w * 0.28, y: h * 0.30 },
-      { key: "ethereum", x: w * 0.72, y: h * 0.30 },
-      { key: "front", x: w * 0.28, y: h * 0.72 },
-      { key: "ats", x: w * 0.72, y: h * 0.72 },
+    if (n === 4) {
+      const rr = quadFloorTableR(w, h);
+      const slots = [
+        { key: "bitcoin", x: w * 0.28, y: h * 0.30 },
+        { key: "ethereum", x: w * 0.72, y: h * 0.30 },
+        { key: "front", x: w * 0.28, y: h * 0.72 },
+        { key: "ats", x: w * 0.72, y: h * 0.72 },
+      ];
+      keys.forEach(function (k) {
+        const slot = slots.filter(function (s) { return s.key === k; })[0];
+        if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fourths" });
+      });
+      return out;
+    }
+    const rr = pentaFloorTableR(w, h);
+    const slots5 = [
+      { x: w * 0.20, y: h * 0.30 },
+      { x: w * 0.50, y: h * 0.30 },
+      { x: w * 0.80, y: h * 0.30 },
+      { x: w * 0.32, y: h * 0.72 },
+      { x: w * 0.68, y: h * 0.72 },
     ];
-    keys.forEach(function (k) {
-      const slot = slots.filter(function (s) { return s.key === k; })[0];
-      if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fourths" });
+    keys.forEach(function (k, i) {
+      const slot = slots5[i];
+      if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fifths" });
     });
     return out;
   }
@@ -3491,7 +3541,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.hidden = !on || mode === "night";
     btn.setAttribute("aria-hidden", on ? "false" : "true");
   }
+  function syncPhoneBackBtn() {
+    const btn = document.getElementById("phoneBackBtn");
+    if (!btn) return;
+    const phone = typeof isPhoneDesk === "function" && isPhoneDesk();
+    const show = !!(phone && mode !== "floor" && mode !== "night" && typeof hasDeskAuth === "function" && hasDeskAuth());
+    btn.hidden = !show;
+    btn.setAttribute("aria-hidden", show ? "false" : "true");
+    btn.textContent = "← FLOOR";
+  }
+  function wirePhoneBackBtn() {
+    const btn = document.getElementById("phoneBackBtn");
+    if (!btn || btn.__wiredBack) return;
+    btn.__wiredBack = true;
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      try { setMode("floor"); } catch (err) {}
+    });
+  }
 
+  function pentaFloorTableR(w, h) {
+    const want = Math.min(w, h) * 0.15;
+    const gapX = w * 0.30;
+    const gapY = h * 0.38;
+    const seatR = 14;
+    const labelPad = 20;
+    const maxRx = Math.max(48, (gapX - 2 * (seatR + labelPad) - 10) / (2 * 1.42));
+    const maxRy = Math.max(48, (gapY - 2 * (seatR + labelPad) - 10) / (2 * 1.42));
+    return Math.min(want, maxRx, maxRy);
+  }
   function dualFloorTableR(w, h) {
     // Satoshi/Vitalik stay dual. Shrink the rings so they do not crush at 1042.
     const want = Math.min(w, h) * 0.26;
@@ -3785,8 +3863,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const focus = String(focusTable || "");
     if (n === 4 && !phone) {
       const tableR = quadFloorTableR(w, h);
-      drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
-      drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
+      drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus) && !isOracleTable(focus));
+      drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus) && !isOracleTable(focus));
       drawTableWithBots(w * 0.28, h * 0.72, tableR, "front", chairNameOf("front") + " · DWF", isFrontTable(focus));
       drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats", chairNameOf("ats") + " · ATS", isAtsTable(focus));
     } else {
@@ -3796,6 +3874,73 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
     ctx.restore();
+    try { paintFloorLeaderClocks(w, h, slots); } catch (e) {}
+  }
+
+  function drawOracleCrtHud(cx, cy, pr) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr + 6, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.55)";
+    ctx.lineWidth = 2;
+    ctx.shadowColor = "rgba(255, 80, 200, 0.55)";
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr + 10, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 80, 200, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function chairWindowClock(key) {
+    const st = (typeof tableState === "function" ? tableState(key) : null) || {};
+    const m = st.market || {};
+    let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
+    if (secs == null && m.close_time) {
+      const ms = Date.parse(m.close_time);
+      if (Number.isFinite(ms)) secs = (ms - Date.now()) / 1000;
+    }
+    let label = "1H";
+    if (key === "front") label = m.window_label || "DFW";
+    else if (key === "ats") label = m.window_label || "KICK";
+    else if (key === "oracle") label = "WATCH";
+    let display = "—";
+    if (secs != null && !isNaN(secs)) {
+      const s = Math.max(0, Math.floor(Number(secs)));
+      display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }
+    return { label: label, display: display };
+  }
+
+  function paintFloorLeaderClocks(w, h, slots) {
+    const host = document.getElementById("floorLeaderClocks");
+    if (!host) return;
+    const on = (typeof floorLikeMode === "function") ? floorLikeMode() : (mode === "floor");
+    host.hidden = !on || mode === "night";
+    if (host.hidden) return;
+    const stage = document.getElementById("tableStage") || document.getElementById("roundtable");
+    const sw = (stage && stage.clientWidth) || w || 1;
+    const sh = (stage && stage.clientHeight) || h || 1;
+    const vis = {};
+    (slots || []).forEach(function (s) { vis[s.key] = s; });
+    host.querySelectorAll("[data-floor-clock]").forEach(function (el) {
+      const key = el.getAttribute("data-floor-clock");
+      const slot = vis[key];
+      if (!slot) {
+        el.hidden = true;
+        return;
+      }
+      el.hidden = false;
+      const clock = chairWindowClock(key);
+      const win = el.querySelector(".flc-win");
+      const time = el.querySelector("[data-flc-time]");
+      if (win) win.textContent = clock.label;
+      if (time) time.textContent = clock.display;
+      el.style.left = ((slot.x / sw) * 100) + "%";
+      el.style.top = (((slot.y + slot.r * 0.92) / sh) * 100) + "%";
+    });
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
@@ -3876,6 +4021,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     if (typeof isFrontTable === "function" && isFrontTable(which)) {
       try { drawRaijinEyeTint(cx, portraitY, pr, dir); paintRaijinEyes(dir); } catch (e) {}
+    }
+    if (typeof isOracleTable === "function" && isOracleTable(which)) {
+      try { drawOracleCrtHud(cx, portraitY, pr); } catch (e) {}
     }
     rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
@@ -9414,6 +9562,7 @@ function drawCandleChart() {
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
     try { syncFloorExitBtn(); } catch (e) {}
+    try { syncPhoneBackBtn(); } catch (e) {}
     try { syncFloorChairToggles(); } catch (e) {}
     try { syncSeatSpinBtn(); } catch (e) {}
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
@@ -9692,6 +9841,16 @@ function drawCandleChart() {
     if (lastUpdateEl) lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(((typeof tableState === "function" ? tableState(focusTable) : null) || state || {}).accuracy || state.accuracy);
     try { paintTableHud(); } catch (e) {}
+    try {
+      if (typeof floorLikeMode === "function" && floorLikeMode() && typeof paintFloorLeaderClocks === "function") {
+        const canvas = document.getElementById("roundtable");
+        const keys = (typeof visibleFloorChairs === "function") ? visibleFloorChairs() : [];
+        const w = canvas ? canvas.width : 0;
+        const h = canvas ? canvas.height : 0;
+        const slots = (typeof floorChairLayout === "function") ? floorChairLayout(w, h, keys, typeof isPhoneDesk === "function" && isPhoneDesk()) : [];
+        paintFloorLeaderClocks(w, h, slots);
+      }
+    } catch (e) {}
     updateLaw(state.law);
     if (!deskCinematicOn()) updateHuddle(state.huddle);
     try { syncChartPairTitle(); } catch (e) {}
@@ -10321,73 +10480,8 @@ function drawCandleChart() {
   }
 
   function runSummonSequence(fog) {
-    ensureAudio();
-    const gate = document.getElementById("summonGate");
-    const inner = document.getElementById("gateInner");
-    const tut = document.getElementById("gateTutorial");
-    const status = document.getElementById("summonStatus");
-    const wrap = document.getElementById("summonVideoWrap");
-    const vid = document.getElementById("summonVideo");
-    const skipBtn = document.getElementById("summonVideoSkip");
-
-    if (inner) inner.classList.add("hidden");
-    if (tut) tut.classList.add("hidden");
-    if (status) status.classList.add("hidden");
-    if (gate) gate.classList.add("summoning");
-    document.body.classList.add("gate-revealing");
-
-    // Prefer the cinematic video full-viewport
-    if (vid && wrap) {
-      wrap.classList.remove("hidden");
-      wrap.classList.add("active");
-      wrap.setAttribute("aria-hidden", "false");
-      const fogBed = document.getElementById("summonFogOverlay");
-      if (fogBed) fogBed.style.opacity = "0.55";
-      try { vid.currentTime = 0; } catch (e) {}
-      vid.muted = !!soundMuted;
-      // Try true browser fullscreen on the video wrap
-      const goFs = () => {
-        const el = wrap;
-        const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-        if (req) {
-          try { req.call(el); } catch (e) {}
-        }
-      };
-      const onEnded = () => {
-        vid.removeEventListener("ended", onEnded);
-        finishSummon(fog);
-      };
-      vid.addEventListener("ended", onEnded);
-      if (skipBtn) {
-        skipBtn.onclick = () => {
-          vid.removeEventListener("ended", onEnded);
-          finishSummon(fog);
-        };
-      }
-      const playPromise = vid.play();
-      if (playPromise && playPromise.then) {
-        playPromise.then(() => {
-          goFs();
-          // If user had sound on, try unmute after gesture-backed play
-          if (!soundMuted) {
-            try { vid.muted = false; } catch (e) {}
-          }
-        }).catch(() => {
-          // Autoplay blocked — mute and retry, still show fullscreen visual
-          vid.muted = true;
-          vid.play().then(goFs).catch(() => {
-            // Fall back to fog text sequence
-            wrap.classList.add("hidden");
-            runSummonFogFallback(fog);
-          });
-        });
-      } else {
-        goFs();
-      }
-      return;
-    }
-
-    runSummonFogFallback(fog);
+    // Parked cinematic. Go straight to the desk. No clip. No fullscreen.
+    try { finishSummon(fog); } catch (e) { try { dismissGate(false, "floor"); } catch (e2) {} }
   }
 
   function runSummonFogFallback(fog) {
@@ -11253,7 +11347,11 @@ function drawCandleChart() {
       if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
-      try { setFocusTable(hit.which); } catch (err) {}
+      if (hit.which === "front") {
+        try { setFocusTable("front"); } catch (err) {}
+      } else {
+        try { setFocusTable(hit.which); } catch (err) {}
+      }
     };
     targets.forEach((el) => {
       if (el.__chairClickWired) return;
@@ -11278,6 +11376,7 @@ function drawCandleChart() {
     syncFloorChairToggles();
   }
   wireFloorChairToggles();
+  wirePhoneBackBtn();
   initSeatStorm();
 
   function checkWinStreakCelebrate(acc) {
@@ -11383,7 +11482,7 @@ function drawCandleChart() {
     chk("setFrontDallas", true);
     const dallas = document.getElementById("setFrontDallas");
     if (dallas) dallas.disabled = true;
-    document.body.classList.toggle("front-tab-off", F.show_tab === false);
+    document.body.classList.add("front-tab-off");
     document.body.classList.toggle("front-chair-off", F.show_floor_chair === false);
     if (F.show_tab === false && typeof mode !== "undefined" && mode === "front") {
       try { setMode("art"); } catch (e) {}
@@ -11551,7 +11650,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "front", "charts", "settings"];
+    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
@@ -11838,92 +11937,12 @@ function drawCandleChart() {
   const DESK_INTRO_KEY = "council_desk_intro_played";
 
   function prefetchDeskIntroVideo() {
-    // Warm zt-intro.mp4 while the desk-code gate is up. Do not load() or swap src.
-    const vid = document.getElementById("deskIntroVideo");
-    if (vid) vid.preload = "auto";
-    try {
-      fetch("/zt-intro.mp4", { cache: "force-cache", credentials: "same-origin" }).catch(function () {});
-    } catch (e) {}
+    // Parked. Zach is remaking the clips. Do not warm or play.
   }
 
   function playDeskUnlockIntro() {
-    // Post-desk-code opening. Plays ONLY /zt-intro.mp4. Never re-lock. No fullscreen.
-    function stayUnlocked() {
-      try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
-    }
-    try {
-      if (sessionStorage.getItem(DESK_INTRO_KEY) === "1") {
-        stayUnlocked();
-        return;
-      }
-    } catch (e) {}
-    if (window.__deskIntroPlaying) return;
-    const wrap = document.getElementById("deskIntroWrap");
-    const vid = document.getElementById("deskIntroVideo");
-    const skipBtn = document.getElementById("deskIntroSkip");
-    try { sessionStorage.setItem(DESK_INTRO_KEY, "1"); } catch (e) {}
-    if (!wrap || !vid) {
-      stayUnlocked();
-      return;
-    }
-    if (vid.currentSrc && !/zt-intro\.mp4/i.test(vid.currentSrc)) {
-      stayUnlocked();
-      return;
-    }
-
-    window.__deskIntroPlaying = true;
-    wrap.classList.remove("hidden");
-    wrap.classList.add("active");
-    wrap.setAttribute("aria-hidden", "false");
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.setAttribute("playsinline", "");
-    vid.setAttribute("webkit-playsinline", "");
-    try { vid.currentTime = 0; } catch (e) {}
-
-    let safety = null;
-    const cleanup = function () {
-      if (!window.__deskIntroPlaying) {
-        stayUnlocked();
-        return false;
-      }
-      window.__deskIntroPlaying = false;
-      if (safety) { clearTimeout(safety); safety = null; }
-      try { vid.pause(); } catch (e) {}
-      wrap.classList.add("hidden");
-      wrap.classList.remove("active");
-      wrap.setAttribute("aria-hidden", "true");
-      stayUnlocked();
-      return true;
-    };
-    window.__dismissDeskIntro = function () {
-      return cleanup();
-    };
-
-    vid.onended = function () { cleanup(); };
-    vid.onerror = function () { cleanup(); };
-    if (skipBtn) skipBtn.onclick = function (e) { if (e) e.stopPropagation(); cleanup(); };
-    wrap.onclick = function () { cleanup(); };
-
-    safety = setTimeout(function () {
-      if (!window.__deskIntroPlaying) return;
-      if (vid.paused && vid.currentTime < 0.05) cleanup();
-    }, 10000);
-
-    const p = vid.play();
-    if (p && p.then) {
-      p.then(function () {
-        try { vid.muted = false; } catch (e) {}
-      }).catch(function () {
-        vid.muted = true;
-        const p2 = vid.play();
-        if (p2 && p2.then) {
-          p2.catch(function () { cleanup(); });
-        } else {
-          cleanup();
-        }
-      });
-    }
+    // Parked. After SUMMON go straight to the desk. No clip. No fullscreen.
+    try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
   }
   window.playDeskUnlockIntro = playDeskUnlockIntro;
   window.prefetchDeskIntroVideo = prefetchDeskIntroVideo;
@@ -11938,7 +11957,6 @@ function drawCandleChart() {
     if (typeof window.revealAppAfterDeskUnlock === "function") {
       window.revealAppAfterDeskUnlock();
     }
-    try { playDeskUnlockIntro(); } catch (e) {}
     document.body.classList.remove("admin-unlocked");
     const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
     if (onboarded) {
@@ -12227,6 +12245,7 @@ function drawCandleChart() {
 /* ===== SUMMON VIDEO + FOG REVEAL ===== */
 (function () {
   function playSummonVideoThenReveal() {
+    try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
     if (typeof window.runSummonSequence === "function") {
       window.runSummonSequence(window.__councilFog || null);
       return;
