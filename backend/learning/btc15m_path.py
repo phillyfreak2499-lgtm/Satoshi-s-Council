@@ -116,12 +116,48 @@ def is_chalk(ask: Any) -> bool:
     return px >= CHALK_CENTS or px <= (100.0 - CHALK_CENTS)
 
 
+def _ask_cents(raw: Any) -> Optional[float]:
+    try:
+        px = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if px <= 0.0:
+        return None
+    if px <= 1.0:
+        px *= 100.0
+    return max(1.0, min(99.0, px))
+
+
+def real_yes_no_asks(
+    *,
+    yes_ask: Any = None,
+    no_ask: Any = None,
+    yes_bid: Any = None,
+    no_bid: Any = None,
+) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Lift prices for a paper fill. Never mid.
+    Missing NO ask may be 100 − yes_bid (the real other door).
+    Missing YES ask may be 100 − no_bid.
+    """
+    ya = _ask_cents(yes_ask)
+    na = _ask_cents(no_ask)
+    yb = _ask_cents(yes_bid)
+    nb = _ask_cents(no_bid)
+    if ya is None and nb is not None:
+        ya = max(1.0, min(99.0, 100.0 - nb))
+    if na is None and yb is not None:
+        na = max(1.0, min(99.0, 100.0 - yb))
+    return ya, na
+
+
 def dual_attractive(
     yes_ask: Any,
     no_ask: Any,
     *,
     min_left: float = DUAL_MIN_LEFTOVER,
 ) -> bool:
+    """Both legs only when UP ask + DOWN ask leaves room after vig."""
     if not in_playable_band(yes_ask) or not in_playable_band(no_ask):
         return False
     if is_chalk(yes_ask) or is_chalk(no_ask):
@@ -430,6 +466,10 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
     if yes_ask is None or no_ask is None:
         return PathDecision("SIT", [], "no_asks")
 
+    # Dead 99¢ book = sit. You cannot scale / dual / open out of chalk.
+    if is_chalk(yes_ask) or is_chalk(no_ask) or inp.chalk:
+        return PathDecision("SIT", [], "chalk")
+
     left = combined_leftover(yes_ask, no_ask)
     if dual_attractive(yes_ask, no_ask):
         missing = [s for s in ("UP", "DOWN") if s not in held]
@@ -452,6 +492,7 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
             and mark is not None
             and ask is not None
             and in_playable_band(ask)
+            and not is_chalk(ask)
             and (float(mark) - float(leg.entry_cents)) >= SCALE_EDGE_CENTS
             and book.units_on(lean) < MAX_UNITS_PER_SIDE
         ):
@@ -462,6 +503,9 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
             )
 
     if lean in ("UP", "DOWN") and lean not in held:
+        # A second door is DUAL-only (leftover after vig). Never OPEN into both.
+        if held:
+            return PathDecision("SIT", [], "second_leg_needs_leftover")
         ask = side_ask(lean, yes_ask, no_ask)
         ev_ok = inp.ev_cents is None or float(inp.ev_cents) >= 3.0
         if ask is not None and in_playable_band(ask) and not is_chalk(ask) and ev_ok:

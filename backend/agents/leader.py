@@ -297,8 +297,19 @@ class Leader:
         return False
 
     def _is_15m_btc_path(self, regime_features: Dict[str, Any] | None, ticker: str | None) -> bool:
+        """BTC 15m only. ETH 1H never gets a dual-sided path book."""
         try:
-            from backend.learning.btc15m import is_btc_15m_ticker, is_15m_btc_book
+            from backend.learning.btc15m import (
+                is_15m_btc_book,
+                is_btc_15m_ticker,
+                is_eth_15m_ticker,
+                is_eth_1h_ticker,
+            )
+            asset = str((regime_features or {}).get("asset") or "").strip().lower()
+            if asset in ("eth", "ethereum"):
+                return False
+            if ticker and (is_eth_1h_ticker(ticker) or is_eth_15m_ticker(ticker)):
+                return False
             if ticker and is_btc_15m_ticker(ticker):
                 return True
             md = dict(regime_features or {})
@@ -325,7 +336,6 @@ class Leader:
         gate_notes: List[str],
     ) -> Dict[str, Any]:
         """Dual-sided 15m path. Not an irreversible one-call lock."""
-        from backend.agents.chair_gates import odds_to_cents
         from backend.learning.btc15m import goal_short_for, timeframe_gates
         from backend.learning.btc15m_path import (
             PathBook,
@@ -333,18 +343,16 @@ class Leader:
             apply_fills,
             decide_action,
             is_chalk,
+            real_yes_no_asks,
         )
 
-        yes_ask = odds_to_cents(regime_features.get("yes_ask"))
-        no_ask = odds_to_cents(regime_features.get("no_ask"))
-        if yes_ask is None and up_pct is not None:
-            yes_ask = float(up_pct)
-        if no_ask is None and up_pct is not None:
-            no_ask = max(1.0, min(99.0, 100.0 - float(up_pct)))
-        if yes_ask is None and side_odds is not None and lean == "UP":
-            yes_ask = float(side_odds)
-        if no_ask is None and side_odds is not None and lean == "DOWN":
-            no_ask = float(side_odds)
+        # Paper fill at the real ask, not mid / up_pct / side_odds.
+        yes_ask, no_ask = real_yes_no_asks(
+            yes_ask=regime_features.get("yes_ask"),
+            no_ask=regime_features.get("no_ask"),
+            yes_bid=regime_features.get("yes_bid"),
+            no_bid=regime_features.get("no_bid"),
+        )
 
         mins_left = None
         try:

@@ -229,7 +229,7 @@ class PerformanceStore:
 
         # BTC 15m path fills (dual / scale / cut / flip). ETH stays one-call.
         path_fills = decision.get("path_fills") if isinstance(decision.get("path_fills"), list) else []
-        if market_ticker and path_fills:
+        if market_ticker and path_fills and is_btc_15m_ticker(market_ticker):
             lc = decision.get("locked_call") if isinstance(decision.get("locked_call"), dict) else {}
             await self.record_path_fills(
                 ticker=market_ticker,
@@ -475,6 +475,8 @@ class PerformanceStore:
         Cuts realize paper P&L now. Expiry marks leftover legs later.
         """
         if not ticker or not fills:
+            return
+        if not is_btc_15m_ticker(ticker):
             return
         now_iso = datetime.now(timezone.utc).isoformat()
         floor_strike = lock_time_strike(ticker=ticker, floor_strike=floor_strike)

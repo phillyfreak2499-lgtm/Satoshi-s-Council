@@ -385,6 +385,8 @@ class KalshiClient:
             "orderbook": orderbook,
             "yes_bid": primary.get("yes_bid_dollars") or primary.get("yes_bid"),
             "yes_ask": primary.get("yes_ask_dollars") or primary.get("yes_ask"),
+            "no_bid": primary.get("no_bid_dollars") or primary.get("no_bid"),
+            "no_ask": primary.get("no_ask_dollars") or primary.get("no_ask"),
             "volume": primary.get("volume_fp") or primary.get("volume"),
             "open_interest": primary.get("open_interest_fp") or primary.get("open_interest"),
             "close_time": primary.get("close_time"),

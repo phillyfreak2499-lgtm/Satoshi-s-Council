@@ -615,6 +615,110 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(acc["correct"], 0)
         self.assertEqual(acc["wrong"], 1)
 
+    async def test_eth_path_fills_are_refused(self):
+        tick = "KXETHD-26AUG1016-T2400"
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time="2026-08-10T16:00:00+00:00",
+            fills=[
+                {"fill_kind": "dual_open", "side": "UP", "entry_cents": 42.0, "stake": 10.0},
+                {"fill_kind": "dual_open", "side": "DOWN", "entry_cents": 42.0, "stake": 10.0},
+            ],
+            asset="eth",
+        )
+        await self.store.log_signal(
+            {
+                "direction": "BOTH",
+                "confidence": 70,
+                "path_fills": [
+                    {"fill_kind": "dual_open", "side": "UP", "entry_cents": 42.0, "stake": 10.0},
+                ],
+            },
+            [],
+            market_ticker=tick,
+            close_time="2026-08-10T16:00:00+00:00",
+            up_pct=48.0,
+            down_pct=52.0,
+            asset="eth",
+        )
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        self.assertEqual(rows, [])
+
+
+class PathBookLiveGuardTests(unittest.TestCase):
+    def test_leader_fills_at_ask_not_mid(self):
+        from backend.agents.leader import Leader
+        chair = Leader()
+        overlay = chair._apply_15m_path_book(
+            ticker="KXBTC15M-26AUG101200-00",
+            window_id="2026-08-10T16:00:00+00:00",
+            lean="UP",
+            conf=70,
+            score=0.4,
+            summary="lean UP",
+            side_odds=48.0,
+            up_pct=48.0,
+            p_finish=0.6,
+            ev_cents=6.0,
+            regime_features={
+                "asset": "btc",
+                "ticker": "KXBTC15M-26AUG101200-00",
+                "mins_left": 10.0,
+                "window_minutes": 15.0,
+                "yes_ask": 42.0,
+                "no_ask": 42.0,
+                "yes_bid": 40.0,
+                "yes_mid": 41.0,
+                "up_pct": 41.0,
+                "kalshi_healthy": True,
+            },
+            gate_notes=[],
+        )
+        self.assertEqual(overlay["direction"], "BOTH")
+        sides = {f["side"]: f for f in overlay["path_fills"]}
+        self.assertEqual(sides["UP"]["entry_cents"], 42.0)
+        self.assertEqual(sides["DOWN"]["entry_cents"], 42.0)
+        self.assertNotEqual(sides["UP"]["entry_cents"], 41.0)
+
+    def test_leader_sits_without_real_asks(self):
+        from backend.agents.leader import Leader
+        chair = Leader()
+        overlay = chair._apply_15m_path_book(
+            ticker="KXBTC15M-26AUG101200-00",
+            window_id="2026-08-10T16:00:00+00:00",
+            lean="UP",
+            conf=70,
+            score=0.4,
+            summary="lean UP",
+            side_odds=48.0,
+            up_pct=48.0,
+            p_finish=0.6,
+            ev_cents=8.0,
+            regime_features={
+                "asset": "btc",
+                "ticker": "KXBTC15M-26AUG101200-00",
+                "mins_left": 10.0,
+                "window_minutes": 15.0,
+                "yes_mid": 48.0,
+                "up_pct": 48.0,
+                "kalshi_healthy": True,
+            },
+            gate_notes=[],
+        )
+        self.assertEqual(overlay["direction"], "WAIT")
+        self.assertEqual(overlay["path_fills"], [])
+
+    def test_eth_never_uses_path_book(self):
+        from backend.agents.leader import Leader
+        chair = Leader()
+        self.assertFalse(chair._is_15m_btc_path({"asset": "eth"}, "KXETHD-26AUG1616-T2000.00"))
+        self.assertFalse(chair._is_15m_btc_path({"asset": "eth", "window_minutes": 15}, None))
+        self.assertTrue(chair._is_15m_btc_path({"asset": "btc"}, "KXBTC15M-26AUG161200-00"))
+
 
 class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
     def test_finish_era_brain_is_dropped(self):
@@ -747,6 +851,38 @@ class PathPnlTests(unittest.TestCase):
         dual = decide_action(PathInputs(4.0, 11.0, 42.0, 42.0, lean="UP", ev_cents=4.0), book)
         self.assertEqual(dual.action, "DUAL")
         self.assertEqual({f.side for f in dual.fills}, {"UP", "DOWN"})
+        tight = decide_action(PathInputs(4.0, 11.0, 52.0, 52.0, lean="UP", ev_cents=8.0), book)
+        self.assertNotEqual(tight.action, "DUAL")
+
+    def test_second_leg_requires_leftover_after_vig(self):
+        from backend.learning.btc15m_path import PathBook, PathInputs, PathLeg, decide_action
+        held = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
+        # Lean flipped, but 52+52 has no room after vig — do not add DOWN.
+        out = decide_action(PathInputs(6.0, 9.0, 52.0, 52.0, lean="DOWN", ev_cents=8.0), held)
+        self.assertEqual(out.action, "SIT")
+        self.assertEqual(out.reason, "second_leg_needs_leftover")
+        self.assertEqual(out.fills, [])
+
+    def test_chalk_sits_and_cannot_scale(self):
+        from backend.learning.btc15m_path import PathBook, PathInputs, PathLeg, decide_action
+        empty = PathBook(ticker="KXBTC15M-X")
+        sit = decide_action(PathInputs(6.0, 9.0, 99.0, 1.0, lean="UP", ev_cents=20.0, chalk=True), empty)
+        self.assertEqual(sit.action, "SIT")
+        self.assertEqual(sit.reason, "chalk")
+        held = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
+        scale = decide_action(PathInputs(6.0, 9.0, 99.0, 1.0, lean="UP", ev_cents=20.0, chalk=True), held)
+        self.assertNotEqual(scale.action, "SCALE")
+        self.assertNotEqual(scale.action, "DUAL")
+        self.assertNotEqual(scale.action, "OPEN")
+
+    def test_real_asks_never_use_mid(self):
+        from backend.learning.btc15m_path import real_yes_no_asks
+        ya, na = real_yes_no_asks(yes_ask=52.0, yes_bid=48.0)
+        self.assertEqual(ya, 52.0)
+        self.assertEqual(na, 52.0)  # 100 − yes bid
+        none_ya, none_na = real_yes_no_asks()
+        self.assertIsNone(none_ya)
+        self.assertIsNone(none_na)
 
     def test_scale_cut_flip(self):
         from backend.learning.btc15m_path import PathBook, PathInputs, PathLeg, apply_fills, decide_action
@@ -819,6 +955,12 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("not one irreversible directional lock", chunk)
         self.assertIn("not close-direction hits", chunk)
         self.assertIn("WAIT is a skip", chunk)
+        self.assertIn("Both legs only when UP ask + DOWN ask leaves room after vig", chunk)
+        self.assertIn("Paper fill at the real ask, not mid", chunk)
+        self.assertIn("Dead 99¢ book = sit", chunk)
+        self.assertIn("You cannot scale out of chalk", chunk)
+        self.assertIn("ETH 1H stays one-lock", chunk)
+        self.assertIn("Do not port 1H weights", chunk)
         self.assertIn("Paper", chunk)
         self.assertIn("Follower OFF", chunk)
         self.assertIn("Live OFF", chunk)

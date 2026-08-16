@@ -312,6 +312,8 @@ class DataPipeline:
             "kalshi_orderbook": kalshi_data.get("orderbook"),
             "kalshi_yes_bid": kalshi_data.get("yes_bid"),
             "kalshi_yes_ask": kalshi_data.get("yes_ask"),
+            "kalshi_no_bid": kalshi_data.get("no_bid"),
+            "kalshi_no_ask": kalshi_data.get("no_ask"),
             "kalshi_volume": kalshi_data.get("volume"),
             "kalshi_floor_strike": kalshi_data.get("floor_strike"),
             "kalshi_cap_strike": kalshi_data.get("cap_strike"),

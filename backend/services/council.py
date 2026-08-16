@@ -956,15 +956,23 @@ class Council:
                 regime_features["up_pct"] = up_pct
             if down_pct is not None:
                 regime_features["down_pct"] = down_pct
-            # Paper-fill at the real ask + playable mid band
+            # Paper-fill at the real ask, not mid. Implied NO ask = 100 − yes bid.
             yb = odds_to_cents(market_data.get("kalshi_yes_bid"))
             ya = odds_to_cents(market_data.get("kalshi_yes_ask"))
+            nb = odds_to_cents(market_data.get("kalshi_no_bid"))
+            na = odds_to_cents(market_data.get("kalshi_no_ask"))
             if yb is not None:
                 regime_features["yes_bid"] = yb
             if ya is not None:
                 regime_features["yes_ask"] = ya
-            if yb is not None:
-                regime_features["no_ask"] = 100.0 - yb
+            elif nb is not None:
+                regime_features["yes_ask"] = max(1.0, min(99.0, 100.0 - nb))
+            if nb is not None:
+                regime_features["no_bid"] = nb
+            if na is not None:
+                regime_features["no_ask"] = na
+            elif yb is not None:
+                regime_features["no_ask"] = max(1.0, min(99.0, 100.0 - yb))
             if yb is not None and ya is not None:
                 regime_features["yes_mid"] = (yb + ya) / 2.0
             elif up_pct is not None:
