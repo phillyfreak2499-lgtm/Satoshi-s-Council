@@ -2728,6 +2728,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (down > up) return "DOWN";
     return "WAIT";
   }
+  // Wash only. Tally (majorityDirOf / updateColorTally) still counts LONG_UP/LONG_DOWN.
+  // Body class, hour-ring, attract/majority wisps wait for a real Chair lock —
+  // same latch the desk already uses (chairLockDir / locked_call / path_book.locked).
+  // WAIT / unlocked / path sit with no lock stays majority-wait. Do not paint
+  // the desk from specialist LONG_* votes alone.
+  function majorityWashOf(agents, state) {
+    const lc = (state && (state.locked_call || (state.decision && state.decision.locked_call))) || null;
+    if (!(lc && lc.locked && chairLockDir(lc.direction, lc))) return "WAIT";
+    return majorityDirOf(agents);
+  }
 
   function spokeEnd(x0, y0, x1, y1, stopR) {
     const dx = x0 - x1, dy = y0 - y1;
@@ -4103,7 +4113,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const onFloor = (typeof floorLikeMode === "function" ? floorLikeMode() : (mode === "floor"));
     // Floor is leaders only. No seat-bot rings — not even lock-only. Bots stay on Seats and Table.
     const agents = onFloor ? [] : roster;
-    const maj = majorityDirOf(roster);
+    const maj = majorityWashOf(roster, st);
     const wx = hourWeatherOf(st);
     const gold = "rgba(240, 193, 74, 0.95)";
     const accent = locked ? gold : (which === "ethereum" ? "rgba(120, 255, 160, 0.55)" : "rgba(0, 220, 255, 0.55)");
@@ -4502,7 +4512,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
 
     const preAgents = (state && state.agents) || [];
-    const maj = majorityDirOf(preAgents);
+    const maj = majorityWashOf(preAgents, state);
     const hourWx = hourWeatherOf(state);
     try {
       document.body.classList.remove("majority-up", "majority-down", "majority-wait");

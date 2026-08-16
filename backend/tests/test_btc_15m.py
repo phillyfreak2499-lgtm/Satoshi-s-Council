@@ -972,8 +972,10 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-majority-wash-lock", WIRE)
         self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-majority-wash-lock"), WIRE.find("2026-08-16-herald-leftovers"))
         self.assertLess(WIRE.find("2026-08-16-herald-leftovers"), WIRE.find("2026-08-16-btc-15m-path-pnl"))
         self.assertLess(WIRE.find("2026-08-16-btc-15m-path-pnl"), WIRE.find("2026-08-16-btc-15m-retrain"))
         self.assertLess(WIRE.find("2026-08-16-btc-15m-retrain"), WIRE.find("2026-08-16-eth-slate-ares-oracle-lock"))
@@ -1016,6 +1018,16 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Follower OFF", leftover)
         self.assertNotIn("ZT", leftover)
         self.assertNotIn("Phantom", leftover)
+        wash = WIRE.split("2026-08-16-majority-wash-lock", 1)[1][:1200]
+        self.assertIn("majority-down", wash)
+        self.assertIn("WAIT chair", wash)
+        self.assertIn("chairLockDir", wash)
+        self.assertIn("majority-wait", wash)
+        self.assertIn("Paper", wash)
+        self.assertIn("Follower OFF", wash)
+        self.assertIn("ETH stays 1H one-lock", wash)
+        self.assertNotIn("ZT", wash)
+        self.assertNotIn("Phantom", wash)
 
     def test_ui_labels(self):
         self.assertIn('id="ledWindowLabel">15M WINDOW', HTML)
@@ -1045,6 +1057,16 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("function tallyTone(", JS)
         self.assertIn("LONG_UP", JS.split("function tallyTone", 1)[1][:220])
         self.assertIn("const d = tallyTone(a.direction)", JS)
+        self.assertIn("function majorityDirOf(", JS)
+        self.assertIn("function majorityWashOf(", JS)
+        wash_fn = JS.split("function majorityWashOf", 1)[1].split("function ", 1)[0]
+        self.assertIn("chairLockDir(", wash_fn)
+        self.assertIn("locked_call", wash_fn)
+        self.assertIn('return "WAIT"', wash_fn)
+        self.assertIn("majorityDirOf(agents)", wash_fn)
+        self.assertIn("majorityWashOf(roster, st)", JS)
+        self.assertIn("majorityWashOf(preAgents, state)", JS)
+        self.assertNotIn("const maj = majorityDirOf(", JS)
         self.assertIn("const BTC_STRIP_KEYS", JS)
         self.assertIn("function onVisibleStrip(", JS)
         self.assertLessEqual(JS.split("const BTC_STRIP_LABELS", 1)[1].split("];", 1)[0].count(",") + 1, 12)
