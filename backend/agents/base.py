@@ -42,6 +42,10 @@ class AgentSignal:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     weight_used: float = 0.0
     muted: bool = False
+    faded: bool = False
+    invert: bool = False
+    hard_mute: bool = False
+    settle_key: Optional[str] = None
     parent: Optional[str] = None
     subs: List["AgentSignal"] = field(default_factory=list)
 
@@ -58,7 +62,12 @@ class AgentSignal:
             "timestamp": self.timestamp.isoformat(),
             "weight_used": self.weight_used,
             "muted": self.muted,
+            "faded": bool(self.faded),
+            "invert": bool(self.invert),
+            "hard_mute": bool(self.hard_mute),
         }
+        if self.settle_key:
+            d["settle_key"] = self.settle_key
         if self.parent:
             d["parent"] = self.parent
             d["parent_display_name"] = display_name(self.parent)

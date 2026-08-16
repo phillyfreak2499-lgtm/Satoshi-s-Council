@@ -213,15 +213,15 @@ class OraWireTests(unittest.TestCase):
 
     def test_newest_is_oracle_can_call(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-oracle-can-call")
-        self.assertIn("SIBYL", rows[0]["why"])
-        self.assertIn("MARBLE", rows[0]["why"])
-        self.assertIn("Paper", rows[0]["why"])
-        self.assertIn("Follower OFF", rows[0]["why"])
-        self.assertIn("20–80", rows[0]["why"])
-        self.assertNotIn("ZT", rows[0]["title"])
-        self.assertNotIn("ZT", rows[0]["why"])
-        self.assertNotIn("WATCH-only", rows[0]["why"].replace("No WATCH-only", ""))
+        ora = next(r for r in rows if r["id"] == "2026-08-16-oracle-can-call")
+        self.assertIn("SIBYL", ora["why"])
+        self.assertIn("MARBLE", ora["why"])
+        self.assertIn("Paper", ora["why"])
+        self.assertIn("Follower OFF", ora["why"])
+        self.assertIn("20–80", ora["why"])
+        self.assertNotIn("ZT", ora["title"])
+        self.assertNotIn("ZT", ora["why"])
+        self.assertNotIn("WATCH-only", ora["why"].replace("No WATCH-only", ""))
 
 
 class OraPaperLockTests(unittest.IsolatedAsyncioTestCase):

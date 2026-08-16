@@ -267,5 +267,9 @@ class SpotLagSpecialist(BaseSpecialist):
                 direction, conf = "WAIT", floor
                 notes.append("quiet gate")
 
+        if int(features.get("lag_samples") or 0) <= 0:
+            direction, conf = "WAIT", 48
+            notes.append("silent until lag_samples>0")
+
         reason = self.annotate_reason(market_data, " · ".join(notes) if notes else "spot lag neutral")
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)

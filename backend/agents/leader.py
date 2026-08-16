@@ -18,6 +18,8 @@ from backend.learning.adaptive import AdaptiveLearner, NON_VOTERS
 from backend.agents.roster import display_name
 from backend.agents.chair_gates import (
     book_too_thin,
+    chair_ticker_blocked,
+    chair_top_dir_eligible,
     compute_ev_cents,
     dead_book_reason,
     early_lock_blocked,
@@ -870,7 +872,7 @@ class Leader:
         top_dirs = []
         for name in top_agents:
             sig = next((s for s in active if s.agent_name == name), None)
-            if sig and sig.direction in ("UP", "DOWN"):
+            if sig and sig.direction in ("UP", "DOWN") and chair_top_dir_eligible(sig):
                 top_dirs.append(sig.direction)
         top_agree = False
         top_conflict = False
@@ -881,6 +883,8 @@ class Leader:
                 top_conflict = True
         elif len(top_dirs) == 1:
             top_agree = True  # single directional top seat is OK with score
+        if top_agree:
+            top_conflict = False
 
         # Edge / quality score 0-100 (separate from direction)
         edge_score = int(min(100, max(0, abs_score * 120 + diversity * 6 + (8 if top_agree else 0) + (pair_bonus * 40))))
@@ -1204,6 +1208,31 @@ class Leader:
                     f"WAIT · first {float(getattr(settings, 'EARLY_NO_LOCK_MINS', 10.0)):.0f}m "
                     f"of the hour — no lock · {summary}"
                 )
+            elif chair_ticker_blocked(
+                strike=(regime_features or {}).get("floor_strike"),
+                spot=(
+                    (regime_features or {}).get("spot_price")
+                    or (regime_features or {}).get("current_price")
+                    or (regime_features or {}).get("research_spot")
+                ),
+                asset=(regime_features or {}).get("asset"),
+                ticker=ticker,
+            ):
+                why = chair_ticker_blocked(
+                    strike=(regime_features or {}).get("floor_strike"),
+                    spot=(
+                        (regime_features or {}).get("spot_price")
+                        or (regime_features or {}).get("current_price")
+                        or (regime_features or {}).get("research_spot")
+                    ),
+                    asset=(regime_features or {}).get("asset"),
+                    ticker=ticker,
+                )
+                direction = "WAIT"
+                lean = None
+                firm = False
+                conf = max(int(conf), 68)
+                summary = f"WAIT · {why} — no lock · {summary}"
             elif never_lock_near_certain(
                 (regime_features or {}).get("yes_ask"),
                 (regime_features or {}).get("no_ask"),

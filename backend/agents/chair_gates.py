@@ -7,7 +7,7 @@ definition of the math.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 def odds_to_cents(raw: Any) -> Optional[float]:
@@ -650,8 +650,7 @@ def classify_wait_reason(
         str(x or "")
         for x in (summary, dec.get("summary"), mkt.get("skip"), mkt.get("skip_reason"))
     ).lower()
-    if dec.get("top_conflict") or "top-3" in text or "top 3" in text or "top_conflict" in text or "top conflict" in text:
-        return "top_3_conflict"
+    top_agree = bool(dec.get("top_agree"))
     if bool(mkt.get("stale")) or "fresh quote" in text or "stale quote" in text or "stale kalshi" in text:
         return "stale_quote"
     if "first " in text and ("m of the hour" in text or "10m" in text or "first 10" in text):
@@ -683,7 +682,17 @@ def classify_wait_reason(
         return "eth_fade"
     if "spread" in text and ("no lock" in text or "junk" in text or ">" in text):
         return "spread"
-    if "cannot price ev" in text or "no chosen-side" in text:
+    if (
+        "cannot price ev" in text
+        or "no chosen-side" in text
+        or "p(finish)" in text
+        or "p_finish" in text
+        or (
+            ("ev " in text or text.startswith("ev"))
+            and ("¢" in text or "cents" in text)
+            and ("no lock" in text or "<" in text)
+        )
+    ):
         return "no_ev"
     if "near certain" in text or "≥99" in text or ">=99" in text or "99¢ wall" in text:
         return "near_certain"
@@ -693,6 +702,16 @@ def classify_wait_reason(
         return "forecast_flip"
     if "no official" in text:
         return "no_official_high"
+    # Honesty: never paint top_3_conflict when top_agree, or when EV/spread/dead_book already won.
+    if not top_agree:
+        mentions_top = (
+            "top-3" in text
+            or "top 3" in text
+            or "top_conflict" in text
+            or "top conflict" in text
+        )
+        if mentions_top or bool(dec.get("top_conflict")):
+            return "top_3_conflict"
     if "confluence" in text:
         return "low_confluence"
     return "other"
@@ -1431,31 +1450,38 @@ def _score_pair(correct: Any, wrong: Any) -> Dict[str, int]:
     return {"correct": c, "wrong": w}
 
 
+def _shadow_score_pair(bin_row: Any) -> Dict[str, int]:
+    """Shadow bin for the shadow path only — never painted as Chair."""
+    row = bin_row if isinstance(bin_row, dict) else {}
+    try:
+        n = max(0, int(row.get("n") or 0))
+    except (TypeError, ValueError):
+        n = 0
+    try:
+        hits = max(0, int(row.get("hits") or 0))
+    except (TypeError, ValueError):
+        hits = 0
+    if row.get("wrong") is not None:
+        return _score_pair(hits, row.get("wrong"))
+    return _score_pair(hits, max(0, n - hits))
+
+
 def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
     """
     Floor book match. Paper only.
 
     Not leader vs leader. Not Satoshi vs Vitalik. Not Chair vs seats.
     BTC score = sized Chair locks, finish-only from Kalshi market.result.
-    ETH score = shadow picks (including vetoed), finish-only from market.result.
+    ETH score = sized Chair locks, finish-only from Kalshi market.result.
+    Shadow bins stay on the payload for the shadow path — they are not Chair.
     Head-to-head is a game score of the two books — settled correct vs wrong.
     """
     btc_acc = btc_acc if isinstance(btc_acc, dict) else {}
     eth_acc = eth_acc if isinstance(eth_acc, dict) else {}
     btc = _score_pair(btc_acc.get("correct"), btc_acc.get("wrong"))
-    shadow = eth_acc.get("eth_shadow") if isinstance(eth_acc.get("eth_shadow"), dict) else {}
-    try:
-        eth_n = max(0, int(shadow.get("n") or 0))
-    except (TypeError, ValueError):
-        eth_n = 0
-    try:
-        eth_hits = max(0, int(shadow.get("hits") or 0))
-    except (TypeError, ValueError):
-        eth_hits = 0
-    if shadow.get("wrong") is not None:
-        eth = _score_pair(eth_hits, shadow.get("wrong"))
-    else:
-        eth = _score_pair(eth_hits, max(0, eth_n - eth_hits))
+    eth = _score_pair(eth_acc.get("correct"), eth_acc.get("wrong"))
+    eth_shadow = _shadow_score_pair(eth_acc.get("eth_shadow"))
+    btc_shadow = _shadow_score_pair(btc_acc.get("btc_shadow"))
     btc_c, eth_c = btc["correct"], eth["correct"]
     btc_w, eth_w = btc["wrong"], eth["wrong"]
     played = btc_c + btc_w + eth_c + eth_w
@@ -1488,6 +1514,8 @@ def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
         "line": line,
         "btc_text": f"BTC {btc_c}–{btc_w}",
         "eth_text": f"{eth_c}–{eth_w} ETH",
+        "btc_shadow": {**btc_shadow, "label": f"{btc_shadow['correct']}–{btc_shadow['wrong']}"},
+        "eth_shadow": {**eth_shadow, "label": f"{eth_shadow['correct']}–{eth_shadow['wrong']}"},
     }
 
 
@@ -1842,6 +1870,214 @@ def pick_settle_spot(current: Any, last: Any = None) -> Optional[float]:
         if px > 0:
             return px
     return None
+
+
+COINGLASS_QUORUM_SEATS = ("funding", "oi_pressure", "liq")
+FAR_OTM_BTC_PCT = 0.02
+FAR_OTM_ETH_PCT = 0.04
+
+
+def _signal_name(sig: Any) -> str:
+    if isinstance(sig, dict):
+        return str(sig.get("agent_name") or "")
+    return str(getattr(sig, "agent_name", None) or "")
+
+
+def _signal_flag(sig: Any, *names: str) -> bool:
+    for name in names:
+        if isinstance(sig, dict):
+            if bool(sig.get(name)):
+                return True
+        elif bool(getattr(sig, name, False)):
+            return True
+    return False
+
+
+def _set_signal_flag(sig: Any, name: str, value: bool) -> None:
+    if isinstance(sig, dict):
+        sig[name] = bool(value)
+    elif hasattr(sig, name):
+        setattr(sig, name, bool(value))
+
+
+def signal_excluded_from_quorum(sig: Any) -> bool:
+    """Muted / hard_mute / faded / invert seats do not lean QUORUM or color_counts."""
+    return _signal_flag(sig, "muted", "hard_mute", "faded", "invert")
+
+
+def chair_top_dir_eligible(sig: Any) -> bool:
+    """Muted or faded/invert seats must not create a top-3 conflict."""
+    if sig is None:
+        return False
+    return not signal_excluded_from_quorum(sig)
+
+
+def apply_hard_mute_to_signals(signals: Any, learner: Any = None) -> List[Any]:
+    """
+    Copy hierarchy fade onto the live wire. hard_mute → muted so Chair + quorum drop it.
+    Fade-without-hard-mute keeps invert-vote in Chair but is excluded from quorum/color_counts.
+    """
+    rows: List[Any] = list(signals or [])
+    ranks: Dict[str, Any] = {}
+    if learner is not None and hasattr(learner, "hierarchy_ranks"):
+        try:
+            ranks = {r.get("agent"): r for r in (learner.hierarchy_ranks() or []) if isinstance(r, dict)}
+        except Exception:
+            ranks = {}
+    for sig in rows:
+        name = _signal_name(sig)
+        row = ranks.get(name) or {}
+        hard = bool(row.get("hard_mute"))
+        faded = bool(row.get("faded"))
+        invert = bool(row.get("invert"))
+        _set_signal_flag(sig, "hard_mute", hard)
+        _set_signal_flag(sig, "faded", faded)
+        _set_signal_flag(sig, "invert", invert)
+        if hard:
+            _set_signal_flag(sig, "muted", True)
+    return rows
+
+
+def coinglass_hist_n(market_data: Any = None) -> int:
+    md = market_data if isinstance(market_data, dict) else {}
+    cg = md.get("coinglass") if isinstance(md.get("coinglass"), dict) else {}
+    n = 0
+    for key in ("funding_history", "oi_history", "liq_history"):
+        hist = cg.get(key) if cg.get(key) is not None else md.get(key)
+        if isinstance(hist, list):
+            n += len(hist)
+    return n
+
+
+def coinglass_quorum_ready(market_data: Any = None) -> bool:
+    """
+    CoinGlass seats may lean quorum only with a real 30m/1h hist (n>0).
+    Fail-soft / advisory / n=0 / 4h / plan wall stay out. Does not change the reason string.
+    """
+    md = market_data if isinstance(market_data, dict) else {}
+    health = md.get("health") if isinstance(md.get("health"), dict) else {}
+    if not bool(health.get("coinglass")):
+        return False
+    cg = md.get("coinglass") if isinstance(md.get("coinglass"), dict) else {}
+    if cg.get("plan_wall") or cg.get("daily_heatmap"):
+        return False
+    iv = str(cg.get("interval") or md.get("cg_interval") or "").strip().lower()
+    if iv and iv not in ("30m", "1h", "60m"):
+        return False
+    return coinglass_hist_n(md) > 0
+
+
+def quorum_peer_dirs(signals: Any, market_data: Any = None) -> Dict[str, str]:
+    """Live QUORUM lean: skip faded/invert/hard_mute and CoinGlass seats while n=0."""
+    ready = coinglass_quorum_ready(market_data)
+    skip = {"quorum", "guardian", "law", "leader", "chair"}
+    out: Dict[str, str] = {}
+    for sig in signals or []:
+        name = _signal_name(sig)
+        if not name or name in skip:
+            continue
+        if signal_excluded_from_quorum(sig):
+            continue
+        if name in COINGLASS_QUORUM_SEATS and not ready:
+            continue
+        if isinstance(sig, dict):
+            direction = str(sig.get("direction") or "WAIT")
+        else:
+            direction = str(getattr(sig, "direction", None) or "WAIT")
+        out[name] = direction
+    return out
+
+
+def color_counts_from_signals(signals: Any) -> Dict[str, int]:
+    counted = [s for s in (signals or []) if not signal_excluded_from_quorum(s)]
+    def _dir(sig: Any) -> str:
+        if isinstance(sig, dict):
+            return str(sig.get("direction") or "WAIT").upper()
+        return str(getattr(sig, "direction", None) or "WAIT").upper()
+    return {
+        "UP": sum(1 for s in counted if _dir(s) == "UP"),
+        "DOWN": sum(1 for s in counted if _dir(s) == "DOWN"),
+        "WAIT": sum(1 for s in counted if _dir(s) == "WAIT"),
+        "total": len(counted),
+    }
+
+
+def far_otm_companion(strike: Any, spot: Any, asset: Any = None) -> bool:
+    """Far-OTM ladder companions are wait/shadow only — never Chair."""
+    try:
+        k = float(strike)
+        p = float(spot)
+    except (TypeError, ValueError):
+        return False
+    if p <= 0:
+        return False
+    pct = abs(k - p) / p
+    a = str(asset or "").strip().lower()
+    band = FAR_OTM_ETH_PCT if a in ("eth", "ethereum") else FAR_OTM_BTC_PCT
+    return pct > band
+
+
+def chair_ticker_blocked(
+    strike: Any = None,
+    spot: Any = None,
+    asset: Any = None,
+    ticker: Any = None,
+) -> Optional[str]:
+    k = strike
+    if k is None:
+        k = strike_from_kalshi_ticker(ticker)
+    if far_otm_companion(k, spot, asset):
+        return "far-OTM companion — wait/shadow only"
+    return None
+
+
+def seat_settle_key(agent_name: Any, ticker: Any = None, close_time: Any = None) -> str:
+    """Per-seat settle identity. CASCADE / WIRE / VEL / EXHAUST are not one bucket."""
+    a = str(agent_name or "").strip().lower() or "-"
+    t = str(ticker or "").strip() or "-"
+    c = str(close_time or "").strip() or "-"
+    return f"{a}|{t}|{c}"
+
+
+def stamp_signal_settle_keys(signals: Any, ticker: Any = None, close_time: Any = None) -> List[Any]:
+    rows: List[Any] = list(signals or [])
+    for sig in rows:
+        name = _signal_name(sig)
+        key = seat_settle_key(name, ticker, close_time)
+        if isinstance(sig, dict):
+            sig["settle_key"] = key
+            if not sig.get("agent_name"):
+                sig["agent_name"] = name
+        else:
+            if hasattr(sig, "settle_key"):
+                sig.settle_key = key
+    return rows
+
+
+def unique_agent_votes(agent_votes: Any) -> Dict[str, Any]:
+    """
+    Drop cloned payloads that reuse another seat's name or settle key.
+    Historical votes without settle_key grade by dict key.
+    """
+    out: Dict[str, Any] = {}
+    seen_keys: set[str] = set()
+    for name, vote in (agent_votes or {}).items():
+        key_name = str(name or "").strip()
+        if not key_name or not isinstance(vote, dict):
+            continue
+        inner = str(vote.get("agent_name") or "").strip()
+        if inner and inner != key_name:
+            continue
+        settle = str(vote.get("settle_key") or "").strip()
+        if settle:
+            settle_agent = settle.split("|", 1)[0]
+            if settle_agent and settle_agent != key_name:
+                continue
+            if settle in seen_keys:
+                continue
+            seen_keys.add(settle)
+        out[key_name] = vote
+    return out
 
 
 def finish_outcome(spot: Any, strike: Any) -> Optional[str]:

@@ -44,10 +44,14 @@ from backend.learning.regime_keys import regime_from_market, regime_from_call
 from backend.services.huddle import NightlyHuddle
 from backend.services.runtime_settings import runtime_settings
 from backend.agents.chair_gates import (
+    apply_hard_mute_to_signals,
     classify_wait_reason,
+    color_counts_from_signals,
     collect_official_results,
     count_paper_locks_today,
     lock_time_strike,
+    quorum_peer_dirs,
+    stamp_signal_settle_keys,
     eth_paper_lock_blocked,
     eth_settled_n_for_zach,
     btc_shadow_pick,
@@ -800,13 +804,17 @@ class Council:
             for agent in phase1:
                 signals.append(await _eval_one(agent))
 
+        apply_hard_mute_to_signals(signals, self.learner)
+        stamp_signal_settle_keys(signals, ticker, close_time)
+
         # QUORUM second pass: sees peer colors + historical size/combo stats
         if quorum_agent is not None:
             try:
                 if hasattr(quorum_agent, "bind_learner"):
                     quorum_agent.bind_learner(self.learner)
-                peer_dirs = {s.agent_name: s.direction for s in signals}
+                peer_dirs = quorum_peer_dirs(signals, market_data)
                 qsig = quorum_agent.from_peers(peer_dirs, market_data)
+                stamp_signal_settle_keys([qsig], ticker, close_time)
                 signals.append(qsig)
             except Exception as e:
                 logger.error(f"Quorum agent failed: {e}")
@@ -1191,7 +1199,10 @@ class Council:
                 ),
                 "threshold_used": decision.get("threshold_used"),
                 "wait_rate": decision.get("wait_rate"),
-                "learning_phase": (decision.get("threshold_base") is not None and ("cold" if (self.leader.edge.get("total") or 0) < int(getattr(settings, "COLD_START_SAMPLES", 15)) else "learned")),
+                "learning_phase": (
+                    (regime_features.get("learning_phase") if isinstance(regime_features, dict) else None)
+                    or (decision.get("learning_phase") if isinstance(decision, dict) else None)
+                ),
                 "edge_score": decision.get("edge_score"),
                 "regime_key": decision.get("regime_key") or regime_features.get("regime_key"),
                 "top_agree": decision.get("top_agree"),
@@ -1280,12 +1291,7 @@ class Council:
                 if hasattr(self.learner, "regime_snapshot") else {}
             ),
             "huddle": self.huddle.status(),
-            "color_counts": {
-                "UP": sum(1 for s in signals if s.direction == "UP"),
-                "DOWN": sum(1 for s in signals if s.direction == "DOWN"),
-                "WAIT": sum(1 for s in signals if s.direction == "WAIT"),
-                "total": len(signals),
-            },
+            "color_counts": color_counts_from_signals(signals),
             "quorum": (self.learner.quorum_snapshot() if hasattr(self.learner, "quorum_snapshot") else {}),
         }
         self.latest_state = state

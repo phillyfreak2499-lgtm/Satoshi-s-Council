@@ -15,7 +15,7 @@ from loguru import logger
 from backend.config import eth_core_agent_set, prior_weight, settings
 from backend.agents.roster import display_name
 from backend.learning.regime_keys import classify_regime, split_key
-from backend.agents.chair_gates import band_tighten, odds_band_key
+from backend.agents.chair_gates import band_tighten, odds_band_key, unique_agent_votes
 
 # Agents that never receive adaptive vote weight
 NON_VOTERS = {"guardian", "law", "leader", "chair"}
@@ -104,11 +104,21 @@ class AdaptiveLearner:
         return {n for n in eth_core_agent_set() if n not in NON_VOTERS}
 
     def _trim_eth_roster_weights(self) -> None:
-        """ETH brain stays on the thin roster. New seats start quiet until graded."""
+        """ETH brain stays on the thin roster. No leftover WIRE/ORBIT/VEL/STREAK ghosts."""
         voters = self._eth_voter_names()
         if voters is None:
             return
+        keep = set(voters) | set(NON_VOTERS)
         self.weights = {k: float(v) for k, v in self.weights.items() if k in voters}
+        for bag in (self.correct, self.wrong, self.directional, self.agent_calib):
+            for name in list(bag.keys()):
+                if name not in keep:
+                    del bag[name]
+        for table in (self.regime_correct, self.regime_wrong):
+            for rk, agents in list(table.items()):
+                for name in list(agents.keys()):
+                    if name not in keep:
+                        del agents[name]
         quiet = getattr(settings, "ETH_QUIET_PRIORS", None) or {}
         for name, prior in quiet.items():
             if name not in voters:
@@ -122,7 +132,7 @@ class AdaptiveLearner:
         """
         Explore → Calibrate → Exploit schedule based on graded Chair samples.
         """
-        n = int(chair_n if chair_n is not None else (sum(self.correct.values()) + sum(self.wrong.values())) // max(1, len(self.weights) or 1))
+        n = int(chair_n if chair_n is not None else (self.lock_n or 0))
         cold = int(getattr(settings, "COLD_START_SAMPLES", 15))
         cal = int(getattr(settings, "CALIBRATE_SAMPLES", 20))
         exp = int(getattr(settings, "EXPLOIT_SAMPLES", 80))
@@ -311,7 +321,7 @@ class AdaptiveLearner:
             ),
             "wait_reasons": dict(self.wait_reasons),
             "when_not_to_lock": {k: dict(v) for k, v in self.when_not_to_lock.items()},
-            "learning_phase": self.learning_phase(),
+            "learning_phase": self.learning_phase(chair_n=int(self.lock_n or 0)),
             "notes": self.last_notes[-6:],
             "quorum": self.quorum_snapshot(),
             "regime_split": {
@@ -356,9 +366,13 @@ class AdaptiveLearner:
 
         notes: List[str] = []
         directional: Dict[str, Dict[str, Any]] = {}
+        votes = unique_agent_votes(agent_votes)
+        eth_voters = self._eth_voter_names()
 
-        for name, vote in (agent_votes or {}).items():
+        for name, vote in votes.items():
             if name in NON_VOTERS:
+                continue
+            if eth_voters is not None and name not in eth_voters:
                 continue
             if not isinstance(vote, dict):
                 continue
@@ -820,6 +834,7 @@ class AdaptiveLearner:
                 prev = dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {}
                 prev.update(data["backfill"])
                 self.backfill = prev
+            self._trim_eth_roster_weights()
             try:
                 self._recompute_regime_weights()
             except Exception:

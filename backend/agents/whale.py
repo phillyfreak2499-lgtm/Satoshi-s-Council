@@ -147,8 +147,8 @@ class WhaleSpecialist(BaseSpecialist):
             ],
         }
 
-        # Thresholds — size is relative; without real whale feed stay conservative
-        has_feed = flow["print_count"] > 0 or abs(recent) > 0
+        # Thresholds — size is relative; silent until a real print lands
+        has_feed = flow["print_count"] > 0
         strong = abs(recent) >= 8 or (biggest >= 5 and abs(recent) >= 3)
         clustered = persist >= 0.70 and abs(recent) >= 4
 
@@ -222,6 +222,10 @@ class WhaleSpecialist(BaseSpecialist):
             if conf < floor:
                 direction, conf = "WAIT", floor
                 notes.append("quiet gate")
+
+        if int(flow.get("print_count") or 0) <= 0:
+            direction, conf = "WAIT", 46
+            notes.append("silent until print_count>0")
 
         reason = self.annotate_reason(market_data, " · ".join(notes) if notes else "whale neutral")
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)

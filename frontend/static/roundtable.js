@@ -2952,10 +2952,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const btcAcc = ((typeof tableState === "function" ? tableState("bitcoin") : null) || state || {}).accuracy || {};
     const ethAcc = ((typeof tableState === "function" ? tableState("ethereum") : null) || {}).accuracy || {};
     const btc = accRecord(btcAcc);
-    const sh = (ethAcc && ethAcc.eth_shadow) || {};
-    const ethC = Number(sh.hits) || 0;
-    const ethN = Number(sh.n) || 0;
-    const ethW = sh.wrong != null ? Number(sh.wrong) || 0 : Math.max(0, ethN - ethC);
+    const eth = accRecord(ethAcc);
+    const ethC = eth.c;
+    const ethW = eth.w;
     const match = "BTC " + btc.c + " · ETH " + ethC;
     let line = "Even books. Waiting on the next finish.";
     let ahead = "tied";
