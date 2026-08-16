@@ -2,6 +2,18 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-one-face",
+    "at": "2026-08-16T04:50:00-05:00",
+    "title": "One face per Chair",
+    "why": "Satoshi, Vitalik, Ares, Raijin, and ORACLE each keep one WAIT face. Labels carry UP/DOWN/WAIT/LOCK. Faces do not swap. Eye tints are off. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-header-still",
+    "at": "2026-08-16T04:45:00-05:00",
+    "title": "Header STILL sits next to mute",
+    "why": "Header STILL next to mute for slow pipes. Cuts seat orbit, money rain, intro thrash, starfield, lock beams, and attract wander — same freeze the Floor already honors. Not a Floor SPIN control. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-vitalik-recenter",
     "at": "2026-08-16T04:40:00-05:00",
     "title": "Vitalik chair is a close-up face now",

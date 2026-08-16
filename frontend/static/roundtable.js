@@ -318,6 +318,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const candleCtx = candleCanvas ? candleCanvas.getContext("2d") : null;
   const candlePriceTag = document.getElementById("candlePriceTag");
   const soundToggle = document.getElementById("soundToggle");
+  const stillToggle = document.getElementById("stillToggle");
   const chartsView = document.getElementById("chartsView");
   const mainTable = document.getElementById("mainTable");
   const modeTabs = document.querySelectorAll(".mode-tab");
@@ -335,80 +336,48 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : "http://127.0.0.1:8000");
   // Poll faster than analysis interval so UI stays live after each cycle
 
-  // Chair portrait (eye color by direction) — armored knight
-  const chairImages = {
-    UP: new Image(),
-    DOWN: new Image(),
-    WAIT: new Image(),
-  };
+  // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
   let chairImgsReady = 0;
   function _chairLoaded() {
     chairImgsReady += 1;
-    // force a frame so portrait appears as soon as assets arrive
   }
-  ["UP", "DOWN", "WAIT"].forEach(k => {
-    chairImages[k].crossOrigin = "anonymous";
-    chairImages[k].onload = _chairLoaded;
-    chairImages[k].onerror = () => console.warn("Chair image failed:", k);
-  });
-  chairImages.UP.src = "/chair-up.jpg";
-  chairImages.DOWN.src = "/chair-down.jpg";
-  chairImages.WAIT.src = "/chair-wait.jpg";
-
-  const vitalikImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
-  ["UP", "DOWN", "WAIT"].forEach(k => {
-    vitalikImages[k].crossOrigin = "anonymous";
-    vitalikImages[k].onload = _chairLoaded;
-    vitalikImages[k].onerror = () => console.warn("Vitalik image failed:", k);
-  });
-  vitalikImages.UP.src = "/vitalik-up.jpg";
-  vitalikImages.DOWN.src = "/vitalik-down.jpg";
-  vitalikImages.WAIT.src = "/vitalik-wait.jpg";
-  function vitalikPortraitFor(dir) {
-    const d = String(dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return vitalikImages.UP;
-    if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN;
-    return vitalikImages.WAIT;
-  }
-  const raijinImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
-  ["UP", "DOWN", "WAIT"].forEach(k => {
-    raijinImages[k].crossOrigin = "anonymous";
-    raijinImages[k].onload = _chairLoaded;
-    raijinImages[k].onerror = () => console.warn("Raijin image failed:", k);
-  });
-  raijinImages.UP.src = "/raijin-up.jpg";
-  raijinImages.DOWN.src = "/raijin-down.jpg";
-  raijinImages.WAIT.src = "/raijin-wait.jpg";
-  raijinImages.UP_HOLD = raijinImages.UP;
-  raijinImages.DOWN_HOLD = raijinImages.DOWN;
-  function raijinPortraitFor(dir) {
-    const d = String(dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return raijinImages.UP;
-    if (d === "DOWN" || d === "DOWN_HOLD") return raijinImages.DOWN;
-    return raijinImages.WAIT;
-  }
-  function raijinPortraitSrc(dir) {
-    const d = String(dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return "/raijin-up.jpg";
-    if (d === "DOWN" || d === "DOWN_HOLD") return "/raijin-down.jpg";
-    return "/raijin-wait.jpg";
-  }
+  const chairPortrait = new Image();
+  chairPortrait.crossOrigin = "anonymous";
+  chairPortrait.onload = _chairLoaded;
+  chairPortrait.onerror = () => console.warn("Chair image failed: WAIT");
+  chairPortrait.src = "/chair-wait.jpg";
+  const vitalikPortrait = new Image();
+  vitalikPortrait.crossOrigin = "anonymous";
+  vitalikPortrait.onload = _chairLoaded;
+  vitalikPortrait.onerror = () => console.warn("Vitalik image failed: WAIT");
+  vitalikPortrait.src = "/vitalik-wait.jpg";
+  const raijinPortrait = new Image();
+  raijinPortrait.crossOrigin = "anonymous";
+  raijinPortrait.onload = _chairLoaded;
+  raijinPortrait.onerror = function () {
+    try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    raijinPortrait.src = "/raijin-wait.jpg";
+  };
+  raijinPortrait.src = "/raijin-wait.jpg";
+  const aresPortrait = new Image();
+  aresPortrait.crossOrigin = "anonymous";
+  aresPortrait.onload = _chairLoaded;
+  aresPortrait.onerror = function () {
+    try { aresPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    aresPortrait.src = "/static/ares-wait.png";
+  };
+  aresPortrait.src = "/static/ares-chair.png";
   const oraclePortrait = new Image();
   oraclePortrait.crossOrigin = "anonymous";
+  oraclePortrait.onload = _chairLoaded;
   oraclePortrait.src = "/oracle-wait.jpg";
+  function chairPortraitFor(dir) { return chairPortrait; }
+  function vitalikPortraitFor(dir) { return vitalikPortrait; }
+  function raijinPortraitFor(dir) { return raijinPortrait; }
+  function raijinPortraitSrc(dir) { return "/raijin-wait.jpg"; }
   function isOracleTable(which) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
     return w === "oracle" || w === "sibyl";
-  }
-  chairImages.UP_HOLD = chairImages.UP;
-  chairImages.DOWN_HOLD = chairImages.DOWN;
-  chairImages.SWAP = chairImages.WAIT;
-
-  function chairPortraitFor(dir) {
-    const d = (dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return chairImages.UP;
-    if (d === "DOWN" || d === "DOWN_HOLD") return chairImages.DOWN;
-    return chairImages.WAIT;
   }
 
 
@@ -1316,7 +1285,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let glitchUntil = 0;
   let hourSlamUntil = 0;
   let debateHistory = [];
-  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const systemReduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const SEAT_ORBIT_SPEED = 0.00007; // half of the old 0.00014 fidget spin
   const SEAT_SPIN_KEY = "council_seat_spin";
   let seatOrbitFrozen = false;
@@ -1325,9 +1294,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try {
     seatOrbitFrozen = localStorage.getItem(SEAT_SPIN_KEY) === "0";
   } catch (e) {}
+  // Header STILL and Floor SPIN share this flag. STILL on = same path as prefers-reduced-motion.
+  let reduceMotion = systemReduceMotion || seatOrbitFrozen;
   function seatOrbitAngle() {
     // Screensaver pace. Freeze keeps the last angle so unfreeze does not jump.
-    if (reduceMotion) return 0;
+    if (systemReduceMotion) return 0;
     if (!seatOrbitLastT) seatOrbitLastT = time;
     if (!seatOrbitFrozen) {
       const dt = Math.max(0, time - seatOrbitLastT);
@@ -1726,13 +1697,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.title = spinning ? "Freeze seat orbit" : "Resume seat orbit";
     btn.setAttribute("aria-label", spinning ? "Seat orbit on — click to freeze" : "Seat orbit still — click to spin");
   }
+  function syncStillBtn() {
+    const btn = stillToggle || document.getElementById("stillToggle");
+    if (!btn) return;
+    const on = !!seatOrbitFrozen;
+    btn.classList.toggle("still-on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = "STILL";
+    btn.title = on
+      ? "STILL on — motion cut for a thin pipe. Click to restore."
+      : "STILL — cut orbit and heavy FX for slow connections";
+    btn.setAttribute("aria-label", on
+      ? "STILL on — reduced motion. Click to restore motion"
+      : "STILL — reduce motion for slow connections");
+  }
+  function applyMotionFreeze() {
+    // One freeze. Header STILL drives the same flag Floor already respects.
+    reduceMotion = systemReduceMotion || seatOrbitFrozen;
+    try { document.body.classList.toggle("reduce-motion", reduceMotion); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
+    try { syncStillBtn(); } catch (e) {}
+    if (reduceMotion) {
+      try { if (typeof window.__setFloorMoneyRain === "function") window.__setFloorMoneyRain(false); } catch (e) {}
+    }
+  }
   function setSeatSpin(on) {
     seatOrbitFrozen = !on;
     try { localStorage.setItem(SEAT_SPIN_KEY, on ? "1" : "0"); } catch (e) {}
-    try { syncSeatSpinBtn(); } catch (e) {}
+    try { applyMotionFreeze(); } catch (e) {}
+  }
+  function setStill(on) {
+    setSeatSpin(!on);
   }
   window.setSeatSpin = setSeatSpin;
+  window.setStill = setStill;
   window.seatOrbitAngle = seatOrbitAngle;
+  try { applyMotionFreeze(); } catch (e) {}
   let _tableEmberUntil = 0;
   let _tableEmberKey = "";
   let _tableEmberDir = "WAIT";
@@ -2184,8 +2184,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function chairPortraitOf(which, dir) {
     if (isOracleTable(which)) return oraclePortrait;
     if (isAtsTable(which)) return aresPortrait;
-    if (isFrontTable(which)) return raijinPortraitFor(wxEye(dir));
-    return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+    if (isFrontTable(which)) return raijinPortrait;
+    return isEthTable(which) ? vitalikPortrait : chairPortrait;
   }
 
   function labelOf(agent) {
@@ -3687,114 +3687,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { show: "chair", x: w * 0.50, y: y, photoR: photoR, seatR: seatR, dual: true, phone: false };
   }
 
-  const raijinPortrait = new Image();
-  raijinPortrait.src = "/raijin-wait.jpg";
-  const aresPortrait = new Image();
-  aresPortrait.src = "/static/ares-chair.png";
-  aresPortrait.onerror = function () {
-    try { aresPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    aresPortrait.src = "/static/ares-wait.png";
-  };
   function aresEyeColors(eyes) {
-    const e = eyes || {};
-    const mode = String(e.mode || "wait").toLowerCase();
-    let a = e.primary || "#F5B942";
-    let b = e.secondary || a;
-    if (mode === "over") { a = "#FF6A1A"; b = "#FFC14A"; }
-    if (mode === "under") { a = "#3DE0FF"; b = "#00E8FF"; }
-    if (mode === "wait") { a = "#F5B942"; b = "#F5B942"; }
-    return { mode: mode, a: a, b: b };
+    return { mode: "wait", a: "#F5B942", b: "#F5B942" };
   }
   function paintAresEyes(eyes) {
     const face = document.getElementById("aresFace");
-    const cols = aresEyeColors(eyes);
-    /* One portrait only: canvas aresPortrait + drawAresEyeTint. Never unhide the HTML overlay. */
+    /* One face. Never unhide the HTML overlay. No canvas eye tint. */
     if (face) {
       face.hidden = true;
       face.setAttribute("aria-hidden", "true");
     }
-    try {
-      document.body.style.setProperty("--ares-eye-a", cols.a);
-      document.body.style.setProperty("--ares-eye-b", cols.b);
-    } catch (e) {}
-    return cols;
+    return aresEyeColors(eyes);
   }
   function drawAresEyeTint(cx, cy, pr, eyes) {
-    const cols = aresEyeColors(eyes);
-    const y = cy - pr * 0.08;
-    const dx = pr * 0.18;
-    const rx = pr * 0.09;
-    const ry = pr * 0.055;
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    [["l", -dx], ["r", dx]].forEach(function (pair) {
-      ctx.beginPath();
-      ctx.ellipse(cx + pair[1], y, rx, ry, 0, 0, Math.PI * 2);
-      const g = ctx.createRadialGradient(cx + pair[1], y, 0, cx + pair[1], y, rx);
-      g.addColorStop(0, cols.a);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.shadowColor = cols.a;
-      ctx.shadowBlur = 10;
-      ctx.fill();
-    });
-    ctx.beginPath();
-    ctx.arc(cx, cy, pr + 2, 0, Math.PI * 2);
-    ctx.strokeStyle = cols.a;
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = cols.b;
-    ctx.shadowBlur = 12;
-    ctx.stroke();
-    ctx.restore();
+    return aresEyeColors(eyes);
   }
   function raijinEyeColors(dir) {
-    const d = (typeof wxEye === "function") ? wxEye(dir) : String(dir || "WAIT").toUpperCase();
-    if (d === "UP") return { mode: "up", a: "#39ff14", b: "#00ff78" };
-    if (d === "DOWN") return { mode: "down", a: "#ff3b5c", b: "#ff1a4a" };
     return { mode: "wait", a: "#FFFFFF", b: "#E8F4FF" };
   }
   function paintRaijinEyes(dir) {
-    const cols = raijinEyeColors(dir);
     const overlay = document.getElementById("raijinFace");
-    /* One portrait only: canvas cowboy + drawRaijinEyeTint. Never unhide a stacked HTML face. */
+    /* One face. Never unhide a stacked HTML face. No canvas eye tint. */
     if (overlay) {
       overlay.hidden = true;
       overlay.setAttribute("aria-hidden", "true");
     }
-    const chair = document.getElementById("frontChair");
-    if (chair) chair.setAttribute("data-eye", cols.mode);
-    try {
-      document.body.style.setProperty("--raijin-eye-a", cols.a);
-      document.body.style.setProperty("--raijin-eye-b", cols.b);
-    } catch (e) {}
-    return cols;
+    return raijinEyeColors(dir);
   }
   function drawRaijinEyeTint(cx, cy, pr, dir) {
-    const cols = raijinEyeColors(dir);
-    /* WAIT keeps the signed white storm glow. Do not turn WAIT gold. */
-    if (cols.mode === "wait") return cols;
-    /* Soft feather on the glowing sockets only. Do not recolor hat or coat. */
-    const y = cy - pr * 0.10;
-    const dx = pr * 0.16;
-    const rx = pr * 0.09;
-    const ry = pr * 0.055;
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    [["l", -dx], ["r", dx]].forEach(function (pair) {
-      ctx.beginPath();
-      ctx.ellipse(cx + pair[1], y, rx, ry, 0, 0, Math.PI * 2);
-      const g = ctx.createRadialGradient(cx + pair[1], y, 0, cx + pair[1], y, rx);
-      g.addColorStop(0, cols.a);
-      g.addColorStop(0.55, cols.b);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.shadowColor = cols.a;
-      ctx.shadowBlur = 12;
-      ctx.fill();
-    });
-    ctx.restore();
-    return cols;
+    return raijinEyeColors(dir);
   }
   function drawPublicTug(cx, cy, radius, tug) {
     // Floor visual only. FADE one way, STEAM the other. Does not override Chair gates.
@@ -3838,7 +3759,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.restore();
   }
   raijinPortrait.onerror = function () {
-    // Same signed Dallas storm cowboy. No CORS, no neon mark, never leave the Chair empty.
+    // Same signed Dallas storm cowboy. Never blank the Chair face.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
     raijinPortrait.src = "/raijin-wait.jpg";
   };
@@ -3855,7 +3776,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return "WAIT";
   }
   function raijinFace(dir) {
-    const pic = raijinPortraitFor(dir != null ? dir : frontLockDir());
+    const pic = raijinPortrait;
     if (pic && pic.complete && pic.naturalWidth) return pic;
     const el = document.getElementById("frontChairImg");
     if (el && el.complete && el.naturalWidth) return el;
@@ -8837,7 +8758,7 @@ function drawCandleChart() {
     }
     const chairImg = document.getElementById("frontChairImg");
     if (chairImg) {
-      chairImg.src = raijinPortraitSrc(frontLockDir());
+      chairImg.src = raijinPortraitSrc();
     }
     try { paintRaijinEyes(frontLockDir()); } catch (e) {}
     (data.seats || []).forEach(function (s) {
@@ -10158,10 +10079,11 @@ function drawCandleChart() {
     try { maybeAttractEnter(); } catch (e) {}
     if (mode === "art" || mode === "floor") drawArt();
     if (mode === "night") drawArt();
-    if (!document.hidden) {
+    if (!document.hidden && !reduceMotion) {
       animId = requestAnimationFrame(loop);
     } else {
-      animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, 500);
+      const wait = document.hidden ? 500 : 180;
+      animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, wait);
     }
   }
 
@@ -10277,6 +10199,15 @@ function drawCandleChart() {
       if (!soundMuted) playMarketBell();
     });
   }
+  if (stillToggle && !stillToggle.__wired) {
+    stillToggle.__wired = true;
+    stillToggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setStill(!seatOrbitFrozen);
+    });
+  }
+  try { syncStillBtn(); } catch (e) {}
 
   // Unlock audio on first interaction anywhere (browser policy)
   const armAudioOnce = () => {
@@ -11022,7 +10953,17 @@ function drawCandleChart() {
         setSeatSpin(seatOrbitFrozen);
       });
     }
+    const stillBtn = document.getElementById("stillToggle");
+    if (stillBtn && !stillBtn.__wired) {
+      stillBtn.__wired = true;
+      stillBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setStill(!seatOrbitFrozen);
+      });
+    }
     try { syncSeatSpinBtn(); } catch (e) {}
+    try { syncStillBtn(); } catch (e) {}
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
@@ -11095,6 +11036,7 @@ function drawCandleChart() {
   }
 
   function playCelebrateVideo(reason) {
+    if (document.body && document.body.classList.contains("reduce-motion")) return;
     const wrap = document.getElementById("celebrateVideoWrap");
     const vid = document.getElementById("celebrateVideo");
     const skipBtn = document.getElementById("celebrateVideoSkip");
@@ -11636,7 +11578,7 @@ function drawCandleChart() {
     // 5+ win streak → fullscreen close-up money video (once per milestone)
     if (streak >= 5 && streak % 5 === 0 && streak !== lastCelebratedStreak) {
       lastCelebratedStreak = streak;
-      playCelebrateVideo("streak");
+      if (!reduceMotion) playCelebrateVideo("streak");
     }
     if (streak === 0) lastCelebratedStreak = 0;
 
@@ -12185,6 +12127,7 @@ function drawCandleChart() {
   }
 
   function playDeskUnlockIntro() {
+    if (document.body && document.body.classList.contains("reduce-motion")) return;
     // Parked. After SUMMON go straight to the desk. No clip. No fullscreen.
     try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
   }
@@ -12254,7 +12197,7 @@ function drawCandleChart() {
       try { wireFocusAndHelp(); } catch (e) { console.warn(e); }
     };
 
-    if (!vid) { finish(); return; }
+    if (!vid || (document.body && document.body.classList.contains("reduce-motion"))) { finish(); return; }
     vid.muted = false;
     vid.volume = 0.9;
     const onEnd = () => { vid.removeEventListener("ended", onEnd); finish(); };
@@ -12392,24 +12335,29 @@ function drawCandleChart() {
     resize();
     window.addEventListener("resize", resize);
     function tick() {
+      const still = document.body.classList.contains("reduce-motion");
       if (!document.body.classList.contains("mode-floor") && !document.body.classList.contains("floor-mode")) {
-        requestAnimationFrame(tick);
+        if (still) setTimeout(tick, 800);
+        else requestAnimationFrame(tick);
         return;
       }
       ctx.fillStyle = "rgba(2,4,10,0.35)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       for (const st of stars) {
-        st.y += st.z * 0.72;
-        if (st.y > canvas.height) {
-          st.y = 0;
-          st.x = Math.random() * canvas.width;
+        if (!still) {
+          st.y += st.z * 0.72;
+          if (st.y > canvas.height) {
+            st.y = 0;
+            st.x = Math.random() * canvas.width;
+          }
         }
         ctx.beginPath();
         ctx.fillStyle = `hsla(${200 + st.z * 40}, 90%, ${60 + st.z * 15}%, ${0.5 + st.z * 0.25})`;
         ctx.arc(st.x, st.y, st.s, 0, Math.PI * 2);
         ctx.fill();
       }
-      requestAnimationFrame(tick);
+      if (still) setTimeout(tick, 800);
+      else requestAnimationFrame(tick);
     }
     tick();
   }
@@ -12979,7 +12927,12 @@ function drawCandleChart() {
     return { wrap, vid: vid || document.getElementById("floorMoneyRainVideo") };
   }
 
+  function motionStill() {
+    return !!(document.body && document.body.classList.contains("reduce-motion"));
+  }
+
   function startRain() {
+    if (motionStill()) return;
     const { wrap, vid } = ensureEls();
     if (!wrap || !vid) return;
     active = true;
@@ -13010,7 +12963,7 @@ function drawCandleChart() {
   }
 
   window.__setFloorMoneyRain = function (on) {
-    if (on) startRain();
+    if (on && !motionStill()) startRain();
     else stopRain();
   };
 
@@ -13020,7 +12973,7 @@ function drawCandleChart() {
     if (typeof prev === "function") {
       try { prev(isFloor); } catch (e) {}
     }
-    if (isFloor && active) {
+    if (isFloor && active && !motionStill()) {
       const vid = document.getElementById("floorMoneyRainVideo");
       if (vid) {
         const p = vid.play();

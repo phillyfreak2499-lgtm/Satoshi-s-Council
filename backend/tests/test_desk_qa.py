@@ -292,9 +292,9 @@ class SatoshiChairEmblemTests(unittest.TestCase):
         html = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("function coverSatoshiEmblem", js)
         self.assertNotIn("gold ZT chest emblem", js)
-        self.assertIn('"/chair-up.jpg"', js)
-        self.assertIn('"/chair-down.jpg"', js)
         self.assertIn('"/chair-wait.jpg"', js)
+        self.assertNotIn('"/chair-up.jpg"', js)
+        self.assertNotIn('"/chair-down.jpg"', js)
         for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
             self.assertTrue((ROOT / "frontend" / "static" / name).is_file(), name)
         self.assertIn("Satoshi’s Council", html)

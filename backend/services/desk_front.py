@@ -2178,7 +2178,7 @@ def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bo
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     acc = chair_accuracy()
     rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
-    # Skip / dont_play is a WAIT, not a BELOW lock. Portraits still use UP/WAIT eyes.
+    # Skip / dont_play is a WAIT, not a BELOW lock. Labels carry eye/lean.
     if not best or best.get("dont_play"):
         lean = "WAIT"
         eye = "WAIT"
@@ -2191,10 +2191,10 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             cap_strike=best.get("cap_strike"),
         )
         eye = weather_eye(lean)
-    # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
+    # ONE FACE. Labels carry eye/lean. The mark stays the WAIT cowboy.
     marks = {
-        "UP": "/static/bots/raijin-up.png",
-        "DOWN": "/static/bots/raijin-down.png",
+        "UP": "/static/bots/raijin-wait.png",
+        "DOWN": "/static/bots/raijin-wait.png",
         "WAIT": "/static/bots/raijin-wait.png",
     }
     return {

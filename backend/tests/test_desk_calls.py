@@ -122,6 +122,8 @@ class PunchyCallCopyTests(unittest.TestCase):
         self.assertIn("playSampleSfx(\"/static/sfx/lose-trombone.mp3\"", JS)
 
     def test_wire_note(self):
+        self.assertIn("2026-08-16-one-face", WIRE_JS)
+        self.assertIn("2026-08-16-header-still", WIRE_JS)
         self.assertIn("2026-08-16-vitalik-recenter", WIRE_JS)
         self.assertIn("2026-08-16-coinglass-1h-only", WIRE_JS)
         self.assertIn("2026-08-16-coinglass-wall-tight", WIRE_JS)
@@ -131,13 +133,15 @@ class PunchyCallCopyTests(unittest.TestCase):
         self.assertIn("2026-08-16-chair-table-call", WIRE_JS)
         self.assertIn("2026-08-16-current-calls", WIRE_JS)
         self.assertIn("Current Calls", WIRE_JS)
+        self.assertLess(WIRE_JS.find("2026-08-16-one-face"), WIRE_JS.find("2026-08-16-header-still"))
+        self.assertLess(WIRE_JS.find("2026-08-16-header-still"), WIRE_JS.find("2026-08-16-vitalik-recenter"))
         self.assertLess(WIRE_JS.find("2026-08-16-vitalik-recenter"), WIRE_JS.find("2026-08-16-coinglass-1h-only"))
         self.assertLess(WIRE_JS.find("2026-08-16-coinglass-1h-only"), WIRE_JS.find("2026-08-16-coinglass-wall-tight"))
         self.assertLess(WIRE_JS.find("2026-08-16-coinglass-wall-tight"), WIRE_JS.find("2026-08-16-kill-crickets"))
         self.assertLess(WIRE_JS.find("2026-08-16-kill-crickets"), WIRE_JS.find("2026-08-16-coinglass-plan-wall"))
         self.assertLess(WIRE_JS.find("2026-08-16-chair-table-call"), WIRE_JS.find("2026-08-16-current-calls"))
-        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-vitalik-recenter", 1)[1][:500])
-        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-vitalik-recenter", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
+        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-one-face", 1)[1][:500])
+        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-one-face", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
 
 
 if __name__ == "__main__":

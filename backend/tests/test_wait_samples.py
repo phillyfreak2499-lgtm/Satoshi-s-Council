@@ -403,7 +403,7 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn('bind(focusFront, "front")', JS)
         self.assertIn('focusTable = "front"', JS)
         self.assertIn('if (mode === "front") setMode("art")', JS)
-        self.assertIn("raijinPortraitFor(wxEye(dir))", JS)
+        self.assertIn("return raijinPortrait", JS.split("function chairPortraitOf", 1)[1][:400])
         self.assertIn('chairPortraitOf(which, dir)', JS)
         self.assertIn("DFW · Raijin", JS)
         self.assertIn("DFW · RAIJIN", JS)
