@@ -1083,6 +1083,9 @@ class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(learner.lock_n, before_lock)
             self.assertIn("no window_calls", report["displayed_hit_rate"])
             self.assertFalse((root / "window_calls.json").is_file())
+            self.assertIn("skip_reasons", report)
+            self.assertEqual(report.get("oldest_ticker"), "KXBTC15M-26AUG101215-15")
+            self.assertEqual(report.get("newest_ticker"), "KXBTC15M-26AUG101215-15")
             after_card = floor_scorecard(
                 {"correct": 4, "wrong": 1},
                 {"correct": 2, "wrong": 1},

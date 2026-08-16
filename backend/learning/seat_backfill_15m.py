@@ -530,7 +530,8 @@ def _persist_15m_brain(
     rec["displayed_hit_rate"] = "untouched"
     brain.backfill = rec
     brain.save(Path(root) / BRAIN_FILE_BTC_15M)
-    save_status({**report, "events": sorted(seen)[-800:], "cursor": cursor}, root)
+    # Keep the full seen set so a crash-resume merges, not double-grades.
+    save_status({**report, "events": sorted(seen), "cursor": cursor}, root)
     if done:
         mark_done(root, report)
 
@@ -581,6 +582,7 @@ async def run_btc_15m_backfill(
     hour_n = [0] * 24
     dow_hits = [0] * 7
     dow_n = [0] * 7
+    skip_reasons: Dict[str, int] = {}
 
     def _apply(rec: Dict[str, Any]) -> None:
         nonlocal graded, skip_result, skip_other
@@ -607,6 +609,7 @@ async def run_btc_15m_backfill(
                 pass
             return
         reason = rec.get("reason") or "other"
+        skip_reasons[reason] = int(skip_reasons.get(reason) or 0) + 1
         if reason in ("no_official_result", "empty_event"):
             skip_result += 1
         elif reason != "already_graded":
@@ -616,6 +619,7 @@ async def run_btc_15m_backfill(
         nonlocal considered, skip_result
         if official_y_finish(market) not in ("UP", "DOWN"):
             skip_result += 1
+            skip_reasons["no_official_result"] = int(skip_reasons.get("no_official_result") or 0) + 1
             considered += 1
             return
         considered += 1
@@ -647,6 +651,9 @@ async def run_btc_15m_backfill(
             "windows_skipped_other": skip_other,
             "seat_samples": seat_n,
             "tickers_tail": tickers[-12:],
+            "oldest_ticker": tickers[0] if tickers else None,
+            "newest_ticker": tickers[-1] if tickers else None,
+            "skip_reasons": dict(skip_reasons),
             "events": events,
             "hour_up_rate": [
                 None if hour_n[i] < 8 else round(hour_hits[i] / hour_n[i], 3)
@@ -694,9 +701,11 @@ async def run_btc_15m_backfill(
                     )
         else:
             cursor = status.get("cursor") if not force else None
+            stubs: List[Dict[str, Any]] = []
             pages = 0
+            nxt: Optional[str] = None
             while pages < int(MAX_PAGES):
-                if max_windows is not None and considered >= int(max_windows):
+                if max_windows is not None and len(stubs) >= int(max_windows):
                     break
                 try:
                     page, nxt = await fetch_settled_15m_page(
@@ -712,23 +721,27 @@ async def run_btc_15m_backfill(
                 if not page:
                     cursor = None
                     break
-                page.sort(key=lambda m: str(m.get("close_time") or m.get("ticker") or ""))
-                for market in page:
-                    if max_windows is not None and considered >= int(max_windows):
-                        break
-                    await _grade_row(market)
-                    if persist and graded and graded % CHECKPOINT_EVERY == 0:
-                        _persist_15m_brain(
-                            brain, root, _snapshot(nxt), seen, cursor=nxt, done=False,
-                        )
+                stubs.extend(page)
                 cursor = nxt
-                logger.info(
-                    f"15m BTC backfill page {pages} · graded {graded} · "
-                    f"skip result {skip_result} · skip other {skip_other}"
-                )
+                logger.info(f"15m BTC backfill fetched page {pages} · {len(stubs)} official books")
                 if not nxt:
                     break
                 await asyncio.sleep(0.35)
+            # Metadata only — not the candle tape. Oldest-first like the 1h replay.
+            stubs.sort(key=lambda m: str(m.get("close_time") or m.get("ticker") or ""))
+            if max_windows is not None:
+                stubs = stubs[: int(max_windows)]
+            for i, market in enumerate(stubs, start=1):
+                await _grade_row(market)
+                if persist and (i == 1 or i % CHECKPOINT_EVERY == 0):
+                    _persist_15m_brain(
+                        brain, root, _snapshot(nxt), seen, cursor=nxt, done=False,
+                    )
+                if i == 1 or i % 100 == 0 or i == len(stubs):
+                    logger.info(
+                        f"15m BTC backfill {i}/{len(stubs)} · graded {graded} · "
+                        f"skip result {skip_result} · skip other {skip_other}"
+                    )
     finally:
         if own_kalshi and kalshi is not None and hasattr(kalshi, "close"):
             try:
@@ -790,7 +803,9 @@ def _cli(argv: List[str] | None = None) -> int:
         run_btc_15m_backfill(persist=True, force=bool(args.force), max_windows=args.max_windows)
     )
     print(json.dumps({k: report.get(k) for k in (
-        "ok", "windows_graded", "windows_considered", "seat_samples",
+        "ok", "windows_graded", "windows_graded_this_pass", "windows_considered",
+        "windows_skipped_no_result", "windows_skipped_other", "skip_reasons",
+        "seat_samples", "oldest_ticker", "newest_ticker", "tickers_tail",
         "hour_up_rate", "weekday_up_rate", "brain_file",
     )}, indent=2))
     return 0 if report.get("ok") else 1
