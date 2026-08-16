@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-raijin-explore",
+    "at": "2026-08-17T01:55:00-05:00",
+    "title": "Raijin explore notch — sit less on DFW",
+    "why": "Zach Voice: Same idea as Satoshi. Raijin was sitting too much on the Dallas weather chair. Drop the lock bar a notch for Raijin / the Dallas weather Chair only — more explore paper locks when EV is still ≥ 0 and the book is real. Keep the sick / stale / empty-book veto. Front weather rail stays (not the crypto 10–90). Do not loosen ETH 1H (Vitalik), Ares, or Oracle. Raijin stays Dallas daily high only (DFW settle, not Love Field). No politics chair. Same PR keeps the Satoshi 15-minute explore notch and the official 15-minute seat replay (merge not wipe, no displayed hit slate). Product name stays Satoshi’s Council. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-satoshi-explore-15m-replay",
     "at": "2026-08-17T01:40:00-05:00",
     "title": "Satoshi explore notch + 15m seat replay",

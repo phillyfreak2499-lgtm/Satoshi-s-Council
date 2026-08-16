@@ -1085,5 +1085,96 @@ class GlassPaneTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(board["follower"])
 
 
+class RaijinExploreLockTests(unittest.TestCase):
+    """Raijin / Dallas weather Chair only. Vitalik / Ares / Oracle stay put."""
+
+    def _best(self, **over):
+        row = {
+            "dont_play": False,
+            "skip": None,
+            "ev_cents": 0.4,
+            "confidence": 42,
+            "yes_ask": 48,
+            "p_forecast": 0.48,
+            "ticker": "KXHIGHTDAL-26AUG15-B103104",
+            "city": "DAL",
+            "station": "KDFW",
+        }
+        row.update(over)
+        return row
+
+    def test_explore_lock_when_ev_nonneg_on_real_book(self):
+        self.assertTrue(desk_front.front_explore_lock_ok(self._best(ev_cents=0.0, confidence=42)))
+        self.assertTrue(desk_front.front_explore_lock_ok(self._best(ev_cents=1.2, confidence=38)))
+        self.assertTrue(desk_front.front_clears_lock_bar(self._best(ev_cents=0.4, confidence=42), 50))
+        self.assertFalse(desk_front.front_explore_lock_ok(self._best(ev_cents=-0.2, confidence=42)))
+        self.assertFalse(desk_front.front_clears_lock_bar(self._best(ev_cents=-1.0, confidence=42), 50))
+
+    def test_veto_holds_on_sick_stale_empty(self):
+        self.assertFalse(desk_front.front_explore_lock_ok(self._best(dont_play=True, skip="SICK BOOK", ev_cents=8.0)))
+        self.assertFalse(desk_front.front_explore_lock_ok(self._best(dont_play=True, skip="EMPTY BOOK", ev_cents=8.0)))
+        self.assertFalse(desk_front.front_explore_lock_ok(self._best(dont_play=True, skip="STALE BOOK", ev_cents=8.0)))
+        self.assertFalse(desk_front.front_clears_lock_bar(self._best(dont_play=True, skip="SICK BOOK", ev_cents=8.0, confidence=80), 50))
+        heat = {"stale": True, "ok": False}
+        self.assertEqual(desk_front.skip_reason({"empty": False}, 103.0, False, 4000.0, heat=heat), "STALE BOOK")
+        self.assertEqual(desk_front.skip_reason({"empty": True}, 103.0, False, 4000.0), "EMPTY BOOK")
+        self.assertEqual(desk_front.skip_reason({"sick": True}, 103.0, False, 4000.0), "SICK BOOK")
+
+    def test_dallas_only_and_other_chairs_unloosened(self):
+        self.assertEqual(desk_front.DALLAS["station"], "KDFW")
+        self.assertEqual(desk_front.DALLAS["series"], "KXHIGHTDAL")
+        self.assertEqual(desk_front.CITIES, (desk_front.DALLAS,))
+        self.assertIn("KXHIGHNY", desk_front.BLOCKED_SERIES)
+        self.assertEqual(float(desk_front.FRONT_EXPLORE_MIN_EV), 0.0)
+        from backend.config import settings
+        from backend.services.desk_hunter import MIN_EV_SIT
+        self.assertEqual(float(settings.MIN_EV_CENTS), 3.0)
+        self.assertEqual(float(MIN_EV_SIT), 3.0)
+        self.assertIn("20–80", (ROOT / "backend" / "services" / "desk_ats.py").read_text(encoding="utf-8"))
+        self.assertIn("leftover) < 3.0", (ROOT / "backend" / "services" / "desk_ats.py").read_text(encoding="utf-8"))
+        self.assertIn("20–80", (ROOT / "backend" / "services" / "desk_oracle.py").read_text(encoding="utf-8"))
+        self.assertEqual(float(settings.MIN_EV_CENTS), 3.0)
+
+
+class RaijinExploreBoardTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        desk_front.reset_for_tests(Path(self.tmp.name))
+
+    async def test_high_confidence_bar_still_explores_when_ev_nonneg(self):
+        knobs = dict(desk_front.front_knobs())
+        knobs["min_confidence"] = 99
+        with patch.object(desk_front, "front_knobs", return_value=knobs):
+            board = await desk_front.build_board(
+                fetch=_fetch_factory(),
+                nws=_nws_high_only,
+                now=NOW,
+                wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101},
+            )
+        best = next(b for b in board["brackets"] if b.get("best"))
+        self.assertFalse(best.get("dont_play"), best)
+        self.assertGreaterEqual(float(best.get("ev_cents") or -99), 0.0)
+        self.assertLess(int(best.get("confidence") or 0), 99)
+        self.assertEqual(board["chair"]["eye"], "UP")
+        self.assertEqual(board["chair"]["name"], "RAIJIN")
+        waits = [r for r in desk_front._load_fills() if str(r.get("side") or "").upper() == "WAIT" and not r.get("superseded")]
+        self.assertEqual(waits, [])
+
+    async def test_empty_book_still_sits(self):
+        empty = _m("KXHIGHTDAL-26AUG15-B103104", yes_bid=None, yes_ask=None, volume="0")
+        empty["yes_bid_dollars"] = None
+        empty["yes_ask_dollars"] = None
+        board = await desk_front.build_board(
+            fetch=_fetch_factory({"rows": [empty]}),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101},
+        )
+        self.assertEqual(board["chair"]["eye"], "WAIT")
+        best = next((b for b in board["brackets"] if b.get("best")), None)
+        self.assertTrue(best.get("dont_play"))
+
+
 if __name__ == "__main__":
     unittest.main()

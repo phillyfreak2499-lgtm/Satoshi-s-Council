@@ -109,6 +109,7 @@ CHAIR: Dict[str, str] = {
 
 WX_MODES = ("SUN", "HEAT", "CLOUD", "RAIN", "WIND", "STORM")
 THIN_VOL = 200.0
+FRONT_EXPLORE_MIN_EV = 0.0  # Raijin only — explore paper lock when EV ≥ 0
 FLIP_F = 2.0
 MESH_WIDE_F = 4.0
 MESH_MIN_LIVE = 2
@@ -620,6 +621,8 @@ def frost_line(skip: Optional[str]) -> Optional[str]:
         return "CLEAR"
     if "sick" in low:
         return "SICK BOOK"
+    if "stale" in low:
+        return "STALE BOOK"
     if "99" in low:
         return "99¢ WALL"
     if "flip" in low:
@@ -1073,6 +1076,8 @@ def classify_front_wait_reason(skip: Optional[str], flags: Optional[Dict[str, An
         return "dead_book"
     if flags.get("sick") or "sick" in text:
         return "dead_book"
+    if flags.get("stale") or "stale" in text:
+        return "dead_book"
     if "99" in text:
         return "odds_outside_20_80"
     if "thin" in text:
@@ -1183,6 +1188,8 @@ def skip_reason(
         return "EMPTY BOOK"
     if flags.get("sick"):
         return "SICK BOOK"
+    if heat and heat.get("stale") and not heat.get("ok"):
+        return "STALE BOOK"
     if flags.get("wall_99"):
         return "99¢ WALL"
     if flags.get("spread") is not None and flags["spread"] >= 6:
@@ -2133,6 +2140,41 @@ def build_seats(
     return rows
 
 
+def front_explore_lock_ok(best: Optional[Dict[str, Any]]) -> bool:
+    """
+    Raijin / Dallas weather Chair only.
+    Explore paper lock when EV ≥ 0 and the book is real.
+    Sick / stale / empty / 99¢ still sit. Does not loosen Vitalik, Ares, or Oracle.
+    """
+    if not best or best.get("dont_play"):
+        return False
+    skip = str(best.get("skip") or "").upper()
+    if any(tok in skip for tok in ("SICK", "EMPTY", "STALE", "99")):
+        return False
+    ev = best.get("ev_cents")
+    try:
+        return ev is not None and float(ev) >= float(FRONT_EXPLORE_MIN_EV)
+    except (TypeError, ValueError):
+        return False
+
+
+def front_clears_lock_bar(best: Optional[Dict[str, Any]], min_c: int) -> bool:
+    """Strict min_confidence, or Raijin explore when EV ≥ 0 on a real book."""
+    if not best or best.get("dont_play"):
+        return False
+    try:
+        conf = int(best.get("confidence") or 0)
+    except (TypeError, ValueError):
+        conf = 0
+    try:
+        bar = int(min_c)
+    except (TypeError, ValueError):
+        bar = 50
+    if conf >= bar:
+        return True
+    return front_explore_lock_ok(best)
+
+
 def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bool:
     """
     Shadow lock bar with skip/dont_play gates off.
@@ -2395,7 +2437,7 @@ async def build_board(
     except (TypeError, ValueError):
         min_c = 50
     chair_best = best
-    if best and not best.get("dont_play") and int(best.get("confidence") or 0) < min_c:
+    if best and not front_clears_lock_bar(best, min_c):
         chair_best = None
     sit_out = chair_best is None or bool(best and best.get("dont_play"))
     if day is not None and sit_out:
@@ -2583,13 +2625,9 @@ async def tap(
         min_c = int(kn.get("min_confidence") or 50)
     except (TypeError, ValueError):
         min_c = 50
-    conf = cached.get("confidence")
-    if conf is not None:
-        try:
-            if int(conf) < min_c:
-                return {"ok": False, "error": "below min confidence", "dont_play": True}
-        except (TypeError, ValueError):
-            pass
+    if cached and not front_clears_lock_bar({**cached, "dont_play": bool(cached.get("dont_play"))}, min_c):
+        if cached.get("confidence") is not None or cached.get("ev_cents") is not None:
+            return {"ok": False, "error": "below min confidence", "dont_play": True}
     day = date_from_ticker(tick)
     row = {
         "id": str(uuid.uuid4())[:12],

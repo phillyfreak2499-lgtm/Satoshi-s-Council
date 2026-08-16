@@ -1243,11 +1243,13 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-raijin-explore", WIRE)
         self.assertIn("2026-08-16-satoshi-explore-15m-replay", WIRE)
         self.assertIn("2026-08-16-path-stake-chalk-exit", WIRE)
         self.assertIn("2026-08-16-majority-wash-lock", WIRE)
         self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-raijin-explore"), WIRE.find("2026-08-16-satoshi-explore-15m-replay"))
         self.assertLess(WIRE.find("2026-08-16-satoshi-explore-15m-replay"), WIRE.find("2026-08-16-path-stake-chalk-exit"))
         self.assertLess(WIRE.find("2026-08-16-path-stake-chalk-exit"), WIRE.find("2026-08-16-majority-wash-lock"))
         self.assertLess(WIRE.find("2026-08-16-majority-wash-lock"), WIRE.find("2026-08-16-herald-leftovers"))
@@ -1284,6 +1286,22 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Live OFF", chunk)
         self.assertNotIn("ZT", chunk)
         self.assertNotIn("KX", chunk)
+        raijin = WIRE.split("2026-08-16-raijin-explore", 1)[1][:1400]
+        self.assertIn("Raijin", raijin)
+        self.assertIn("Dallas", raijin)
+        self.assertIn("EV", raijin)
+        self.assertIn("sick", raijin)
+        self.assertIn("stale", raijin)
+        self.assertIn("empty", raijin)
+        self.assertIn("Vitalik", raijin)
+        self.assertIn("Ares", raijin)
+        self.assertIn("Oracle", raijin)
+        self.assertIn("Love Field", raijin)
+        self.assertIn("Paper", raijin)
+        self.assertIn("Follower OFF", raijin)
+        self.assertIn("Satoshi’s Council", raijin)
+        self.assertNotIn("Phantom", raijin)
+        self.assertNotIn("ZT", raijin)
         explore = WIRE.split("2026-08-16-satoshi-explore-15m-replay", 1)[1][:1400]
         self.assertIn("Satoshi", explore)
         self.assertIn("EV", explore)
