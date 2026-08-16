@@ -23,6 +23,32 @@ SESSION_PRIORS = [
 ]
 
 
+def _empirical_15m_clock(hour: int, weekday: int) -> Tuple[Optional[float], Optional[float]]:
+    """Read graded 15m finish rates from the BTC 15m brain. None until n exists."""
+    try:
+        import json
+        from pathlib import Path
+        from backend.config import settings as _s
+        path = Path(getattr(_s, "DATA_DIR", None) or "./data") / "council-learning-btc15m.json"
+        if not path.is_file():
+            return None, None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        rec = data.get("backfill") if isinstance(data, dict) else None
+        if not isinstance(rec, dict):
+            return None, None
+        hours = rec.get("hour_up_rate") or []
+        days = rec.get("weekday_up_rate") or []
+        h = None
+        d = None
+        if isinstance(hours, list) and 0 <= int(hour) < len(hours) and hours[int(hour)] is not None:
+            h = float(hours[int(hour)])
+        if isinstance(days, list) and 0 <= int(weekday) < len(days) and days[int(weekday)] is not None:
+            d = float(days[int(weekday)])
+        return h, d
+    except Exception:
+        return None, None
+
+
 def _session_for(hour: int) -> Tuple[str, float, float]:
     for start, end, name, bias, act in SESSION_PRIORS:
         if start <= hour < end:
@@ -76,6 +102,13 @@ class SessionTodSpecialist(BaseSpecialist):
         if fifteen and weekday >= 5:
             activity = max(0.35, activity * 0.82)
             bias *= 0.55
+        # Blend official 15m Kalshi hour / weekday finish rates when the 15m brain has them.
+        if fifteen:
+            emp_h, emp_d = _empirical_15m_clock(hour, weekday)
+            if emp_h is not None:
+                bias = 0.62 * bias + 0.38 * ((emp_h - 0.5) * 0.85)
+            if emp_d is not None:
+                bias = 0.75 * bias + 0.25 * ((emp_d - 0.5) * 0.70)
 
         mins_left = market_data.get("mins_left")
         try:

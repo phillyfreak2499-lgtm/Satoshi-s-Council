@@ -1638,9 +1638,20 @@ class Leader:
                                         odds_str = f" @ {side_odds:.0f}¢" if side_odds is not None else ""
                                         ev_str = f" · EV {ev_cents:.1f}¢" if ev_cents is not None else ""
                                         paper_bit = " · PAPER explore" if explore_paper else ""
+                                        goal_txt = GOAL_CONTRACT_SHORT
+                                        try:
+                                            from backend.learning.btc15m import goal_short_for
+                                            goal_txt = goal_short_for(
+                                                asset=(regime_features or {}).get("asset"),
+                                                ticker=(regime_features or {}).get("ticker") or ticker,
+                                                series=(regime_features or {}).get("series_ticker"),
+                                                window_minutes=(regime_features or {}).get("window_minutes"),
+                                            )
+                                        except Exception:
+                                            pass
                                         summary = (
                                             f"LOCKED {lock_dir}{odds_str}{ev_str}{paper_bit} · ONE CALL · FOLLOW THIS · "
-                                            f"{GOAL_CONTRACT_SHORT} · {summary}"
+                                            f"{goal_txt} · {summary}"
                                         )
 
         elif direction == "SWAP" and not (self._entry_dir or self._active_dir()):

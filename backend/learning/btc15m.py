@@ -42,7 +42,8 @@ SCORE_BAND_HI = 80.0
 CHALK_CENTS = 99.0
 MIN_EV_CENTS = 3.0
 SNAPSHOT_MINS_INTO_15M = 4.0  # after the 3m sit; not the close print
-CANDLE_LOOKBACK_MIN_15M = 30
+CANDLE_LOOKBACK_MIN_15M = 60  # 1m bars: enough for 3/8/15 + volume, not a 1H clone
+GOAL_SHORT_15M = "GOAL · 1 window-end guess @ best odds (20–80¢)"
 P_FINISH_COLD_N = 15
 
 # CoinGlass 1h / 30m is the wrong timeframe for a 15m lock.
@@ -364,6 +365,52 @@ def coinglass_allowed_on_book(
     ):
         return False
     return True
+
+
+def is_15m_btc_book(market_data: Any = None) -> bool:
+    md = market_data if isinstance(market_data, dict) else {}
+    return is_15m_window(
+        md.get("window_minutes"),
+        md.get("ticker") or md.get("kalshi_ticker") or (md.get("kalshi_market") or {}).get("ticker"),
+        md.get("series_ticker"),
+        md.get("asset"),
+    ) and not is_eth_1h_ticker(md.get("ticker") or md.get("kalshi_ticker"))
+
+
+def goal_short_for(
+    *,
+    asset: Any = None,
+    ticker: Any = None,
+    series: Any = None,
+    window_minutes: Any = None,
+    market_data: Any = None,
+) -> str:
+    if market_data is not None and is_15m_btc_book(market_data):
+        return GOAL_SHORT_15M
+    if is_15m_window(window_minutes, ticker, series, asset) and not is_eth_1h_ticker(ticker):
+        if str(asset or "btc").lower() in ("btc", "bitcoin", "btc15m", ""):
+            return GOAL_SHORT_15M
+    return "GOAL · 1 window-end guess @ best odds (10–90¢)"
+
+
+def momentum_horizons_15m() -> Dict[str, Any]:
+    """3m / 8m / 15m — not the 1H 5/15/30 stack."""
+    return {
+        "bars": (3, 8, 15),
+        "full_ret": 0.0008,
+        "partial_ret": 0.0004,
+        "label": "3/8/15",
+    }
+
+
+def exhaust_thresholds_15m() -> Dict[str, float]:
+    """Fade a 15m extension when the last 3m flips. Do not use the 1H 0.9% run."""
+    return {
+        "run_pct": 0.22,
+        "flip_pct": 0.06,
+        "run_bars": 15,
+        "flip_bars": 3,
+    }
 
 
 def window_label(

@@ -36,10 +36,28 @@ class MomentumSpecialist(BaseSpecialist):
         path = self.path_move(market_data)
         entry = self.entry_dir(market_data)
 
+        fifteen = False
+        try:
+            from backend.learning.btc15m import is_15m_btc_book, momentum_horizons_15m
+            fifteen = is_15m_btc_book(market_data)
+        except Exception:
+            fifteen = False
+        if fifteen:
+            hz = momentum_horizons_15m()
+            b0, b1, b2 = hz["bars"]
+            full_ret = float(hz["full_ret"])
+            partial_ret = float(hz["partial_ret"])
+            hz_label = str(hz["label"])
+        else:
+            b0, b1, b2 = 5, 15, 30
+            full_ret, partial_ret, hz_label = 0.0015, 0.001, "5/15/30"
+
         closes = np.array([c["close"] for c in candles[-60:]], dtype=float)
-        ret_5 = (closes[-1] - closes[-6]) / closes[-6] if len(closes) > 5 else 0.0
-        ret_15 = (closes[-1] - closes[-16]) / closes[-16] if len(closes) > 15 else 0.0
-        ret_30 = (closes[-1] - closes[-31]) / closes[-31] if len(closes) > 30 else 0.0
+        ret_a = (closes[-1] - closes[-(b0 + 1)]) / closes[-(b0 + 1)] if len(closes) > b0 else 0.0
+        ret_b = (closes[-1] - closes[-(b1 + 1)]) / closes[-(b1 + 1)] if len(closes) > b1 else 0.0
+        ret_c = (closes[-1] - closes[-(b2 + 1)]) / closes[-(b2 + 1)] if len(closes) > b2 else 0.0
+        # Keep 1H feature names; 15m overwrites with the shorter stack.
+        ret_5, ret_15, ret_30 = ret_a, ret_b, ret_c
 
         # Alignment score across horizons
         signs = [np.sign(ret_5), np.sign(ret_15), np.sign(ret_30)]
@@ -54,6 +72,7 @@ class MomentumSpecialist(BaseSpecialist):
             "aligned_down": aligned_down,
             "phase": phase,
             "horizon": "entry" if phase == "entry" else "revision",
+            "horizon_stack": hz_label,
             "path_move": path,
             "streak_n": streak_n,
         }
@@ -63,16 +82,16 @@ class MomentumSpecialist(BaseSpecialist):
         notes = []
 
         if phase == "entry":
-            if aligned_up >= 3 and ret_15 > 0.0015:
+            if aligned_up >= 3 and ret_15 > full_ret:
                 direction, conf = "UP", min(86, 58 + int(ret_15 * 6000))
-                notes.append(f"aligned UP 5/15/30 · 15m +{ret_15*100:.2f}%")
-            elif aligned_down >= 3 and ret_15 < -0.0015:
+                notes.append(f"aligned UP {hz_label} · mid +{ret_15*100:.2f}%")
+            elif aligned_down >= 3 and ret_15 < -full_ret:
                 direction, conf = "DOWN", min(86, 58 + int(abs(ret_15) * 6000))
-                notes.append(f"aligned DOWN 5/15/30 · 15m {ret_15*100:.2f}%")
-            elif aligned_up >= 2 and ret_5 > 0.001:
+                notes.append(f"aligned DOWN {hz_label} · mid {ret_15*100:.2f}%")
+            elif aligned_up >= 2 and ret_5 > partial_ret:
                 direction, conf = "UP", 60
                 notes.append("partial UP alignment")
-            elif aligned_down >= 2 and ret_5 < -0.001:
+            elif aligned_down >= 2 and ret_5 < -partial_ret:
                 direction, conf = "DOWN", 60
                 notes.append("partial DOWN alignment")
             else:
@@ -90,8 +109,8 @@ class MomentumSpecialist(BaseSpecialist):
             # Revision: momentum vs entry
             if entry in ("UP", "DOWN"):
                 adverse = (
-                    (entry == "UP" and aligned_down >= 2 and ret_15 < -0.0015)
-                    or (entry == "DOWN" and aligned_up >= 2 and ret_15 > 0.0015)
+                    (entry == "UP" and aligned_down >= 2 and ret_15 < -full_ret)
+                    or (entry == "DOWN" and aligned_up >= 2 and ret_15 > full_ret)
                 )
                 supportive = (
                     (entry == "UP" and aligned_up >= 2)

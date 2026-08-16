@@ -476,7 +476,7 @@ async def run_btc_15m_backfill(
     dow_hits = [0] * 7
     dow_n = [0] * 7
 
-    for market in rows:
+    for i, market in enumerate(rows, start=1):
         try:
             rec = await grade_one_15m(
                 market,
@@ -517,9 +517,11 @@ async def run_btc_15m_backfill(
                 skip_result += 1
             elif reason != "already_graded":
                 skip_other += 1
-
-    if persist and hasattr(brain, "save"):
-        brain.save(Path(root) / BRAIN_FILE_BTC_15M)
+        if i == 1 or i % 100 == 0 or i == len(rows):
+            logger.info(
+                f"15m BTC backfill {i}/{len(rows)} · graded {graded} · "
+                f"skip result {skip_result} · skip other {skip_other}"
+            )
 
     report = {
         "ok": True,
@@ -550,8 +552,19 @@ async def run_btc_15m_backfill(
         "finished_at": datetime.now(UTC).isoformat(),
         "contract": contract,
     }
-    save_status({**report, "events": sorted(seen)[-800:]}, root)
-    if persist:
+    if persist and hasattr(brain, "save"):
+        rec = brain.backfill if isinstance(getattr(brain, "backfill", None), dict) else {}
+        rec["tag"] = BACKFILL_TAG
+        rec["series"] = SERIES_BTC_15M
+        rec["window_minutes"] = WINDOW_MINUTES_15M
+        rec["windows_graded"] = graded
+        rec["hour_up_rate"] = report["hour_up_rate"]
+        rec["weekday_up_rate"] = report["weekday_up_rate"]
+        rec["coinglass"] = False
+        rec["port_1h_weights"] = False
+        brain.backfill = rec
+        brain.save(Path(root) / BRAIN_FILE_BTC_15M)
+        save_status({**report, "events": sorted(seen)[-800:]}, root)
         mark_done(root, report)
     logger.info(
         f"15m BTC backfill done · graded {graded} window(s) · "

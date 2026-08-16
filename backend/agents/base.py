@@ -192,7 +192,13 @@ class BaseSpecialist(ABC):
     def annotate_reason(self, market_data: Dict[str, Any], core: str) -> str:
         """Prefix reasoning with phase + goal awareness so debate log is readable."""
         tag = self.phase_tag(market_data)
-        return f"[{tag}] {GOAL_CONTRACT_SHORT} · {core}"
+        goal = GOAL_CONTRACT_SHORT
+        try:
+            from backend.learning.btc15m import goal_short_for
+            goal = goal_short_for(market_data=market_data)
+        except Exception:
+            pass
+        return f"[{tag}] {goal} · {core}"
 
     def record_signal(self, signal: AgentSignal, limit: int = 40):
         self._recent_signals.append(signal)

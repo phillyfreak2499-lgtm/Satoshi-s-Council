@@ -22,7 +22,7 @@ class ExhaustSpecialist(BaseSpecialist):
     @staticmethod
     def _candle_returns(candles: List[Dict[str, Any]]) -> Dict[str, Optional[float]]:
         if not candles or len(candles) < 5:
-            return {"ret_5m": None, "ret_15m": None, "ret_60m": None, "near_high": None, "near_low": None}
+            return {"ret_3m": None, "ret_5m": None, "ret_15m": None, "ret_60m": None, "near_high": None, "near_low": None}
         rows = []
         for c in candles:
             try:
@@ -36,7 +36,7 @@ class ExhaustSpecialist(BaseSpecialist):
             except Exception:
                 continue
         if len(rows) < 5:
-            return {"ret_5m": None, "ret_15m": None, "ret_60m": None, "near_high": None, "near_low": None}
+            return {"ret_3m": None, "ret_5m": None, "ret_15m": None, "ret_60m": None, "near_high": None, "near_low": None}
         rows.sort(key=lambda x: x[0])
         last = rows[-1][4]
 
@@ -54,6 +54,7 @@ class ExhaustSpecialist(BaseSpecialist):
         near_high = (hi - last) / hi * 100.0 if hi > 0 else None
         near_low = (last - lo) / lo * 100.0 if lo > 0 else None
         return {
+            "ret_3m": ret_n(3),
             "ret_5m": ret_n(5),
             "ret_15m": ret_n(15),
             "ret_60m": ret_n(60) if len(rows) > 60 else ret_n(min(55, len(rows) - 1)),
@@ -109,6 +110,24 @@ class ExhaustSpecialist(BaseSpecialist):
         flip_thr = float(getattr(settings, "EXHAUST_5M_FLIP", 0.12))
         extreme_yes = float(getattr(settings, "EXHAUST_YES_HIGH", 68.0))
         extreme_no = float(getattr(settings, "EXHAUST_YES_LOW", 32.0))
+        run_label = "1h"
+        flip_label = "5m"
+        run_px = r60
+        flip_px = r5
+        try:
+            from backend.learning.btc15m import exhaust_thresholds_15m, is_15m_btc_book
+            if is_15m_btc_book(market_data):
+                hz = exhaust_thresholds_15m()
+                run_thr = float(hz["run_pct"])
+                flip_thr = float(hz["flip_pct"])
+                run_label = "15m"
+                flip_label = "3m"
+                run_px = r15 if r15 is not None else r60
+                flip_px = stats.get("ret_3m")
+                if flip_px is None:
+                    flip_px = r5
+        except Exception:
+            pass
 
         notes = []
         local_dir = None
@@ -116,16 +135,20 @@ class ExhaustSpecialist(BaseSpecialist):
 
         # Fade run-up
         fade_up_run = (
-            r60 >= run_thr
-            and r5 <= -flip_thr
+            run_px is not None
+            and flip_px is not None
+            and run_px >= run_thr
+            and flip_px <= -flip_thr
             and stats.get("near_high") is not None
             and stats["near_high"] <= 0.40
             and (up is None or up >= extreme_yes - 4)
         )
         # Fade dump
         fade_down_run = (
-            r60 <= -run_thr
-            and r5 >= flip_thr
+            run_px is not None
+            and flip_px is not None
+            and run_px <= -run_thr
+            and flip_px >= flip_thr
             and stats.get("near_low") is not None
             and stats["near_low"] <= 0.40
             and (up is None or up <= extreme_no + 4)
@@ -133,20 +156,22 @@ class ExhaustSpecialist(BaseSpecialist):
 
         if fade_up_run:
             local_dir = "DOWN"
-            local_conf = min(88, 60 + int((r60 - run_thr) * 12))
-            notes.append(f"exhaust fade · 1h +{r60:.2f}% but 5m {r5:+.2f}%")
+            local_conf = min(88, 60 + int((float(run_px) - run_thr) * 12))
+            notes.append(f"exhaust fade · {run_label} +{run_px:.2f}% but {flip_label} {flip_px:+.2f}%")
             if up is not None and up >= extreme_yes:
                 local_conf = min(92, local_conf + 4)
                 notes.append("YES crowded")
         elif fade_down_run:
             local_dir = "UP"
-            local_conf = min(88, 60 + int((abs(r60) - run_thr) * 12))
-            notes.append(f"exhaust fade · 1h {r60:.2f}% but 5m {r5:+.2f}%")
+            local_conf = min(88, 60 + int((abs(float(run_px)) - run_thr) * 12))
+            notes.append(f"exhaust fade · {run_label} {run_px:.2f}% but {flip_label} {flip_px:+.2f}%")
             if up is not None and up <= extreme_no:
                 local_conf = min(92, local_conf + 4)
                 notes.append("YES cheap / NO crowded")
         else:
-            notes.append(f"no exhaust (1h {r60:+.2f}% · 5m {r5:+.2f}%)")
+            rp = f"{run_px:+.2f}%" if run_px is not None else "—"
+            fp = f"{flip_px:+.2f}%" if flip_px is not None else "—"
+            notes.append(f"no exhaust ({run_label} {rp} · {flip_label} {fp})")
 
         direction = "WAIT"
         conf = 48

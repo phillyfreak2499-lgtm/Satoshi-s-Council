@@ -122,6 +122,14 @@ class SplitAndSeriesTests(unittest.TestCase):
         self.assertEqual(local.minute, 0)
         self.assertEqual(official_y_finish({"status": "settled", "result": "yes"}), "UP")
         self.assertEqual(official_y_finish({"status": "settled", "result": "no"}), "DOWN")
+        # Live Kalshi suffix is the close minute (e.g. -15), not a 1H -T strike.
+        live = "KXBTC15M-26AUG161215-15"
+        self.assertEqual(event_ticker_from_15m(live), "KXBTC15M-26AUG161215")
+        live_ct = close_time_from_15m_ticker(live)
+        self.assertIsNotNone(live_ct)
+        self.assertEqual(live_ct.astimezone(ET).hour, 12)
+        self.assertEqual(live_ct.astimezone(ET).minute, 15)
+        self.assertEqual(official_y_finish({"status": "finalized", "result": "yes"}), "UP")
 
     def test_brains_are_separate(self):
         self.assertEqual(learner_brain_tag("btc"), "btc15m")
@@ -265,6 +273,47 @@ class ScoringRuleTests(unittest.TestCase):
         self.assertEqual(BitcoinPatternSpecialist.lookback, 24)
         self.assertEqual(EthereumPatternSpecialist.lookback, 45)
         self.assertNotEqual(BitcoinPatternSpecialist.ret5_bar, EthereumPatternSpecialist.ret5_bar)
+
+    def test_15m_horizons_are_not_1h(self):
+        from backend.agents.momentum import MomentumSpecialist
+        from backend.learning.btc15m import CANDLE_LOOKBACK_MIN_15M, exhaust_thresholds_15m, momentum_horizons_15m
+        hz = momentum_horizons_15m()
+        self.assertEqual(hz["bars"], (3, 8, 15))
+        self.assertLess(hz["full_ret"], 0.0015)
+        ex = exhaust_thresholds_15m()
+        self.assertLess(ex["run_pct"], 0.9)
+        self.assertEqual(ex["run_bars"], 15)
+        self.assertGreaterEqual(CANDLE_LOOKBACK_MIN_15M, 45)
+        mom = MomentumSpecialist()
+        bars = []
+        px = 100.0
+        for i in range(40):
+            nxt = px + 0.08
+            bars.append({"open": px, "high": nxt + 0.02, "low": px - 0.02, "close": nxt, "volume": 12})
+            px = nxt
+        md_15 = {
+            "asset": "btc",
+            "ticker": "KXBTC15M-26AUG161200-00",
+            "window_minutes": 15,
+            "candles": bars,
+            "phase": "entry",
+            "wm": {"phase": "entry"},
+        }
+        md_eth = {
+            "asset": "eth",
+            "ticker": "KXETHD-26AUG1615-T2400",
+            "window_minutes": 60,
+            "candles": bars,
+            "phase": "entry",
+            "wm": {"phase": "entry"},
+        }
+        import asyncio
+        s15 = asyncio.run(mom.get_signal(md_15))
+        s1h = asyncio.run(mom.get_signal(md_eth))
+        self.assertEqual(s15.features.get("horizon_stack"), "3/8/15")
+        self.assertEqual(s1h.features.get("horizon_stack"), "5/15/30")
+        self.assertIn("20–80", s15.reasoning)
+        self.assertIn("10–90", s1h.reasoning)
 
 
 class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
