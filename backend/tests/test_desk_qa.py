@@ -602,7 +602,7 @@ def _floor_hud_layout(w, h, view="floor"):
                 "y": plate_y - 14,
                 "w": gw,
                 "h": 28,
-                "text": "GOAL · one guess @ best odds (10–90¢)",
+                "text": "WAIT · $63,100 · 1H",
             }
         )
         nw = _text_w("SATOSHI", 11)
@@ -618,7 +618,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": 27,
                     "w": 120,
                     "h": 18,
-                    "text": "GOAL · one guess @ best odds (10–90¢)",
+                    "text": "WAIT · $63,100 · 1H",
                 }
             )
             nw = _text_w("SATOSHI", 10)
@@ -632,7 +632,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": plate_y - 14,
                     "w": gw,
                     "h": 28,
-                    "text": "GOAL · one guess @ best odds (10–90¢)",
+                    "text": "WAIT · $63,100 · 1H",
                 }
             )
             nw = _text_w("SATOSHI", 10)

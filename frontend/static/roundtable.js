@@ -4158,29 +4158,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     ctx.font = "700 12px Orbitron, monospace";
     const plateY = cy + radius + 14;
-    if (locked) {
-      ctx.fillStyle = gold;
-      ctx.fillText("LOCKED " + dir, cx, plateY);
-      ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "#f0d78a";
-      const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, plateY + 14);
-
-      try {
-        const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
-        if (q != null) {
-          ctx.font = "600 9px Share Tech Mono, monospace";
-          ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
-          ctx.fillText("Q:" + Math.round(Number(q)), cx, plateY + 28);
-        }
-      } catch (e) {}
-    } else {
-      ctx.fillStyle = "#a8c0d8";
-      ctx.fillText(dir, cx, plateY);
-      ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(180,200,220,0.75)";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, plateY + 14);
-    }
+    const live = liveCallCard(st, which);
+    paintLiveCallPlate(ctx, cx, plateY, live);
     if (which === "ats" || (typeof isAtsTable === "function" && isAtsTable(which))) {
       const watch = (st && st.watch) || {};
       const wline = String(watch.line || "WATCH · DARK · NO LISTING");
@@ -4211,22 +4190,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
 
-    const mkt = st.market || {};
-    const series = mkt.series_ticker || mkt.ticker || which.toUpperCase();
-    const strike = mkt.floor_strike != null ? mkt.floor_strike : null;
-    ctx.font = "600 9px Share Tech Mono, monospace";
-    ctx.fillStyle = focused ? "rgba(180,200,220,0.75)" : "rgba(140,160,180,0.45)";
-    ctx.textAlign = "center";
-    try {
-      let ladder = String(series).slice(0, 18) + (strike != null ? (" · " + strike) : "");
-      if (strike != null && isFinite(Number(strike))) {
-        const s = Number(strike);
-        const step = s >= 1000 ? 1000 : (s >= 100 ? 50 : 5);
-        ladder = Math.round(s - step) + " · " + Math.round(s) + " · " + Math.round(s + step);
-      }
-      ctx.fillText(ladder, cx, cy + ringR + 28);
-    } catch (e) { ctx.fillText(String(series), cx, cy + ringR + 28); }
-
     ctx.restore();
   }
 
@@ -4236,8 +4199,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lc = st.locked_call || d.locked_call || null;
     const locked = !!(lc && lc.locked && lc.direction);
     const dir = locked ? lc.direction : (d.direction || "WAIT");
-    const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
-    const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
 
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -4278,36 +4239,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textAlign = "center";
     ctx.fillText(label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC")), cx, cy - radius - 12);
 
-    ctx.font = "700 14px Orbitron, monospace";
-    if (locked) {
-      ctx.fillStyle = dir === "UP" ? "#39ff14" : "#ff2d55";
-      ctx.fillText("LOCKED " + dir, cx, cy + pr + 18);
-      ctx.font = "600 11px Rajdhani, sans-serif";
-      ctx.fillStyle = "#d8f0ff";
-      const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
-      ctx.fillText(conf + "%" + oddsTxt + " · FOLLOW THIS", cx, cy + pr + 34);
-
-      try {
-        const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
-        if (q != null) {
-          ctx.font = "600 9px Share Tech Mono, monospace";
-          ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
-          ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
-        }
-      } catch (e) {}
-    } else {
-      ctx.fillStyle = "#a8c0d8";
-      ctx.fillText(dir === "WAIT" ? "WAIT" : String(dir), cx, cy + pr + 18);
-      ctx.font = "600 11px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(180,200,220,0.8)";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · one call / best odds", cx, cy + pr + 34);
-    }
-
-    const m = st.market || {};
-    const px = m.price != null ? Number(m.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
-    ctx.font = "10px Share Tech Mono, monospace";
-    ctx.fillStyle = "rgba(160,180,200,0.7)";
-    ctx.fillText(px, cx, cy + radius + 8);
+    const live = liveCallCard(st, which);
+    paintLiveCallPlate(ctx, cx, cy + pr + 18, live);
   }
 
   let chairHits = [];
@@ -4444,7 +4377,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ringR = radius * 1.18;
       const lr = Math.min(w, h) * 0.24;
       const cx = w / 2, cy = h / 2;
-      const goal = "GOAL · one guess @ best odds (10–90¢)";
+      const goal = "WAIT · $63,100 · 1H";
       const gw = 200;
       const plateY = cy + lr * 0.90;
       out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -4456,12 +4389,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const cx = w / 2, cy = h / 2;
       const lr = fit.lrBase;
       if (fit.phone) {
-        const goal = "GOAL · one guess @ best odds (10–90¢)";
+        const goal = "WAIT · $63,100 · 1H";
         out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
       } else {
-        const goal = "GOAL · one guess @ best odds (10–90¢)";
+        const goal = "WAIT · $63,100 · 1H";
         const gw = 200;
         const plateY = cy + lr * 0.90;
         out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -4595,64 +4528,38 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }
     } catch (e) {}
 
-    // ── CENTER LOCKED CALL PLAQUE (follower-bot clear) ──
-    // Table is reserved for the single GOAL CONTRACT call.
+    // ── CENTER LIVE CALL PLAQUE — LOCK / WAIT, strike, window ──
     try {
-      const d = (state && state.decision) || {};
-      const lc = d.locked_call || state.locked_call || {};
-      const locked = !!(lc && lc.locked && lc.direction);
-      const lockDir = (lc.direction || d.locked_dir || d.entry_dir || "").toUpperCase();
-      if (locked && lockDir && lockDir !== "WAIT") {
-        const conf = lc.confidence || d.confidence || 0;
-        const odds = lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : (d.entry_up_pct != null ? Math.round(lockDir === "UP" ? d.entry_up_pct : 100 - d.entry_up_pct) : null);
-        // Glow plate
+      const live = liveCallCard(state, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+      const lockDir = String(live.dir || "WAIT").toUpperCase();
+      if (live.status === "LOCK") {
         ctx.save();
         ctx.beginPath();
         ctx.arc(cx, cy, radius * 0.42, 0, Math.PI * 2);
-        ctx.fillStyle = lockDir === "UP" ? "rgba(0, 80, 40, 0.55)" : "rgba(80, 10, 20, 0.55)";
+        ctx.fillStyle = (lockDir === "UP" || lockDir === "ABOVE") ? "rgba(0, 80, 40, 0.55)" : "rgba(80, 10, 20, 0.55)";
         ctx.fill();
-        ctx.strokeStyle = lockDir === "UP" ? "rgba(0, 255, 140, 0.9)" : "rgba(255, 80, 100, 0.9)";
+        ctx.strokeStyle = (lockDir === "UP" || lockDir === "ABOVE") ? "rgba(0, 255, 140, 0.9)" : "rgba(255, 80, 100, 0.9)";
         ctx.lineWidth = 3;
-        ctx.shadowColor = lockDir === "UP" ? "#00ff8c" : "#ff4060";
+        ctx.shadowColor = (lockDir === "UP" || lockDir === "ABOVE") ? "#00ff8c" : "#ff4060";
         ctx.shadowBlur = 18;
         ctx.stroke();
         ctx.shadowBlur = 0;
-        // Text
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = liveCallToneColor(live);
         ctx.font = "bold 22px Orbitron, monospace";
-        ctx.fillText("LOCKED " + lockDir, cx, cy - 28);
+        ctx.fillText(liveCallHeadline(live), cx, cy - 10);
         ctx.font = "bold 14px Orbitron, monospace";
-        ctx.fillStyle = "rgba(255,220,120,0.95)";
-        ctx.fillText(isFrontTable(focusTable) ? frontHighLine(state) : "ONE CALL · FOLLOW THIS", cx, cy - 6);
-        ctx.font = "12px Orbitron, monospace";
-        ctx.fillStyle = "rgba(200,230,255,0.9)";
-        let sub = conf ? (conf + "%") : "";
-        if (odds != null) sub += (sub ? "  ·  " : "") + odds + "¢ entry";
-        ctx.fillText(sub, cx, cy + 14);
-        ctx.font = "10px Orbitron, monospace";
-        ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText(
-          isFrontTable(focusTable)
-            ? "GOAL · DFW HIGH · CLI"
-            : (isAtsTable(focusTable) ? "GOAL · one ticket · paper" : "GOAL · best odds 10–90¢"),
-          cx, cy + 30
-        );
+        ctx.fillStyle = "#e8f4ff";
+        ctx.fillText(liveCallSub(live) || live.line, cx, cy + 16);
         ctx.restore();
       } else {
-        // Small goal reminder when not locked
         ctx.save();
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "10px Orbitron, monospace";
-        ctx.fillStyle = "rgba(0, 200, 255, 0.45)";
-        ctx.fillText(
-          isFrontTable(focusTable)
-            ? (frontHighLine(state) + " · CLI")
-            : (isAtsTable(focusTable) ? "GOAL · one ticket @ 20–80¢" : "GOAL · 1 window-end guess @ best odds (10–90¢)"),
-          cx, cy
-        );
+        ctx.font = "12px Orbitron, monospace";
+        ctx.fillStyle = liveCallToneColor(live);
+        ctx.fillText(live.line || "WAIT", cx, cy);
         ctx.restore();
       }
     } catch (e) { /* keep drawing */ }
@@ -5117,21 +5024,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = "#ffffff";
     ctx.shadowColor = scL;
     ctx.shadowBlur = 12;
-    ctx.fillText(isFrontTable(focusTable) ? displayDir(leaderDir) : leaderDir, cx, dirY);
+    const liveFocus = liveCallCard(state, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    ctx.fillText(liveCallHeadline(liveFocus), cx, dirY);
     ctx.shadowBlur = 0;
     ctx.font = hudTight ? "10px Orbitron, sans-serif" : "11px Orbitron, sans-serif";
     ctx.fillStyle = "#e8f4ff";
-    ctx.fillText(leaderConf + "%", cx, confY);
+    ctx.fillText(liveCallSub(liveFocus) || "—", cx, confY);
 
-        // ===== CLEAR LOCKED CALL plate for follower bots (GOAL: one call @ best odds) =====
+        // ===== LIVE CALL plate — LOCK / WAIT, strike, window =====
     {
-      const lc = state.locked_call || (state.decision && state.decision.locked_call) || {};
-      const isLocked = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN" || lc.direction === "ABOVE" || lc.direction === "BELOW" || lc.direction === "BETWEEN"));
-      const showDir = (isLocked ? lc.direction : (leaderDir || "WAIT")).toUpperCase();
-      const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
-      const entryOdds = lc.entry_odds_pct;
-      const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD"
-        || showDir === "ABOVE" || showDir === "BELOW" || showDir === "BETWEEN";
+      const isLocked = liveFocus.status === "LOCK";
+      const isDir = isLocked;
       const plateY = phoneHud ? 36 : (cy + lr * 0.90);
       const plateW = phoneHud ? 120 : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 220 : 200));
       const plateH = phoneHud ? 18 : 28;
@@ -5156,18 +5059,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = isDir ? "#ffffff" : "rgba(180, 200, 220, 0.9)";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      let lockLabel;
-      if (isFrontTable(focusTable)) {
-        lockLabel = isLocked
-          ? (displayDir(showDir) + " · " + frontHighLine(state))
-          : (frontHighLine(state) + " · CLI");
-      } else if (isLocked && isDir) {
-        const oddsPart = entryOdds != null ? ` @ ${Math.round(entryOdds)}¢` : "";
-        lockLabel = `LOCKED ${showDir}${oddsPart} · ${showConf}% · FOLLOW`;
-      } else {
-        lockLabel = "GOAL · one guess @ best odds (10–90¢)";
-      }
-      ctx.fillText(lockLabel, plateX, plateY);
+      ctx.fillText(liveFocus.line || liveCallHeadline(liveFocus), plateX, plateY);
     }
 
     // Scanline overlay on canvas itself (subtle)
@@ -7495,6 +7387,47 @@ function drawCandleChart() {
       tone: status === "LOCK" ? dir : status,
     };
   }
+  function liveCallHeadline(card) {
+    if (!card) return "WAIT";
+    if (card.status === "LOCK") return "LOCK " + card.dir;
+    return card.status || "WAIT";
+  }
+  function liveCallSub(card) {
+    if (!card) return "";
+    const bits = [];
+    if (card.strike) bits.push(card.strike);
+    else if (card.status === "WATCH") bits.push("no ticket");
+    if (card.window) bits.push(card.window);
+    return bits.join(" · ");
+  }
+  function liveCallToneColor(card) {
+    const status = card && card.status;
+    const dir = card && card.dir;
+    if (status === "LOCK" && (dir === "UP" || dir === "ABOVE")) return "#39ff14";
+    if (status === "LOCK" && (dir === "DOWN" || dir === "BELOW")) return "#ff2d55";
+    if (status === "WATCH") return "#ffe7a0";
+    return "#00e8ff";
+  }
+  function paintLiveCallPlate(ctx, cx, y, card, opts) {
+    opts = opts || {};
+    const tight = !!opts.tight;
+    const headline = liveCallHeadline(card);
+    const sub = liveCallSub(card);
+    const col = liveCallToneColor(card);
+    ctx.textAlign = "center";
+    ctx.font = tight ? "700 11px Orbitron, monospace" : "700 12px Orbitron, monospace";
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = opts.glow != null ? opts.glow : 10;
+    ctx.fillText(headline, cx, y);
+    ctx.shadowBlur = 0;
+    if (sub && !opts.oneLine) {
+      ctx.font = tight ? "600 9px Orbitron, monospace" : "600 10px Orbitron, monospace";
+      ctx.fillStyle = "#e8f4ff";
+      ctx.fillText(sub, cx, y + (tight ? 12 : 14));
+    }
+    return { headline: headline, sub: sub, line: (card && card.line) || headline };
+  }
   function chairWhyLineText(ts) {
     const view = ts || (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
     const kind = liveCallKind(typeof focusTable !== "undefined" ? focusTable : "bitcoin");
@@ -9116,20 +9049,18 @@ function drawCandleChart() {
       ctx.font = "700 12px Orbitron, monospace";
       const plateY = cy + radius + 14;
       const wxDir = wxWord(dir, (data.clock && data.clock.strike_type) || (open && open.strike_type), data.clock && data.clock.nws_high, data.clock && data.clock.floor_strike, data.clock && data.clock.cap_strike);
-      const highLine = frontHighLine({ market: { clock: data.clock || {}, strike_type: data.clock && data.clock.strike_type, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike, kalshi_high: data.clock && data.clock.kalshi_high, nws_high: data.clock && data.clock.nws_high, bracket: open && open.bracket || chair.bracket } });
-      if (locked) {
-        ctx.fillStyle = "#7fe9ff";
-        ctx.fillText("LOCKED " + wxDir, cx, plateY);
-        ctx.font = "600 10px Rajdhani, sans-serif";
-        ctx.fillStyle = "rgba(180,200,220,0.85)";
-        ctx.fillText(highLine + " · paper", cx, plateY + 14);
-      } else {
-        ctx.fillStyle = "#a8c0d8";
-        ctx.fillText(wxDir, cx, plateY);
-        ctx.font = "600 10px Rajdhani, sans-serif";
-        ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText(highLine + " · " + (chair.bracket || "waiting on DFW CLI"), cx, plateY + 14);
-      }
+      const liveFront = liveCallCard({
+        decision: { direction: wxDir },
+        locked_call: locked ? { locked: true, direction: wxDir } : null,
+        market: {
+          clock: data.clock || {},
+          nws_high: data.clock && data.clock.nws_high,
+          kalshi_high: data.clock && data.clock.kalshi_high,
+          floor_strike: data.clock && data.clock.floor_strike,
+          cap_strike: data.clock && data.clock.cap_strike,
+        },
+      }, "front");
+      paintLiveCallPlate(ctx, cx, plateY, liveFront);
     } finally {
       ctx = prev;
     }
@@ -10499,7 +10430,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#finalDecision",
       title: "THE PLAQUE",
-      body: "The center plaque is the single source of truth when locked (LOCKED UP/DOWN @ XX¢ · FOLLOW THIS).\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
+      body: "The chair table plate is the live call: LOCK or WAIT, a plain direction, and the strike/window.\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
     },
     {
       mode: "art",

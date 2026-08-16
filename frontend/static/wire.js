@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-chair-table-call",
+    "at": "2026-08-16T03:35:00-05:00",
+    "title": "Chair tables speak LOCK / WAIT",
+    "why": "The live call on each chair table is now LOCK or WAIT, a plain direction, and the strike/window — no percent, cents, or Q dump. Current Calls still lists BTC, ETH, Front, and ORA. Phone back still returns to Floor. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-current-calls",
     "at": "2026-08-16T03:20:00-05:00",
     "title": "Current Calls + punchy Chair lines",

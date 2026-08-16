@@ -86,11 +86,36 @@ class PunchyCallCopyTests(unittest.TestCase):
             "WAIT · $2,500 · 1H",
         )
 
+    def test_chair_table_plate_is_punchy(self):
+        bots = JS.split("function drawTableWithBots", 1)[1].split("function drawMiniTable", 1)[0]
+        self.assertIn("paintLiveCallPlate(", bots)
+        self.assertIn("liveCallCard(", bots)
+        self.assertNotIn("LOCKED ", bots)
+        self.assertNotIn("% · waiting", bots)
+        self.assertNotIn("Q:", bots)
+        self.assertNotIn("FOLLOW THIS", bots)
+        mini = JS.split("function drawMiniTable", 1)[1].split("function rememberChairHit", 1)[0]
+        self.assertIn("paintLiveCallPlate(", mini)
+        self.assertNotIn("FOLLOW THIS", mini)
+        self.assertNotIn("one call / best odds", mini)
+        front = JS.split("function drawFrontTable(", 1)[1].split("function seedFrontWx(", 1)[0]
+        self.assertIn("paintLiveCallPlate(", front)
+        self.assertNotIn("LOCKED ", front)
+        meta = HTML.split('id="signalChairMeta"', 1)[1][:120]
+        self.assertNotIn("P(finish)", meta)
+        self.assertNotIn("EV —", meta)
+        plate = JS.split("LIVE CALL plate", 1)[1][:1600]
+        self.assertIn("liveFocus.line", plate)
+        self.assertNotIn("FOLLOW", plate)
+        self.assertNotIn("best odds", plate)
+
     def test_wire_note(self):
+        self.assertIn("2026-08-16-chair-table-call", WIRE_JS)
         self.assertIn("2026-08-16-current-calls", WIRE_JS)
         self.assertIn("Current Calls", WIRE_JS)
-        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-current-calls", 1)[1][:500])
-        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-current-calls", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
+        self.assertLess(WIRE_JS.find("2026-08-16-chair-table-call"), WIRE_JS.find("2026-08-16-current-calls"))
+        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-chair-table-call", 1)[1][:500])
+        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-chair-table-call", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
 
 
 if __name__ == "__main__":
