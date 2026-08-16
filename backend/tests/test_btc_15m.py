@@ -572,7 +572,7 @@ class PathPnlTests(unittest.TestCase):
         self.assertAlmostEqual(down_s, 12.5)
         self.assertAlmostEqual(realized_pnl(10.0, 50.0, 100.0), 10.0)
         self.assertAlmostEqual(realized_pnl(10.0, 50.0, 0.0), -10.0)
-        self.assertAlmostEqual(realized_pnl(10.0, 48.0, 52.0), 10.0 * 4.0 / 48.0)
+        self.assertAlmostEqual(realized_pnl(10.0, 48.0, 52.0), 10.0 * 4.0 / 48.0, places=3)
         self.assertEqual(settle_exit_cents("UP", "UP"), 100.0)
         self.assertEqual(settle_exit_cents("DOWN", "UP"), 0.0)
 

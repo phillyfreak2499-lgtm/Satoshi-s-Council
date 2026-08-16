@@ -457,6 +457,7 @@ class AdaptiveLearner:
         held = {str(s).upper() for s in (held_sides or []) if str(s).upper() in ("UP", "DOWN")}
         if not held and abs(pnl) <= 1e-9:
             return {}
+        # With-book seats → UP, faded seats → DOWN. Outcome is UP iff the path made money.
         synth = "UP" if pnl > 0 else "DOWN"
         remapped: Dict[str, Any] = {}
         for name, vote in (agent_votes or {}).items():
@@ -467,12 +468,10 @@ class AdaptiveLearner:
             if d not in ("UP", "DOWN"):
                 remapped[name] = vote
                 continue
-            if held and d in held:
-                remapped[name] = {**vote, "direction": synth}
-            elif held:
-                remapped[name] = {**vote, "direction": "DOWN" if synth == "UP" else "UP"}
+            if held and d not in held:
+                remapped[name] = {**vote, "direction": "DOWN"}
             else:
-                remapped[name] = {**vote, "direction": synth}
+                remapped[name] = {**vote, "direction": "UP"}
         return self.learn_from_settled(
             remapped,
             synth,
