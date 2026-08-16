@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-table-room-plates",
+    "at": "2026-08-16T05:50:00-05:00",
+    "title": "Chair rooms are signed plates now",
+    "why": "Satoshi shrine, Vitalik city, Ares stadium, and Raijin Dallas sit behind Floor/Table under the wisps. Same table, different world. Faces stay close-up. Phone keeps a lighter wash. Oracle room stays its own plate. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-vitalik-closeup",
     "at": "2026-08-16T05:35:00-05:00",
     "title": "Vitalik files are the close-up cuts",

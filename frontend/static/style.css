@@ -5661,7 +5661,8 @@ body.mode-floor .table-stage {
   background: transparent !important;
 }
 body.floor-mode #roundtable,
-body.mode-floor #roundtable {
+body.mode-floor #roundtable,
+body.mode-art #roundtable {
   background: transparent !important;
 }
 
@@ -8696,39 +8697,100 @@ body.charts-hero-oracle .chart-ktarget-chip {
   box-shadow: 0 0 16px rgba(240, 193, 74, 0.55) !important;
 }
 
-/* Chair rooms — under majority wisps. Floor + Night. No extra chrome. */
+/* Chair rooms — signed plates under majority wisps. Floor + Table + Night. Not chair faces. */
 body.floor-mode[data-chair-room="satoshi"] #app,
 body.night-mode[data-chair-room="satoshi"] #app,
+body.mode-art[data-chair-room="satoshi"] #app,
 body.floor-mode[data-chair-room="satoshi"] #tableStage,
 body.night-mode[data-chair-room="satoshi"] #tableStage,
+body.mode-art[data-chair-room="satoshi"] #tableStage,
 body.floor-mode[data-chair-room="satoshi"] .table-stage,
-body.night-mode[data-chair-room="satoshi"] .table-stage {
-  background:
-    radial-gradient(ellipse at 50% 16%, rgba(240, 176, 64, 0.18) 0%, transparent 44%),
-    radial-gradient(ellipse at 50% 100%, rgba(48, 24, 6, 0.58) 0%, transparent 58%),
-    linear-gradient(180deg, #1a1208 0%, #0a0704 48%, #050302 100%) !important;
+body.night-mode[data-chair-room="satoshi"] .table-stage,
+body.mode-art[data-chair-room="satoshi"] .table-stage {
+  background-color: #0a0704 !important;
+  background-image:
+    linear-gradient(180deg, rgba(10, 7, 4, 0.28) 0%, rgba(10, 7, 4, 0.12) 42%, rgba(5, 3, 2, 0.50) 100%),
+    url("/satoshi-shrine.jpg") !important;
+  background-size: cover !important;
+  background-position: center 42% !important;
+  background-repeat: no-repeat !important;
 }
 body.floor-mode[data-chair-room="vitalik"] #app,
 body.night-mode[data-chair-room="vitalik"] #app,
+body.mode-art[data-chair-room="vitalik"] #app,
 body.floor-mode[data-chair-room="vitalik"] #tableStage,
 body.night-mode[data-chair-room="vitalik"] #tableStage,
+body.mode-art[data-chair-room="vitalik"] #tableStage,
 body.floor-mode[data-chair-room="vitalik"] .table-stage,
-body.night-mode[data-chair-room="vitalik"] .table-stage {
-  background:
-    radial-gradient(ellipse at 72% 12%, rgba(80, 230, 210, 0.16) 0%, transparent 40%),
-    radial-gradient(ellipse at 28% 88%, rgba(10, 48, 52, 0.42) 0%, transparent 55%),
-    linear-gradient(180deg, #061418 0%, #031014 50%, #02080c 100%) !important;
+body.night-mode[data-chair-room="vitalik"] .table-stage,
+body.mode-art[data-chair-room="vitalik"] .table-stage {
+  background-color: #031014 !important;
+  background-image:
+    linear-gradient(180deg, rgba(3, 16, 20, 0.28) 0%, rgba(3, 16, 20, 0.12) 42%, rgba(2, 8, 12, 0.50) 100%),
+    url("/vitalik-city.jpg") !important;
+  background-size: cover !important;
+  background-position: center 40% !important;
+  background-repeat: no-repeat !important;
 }
 body.floor-mode[data-chair-room="ares"] #app,
 body.night-mode[data-chair-room="ares"] #app,
+body.mode-art[data-chair-room="ares"] #app,
 body.floor-mode[data-chair-room="ares"] #tableStage,
 body.night-mode[data-chair-room="ares"] #tableStage,
+body.mode-art[data-chair-room="ares"] #tableStage,
 body.floor-mode[data-chair-room="ares"] .table-stage,
-body.night-mode[data-chair-room="ares"] .table-stage {
-  background:
-    radial-gradient(ellipse at 12% 0%, rgba(255, 230, 160, 0.14) 0%, transparent 36%),
-    radial-gradient(ellipse at 88% 0%, rgba(255, 230, 160, 0.14) 0%, transparent 36%),
-    linear-gradient(180deg, #071018 0%, #02060e 52%, #010308 100%) !important;
+body.night-mode[data-chair-room="ares"] .table-stage,
+body.mode-art[data-chair-room="ares"] .table-stage {
+  background-color: #02060e !important;
+  background-image:
+    linear-gradient(180deg, rgba(2, 6, 14, 0.30) 0%, rgba(2, 6, 14, 0.12) 42%, rgba(1, 3, 8, 0.52) 100%),
+    url("/ares-stadium.jpg") !important;
+  background-size: cover !important;
+  background-position: center 38% !important;
+  background-repeat: no-repeat !important;
+}
+body.floor-mode[data-chair-room="raijin"] #app,
+body.night-mode[data-chair-room="raijin"] #app,
+body.mode-art[data-chair-room="raijin"] #app,
+body.floor-mode[data-chair-room="raijin"] #tableStage,
+body.night-mode[data-chair-room="raijin"] #tableStage,
+body.mode-art[data-chair-room="raijin"] #tableStage,
+body.floor-mode[data-chair-room="raijin"] .table-stage,
+body.night-mode[data-chair-room="raijin"] .table-stage,
+body.mode-art[data-chair-room="raijin"] .table-stage {
+  background-color: #06040c !important;
+  background-image:
+    linear-gradient(180deg, rgba(6, 4, 12, 0.30) 0%, rgba(6, 4, 12, 0.12) 42%, rgba(4, 2, 10, 0.52) 100%),
+    url("/raijin-dallas.jpg") !important;
+  background-size: cover !important;
+  background-position: center 36% !important;
+  background-repeat: no-repeat !important;
+}
+@media (max-width: 480px) {
+  body.phone-floor[data-chair-room="satoshi"] #tableStage,
+  body.phone-floor[data-chair-room="satoshi"] .table-stage {
+    background-image:
+      linear-gradient(180deg, rgba(10, 7, 4, 0.72) 0%, rgba(10, 7, 4, 0.50) 42%, rgba(5, 3, 2, 0.78) 100%),
+      url("/satoshi-shrine.jpg") !important;
+  }
+  body.phone-floor[data-chair-room="vitalik"] #tableStage,
+  body.phone-floor[data-chair-room="vitalik"] .table-stage {
+    background-image:
+      linear-gradient(180deg, rgba(3, 16, 20, 0.72) 0%, rgba(3, 16, 20, 0.50) 42%, rgba(2, 8, 12, 0.78) 100%),
+      url("/vitalik-city.jpg") !important;
+  }
+  body.phone-floor[data-chair-room="ares"] #tableStage,
+  body.phone-floor[data-chair-room="ares"] .table-stage {
+    background-image:
+      linear-gradient(180deg, rgba(2, 6, 14, 0.74) 0%, rgba(2, 6, 14, 0.52) 42%, rgba(1, 3, 8, 0.80) 100%),
+      url("/ares-stadium.jpg") !important;
+  }
+  body.phone-floor[data-chair-room="raijin"] #tableStage,
+  body.phone-floor[data-chair-room="raijin"] .table-stage {
+    background-image:
+      linear-gradient(180deg, rgba(6, 4, 12, 0.74) 0%, rgba(6, 4, 12, 0.52) 42%, rgba(4, 2, 10, 0.80) 100%),
+      url("/raijin-dallas.jpg") !important;
+  }
 }
 body[data-hour-weather="wild"][data-chair-room="satoshi"] #tableStage {
   box-shadow: inset 0 0 80px rgba(255, 170, 40, 0.16);
@@ -8738,6 +8800,9 @@ body[data-hour-weather="wild"][data-chair-room="vitalik"] #tableStage {
 }
 body[data-hour-weather="wild"][data-chair-room="ares"] #tableStage {
   box-shadow: inset 0 0 80px rgba(255, 220, 120, 0.12);
+}
+body[data-hour-weather="wild"][data-chair-room="raijin"] #tableStage {
+  box-shadow: inset 0 0 80px rgba(180, 120, 255, 0.16);
 }
 /* ORACLE room plate — separate image, never baked into the face. */
 body.floor-mode[data-chair-room="oracle"] #app,

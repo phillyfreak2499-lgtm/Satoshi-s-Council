@@ -1441,7 +1441,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const key = (typeof chairKeyOf === "function") ? chairKeyOf(which) : String(which || "").toLowerCase();
     if (key === "ats") return "ares";
     if (key === "ethereum") return "vitalik";
-    if (key === "front") return "";
+    if (key === "front") return "raijin";
     if (key === "oracle") return "oracle";
     return "satoshi";
   }
@@ -1540,7 +1540,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { glow: loud ? 1 : 0.55, lean: loud ? 1.08 : 0.96, alpha: loud ? 1 : 0.78, loud: loud };
   }
   function drawChairRoom(w, h, which, weather, cx, cy, tableR) {
-    // Room wash UNDER wisps. Cheap CSS/canvas. Phone: wash only, no extra strokes.
+    // Room plate is CSS under the canvas. Thin veil UNDER wisps. Phone: wash only, no extra strokes.
     if (!ctx || !w || !h) return;
     const room = chairRoomOf(which);
     if (!room) return;
@@ -1561,21 +1561,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     let c0, c1, c2;
     if (room === "vitalik") {
-      c0 = "rgba(40, 210, 190," + (0.10 + 0.10 * storm) + ")";
-      c1 = "rgba(8, 36, 42," + (0.42 + 0.10 * storm) + ")";
-      c2 = "rgba(2, 10, 14, 0.55)";
+      c0 = "rgba(40, 210, 190," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(8, 36, 42," + (0.10 + 0.08 * storm) + ")";
+      c2 = "rgba(2, 10, 14, 0.16)";
     } else if (room === "ares") {
-      c0 = "rgba(255, 224, 140," + (0.08 + 0.10 * storm) + ")";
-      c1 = "rgba(8, 14, 28," + (0.50 + 0.08 * storm) + ")";
-      c2 = "rgba(1, 4, 10, 0.62)";
+      c0 = "rgba(255, 224, 140," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(8, 14, 28," + (0.12 + 0.08 * storm) + ")";
+      c2 = "rgba(1, 4, 10, 0.18)";
+    } else if (room === "raijin") {
+      c0 = "rgba(180, 120, 255," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(12, 6, 22," + (0.12 + 0.08 * storm) + ")";
+      c2 = "rgba(4, 2, 10, 0.18)";
     } else if (room === "oracle") {
-      c0 = "rgba(255, 80, 200," + (0.10 + 0.10 * storm) + ")";
-      c1 = "rgba(8, 4, 22," + (0.42 + 0.10 * storm) + ")";
-      c2 = "rgba(4, 2, 10, 0.58)";
+      c0 = "rgba(255, 80, 200," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(8, 4, 22," + (0.10 + 0.08 * storm) + ")";
+      c2 = "rgba(4, 2, 10, 0.16)";
     } else {
-      c0 = "rgba(240, 176, 64," + (0.12 + 0.12 * storm) + ")";
-      c1 = "rgba(36, 20, 6," + (0.48 + 0.10 * storm) + ")";
-      c2 = "rgba(6, 3, 2, 0.58)";
+      c0 = "rgba(240, 176, 64," + (0.05 + 0.07 * storm) + ")";
+      c1 = "rgba(36, 20, 6," + (0.12 + 0.08 * storm) + ")";
+      c2 = "rgba(6, 3, 2, 0.16)";
     }
     const gx = (cx != null) ? cx : w * 0.50;
     const gy = (cy != null) ? (cy - (tableR || h * 0.2) * 0.35) : h * 0.18;
@@ -4364,7 +4368,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "rgba(2, 4, 10, 0.10)";
       ctx.fillRect(0, 0, w, h);
     } else {
-      ctx.fillStyle = "#02040a";
+      ctx.clearRect(0, 0, w, h);
+      try { syncChairRoom(focusTable, state); } catch (e) {}
+      try { drawChairRoom(w, h, focusTable, _hourWx); } catch (e) {}
+      ctx.fillStyle = "rgba(2, 4, 10, 0.16)";
       ctx.fillRect(0, 0, w, h);
     }
 

@@ -1437,6 +1437,26 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "oracle-room.jpg", media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/satoshi-shrine.jpg")
+    async def satoshi_shrine():
+        return FileResponse(STATIC_DIR / "satoshi-shrine.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/vitalik-city.jpg")
+    async def vitalik_city():
+        return FileResponse(STATIC_DIR / "vitalik-city.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/ares-stadium.jpg")
+    async def ares_stadium():
+        return FileResponse(STATIC_DIR / "ares-stadium.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/raijin-dallas.jpg")
+    async def raijin_dallas():
+        return FileResponse(STATIC_DIR / "raijin-dallas.jpg", media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/ares-chair.png")
     async def ares_chair_png():
         return FileResponse(STATIC_DIR / "ares-chair.png", media_type="image/png",

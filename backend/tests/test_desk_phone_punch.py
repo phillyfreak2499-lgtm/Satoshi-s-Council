@@ -177,7 +177,7 @@ class PhoneBackTests(unittest.TestCase):
 class WireNewestTests(unittest.TestCase):
     def test_notes_newest_first(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-vitalik-closeup")
+        self.assertEqual(rows[0]["id"], "2026-08-16-table-room-plates")
         ats = [r["at"] for r in rows]
         self.assertEqual(ats, sorted(ats, reverse=True))
         blob = WIRE_JS
