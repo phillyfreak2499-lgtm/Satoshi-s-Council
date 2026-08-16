@@ -21,11 +21,12 @@ from zoneinfo import ZoneInfo
 
 from loguru import logger
 
-from backend.agents.candle import CandlePatternSpecialist
+from backend.agents.candle import BitcoinPatternSpecialist, EthereumPatternSpecialist
 from backend.agents.chair_gates import (
     collect_official_results,
     lock_time_strike,
     official_y_finish,
+    pattern_specialist_name,
     strike_from_kalshi_ticker,
     ticker_asset,
 )
@@ -253,7 +254,10 @@ def asset_for_series(series: str) -> str:
 
 
 def is_rebuildable_seat(name: str) -> bool:
-    return str(name or "") in REBUILDABLE_SEATS
+    n = str(name or "")
+    if n in ("candle", "candle_btc", "candle_eth"):
+        return True
+    return n in REBUILDABLE_SEATS
 
 
 def is_live_only_seat(name: str) -> bool:
@@ -407,6 +411,7 @@ def build_market_data(
         "kalshi_market": {"ticker": ticker, "close_time": close_time.isoformat()},
         "close_time": close_time.isoformat(),
         "ticker": ticker,
+        "asset": ticker_asset(ticker) or ("eth" if "ETH" in str(ticker).upper() else "btc"),
         "mins_left": mins_left,
         "up_pct": up_pct,
         "kalshi_yes_bid": up_pct,
@@ -417,9 +422,12 @@ def build_market_data(
     }
 
 
-def _agent_factory() -> Dict[str, Any]:
+def _agent_factory(asset: str | None = None) -> Dict[str, Any]:
+    book = "eth" if str(asset or "").lower() == "eth" else "btc"
+    pattern_key = pattern_specialist_name(book)
+    pattern_cls = EthereumPatternSpecialist if book == "eth" else BitcoinPatternSpecialist
     return {
-        "candle": CandlePatternSpecialist,
+        pattern_key: pattern_cls,
         "momentum": MomentumSpecialist,
         "volume": VolumeSpecialist,
         "strike": StrikeSpecialist,
@@ -441,7 +449,8 @@ async def vote_rebuildable_seats(
 ) -> Dict[str, Any]:
     """Run offline seats. CoinGlass seats only when that hist feed answered."""
     votes: Dict[str, Any] = {}
-    for name, cls in _agent_factory().items():
+    book = ticker_asset((market_data or {}).get("ticker")) or (market_data or {}).get("asset")
+    for name, cls in _agent_factory(book).items():
         if not is_rebuildable_seat(name):
             continue
         if not _cg_seat_allowed(name, cg_feeds):

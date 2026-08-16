@@ -55,7 +55,9 @@ class Settings(BaseSettings):
 
     # Agent base weights (sum ~1.0, Leader normalizes). Expanded roster for 15m factors.
     BASE_WEIGHTS: Dict[str, float] = {
-        "candle": 0.10,
+        "candle": 0.10,          # legacy Pattern Seer — remapped on load
+        "candle_btc": 0.10,      # Bitcoin Pattern Specialist (WICK)
+        "candle_eth": 0.07,      # Ethereum Pattern Specialist — own prior, not a BTC clone
         "volume": 0.07,
         "momentum": 0.07,
         "orderflow": 0.06,
@@ -239,12 +241,13 @@ class Settings(BaseSettings):
     HOURLY_LATE_MIN: float = 20.0
     HOURLY_HARD_LATE_MIN: float = 8.0
     # ETH uses a thinner specialist set. Append VOLT + EXHAUST only — not ORBIT/STREAK/VEL/WIRE.
-    ETH_CORE_AGENTS: str = "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq,volatility,exhaust"
+    ETH_CORE_AGENTS: str = "candle_eth,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq,volatility,exhaust"
     # ETH-only priors for the new seats. Not Satoshi's BTC BASE_WEIGHTS (0.07 / 0.09).
     # Stay quiet until each seat has its own graded ETH hours.
     ETH_QUIET_PRIORS: Dict[str, float] = {
         "volatility": 0.018,
         "exhaust": 0.016,
+        "candle_eth": 0.022,  # Ethereum Pattern Specialist — not a copy of BTC 0.10
     }
 
     # Side Table arcade — paper default, never Follower, never auto-bets

@@ -15,7 +15,15 @@ from loguru import logger
 from backend.config import eth_core_agent_set, prior_weight, settings
 from backend.agents.roster import display_name
 from backend.learning.regime_keys import classify_regime, split_key
-from backend.agents.chair_gates import band_tighten, odds_band_key, unique_agent_votes
+from backend.agents.chair_gates import (
+    LEGACY_PATTERN_SEAT,
+    PATTERN_SPECIALISTS,
+    band_tighten,
+    canonicalize_pattern_vote_name,
+    odds_band_key,
+    pattern_specialist_name,
+    unique_agent_votes,
+)
 
 # Agents that never receive adaptive vote weight
 NON_VOTERS = {"guardian", "law", "leader", "chair"}
@@ -91,6 +99,7 @@ class AdaptiveLearner:
             "window_days": 90,
             "tickers": [],
         }
+        self._remap_pattern_specialist_memory()
         self._trim_eth_roster_weights()
         self._normalize()
 
@@ -127,6 +136,89 @@ class AdaptiveLearner:
             if n <= 0 or name not in self.weights:
                 self.weights[name] = float(prior)
 
+    def _pattern_seat_want(self) -> str:
+        return pattern_specialist_name(self.asset)
+
+    def _remap_joined_key(self, key: str, want: str, foreign: str) -> str | None:
+        parts = [p for p in str(key or "").split("|") if p]
+        out: list[str] = []
+        for p in parts:
+            if p == foreign:
+                return None
+            if p == LEGACY_PATTERN_SEAT:
+                p = want
+            out.append(p)
+        if len(out) == 2:
+            return "|".join(sorted(out))
+        return "|".join(out)
+
+    def _remap_pattern_specialist_memory(self) -> None:
+        """
+        Legacy 'candle' becomes this desk's specialist. Drop the other coin's seat.
+        ETH never inherits Satoshi's Pattern Seer weight — quiet prior until own hours.
+        """
+        want = self._pattern_seat_want()
+        foreign = "candle_eth" if want == "candle_btc" else "candle_btc"
+
+        def _move_counts(bag: Dict[str, Any]) -> None:
+            if LEGACY_PATTERN_SEAT in bag:
+                try:
+                    bag[want] = int(bag.get(want) or 0) + int(bag.get(LEGACY_PATTERN_SEAT) or 0)
+                except (TypeError, ValueError):
+                    if want not in bag:
+                        bag[want] = bag[LEGACY_PATTERN_SEAT]
+                del bag[LEGACY_PATTERN_SEAT]
+            if foreign in bag:
+                del bag[foreign]
+
+        for bag in (self.correct, self.wrong, self.directional):
+            _move_counts(bag)
+        if LEGACY_PATTERN_SEAT in self.agent_calib:
+            if want not in self.agent_calib:
+                self.agent_calib[want] = self.agent_calib[LEGACY_PATTERN_SEAT]
+            del self.agent_calib[LEGACY_PATTERN_SEAT]
+        self.agent_calib.pop(foreign, None)
+        for table in (self.regime_correct, self.regime_wrong):
+            for _rk, agents in list(table.items()):
+                _move_counts(agents)
+
+        if LEGACY_PATTERN_SEAT in self.weights:
+            if self.asset != "eth" and want not in self.weights:
+                self.weights[want] = float(self.weights[LEGACY_PATTERN_SEAT])
+            del self.weights[LEGACY_PATTERN_SEAT]
+        self.weights.pop(foreign, None)
+
+        def _remap_pair_map(d: Dict[str, Any]) -> None:
+            out: Dict[str, Any] = {}
+            for k, v in list(d.items()):
+                nk = self._remap_joined_key(str(k), want, foreign)
+                if nk is None:
+                    continue
+                if nk in out and isinstance(v, (int, float)) and isinstance(out[nk], (int, float)):
+                    out[nk] = out[nk] + v
+                else:
+                    out[nk] = v
+            d.clear()
+            d.update(out)
+
+        _remap_pair_map(self.pair_hits)
+        _remap_pair_map(self.pair_tries)
+        _remap_pair_map(self.pair_affinity)
+        _remap_pair_map(self.anti_tries)
+        _remap_pair_map(self.combo_hits)
+        _remap_pair_map(self.combo_tries)
+        new_anti: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for k, agents in list(self.anti_right.items()):
+            nk = self._remap_joined_key(str(k), want, foreign)
+            if nk is None:
+                continue
+            for a, c in (agents or {}).items():
+                if a == foreign:
+                    continue
+                na = want if a == LEGACY_PATTERN_SEAT else a
+                new_anti[nk][na] += int(c)
+        self.anti_right = new_anti
+
 
     def learning_phase(self, chair_n: int | None = None) -> Dict[str, Any]:
         """
@@ -159,9 +251,12 @@ class AdaptiveLearner:
         ]
         eth_voters = self._eth_voter_names()
         # Include any base-weight voters not yet in weights (BTC full roster; ETH thin only)
+        want = self._pattern_seat_want()
         for k in settings.BASE_WEIGHTS:
             if k not in NON_VOTERS and k not in voters:
                 if eth_voters is not None and k not in eth_voters:
+                    continue
+                if k == LEGACY_PATTERN_SEAT or (k in PATTERN_SPECIALISTS and k != want):
                     continue
                 voters.append(k)
 
@@ -366,7 +461,22 @@ class AdaptiveLearner:
 
         notes: List[str] = []
         directional: Dict[str, Dict[str, Any]] = {}
-        votes = unique_agent_votes(agent_votes)
+        self._remap_pattern_specialist_memory()
+        raw_votes = unique_agent_votes(agent_votes)
+        votes: Dict[str, Any] = {}
+        for name, vote in raw_votes.items():
+            mapped = canonicalize_pattern_vote_name(name, self.asset)
+            if mapped is None:
+                continue
+            row = dict(vote) if mapped != name else vote
+            if mapped != name:
+                row["agent_name"] = mapped
+                settle = str(row.get("settle_key") or "").strip()
+                if settle:
+                    parts = settle.split("|")
+                    parts[0] = mapped
+                    row["settle_key"] = "|".join(parts)
+            votes[mapped] = row
         eth_voters = self._eth_voter_names()
 
         for name, vote in votes.items():
@@ -834,6 +944,7 @@ class AdaptiveLearner:
                 prev = dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {}
                 prev.update(data["backfill"])
                 self.backfill = prev
+            self._remap_pattern_specialist_memory()
             self._trim_eth_roster_weights()
             try:
                 self._recompute_regime_weights()
@@ -1008,6 +1119,7 @@ class AdaptiveLearner:
                 incoming = data["backfill"]
                 prev.update(incoming)
                 self.backfill = prev
+            self._remap_pattern_specialist_memory()
             self._trim_eth_roster_weights()
             self._normalize()
             self._recompute_regime_weights()

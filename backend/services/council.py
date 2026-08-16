@@ -12,7 +12,7 @@ from pathlib import Path
 from loguru import logger
 
 from backend.data.pipeline import DataPipeline
-from backend.agents.candle import CandlePatternSpecialist
+from backend.agents.candle import pattern_specialist_for_asset
 from backend.agents.volume import VolumeSpecialist
 from backend.agents.momentum import MomentumSpecialist
 from backend.agents.orderflow import OrderFlowSpecialist
@@ -92,7 +92,7 @@ class Council:
         self.wm = WindowMemory()
         self.law = LawBot()
         all_agents = [
-            CandlePatternSpecialist(),
+            pattern_specialist_for_asset(self.asset),
             VolumeSpecialist(),
             MomentumSpecialist(),
             OrderFlowSpecialist(),
@@ -120,7 +120,7 @@ class Council:
             core = {
                 x.strip().lower()
                 for x in str(getattr(settings, "ETH_CORE_AGENTS",
-                    "candle,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq,volatility,exhaust")).split(",")
+                    "candle_eth,volume,momentum,orderflow,odds,strike,session_tod,quorum,cheap,panic,whale,funding,oi_pressure,liq,volatility,exhaust")).split(",")
                 if x.strip()
             }
             # Always keep guardian + law
@@ -781,7 +781,7 @@ class Council:
                 if agent.name == "law":
                     return await agent.get_signal(market_data)
                 fallback = await agent.get_signal(market_data)
-                subs = subs_map.get(agent.name, [])
+                subs = subs_map.get(agent.name) or subs_map.get("candle") or []
                 merged = synthesize_from_subs(agent.name, agent.category, subs, fallback)
                 if agent.name == "regime":
                     merged.features = {**fallback.features, **merged.features}

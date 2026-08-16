@@ -2152,10 +2152,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   syncSoundButton();
 
-  const AGENT_ORDER = ["candle", "volume", "momentum", "orderflow", "funding", "regime", "volatility", "oi_pressure", "streak", "odds", "strike", "session_tod", "whale", "quorum", "panic", "cheap", "spotlag", "news", "liq", "exhaust", "guardian", "law"];
+  const AGENT_ORDER = ["candle_btc", "candle_eth", "volume", "momentum", "orderflow", "funding", "regime", "volatility", "oi_pressure", "streak", "odds", "strike", "session_tod", "whale", "quorum", "panic", "cheap", "spotlag", "news", "liq", "exhaust", "guardian", "law"];
   // Cool callsigns — internal keys stay the same for API/weights
   const AGENT_LABELS = {
     candle: "WICK",
+    candle_btc: "WICK",
+    candle_eth: "WICK",
     volume: "PULSE",
     momentum: "DRIFT",
     orderflow: "TAPE",
@@ -2197,6 +2199,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   };
   const AGENT_TITLES = {
     candle: "Pattern Seer",
+    candle_btc: "Bitcoin Pattern Specialist",
+    candle_eth: "Ethereum Pattern Specialist",
     volume: "Flow Reader",
     momentum: "Trend Scout",
     orderflow: "Book Walker",
@@ -2241,6 +2245,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     kalshi_feed: "NODE-K",
   };
 
+  function isForeignPatternSeat(key, which) {
+    const k = String(key || "");
+    if (k === "candle_eth") return !isEthTable(which);
+    if (k === "candle_btc") return isEthTable(which);
+    return false;
+  }
   function isEthTable(which) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
     return w === "ethereum" || w === "eth" || w === "vitalik";
@@ -2345,6 +2355,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // ——— Bot seat logos (circular, color outline follows call) ———
   const BOT_ICON_FILES = {
     candle: "/bots/wick.png",
+    candle_btc: "/bots/wick.png",
+    candle_eth: "/bots/wick.png",
     volume: "/bots/pulse.png",
     momentum: "/bots/drift.png",
     orderflow: "/bots/tape.png",
@@ -4605,8 +4617,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
           : liveNames.filter(a => a !== "law"))
       : (ranked.length
-          ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
-          : AGENT_ORDER.filter(a => a !== "law"));
+          ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law" && !isForeignPatternSeat(a, focusTable)))
+          : AGENT_ORDER.filter(a => a !== "law" && !isForeignPatternSeat(a, focusTable)));
     if (oracleLive && !order.length) order = oracleNames.slice();
     if (floorHideWait) {
       const locked = {};
@@ -5473,15 +5485,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   
   const DISPLAY = {
-    candle: "WICK", volume: "PULSE", momentum: "DRIFT", orderflow: "TAPE",
+    candle: "WICK", candle_btc: "WICK", candle_eth: "WICK", volume: "PULSE", momentum: "DRIFT", orderflow: "TAPE",
     funding: "CARRY", regime: "ORBIT", volatility: "VOLT", oi_pressure: "CHAIN",
     streak: "STREAK", odds: "ODDS", guardian: "WARDEN", law: "LAW",
   };
 
   function hierarchyOrder() {
     const h = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
-    if (h.length) return h.map(r => r.agent).filter(a => AGENT_ORDER.includes(a));
-    return AGENT_ORDER.filter(a => a !== "law" && a !== "guardian");
+    if (h.length) return h.map(r => r.agent).filter(a => AGENT_ORDER.includes(a) && !isForeignPatternSeat(a, focusTable));
+    return AGENT_ORDER.filter(a => a !== "law" && a !== "guardian" && !isForeignPatternSeat(a, focusTable));
   }
 
   function renderHierarchy() {
@@ -5495,7 +5507,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     let rows = hier.length ? hier.slice() : (isOracleTable(focusTable)
       ? ORACLE_SEAT_IDS.map(function (id) { return String(id).toLowerCase(); })
-      : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law"))).map((n, i) => ({
+      : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law" && !isForeignPatternSeat(n, focusTable)))).map((n, i) => ({
       agent: n, rank: i + 1, listen: 1, win_rate: null, correct: 0, wrong: 0, weight: 0
     }));
 
@@ -6990,7 +7002,7 @@ function drawCandleChart() {
     if (!canvas) return;
     const weights = (state && (state.weights || (state.learning && state.learning.weights))) || {};
     const ranked = AGENT_ORDER
-      .filter(k => k !== "law")
+      .filter(k => k !== "law" && !isForeignPatternSeat(k, focusTable))
       .map(k => ({ k, w: Number(weights[k]) || 0, label: AGENT_LABELS[k] || k }))
       .filter(e => Math.abs(e.w) >= 1e-4)
       .sort((a, b) => Math.abs(b.w) - Math.abs(a.w))
@@ -7047,7 +7059,9 @@ function drawCandleChart() {
 
 
   const BOT_GUIDE = {
-    candle: { blurb: "Candle body strength, local highs/lows, short-term path. Pattern-first for hourly direction.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
+    candle: { blurb: "Legacy shared Pattern Seer — remapped. Live desks use the asset-pure specialists.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
+    candle_btc: { blurb: "Bitcoin Pattern Specialist. 60-bar BTC structure, trend-follow HH/LL, tighter wicks. Never answers ETH. Votes; does not lock.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
+    candle_eth: { blurb: "Ethereum Pattern Specialist. 45-bar ETH structure, mean-rev and extension fade. Never answers BTC. Votes; does not lock.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
     volume: { blurb: "Relative volume spikes and dry-ups vs price. Confirms moves when volume agrees.", subs: "SPIKE · DRYUP" },
     momentum: { blurb: "RSI + MACD-style short momentum. Continuation and soft mean-revert when stretched.", subs: "RSI · MACD" },
     orderflow: { blurb: "Taker pressure and book imbalance proxies + Kalshi mid lean.", subs: "BOOK · TAKER" },
@@ -7217,7 +7231,10 @@ function drawCandleChart() {
       agents.forEach(a => { if (a && a.agent_name) live[a.agent_name] = true; });
       live.volatility = true;
       live.exhaust = true;
+      live.candle_eth = true;
       guideKeys = guideKeys.filter(k => live[k]);
+    } else {
+      guideKeys = guideKeys.filter(k => k !== "candle_eth" && k !== "candle");
     }
     grid.innerHTML = guideKeys.map(key => {
       const g = BOT_GUIDE[key];
