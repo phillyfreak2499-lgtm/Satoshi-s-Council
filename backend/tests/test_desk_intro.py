@@ -34,7 +34,7 @@ def _wrap_html() -> str:
     return HTML.split('id="deskIntroWrap"', 1)[1].split("summonVideoWrap", 1)[0]
 
 
-def _contain_box(vw: float, vh: float, nw: float = 1280, nh: float = 1920):
+def _contain_box(vw: float, vh: float, nw: float = 736, nh: float = 400):
     scale = min(vw / nw, vh / nh, 1.0)
     return nw * scale, nh * scale
 
@@ -94,8 +94,9 @@ class DeskIntroFileTests(unittest.TestCase):
     def test_clip_already_on_disk(self):
         self.assertTrue(CLIP.is_file())
         size = CLIP.stat().st_size
-        self.assertGreater(size, 1_000_000)
-        self.assertLess(size, 12_000_000)
+        self.assertEqual(size, 719834)
+        self.assertGreater(size, 500_000)
+        self.assertLess(size, 1_000_000)
         head = CLIP.read_bytes()[:4096]
         self.assertEqual(head[4:8], b"ftyp")
         self.assertIn('_first_video("zt-intro.mp4")', MAIN)
@@ -158,24 +159,45 @@ class DeskIntroFitTests(unittest.TestCase):
             self.assertLessEqual(h, vh)
             self.assertGreater(w, 0)
             self.assertGreater(h, 0)
-            self.assertAlmostEqual(w / h, 1280 / 1920, places=5)
+            self.assertAlmostEqual(w / h, 736 / 400, places=5)
 
 
 class DeskIntroUnlockTests(unittest.TestCase):
-    def test_parked_on_live_unlock_path(self):
+    def test_plays_opening_after_reveal_on_desk_code(self):
         auth = _auth_fn()
         self.assertIn("revealAppAfterDeskUnlock", auth)
-        self.assertNotIn("playDeskUnlockIntro()", auth)
+        self.assertIn("playDeskUnlockIntro()", auth)
+        self.assertLess(auth.find("revealAppAfterDeskUnlock"), auth.find("playDeskUnlockIntro()"))
         self.assertNotIn("playZtIntroThenSummonGate()", auth)
         self.assertNotIn('document.body.classList.add("gate-locked")', auth)
-        self.assertEqual(JS.count("playDeskUnlockIntro();"), 0)
+        self.assertEqual(JS.count("playDeskUnlockIntro();"), 1)
         play = _play_fn()
-        self.assertIn("Parked on the live path", play)
-        self.assertIn("return;", play)
-        self.assertNotIn("vid.play()", play)
-        self.assertNotIn("getElementById(\"deskIntroVideo\")", play)
+        self.assertIn("vid.play()", play)
+        self.assertIn("getElementById(\"deskIntroVideo\")", play)
+        self.assertIn("stayUnlocked", play)
+        self.assertIn("revealAppAfterDeskUnlock", play)
+        self.assertIn("vid.onended", play)
+        self.assertIn("vid.onerror", play)
+        self.assertIn("skipBtn.onclick", play)
+        self.assertNotIn("requestFullscreen", play)
         self.assertNotIn("getElementById(\"summonVideo\")", play)
+        self.assertNotIn("leader-click", play)
+        self.assertNotIn("summon-council", play)
         self.assertNotIn('classList.add("gate-locked")', play)
+
+    def test_once_per_session_skip_and_escape(self):
+        play = _play_fn()
+        self.assertIn('const DESK_INTRO_KEY = "council_desk_intro_played"', JS)
+        self.assertIn("sessionStorage.getItem(DESK_INTRO_KEY)", play)
+        self.assertIn("sessionStorage.setItem(DESK_INTRO_KEY", play)
+        self.assertNotIn("vid.load()", play)
+        self.assertNotIn("vid.src =", play)
+        self.assertIn("vid.muted = true", play)
+        self.assertIn("playsinline", play)
+        self.assertIn("wrap.onclick", play)
+        self.assertIn("skipBtn.onclick", play)
+        self.assertIn("__dismissDeskIntro", JS)
+        self.assertIn('e.key === "Escape" && window.__deskIntroPlaying', JS)
 
     def test_not_on_follower_or_settings_unlock(self):
         self.assertNotIn("playDeskUnlockIntro", FOLLOWER_JS)
@@ -190,17 +212,18 @@ class DeskIntroUnlockTests(unittest.TestCase):
         self.assertNotIn("money-closeup", play)
         self.assertNotIn("money-rain", play)
 
-    def test_missing_video_still_reveals_desk(self):
-        """Unlock must clear gate-locked even when the intro is parked."""
+    def test_finish_paths_leave_desk_unlocked(self):
+        """finish / onended / onerror / skip must reveal and stay desk-unlocked."""
         reveal = _reveal_fn()
         self.assertIn('document.documentElement.classList.remove("gate-locked", "gate-revealing")', reveal)
         self.assertIn('document.body.classList.remove("gate-locked", "gate-revealing")', reveal)
         self.assertIn('getElementById("passwordGate")', reveal)
         self.assertIn('setProperty("visibility", "visible", "important")', reveal)
         play = _play_fn()
-        self.assertIn("return;", play)
+        self.assertIn("stayUnlocked()", play)
+        self.assertGreaterEqual(play.count("stayUnlocked()"), 4)
         self.assertNotIn('classList.add("gate-locked")', play)
-        self.assertNotIn("gate-revealing", play)
+        self.assertNotIn("requestFullscreen", play)
 
         html = _FakeEl(["gate-locked"])
         body = _FakeEl(["gate-locked", "gate-revealing"])

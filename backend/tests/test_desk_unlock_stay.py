@@ -62,27 +62,30 @@ class SplashHiddenSelectorTests(unittest.TestCase):
         self.assertNotIn("#passwordGate.password-gate,", cold)
 
 
-class ParkedIntroTests(unittest.TestCase):
-    def test_live_unlock_does_not_play_clips(self):
+class OpeningIntroTests(unittest.TestCase):
+    def test_live_unlock_plays_opening_then_stays(self):
         play = _play_fn()
         auth = _auth_fn()
-        self.assertIn("Parked on the live path", play)
-        self.assertIn("return;", play)
-        self.assertNotIn("vid.play()", play)
-        self.assertNotIn("getElementById(\"deskIntroVideo\")", play)
-        self.assertNotIn("getElementById(\"summonVideo\")", play)
-        self.assertNotIn("playDeskUnlockIntro()", auth)
+        self.assertIn("playDeskUnlockIntro()", auth)
         self.assertIn("revealAppAfterDeskUnlock", auth)
-        self.assertEqual(JS.count("playDeskUnlockIntro();"), 0)
+        self.assertIn("vid.play()", play)
+        self.assertIn("getElementById(\"deskIntroVideo\")", play)
+        self.assertIn("stayUnlocked", play)
+        self.assertNotIn("requestFullscreen", play)
+        self.assertNotIn("getElementById(\"summonVideo\")", play)
+        self.assertNotIn("summon-council", play)
+        self.assertNotIn("leader-click", play)
+        self.assertEqual(JS.count("playDeskUnlockIntro();"), 1)
 
-    def test_clips_stay_in_markup_but_not_after_summon(self):
+    def test_summon_council_and_leader_click_untouched(self):
         self.assertIn('id="deskIntroVideo"', HTML)
         self.assertIn("/zt-intro.mp4", HTML)
         self.assertIn('id="summonVideo"', HTML)
         self.assertIn("/summon-council.mp4", HTML)
-        auth = _auth_fn()
-        self.assertNotIn("zt-intro", auth)
-        self.assertNotIn("summon-council", auth)
+        self.assertIn("/leader-click.mp4", HTML)
+        play = _play_fn()
+        self.assertNotIn("summon-council", play)
+        self.assertNotIn("leader-click", play)
 
 
 class GateOnceTests(unittest.TestCase):
@@ -101,8 +104,8 @@ class UnlockStayWireTests(unittest.TestCase):
         )
         note = WIRE_JS.split("2026-08-16-desk-unlock-stay", 1)[1].split("2026-08-15-hit-slate-reset", 1)[0]
         self.assertIn("After SUMMON the gate stays hidden", note)
-        self.assertIn("intro parked", note)
-        self.assertIn("desk shows", note)
+        self.assertIn("new 6s opening plays", note)
+        self.assertIn("old logo intro is gone", note)
         self.assertIn("Paper", note)
         self.assertIn("Follower OFF", note)
         self.assertNotIn("ZT", note)
