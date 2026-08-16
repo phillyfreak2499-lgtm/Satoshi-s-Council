@@ -1963,7 +1963,7 @@ body:not(.gate-locked) #app {
   color: #ffd56a;
 }
 
-/* Council mark — upper controls, gold hex seal */
+/* Council mark — upper controls, gold floor mark */
 .zt-logo-btn {
   display: inline-flex;
   align-items: center;
@@ -2567,7 +2567,7 @@ body.mode-floor .zt-watermark {
 .zt-header-logo {
   background: none; border: none; padding: 0; cursor: pointer;
   border-radius: 8px; overflow: hidden; line-height: 0;
-  box-shadow: 0 0 12px rgba(120, 200, 255, 0.25);
+  box-shadow: 0 0 12px rgba(201, 148, 62, 0.28);
 }
 .zt-header-logo img { display: block; border-radius: 8px; object-fit: contain; background: #02040a; }
 .logo { position: relative; }
@@ -5652,7 +5652,7 @@ body.mode-art #lifetimePanel {
   object-fit: contain;
   background: #02040a;
   border-radius: 12px;
-  box-shadow: 0 0 22px rgba(0, 232, 255, 0.22), 0 0 18px rgba(240, 193, 74, 0.18);
+  box-shadow: 0 0 22px rgba(201, 148, 62, 0.28);
 }
 .password-card .gate-mark { width: 72px; height: 72px; }
 
