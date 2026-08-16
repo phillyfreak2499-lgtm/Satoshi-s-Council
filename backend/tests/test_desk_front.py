@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import unittest
 from datetime import date, datetime, timezone
@@ -997,6 +998,115 @@ class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("cell", keys)
         self.assertIn("wxNowTemp", HTML + JS)
         self.assertIn("wxSubStrip", HTML + JS)
+
+    def test_glass_light_uses_nws_pane_not_coinglass(self):
+        self.assertIn("def nws_pane_high", FRONT)
+        self.assertIn("def glass_eye", FRONT)
+        self.assertIn("function glassSeatLive", JS)
+        self.assertIn("function frontSeatTone", JS)
+        self.assertIn('seat.setAttribute("data-eye"', JS)
+        self.assertIn('.front-seat[data-eye="up"]', CSS)
+        self.assertIn("front-bot-card[data-eye=\"up\"]", CSS)
+        self.assertIn("front-guide-card[data-eye=\"up\"]", CSS)
+        paint = JS.split("function paintHealthStrip", 1)[1].split("async function loadHealthStrip", 1)[0]
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', paint)
+        self.assertNotIn("frontSeatTone", paint)
+        self.assertNotIn("nws_pane", paint)
+        self.assertIn('document.body.classList.add("front-tab-off")', JS)
+        self.assertIn("hidden", HTML.split('id="tabFront"', 1)[1][:80])
+        self.assertNotIn("#passwordGate.password-gate,", CSS)
+        self.assertIn("#passwordGate.password-gate:not(.hidden)", CSS)
+        hidden = CSS.split("#passwordGate.password-gate.hidden", 1)[1].split("}", 1)[0]
+        self.assertIn("display: none !important", hidden)
+        for _m in re.finditer(r"#passwordGate\.password-gate\s*\{", CSS):
+            self.fail("bare #passwordGate.password-gate { must not exist")
+
+
+class GlassPaneTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        desk_front.reset_for_tests(self.tmp)
+
+    def test_pane_high_is_nws_not_open_meteo(self):
+        mesh = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 102),
+            desk_front._mesh_hit("open-meteo", 108),
+        ])
+        self.assertEqual(desk_front.nws_pane_high(None, mesh), 102)
+        self.assertEqual(desk_front.nws_pane_high(103, mesh), 103)
+        self.assertIsNone(desk_front.nws_pane_high(None, desk_front.finish_mesh([
+            desk_front._mesh_hit("open-meteo", 108),
+        ])))
+        self.assertEqual(desk_front.glass_call_line(None, mesh), "GLASS READS 102°")
+        self.assertEqual(desk_front.glass_eye(102), "UP")
+        self.assertEqual(desk_front.glass_eye(None), "WAIT")
+        tight = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 102),
+            desk_front._mesh_hit("open-meteo", 103),
+        ])
+        self.assertIsNone(desk_front.skip_reason({}, None, False, 4000, mesh=tight))
+        self.assertEqual(desk_front.skip_reason({}, None, False, 4000, mesh=desk_front.empty_mesh()), "NO PANE")
+        self.assertNotIn("coinglass", desk_front.glass_call_line.__doc__ or "")
+
+    async def test_nws_high_falls_back_to_grid_when_period_date_misses(self):
+        async def nws(url: str):
+            if "/stations/KDFW" in url and "/observations" not in url:
+                return {"geometry": {"coordinates": [-97.02196, 32.89743]}}
+            if "/points/" in url:
+                return {"properties": {
+                    "forecast": "https://api.weather.gov/gridpoints/FWD/79,105/forecast",
+                    "forecastGridData": "https://api.weather.gov/gridpoints/FWD/79,105",
+                    "gridId": "FWD",
+                    "gridX": 79,
+                    "gridY": 105,
+                }}
+            if str(url).rstrip("/").endswith("/forecast"):
+                return {"properties": {"periods": [
+                    {"isDaytime": True, "startTime": "2026-08-16T06:00:00-05:00", "temperature": 99, "temperatureUnit": "F"},
+                ]}}
+            if "/gridpoints/" in url:
+                return {"properties": {"maxTemperature": {
+                    "uom": "wmoUnit:degC",
+                    "values": [{"validTime": "2026-08-15T12:00:00+00:00/P1D", "value": 38.8889}],
+                }}}
+            return {}
+
+        high = await desk_front.nws_high("KDFW", date(2026, 8, 15), nws=nws)
+        self.assertEqual(int(round(float(high))), 102)
+
+    async def test_glass_green_when_dal_forecast_null_and_mesh_nws_live(self):
+        async def no_period(*_a, **_k):
+            return None
+
+        mesh = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 102),
+            desk_front._mesh_hit("open-meteo", 103),
+        ])
+        with patch.object(desk_front, "nws_high", side_effect=no_period):
+            board = await desk_front.build_board(
+                fetch=_fetch_factory(),
+                nws=_nws_high_only,
+                now=NOW,
+                wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 98.6, "wind_kt": 6},
+                mesh=mesh,
+            )
+        glass = next(s for s in board["seats"] if s["id"] == "GLASS")
+        dal = next(b for b in board["brackets"] if b.get("city") == "DAL")
+        self.assertIsNone(dal["forecast"])
+        self.assertEqual(dal["pane"], 102)
+        self.assertEqual(glass["call"], "GLASS READS 102°")
+        self.assertEqual(glass["eye"], "UP")
+        self.assertEqual(glass["pane"], 102)
+        self.assertTrue(glass["ok"])
+        self.assertNotEqual(glass["vote"], "WAIT")
+        self.assertEqual(board["clock"]["nws_high"], 102)
+        self.assertEqual(board["pane"], 102)
+        self.assertNotIn("108", glass["call"] or "")
+        self.assertNotIn("coinglass", str(glass).lower())
+        heat = next(s for s in board["subs"] if s["id"] == "HEAT")
+        self.assertTrue(heat["ok"])
+        self.assertEqual(board["weather"]["mode"], "HEAT")
+        self.assertFalse(board["follower"])
 
 
 if __name__ == "__main__":

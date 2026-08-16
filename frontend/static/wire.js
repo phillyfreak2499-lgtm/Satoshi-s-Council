@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-glass-pane",
+    "at": "2026-08-16T02:50:00-05:00",
+    "title": "GLASS reads the live NWS pane",
+    "why": "GLASS was WAIT / NO PANE when the DAL period forecast was null even though MESH NWS and KDFW were live. The light now goes green from that NWS pane — not CoinGlass, not Open-Meteo. Front stays off the nav. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-side-parked",
     "at": "2026-08-16T02:40:00-05:00",
     "title": "Side Table leaves the desk",

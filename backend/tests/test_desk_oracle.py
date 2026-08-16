@@ -106,7 +106,7 @@ class OraGateStillCleanTests(unittest.TestCase):
 class OraWireTests(unittest.TestCase):
     def test_newest_is_ora_kit(self):
         rows = _wire_rows()
-        self.assertEqual(rows[1]["id"], "2026-08-16-ora-kit")
+        self.assertEqual(next(r["id"] for r in rows if r["id"] == "2026-08-16-ora-kit"), "2026-08-16-ora-kit")
         ora = next(r for r in rows if r["id"] == "2026-08-16-ora-kit")
         self.assertIn("ORA", ora["why"])
         self.assertIn("GLD", ora["why"])

@@ -859,11 +859,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return s && FRONT_SEAT_IDS.indexOf(String(s.id || "").toUpperCase()) >= 0;
     }).map(function (s) {
       const lean = wxWord(s.dir || s.vote, strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike);
+      const eye = String(s.eye || wxEye(lean) || "WAIT").toUpperCase();
       return {
         agent_name: String(s.id || "").toLowerCase(),
         display_name: s.id,
         title: s.job || "",
         direction: lean,
+        eye: eye,
+        pane: s.pane,
+        ok: s.ok,
         mark: s.mark || frontSeatMark(s.id),
         confidence: s.confidence != null ? s.confidence : 50,
         reasoning: s.call || "",
@@ -4081,7 +4085,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
       const x = cx + Math.cos(ang) * ringR;
       const y = cy + Math.sin(ang) * ringR;
-      const adir = String(a.direction || "WAIT").toUpperCase();
+      const adir = (typeof frontSeatTone === "function")
+        ? frontSeatTone(a)
+        : String(a.direction || "WAIT").toUpperCase();
       let col = "rgba(0,232,255,0.95)";
       if (adir === "UP" || adir === "UP_HOLD" || adir === "COVER" || adir === "OVER" || adir === "HOME") col = "rgba(0,255,120,0.95)";
       if (adir === "DOWN" || adir === "DOWN_HOLD" || adir === "NO-COVER" || adir === "UNDER" || adir === "AWAY") col = "rgba(255,55,90,0.95)";
@@ -5587,6 +5593,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     list.innerHTML = rows.map((r, idx) => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
+      const tone = (String(r.agent || "").toLowerCase() === "glass")
+        ? ((typeof frontSeatTone === "function") ? frontSeatTone(ag) : wxTone(ag.eye || dir))
+        : wxTone(dir);
       const conf = ag.confidence != null ? ag.confidence : "—";
       const name = r.display_name || DISPLAY[r.agent] || (isFrontSeatKey(r.agent) ? String(r.agent).toUpperCase() : r.agent.toUpperCase());
       const wr = r.win_rate != null ? `${Math.round(r.win_rate * 100)}%` : "—";
@@ -5604,7 +5613,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           <div class="hier-name">${name}</div>
           <div class="hier-meta">${rec} · ${wr} · listen ${listen}%${faded ? " · <span class=\"fade-tag\">FADE</span>" : ""}${isAntiWinner ? " · <span class=\"anti-tag\">ANTI✓</span>" : ""}${isAntiLoser ? " · <span class=\"anti-tag anti-lose\">ANTI✗</span>" : ""}</div>
         </div>
-        <span class="hier-dir ${wxTone(dir)}">${(isFrontTable(focusTable) ? displayDir(dir) : dir)} ${conf}${conf !== "—" ? "%" : ""}</span>
+        <span class="hier-dir ${tone}">${(isFrontTable(focusTable) ? displayDir(dir) : dir)} ${conf}${conf !== "—" ? "%" : ""}</span>
       </div>`;
     }).join("");
     if (meta) meta.textContent = `${rows.length} seats · live ranks`;
@@ -7191,18 +7200,19 @@ function drawCandleChart() {
       const faded = s.faded ? " faded" : "";
       const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
       const face = (s.id === "RAIJIN") ? raijinPortraitSrc((s && s.eye) || frontLockDir()) : s.mark;
+      const eye = String(frontSeatTone(s) || "WAIT").toLowerCase();
       const kids = (s.id === "RAIJIN") ? [] : subsForParent(frontSubsOf(data), s.id);
       const subHtml = kids.length ? ('<div class="front-sub-under">' + kids.map(function (sub) {
         return '<div class="front-sub-row" data-tone="' + String(sub.tone || "") + '">' +
           (sub.mark ? '<img src="' + sub.mark + '" alt="">' : '<span class="front-sub-mark"></span>') +
           "<b>" + String(sub.id || "") + "</b><span>" + String(sub.line || "—") + "</span></div>";
       }).join("") + "</div>") : "";
-      return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
+      return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '" data-eye="' + eye + '">' +
         '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
         '<span class="bot-callsign">' + callsign + "</span>" +
         '<span class="bot-rank-pill">' + rank + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
-        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span></div>" +
+        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span><span class="hier-dir ' + (eye === "up" ? "UP" : (eye === "down" ? "DOWN" : "WAIT")) + '">' + String(s.call || s.dir || "WAIT") + "</span></div>" +
         subHtml +
         "</article>";
     }).join("");
@@ -8714,7 +8724,7 @@ function drawCandleChart() {
       const isChair = !!(s && (s.id === "RAIJIN" || (data && data.chair && s.id && s.id === data.chair.id)));
       const mark = isChair ? raijinPortraitSrc((s && s.eye) || frontLockDir()) : String((s && s.mark) || "");
       const label = isChair ? frontChairName(s) : String((s && (s.name || s.id)) || "");
-      return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
+      return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '" data-eye="' + String(frontSeatTone(s) || "WAIT").toLowerCase() + '">' +
         '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
         "<div><h3>" + label + "</h3>" +
         "<p>" + String((s && s.job) || "") + "</p>" +
@@ -8799,6 +8809,8 @@ function drawCandleChart() {
     (data.seats || []).forEach(function (s) {
       const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
       if (el) el.textContent = s.call || "—";
+      const seat = document.querySelector('#frontRing .front-seat[data-seat="' + s.id + '"]');
+      if (seat) seat.setAttribute("data-eye", String(frontSeatTone(s) || "WAIT").toLowerCase());
     });
     paintFrontSubs(data);
   }
@@ -8874,6 +8886,18 @@ function drawCandleChart() {
     if (d === "DOWN" || d === "NO" || d === "SKIP" || d === "BELOW") return "DOWN";
     return "WAIT";
   }
+  function glassSeatLive(s) {
+    if (!s) return false;
+    const id = String(s.id || s.agent_name || s.display_name || "").toUpperCase();
+    if (id !== "GLASS") return false;
+    if (s.ok === true || s.pane != null) return true;
+    return String(s.eye || "").toUpperCase() === "UP";
+  }
+  function frontSeatTone(s) {
+    if (glassSeatLive(s)) return "UP";
+    const raw = (s && (s.eye || s.dir || s.vote || s.direction)) || "WAIT";
+    return (typeof wxTone === "function") ? wxTone(raw) : frontLeanOf(raw);
+  }
   function drawFrontTable(wxCtx, w, h) {
     if (!wxCtx || !w || !h) return;
     const prev = ctx;
@@ -8922,7 +8946,7 @@ function drawCandleChart() {
         const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
         const x = cx + Math.cos(ang) * ringR;
         const y = cy + Math.sin(ang) * ringR;
-        const adir = frontLeanOf(s.dir || s.vote);
+        const adir = frontSeatTone(s);
         let col = "rgba(0,232,255,0.95)";
         if (adir === "UP") col = "rgba(0,255,120,0.95)";
         if (adir === "DOWN") col = "rgba(255,55,90,0.95)";
@@ -9336,6 +9360,9 @@ function drawCandleChart() {
     const body = rows.map(r => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
+      const liveTone = (String(r.agent || "").toLowerCase() === "glass")
+        ? ((typeof frontSeatTone === "function") ? frontSeatTone(ag) : wxTone(ag.eye || dir))
+        : wxTone(dir);
       const conf = ag.confidence != null ? ag.confidence : "—";
       const name = (r.agent === "leader" || r.agent === "chair")
         ? chairNameOf(focusTable)
@@ -9350,7 +9377,7 @@ function drawCandleChart() {
       const top = (r.rank || 99) <= 3;
       return '<div class="rank-row ' + (top ? "top " : "") + (muted ? "muted-rank" : "") + '" role="row">' +
         '<span class="rk">#' + r.rank + '</span><span class="nm">' + markHtml + name + '</span>' +
-        '<span class="dir-live ' + wxTone(dir) + '">' + (isFrontTable(focusTable) ? displayDir(dir) : dir) + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
+        '<span class="dir-live ' + liveTone + '">' + (isFrontTable(focusTable) ? displayDir(dir) : dir) + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
         '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span class="listen-col">' + listen + '</span>' +
         '<span class="hide-sm">' + (r.weight != null ? Number(r.weight).toFixed(3) : "—") + '</span></div>';
     }).join("") || '<div class="rank-empty">No rank data yet.</div>';

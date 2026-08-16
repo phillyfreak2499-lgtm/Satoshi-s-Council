@@ -8125,6 +8125,23 @@ body.front-chair-off.phone-floor .floor-raijin { display: none !important; }
   max-width: 110px;
   text-align: center;
 }
+.front-seat[data-eye="up"] .front-mark,
+.front-guide-card[data-eye="up"] .front-mark,
+.front-bot-card[data-eye="up"] .bot-mark-wrap {
+  border-color: rgba(0, 255, 120, 0.95);
+  box-shadow: 0 0 14px rgba(0, 255, 120, 0.45);
+}
+.front-seat[data-eye="down"] .front-mark,
+.front-guide-card[data-eye="down"] .front-mark,
+.front-bot-card[data-eye="down"] .bot-mark-wrap {
+  border-color: rgba(255, 55, 90, 0.95);
+  box-shadow: 0 0 14px rgba(255, 55, 90, 0.4);
+}
+.front-seat[data-eye="wait"] .front-mark,
+.front-guide-card[data-eye="wait"] .front-mark,
+.front-bot-card[data-eye="wait"] .bot-mark-wrap {
+  border-color: rgba(0, 232, 255, 0.45);
+}
 .front-stage-wrap[data-wx="WIND"] .front-seat { --front-lean: -6deg; }
 .front-stage-wrap[data-wx="STORM"].bolt-punch .front-chair .front-mark {
   box-shadow: 0 0 28px rgba(0, 232, 255, 0.85), 0 0 48px rgba(255, 176, 0, 0.35);
