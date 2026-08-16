@@ -393,6 +393,7 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn("focusEth", row)
         self.assertIn("focusFront", row)
         self.assertIn("focusAts", row)
+        self.assertIn("focusOra", row)
         self.assertIn('body[data-focus-table="front"]', CSS)
         self.assertIn("#focusFront.focus-active", CSS)
 

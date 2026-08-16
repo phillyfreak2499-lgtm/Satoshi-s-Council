@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-ora-kit",
+    "at": "2026-08-16T02:30:00-05:00",
+    "title": "ORA gold tab + Oracle room plate",
+    "why": "Gold tab is ORA, not GLD. Chair name stays ORACLE. Seats are SIBYL / PIT / VEIL / MARBLE. CRT/neon room plate is its own image, not baked into the face. No crypto chrome on this kit. ORACLE does not place orders. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-phone-oracle",
     "at": "2026-08-16T02:20:00-05:00",
     "title": "ORACLE sits as the fifth Floor leader",

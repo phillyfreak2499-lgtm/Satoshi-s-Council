@@ -125,7 +125,15 @@ class FiveLeadersAndClocksTests(unittest.TestCase):
         focus = JS.split("function setFocusTable", 1)[1][:500]
         self.assertIn('focusTable = "oracle"', focus)
         self.assertIn('_focusTable: "oracle"', JS)
-        self.assertIn('if (key === "oracle") return ""', JS)
+        self.assertIn('if (key === "oracle") return "oracle"', JS)
+        self.assertIn("/oracle-room.jpg", CSS)
+        self.assertIn('id="focusOra"', HTML)
+        self.assertIn(">ORA</button>", HTML)
+        self.assertNotIn(">GLD</button>", HTML)
+        self.assertNotIn("APOLLO", JS.split("ORACLE_SEAT_IDS", 1)[1][:200])
+        self.assertIn("SIBYL", JS)
+        self.assertIn("VEIL", JS)
+        self.assertIn("MARBLE", JS)
 
     def test_per_leader_timers_exist(self):
         self.assertIn('id="floorLeaderClocks"', HTML)
@@ -153,13 +161,13 @@ class PhoneBackTests(unittest.TestCase):
 class WireNewestTests(unittest.TestCase):
     def test_notes_newest_first(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-phone-oracle")
+        self.assertEqual(rows[0]["id"], "2026-08-16-ora-kit")
         ats = [r["at"] for r in rows]
         self.assertEqual(ats, sorted(ats, reverse=True))
         blob = WIRE_JS
         self.assertIn("Seal the pact first.", blob)
         self.assertNotIn("Check the pact first.", blob)
-        self.assertNotIn("ZT", blob.split("2026-08-16-phone-oracle", 1)[1].split("2026-08-16-desk-unlock-stay", 1)[0])
+        self.assertNotIn("ZT", blob.split("2026-08-16-ora-kit", 1)[1].split("2026-08-16-desk-unlock-stay", 1)[0])
 
 
 if __name__ == "__main__":

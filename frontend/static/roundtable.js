@@ -606,7 +606,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
-      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "btnHelp" || !btn.dataset.mode) {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra" || btn.id === "btnHelp" || !btn.dataset.mode) {
         btn.classList.remove("active");
         if (btn.hasAttribute("aria-selected")) btn.setAttribute("aria-selected", "false");
         return;
@@ -708,7 +708,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | seats | paper | charts | …  (bots/ranks/dashboard alias to seats)
   let state = null;
-  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats") return v; } catch(e){} return "ethereum"; })();
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats" || v === "oracle") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableHasLiveHour(t) {
     if (!t || typeof t !== "object") return false;
@@ -1100,24 +1100,74 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       learning: { hierarchy: hierarchy },
     };
   }
+  const ORACLE_SEAT_IDS = ["SIBYL", "PIT", "VEIL", "MARBLE"];
+  const ORACLE_SEAT_JOBS = {
+    SIBYL: "THE READ. First hit of the static.",
+    PIT: "THE WELL. Drops what the glass will not say.",
+    VEIL: "THE MASK. Cuts the fake signal.",
+    MARBLE: "THE SLAB. Cold cut. No heat.",
+  };
+  function isOracleSeatKey(name) {
+    const k = String(name || "").toUpperCase();
+    return ORACLE_SEAT_IDS.indexOf(k) >= 0;
+  }
+  function oracleSeatRoster() {
+    return ORACLE_SEAT_IDS.map(function (id, i) {
+      return {
+        id: id,
+        job: ORACLE_SEAT_JOBS[id],
+        dir: "WAIT",
+        call: id + " · DARK",
+        n: 0,
+        wr: null,
+        rank: i + 1,
+      };
+    });
+  }
   function oracleTableState() {
-    return {
-      agents: [{
-        agent_name: "leader",
-        display_name: "ORACLE",
-        title: "CRT · Oracle",
+    const seats = oracleSeatRoster();
+    const agents = [{
+      agent_name: "leader",
+      display_name: "ORACLE",
+      title: "CRT · Oracle",
+      direction: "WAIT",
+      confidence: 0,
+      reasoning: "ORACLE does not place orders.",
+      summary: "WATCH · no ticket",
+    }].concat(seats.map(function (s) {
+      return {
+        agent_name: String(s.id).toLowerCase(),
+        display_name: s.id,
+        title: s.job,
         direction: "WAIT",
         confidence: 0,
-        reasoning: "ORACLE does not place orders.",
-        summary: "WATCH · no ticket",
-      }],
+        reasoning: s.job,
+        summary: s.call,
+      };
+    }));
+    return {
+      agents: agents,
+      seats: seats,
+      chair: {
+        id: "ORACLE",
+        name: "ORACLE",
+        job: "Watch chair. Does not place orders.",
+        mark: "/oracle-wait.jpg",
+      },
       decision: { direction: "WAIT", confidence: 0, summary: "ORACLE does not place orders." },
       locked_call: null,
       market: { window_kind: "watch", window_label: "WATCH", seconds_left: null, time_remaining: null },
       leader_name: "ORACLE",
       asset: "oracle",
+      why: {
+        line: "WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS",
+        strip: "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK",
+      },
+      watch: { line: "CRT · WATCH · STATIC ON THE GLASS", listed: false },
       accuracy: { correct: 0, total: 0, wrong: 0, label: "ORACLE · WATCH" },
-      hierarchy: [],
+      hierarchy: [{ agent: "leader", display_name: "ORACLE", rank: 0, listen: 1 }].concat(seats.map(function (s) {
+        return { agent: String(s.id).toLowerCase(), display_name: s.id, rank: s.rank, listen: 0, n: 0 };
+      })),
     };
   }
   function tableState(which) {
@@ -1413,7 +1463,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (key === "ats") return "ares";
     if (key === "ethereum") return "vitalik";
     if (key === "front") return "";
-    if (key === "oracle") return "";
+    if (key === "oracle") return "oracle";
     return "satoshi";
   }
   function chairLockIsReal(lc) {
@@ -1539,6 +1589,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       c0 = "rgba(255, 224, 140," + (0.08 + 0.10 * storm) + ")";
       c1 = "rgba(8, 14, 28," + (0.50 + 0.08 * storm) + ")";
       c2 = "rgba(1, 4, 10, 0.62)";
+    } else if (room === "oracle") {
+      c0 = "rgba(255, 80, 200," + (0.10 + 0.10 * storm) + ")";
+      c1 = "rgba(8, 4, 22," + (0.42 + 0.10 * storm) + ")";
+      c2 = "rgba(4, 2, 10, 0.58)";
     } else {
       c0 = "rgba(240, 176, 64," + (0.12 + 0.12 * storm) + ")";
       c1 = "rgba(36, 20, 6," + (0.48 + 0.10 * storm) + ")";
@@ -1577,6 +1631,21 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.lineTo(w * (0.18 + tilt), h * 0.92);
       ctx.moveTo(w * (0.82 - tilt), h * 0.08);
       ctx.lineTo(w * (0.82 - tilt), h * 0.92);
+      ctx.stroke();
+    } else if (room === "oracle") {
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.28)";
+      ctx.lineWidth = 1;
+      const sway = Math.sin(clock * 0.0006 * (wx.motion || 1)) * 3 * storm;
+      for (let i = 0; i < 8; i++) {
+        const y = h * (0.12 + i * 0.10) + sway;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.06, y);
+        ctx.lineTo(w * 0.94, y);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(255, 80, 200, 0.35)";
+      ctx.beginPath();
+      ctx.arc(w * 0.50, h * 0.42, Math.min(w, h) * 0.18, 0, Math.PI * 2);
       ctx.stroke();
     } else if (room === "ares") {
       ctx.fillStyle = "rgba(255, 230, 160," + (0.05 + 0.07 * storm) + ")";
@@ -5993,28 +6062,30 @@ function drawCandleChart() {
     const eth = (typeof isEthTable === "function") ? isEthTable(focusTable) : (focusTable === "ethereum");
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
-    document.body.classList.toggle("charts-hero-eth", !!eth && !front && !ats);
-    document.body.classList.toggle("charts-hero-btc", !eth && !front && !ats);
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    document.body.classList.toggle("charts-hero-eth", !!eth && !front && !ats && !oracle);
+    document.body.classList.toggle("charts-hero-btc", !eth && !front && !ats && !oracle);
     document.body.classList.toggle("charts-hero-front", !!front);
     document.body.classList.toggle("charts-hero-ats", !!ats);
+    document.body.classList.toggle("charts-hero-oracle", !!oracle);
     const atsTape = document.getElementById("atsChartTape");
     if (atsTape) atsTape.hidden = !ats;
     try {
-      if (!front && !ats) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
+      if (!front && !ats && !oracle) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
     } catch (e) {}
     const btcCard = document.querySelector(".chart-card.chart-pair-btc");
     const ethCard = document.querySelector(".chart-card.chart-pair-eth");
     if (btcCard) {
-      btcCard.classList.toggle("chart-hero-off", !!eth || !!front || !!ats);
-      btcCard.hidden = !!eth || !!front || !!ats;
+      btcCard.classList.toggle("chart-hero-off", !!eth || !!front || !!ats || !!oracle);
+      btcCard.hidden = !!eth || !!front || !!ats || !!oracle;
     }
     if (ethCard) {
-      ethCard.classList.toggle("chart-hero-off", !eth || !!front || !!ats);
-      ethCard.hidden = !eth || !!front || !!ats;
+      ethCard.classList.toggle("chart-hero-off", !eth || !!front || !!ats || !!oracle);
+      ethCard.hidden = !eth || !!front || !!ats || !!oracle;
     }
     document.querySelectorAll(".chart-card.chart-crypto-odds, .chart-card.chart-crypto-delta, .chart-card.chart-crypto-funding").forEach(function (card) {
-      card.classList.toggle("chart-hero-off", !!front || !!ats);
-      card.hidden = !!front || !!ats;
+      card.classList.toggle("chart-hero-off", !!front || !!ats || !!oracle);
+      card.hidden = !!front || !!ats || !!oracle;
     });
   }
   function setChartNoFeed(canvas, empty) {
@@ -6550,6 +6621,8 @@ function drawCandleChart() {
     const wxSubs = document.getElementById("wxSubStrip");
     const atsStrip = document.getElementById("atsGameStrip");
     const atsSport = document.getElementById("atsSportChip");
+    const oraStrip = document.getElementById("oraWatchStrip");
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
     const kh = document.getElementById("wxKalshiHigh");
     const nh = document.getElementById("wxNwsHigh");
     const cityEl = document.getElementById("wxCity");
@@ -6558,7 +6631,8 @@ function drawCandleChart() {
     if (wxSubs) wxSubs.hidden = !front;
     if (atsStrip) atsStrip.hidden = !ats;
     if (atsSport) atsSport.hidden = !ats;
-    if (dualSub) dualSub.hidden = !!ats;
+    if (oraStrip) oraStrip.hidden = !oracle;
+    if (dualSub) dualSub.hidden = !!ats || !!oracle;
     if (front) {
       if (ledLabel) ledLabel.textContent = "DFW HIGH";
       const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
@@ -6645,9 +6719,26 @@ function drawCandleChart() {
       try { paintAtsGameStrip(ts); } catch (e) {}
       return true;
     }
+    if (oracle) {
+      if (ledLabel) ledLabel.textContent = "WATCH";
+      if (ledT) ledT.textContent = "CRT";
+      const timEl = document.getElementById("windowTimer");
+      if (timEl) timEl.textContent = "WATCH";
+      if (ledSub) ledSub.textContent = "ORACLE does not place orders";
+      if (dualSub) {
+        dualSub.hidden = true;
+        dualSub.textContent = "";
+      }
+      const call = document.getElementById("oraWatchCall");
+      const seats = document.getElementById("oraWatchSeats");
+      if (call) call.textContent = "WATCH";
+      if (seats) seats.textContent = "SIBYL · PIT · VEIL · MARBLE";
+      return true;
+    }
     if (ledLabel) ledLabel.textContent = "1H WINDOW";
     if (atsStrip) atsStrip.hidden = true;
     if (atsSport) atsSport.hidden = true;
+    if (oraStrip) oraStrip.hidden = true;
     return false;
   }
   function dockWindowLed() {
@@ -6677,7 +6768,9 @@ function drawCandleChart() {
           ? '<li class="lock-tape-empty">No Dallas book — waiting on DFW CLI</li>'
           : (isAtsTable(focusTable)
             ? '<li class="lock-tape-empty">No Chair lock this hour — waiting on Ares</li>'
-            : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>');
+            : (isOracleTable(focusTable)
+              ? '<li class="lock-tape-empty">ORACLE does not place orders — WATCH only</li>'
+              : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>'));
       } else {
         list.innerHTML = locks.slice(0, 8).map(p => {
           const result = p.status === "OPEN"
@@ -7151,6 +7244,17 @@ function drawCandleChart() {
       if (hero) hero.textContent = "Five chairs. GLASS is the pane. MESH is the web. PIT is the book. FROST kills. BONE is old bones. HEAT / ECHO / CELL feed them. They do not vote.";
       return;
     }
+    if (typeof isOracleTable === "function" && isOracleTable(focusTable)) {
+      try { renderOracleBotsGuide(); } catch (e) {}
+      const grid = document.getElementById("botsGrid");
+      if (grid) {
+        grid.hidden = true;
+        grid.innerHTML = "";
+      }
+      const hero = document.querySelector("#botsView .info-hero p");
+      if (hero) hero.textContent = "Four seats. SIBYL is the read. PIT is the well. VEIL is the mask. MARBLE is the slab. They watch. They do not vote. ORACLE does not place orders.";
+      return;
+    }
     const botsGrid = document.getElementById("botsGrid");
     if (botsGrid) botsGrid.hidden = false;
     const heroP = document.querySelector("#botsView .info-hero p");
@@ -7383,6 +7487,34 @@ function drawCandleChart() {
     }
     try { paintAtsWhy(ts); } catch (e) {}
     try { paintAtsWatch(ts); } catch (e) {}
+    try { paintOraWhy(ts); } catch (e) {}
+    try { paintOraWatch(ts); } catch (e) {}
+  }
+
+  function paintOraWhy(ts) {
+    const wrap = document.getElementById("oraWhy");
+    const line = document.getElementById("oraWhyLine");
+    const strip = document.getElementById("oraWhyStrip");
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    const show = oracle && (mode === "art" || mode === "floor" || mode === "night");
+    if (wrap) wrap.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
+    const why = view.why || {};
+    if (line) line.textContent = String(why.line || "WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS");
+    if (strip) strip.textContent = String(why.strip || "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK");
+  }
+
+  function paintOraWatch(ts) {
+    const el = document.getElementById("oraWatch");
+    if (!el) return;
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    const show = oracle && (mode === "art" || mode === "floor" || mode === "night");
+    el.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
+    const watch = view.watch || {};
+    el.textContent = String(watch.line || "CRT · WATCH · STATIC ON THE GLASS");
   }
 
   function paintPhoneScore() {
@@ -9116,6 +9248,26 @@ function drawCandleChart() {
     }, 20000);
   }
   window.loadAtsTable = loadAtsTable;
+  function renderOracleBotsGuide() {
+    const grid = document.getElementById("oracleBotsGrid");
+    if (!grid) return;
+    const ts = (typeof tableState === "function" ? tableState("oracle") : null) || oracleTableState();
+    const seats = ts.seats || oracleSeatRoster();
+    const chair = ts.chair || { id: "ORACLE", name: "ORACLE", job: "Watch chair. Does not place orders.", mark: "/oracle-wait.jpg" };
+    const rows = [chair].concat(seats);
+    grid.innerHTML = rows.map(function (s) {
+      const callsign = (s.id === "ORACLE" || s.name === "ORACLE") ? "ORACLE" : String(s.id || "");
+      const face = (callsign === "ORACLE") ? "/oracle-wait.jpg" : "";
+      const mark = face
+        ? frontBotMarkHtml(callsign, face)
+        : '<span class="ora-seat-mark" data-ora-seat="' + callsign + '">' + callsign.slice(0, 3) + "</span>";
+      return '<article class="bot-card front-bot-card ora-bot-card" data-ora-seat="' + callsign + '">' +
+        '<div class="bot-card-head">' + mark +
+        '<span class="bot-callsign">' + callsign + "</span></div>" +
+        '<div class="bot-blurb">' + String(s.job || s.call || "") + "</div>" +
+        "</article>";
+    }).join("");
+  }
   function renderAtsBotsGuide(data) {
     const grid = document.getElementById("atsBotsGrid");
     if (!grid) return;
@@ -9981,7 +10133,7 @@ function drawCandleChart() {
     openChartsBtn.addEventListener("click", () => setMode("charts"));
   }
   modeTabs.forEach(btn => {
-    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront") return;
+    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra") return;
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -9994,7 +10146,7 @@ function drawCandleChart() {
     document.addEventListener("click", (e) => {
       if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
-      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "btnHelp") return;
+      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra" || btn.id === "btnHelp") return;
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -10245,13 +10397,13 @@ function drawCandleChart() {
       mode: "floor",
       target: "#tabFloor",
       title: "FLOOR",
-      body: "Floor is four equal chairs: Satoshi, Vitalik, Raijin, Ares. Tap a Chair to focus that table. The strip is a paper match score. Reset is in Settings. ESC or TABLE returns to the desk.",
+      body: "Floor is five equal chairs: Satoshi, Vitalik, Raijin, Ares, ORACLE. Tap a Chair to focus that table. The strip is a paper match score. Reset is in Settings. ESC or TABLE returns to the desk.",
     },
     {
       mode: "seats",
       target: "#tabSeats",
       title: "SEATS",
-      body: "Same people, one page. Field guide (who they are), rank board (how they sit), live cards (the lean). BTC / ETH / ATS / DWF switch which Chair you are reading. Old #bots #ranks #dashboard links land here.",
+      body: "Same people, one page. Field guide (who they are), rank board (how they sit), live cards (the lean). BTC / ETH / ATS / DWF / ORA switch which Chair you are reading. Old #bots #ranks #dashboard links land here.",
     },
     {
       mode: "paper",
@@ -10264,6 +10416,12 @@ function drawCandleChart() {
       target: "#tabFront",
       title: "THE FRONT",
       body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (NWS PANE) · MESH (THE WEB) · PIT (THE PIT) · FROST (FROST KILL) · BONE (BONE CLIMO). Subs: HEAT · ECHO · CELL. They feed. They do not vote.\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
+    },
+    {
+      mode: "art",
+      target: "#focusOra",
+      title: "ORACLE / ORA",
+      body: "ORACLE is the watch Chair. Gold tab ORA. No GLD chair.\n\nSeats: SIBYL · PIT · VEIL · MARBLE. They watch. They do not vote.\n\nCRT / neon room plate is a separate image — not baked into the face. Face is close-up only.\n\nORACLE does not place orders. Paper only. Follower OFF.",
     },
     {
       mode: "art",
@@ -10677,6 +10835,12 @@ function drawCandleChart() {
         if (isAts) focusAts.classList.add("focus-active");
         else focusAts.classList.remove("focus-active");
       }
+      const focusOra = document.getElementById("focusOra");
+      if (focusOra) {
+        focusOra.classList.remove("active", "mode-tab");
+        if (isOracle) focusOra.classList.add("focus-active");
+        else focusOra.classList.remove("focus-active");
+      }
       const badge = document.getElementById("focusTableBadge");
       if (badge) {
         badge.textContent = chairBadgeOf(focusTable);
@@ -10737,6 +10901,8 @@ function drawCandleChart() {
     bind(focusFront, "front");
     const focusAts = document.getElementById("focusAts");
     bind(focusAts, "ats");
+    const focusOra = document.getElementById("focusOra");
+    bind(focusOra, "oracle");
     applyFocusChrome();
     try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
     const floorExit = document.getElementById("floorExitBtn");
@@ -11367,6 +11533,10 @@ function drawCandleChart() {
       e.stopPropagation();
       if (hit.which === "front") {
         try { setFocusTable("front"); } catch (err) {}
+      } else if (hit.which === "ats") {
+        try { setFocusTable("ats"); } catch (err) {}
+      } else if (hit.which === "oracle") {
+        try { setFocusTable("oracle"); } catch (err) {}
       } else {
         try { setFocusTable(hit.which); } catch (err) {}
       }

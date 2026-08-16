@@ -202,6 +202,7 @@ class ChairRoomTests(unittest.TestCase):
         self.assertIn('return "ares"', JS.split("function chairRoomOf", 1)[1][:400])
         self.assertIn('return "vitalik"', JS.split("function chairRoomOf", 1)[1][:400])
         self.assertIn('return "satoshi"', JS.split("function chairRoomOf", 1)[1][:500])
+        self.assertIn('return "oracle"', JS.split("function chairRoomOf", 1)[1][:500])
         self.assertIn("function drawChairRoom(", JS)
         self.assertIn("function syncChairRoom(", JS)
         self.assertIn("dataset.chairRoom", JS)
@@ -209,14 +210,17 @@ class ChairRoomTests(unittest.TestCase):
         sat = CSS.split('data-chair-room="satoshi"', 1)[1][:900]
         vit = CSS.split('data-chair-room="vitalik"', 1)[1][:900]
         ares = CSS.split('data-chair-room="ares"', 1)[1][:900]
+        ora = CSS.split('data-chair-room="oracle"', 1)[1][:900]
         self.assertIn("#1a1208", sat)
         self.assertIn("240, 176, 64", sat)
         self.assertIn("#061418", vit)
         self.assertIn("80, 230, 210", vit)
         self.assertIn("#071018", ares)
         self.assertIn("255, 230, 160", ares)
+        self.assertIn("/oracle-room.jpg", ora)
         self.assertNotEqual(sat[:200], vit[:200])
         self.assertNotEqual(vit[:200], ares[:200])
+        self.assertNotEqual(ares[:200], ora[:200])
         self.assertIn("drawAresScorebug", JS)
         self.assertIn("atsKickLine", JS.split("function drawAresScorebug", 1)[1][:500])
         self.assertNotIn("id=\"tabAresScore\"", HTML)
@@ -233,6 +237,7 @@ class ChairRoomTests(unittest.TestCase):
         self.assertIn("body.night-mode[data-chair-room=\"satoshi\"]", CSS)
         self.assertIn("body.night-mode[data-chair-room=\"vitalik\"]", CSS)
         self.assertIn("body.night-mode[data-chair-room=\"ares\"]", CSS)
+        self.assertIn("body.night-mode[data-chair-room=\"oracle\"]", CSS)
 
 
 class LockStampTests(unittest.TestCase):

@@ -260,6 +260,7 @@
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
         <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas Weather Forecast / Raijin" aria-label="Focus Dallas Weather Forecast / Raijin" data-focus="front">DWF</button>
         <button type="button" id="focusAts" class="focus-tab" title="Focus ATS / Ares" aria-label="Focus ATS / Ares" data-focus="ats">ATS</button>
+        <button type="button" id="focusOra" class="focus-tab" title="Focus ORACLE / CRT" aria-label="Focus ORACLE / CRT" data-focus="oracle">ORA</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
@@ -350,6 +351,11 @@
           <div id="atsWhyStrip" class="ats-why-strip">LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK</div>
         </div>
         <div id="atsWatch" class="ats-watch" hidden aria-live="polite">WATCH · DARK · NO GAME ON THE TABLE</div>
+        <div id="oraWhy" class="ora-why" hidden aria-live="polite">
+          <div id="oraWhyLine" class="ora-why-line">WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS</div>
+          <div id="oraWhyStrip" class="ora-why-strip">SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK</div>
+        </div>
+        <div id="oraWatch" class="ora-watch" hidden aria-live="polite">CRT · WATCH · STATIC ON THE GLASS</div>
         <div id="aresFace" class="ares-face" data-eye="wait" hidden aria-hidden="true">
           <img id="aresChairImg" src="/static/ares-chair.png" alt="Ares">
           <span class="ares-eye ares-eye-l" aria-hidden="true"></span>
@@ -642,6 +648,11 @@
           <div class="front-guide-head">ATS / ARES</div>
           <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
           <div id="atsBotsGrid" class="bots-grid"></div>
+        </section>
+        <section id="oracleBotsGuide" class="front-bots-guide ora-bots-guide" aria-label="ORACLE / ORA">
+          <div class="front-guide-head">ORACLE / ORA</div>
+          <p class="front-bots-sub">Watch Chair. SIBYL · PIT · VEIL · MARBLE. No ticket. Not mixed into WICK / TAPE.</p>
+          <div id="oracleBotsGrid" class="bots-grid"></div>
         </section>
         <div id="botsGrid" class="bots-grid"></div>
       </section>
@@ -1037,6 +1048,7 @@
         <span id="wxHighStrip" class="wx-high-strip" hidden>DALLAS <b id="wxCity">DFW</b> · NOW <b id="wxNowTemp">—</b> · NWS <b id="wxNwsHigh">—</b> · BRACKET <b id="wxKalshiHigh">—</b> · SETTLES <b id="wxCliWindow">7:00 CT</b></span>
         <span id="atsSportChip" class="ats-sport-chip" hidden data-live="off">WAIT</span>
         <span id="atsGameStrip" class="ats-game-strip" hidden>GAME <b id="atsGameName">—</b> · LINE <b id="atsGameLine">—</b></span>
+        <span id="oraWatchStrip" class="ora-watch-strip" hidden>ORA <b id="oraWatchCall">WATCH</b> · <b id="oraWatchSeats">SIBYL · PIT · VEIL · MARBLE</b></span>
         <span id="wxSubStrip" class="wx-sub-strip" hidden>
           <span data-wx-sub="HEAT">HEAT —</span>
           <span data-wx-sub="ECHO">ECHO —</span>
