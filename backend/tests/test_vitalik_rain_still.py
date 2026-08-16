@@ -20,7 +20,17 @@ WAIT = STATIC / "vitalik-wait.jpg"
 CITY = STATIC / "vitalik-city.jpg"
 RAIJIN = STATIC / "raijin-wait.jpg"
 DALLAS = STATIC / "raijin-dallas.jpg"
-LEADER_HASH = hashlib.sha256(WAIT.read_bytes()).hexdigest()[:10]
+ORA_WAIT = STATIC / "oracle-wait.jpg"
+
+
+def _leader_hash() -> str:
+    h = hashlib.sha256()
+    for name in ("chair-wait.jpg", "vitalik-wait.jpg", "oracle-wait.jpg", "ares-wait.png"):
+        h.update((STATIC / name).read_bytes())
+    return h.hexdigest()[:10]
+
+
+LEADER_HASH = _leader_hash()
 
 
 class VitalikRainStillTests(unittest.TestCase):

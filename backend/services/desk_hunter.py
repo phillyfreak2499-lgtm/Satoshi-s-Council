@@ -3,9 +3,10 @@ HUNTER — rotating scout feeder. Not a Floor chair. Not a locker. Not a sixth s
 
 Keeps Ares (sports) and Oracle (politics) showing 1–3 live candidates.
 Hunter does not pick a side. Hunter does not lock. Hunter never places orders.
-Chair still decides. Paper only. Follower OFF. Live OFF.
+The Ares Chair / Oracle Chair review the slate on odds + leftover, paper-lock
+the winner, drop the other two, and start the timer. Paper only. Follower OFF. Live OFF.
 
-Dead air is the failure. No Consensus is valid and preferred.
+Dead air is the failure. No Consensus is valid while the chair is still reviewing.
 """
 from __future__ import annotations
 
@@ -247,9 +248,41 @@ def priority_of(row: Dict[str, Any]) -> int:
     return 3
 
 
+def best_leftover(row: Dict[str, Any]) -> Optional[float]:
+    vals = [_f(row.get("yes_leftover")), _f(row.get("no_leftover")), _f(row.get("leftover"))]
+    got = [v for v in vals if v is not None]
+    return max(got) if got else None
+
+
+def candidate_playable_edge(row: Dict[str, Any]) -> bool:
+    """Hits-first scout rank. Hunter still does not pick a side."""
+    mid = row.get("mid") if row.get("mid") is not None else row.get("yes_mid")
+    if not in_band(mid):
+        return False
+    left = best_leftover(row)
+    return left is not None and left >= MIN_EV_SIT
+
+
 def rank_key(row: Dict[str, Any]) -> Tuple:
     vol = _f(row.get("volume")) or 0.0
-    return (priority_of(row), time_bucket(row.get("mins_left")), -vol)
+    left = best_leftover(row)
+    playable = 0 if candidate_playable_edge(row) else 1
+    return (playable, priority_of(row), time_bucket(row.get("mins_left")), -(left or -99.0), -vol)
+
+
+def keep_locked_candidate(
+    candidates: List[Dict[str, Any]],
+    ticker: Any,
+) -> List[Dict[str, Any]]:
+    """After the chair paper-locks, the other two go away."""
+    tick = str(ticker or "")
+    if not tick:
+        return []
+    hit = [
+        c for c in (candidates or [])
+        if str(c.get("ticker") or c.get("id") or "") == tick
+    ]
+    return hit[:1]
 
 
 def select_slate(

@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-eth-slate-ares-oracle-lock",
+    "at": "2026-08-16T23:59:55-05:00",
+    "title": "ETH slate wipe + Ares/Oracle lock the best of three",
+    "why": "Zach Voice: Dedicated BTC/ETH Pattern Specialists shipped on #47. Displayed ETH chair scorecard / 0–5 / eth_shadow / settled ETH chair stats wipe so Vitalik starts clean. BTC 5–3 stays. Bot memory (weights, adaptive, learning) is not touched. Same PR: Hunter still feeds 1–3 on Ares (sports) and Oracle (politics). The chair reviews all three on odds + leftover at the real ask, paper-locks the winner, drops the other two, and starts the timer. Show the bet – No Consensus can still appear while reviewing. If the three expire, Hunter surfaces new ones. Dead air is failure. Hunter does not pick the side. Same PR: Oracle WAIT / Floor / HUD swap to the signed laurel close-up at /oracle-wait.jpg (woman, gold laurel, amber eye, smoke over the other eye, black back). Not the old split-light man. /oracle-room.jpg stays the table back. One face. Labels carry WAIT/UP/DOWN. Cache-bust max-age=60 + hash query. No glowing-eye canvas swaps. Not new Floor chairs. Satoshi/Vitalik stay BTC/ETH lockers. Ares/Oracle stay sports/politics lockers. candle_btc BTC only, candle_eth ETH only. Hits first. 20–80 after vig. Dead-book skip. Sit if EV under +3¢. Ares key-number / Eagles ranking still apply. Paper. Follower OFF. Live OFF."
+  },
+  {
     "id": "2026-08-16-pattern-specialists",
     "at": "2026-08-16T23:59:45-05:00",
     "title": "BTC and ETH each get a dedicated pattern specialist",
