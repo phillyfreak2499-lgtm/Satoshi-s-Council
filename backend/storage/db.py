@@ -252,6 +252,11 @@ class PerformanceStore:
             )
             return signal_id
 
+        # 15m BTC tickets only come from path_fills. A sit with an open
+        # UP/DOWN book must not fall through to the one-call recorder.
+        if market_ticker and is_btc_15m_ticker(market_ticker):
+            return signal_id
+
         # Record scalp path-call (full or 1/4 HOLD). SWAP grades underlying lean as full side.
         direction = decision.get("direction")
         grade_dir = direction

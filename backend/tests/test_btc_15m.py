@@ -493,6 +493,128 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(by_t["KXBTC15M-26AUG101230-00"].correct)
             self.assertGreater(float(by_t["KXBTC15M-26AUG101230-00"].paper_pnl or 0), 0.0)
 
+    async def test_dual_path_fills_hold_both_and_grade_net_pnl(self):
+        """One window, both doors open. Official UP is a mark, not the win."""
+        tick = "KXBTC15M-26AUG101345-45"
+        close = "2026-08-10T17:45:00+00:00"
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time=close,
+            fills=[
+                {"fill_kind": "dual_open", "side": "UP", "entry_cents": 42.0, "stake": 10.0},
+                {"fill_kind": "dual_open", "side": "DOWN", "entry_cents": 42.0, "stake": 10.0},
+            ],
+            asset="btc",
+        )
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            open_rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        self.assertEqual({r.direction for r in open_rows}, {"UP", "DOWN"})
+        self.assertTrue(all(r.actual_outcome is None for r in open_rows))
+        self.assertEqual({r.settle_reason for r in open_rows}, {"path_dual"})
+
+        n = await self.store.settle_expired_calls(
+            kalshi_results={tick: {"ticker": tick, "status": "settled", "result": "yes"}},
+            asset="btc",
+        )
+        self.assertEqual(n, 2)
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        by_side = {r.direction: r for r in rows}
+        self.assertEqual(by_side["UP"].settle_reason, "path_pnl")
+        self.assertEqual(by_side["DOWN"].settle_reason, "path_pnl")
+        self.assertIsNone(by_side["UP"].correct)
+        self.assertIsNone(by_side["DOWN"].correct)
+        self.assertGreater(float(by_side["UP"].paper_pnl or 0), 0.0)
+        self.assertLess(float(by_side["DOWN"].paper_pnl or 0), 0.0)
+        net = float(by_side["UP"].paper_pnl) + float(by_side["DOWN"].paper_pnl)
+        self.assertGreater(net, 0.0)
+
+        acc = await self.store.get_accuracy(asset="btc")
+        self.assertEqual(acc["total"], 1)
+        self.assertEqual(acc["correct"], 1)
+        self.assertEqual(acc["wrong"], 0)
+
+    async def test_log_signal_dual_fills_write_both_tickets(self):
+        tick = "KXBTC15M-26AUG101330-30"
+        await self.store.log_signal(
+            {
+                "direction": "BOTH",
+                "confidence": 64,
+                "path_fills": [
+                    {"fill_kind": "dual_open", "side": "UP", "entry_cents": 41.0, "stake": 10.0},
+                    {"fill_kind": "dual_open", "side": "DOWN", "entry_cents": 44.0, "stake": 10.73},
+                ],
+            },
+            [],
+            market_ticker=tick,
+            close_time="2026-08-10T17:30:00+00:00",
+            asset="btc",
+        )
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        self.assertEqual({r.direction for r in rows}, {"UP", "DOWN"})
+        self.assertTrue(all(r.actual_outcome is None for r in rows))
+        self.assertEqual({r.settle_reason for r in rows}, {"path_dual"})
+
+    async def test_15m_sit_does_not_open_one_call_ticket(self):
+        """Holding UP on the path book must not fall through to max_calls=1."""
+        tick = "KXBTC15M-26AUG101400-00"
+        await self.store.log_signal(
+            {
+                "direction": "UP",
+                "confidence": 70,
+                "path_fills": [],
+            },
+            [],
+            market_ticker=tick,
+            close_time="2026-08-10T18:00:00+00:00",
+            up_pct=48.0,
+            down_pct=52.0,
+            asset="btc",
+        )
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        self.assertEqual(rows, [])
+
+    async def test_cut_then_scorecard_uses_realized_pnl(self):
+        tick = "KXBTC15M-26AUG101415-15"
+        close = "2026-08-10T18:15:00+00:00"
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time=close,
+            fills=[{"fill_kind": "open", "side": "UP", "entry_cents": 48.0, "stake": 10.0}],
+            asset="btc",
+        )
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time=close,
+            fills=[{
+                "fill_kind": "cut",
+                "side": "UP",
+                "entry_cents": 48.0,
+                "exit_cents": 43.0,
+                "stake": 10.0,
+                "paper_pnl": -1.0417,
+            }],
+            asset="btc",
+        )
+        acc = await self.store.get_accuracy(asset="btc")
+        self.assertEqual(acc["total"], 1)
+        self.assertEqual(acc["correct"], 0)
+        self.assertEqual(acc["wrong"], 1)
+
 
 class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
     def test_finish_era_brain_is_dropped(self):
