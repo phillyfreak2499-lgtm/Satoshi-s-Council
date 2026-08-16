@@ -78,6 +78,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       if (typeof window.loadHealthStrip === "function") window.loadHealthStrip();
     } catch (e) {}
+    try {
+      if (typeof window.loadFrontTable === "function") window.loadFrontTable();
+    } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
   function hasDeskAuth() {

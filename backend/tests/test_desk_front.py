@@ -1005,7 +1005,7 @@ class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("function glassSeatLive", JS)
         self.assertIn("function frontSeatTone", JS)
         self.assertIn('seat.setAttribute("data-eye"', JS)
-        self.assertNotIn('<span class="hier-dir \'', JS)
+        self.assertIn('class=\\"hier-dir "', JS)
         self.assertIn('.front-seat[data-eye="up"]', CSS)
         self.assertIn("front-bot-card[data-eye=\"up\"]", CSS)
         self.assertIn("front-guide-card[data-eye=\"up\"]", CSS)
@@ -1013,6 +1013,8 @@ class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', paint)
         self.assertNotIn("frontSeatTone", paint)
         self.assertNotIn("nws_pane", paint)
+        unlock = JS.split("function revealAppAfterDeskUnlock", 1)[1].split("window.revealAppAfterDeskUnlock", 1)[0]
+        self.assertIn("loadFrontTable", unlock)
         self.assertIn('document.body.classList.add("front-tab-off")', JS)
         self.assertIn("hidden", HTML.split('id="tabFront"', 1)[1][:80])
         self.assertNotIn("#passwordGate.password-gate,", CSS)
