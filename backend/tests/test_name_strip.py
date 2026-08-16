@@ -29,31 +29,48 @@ class VisibleZtStripTests(unittest.TestCase):
         self.assertIn('property="og:title" content="Satoshi’s Council"', HTML)
         self.assertIn('name="description" content="Satoshi’s Council"', HTML)
         self.assertIn('property="og:image" content="/council-mark.png"', HTML)
+        self.assertIn('name="twitter:image" content="/council-mark.png"', HTML)
         self.assertNotIn("Satoshi’s Council / ZT", HTML)
         self.assertNotIn("SATOSHI’S COUNCIL / ZT", HTML)
 
     def test_visible_marks_use_hex_not_zt_logo(self):
-        # Slots stay /council-mark.png; the PICTURE is the city / candle / up-arrow mark.
+        # Slots stay /council-mark.png; the PICTURE is the isolated gold floor mark.
         self.assertIn('src="/council-mark.png"', HTML)
-        self.assertGreaterEqual(HTML.count('src="/council-mark.png"'), 4)
+        self.assertGreaterEqual(HTML.count('src="/council-mark.png"'), 5)
         self.assertNotIn('src="/zt-logo.jpg"', HTML)
         self.assertIn('id="ztWatermark"', HTML)
-        wm = HTML.split('id="ztWatermark"', 1)[1][:120]
+        wm = HTML.split('id="ztWatermark"', 1)[1][:180]
         self.assertNotIn("zt-logo", wm)
         self.assertNotIn("src=", wm.split(">", 1)[0])
+        self.assertIn('src="/council-mark.png"', wm)
         mark = ROOT / "frontend" / "static" / "council-mark.png"
         jpg = ROOT / "frontend" / "static" / "zt-logo.jpg"
         self.assertTrue(mark.is_file())
         self.assertTrue(jpg.is_file())
-        self.assertGreater(mark.stat().st_size, 1_400_000)
-        self.assertGreater(jpg.stat().st_size, 260_000)
-        self.assertEqual(mark.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        raw = mark.read_bytes()
+        self.assertEqual(raw[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(raw[12:16], b"IHDR")
+        mw = int.from_bytes(raw[16:20], "big")
+        mh = int.from_bytes(raw[20:24], "big")
+        self.assertEqual(mw, mh)
+        self.assertGreaterEqual(mw, 512)
+        # Isolated black-ground mark — not the wide city / chamber-floor plate.
+        self.assertGreater(mark.stat().st_size, 200_000)
+        self.assertLess(mark.stat().st_size, 1_400_000)
+        self.assertGreater(jpg.stat().st_size, 80_000)
         self.assertEqual(jpg.read_bytes()[:2], b"\xff\xd8")
         fav = (ROOT / "frontend" / "static" / "favicon.svg").read_text(encoding="utf-8")
-        self.assertIn('stroke="#f0c14a"', fav)
-        self.assertIn("#39ff14", fav)
+        self.assertIn("<svg", fav)
+        self.assertIn("data:image/png;base64,", fav)
+        self.assertNotIn("#39ff14", fav)
+        self.assertNotIn('stroke="#f0c14a"', fav)
         self.assertNotIn('stroke="#00e8ff"', fav)
         self.assertNotIn("gold ZT", CSS)
+        self.assertIn("body.floor-mode .zt-watermark", CSS)
+        self.assertIn("body.mode-floor .zt-watermark", CSS)
+        ico = ROOT / "frontend" / "static" / "favicon.ico"
+        self.assertTrue(ico.is_file())
+        self.assertGreater(ico.stat().st_size, 200)
 
     def test_logo_labels_have_no_zt(self):
         self.assertIn('aria-label="Satoshi’s Council"', HTML)
