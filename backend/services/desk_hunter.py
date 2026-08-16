@@ -347,8 +347,9 @@ def _why_edge(row: Dict[str, Any], quotes: Dict[str, Any]) -> str:
         pass
     if disagreement(row):
         bits.append("useful disagreement")
-    bits.append("Hunter does not pick a side")
-    return " · ".join(bits[:5])
+    core = bits[:4]
+    core.append("Hunter does not pick a side")
+    return " · ".join(core)
 
 
 def as_candidate(

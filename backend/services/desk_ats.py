@@ -1170,14 +1170,6 @@ def apply_ares_gates(
     sit_far_horizon_fills(now)
     if pick.get("ice"):
         return str(pick.get("ice"))
-    leftover = pick.get("leftover")
-    try:
-        if leftover is not None and float(leftover) < 3.0 and str(pick.get("call") or "").upper() not in ("", "WAIT"):
-            pick["gate"] = "EV < +3¢ · SIT"
-            pick["call"] = "WAIT"
-            return "EV < +3¢ · SIT"
-    except (TypeError, ValueError):
-        pass
     reason = sit_after_kick(pick, watch, now)
     if not reason:
         reason = late_hurt_gate(pick, now)
@@ -1187,6 +1179,13 @@ def apply_ares_gates(
         reason = far_kick_gate(pick, now)
     if not reason:
         reason = one_ticket_gate(pick, held, now)
+    if not reason:
+        leftover = pick.get("leftover")
+        try:
+            if leftover is not None and float(leftover) < 3.0 and str(pick.get("call") or "").upper() not in ("", "WAIT"):
+                reason = "EV < +3¢ · SIT"
+        except (TypeError, ValueError):
+            pass
     if reason:
         pick["gate"] = reason
         pick["call"] = "WAIT"

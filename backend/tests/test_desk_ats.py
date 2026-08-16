@@ -1288,8 +1288,10 @@ class AtsEaglesRankTests(unittest.TestCase):
         pick = board["pick"]
         self.assertIsNotNone(pick)
         self.assertEqual(pick["game"], "PHIDAL")
-        self.assertIn("BIRD FIRST", (board.get("why") or {}).get("line") or "")
-        self.assertIn("BIRD FIRST", (board.get("watch") or {}).get("line") or "")
+        why_line = (board.get("why") or {}).get("line") or ""
+        watch_line = (board.get("watch") or {}).get("line") or ""
+        self.assertTrue("BIRD FIRST" in why_line or "BIRD FIRST" in watch_line, why_line + " | " + watch_line)
+        self.assertIn("BIRD FIRST", watch_line)
         self.assertTrue(board["paper_only"])
         self.assertFalse(board["follower"])
         self.assertFalse(board["live"])
