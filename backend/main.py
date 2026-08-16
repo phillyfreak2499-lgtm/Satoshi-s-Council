@@ -122,15 +122,27 @@ async def health():
     kalshi_btc_ok = bool(btc_h.get("kalshi", True))
     kalshi_eth_ok = bool(eth_h.get("kalshi", True)) if eth else None
     kalshi_ok = kalshi_btc_ok and (kalshi_eth_ok is not False)
-    from backend.data.coinglass import PLAN_WALL_REASON, coinglass_hud_ok, plan_wall_latched
+    from backend.data.coinglass import (
+        PLAN_WALL_REASON,
+        chair_window_ok,
+        coinglass_hud_ok,
+        plan_wall_latched,
+    )
 
     coinglass_reason = btc_h.get("coinglass_reason") or (eth_h.get("coinglass_reason") if eth else None)
     if plan_wall_latched():
         coinglass_reason = PLAN_WALL_REASON
     if coinglass_reason is not None:
         coinglass_reason = str(coinglass_reason)
+    raw_ok = bool(btc_h.get("coinglass") or eth_h.get("coinglass"))
+    snaps = []
+    for table in (btc, eth):
+        if isinstance(table, dict) and isinstance(table.get("coinglass"), dict) and table.get("coinglass"):
+            snaps.append(table["coinglass"])
+    if snaps and not any(chair_window_ok(s) for s in snaps):
+        raw_ok = False
     coinglass_ok = False if plan_wall_latched() else coinglass_hud_ok(
-        bool(btc_h.get("coinglass") or eth_h.get("coinglass")),
+        raw_ok,
         coinglass_reason,
     )
     if not coinglass_ok and not coinglass_reason and council.running:

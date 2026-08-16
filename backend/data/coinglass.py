@@ -22,6 +22,8 @@ from backend.services.runtime_settings import runtime_settings
 
 BASE = "https://open-api-v4.coinglass.com"
 ALLOWED_INTERVALS = ("30m", "1h")  # 1H pack only. Never 1m. Never drop to 4h/8h/1d.
+CHAIR_WINDOW_INTERVALS = ("30m", "1h", "60m")
+HEATMAP_INTERVALS = ("1d", "24h", "4h", "12h", "1w", "7d", "daily")
 PLAN_WALL_REASON = "plan wall: need Startup+ for 30m/1h"
 # Process-wide: BTC + ETH + hist share one latch. Stop re-probing after both windows wall.
 _PLAN_WALL: Optional[str] = None
@@ -31,7 +33,7 @@ PATHS = (
     "/api/futures/funding-rate/history",
     "/api/futures/open-interest/history",
     "/api/futures/liquidation/history",
-)
+)  # Hist only. Never a list-endpoint probe — that is not a 1h-window feed.
 _PLAN_INTERVAL_HINTS = (
     "interval",
     "plan",
@@ -125,8 +127,11 @@ def summarize_derivatives(
             oi_delta_1h = float(oi_hist[-1][1]) - float(oi_hist[-2][1])
         except (TypeError, ValueError, IndexError):
             oi_delta_1h = None
-    daily_heatmap = iv in ("1d", "24h", "4h", "12h", "1w", "7d", "daily")
-    healthy = funding is not None or oi is not None or last_liq is not None
+    daily_heatmap = iv in HEATMAP_INTERVALS
+    chair_iv = iv in CHAIR_WINDOW_INTERVALS
+    has_nums = funding is not None or oi is not None or last_liq is not None
+    # Chair-healthy / coinglass_ok: real 30m/1h numbers only. 4h is Hobbyist floor, not a 1H lock.
+    healthy = bool(has_nums and chair_iv and not daily_heatmap)
     return {
         "source": "coinglass",
         "healthy": healthy,
@@ -172,12 +177,37 @@ def feeds_present(cg: Dict[str, Any] | None) -> Dict[str, bool]:
     }
 
 
+def is_chair_window_interval(interval: Any) -> bool:
+    return str(interval or "").strip().lower() in CHAIR_WINDOW_INTERVALS
+
+
+def chair_window_ok(snap: Any) -> bool:
+    """True only if a 30m/1h hist actually returned a number. Not 4h. Not exchange-list."""
+    if not isinstance(snap, dict):
+        return False
+    if snap.get("plan_wall") or snap.get("daily_heatmap"):
+        return False
+    if not is_chair_window_interval(snap.get("interval")):
+        return False
+    return (
+        snap.get("funding_rate") is not None
+        or snap.get("open_interest") is not None
+        or snap.get("liq_long_usd") is not None
+        or snap.get("liq_short_usd") is not None
+    )
+
+
 def apply_hist_to_market(market: Dict[str, Any], cg: Dict[str, Any]) -> Dict[str, Any]:
     """Inject CoinGlass hist fields the live pipeline already uses. Merge, don't wipe."""
     out = dict(market or {})
     if not isinstance(cg, dict):
         return out
     out["coinglass"] = cg
+    out["cg_interval"] = cg.get("interval") or out.get("cg_interval") or "30m"
+    if not chair_window_ok(cg):
+        # 4h / empty / plan wall must not overwrite lock fields.
+        out["cg_daily_heatmap"] = False
+        return out
     out["funding_rate"] = cg.get("funding_rate")
     out["open_interest"] = cg.get("open_interest")
     out["oi_delta_1h"] = cg.get("oi_delta_1h")
@@ -187,8 +217,7 @@ def apply_hist_to_market(market: Dict[str, Any], cg: Dict[str, Any]) -> Dict[str
     out["liq_short_usd"] = cg.get("liq_short_usd")
     out["liq_net_usd"] = cg.get("liq_net_usd")
     out["liq_history"] = list(cg.get("liq_history") or [])
-    out["cg_interval"] = cg.get("interval") or "30m"
-    out["cg_daily_heatmap"] = bool(cg.get("daily_heatmap"))
+    out["cg_daily_heatmap"] = False
     return out
 
 
@@ -268,6 +297,8 @@ def coinglass_hud_ok(ok: Any, reason: Any = None) -> bool:
     text = str(reason or "").lower()
     if "401" in text or "upgrade plan" in text or "upgrade" in text or "plan wall" in text:
         return False
+    if "4h" in text or "8h" in text or "exchange-list" in text or "exchange list" in text:
+        return False
     return True
 
 
@@ -284,7 +315,7 @@ def apply_coinglass_health(health: Dict[str, Any], cg: Any) -> Dict[str, Any]:
         out["coinglass"] = False
         out["coinglass_reason"] = PLAN_WALL_REASON
         return out
-    ok = bool(snap.get("healthy", False))
+    ok = chair_window_ok(snap)
     if not coinglass_hud_ok(ok, reason):
         out["coinglass"] = False
         if not reason:
@@ -440,6 +471,13 @@ class CoinGlassClient:
                 interval=interval,
                 reason=self._wall() or PLAN_WALL_REASON,
                 plan_interval=True,
+            )
+        iv = str(interval or "").strip().lower()
+        if iv not in ALLOWED_INTERVALS:
+            return _Fetch(
+                path=path,
+                interval=interval,
+                reason="not a 1h-window interval",
             )
         headers = self._headers()
         if not headers:

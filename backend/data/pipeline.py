@@ -10,7 +10,7 @@ from loguru import logger
 from backend.data.binance import BinanceClient, coinbase_product_for_symbol
 from backend.data.kalshi import KalshiClient
 from backend.data.coinbase import CoinbaseClient
-from backend.data.coinglass import CoinGlassClient, apply_coinglass_health
+from backend.data.coinglass import CoinGlassClient, apply_coinglass_health, chair_window_ok
 from backend.data.cfbenchmarks import (
     RtiWindow,
     last15_spot,
@@ -247,13 +247,14 @@ class DataPipeline:
             stale = {**self.last_good, "stale": True, "health": dict(self.health), "asset": self.asset}
             return stale
 
-        cg_fund = cg_data.get("funding_rate")
+        chair_ok = chair_window_ok(cg_data)
+        cg_fund = cg_data.get("funding_rate") if chair_ok else None
         bn_fund = binance_data.get("funding_rate")
         if bn_fund is None:
             bn_fund = binance_data.get("funding")
         funding_rate = cg_fund if cg_fund is not None else bn_fund
 
-        cg_oi = cg_data.get("open_interest")
+        cg_oi = cg_data.get("open_interest") if chair_ok else None
         bn_oi = binance_data.get("open_interest")
         open_interest = cg_oi if cg_oi is not None else bn_oi
 
@@ -278,15 +279,15 @@ class DataPipeline:
             "spot_source": self.health["spot_source"],
             "funding_rate": funding_rate,
             "open_interest": open_interest,
-            "liq_long_usd": cg_data.get("liq_long_usd"),
-            "liq_short_usd": cg_data.get("liq_short_usd"),
-            "liq_net_usd": cg_data.get("liq_net_usd"),
-            "oi_delta_1h": cg_data.get("oi_delta_1h"),
+            "liq_long_usd": cg_data.get("liq_long_usd") if chair_ok else None,
+            "liq_short_usd": cg_data.get("liq_short_usd") if chair_ok else None,
+            "liq_net_usd": cg_data.get("liq_net_usd") if chair_ok else None,
+            "oi_delta_1h": cg_data.get("oi_delta_1h") if chair_ok else None,
             "cg_interval": cg_data.get("interval"),
-            "cg_daily_heatmap": bool(cg_data.get("daily_heatmap")),
-            "funding_history": cg_data.get("funding_history") or [],
-            "oi_history": cg_data.get("oi_history") or [],
-            "liq_history": cg_data.get("liq_history") or [],
+            "cg_daily_heatmap": False,
+            "funding_history": list(cg_data.get("funding_history") or []) if chair_ok else [],
+            "oi_history": list(cg_data.get("oi_history") or []) if chair_ok else [],
+            "liq_history": list(cg_data.get("liq_history") or []) if chair_ok else [],
             "kalshi_market": kalshi_data.get("primary_market"),
             "kalshi_orderbook": kalshi_data.get("orderbook"),
             "kalshi_yes_bid": kalshi_data.get("yes_bid"),

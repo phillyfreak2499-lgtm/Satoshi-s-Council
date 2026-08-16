@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-coinglass-1h-only",
+    "at": "2026-08-16T04:25:00-05:00",
+    "title": "CoinGlass Chair-healthy is 1h hist only",
+    "why": "coinglass_ok is true only when a real 30m/1h hist returned numbers. 4h is the Hobbyist floor, not a 1H lock input — PR #31 stays out. No open-interest/exchange-list probe. Fail-soft + plan-wall cache. Startup still required for 1h hist. HUD Glass stays on coinglass_ok. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-coinglass-wall-tight",
     "at": "2026-08-16T04:15:00-05:00",
     "title": "CoinGlass plan wall stays latched",
