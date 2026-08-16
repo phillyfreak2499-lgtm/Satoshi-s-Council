@@ -24,7 +24,7 @@ This is a research co-pilot. It does **not** place real orders.
 1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT — path scalp, not a finish call. They keep gathering the full 15 minutes.
 2. Higher-ranked bots count more. Adaptive weights reward path P&L and risk control, not official-settle hits.
 3. Chair requires confluence + pair affinity — pointed at leftover and scalp quality, not a single door.
-4. Odds gate: BTC 15m 10–90 after vig when EV ≥ 0. ETH 1H 10–90¢ (Vitalik bar unchanged). Never play 99¢ chalk. Fill at the real ask.
+4. Odds gate: BTC 15m 20–80 after vig when EV ≥ 0. ETH 1H 10–90¢ (Vitalik bar unchanged). Never play 99¢ chalk. Fill at the real ask.
 5. BTC 15m stays active the full window: both legs, scale / cut / flip. No irreversible one-call lock. ETH’s first firm full UP/DOWN that clears the gates becomes the single LOCKED call.
 6. After an ETH lock, the plaque is what the UI follows. BTC 15m plaque is the live book. Follower stays OFF.
 
@@ -63,7 +63,7 @@ Poll `/api/state` and read `locked_call` (or `decision.locked_call`):
   "irreversible": false,
   "path_book": true,
   "ticker": "KXBTC15M-...",
-  "goal": "GOAL · path P&L · dual-sided scalp (10–90¢)",
+  "goal": "GOAL · path P&L · dual-sided scalp (20–80¢)",
   "position": {
     "size_up": 10,
     "size_down": 10,

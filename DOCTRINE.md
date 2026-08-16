@@ -31,7 +31,7 @@ The One-Call / Best-Odds Protocol is **dead for BTC 15m**. ETH 1H keeps it.
    You cannot scale out of chalk. 1¢ / 99¢ is a hard no.
 
 7. **Quality filters stay — pointed at scalping.**  
-   Sit the first ~2 minutes and the last ~2.5 unless EV is still ≥ 0. Playable band 10–90 after vig. Explore paper locks when EV ≥ 0 on a real book. 99¢ / stale / empty still sit. WAIT is a skip, not a miss.
+   Sit the first ~2 minutes and the last ~2.5 unless EV is still ≥ 0. Playable band 20–80 after vig. Explore paper locks when EV ≥ 0 on a real book. 99¢ / stale / empty / one-sided still sit. EV ≥ 0 is not enough on a dead book. WAIT is a skip, not a miss.
 
 8. **Retrain on old 15-minute books only.**  
    Do not port 1H weights, 1H settle keys, or CoinGlass 1h onto this book.

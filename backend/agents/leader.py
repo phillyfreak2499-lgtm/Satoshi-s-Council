@@ -431,6 +431,10 @@ class Leader:
 
         stale = bool(regime_features.get("stale")) or not bool(regime_features.get("kalshi_healthy", True))
         dead = bool(regime_features.get("dead_book"))
+        yes_quoted = regime_features.get("yes_ask") is not None or regime_features.get("yes_bid") is not None
+        no_quoted = regime_features.get("no_ask") is not None or regime_features.get("no_bid") is not None
+        if yes_quoted != no_quoted:
+            dead = True
         if not dead:
             try:
                 from backend.agents.chair_gates import dead_book_reason

@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-herald-patch-20-80",
+    "at": "2026-08-17T02:10:00-05:00",
+    "title": "Herald + Patch: 20–80 after vig or sit",
+    "why": "Zach Voice: Herald + Patch rail. Sit-less does not mean lock a dead book. Satoshi (BTC 15-minute) and Raijin (Dallas weather) keep 20–80 after vig or sit. Watcher said 10–90 for Satoshi explore — do not widen past 20–80 after vig. 99¢ / stale / empty / one-sided dead book still veto. EV ≥ 0 is not enough if the book is dead. Raijin stays Dallas daily high only (DFW settle, not Love Field) and stays off the 1H Chair. Do not put weather on Satoshi or Vitalik 1H. Do not loosen ETH 1H (Vitalik), Ares, or Oracle. Same PR keeps the official 15-minute seat replay (merge not wipe, no displayed hit slate). Product name stays Satoshi’s Council. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-raijin-explore",
     "at": "2026-08-17T01:55:00-05:00",
     "title": "Raijin explore notch — sit less on DFW",

@@ -110,6 +110,8 @@ CHAIR: Dict[str, str] = {
 WX_MODES = ("SUN", "HEAT", "CLOUD", "RAIN", "WIND", "STORM")
 THIN_VOL = 200.0
 FRONT_EXPLORE_MIN_EV = 0.0  # Raijin only — explore paper lock when EV ≥ 0
+FRONT_BAND_LO = 20.0  # Herald/Patch: 20–80 after vig or sit
+FRONT_BAND_HI = 80.0
 FLIP_F = 2.0
 MESH_WIDE_F = 4.0
 MESH_MIN_LIVE = 2
@@ -623,6 +625,10 @@ def frost_line(skip: Optional[str]) -> Optional[str]:
         return "SICK BOOK"
     if "stale" in low:
         return "STALE BOOK"
+    if "one-sided" in low or "one sided" in low:
+        return "ONE-SIDED BOOK"
+    if "20–80" in low or "20-80" in low or "outside 20" in low:
+        return "OUTSIDE 20–80"
     if "99" in low:
         return "99¢ WALL"
     if "flip" in low:
@@ -1078,6 +1084,10 @@ def classify_front_wait_reason(skip: Optional[str], flags: Optional[Dict[str, An
         return "dead_book"
     if flags.get("stale") or "stale" in text:
         return "dead_book"
+    if flags.get("one_sided") or "one-sided" in text or "one sided" in text:
+        return "dead_book"
+    if "20–80" in text or "20-80" in text or "outside 20" in text:
+        return "odds_outside_20_80"
     if "99" in text:
         return "odds_outside_20_80"
     if "thin" in text:
@@ -1175,6 +1185,62 @@ def record_wait_sample(
     return row
 
 
+def front_raw_two_sided(m: Dict[str, Any] | None) -> bool:
+    """True when the book has a real two-sided quote.
+
+    A Kalshi binary with YES bid+ask is two-sided (NO is the complement).
+    Synthesized 100−ask alone is not a real other side.
+    Explicit yes_quoted != no_quoted is one-sided.
+    """
+    row = m if isinstance(m, dict) else {}
+    yq, nq = row.get("yes_quoted"), row.get("no_quoted")
+    if yq is not None and nq is not None and bool(yq) != bool(nq):
+        return False
+    if yq is False and nq is False:
+        return False
+    yb = row.get("yes_bid_dollars") if row.get("yes_bid_dollars") is not None else row.get("yes_bid")
+    ya = row.get("yes_ask_dollars") if row.get("yes_ask_dollars") is not None else row.get("yes_ask")
+    nb = row.get("no_bid_dollars") if row.get("no_bid_dollars") is not None else row.get("no_bid")
+    na = row.get("no_ask_dollars") if row.get("no_ask_dollars") is not None else row.get("no_ask")
+    yes_spread = yb is not None and ya is not None
+    no_spread = nb is not None and na is not None
+    both_doors = (yb is not None or ya is not None) and (nb is not None or na is not None)
+    return bool(yes_spread or no_spread or both_doors)
+
+
+def front_outside_20_80(q: Dict[str, Any] | None) -> bool:
+    """Herald/Patch: 20–80 after vig or sit. Either door outside the rail sits."""
+    quotes = q if isinstance(q, dict) else {}
+    for key in ("yes_ask", "no_ask", "yes_mid"):
+        px = quotes.get(key)
+        if px is None:
+            continue
+        try:
+            v = float(px)
+        except (TypeError, ValueError):
+            continue
+        if v < float(FRONT_BAND_LO) or v > float(FRONT_BAND_HI):
+            return True
+    return False
+
+
+def front_one_sided(m: Dict[str, Any] | None, flags: Dict[str, Any] | None = None) -> bool:
+    pack = flags if isinstance(flags, dict) else {}
+    if str(pack.get("book_state") or "") == "one_sided":
+        return True
+    if not front_raw_two_sided(m):
+        return True
+    try:
+        yd = float(pack.get("yes_depth") or 0.0)
+        nd = float(pack.get("no_depth") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    measured = bool(pack.get("has_size") or pack.get("book_state") in ("ok", "dead", "empty", "one_sided"))
+    if measured and ((yd <= 0 and nd > 0) or (nd <= 0 and yd > 0)):
+        return True
+    return False
+
+
 def skip_reason(
     flags: Dict[str, Any],
     forecast: Optional[float],
@@ -1186,12 +1252,16 @@ def skip_reason(
 ) -> Optional[str]:
     if flags.get("empty"):
         return "EMPTY BOOK"
+    if flags.get("one_sided"):
+        return "ONE-SIDED BOOK"
     if flags.get("sick"):
         return "SICK BOOK"
     if heat and heat.get("stale") and not heat.get("ok"):
         return "STALE BOOK"
     if flags.get("wall_99"):
         return "99¢ WALL"
+    if flags.get("outside_20_80"):
+        return "OUTSIDE 20–80"
     if flags.get("spread") is not None and flags["spread"] >= 6:
         return "JUNK SPREAD"
     if flipped:
@@ -1980,6 +2050,8 @@ def score_bracket(
 ) -> Dict[str, Any]:
     q = market_quotes(m)
     flags = book_health(m)
+    flags["one_sided"] = front_one_sided(m, flags)
+    flags["outside_20_80"] = front_outside_20_80(q)
     vol = float(flags.get("volume") or 0)
     pane = nws_pane_high(forecast, mesh)
     p = forecast_p(pane, m)
@@ -2143,13 +2215,28 @@ def build_seats(
 def front_explore_lock_ok(best: Optional[Dict[str, Any]]) -> bool:
     """
     Raijin / Dallas weather Chair only.
-    Explore paper lock when EV ≥ 0 and the book is real.
-    Sick / stale / empty / 99¢ still sit. Does not loosen Vitalik, Ares, or Oracle.
+    Explore paper lock when EV ≥ 0 on a real 20–80-after-vig book.
+    Sick / stale / empty / 99¢ / one-sided still sit. EV ≥ 0 is not enough on a dead book.
+    Does not loosen Vitalik, Ares, or Oracle. Does not lock Satoshi/Vitalik 1H.
     """
     if not best or best.get("dont_play"):
         return False
     skip = str(best.get("skip") or "").upper()
-    if any(tok in skip for tok in ("SICK", "EMPTY", "STALE", "99")):
+    if any(tok in skip for tok in ("SICK", "EMPTY", "STALE", "99", "ONE-SIDED", "OUTSIDE 20", "20–80", "20-80")):
+        return False
+    q = {
+        "yes_ask": best.get("yes_ask"),
+        "no_ask": best.get("no_ask"),
+        "yes_mid": None,
+    }
+    try:
+        if best.get("yes_ask") is not None and best.get("yes_bid") is not None:
+            q["yes_mid"] = (float(best["yes_ask"]) + float(best["yes_bid"])) / 2.0
+    except (TypeError, ValueError):
+        q["yes_mid"] = best.get("yes_ask")
+    if front_outside_20_80(q):
+        return False
+    if best.get("yes_ask") is None or best.get("no_ask") is None:
         return False
     ev = best.get("ev_cents")
     try:
@@ -2159,19 +2246,7 @@ def front_explore_lock_ok(best: Optional[Dict[str, Any]]) -> bool:
 
 
 def front_clears_lock_bar(best: Optional[Dict[str, Any]], min_c: int) -> bool:
-    """Strict min_confidence, or Raijin explore when EV ≥ 0 on a real book."""
-    if not best or best.get("dont_play"):
-        return False
-    try:
-        conf = int(best.get("confidence") or 0)
-    except (TypeError, ValueError):
-        conf = 0
-    try:
-        bar = int(min_c)
-    except (TypeError, ValueError):
-        bar = 50
-    if conf >= bar:
-        return True
+    """Herald/Patch: 20–80 after vig or sit. Confidence cannot unlock a dead book."""
     return front_explore_lock_ok(best)
 
 

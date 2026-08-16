@@ -1116,7 +1116,7 @@ def playable_band_cents(
     window_minutes: Any = None,
     series: Any = None,
 ) -> tuple[float, float]:
-    """Paper Chair YES-mid band. Satoshi 15m BTC is 10–90; ETH 1H stays 10–90 + its own EV bar."""
+    """Paper Chair YES-mid band. Satoshi 15m BTC is 20–80 after vig; ETH 1H stays 10–90 + its own EV bar."""
     try:
         from backend.learning.btc15m import playable_band_cents_for
         return playable_band_cents_for(
@@ -1150,7 +1150,7 @@ def playable_yes_mid(
     ticker: Any = None,
     window_minutes: Any = None,
 ) -> bool:
-    """Only play books where YES mid is inside the Chair band (10–90 on Satoshi 15m BTC)."""
+    """Only play books where YES mid is inside the Chair band (20–80 after vig on Satoshi 15m BTC)."""
     mid = odds_to_cents(yes_mid)
     if mid is None:
         return False
@@ -1218,7 +1218,7 @@ def dead_book_reason(
     """
     Skip dead hours: chosen side ≥ playable cap, mid outside the Chair band,
     or a book we actually measured that is empty / one-sided (99¢ / 1¢ wall).
-    Satoshi 15m BTC uses 10–90. ETH 1H stays 10–90 + its own EV bar.
+    Satoshi 15m BTC uses 20–80 after vig. ETH 1H stays 10–90 + its own EV bar.
 
     Null depth (both sides 0 / null / missing, not measured) is UNKNOWN.
     Do not auto-WAIT on unknown — that is not a dead book.

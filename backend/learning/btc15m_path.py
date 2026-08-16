@@ -602,7 +602,7 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
             return PathDecision("SIT", [], "second_leg_needs_leftover")
         ask = side_ask(lean, yes_ask, no_ask)
         # Satoshi / BTC 15m Chair only: explore paper lock when EV ≥ 0
-        # on a real 10–90 book. Hard maxes still beat Kelly. 99¢ sits.
+        # on a real 20–80-after-vig book. Dead / one-sided / 99¢ sit.
         ev_ok = inp.ev_cents is None or float(inp.ev_cents) >= 0.0
         if ask is not None and in_playable_band(ask) and not is_chalk(ask) and ev_ok:
             return PathDecision(

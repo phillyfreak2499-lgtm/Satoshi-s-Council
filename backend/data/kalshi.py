@@ -4,7 +4,7 @@ BTC Chair: KXBTC15M (15m up/down). ETH Chair: KXETHD (hourly ladder).
 No authentication required for markets / orderbook / series.
 Picks the soonest open window, then the best in-band-after-vig contract
 on that stack (not ATM chalk 98/2). Sit if the stack is dead.
-Satoshi / KXBTC15M uses 10–90 + EV ≥ 0. ETH 1H ladder stays 20–80 / +3¢.
+Satoshi / KXBTC15M uses 20–80 after vig + EV ≥ 0. ETH 1H ladder stays 20–80 / +3¢.
 
 Feed flaps: one quiet retry, then last-good quotes. Do not raise RetryError
 or error-log every cycle — the desk stays up on stale Kalshi.
@@ -22,7 +22,7 @@ from backend.agents.chair_gates import (
 )
 import asyncio
 
-# ETH 1H ladder: skip chalk ≥80¢ / one-sided. Satoshi 15m uses 10–90 below.
+# ETH 1H ladder: skip chalk ≥80¢ / one-sided. Satoshi 15m uses the same 20–80 rail, EV ≥ 0.
 LADDER_BAND_LO = 20.0
 LADDER_BAND_HI = 80.0
 LADDER_P_FINISH = 0.55
@@ -78,7 +78,7 @@ def hour_ladder(markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _ladder_band_for(m: Dict[str, Any] | None) -> tuple[float, float, float]:
-    """Satoshi 15m: 10–90 + EV ≥ 0. ETH 1H ladder stays 20–80 + MIN_EV 3¢."""
+    """Satoshi 15m: 20–80 after vig + EV ≥ 0. ETH 1H ladder stays 20–80 + MIN_EV 3¢."""
     ticker = (m or {}).get("ticker")
     try:
         from backend.learning.btc15m import (
@@ -115,37 +115,21 @@ def score_ladder_contract(
             dist = None
     two_sided = ya is not None and na is not None
     band_lo, band_hi, min_ev = _ladder_band_for(m)
-    satoshi_15m = False
-    try:
-        from backend.learning.btc15m import is_btc_15m_ticker
-        satoshi_15m = is_btc_15m_ticker((m or {}).get("ticker"))
-    except Exception:
-        satoshi_15m = False
-    if satoshi_15m:
-        chalk = (
-            (ya is not None and ya >= 99.0)
-            or (na is not None and na >= 99.0)
-            or (mid is not None and (mid >= 99.0 or mid <= 1.0))
-        )
-        in_band = bool(
-            two_sided
-            and mid is not None
-            and float(band_lo) <= float(mid) <= float(band_hi)
-            and not chalk
-        )
-    else:
-        # ETH 1H ladder unchanged: exclusive 20–80, ≥80 / ≤20 is chalk.
-        chalk = (
-            (ya is not None and ya >= LADDER_BAND_HI)
-            or (na is not None and na >= LADDER_BAND_HI)
-            or (mid is not None and (mid >= LADDER_BAND_HI or mid <= LADDER_BAND_LO))
-        )
-        in_band = bool(
-            two_sided
-            and mid is not None
-            and LADDER_BAND_LO < mid < LADDER_BAND_HI
-            and not chalk
-        )
+    # Herald/Patch: Satoshi 15m and ETH 1H both sit outside exclusive 20–80.
+    # Satoshi min_ev is 0; ETH stays +3¢. One-sided / missing door is not playable.
+    chalk = (
+        (ya is not None and ya >= LADDER_BAND_HI)
+        or (na is not None and na >= LADDER_BAND_HI)
+        or (mid is not None and (mid >= LADDER_BAND_HI or mid <= LADDER_BAND_LO))
+        or (ya is not None and ya >= 99.0)
+        or (na is not None and na >= 99.0)
+    )
+    in_band = bool(
+        two_sided
+        and mid is not None
+        and float(band_lo) < float(mid) < float(band_hi)
+        and not chalk
+    )
     leftover = None
     if in_band:
         spread = None

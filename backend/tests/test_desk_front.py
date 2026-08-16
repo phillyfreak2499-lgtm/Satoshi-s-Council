@@ -1094,7 +1094,9 @@ class RaijinExploreLockTests(unittest.TestCase):
             "skip": None,
             "ev_cents": 0.4,
             "confidence": 42,
+            "yes_bid": 47,
             "yes_ask": 48,
+            "no_ask": 54,
             "p_forecast": 0.48,
             "ticker": "KXHIGHTDAL-26AUG15-B103104",
             "city": "DAL",
@@ -1103,7 +1105,9 @@ class RaijinExploreLockTests(unittest.TestCase):
         row.update(over)
         return row
 
-    def test_explore_lock_when_ev_nonneg_on_real_book(self):
+    def test_explore_lock_when_ev_nonneg_on_real_20_80_book(self):
+        self.assertEqual(float(desk_front.FRONT_BAND_LO), 20.0)
+        self.assertEqual(float(desk_front.FRONT_BAND_HI), 80.0)
         self.assertTrue(desk_front.front_explore_lock_ok(self._best(ev_cents=0.0, confidence=42)))
         self.assertTrue(desk_front.front_explore_lock_ok(self._best(ev_cents=1.2, confidence=38)))
         self.assertTrue(desk_front.front_clears_lock_bar(self._best(ev_cents=0.4, confidence=42), 50))
@@ -1120,12 +1124,43 @@ class RaijinExploreLockTests(unittest.TestCase):
         self.assertEqual(desk_front.skip_reason({"empty": True}, 103.0, False, 4000.0), "EMPTY BOOK")
         self.assertEqual(desk_front.skip_reason({"sick": True}, 103.0, False, 4000.0), "SICK BOOK")
 
+    def test_12c_sits_outside_20_80_even_when_ev_nonneg(self):
+        cheap = self._best(ev_cents=0.4, yes_ask=12.0, no_ask=90.0, yes_bid=11.0)
+        self.assertTrue(desk_front.front_outside_20_80({"yes_ask": 12.0, "no_ask": 90.0}))
+        self.assertFalse(desk_front.front_explore_lock_ok(cheap))
+        self.assertFalse(desk_front.front_clears_lock_bar(cheap, 50))
+        self.assertFalse(desk_front.front_explore_lock_ok(self._best(skip="OUTSIDE 20–80", ev_cents=2.0)))
+        self.assertEqual(
+            desk_front.skip_reason({"empty": False, "outside_20_80": True}, 103.0, False, 4000.0),
+            "OUTSIDE 20–80",
+        )
+        self.assertEqual(desk_front.frost_line("OUTSIDE 20–80"), "OUTSIDE 20–80")
+
+    def test_one_sided_dead_book_sits_even_when_ev_nonneg(self):
+        missing_door = self._best(ev_cents=1.0, yes_ask=48.0, no_ask=None)
+        self.assertFalse(desk_front.front_explore_lock_ok(missing_door))
+        self.assertFalse(desk_front.front_clears_lock_bar(missing_door, 50))
+        # Synthesized 100−ask is not a real other side when the NO door was never quoted.
+        self.assertTrue(desk_front.front_one_sided({"yes_ask": 48.0, "no_ask": 52.0, "yes_quoted": True, "no_quoted": False}))
+        self.assertFalse(desk_front.front_raw_two_sided({"yes_ask": 48.0, "no_ask": 52.0, "yes_quoted": True, "no_quoted": False}))
+        self.assertTrue(desk_front.front_raw_two_sided({
+            "yes_bid_dollars": "0.48", "yes_ask_dollars": "0.50",
+        }))
+        self.assertFalse(desk_front.front_explore_lock_ok(self._best(dont_play=True, skip="ONE-SIDED BOOK", ev_cents=8.0)))
+        self.assertEqual(
+            desk_front.skip_reason({"empty": False, "one_sided": True}, 103.0, False, 4000.0),
+            "ONE-SIDED BOOK",
+        )
+        self.assertEqual(desk_front.frost_line("ONE-SIDED BOOK"), "ONE-SIDED BOOK")
+
     def test_dallas_only_and_other_chairs_unloosened(self):
         self.assertEqual(desk_front.DALLAS["station"], "KDFW")
         self.assertEqual(desk_front.DALLAS["series"], "KXHIGHTDAL")
         self.assertEqual(desk_front.CITIES, (desk_front.DALLAS,))
         self.assertIn("KXHIGHNY", desk_front.BLOCKED_SERIES)
         self.assertEqual(float(desk_front.FRONT_EXPLORE_MIN_EV), 0.0)
+        self.assertEqual(float(desk_front.FRONT_BAND_LO), 20.0)
+        self.assertEqual(float(desk_front.FRONT_BAND_HI), 80.0)
         from backend.config import settings
         from backend.services.desk_hunter import MIN_EV_SIT
         self.assertEqual(float(settings.MIN_EV_CENTS), 3.0)
@@ -1174,6 +1209,34 @@ class RaijinExploreBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board["chair"]["eye"], "WAIT")
         best = next((b for b in board["brackets"] if b.get("best")), None)
         self.assertTrue(best.get("dont_play"))
+
+    async def test_12c_book_sits_outside_20_80(self):
+        cheap = _m("KXHIGHTDAL-26AUG15-B103104", yes_bid="0.11", yes_ask="0.12")
+        board = await desk_front.build_board(
+            fetch=_fetch_factory({"rows": [cheap]}),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101},
+        )
+        self.assertEqual(board["chair"]["eye"], "WAIT")
+        best = next((b for b in board["brackets"] if b.get("best")), None)
+        self.assertTrue(best.get("dont_play"))
+        self.assertIn("20–80", str(best.get("skip") or ""))
+
+    async def test_one_sided_book_sits(self):
+        one = _m("KXHIGHTDAL-26AUG15-B103104")
+        one["yes_quoted"] = True
+        one["no_quoted"] = False
+        board = await desk_front.build_board(
+            fetch=_fetch_factory({"rows": [one]}),
+            nws=_nws_high_only,
+            now=NOW,
+            wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 101},
+        )
+        self.assertEqual(board["chair"]["eye"], "WAIT")
+        best = next((b for b in board["brackets"] if b.get("best")), None)
+        self.assertTrue(best.get("dont_play"))
+        self.assertIn("ONE-SIDED", str(best.get("skip") or "").upper())
 
 
 if __name__ == "__main__":

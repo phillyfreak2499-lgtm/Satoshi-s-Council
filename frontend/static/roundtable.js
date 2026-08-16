@@ -10716,7 +10716,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT and keep gathering the full 15 minutes.\n2. Higher-ranked bots count more. Weights reward path P&L and risk control, not a Kalshi-settle hit.\n3. Chair requires confluence + pair affinity pointed at leftover.\n4. Odds gate: BTC 10–90 after vig when EV ≥ 0. ETH 10–90¢ (Vitalik bar unchanged). Never play 99¢ chalk. Fill at the real ask.\n5. BTC 15m: both legs, scale / cut / flip. No irreversible one-call lock. ETH 1H: first firm UP/DOWN that clears the gates is the single LOCKED call.\n6. Follower stays OFF. Live stays OFF.",
+      body: "1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT and keep gathering the full 15 minutes.\n2. Higher-ranked bots count more. Weights reward path P&L and risk control, not a Kalshi-settle hit.\n3. Chair requires confluence + pair affinity pointed at leftover.\n4. Odds gate: BTC 20–80 after vig when EV ≥ 0. ETH 10–90¢ (Vitalik bar unchanged). Never play 99¢ chalk. Fill at the real ask.\n5. BTC 15m: both legs, scale / cut / flip. No irreversible one-call lock. ETH 1H: first firm UP/DOWN that clears the gates is the single LOCKED call.\n6. Follower stays OFF. Live stays OFF.",
     },
     {
       mode: "floor",

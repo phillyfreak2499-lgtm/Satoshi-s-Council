@@ -224,14 +224,16 @@ class SitAndBandTests(unittest.TestCase):
             "first_10m",
         )
 
-    def test_band_10_90_on_satoshi_and_eth(self):
-        self.assertEqual(playable_band_cents_for(ticker="KXBTC15M-26AUG161200-00", asset="btc"), (10.0, 90.0))
+    def test_band_20_80_on_satoshi_eth_stays_10_90(self):
+        self.assertEqual(playable_band_cents_for(ticker="KXBTC15M-26AUG161200-00", asset="btc"), (20.0, 80.0))
         self.assertEqual(playable_band_cents(ticker="KXETHD-26AUG1615-T1", asset="eth"), (10.0, 90.0))
         self.assertTrue(playable_yes_mid(50, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
-        self.assertTrue(playable_yes_mid(12, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
-        self.assertTrue(playable_yes_mid(88, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
-        self.assertFalse(playable_yes_mid(9, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
-        self.assertFalse(playable_yes_mid(91, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertTrue(playable_yes_mid(20, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertTrue(playable_yes_mid(80, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertFalse(playable_yes_mid(12, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertFalse(playable_yes_mid(88, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertFalse(playable_yes_mid(19, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertFalse(playable_yes_mid(81, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
         self.assertTrue(playable_yes_mid(12, ticker="KXETHD-26AUG1615-T1", asset="eth"))
         self.assertTrue(playable_yes_mid(88, ticker="KXETHD-26AUG1615-T1", asset="eth"))
         # Generic / no-ticker stays 10–90 so ETH + old tests do not shrink
@@ -266,7 +268,7 @@ class SitAndBandTests(unittest.TestCase):
         self.assertIsNotNone(pick)
         self.assertIn("KXBTC15M", pick["ticker"])
         why = dead_book_reason(None, "UP", 5, ticker="KXBTC15M-26AUG161200-00", asset="btc")
-        self.assertIn("10–90", why or "")
+        self.assertIn("20–80", why or "")
 
     def test_timeframe_gates_split(self):
         btc = timeframe_gates(ticker="KXBTC15M-26AUG161200-00", asset="btc")
@@ -274,8 +276,8 @@ class SitAndBandTests(unittest.TestCase):
         self.assertEqual(btc["window_minutes"], 15.0)
         self.assertEqual(btc["early_no_lock_mins"], 2.0)
         self.assertEqual(btc["late_window_mins"], 2.5)
-        self.assertEqual(btc["band_lo"], 10.0)
-        self.assertEqual(btc["band_hi"], 90.0)
+        self.assertEqual(btc["band_lo"], 20.0)
+        self.assertEqual(btc["band_hi"], 80.0)
         self.assertEqual(btc["min_ev"], 0.0)
         self.assertEqual(eth["early_no_lock_mins"], 10.0)
         self.assertEqual(eth["late_window_mins"], 15.0)
@@ -305,10 +307,12 @@ class ScoringRuleTests(unittest.TestCase):
         tick = "KXBTC15M-26AUG161200-00"
         self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=48, direction="UP"))
         self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=99, direction="UP"), "chalk_skip")
-        self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=12, direction="UP"))
-        self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=88, direction="DOWN"))
-        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=9, direction="UP"), "band_skip")
-        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=91, direction="DOWN"), "band_skip")
+        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=12, direction="UP"), "band_skip")
+        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=88, direction="DOWN"), "band_skip")
+        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=19, direction="UP"), "band_skip")
+        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=81, direction="DOWN"), "band_skip")
+        self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=22, direction="UP"))
+        self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=78, direction="DOWN"))
         self.assertEqual(paper_lock_score_skip(ticker=tick, direction="WAIT"), "wait_skip")
         self.assertEqual(paper_lock_score_skip(ticker=tick, direction="UP"), "no_entry_odds")
         # ETH 1H untouched
@@ -364,7 +368,7 @@ class ScoringRuleTests(unittest.TestCase):
         s1h = asyncio.run(mom.get_signal(md_eth))
         self.assertEqual(s15.features.get("horizon_stack"), "3/8/15")
         self.assertEqual(s1h.features.get("horizon_stack"), "5/15/30")
-        self.assertIn("10–90", s15.reasoning)
+        self.assertIn("20–80", s15.reasoning)
         self.assertIn("10–90", s1h.reasoning)
 
 
@@ -766,11 +770,11 @@ class PathBookLiveGuardTests(unittest.TestCase):
                 "ticker": "KXBTC15M-26AUG101245-45",
                 "mins_left": 10.0,
                 "window_minutes": 15.0,
-                "yes_ask": 20.0,
+                "yes_ask": 22.0,
                 "no_ask": 70.0,
-                "yes_bid": 18.0,
+                "yes_bid": 20.0,
                 "no_bid": 68.0,
-                "yes_mid": 19.0,
+                "yes_mid": 21.0,
                 "kalshi_healthy": True,
             },
             gate_notes=[],
@@ -865,7 +869,7 @@ class SatoshiExploreLockTests(unittest.TestCase):
             gate_notes=[],
         )
 
-    def test_explore_lock_when_ev_nonneg_on_real_10_90_book(self):
+    def test_explore_lock_when_ev_nonneg_on_real_20_80_book(self):
         mid = self._overlay(ev_cents=0.4)
         self.assertNotEqual(mid["direction"], "WAIT")
         self.assertTrue(mid.get("path_fills"))
@@ -887,9 +891,28 @@ class SatoshiExploreLockTests(unittest.TestCase):
                 },
             },
         )
-        self.assertNotEqual(cheap["direction"], "WAIT")
-        self.assertTrue(cheap.get("path_fills"))
-        self.assertNotIn("dead book", (cheap.get("summary") or "").lower())
+        self.assertEqual(cheap["direction"], "WAIT")
+        self.assertEqual(cheap.get("path_fills"), [])
+        edge = self._overlay(
+            ev_cents=0.2,
+            lean="UP",
+            side_odds=22.0,
+            up_pct=22.0,
+            regime_features={
+                "yes_ask": 22.0,
+                "no_ask": 78.0,
+                "yes_bid": 21.0,
+                "no_bid": 77.0,
+                "yes_mid": 22.0,
+                "book_depth": {
+                    **self._book(),
+                    "yes_bid_px": 21,
+                    "no_bid_px": 77,
+                },
+            },
+        )
+        self.assertNotEqual(edge["direction"], "WAIT")
+        self.assertTrue(edge.get("path_fills"))
 
     def test_veto_holds_on_99_stale_empty(self):
         wall = self._overlay(
@@ -914,6 +937,28 @@ class SatoshiExploreLockTests(unittest.TestCase):
         })
         self.assertEqual(empty["direction"], "WAIT")
         self.assertEqual(empty.get("path_fills"), [])
+        one_sided = self._overlay(
+            ev_cents=8.0,
+            regime_features={
+                "yes_ask": 48.0,
+                "no_ask": None,
+                "yes_bid": 47.0,
+                "no_bid": None,
+                "yes_mid": 48.0,
+                "book_depth": {
+                    "yes_depth": 40,
+                    "no_depth": 0,
+                    "yes_bid_sz": 20,
+                    "no_bid_sz": 0,
+                    "yes_bid_px": 47,
+                    "has_size": True,
+                    "measured": True,
+                    "book_state": "one_sided",
+                },
+            },
+        )
+        self.assertEqual(one_sided["direction"], "WAIT")
+        self.assertEqual(one_sided.get("path_fills"), [])
 
     def test_eth_vitalik_still_one_lock_not_path(self):
         from backend.agents.leader import Leader
@@ -1188,7 +1233,7 @@ class PathPnlTests(unittest.TestCase):
         scale = decide_action(PathInputs(6.0, 9.0, 53.0, 49.0, lean="UP", ev_cents=4.0), book)
         self.assertEqual(scale.action, "SCALE")
         cut_book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
-        # Other door at 92¢ is outside 10–90, so flip is blocked and CUT still fires.
+        # Other door at 92¢ is outside 20–80, so flip is blocked and CUT still fires.
         cut = decide_action(PathInputs(6.0, 9.0, 42.0, 92.0, lean="UP", ev_cents=4.0), cut_book)
         self.assertEqual(cut.action, "CUT")
         flip_book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
@@ -1243,12 +1288,14 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-herald-patch-20-80", WIRE)
         self.assertIn("2026-08-16-raijin-explore", WIRE)
         self.assertIn("2026-08-16-satoshi-explore-15m-replay", WIRE)
         self.assertIn("2026-08-16-path-stake-chalk-exit", WIRE)
         self.assertIn("2026-08-16-majority-wash-lock", WIRE)
         self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-herald-patch-20-80"), WIRE.find("2026-08-16-raijin-explore"))
         self.assertLess(WIRE.find("2026-08-16-raijin-explore"), WIRE.find("2026-08-16-satoshi-explore-15m-replay"))
         self.assertLess(WIRE.find("2026-08-16-satoshi-explore-15m-replay"), WIRE.find("2026-08-16-path-stake-chalk-exit"))
         self.assertLess(WIRE.find("2026-08-16-path-stake-chalk-exit"), WIRE.find("2026-08-16-majority-wash-lock"))
@@ -1286,6 +1333,21 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Live OFF", chunk)
         self.assertNotIn("ZT", chunk)
         self.assertNotIn("KX", chunk)
+        herald = WIRE.split("2026-08-16-herald-patch-20-80", 1)[1][:1400]
+        self.assertIn("Herald", herald)
+        self.assertIn("20–80", herald)
+        self.assertIn("dead book", herald)
+        self.assertIn("one-sided", herald)
+        self.assertIn("Satoshi", herald)
+        self.assertIn("Raijin", herald)
+        self.assertIn("Vitalik", herald)
+        self.assertIn("Ares", herald)
+        self.assertIn("Oracle", herald)
+        self.assertIn("Paper", herald)
+        self.assertIn("Follower OFF", herald)
+        self.assertIn("Satoshi’s Council", herald)
+        self.assertNotIn("Phantom", herald)
+        self.assertNotIn("ZT", herald)
         raijin = WIRE.split("2026-08-16-raijin-explore", 1)[1][:1400]
         self.assertIn("Raijin", raijin)
         self.assertIn("Dallas", raijin)
@@ -1445,6 +1507,7 @@ class RewriteContractTests(unittest.TestCase):
         self.assertIn("Holding both sides", GOAL_CONTRACT)
         self.assertIn("No irreversible one-call", GOAL_CONTRACT)
         self.assertIn("path P&L", GOAL_CONTRACT_SHORT)
+        self.assertIn("20–80¢", GOAL_CONTRACT_SHORT)
         self.assertIn("10–90¢", ETH_GOAL_CONTRACT_SHORT)
         self.assertIn("UP", getattr(Direction, "__args__", ("UP",)))
 

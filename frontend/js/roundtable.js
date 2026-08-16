@@ -1306,7 +1306,7 @@
       // small goal line
       ctx.font = "600 9px Rajdhani, Inter, sans-serif";
       ctx.fillStyle = "rgba(180, 210, 255, 0.75)";
-      ctx.fillText(leaderDir === "BOTH" ? "GOAL · path P&L · dual-sided scalp (10–90¢)" : "GOAL · 1 window-end guess @ best odds (10–90¢)", cx, cy + lr + 84);
+      ctx.fillText(leaderDir === "BOTH" ? "GOAL · path P&L · dual-sided scalp (20–80¢)" : "GOAL · 1 window-end guess @ best odds (10–90¢)", cx, cy + lr + 84);
     } else {
       ctx.font = "700 11px Orbitron, sans-serif";
       ctx.fillStyle = GOLD;
@@ -1325,7 +1325,7 @@
       ctx.fillText(leaderConf + "%", cx, cy + lr + 46);
       ctx.font = "600 9px Rajdhani, Inter, sans-serif";
       ctx.fillStyle = "rgba(180, 210, 255, 0.65)";
-      ctx.fillText("GOAL · path P&L · dual-sided scalp (10–90¢)", cx, cy + lr + 62);
+      ctx.fillText("GOAL · path P&L · dual-sided scalp (20–80¢)", cx, cy + lr + 62);
     }
 
     // Scanline overlay on canvas itself (subtle)
