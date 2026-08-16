@@ -1,4 +1,4 @@
-"""ETH chair + Floor Vitalik use the signed rain still. Leader jpgs cache-busted."""
+"""ETH/Vitalik + Front/Raijin use the signed rain stills. Leader jpgs cache-busted."""
 from __future__ import annotations
 
 import hashlib
@@ -12,9 +12,12 @@ CSS = (STATIC / "style.css").read_text(encoding="utf-8")
 HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 WIRE = (STATIC / "wire.js").read_text(encoding="utf-8")
 MAIN = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+FRONT = (ROOT / "backend" / "services" / "desk_front.py").read_text(encoding="utf-8")
 
 WAIT = STATIC / "vitalik-wait.jpg"
 CITY = STATIC / "vitalik-city.jpg"
+RAIJIN = STATIC / "raijin-wait.jpg"
+DALLAS = STATIC / "raijin-dallas.jpg"
 LEADER_HASH = hashlib.sha256(WAIT.read_bytes()).hexdigest()[:10]
 
 
@@ -32,6 +35,21 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertNotEqual(wait, (STATIC / "vitalik-up.jpg").read_bytes())
         self.assertNotEqual(wait, (STATIC / "vitalik-down.jpg").read_bytes())
 
+    def test_raijin_wait_is_rain_still_not_dallas_or_helmet(self):
+        self.assertTrue(RAIJIN.is_file())
+        self.assertTrue(DALLAS.is_file())
+        rain = RAIJIN.read_bytes()
+        dallas = DALLAS.read_bytes()
+        self.assertTrue(rain.startswith(b"\xff\xd8"))
+        self.assertTrue(dallas.startswith(b"\xff\xd8"))
+        self.assertGreater(len(rain), 20000)
+        self.assertNotEqual(rain, dallas)
+        self.assertNotEqual(rain, WAIT.read_bytes())
+        helmet = STATIC / "bots" / "raijin-chair.png"
+        self.assertTrue(helmet.is_file())
+        self.assertNotEqual(rain, helmet.read_bytes())
+        self.assertNotEqual(rain, (STATIC / "bots" / "raijin-wait.png").read_bytes())
+
     def test_eth_and_floor_use_one_wait_face(self):
         self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg"', JS)
         self.assertIn('"?v=" + LEADER_JPG_V', JS)
@@ -47,6 +65,26 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn("const portrait = chairPortraitOf(focusTable, leaderDir)", JS)
         self.assertIn("ONE FACE PER CHAIR", JS)
         self.assertIn("Labels carry UP/DOWN/WAIT/LOCK", JS)
+
+    def test_front_and_floor_raijin_use_signed_wait(self):
+        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
+        self.assertIn('function raijinPortraitFor(dir) { return raijinPortrait; }', JS)
+        self.assertIn('function raijinPortraitSrc(dir) { return "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V; }', JS)
+        self.assertNotIn('raijinPortrait.src = "/raijin-up.jpg"', JS)
+        self.assertNotIn('raijinPortrait.src = "/raijin-down.jpg"', JS)
+        self.assertNotIn("/static/bots/raijin-chair.png", JS)
+        self.assertNotIn('"/static/bots/raijin-wait.png"', JS + FRONT)
+        pick = JS.split("function chairPortraitOf", 1)[1][:400]
+        self.assertIn("return raijinPortrait", pick)
+        self.assertIn("containPortrait(raijinPortraitFor(floorDir)", JS)
+        self.assertIn("containPortrait(raijinPortraitFor(dir)", JS)
+        self.assertIn("chairImg.src = raijinPortraitSrc()", JS)
+        self.assertIn('id="frontChairImg" src="/raijin-wait.jpg?v=', HTML)
+        self.assertIn('id="floorRaijin"', HTML)
+        self.assertIn('"/raijin-wait.jpg"', FRONT)
+        self.assertIn('"portrait": signed', FRONT)
+        self.assertNotIn("WAIT cowboy", FRONT)
+        self.assertNotIn("raijin-dallas.jpg", JS)
 
     def test_leader_jpgs_are_cache_busted(self):
         self.assertIn('LEADER_JPG_CACHE = {"Cache-Control": "public, max-age=60, must-revalidate"}', MAIN)
@@ -70,12 +108,18 @@ class VitalikRainStillTests(unittest.TestCase):
     def test_room_plate_stays_separate(self):
         self.assertIn('url("/vitalik-city.jpg")', CSS)
         self.assertIn('data-chair-room="vitalik"', CSS)
+        self.assertIn('url("/raijin-dallas.jpg")', CSS)
+        self.assertIn('data-chair-room="raijin"', CSS)
         self.assertNotIn("vitalik-city.jpg", JS)
+        self.assertNotIn("raijin-dallas.jpg", JS)
         self.assertNotIn("satoshi-shrine.jpg", JS)
 
     def test_wire_and_no_regress(self):
         self.assertIn("2026-08-16-vitalik-rain-still", WIRE)
-        self.assertIn("ETH and Floor Vitalik use the signed rain still", WIRE)
+        self.assertIn("ETH and Front chairs use the signed rain stills", WIRE)
+        self.assertIn("/raijin-wait.jpg", WIRE)
+        self.assertIn("no cowboy hat", WIRE)
+        self.assertIn("Dallas storm", WIRE)
         self.assertIn("cache-busted", WIRE)
         self.assertIn("Paper. Follower OFF.", WIRE)
         self.assertIn("Satoshi’s Council", HTML)

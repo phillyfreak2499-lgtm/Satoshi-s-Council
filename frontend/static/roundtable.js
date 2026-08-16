@@ -338,8 +338,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Poll faster than analysis interval so UI stays live after each cycle
 
   // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
-  // ETH chair + Floor Vitalik both use the signed /vitalik-wait.jpg rain close-up.
-  // Leader jpgs are cache-busted: live /vitalik-wait.jpg was max-age=86400, so
+  // ETH chair + Floor Vitalik use the signed /vitalik-wait.jpg rain close-up.
+  // Front chair + Floor Raijin use the signed /raijin-wait.jpg rain close-up.
+  // Leader jpgs are cache-busted: live leader jpgs were max-age=86400, so
   // phones kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
   const LEADER_JPG_V = "7b598672c9";
   let chairImgsReady = 0;
