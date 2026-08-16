@@ -625,6 +625,43 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(float(rows[0].paper_stake), 7.0)
         self.assertLessEqual(float(rows[0].paper_stake), float(settings.DYNAMIC_SIZING_MAX))
 
+    async def test_fill_cannot_write_stake_above_sized_10_85_vs_6_55(self):
+        """Live leftover: 2:45 DOWN paper_stake $10.85 vs size $6.55."""
+        from backend.learning.btc15m_path import equal_contract_stakes
+        from backend.risk.sizing import honor_sized_stake
+        # Old cheaper-at-unit expansion: 6.55 * 66.26/40 ≈ 10.85
+        up_s, down_s = equal_contract_stakes(40.0, 66.26, unit=6.55)
+        self.assertLessEqual(up_s, 6.55 + 1e-9)
+        self.assertLessEqual(down_s, 6.55 + 1e-9)
+        self.assertEqual(honor_sized_stake(10.85, {"stake": 6.55}), 6.55)
+        tick = "KXBTC15M-26AUG161445-45"
+        sizing = {"stake": 6.55, "reason": "conf+edge+scalp", "clamped": False, "raw_stake": 6.55}
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time="2026-08-16T19:45:00+00:00",
+            fills=[
+                {
+                    "fill_kind": "open",
+                    "side": "DOWN",
+                    "entry_cents": 60.4,
+                    "stake": 10.85,
+                    "paper_pnl": -10.85,
+                    "sizing": sizing,
+                },
+            ],
+            asset="btc",
+            sizing=sizing,
+        )
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(float(rows[0].paper_stake), 6.55)
+        self.assertLessEqual(float(rows[0].paper_stake), 6.55 + 1e-9)
+        self.assertNotAlmostEqual(float(rows[0].paper_stake), 10.85)
+
     async def test_15m_sit_does_not_open_one_call_ticket(self):
         """Holding UP on the path book must not fall through to max_calls=1."""
         tick = "KXBTC15M-26AUG101400-00"
@@ -923,6 +960,14 @@ class SatoshiExploreLockTests(unittest.TestCase):
         )
         self.assertEqual(wall["direction"], "WAIT")
         self.assertEqual(wall.get("path_fills"), [])
+        wall_100 = self._overlay(
+            ev_cents=20.0,
+            side_odds=100.0,
+            up_pct=100.0,
+            regime_features={"yes_ask": 100.0, "no_ask": 1.0, "yes_mid": 100.0},
+        )
+        self.assertEqual(wall_100["direction"], "WAIT")
+        self.assertEqual(wall_100.get("path_fills"), [])
         stale = self._overlay(regime_features={"stale": True, "kalshi_healthy": False})
         self.assertEqual(stale["direction"], "WAIT")
         self.assertEqual(stale.get("path_fills"), [])
@@ -1159,8 +1204,10 @@ class PathPnlTests(unittest.TestCase):
         self.assertFalse(dual_attractive(52.0, 52.0))
         self.assertFalse(dual_attractive(5.0, 5.0))
         up_s, down_s = equal_contract_stakes(40.0, 50.0, unit=10.0)
-        self.assertAlmostEqual(up_s, 10.0)
-        self.assertAlmostEqual(down_s, 12.5)
+        self.assertLessEqual(up_s, 10.0 + 1e-9)
+        self.assertLessEqual(down_s, 10.0 + 1e-9)
+        self.assertAlmostEqual(down_s, 10.0)
+        self.assertAlmostEqual(up_s, 8.0)
         self.assertAlmostEqual(realized_pnl(10.0, 50.0, 100.0), 10.0)
         self.assertAlmostEqual(realized_pnl(10.0, 50.0, 0.0), -10.0)
         self.assertAlmostEqual(realized_pnl(10.0, 48.0, 52.0), 10.0 * 4.0 / 48.0, places=3)
@@ -1217,6 +1264,25 @@ class PathPnlTests(unittest.TestCase):
         out_up = decide_action(PathInputs(6.0, 9.0, 99.0, 1.0, lean="UP", ev_cents=20.0), held_up)
         self.assertEqual(out_up.action, "SIT")
         self.assertEqual(out_up.fills, [])
+
+    def test_100c_path_exit_sits(self):
+        """A 100¢ path exit is a sit, not a scale. Same rail as 99¢."""
+        from backend.learning.btc15m_path import PathBook, PathInputs, PathLeg, decide_action, is_chalk
+        self.assertTrue(is_chalk(100.0))
+        self.assertTrue(is_chalk(1.0))
+        self.assertTrue(is_chalk(0.99))
+        held_up = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 54.0, 5.98)])
+        out = decide_action(PathInputs(6.0, 9.0, 100.0, 1.0, lean="UP", ev_cents=20.0), held_up)
+        self.assertEqual(out.action, "SIT")
+        self.assertEqual(out.reason, "chalk")
+        self.assertEqual(out.fills, [])
+        self.assertNotEqual(out.action, "SCALE")
+        self.assertNotEqual(out.action, "CUT")
+        self.assertNotEqual(out.action, "FLIP")
+        held_down = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("DOWN", 48.0, 6.55)])
+        out_dn = decide_action(PathInputs(6.0, 9.0, 1.0, 100.0, lean="DOWN", ev_cents=20.0), held_down)
+        self.assertEqual(out_dn.action, "SIT")
+        self.assertEqual(out_dn.fills, [])
 
     def test_real_asks_never_use_mid(self):
         from backend.learning.btc15m_path import real_yes_no_asks
@@ -1288,6 +1354,7 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-path-stake-cap-100-exit", WIRE)
         self.assertIn("2026-08-16-herald-patch-20-80", WIRE)
         self.assertIn("2026-08-16-raijin-explore", WIRE)
         self.assertIn("2026-08-16-satoshi-explore-15m-replay", WIRE)
@@ -1295,6 +1362,7 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("2026-08-16-majority-wash-lock", WIRE)
         self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-path-stake-cap-100-exit"), WIRE.find("2026-08-16-herald-patch-20-80"))
         self.assertLess(WIRE.find("2026-08-16-herald-patch-20-80"), WIRE.find("2026-08-16-raijin-explore"))
         self.assertLess(WIRE.find("2026-08-16-raijin-explore"), WIRE.find("2026-08-16-satoshi-explore-15m-replay"))
         self.assertLess(WIRE.find("2026-08-16-satoshi-explore-15m-replay"), WIRE.find("2026-08-16-path-stake-chalk-exit"))
@@ -1333,6 +1401,16 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Live OFF", chunk)
         self.assertNotIn("ZT", chunk)
         self.assertNotIn("KX", chunk)
+        cap = WIRE.split("2026-08-16-path-stake-cap-100-exit", 1)[1][:1400]
+        self.assertIn("$10.85", cap)
+        self.assertIn("$6.55", cap)
+        self.assertIn("100¢", cap)
+        self.assertIn("20–80", cap)
+        self.assertIn("Paper", cap)
+        self.assertIn("Follower OFF", cap)
+        self.assertIn("Satoshi’s Council", cap)
+        self.assertNotIn("Phantom", cap)
+        self.assertNotIn("ZT", cap)
         herald = WIRE.split("2026-08-16-herald-patch-20-80", 1)[1][:1400]
         self.assertIn("Herald", herald)
         self.assertIn("20–80", herald)
@@ -1621,6 +1699,8 @@ class RewriteContractTests(unittest.TestCase):
         self.assertGreater(out.stake, 0.0)
         self.assertEqual(honor_sized_stake(35.0, {"stake": 7.0}), 7.0)
         self.assertEqual(honor_sized_stake(7.0, {"stake": 7.0}), 7.0)
+        self.assertEqual(honor_sized_stake(10.85, {"stake": 6.55}), 6.55)
+        self.assertEqual(honor_sized_stake(10.40, {"stake": 5.98}), 5.98)
         self.assertLessEqual(honor_sized_stake(40.0, out), float(settings.DYNAMIC_SIZING_MAX))
         self.assertLessEqual(honor_sized_stake(40.0, {"stake": 7.0}), 7.0)
 

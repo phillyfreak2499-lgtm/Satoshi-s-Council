@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-path-stake-cap-100-exit",
+    "at": "2026-08-17T02:25:00-05:00",
+    "title": "Path fill stake caps at size — 100¢ exit sits",
+    "why": "Zach Voice: Patch leftover after the 2–3 PM CT recap. 2:45 DOWN −$10.85 wrote paper stake $10.85 vs size $6.55. 3:00 UP +$8.81 wrote $10.40 vs size $5.98 and exited 100¢. Executed paper stake must equal or sit under size_for_leader / hard max. No leftover path writes paper_stake from the P&L dollar, the book price, or a default floor. Scale-in, scale-out, flip, and settle all cap the written stake. A 99¢ / 100¢ path exit is a sit, not a scale. Dead chalk books sit and cannot scale. Keep sit-less 20–80 after vig or sit. Raijin stays Dallas daily high only (DFW settle, not Love Field) and stays off the 1H Chair. Same PR keeps the official 15-minute seat replay (merge not wipe). Do not loosen ETH 1H (Vitalik), Ares, or Oracle. Product name stays Satoshi’s Council. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-herald-patch-20-80",
     "at": "2026-08-17T02:10:00-05:00",
     "title": "Herald + Patch: 20–80 after vig or sit",

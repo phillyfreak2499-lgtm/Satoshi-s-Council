@@ -273,8 +273,9 @@ def honor_sized_stake(
 ) -> float:
     """
     Executed paper stake must honor size_for_leader / compute_position_size.
-    Hard maxes beat Kelly and beat any clamp_min. If sizing says $7, the
-    fill cannot be $35 (equal-contract expansion or PAPER_STAKE_* default).
+    Hard maxes beat Kelly and beat any clamp_min. If sizing says $6.55, the
+    fill cannot be $10.85 (equal-contract expansion, P&L dollars, book
+    price, or a PAPER_STAKE_* / UNIT_STAKE default floor).
     """
     from backend.config import settings
 

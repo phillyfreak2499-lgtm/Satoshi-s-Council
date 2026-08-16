@@ -109,10 +109,13 @@ def in_playable_band(ask: Any, lo: float = SCORE_BAND_LO, hi: float = SCORE_BAND
 
 
 def is_chalk(ask: Any) -> bool:
+    """99¢ / 100¢ / 1¢ is dead chalk. Dollar quotes (0.99 / 1.00) count too."""
     try:
         px = float(ask)
     except (TypeError, ValueError):
         return False
+    if 0.0 < px <= 1.5:
+        px *= 100.0
     return px >= CHALK_CENTS or px <= (100.0 - CHALK_CENTS)
 
 
@@ -171,19 +174,20 @@ def equal_contract_stakes(
     no_ask: Any,
     unit: float = UNIT_STAKE,
 ) -> Tuple[float, float]:
-    """Same contract count on both doors. Size the cheaper ask at `unit` dollars."""
+    """Same contract count on both doors. Neither door may exceed `unit`.
+
+    Size off the expensive ask so the fill cannot print $10.85 when size
+    said $6.55 (the old cheaper-at-unit expansion).
+    """
     ya = float(yes_ask)
     na = float(no_ask)
-    if ya <= 0.0 or na <= 0.0:
-        return float(unit), float(unit)
-    if ya <= na:
-        up_stake = float(unit)
-        contracts = up_stake / (ya / 100.0)
-        down_stake = round(contracts * (na / 100.0), 4)
-        return up_stake, down_stake
-    down_stake = float(unit)
-    contracts = down_stake / (na / 100.0)
-    up_stake = round(contracts * (ya / 100.0), 4)
+    cap = max(0.0, float(unit))
+    if ya <= 0.0 or na <= 0.0 or cap <= 0.0:
+        return cap, cap
+    hi = max(ya, na)
+    contracts = cap / (hi / 100.0)
+    up_stake = min(cap, round(contracts * (ya / 100.0), 4))
+    down_stake = min(cap, round(contracts * (na / 100.0), 4))
     return up_stake, down_stake
 
 
@@ -198,11 +202,15 @@ def asks_from_mid(yes_mid: Any, slide: float = ASK_SLIDE_CENTS) -> Tuple[Optiona
 
 
 def mark_cents(side: str, yes_ask: Any, no_ask: Any, slide: float = EXIT_SLIDE_CENTS) -> Optional[float]:
-    """Exit at a conservative bid (ask minus slide)."""
+    """Exit at a conservative bid (ask minus slide). Chalk 99¢ / 100¢ is not an exit."""
     try:
         if str(side or "").upper() == "UP":
+            if is_chalk(yes_ask):
+                return None
             return max(1.0, min(99.0, float(yes_ask) - float(slide)))
         if str(side or "").upper() == "DOWN":
+            if is_chalk(no_ask):
+                return None
             return max(1.0, min(99.0, float(no_ask) - float(slide)))
     except (TypeError, ValueError):
         return None
@@ -419,6 +427,7 @@ class PathInputs:
     dead: bool = False
     chalk: bool = False
     allow_late_open: bool = False
+    unit: Optional[float] = None
 
 
 @dataclass
@@ -450,6 +459,15 @@ def _open_fill(side: str, ask: float, stake: float, kind: str, leftover: Optiona
         stake=float(stake),
         leftover=leftover,
     )
+
+
+def _fill_unit(inp: PathInputs) -> float:
+    try:
+        if inp.unit is not None:
+            return max(0.0, float(inp.unit))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return float(UNIT_STAKE)
 
 
 def _close_fill(leg: PathLeg, exit_px: float, kind: str) -> PathFill:
@@ -521,8 +539,9 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
     yes_ask, no_ask = inp.yes_ask, inp.no_ask
     sit_why = _sit_new_risk(inp)
     held = book.held_sides()
+    unit = _fill_unit(inp)
 
-    # Dead 99¢ book = sit. Path exits too — not just entries.
+    # Dead 99¢ / 100¢ book = sit. Path exits too — not just entries.
     # Same rail as the #50 99¢ sit. Cannot scale / cut / flip / dual out of chalk.
     if is_chalk(yes_ask) or is_chalk(no_ask) or inp.chalk:
         return PathDecision("SIT", [], "chalk")
@@ -549,7 +568,7 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
                 and sit_why is None
             ):
                 fills = [_close_fill(leg, mark, "flip_close")]
-                fills.append(_open_fill(other, float(other_ask), UNIT_STAKE, "flip_open"))
+                fills.append(_open_fill(other, float(other_ask), unit, "flip_open"))
                 return PathDecision("FLIP", fills, f"flip {side}→{other} adverse {adverse:.1f}¢")
             if adverse >= CUT_ADVERSE_CENTS:
                 return PathDecision(
@@ -563,12 +582,14 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
 
     if yes_ask is None or no_ask is None:
         return PathDecision("SIT", [], "no_asks")
+    if unit <= 0.0:
+        return PathDecision("SIT", [], "size_zero")
 
     left = combined_leftover(yes_ask, no_ask)
     if dual_attractive(yes_ask, no_ask):
         missing = [s for s in ("UP", "DOWN") if s not in held]
         if missing:
-            up_s, down_s = equal_contract_stakes(yes_ask, no_ask)
+            up_s, down_s = equal_contract_stakes(yes_ask, no_ask, unit=unit)
             fills = []
             if "UP" in missing:
                 fills.append(_open_fill("UP", float(yes_ask), up_s, "dual_open", left))
@@ -592,7 +613,7 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
         ):
             return PathDecision(
                 "SCALE",
-                [_open_fill(lean, float(ask), UNIT_STAKE, "scale")],
+                [_open_fill(lean, float(ask), unit, "scale")],
                 f"scale {lean} +{float(mark) - float(leg.entry_cents):.1f}¢",
             )
 
@@ -607,7 +628,7 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
         if ask is not None and in_playable_band(ask) and not is_chalk(ask) and ev_ok:
             return PathDecision(
                 "OPEN",
-                [_open_fill(lean, float(ask), UNIT_STAKE, "open")],
+                [_open_fill(lean, float(ask), unit, "open")],
                 f"open {lean} @ {float(ask):.0f}¢",
             )
 

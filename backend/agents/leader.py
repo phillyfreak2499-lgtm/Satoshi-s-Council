@@ -449,20 +449,6 @@ class Leader:
                 ))
             except Exception:
                 dead = False
-        chalk = is_chalk(yes_ask) or is_chalk(no_ask)
-        inp = PathInputs(
-            elapsed_mins=float(elapsed),
-            mins_left=float(mins_left),
-            yes_ask=yes_ask,
-            no_ask=no_ask,
-            lean=lean_side(lean) or (lean if lean in ("UP", "DOWN") else None),
-            ev_cents=ev_cents,
-            dead=bool(dead or stale),
-            chalk=chalk,
-            allow_late_open=bool(ev_cents is not None and float(ev_cents) >= float(tf.get("late_min_ev") or 8.0)),
-        )
-        decision = decide_action(inp, book)
-
         leftover = combined_leftover(yes_ask, no_ask)
         from backend.learning.btc15m_path import open_risk_both_legs
         open_risk = open_risk_both_legs(book)
@@ -490,6 +476,34 @@ class Leader:
         except (TypeError, ValueError):
             pass
         secs = float(mins_left) * 60.0 if mins_left is not None else None
+        chalk = is_chalk(yes_ask) or is_chalk(no_ask)
+        # Size first so decide_action never writes UNIT_STAKE / a default floor.
+        sizing = size_for_leader(
+            edge_cents=leftover if leftover is not None else ev_cents,
+            p_finish=p_finish,
+            confidence=conf,
+            confluence=abs(float(score or 0.0)),
+            mid=yes_ask,
+            spread=spread,
+            book_size=depth,
+            seconds_remaining=secs,
+            open_risk=open_risk,
+            is_scalp=False,
+            is_dual_sided=book.held_sides() == {"UP", "DOWN"},
+        )
+        inp = PathInputs(
+            elapsed_mins=float(elapsed),
+            mins_left=float(mins_left),
+            yes_ask=yes_ask,
+            no_ask=no_ask,
+            lean=lean_side(lean) or (lean if lean in ("UP", "DOWN") else None),
+            ev_cents=ev_cents,
+            dead=bool(dead or stale),
+            chalk=chalk,
+            allow_late_open=bool(ev_cents is not None and float(ev_cents) >= float(tf.get("late_min_ev") or 8.0)),
+            unit=float(sizing.stake or 0.0),
+        )
+        decision = decide_action(inp, book)
         is_scalp = decision.action in {"SCALE", "CUT", "FLIP"}
         is_dual = decision.action == "DUAL" or book.held_sides() == {"UP", "DOWN"}
         sizing = size_for_leader(
@@ -509,19 +523,21 @@ class Leader:
         if decision.action in {"DUAL", "OPEN", "SCALE", "FLIP"} and unit <= 0.0:
             from backend.learning.btc15m_path import PathDecision
             decision = PathDecision("SIT", [], "size_zero")
-        elif decision.fills and unit > 0.0:
-            # Executed stake honors sizing. Hard max beats equal-contract expansion.
-            if decision.action == "DUAL" and yes_ask is not None and no_ask is not None:
+        elif decision.fills:
+            # Cap every fill (scale-in, scale-out, flip, settle). Hard max
+            # beats equal-contract expansion. Never write P&L / price / floor.
+            if decision.action == "DUAL" and yes_ask is not None and no_ask is not None and unit > 0.0:
                 up_s, down_s = equal_contract_stakes(yes_ask, no_ask, unit=unit)
                 for fill in decision.fills:
                     if str(fill.side).upper() == "UP":
                         fill.stake = honor_sized_stake(up_s, sizing)
                     elif str(fill.side).upper() == "DOWN":
                         fill.stake = honor_sized_stake(down_s, sizing)
+                    else:
+                        fill.stake = honor_sized_stake(fill.stake, sizing)
             else:
                 for fill in decision.fills:
-                    if str(fill.fill_kind or "") in ("open", "scale", "flip_open", "dual_open"):
-                        fill.stake = honor_sized_stake(unit, sizing)
+                    fill.stake = honor_sized_stake(fill.stake, sizing)
 
         sizing_d = sizing.to_dict()
         fills = [f.as_dict() for f in decision.fills]

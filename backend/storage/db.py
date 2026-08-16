@@ -634,6 +634,19 @@ class PerformanceStore:
                 if side not in ("UP", "DOWN"):
                     continue
                 if kind in ("cut", "flip_close"):
+                    try:
+                        exit_px = float(fill["exit_cents"]) if fill.get("exit_cents") is not None else None
+                    except (TypeError, ValueError):
+                        exit_px = None
+                    # 99¢ / 100¢ path exit is a sit, not a scale.
+                    if exit_px is not None:
+                        try:
+                            from backend.learning.btc15m_path import is_chalk
+                            if is_chalk(exit_px):
+                                continue
+                        except Exception:
+                            if exit_px >= 99.0 or exit_px <= 1.0:
+                                continue
                     result = await session.execute(
                         select(WindowCall)
                         .where(
@@ -659,6 +672,9 @@ class PerformanceStore:
                             row.exit_price = float(fill.get("exit_cents"))
                     except (TypeError, ValueError):
                         pass
+                    # Never rewrite paper_stake from P&L or the exit price.
+                    row_sizing = fill.get("sizing") if isinstance(fill.get("sizing"), dict) else sizing
+                    row.paper_stake = honor_sized_stake(row.paper_stake, row_sizing)
                     row.settled_at = now_iso
                     row.correct = None
                     continue
@@ -684,8 +700,18 @@ class PerformanceStore:
                 except (TypeError, ValueError):
                     continue
                 row_sizing = fill.get("sizing") if isinstance(fill.get("sizing"), dict) else sizing
+                # Never write paper_stake from P&L dollars, the book price, or a default floor.
+                raw_stake = fill.get("stake")
                 try:
-                    stake = honor_sized_stake(fill.get("stake"), row_sizing)
+                    if fill.get("paper_pnl") is not None and raw_stake is not None:
+                        if abs(float(fill.get("paper_pnl"))) == abs(float(raw_stake)):
+                            raw_stake = None
+                    if raw_stake is not None and abs(float(raw_stake) - float(entry_side)) < 1e-9:
+                        raw_stake = None
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    stake = honor_sized_stake(raw_stake, row_sizing)
                 except (TypeError, ValueError):
                     stake = honor_sized_stake(None, row_sizing)
                 reason = {
@@ -1348,6 +1374,10 @@ class PerformanceStore:
                     row.paper_stake = 0.0
                     row.paper_pnl = 0.0
                     row.shadow = 1
+                elif is_btc_15m_ticker(row.ticker):
+                    # 15m: never pad from PAPER_STAKE_* / default floor.
+                    stake = honor_sized_stake(row.paper_stake, _json_field(getattr(row, "sizing", None)))
+                    row.paper_stake = stake
                 else:
                     stake = float(row.paper_stake) if row.paper_stake is not None else self._default_stake(row.direction)
                     row.paper_stake = stake
@@ -1931,7 +1961,10 @@ class PerformanceStore:
             if r.direction not in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
                 continue
             when = to_ct(r.settled_at or r.called_at)
-            stake = float(r.paper_stake) if r.paper_stake is not None else self._default_stake(r.direction)
+            if is_btc_15m_ticker(r.ticker):
+                stake = honor_sized_stake(r.paper_stake, _json_field(getattr(r, "sizing", None)))
+            else:
+                stake = float(r.paper_stake) if r.paper_stake is not None else self._default_stake(r.direction)
             # Always recompute when path-scaled so old binary paper_pnl rows don't inflate the book
             if r.correct is not None and bool(getattr(settings, "PAPER_PATH_SCALED", True)):
                 pnl = self._compute_paper_pnl(
