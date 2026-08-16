@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, Integer, Text, or_, select, func
 from backend.config import settings
+from backend.risk.sizing import honor_sized_stake
 from backend.agents.chair_gates import (
     chair_bins_from_settled,
     decide_open_lock_grade,
@@ -682,17 +683,17 @@ class PerformanceStore:
                     entry_side = float(fill.get("entry_cents"))
                 except (TypeError, ValueError):
                     continue
+                row_sizing = fill.get("sizing") if isinstance(fill.get("sizing"), dict) else sizing
                 try:
-                    stake = float(fill.get("stake") if fill.get("stake") is not None else self._default_stake(side))
+                    stake = honor_sized_stake(fill.get("stake"), row_sizing)
                 except (TypeError, ValueError):
-                    stake = self._default_stake(side)
+                    stake = honor_sized_stake(None, row_sizing)
                 reason = {
                     "dual_open": "path_dual",
                     "scale": "path_scale",
                     "flip_open": "path_flip",
                     "open": "path_open",
                 }.get(kind)
-                row_sizing = fill.get("sizing") if isinstance(fill.get("sizing"), dict) else sizing
                 sizing_txt = None
                 if isinstance(row_sizing, dict):
                     try:

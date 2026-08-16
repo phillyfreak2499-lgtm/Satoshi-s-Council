@@ -390,7 +390,7 @@ class Leader:
             map_path_action_to_direction,
             real_yes_no_asks,
         )
-        from backend.risk.sizing import size_for_leader
+        from backend.risk.sizing import honor_sized_stake, size_for_leader
 
         # Paper fill at the real ask, not mid / up_pct / side_odds.
         yes_ask, no_ask = real_yes_no_asks(
@@ -506,17 +506,18 @@ class Leader:
             from backend.learning.btc15m_path import PathDecision
             decision = PathDecision("SIT", [], "size_zero")
         elif decision.fills and unit > 0.0:
+            # Executed stake honors sizing. Hard max beats equal-contract expansion.
             if decision.action == "DUAL" and yes_ask is not None and no_ask is not None:
                 up_s, down_s = equal_contract_stakes(yes_ask, no_ask, unit=unit)
                 for fill in decision.fills:
                     if str(fill.side).upper() == "UP":
-                        fill.stake = up_s
+                        fill.stake = honor_sized_stake(up_s, sizing)
                     elif str(fill.side).upper() == "DOWN":
-                        fill.stake = down_s
+                        fill.stake = honor_sized_stake(down_s, sizing)
             else:
                 for fill in decision.fills:
                     if str(fill.fill_kind or "") in ("open", "scale", "flip_open", "dual_open"):
-                        fill.stake = unit
+                        fill.stake = honor_sized_stake(unit, sizing)
 
         sizing_d = sizing.to_dict()
         fills = [f.as_dict() for f in decision.fills]

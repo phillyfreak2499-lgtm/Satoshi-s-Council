@@ -522,6 +522,11 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
     sit_why = _sit_new_risk(inp)
     held = book.held_sides()
 
+    # Dead 99¢ book = sit. Path exits too — not just entries.
+    # Same rail as the #50 99¢ sit. Cannot scale / cut / flip / dual out of chalk.
+    if is_chalk(yes_ask) or is_chalk(no_ask) or inp.chalk:
+        return PathDecision("SIT", [], "chalk")
+
     # Flatten first if a held side is bleeding — even in the sit bands.
     if held and yes_ask is not None and no_ask is not None:
         for side in ("UP", "DOWN"):
@@ -531,7 +536,7 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
             if leg is None:
                 continue
             mark = mark_cents(side, yes_ask, no_ask)
-            if mark is None:
+            if mark is None or is_chalk(mark):
                 continue
             adverse = float(leg.entry_cents) - float(mark)
             other = other_side(side)
@@ -558,10 +563,6 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
 
     if yes_ask is None or no_ask is None:
         return PathDecision("SIT", [], "no_asks")
-
-    # Dead 99¢ book = sit. You cannot scale / dual / open out of chalk.
-    if is_chalk(yes_ask) or is_chalk(no_ask) or inp.chalk:
-        return PathDecision("SIT", [], "chalk")
 
     left = combined_leftover(yes_ask, no_ask)
     if dual_attractive(yes_ask, no_ask):

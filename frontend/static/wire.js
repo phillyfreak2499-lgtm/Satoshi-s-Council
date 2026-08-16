@@ -2,6 +2,18 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-path-stake-chalk-exit",
+    "at": "2026-08-17T01:10:00-05:00",
+    "title": "Path stake honors sizing — 99¢ exit sits",
+    "why": "Zach Voice: Leftover from the 1–2 PM CT path recap. BTC 15m books printed WAIT / DOWN −$5.65 / DOWN −$8.74 / UP +$12.22 (net −$2.17). On the −$8.74 book, paper_stake was $35 while sizing said $7 — hard max missed the actual fill. Executed paper stake now honors size_for_leader / compute_position_size. Hard maxes beat Kelly AND beat clamp_min. If sizing says $7, the fill cannot be $35. Do not clamp_min a negative-edge add up to PAPER_STAKE_* / min stake — sit or size down. A 99¢ path exit is a sit, not a scale. Dead chalk books sit and cannot scale, same rail as the #50 99¢ sit, now on path exits too. Majority wash still waits for a real Chair lock. Paper. Follower OFF. ETH stays 1H one-lock."
+  },
+  {
+    "id": "2026-08-16-majority-wash-lock",
+    "at": "2026-08-17T00:40:00-05:00",
+    "title": "WAIT Chair does not take a majority wash",
+    "why": "Zach Voice: Leftover from live #51. majorityDirOf still painted majority-down on a WAIT chair because LONG_* specialist votes tally as UP/DOWN. Tally stays — color strip / HUD still count LONG_UP as UP and LONG_DOWN as DOWN. Wash (body class, hour-ring, attract/majority wisps) waits for a real Chair lock, same latch the desk already uses: chairLockDir / locked_call / path_book.locked / leader locked. WAIT / unlocked / path sit with no lock stays majority-wait. Do not paint the desk from specialist LONG_* votes alone. Chair path-P&L actions, CASCADE 401 rails, stills, and the 12-seat strip stay. Paper. Follower OFF. ETH stays 1H one-lock."
+  },
+  {
     "id": "2026-08-16-herald-leftovers",
     "at": "2026-08-17T00:20:00-05:00",
     "title": "Herald leftovers — Glass CASCADE, LONG tally, stills, strip",
