@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-coinglass-wall-tight",
+    "at": "2026-08-16T04:15:00-05:00",
+    "title": "CoinGlass plan wall stays latched",
+    "why": "After 30m and 1h both return Upgrade plan, the desk latches a plan wall and stops re-probing — including the other table. coinglass_ok stays false — plan wall: need Startup+ for 30m/1h. Binance may still fill CARRY last-print; that does not flip the HUD Glass dot. No 4h into 1H locks. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-kill-crickets",
     "at": "2026-08-16T04:00:00-05:00",
     "title": "Cricket bed leaves the desk",

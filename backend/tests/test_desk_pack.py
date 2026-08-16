@@ -520,6 +520,7 @@ class HealthStripTests(unittest.TestCase):
         self.assertIn("#39ff14", up_dot)
         self.assertIn("function coinglassHudMiss", JS)
         self.assertIn("plan wall", JS.split("function coinglassHudMiss", 1)[1][:250])
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', JS)
         self.assertIn('data-feed="coinglass"', HTML.split('id="healthGlass"', 1)[1][:80])
         self.assertIn("body.gate-locked #healthStrip", CSS)
         self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:800])

@@ -1011,7 +1011,7 @@ class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("front-bot-card[data-eye=\"up\"]", CSS)
         self.assertIn("front-guide-card[data-eye=\"up\"]", CSS)
         paint = JS.split("function paintHealthStrip", 1)[1].split("async function loadHealthStrip", 1)[0]
-        self.assertIn('setDot("healthGlass", glassOk)', paint)
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', paint)
         self.assertIn("function coinglassHudMiss", JS)
         self.assertNotIn("frontSeatTone", paint)
         self.assertNotIn("frontSeatTone", paint)

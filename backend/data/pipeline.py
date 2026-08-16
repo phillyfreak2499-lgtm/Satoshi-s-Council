@@ -10,7 +10,7 @@ from loguru import logger
 from backend.data.binance import BinanceClient, coinbase_product_for_symbol
 from backend.data.kalshi import KalshiClient
 from backend.data.coinbase import CoinbaseClient
-from backend.data.coinglass import CoinGlassClient
+from backend.data.coinglass import CoinGlassClient, apply_coinglass_health
 from backend.data.cfbenchmarks import (
     RtiWindow,
     last15_spot,
@@ -232,11 +232,9 @@ class DataPipeline:
         self.health["binance"] = bool(spot_ok)
         self.health["kalshi"] = bool(kalshi_data.get("healthy", False))
         self.health["coinbase"] = bool(cb_ok)
-        self.health["coinglass"] = bool(cg_data.get("healthy", False))
-        cg_reason = cg_data.get("reason") or cg_data.get("coinglass_reason") or ""
-        if not self.health["coinglass"] and not cg_reason:
-            cg_reason = "no usable funding/OI/liq this cycle"
-        self.health["coinglass_reason"] = str(cg_reason) if cg_reason else None
+        # CoinGlass health is CoinGlass-only. Binance funding/OI last-print
+        # may still fill CARRY below and must not flip this flag.
+        apply_coinglass_health(self.health, cg_data)
         self.health["cfb"] = bool(cfb_ok)
         self.health["spot_source"] = spot_source or ("cfb" if cfb_ok else ("coinbase" if cb_ok else None))
         self.health["research_spot_source"] = research.get("source")
@@ -330,6 +328,10 @@ class DataPipeline:
         if spot_feed_ok(self.health, snapshot):
             self.health["binance"] = True
             snapshot["health"]["binance"] = True
+        # Re-pin after Binance fill so CARRY last-print cannot flip Glass.
+        apply_coinglass_health(self.health, cg_data)
+        snapshot["health"]["coinglass"] = self.health.get("coinglass")
+        snapshot["health"]["coinglass_reason"] = self.health.get("coinglass_reason")
 
         if self.health["binance"] or self.health["kalshi"]:
             self.last_good = snapshot

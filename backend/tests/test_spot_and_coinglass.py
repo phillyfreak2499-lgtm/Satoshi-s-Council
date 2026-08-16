@@ -29,10 +29,14 @@ from backend.data.coinglass import (
     PATHS,
     PLAN_WALL_REASON,
     CoinGlassClient,
+    apply_coinglass_health,
     apply_hist_to_market,
     empty_derivatives,
     feeds_present,
+    latch_plan_wall,
     live_interval_order,
+    plan_wall_latched,
+    reset_plan_wall,
     summarize_derivatives,
 )
 from backend.data.secrets import load_coinglass_api_key, load_secret_string, reset_secret_cache
@@ -212,9 +216,11 @@ class CoinGlassParseTests(unittest.TestCase):
 class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         reset_secret_cache()
+        reset_plan_wall()
 
     def tearDown(self):
         reset_secret_cache()
+        reset_plan_wall()
         os.environ.pop("COINGLASS_API_KEY", None)
 
     def _client(self, key: str = "dummy-cg-key-not-real") -> CoinGlassClient:
@@ -362,8 +368,65 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(coinglass_hud_ok(False, PLAN_WALL_REASON))
         self.assertFalse(coinglass_hud_ok(True, PLAN_WALL_REASON))
 
+    async def test_plan_wall_is_process_wide(self):
+        first = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append(str((params or {}).get("interval") or ""))
+            return _FakeCG(200, {"code": "401", "msg": "Upgrade plan", "data": []})
+
+        first.client.get = fake_get
+        await first.get_derivatives()
+        n = len(calls)
+        other = CoinGlassClient(symbol="ETHUSDT")
+        other.client.get = fake_get
+        snap = await other.get_derivatives()
+        self.assertEqual(len(calls), n)
+        self.assertFalse(snap["healthy"])
+        self.assertEqual(snap.get("reason"), PLAN_WALL_REASON)
+        self.assertEqual(plan_wall_latched(), PLAN_WALL_REASON)
+
+    async def test_blocked_30m_not_reprobed_when_1h_ok(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            iv = str((params or {}).get("interval") or "")
+            calls.append(iv)
+            if iv == "30m":
+                return _FakeCG(200, {
+                    "code": "400",
+                    "msg": "interval not allowed for your plan",
+                    "data": [],
+                })
+            return _FakeCG(200, {
+                "code": "0",
+                "msg": "success",
+                "data": [{"time": 1_700_000_000_000, "close": "0.00012"}],
+            })
+
+        cg.client.get = fake_get
+        first = await cg.get_derivatives()
+        self.assertTrue(first["healthy"])
+        self.assertIn("30m", calls)
+        n = len(calls)
+        cg._cache = {}
+        cg._cache_at = 0.0
+        second = await cg.get_derivatives()
+        self.assertTrue(second["healthy"])
+        self.assertNotIn("30m", calls[n:])
+        self.assertIn("1h", calls[n:])
+        self.assertFalse(plan_wall_latched())
+
 
 class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
     async def test_health_surfaces_coinglass_reason(self):
         from backend import main as m
 
@@ -436,8 +499,88 @@ class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
         finally:
             m.council.running = prev
 
+    async def test_health_plan_wall_not_flipped_by_binance(self):
+        from backend import main as m
+
+        latch_plan_wall()
+        prev = m.council.running
+        m.council.running = True
+        try:
+            with patch.object(
+                m.council,
+                "get_state",
+                return_value={
+                    "timestamp": "2026-08-15T21:00:00+00:00",
+                    "tables": {
+                        "bitcoin": {
+                            "timestamp": "2026-08-15T21:00:00+00:00",
+                            "health": {
+                                "coinglass": True,
+                                "coinglass_reason": "",
+                                "kalshi": True,
+                                "binance": True,
+                            },
+                            "funding_rate": 0.00012,
+                            "open_interest": 9_000_000_000,
+                        }
+                    },
+                },
+            ):
+                body = await m.health()
+            self.assertFalse(body["coinglass_ok"])
+            self.assertEqual(body["coinglass_reason"], PLAN_WALL_REASON)
+        finally:
+            m.council.running = prev
+            reset_plan_wall()
+
+
+class CoinGlassHealthPinTests(unittest.TestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
+    def test_binance_last_print_does_not_flip_wall(self):
+        h = {"binance": True, "kalshi": True}
+        cg = {
+            "source": "coinglass",
+            "healthy": False,
+            "plan_wall": True,
+            "reason": PLAN_WALL_REASON,
+            "funding_rate": None,
+            "open_interest": None,
+        }
+        apply_coinglass_health(h, cg)
+        self.assertFalse(h["coinglass"])
+        self.assertEqual(h["coinglass_reason"], PLAN_WALL_REASON)
+        cg_lie = dict(cg)
+        cg_lie["healthy"] = True
+        cg_lie["funding_rate"] = 0.001
+        apply_coinglass_health(h, cg_lie)
+        self.assertFalse(h["coinglass"])
+        self.assertEqual(h["coinglass_reason"], PLAN_WALL_REASON)
+
+    def test_pipeline_pins_coinglass_after_binance_fill(self):
+        src = (ROOT / "backend" / "data" / "pipeline.py").read_text(encoding="utf-8")
+        self.assertIn("apply_coinglass_health(self.health, cg_data)", src)
+        self.assertIn("cg_fund if cg_fund is not None else bn_fund", src)
+        self.assertGreater(
+            src.find("apply_coinglass_health(self.health, cg_data)", src.find("funding_rate = cg_fund")),
+            src.find("funding_rate = cg_fund"),
+        )
+        self.assertNotIn("4h", ALLOWED_INTERVALS)
+        self.assertNotIn("8h", ALLOWED_INTERVALS)
+        self.assertNotIn("1d", ALLOWED_INTERVALS)
+
 
 class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
     def test_wire_note(self):
         self.assertIn("2026-08-15-coinglass-miss", WIRE_JS)
         self.assertIn("CoinGlass now logs the real miss + 30m/1h paths", WIRE_JS)
@@ -481,7 +624,9 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("2026-08-16-coinglass-hud-only", WIRE_JS)
         self.assertIn("does not add a 401 probe path", WIRE_JS)
         self.assertIn("2026-08-16-coinglass-plan-wall", WIRE_JS)
+        self.assertIn("2026-08-16-coinglass-wall-tight", WIRE_JS)
         self.assertIn(PLAN_WALL_REASON, WIRE_JS)
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', JS)
         self.assertNotIn("4h", live_interval_order())
         bn = (ROOT / "backend" / "data" / "binance.py").read_text(encoding="utf-8")
         self.assertIn("451", bn)
@@ -494,9 +639,11 @@ class CoinGlassHistReuseTests(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         reset_secret_cache()
+        reset_plan_wall()
 
     def tearDown(self):
         reset_secret_cache()
+        reset_plan_wall()
         os.environ.pop("COINGLASS_API_KEY", None)
 
     async def test_no_key_returns_empty_without_http(self):

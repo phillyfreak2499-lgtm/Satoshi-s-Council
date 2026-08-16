@@ -122,12 +122,14 @@ async def health():
     kalshi_btc_ok = bool(btc_h.get("kalshi", True))
     kalshi_eth_ok = bool(eth_h.get("kalshi", True)) if eth else None
     kalshi_ok = kalshi_btc_ok and (kalshi_eth_ok is not False)
-    from backend.data.coinglass import coinglass_hud_ok
+    from backend.data.coinglass import PLAN_WALL_REASON, coinglass_hud_ok, plan_wall_latched
 
     coinglass_reason = btc_h.get("coinglass_reason") or (eth_h.get("coinglass_reason") if eth else None)
+    if plan_wall_latched():
+        coinglass_reason = PLAN_WALL_REASON
     if coinglass_reason is not None:
         coinglass_reason = str(coinglass_reason)
-    coinglass_ok = coinglass_hud_ok(
+    coinglass_ok = False if plan_wall_latched() else coinglass_hud_ok(
         bool(btc_h.get("coinglass") or eth_h.get("coinglass")),
         coinglass_reason,
     )

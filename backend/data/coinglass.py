@@ -23,6 +23,10 @@ from backend.services.runtime_settings import runtime_settings
 BASE = "https://open-api-v4.coinglass.com"
 ALLOWED_INTERVALS = ("30m", "1h")  # 1H pack only. Never 1m. Never drop to 4h/8h/1d.
 PLAN_WALL_REASON = "plan wall: need Startup+ for 30m/1h"
+# Process-wide: BTC + ETH + hist share one latch. Stop re-probing after both windows wall.
+_PLAN_WALL: Optional[str] = None
+_PLAN_WALL_LOGGED = False
+_PLAN_BLOCKED: set[str] = set()
 PATHS = (
     "/api/futures/funding-rate/history",
     "/api/futures/open-interest/history",
@@ -220,6 +224,43 @@ def is_plan_wall_body(code: Any, msg: Any, http_status: Any = None) -> bool:
     return is_plan_interval_error(code, msg)
 
 
+def reset_plan_wall() -> None:
+    """Tests only. Live desk never clears the latch."""
+    global _PLAN_WALL, _PLAN_WALL_LOGGED
+    _PLAN_WALL = None
+    _PLAN_WALL_LOGGED = False
+    _PLAN_BLOCKED.clear()
+
+
+def plan_wall_latched() -> Optional[str]:
+    return _PLAN_WALL
+
+
+def latch_plan_wall() -> str:
+    """Both 30m and 1h hit the Hobbyist wall. Stop HTTP. Do not invent bars."""
+    global _PLAN_WALL
+    for iv in ALLOWED_INTERVALS:
+        _PLAN_BLOCKED.add(iv)
+    _PLAN_WALL = PLAN_WALL_REASON
+    return _PLAN_WALL
+
+
+def note_plan_interval(interval: str) -> Optional[str]:
+    """Remember a plan/upgrade miss. Latch only after both live windows wall."""
+    iv = str(interval or "").strip().lower()
+    if iv not in ALLOWED_INTERVALS:
+        return _PLAN_WALL
+    _PLAN_BLOCKED.add(iv)
+    if all(x in _PLAN_BLOCKED for x in ALLOWED_INTERVALS):
+        return latch_plan_wall()
+    return _PLAN_WALL
+
+
+def interval_plan_blocked(interval: str) -> bool:
+    iv = str(interval or "").strip().lower()
+    return bool(_PLAN_WALL) or iv in _PLAN_BLOCKED
+
+
 def coinglass_hud_ok(ok: Any, reason: Any = None) -> bool:
     """HUD Glass light only. Plan wall / 401 Upgrade plan is not-ok. Does not chase the key."""
     if not ok:
@@ -228,6 +269,31 @@ def coinglass_hud_ok(ok: Any, reason: Any = None) -> bool:
     if "401" in text or "upgrade plan" in text or "upgrade" in text or "plan wall" in text:
         return False
     return True
+
+
+def apply_coinglass_health(health: Dict[str, Any], cg: Any) -> Dict[str, Any]:
+    """CoinGlass health only. Binance funding/OI last-print must not flip this."""
+    out = health if isinstance(health, dict) else {}
+    snap = cg if isinstance(cg, dict) else {}
+    reason = str(snap.get("reason") or snap.get("coinglass_reason") or "")
+    if (
+        _PLAN_WALL
+        or snap.get("plan_wall")
+        or "plan wall" in reason.lower()
+    ):
+        out["coinglass"] = False
+        out["coinglass_reason"] = PLAN_WALL_REASON
+        return out
+    ok = bool(snap.get("healthy", False))
+    if not coinglass_hud_ok(ok, reason):
+        out["coinglass"] = False
+        if not reason:
+            reason = "no usable funding/OI/liq this cycle"
+        out["coinglass_reason"] = reason
+        return out
+    out["coinglass"] = True
+    out["coinglass_reason"] = reason or None
+    return out
 
 
 def live_interval_order(cached_ok: Optional[str] = None) -> List[str]:
@@ -264,8 +330,6 @@ class CoinGlassClient:
         self._cache_at: float = 0.0
         self._interval_ok: Optional[str] = None
         self._cycle_misses: List[_Fetch] = []
-        self._plan_blocked: set[str] = set()
-        self._plan_wall: Optional[str] = None
         self._plan_wall_logged: bool = False
 
     def configured(self) -> bool:
@@ -299,35 +363,39 @@ class CoinGlassClient:
             f"http={miss.http_status} code={miss.cg_code} msg={msg} body={body}"
         )
 
+    def _wall(self) -> Optional[str]:
+        return plan_wall_latched()
+
+    @property
+    def _plan_wall(self) -> Optional[str]:
+        return self._wall()
+
     def _plan_wall_snap(self) -> Dict[str, Any]:
-        snap = self._empty(self._plan_wall or PLAN_WALL_REASON)
+        snap = self._empty(self._wall() or PLAN_WALL_REASON)
         snap["plan_wall"] = True
         snap["daily_heatmap"] = False
         snap["interval"] = None
         return snap
 
     def _mark_plan_wall(self) -> None:
-        if self._plan_wall:
+        global _PLAN_WALL_LOGGED
+        latch_plan_wall()
+        if _PLAN_WALL_LOGGED or self._plan_wall_logged:
             return
-        self._plan_wall = PLAN_WALL_REASON
-        if not self._plan_wall_logged:
-            self._plan_wall_logged = True
-            logger.warning(
-                "CoinGlass plan wall — " + PLAN_WALL_REASON
-                + " · stop re-probing 30m/1h · Binance futures stay · no 4h heatmap into 1H locks"
-            )
+        _PLAN_WALL_LOGGED = True
+        self._plan_wall_logged = True
+        logger.warning(
+            "CoinGlass plan wall — " + PLAN_WALL_REASON
+            + " · stop re-probing 30m/1h · Binance futures stay · no 4h heatmap into 1H locks"
+        )
 
     def _note_plan_interval(self, interval: str) -> None:
-        iv = str(interval or "").strip().lower()
-        if iv not in ALLOWED_INTERVALS:
-            return
-        self._plan_blocked.add(iv)
-        if all(x in self._plan_blocked for x in ALLOWED_INTERVALS):
+        if note_plan_interval(interval):
             self._mark_plan_wall()
 
     def _reason_for_health(self, snap: Dict[str, Any]) -> str:
-        if self._plan_wall:
-            return self._plan_wall
+        if self._wall():
+            return self._wall() or PLAN_WALL_REASON
         if snap.get("healthy") and not self._cycle_misses:
             return ""
         if snap.get("healthy") and self._cycle_misses:
@@ -366,11 +434,11 @@ class CoinGlassClient:
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
     ) -> _Fetch:
-        if self._plan_wall:
+        if self._wall() or interval_plan_blocked(interval):
             return _Fetch(
                 path=path,
                 interval=interval,
-                reason=self._plan_wall,
+                reason=self._wall() or PLAN_WALL_REASON,
                 plan_interval=True,
             )
         headers = self._headers()
@@ -452,15 +520,19 @@ class CoinGlassClient:
         got = await self._probe(
             path, interval, limit=limit, start_time=start_time, end_time=end_time
         )
+        if got.plan_interval:
+            self._note_plan_interval(interval)
         return list(got.rows)
 
     async def _rows_with_interval(self, path: str) -> Tuple[List[Dict[str, Any]], str]:
-        if self._plan_wall:
+        if self._wall():
             return [], "30m"
         order = live_interval_order(self._interval_ok)
         last_iv = order[0] if order else "30m"
         for iv in order:
             last_iv = iv
+            if interval_plan_blocked(iv):
+                continue
             got = await self._probe(path, iv)
             if got.ok and got.rows:
                 self._interval_ok = iv
@@ -469,8 +541,10 @@ class CoinGlassClient:
                 self._note_plan_interval(iv)
             if got.auth_fail:
                 return [], iv
-            if self._plan_wall:
+            if self._wall():
                 return [], iv
+        if all(interval_plan_blocked(x) for x in ALLOWED_INTERVALS):
+            self._mark_plan_wall()
         return [], last_iv
 
     def _empty(self, reason: str = "") -> Dict[str, Any]:
@@ -493,7 +567,7 @@ class CoinGlassClient:
 
     async def get_derivatives(self) -> Dict[str, Any]:
         self._cycle_misses = []
-        if self._plan_wall:
+        if self._wall():
             return self._plan_wall_snap()
         if not self.configured():
             snap = self._empty("key missing")
@@ -514,7 +588,7 @@ class CoinGlassClient:
                 self._rows_with_interval(PATHS[1]),
                 self._rows_with_interval(PATHS[2]),
             )
-            if self._plan_wall:
+            if self._wall():
                 snap = self._plan_wall_snap()
                 if self._cycle_misses:
                     self._log_cycle_miss(snap)
@@ -543,11 +617,13 @@ class CoinGlassClient:
         limit: int,
     ) -> Tuple[List[Dict[str, Any]], str]:
         """Reuse live _get_rows. 30m then 1h. Never 1m. Never 4h."""
-        if self._plan_wall:
+        if self._wall():
             return [], "30m"
         last_iv = "30m"
         for iv in live_interval_order():
             if iv == "1m":
+                continue
+            if interval_plan_blocked(iv):
                 continue
             last_iv = iv
             rows = await self._get_rows(
@@ -573,9 +649,9 @@ class CoinGlassClient:
         Never logs the API key. Does not rewrite live cycle logging / health.
         """
         empty = empty_derivatives("30m")
-        if self._plan_wall:
+        if self._wall():
             empty["skip_reason"] = "plan_wall"
-            empty["reason"] = self._plan_wall
+            empty["reason"] = self._wall() or PLAN_WALL_REASON
             empty["plan_wall"] = True
             return empty
         if not self.configured():

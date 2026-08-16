@@ -7584,12 +7584,11 @@ function drawCandleChart() {
     setDot("healthKalshi", kalshi);
     setDot("healthSpot", !!data.spot_ok);
     const glassWhy = String(data.coinglass_reason || "");
-    const glassOk = !!data.coinglass_ok && !coinglassHudMiss(glassWhy);
-    setDot("healthGlass", glassOk);
+    setDot("healthGlass", !!data.coinglass_ok);
     const glassEl = document.getElementById("healthGlass");
     if (glassEl) {
-      glassEl.setAttribute("data-ok", glassOk ? "1" : "0");
-      glassEl.title = glassOk ? "CoinGlass live" : (glassWhy ? ("CoinGlass · " + glassWhy) : "CoinGlass not-ok");
+      glassEl.setAttribute("data-ok", data.coinglass_ok ? "1" : "0");
+      glassEl.title = data.coinglass_ok ? "CoinGlass live" : (glassWhy ? ("CoinGlass · " + glassWhy) : "CoinGlass not-ok");
     }
     const ageEl = document.getElementById("healthAge");
     const age = data.quote_age_s != null ? data.quote_age_s : data.state_age_s;
