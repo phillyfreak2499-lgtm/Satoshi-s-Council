@@ -32,6 +32,26 @@ from loguru import logger
 # restarts do not keep wiping new Vitalik hits. Bot memory stays on disk.
 ETH_DISPLAY_RESET_ID = "2026-08-16-eth-display-reset"
 ETH_DISPLAY_RESET_AT = "2026-08-16T13:20:00+00:00"
+try:
+    from backend.learning.btc15m import (
+        BTC_15M_DISPLAY_RESET_AT,
+        BTC_15M_DISPLAY_RESET_ID,
+        is_btc_15m_ticker,
+        is_btc_1h_ticker,
+        paper_lock_score_skip,
+    )
+except Exception:  # pragma: no cover
+    BTC_15M_DISPLAY_RESET_ID = "2026-08-16-btc-15m-display-reset"
+    BTC_15M_DISPLAY_RESET_AT = "2026-08-16T15:50:00+00:00"
+
+    def is_btc_15m_ticker(ticker):  # type: ignore
+        return str(ticker or "").upper().startswith("KXBTC15M")
+
+    def is_btc_1h_ticker(ticker):  # type: ignore
+        return str(ticker or "").upper().startswith("KXBTCD")
+
+    def paper_lock_score_skip(**kwargs):  # type: ignore
+        return None
 
 
 def _json_field(raw: Any) -> Any:
@@ -250,6 +270,15 @@ class PerformanceStore:
             return True
         asset = (getattr(r, "asset", None) or ticker_asset(getattr(r, "ticker", None)) or "")
         return str(asset).lower() in ("eth", "ethereum")
+
+    @staticmethod
+    def _is_btc_1h_display_row(r: Any) -> bool:
+        """Hourly KXBTCD rows — not the 15m BTC scorecard."""
+        return is_btc_1h_ticker(getattr(r, "ticker", None))
+
+    @staticmethod
+    def _is_btc_15m_display_row(r: Any) -> bool:
+        return is_btc_15m_ticker(getattr(r, "ticker", None))
 
     @staticmethod
     def _counting_lock_clause():
@@ -982,6 +1011,20 @@ class PerformanceStore:
                     row.y_finish = y_finish
                 except Exception:
                     pass
+                skip = paper_lock_score_skip(
+                    ticker=row.ticker,
+                    open_price=row.open_price,
+                    side_ask=getattr(row, "side_ask", None),
+                    direction=row.direction,
+                )
+                if skip in ("chalk_skip", "band_skip", "no_entry_odds"):
+                    # Official finish is stored. Not a training win or miss.
+                    row.correct = None
+                    row.settle_reason = skip
+                    row.paper_pnl = 0.0
+                    row.settled_at = now.isoformat()
+                    settled_n += 1
+                    continue
                 row.correct = 1 if matched else 0
                 row.settled_at = now.isoformat()
                 row.settle_reason = grade.get("settle_reason") or (
@@ -1094,6 +1137,15 @@ class PerformanceStore:
                     ]
             except Exception:
                 pass
+            # 15m BTC scorecard: hide 1H KXBTCD 5–3. ETH slate stays on its own mark.
+            try:
+                want = (asset or "").lower()
+                if want in ("btc", "bitcoin"):
+                    settled = [r for r in settled if self._is_btc_15m_display_row(r)]
+                else:
+                    settled = [r for r in settled if not self._is_btc_1h_display_row(r)]
+            except Exception:
+                pass
             # Finish-only: path / near_certain / partial / flipped do NOT count
             # Also accept settled rows with outcome but missing reason (legacy → treat as finish)
             FINISH = {"finish_match", "finish_miss"}
@@ -1142,6 +1194,10 @@ class PerformanceStore:
             wait_rows = (
                 await session.execute(select(WindowCall).where(*wait_q))
             ).scalars().all()
+            if (asset or "").lower() in ("btc", "bitcoin"):
+                wait_rows = [r for r in wait_rows if self._is_btc_15m_display_row(r)]
+            else:
+                wait_rows = [r for r in wait_rows if not self._is_btc_1h_display_row(r)]
             open_q = [WindowCall.actual_outcome.is_(None)]
             if ac is not None:
                 open_q.append(ac)
@@ -1427,6 +1483,11 @@ class PerformanceStore:
                     total = len(rows)
             except Exception:
                 pass
+            try:
+                rows = [r for r in rows if not self._is_btc_1h_display_row(r)]
+                total = len(rows)
+            except Exception:
+                pass
         acc = await self.get_accuracy()
         return {
             "total": total,
@@ -1465,6 +1526,10 @@ class PerformanceStore:
                     if not self._is_eth_display_row(r)
                     or (r.settled_at or r.called_at or "") >= eth_mark
                 ]
+        except Exception:
+            pass
+        try:
+            rows = [r for r in rows if not self._is_btc_1h_display_row(r)]
         except Exception:
             pass
 
@@ -1709,6 +1774,8 @@ class PerformanceStore:
                     r for r in rows
                     if (r.asset or ticker_asset(r.ticker) or "").lower() == want
                 ]
+                if want in ("btc", "bitcoin"):
+                    rows = [r for r in rows if is_btc_15m_ticker(r.ticker)]
             rows = rows[: max(1, int(limit))]
             out = []
             for r in rows:
@@ -2213,6 +2280,47 @@ class PerformanceStore:
             "cleared": "eth_display",
         }
 
+    async def ensure_btc_15m_display_reset(self) -> Dict[str, Any]:
+        """Wipe displayed 1H BTC hits from the 15m scorecard.
+
+        Soft watermark under DATA_DIR. Does not delete window_calls.
+        Does not touch council-learning-eth.json or ETH displayed hits.
+        Does not load 1H BTC weights onto the 15m brain.
+        """
+        DATA = self._data_dir()
+        DATA.mkdir(parents=True, exist_ok=True)
+        p = DATA / "btc_15m_display_reset.json"
+        if p.exists():
+            try:
+                raw = json.loads(p.read_text(encoding="utf-8"))
+                if raw.get("id") == BTC_15M_DISPLAY_RESET_ID and raw.get("reset_at"):
+                    return {
+                        "ok": True,
+                        "reset_at": raw.get("reset_at"),
+                        "wrote": False,
+                        "id": BTC_15M_DISPLAY_RESET_ID,
+                        "cleared": "btc_15m_display",
+                    }
+            except Exception:
+                pass
+        payload = {
+            "id": BTC_15M_DISPLAY_RESET_ID,
+            "reset_at": BTC_15M_DISPLAY_RESET_AT,
+            "cleared": "btc_15m_display",
+            "paper": True,
+            "follower": False,
+            "live": False,
+        }
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        logger.info("BTC 15m displayed slate reset — 1H 5–3 hidden, ETH slate/brain stay")
+        return {
+            "ok": True,
+            "reset_at": BTC_15M_DISPLAY_RESET_AT,
+            "wrote": True,
+            "id": BTC_15M_DISPLAY_RESET_ID,
+            "cleared": "btc_15m_display",
+        }
+
     async def _reset_mark(self, kind: str) -> str | None:
         """Return ISO reset timestamp if a clear was requested for kind."""
         try:
@@ -2221,6 +2329,7 @@ class PerformanceStore:
                 "hit_rate": "hit_rate_reset.json",
                 "life_log": "life_log_reset.json",
                 "eth_display": "eth_display_reset.json",
+                "btc_15m_display": "btc_15m_display_reset.json",
             }
             p = DATA / names.get(str(kind or ""), "")
             if not p.name or not p.exists():

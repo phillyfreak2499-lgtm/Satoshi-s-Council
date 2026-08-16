@@ -6,9 +6,10 @@ When historically strong coalitions agree again, their joint vote
 gets an affinity bonus — the Chair "remembers" who is right together.
 
 GOAL CONTRACT (enforced here):
-  Exactly ONE high-quality directional guess per Kalshi 15m window,
-  taken only when the book is inside the playable 10–90¢ band (never 99¢ chalk).
-  Once locked, the call is irreversible for that ticker.
+  Exactly ONE high-quality directional guess per official window
+  (BTC 15m / ETH 1H), taken only when the book is inside the playable
+  band (20–80 after vig on 15m BTC; never 99¢ chalk).
+  Once locked, the call is irreversible for that window.
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -403,16 +404,31 @@ class Leader:
                     window_minutes = float(regime_features["window_minutes"])
             except (TypeError, ValueError):
                 window_minutes = None
+        try:
+            from backend.learning.btc15m import timeframe_gates
+            tf = timeframe_gates(
+                window_minutes=window_minutes,
+                ticker=(regime_features or {}).get("ticker"),
+                series=(regime_features or {}).get("series_ticker"),
+                asset=(regime_features or {}).get("asset"),
+            )
+        except Exception:
+            tf = {
+                "early_window_mins": float(getattr(settings, "EARLY_WINDOW_MINS", 20.0)),
+                "late_window_mins": float(getattr(settings, "LATE_WINDOW_MINS", 15.0)),
+                "late_min_p": float(getattr(settings, "LATE_MIN_P_FINISH", 0.70)),
+                "late_min_ev": float(getattr(settings, "LATE_MIN_EV_CENTS", 8.0)),
+            }
         hurdles = time_ev_hurdles(
             mins_left,
             window_minutes,
             min_p=float(getattr(settings, "MIN_P_FINISH", 0.55)),
             min_ev=float(getattr(settings, "MIN_EV_CENTS", 3.0)),
-            early_window_mins=float(getattr(settings, "EARLY_WINDOW_MINS", 20.0)),
-            late_window_mins=float(getattr(settings, "LATE_WINDOW_MINS", 15.0)),
+            early_window_mins=float(tf.get("early_window_mins") or getattr(settings, "EARLY_WINDOW_MINS", 20.0)),
+            late_window_mins=float(tf.get("late_window_mins") or getattr(settings, "LATE_WINDOW_MINS", 15.0)),
             early_ev_mult=float(getattr(settings, "EARLY_EV_MULT", 1.5)),
-            late_min_p=float(getattr(settings, "LATE_MIN_P_FINISH", 0.70)),
-            late_min_ev=float(getattr(settings, "LATE_MIN_EV_CENTS", 8.0)),
+            late_min_p=float(tf.get("late_min_p") or getattr(settings, "LATE_MIN_P_FINISH", 0.70)),
+            late_min_ev=float(tf.get("late_min_ev") or getattr(settings, "LATE_MIN_EV_CENTS", 8.0)),
         )
         min_p = float(hurdles["min_p"])
         min_ev = float(hurdles["min_ev"])
@@ -780,10 +796,27 @@ class Leader:
         # Time-in-window gates (highest remaining accuracy lever for 15m path scalps)
         # Hard do-nothing zones + graduated dampen/boost so most noise calls die.
         mid_boost = float(getattr(settings, "MID_WINDOW_BOOST", 0.10))
-        late_min = float(getattr(settings, "LATE_WINDOW_MIN", 2.8))
-        early_min = float(getattr(settings, "EARLY_WINDOW_MIN", 13.2))
-        hard_early = float(getattr(settings, "HARD_EARLY_MIN", 13.7))
-        hard_late = float(getattr(settings, "HARD_LATE_MIN", 2.2))
+        try:
+            from backend.learning.btc15m import is_15m_window
+            fifteen = is_15m_window(
+                (regime_features or {}).get("window_minutes"),
+                (regime_features or {}).get("ticker"),
+                (regime_features or {}).get("series_ticker"),
+                (regime_features or {}).get("asset"),
+            )
+        except Exception:
+            fifteen = False
+        if fifteen:
+            # 15m research gates — not the 1H EARLY_WINDOW_MIN=55 leftover.
+            late_min = 2.8
+            early_min = 12.0
+            hard_early = 12.0
+            hard_late = 2.2
+        else:
+            late_min = float(getattr(settings, "HOURLY_LATE_MIN", 20.0))
+            early_min = float(getattr(settings, "HOURLY_EARLY_MIN", 35.0))
+            hard_early = float(getattr(settings, "HOURLY_HARD_EARLY_MIN", 45.0))
+            hard_late = float(getattr(settings, "HOURLY_HARD_LATE_MIN", 8.0))
         early_dampen = float(getattr(settings, "EARLY_DAMPEN", 0.78))
         late_dampen = float(getattr(settings, "LATE_DAMPEN", 0.72))
         hard_dampen = float(getattr(settings, "HARD_ZONE_DAMPEN", 0.55))
@@ -1188,6 +1221,36 @@ class Leader:
                 age_s = None
             max_age = float(getattr(settings, "KALSHI_MAX_QUOTE_AGE_S", 25.0))
             quote_stale = (age_s is not None and age_s > max_age) or stale_mkt or (not kalshi_ok)
+            try:
+                from backend.learning.btc15m import early_no_lock_mins_for, timeframe_gates, window_label
+                _tf = timeframe_gates(
+                    window_minutes=(regime_features or {}).get("window_minutes"),
+                    ticker=(regime_features or {}).get("ticker") or ticker,
+                    series=(regime_features or {}).get("series_ticker"),
+                    asset=(regime_features or {}).get("asset"),
+                )
+                _sit_m = float(_tf.get("early_no_lock_mins") or early_no_lock_mins_for(
+                    window_minutes=(regime_features or {}).get("window_minutes"),
+                    ticker=(regime_features or {}).get("ticker") or ticker,
+                    series=(regime_features or {}).get("series_ticker"),
+                    asset=(regime_features or {}).get("asset"),
+                ))
+                _wlab = window_label(
+                    (regime_features or {}).get("window_minutes"),
+                    (regime_features or {}).get("ticker") or ticker,
+                    (regime_features or {}).get("series_ticker"),
+                    (regime_features or {}).get("asset"),
+                )
+                _band_hi = float(_tf.get("band_hi") or 80.0)
+                _late_vol = float(_tf.get("late_vol_pct") or 0.40)
+                _win_mins = float(_tf.get("window_minutes") or (regime_features or {}).get("window_minutes") or 60.0)
+                max_odds = _band_hi
+            except Exception:
+                _sit_m = float(getattr(settings, "EARLY_NO_LOCK_MINS", 10.0))
+                _wlab = "1H WINDOW"
+                _band_hi = float(getattr(settings, "PLAYABLE_MID_MAX", 90.0))
+                _late_vol = float(getattr(settings, "LATE_HOURLY_VOL_PCT", 0.40))
+                _win_mins = float((regime_features or {}).get("window_minutes") or 60.0)
 
             if quote_stale:
                 direction = "WAIT"
@@ -1200,16 +1263,16 @@ class Leader:
                 )
             elif early_lock_blocked(
                 (regime_features or {}).get("mins_left"),
-                (regime_features or {}).get("window_minutes") or 60.0,
-                float(getattr(settings, "EARLY_NO_LOCK_MINS", 10.0)),
+                (regime_features or {}).get("window_minutes") or _win_mins,
+                _sit_m,
             ):
                 direction = "WAIT"
                 lean = None
                 firm = False
                 conf = max(int(conf), 68)
                 summary = (
-                    f"WAIT · first {float(getattr(settings, 'EARLY_NO_LOCK_MINS', 10.0)):.0f}m "
-                    f"of the hour — no lock · {summary}"
+                    f"WAIT · first {_sit_m:.0f}m of the {_wlab.replace(' WINDOW', '').lower()} "
+                    f"— no lock · {summary}"
                 )
             elif chair_ticker_blocked(
                 strike=(regime_features or {}).get("floor_strike"),
@@ -1255,13 +1318,19 @@ class Leader:
                 (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
                 lean,
                 (regime_features or {}).get("yes_mid"),
-                float(getattr(settings, "PLAYABLE_MID_MAX", getattr(settings, "MAX_ENTRY_ODDS_PCT", 90.0))),
+                _band_hi,
+                ticker=ticker,
+                asset=(regime_features or {}).get("asset"),
+                window_minutes=_win_mins,
             ):
                 why = dead_book_reason(
                     (regime_features or {}).get("book_depth") if isinstance((regime_features or {}).get("book_depth"), dict) else None,
                     lean,
                     (regime_features or {}).get("yes_mid"),
-                    float(getattr(settings, "PLAYABLE_MID_MAX", getattr(settings, "MAX_ENTRY_ODDS_PCT", 90.0))),
+                    _band_hi,
+                    ticker=ticker,
+                    asset=(regime_features or {}).get("asset"),
+                    window_minutes=_win_mins,
                 )
                 direction = "WAIT"
                 lean = None
@@ -1277,14 +1346,16 @@ class Leader:
                 }),
                 (regime_features or {}).get("floor_strike"),
                 (regime_features or {}).get("mins_left"),
-                float(getattr(settings, "LATE_HOURLY_VOL_PCT", 0.40)),
+                _late_vol,
+                window_minutes=_win_mins,
             ):
                 direction = "WAIT"
                 lean = None
                 firm = False
                 conf = max(int(conf), 70)
+                late_txt = "last 2.5m of the 15m" if _win_mins <= 20 else "last 15m"
                 summary = (
-                    f"WAIT · last 15m — 60s CFB avg not decisive vs strike · {summary}"
+                    f"WAIT · {late_txt} — 60s CFB avg not decisive vs strike · {summary}"
                 )
             elif (regime_features or {}).get("btc_fade_blocked") or eth_fades_btc_impulse(
                 lean, (regime_features or {}).get("btc_lead")

@@ -1,8 +1,9 @@
 """
-Kalshi public market data for hourly series (KXBTCD / KXETHD).
+Kalshi public market data.
+BTC Chair: KXBTC15M (15m up/down). ETH Chair: KXETHD (hourly ladder).
 No authentication required for markets / orderbook / series.
-Picks the soonest open hour, then the best playable contract on that
-strike ladder (EV after vig, not ATM chalk 98/2). Same for BTC and ETH.
+Picks the soonest open window, then the best 20–80-after-vig contract
+on that stack (not ATM chalk 98/2). Sit if the stack is dead.
 
 Feed flaps: one quiet retry, then last-good quotes. Do not raise RetryError
 or error-log every cycle — the desk stays up on stale Kalshi.
@@ -154,8 +155,9 @@ def nearest_spot_contract(
 def pick_hour_book(
     markets: List[Dict[str, Any]],
     spot: Optional[float] = None,
+    sit_if_dead: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """Best playable contract on this hour's ladder. Not ATM chalk. Same for BTC/ETH."""
+    """Best 20–80-after-vig contract on this window's stack, not ATM chalk."""
     cohort = hour_ladder(markets)
     if not cohort:
         return None
@@ -181,13 +183,15 @@ def pick_hour_book(
     if in_band:
         in_band.sort(key=lambda pair: _rank(pair[0]))
         return in_band[0][1]
+    if sit_if_dead:
+        return None
     return nearest_spot_contract(cohort, spot)
 
 
 class KalshiClient:
     def __init__(self, series_ticker: Optional[str] = None):
         self.base = settings.KALSHI_BASE
-        self.series_ticker = series_ticker or getattr(settings, "SERIES_TICKER", "KXBTCD")
+        self.series_ticker = series_ticker or getattr(settings, "SERIES_TICKER", "KXBTC15M")
         timeout = httpx.Timeout(settings.HTTP_TIMEOUT, connect=min(4.0, settings.HTTP_TIMEOUT))
         self.client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
         self._last_orderbook: Dict[str, Any] = {}
@@ -345,7 +349,12 @@ class KalshiClient:
         return market_strike(m)
 
     def _pick_primary(self, markets: List[Dict[str, Any]], spot: Optional[float] = None) -> Optional[Dict[str, Any]]:
-        return pick_hour_book(markets, spot=spot)
+        sit = str(self.series_ticker or "").upper() == "KXBTC15M"
+        picked = pick_hour_book(markets, spot=spot, sit_if_dead=sit)
+        if picked is not None:
+            return picked
+        # Dead 15m stack: still surface the book so the Chair can sit. Do not lock it.
+        return pick_hour_book(markets, spot=spot, sit_if_dead=False)
 
     def _pack_state(
         self,

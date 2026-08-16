@@ -21,7 +21,7 @@ from backend.config import settings
 from backend.services.desk_pack import book_flags
 
 CT = ZoneInfo("America/Chicago")
-CHAIR_1H_SERIES = ("KXBTCD", "KXETHD")
+CHAIR_1H_SERIES = ("KXBTC15M", "KXBTCD", "KXETHD")
 ARCADE_ASSETS = ("BTC",)
 EXTRA_15M = ("SOL", "XRP")
 LIQUID_MIN_VOL = 8000.0

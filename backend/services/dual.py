@@ -91,6 +91,10 @@ class DualOrchestrator:
             await self.btc.store.ensure_eth_display_reset()
         except Exception as e:
             logger.debug(f"ETH display reset skip: {e}")
+        try:
+            await self.btc.store.ensure_btc_15m_display_reset()
+        except Exception as e:
+            logger.debug(f"BTC 15m display reset skip: {e}")
         for c in self._councils():
             try:
                 if hasattr(c.learner, "load"):
@@ -112,9 +116,13 @@ class DualOrchestrator:
         self._task = asyncio.create_task(self._loop())
         try:
             from backend.learning.seat_backfill import maybe_run_boot_backfill
-            self._backfill_task = asyncio.create_task(
-                maybe_run_boot_backfill(self), name="seat-backfill"
-            )
+            from backend.learning.seat_backfill_15m import maybe_run_boot_backfill_15m
+
+            async def _boot_backfills():
+                await maybe_run_boot_backfill(self)
+                await maybe_run_boot_backfill_15m(self)
+
+            self._backfill_task = asyncio.create_task(_boot_backfills(), name="seat-backfill")
         except Exception as e:
             logger.debug(f"seat backfill boot schedule skip: {e}")
         logger.info(

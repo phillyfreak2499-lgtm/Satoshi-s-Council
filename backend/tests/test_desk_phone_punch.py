@@ -177,7 +177,7 @@ class PhoneBackTests(unittest.TestCase):
 class WireNewestTests(unittest.TestCase):
     def test_notes_newest_first(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-eth-slate-ares-oracle-lock")
+        self.assertEqual(rows[0]["id"], "2026-08-16-btc-15m-retrain")
         self.assertIn("2026-08-16-pattern-specialists", [r["id"] for r in rows])
         self.assertIn("2026-08-16-raijin-cowboy-restore", [r["id"] for r in rows])
         self.assertIn("2026-08-16-hunter-feeder", [r["id"] for r in rows])

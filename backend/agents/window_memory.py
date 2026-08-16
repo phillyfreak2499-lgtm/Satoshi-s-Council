@@ -74,6 +74,7 @@ class WindowMemory:
         up_pct: Optional[float],
         price: Optional[float],
         mins_left: Optional[float],
+        window_minutes: Optional[float] = None,
     ) -> None:
         """Called every council cycle with latest market snapshot."""
         if not ticker:
@@ -87,15 +88,27 @@ class WindowMemory:
         self.live.ticker = ticker
         self.live.mins_left = mins_left
 
-        # Phase by remaining time in the 15m window
+        try:
+            dur = float(window_minutes) if window_minutes else 15.0
+        except (TypeError, ValueError):
+            dur = 15.0
+        # 15m: entry first ~4m, mid until last ~3m. 1H ETH: first 20m / last 15m.
         if mins_left is None:
             self.live.phase = "entry"
-        elif mins_left > 10.0:
-            self.live.phase = "entry"
-        elif mins_left > 5.0:
-            self.live.phase = "mid"
+        elif dur <= 20.0:
+            if mins_left > 11.0:
+                self.live.phase = "entry"
+            elif mins_left > 3.0:
+                self.live.phase = "mid"
+            else:
+                self.live.phase = "final"
         else:
-            self.live.phase = "final"
+            if mins_left > 40.0:
+                self.live.phase = "entry"
+            elif mins_left > 15.0:
+                self.live.phase = "mid"
+            else:
+                self.live.phase = "final"
 
         if up_pct is not None:
             tick = {"t": time.time(), "up": float(up_pct)}

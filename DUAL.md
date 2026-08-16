@@ -2,8 +2,8 @@
 
 ## What shipped
 - Two independent councils in one process
-- **Satoshi** → Kalshi hourly BTC (`KXBTCD`)
-- **Vitalik** → Kalshi hourly ETH (`KXETHD`)
+- **Satoshi** → Kalshi 15m BTC (`KXBTC15M`) — new brain, not a 1H clock change
+- **Vitalik** → Kalshi hourly ETH (`KXETHD`) — stays 1H. Do not start ETH 15m.
 - Independent `locked_call`, agents, weights, accuracy per table
 - Floor mode: side-by-side chairs + plaques
 - Vitalik portraits: green=UP, red=DOWN, white=WAIT
@@ -24,7 +24,7 @@
 
 ## Config
 - `ENABLE_ETH_TABLE=true`
-- `SERIES_BTC=KXBTCD` / `SERIES_ETH=KXETHD`
+- `SERIES_BTC=KXBTC15M` / `SERIES_ETH=KXETHD`
 - `ANALYSIS_INTERVAL_BTC=4` / `ANALYSIS_INTERVAL_ETH=4`
 - `DUAL_SEQUENTIAL=true`
 - `BEAST_MODE=false` by default (enable in Settings if you want hotter)

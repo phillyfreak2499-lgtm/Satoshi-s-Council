@@ -5958,14 +5958,29 @@ function drawCandleChart() {
     return parseStampMs(c.t != null ? c.t : c.open_time);
   }
 
+  function cryptoWindowLabel(tableKey, ts) {
+    const m = (ts && ts.market) || {};
+    const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
+    if (/KXBTC15M/i.test(series) || tableKey === "bitcoin" || tableKey === "btc") return "15M WINDOW";
+    if (/KXETHD/i.test(series) || tableKey === "ethereum" || tableKey === "eth") return "1H WINDOW";
+    const mins = Number(m.window_minutes);
+    if (Number.isFinite(mins) && mins <= 20) return "15M WINDOW";
+    return "1H WINDOW";
+  }
+
   function hourWindowMs(ts) {
     const m = (ts && ts.market) || {};
     const lc = (ts && (ts.locked_call || (ts.decision && ts.decision.locked_call))) || {};
     const close = parseStampMs(m.close_time || lc.close_time);
-    if (close) return { start: close - 3600000, end: close };
+    const mins = Number(m.window_minutes);
+    const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
+    const dur = (/KXBTC15M/i.test(series) || (Number.isFinite(mins) && mins <= 20))
+      ? 15 * 60 * 1000
+      : 60 * 60 * 1000;
+    if (close) return { start: close - dur, end: close };
     const now = Date.now();
-    const start = Math.floor(now / 3600000) * 3600000;
-    return { start, end: start + 3600000 };
+    const start = Math.floor(now / dur) * dur;
+    return { start, end: start + dur };
   }
 
   function xAtTime(candles, tMs, pad, w) {
@@ -6153,7 +6168,7 @@ function drawCandleChart() {
       setPairTargetChip(canvas, "");
       return;
     }
-    setPairWindowChip(canvas, "1H WINDOW");
+    setPairWindowChip(canvas, cryptoWindowLabel(tableKey, ts));
     if (candles.length < 2) {
       setPairTargetChip(canvas, "");
       const ctx0 = fitCanvas(canvas);
@@ -6679,7 +6694,13 @@ function drawCandleChart() {
       if (seats) seats.textContent = "SIBYL · PIT · VEIL · MARBLE";
       return true;
     }
-    if (ledLabel) ledLabel.textContent = "1H WINDOW";
+    if (ledLabel) {
+      const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
+      const st = (typeof tableState === "function") ? tableState(focus) : null;
+      ledLabel.textContent = (typeof cryptoWindowLabel === "function")
+        ? cryptoWindowLabel(focus, st)
+        : (focus === "ethereum" ? "1H WINDOW" : "15M WINDOW");
+    }
     if (atsStrip) atsStrip.hidden = true;
     if (atsSport) atsSport.hidden = true;
     if (oraStrip) oraStrip.hidden = true;
@@ -10153,7 +10174,8 @@ function drawCandleChart() {
         display = mm + ":" + ss;
       } else {
         const now = Date.now();
-        const bucket = 60 * 60 * 1000; // hourly window fallback
+        const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
+        const bucket = (focus === "ethereum") ? (60 * 60 * 1000) : (15 * 60 * 1000);
         const left = bucket - (now % bucket);
         const s = Math.floor(left / 1000);
         display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
@@ -10162,7 +10184,11 @@ function drawCandleChart() {
       const ledT = document.getElementById("ledWindowTime");
       if (ledT) ledT.textContent = display;
       const ledLabel = document.getElementById("ledWindowLabel");
-      if (ledLabel) ledLabel.textContent = "1H WINDOW";
+      if (ledLabel) {
+        const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
+        const st = (typeof tableState === "function") ? tableState(focus) : { market: m };
+        ledLabel.textContent = cryptoWindowLabel(focus, st || { market: m });
+      }
       const ledSub = document.getElementById("ledWindowSub");
       if (ledSub) {
         const sNum = secs != null && !isNaN(secs) ? Math.max(0, Math.floor(Number(secs))) : null;

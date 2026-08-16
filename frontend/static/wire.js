@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-btc-15m-retrain",
+    "at": "2026-08-17T00:05:00-05:00",
+    "title": "BTC 15m new brain — ETH stays 1H",
+    "why": "Zach Voice: BTC 15m is a new brain, not a clock change. Satoshi + Bitcoin Pattern Specialist + BTC seats retrain on official 15-minute books only. ETH stays 1H. A win is a 20–80 paper lock vs the official 15m settle. WAIT is a skip, not a miss. 99¢ chalk is not a training win. Chair confidence is not P(finish) until n settled 15m books exist. CoinGlass 1h stays off this book. Displayed BTC hits start clean — do not mix the old 1H 5–3 into the 15m scorecard. ETH displayed hits and ETH 1H bot memory stay. Vitalik / candle_eth stay hourly. Dedicated specialists stay asset-pure. Shared bots never final-lock. Hunter still feeds 1–3; Ares/Oracle paper-lock the best of three. Oracle laurel still. Cowboy Raijin. Signed WAIT stills + cache-bust. Gate CSS #41. Logo /council-mark.png. Header STILL. No new Floor chairs. Paper. Follower OFF. Live OFF."
+  },
+  {
     "id": "2026-08-16-eth-slate-ares-oracle-lock",
     "at": "2026-08-16T23:59:55-05:00",
     "title": "ETH slate wipe + Ares/Oracle lock the best of three",

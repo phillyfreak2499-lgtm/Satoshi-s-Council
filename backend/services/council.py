@@ -156,6 +156,10 @@ class Council:
             await self.store.ensure_eth_display_reset()
         except Exception as e:
             logger.debug(f"ETH display reset skip: {e}")
+        try:
+            await self.store.ensure_btc_15m_display_reset()
+        except Exception as e:
+            logger.debug(f"BTC 15m display reset skip: {e}")
         # Seed multi-window memory from recent settled calls
         try:
             rows = []
@@ -693,7 +697,12 @@ class Council:
                         mins_left = parse_mins_left(close_t)
                     except Exception:
                         mins_left = None
-            self.wm.on_tick(ticker, up_pct, price, mins_left)
+            try:
+                from backend.learning.btc15m import window_minutes_for
+                _wmins = window_minutes_for(asset=self.asset, ticker=ticker)
+            except Exception:
+                _wmins = 15.0 if self.asset == "btc" else 60.0
+            self.wm.on_tick(ticker, up_pct, price, mins_left, window_minutes=_wmins)
             # Reflect Chair entry if already locked this window
             if getattr(self.leader, "_entry_dir", None) and not self.wm.live.entry_dir:
                 self.wm.set_entry(
@@ -892,8 +901,17 @@ class Council:
                 regime_features["open_time"] = open_t
             win_mins = window_minutes_from_times(open_t, ct_id)
             if win_mins is None:
-                win_mins = 60.0  # KXBTCD / KXETHD hourly
+                try:
+                    from backend.learning.btc15m import window_minutes_for
+                    win_mins = window_minutes_for(
+                        asset=self.asset,
+                        ticker=ticker,
+                        series=regime_features.get("series_ticker"),
+                    )
+                except Exception:
+                    win_mins = 15.0 if self.asset == "btc" else 60.0
             regime_features["window_minutes"] = win_mins
+            regime_features["asset"] = self.asset
             # Bid-ask spread in cents for Chair gate (top-of-book, not mid alone)
             try:
                 bid = market_data.get("kalshi_yes_bid")
@@ -1230,6 +1248,7 @@ class Council:
                 "down_pct": down_pct,
                 "close_time": close_time,
                 "mins_left": market_data.get("mins_left"),
+                "window_minutes": (regime_features or {}).get("window_minutes"),
                 "seconds_left": (float(market_data["mins_left"]) * 60.0) if market_data.get("mins_left") is not None else None,
                 # Kalshi settlement threshold (YES if asset finishes above this)
                 "kalshi_target": _lock_strike,

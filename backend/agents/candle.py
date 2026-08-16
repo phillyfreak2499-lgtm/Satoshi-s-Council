@@ -228,10 +228,10 @@ class BitcoinPatternSpecialist(_AssetPatternSpecialist):
 
     name = "candle_btc"
     book_asset = "btc"
-    lookback = 60
-    body_ratio_bar = 0.65
-    ret5_bar = 0.0008
-    ret15_bar = 0.0025
+    lookback = 24  # 15m book: window + a short prior, not a 1H 60-bar clone
+    body_ratio_bar = 0.62
+    ret5_bar = 0.0006
+    ret15_bar = 0.0018
     wick_rej = 0.55
     mean_rev_boost = 8
     streak_boost = 5

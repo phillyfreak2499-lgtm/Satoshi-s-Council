@@ -60,7 +60,22 @@ class SessionTodSpecialist(BaseSpecialist):
         else:
             now = datetime.now(timezone.utc)
         hour = now.hour
+        weekday = now.weekday()
         name, bias, activity = _session_for(hour)
+        try:
+            from backend.learning.btc15m import is_15m_window
+            fifteen = is_15m_window(
+                market_data.get("window_minutes"),
+                market_data.get("ticker") or market_data.get("kalshi_ticker"),
+                market_data.get("series_ticker"),
+                market_data.get("asset"),
+            )
+        except Exception:
+            fifteen = False
+        # Weekend 15m books are choppier — dampen session force, do not invent a side.
+        if fifteen and weekday >= 5:
+            activity = max(0.35, activity * 0.82)
+            bias *= 0.55
 
         mins_left = market_data.get("mins_left")
         try:
@@ -71,6 +86,7 @@ class SessionTodSpecialist(BaseSpecialist):
         features = {
             "session": name,
             "hour_utc": hour,
+            "weekday": weekday,
             "bias": round(bias, 3),
             "activity": round(activity, 2),
             "mins_left": mins_left_f,

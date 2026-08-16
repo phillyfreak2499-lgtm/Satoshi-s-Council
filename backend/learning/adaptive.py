@@ -996,7 +996,8 @@ class AdaptiveLearner:
         root = Path(getattr(_s, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
         root.mkdir(parents=True, exist_ok=True)
         if path is None:
-            tag = getattr(self, "asset", None) or "btc"
+            from backend.learning.btc15m import learner_brain_tag
+            tag = learner_brain_tag(getattr(self, "asset", None) or "btc")
             path = root / f"council-learning-{tag}.json"
         else:
             path = Path(path)
@@ -1055,8 +1056,10 @@ class AdaptiveLearner:
         from backend.config import settings as _s
         root = Path(getattr(_s, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
         if path is None:
-            tag = getattr(self, "asset", None) or "btc"
+            from backend.learning.btc15m import learner_brain_tag
+            tag = learner_brain_tag(getattr(self, "asset", None) or "btc")
             path = root / f"council-learning-{tag}.json"
+            # Never fall back to council-learning-btc.json (1H weights) for the 15m brain.
         else:
             path = Path(path)
         if not path.exists():
@@ -1460,6 +1463,21 @@ class AdaptiveLearner:
             direction = str(row.get("direction") or "").upper()
             settle_reason = str(row.get("settle_reason") or "")
             votes = row.get("agent_votes") or {}
+            if str(getattr(self, "asset", "") or "").lower() in ("btc", "bitcoin", "btc15m"):
+                try:
+                    from backend.learning.btc15m import is_btc_15m_ticker, paper_lock_score_skip
+                    tick = row.get("ticker")
+                    if tick and not is_btc_15m_ticker(tick):
+                        continue
+                    if paper_lock_score_skip(
+                        ticker=tick,
+                        open_price=row.get("open_price"),
+                        side_ask=row.get("side_ask"),
+                        direction=direction,
+                    ) in ("chalk_skip", "band_skip", "no_entry_odds"):
+                        continue
+                except Exception:
+                    pass
             if direction == "WAIT" or settle_reason == "wait_finish":
                 y = row.get("y_finish")
                 if y not in ("UP", "DOWN"):
