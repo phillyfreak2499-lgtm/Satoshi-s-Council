@@ -145,6 +145,26 @@ class SplitAndSeriesTests(unittest.TestCase):
         self.assertEqual(live_ct.astimezone(ET).minute, 15)
         self.assertEqual(official_y_finish({"status": "finalized", "result": "yes"}), "UP")
 
+    def test_path_pnl_save_replaces_finish_era_brain(self):
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(settings, "DATA_DIR", td):
+                path = Path(td) / "council-learning-btc15m.json"
+                path.write_text(
+                    json.dumps({
+                        "updates": 6346,
+                        "weights": {"candle_btc": 0.2},
+                        "backfill": {"tag": "backfill_15m", "windows_graded": 6330},
+                    }),
+                    encoding="utf-8",
+                )
+                brain = AdaptiveLearner(asset="btc")
+                brain.updates = 12
+                brain.backfill = {"tag": "backfill_15m", "score": "realized_paper_pnl", "windows_graded": 12}
+                brain.save(path)
+                saved = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(saved["updates"], 12)
+                self.assertEqual(saved["backfill"]["score"], "realized_paper_pnl")
+
     def test_brains_are_separate(self):
         self.assertEqual(learner_brain_tag("btc"), "btc15m")
         self.assertEqual(learner_brain_tag("eth"), "eth")

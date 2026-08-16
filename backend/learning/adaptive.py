@@ -1088,11 +1088,29 @@ class AdaptiveLearner:
                 except Exception:
                     pass
             if disk_updates > int(self.updates or 0):
-                logger.warning(
-                    f"Refusing to overwrite brain {path.name} "
-                    f"(disk updates={disk_updates} > memory={self.updates})"
+                disk_score = ""
+                try:
+                    disk_score = str(((prev or {}).get("backfill") or {}).get("score") or "")
+                except Exception:
+                    disk_score = ""
+                mem_score = ""
+                if isinstance(getattr(self, "backfill", None), dict):
+                    mem_score = str(self.backfill.get("score") or "")
+                replace_finish = (
+                    mem_score == "realized_paper_pnl"
+                    and disk_score != "realized_paper_pnl"
+                    and str(getattr(self, "asset", "") or "").lower() in ("btc", "bitcoin", "btc15m")
                 )
-                return
+                if not replace_finish:
+                    logger.warning(
+                        f"Refusing to overwrite brain {path.name} "
+                        f"(disk updates={disk_updates} > memory={self.updates})"
+                    )
+                    return
+                logger.info(
+                    f"Replacing finish-era {path.name} with path P&L brain "
+                    f"(disk updates={disk_updates})"
+                )
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def load(self, path: "Path | None" = None) -> bool:
