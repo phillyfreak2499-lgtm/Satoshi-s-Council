@@ -156,6 +156,10 @@ class Council:
             await self.store.ensure_eth_display_reset()
         except Exception as e:
             logger.debug(f"ETH display reset skip: {e}")
+        try:
+            await self.store.ensure_btc_15m_display_reset()
+        except Exception as e:
+            logger.debug(f"BTC 15m display reset skip: {e}")
         # Seed multi-window memory from recent settled calls
         try:
             rows = []
@@ -233,7 +237,10 @@ class Council:
                 st = self.latest_state or {}
                 mkt = st.get("market") or {}
                 dec = (st.get("decision") or {}).get("direction")
-                hot = dec in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD", "SWAP")
+                hot = dec in (
+                    "UP", "DOWN", "UP_HOLD", "DOWN_HOLD", "SWAP",
+                    "BOTH", "LONG_UP", "LONG_DOWN", "REDUCE_UP", "REDUCE_DOWN",
+                )
                 div = mkt.get("spot_divergence_bps") or 0
                 if float(div) >= 8:
                     hot = True
@@ -630,6 +637,13 @@ class Council:
                 if side not in ("UP", "DOWN"):
                     continue
                 ticker = row.get("ticker") or ""
+                try:
+                    from backend.learning.btc15m import is_btc_15m_ticker
+                    if ticker and is_btc_15m_ticker(ticker):
+                        continue
+                except Exception:
+                    if str(ticker).upper().startswith("KXBTC15M"):
+                        continue
                 conf = int(row.get("confidence") or 70)
                 up = row.get("entry_side_pct") or row.get("open_price")
                 self.leader._set_window_lock(
@@ -644,6 +658,46 @@ class Council:
                 break
         except Exception as e:
             logger.debug(f"lock restore skip ({self.asset}): {e}")
+
+    def _attach_path_context(
+        self,
+        market_data: Dict[str, Any],
+        ticker: str | None,
+        close_time: str | None,
+    ) -> None:
+        """Inject the live 15m path book so specialists keep gathering all 15 minutes."""
+        if not ticker:
+            return
+        try:
+            from backend.learning.btc15m import is_btc_15m_ticker
+            if not is_btc_15m_ticker(ticker):
+                return
+        except Exception:
+            if not str(ticker).upper().startswith("KXBTC15M"):
+                return
+        market_data["ticker"] = ticker
+        if close_time:
+            market_data["close_time"] = close_time
+        try:
+            market_data["path_book"] = self.leader.path_book_snapshot(ticker, close_time) or {}
+        except Exception:
+            market_data.setdefault("path_book", {})
+        try:
+            from backend.learning.btc15m_path import is_chalk, real_yes_no_asks
+            km = market_data.get("kalshi_market") or {}
+            yes, no = real_yes_no_asks(
+                yes_ask=market_data.get("kalshi_yes_ask") or km.get("yes_ask") or market_data.get("yes_ask"),
+                no_ask=market_data.get("kalshi_no_ask") or km.get("no_ask") or market_data.get("no_ask"),
+                yes_bid=market_data.get("kalshi_yes_bid") or km.get("yes_bid"),
+                no_bid=market_data.get("kalshi_no_bid") or km.get("no_bid"),
+            )
+            market_data["path_quotes"] = {
+                "yes_ask": yes,
+                "no_ask": no,
+                "chalk": bool(is_chalk(yes) or is_chalk(no)),
+            }
+        except Exception:
+            market_data.setdefault("path_quotes", {})
 
     async def analyze_once(self) -> Dict[str, Any]:
         try:
@@ -693,9 +747,27 @@ class Council:
                         mins_left = parse_mins_left(close_t)
                     except Exception:
                         mins_left = None
-            self.wm.on_tick(ticker, up_pct, price, mins_left)
-            # Reflect Chair entry if already locked this window
-            if getattr(self.leader, "_entry_dir", None) and not self.wm.live.entry_dir:
+            try:
+                from backend.learning.btc15m import window_minutes_for
+                _wmins = window_minutes_for(asset=self.asset, ticker=ticker)
+            except Exception:
+                _wmins = 15.0 if self.asset == "btc" else 60.0
+            self.wm.on_tick(ticker, up_pct, price, mins_left, window_minutes=_wmins)
+            # ETH 1H: stamp Chair lock so mid/final specialists hold entry.
+            # BTC 15m: Chair lock is a path book — keep specialists live the full window.
+            stamp_entry = True
+            try:
+                from backend.learning.btc15m import is_btc_15m_ticker
+                if ticker and is_btc_15m_ticker(ticker):
+                    stamp_entry = False
+            except Exception:
+                if ticker and str(ticker).upper().startswith("KXBTC15M"):
+                    stamp_entry = False
+            if (
+                stamp_entry
+                and getattr(self.leader, "_entry_dir", None)
+                and not self.wm.live.entry_dir
+            ):
                 self.wm.set_entry(
                     self.leader._entry_dir,
                     int(getattr(self.leader, "_entry_conf", 0) or 0),
@@ -774,6 +846,8 @@ class Council:
         if self.law.is_locked():
             self.law.note_window(ticker)
 
+        self._attach_path_context(market_data, ticker, close_time)
+
         signals: List = []
         quorum_agent = next((a for a in self.agents if a.name == "quorum"), None)
         # BEAST: evaluate all non-quorum specialists in parallel
@@ -824,6 +898,12 @@ class Council:
                 logger.error(f"Quorum agent failed: {e}")
                 from backend.agents.base import AgentSignal
                 signals.append(AgentSignal("quorum", "WAIT", 0, f"Error: {e}", "quorum", muted=True))
+
+        try:
+            from backend.agents.base import shape_path_signals
+            shape_path_signals(signals, market_data)
+        except Exception as e:
+            logger.debug(f"path signal shape skip: {e}")
 
         # Guardian updates
         guardian = next((a for a in self.agents if a.name == "guardian"), None)
@@ -892,8 +972,17 @@ class Council:
                 regime_features["open_time"] = open_t
             win_mins = window_minutes_from_times(open_t, ct_id)
             if win_mins is None:
-                win_mins = 60.0  # KXBTCD / KXETHD hourly
+                try:
+                    from backend.learning.btc15m import window_minutes_for
+                    win_mins = window_minutes_for(
+                        asset=self.asset,
+                        ticker=ticker,
+                        series=regime_features.get("series_ticker"),
+                    )
+                except Exception:
+                    win_mins = 15.0 if self.asset == "btc" else 60.0
             regime_features["window_minutes"] = win_mins
+            regime_features["asset"] = self.asset
             # Bid-ask spread in cents for Chair gate (top-of-book, not mid alone)
             try:
                 bid = market_data.get("kalshi_yes_bid")
@@ -938,15 +1027,23 @@ class Council:
                 regime_features["up_pct"] = up_pct
             if down_pct is not None:
                 regime_features["down_pct"] = down_pct
-            # Paper-fill at the real ask + playable mid band
+            # Paper-fill at the real ask, not mid. Implied NO ask = 100 − yes bid.
             yb = odds_to_cents(market_data.get("kalshi_yes_bid"))
             ya = odds_to_cents(market_data.get("kalshi_yes_ask"))
+            nb = odds_to_cents(market_data.get("kalshi_no_bid"))
+            na = odds_to_cents(market_data.get("kalshi_no_ask"))
             if yb is not None:
                 regime_features["yes_bid"] = yb
             if ya is not None:
                 regime_features["yes_ask"] = ya
-            if yb is not None:
-                regime_features["no_ask"] = 100.0 - yb
+            elif nb is not None:
+                regime_features["yes_ask"] = max(1.0, min(99.0, 100.0 - nb))
+            if nb is not None:
+                regime_features["no_bid"] = nb
+            if na is not None:
+                regime_features["no_ask"] = na
+            elif yb is not None:
+                regime_features["no_ask"] = max(1.0, min(99.0, 100.0 - yb))
             if yb is not None and ya is not None:
                 regime_features["yes_mid"] = (yb + ya) / 2.0
             elif up_pct is not None:
@@ -1230,6 +1327,7 @@ class Council:
                 "down_pct": down_pct,
                 "close_time": close_time,
                 "mins_left": market_data.get("mins_left"),
+                "window_minutes": (regime_features or {}).get("window_minutes"),
                 "seconds_left": (float(market_data["mins_left"]) * 60.0) if market_data.get("mins_left") is not None else None,
                 # Kalshi settlement threshold (YES if asset finishes above this)
                 "kalshi_target": _lock_strike,
@@ -1352,7 +1450,13 @@ class Council:
                 )
             except Exception as e:
                 logger.debug(f"WAIT flush skip: {e}")
-        if locked and direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+        if locked and (
+            direction in (
+                "UP", "DOWN", "UP_HOLD", "DOWN_HOLD",
+                "BOTH", "LONG_UP", "LONG_DOWN", "SWAP",
+            )
+            or bool(decision.get("path_book"))
+        ):
             self._wait_snapshot = {"ticker": ticker, "close_time": close_time, "locked": True}
             return
         tick = ticker or (f"WAIT-{self.asset}-{(close_time or '')[:16]}" if close_time else None)
@@ -1440,6 +1544,7 @@ class Council:
         learned = 0
         wait_learned = 0
         FINISH = {"finish_match", "finish_miss"}
+        path_buf = []
         for row in reversed(recent):  # chronological
             rid = row.get("id")
             if rid is None or rid in self._last_learned_ids:
@@ -1448,6 +1553,16 @@ class Council:
             direction = str(row.get("direction") or "").upper()
             outcome = row.get("y_finish") or row.get("actual_outcome") or row.get("outcome")
             votes = row.get("agent_votes") or {}
+            try:
+                from backend.learning.btc15m import is_btc_15m_ticker
+                from backend.learning.btc15m_path import is_path_settle_reason
+                if is_btc_15m_ticker(row.get("ticker")):
+                    if is_path_settle_reason(settle_reason):
+                        path_buf.append(row)
+                    self._last_learned_ids.add(rid)
+                    continue
+            except Exception:
+                pass
             # BTC WAIT shadow is a parallel paper bin — do not train Chair lock weights from it.
             if is_btc_shadow_row(row):
                 self._last_learned_ids.add(rid)
@@ -1498,6 +1613,37 @@ class Council:
             self._last_learned_ids.add(rid)
             if learned >= int(max_learn):
                 break
+        if path_buf and hasattr(self.learner, "learn_from_path_pnl"):
+            grouped: Dict[tuple, list] = {}
+            for row in path_buf:
+                key = (str(row.get("ticker") or ""), str(row.get("close_time") or ""))
+                grouped.setdefault(key, []).append(row)
+            for legs in grouped.values():
+                net = 0.0
+                votes: Dict[str, Any] = {}
+                held = set()
+                reg = None
+                for leg in legs:
+                    try:
+                        net += float(leg.get("paper_pnl") or 0.0)
+                    except (TypeError, ValueError):
+                        pass
+                    votes.update(leg.get("agent_votes") or {})
+                    d = str(leg.get("direction") or "").upper()
+                    if d in ("UP", "DOWN"):
+                        held.add(d)
+                    reg = reg or leg.get("regime") or leg.get("regime_key")
+                cut = set()
+                try:
+                    from backend.learning.btc15m_path import cut_sides_from_path_legs
+                    cut = cut_sides_from_path_legs(legs)
+                except Exception:
+                    cut = set()
+                if votes:
+                    self.learner.learn_from_path_pnl(
+                        votes, net, held, regime=reg, count_as_lock=False, cut_sides=cut
+                    )
+                    learned += 1
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:
             keep = set(sorted(self._last_learned_ids)[-300:])

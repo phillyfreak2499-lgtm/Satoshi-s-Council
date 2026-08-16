@@ -775,7 +775,7 @@ class FrontFocusWeatherDeskTests(unittest.TestCase):
         self.assertIn("body[data-focus-table=\"front\"] .chart-card.chart-crypto-funding", CSS)
         pair = JS.split("function drawPairCandles", 1)[1].split("function drawChartBtc()", 1)[0]
         self.assertIn("isFrontTable(focusTable)", pair)
-        self.assertIn('setPairWindowChip(canvas, "1H WINDOW")', JS)
+        self.assertIn("setPairWindowChip(canvas, cryptoWindowLabel(tableKey, ts))", JS)
         self.assertIn('setPairWindowChip(canvas, "")', pair)
         view = JS.split("function getViewState()", 1)[1].split("function deskLockSnapshot", 1)[0]
         self.assertIn('isFrontTable(focusTable)', view)

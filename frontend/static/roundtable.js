@@ -775,9 +775,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function wxTone(dir) {
     const w = String(dir || "WAIT").toUpperCase();
-    if (w === "ABOVE" || w === "BETWEEN" || w === "UP" || w === "UP_HOLD" || w === "YES") return "UP";
-    if (w === "BELOW" || w === "DOWN" || w === "DOWN_HOLD" || w === "NO") return "DOWN";
+    if (w === "ABOVE" || w === "BETWEEN" || w === "UP" || w === "UP_HOLD" || w === "YES" || w === "LONG_UP" || w === "REDUCE_UP" || w === "FLAT_UP") return "UP";
+    if (w === "BELOW" || w === "DOWN" || w === "DOWN_HOLD" || w === "NO" || w === "LONG_DOWN" || w === "REDUCE_DOWN" || w === "FLAT_DOWN") return "DOWN";
+    if (w === "BOTH" || w === "FLAT_ALL") return "BOTH";
+    if (w === "SWAP") return "SWAP";
     return "WAIT";
+  }
+  function chairLockDir(dir, lc) {
+    if (lc && lc.path_book && lc.locked) return true;
+    const d = String(dir || "").toUpperCase();
+    return d === "UP" || d === "DOWN" || d === "BOTH" || d === "LONG_UP" || d === "LONG_DOWN"
+      || d === "SWAP" || d === "UP_HOLD" || d === "DOWN_HOLD"
+      || d === "ABOVE" || d === "BELOW" || d === "BETWEEN";
   }
   function frontClockOf(board) {
     return (board && board.clock) || {};
@@ -1540,8 +1549,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       } catch (e) {}
       return d === "UP" || d === "DOWN" ? d : d.slice(0, 12);
     }
-    if (d === "UP" || d === "UP_HOLD" || d === "YES" || d === "COVER" || d === "OVER" || d === "HOME") return "UP";
-    if (d === "DOWN" || d === "DOWN_HOLD" || d === "NO" || d === "NO-COVER" || d === "UNDER" || d === "AWAY") return "DOWN";
+    if (d === "UP" || d === "UP_HOLD" || d === "LONG_UP" || d === "REDUCE_UP" || d === "FLAT_UP" || d === "YES" || d === "COVER" || d === "OVER" || d === "HOME") return "UP";
+    if (d === "DOWN" || d === "DOWN_HOLD" || d === "LONG_DOWN" || d === "REDUCE_DOWN" || d === "FLAT_DOWN" || d === "NO" || d === "NO-COVER" || d === "UNDER" || d === "AWAY") return "DOWN";
+    if (d === "BOTH" || d === "FLAT_ALL") return "BOTH";
     if (d === "ABOVE" || d === "BELOW" || d === "BETWEEN") return d;
     return d.slice(0, 10);
   }
@@ -4838,7 +4848,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const isGlitch = now < glitchUntil;
     // Dim floor specialists slightly when Chair has locked (table is the hero)
     const _flc = (state && (state.locked_call || (state.decision && state.decision.locked_call))) || null;
-    const floorLocked = !!( _flc && _flc.locked && _flc.direction && (_flc.direction === "UP" || _flc.direction === "DOWN") );
+    const floorLocked = !!( _flc && _flc.locked && chairLockDir(_flc.direction, _flc) );
     const floorAlpha = floorLocked ? 0.55 : 1.0;
 
     order.forEach((name, i) => {
@@ -4941,7 +4951,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
     // Prefer locked_call so portrait matches the LOCKED plaque after the single call
     const _lc = (state.locked_call || (state.decision && state.decision.locked_call) || null);
-    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN" || _lc.direction === "ABOVE" || _lc.direction === "BELOW" || _lc.direction === "BETWEEN") );
+    const _hasLock = !!( _lc && _lc.locked && chairLockDir(_lc.direction, _lc) );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const waitFloor = floorLikeMode() && !_hasLock;
@@ -4950,8 +4960,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse * (0.90 + 0.10 * chairMood.lean);
     const scL = strongColor(leaderDir);
     const eyeGlow =
-      leaderDir === "UP" || leaderDir === "UP_HOLD" || leaderDir === "COVER" || leaderDir === "OVER" || leaderDir === "HOME" ? "rgba(0, 255, 100, 0.85)" :
-      leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" || leaderDir === "NO-COVER" || leaderDir === "UNDER" || leaderDir === "AWAY" ? "rgba(255, 40, 70, 0.85)" :
+      leaderDir === "UP" || leaderDir === "UP_HOLD" || leaderDir === "LONG_UP" || leaderDir === "COVER" || leaderDir === "OVER" || leaderDir === "HOME" ? "rgba(0, 255, 100, 0.85)" :
+      leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" || leaderDir === "LONG_DOWN" || leaderDir === "NO-COVER" || leaderDir === "UNDER" || leaderDir === "AWAY" ? "rgba(255, 40, 70, 0.85)" :
+      leaderDir === "BOTH" || leaderDir === "SWAP" || leaderDir === "FLAT_ALL" ? "rgba(240, 193, 74, 0.85)" :
       "rgba(220, 235, 255, 0.75)";
 
     // Soft aura matching call — loud seats glow, WAIT Chair leans back
@@ -5253,16 +5264,36 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const streak = (acc && acc.streak) || 0;
     const label = (acc && acc.label) || (pct != null ? `${correct}/${total} · ${pct}%` : `${correct}/${total} · —`);
     const pctText = pct != null ? `${pct}%` : "—";
+    const pathBoard = acc && acc.path_scoreboard;
+    const pathMode = !!(pathBoard && (focusTable === "bitcoin" || acc.finish_only === false));
     let verdict = (acc && acc.verdict) || "COLLECTING";
-    if (!total) verdict = (typeof isFrontTable === "function" && isFrontTable(focusTable))
-      ? "FINISH-ONLY · WAITING ON DFW CLI"
-      : "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    if (!total) {
+      if (typeof isFrontTable === "function" && isFrontTable(focusTable))
+        verdict = "FINISH-ONLY · WAITING ON DFW CLI";
+      else if (pathMode || focusTable === "bitcoin")
+        verdict = "PATH P&L · WAITING ON FILLS";
+      else
+        verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    }
 
     if (accuracyPct) accuracyPct.textContent = pctText;
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
-    if (detailEl) detailEl.textContent = (!total)
-      ? ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""))
-      : (`${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : ""));
+    if (detailEl) {
+      if (!total) {
+        detailEl.textContent = (pathMode || focusTable === "bitcoin")
+          ? ("path P&L · 0 settled windows" + (pending ? ` · ${pending} open` : ""))
+          : ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""));
+      } else if (pathMode && pathBoard) {
+        const d = pathBoard.dual || {};
+        const s = pathBoard.single || {};
+        detailEl.textContent = `${correct}✓ · ${wrong}✗ · path P&L`
+          + (pathBoard.realized_pnl != null ? ` ${pathBoard.realized_pnl}` : "")
+          + ` · dual ${d.n || 0} · single ${s.n || 0}`
+          + (pending ? ` · ${pending} open` : "");
+      } else {
+        detailEl.textContent = `${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : "");
+      }
+    }
     if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
     checkWinStreakCelebrate(acc);
     if (callLogMeta) callLogMeta.textContent = label;
@@ -5278,18 +5309,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (hrTotal) hrTotal.textContent = String(total);
     if (hrPending) hrPending.textContent = String(pending);
 
-    // Path tally: avg peak favorable move on wins (peak − entry Kalshi %)
+    // Path tally: BTC 15m = avg edge captured; ETH = peak favorable move on wins
+    const hrPath = document.getElementById("hrPath");
     const hrPathAvg = document.getElementById("hrPathAvg");
     const hrEntryAvg = document.getElementById("hrEntryAvg");
+    const pathLabs = document.querySelectorAll("#hrPath .hr-path-lab");
+    const pathSub = document.querySelector("#hrPath .hr-path-sub");
     const pathWins = acc && (acc.avg_path_wins != null ? acc.avg_path_wins
       : (acc.path_tally && acc.path_tally.avg_wins));
     const entryAvg = acc && (acc.avg_entry_pct != null ? acc.avg_entry_pct
       : (acc.path_tally && acc.path_tally.avg_entry));
+    if (hrPath) {
+      hrPath.title = pathMode
+        ? "Average leftover/edge captured on path fills · dual vs single"
+        : "Average peak Kalshi move on winning calls (peak − entry)";
+    }
+    if (pathLabs[0]) pathLabs[0].textContent = pathMode ? "AVG EDGE" : "AVG PATH";
+    if (pathSub) pathSub.textContent = pathMode ? "captured" : "on wins";
+    if (pathLabs[1]) pathLabs[1].textContent = pathMode ? "DUAL/SGL" : "ENTRY";
     if (hrPathAvg) {
-      hrPathAvg.textContent = pathWins != null ? ((pathWins >= 0 ? "+" : "") + Number(pathWins).toFixed(1) + " pts") : "—";
+      if (pathMode && pathBoard && pathBoard.avg_edge_cents != null) {
+        const e = Number(pathBoard.avg_edge_cents);
+        hrPathAvg.textContent = (e >= 0 ? "+" : "") + e.toFixed(1) + "¢";
+      } else if (!pathMode && pathWins != null) {
+        hrPathAvg.textContent = (pathWins >= 0 ? "+" : "") + Number(pathWins).toFixed(1) + " pts";
+      } else {
+        hrPathAvg.textContent = "—";
+      }
     }
     if (hrEntryAvg) {
-      hrEntryAvg.textContent = entryAvg != null ? (Number(entryAvg).toFixed(1) + "%") : "—";
+      if (pathMode && pathBoard) {
+        const d = pathBoard.dual || {};
+        const s = pathBoard.single || {};
+        hrEntryAvg.textContent = (d.n || 0) + "d/" + (s.n || 0) + "s";
+      } else {
+        hrEntryAvg.textContent = entryAvg != null ? (Number(entryAvg).toFixed(1) + "%") : "—";
+      }
     }
 
     const l20 = acc && acc.last_20;
@@ -5958,14 +6013,29 @@ function drawCandleChart() {
     return parseStampMs(c.t != null ? c.t : c.open_time);
   }
 
+  function cryptoWindowLabel(tableKey, ts) {
+    const m = (ts && ts.market) || {};
+    const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
+    if (/KXBTC15M/i.test(series) || tableKey === "bitcoin" || tableKey === "btc") return "15M WINDOW";
+    if (/KXETHD/i.test(series) || tableKey === "ethereum" || tableKey === "eth") return "1H WINDOW";
+    const mins = Number(m.window_minutes);
+    if (Number.isFinite(mins) && mins <= 20) return "15M WINDOW";
+    return "1H WINDOW";
+  }
+
   function hourWindowMs(ts) {
     const m = (ts && ts.market) || {};
     const lc = (ts && (ts.locked_call || (ts.decision && ts.decision.locked_call))) || {};
     const close = parseStampMs(m.close_time || lc.close_time);
-    if (close) return { start: close - 3600000, end: close };
+    const mins = Number(m.window_minutes);
+    const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
+    const dur = (/KXBTC15M/i.test(series) || (Number.isFinite(mins) && mins <= 20))
+      ? 15 * 60 * 1000
+      : 60 * 60 * 1000;
+    if (close) return { start: close - dur, end: close };
     const now = Date.now();
-    const start = Math.floor(now / 3600000) * 3600000;
-    return { start, end: start + 3600000 };
+    const start = Math.floor(now / dur) * dur;
+    return { start, end: start + dur };
   }
 
   function xAtTime(candles, tMs, pad, w) {
@@ -6153,7 +6223,7 @@ function drawCandleChart() {
       setPairTargetChip(canvas, "");
       return;
     }
-    setPairWindowChip(canvas, "1H WINDOW");
+    setPairWindowChip(canvas, cryptoWindowLabel(tableKey, ts));
     if (candles.length < 2) {
       setPairTargetChip(canvas, "");
       const ctx0 = fitCanvas(canvas);
@@ -6679,7 +6749,13 @@ function drawCandleChart() {
       if (seats) seats.textContent = "SIBYL · PIT · VEIL · MARBLE";
       return true;
     }
-    if (ledLabel) ledLabel.textContent = "1H WINDOW";
+    if (ledLabel) {
+      const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
+      const st = (typeof tableState === "function") ? tableState(focus) : null;
+      ledLabel.textContent = (typeof cryptoWindowLabel === "function")
+        ? cryptoWindowLabel(focus, st)
+        : (focus === "ethereum" ? "1H WINDOW" : "15M WINDOW");
+    }
     if (atsStrip) atsStrip.hidden = true;
     if (atsSport) atsSport.hidden = true;
     if (oraStrip) oraStrip.hidden = true;
@@ -6953,7 +7029,13 @@ function drawCandleChart() {
     let total = stats.total;
     let pct = stats.pct;
     let tag = "finish-only";
-    if (total === 0 && (Number(focusAcc.total) || 0) > 0) {
+    const btcPath = focusTable === "bitcoin" || !!(focusAcc && (focusAcc.path_scoreboard || focusAcc.finish_only === false));
+    if (btcPath) {
+      hits = Number(focusAcc.correct) || 0;
+      total = Number(focusAcc.total) || 0;
+      pct = focusAcc.accuracy_pct != null ? Number(focusAcc.accuracy_pct) : (total ? (hits / total) * 100 : null);
+      tag = "path P&L";
+    } else if (total === 0 && (Number(focusAcc.total) || 0) > 0) {
       hits = Number(focusAcc.correct) || Number(focusAcc.hits) || 0;
       total = Number(focusAcc.total) || 0;
       pct = total ? (hits / total) * 100 : null;
@@ -6983,8 +7065,9 @@ function drawCandleChart() {
       ctx.fillStyle = "rgba(120,140,160,0.7)";
       ctx.font = "11px Orbitron";
       ctx.textAlign = "center";
-      ctx.fillText("0/0 finish-only", canvas.width / 2, canvas.height / 2);
-      if (meta) meta.textContent = "0/0 finish-only";
+      const zeroTxt = btcPath ? "0/0 path P&L" : "0/0 finish-only";
+      ctx.fillText(zeroTxt, canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = zeroTxt;
       return;
     }
     const spark = series.accuracy.filter(p => p && p.n > 0 && Number.isFinite(p.pct));
@@ -7295,15 +7378,29 @@ function drawCandleChart() {
       const data = await r.json();
       const el = document.getElementById("paperAutoSummary");
       if (el) {
-        el.textContent = (asset.toUpperCase()) + " auto · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0);
+        if (asset === "btc" && data.path_scoreboard) {
+          const ps = data.path_scoreboard;
+          const d = ps.dual || {};
+          const s = ps.single || {};
+          el.textContent = "BTC path P&L · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0)
+            + " · edge " + (ps.avg_edge_cents != null ? ps.avg_edge_cents : "—")
+            + " · dual " + (d.n||0) + " · single " + (s.n||0);
+        } else {
+          el.textContent = (asset.toUpperCase()) + " auto · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0);
+        }
       }
       const list = document.getElementById("paperAutoList");
       if (list && Array.isArray(data.recent)) {
         list.innerHTML = data.recent.slice(0, 12).map(row => {
-          const ok = row.correct ? "RIGHT" : "WRONG";
-          const col = row.correct ? "#39ff14" : "#ff2d55";
+          const pathRow = row.status === "path" || (asset === "btc" && data.path_scoreboard);
+          const ok = pathRow
+            ? (row.status === "path" ? "PATH" : (row.correct ? "WIN" : (row.correct === false ? "LOSS" : "PATH")))
+            : (row.correct ? "RIGHT" : "WRONG");
+          const col = row.correct ? "#39ff14" : (row.status === "path" ? "#ffd166" : "#ff2d55");
           return '<div class="paper-auto-row" style="color:'+col+'">' + ok + " · " + (row.direction||"") + " · " + (row.ticker||"") + " · " + (row.pnl!=null?row.pnl:"") + "</div>";
-        }).join("") || "<div class=\"paper-auto-row\">No finish-graded trades yet</div>";
+        }).join("") || (asset === "btc"
+          ? "<div class=\"paper-auto-row\">No path fills yet</div>"
+          : "<div class=\"paper-auto-row\">No finish-graded trades yet</div>");
       }
     } catch (e) {}
   }
@@ -10153,7 +10250,8 @@ function drawCandleChart() {
         display = mm + ":" + ss;
       } else {
         const now = Date.now();
-        const bucket = 60 * 60 * 1000; // hourly window fallback
+        const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
+        const bucket = (focus === "ethereum") ? (60 * 60 * 1000) : (15 * 60 * 1000);
         const left = bucket - (now % bucket);
         const s = Math.floor(left / 1000);
         display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
@@ -10162,7 +10260,11 @@ function drawCandleChart() {
       const ledT = document.getElementById("ledWindowTime");
       if (ledT) ledT.textContent = display;
       const ledLabel = document.getElementById("ledWindowLabel");
-      if (ledLabel) ledLabel.textContent = "1H WINDOW";
+      if (ledLabel) {
+        const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
+        const st = (typeof tableState === "function") ? tableState(focus) : { market: m };
+        ledLabel.textContent = cryptoWindowLabel(focus, st || { market: m });
+      }
       const ledSub = document.getElementById("ledWindowSub");
       if (ledSub) {
         const sNum = secs != null && !isNaN(secs) ? Math.max(0, Math.floor(Number(secs))) : null;
@@ -10554,25 +10656,25 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabScreensaver",
       title: "WHAT THIS IS",
-      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. Satoshi runs a dual-sided 15m path book (hold both / scale / cut / flip) scored on realized paper P&L. Vitalik still locks one high-quality ETH 1H paper call — UP or DOWN — inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
       mode: "art",
       target: "#tableStage",
       title: "GOAL CONTRACT",
-      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (book inside 10–90¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
+      body: "1. BTC 15m is path P&L — dual-sided scalp, not one irreversible directional lock. Kill the One-Call protocol on this book only.\n2. Hold both Up and Down when combined cost is attractive. Scale / cut / flip either leg the full 15 minutes. Direction: LONG_UP / LONG_DOWN / REDUCE / FLAT.\n3. Score realized paper P&L, not a close-direction hit. Dynamic sizing on the paper journal.\n4. ETH 1H stays one finish guess at the best available odds (10–90¢). WAIT preferred over low-edge noise.",
     },
     {
       mode: "art",
       target: "#finalDecision",
       title: "THE PLAQUE",
-      body: "The chair table plate is the live call: LOCK or WAIT, a plain direction, and the strike/window.\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
+      body: "BTC 15m plaque is the live path book: size Up, size Down, averages, next action, last sizing. Not FOLLOW THIS. irreversible is false.\n\nETH 1H plaque is still one LOCK or WAIT. Follower bots would poll /api/state locked_call — Follower stays OFF. When locked_call is null, there is no active call — stay flat or WAIT.",
     },
     {
       mode: "art",
       target: "#accuracyBadge",
       title: "HIT RATE",
-      body: "HIT RATE is Chair directional accuracy (WAIT excluded). Calls are graded on the Kalshi odds path, not only the final BTC print. Paper P&L is path-scaled. Only the single locked call per window is graded.",
+      body: "BTC 15m HIT RATE is windows with net paper P&L > 0 (WAIT excluded). Not a single UP/DOWN lock that matches the official settle. ETH 1H still grades the one locked finish call.",
     },
     {
       mode: "art",
@@ -10584,7 +10686,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: book must be inside 10–90¢. Never play 99¢ chalk.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
+      body: "1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT and keep gathering the full 15 minutes.\n2. Higher-ranked bots count more. Weights reward path P&L and risk control, not a Kalshi-settle hit.\n3. Chair requires confluence + pair affinity pointed at leftover.\n4. Odds gate: BTC 20–80 after vig. ETH 10–90¢. Never play 99¢ chalk. Fill at the real ask.\n5. BTC 15m: both legs, scale / cut / flip. No irreversible one-call lock. ETH 1H: first firm UP/DOWN that clears the gates is the single LOCKED call.\n6. Follower stays OFF. Live stays OFF.",
     },
     {
       mode: "floor",
@@ -10602,7 +10704,7 @@ function drawCandleChart() {
       mode: "paper",
       target: "#tabPaper",
       title: "PAPER",
-      body: "Practice scorecard. Paper-track expectancy before any size. Quality over quantity. One high-edge guess per window. This desk does not place real orders.",
+      body: "Practice scorecard. BTC 15m grades realized path P&L (scale-in, scale-out, dual-sided holds) with a sizing audit on each fill. Hard maxes beat Kelly. open_risk counts both legs. ETH 1H is still one high-edge guess per window. This desk does not place real orders. Follower OFF.",
     },
     {
       mode: "front",
@@ -12328,7 +12430,6 @@ function drawCandleChart() {
 
 /* ===== LIVE UPDATE PATCH ===== */
 (function () {
-  const ACCESS_PASSWORD = "Nakamoto"; // primary access code
   const passKey = "council_auth_ok";
 
   const DESK_INTRO_KEY = "council_desk_intro_played";
@@ -12479,19 +12580,37 @@ function drawCandleChart() {
         return;
       }
       const v = (input && input.value) || "";
-      if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
-        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
-        try { localStorage.removeItem(passKey); } catch (e) {}
-        window.__deskUnlockedThisPage = true;
-        if (err) err.classList.add("hidden");
-        // Fresh password entry → first-login choice, or the desk if already onboarded
-        showAppAfterAuth();
-      } else {
+      const fail = () => {
         if (err) {
           err.textContent = "Wrong password";
           err.classList.remove("hidden");
         }
-      }
+      };
+      if (tryUnlock.__busy) return;
+      tryUnlock.__busy = true;
+      fetch("/api/desk/unlock", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: v }),
+      }).then((r) => r.json().catch(function () { return {}; })).then((data) => {
+        if (input) input.value = "";
+        if (data && data.ok) {
+          try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+          try { localStorage.removeItem(passKey); } catch (e) {}
+          window.__deskUnlockedThisPage = true;
+          if (err) err.classList.add("hidden");
+          // Fresh password entry → first-login choice, or the desk if already onboarded
+          showAppAfterAuth();
+        } else {
+          fail();
+        }
+      }).catch(function () {
+        if (input) input.value = "";
+        fail();
+      }).finally(function () {
+        tryUnlock.__busy = false;
+      });
     };
     if (agree) agree.addEventListener("change", syncDeskGateSummon);
     syncDeskGateSummon();

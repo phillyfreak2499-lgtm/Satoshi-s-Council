@@ -436,6 +436,70 @@ class AdaptiveLearner:
             "backfill": dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {},
         }
 
+    def learn_from_path_pnl(
+        self,
+        agent_votes: Dict[str, Any],
+        net_pnl: Any,
+        held_sides: Any = None,
+        regime: str | None = None,
+        credit: float = 1.0,
+        count_as_lock: bool = False,
+        source: str | None = "path_pnl",
+        cut_sides: Any = None,
+    ) -> Dict[str, Any]:
+        """
+        Grade 15m seats on path P&L and risk control — not finish-direction hits.
+        LONG_* uses the with-book vs faded rule. REDUCE/FLAT credit cuts / losing books.
+        """
+        try:
+            pnl = float(net_pnl)
+        except (TypeError, ValueError):
+            return {}
+        held = {str(s).upper() for s in (held_sides or []) if str(s).upper() in ("UP", "DOWN")}
+        cut = {str(s).upper() for s in (cut_sides or []) if str(s).upper() in ("UP", "DOWN")}
+        if not held and not cut and abs(pnl) <= 1e-9:
+            return {}
+        from backend.agents.base import LEAN_DOWN, LEAN_UP, MANAGE_DOWN, MANAGE_UP, normalize_direction
+        # With-book seats → UP, faded seats → DOWN. Outcome is UP iff the path made money.
+        synth = "UP" if pnl > 0 else "DOWN"
+        remapped: Dict[str, Any] = {}
+        for name, vote in (agent_votes or {}).items():
+            if not isinstance(vote, dict):
+                remapped[name] = vote
+                continue
+            d = normalize_direction(vote.get("direction"))
+            if d in LEAN_UP:
+                side = "UP"
+                if held and side not in held:
+                    remapped[name] = {**vote, "direction": "DOWN"}
+                else:
+                    remapped[name] = {**vote, "direction": "UP"}
+            elif d in LEAN_DOWN:
+                side = "DOWN"
+                if held and side not in held:
+                    remapped[name] = {**vote, "direction": "DOWN"}
+                else:
+                    remapped[name] = {**vote, "direction": "UP"}
+            elif d in MANAGE_UP:
+                credited = ("UP" in cut) or (pnl <= 0)
+                remapped[name] = {**vote, "direction": synth if credited else ("DOWN" if synth == "UP" else "UP")}
+            elif d in MANAGE_DOWN:
+                credited = ("DOWN" in cut) or (pnl <= 0)
+                remapped[name] = {**vote, "direction": synth if credited else ("DOWN" if synth == "UP" else "UP")}
+            elif d == "FLAT_ALL":
+                credited = bool(cut) or pnl <= 0
+                remapped[name] = {**vote, "direction": synth if credited else ("DOWN" if synth == "UP" else "UP")}
+            else:
+                remapped[name] = vote
+        return self.learn_from_settled(
+            remapped,
+            synth,
+            regime=regime,
+            credit=credit,
+            count_as_lock=count_as_lock,
+            source=source or "path_pnl",
+        )
+
     def learn_from_settled(
         self,
         agent_votes: Dict[str, Any],
@@ -996,7 +1060,8 @@ class AdaptiveLearner:
         root = Path(getattr(_s, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
         root.mkdir(parents=True, exist_ok=True)
         if path is None:
-            tag = getattr(self, "asset", None) or "btc"
+            from backend.learning.btc15m import learner_brain_tag
+            tag = learner_brain_tag(getattr(self, "asset", None) or "btc")
             path = root / f"council-learning-{tag}.json"
         else:
             path = Path(path)
@@ -1042,11 +1107,29 @@ class AdaptiveLearner:
                 except Exception:
                     pass
             if disk_updates > int(self.updates or 0):
-                logger.warning(
-                    f"Refusing to overwrite brain {path.name} "
-                    f"(disk updates={disk_updates} > memory={self.updates})"
+                disk_score = ""
+                try:
+                    disk_score = str(((prev or {}).get("backfill") or {}).get("score") or "")
+                except Exception:
+                    disk_score = ""
+                mem_score = ""
+                if isinstance(getattr(self, "backfill", None), dict):
+                    mem_score = str(self.backfill.get("score") or "")
+                replace_finish = (
+                    mem_score == "realized_paper_pnl"
+                    and str(path.name).endswith("btc15m.json")
+                    and str(getattr(self, "asset", "") or "").lower() in ("btc", "bitcoin", "btc15m")
                 )
-                return
+                if not replace_finish:
+                    logger.warning(
+                        f"Refusing to overwrite brain {path.name} "
+                        f"(disk updates={disk_updates} > memory={self.updates})"
+                    )
+                    return
+                logger.info(
+                    f"Replacing finish-era {path.name} with path P&L brain "
+                    f"(disk updates={disk_updates})"
+                )
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def load(self, path: "Path | None" = None) -> bool:
@@ -1055,8 +1138,10 @@ class AdaptiveLearner:
         from backend.config import settings as _s
         root = Path(getattr(_s, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent.parent / "data"))
         if path is None:
-            tag = getattr(self, "asset", None) or "btc"
+            from backend.learning.btc15m import learner_brain_tag
+            tag = learner_brain_tag(getattr(self, "asset", None) or "btc")
             path = root / f"council-learning-{tag}.json"
+            # Never fall back to council-learning-btc.json (1H weights) for the 15m brain.
         else:
             path = Path(path)
         if not path.exists():
@@ -1363,12 +1448,19 @@ class AdaptiveLearner:
             if getattr(s, "agent_name", None) not in NON_VOTERS
             and not getattr(s, "muted", False)
         }
+        try:
+            from backend.agents.base import lean_side
+        except Exception:
+            lean_side = None  # type: ignore
         nudge = 0.0
         bits: List[str] = []
         loser_fade: Dict[str, float] = {}
         for ap in self.active_anti_pairs():
             w, l = ap["winner"], ap["loser"]
             dw, dl = dirs.get(w), dirs.get(l)
+            if lean_side:
+                dw = lean_side(dw) or dw
+                dl = lean_side(dl) or dl
             if dw not in ("UP", "DOWN") or dl not in ("UP", "DOWN"):
                 continue
             if dw == dl:
@@ -1401,10 +1493,18 @@ class AdaptiveLearner:
         if direction not in ("UP", "DOWN"):
             return 0.0, []
 
+        try:
+            from backend.agents.base import lean_side
+        except Exception:
+            lean_side = None  # type: ignore
         agreeing = [
             s.agent_name
             for s in signals
-            if getattr(s, "direction", None) == direction
+            if (
+                (lean_side(getattr(s, "direction", None)) == direction)
+                if lean_side
+                else getattr(s, "direction", None) == direction
+            )
             and s.agent_name not in NON_VOTERS
             and not getattr(s, "muted", False)
         ]
@@ -1456,10 +1556,67 @@ class AdaptiveLearner:
         # oldest first so learning order is chronological
         ordered = list(reversed(recent))
         n = 0
+        path_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        rest: List[Dict[str, Any]] = []
         for row in ordered:
+            tick = row.get("ticker")
+            try:
+                from backend.learning.btc15m import is_btc_15m_ticker
+                from backend.learning.btc15m_path import is_path_settle_reason
+                if tick and is_btc_15m_ticker(tick):
+                    reason = str(row.get("settle_reason") or "")
+                    if is_path_settle_reason(reason):
+                        key = (str(tick), str(row.get("close_time") or ""))
+                        path_groups.setdefault(key, []).append(row)
+                    continue
+            except Exception:
+                pass
+            rest.append(row)
+        for _key, legs in path_groups.items():
+            net = 0.0
+            votes: Dict[str, Any] = {}
+            held = set()
+            reg = None
+            for leg in legs:
+                try:
+                    net += float(leg.get("paper_pnl") or 0.0)
+                except (TypeError, ValueError):
+                    pass
+                votes.update(leg.get("agent_votes") or {})
+                d = str(leg.get("direction") or "").upper()
+                if d in ("UP", "DOWN"):
+                    held.add(d)
+                reg = reg or leg.get("regime") or leg.get("regime_key")
+            cut = set()
+            try:
+                from backend.learning.btc15m_path import cut_sides_from_path_legs
+                cut = cut_sides_from_path_legs(legs)
+            except Exception:
+                cut = set()
+            if votes:
+                self.learn_from_path_pnl(
+                    votes, net, held, regime=reg, count_as_lock=False, cut_sides=cut
+                )
+                n += 1
+        for row in rest:
             direction = str(row.get("direction") or "").upper()
             settle_reason = str(row.get("settle_reason") or "")
             votes = row.get("agent_votes") or {}
+            if str(getattr(self, "asset", "") or "").lower() in ("btc", "bitcoin", "btc15m"):
+                try:
+                    from backend.learning.btc15m import is_btc_15m_ticker, paper_lock_score_skip
+                    tick = row.get("ticker")
+                    if tick and not is_btc_15m_ticker(tick):
+                        continue
+                    if paper_lock_score_skip(
+                        ticker=tick,
+                        open_price=row.get("open_price"),
+                        side_ask=row.get("side_ask"),
+                        direction=direction,
+                    ) in ("chalk_skip", "band_skip", "no_entry_odds"):
+                        continue
+                except Exception:
+                    pass
             if direction == "WAIT" or settle_reason == "wait_finish":
                 y = row.get("y_finish")
                 if y not in ("UP", "DOWN"):

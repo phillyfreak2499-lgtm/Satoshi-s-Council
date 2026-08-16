@@ -20,6 +20,7 @@ from backend.services.council import Council
 from backend.services.dual import DualOrchestrator
 from backend.config import settings
 from backend.services.runtime_settings import runtime_settings
+from backend.services.desk_access import unlock_result as desk_unlock_result
 from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
 from backend.services.follower_gate import WRONG as FOLLOWER_WRONG
 from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerRuntime
@@ -1098,6 +1099,22 @@ async def follower_bundle_js(request: Request):
         media_type="application/javascript",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.post("/api/desk/unlock")
+async def desk_unlock(request: Request):
+    """
+    Shared desk gate. One answer: ok or 'Wrong password'.
+    Never echo submitted values. Fail closed if env is unset.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    submitted = body.get("password") or body.get("code") or ""
+    return desk_unlock_result(str(submitted))
 
 
 @app.post("/api/follower/unlock")

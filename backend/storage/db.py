@@ -32,6 +32,26 @@ from loguru import logger
 # restarts do not keep wiping new Vitalik hits. Bot memory stays on disk.
 ETH_DISPLAY_RESET_ID = "2026-08-16-eth-display-reset"
 ETH_DISPLAY_RESET_AT = "2026-08-16T13:20:00+00:00"
+try:
+    from backend.learning.btc15m import (
+        BTC_15M_DISPLAY_RESET_AT,
+        BTC_15M_DISPLAY_RESET_ID,
+        is_btc_15m_ticker,
+        is_btc_1h_ticker,
+        paper_lock_score_skip,
+    )
+except Exception:  # pragma: no cover
+    BTC_15M_DISPLAY_RESET_ID = "2026-08-16-btc-15m-display-reset"
+    BTC_15M_DISPLAY_RESET_AT = "2026-08-16T15:50:00+00:00"
+
+    def is_btc_15m_ticker(ticker):  # type: ignore
+        return str(ticker or "").upper().startswith("KXBTC15M")
+
+    def is_btc_1h_ticker(ticker):  # type: ignore
+        return str(ticker or "").upper().startswith("KXBTCD")
+
+    def paper_lock_score_skip(**kwargs):  # type: ignore
+        return None
 
 
 def _json_field(raw: Any) -> Any:
@@ -77,15 +97,16 @@ class WindowCall(Base):
     """
     Graded Chair call (scalp path on Kalshi odds) or a closed-hour WAIT sample.
     Multiple calls allowed inside one 15m window.
-    direction: UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT
+    direction: UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT | LONG_* | BOTH (display)
+    15m BTC rows are path fills (both doors may stay open). ETH stays one-lock.
     WAIT samples are stored so the Chairs learn from hours they sat out.
-    Locks grade on official Kalshi finish. WAIT paper P&L stays $0.
+    ETH locks grade on official Kalshi finish. 15m scores realized path P&L.
     """
     __tablename__ = "window_calls"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # Non-unique: many scalp calls can share a ticker/window
     ticker: Mapped[str] = mapped_column(String(80), index=True)
-    direction: Mapped[str] = mapped_column(String(16))  # UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT
+    direction: Mapped[str] = mapped_column(String(20))  # UP | DOWN | LONG_UP | WAIT | …
     confidence: Mapped[int] = mapped_column(Integer, default=0)
     entry_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     open_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # entry Kalshi side %
@@ -115,6 +136,7 @@ class WindowCall(Base):
     seat_split: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     book_depth: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     would_lock_if_strict: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sizing: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 
@@ -164,6 +186,7 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN seat_split TEXT",
                 "ALTER TABLE window_calls ADD COLUMN book_depth TEXT",
                 "ALTER TABLE window_calls ADD COLUMN would_lock_if_strict INTEGER",
+                "ALTER TABLE window_calls ADD COLUMN sizing TEXT",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -206,6 +229,37 @@ class PerformanceStore:
             session.add(rec)
             await session.commit()
             signal_id = rec.id
+
+        # BTC 15m path fills (dual / scale / cut / flip). ETH stays one-call.
+        path_fills = decision.get("path_fills") if isinstance(decision.get("path_fills"), list) else []
+        if market_ticker and path_fills and is_btc_15m_ticker(market_ticker):
+            lc = decision.get("locked_call") if isinstance(decision.get("locked_call"), dict) else {}
+            await self.record_path_fills(
+                ticker=market_ticker,
+                fills=path_fills,
+                close_time=close_time or (lc or {}).get("close_time"),
+                entry_price=entry_price,
+                confidence=int(decision.get("confidence") or 0),
+                regime_key=decision.get("regime_key"),
+                asset=asset,
+                floor_strike=lock_time_strike(
+                    ticker=market_ticker,
+                    floor_strike=(
+                        decision.get("floor_strike")
+                        or (lc or {}).get("floor_strike")
+                        or kalshi_target
+                    ),
+                ),
+                p_finish=decision.get("p_finish") if decision.get("p_finish") is not None else (lc or {}).get("p_finish"),
+                ev_cents=decision.get("ev_cents") if decision.get("ev_cents") is not None else (lc or {}).get("ev_cents"),
+                sizing=decision.get("sizing") or (lc or {}).get("sizing"),
+            )
+            return signal_id
+
+        # 15m BTC tickets only come from path_fills. A sit with an open
+        # UP/DOWN book must not fall through to the one-call recorder.
+        if market_ticker and is_btc_15m_ticker(market_ticker):
+            return signal_id
 
         # Record scalp path-call (full or 1/4 HOLD). SWAP grades underlying lean as full side.
         direction = decision.get("direction")
@@ -252,17 +306,215 @@ class PerformanceStore:
         return str(asset).lower() in ("eth", "ethereum")
 
     @staticmethod
+    def _is_btc_1h_display_row(r: Any) -> bool:
+        """Hourly KXBTCD rows — not the 15m BTC scorecard."""
+        return is_btc_1h_ticker(getattr(r, "ticker", None))
+
+    @staticmethod
+    def _is_btc_15m_display_row(r: Any) -> bool:
+        return is_btc_15m_ticker(getattr(r, "ticker", None))
+
+    @staticmethod
+    def _btc15m_windows_for_scorecard(rows: List[Any]) -> List[Any]:
+        """One scorecard row per 15m window. Win = net paper P&L > 0."""
+        from types import SimpleNamespace
+        from backend.learning.btc15m_path import group_path_windows
+        from backend.agents.chair_gates import is_shadow_row as _shadow
+
+        usable = [r for r in rows if not _shadow(r)]
+        windows = []
+        for _key, legs, net in group_path_windows(usable):
+            if abs(float(net or 0.0)) <= 1e-9:
+                continue
+            head = legs[0]
+            win = float(net) > 0.0
+            up_stake = 0.0
+            down_stake = 0.0
+            edges: List[float] = []
+            for x in legs:
+                d = str(getattr(x, "direction", None) or "").upper()
+                try:
+                    st = float(getattr(x, "paper_stake", 0) or 0)
+                except (TypeError, ValueError):
+                    st = 0.0
+                if d in ("UP", "UP_HOLD", "LONG_UP"):
+                    up_stake += st
+                elif d in ("DOWN", "DOWN_HOLD", "LONG_DOWN"):
+                    down_stake += st
+                ev = getattr(x, "ev_cents", None)
+                if ev is None:
+                    blob = _json_field(getattr(x, "sizing", None))
+                    if isinstance(blob, dict):
+                        ev = blob.get("edge_cents")
+                try:
+                    if ev is not None:
+                        edges.append(float(ev))
+                except (TypeError, ValueError):
+                    pass
+            windows.append(SimpleNamespace(
+                id=getattr(head, "id", None),
+                ticker=getattr(head, "ticker", None),
+                direction="UP" if win else "DOWN",
+                actual_outcome="UP" if win else "DOWN",
+                y_finish=getattr(head, "y_finish", None),
+                correct=1 if win else 0,
+                settle_reason="path_pnl",
+                paper_pnl=round(float(net), 2),
+                paper_stake=sum(float(getattr(x, "paper_stake", 0) or 0) for x in legs),
+                paper_side=getattr(head, "paper_side", None),
+                entry_price=getattr(head, "entry_price", None),
+                open_price=getattr(head, "open_price", None),
+                exit_price=getattr(head, "exit_price", None),
+                path_move_pct=getattr(head, "path_move_pct", None),
+                win_pct=getattr(head, "win_pct", None),
+                called_at=getattr(head, "called_at", None),
+                settled_at=getattr(head, "settled_at", None),
+                close_time=getattr(head, "close_time", None),
+                confidence=getattr(head, "confidence", 0),
+                shadow=0,
+                vetoed=0,
+                side_ask=getattr(head, "side_ask", None),
+                wait_reason=None,
+                would_lock_if_strict=0,
+                seat_split=None,
+                book_depth=None,
+                regime_key=getattr(head, "regime_key", None),
+                p_finish=getattr(head, "p_finish", None),
+                ev_cents=getattr(head, "ev_cents", None),
+                floor_strike=getattr(head, "floor_strike", None),
+                asset=getattr(head, "asset", "btc"),
+                dual_sided=bool(up_stake > 0 and down_stake > 0),
+                up_stake=round(up_stake, 4),
+                down_stake=round(down_stake, 4),
+                edge_cents=round(sum(edges) / len(edges), 4) if edges else None,
+                sizing=_json_field(getattr(head, "sizing", None)),
+            ))
+        windows.sort(key=lambda r: (r.settled_at or r.called_at or "", r.id or 0))
+        return windows
+
+    @staticmethod
+    def _path_pnl_scoreboard(windows: List[Any]) -> Dict[str, Any]:
+        """Realized path P&L scoreboard. Finish-direction hit-rate is not the badge."""
+        rows = list(windows or [])
+        realized = round(sum(float(getattr(r, "paper_pnl", 0) or 0) for r in rows), 2)
+        edges = []
+        for r in rows:
+            ev = getattr(r, "edge_cents", None)
+            if ev is None:
+                ev = getattr(r, "ev_cents", None)
+            try:
+                if ev is not None:
+                    edges.append(float(ev))
+            except (TypeError, ValueError):
+                pass
+        buckets = [
+            {"lo": 0.0, "hi": 10.0, "n": 0, "wins": 0, "win_rate": None, "pnl": 0.0},
+            {"lo": 10.0, "hi": 20.0, "n": 0, "wins": 0, "win_rate": None, "pnl": 0.0},
+            {"lo": 20.0, "hi": 40.0, "n": 0, "wins": 0, "win_rate": None, "pnl": 0.0},
+        ]
+        for r in rows:
+            try:
+                stake = float(getattr(r, "paper_stake", 0) or 0)
+            except (TypeError, ValueError):
+                stake = 0.0
+            try:
+                pnl = float(getattr(r, "paper_pnl", 0) or 0)
+            except (TypeError, ValueError):
+                pnl = 0.0
+            won = bool(getattr(r, "correct", 0) == 1)
+            if stake < 10.0:
+                b = buckets[0]
+            elif stake < 20.0:
+                b = buckets[1]
+            else:
+                b = buckets[2]
+            b["n"] += 1
+            b["wins"] += 1 if won else 0
+            b["pnl"] = round(b["pnl"] + pnl, 2)
+        for b in buckets:
+            b["win_rate"] = round(100.0 * b["wins"] / b["n"], 1) if b["n"] else None
+        dual_rows = [r for r in rows if getattr(r, "dual_sided", False)]
+        single_rows = [r for r in rows if not getattr(r, "dual_sided", False)]
+
+        def _side_stats(group: List[Any]) -> Dict[str, Any]:
+            n = len(group)
+            wins = sum(1 for r in group if getattr(r, "correct", 0) == 1)
+            pnl = round(sum(float(getattr(r, "paper_pnl", 0) or 0) for r in group), 2)
+            return {
+                "n": n,
+                "wins": wins,
+                "win_rate": round(100.0 * wins / n, 1) if n else None,
+                "pnl": pnl,
+            }
+
+        return {
+            "realized_pnl": realized,
+            "avg_edge_cents": round(sum(edges) / len(edges), 2) if edges else None,
+            "n": len(rows),
+            "size_buckets": buckets,
+            "dual": _side_stats(dual_rows),
+            "single": _side_stats(single_rows),
+            "score": "realized_paper_pnl",
+        }
+
+    @staticmethod
+    def _finish_hit_secondary(windows: List[Any]) -> Dict[str, Any]:
+        """Majority-stake side vs official settle. Secondary only — not the badge."""
+        hits = 0
+        n = 0
+        for w in windows or []:
+            y = getattr(w, "y_finish", None)
+            if y not in ("UP", "DOWN"):
+                continue
+            try:
+                up_s = float(getattr(w, "up_stake", 0) or 0)
+                down_s = float(getattr(w, "down_stake", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if abs(up_s - down_s) <= 1e-9:
+                continue
+            maj = "UP" if up_s > down_s else "DOWN"
+            n += 1
+            if maj == y:
+                hits += 1
+        return {
+            "hits": hits,
+            "n": n,
+            "pct": round(100.0 * hits / n, 1) if n else None,
+            "secondary": True,
+        }
+
+    @staticmethod
+    def paper_row_status(correct: Any, actual_outcome: Any, settle_reason: Any) -> str:
+        reason = str(settle_reason or "")
+        if actual_outcome is None:
+            return "open"
+        if reason.startswith("path_"):
+            if correct == 1:
+                return "win"
+            if correct == 0:
+                return "loss"
+            return "path"
+        if correct == 1:
+            return "win"
+        return "loss"
+
+    @staticmethod
     def _counting_lock_clause():
         """Chair locks that count — ETH/BTC shadows are a parallel tape."""
         return or_(WindowCall.shadow.is_(None), WindowCall.shadow == 0)
 
     @staticmethod
     def _grade_side(direction: str) -> Optional[str]:
-        if direction in ("UP", "UP_HOLD"):
-            return "UP"
-        if direction in ("DOWN", "DOWN_HOLD"):
-            return "DOWN"
-        return None
+        try:
+            from backend.agents.base import side_of
+            return side_of(direction)
+        except Exception:
+            if direction in ("UP", "UP_HOLD", "LONG_UP", "REDUCE_UP", "FLAT_UP"):
+                return "UP"
+            if direction in ("DOWN", "DOWN_HOLD", "LONG_DOWN", "REDUCE_DOWN", "FLAT_DOWN"):
+                return "DOWN"
+            return None
 
     @staticmethod
     def _win_pts(direction: str) -> float:
@@ -346,6 +598,131 @@ class PerformanceStore:
         if up is not None:
             return max(0.0, min(100.0, 100.0 - float(up)))
         return None
+
+    async def record_path_fills(
+        self,
+        *,
+        ticker: str,
+        fills: List[Dict[str, Any]],
+        close_time: str | None = None,
+        entry_price: float | None = None,
+        confidence: int = 0,
+        regime_key: str | None = None,
+        asset: str | None = None,
+        floor_strike: float | None = None,
+        p_finish: float | None = None,
+        ev_cents: float | None = None,
+        sizing: Any = None,
+    ) -> None:
+        """
+        Persist 15m path fills. Both sides may stay open. No one-call cap.
+        Cuts realize paper P&L now. Expiry marks leftover legs later.
+        """
+        if not ticker or not fills:
+            return
+        if not is_btc_15m_ticker(ticker):
+            return
+        now_iso = datetime.now(timezone.utc).isoformat()
+        floor_strike = lock_time_strike(ticker=ticker, floor_strike=floor_strike)
+        async with self.Session() as session:
+            for fill in fills:
+                if not isinstance(fill, dict):
+                    continue
+                kind = str(fill.get("fill_kind") or fill.get("action") or "").lower()
+                side = str(fill.get("side") or "").upper()
+                if side not in ("UP", "DOWN"):
+                    continue
+                if kind in ("cut", "flip_close"):
+                    result = await session.execute(
+                        select(WindowCall)
+                        .where(
+                            WindowCall.ticker == ticker,
+                            WindowCall.actual_outcome.is_(None),
+                            WindowCall.direction.in_((side, f"{side}_HOLD")),
+                            PerformanceStore._counting_lock_clause(),
+                        )
+                        .order_by(WindowCall.id.asc())
+                        .limit(1)
+                    )
+                    row = result.scalar_one_or_none()
+                    if row is None:
+                        continue
+                    row.actual_outcome = "PATH"
+                    row.settle_reason = "path_cut" if kind == "cut" else "path_flip"
+                    try:
+                        row.paper_pnl = float(fill.get("paper_pnl"))
+                    except (TypeError, ValueError):
+                        row.paper_pnl = 0.0
+                    try:
+                        if fill.get("exit_cents") is not None:
+                            row.exit_price = float(fill.get("exit_cents"))
+                    except (TypeError, ValueError):
+                        pass
+                    row.settled_at = now_iso
+                    row.correct = None
+                    continue
+                if kind not in ("open", "scale", "flip_open", "dual_open"):
+                    continue
+                if kind != "scale":
+                    existing = (
+                        await session.execute(
+                            select(WindowCall)
+                            .where(
+                                WindowCall.ticker == ticker,
+                                WindowCall.actual_outcome.is_(None),
+                                WindowCall.direction.in_((side, f"{side}_HOLD")),
+                                PerformanceStore._counting_lock_clause(),
+                            )
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if existing is not None:
+                        continue
+                try:
+                    entry_side = float(fill.get("entry_cents"))
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    stake = float(fill.get("stake") if fill.get("stake") is not None else self._default_stake(side))
+                except (TypeError, ValueError):
+                    stake = self._default_stake(side)
+                reason = {
+                    "dual_open": "path_dual",
+                    "scale": "path_scale",
+                    "flip_open": "path_flip",
+                    "open": "path_open",
+                }.get(kind)
+                row_sizing = fill.get("sizing") if isinstance(fill.get("sizing"), dict) else sizing
+                sizing_txt = None
+                if isinstance(row_sizing, dict):
+                    try:
+                        sizing_txt = json.dumps(row_sizing)
+                    except Exception:
+                        sizing_txt = None
+                elif isinstance(row_sizing, str) and row_sizing.strip():
+                    sizing_txt = row_sizing
+                session.add(WindowCall(
+                    ticker=ticker,
+                    direction=side,
+                    confidence=int(confidence or 0),
+                    entry_price=entry_price,
+                    open_price=entry_side,
+                    close_time=close_time,
+                    called_at=now_iso,
+                    win_pct=self._win_pts(side),
+                    path_move_pct=0.0,
+                    exit_price=entry_side,
+                    paper_stake=stake,
+                    paper_side=self._paper_side(side),
+                    regime_key=regime_key,
+                    asset=(asset or "btc"),
+                    floor_strike=float(floor_strike) if floor_strike is not None else None,
+                    p_finish=float(p_finish) if p_finish is not None else None,
+                    ev_cents=float(ev_cents) if ev_cents is not None else None,
+                    settle_reason=reason,
+                    sizing=sizing_txt,
+                ))
+            await session.commit()
 
     async def record_window_call(
         self,
@@ -982,6 +1359,35 @@ class PerformanceStore:
                     row.y_finish = y_finish
                 except Exception:
                     pass
+                skip = paper_lock_score_skip(
+                    ticker=row.ticker,
+                    open_price=row.open_price,
+                    side_ask=getattr(row, "side_ask", None),
+                    direction=row.direction,
+                )
+                if skip in ("chalk_skip", "band_skip", "no_entry_odds"):
+                    # Official finish is stored. Not a training win or miss.
+                    row.correct = None
+                    row.settle_reason = skip
+                    row.paper_pnl = 0.0
+                    row.settled_at = now.isoformat()
+                    settled_n += 1
+                    continue
+                if is_btc_15m_ticker(row.ticker) and not shadow:
+                    # Path P&L: mark leftover legs at 100/0. Not a directional hit.
+                    from backend.learning.btc15m_path import realized_pnl, settle_exit_cents
+                    exit_px = settle_exit_cents(side, y_finish)
+                    try:
+                        entry = float(row.open_price) if row.open_price is not None else 50.0
+                    except (TypeError, ValueError):
+                        entry = 50.0
+                    row.exit_price = exit_px
+                    row.paper_pnl = realized_pnl(stake, entry, exit_px)
+                    row.correct = None
+                    row.settled_at = now.isoformat()
+                    row.settle_reason = "path_pnl"
+                    settled_n += 1
+                    continue
                 row.correct = 1 if matched else 0
                 row.settled_at = now.isoformat()
                 row.settle_reason = grade.get("settle_reason") or (
@@ -1043,6 +1449,7 @@ class PerformanceStore:
             "would_lock_if_strict": bool(getattr(r, "would_lock_if_strict", 0)),
             "seat_split": _json_field(getattr(r, "seat_split", None)),
             "book_depth": _json_field(getattr(r, "book_depth", None)),
+            "sizing": _json_field(getattr(r, "sizing", None)),
         }
 
     async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
@@ -1094,18 +1501,32 @@ class PerformanceStore:
                     ]
             except Exception:
                 pass
-            # Finish-only: path / near_certain / partial / flipped do NOT count
-            # Also accept settled rows with outcome but missing reason (legacy → treat as finish)
-            FINISH = {"finish_match", "finish_miss"}
-            settled = [
-                r for r in settled
-                if self._grade_side(r.direction) in ("UP", "DOWN")
-                and (r.actual_outcome in ("UP", "DOWN"))
-                and (
-                    (r.settle_reason in FINISH)
-                    or (not r.settle_reason)  # legacy graded rows
-                )
-            ]
+            # 15m BTC scorecard: hide 1H KXBTCD 5–3. ETH slate stays on its own mark.
+            try:
+                want = (asset or "").lower()
+                if want in ("btc", "bitcoin"):
+                    settled = [r for r in settled if self._is_btc_15m_display_row(r)]
+                else:
+                    settled = [r for r in settled if not self._is_btc_1h_display_row(r)]
+            except Exception:
+                pass
+            want = (asset or "").lower()
+            if want in ("btc", "bitcoin"):
+                # Realized paper P&L windows — not finish_match directional hits.
+                settled = self._btc15m_windows_for_scorecard(settled)
+            else:
+                # Finish-only: path / near_certain / partial / flipped do NOT count
+                # Also accept settled rows with outcome but missing reason (legacy → treat as finish)
+                FINISH = {"finish_match", "finish_miss"}
+                settled = [
+                    r for r in settled
+                    if self._grade_side(r.direction) in ("UP", "DOWN")
+                    and (r.actual_outcome in ("UP", "DOWN"))
+                    and (
+                        (r.settle_reason in FINISH)
+                        or (not r.settle_reason)  # legacy graded rows
+                    )
+                ]
             all_finish = list(settled)
             # Chair locks that count. ETH shadows fill the ETH reliability bin only.
             # BTC shadows are a parallel paper bin — never mixed into sized-lock hit rate.
@@ -1142,6 +1563,10 @@ class PerformanceStore:
             wait_rows = (
                 await session.execute(select(WindowCall).where(*wait_q))
             ).scalars().all()
+            if (asset or "").lower() in ("btc", "bitcoin"):
+                wait_rows = [r for r in wait_rows if self._is_btc_15m_display_row(r)]
+            else:
+                wait_rows = [r for r in wait_rows if not self._is_btc_1h_display_row(r)]
             open_q = [WindowCall.actual_outcome.is_(None)]
             if ac is not None:
                 open_q.append(ac)
@@ -1289,7 +1714,7 @@ class PerformanceStore:
         btc_shadow_rows = [r for r in all_finish if is_btc_shadow_row(r)]
         btc_shadow_hits = sum(1 for r in btc_shadow_rows if r.correct == 1)
 
-        return {
+        payload = {
             # Lifetime primary stats
             "correct": correct,
             "total": total,
@@ -1385,6 +1810,17 @@ class PerformanceStore:
             "paper_path_scaled": bool(getattr(settings, "PAPER_PATH_SCALED", True)),
             "finish_only": True,
         }
+        want_asset = (asset or "").lower()
+        if want_asset in ("btc", "bitcoin"):
+            payload["finish_only"] = False
+            payload["score"] = "realized_paper_pnl"
+            payload["path_scoreboard"] = self._path_pnl_scoreboard(settled)
+            payload["finish_hit_rate"] = self._finish_hit_secondary(settled)
+            payload["grade_rule"] = (
+                "Win if net realized paper P&L > 0 across scale-in, scale-out, "
+                "and dual-sided holds. Finish-direction hit-rate is secondary only."
+            )
+        return payload
 
     async def get_lifetime_log(self, limit: int = 500, offset: int = 0) -> Dict[str, Any]:
         """Full paginated lifetime call log for audit / export."""
@@ -1427,6 +1863,11 @@ class PerformanceStore:
                     total = len(rows)
             except Exception:
                 pass
+            try:
+                rows = [r for r in rows if not self._is_btc_1h_display_row(r)]
+                total = len(rows)
+            except Exception:
+                pass
         acc = await self.get_accuracy()
         return {
             "total": total,
@@ -1465,6 +1906,10 @@ class PerformanceStore:
                     if not self._is_eth_display_row(r)
                     or (r.settled_at or r.called_at or "") >= eth_mark
                 ]
+        except Exception:
+            pass
+        try:
+            rows = [r for r in rows if not self._is_btc_1h_display_row(r)]
         except Exception:
             pass
 
@@ -1511,11 +1956,12 @@ class PerformanceStore:
                 "stake": stake,
                 "pnl": round(float(pnl), 2) if pnl is not None else None,
                 "correct": (bool(r.correct == 1) if r.correct is not None else None),
-                "status": "open" if r.actual_outcome is None else ("win" if r.correct == 1 else "loss"),
+                "status": self.paper_row_status(r.correct, r.actual_outcome, r.settle_reason),
                 "entry_side_pct": r.open_price,
                 "path_move_pct": r.path_move_pct,
                 "confidence": r.confidence,
                 "asset": (r.asset or ticker_asset(r.ticker)),
+                "sizing": _json_field(getattr(r, "sizing", None)),
             })
 
         def bucket_sum(pred):
@@ -1620,6 +2066,26 @@ class PerformanceStore:
                     continue
                 filtered.append(c)
             calls = filtered
+        if want == "btc":
+            acc = await self.get_accuracy(asset="btc")
+            ps = acc.get("path_scoreboard") or {}
+            path_rows = [
+                c for c in calls
+                if c.get("status") in ("win", "loss", "path") and c.get("pnl") is not None
+            ]
+            return {
+                "asset": "btc",
+                "wins": acc.get("correct") or 0,
+                "losses": acc.get("wrong") or 0,
+                "pnl": ps.get("realized_pnl") if ps.get("realized_pnl") is not None else (
+                    round(sum(float(c.get("pnl") or 0) for c in path_rows), 2) if path_rows else 0.0
+                ),
+                "score": "realized_paper_pnl",
+                "finish_only": False,
+                "path_scoreboard": ps,
+                "recent": path_rows[:20],
+                "open": [c for c in calls if c.get("status") == "open"][:20],
+            }
         settled = [
             c for c in calls
             if c.get("status") in ("win", "loss") and c.get("pnl") is not None
@@ -1709,6 +2175,8 @@ class PerformanceStore:
                     r for r in rows
                     if (r.asset or ticker_asset(r.ticker) or "").lower() == want
                 ]
+                if want in ("btc", "bitcoin"):
+                    rows = [r for r in rows if is_btc_15m_ticker(r.ticker)]
             rows = rows[: max(1, int(limit))]
             out = []
             for r in rows:
@@ -2213,6 +2681,47 @@ class PerformanceStore:
             "cleared": "eth_display",
         }
 
+    async def ensure_btc_15m_display_reset(self) -> Dict[str, Any]:
+        """Wipe displayed 1H BTC hits from the 15m scorecard.
+
+        Soft watermark under DATA_DIR. Does not delete window_calls.
+        Does not touch council-learning-eth.json or ETH displayed hits.
+        Does not load 1H BTC weights onto the 15m brain.
+        """
+        DATA = self._data_dir()
+        DATA.mkdir(parents=True, exist_ok=True)
+        p = DATA / "btc_15m_display_reset.json"
+        if p.exists():
+            try:
+                raw = json.loads(p.read_text(encoding="utf-8"))
+                if raw.get("id") == BTC_15M_DISPLAY_RESET_ID and raw.get("reset_at"):
+                    return {
+                        "ok": True,
+                        "reset_at": raw.get("reset_at"),
+                        "wrote": False,
+                        "id": BTC_15M_DISPLAY_RESET_ID,
+                        "cleared": "btc_15m_display",
+                    }
+            except Exception:
+                pass
+        payload = {
+            "id": BTC_15M_DISPLAY_RESET_ID,
+            "reset_at": BTC_15M_DISPLAY_RESET_AT,
+            "cleared": "btc_15m_display",
+            "paper": True,
+            "follower": False,
+            "live": False,
+        }
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        logger.info("BTC 15m displayed slate reset — 1H 5–3 hidden, ETH slate/brain stay")
+        return {
+            "ok": True,
+            "reset_at": BTC_15M_DISPLAY_RESET_AT,
+            "wrote": True,
+            "id": BTC_15M_DISPLAY_RESET_ID,
+            "cleared": "btc_15m_display",
+        }
+
     async def _reset_mark(self, kind: str) -> str | None:
         """Return ISO reset timestamp if a clear was requested for kind."""
         try:
@@ -2221,6 +2730,7 @@ class PerformanceStore:
                 "hit_rate": "hit_rate_reset.json",
                 "life_log": "life_log_reset.json",
                 "eth_display": "eth_display_reset.json",
+                "btc_15m_display": "btc_15m_display_reset.json",
             }
             p = DATA / names.get(str(kind or ""), "")
             if not p.name or not p.exists():

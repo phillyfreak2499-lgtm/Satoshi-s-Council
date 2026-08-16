@@ -284,11 +284,11 @@
     </header>
 
     <main id="mainTable">
-      <!-- LEFT: 1H WINDOW + LIFETIME. Docked at top of this column, not over the nav. -->
+      <!-- LEFT: window clock + LIFETIME. BTC 15m / ETH 1H. -->
       <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
-        <div id="windowLed" class="led-float led-window" aria-label="Hourly window countdown">
+        <div id="windowLed" class="led-float led-window" aria-label="Window countdown">
           <div class="led-bezel">
-            <div class="led-label" id="ledWindowLabel">1H WINDOW</div>
+            <div class="led-label" id="ledWindowLabel">15M WINDOW</div>
             <div id="ledWindowTime" class="led-digits led-time">--:--</div>
             <div class="led-foot" id="ledWindowSub">until close</div>
             <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
@@ -994,7 +994,7 @@
       </article>
       <div class="charts-pairs">
         <article class="chart-card chart-wide chart-pair chart-pair-btc">
-          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
+          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">15M WINDOW</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
           <canvas id="chartBtc"></canvas>
         </article>
         <article class="chart-card chart-wide chart-pair chart-pair-eth">

@@ -187,7 +187,7 @@ class WaitStoreTests(unittest.IsolatedAsyncioTestCase):
                 store = PerformanceStore()
                 await store.init()
                 created = await store.record_wait_sample(
-                    ticker="KXBTCD-26AUG1514-T100000.00",
+                    ticker="KXBTC15M-26AUG151400-00",
                     close_time="2026-08-15T18:00:00+00:00",
                     wait_reason="dead_book",
                     seat_split={"UP": 3, "DOWN": 2, "WAIT": 4, "total": 9},
@@ -198,7 +198,7 @@ class WaitStoreTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertTrue(created)
                 again = await store.record_wait_sample(
-                    ticker="KXBTCD-26AUG1514-T100000.00",
+                    ticker="KXBTC15M-26AUG151400-00",
                     close_time="2026-08-15T18:00:00+00:00",
                     wait_reason="dead_book",
                     asset="btc",
@@ -206,8 +206,8 @@ class WaitStoreTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(again)
                 n = await store.settle_expired_calls(
                     kalshi_results={
-                        "KXBTCD-26AUG1514-T100000.00": {
-                            "ticker": "KXBTCD-26AUG1514-T100000.00",
+                        "KXBTC15M-26AUG151400-00": {
+                            "ticker": "KXBTC15M-26AUG151400-00",
                             "status": "finalized",
                             "result": "yes",
                         }

@@ -146,8 +146,8 @@ def backfill_contract() -> Dict[str, Any]:
     return {
         "days": BACKFILL_DAYS,
         "window": f"last {BACKFILL_DAYS} days (same prune window as huddle)",
-        "series": list(BACKFILL_SERIES),
-        "assets": ["btc", "eth"],
+        "series": [SERIES_ETH],
+        "assets": ["eth"],
         "seats_rebuilt": [REBUILDABLE_CALLSIGNS[k] for k in REBUILDABLE_SEATS],
         "seats_rebuilt_keys": list(REBUILDABLE_SEATS),
         "seats_skipped": [
@@ -194,7 +194,7 @@ def print_contract(report: Dict[str, Any] | None = None) -> str:
     lines = [
         "90-day Kalshi seat backfill",
         f"Days pulled: {c['days']} (huddle prune window)",
-        f"Series: {', '.join(c['series'])} (BTC + ETH)",
+        f"Series: {', '.join(c['series'])} (ETH 1H only — BTC 15m is a separate pass)",
         f"Seats rebuilt: {', '.join(c['seats_rebuilt'])}",
         "Seats skipped: TAPE (live book), WHALE (live tape)",
         "CoinGlass hist: CARRY (funding), CHAIN (OI), CASCADE (liq) — 30m then 1h, never 1m.",
@@ -990,7 +990,9 @@ async def run_seat_backfill(
             "status": status,
         }
 
-    assets = ("btc", "eth")
+    # 1H pass is ETH only. BTC 15m is a separate brain (seat_backfill_15m).
+    # Do not merge KXBTCD hours into council-learning-btc15m.json.
+    assets = ("eth",)
     per: Dict[str, Any] = {}
     own_learners: List[AdaptiveLearner] = []
     for asset in assets:
@@ -1085,6 +1087,9 @@ async def maybe_run_boot_backfill(dual: Any) -> Dict[str, Any]:
     for c in getattr(dual, "_councils", lambda: [])():
         asset = getattr(c, "asset", None)
         if not asset:
+            continue
+        if str(asset).lower() in ("btc", "bitcoin", "btc15m"):
+            # BTC 15m brain is seat_backfill_15m. Do not hand the 15m learner to the 1H pass.
             continue
         learners[asset] = c.learner
         pipe = getattr(c, "pipeline", None)

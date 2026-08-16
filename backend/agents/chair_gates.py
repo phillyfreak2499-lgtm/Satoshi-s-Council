@@ -351,10 +351,17 @@ def filter_pattern_signals_for_asset(signals: Any, asset: Any) -> list:
 def close_time_from_kalshi_ticker(ticker: Any) -> Optional[datetime]:
     """
     KXBTCD-26AUG1415-T62999.99 → 15:00 America/New_York on 2026-08-14.
-    That is the official hourly close (19:00 UTC while EDT).
+    KXBTC15M-26AUG161200-00 → 12:00 America/New_York on 2026-08-16.
     """
     import re
     from zoneinfo import ZoneInfo
+
+    try:
+        from backend.learning.btc15m import close_time_from_15m_ticker, is_btc_15m_ticker
+        if is_btc_15m_ticker(ticker):
+            return close_time_from_15m_ticker(ticker)
+    except Exception:
+        pass
 
     m = re.search(r"-(\d{2})([A-Z]{3})(\d{2})(\d{2})(?:-|$)", str(ticker or ""), re.I)
     if not m:
@@ -504,6 +511,12 @@ def event_ticker_from_kalshi_ticker(ticker: Any) -> Optional[str]:
     text = str(ticker or "").strip()
     if not text:
         return None
+    try:
+        from backend.learning.btc15m import event_ticker_from_15m, is_btc_15m_ticker
+        if is_btc_15m_ticker(text):
+            return event_ticker_from_15m(text)
+    except Exception:
+        pass
     m = re.match(r"^(KX(?:BTC|ETH)D-\d{2}[A-Z]{3}\d{4})", text, re.I)
     if m:
         return m.group(1).upper()
@@ -696,6 +709,7 @@ def decide_open_lock_grade(
 WAIT_REASON_CODES = (
     "stale_quote",
     "first_10m",
+    "first_3m",
     "dead_book",
     "no_depth",
     "odds_outside_20_80",
@@ -736,6 +750,8 @@ def classify_wait_reason(
         return "stale_quote"
     if "first " in text and ("m of the hour" in text or "10m" in text or "first 10" in text):
         return "first_10m"
+    if "first " in text and ("3m" in text or "15m" in text):
+        return "first_3m"
     if "unknown book" in text:
         return "unknown_book"
     if "paper lock rate" in text or "paper-lock rate" in text or "locks today" in text:
@@ -1053,8 +1069,20 @@ def book_is_unknown(depth: Dict[str, Any] | None) -> bool:
     return bool(y0 and n0)
 
 
-def playable_band_cents() -> tuple[float, float]:
-    """Paper Chair YES-mid band. Single source: PLAYABLE_MID_MIN/MAX (10–90)."""
+def playable_band_cents(
+    asset: Any = None,
+    ticker: Any = None,
+    window_minutes: Any = None,
+    series: Any = None,
+) -> tuple[float, float]:
+    """Paper Chair YES-mid band. 15m BTC is 20–80; ETH 1H stays 10–90."""
+    try:
+        from backend.learning.btc15m import playable_band_cents_for
+        return playable_band_cents_for(
+            asset=asset, ticker=ticker, series=series, window_minutes=window_minutes,
+        )
+    except Exception:
+        pass
     try:
         from backend.config import settings
         lo = float(getattr(settings, "PLAYABLE_MID_MIN", 10.0))
@@ -1073,12 +1101,19 @@ def playable_band_label(lo: float | None = None, hi: float | None = None) -> str
     return f"{float(lo):.0f}–{float(hi):.0f}¢"
 
 
-def playable_yes_mid(yes_mid: Any, lo: float | None = None, hi: float | None = None) -> bool:
-    """Only play hours where YES mid is inside the 10–90¢ band."""
+def playable_yes_mid(
+    yes_mid: Any,
+    lo: float | None = None,
+    hi: float | None = None,
+    asset: Any = None,
+    ticker: Any = None,
+    window_minutes: Any = None,
+) -> bool:
+    """Only play books where YES mid is inside the Chair band (20–80 on 15m BTC)."""
     mid = odds_to_cents(yes_mid)
     if mid is None:
         return False
-    blo, bhi = playable_band_cents()
+    blo, bhi = playable_band_cents(asset=asset, ticker=ticker, window_minutes=window_minutes)
     if lo is None:
         lo = blo
     if hi is None:
@@ -1091,7 +1126,7 @@ def early_lock_blocked(
     window_minutes: Any = 60.0,
     no_lock_mins: float = 10.0,
 ) -> bool:
-    """No lock in the first `no_lock_mins` of the official hour."""
+    """No lock in the first `no_lock_mins` of the official window."""
     try:
         ml = float(mins_left)
         dur = float(window_minutes) if window_minutes else 60.0
@@ -1107,21 +1142,24 @@ def late_spot_decisive(
     mins_left: Any,
     hourly_vol_pct: float = 0.40,
     k: float = 1.0,
+    window_minutes: Any = 60.0,
 ) -> bool:
     """
-    Last-15 lock only if the 60s CFB (or ranked 60s) average vs strike
+    Late-window lock only if the 60s CFB (or ranked 60s) average vs strike
     already beats remaining vol. Pass the 60s average, not a last-tick wick.
     Missing spot/strike → not decisive (WAIT).
+    Scale remaining time by the official window (15m BTC vs 1H ETH).
     """
     try:
         px = float(spot)
         k0 = float(strike)
         ml = float(mins_left)
+        dur = float(window_minutes) if window_minutes else 60.0
     except (TypeError, ValueError):
         return False
-    if px <= 0 or k0 <= 0 or ml < 0:
+    if px <= 0 or k0 <= 0 or ml < 0 or dur <= 0:
         return False
-    remaining = max(1.0 / 60.0, min(1.0, ml / 60.0))
+    remaining = max(1.0 / 60.0, min(1.0, ml / dur))
     expected = float(hourly_vol_pct) / 100.0 * (remaining ** 0.5)
     gap = abs(px - k0) / k0
     return gap >= float(k) * expected
@@ -1132,19 +1170,26 @@ def dead_book_reason(
     side: str | None,
     yes_mid: Any = None,
     max_side: float | None = None,
+    ticker: Any = None,
+    asset: Any = None,
+    window_minutes: Any = None,
 ) -> Optional[str]:
     """
-    Skip dead hours: chosen side ≥ playable cap, mid outside 10–90, or a book we
-    actually measured that is empty / one-sided (99¢ / 1¢ wall).
+    Skip dead hours: chosen side ≥ playable cap, mid outside the Chair band,
+    or a book we actually measured that is empty / one-sided (99¢ / 1¢ wall).
+    15m BTC uses 20–80. ETH 1H stays 10–90.
 
     Null depth (both sides 0 / null / missing, not measured) is UNKNOWN.
     Do not auto-WAIT on unknown — that is not a dead book.
     """
+    lo, hi = playable_band_cents(asset=asset, ticker=ticker, window_minutes=window_minutes)
     if max_side is None:
-        _, max_side = playable_band_cents()
+        max_side = hi
     mid = odds_to_cents(yes_mid)
-    if mid is not None and not playable_yes_mid(mid):
-        return f"YES mid {mid:.0f}¢ outside {playable_band_label()}"
+    if mid is not None and not playable_yes_mid(
+        mid, lo=lo, hi=hi, asset=asset, ticker=ticker, window_minutes=window_minutes,
+    ):
+        return f"YES mid {mid:.0f}¢ outside {playable_band_label(lo, hi)}"
     if side not in ("UP", "DOWN"):
         return None
     if mid is not None:
@@ -2036,6 +2081,17 @@ def coinglass_quorum_ready(market_data: Any = None) -> bool:
     Fail-soft / advisory / n=0 / 4h / plan wall stay out. Does not change the reason string.
     """
     md = market_data if isinstance(market_data, dict) else {}
+    try:
+        from backend.learning.btc15m import coinglass_allowed_on_book
+        if not coinglass_allowed_on_book(
+            ticker=md.get("ticker") or md.get("kalshi_ticker") or md.get("market_ticker"),
+            series=md.get("series_ticker"),
+            window_minutes=md.get("window_minutes"),
+            asset=md.get("asset"),
+        ):
+            return False
+    except Exception:
+        pass
     health = md.get("health") if isinstance(md.get("health"), dict) else {}
     if not bool(health.get("coinglass")):
         return False
@@ -2065,7 +2121,12 @@ def quorum_peer_dirs(signals: Any, market_data: Any = None) -> Dict[str, str]:
             direction = str(sig.get("direction") or "WAIT")
         else:
             direction = str(getattr(sig, "direction", None) or "WAIT")
-        out[name] = direction
+        try:
+            from backend.agents.base import lean_side
+            side = lean_side(direction)
+            out[name] = side or "WAIT"
+        except Exception:
+            out[name] = direction
     return out
 
 
@@ -2073,8 +2134,14 @@ def color_counts_from_signals(signals: Any) -> Dict[str, int]:
     counted = [s for s in (signals or []) if not signal_excluded_from_quorum(s)]
     def _dir(sig: Any) -> str:
         if isinstance(sig, dict):
-            return str(sig.get("direction") or "WAIT").upper()
-        return str(getattr(sig, "direction", None) or "WAIT").upper()
+            raw = str(sig.get("direction") or "WAIT").upper()
+        else:
+            raw = str(getattr(sig, "direction", None) or "WAIT").upper()
+        try:
+            from backend.agents.base import lean_side
+            return lean_side(raw) or "WAIT"
+        except Exception:
+            return raw
     return {
         "UP": sum(1 for s in counted if _dir(s) == "UP"),
         "DOWN": sum(1 for s in counted if _dir(s) == "DOWN"),

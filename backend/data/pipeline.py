@@ -26,6 +26,15 @@ from backend.config import settings
 _SPOT_CACHE: dict = {"btc": None, "eth": None, "ts": 0.0}
 _SPOT_TTL = 2.5  # seconds
 
+
+def _window_minutes_for_snapshot(asset: str, ticker: Any, series: Any) -> float:
+    try:
+        from backend.learning.btc15m import window_minutes_for
+        return float(window_minutes_for(asset=asset, ticker=ticker, series=series))
+    except Exception:
+        return 15.0 if str(asset or "").lower() in ("btc", "bitcoin") else 60.0
+
+
 class DataPipeline:
 
     def __init__(
@@ -44,7 +53,7 @@ class DataPipeline:
         self.series_ticker = series_ticker or (
             getattr(settings, "SERIES_ETH", "KXETHD")
             if self.asset == "eth"
-            else getattr(settings, "SERIES_BTC", "KXBTCD")
+            else getattr(settings, "SERIES_BTC", "KXBTC15M")
         )
         if coinbase_product is None:
             coinbase_product = coinbase_product_for_symbol(self.symbol)
@@ -87,7 +96,12 @@ class DataPipeline:
             self.coinbase.get_spot(),
             self.kalshi.get_cfbenchmarks_values(cfb_id),
         ]
-        if self.coinglass.configured():
+        try:
+            from backend.learning.btc15m import coinglass_allowed_on_book
+            _cg_ok = coinglass_allowed_on_book(series=self.series_ticker, asset=self.asset)
+        except Exception:
+            _cg_ok = self.asset != "btc"
+        if self.coinglass.configured() and _cg_ok:
             tasks.append(self.coinglass.get_derivatives())
         results = await asyncio.gather(*tasks, return_exceptions=True)
         binance_data, kalshi_data = results[0], results[1]
@@ -247,7 +261,13 @@ class DataPipeline:
             stale = {**self.last_good, "stale": True, "health": dict(self.health), "asset": self.asset}
             return stale
 
-        chair_ok = chair_window_ok(cg_data)
+        try:
+            from backend.learning.btc15m import coinglass_allowed_on_book
+            chair_ok = chair_window_ok(cg_data) and coinglass_allowed_on_book(
+                series=self.series_ticker, asset=self.asset,
+            )
+        except Exception:
+            chair_ok = chair_window_ok(cg_data)
         cg_fund = cg_data.get("funding_rate") if chair_ok else None
         bn_fund = binance_data.get("funding_rate")
         if bn_fund is None:
@@ -292,11 +312,14 @@ class DataPipeline:
             "kalshi_orderbook": kalshi_data.get("orderbook"),
             "kalshi_yes_bid": kalshi_data.get("yes_bid"),
             "kalshi_yes_ask": kalshi_data.get("yes_ask"),
+            "kalshi_no_bid": kalshi_data.get("no_bid"),
+            "kalshi_no_ask": kalshi_data.get("no_ask"),
             "kalshi_volume": kalshi_data.get("volume"),
             "kalshi_floor_strike": kalshi_data.get("floor_strike"),
             "kalshi_cap_strike": kalshi_data.get("cap_strike"),
             "kalshi_title": kalshi_data.get("title"),
             "kalshi_ticker": kalshi_data.get("ticker"),
+            "window_minutes": _window_minutes_for_snapshot(self.asset, kalshi_data.get("ticker"), self.series_ticker),
             "health": dict(self.health),
             "stale": False,
             "fetched_at": time.time(),

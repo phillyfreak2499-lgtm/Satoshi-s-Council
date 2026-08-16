@@ -100,7 +100,7 @@ def load_coinglass_api_key() -> Optional[str]:
             logger.info(f"CoinGlass API key loaded from {src}")
         else:
             logger.warning(
-                "CoinGlass API key missing — CARRY/CHAIN/CASCADE use Binance fallback only"
+                "CoinGlass API key missing — CARRY/CHAIN/CASCADE sit WAIT"
             )
         cached = (val, src)
     return cached[0]

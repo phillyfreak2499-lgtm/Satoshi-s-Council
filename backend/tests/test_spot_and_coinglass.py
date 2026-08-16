@@ -26,6 +26,7 @@ from backend.data.binance import (
 from backend.data.cfbenchmarks import pick_research_spot, research_source_label
 from backend.data.coinglass import (
     ALLOWED_INTERVALS,
+    CACHED_401_REASON,
     PATHS,
     PLAN_WALL_REASON,
     CoinGlassClient,
@@ -34,6 +35,7 @@ from backend.data.coinglass import (
     chair_window_ok,
     empty_derivatives,
     feeds_present,
+    glass_seats_must_wait,
     latch_plan_wall,
     live_interval_order,
     plan_wall_latched,
@@ -326,6 +328,32 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(secret, text)
         self.assertNotIn(secret, str(snap.get("reason") or ""))
         self.assertNotIn("1m", text)
+        self.assertIn("401", CACHED_401_REASON)
+
+    async def test_http_401_on_30m_1h_is_cached_not_reprobed(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append(str((params or {}).get("interval") or ""))
+            return _FakeCG(401, {"code": "401", "msg": "Upgrade plan", "data": []})
+
+        cg.client.get = fake_get
+        first = await cg.get_derivatives()
+        self.assertFalse(first["healthy"])
+        self.assertIn("401", str(first.get("reason") or ""))
+        self.assertTrue(first.get("plan_wall") or plan_wall_latched())
+        self.assertIn("30m", calls)
+        self.assertIn("1h", calls)
+        self.assertNotIn("4h", calls)
+        n = len(calls)
+        second = await cg.get_derivatives()
+        self.assertEqual(len(calls), n)
+        self.assertFalse(second["healthy"])
+        from backend.data.coinglass import coinglass_hud_ok
+        self.assertFalse(coinglass_hud_ok(True, first.get("reason")))
+        self.assertFalse(coinglass_hud_ok(False, CACHED_401_REASON))
+        self.assertTrue(glass_seats_must_wait({"health": {"coinglass": False, "coinglass_reason": first.get("reason")}}))
 
     async def test_v4_paths_and_params(self):
         cg = self._client()
@@ -453,6 +481,55 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(coinglass_hud_ok(
             True, "Upgrade plan on 30m/1h; 4h ok — key looks Hobbyist"
         ))
+
+
+class GlassDarkWaitTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
+    def test_helper_dark_cases(self):
+        self.assertFalse(glass_seats_must_wait({"funding_rate": 0.001}))
+        self.assertTrue(glass_seats_must_wait({"health": {"coinglass": False}}))
+        self.assertTrue(glass_seats_must_wait({
+            "coinglass": {"interval": "4h", "daily_heatmap": True, "healthy": True, "funding_rate": 0.001},
+        }))
+        self.assertTrue(glass_seats_must_wait({
+            "asset": "btc",
+            "series_ticker": "KXBTC15M",
+            "funding_rate": 0.001,
+        }))
+        self.assertFalse(glass_seats_must_wait({
+            "asset": "eth",
+            "health": {"coinglass": True},
+            "coinglass": {"interval": "1h", "funding_rate": 0.001, "healthy": True},
+        }))
+
+    async def test_seats_wait_when_glass_dark(self):
+        from backend.agents.funding import FundingSpecialist
+        from backend.agents.oi_pressure import OIPressureSpecialist
+        from backend.agents.liq import LiqSpecialist
+
+        dark = {
+            "health": {"coinglass": False, "coinglass_reason": CACHED_401_REASON},
+            "funding_rate": 0.001,
+            "open_interest": 9e9,
+            "liq_long_usd": 8_000_000,
+            "liq_short_usd": 500_000,
+            "candles": [{"close": 100, "volume": 2}] * 16,
+            "asset": "eth",
+        }
+        fund = await FundingSpecialist().get_signal(dark)
+        chain = await OIPressureSpecialist().get_signal(dark)
+        cascade = await LiqSpecialist().get_signal(dark)
+        self.assertEqual(fund.direction, "WAIT")
+        self.assertEqual(chain.direction, "WAIT")
+        self.assertEqual(cascade.direction, "WAIT")
+        self.assertIn("sit WAIT", fund.reasoning)
+        self.assertTrue(fund.features.get("advisory"))
+        self.assertFalse(fund.features.get("lock_force"))
 
 
 class HealthReasonTests(unittest.IsolatedAsyncioTestCase):

@@ -2,6 +2,18 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-btc-15m-path-pnl",
+    "at": "2026-08-17T00:10:00-05:00",
+    "title": "BTC 15m path P&L — kill one-call, dual-sided scalp",
+    "why": "Zach Voice: Kill the One-Call / Best-Odds Protocol for BTC 15m only. A new brain — path P&L, dual-sided scalp, not one irreversible directional lock. Specialists keep gathering the full 15 minutes. Direction now LONG_UP / LONG_DOWN / REDUCE / FLAT — path scalp, not a finish call. Path scoreboard: realized P&L, avg edge, size buckets, dual vs single. Sizing audit (reasons + multipliers) on each paper fill. Hard maxes beat Kelly. open_risk counts both legs. Do NOT wire Follower. Paper. Follower OFF. Live OFF. Holding both sides is expected. Chair scales, reduces, or flips either leg the full 15 minutes. Realized path P&L is the real scoreboard; directional accuracy is secondary. Dynamic sizing on the paper journal. Both legs only when UP ask + DOWN ask leaves room after vig. Paper fill at the real ask, not mid. Dead 99¢ book = sit. You cannot scale out of chalk. Score realized paper P&L, not close-direction hits. Do not treat a single UP/DOWN lock that matches the official settle as the training win. WAIT is a skip, not a miss. Retrain on old 15-minute books only. Do not port 1H weights. CoinGlass 1h stays off this book. ETH stays 1H. ETH 1H stays one-lock. Displayed BTC hits start clean. ETH displayed hits and ETH 1H bot memory stay. Playable band 20–80. Vitalik / candle_eth stay hourly. Dedicated specialists stay asset-pure. Shared bots never final-lock. Hunter still feeds 1–3; Ares/Oracle paper-lock the best of three. Oracle laurel still. Cowboy Raijin. Signed WAIT stills + cache-bust. Gate CSS #41. Logo /council-mark.png. Header STILL. No new Floor chairs. Paper. Follower OFF. Live OFF. Desk access is checked on the server from env. The served bundle does not contain the code. CoinGlass stays connected for data the plan allows. Cache 401 on 30m/1h — do not re-probe. HUD Glass stays off on 401. CARRY/CHAIN/CASCADE sit WAIT while Glass is dark. Do not fold a 4h fallback as healthy. CoinGlass 1h stays off the 15m book."
+  },
+  {
+    "id": "2026-08-16-btc-15m-retrain",
+    "at": "2026-08-17T00:05:00-05:00",
+    "title": "BTC 15m new brain — ETH stays 1H",
+    "why": "Zach Voice: BTC 15m is a new brain, not a clock change. Satoshi + Bitcoin Pattern Specialist + BTC seats retrain on official 15-minute books only. ETH stays 1H. A win is a 20–80 paper lock vs the official 15m settle. WAIT is a skip, not a miss. 99¢ chalk is not a training win. Chair confidence is not P(finish) until n settled 15m books exist. CoinGlass 1h stays off this book. Displayed BTC hits start clean — do not mix the old 1H 5–3 into the 15m scorecard. ETH displayed hits and ETH 1H bot memory stay. Vitalik / candle_eth stay hourly. Dedicated specialists stay asset-pure. Shared bots never final-lock. Hunter still feeds 1–3; Ares/Oracle paper-lock the best of three. Oracle laurel still. Cowboy Raijin. Signed WAIT stills + cache-bust. Gate CSS #41. Logo /council-mark.png. Header STILL. No new Floor chairs. Paper. Follower OFF. Live OFF."
+  },
+  {
     "id": "2026-08-16-eth-slate-ares-oracle-lock",
     "at": "2026-08-16T23:59:55-05:00",
     "title": "ETH slate wipe + Ares/Oracle lock the best of three",

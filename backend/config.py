@@ -1,6 +1,8 @@
 """
 Satoshi’s Council – Configuration
-Dual-table hourly: Bitcoin (Satoshi) + Ethereum (Vitalik).
+Dual-table: Bitcoin 15m (Satoshi) + Ethereum 1H (Vitalik).
+BTC is a full 15m retrain on KXBTC15M — not a 1H clock change.
+ETH stays hourly KXETHD until 15m BTC has n settled. Do not start ETH 15m.
 Tuned for Render ~2 CPU / 4 GB — responsive dual without thrashing.
 """
 from pydantic_settings import BaseSettings
@@ -19,14 +21,15 @@ class Settings(BaseSettings):
     ENABLE_ETH_TABLE: bool = True
     DUAL_SEQUENTIAL: bool = True  # analyze BTC then ETH (recommended)
 
-    # Data sources — hourly Kalshi series
+    # Data sources — BTC 15m + ETH hourly
     BINANCE_FUTURES_BASE: str = "https://fapi.binance.com"
     KALSHI_BASE: str = "https://external-api.kalshi.com/trade-api/v2"
-    # Legacy single-table defaults (BTC)
-    SERIES_TICKER: str = "KXBTCD"
+    # Legacy single-table defaults (BTC 15m brain)
+    SERIES_TICKER: str = "KXBTC15M"
     SYMBOL: str = "BTCUSDT"
-    # Explicit per-table
-    SERIES_BTC: str = "KXBTCD"
+    # Explicit per-table. ETH stays 1H. Do not start KXETH15M.
+    SERIES_BTC: str = "KXBTC15M"
+    SERIES_BTC_1H: str = "KXBTCD"
     SERIES_ETH: str = "KXETHD"
     SYMBOL_BTC: str = "BTCUSDT"
     SYMBOL_ETH: str = "ETHUSDT"
@@ -166,17 +169,22 @@ class Settings(BaseSettings):
     HARD_ZONE_DAMPEN: float = 0.55       # extreme dampen in hard do-nothing zones
     SPREAD_MAX_CENTS: float = 6.0         # if bid-ask wider → WAIT bias
     # Paper trading journal (not real execution)
-    PAPER_STAKE_DEFAULT: float = 25.0          # $ per full UP/DOWN call
-    PAPER_STAKE_HOLD: float = 10.0             # $ per 1/4 HOLD call
+    PAPER_STAKE_DEFAULT: float = 25.0          # hard-max clamp + ETH 1H flat ticket
+    PAPER_STAKE_HOLD: float = 10.0             # $ per 1/4 HOLD call (ETH / legacy)
+    # BTC 15m Chair path book uses size_for_leader(). These are clamps, not targets.
+    DYNAMIC_SIZING: bool = True
+    DYNAMIC_SIZING_MIN: float = 5.0
+    DYNAMIC_SIZING_MAX: float = 25.0
+    DYNAMIC_SIZING_UNIT: float = 10.0
     # Path-scaled scalp P&L (not full binary settlement)
     PAPER_USE_KALSHI_PAYOFF: bool = False
     PAPER_PATH_SCALED: bool = True
     HOLD_FRACTION: float = 0.25
     MIN_CALL_REENTRY_SEC: float = 90.0
-    # Hard cap graded window_calls per ticker. Strict one-call discipline (GOAL CONTRACT).
-    # Same-side refresh does not count as a new call; opposite revisions are disabled when =1.
+    # ETH 1H only. BTC 15m path book ignores this — no irreversible one-call lock.
+    # Same-side refresh does not count as a new ETH call; opposite revisions disabled when =1.
     MAX_CALLS_PER_WINDOW: int = 1
-    CALL_MAX_AGE_SEC: float = 60 * 60  # hourly window
+    CALL_MAX_AGE_SEC: float = 15 * 60  # BTC 15m window (ETH uses 1H via window_minutes)
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.
     # Protects edge / best-odds rule (never lock into near-certain low-payout markets).
     MAX_ENTRY_ODDS_PCT: float = 90.0
@@ -195,7 +203,8 @@ class Settings(BaseSettings):
     # P(finish) + EV gate (paper pricing only — never a live order)
     MIN_P_FINISH: float = 0.55
     MIN_EV_CENTS: float = 3.0
-    # First 10 minutes of the hour: no lock. Last 15: spot must already be decisive.
+    # ETH 1H: no lock first 10 minutes of the hour.
+    # BTC 15m uses EARLY_NO_LOCK_MINS_15M in backend.learning.btc15m (3m, not 10m).
     EARLY_NO_LOCK_MINS: float = 10.0
     PLAYABLE_MID_MIN: float = 10.0  # Zach hard band — two-sided, not 45–55
     PLAYABLE_MID_MAX: float = 90.0  # 10–90 does not drop EV ≥ 0 after half-spread
@@ -209,7 +218,7 @@ class Settings(BaseSettings):
     EXPLORE_RELIABILITY_N: int = 20  # explore path while reliability_n < this
     EXPLORE_PAPER_MIN_P: float = 0.55
     EXPLORE_PAPER_MIN_EV: float = 0.0  # EV ≥ 0 after half-spread
-    PAPER_LOCKS_PER_DAY: int = 5  # 1H BTC: a few, not 20/day, not 1/48h
+    PAPER_LOCKS_PER_DAY: int = 5  # a few paper locks, not 20/day, not 1/48h
     BTC_LEAD_IMPULSE_PCT: float = 0.15
     BTC_LEAD_STRONG_PCT: float = 0.25
     # Official Kalshi hourly settle: 60s CFB BRTI / ETHUSD_RTI (ERTI) average
@@ -331,6 +340,10 @@ def prior_weight(asset: str, name: str) -> float:
         quiet = getattr(settings, "ETH_QUIET_PRIORS", None) or {}
         if name in quiet:
             return float(quiet[name])
+    if asset in ("btc", "btc15m", "bitcoin"):
+        from backend.learning.btc15m import BTC_15M_QUIET_CG
+        if name in BTC_15M_QUIET_CG:
+            return float(BTC_15M_QUIET_CG[name])
     return float(settings.BASE_WEIGHTS.get(name, 0.1))
 
 

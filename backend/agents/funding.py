@@ -93,6 +93,15 @@ class FundingSpecialist(BaseSpecialist):
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted by Guardian", self.category, muted=True)
 
+        from backend.data.coinglass import glass_seats_must_wait
+        if glass_seats_must_wait(market_data):
+            return AgentSignal(
+                self.name, "WAIT", 38,
+                self.annotate_reason(market_data, "Glass dark — sit WAIT"),
+                self.category,
+                features={"lock_force": False, "advisory": True, "glass_dark": True},
+            )
+
         phase = self.phase(market_data)
         quiet = self.is_quiet(market_data)
         floor = self.quiet_confidence_floor(market_data, base=54)

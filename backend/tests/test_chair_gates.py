@@ -671,7 +671,10 @@ class ExplorePaperLockTests(unittest.TestCase):
         base = {
             "asset": "btc",
             "ticker": "KXBTCD-26AUG1616-T63000.00",
-            "mins_left": 35,
+            # 1H hard-early (≥45m left) keeps explore on WAIT-default conf (72),
+            # same mechanic as main's 15m-style hard-early at 35m. HOLD conf 59
+            # shrinks below P(finish) 0.55 on a cold book.
+            "mins_left": 50,
             "window_minutes": 60,
             "up_pct": 48,
             "yes_ask": 50,

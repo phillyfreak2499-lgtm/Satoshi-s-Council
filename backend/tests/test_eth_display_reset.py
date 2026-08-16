@@ -1,4 +1,4 @@
-"""ETH displayed-slate reset: wipe Vitalik 0–5 / eth_shadow only. BTC 5–3 stays."""
+"""ETH displayed-slate reset: wipe Vitalik 0–5 / eth_shadow only. 15m BTC hits stay."""
 from __future__ import annotations
 
 import json
@@ -37,18 +37,19 @@ def _row(
     direction: str = "UP",
 ) -> WindowCall:
     hit = int(correct) == 1
+    fifteen = str(ticker).upper().startswith("KXBTC15M")
     return WindowCall(
         ticker=ticker,
         direction=direction,
         confidence=70,
         called_at=when,
         settled_at=when,
-        actual_outcome="UP" if (direction == "UP") == hit else "DOWN",
+        actual_outcome="PATH" if fifteen else ("UP" if (direction == "UP") == hit else "DOWN"),
         y_finish="UP" if (direction == "UP") == hit else "DOWN",
-        correct=1 if hit else 0,
-        settle_reason="finish_match" if hit else "finish_miss",
+        correct=None if fifteen else (1 if hit else 0),
+        settle_reason="path_pnl" if fifteen else ("finish_match" if hit else "finish_miss"),
         paper_stake=0.0 if shadow else 10.0,
-        paper_pnl=0.0,
+        paper_pnl=(12.0 if hit else -10.0) if fifteen else 0.0,
         asset=asset,
         shadow=shadow,
         open_price=48.0,
@@ -95,6 +96,11 @@ class EthDisplayResetStoreTests(unittest.IsolatedAsyncioTestCase):
             json.dumps({"weights": {"candle_btc": 0.19}, "updates": 44}),
             encoding="utf-8",
         )
+        self.btc15m_brain = self.data / "council-learning-btc15m.json"
+        self.btc15m_brain.write_text(
+            json.dumps({"weights": {"candle_btc": 0.21}, "updates": 12}),
+            encoding="utf-8",
+        )
         self._patch = patch.multiple(settings, DATA_DIR=str(self.data), DATABASE_URL=self.db_url)
         self._patch.start()
         self.store = PerformanceStore()
@@ -107,6 +113,21 @@ class EthDisplayResetStoreTests(unittest.IsolatedAsyncioTestCase):
 
     async def _seed_slate(self) -> None:
         async with self.store.Session() as session:
+            for i in range(5):
+                session.add(_row(
+                    ticker=f"KXBTC15M-26AUG15{10 + i:02d}00-00",
+                    asset="btc",
+                    correct=1,
+                    when=OLD,
+                ))
+            for i in range(3):
+                session.add(_row(
+                    ticker=f"KXBTC15M-26AUG15{20 + i:02d}00-00",
+                    asset="btc",
+                    correct=0,
+                    direction="DOWN",
+                    when=OLD,
+                ))
             for i in range(5):
                 session.add(_row(
                     ticker=f"KXBTCD-26AUG15{10 + i:02d}-T63000.00",
@@ -182,6 +203,9 @@ class EthDisplayResetStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(brain["weights"]["candle_eth"], 0.22)
         btc_brain = json.loads(self.btc_brain.read_text(encoding="utf-8"))
         self.assertEqual(btc_brain["updates"], 44)
+        btc15m = json.loads(self.btc15m_brain.read_text(encoding="utf-8"))
+        self.assertEqual(btc15m["updates"], 12)
+        self.assertEqual(btc15m["weights"]["candle_btc"], 0.21)
 
     async def test_new_eth_hits_after_mark_still_count(self):
         await self._seed_slate()

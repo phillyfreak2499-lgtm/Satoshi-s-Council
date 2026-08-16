@@ -89,13 +89,14 @@ class ContractAndWindowTests(unittest.TestCase):
 
     def test_btc_and_eth_tickers(self):
         c = sb.backfill_contract()
-        self.assertEqual(c["series"], ["KXBTCD", "KXETHD"])
-        self.assertEqual(c["assets"], ["btc", "eth"])
+        self.assertEqual(c["series"], ["KXETHD"])
+        self.assertEqual(c["assets"], ["eth"])
         et = _hour_et(2026, 8, 14, 15)
         self.assertEqual(sb.event_ticker_for_hour("KXBTCD", et), "KXBTCD-26AUG1415")
         self.assertEqual(sb.event_ticker_for_hour("KXETHD", et), "KXETHD-26AUG1415")
         self.assertEqual(sb.series_for_asset("btc"), "KXBTCD")
         self.assertEqual(sb.series_for_asset("eth"), "KXETHD")
+        self.assertIn("ETH 1H only", sb.print_contract())
 
 
 class OfficialResultOnlyTests(unittest.TestCase):
@@ -280,11 +281,11 @@ class MergeAndTagTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(n, 0)
         self.assertGreater(int(learner.backfill.get("hours_graded") or 0), 0)
 
-    async def test_full_pass_merges_btc_and_eth(self):
+    async def test_full_pass_is_eth_1h_only(self):
         with tempfile.TemporaryDirectory() as td:
             btc = AdaptiveLearner(asset="btc")
             eth = AdaptiveLearner(asset="eth")
-            btc.correct["candle"] = 4
+            btc.correct["candle_btc"] = 4
             eth.correct["candle"] = 0
 
             async def ev(ticker):
@@ -317,8 +318,11 @@ class MergeAndTagTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(report["wipe_live_brain"])
             self.assertFalse(report["follower"])
             self.assertFalse(report["live_orders"])
-            self.assertGreaterEqual(int(btc.correct.get("candle_btc") or 0), 4)
-            self.assertNotIn("candle_eth", btc.correct)
+            # 1H pass must not grade BTC — 15m brain is a separate module.
+            self.assertEqual(int(btc.correct.get("candle_btc") or 0), 4)
+            self.assertNotIn("btc", report.get("assets") or {})
+            self.assertIn("eth", report.get("assets") or {})
+            self.assertEqual(report["contract"]["series"], ["KXETHD"])
             self.assertEqual(report["contract"]["days"], 90)
             self.assertTrue((Path(td) / sb.DONE_NAME).is_file())
             status = json.loads((Path(td) / sb.STATUS_NAME).read_text(encoding="utf-8"))
