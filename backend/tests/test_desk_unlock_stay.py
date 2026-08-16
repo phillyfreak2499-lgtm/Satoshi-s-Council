@@ -106,6 +106,7 @@ class UnlockStayWireTests(unittest.TestCase):
         self.assertIn("After SUMMON the gate stays hidden", note)
         self.assertIn("new 6s opening plays", note)
         self.assertIn("old logo intro is gone", note)
+        self.assertIn("Leader photo click selects only", note)
         self.assertIn("Paper", note)
         self.assertIn("Follower OFF", note)
         self.assertNotIn("ZT", note)

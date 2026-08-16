@@ -1,4 +1,4 @@
-"""Floor Satoshi/Vitalik portrait clicks play the existing leader-click.mp4."""
+"""Floor/Table leader photo click selects the leader. No overlay clip."""
 from __future__ import annotations
 
 import unittest
@@ -63,58 +63,48 @@ class LeaderClickGestureTests(unittest.TestCase):
         self.assertIn('drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats", chairNameOf("ats") + " · ATS"', JS)
         self.assertIn("rememberChairHit(cx, cy, lr, chairKeyOf(focusTable))", JS)
 
-    def test_gesture_only_from_chair_hit(self):
+    def test_gesture_selects_leader_no_clip(self):
         wire = _wire_fn()
         self.assertIn("chairHitAt", wire)
-        self.assertIn("playLeaderClickVideo()", wire)
+        self.assertIn("setFocusTable(hit.which)", wire)
         self.assertIn("pointerup", wire)
         self.assertIn('mode !== "art"', wire)
+        self.assertNotIn("playLeaderClickVideo()", wire)
         play = _play_fn()
-        self.assertIn('if (mode !== "floor" && mode !== "art") return;', play)
-        self.assertIn("vid.currentSrc && /leader-click\\.mp4/i.test(vid.currentSrc)", play)
-        self.assertIn("vid.currentTime = 0", play)
-        self.assertIn("vid.play()", play)
-        self.assertNotIn("vid.load()", play)
-        self.assertNotIn("vid.src =", play)
-        self.assertNotIn("const sources", play)
-        self.assertIn("function prefetchLeaderClickVideo", JS)
-        self.assertIn("prefetchLeaderClickVideo()", JS)
-        before = JS.split("function playLeaderClickVideo", 1)[0]
-        self.assertNotIn("playLeaderClickVideo();", before)
+        self.assertIn("return;", play)
+        self.assertNotIn("vid.play()", play)
+        self.assertNotIn("leader-click.mp4", play)
+        self.assertNotIn("zt-intro", play)
+        self.assertNotIn("summon-council", play)
+        self.assertNotIn("requestFullscreen", play)
+        self.assertEqual(JS.count("playLeaderClickVideo();"), 0)
 
-    def test_esc_and_click_dismiss(self):
-        self.assertIn("window.__dismissLeaderClick", JS)
-        self.assertIn('if (typeof window.__dismissLeaderClick === "function" && window.__dismissLeaderClick())', JS)
+    def test_esc_dismiss_unused_when_clip_parked(self):
         play = _play_fn()
-        self.assertIn("wrap.onclick = () => cleanup();", play)
-        self.assertIn("skipBtn.onclick", play)
+        self.assertNotIn("vid.play()", play)
         self.assertNotIn('setMode("art")', play)
         self.assertNotIn('setMode("floor")', play)
 
 
 class LeaderClickExperienceTests(unittest.TestCase):
-    def test_ducks_floor_music_no_zt_title(self):
+    def test_file_stays_unused_not_replaced_by_opening(self):
+        wrap = HTML.split('id="leaderClickWrap"', 1)[1].split("floorMoneyRain", 1)[0]
+        self.assertIn("/leader-click.mp4", wrap)
+        self.assertNotIn("zt-intro", wrap)
+        self.assertNotIn("CINEMATIC", wrap)
+        self.assertNotIn("ZT", wrap)
         play = _play_fn()
-        self.assertIn("__floorMusicDuckHold", play)
-        self.assertIn("__floorMusicUnduck", play)
-        self.assertIn("leader-clip-on", play)
-        self.assertIn('document.body.classList.remove("zt-cinematic")', play)
-        self.assertNotIn('document.body.classList.add("zt-cinematic")', play)
+        self.assertNotIn("zt-intro", play)
         self.assertNotIn("CINEMATIC", play)
         self.assertNotIn("ZT", play)
-        wrap = HTML.split('id="leaderClickWrap"', 1)[1].split("floorMoneyRain", 1)[0]
-        self.assertNotIn("CINEMATIC", wrap)
 
     def test_portraits_keep_drawing(self):
         loop = JS.split("function loop(ts)", 1)[1].split("async function poll", 1)[0]
         self.assertIn('if (mode === "art" || mode === "floor") drawArt();', loop)
-        self.assertNotIn("leaderClickPlaying", loop)
         self.assertNotIn("deskCinematicOn()", loop)
         draw = JS.split("function drawArt()", 1)[1].split("function drawDualFloor", 1)[0]
         self.assertNotIn("if (leaderClickPlaying) return;", draw)
         self.assertIn("pointer-events: auto !important;", CSS)
-        self.assertIn("body.leader-clip-on #leaderClickWrap", CSS)
-        self.assertIn("#leaderClickFallback", CSS)
 
 
 if __name__ == "__main__":

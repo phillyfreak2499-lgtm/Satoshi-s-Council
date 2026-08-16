@@ -10874,87 +10874,14 @@ function drawCandleChart() {
 
   let leaderClickPlaying = false;
   function prefetchLeaderClickVideo() {
-    // Warm /leader-click.mp4 when Floor or Table is visible so the first click is buffered.
-    const vid = document.getElementById("leaderClickVideo");
-    if (!vid || leaderClickPlaying) return;
-    if (mode !== "floor" && mode !== "art") return;
-    vid.preload = "auto";
-    if (vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc) && vid.readyState >= 2) return;
-    try { vid.load(); } catch (e) {}
+    // Unused. Leader photo click selects the leader. File may stay on disk.
+    return;
   }
   window.prefetchLeaderClickVideo = prefetchLeaderClickVideo;
 
   function playLeaderClickVideo() {
-    // Gesture clip from Floor or Table Chair photos. Same overlay, no title card.
-    // Never load() or swap src on click — that is the stutter. Prefetch warms it.
-    const wrap = document.getElementById("leaderClickWrap");
-    const vid = document.getElementById("leaderClickVideo");
-    const skipBtn = document.getElementById("leaderClickSkip");
-    const fallback = document.getElementById("leaderClickFallback");
-    if (!wrap || !vid) return;
-    if (leaderClickPlaying || celebratePlaying) return;
-    if (document.body.classList.contains("gate-locked")) return;
-    if (mode !== "floor" && mode !== "art") return;
-    if (!(vid.currentSrc && /leader-click\.mp4/i.test(vid.currentSrc))) {
-      try { prefetchLeaderClickVideo(); } catch (e) {}
-      return;
-    }
-
-    leaderClickPlaying = true;
-    document.body.classList.add("leader-clip-on");
-    document.body.classList.remove("zt-cinematic");
-    wrap.classList.remove("hidden");
-    wrap.classList.add("active");
-    wrap.setAttribute("aria-hidden", "false");
-    if (fallback) {
-      fallback.hidden = true;
-      fallback.textContent = "";
-    }
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.setAttribute("playsinline", "");
-    vid.setAttribute("webkit-playsinline", "");
-    try { vid.currentTime = 0; } catch (e) {}
-    try {
-      if (typeof window.__floorMusicDuckHold === "function") window.__floorMusicDuckHold();
-    } catch (e) {}
-
-    const cleanup = () => {
-      if (!leaderClickPlaying) return false;
-      leaderClickPlaying = false;
-      document.body.classList.remove("leader-clip-on");
-      document.body.classList.remove("zt-cinematic");
-      try { vid.pause(); } catch (e) {}
-      try { vid.currentTime = 0; } catch (e) {}
-      wrap.classList.add("hidden");
-      wrap.classList.remove("active");
-      wrap.setAttribute("aria-hidden", "true");
-      if (fallback) {
-        fallback.hidden = true;
-        fallback.textContent = "";
-      }
-      try {
-        if (typeof window.__floorMusicUnduck === "function") window.__floorMusicUnduck();
-      } catch (e) {}
-      return true;
-    };
-    window.__dismissLeaderClick = function () {
-      if (!leaderClickPlaying) return false;
-      cleanup();
-      return true;
-    };
-
-    vid.onended = () => cleanup();
-    if (skipBtn) skipBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
-    wrap.onclick = () => cleanup();
-
-    const p = vid.play();
-    if (p && p.then) {
-      p.catch(() => {
-        if (!leaderClickPlaying) return;
-        cleanup();
-      });
-    }
+    // Unused. Leader photo click selects the leader. No overlay clip.
+    return;
   }
   window.playLeaderClickVideo = playLeaderClickVideo;
 
@@ -11274,7 +11201,7 @@ function drawCandleChart() {
     if (!targets.length || already) return;
     const onMove = (e) => {
       if (!canvas) return;
-      if ((mode !== "floor" && mode !== "art") || leaderClickPlaying) {
+      if (mode !== "floor" && mode !== "art") {
         canvas.classList.remove("chair-hot");
         return;
       }
@@ -11282,22 +11209,14 @@ function drawCandleChart() {
       canvas.classList.toggle("chair-hot", !!(pt && chairHitAt(pt.x, pt.y)));
     };
     const onGesture = (e) => {
-      if ((mode !== "floor" && mode !== "art") || leaderClickPlaying || celebratePlaying) return;
+      if ((mode !== "floor" && mode !== "art") || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
       const hit = pt && chairHitAt(pt.x, pt.y);
       if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
-      if (hit.which === "front") {
-        try { setFocusTable("front"); } catch (err) {}
-        return;
-      }
-      if (hit.which === "ats" || hit.which === "ares") {
-        try { setFocusTable("ats"); } catch (err) {}
-        return;
-      }
-      playLeaderClickVideo();
+      try { setFocusTable(hit.which); } catch (err) {}
     };
     targets.forEach((el) => {
       if (el.__chairClickWired) return;

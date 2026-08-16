@@ -140,6 +140,7 @@ class LoginSplashStackTests(unittest.TestCase):
         self.assertIn("After SUMMON the gate stays hidden", WIRE_JS)
         self.assertIn("new 6s opening plays", WIRE_JS)
         self.assertIn("old logo intro is gone", WIRE_JS)
+        self.assertIn("Leader photo click selects only", WIRE_JS)
         self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-desk-unlock-stay", 1)[1].split("2026-08-15-hit-slate-reset", 1)[0])
         self.assertIn("2026-08-15-hit-slate-reset", WIRE_JS)
         self.assertIn("Chair hit slate reset after tape", WIRE_JS)
