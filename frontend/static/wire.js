@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-vitalik-closeup",
+    "at": "2026-08-16T05:35:00-05:00",
+    "title": "Vitalik files are the close-up cuts",
+    "why": "Watcher close-up Vitalik WAIT/UP/DOWN jpgs are on the desk — teal HOLD, green UP, red DOWN, dark back, no city. Same man. Name stays Vitalik. Satoshi, Ares, and Raijin chairs stay put. Desk still shows one WAIT face. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-one-face",
     "at": "2026-08-16T04:50:00-05:00",
     "title": "One face per Chair",
