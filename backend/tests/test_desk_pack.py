@@ -519,6 +519,7 @@ class HealthStripTests(unittest.TestCase):
         up_dot = CSS.split(".health-dot.up::before", 1)[1].split("}", 1)[0]
         self.assertIn("#39ff14", up_dot)
         self.assertIn("function coinglassHudMiss", JS)
+        self.assertIn("plan wall", JS.split("function coinglassHudMiss", 1)[1][:250])
         self.assertIn('data-feed="coinglass"', HTML.split('id="healthGlass"', 1)[1][:80])
         self.assertIn("body.gate-locked #healthStrip", CSS)
         self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:800])
@@ -538,6 +539,13 @@ class HealthStripTests(unittest.TestCase):
             "coinglass_reason": "http=200 code=401 msg=Upgrade plan",
         })
         self.assertFalse(plan["coinglass"])
+        wall = health_strip_from_health({
+            "kalshi_ok": True,
+            "spot_ok": True,
+            "coinglass_ok": False,
+            "coinglass_reason": "plan wall: need Startup+ for 30m/1h",
+        })
+        self.assertFalse(wall["coinglass"])
 
 
 class SchoolTests(unittest.TestCase):

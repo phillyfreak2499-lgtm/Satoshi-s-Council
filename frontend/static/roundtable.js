@@ -7567,7 +7567,7 @@ function drawCandleChart() {
 
   function coinglassHudMiss(reason) {
     const t = String(reason || "").toLowerCase();
-    return t.indexOf("401") >= 0 || t.indexOf("upgrade") >= 0;
+    return t.indexOf("401") >= 0 || t.indexOf("upgrade") >= 0 || t.indexOf("plan wall") >= 0;
   }
   function paintHealthStrip(data) {
     const strip = document.getElementById("healthStrip");

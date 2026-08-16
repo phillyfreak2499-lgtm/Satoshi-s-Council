@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-coinglass-plan-wall",
+    "at": "2026-08-16T03:55:00-05:00",
+    "title": "CoinGlass plan wall stops the 30m retry",
+    "why": "Hobbyist cannot do 30m/1h. After both windows return Upgrade plan, the desk caches a plan wall and stops re-probing 30m every cycle. coinglass_ok stays false — plan wall: need Startup+ for 30m/1h. No 4h heatmap into 1H locks. Binance futures stay, Oregon 451 soft-fails. HUD Glass stays not-green. Not the weather GLASS seat. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-coinglass-hud-only",
     "at": "2026-08-16T03:50:00-05:00",
     "title": "CoinGlass HUD stays; 401 chase leaves this desk",

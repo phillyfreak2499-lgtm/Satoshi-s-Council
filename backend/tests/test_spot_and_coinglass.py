@@ -27,6 +27,7 @@ from backend.data.cfbenchmarks import pick_research_spot, research_source_label
 from backend.data.coinglass import (
     ALLOWED_INTERVALS,
     PATHS,
+    PLAN_WALL_REASON,
     CoinGlassClient,
     apply_hist_to_market,
     empty_derivatives,
@@ -241,8 +242,8 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
             logger.remove(hid)
         text = buf.getvalue()
         self.assertFalse(snap["healthy"])
-        self.assertIn("400", str(snap.get("reason") or ""))
-        self.assertIn("interval not allowed", str(snap.get("reason") or ""))
+        self.assertEqual(snap.get("reason"), PLAN_WALL_REASON)
+        self.assertTrue(snap.get("plan_wall"))
         self.assertIn("400", text)
         self.assertIn("interval not allowed", text)
         self.assertIn("/api/futures/funding-rate/history", text)
@@ -250,7 +251,7 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("dummy-cg-key-not-real", text)
         rows = await cg._get_rows(PATHS[0], "30m")
         self.assertEqual(rows, [])
-        self.assertTrue(cg._cycle_misses)
+        self.assertTrue(cg._plan_wall)
 
     async def test_30m_before_1h_never_1m(self):
         cg = self._client()
@@ -331,6 +332,36 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(headers.get("CG-API-KEY"), "dummy-cg-key-not-real")
             self.assertTrue(str(calls[0][0]).startswith("https://open-api-v4.coinglass.com"))
 
+    async def test_upgrade_plan_caches_wall_and_stops_reprobe(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append(str((params or {}).get("interval") or ""))
+            return _FakeCG(200, {"code": "401", "msg": "Upgrade plan", "data": []})
+
+        cg.client.get = fake_get
+        first = await cg.get_derivatives()
+        self.assertFalse(first["healthy"])
+        self.assertEqual(first.get("reason"), PLAN_WALL_REASON)
+        self.assertTrue(first.get("plan_wall"))
+        self.assertFalse(first.get("daily_heatmap"))
+        self.assertIsNone(first.get("funding_rate"))
+        self.assertIsNone(first.get("open_interest"))
+        self.assertIn("30m", calls)
+        self.assertIn("1h", calls)
+        self.assertNotIn("4h", calls)
+        self.assertNotIn("8h", calls)
+        self.assertNotIn("1d", calls)
+        n = len(calls)
+        second = await cg.get_derivatives()
+        self.assertEqual(len(calls), n)
+        self.assertEqual(second.get("reason"), PLAN_WALL_REASON)
+        self.assertFalse(second["healthy"])
+        from backend.data.coinglass import coinglass_hud_ok
+        self.assertFalse(coinglass_hud_ok(False, PLAN_WALL_REASON))
+        self.assertFalse(coinglass_hud_ok(True, PLAN_WALL_REASON))
+
 
 class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_surfaces_coinglass_reason(self):
@@ -375,6 +406,7 @@ class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(coinglass_hud_ok(True, "http=200 code=401 msg=Upgrade plan"))
         self.assertFalse(coinglass_hud_ok(False, "http=200 code=401 msg=Upgrade plan"))
+        self.assertFalse(coinglass_hud_ok(False, PLAN_WALL_REASON))
         self.assertTrue(coinglass_hud_ok(True, ""))
         prev = m.council.running
         m.council.running = True
@@ -448,6 +480,13 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("background: #39ff14", CSS.split(".health-dot.up::before", 1)[1][:80])
         self.assertIn("2026-08-16-coinglass-hud-only", WIRE_JS)
         self.assertIn("does not add a 401 probe path", WIRE_JS)
+        self.assertIn("2026-08-16-coinglass-plan-wall", WIRE_JS)
+        self.assertIn(PLAN_WALL_REASON, WIRE_JS)
+        self.assertNotIn("4h", live_interval_order())
+        bn = (ROOT / "backend" / "data" / "binance.py").read_text(encoding="utf-8")
+        self.assertIn("451", bn)
+        self.assertIn("_FUTURES_COOLDOWN", bn)
+        self.assertIn("_mark_futures_blocked", bn)
 
 
 class CoinGlassHistReuseTests(unittest.IsolatedAsyncioTestCase):

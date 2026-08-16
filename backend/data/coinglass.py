@@ -3,7 +3,8 @@ CoinGlass v4 — funding, open interest, liquidations for CARRY / CHAIN / CASCAD
 
 Key is loaded from env or the Render secret file. Never logged.
 Futures on Binance fapi can 451 in Oregon; this feed is the fill-in.
-Startup plan: 30m then 1h history (never 1m).
+Live windows are 30m then 1h only — never 4h/8h/1d into 1H Chair locks.
+Hobbyist plan wall (HTTP 200 / body 401 Upgrade plan) is cached; do not re-probe 30m every cycle.
 """
 from __future__ import annotations
 
@@ -20,7 +21,8 @@ from backend.data.secrets import load_coinglass_api_key
 from backend.services.runtime_settings import runtime_settings
 
 BASE = "https://open-api-v4.coinglass.com"
-ALLOWED_INTERVALS = ("30m", "1h")  # Startup allows >=30m; never request 1m
+ALLOWED_INTERVALS = ("30m", "1h")  # 1H pack only. Never 1m. Never drop to 4h/8h/1d.
+PLAN_WALL_REASON = "plan wall: need Startup+ for 30m/1h"
 PATHS = (
     "/api/futures/funding-rate/history",
     "/api/futures/open-interest/history",
@@ -202,12 +204,28 @@ def is_plan_interval_error(code: Any, msg: Any) -> bool:
     return any(h in blob for h in _PLAN_INTERVAL_HINTS)
 
 
+def is_plan_wall_body(code: Any, msg: Any, http_status: Any = None) -> bool:
+    """Hobbyist wall: HTTP 200 / body 401 Upgrade plan, or interval not allowed. Not HTTP 401 auth."""
+    code_s = "" if code is None else str(code)
+    msg_s = str(msg or "")
+    blob = f"{code_s} {msg_s}".lower()
+    if "upgrade plan" in blob:
+        return True
+    try:
+        http_n = int(http_status) if http_status is not None else None
+    except (TypeError, ValueError):
+        http_n = None
+    if http_n == 200 and code_s == "401":
+        return True
+    return is_plan_interval_error(code, msg)
+
+
 def coinglass_hud_ok(ok: Any, reason: Any = None) -> bool:
-    """HUD Glass light only. HTTP 200 + code 401 / Upgrade plan is not-ok. Does not chase the key."""
+    """HUD Glass light only. Plan wall / 401 Upgrade plan is not-ok. Does not chase the key."""
     if not ok:
         return False
     text = str(reason or "").lower()
-    if "401" in text or "upgrade plan" in text or "upgrade" in text:
+    if "401" in text or "upgrade plan" in text or "upgrade" in text or "plan wall" in text:
         return False
     return True
 
@@ -246,6 +264,9 @@ class CoinGlassClient:
         self._cache_at: float = 0.0
         self._interval_ok: Optional[str] = None
         self._cycle_misses: List[_Fetch] = []
+        self._plan_blocked: set[str] = set()
+        self._plan_wall: Optional[str] = None
+        self._plan_wall_logged: bool = False
 
     def configured(self) -> bool:
         return bool(load_coinglass_api_key())
@@ -278,7 +299,35 @@ class CoinGlassClient:
             f"http={miss.http_status} code={miss.cg_code} msg={msg} body={body}"
         )
 
+    def _plan_wall_snap(self) -> Dict[str, Any]:
+        snap = self._empty(self._plan_wall or PLAN_WALL_REASON)
+        snap["plan_wall"] = True
+        snap["daily_heatmap"] = False
+        snap["interval"] = None
+        return snap
+
+    def _mark_plan_wall(self) -> None:
+        if self._plan_wall:
+            return
+        self._plan_wall = PLAN_WALL_REASON
+        if not self._plan_wall_logged:
+            self._plan_wall_logged = True
+            logger.warning(
+                "CoinGlass plan wall — " + PLAN_WALL_REASON
+                + " · stop re-probing 30m/1h · Binance futures stay · no 4h heatmap into 1H locks"
+            )
+
+    def _note_plan_interval(self, interval: str) -> None:
+        iv = str(interval or "").strip().lower()
+        if iv not in ALLOWED_INTERVALS:
+            return
+        self._plan_blocked.add(iv)
+        if all(x in self._plan_blocked for x in ALLOWED_INTERVALS):
+            self._mark_plan_wall()
+
     def _reason_for_health(self, snap: Dict[str, Any]) -> str:
+        if self._plan_wall:
+            return self._plan_wall
         if snap.get("healthy") and not self._cycle_misses:
             return ""
         if snap.get("healthy") and self._cycle_misses:
@@ -317,6 +366,13 @@ class CoinGlassClient:
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
     ) -> _Fetch:
+        if self._plan_wall:
+            return _Fetch(
+                path=path,
+                interval=interval,
+                reason=self._plan_wall,
+                plan_interval=True,
+            )
         headers = self._headers()
         if not headers:
             miss = _Fetch(path=path, interval=interval, reason="key missing")
@@ -351,7 +407,7 @@ class CoinGlassClient:
                 body = {}
             miss.cg_code = body.get("code")
             miss.cg_msg = str(body.get("msg") or body.get("message") or "")
-            miss.plan_interval = is_plan_interval_error(miss.cg_code, miss.cg_msg)
+            miss.plan_interval = is_plan_wall_body(miss.cg_code, miss.cg_msg, r.status_code)
             if r.status_code in (401, 403):
                 miss.auth_fail = True
                 miss.reason = f"auth failed ({r.status_code})"
@@ -399,6 +455,8 @@ class CoinGlassClient:
         return list(got.rows)
 
     async def _rows_with_interval(self, path: str) -> Tuple[List[Dict[str, Any]], str]:
+        if self._plan_wall:
+            return [], "30m"
         order = live_interval_order(self._interval_ok)
         last_iv = order[0] if order else "30m"
         for iv in order:
@@ -407,7 +465,11 @@ class CoinGlassClient:
             if got.ok and got.rows:
                 self._interval_ok = iv
                 return got.rows, iv
+            if got.plan_interval:
+                self._note_plan_interval(iv)
             if got.auth_fail:
+                return [], iv
+            if self._plan_wall:
                 return [], iv
         return [], last_iv
 
@@ -431,6 +493,8 @@ class CoinGlassClient:
 
     async def get_derivatives(self) -> Dict[str, Any]:
         self._cycle_misses = []
+        if self._plan_wall:
+            return self._plan_wall_snap()
         if not self.configured():
             snap = self._empty("key missing")
             self._log_cycle_miss(snap)
@@ -450,6 +514,11 @@ class CoinGlassClient:
                 self._rows_with_interval(PATHS[1]),
                 self._rows_with_interval(PATHS[2]),
             )
+            if self._plan_wall:
+                snap = self._plan_wall_snap()
+                if self._cycle_misses:
+                    self._log_cycle_miss(snap)
+                return snap
             interval = fund_iv or oi_iv or liq_iv or "30m"
             snap = summarize_derivatives(fund_rows, oi_rows, liq_rows, interval)
             snap["reason"] = self._reason_for_health(snap)
@@ -473,7 +542,9 @@ class CoinGlassClient:
         end_ms: int,
         limit: int,
     ) -> Tuple[List[Dict[str, Any]], str]:
-        """Reuse live _get_rows. 30m then 1h. Never 1m."""
+        """Reuse live _get_rows. 30m then 1h. Never 1m. Never 4h."""
+        if self._plan_wall:
+            return [], "30m"
         last_iv = "30m"
         for iv in live_interval_order():
             if iv == "1m":
@@ -502,6 +573,11 @@ class CoinGlassClient:
         Never logs the API key. Does not rewrite live cycle logging / health.
         """
         empty = empty_derivatives("30m")
+        if self._plan_wall:
+            empty["skip_reason"] = "plan_wall"
+            empty["reason"] = self._plan_wall
+            empty["plan_wall"] = True
+            return empty
         if not self.configured():
             empty["skip_reason"] = "no_key"
             empty["reason"] = "key missing"
