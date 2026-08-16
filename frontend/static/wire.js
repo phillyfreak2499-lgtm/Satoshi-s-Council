@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-coinglass-hud-only",
+    "at": "2026-08-16T03:50:00-05:00",
+    "title": "CoinGlass HUD stays; 401 chase leaves this desk",
+    "why": "The HUD Glass light still matches live health — coinglass_ok=false / 401 Upgrade plan is not green. That light is not the Raijin NWS GLASS seat. This PR does not chase the CoinGlass key and does not add a 401 probe path. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-chair-table-call",
     "at": "2026-08-16T03:35:00-05:00",
     "title": "Chair tables speak LOCK / WAIT",

@@ -203,7 +203,7 @@ def is_plan_interval_error(code: Any, msg: Any) -> bool:
 
 
 def coinglass_hud_ok(ok: Any, reason: Any = None) -> bool:
-    """HUD Glass light: live feed only. HTTP 200 + code 401 / Upgrade plan is not-ok."""
+    """HUD Glass light only. HTTP 200 + code 401 / Upgrade plan is not-ok. Does not chase the key."""
     if not ok:
         return False
     text = str(reason or "").lower()

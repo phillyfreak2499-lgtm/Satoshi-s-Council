@@ -44,6 +44,7 @@ FOLLOWER_ROUTE = (ROOT / "backend" / "services" / "follower_route.py").read_text
 FOLLOWER_JS = (ROOT / "frontend" / "protected" / "follower_gate.js").read_text(encoding="utf-8")
 GATES = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
 JS = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+CSS = (ROOT / "frontend" / "static" / "style.css").read_text(encoding="utf-8")
 CG_SRC = (ROOT / "backend" / "data" / "coinglass.py").read_text(encoding="utf-8")
 
 
@@ -423,6 +424,8 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
     def test_live_paths_never_request_1m(self):
         self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
         self.assertNotIn("1m", ALLOWED_INTERVALS)
+        self.assertNotIn("4h", ALLOWED_INTERVALS)
+        self.assertEqual(len(PATHS), 3)
         self.assertIn("/api/futures/funding-rate/history", CG_SRC)
         self.assertIn("/api/futures/open-interest/history", CG_SRC)
         self.assertIn("/api/futures/liquidation/history", CG_SRC)
@@ -430,6 +433,21 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("https://open-api-v4.coinglass.com", CG_SRC)
         self.assertIn("start_time", CG_SRC)
         self.assertIn("end_time", CG_SRC)
+
+    def test_no_401_probe_path_or_secret_chase(self):
+        main = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+        self.assertNotIn("/api/coinglass", main)
+        self.assertNotIn('"/health/coinglass"', main)
+        self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
+        self.assertNotIn("4h", ALLOWED_INTERVALS)
+        hud = CG_SRC.split("def coinglass_hud_ok", 1)[1].split("def live_interval_order", 1)[0]
+        self.assertIn("Does not chase the key", hud)
+        self.assertIn("401", hud)
+        self.assertIn("function coinglassHudMiss", JS)
+        self.assertIn("background: #6b7c90", CSS.split(".health-dot::before", 1)[1][:200])
+        self.assertIn("background: #39ff14", CSS.split(".health-dot.up::before", 1)[1][:80])
+        self.assertIn("2026-08-16-coinglass-hud-only", WIRE_JS)
+        self.assertIn("does not add a 401 probe path", WIRE_JS)
 
 
 class CoinGlassHistReuseTests(unittest.IsolatedAsyncioTestCase):

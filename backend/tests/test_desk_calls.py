@@ -110,12 +110,14 @@ class PunchyCallCopyTests(unittest.TestCase):
         self.assertNotIn("best odds", plate)
 
     def test_wire_note(self):
+        self.assertIn("2026-08-16-coinglass-hud-only", WIRE_JS)
         self.assertIn("2026-08-16-chair-table-call", WIRE_JS)
         self.assertIn("2026-08-16-current-calls", WIRE_JS)
         self.assertIn("Current Calls", WIRE_JS)
+        self.assertLess(WIRE_JS.find("2026-08-16-coinglass-hud-only"), WIRE_JS.find("2026-08-16-chair-table-call"))
         self.assertLess(WIRE_JS.find("2026-08-16-chair-table-call"), WIRE_JS.find("2026-08-16-current-calls"))
-        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-chair-table-call", 1)[1][:500])
-        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-chair-table-call", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
+        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-coinglass-hud-only", 1)[1][:500])
+        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-coinglass-hud-only", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
 
 
 if __name__ == "__main__":
