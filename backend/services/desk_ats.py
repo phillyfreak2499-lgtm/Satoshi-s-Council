@@ -242,6 +242,12 @@ def reset_for_tests(data_dir: Optional[Path] = None) -> None:
     _watch_cache = {}
     _summary_cache = {}
     _data_override = data_dir
+    try:
+        from backend.services import desk_hunter
+
+        desk_hunter.reset_for_tests()
+    except Exception:
+        pass
 
 
 def _data_path(name: str) -> Path:
@@ -817,9 +823,11 @@ def build_chair(pick: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if ice:
         summary = f"WAIT · {ice}"
     elif gate:
-        summary = f"WAIT · {gate}"
+        num = pick.get("number") or pick.get("title") or ""
+        summary = f"NO CONSENSUS · {gate}" + (f" · {num}" if num else "")
     elif call == "WAIT":
-        summary = "WAIT · NO EDGE AFTER VIG"
+        num = pick.get("number") or pick.get("title") or ""
+        summary = f"NO CONSENSUS · {num}" if num else "NO CONSENSUS · SHOW THE BET"
     else:
         num = pick.get("number") or pick.get("title") or ""
         leftover = pick.get("leftover")
@@ -1162,6 +1170,14 @@ def apply_ares_gates(
     sit_far_horizon_fills(now)
     if pick.get("ice"):
         return str(pick.get("ice"))
+    leftover = pick.get("leftover")
+    try:
+        if leftover is not None and float(leftover) < 3.0 and str(pick.get("call") or "").upper() not in ("", "WAIT"):
+            pick["gate"] = "EV < +3¢ · SIT"
+            pick["call"] = "WAIT"
+            return "EV < +3¢ · SIT"
+    except (TypeError, ValueError):
+        pass
     reason = sit_after_kick(pick, watch, now)
     if not reason:
         reason = late_hurt_gate(pick, now)
@@ -1388,7 +1404,9 @@ def paper_lock_if_clear(pick: Optional[Dict[str, Any]], now: Optional[datetime] 
         pick["call"] = "WAIT"
         return None
     leftover = pick.get("leftover")
-    if leftover is None or float(leftover) <= 0:
+    if leftover is None or float(leftover) < 3.0:
+        pick["gate"] = "EV < +3¢ · SIT"
+        pick["call"] = "WAIT"
         return None
     n = now or datetime.now(CT)
     if n.tzinfo is None:
@@ -1935,9 +1953,9 @@ def build_why(
     if ice_on:
         head = f"WHY · ICE SAT · {pick.get('ice')}"
     elif pick.get("gate"):
-        head = f"WHY · {pick.get('gate')}"
+        head = f"NO CONSENSUS · {pick.get('gate')}"
     elif call == "WAIT":
-        head = "WHY · DARK · NO EDGE AFTER VIG"
+        head = "NO CONSENSUS · SHOW THE BET"
     else:
         bits = [f"WHY · {BIRD_FIRST} · {call}"] if bird else [f"WHY · {call}"]
         pub = pick.get("public")
@@ -1978,6 +1996,9 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         return _board_cache["payload"]
     rows = await scan_open(fetch=fetch)
     sit_far_horizon_fills(now)
+    from backend.services import desk_hunter
+
+    hunt = desk_hunter.feed_ares_from_rows(rows, now=now)
     pick = pick_one_game(rows, now=now)
     held = open_paper_ticket(now)
     if held and pick:
@@ -1994,6 +2015,9 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
             pick = dict(pick)
             pick["gate"] = "ONE TICKET · ALREADY SAT"
             pick["call"] = "WAIT"
+    if pick is None and hunt.get("featured_raw"):
+        pick = dict(hunt["featured_raw"])
+        pick["hunt_fed"] = True
     watch = await attach_watch(pick, fetch=watch_fetch, events=watch_events)
     if pick:
         pick = dict(pick)
@@ -2061,6 +2085,18 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         "series": [s for _sp, s, _k in V1_SERIES if s not in _dead_series],
         "dead_series": sorted(_dead_series.keys()),
         "clock": build_game_clock(pick),
+        "candidates": hunt.get("candidates") or [],
+        "hunter": {
+            "feeder": "HUNTER",
+            "chair": False,
+            "locker": False,
+            "seat": False,
+            "side": None,
+            "sources": hunt.get("sources") or [],
+            "paper_only": True,
+            "follower": False,
+            "live": False,
+        },
         "paper_only": True,
         "follower": False,
         "live": False,

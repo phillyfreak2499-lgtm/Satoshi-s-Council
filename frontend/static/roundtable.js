@@ -1081,6 +1081,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       why: (chair && chair.why) || pick.why || (board && board.why),
       tug: (chair && chair.tug) || pick.tug || (board && board.tug),
       brains: (chair && chair.brains) || pick.brains || (board && board.brains),
+      candidates: (board && board.candidates) || [],
+      hunter: (board && board.hunter) || null,
       learning: { hierarchy: hierarchy },
     };
   }
@@ -1196,6 +1198,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       pick: pick,
       why: why,
       watch: watch,
+      candidates: (board && board.candidates) || [],
+      hunter: (board && board.hunter) || null,
       accuracy: {
         correct: acc.correct || 0,
         total: acc.total || 0,
@@ -6519,13 +6523,15 @@ function drawCandleChart() {
     const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
     const pick = view.pick || {};
     const clock = (view.market && view.market.clock) || view.clock || {};
-    const game = pick.game || clock.game || "NO GAME";
-    const number = pick.number || clock.number || pick.title || "NO LINE";
-    const sport = String(pick.sport || clock.sport || "").trim().toUpperCase();
+    const cands = view.candidates || [];
+    const featured = cands[0] || {};
+    const game = pick.game || clock.game || featured.game || featured.market || "NO GAME";
+    const number = pick.number || clock.number || pick.title || featured.number || featured.market || "NO LINE";
+    const sport = String(pick.sport || clock.sport || featured.sport || "").trim().toUpperCase();
     if (nameEl) nameEl.textContent = game;
     if (lineEl) lineEl.textContent = number;
     if (sportEl) {
-      const hasBook = !!(pick.ticker || pick.game || pick.title || pick.number || clock.game);
+      const hasBook = !!(pick.ticker || pick.game || pick.title || pick.number || clock.game || featured.ticker || featured.market);
       sportEl.textContent = sport || (hasBook ? "WAIT" : "NO BOOK");
       sportEl.setAttribute("data-live", sport ? "on" : "off");
     }
@@ -7474,6 +7480,21 @@ function drawCandleChart() {
     return liveCallCard(view, kind).line;
   }
 
+  function paintHuntStrip(id, cands) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const rows = (cands || []).slice(0, 3);
+    if (!rows.length) {
+      el.textContent = "HUNT · —";
+      return;
+    }
+    el.textContent = "HUNT · " + rows.map(function (c) {
+      const name = String(c.market || c.number || c.ticker || "BET").slice(0, 28);
+      const mid = c.mid != null && isFinite(Number(c.mid)) ? (Math.round(Number(c.mid)) + "¢") : "—";
+      return name + " " + mid;
+    }).join(" · ");
+  }
+
   function paintAtsWhy(ts) {
     const wrap = document.getElementById("atsWhy");
     const line = document.getElementById("atsWhyLine");
@@ -7484,8 +7505,14 @@ function drawCandleChart() {
     if (!show) return;
     const view = ts || (typeof tableState === "function" ? tableState("ats") : null) || {};
     const why = view.why || (view.pick && view.pick.why) || {};
-    if (line) line.textContent = String(why.line || "WHY · DARK · NO GAME ON THE TABLE");
+    const cands = view.candidates || [];
+    if (line) {
+      if (why.line) line.textContent = String(why.line);
+      else if (cands.length) line.textContent = "NO CONSENSUS · SHOW THE BET";
+      else line.textContent = "WHY · DARK · NO GAME ON THE TABLE";
+    }
     if (strip) strip.textContent = String(why.strip || "LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK");
+    try { paintHuntStrip("atsHunt", cands); } catch (e) {}
   }
 
   function paintAtsWatch(ts) {
@@ -7570,8 +7597,14 @@ function drawCandleChart() {
     if (!show) return;
     const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
     const why = view.why || {};
-    if (line) line.textContent = String(why.line || liveCallCard(view, "oracle").line);
+    const cands = view.candidates || [];
+    if (line) {
+      if (why.line) line.textContent = String(why.line);
+      else if (cands.length) line.textContent = "NO CONSENSUS · SHOW THE BET";
+      else line.textContent = String(liveCallCard(view, "oracle").line);
+    }
     if (strip) strip.textContent = String(why.strip || "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK");
+    try { paintHuntStrip("oraHunt", cands); } catch (e) {}
   }
 
   function paintOraWatch(ts) {

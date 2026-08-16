@@ -84,6 +84,12 @@ def reset_for_tests(data_dir: Optional[Path] = None) -> None:
     _fills_loaded = True
     _board_cache = {"at": 0.0, "payload": None}
     _data_override = data_dir
+    try:
+        from backend.services import desk_hunter
+
+        desk_hunter.reset_for_tests()
+    except Exception:
+        pass
 
 
 def _data_path(name: str) -> Path:
@@ -267,6 +273,9 @@ def normalize_book(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         "close_time": raw.get("close_time"),
         "floor_strike": raw.get("floor_strike") or raw.get("strike_price") or raw.get("strike"),
         "volume": raw.get("volume_fp") or raw.get("volume"),
+        "prior_unknown": bool(raw.get("prior_unknown")),
+        "source": raw.get("source"),
+        "url": raw.get("url"),
     }
 
 
@@ -380,13 +389,23 @@ def chair_decision(seats: List[Dict[str, Any]], book: Optional[Dict[str, Any]]) 
             "watch": {"line": "CRT · WAIT · STATIC ON THE GLASS", "listed": False},
             "gate": "20-80",
         }
+    if book and book.get("prior_unknown"):
+        title = str((book or {}).get("title") or (book or {}).get("ticker") or "THE BET")
+        return {
+            "direction": "WAIT",
+            "confidence": 22,
+            "summary": f"NO CONSENSUS · {title}",
+            "why": {"line": f"NO CONSENSUS · SHOW THE BET · {title}", "strip": strip},
+            "watch": {"line": "CRT · NO CONSENSUS · TICKET ON THE GLASS", "listed": True},
+            "gate": "NO CONSENSUS",
+        }
     if ups and downs:
         return {
             "direction": "WAIT",
             "confidence": 20,
-            "summary": "WAIT · SEATS SPLIT",
-            "why": {"line": "WAIT · SEATS SPLIT", "strip": strip},
-            "watch": {"line": "CRT · WAIT · STATIC ON THE GLASS", "listed": False},
+            "summary": "NO CONSENSUS · SEATS SPLIT",
+            "why": {"line": "NO CONSENSUS · SEATS SPLIT", "strip": strip},
+            "watch": {"line": "CRT · NO CONSENSUS · TICKET ON THE GLASS", "listed": True},
             "gate": "SPLIT",
         }
     side = "UP" if len(ups) >= 3 and not downs else ("DOWN" if len(downs) >= 3 and not ups else None)
@@ -394,19 +413,19 @@ def chair_decision(seats: List[Dict[str, Any]], book: Optional[Dict[str, Any]]) 
         return {
             "direction": "WAIT",
             "confidence": 18,
-            "summary": "WAIT · SEATS SPLIT",
-            "why": {"line": "WAIT · SEATS SPLIT", "strip": strip},
-            "watch": {"line": "CRT · WAIT · STATIC ON THE GLASS", "listed": False},
+            "summary": "NO CONSENSUS · SEATS SPLIT",
+            "why": {"line": "NO CONSENSUS · SEATS SPLIT", "strip": strip},
+            "watch": {"line": "CRT · NO CONSENSUS · TICKET ON THE GLASS", "listed": True},
             "gate": "SPLIT",
         }
     leftover = sides.get("up") if side == "UP" else sides.get("down")
-    if leftover is None or float(leftover) <= 0:
+    if leftover is None or float(leftover) < 3.0:
         return {
             "direction": "WAIT",
             "confidence": 0,
-            "summary": "WAIT · NO EDGE AFTER VIG",
-            "why": {"line": "WAIT · NO EDGE AFTER VIG", "strip": strip},
-            "watch": {"line": "CRT · WAIT · STATIC ON THE GLASS", "listed": False},
+            "summary": "NO CONSENSUS · EV < +3¢",
+            "why": {"line": "NO CONSENSUS · EV < +3¢", "strip": strip},
+            "watch": {"line": "CRT · NO CONSENSUS · TICKET ON THE GLASS", "listed": True},
             "gate": "NO EDGE",
         }
     voices = "+".join(s["id"] for s in seats if str(s.get("dir") or "").upper() == side)
@@ -445,13 +464,18 @@ def paper_lock_if_clear(
     """Paper only. Cap a few per day. Follower stays off. No live Kalshi."""
     if not pick or not decision:
         return None
+    if pick.get("prior_unknown"):
+        return None
     side = str(decision.get("direction") or "WAIT").upper()
     if side not in ("UP", "DOWN") or decision.get("gate"):
         return None
     leftover = decision.get("leftover")
     if leftover is None:
         leftover = pick.get("leftover")
-    if leftover is None or float(leftover) <= 0:
+    if leftover is None or float(leftover) < 3.0:
+        decision["gate"] = "EV < +3¢"
+        decision["direction"] = "WAIT"
+        decision["summary"] = "NO CONSENSUS · EV < +3¢"
         return None
     n = _now_ct(now)
     if not paper_lock_day_ok(locks_today(n)):
@@ -562,7 +586,19 @@ async def build_board(
 ) -> Dict[str, Any]:
     if not force and _board_cache.get("payload") and time.time() - float(_board_cache.get("at") or 0) < BOARD_TTL_S:
         return _board_cache["payload"]
-    pick = normalize_book(book) if book is not None else await scan_open(fetch=fetch)
+    from backend.services import desk_hunter
+
+    hunt: Dict[str, Any]
+    if book is not None:
+        pick = normalize_book(book)
+        hunt = desk_hunter.feed_oracle_from_rows([book], now=now)
+    elif fetch is not None:
+        pick = await scan_open(fetch=fetch)
+        hunt = desk_hunter.feed_oracle_from_rows([pick] if pick else [], now=now)
+    else:
+        hunt = await desk_hunter.feed_oracle(now=now, force=True)
+        raw = hunt.get("featured_raw")
+        pick = normalize_book(raw) if raw else None
     seat_rows = seats if seats is not None else build_seats(pick)
     decision = chair_decision(seat_rows, pick)
     lock = paper_lock_if_clear(pick, decision, now=now)
@@ -593,6 +629,18 @@ async def build_board(
         "tape": lock_tape(),
         "fills": lock_tape(),
         "clock": clock,
+        "candidates": hunt.get("candidates") or [],
+        "hunter": {
+            "feeder": "HUNTER",
+            "chair": False,
+            "locker": False,
+            "seat": False,
+            "side": None,
+            "sources": hunt.get("sources") or [],
+            "paper_only": True,
+            "follower": False,
+            "live": False,
+        },
         "paper_only": True,
         "follower": False,
         "live": False,

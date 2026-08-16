@@ -7292,6 +7292,18 @@ body.mode-calls #windowLed {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.ats-hunt, .ora-hunt {
+  margin-top: 3px;
+  font-family: Orbitron, Rajdhani, monospace;
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  color: #f0c14a;
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ora-hunt { color: #f0b8ff; }
 .ats-why[hidden] { display: none !important; }
 body.floor-mode .ats-why,
 body.night-mode .ats-why,
