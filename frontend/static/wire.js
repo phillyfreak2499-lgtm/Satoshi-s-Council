@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-floor-nonglow-wait",
+    "at": "2026-08-16T23:40:00-05:00",
+    "title": "Floor WAIT faces are signed no-glow close-ups",
+    "why": "Floor WAIT faces swapped to signed no-glow close-ups. Satoshi, Vitalik, Raijin (Dallas storm, no cowboy hat), Oracle, and Ares. One face per chair. Labels carry LOCK/WAIT. Room plates stay separate. WAIT CSS bloom is off (.dir.WAIT, .chair-why, majority-wait Floor). Lock punch stays. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-hard-mute-wire",
     "at": "2026-08-16T23:24:00-05:00",
     "title": "Hard mute copies onto the live wire",
