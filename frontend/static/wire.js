@@ -5,7 +5,7 @@ window.COUNCIL_WIRE = [
     "id": "2026-08-16-hunter-feeder",
     "at": "2026-08-16T23:59:00-05:00",
     "title": "Hunter keeps Ares and Oracle books live",
-    "why": "Hunter is a rotating scout feeder — not a Floor chair, not a locker, not a sixth seat. It surfaces 1–3 live candidates on Ares (sports) and Oracle (politics): exact market, both sides, odds, why it might have edge, source links/timestamps, time sensitivity. No Consensus is valid. Dead air is the failure. Chair still decides. Hits first. 20–80 after vig. Sit if EV under +3¢. Paper. Follower OFF."
+    "why": "Hunter is a rotating scout feeder — not a Floor chair, not a locker, not a sixth seat. It surfaces 1–3 live candidates on Ares (sports) and Oracle (politics): exact market, both sides, odds, why it might have edge, source links/timestamps, time sensitivity. No Consensus is valid. Dead air is the failure. Chair still decides. Hits first. 20–80 after vig. Sit if EV under +3¢. Folded leftover from live #45: /static/ares-wait.png and /static/ares-chair.png now get the same short Cache-Control as the other leader stills (public, max-age=60, must-revalidate). JS uses that path; the StaticFiles mount was a 200 with no cache header. Paper. Follower OFF."
   },
   {
     "id": "2026-08-16-vitalik-rain-still",

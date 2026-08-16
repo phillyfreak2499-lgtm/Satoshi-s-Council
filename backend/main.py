@@ -1262,7 +1262,32 @@ if STATIC_DIR.is_dir():
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
 
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    # JS paints Ares from /static/ares-wait.png. The StaticFiles mount
+    # would serve that path with no Cache-Control. Register these first
+    # so they get the same short cache as the other leader stills.
+    @app.get("/static/ares-wait.png")
+    def _static_ares_wait_png() -> FileResponse:
+        wait = STATIC_DIR / "ares-wait.png"
+        path = wait if wait.is_file() else STATIC_DIR / "ares-chair.png"
+        return FileResponse(path, media_type="image/png", headers=LEADER_JPG_CACHE)
+
+    @app.get("/static/ares-chair.png")
+    def _static_ares_chair_png() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "ares-chair.png",
+            media_type="image/png",
+            headers=LEADER_JPG_CACHE,
+        )
+
+    class _StaticLeaderCache(StaticFiles):
+        async def get_response(self, path: str, scope):
+            response = await super().get_response(path, scope)
+            name = str(path).rsplit("/", 1)[-1]
+            if name in ("ares-wait.png", "ares-chair.png"):
+                response.headers["Cache-Control"] = LEADER_JPG_CACHE["Cache-Control"]
+            return response
+
+    app.mount("/static", _StaticLeaderCache(directory=str(STATIC_DIR)), name="static")
 
     # Bot portraits — currently nested under bots/bots/ (upload layout). Prefer flatten later.
     bots_dir = STATIC_DIR / "bots" / "bots"

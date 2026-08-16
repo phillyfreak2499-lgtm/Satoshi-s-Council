@@ -106,6 +106,9 @@ class HunterIdentityTests(unittest.TestCase):
         self.assertIn("2026-08-16-hunter-feeder", WIRE)
         self.assertIn("not a Floor chair", WIRE)
         self.assertIn("No Consensus", WIRE)
+        hunt_why = WIRE.split("2026-08-16-hunter-feeder", 1)[1].split("2026-08-16-vitalik-rain-still", 1)[0]
+        self.assertIn("/static/ares-wait.png", hunt_why)
+        self.assertIn("Cache-Control", hunt_why)
         self.assertIn("Paper. Follower OFF.", WIRE)
         self.assertNotIn("ZT", WIRE.split("2026-08-16-hunter-feeder", 1)[1].split("2026-08-16-vitalik-rain-still", 1)[0])
         self.assertIn(".ats-hunt", CSS)

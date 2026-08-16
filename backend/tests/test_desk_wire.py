@@ -75,6 +75,8 @@ class WireLogTests(unittest.TestCase):
         self.assertIn("Hunter", rows[0]["why"])
         self.assertIn("not a Floor chair", rows[0]["why"])
         self.assertIn("No Consensus", rows[0]["why"])
+        self.assertIn("/static/ares-wait.png", rows[0]["why"])
+        self.assertIn("Cache-Control", rows[0]["why"])
         self.assertIn("Paper", rows[0]["why"])
         self.assertIn("Follower OFF", rows[0]["why"])
         self.assertNotIn("ZT", rows[0]["title"])

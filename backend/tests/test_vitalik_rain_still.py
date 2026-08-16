@@ -117,6 +117,19 @@ class VitalikRainStillTests(unittest.TestCase):
         for name in ("chair-wait.jpg", "raijin-wait.jpg", "oracle-wait.jpg", "ares-wait.png"):
             block = MAIN.split('@app.get("/%s")' % name, 1)[1].split("@app.get", 1)[0]
             self.assertIn("headers=LEADER_JPG_CACHE", block)
+        # Leftover from live #45: JS uses /static/ares-wait.png, which the
+        # StaticFiles mount served as 200 with no Cache-Control. Dedicated
+        # routes must win the prefix (registered before app.mount("/static")).
+        mount_at = MAIN.index('app.mount("/static"')
+        static_wait_at = MAIN.index('@app.get("/static/ares-wait.png")')
+        static_chair_at = MAIN.index('@app.get("/static/ares-chair.png")')
+        self.assertLess(static_wait_at, mount_at)
+        self.assertLess(static_chair_at, mount_at)
+        static_block = MAIN[min(static_wait_at, static_chair_at):mount_at]
+        self.assertGreaterEqual(static_block.count("headers=LEADER_JPG_CACHE"), 2)
+        self.assertIn("class _StaticLeaderCache", MAIN)
+        self.assertIn('_StaticLeaderCache(directory=str(STATIC_DIR))', MAIN)
+        self.assertIn('aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V', JS)
         for name in ("satoshi-shrine.jpg", "ares-stadium.jpg", "raijin-dallas.jpg", "oracle-room.jpg"):
             block = MAIN.split('@app.get("/%s")' % name, 1)[1].split("@app.get", 1)[0]
             self.assertIn("headers=ROOM_JPG_CACHE", block)
