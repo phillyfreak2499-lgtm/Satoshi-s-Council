@@ -577,6 +577,11 @@ class Leader:
                 summary = f"WAIT · 15m path · no attractive book · {goal_txt} · {summary}"
         if gate_notes:
             summary += " · " + ", ".join(gate_notes[:2])
+        try:
+            from backend.agents.chair_gates import punch_chair_why
+            summary = punch_chair_why(summary, disp)
+        except Exception:
+            pass
         return {
             "direction": disp,
             "action": action,

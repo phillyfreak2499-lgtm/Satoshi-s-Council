@@ -730,6 +730,46 @@ WAIT_REASON_CODES = (
 )
 
 
+def punch_chair_why(summary: Any, direction: Any = None) -> str:
+    """
+    One short CRT Chair line. Collapse stacked dead_book + GOAL + confluence
+    + Kalshi + mid-window into a single punch. Does not change lock gates.
+    """
+    text = str(summary or "").strip()
+    low = text.lower()
+    raw = str(direction or "").upper()
+    if raw in ("UP", "UP_HOLD", "LONG_UP"):
+        side = "UP"
+    elif raw in ("DOWN", "DOWN_HOLD", "LONG_DOWN"):
+        side = "DOWN"
+    else:
+        side = "WAIT"
+    if "dead book" in low or "dead_book" in low:
+        return "WAIT · dead book"
+    if "chalk" in low or "99¢" in low or "99c" in low:
+        return "WAIT · chalk sit"
+    if "no attractive" in low or ("leftover" in low and "no " in low):
+        return "WAIT · no leftover"
+    if "insufficient confluence" in low or "low confluence" in low or "thin confluence" in low:
+        return "WAIT · thin confluence"
+    if "fresh quote" in low or "stale kalshi" in low or "stale quote" in low:
+        return "WAIT · Kalshi stale"
+    if "mid-window" in low and side == "WAIT":
+        return "WAIT · mid-window sit"
+    if side in ("UP", "DOWN"):
+        if "leftover" in low:
+            return f"{side} · leftover live"
+        if "path" in low:
+            return f"{side} · path live"
+        return f"{side} · council lean"
+    bits = [b.strip() for b in text.replace("–", "·").split("·") if b.strip()]
+    if not bits:
+        return "WAIT"
+    if len(bits) <= 2 and len(text) <= 42:
+        return text
+    return " · ".join(bits[:2])[:48]
+
+
 def classify_wait_reason(
     summary: Any = None,
     decision: Any = None,
@@ -2130,6 +2170,22 @@ def quorum_peer_dirs(signals: Any, market_data: Any = None) -> Dict[str, str]:
     return out
 
 
+# Tally-only remap. LONG_UP/LONG_DOWN count as a door. REDUCE_*/FLAT_* do not.
+# Chair path-P&L actions stay untouched — this is color_counts / majority only.
+_TALLY_UP = frozenset({"UP", "UP_HOLD", "LONG_UP"})
+_TALLY_DOWN = frozenset({"DOWN", "DOWN_HOLD", "LONG_DOWN"})
+
+
+def tally_dir(direction: Any) -> str:
+    """Map a seat lean onto the HUD tally. LONG_* only. Not REDUCE/FLAT."""
+    d = str(direction or "WAIT").upper().strip()
+    if d in _TALLY_UP:
+        return "UP"
+    if d in _TALLY_DOWN:
+        return "DOWN"
+    return "WAIT"
+
+
 def color_counts_from_signals(signals: Any) -> Dict[str, int]:
     counted = [s for s in (signals or []) if not signal_excluded_from_quorum(s)]
     def _dir(sig: Any) -> str:
@@ -2137,11 +2193,7 @@ def color_counts_from_signals(signals: Any) -> Dict[str, int]:
             raw = str(sig.get("direction") or "WAIT").upper()
         else:
             raw = str(getattr(sig, "direction", None) or "WAIT").upper()
-        try:
-            from backend.agents.base import lean_side
-            return lean_side(raw) or "WAIT"
-        except Exception:
-            return raw
+        return tally_dir(raw)
     return {
         "UP": sum(1 for s in counted if _dir(s) == "UP"),
         "DOWN": sum(1 for s in counted if _dir(s) == "DOWN"),

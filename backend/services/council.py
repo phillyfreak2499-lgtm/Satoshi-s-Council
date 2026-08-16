@@ -859,7 +859,12 @@ class Council:
                 if agent.name == "law":
                     return await agent.get_signal(market_data)
                 fallback = await agent.get_signal(market_data)
-                subs = subs_map.get(agent.name) or subs_map.get("candle") or []
+                # Candle subs belong to WICK only. CASCADE has no Glass pane —
+                # do not inherit the candle council and keep voting on a 401.
+                if agent.name in ("candle", "candle_btc", "candle_eth"):
+                    subs = subs_map.get(agent.name) or subs_map.get("candle") or []
+                else:
+                    subs = subs_map.get(agent.name) or []
                 merged = synthesize_from_subs(agent.name, agent.category, subs, fallback)
                 if agent.name == "regime":
                     merged.features = {**fallback.features, **merged.features}

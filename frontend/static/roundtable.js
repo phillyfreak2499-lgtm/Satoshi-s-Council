@@ -345,7 +345,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Dallas storm is the Raijin table back, not the face.
   // Leader stills are cache-busted: live files were max-age=86400, so phones
   // kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
-  const LEADER_JPG_V = "79e1722716";
+  const LEADER_JPG_V = "280a18fb49";
   let chairImgsReady = 0;
   function _chairLoaded() {
     chairImgsReady += 1;
@@ -779,6 +779,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (w === "BELOW" || w === "DOWN" || w === "DOWN_HOLD" || w === "NO" || w === "LONG_DOWN" || w === "REDUCE_DOWN" || w === "FLAT_DOWN") return "DOWN";
     if (w === "BOTH" || w === "FLAT_ALL") return "BOTH";
     if (w === "SWAP") return "SWAP";
+    return "WAIT";
+  }
+  // Tally-only remap. LONG_UP/LONG_DOWN count as a door. REDUCE_*/FLAT_* do not.
+  // Do not wash the desk just because a chair is WAIT.
+  function tallyTone(dir) {
+    const w = String(dir || "WAIT").toUpperCase();
+    if (w === "UP" || w === "UP_HOLD" || w === "LONG_UP") return "UP";
+    if (w === "DOWN" || w === "DOWN_HOLD" || w === "LONG_DOWN") return "DOWN";
     return "WAIT";
   }
   function chairLockDir(dir, lc) {
@@ -2164,6 +2172,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   syncSoundButton();
 
   const AGENT_ORDER = ["candle_btc", "candle_eth", "volume", "momentum", "orderflow", "funding", "regime", "volatility", "oi_pressure", "streak", "odds", "strike", "session_tod", "whale", "quorum", "panic", "cheap", "spotlag", "news", "liq", "exhaust", "guardian", "law"];
+  // Visible BTC strip only. Brain still has all 22 voters. Trim HUD/Table/Floor feed.
+  const BTC_STRIP_KEYS = ["candle_btc", "volume", "momentum", "orderflow", "funding", "volatility", "oi_pressure", "odds", "session_tod", "news", "liq", "exhaust"];
+  const BTC_STRIP_LABELS = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "VOLT", "CHAIN", "ODDS", "CLOCK", "WIRE", "CASCADE", "EXHAUST"];
+  function onVisibleStrip(key, which) {
+    const w = which || (typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    if (typeof isEthTable === "function" && isEthTable(w)) return true;
+    if (typeof isAtsTable === "function" && isAtsTable(w)) return true;
+    if (typeof isFrontTable === "function" && isFrontTable(w)) return true;
+    if (typeof isOracleTable === "function" && isOracleTable(w)) return true;
+    const table = String(w || "bitcoin").toLowerCase();
+    if (table && table !== "bitcoin" && table !== "btc") return true;
+    return BTC_STRIP_KEYS.indexOf(key) >= 0;
+  }
   // Cool callsigns — internal keys stay the same for API/weights
   const AGENT_LABELS = {
     candle: "WICK",
@@ -2696,16 +2717,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function majorityDirOf(agents) {
-    let up = 0, down = 0, wait = 0;
+    let up = 0, down = 0;
     (agents || []).forEach((a) => {
       if (!a || a.agent_name === "leader") return;
-      const d = wxTone(a.direction);
+      const d = tallyTone(a.direction);
       if (d === "UP") up++;
       else if (d === "DOWN") down++;
-      else wait++;
     });
-    if (up > down && up >= wait) return "UP";
-    if (down > up && down >= wait) return "DOWN";
+    if (up > down) return "UP";
+    if (down > up) return "DOWN";
     return "WAIT";
   }
 
@@ -4352,7 +4372,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     view = view || "floor";
     const phone = w <= 480 || Math.min(w, h) <= 520;
     const dual = view !== "art" && !phone && w >= 720;
-    const labels = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN", "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP", "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN"];
+    const labels = (typeof BTC_STRIP_LABELS !== "undefined" ? BTC_STRIP_LABELS : ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "VOLT", "CHAIN", "ODDS", "CLOCK", "WIRE", "CASCADE", "EXHAUST"]);
     const out = { phone: phone, dual: dual, view: view, nameplates: [], goals: [], seats: [] };
     function tw(s, px) { return Math.max(8, Math.round(String(s).length * px * 0.62)); }
     function addSeats(cx, cy, ringR, seatR, nameOff, fontPx, side, labs) {
@@ -4628,8 +4648,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
           : liveNames.filter(a => a !== "law"))
       : (ranked.length
-          ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law" && !isForeignPatternSeat(a, focusTable)))
-          : AGENT_ORDER.filter(a => a !== "law" && !isForeignPatternSeat(a, focusTable)));
+          ? ranked.filter(a => onVisibleStrip(a, focusTable)).concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law" && !isForeignPatternSeat(a, focusTable) && onVisibleStrip(a, focusTable)))
+          : AGENT_ORDER.filter(a => a !== "law" && !isForeignPatternSeat(a, focusTable) && onVisibleStrip(a, focusTable)));
     if (oracleLive && !order.length) order = oracleNames.slice();
     if (floorHideWait) {
       const locked = {};
@@ -5494,7 +5514,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         lastEl.textContent = "last lock —";
       }
     }
-    const agents = (view.agents || []).filter((a) => a && a.agent_name && a.agent_name !== "leader");
+    const agents = (view.agents || []).filter((a) => a && a.agent_name && a.agent_name !== "leader" && onVisibleStrip(a.agent_name, typeof focusTable !== "undefined" ? focusTable : "bitcoin"));
     const now = Date.now();
     const packets = agents.map((a) => {
       const name = labelOf(a);
@@ -5548,8 +5568,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function hierarchyOrder() {
     const h = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
-    if (h.length) return h.map(r => r.agent).filter(a => AGENT_ORDER.includes(a) && !isForeignPatternSeat(a, focusTable));
-    return AGENT_ORDER.filter(a => a !== "law" && a !== "guardian" && !isForeignPatternSeat(a, focusTable));
+    if (h.length) return h.map(r => r.agent).filter(a => AGENT_ORDER.includes(a) && !isForeignPatternSeat(a, focusTable) && onVisibleStrip(a, focusTable));
+    return AGENT_ORDER.filter(a => a !== "law" && a !== "guardian" && !isForeignPatternSeat(a, focusTable) && onVisibleStrip(a, focusTable));
   }
 
   function renderHierarchy() {
@@ -5563,7 +5583,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     let rows = hier.length ? hier.slice() : (isOracleTable(focusTable)
       ? ORACLE_SEAT_IDS.map(function (id) { return String(id).toLowerCase(); })
-      : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law" && !isForeignPatternSeat(n, focusTable)))).map((n, i) => ({
+      : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law" && !isForeignPatternSeat(n, focusTable) && onVisibleStrip(n, focusTable)))).map((n, i) => ({
       agent: n, rank: i + 1, listen: 1, win_rate: null, correct: 0, wrong: 0, weight: 0
     }));
 
@@ -9707,11 +9727,11 @@ function drawCandleChart() {
     if (up == null && state && state.agents) {
       up = down = wait = hold = swap = 0;
       state.agents.forEach(a => {
-        const d = a.direction || "WAIT";
+        const raw = String(a.direction || "WAIT").toUpperCase();
+        const d = tallyTone(raw);
         if (d === "UP") up++;
         else if (d === "DOWN") down++;
-        else if (d === "UP_HOLD" || d === "DOWN_HOLD") hold++;
-        else if (d === "SWAP") swap++;
+        else if (raw === "SWAP") swap++;
         else wait++;
       });
     }

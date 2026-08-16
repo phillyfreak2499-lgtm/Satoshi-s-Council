@@ -14,9 +14,11 @@ from backend.agents.chair_gates import (
     color_counts_from_signals,
     far_otm_companion,
     floor_scorecard,
+    punch_chair_why,
     quorum_peer_dirs,
     seat_settle_key,
     stamp_signal_settle_keys,
+    tally_dir,
     unique_agent_votes,
 )
 from backend.agents.leader import Leader
@@ -75,6 +77,38 @@ class MuteOnWireTests(unittest.TestCase):
         self.assertEqual(counts["UP"], 2)
         self.assertEqual(counts["DOWN"], 0)
         self.assertEqual(counts["total"], 2)
+
+
+class ColorCountsLongTallyTests(unittest.TestCase):
+    def test_long_maps_reduce_does_not(self):
+        self.assertEqual(tally_dir("LONG_UP"), "UP")
+        self.assertEqual(tally_dir("LONG_DOWN"), "DOWN")
+        self.assertEqual(tally_dir("REDUCE_UP"), "WAIT")
+        self.assertEqual(tally_dir("FLAT_DOWN"), "WAIT")
+        self.assertEqual(tally_dir("WAIT"), "WAIT")
+        counts = color_counts_from_signals([
+            _sig("a", "LONG_UP"),
+            _sig("b", "LONG_UP"),
+            _sig("c", "REDUCE_UP"),
+            _sig("d", "FLAT_ALL"),
+            _sig("e", "LONG_DOWN"),
+            _sig("f", "WAIT"),
+        ])
+        self.assertEqual(counts["UP"], 2)
+        self.assertEqual(counts["DOWN"], 1)
+        self.assertEqual(counts["WAIT"], 3)
+        self.assertEqual(counts["total"], 6)
+
+    def test_punch_chair_why_is_one_line(self):
+        stacked = (
+            "WAIT · 15m path sit (dead_book) · GOAL · path P&L · dual-sided scalp "
+            "(20–80¢) · Insufficient confluence – WAIT · mid-window edge · Kalshi"
+        )
+        line = punch_chair_why(stacked, "WAIT")
+        self.assertEqual(line, "WAIT · dead book")
+        self.assertNotIn("\n", line)
+        self.assertLess(len(line), 40)
+        self.assertEqual(punch_chair_why("PATH BOTH · leftover attractive · GOAL", "LONG_UP"), "UP · leftover live")
 
 
 class ScorecardChairVsShadowTests(unittest.TestCase):
