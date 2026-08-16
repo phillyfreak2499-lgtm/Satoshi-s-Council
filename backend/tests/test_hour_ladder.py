@@ -46,6 +46,16 @@ class HourLadderTests(unittest.TestCase):
         near_chalk = pick_hour_book(ladder, spot=62920)
         self.assertEqual(near_chalk["floor_strike"], 63000)
 
+    def test_cheap_wing_loses_to_near_spot_64_36(self):
+        ladder = [
+            _rung(60000, 0.22, 0.78),
+            _rung(62900, 0.98, 0.02),
+            _rung(63000, 0.64, 0.36),
+            _rung(63100, 0.02, 0.98),
+        ]
+        pick = pick_hour_book(ladder, spot=62950)
+        self.assertEqual(pick["floor_strike"], 63000)
+
     def test_eth_same_ladder_rule(self):
         ladder = [
             _rung(2480, 0.97, 0.03, series="KXETHD"),

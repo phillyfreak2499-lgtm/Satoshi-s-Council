@@ -165,10 +165,11 @@ def pick_hour_book(
         mid = sc.get("yes_mid")
         dist = sc.get("dist")
         mid_dev = abs(float(mid) - 50.0) if mid is not None else 99.0
+        # Near-spot two-sided book first. Do not max leftover onto a 21¢ wing.
         return (
-            -(leftover if leftover is not None else -99.0),
-            mid_dev,
             dist if dist is not None else 1e18,
+            mid_dev,
+            -(leftover if leftover is not None else -99.0),
         )
 
     scored = [(score_ladder_contract(m, spot), m) for m in cohort]
