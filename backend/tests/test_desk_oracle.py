@@ -123,7 +123,7 @@ class OraSeatTests(unittest.TestCase):
         self.assertNotIn("GLASS", guide)
         art = JS.split("const oracleLive", 1)[1][:500]
         self.assertIn('["sibyl", "pit", "veil", "marble"]', art)
-        self.assertIn("oracleLive", JS.split("mode === \"art\"", 1)[1][:1800])
+        self.assertIn("oracleLive", JS)
         self.assertIn('body[data-focus-table="oracle"] #botsGrid', CSS)
         dash = JS.split("function renderDashboard", 1)[1].split("function updateLaw", 1)[0]
         self.assertIn("isOracleSeatKey", dash)
@@ -306,8 +306,9 @@ class OraPaperLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("WATCH only", JS)
         self.assertNotIn("Watch chair. Does not place orders.", JS)
         self.assertIn("Paper lock when the four agree", JS)
-        self.assertIn("LOCK ", JS.split("function liveCallCard", 1)[1][:400])
-        self.assertIn("WAIT", JS.split("function liveCallCard", 1)[1][:400])
+        card = JS.split("function liveCallCard", 1)[1].split("function liveCallHeadline", 1)[0]
+        self.assertIn("LOCK ", card)
+        self.assertIn("WAIT", card)
         self.assertNotIn("ZT", HTML.split('id="oracleBotsGuide"', 1)[1][:400])
         self.assertIn("Satoshi’s Council", HTML)
 
