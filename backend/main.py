@@ -122,12 +122,17 @@ async def health():
     kalshi_btc_ok = bool(btc_h.get("kalshi", True))
     kalshi_eth_ok = bool(eth_h.get("kalshi", True)) if eth else None
     kalshi_ok = kalshi_btc_ok and (kalshi_eth_ok is not False)
-    coinglass_ok = bool(btc_h.get("coinglass") or eth_h.get("coinglass"))
+    from backend.data.coinglass import coinglass_hud_ok
+
     coinglass_reason = btc_h.get("coinglass_reason") or (eth_h.get("coinglass_reason") if eth else None)
-    if not coinglass_ok and not coinglass_reason and council.running:
-        coinglass_reason = "no usable funding/OI/liq this cycle"
     if coinglass_reason is not None:
         coinglass_reason = str(coinglass_reason)
+    coinglass_ok = coinglass_hud_ok(
+        bool(btc_h.get("coinglass") or eth_h.get("coinglass")),
+        coinglass_reason,
+    )
+    if not coinglass_ok and not coinglass_reason and council.running:
+        coinglass_reason = "no usable funding/OI/liq this cycle"
     quote_age = btc_h.get("quote_age_s")
     if quote_age is None:
         quote_age = age

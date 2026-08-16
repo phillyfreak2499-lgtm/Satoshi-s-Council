@@ -7345,6 +7345,9 @@ body.gate-locked .health-strip {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  background: #6b7c90;
+}
+.health-dot.up::before {
   background: #39ff14;
 }
 .health-dot.down {

@@ -177,13 +177,13 @@ class PhoneBackTests(unittest.TestCase):
 class WireNewestTests(unittest.TestCase):
     def test_notes_newest_first(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-glass-pane")
+        self.assertEqual(rows[0]["id"], "2026-08-16-hour-ladder")
         ats = [r["at"] for r in rows]
         self.assertEqual(ats, sorted(ats, reverse=True))
         blob = WIRE_JS
         self.assertIn("Seal the pact first.", blob)
         self.assertNotIn("Check the pact first.", blob)
-        self.assertNotIn("ZT", blob.split("2026-08-16-glass-pane", 1)[1].split("2026-08-16-desk-unlock-stay", 1)[0])
+        self.assertNotIn("ZT", blob.split("2026-08-16-hour-ladder", 1)[1].split("2026-08-16-desk-unlock-stay", 1)[0])
 
 
 if __name__ == "__main__":

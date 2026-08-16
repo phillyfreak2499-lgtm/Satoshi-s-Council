@@ -368,6 +368,41 @@ class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
         finally:
             m.council.running = prev
 
+    async def test_upgrade_plan_200_body_is_not_ok(self):
+        from backend import main as m
+        from backend.data.coinglass import coinglass_hud_ok
+
+        self.assertFalse(coinglass_hud_ok(True, "http=200 code=401 msg=Upgrade plan"))
+        self.assertFalse(coinglass_hud_ok(False, "http=200 code=401 msg=Upgrade plan"))
+        self.assertTrue(coinglass_hud_ok(True, ""))
+        prev = m.council.running
+        m.council.running = True
+        try:
+            with patch.object(
+                m.council,
+                "get_state",
+                return_value={
+                    "timestamp": "2026-08-15T21:00:00+00:00",
+                    "tables": {
+                        "bitcoin": {
+                            "timestamp": "2026-08-15T21:00:00+00:00",
+                            "health": {
+                                "coinglass": True,
+                                "coinglass_reason": "http=200 code=401 msg=Upgrade plan",
+                                "kalshi": True,
+                                "binance": True,
+                            },
+                        }
+                    },
+                },
+            ):
+                body = await m.health()
+            self.assertFalse(body["coinglass_ok"])
+            self.assertIn("401", body["coinglass_reason"])
+            self.assertIn("Upgrade plan", body["coinglass_reason"])
+        finally:
+            m.council.running = prev
+
 
 class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
     def test_wire_note(self):
@@ -383,7 +418,7 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("def decide_open_lock_grade", GATES)
         self.assertIn("function floorSeatDirLocked(", JS)
         self.assertIn("function floorLockedAgents(", JS)
-        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
+        self.assertIn("return floorLockedAgents(st.agents || [])", JS)
 
     def test_live_paths_never_request_1m(self):
         self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))

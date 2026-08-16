@@ -2,6 +2,18 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-hour-ladder",
+    "at": "2026-08-16T03:10:00-05:00",
+    "title": "Hourly BTC/ETH pick the playable ladder rung",
+    "why": "Hourly BTC and ETH are a strike ladder, not one binary. The desk now takes the hour’s best contract after vig — 64/36 over chalk 98/2 — then the existing 20–80 / EV / dead-book / first-10 / last-15 / BTC-leads-ETH gates still sit. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-hud",
+    "at": "2026-08-16T03:00:00-05:00",
+    "title": "CoinGlass HUD light matches the miss",
+    "why": "The HUD Glass dot defaulted green. Live health is coinglass_ok=false on HTTP 200 / code 401 Upgrade plan — the light is not-ok now. This is not the Raijin NWS GLASS seat. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-glass-pane",
     "at": "2026-08-16T02:50:00-05:00",
     "title": "GLASS reads the live NWS pane",

@@ -503,8 +503,16 @@ class HealthStripTests(unittest.TestCase):
         self.assertIn("function loadHealthStrip()", JS)
         self.assertIn("/health", JS)
         self.assertIn(".health-dot.down", CSS)
+        self.assertIn(".health-dot.up::before", CSS)
+        default_dot = CSS.split(".health-dot::before", 1)[1].split("}", 1)[0]
+        self.assertNotIn("#39ff14", default_dot)
+        self.assertIn("#6b7c90", default_dot)
+        up_dot = CSS.split(".health-dot.up::before", 1)[1].split("}", 1)[0]
+        self.assertIn("#39ff14", up_dot)
+        self.assertIn("function coinglassHudMiss", JS)
+        self.assertIn('data-feed="coinglass"', HTML.split('id="healthGlass"', 1)[1][:80])
         self.assertIn("body.gate-locked #healthStrip", CSS)
-        self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:400])
+        self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:800])
 
     def test_strip_shape_dims_down_feeds(self):
         strip = health_strip_from_health(
@@ -514,6 +522,13 @@ class HealthStripTests(unittest.TestCase):
         self.assertTrue(strip["spot"])
         self.assertFalse(strip["coinglass"])
         self.assertEqual(strip["quote_age_s"], 3)
+        plan = health_strip_from_health({
+            "kalshi_ok": True,
+            "spot_ok": True,
+            "coinglass_ok": True,
+            "coinglass_reason": "http=200 code=401 msg=Upgrade plan",
+        })
+        self.assertFalse(plan["coinglass"])
 
 
 class SchoolTests(unittest.TestCase):

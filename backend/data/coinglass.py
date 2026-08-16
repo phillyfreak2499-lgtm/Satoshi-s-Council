@@ -202,6 +202,16 @@ def is_plan_interval_error(code: Any, msg: Any) -> bool:
     return any(h in blob for h in _PLAN_INTERVAL_HINTS)
 
 
+def coinglass_hud_ok(ok: Any, reason: Any = None) -> bool:
+    """HUD Glass light: live feed only. HTTP 200 + code 401 / Upgrade plan is not-ok."""
+    if not ok:
+        return False
+    text = str(reason or "").lower()
+    if "401" in text or "upgrade plan" in text or "upgrade" in text:
+        return False
+    return True
+
+
 def live_interval_order(cached_ok: Optional[str] = None) -> List[str]:
     """30m then 1h. Never 1m. A known-good interval may lead later cycles."""
     order = [iv for iv in ALLOWED_INTERVALS if iv != "1m"]

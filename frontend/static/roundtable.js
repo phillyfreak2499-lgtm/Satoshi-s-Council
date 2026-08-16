@@ -7546,6 +7546,10 @@ function drawCandleChart() {
     el.setAttribute("aria-label", "Flip focused Chair");
   }
 
+  function coinglassHudMiss(reason) {
+    const t = String(reason || "").toLowerCase();
+    return t.indexOf("401") >= 0 || t.indexOf("upgrade") >= 0;
+  }
   function paintHealthStrip(data) {
     const strip = document.getElementById("healthStrip");
     if (!strip) return;
@@ -7561,7 +7565,14 @@ function drawCandleChart() {
     const kalshi = data.kalshi_ok != null ? !!data.kalshi_ok : !!(data.kalshi_btc_ok !== false);
     setDot("healthKalshi", kalshi);
     setDot("healthSpot", !!data.spot_ok);
-    setDot("healthGlass", !!data.coinglass_ok);
+    const glassWhy = String(data.coinglass_reason || "");
+    const glassOk = !!data.coinglass_ok && !coinglassHudMiss(glassWhy);
+    setDot("healthGlass", glassOk);
+    const glassEl = document.getElementById("healthGlass");
+    if (glassEl) {
+      glassEl.setAttribute("data-ok", glassOk ? "1" : "0");
+      glassEl.title = glassOk ? "CoinGlass live" : (glassWhy ? ("CoinGlass · " + glassWhy) : "CoinGlass not-ok");
+    }
     const ageEl = document.getElementById("healthAge");
     const age = data.quote_age_s != null ? data.quote_age_s : data.state_age_s;
     if (ageEl) ageEl.textContent = (age != null && isFinite(Number(age))) ? (Math.round(Number(age)) + "s") : "—";

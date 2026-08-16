@@ -219,7 +219,7 @@ class DataPipeline:
         cfb_ok = bool(cfb_snap.get("healthy"))
         spot_ok = bool(binance_data.get("healthy")) or bn_candles_ok or cb_ok or cfb_ok
 
-        # Re-pick ATM strike with the research print (60s CFB avg when we have it)
+        # Re-pick the hour's playable ladder rung with the research print
         spot = research_px or display_px or bn_price or cb_price
         if spot and kalshi_data.get("healthy"):
             try:

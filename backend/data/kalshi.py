@@ -1,7 +1,8 @@
 """
 Kalshi public market data for hourly series (KXBTCD / KXETHD).
 No authentication required for markets / orderbook / series.
-Picks the soonest open event and the strike nearest to spot when a ladder exists.
+Picks the soonest open hour, then the best playable contract on that
+strike ladder (EV after vig, not ATM chalk 98/2). Same for BTC and ETH.
 
 Feed flaps: one quiet retry, then last-good quotes. Do not raise RetryError
 or error-log every cycle — the desk stays up on stale Kalshi.
@@ -12,7 +13,17 @@ import httpx
 from typing import Any, Dict, List, Optional
 from loguru import logger
 from backend.config import settings
+from backend.agents.chair_gates import (
+    kalshi_taker_fee_cents,
+    leftover_after_vig,
+    odds_to_cents,
+)
 import asyncio
+
+# Same-hour ladder: skip chalk ≥80¢ / one-sided. Chair lock band stays 10–90.
+LADDER_BAND_LO = 20.0
+LADDER_BAND_HI = 80.0
+LADDER_P_FINISH = 0.55
 
 # Serialize Kalshi HTTP across BTC+ETH clients (one in-flight fetch family at a time)
 _KALSHI_LOCK = asyncio.Lock()
@@ -21,6 +32,155 @@ _KALSHI_MIN_GAP = 0.55  # seconds between series fetches
 _FAIL_QUIET_S = 180.0
 _BACKOFF_S = 12.0
 _kalshi_backoff_until: float = 0.0
+
+
+def market_strike(m: Dict[str, Any]) -> Optional[float]:
+    if not isinstance(m, dict):
+        return None
+    for k in ("floor_strike", "cap_strike", "strike_price"):
+        v = m.get(k)
+        if v is None:
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def market_quotes(m: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    row = m if isinstance(m, dict) else {}
+    yb = odds_to_cents(row.get("yes_bid_dollars") if row.get("yes_bid_dollars") is not None else row.get("yes_bid"))
+    ya = odds_to_cents(row.get("yes_ask_dollars") if row.get("yes_ask_dollars") is not None else row.get("yes_ask"))
+    nb = odds_to_cents(row.get("no_bid_dollars") if row.get("no_bid_dollars") is not None else row.get("no_bid"))
+    na = odds_to_cents(row.get("no_ask_dollars") if row.get("no_ask_dollars") is not None else row.get("no_ask"))
+    if na is None and ya is not None:
+        na = max(0.0, 100.0 - ya)
+    if ya is None and na is not None:
+        ya = max(0.0, 100.0 - na)
+    mid = None
+    if yb is not None and ya is not None:
+        mid = (yb + ya) / 2.0
+    elif ya is not None:
+        mid = ya
+    return {"yes_bid": yb, "yes_ask": ya, "no_bid": nb, "no_ask": na, "yes_mid": mid}
+
+
+def hour_ladder(markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows = [m for m in (markets or []) if isinstance(m, dict)]
+    if not rows:
+        return []
+    rows = sorted(rows, key=lambda m: m.get("close_time") or "")
+    soonest = rows[0].get("close_time")
+    return [m for m in rows if m.get("close_time") == soonest]
+
+
+def score_ladder_contract(
+    m: Dict[str, Any],
+    spot: Optional[float] = None,
+) -> Dict[str, Any]:
+    q = market_quotes(m)
+    mid = q.get("yes_mid")
+    ya, na = q.get("yes_ask"), q.get("no_ask")
+    strike = market_strike(m)
+    dist = None
+    if strike is not None and spot is not None:
+        try:
+            dist = abs(float(strike) - float(spot))
+        except (TypeError, ValueError):
+            dist = None
+    two_sided = ya is not None and na is not None
+    chalk = (
+        (ya is not None and ya >= LADDER_BAND_HI)
+        or (na is not None and na >= LADDER_BAND_HI)
+        or (mid is not None and (mid >= LADDER_BAND_HI or mid <= LADDER_BAND_LO))
+    )
+    in_band = bool(two_sided and mid is not None and LADDER_BAND_LO < mid < LADDER_BAND_HI and not chalk)
+    leftover = None
+    if in_band:
+        spread = None
+        if q.get("yes_bid") is not None and ya is not None:
+            spread = max(0.0, float(ya) - float(q["yes_bid"]))
+        p_yes = float(LADDER_P_FINISH)
+        left_up = leftover_after_vig(p_yes, float(ya), spread, kalshi_taker_fee_cents(ya))
+        left_dn = leftover_after_vig(1.0 - p_yes, float(na), spread, kalshi_taker_fee_cents(na))
+        leftover = max(left_up, left_dn)
+    try:
+        from backend.config import settings
+        min_ev = float(getattr(settings, "MIN_EV_CENTS", 3.0))
+    except Exception:
+        min_ev = 3.0
+    playable = leftover is not None and leftover >= min_ev
+    if playable:
+        why = "leftover"
+    elif chalk or not in_band:
+        why = "chalk"
+    else:
+        why = "in-band"
+    return {
+        "ticker": (m or {}).get("ticker"),
+        "strike": strike,
+        "yes_mid": mid,
+        "leftover": None if leftover is None else round(float(leftover), 2),
+        "dist": dist,
+        "playable": playable,
+        "in_band": in_band,
+        "two_sided": two_sided,
+        "chalk": bool(chalk),
+        "why": why,
+    }
+
+
+def nearest_spot_contract(
+    markets: List[Dict[str, Any]],
+    spot: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    rows = [m for m in (markets or []) if isinstance(m, dict)]
+    if not rows:
+        return None
+    if spot is None:
+        return rows[0]
+    best, best_dist = rows[0], None
+    for m in rows:
+        s = market_strike(m)
+        if s is None:
+            continue
+        dist = abs(s - float(spot))
+        if best_dist is None or dist < best_dist:
+            best, best_dist = m, dist
+    return best
+
+
+def pick_hour_book(
+    markets: List[Dict[str, Any]],
+    spot: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """Best playable contract on this hour's ladder. Not ATM chalk. Same for BTC/ETH."""
+    cohort = hour_ladder(markets)
+    if not cohort:
+        return None
+
+    def _rank(sc: Dict[str, Any]) -> tuple:
+        leftover = sc.get("leftover")
+        mid = sc.get("yes_mid")
+        dist = sc.get("dist")
+        mid_dev = abs(float(mid) - 50.0) if mid is not None else 99.0
+        return (
+            -(leftover if leftover is not None else -99.0),
+            mid_dev,
+            dist if dist is not None else 1e18,
+        )
+
+    scored = [(score_ladder_contract(m, spot), m) for m in cohort]
+    playable = [pair for pair in scored if pair[0].get("playable")]
+    if playable:
+        playable.sort(key=lambda pair: _rank(pair[0]))
+        return playable[0][1]
+    in_band = [pair for pair in scored if pair[0].get("in_band")]
+    if in_band:
+        in_band.sort(key=lambda pair: _rank(pair[0]))
+        return in_band[0][1]
+    return nearest_spot_contract(cohort, spot)
 
 
 class KalshiClient:
@@ -181,33 +341,10 @@ class KalshiClient:
             return {}
 
     def _strike_of(self, m: Dict[str, Any]) -> Optional[float]:
-        for k in ("floor_strike", "cap_strike", "strike_price"):
-            v = m.get(k)
-            if v is None:
-                continue
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                continue
-        return None
+        return market_strike(m)
 
     def _pick_primary(self, markets: List[Dict[str, Any]], spot: Optional[float] = None) -> Optional[Dict[str, Any]]:
-        if not markets:
-            return None
-        markets_sorted = sorted(markets, key=lambda m: m.get("close_time") or "")
-        soonest_close = markets_sorted[0].get("close_time")
-        cohort = [m for m in markets_sorted if m.get("close_time") == soonest_close]
-        if len(cohort) == 1 or spot is None:
-            return cohort[0]
-        best, best_dist = cohort[0], None
-        for m in cohort:
-            s = self._strike_of(m)
-            if s is None:
-                continue
-            dist = abs(s - float(spot))
-            if best_dist is None or dist < best_dist:
-                best, best_dist = m, dist
-        return best
+        return pick_hour_book(markets, spot=spot)
 
     def _pack_state(
         self,
@@ -219,6 +356,7 @@ class KalshiClient:
     ) -> Dict[str, Any]:
         ticker = primary.get("ticker")
         from backend.agents.chair_gates import lock_time_strike
+        ladder = hour_ladder(markets)
         floor_strike = lock_time_strike(
             ticker=ticker,
             floor_strike=primary.get("floor_strike"),
@@ -231,7 +369,9 @@ class KalshiClient:
             "stale": stale,
             "series_ticker": self.series_ticker,
             "primary_market": primary,
-            "all_open": sorted(markets, key=lambda m: m.get("close_time") or "")[:5],
+            "all_open": ladder,
+            "ladder_n": len(ladder),
+            "pick_why": score_ladder_contract(primary, None).get("why"),
             "orderbook": orderbook,
             "yes_bid": primary.get("yes_bid_dollars") or primary.get("yes_bid"),
             "yes_ask": primary.get("yes_ask_dollars") or primary.get("yes_ask"),

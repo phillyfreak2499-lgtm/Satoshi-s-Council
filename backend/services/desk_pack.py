@@ -580,10 +580,12 @@ def health_strip_from_health(payload: Dict[str, Any] | None) -> Dict[str, Any]:
     kalshi = h.get("kalshi_ok")
     if kalshi is None:
         kalshi = bool(h.get("kalshi_btc_ok", True)) and (h.get("kalshi_eth_ok") is not False)
+    from backend.data.coinglass import coinglass_hud_ok
+
     return {
         "kalshi": bool(kalshi),
         "spot": bool(h.get("spot_ok")),
-        "coinglass": bool(h.get("coinglass_ok")),
+        "coinglass": coinglass_hud_ok(h.get("coinglass_ok"), h.get("coinglass_reason")),
         "quote_age_s": round(age_s) if age_s is not None else None,
         "status": h.get("status") or "ok",
     }
