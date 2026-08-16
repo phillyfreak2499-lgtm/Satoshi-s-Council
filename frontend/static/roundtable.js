@@ -7029,7 +7029,13 @@ function drawCandleChart() {
     let total = stats.total;
     let pct = stats.pct;
     let tag = "finish-only";
-    if (total === 0 && (Number(focusAcc.total) || 0) > 0) {
+    const btcPath = focusTable === "bitcoin" || !!(focusAcc && (focusAcc.path_scoreboard || focusAcc.finish_only === false));
+    if (btcPath) {
+      hits = Number(focusAcc.correct) || 0;
+      total = Number(focusAcc.total) || 0;
+      pct = focusAcc.accuracy_pct != null ? Number(focusAcc.accuracy_pct) : (total ? (hits / total) * 100 : null);
+      tag = "path P&L";
+    } else if (total === 0 && (Number(focusAcc.total) || 0) > 0) {
       hits = Number(focusAcc.correct) || Number(focusAcc.hits) || 0;
       total = Number(focusAcc.total) || 0;
       pct = total ? (hits / total) * 100 : null;
@@ -7059,8 +7065,9 @@ function drawCandleChart() {
       ctx.fillStyle = "rgba(120,140,160,0.7)";
       ctx.font = "11px Orbitron";
       ctx.textAlign = "center";
-      ctx.fillText("0/0 finish-only", canvas.width / 2, canvas.height / 2);
-      if (meta) meta.textContent = "0/0 finish-only";
+      const zeroTxt = btcPath ? "0/0 path P&L" : "0/0 finish-only";
+      ctx.fillText(zeroTxt, canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = zeroTxt;
       return;
     }
     const spark = series.accuracy.filter(p => p && p.n > 0 && Number.isFinite(p.pct));
@@ -10661,7 +10668,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#finalDecision",
       title: "THE PLAQUE",
-      body: "The chair table plate is the live call: LOCK or WAIT, a plain direction, and the strike/window.\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
+      body: "BTC 15m plaque is the live path book: size Up, size Down, averages, next action, last sizing. Not FOLLOW THIS. irreversible is false.\n\nETH 1H plaque is still one LOCK or WAIT. Follower bots would poll /api/state locked_call — Follower stays OFF. When locked_call is null, there is no active call — stay flat or WAIT.",
     },
     {
       mode: "art",
@@ -10679,7 +10686,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#modeTabs",
       title: "HOW A CALL IS MADE",
-      body: "1. Specialists vote UP / DOWN / WAIT.\n2. Higher-ranked bots count more.\n3. Chair requires confluence + pair affinity.\n4. Odds gate: book must be inside 10–90¢. Never play 99¢ chalk.\n5. First firm full UP/DOWN that clears the gates becomes the single LOCKED call.\n6. After lock, the plaque is what followers and the UI follow.",
+      body: "1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT and keep gathering the full 15 minutes.\n2. Higher-ranked bots count more. Weights reward path P&L and risk control, not a Kalshi-settle hit.\n3. Chair requires confluence + pair affinity pointed at leftover.\n4. Odds gate: BTC 20–80 after vig. ETH 10–90¢. Never play 99¢ chalk. Fill at the real ask.\n5. BTC 15m: both legs, scale / cut / flip. No irreversible one-call lock. ETH 1H: first firm UP/DOWN that clears the gates is the single LOCKED call.\n6. Follower stays OFF. Live stays OFF.",
     },
     {
       mode: "floor",
@@ -10697,7 +10704,7 @@ function drawCandleChart() {
       mode: "paper",
       target: "#tabPaper",
       title: "PAPER",
-      body: "Practice scorecard. Paper-track expectancy before any size. Quality over quantity. One high-edge guess per window. This desk does not place real orders.",
+      body: "Practice scorecard. BTC 15m grades realized path P&L (scale-in, scale-out, dual-sided holds) with a sizing audit on each fill. Hard maxes beat Kelly. open_risk counts both legs. ETH 1H is still one high-edge guess per window. This desk does not place real orders. Follower OFF.",
     },
     {
       mode: "front",

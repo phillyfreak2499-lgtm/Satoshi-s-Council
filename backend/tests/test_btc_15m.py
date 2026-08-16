@@ -1013,6 +1013,12 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("function cryptoWindowLabel", JS)
         self.assertIn('return "15M WINDOW"', JS)
         self.assertIn('return "1H WINDOW"', JS)
+        self.assertIn("keep gathering the full 15 minutes", JS)
+        self.assertIn("Hard maxes beat Kelly", JS)
+        self.assertNotIn(
+            "First firm full UP/DOWN that clears the gates becomes the single LOCKED call.",
+            JS,
+        )
 
     def test_constraints_hold(self):
         self.assertEqual(HTML.count('class="floor-chair-tog"'), 5)
@@ -1070,6 +1076,7 @@ class RewriteContractTests(unittest.TestCase):
         self.assertIn("UP", getattr(Direction, "__args__", ("UP",)))
 
     def test_doctrine_kills_one_call_for_btc_15m(self):
+        from backend.agents.base import GOAL_CONTRACT
         doctrine = (ROOT / "DOCTRINE.md").read_text(encoding="utf-8")
         self.assertIn("Path P&L", doctrine)
         self.assertIn("dead for BTC 15m", doctrine)
@@ -1079,6 +1086,13 @@ class RewriteContractTests(unittest.TestCase):
         self.assertIn("directional accuracy", doctrine.lower())
         self.assertIn("LONG_UP", doctrine)
         self.assertIn("irreversible` is false", doctrine)
+        self.assertIn("Hard maxes beat Kelly", doctrine)
+        self.assertIn("open_risk", doctrine)
+        self.assertIn("keep gathering the full 15 minutes", doctrine)
+        self.assertIn("Do NOT wire Follower", doctrine)
+        # 9a8f20d was the old 20–80 one-lock / Kalshi-settle win. That is not done.
+        self.assertNotIn("Specialists still vote `UP` / `DOWN` / `WAIT`.", doctrine)
+        self.assertNotIn("exactly ONE high-quality directional guess", GOAL_CONTRACT)
 
     def test_sizing_respects_dual_scalp_and_clamps(self):
         from backend.risk.sizing import size_for_leader

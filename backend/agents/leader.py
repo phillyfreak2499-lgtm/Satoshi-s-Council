@@ -1427,7 +1427,7 @@ class Leader:
                 summary += " · " + ", ".join(path_notes[:3])
 
 
-        # --- Per-window single lock (GOAL CONTRACT: one call max, best odds only) ---
+        # --- Window identity. BTC 15m = live path book. ETH 1H = one-call lock. ---
         ticker = None
         mins_left = None
         up_pct = None

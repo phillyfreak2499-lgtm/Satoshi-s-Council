@@ -45,7 +45,7 @@ The One-Call / Best-Odds Protocol is **dead for BTC 15m**. ETH 1H keeps it.
 
 ## Chair management directions (BTC 15m)
 
-Specialists still vote `UP` / `DOWN` / `WAIT`.
+Specialists recommend `LONG_UP` / `LONG_DOWN` / `REDUCE_*` / `FLAT_*` — path/scalp edge, not a finish call. They keep gathering the full 15 minutes. A Chair book does not silence them.
 
 The Chair emits management actions:
 
@@ -57,7 +57,7 @@ The Chair emits management actions:
 
 ## Sizing
 
-BTC 15m Chair and paper-journal fills use `size_for_leader()` / `compute_position_size()`. Inputs are real edge, P(finish), confidence, confluence, ask, spread, book size, seconds left, and open risk. Scalp clips and dual-sided pairs size smaller. Config hard maxes (`DYNAMIC_SIZING_MAX`, `PAPER_STAKE_DEFAULT`) remain clamps. ETH stays a flat paper ticket.
+BTC 15m Chair and paper-journal fills use `size_for_leader()` / `compute_position_size()`. Inputs are real edge, P(finish), confidence, confluence, ask, spread, book size, seconds left, and open risk. `open_risk` counts **both legs**. Hard maxes beat Kelly — Kelly is informational only and never raises size past `DYNAMIC_SIZING_MAX` / `PAPER_STAKE_DEFAULT`. Scalp clips and dual-sided pairs size smaller. Each paper fill stores the sizing audit (reasons + multipliers). ETH stays a flat paper ticket. Do NOT wire Follower.
 
 ## Visual Hierarchy
 

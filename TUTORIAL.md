@@ -21,12 +21,12 @@ This is a research co-pilot. It does **not** place real orders.
 - **LAW** badge = enforcer status after repeated misses.
 
 ## How a call is made
-1. Specialists vote UP / DOWN / WAIT.
-2. Higher-ranked bots count more.
+1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT — path scalp, not a finish call. They keep gathering the full 15 minutes.
+2. Higher-ranked bots count more. Adaptive weights reward path P&L and risk control, not official-settle hits.
 3. Chair requires confluence + pair affinity — pointed at leftover and scalp quality, not a single door.
-4. Odds gate: BTC 15m 20–80 after vig. ETH 1H 10–90¢. Never play 99¢ chalk.
-5. BTC 15m stays active the full window. ETH’s first firm full UP/DOWN that clears the gates becomes the single LOCKED call.
-6. After an ETH lock, the plaque is what the UI follows. BTC 15m plaque is the live book.
+4. Odds gate: BTC 15m 20–80 after vig. ETH 1H 10–90¢. Never play 99¢ chalk. Fill at the real ask.
+5. BTC 15m stays active the full window: both legs, scale / cut / flip. No irreversible one-call lock. ETH’s first firm full UP/DOWN that clears the gates becomes the single LOCKED call.
+6. After an ETH lock, the plaque is what the UI follows. BTC 15m plaque is the live book. Follower stays OFF.
 
 ## Scoring
 BTC 15m grades **realized paper P&L** on the path book. Official settle only marks leftover legs.  
