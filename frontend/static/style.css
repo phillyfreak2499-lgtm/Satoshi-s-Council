@@ -379,7 +379,8 @@ header {
   clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
 }
 .mode-tab,
-#soundToggle {
+#soundToggle,
+#stillToggle {
   background: transparent;
   border: 1px solid transparent;
   color: var(--muted);
@@ -393,7 +394,8 @@ header {
   transition: all 0.2s;
 }
 .mode-tab:hover,
-#soundToggle:hover {
+#soundToggle:hover,
+#stillToggle:hover {
   color: var(--gold);
   border-color: rgba(240, 193, 74, 0.35);
 }
@@ -428,7 +430,8 @@ body:not(.mode-wire) #app > header #tabWire.wire-hot.active {
   text-shadow: 0 0 10px rgba(240, 193, 74, 0.55) !important;
   animation: wire-hot-pulse 1.4s ease-in-out infinite;
 }
-#soundToggle {
+#soundToggle,
+#stillToggle {
   border: 1px solid rgba(0, 232, 255, 0.45);
   color: var(--blade);
   background: linear-gradient(135deg, rgba(0, 232, 255, 0.06), rgba(240, 193, 74, 0.05));
@@ -439,6 +442,14 @@ body:not(.mode-wire) #app > header #tabWire.wire-hot.active {
   color: var(--muted);
   box-shadow: none;
   opacity: 0.7;
+}
+#stillToggle.still-on,
+#stillToggle[aria-pressed="true"] {
+  border-color: rgba(240, 193, 74, 0.8);
+  color: #ffe27a;
+  background: linear-gradient(135deg, rgba(240, 193, 74, 0.18), rgba(0, 232, 255, 0.06));
+  box-shadow: 0 0 14px rgba(240, 193, 74, 0.38);
+  text-shadow: 0 0 8px rgba(240, 193, 74, 0.5);
 }
 
 /* Charts tab wall — game HUD, both pairs on screen */
@@ -4232,6 +4243,18 @@ body[data-focus-table="ethereum"] .floor-btc-dim {
   body.floor-mode::before { transition: none; }
   .hdot { box-shadow: none !important; }
 }
+body.reduce-motion .summon-video-wrap video,
+body.reduce-motion .celebrate-video-wrap video,
+body.reduce-motion .floor-money-rain video,
+body.reduce-motion #deskIntroWrap video { animation: none !important; }
+body.reduce-motion .floor-money-rain { display: none !important; }
+body.reduce-motion #ledWindow::before,
+body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5; }
+body.reduce-motion #starfield { opacity: 0.28; }
+body.reduce-motion .signal-feed-list .sf-in { animation: none; }
+body.reduce-motion body.floor-mode::before,
+body.reduce-motion.floor-mode::before { transition: none; }
+body.reduce-motion .hdot { box-shadow: none !important; }
 body.reduce-motion .floor-money-rain { display: none !important; }
 body.reduce-motion #ledWindow::before,
 body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5; }
@@ -4254,7 +4277,8 @@ body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5
 #app > header .focus-tab,
 #app > header .controls button,
 #app > header .beast-badge,
-#soundToggle {
+#soundToggle,
+#stillToggle {
   pointer-events: auto !important;
   position: relative;
   z-index: 2;
@@ -4309,7 +4333,8 @@ body.reduce-motion #windowLed::before { animation: none !important; opacity: 0.5
 }
 #app > header .mode-tab,
 #app > header .focus-tab,
-#soundToggle {
+#soundToggle,
+#stillToggle {
   flex: 0 0 auto;
   padding: 5px 8px !important;
   font-size: 0.62rem !important;
@@ -5092,6 +5117,7 @@ body.mode-settings #app > header .focus-tab,
 body.mode-settings #app > header .beast-badge,
 body.mode-settings #app > header #beastBadge,
 body.mode-settings #app > header #soundToggle,
+body.mode-settings #app > header #stillToggle,
 body.mode-settings #app > header #tabSettings {
   pointer-events: auto !important;
 }
@@ -5215,6 +5241,7 @@ body.mode-settings #settingsView #adminToolsCard {
   #app > header .mode-tab,
   #app > header .focus-tab,
   #app > header #soundToggle,
+  #app > header #stillToggle,
   #app > header .beast-badge,
   #app > header #beastBadge {
     flex: 0 0 auto !important;
@@ -6153,6 +6180,7 @@ body.mode-settings #openChartsBtn {
   #app > header .mode-tab,
   #app > header .focus-tab,
   #app > header #soundToggle,
+  #app > header #stillToggle,
   #app > header .beast-badge,
   #app > header #beastBadge,
   #app > header #btnHelp,
