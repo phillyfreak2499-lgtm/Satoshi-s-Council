@@ -756,7 +756,8 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("Scorecard", admin)
         card = JS.split("function scorecardFromState", 1)[1].split("function containPortrait", 1)[0]
         self.assertIn("function updateRivalryStrip", JS)
-        self.assertIn("eth_shadow", card)
+        self.assertIn("accRecord(ethAcc)", card)
+        self.assertNotIn("eth_shadow", card)
         self.assertIn('"BTC " + btc.c + " · ETH "', card)
         self.assertNotIn("LEADS", card)
         self.assertNotIn("SATOSHI", card)

@@ -79,6 +79,17 @@ class EthRosterTests(unittest.TestCase):
         )
         self.assertEqual(eth.correct["volatility"] + eth.wrong["volatility"], 0)
         self.assertEqual(eth.correct["exhaust"] + eth.wrong["exhaust"], 0)
+        eth.correct["news"] = 117
+        eth.wrong["news"] = 113
+        eth.weights["news"] = 0.1
+        eth.correct["regime"] = 10
+        eth.wrong["spotlag"] = 10
+        eth.weights["streak"] = 0.08
+        eth._trim_eth_roster_weights()
+        for ghost in ("news", "regime", "spotlag", "streak"):
+            self.assertNotIn(ghost, eth.weights)
+            self.assertNotIn(ghost, eth.correct)
+            self.assertNotIn(ghost, eth.wrong)
 
     def test_eth_paper_lock_and_chair_gates_stay(self):
         self.assertIn("ETH_RELIABILITY_MIN_N: int = 8", CFG)

@@ -2,6 +2,60 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-hard-mute-wire",
+    "at": "2026-08-16T23:24:00-05:00",
+    "title": "Hard mute copies onto the live wire",
+    "why": "hard_mute now sets muted on the live wire so WICK/PULSE/FADE/CHEAP stop voting. Faded and invert seats stay out of QUORUM lean and color_counts. Fade-without-hard-mute can still invert-vote in Chair. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-chair-scorecard",
+    "at": "2026-08-16T23:23:00-05:00",
+    "title": "Chair scorecard counts Chair locks only",
+    "why": "Floor scorecard paints BTC and ETH Chair locks only. ETH 5–0 shadow is not Chair. Shadow books stay on the shadow path and are not mixed into the rivalry strip. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-top3-honesty",
+    "at": "2026-08-16T23:22:00-05:00",
+    "title": "top_3_conflict only when that is the wait",
+    "why": "Do not emit top_3_conflict when top_agree or the real gate is EV, spread, or dead_book. Muted and faded seats cannot create the conflict. P(finish) and EV waits map to no_ev. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-far-otm-chair",
+    "at": "2026-08-16T23:21:00-05:00",
+    "title": "Far-OTM companions never Chair-lock",
+    "why": "BTC T71799.99 and ETH T2594.99 style far-OTM companions are wait/shadow only. Chair ticker filter blocks the lock; shadow books still write. Near-ATM rungs stay playable. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-unique-settle-keys",
+    "at": "2026-08-16T23:20:00-05:00",
+    "title": "CASCADE WIRE VEL EXHAUST keep own settle keys",
+    "why": "Identical 117/113 is not four seats. Each vote stamps agent|ticker|close_time. Cloned payloads that reuse another seat name or settle key are dropped. Historical votes without a key still grade by dict key. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-quorum-out",
+    "at": "2026-08-16T23:19:00-05:00",
+    "title": "CoinGlass seats leave quorum while n=0",
+    "why": "While CoinGlass is fail-soft / advisory / n=0, CARRY CHAIN CASCADE drop out of quorum. They may still display. No 4h fallback. The CoinGlass reason string is unchanged. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-one-learning-phase",
+    "at": "2026-08-16T23:18:00-05:00",
+    "title": "One learning_phase from Chair lock n",
+    "why": "Kill stale huddle explore n=4. learning_phase is explore/calibrate/exploit from Chair lock n, not a per-seat average and not cold/learned. Snapshot, decision, and huddle share that clock. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-eth-no-ghosts",
+    "at": "2026-08-16T23:17:00-05:00",
+    "title": "ETH drops leftover WIRE ORBIT VEL STREAK weights",
+    "why": "Do not stand up WIRE / ORBIT / VEL / STREAK on ETH. Leftover weights and records are stripped. Non-roster seats are not graded into the ETH brain. No ghost weights. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-vel-whale-silent",
+    "at": "2026-08-16T23:16:00-05:00",
+    "title": "VEL and WHALE stay silent until they have samples",
+    "why": "VEL waits until lag_samples>0. WHALE waits until print_count>0. Buy/sell volume proxy cannot fake a whale print. First-cycle noise stays off the floor. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-oracle-can-call",
     "at": "2026-08-16T06:35:00-05:00",
     "title": "ORACLE can paper LOCK",
