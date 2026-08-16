@@ -80,6 +80,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {}
     try {
       if (typeof window.loadFrontTable === "function") window.loadFrontTable();
+      if (typeof window.loadOracleTable === "function") window.loadOracleTable();
     } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
@@ -1088,11 +1089,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const k = String(name || "").toUpperCase();
     return ORACLE_SEAT_IDS.indexOf(k) >= 0;
   }
+  const ORACLE_SEAT_MARKS = {
+    SIBYL: "/static/bots/sibyl.svg",
+    PIT: "/static/bots/ora-pit.svg",
+    VEIL: "/static/bots/veil.svg",
+    MARBLE: "/static/bots/marble.svg",
+  };
   function oracleSeatRoster() {
     return ORACLE_SEAT_IDS.map(function (id, i) {
       return {
         id: id,
         job: ORACLE_SEAT_JOBS[id],
+        mark: ORACLE_SEAT_MARKS[id],
         dir: "WAIT",
         call: id + " · DARK",
         n: 0,
@@ -1102,48 +1110,100 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     });
   }
   function oracleTableState() {
-    const seats = oracleSeatRoster();
+    let board = null;
+    try { board = oracleBoard; } catch (e) { board = null; }
+    const seats = (board && Array.isArray(board.seats) && board.seats.length)
+      ? board.seats
+      : oracleSeatRoster();
+    const chair = (board && board.chair) || {
+      id: "ORACLE",
+      name: "ORACLE",
+      job: "CRT chair. Paper lock when the four agree. Follower OFF.",
+      mark: "/oracle-wait.jpg",
+      eye: "WAIT",
+      call: "WAIT · CRT",
+    };
+    const eye = String(chair.eye || chair.dir || (board && board.pick && board.pick.call) || "WAIT").toUpperCase();
+    const dir = (eye === "UP" || eye === "DOWN") ? eye : "WAIT";
+    const locked = !!(board && board.locked_call && board.locked_call.locked && dir !== "WAIT");
     const agents = [{
       agent_name: "leader",
       display_name: "ORACLE",
       title: "CRT · Oracle",
-      direction: "WAIT",
-      confidence: 0,
-      reasoning: "ORACLE does not place orders.",
-      summary: "WATCH · no ticket",
+      direction: dir,
+      confidence: chair.confidence || 0,
+      reasoning: chair.call || chair.job || "WAIT · CRT",
+      summary: chair.call || "WAIT · CRT",
     }].concat(seats.map(function (s) {
       return {
         agent_name: String(s.id).toLowerCase(),
         display_name: s.id,
         title: s.job,
-        direction: "WAIT",
-        confidence: 0,
-        reasoning: s.job,
+        direction: s.dir || "WAIT",
+        confidence: s.confidence != null ? s.confidence : 0,
+        reasoning: s.call || s.job,
         summary: s.call,
+        mark: s.mark || ORACLE_SEAT_MARKS[s.id],
       };
     }));
+    const acc = (board && board.accuracy) || {};
+    const tape = (board && board.tape) || [];
+    const pick = (board && board.pick) || {};
+    const clock = (board && board.clock) || {};
+    const why = (chair && chair.why) || pick.why || (board && board.why) || {
+      line: dir === "WAIT" ? "WAIT · CRT" : ("LOCK " + dir + " · CRT"),
+      strip: "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK",
+    };
+    const watch = (chair && chair.watch) || pick.watch || (board && board.watch) || {
+      line: locked ? "CRT · LOCK · TICKET ON THE GLASS" : "CRT · WAIT · STATIC ON THE GLASS",
+      listed: !!locked,
+    };
     return {
       agents: agents,
       seats: seats,
-      chair: {
-        id: "ORACLE",
-        name: "ORACLE",
-        job: "Watch chair. Does not place orders.",
-        mark: "/oracle-wait.jpg",
+      chair: chair,
+      decision: {
+        direction: dir,
+        confidence: chair.confidence || 0,
+        summary: chair.call || (locked ? ("LOCK " + dir + " · CRT") : "WAIT · CRT"),
+        locked_call: locked ? {
+          locked: true,
+          direction: dir,
+          ticker: pick.ticker,
+          confidence: chair.confidence,
+        } : null,
       },
-      decision: { direction: "WAIT", confidence: 0, summary: "ORACLE does not place orders." },
-      locked_call: null,
-      market: { window_kind: "watch", window_label: "WATCH", seconds_left: null, time_remaining: null },
+      locked_call: locked ? { locked: true, direction: dir, ticker: pick.ticker } : (board && board.locked_call) || null,
+      market: {
+        ticker: pick.ticker,
+        kalshi_ticker: pick.ticker,
+        floor_strike: pick.floor_strike,
+        close_time: pick.close_time || clock.close_time,
+        clock: clock,
+        window_kind: "hour",
+        window_label: "CRT",
+        seconds_left: clock.seconds_left,
+        time_remaining: clock.seconds_left,
+      },
       leader_name: "ORACLE",
       asset: "oracle",
-      why: {
-        line: "WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS",
-        strip: "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK",
+      pick: pick,
+      why: why,
+      watch: watch,
+      accuracy: {
+        correct: acc.correct || 0,
+        total: acc.total || 0,
+        wrong: acc.wrong || 0,
+        accuracy_pct: acc.accuracy_pct,
+        label: acc.label || "ORACLE · CRT",
+        wait_n: acc.wait_n || 0,
+        verdict: acc.verdict,
+        log: tape,
+        recent: acc.recent || tape,
+        pending: acc.pending || 0,
       },
-      watch: { line: "CRT · WATCH · STATIC ON THE GLASS", listed: false },
-      accuracy: { correct: 0, total: 0, wrong: 0, label: "ORACLE · WATCH" },
-      hierarchy: [{ agent: "leader", display_name: "ORACLE", rank: 0, listen: 1 }].concat(seats.map(function (s) {
-        return { agent: String(s.id).toLowerCase(), display_name: s.id, rank: s.rank, listen: 0, n: 0 };
+      hierarchy: [{ agent: "leader", display_name: "ORACLE", rank: 0, listen: 1 }].concat(seats.map(function (s, i) {
+        return { agent: String(s.id).toLowerCase(), display_name: s.id, rank: s.rank || (i + 1), listen: 1, n: s.n || 0 };
       })),
     };
   }
@@ -1210,6 +1270,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         hierarchy: focused.hierarchy || [],
         learning: focused.learning || {},
         weights: focused.weights || {},
+        pick: focused.pick || {},
+        watch: focused.watch || {},
+        why: focused.why || {},
         _focusTable: "oracle",
       });
     }
@@ -2116,6 +2179,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     pit: "PIT",
     frost: "FROST",
     bone: "BONE",
+    sibyl: "SIBYL",
+    veil: "VEIL",
+    marble: "MARBLE",
   };
   const AGENT_TITLES = {
     candle: "Pattern Seer",
@@ -2208,7 +2274,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function titleOf(agent) {
     if (!agent) return "";
     const key = agent.agent_name || agent;
-    if (key === "leader" || key === "chair") return isAtsTable(focusTable) ? "Ares" : (isFrontTable(focusTable) ? "Raijin" : (isEthTable(focusTable) ? "Vitalik" : "Satoshi"));
+    if (key === "leader" || key === "chair") return isOracleTable(focusTable) ? "ORACLE" : (isAtsTable(focusTable) ? "Ares" : (isFrontTable(focusTable) ? "Raijin" : (isEthTable(focusTable) ? "Vitalik" : "Satoshi")));
     if (agent.title) return agent.title;
     return AGENT_TITLES[key] || "";
   }
@@ -2298,6 +2364,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     frost: "/static/bots/frost.png",
     bone: "/static/bots/bone.png",
     mesh: "/static/bots/mesh.png",
+    sibyl: "/static/bots/sibyl.svg",
+    ora_pit: "/static/bots/ora-pit.svg",
+    veil: "/static/bots/veil.svg",
+    marble: "/static/bots/marble.svg",
   };
   const botIconCache = {}; // name -> HTMLImageElement | null
   let botIconsReady = false;
@@ -2326,7 +2396,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   /** Draw circular bot logo with direction-colored ring outline. */
   function drawBotIcon(name, x, y, r, dirColor, conf) {
-    const img = botIconCache[String(name || "").toLowerCase()] || botIconCache[name];
+    const raw = String(name || "").toLowerCase();
+    const key = (typeof isOracleTable === "function" && isOracleTable(focusTable) && raw === "pit") ? "ora_pit" : raw;
+    const img = botIconCache[key] || botIconCache[name];
     const ringR = r + 2;
     // Dark plate behind
     ctx.beginPath();
@@ -3921,7 +3993,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     let label = "1H";
     if (key === "front") label = m.window_label || "DFW";
     else if (key === "ats") label = m.window_label || "KICK";
-    else if (key === "oracle") label = "WATCH";
+    else if (key === "oracle") label = m.window_label || "CRT";
     let display = "—";
     if (secs != null && !isNaN(secs)) {
       const s = Math.max(0, Math.floor(Number(secs)));
@@ -4510,8 +4582,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const ethLive = typeof isEthTable === "function" && isEthTable(focusTable) && liveNames.length;
     const atsLive = typeof isAtsTable === "function" && isAtsTable(focusTable) && liveNames.length;
     const frontLive = typeof isFrontTable === "function" && isFrontTable(focusTable);
+    const oracleLive = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    const oracleNames = ["sibyl", "pit", "veil", "marble"];
     const frontNames = FRONT_SEAT_KEYS.filter(function (k) { return liveNames.indexOf(k) >= 0; });
-    let order = frontLive
+    let order = oracleLive
+      ? oracleNames.filter(function (k) { return !liveNames.length || liveNames.indexOf(k) >= 0; })
+      : frontLive
       ? (frontNames.length ? frontNames : FRONT_SEAT_KEYS.slice())
       : (ethLive || atsLive)
       ? (ranked.length
@@ -4520,6 +4596,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : (ranked.length
           ? ranked.concat(AGENT_ORDER.filter(a => !ranked.includes(a) && a !== "law"))
           : AGENT_ORDER.filter(a => a !== "law"));
+    if (oracleLive && !order.length) order = oracleNames.slice();
     if (floorHideWait) {
       const locked = {};
       agents.forEach(function (a) { if (a && a.agent_name) locked[a.agent_name] = true; });
@@ -5026,7 +5103,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : "";
 
     const frontDash = typeof isFrontTable === "function" && isFrontTable(focusTable);
-    const dashAgents = frontDash
+    const oraDash = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    const dashAgents = oraDash
+      ? view.agents.filter(function (a) {
+          return a && (a.agent_name === "leader" || isOracleSeatKey(a.agent_name));
+        })
+      : frontDash
       ? view.agents.filter(function (a) {
           return a && (a.agent_name === "leader" || isFrontSeatKey(a.agent_name));
         })
@@ -5040,8 +5122,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const wr = rec.win_rate != null ? Math.round(rec.win_rate * 100) + "%" : "—";
       const record = rec.n ? `${rec.correct}/${rec.n}` : "0/0";
       const shown = frontDash ? displayDir(a.direction) : a.direction;
-      const markSrc = a.mark || frontSeatMark(a.agent_name);
-      const markHtml = (frontDash && markSrc)
+      const markSrc = a.mark || (oraDash && ORACLE_SEAT_MARKS[String(a.display_name || a.agent_name || "").toUpperCase()]) || frontSeatMark(a.agent_name);
+      const markHtml = ((frontDash || oraDash) && markSrc)
         ? '<img class="dash-seat-mark" src="' + markSrc + '" alt="" width="28" height="28">'
         : "";
       const wxKids = frontDash ? subsForParent(view.subs || frontSubsOf(typeof frontBoard !== "undefined" ? frontBoard : null), a.display_name || a.agent_name) : [];
@@ -5398,12 +5480,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
 
-    let rows = hier.length ? hier.slice() : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law")).map((n, i) => ({
+    let rows = hier.length ? hier.slice() : (isOracleTable(focusTable)
+      ? ORACLE_SEAT_IDS.map(function (id) { return String(id).toLowerCase(); })
+      : (isFrontTable(focusTable) ? FRONT_SEAT_KEYS : AGENT_ORDER.filter(n => n !== "law"))).map((n, i) => ({
       agent: n, rank: i + 1, listen: 1, win_rate: null, correct: 0, wrong: 0, weight: 0
     }));
 
     // Attach live direction
     rows = rows.filter(r => r.agent !== "law");
+    if (typeof isOracleTable === "function" && isOracleTable(focusTable)) {
+      rows = rows.filter(function (r) {
+        return r.agent === "leader" || r.agent === "chair" || isOracleSeatKey(r.agent);
+      });
+    }
     list.innerHTML = rows.map((r, idx) => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
@@ -6544,18 +6633,21 @@ function drawCandleChart() {
       return true;
     }
     if (oracle) {
-      if (ledLabel) ledLabel.textContent = "WATCH";
+      const ts = (typeof tableState === "function" ? tableState("oracle") : null) || {};
+      const card = liveCallCard(ts, "oracle");
+      const status = card.status === "LOCK" ? ("LOCK " + card.dir) : "WAIT";
+      if (ledLabel) ledLabel.textContent = card.status === "LOCK" ? "LOCK" : "WAIT";
       if (ledT) ledT.textContent = "CRT";
       const timEl = document.getElementById("windowTimer");
-      if (timEl) timEl.textContent = "WATCH";
-      if (ledSub) ledSub.textContent = "ORACLE does not place orders";
+      if (timEl) timEl.textContent = status;
+      if (ledSub) ledSub.textContent = (ts.why && ts.why.line) || card.line;
       if (dualSub) {
         dualSub.hidden = true;
         dualSub.textContent = "";
       }
       const call = document.getElementById("oraWatchCall");
       const seats = document.getElementById("oraWatchSeats");
-      if (call) call.textContent = "WATCH";
+      if (call) call.textContent = status;
       if (seats) seats.textContent = "SIBYL · PIT · VEIL · MARBLE";
       return true;
     }
@@ -6593,7 +6685,7 @@ function drawCandleChart() {
           : (isAtsTable(focusTable)
             ? '<li class="lock-tape-empty">No Chair lock this hour — waiting on Ares</li>'
             : (isOracleTable(focusTable)
-              ? '<li class="lock-tape-empty">ORACLE does not place orders — WATCH only</li>'
+              ? '<li class="lock-tape-empty">No Chair lock this hour — waiting on ORACLE</li>'
               : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>'));
       } else {
         list.innerHTML = locks.slice(0, 8).map(p => {
@@ -6720,9 +6812,9 @@ function drawCandleChart() {
         ticker: r.ticker,
       }));
     }
-    ["bitcoin", "ethereum", "front", "ats"].forEach(key => {
+    ["bitcoin", "ethereum", "front", "ats", "oracle"].forEach(key => {
       const ts = (typeof tableState === "function" ? tableState(key) : null) || {};
-      const pair = key === "ats" ? "ATS" : (key === "front" ? "DFW" : (key === "ethereum" ? "ETH" : "BTC"));
+      const pair = key === "oracle" ? "ORA" : (key === "ats" ? "ATS" : (key === "front" ? "DFW" : (key === "ethereum" ? "ETH" : "BTC")));
       const lc = pairLock(ts);
       if (lc) {
         add({
@@ -7077,7 +7169,7 @@ function drawCandleChart() {
         grid.innerHTML = "";
       }
       const hero = document.querySelector("#botsView .info-hero p");
-      if (hero) hero.textContent = "Four seats. SIBYL is the read. PIT is the well. VEIL is the mask. MARBLE is the slab. They watch. They do not vote. ORACLE does not place orders.";
+      if (hero) hero.textContent = "Four seats. SIBYL is the read. PIT is the well. VEIL is the mask. MARBLE is the slab. They feed the chair. Paper LOCK when they agree. Follower OFF.";
       return;
     }
     const botsGrid = document.getElementById("botsGrid");
@@ -7237,7 +7329,19 @@ function drawCandleChart() {
   function liveCallStrikeText(view, kind) {
     const m = (view && view.market) || {};
     const clock = m.clock || {};
-    if (kind === "oracle") return "";
+    if (kind === "oracle") {
+      const m = (view && view.market) || {};
+      let s = m.floor_strike != null ? m.floor_strike : null;
+      if (s == null) {
+        const tick = String(m.kalshi_ticker || m.ticker || "");
+        const mt = tick.match(/-T(\d+(?:\.\d+)?)$/i);
+        if (mt) s = Number(mt[1]);
+      }
+      const n = Number(s);
+      if (!isFinite(n) || n < 20) return "";
+      if (n >= 1000) return "$" + Math.round(n).toLocaleString("en-US");
+      return String(Math.round(n));
+    }
     if (kind === "front") {
       const nws = clock.nws_high != null ? clock.nws_high : m.nws_high;
       const kh = clock.kalshi_high != null ? clock.kalshi_high : m.kalshi_high;
@@ -7282,8 +7386,7 @@ function drawCandleChart() {
     const lc = ts.locked_call || d.locked_call || {};
     const raw = String((lc && lc.direction) || d.direction || "WAIT").toUpperCase();
     let dir = "WAIT";
-    if (kind === "oracle") dir = "WATCH";
-    else if (kind === "front") {
+    if (kind === "front") {
       if (raw === "ABOVE" || raw === "UP" || raw === "YES" || raw.indexOf("UP") >= 0) dir = "ABOVE";
       else if (raw === "BELOW" || raw === "DOWN" || raw === "NO" || raw.indexOf("DOWN") >= 0) dir = "BELOW";
       else if (raw === "BETWEEN") dir = "BETWEEN";
@@ -7291,8 +7394,7 @@ function drawCandleChart() {
     else if (raw.indexOf("DOWN") >= 0) dir = "DOWN";
     const locked = !!(lc && lc.locked && lc.direction && dir !== "WAIT" && dir !== "WATCH");
     let status = "WAIT";
-    if (kind === "oracle") status = "WATCH";
-    else if (locked) status = "LOCK";
+    if (locked) status = "LOCK";
     const strike = liveCallStrikeText(ts, kind);
     const windowTxt = liveCallWindowText(ts, kind);
     const bits = [];
@@ -7434,7 +7536,7 @@ function drawCandleChart() {
       const windowEl = row.querySelector(".calls-window");
       if (name) name.textContent = card.name;
       if (status) status.textContent = card.status === "LOCK" ? ("LOCK " + card.dir) : card.status;
-      if (strike) strike.textContent = card.strike || (card.status === "WATCH" ? "no ticket" : "—");
+      if (strike) strike.textContent = card.strike || "—";
       if (windowEl) windowEl.textContent = card.window || "—";
     });
   }
@@ -7474,7 +7576,7 @@ function drawCandleChart() {
     if (!show) return;
     const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
     const watch = view.watch || {};
-    el.textContent = String(watch.line || "CRT · WATCH · STATIC ON THE GLASS");
+    el.textContent = String(watch.line || "CRT · WAIT · STATIC ON THE GLASS");
   }
 
   function paintPhoneScore() {
@@ -7488,7 +7590,7 @@ function drawCandleChart() {
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
     const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
-    el.textContent = oracle ? "ORACLE · WATCH" : (ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0"))));
+    el.textContent = oracle ? (sc.ora_text || "ORACLE · CRT") : (ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0"))));
     el.setAttribute("aria-label", "Flip focused Chair");
   }
 
@@ -9233,21 +9335,48 @@ function drawCandleChart() {
     }, 20000);
   }
   window.loadAtsTable = loadAtsTable;
+  let oracleBoard = null;
+  let oraclePollTimer = null;
+  async function loadOracleTable() {
+    try {
+      const r = await fetch("/api/oracle", { cache: "no-store", headers: { Accept: "application/json" } });
+      if (r.ok) {
+        oracleBoard = await r.json();
+        try { renderOracleBotsGuide(); } catch (e) {}
+        try { paintOraWhy(oracleBoard); } catch (e) {}
+        try { paintOraWatch(oracleBoard); } catch (e) {}
+        try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
+        try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
+      }
+    } catch (e) {}
+    if (oraclePollTimer) clearInterval(oraclePollTimer);
+    oraclePollTimer = setInterval(function () {
+      if (mode !== "art" && mode !== "floor" && !isSeatsMode(mode) && focusTable !== "oracle") return;
+      fetch("/api/oracle", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (!data) return;
+        oracleBoard = data;
+        try { renderOracleBotsGuide(); } catch (e) {}
+        try { paintOraWhy(data); } catch (e) {}
+        try { paintOraWatch(data); } catch (e) {}
+        try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
+      }).catch(function () {});
+    }, 20000);
+  }
+  window.loadOracleTable = loadOracleTable;
   function renderOracleBotsGuide() {
     const grid = document.getElementById("oracleBotsGrid");
     if (!grid) return;
     const ts = (typeof tableState === "function" ? tableState("oracle") : null) || oracleTableState();
     const seats = ts.seats || oracleSeatRoster();
-    const chair = ts.chair || { id: "ORACLE", name: "ORACLE", job: "Watch chair. Does not place orders.", mark: "/oracle-wait.jpg" };
+    const chair = ts.chair || { id: "ORACLE", name: "ORACLE", job: "CRT chair. Paper lock when the four agree. Follower OFF.", mark: "/oracle-wait.jpg" };
     const rows = [chair].concat(seats);
     grid.innerHTML = rows.map(function (s) {
       const callsign = (s.id === "ORACLE" || s.name === "ORACLE") ? "ORACLE" : String(s.id || "");
-      const face = (callsign === "ORACLE") ? "/oracle-wait.jpg" : "";
-      const mark = face
-        ? frontBotMarkHtml(callsign, face)
-        : '<span class="ora-seat-mark" data-ora-seat="' + callsign + '">' + callsign.slice(0, 3) + "</span>";
+      const face = (callsign === "ORACLE")
+        ? "/oracle-wait.jpg"
+        : (s.mark || ORACLE_SEAT_MARKS[callsign] || "");
       return '<article class="bot-card front-bot-card ora-bot-card" data-ora-seat="' + callsign + '">' +
-        '<div class="bot-card-head">' + mark +
+        '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
         '<span class="bot-callsign">' + callsign + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || s.call || "") + "</div>" +
         "</article>";
@@ -9316,7 +9445,12 @@ function drawCandleChart() {
       : ("LEARNED · " + n + " settled · hit " + (acc.accuracy_pct != null ? acc.accuracy_pct + "%" : "—") + " · edge score " + (edge != null ? edge : "—") + " · thr " + (thr != null ? Number(thr).toFixed(2) : "—") + ".");
     if (phaseEl) phaseEl.textContent = chairTitleOf(focusTable) + " ranks (finish-only) · " + phase;
     const head = '<div class="rank-row head" role="row"><span>#</span><span>BOT</span><span>LIVE</span><span>HIT</span><span>MISS</span><span>WR%</span><span class="listen-col">LISTEN</span><span class="hide-sm">WT</span></div>';
-    const rows = hier.filter(r => r.agent !== "law");
+    const rows = hier.filter(r => r.agent !== "law").filter(function (r) {
+      if (typeof isOracleTable === "function" && isOracleTable(focusTable)) {
+        return r.agent === "leader" || r.agent === "chair" || isOracleSeatKey(r.agent);
+      }
+      return true;
+    });
     const body = rows.map(r => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
@@ -9327,7 +9461,9 @@ function drawCandleChart() {
       const name = (r.agent === "leader" || r.agent === "chair")
         ? chairNameOf(focusTable)
         : (r.display_name || (AGENT_LABELS && AGENT_LABELS[r.agent]) || r.agent);
-      const markSrc = isFrontSeatKey(r.agent) ? frontSeatMark(r.agent) : "";
+      const markSrc = isOracleSeatKey(r.agent)
+        ? (ORACLE_SEAT_MARKS[String(r.display_name || r.agent || "").toUpperCase()] || "")
+        : (isFrontSeatKey(r.agent) ? frontSeatMark(r.agent) : "");
       const markHtml = markSrc ? '<img class="rank-mark" src="' + markSrc + '" alt="" width="22" height="22">' : "";
       const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
       const listen = r.listen != null ? Math.round(r.listen * 100) + "%" : "—";
@@ -9807,10 +9943,14 @@ function drawCandleChart() {
     if (mode === "front") loadFrontTable();
     if (mode === "calls") {
       try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
+      try { if (typeof loadOracleTable === "function") loadOracleTable(); } catch (e) {}
       try { paintCurrentCalls(); } catch (e) {}
     }
     if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || isSeatsMode(mode) || mode === "charts" || mode === "tape" || mode === "paper")) {
       try { loadAtsTable(); } catch (e) {}
+    }
+    if (typeof isOracleTable === "function" && isOracleTable(focusTable) && (mode === "art" || mode === "floor" || isSeatsMode(mode) || mode === "charts" || mode === "tape" || mode === "paper" || mode === "calls")) {
+      try { loadOracleTable(); } catch (e) {}
     }
     if (mode === "follower" && typeof window.renderFollower === "function") {
       try { window.renderFollower(); } catch (e) {}
@@ -10414,7 +10554,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#focusOra",
       title: "ORACLE / ORA",
-      body: "ORACLE is the watch Chair. Gold tab ORA. No GLD chair.\n\nSeats: SIBYL · PIT · VEIL · MARBLE. They watch. They do not vote.\n\nCRT / neon room plate is a separate image — not baked into the face. Face is close-up only.\n\nORACLE does not place orders. Paper only. Follower OFF.",
+      body: "ORACLE is the CRT Chair. Gold tab ORA. No GLD chair.\n\nSeats: SIBYL · PIT · VEIL · MARBLE. They feed the chair. Paper LOCK when they agree and the book is playable. Sit when they split or the book is dead.\n\nCRT / neon room plate is a separate image — not baked into the face. Face is close-up only. One WAIT face.\n\nPaper first. Follower OFF. No live Kalshi.",
     },
     {
       mode: "art",
@@ -10844,7 +10984,7 @@ function drawCandleChart() {
         const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
           ? "Floor — Satoshi BTC, Vitalik ETH, Raijin DFW, Ares ATS, ORACLE"
-          : (isOracle ? "ORACLE watch table" : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")))));
+          : (isOracle ? "ORACLE CRT table" : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")))));
       }
       try { syncChartPairTitle(); } catch (e) {}
       try { paintFrontWindowChrome(); } catch (e) {}
@@ -10867,6 +11007,9 @@ function drawCandleChart() {
         try { paintAresEyes(((typeof tableState === "function" ? tableState("ats") : null) || {}).eyes); } catch (e) {}
       } else {
         try { paintAresEyes({ mode: "wait" }); } catch (e) {}
+      }
+      if (focusTable === "oracle") {
+        try { if (typeof loadOracleTable === "function") loadOracleTable(); } catch (e) {}
       }
       applyFocusChrome();
       try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
@@ -10898,6 +11041,7 @@ function drawCandleChart() {
     bind(focusOra, "oracle");
     applyFocusChrome();
     try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
+    try { if (typeof loadOracleTable === "function") loadOracleTable(); } catch (e) {}
     const floorExit = document.getElementById("floorExitBtn");
     if (floorExit && !floorExit.__wired) {
       floorExit.__wired = true;

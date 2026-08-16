@@ -134,7 +134,7 @@ class FiveLeadersAndClocksTests(unittest.TestCase):
         self.assertIn(">ORACLE</span>", HTML)
         self.assertIn("function isOracleTable", JS)
         self.assertIn("function oracleTableState", JS)
-        self.assertIn("ORACLE does not place orders", JS)
+        self.assertNotIn("ORACLE does not place orders", JS)
         self.assertIn("function drawOracleCrtHud", JS)
         self.assertTrue((ROOT / "frontend" / "static" / "oracle-wait.jpg").is_file())
         self.assertIn("/oracle-wait.jpg", JS)
@@ -177,7 +177,8 @@ class PhoneBackTests(unittest.TestCase):
 class WireNewestTests(unittest.TestCase):
     def test_notes_newest_first(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-gold-floor-mark")
+        self.assertEqual(rows[0]["id"], "2026-08-16-oracle-can-call")
+        self.assertIn("2026-08-16-gold-floor-mark", [r["id"] for r in rows])
         self.assertIn("2026-08-16-table-room-plates", [r["id"] for r in rows])
         ats = [r["at"] for r in rows]
         self.assertEqual(ats, sorted(ats, reverse=True))

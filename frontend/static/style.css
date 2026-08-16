@@ -7362,7 +7362,8 @@ body:not([data-focus-table="oracle"]) .ora-watch { display: none !important; }
 #oracleBotsGuide { display: none; }
 body[data-focus-table="oracle"] #oracleBotsGuide { display: block; }
 body[data-focus-table="oracle"] #frontBotsGuide,
-body[data-focus-table="oracle"] #atsBotsGuide { display: none; }
+body[data-focus-table="oracle"] #atsBotsGuide,
+body[data-focus-table="oracle"] #botsGrid { display: none !important; }
 .ora-seat-mark {
   display: inline-flex;
   align-items: center;
