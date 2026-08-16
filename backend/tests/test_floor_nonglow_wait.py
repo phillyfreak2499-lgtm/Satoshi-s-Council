@@ -64,6 +64,23 @@ class FloorNonglowWaitTests(unittest.TestCase):
         self.assertIn("face.hidden = true", paint_a)
         self.assertIn("overlay.hidden = true", paint_r)
 
+    def test_wait_css_has_no_bloom(self):
+        wait_dir = CSS.split(".dir.WAIT", 1)[1].split("}", 1)[0]
+        self.assertNotIn("0 0 12px rgba(0, 232, 255", wait_dir)
+        self.assertIn("text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85)", wait_dir)
+        lock = CSS.split('.chair-why[data-status="LOCK"][data-dir="UP"]', 1)[1].split(".chair-why[data-status=\"WAIT\"]", 1)[0]
+        self.assertIn("0 0 12px rgba(57, 255, 20", lock)
+        why_wait = CSS.split('.chair-why[data-status="WAIT"]', 1)[1].split("}", 1)[0]
+        self.assertNotIn("0 0 12px rgba(0, 232, 255", why_wait)
+        self.assertIn("0 1px 8px rgba(0, 0, 0, 0.9)", why_wait)
+        maj = CSS.split("body.majority-wait.floor-mode::before", 1)[1].split("}", 1)[0]
+        self.assertIn("content: none !important", maj)
+        self.assertIn("background: none !important", maj)
+        self.assertIn("filter: none !important", maj)
+        self.assertIn("if (_hasLock)", JS.split("Lock punch ring only", 1)[1][:200])
+        self.assertIn("WAIT CSS bloom is off", WIRE)
+        self.assertIn("Lock punch stays", WIRE)
+
     def test_wire_and_no_regress(self):
         self.assertIn("2026-08-16-floor-nonglow-wait", WIRE)
         self.assertIn("Floor WAIT faces swapped to signed no-glow close-ups", WIRE)

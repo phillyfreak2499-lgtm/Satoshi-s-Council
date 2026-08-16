@@ -937,7 +937,7 @@ footer {
 }
 .dir.UP { color: var(--jade); text-shadow: 0 0 18px var(--jade), 0 0 36px rgba(57, 255, 20, 0.45); }
 .dir.DOWN { color: var(--blood); text-shadow: 0 0 18px var(--blood), 0 0 36px rgba(255, 45, 85, 0.45); }
-.dir.WAIT { color: var(--blade); text-shadow: 0 0 12px rgba(0, 232, 255, 0.4); }
+.dir.WAIT { color: var(--blade); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 .dir.SWAP {
   color: var(--gold);
   text-shadow: 0 0 16px rgba(240, 193, 74, 0.55), 0 0 28px rgba(255, 0, 170, 0.25);
@@ -3711,7 +3711,7 @@ body:not(.floor-mode) .floor-money-rain {
 }
 #finalDecision #decisionDir.UP { color: #3dff9a; }
 #finalDecision #decisionDir.DOWN { color: #ff5c6a; }
-#finalDecision #decisionDir.WAIT,
+#finalDecision #decisionDir.WAIT { color: #c0c8d4; text-shadow: none; }
 #finalDecision #decisionDir.LOCKED { color: #c0c8d4; }
 #decisionConf {
   font-size: 1.05rem;
@@ -5856,12 +5856,19 @@ body.mode-floor #debatePanel.signal-feed {
 
 body.majority-up.floor-mode::before,
 body.majority-down.floor-mode::before,
-body.majority-wait.floor-mode::before,
 body.majority-up.mode-floor::before,
-body.majority-down.mode-floor::before,
-body.majority-wait.mode-floor::before {
+body.majority-down.mode-floor::before {
   content: none !important;
   background: none !important;
+}
+/* WAIT Floor: no neon wash. Lock punch stays on UP/DOWN. */
+body.majority-wait.floor-mode::before,
+body.majority-wait.mode-floor::before,
+body.majority-wait.night-mode::before {
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  filter: none !important;
 }
 
 /* Floor exit — always tappable, phones have no Esc.
@@ -7192,7 +7199,7 @@ body.night-mode .table-stage {
 .chair-why[data-status="LOCK"][data-dir="ABOVE"] { color: #39ff14; text-shadow: 0 0 12px rgba(57, 255, 20, 0.55), 0 1px 8px rgba(0, 0, 0, 0.9); }
 .chair-why[data-status="LOCK"][data-dir="DOWN"],
 .chair-why[data-status="LOCK"][data-dir="BELOW"] { color: #ff2d55; text-shadow: 0 0 12px rgba(255, 45, 85, 0.5), 0 1px 8px rgba(0, 0, 0, 0.9); }
-.chair-why[data-status="WAIT"] { color: #00e8ff; text-shadow: 0 0 12px rgba(0, 232, 255, 0.45), 0 1px 8px rgba(0, 0, 0, 0.9); }
+.chair-why[data-status="WAIT"] { color: #b7c8d6; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
 .chair-why[data-status="WATCH"] { color: #ffe7a0; text-shadow: 0 0 12px rgba(240, 193, 74, 0.5), 0 1px 8px rgba(0, 0, 0, 0.9); }
 .chair-why[hidden] { display: none !important; }
 .calls-board {

@@ -2793,7 +2793,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     drawTableSmoke(cx, cy, r, dir);
   }
 
-  function drawHourRing(cx, cy, r, frac, color) {
+  function drawHourRing(cx, cy, r, frac, color, glow) {
     const start = -Math.PI / 2;
     const fill = Math.max(0.02, Math.min(1, frac));
     ctx.beginPath();
@@ -2806,8 +2806,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 6;
     ctx.lineCap = "round";
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 12;
+    if (glow !== false) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+    }
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.lineCap = "butt";
@@ -4055,7 +4057,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const portraitY = cy - 2;
     const ringR = radius * 1.48;
     const orbit = seatOrbitAngle();
-    drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
+    drawHourRing(cx, cy, radius * 1.72, hourFillFrac(st.market), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : "rgba(160, 180, 200, 0.40)", maj === "UP" || maj === "DOWN");
     drawHourSlamRings(cx, cy, radius);
 
     // Outer table rings (under everything)
@@ -4124,11 +4126,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.shadowColor = gold;
       ctx.shadowBlur = 10 + 12 * chairMood.glow;
     } else if (focused) {
-      ctx.strokeStyle = which === "ethereum" ? "rgba(120,255,160,0.9)" : "rgba(0,220,255,0.9)";
-      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = "rgba(190, 210, 230, 0.50)";
+      ctx.lineWidth = 2.4;
       ctx.globalAlpha = chairMood.alpha;
-      ctx.shadowColor = ctx.strokeStyle;
-      ctx.shadowBlur = chairMood.loud ? 16 : 6;
     } else {
       ctx.strokeStyle = "rgba(200,220,255,0.35)";
       ctx.lineWidth = 2;
@@ -4454,7 +4454,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       document.body.classList.add(maj === "UP" ? "majority-up" : maj === "DOWN" ? "majority-down" : "majority-wait");
       document.documentElement.style.setProperty("--hour-frac", String(hourFillFrac((state && state.market) || {})));
     } catch (e) {}
-    drawHourRing(cx, cy, radius + 36, hourFillFrac((state && state.market) || {}), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : CYAN);
+    drawHourRing(cx, cy, radius + 36, hourFillFrac((state && state.market) || {}), maj === "UP" ? ACID : maj === "DOWN" ? HOT_RED : "rgba(160, 180, 200, 0.40)", maj === "UP" || maj === "DOWN");
     drawHourSlamRings(cx, cy, radius);
 
     // Digital rain (katana-edge cyan)
@@ -4985,15 +4985,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     rememberChairHit(cx, cy, lr, chairKeyOf(focusTable));
 
-    // Eye glow ring pulse (extra emphasis on call color)
-    ctx.beginPath();
-    ctx.arc(cx, cy, lr + 2, 0, Math.PI * 2);
-    ctx.strokeStyle = eyeGlow;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = eyeGlow;
-    ctx.shadowBlur = 18 + 8 * Math.sin(time * 0.006);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    // Lock punch ring only. WAIT stays no-glow — no neon eye bloom.
+    if (_hasLock) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, lr + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = eyeGlow;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = eyeGlow;
+      ctx.shadowBlur = 18 + 8 * Math.sin(time * 0.006);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
 
     // Gold trim
     ctx.beginPath();
@@ -8986,7 +8988,7 @@ function drawCandleChart() {
       const accent = locked ? "rgba(0, 220, 255, 0.95)" : "rgba(0, 220, 255, 0.55)";
       const nowCt = new Date();
       const frac = ((nowCt.getHours() % 24) + nowCt.getMinutes() / 60) / 24;
-      drawHourRing(cx, cy, radius * 1.72, frac, dir === "UP" ? ACID : dir === "DOWN" ? HOT_RED : CYAN);
+      drawHourRing(cx, cy, radius * 1.72, frac, dir === "UP" ? ACID : dir === "DOWN" ? HOT_RED : "rgba(160, 180, 200, 0.40)", dir === "UP" || dir === "DOWN");
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.strokeStyle = accent;
