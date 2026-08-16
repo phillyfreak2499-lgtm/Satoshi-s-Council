@@ -13,6 +13,8 @@ HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 WIRE = (STATIC / "wire.js").read_text(encoding="utf-8")
 MAIN = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
 FRONT = (ROOT / "backend" / "services" / "desk_front.py").read_text(encoding="utf-8")
+ATS = (ROOT / "backend" / "services" / "desk_ats.py").read_text(encoding="utf-8")
+ORA = (ROOT / "backend" / "services" / "desk_oracle.py").read_text(encoding="utf-8")
 
 WAIT = STATIC / "vitalik-wait.jpg"
 CITY = STATIC / "vitalik-city.jpg"
@@ -66,6 +68,24 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn("ONE FACE PER CHAIR", JS)
         self.assertIn("Labels carry UP/DOWN/WAIT/LOCK", JS)
 
+    def test_satoshi_ares_oracle_use_signed_wait(self):
+        self.assertIn('chairPortrait.src = "/chair-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
+        self.assertNotIn('chairPortrait.src = "/chair-up.jpg"', JS)
+        self.assertNotIn('chairPortrait.src = "/chair-down.jpg"', JS)
+        self.assertIn('aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V', JS)
+        self.assertIn('function aresPortraitSrc(dir) { return "/static/ares-wait.png" + "?v=" + LEADER_JPG_V; }', JS)
+        self.assertNotIn('aresPortrait.src = "/static/ares-chair.png"', JS)
+        self.assertIn('id="aresChairImg" src="/static/ares-wait.png?v=', HTML)
+        self.assertIn('"mark": "/static/ares-wait.png"', ATS)
+        self.assertIn('"portrait": "/static/ares-wait.png"', ATS)
+        self.assertIn('oraclePortrait.src = "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
+        self.assertIn('"mark": "/oracle-wait.jpg"', ORA)
+        self.assertIn('"portrait": "/oracle-wait.jpg"', ORA)
+        pick = JS.split("function chairPortraitOf", 1)[1][:400]
+        self.assertIn("return oraclePortrait", pick)
+        self.assertIn("return aresPortrait", pick)
+        self.assertIn("return isEthTable(which) ? vitalikPortrait : chairPortrait", pick)
+
     def test_front_and_floor_raijin_use_signed_wait(self):
         self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn('function raijinPortraitFor(dir) { return raijinPortrait; }', JS)
@@ -94,7 +114,7 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertNotIn("86400", wait_route)
         city_route = MAIN.split('@app.get("/vitalik-city.jpg")', 1)[1].split("@app.get", 1)[0]
         self.assertIn("headers=ROOM_JPG_CACHE", city_route)
-        for name in ("chair-wait.jpg", "raijin-wait.jpg", "oracle-wait.jpg"):
+        for name in ("chair-wait.jpg", "raijin-wait.jpg", "oracle-wait.jpg", "ares-wait.png"):
             block = MAIN.split('@app.get("/%s")' % name, 1)[1].split("@app.get", 1)[0]
             self.assertIn("headers=LEADER_JPG_CACHE", block)
         for name in ("satoshi-shrine.jpg", "ares-stadium.jpg", "raijin-dallas.jpg", "oracle-room.jpg"):
@@ -104,22 +124,31 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
         self.assertIn('raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
         self.assertIn('oraclePortrait.src = "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
+        self.assertIn('aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V', JS)
 
     def test_room_plate_stays_separate(self):
         self.assertIn('url("/vitalik-city.jpg")', CSS)
         self.assertIn('data-chair-room="vitalik"', CSS)
         self.assertIn('url("/raijin-dallas.jpg")', CSS)
         self.assertIn('data-chair-room="raijin"', CSS)
+        self.assertIn('url("/satoshi-shrine.jpg")', CSS)
+        self.assertIn('url("/ares-stadium.jpg")', CSS)
+        self.assertIn('url("/oracle-room.jpg")', CSS)
         self.assertNotIn("vitalik-city.jpg", JS)
         self.assertNotIn("raijin-dallas.jpg", JS)
         self.assertNotIn("satoshi-shrine.jpg", JS)
+        self.assertNotIn("ares-stadium.jpg", JS)
+        self.assertNotIn("oracle-room.jpg", JS)
 
     def test_wire_and_no_regress(self):
         self.assertIn("2026-08-16-vitalik-rain-still", WIRE)
-        self.assertIn("ETH and Front chairs use the signed rain stills", WIRE)
+        self.assertIn("All five chairs use the signed WAIT stills", WIRE)
+        self.assertIn("/chair-wait.jpg", WIRE)
+        self.assertIn("/vitalik-wait.jpg", WIRE)
         self.assertIn("/raijin-wait.jpg", WIRE)
+        self.assertIn("/static/ares-wait.png", WIRE)
+        self.assertIn("/oracle-wait.jpg", WIRE)
         self.assertIn("no cowboy hat", WIRE)
-        self.assertIn("Dallas storm", WIRE)
         self.assertIn("cache-busted", WIRE)
         self.assertIn("Paper. Follower OFF.", WIRE)
         self.assertIn("Satoshi’s Council", HTML)

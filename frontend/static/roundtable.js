@@ -338,10 +338,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Poll faster than analysis interval so UI stays live after each cycle
 
   // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
-  // ETH chair + Floor Vitalik use the signed /vitalik-wait.jpg rain close-up.
-  // Front chair + Floor Raijin use the signed /raijin-wait.jpg rain close-up.
-  // Leader jpgs are cache-busted: live leader jpgs were max-age=86400, so
-  // phones kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
+  // Satoshi /chair-wait.jpg · Vitalik /vitalik-wait.jpg · Raijin /raijin-wait.jpg
+  // Ares /static/ares-wait.png · Oracle /oracle-wait.jpg. Room plates stay backs.
+  // Leader stills are cache-busted: live files were max-age=86400, so phones
+  // kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
   const LEADER_JPG_V = "7b598672c9";
   let chairImgsReady = 0;
   function _chairLoaded() {
@@ -370,9 +370,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   aresPortrait.onload = _chairLoaded;
   aresPortrait.onerror = function () {
     try { aresPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    aresPortrait.src = "/static/ares-wait.png";
+    aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V;
   };
-  aresPortrait.src = "/static/ares-chair.png";
+  aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V;
   const oraclePortrait = new Image();
   oraclePortrait.crossOrigin = "anonymous";
   oraclePortrait.onload = _chairLoaded;
@@ -381,6 +381,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function vitalikPortraitFor(dir) { return vitalikPortrait; }
   function raijinPortraitFor(dir) { return raijinPortrait; }
   function raijinPortraitSrc(dir) { return "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V; }
+  function aresPortraitSrc(dir) { return "/static/ares-wait.png" + "?v=" + LEADER_JPG_V; }
   function isOracleTable(which) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
     return w === "oracle" || w === "sibyl";
@@ -9399,7 +9400,7 @@ function drawCandleChart() {
       { id: "ICE", job: "Veto. 99¢ chalk, empty book, stale, too early, no depth.", mark: "/static/bots/ice.png" },
     ];
     const seats = ((data && data.seats) || fallback);
-    const chair = (data && data.chair) || { id: "ARES", name: "ARES", job: "Sports chair. One game.", mark: "/static/ares-chair.png" };
+    const chair = (data && data.chair) || { id: "ARES", name: "ARES", job: "Sports chair. One game.", mark: "/static/ares-wait.png" + "?v=" + LEADER_JPG_V };
     const subs = ((data && data.subs) || [
       { id: "CLOCK", parent: "LINE", call: "Time to kick / tip / first pitch." },
       { id: "FORM", parent: "FADE", call: "ATS / record." },
@@ -9408,7 +9409,7 @@ function drawCandleChart() {
     const rows = [chair].concat(seats);
     grid.innerHTML = rows.map(function (s) {
       const callsign = (s.id === "ARES" || s.name === "ARES") ? "ARES" : String(s.id || "");
-      const face = (callsign === "ARES") ? "/static/ares-chair.png" : s.mark;
+      const face = (callsign === "ARES") ? aresPortraitSrc() : s.mark;
       const kids = subs.filter(function (sub) { return sub.parent === s.id; }).map(function (sub) {
         return '<div class="ats-sub">' + sub.id + " · " + String(sub.call || sub.job || "") + "</div>";
       }).join("");

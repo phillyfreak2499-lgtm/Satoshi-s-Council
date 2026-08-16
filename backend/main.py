@@ -1473,7 +1473,7 @@ if STATIC_DIR.is_dir():
     @app.get("/ares-chair.png")
     async def ares_chair_png():
         return FileResponse(STATIC_DIR / "ares-chair.png", media_type="image/png",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/ares-wait.png")
     async def ares_wait_png():
@@ -1481,7 +1481,7 @@ if STATIC_DIR.is_dir():
         if not path.exists():
             path = STATIC_DIR / "ares-chair.png"
         return FileResponse(path, media_type="image/png",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/hive-egg.png")
     async def hive_egg_png():
