@@ -139,6 +139,37 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn('oraclePortrait.src = "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
         self.assertIn('aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V', JS)
 
+    def test_static_ares_stills_send_short_cache_over_http(self):
+        from starlette.routing import Mount
+        from starlette.testclient import TestClient
+
+        from backend.main import LEADER_JPG_CACHE, app
+
+        wait_i = chair_i = mount_i = None
+        for i, route in enumerate(app.routes):
+            path = getattr(route, "path", None)
+            if path == "/static/ares-wait.png":
+                wait_i = i
+            elif path == "/static/ares-chair.png":
+                chair_i = i
+            elif isinstance(route, Mount) and path == "/static":
+                mount_i = i
+        self.assertIsNotNone(wait_i)
+        self.assertIsNotNone(chair_i)
+        self.assertIsNotNone(mount_i)
+        self.assertLess(wait_i, mount_i)
+        self.assertLess(chair_i, mount_i)
+        want = LEADER_JPG_CACHE["Cache-Control"]
+        client = TestClient(app, raise_server_exceptions=True)
+        for path in ("/static/ares-wait.png", "/static/ares-chair.png", "/ares-wait.png"):
+            resp = client.get(path)
+            self.assertEqual(resp.status_code, 200, path)
+            self.assertEqual(resp.headers.get("cache-control"), want, path)
+            self.assertGreater(len(resp.content), 20000, path)
+        css = client.get("/static/style.css")
+        self.assertEqual(css.status_code, 200)
+        self.assertNotEqual(css.headers.get("cache-control"), want)
+
     def test_room_plate_stays_separate(self):
         self.assertIn('url("/vitalik-city.jpg")', CSS)
         self.assertIn('data-chair-room="vitalik"', CSS)
