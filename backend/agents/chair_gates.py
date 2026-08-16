@@ -680,8 +680,6 @@ def classify_wait_reason(
         return "late_undecisive"
     if "eth fade" in text or "btc impulse" in text:
         return "eth_fade"
-    if "spread" in text and ("no lock" in text or "junk" in text or ">" in text):
-        return "spread"
     if (
         "cannot price ev" in text
         or "no chosen-side" in text
@@ -694,6 +692,8 @@ def classify_wait_reason(
         )
     ):
         return "no_ev"
+    if "spread" in text and "half-spread" not in text and ("no lock" in text or "junk" in text or ">" in text):
+        return "spread"
     if "near certain" in text or "≥99" in text or ">=99" in text or "99¢ wall" in text:
         return "near_certain"
     if "lockdown" in text or "law " in text:

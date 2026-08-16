@@ -160,6 +160,7 @@ class FarOtmFilterTests(unittest.TestCase):
                 floor_strike=71799.99,
                 spot_price=70000,
                 current_price=70000,
+                mins_left=25,
             ),
         )
         self.assertEqual(out["direction"], "WAIT")
