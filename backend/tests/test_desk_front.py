@@ -1005,6 +1005,7 @@ class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("function glassSeatLive", JS)
         self.assertIn("function frontSeatTone", JS)
         self.assertIn('seat.setAttribute("data-eye"', JS)
+        self.assertNotIn('<span class="hier-dir \'', JS)
         self.assertIn('.front-seat[data-eye="up"]', CSS)
         self.assertIn("front-bot-card[data-eye=\"up\"]", CSS)
         self.assertIn("front-guide-card[data-eye=\"up\"]", CSS)

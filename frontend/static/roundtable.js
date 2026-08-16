@@ -7212,7 +7212,7 @@ function drawCandleChart() {
         '<span class="bot-callsign">' + callsign + "</span>" +
         '<span class="bot-rank-pill">' + rank + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
-        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span><span class="hier-dir ' + (eye === "up" ? "UP" : (eye === "down" ? "DOWN" : "WAIT")) + '">' + String(s.call || s.dir || "WAIT") + "</span></div>" +
+        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span><span class=\"hier-dir " + (eye === "up" ? "UP" : (eye === "down" ? "DOWN" : "WAIT")) + '">' + String(s.call || s.dir || "WAIT") + "</span></div>" +
         subHtml +
         "</article>";
     }).join("");
