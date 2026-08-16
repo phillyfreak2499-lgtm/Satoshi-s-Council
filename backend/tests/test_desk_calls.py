@@ -109,16 +109,29 @@ class PunchyCallCopyTests(unittest.TestCase):
         self.assertNotIn("FOLLOW", plate)
         self.assertNotIn("best odds", plate)
 
+    def test_cricket_bed_is_dead(self):
+        self.assertNotIn("skip-crickets.mp3", JS)
+        skip = JS.split("function playSkipCricketsSfx", 1)[1].split("function ", 1)[0]
+        self.assertNotIn("playSampleSfx(", skip)
+        self.assertNotIn(".loop = true", skip)
+        ring = JS.split("function maybeRingForNewWindow", 1)[1].split("function playSfxClick", 1)[0]
+        self.assertNotIn("playSkipCricketsSfx()", ring)
+        self.assertIn("playMarketBell()", ring)
+        self.assertIn("playSampleSfx(\"/static/sfx/lockdown-siren.mp3\"", JS)
+        self.assertIn("playSampleSfx(\"/static/sfx/win-cash.mp3\"", JS)
+        self.assertIn("playSampleSfx(\"/static/sfx/lose-trombone.mp3\"", JS)
+
     def test_wire_note(self):
+        self.assertIn("2026-08-16-kill-crickets", WIRE_JS)
         self.assertIn("2026-08-16-coinglass-plan-wall", WIRE_JS)
         self.assertIn("2026-08-16-coinglass-hud-only", WIRE_JS)
         self.assertIn("2026-08-16-chair-table-call", WIRE_JS)
         self.assertIn("2026-08-16-current-calls", WIRE_JS)
         self.assertIn("Current Calls", WIRE_JS)
-        self.assertLess(WIRE_JS.find("2026-08-16-coinglass-plan-wall"), WIRE_JS.find("2026-08-16-coinglass-hud-only"))
+        self.assertLess(WIRE_JS.find("2026-08-16-kill-crickets"), WIRE_JS.find("2026-08-16-coinglass-plan-wall"))
         self.assertLess(WIRE_JS.find("2026-08-16-chair-table-call"), WIRE_JS.find("2026-08-16-current-calls"))
-        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-coinglass-plan-wall", 1)[1][:500])
-        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-coinglass-plan-wall", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
+        self.assertIn("Follower OFF", WIRE_JS.split("2026-08-16-kill-crickets", 1)[1][:500])
+        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-kill-crickets", 1)[1].split("2026-08-16-hour-ladder", 1)[0])
 
 
 if __name__ == "__main__":

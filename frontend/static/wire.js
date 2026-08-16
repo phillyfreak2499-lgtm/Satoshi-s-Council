@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-kill-crickets",
+    "at": "2026-08-16T04:00:00-05:00",
+    "title": "Cricket bed leaves the desk",
+    "why": "The skip-hour cricket bed is off. No ambient cricket loop on the desk, Floor, gate, or Night. Lock, win, and lose SFX stay. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-coinglass-plan-wall",
     "at": "2026-08-16T03:55:00-05:00",
     "title": "CoinGlass plan wall stops the 30m retry",

@@ -1856,12 +1856,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         lastWindowKey = key;
         lastClockBucket = bucket;
         try { beginHourCloseThenSlam(); } catch (e) { try { triggerHourSlam(); } catch (e2) {} }
-        // Skip-window: previous chair was WAIT → awkward silence; else market bell
+        // Skip-window: previous chair was WAIT → stay quiet. No cricket bed.
         try {
           const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
-          if (lastDir === "WAIT" || lastDir === "HOLD") {
-            playSkipCricketsSfx();
-          } else {
+          if (lastDir !== "WAIT" && lastDir !== "HOLD") {
             playMarketBell();
           }
         } catch (e) {
@@ -3457,7 +3455,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function playSkipCricketsSfx() {
-    playSampleSfx("/static/sfx/skip-crickets.mp3", 0.45);
+    // Cricket / ambient bed is dead. Do not play, loop, or autoplay.
+    return;
   }
 
 
