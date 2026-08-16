@@ -651,6 +651,18 @@ def run_all_subs(md: Dict[str, Any]) -> Dict[str, List[AgentSignal]]:
 
 
 def synthesize_from_subs(parent_name: str, category: str, subs: List[AgentSignal], fallback: AgentSignal) -> AgentSignal:
+    feats = getattr(fallback, "features", None) or {}
+    # CARRY / CHAIN / CASCADE sit WAIT on the same 401 / plan-wall / dark latch.
+    # Subs must not pull a Glass seat back into a vote.
+    if feats.get("glass_dark"):
+        return fallback
+    reason_l = str(getattr(fallback, "reasoning", "") or "").lower()
+    if (
+        parent_name in ("funding", "oi_pressure", "liq")
+        and str(getattr(fallback, "direction", "") or "").upper() == "WAIT"
+        and ("glass dark" in reason_l or "sit wait" in reason_l)
+    ):
+        return fallback
     if not subs:
         return fallback
 

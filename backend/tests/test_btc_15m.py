@@ -972,7 +972,9 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-herald-leftovers"), WIRE.find("2026-08-16-btc-15m-path-pnl"))
         self.assertLess(WIRE.find("2026-08-16-btc-15m-path-pnl"), WIRE.find("2026-08-16-btc-15m-retrain"))
         self.assertLess(WIRE.find("2026-08-16-btc-15m-retrain"), WIRE.find("2026-08-16-eth-slate-ares-oracle-lock"))
         chunk = WIRE.split("2026-08-16-btc-15m-path-pnl", 1)[1][:1600]
@@ -1005,6 +1007,15 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Live OFF", chunk)
         self.assertNotIn("ZT", chunk)
         self.assertNotIn("KX", chunk)
+        leftover = WIRE.split("2026-08-16-herald-leftovers", 1)[1][:1200]
+        self.assertIn("CASCADE sits WAIT", leftover)
+        self.assertIn("LONG_UP", leftover)
+        self.assertIn("visible strip", leftover)
+        self.assertIn("150–220KB", leftover)
+        self.assertIn("Paper", leftover)
+        self.assertIn("Follower OFF", leftover)
+        self.assertNotIn("ZT", leftover)
+        self.assertNotIn("Phantom", leftover)
 
     def test_ui_labels(self):
         self.assertIn('id="ledWindowLabel">15M WINDOW', HTML)
@@ -1031,6 +1042,24 @@ class WireAndUiTests(unittest.TestCase):
         self.assertNotIn("ZT", WIRE.split("2026-08-16-btc-15m-path-pnl", 1)[1][:800])
         self.assertFalse(settings.SIDE_TABLE_LIVE)
         self.assertFalse(settings.FRONT_LIVE)
+        self.assertIn("function tallyTone(", JS)
+        self.assertIn("LONG_UP", JS.split("function tallyTone", 1)[1][:220])
+        self.assertIn("const d = tallyTone(a.direction)", JS)
+        self.assertIn("const BTC_STRIP_KEYS", JS)
+        self.assertIn("function onVisibleStrip(", JS)
+        self.assertLessEqual(JS.split("const BTC_STRIP_LABELS", 1)[1].split("];", 1)[0].count(",") + 1, 12)
+        self.assertIn("WIRE", JS.split("const BTC_STRIP_LABELS", 1)[1].split("];", 1)[0])
+        self.assertIn("CASCADE", JS.split("const BTC_STRIP_LABELS", 1)[1].split("];", 1)[0])
+        ares = ROOT / "frontend" / "static" / "ares-wait.png"
+        cowboy = ROOT / "frontend" / "static" / "bots" / "raijin-chair.png"
+        self.assertTrue(ares.read_bytes().startswith(b"\x89PNG"))
+        self.assertTrue(cowboy.read_bytes().startswith(b"\x89PNG"))
+        self.assertGreaterEqual(ares.stat().st_size, 150_000)
+        self.assertLessEqual(ares.stat().st_size, 220_000)
+        self.assertGreaterEqual(cowboy.stat().st_size, 150_000)
+        self.assertLessEqual(cowboy.stat().st_size, 220_000)
+        self.assertEqual(ares.read_bytes(), (ROOT / "frontend" / "static" / "ares-chair.png").read_bytes())
+        self.assertEqual(cowboy.read_bytes(), (ROOT / "frontend" / "static" / "bots" / "raijin-wait.png").read_bytes())
 
 
 class RewriteContractTests(unittest.TestCase):

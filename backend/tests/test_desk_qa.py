@@ -501,9 +501,8 @@ def _floor_nameplate_fit(w, h):
 
 
 _SEAT_LABELS = (
-    "WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "ORBIT", "VOLT", "CHAIN",
-    "STREAK", "ODDS", "STRIKE", "CLOCK", "WHALE", "QUORUM", "FADE", "CHEAP",
-    "VEL", "WIRE", "CASCADE", "EXHAUST", "WARDEN",
+    "WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "VOLT", "CHAIN",
+    "ODDS", "CLOCK", "WIRE", "CASCADE", "EXHAUST",
 )
 
 

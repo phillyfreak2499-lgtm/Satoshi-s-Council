@@ -531,6 +531,35 @@ class GlassDarkWaitTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(fund.features.get("advisory"))
         self.assertFalse(fund.features.get("lock_force"))
 
+    async def test_cascade_stays_wait_on_latched_401_even_with_candle_subs(self):
+        from backend.agents.liq import LiqSpecialist
+        from backend.agents.subs import run_all_subs, synthesize_from_subs
+
+        latch_plan_wall(CACHED_401_REASON)
+        dark = {
+            "health": {"coinglass": False, "coinglass_reason": CACHED_401_REASON},
+            "coinglass": {"plan_wall": True, "reason": CACHED_401_REASON},
+            "funding_rate": 0.001,
+            "open_interest": 9e9,
+            "liq_long_usd": 8_000_000,
+            "liq_short_usd": 500_000,
+            "candles": [
+                {"open": 100, "high": 103, "low": 99, "close": 102, "volume": 8}
+            ] * 30,
+            "asset": "eth",
+        }
+        fallback = await LiqSpecialist().get_signal(dark)
+        self.assertEqual(fallback.direction, "WAIT")
+        self.assertTrue(fallback.features.get("glass_dark"))
+        candle_subs = run_all_subs(dark).get("candle") or []
+        self.assertTrue(candle_subs)
+        merged = synthesize_from_subs("liq", "liq", candle_subs, fallback)
+        self.assertEqual(merged.direction, "WAIT")
+        self.assertTrue(merged.features.get("glass_dark"))
+        council = (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8")
+        self.assertIn('if agent.name in ("candle", "candle_btc", "candle_eth")', council)
+        self.assertIn("Candle subs belong to WICK only", council)
+
 
 class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

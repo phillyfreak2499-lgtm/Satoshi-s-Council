@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-herald-leftovers",
+    "at": "2026-08-17T00:20:00-05:00",
+    "title": "Herald leftovers — Glass CASCADE, LONG tally, stills, strip",
+    "why": "Zach Voice: Four live leftovers off #50. CASCADE sits WAIT on the same 401 / plan-wall / dark-feed latch as CARRY/CHAIN — candle subs cannot pull the Glass seat back into a vote. CoinGlass 1h/30m stays off the BTC 15m brain. HUD Glass stays off on 401. 4h is not healthy. Fail-soft: CARRY/CHAIN/CASCADE all WAIT when Glass is dark. color_counts / majorityDirOf / updateColorTally count LONG_UP as UP and LONG_DOWN as DOWN for the tally only. REDUCE_*/FLAT_* are not a directional majority. Do not wash the desk just because a chair is WAIT. Chair path-P&L actions stay. Ares wait still and cowboy Raijin (chair + matching wait) re-encoded in the 150–220KB band. Cowboy Raijin stays the home-screen cowboy still — not /raijin-wait.jpg. Ares stays the signed wait face. Cache-Control public, max-age=60, must-revalidate + content-hash. One face. Labels WAIT/UP/DOWN. BTC visible strip trimmed to 12 seats on HUD/Table/Floor feed. Brain still has all 22 voters. Chair why collapses to one short CRT line. Paper. Follower OFF. ETH stays 1H one-lock."
+  },
+  {
     "id": "2026-08-16-btc-15m-path-pnl",
     "at": "2026-08-17T00:10:00-05:00",
     "title": "BTC 15m path P&L — kill one-call, dual-sided scalp",
