@@ -1098,7 +1098,7 @@ class AdaptiveLearner:
                     mem_score = str(self.backfill.get("score") or "")
                 replace_finish = (
                     mem_score == "realized_paper_pnl"
-                    and disk_score != "realized_paper_pnl"
+                    and str(path.name).endswith("btc15m.json")
                     and str(getattr(self, "asset", "") or "").lower() in ("btc", "bitcoin", "btc15m")
                 )
                 if not replace_finish:

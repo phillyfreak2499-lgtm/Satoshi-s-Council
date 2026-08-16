@@ -164,6 +164,18 @@ class SplitAndSeriesTests(unittest.TestCase):
                 saved = json.loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(saved["updates"], 12)
                 self.assertEqual(saved["backfill"]["score"], "realized_paper_pnl")
+                path.write_text(
+                    json.dumps({
+                        "updates": 6346,
+                        "weights": {"candle_btc": 0.2},
+                        "backfill": {"tag": "backfill_15m", "score": "realized_paper_pnl", "windows_graded": 16},
+                    }),
+                    encoding="utf-8",
+                )
+                brain.updates = 20
+                brain.save(path)
+                saved = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(saved["updates"], 20)
 
     def test_brains_are_separate(self):
         self.assertEqual(learner_brain_tag("btc"), "btc15m")
