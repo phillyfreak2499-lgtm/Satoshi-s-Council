@@ -91,8 +91,8 @@ CHAIR: Dict[str, str] = {
     "id": "ARES",
     "name": "ARES",
     "job": "Sports chair. One ticket. Paper only. Does not talk to Follower.",
-    "mark": "/static/ares-chair.png",
-    "portrait": "/static/ares-chair.png",
+    "mark": "/static/ares-wait.png",
+    "portrait": "/static/ares-wait.png",
 }
 
 # Five Watcher-greenlit gates. Not chairs. Subs still feed parents only.

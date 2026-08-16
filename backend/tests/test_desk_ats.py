@@ -134,7 +134,7 @@ class AtsMarkupTests(unittest.TestCase):
             path = BOTS / name
             self.assertTrue(path.is_file(), name)
             self.assertGreater(path.stat().st_size, 1000)
-        self.assertIn("/static/ares-chair.png", HTML + JS + ATS)
+        self.assertIn("/static/ares-wait.png", HTML + JS + ATS)
         self.assertIn("/static/bots/line.png", HTML + JS + ATS)
         self.assertIn("/static/bots/steam.png", HTML + JS + ATS)
         self.assertIn("/static/bots/fade.png", HTML + JS + ATS)
@@ -658,7 +658,7 @@ class AtsFloorChromeTests(unittest.TestCase):
         self.assertNotIn("face.hidden = !show", paint)
         self.assertIn("Never unhide the HTML overlay", paint)
         self.assertIn("function drawAresEyeTint", JS)
-        self.assertIn('aresPortrait.src = "/static/ares-chair.png"', JS)
+        self.assertIn('aresPortrait.src = "/static/ares-wait.png"', JS)
         self.assertIn("containPortrait(img", JS)
         face_css = CSS[CSS.find(".ares-face"): CSS.find(".ats-sub")]
         self.assertIn("display: none !important", face_css)

@@ -41,7 +41,7 @@ class FloorNonglowWaitTests(unittest.TestCase):
         self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg"', JS)
         self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn('oraclePortrait.src = "/oracle-wait.jpg"', JS)
-        self.assertIn('aresPortrait.src = "/static/ares-chair.png"', JS)
+        self.assertIn('aresPortrait.src = "/static/ares-wait.png"', JS)
         self.assertNotIn('chairPortrait.src = "/chair-up.jpg"', JS)
         self.assertNotIn('vitalikPortrait.src = "/vitalik-up.jpg"', JS)
         self.assertNotIn('raijinPortrait.src = "/raijin-up.jpg"', JS)

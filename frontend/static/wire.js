@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-vitalik-rain-still",
+    "at": "2026-08-16T23:55:00-05:00",
+    "title": "All five chairs use the signed WAIT stills",
+    "why": "Floor and each chair HUD load the signed WAIT stills: Satoshi /chair-wait.jpg, Vitalik /vitalik-wait.jpg, Raijin /raijin-wait.jpg (no cowboy hat), Ares /static/ares-wait.png (same still as chair), Oracle /oracle-wait.jpg. Close-up faces only. One face per chair. Labels carry UP/DOWN/WAIT. Leader stills are cache-busted (max-age=60 + hash query) so phones drop the pre-#44 helmet/glow without a hard refresh. Shrine, city, stadium, Dallas storm, and Oracle room stay separate table backs. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-floor-nonglow-wait",
     "at": "2026-08-16T23:40:00-05:00",
     "title": "Floor WAIT faces are signed no-glow close-ups",

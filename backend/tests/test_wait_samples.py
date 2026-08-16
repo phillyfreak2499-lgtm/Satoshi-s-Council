@@ -318,7 +318,7 @@ class FrontWaitTests(unittest.TestCase):
     def test_dont_play_is_wait_not_down_lock(self):
         skip = desk_front.build_chair({"dont_play": True, "skip": "Don’t play · sample too thin"})
         self.assertEqual(skip["eye"], "WAIT")
-        self.assertTrue(skip["mark"].endswith("raijin-wait.png"))
+        self.assertTrue(skip["mark"].endswith("raijin-wait.jpg"))
 
     def test_would_lock_if_strict_can_be_true_when_gate_is_only_reason(self):
         best = {
@@ -357,7 +357,7 @@ class FrontWaitBuildBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(best)
         self.assertTrue(best.get("dont_play"))
         self.assertEqual(board["chair"]["eye"], "WAIT")
-        self.assertTrue(board["chair"]["mark"].endswith("raijin-wait.png"))
+        self.assertTrue(board["chair"]["mark"].endswith("raijin-wait.jpg"))
         waits = [
             r for r in desk_front._load_fills()
             if str(r.get("side") or "").upper() == "WAIT" and not r.get("superseded")

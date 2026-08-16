@@ -29,6 +29,11 @@ council = DualOrchestrator()  # BTC Satoshi + ETH Vitalik
 
 # frontend/static is the single deployable UI for Render
 STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "static"
+# Leader portraits keep the same URL when the signed still is swapped.
+# Phones cached the pre-#44 helmet/glow Vitalik at /vitalik-wait.jpg for 24h.
+# Short max-age here; JS also appends a content-hash query.
+LEADER_JPG_CACHE = {"Cache-Control": "public, max-age=60, must-revalidate"}
+ROOM_JPG_CACHE = {"Cache-Control": "public, max-age=86400"}
 PROTECTED_DIR = Path(__file__).resolve().parent.parent / "frontend" / "protected"
 DATA_DIR = Path(getattr(settings, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1393,82 +1398,82 @@ if STATIC_DIR.is_dir():
     @app.get("/chair-up.jpg")
     async def chair_up():
         return FileResponse(STATIC_DIR / "chair-up.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/chair-down.jpg")
     async def chair_down():
         return FileResponse(STATIC_DIR / "chair-down.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/chair-wait.jpg")
     async def chair_wait():
         return FileResponse(STATIC_DIR / "chair-wait.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/vitalik-up.jpg")
     async def vitalik_up():
         return FileResponse(STATIC_DIR / "vitalik-up.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/vitalik-down.jpg")
     async def vitalik_down():
         return FileResponse(STATIC_DIR / "vitalik-down.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/vitalik-wait.jpg")
     async def vitalik_wait():
         return FileResponse(STATIC_DIR / "vitalik-wait.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/raijin-up.jpg")
     async def raijin_up():
         return FileResponse(STATIC_DIR / "raijin-up.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/raijin-down.jpg")
     async def raijin_down():
         return FileResponse(STATIC_DIR / "raijin-down.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/raijin-wait.jpg")
     async def raijin_wait():
         return FileResponse(STATIC_DIR / "raijin-wait.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/oracle-wait.jpg")
     async def oracle_wait():
         return FileResponse(STATIC_DIR / "oracle-wait.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/oracle-room.jpg")
     async def oracle_room():
         return FileResponse(STATIC_DIR / "oracle-room.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=ROOM_JPG_CACHE)
 
     @app.get("/satoshi-shrine.jpg")
     async def satoshi_shrine():
         return FileResponse(STATIC_DIR / "satoshi-shrine.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=ROOM_JPG_CACHE)
 
     @app.get("/vitalik-city.jpg")
     async def vitalik_city():
         return FileResponse(STATIC_DIR / "vitalik-city.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=ROOM_JPG_CACHE)
 
     @app.get("/ares-stadium.jpg")
     async def ares_stadium():
         return FileResponse(STATIC_DIR / "ares-stadium.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=ROOM_JPG_CACHE)
 
     @app.get("/raijin-dallas.jpg")
     async def raijin_dallas():
         return FileResponse(STATIC_DIR / "raijin-dallas.jpg", media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=ROOM_JPG_CACHE)
 
     @app.get("/ares-chair.png")
     async def ares_chair_png():
         return FileResponse(STATIC_DIR / "ares-chair.png", media_type="image/png",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/ares-wait.png")
     async def ares_wait_png():
@@ -1476,7 +1481,7 @@ if STATIC_DIR.is_dir():
         if not path.exists():
             path = STATIC_DIR / "ares-chair.png"
         return FileResponse(path, media_type="image/png",
-                            headers={"Cache-Control": "public, max-age=86400"})
+                            headers=LEADER_JPG_CACHE)
 
     @app.get("/hive-egg.png")
     async def hive_egg_png():
