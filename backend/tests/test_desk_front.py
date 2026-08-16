@@ -509,6 +509,7 @@ class FrontWeatherTests(unittest.TestCase):
         fn = JS.split("function vitalikPortraitFor(dir)", 1)[1][:400]
         self.assertNotIn("HOLD\") return vitalikImages.WAIT", fn)
         self.assertIn("return vitalikImages.WAIT", fn)
+        self.assertIn("2026-08-16-vitalik-recenter", (ROOT / "frontend" / "static" / "wire.js").read_text(encoding="utf-8"))
 
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
