@@ -282,6 +282,9 @@ class OraPaperLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(board["chair"]["locked"])
         self.assertIsNone(board["locked_call"])
         self.assertIn("SEATS SPLIT", board["why"]["line"])
+        self.assertIn("NO CONSENSUS", board["why"]["line"])
+        self.assertTrue(board.get("candidates") or board.get("pick"))
+        self.assertIsNone((board.get("hunter") or {}).get("side"))
         self.assertFalse(board["fills"])
 
     async def test_dead_book_sits(self):
@@ -299,7 +302,7 @@ class OraPaperLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board["chair"]["eye"], "WAIT")
         self.assertIsNone(board["locked_call"])
         line = board["why"]["line"]
-        self.assertTrue("NO EDGE" in line or "SEATS SPLIT" in line or "20–80" in line or "WAIT" in line)
+        self.assertTrue("NO EDGE" in line or "SEATS SPLIT" in line or "20–80" in line or "WAIT" in line or "NO CONSENSUS" in line)
 
     def test_product_copy_has_no_watch_only(self):
         self.assertNotIn("ORACLE does not place orders", JS)

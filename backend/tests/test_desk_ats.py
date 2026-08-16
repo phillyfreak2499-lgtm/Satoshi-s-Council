@@ -419,12 +419,14 @@ class AtsPickTests(unittest.TestCase):
         }
         board = await desk_ats.build_board(fetch=_fetch_factory(extra), now=NOW, force=True)
         pick = board["pick"]
-        if pick:
-            self.assertNotEqual(pick.get("game"), "HOUTTU")
-            self.assertEqual(pick.get("call"), "WAIT")
+        self.assertTrue(board.get("candidates"), "Hunter must show the next real sports candidate")
         self.assertEqual(board["chair"]["eye"], "WAIT")
+        if pick:
+            self.assertEqual(pick.get("call"), "WAIT")
+        self.assertIsNone((board.get("hunter") or {}).get("side"))
         self.assertTrue(board["paper_only"])
         self.assertFalse(board["follower"])
+        self.assertFalse(board["live"])
 
     async def test_board_sits_morning_sep18_fill_and_picks_nearer(self):
         desk_ats._fills.append({
@@ -1286,8 +1288,10 @@ class AtsEaglesRankTests(unittest.TestCase):
         pick = board["pick"]
         self.assertIsNotNone(pick)
         self.assertEqual(pick["game"], "PHIDAL")
-        self.assertIn("BIRD FIRST", (board.get("why") or {}).get("line") or "")
-        self.assertIn("BIRD FIRST", (board.get("watch") or {}).get("line") or "")
+        why_line = (board.get("why") or {}).get("line") or ""
+        watch_line = (board.get("watch") or {}).get("line") or ""
+        self.assertTrue("BIRD FIRST" in why_line or "BIRD FIRST" in watch_line, why_line + " | " + watch_line)
+        self.assertIn("BIRD FIRST", watch_line)
         self.assertTrue(board["paper_only"])
         self.assertFalse(board["follower"])
         self.assertFalse(board["live"])

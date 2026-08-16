@@ -22,6 +22,7 @@ FACES = (
     "chair-wait.jpg",
     "vitalik-wait.jpg",
     "raijin-wait.jpg",
+    "bots/raijin-chair.png",
     "ares-chair.png",
     "oracle-wait.jpg",
 )
@@ -56,7 +57,7 @@ class TableRoomPlateTests(unittest.TestCase):
         self.assertNotIn("raijin-dallas.jpg", JS)
         self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg"', JS)
         self.assertIn('chairPortrait.src = "/chair-wait.jpg"', JS)
-        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
+        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png"', JS)
         self.assertIn('return "raijin"', JS.split("function chairRoomOf", 1)[1][:400])
 
     def test_routes_and_wire(self):

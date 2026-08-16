@@ -39,7 +39,7 @@ class FloorNonglowWaitTests(unittest.TestCase):
     def test_one_wait_face_no_up_down_swap(self):
         self.assertIn('chairPortrait.src = "/chair-wait.jpg"', JS)
         self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg"', JS)
-        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
+        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png"', JS)
         self.assertIn('oraclePortrait.src = "/oracle-wait.jpg"', JS)
         self.assertIn('aresPortrait.src = "/static/ares-wait.png"', JS)
         self.assertNotIn('chairPortrait.src = "/chair-up.jpg"', JS)

@@ -86,25 +86,30 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn("return aresPortrait", pick)
         self.assertIn("return isEthTable(which) ? vitalikPortrait : chairPortrait", pick)
 
-    def test_front_and_floor_raijin_use_signed_wait(self):
-        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
+    def test_front_and_floor_raijin_use_cowboy_still(self):
+        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png"', JS)
         self.assertIn('function raijinPortraitFor(dir) { return raijinPortrait; }', JS)
-        self.assertIn('function raijinPortraitSrc(dir) { return "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V; }', JS)
+        self.assertIn('function raijinPortraitSrc(dir) { return "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V; }', JS)
         self.assertNotIn('raijinPortrait.src = "/raijin-up.jpg"', JS)
         self.assertNotIn('raijinPortrait.src = "/raijin-down.jpg"', JS)
-        self.assertNotIn("/static/bots/raijin-chair.png", JS)
-        self.assertNotIn('"/static/bots/raijin-wait.png"', JS + FRONT)
+        self.assertNotIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
+        self.assertNotIn('"/static/bots/raijin-up.png"', JS + FRONT)
+        self.assertNotIn('"/static/bots/raijin-down.png"', JS + FRONT)
         pick = JS.split("function chairPortraitOf", 1)[1][:400]
         self.assertIn("return raijinPortrait", pick)
         self.assertIn("containPortrait(raijinPortraitFor(floorDir)", JS)
         self.assertIn("containPortrait(raijinPortraitFor(dir)", JS)
         self.assertIn("chairImg.src = raijinPortraitSrc()", JS)
-        self.assertIn('id="frontChairImg" src="/raijin-wait.jpg?v=', HTML)
+        self.assertIn('id="frontChairImg" src="/static/bots/raijin-chair.png?v=', HTML)
         self.assertIn('id="floorRaijin"', HTML)
-        self.assertIn('"/raijin-wait.jpg"', FRONT)
+        self.assertIn('"/static/bots/raijin-chair.png"', FRONT)
         self.assertIn('"portrait": signed', FRONT)
-        self.assertNotIn("WAIT cowboy", FRONT)
         self.assertNotIn("raijin-dallas.jpg", JS)
+        cowboy = STATIC / "bots" / "raijin-chair.png"
+        wait_png = STATIC / "bots" / "raijin-wait.png"
+        self.assertTrue(cowboy.is_file())
+        self.assertEqual(cowboy.read_bytes(), wait_png.read_bytes())
+        self.assertNotEqual(cowboy.read_bytes(), RAIJIN.read_bytes())
 
     def test_leader_jpgs_are_cache_busted(self):
         self.assertIn('LEADER_JPG_CACHE = {"Cache-Control": "public, max-age=60, must-revalidate"}', MAIN)
@@ -117,14 +122,66 @@ class VitalikRainStillTests(unittest.TestCase):
         for name in ("chair-wait.jpg", "raijin-wait.jpg", "oracle-wait.jpg", "ares-wait.png"):
             block = MAIN.split('@app.get("/%s")' % name, 1)[1].split("@app.get", 1)[0]
             self.assertIn("headers=LEADER_JPG_CACHE", block)
+        # Leftover from live #45: JS uses /static/ares-wait.png, which the
+        # StaticFiles mount served as 200 with no Cache-Control. Dedicated
+        # routes must win the prefix (registered before app.mount("/static")).
+        mount_at = MAIN.index('app.mount("/static"')
+        static_wait_at = MAIN.index('@app.get("/static/ares-wait.png")')
+        static_chair_at = MAIN.index('@app.get("/static/ares-chair.png")')
+        self.assertLess(static_wait_at, mount_at)
+        self.assertLess(static_chair_at, mount_at)
+        static_block = MAIN[min(static_wait_at, static_chair_at):mount_at]
+        self.assertGreaterEqual(static_block.count("headers=LEADER_JPG_CACHE"), 2)
+        self.assertIn("class _StaticLeaderCache", MAIN)
+        self.assertIn('_StaticLeaderCache(directory=str(STATIC_DIR))', MAIN)
+        cowboy_at = MAIN.index('@app.get("/static/bots/raijin-chair.png")')
+        cowboy_wait_at = MAIN.index('@app.get("/static/bots/raijin-wait.png")')
+        self.assertLess(cowboy_at, mount_at)
+        self.assertLess(cowboy_wait_at, mount_at)
+        self.assertIn('aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V', JS)
         for name in ("satoshi-shrine.jpg", "ares-stadium.jpg", "raijin-dallas.jpg", "oracle-room.jpg"):
             block = MAIN.split('@app.get("/%s")' % name, 1)[1].split("@app.get", 1)[0]
             self.assertIn("headers=ROOM_JPG_CACHE", block)
         self.assertIn('chairPortrait.src = "/chair-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
         self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
-        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
+        self.assertIn('raijinPortrait.src = "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V', JS)
         self.assertIn('oraclePortrait.src = "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V', JS)
         self.assertIn('aresPortrait.src = "/static/ares-wait.png" + "?v=" + LEADER_JPG_V', JS)
+
+    def test_static_ares_stills_send_short_cache_over_http(self):
+        from starlette.routing import Mount
+        from starlette.testclient import TestClient
+
+        from backend.main import LEADER_JPG_CACHE, app
+
+        wait_i = chair_i = cowboy_i = mount_i = None
+        for i, route in enumerate(app.routes):
+            path = getattr(route, "path", None)
+            if path == "/static/ares-wait.png":
+                wait_i = i
+            elif path == "/static/ares-chair.png":
+                chair_i = i
+            elif path == "/static/bots/raijin-chair.png":
+                cowboy_i = i
+            elif isinstance(route, Mount) and path == "/static":
+                mount_i = i
+        self.assertIsNotNone(wait_i)
+        self.assertIsNotNone(chair_i)
+        self.assertIsNotNone(cowboy_i)
+        self.assertIsNotNone(mount_i)
+        self.assertLess(wait_i, mount_i)
+        self.assertLess(chair_i, mount_i)
+        self.assertLess(cowboy_i, mount_i)
+        want = LEADER_JPG_CACHE["Cache-Control"]
+        client = TestClient(app, raise_server_exceptions=True)
+        for path in ("/static/ares-wait.png", "/static/ares-chair.png", "/ares-wait.png", "/static/bots/raijin-chair.png", "/static/bots/raijin-wait.png"):
+            resp = client.get(path)
+            self.assertEqual(resp.status_code, 200, path)
+            self.assertEqual(resp.headers.get("cache-control"), want, path)
+            self.assertGreater(len(resp.content), 20000, path)
+        css = client.get("/static/style.css")
+        self.assertEqual(css.status_code, 200)
+        self.assertNotEqual(css.headers.get("cache-control"), want)
 
     def test_room_plate_stays_separate(self):
         self.assertIn('url("/vitalik-city.jpg")', CSS)
@@ -149,6 +206,9 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn("/static/ares-wait.png", WIRE)
         self.assertIn("/oracle-wait.jpg", WIRE)
         self.assertIn("no cowboy hat", WIRE)
+        self.assertIn("2026-08-16-raijin-cowboy-restore", WIRE)
+        self.assertIn("/static/bots/raijin-chair.png", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-raijin-cowboy-restore"), WIRE.find("2026-08-16-hunter-feeder"))
         self.assertIn("cache-busted", WIRE)
         self.assertIn("Paper. Follower OFF.", WIRE)
         self.assertIn("Satoshi’s Council", HTML)
