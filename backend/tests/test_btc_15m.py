@@ -205,31 +205,33 @@ class SplitAndSeriesTests(unittest.TestCase):
 
 class SitAndBandTests(unittest.TestCase):
     def test_15m_sit_is_not_first_10m(self):
-        self.assertEqual(EARLY_NO_LOCK_MINS_15M, 3.0)
-        self.assertEqual(early_no_lock_mins_for(ticker="KXBTC15M-26AUG161200-00", asset="btc"), 3.0)
+        self.assertEqual(EARLY_NO_LOCK_MINS_15M, 2.0)
+        self.assertEqual(early_no_lock_mins_for(ticker="KXBTC15M-26AUG161200-00", asset="btc"), 2.0)
         self.assertEqual(early_no_lock_mins_for(ticker="KXETHD-26AUG1615-T2400", asset="eth"), 10.0)
-        # First 3m of 15m blocked. Minute 4 is open. First 10m of 15m is NOT a sit.
-        self.assertTrue(early_lock_blocked(13.0, 15.0, 3.0))   # 2m elapsed
-        self.assertFalse(early_lock_blocked(11.0, 15.0, 3.0))  # 4m elapsed
-        self.assertFalse(early_lock_blocked(5.0, 15.0, 3.0))   # would be blocked if we copied 1H 10m
+        # First 2m of 15m blocked. Minute 3 is open. First 10m of 15m is NOT a sit.
+        self.assertTrue(early_lock_blocked(13.5, 15.0, 2.0))   # 1.5m elapsed
+        self.assertFalse(early_lock_blocked(13.0, 15.0, 2.0))  # 2m elapsed
+        self.assertFalse(early_lock_blocked(5.0, 15.0, 2.0))   # would be blocked if we copied 1H 10m
         # ETH 1H still first 10m
         self.assertTrue(early_lock_blocked(55.0, 60.0, 10.0))
         self.assertFalse(early_lock_blocked(49.0, 60.0, 10.0))
         self.assertEqual(
-            classify_wait_reason("WAIT · first 3m of the 15m — no lock"),
-            "first_3m",
+            classify_wait_reason("WAIT · first 2m of the 15m — no lock"),
+            "first_2m",
         )
         self.assertEqual(
             classify_wait_reason("WAIT · first 10m of the hour — no lock"),
             "first_10m",
         )
 
-    def test_band_20_80_on_15m_10_90_on_eth(self):
-        self.assertEqual(playable_band_cents_for(ticker="KXBTC15M-26AUG161200-00", asset="btc"), (20.0, 80.0))
+    def test_band_10_90_on_satoshi_and_eth(self):
+        self.assertEqual(playable_band_cents_for(ticker="KXBTC15M-26AUG161200-00", asset="btc"), (10.0, 90.0))
         self.assertEqual(playable_band_cents(ticker="KXETHD-26AUG1615-T1", asset="eth"), (10.0, 90.0))
         self.assertTrue(playable_yes_mid(50, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
-        self.assertFalse(playable_yes_mid(12, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
-        self.assertFalse(playable_yes_mid(88, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertTrue(playable_yes_mid(12, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertTrue(playable_yes_mid(88, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertFalse(playable_yes_mid(9, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
+        self.assertFalse(playable_yes_mid(91, ticker="KXBTC15M-26AUG161200-00", asset="btc"))
         self.assertTrue(playable_yes_mid(12, ticker="KXETHD-26AUG1615-T1", asset="eth"))
         self.assertTrue(playable_yes_mid(88, ticker="KXETHD-26AUG1615-T1", asset="eth"))
         # Generic / no-ticker stays 10–90 so ETH + old tests do not shrink
@@ -263,16 +265,18 @@ class SitAndBandTests(unittest.TestCase):
         pick = pick_hour_book(playable, spot=64000, sit_if_dead=True)
         self.assertIsNotNone(pick)
         self.assertIn("KXBTC15M", pick["ticker"])
-        why = dead_book_reason(None, "UP", 15, ticker="KXBTC15M-26AUG161200-00", asset="btc")
-        self.assertIn("20–80", why or "")
+        why = dead_book_reason(None, "UP", 5, ticker="KXBTC15M-26AUG161200-00", asset="btc")
+        self.assertIn("10–90", why or "")
 
     def test_timeframe_gates_split(self):
         btc = timeframe_gates(ticker="KXBTC15M-26AUG161200-00", asset="btc")
         eth = timeframe_gates(ticker="KXETHD-26AUG1615-T1", asset="eth")
         self.assertEqual(btc["window_minutes"], 15.0)
-        self.assertEqual(btc["early_no_lock_mins"], 3.0)
+        self.assertEqual(btc["early_no_lock_mins"], 2.0)
         self.assertEqual(btc["late_window_mins"], 2.5)
-        self.assertEqual(btc["band_lo"], 20.0)
+        self.assertEqual(btc["band_lo"], 10.0)
+        self.assertEqual(btc["band_hi"], 90.0)
+        self.assertEqual(btc["min_ev"], 0.0)
         self.assertEqual(eth["early_no_lock_mins"], 10.0)
         self.assertEqual(eth["late_window_mins"], 15.0)
         self.assertEqual(window_minutes_for(asset="eth"), 60.0)
@@ -301,8 +305,10 @@ class ScoringRuleTests(unittest.TestCase):
         tick = "KXBTC15M-26AUG161200-00"
         self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=48, direction="UP"))
         self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=99, direction="UP"), "chalk_skip")
-        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=12, direction="UP"), "band_skip")
-        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=88, direction="DOWN"), "band_skip")
+        self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=12, direction="UP"))
+        self.assertIsNone(paper_lock_score_skip(ticker=tick, open_price=88, direction="DOWN"))
+        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=9, direction="UP"), "band_skip")
+        self.assertEqual(paper_lock_score_skip(ticker=tick, open_price=91, direction="DOWN"), "band_skip")
         self.assertEqual(paper_lock_score_skip(ticker=tick, direction="WAIT"), "wait_skip")
         self.assertEqual(paper_lock_score_skip(ticker=tick, direction="UP"), "no_entry_odds")
         # ETH 1H untouched
@@ -358,7 +364,7 @@ class ScoringRuleTests(unittest.TestCase):
         s1h = asyncio.run(mom.get_signal(md_eth))
         self.assertEqual(s15.features.get("horizon_stack"), "3/8/15")
         self.assertEqual(s1h.features.get("horizon_stack"), "5/15/30")
-        self.assertIn("20–80", s15.reasoning)
+        self.assertIn("10–90", s15.reasoning)
         self.assertIn("10–90", s1h.reasoning)
 
 
@@ -811,6 +817,119 @@ class PathBookLiveGuardTests(unittest.TestCase):
         self.assertTrue(chair._is_15m_btc_path({"asset": "btc"}, "KXBTC15M-26AUG161200-00"))
 
 
+class SatoshiExploreLockTests(unittest.TestCase):
+    """Satoshi / BTC 15m Chair only. Vitalik / Ares / Oracle stay put."""
+
+    def _book(self):
+        return {
+            "yes_depth": 40,
+            "no_depth": 30,
+            "yes_bid_sz": 20,
+            "no_bid_sz": 15,
+            "yes_bid_px": 47,
+            "no_bid_px": 51,
+            "has_size": True,
+            "measured": True,
+            "book_state": "ok",
+        }
+
+    def _overlay(self, **over):
+        from backend.agents.leader import Leader
+        chair = Leader()
+        feat = {
+            "asset": "btc",
+            "ticker": "KXBTC15M-26AUG161530-30",
+            "mins_left": 10.0,
+            "window_minutes": 15.0,
+            "yes_ask": 48.0,
+            "no_ask": 52.0,
+            "yes_bid": 47.0,
+            "no_bid": 51.0,
+            "yes_mid": 48.0,
+            "kalshi_healthy": True,
+            "book_depth": self._book(),
+        }
+        feat.update(over.pop("regime_features", {}))
+        return chair._apply_15m_path_book(
+            ticker="KXBTC15M-26AUG161530-30",
+            window_id="2026-08-16T20:30:00+00:00",
+            lean=over.get("lean", "UP"),
+            conf=over.get("conf", 62),
+            score=over.get("score", 0.2),
+            summary="explore lean",
+            side_odds=over.get("side_odds", 48.0),
+            up_pct=over.get("up_pct", 48.0),
+            p_finish=over.get("p_finish", 0.56),
+            ev_cents=over.get("ev_cents", 0.4),
+            regime_features=feat,
+            gate_notes=[],
+        )
+
+    def test_explore_lock_when_ev_nonneg_on_real_10_90_book(self):
+        mid = self._overlay(ev_cents=0.4)
+        self.assertNotEqual(mid["direction"], "WAIT")
+        self.assertTrue(mid.get("path_fills"))
+        cheap = self._overlay(
+            ev_cents=0.2,
+            lean="UP",
+            side_odds=12.0,
+            up_pct=12.0,
+            regime_features={
+                "yes_ask": 12.0,
+                "no_ask": 88.0,
+                "yes_bid": 11.0,
+                "no_bid": 87.0,
+                "yes_mid": 12.0,
+                "book_depth": {
+                    **self._book(),
+                    "yes_bid_px": 11,
+                    "no_bid_px": 87,
+                },
+            },
+        )
+        self.assertNotEqual(cheap["direction"], "WAIT")
+        self.assertTrue(cheap.get("path_fills"))
+        self.assertNotIn("dead book", (cheap.get("summary") or "").lower())
+
+    def test_veto_holds_on_99_stale_empty(self):
+        wall = self._overlay(
+            ev_cents=20.0,
+            side_odds=99.0,
+            up_pct=99.0,
+            regime_features={"yes_ask": 99.0, "no_ask": 1.0, "yes_mid": 99.0},
+        )
+        self.assertEqual(wall["direction"], "WAIT")
+        self.assertEqual(wall.get("path_fills"), [])
+        stale = self._overlay(regime_features={"stale": True, "kalshi_healthy": False})
+        self.assertEqual(stale["direction"], "WAIT")
+        self.assertEqual(stale.get("path_fills"), [])
+        empty = self._overlay(regime_features={
+            "book_depth": {
+                "yes_depth": 0,
+                "no_depth": 0,
+                "has_size": False,
+                "measured": True,
+                "book_state": "dead",
+            },
+        })
+        self.assertEqual(empty["direction"], "WAIT")
+        self.assertEqual(empty.get("path_fills"), [])
+
+    def test_eth_vitalik_still_one_lock_not_path(self):
+        from backend.agents.leader import Leader
+        from backend.services.desk_hunter import MIN_EV_SIT
+        chair = Leader()
+        self.assertFalse(chair._is_15m_btc_path({"asset": "eth"}, "KXETHD-26AUG1616-T2000.00"))
+        self.assertEqual(early_no_lock_mins_for(ticker="KXETHD-26AUG1616-T2000.00", asset="eth"), 10.0)
+        self.assertEqual(float(settings.MIN_EV_CENTS), 3.0)
+        self.assertEqual(float(MIN_EV_SIT), 3.0)
+        ats = (ROOT / "backend" / "services" / "desk_ats.py").read_text(encoding="utf-8")
+        ora = (ROOT / "backend" / "services" / "desk_oracle.py").read_text(encoding="utf-8")
+        self.assertIn("20–80", ats)
+        self.assertIn("leftover) < 3.0", ats)
+        self.assertIn("20–80", ora)
+
+
 class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
     def test_finish_era_brain_is_dropped(self):
         from backend.learning.seat_backfill_15m import ensure_15m_learner
@@ -836,6 +955,10 @@ class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(c["live_orders"])
         self.assertEqual(c["score"], "realized_paper_pnl")
         self.assertTrue(c["dual_sided"])
+        self.assertTrue(c["official_result_only"])
+        self.assertTrue(c["merge"])
+        self.assertFalse(c["wipe_live_brain"])
+        self.assertIn("no window_calls", c["displayed_hit_rate"])
         self.assertEqual(c["eth_1h"], "untouched")
         self.assertIn("CoinGlass 1h is the wrong timeframe", json.dumps(c["seats_skipped"]))
 
@@ -910,6 +1033,64 @@ class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((Path(td) / "council-learning-btc.json").is_file())
             self.assertFalse((Path(td) / "council-learning-eth.json").is_file())
 
+    async def test_replay_merge_does_not_bump_displayed_hits(self):
+        learner = AdaptiveLearner(asset="btc")
+        learner.lock_n = 7
+        learner.backfill = {"tag": "backfill_15m", "score": "realized_paper_pnl", "windows_graded": 2}
+        before_lock = int(learner.lock_n)
+        before_card = floor_scorecard(
+            {"correct": 4, "wrong": 1},
+            {"correct": 2, "wrong": 1},
+        )
+        market = {
+            "ticker": "KXBTC15M-26AUG101215-15",
+            "event_ticker": "KXBTC15M-26AUG101215",
+            "status": "settled",
+            "result": "no",
+            "close_time": "2026-08-10T16:15:00+00:00",
+            "floor_strike": 64000,
+        }
+        start = datetime(2026, 8, 10, 15, 45, tzinfo=timezone.utc)
+        candles = []
+        px = 63980.0
+        for i in range(40):
+            t = start.timestamp() * 1000 + i * 60_000
+            candles.append({
+                "open_time": int(t),
+                "open": px,
+                "high": px + 12,
+                "low": px - 8,
+                "close": px - 3,
+                "volume": 11.0,
+            })
+            px -= 3
+
+        async def _candles():
+            return candles
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = await run_btc_15m_backfill(
+                learner=learner,
+                markets=[market],
+                fetch_candles=_candles,
+                persist=True,
+                data_root=root,
+                force=True,
+            )
+            self.assertTrue(report["ok"])
+            self.assertGreaterEqual(int(report["windows_graded"] or 0), 1)
+            self.assertEqual(learner.lock_n, before_lock)
+            self.assertIn("no window_calls", report["displayed_hit_rate"])
+            self.assertFalse((root / "window_calls.json").is_file())
+            after_card = floor_scorecard(
+                {"correct": 4, "wrong": 1},
+                {"correct": 2, "wrong": 1},
+            )
+            self.assertEqual(after_card["btc"]["correct"], before_card["btc"]["correct"])
+            self.assertEqual(after_card["eth"]["correct"], before_card["eth"]["correct"])
+            self.assertEqual(after_card["match"], before_card["match"])
+
 
 class PathPnlTests(unittest.TestCase):
     def test_dual_leftover_and_equal_contracts(self):
@@ -928,7 +1109,7 @@ class PathPnlTests(unittest.TestCase):
         self.assertGreaterEqual(left, 3.0)
         self.assertTrue(dual_attractive(42.0, 42.0))
         self.assertFalse(dual_attractive(52.0, 52.0))
-        self.assertFalse(dual_attractive(12.0, 12.0))
+        self.assertFalse(dual_attractive(5.0, 5.0))
         up_s, down_s = equal_contract_stakes(40.0, 50.0, unit=10.0)
         self.assertAlmostEqual(up_s, 10.0)
         self.assertAlmostEqual(down_s, 12.5)
@@ -1018,7 +1199,7 @@ class PathPnlTests(unittest.TestCase):
         book = PathBook()
         early = decide_action(PathInputs(1.0, 14.0, 42.0, 42.0, lean="UP", ev_cents=8.0), book)
         self.assertEqual(early.action, "SIT")
-        late = decide_action(PathInputs(13.5, 1.5, 48.0, 52.0, lean="UP", ev_cents=3.0), book)
+        late = decide_action(PathInputs(13.5, 1.5, 48.0, 52.0, lean="UP", ev_cents=-1.0), book)
         self.assertEqual(late.action, "SIT")
         start = datetime(2026, 8, 10, 15, 45, tzinfo=timezone.utc)
         candles = []
@@ -1058,10 +1239,12 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-satoshi-explore-15m-replay", WIRE)
         self.assertIn("2026-08-16-path-stake-chalk-exit", WIRE)
         self.assertIn("2026-08-16-majority-wash-lock", WIRE)
         self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-satoshi-explore-15m-replay"), WIRE.find("2026-08-16-path-stake-chalk-exit"))
         self.assertLess(WIRE.find("2026-08-16-path-stake-chalk-exit"), WIRE.find("2026-08-16-majority-wash-lock"))
         self.assertLess(WIRE.find("2026-08-16-majority-wash-lock"), WIRE.find("2026-08-16-herald-leftovers"))
         self.assertLess(WIRE.find("2026-08-16-herald-leftovers"), WIRE.find("2026-08-16-btc-15m-path-pnl"))
@@ -1097,6 +1280,25 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Live OFF", chunk)
         self.assertNotIn("ZT", chunk)
         self.assertNotIn("KX", chunk)
+        explore = WIRE.split("2026-08-16-satoshi-explore-15m-replay", 1)[1][:1400]
+        self.assertIn("Satoshi", explore)
+        self.assertIn("EV", explore)
+        self.assertIn("10–90", explore)
+        self.assertIn("99¢", explore)
+        self.assertIn("stale", explore)
+        self.assertIn("empty", explore)
+        self.assertIn("clamp_min", explore)
+        self.assertIn("Vitalik", explore)
+        self.assertIn("Ares", explore)
+        self.assertIn("Oracle", explore)
+        self.assertIn("replay", explore.lower())
+        self.assertIn("merge", explore.lower())
+        self.assertIn("hit slate", explore.lower())
+        self.assertIn("Paper", explore)
+        self.assertIn("Follower OFF", explore)
+        self.assertIn("Satoshi’s Council", explore)
+        self.assertNotIn("Phantom", explore)
+        self.assertNotIn("ZT", explore)
         leftover = WIRE.split("2026-08-16-herald-leftovers", 1)[1][:1200]
         self.assertIn("CASCADE sits WAIT", leftover)
         self.assertIn("LONG_UP", leftover)

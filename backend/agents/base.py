@@ -61,7 +61,7 @@ GOAL_CONTRACT = (
     "WAIT preferred over chalk or a book with no leftover."
 )
 
-GOAL_CONTRACT_SHORT = "GOAL · path P&L · dual-sided scalp (20–80¢)"
+GOAL_CONTRACT_SHORT = "GOAL · path P&L · dual-sided scalp (10–90¢)"
 
 # ETH 1H stays the old one-lock finish grade. Do not copy this onto BTC 15m.
 ETH_GOAL_CONTRACT = (

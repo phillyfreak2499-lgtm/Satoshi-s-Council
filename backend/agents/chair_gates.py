@@ -710,6 +710,7 @@ WAIT_REASON_CODES = (
     "stale_quote",
     "first_10m",
     "first_3m",
+    "first_2m",
     "dead_book",
     "no_depth",
     "odds_outside_20_80",
@@ -790,8 +791,8 @@ def classify_wait_reason(
         return "stale_quote"
     if "first " in text and ("m of the hour" in text or "10m" in text or "first 10" in text):
         return "first_10m"
-    if "first " in text and ("3m" in text or "15m" in text):
-        return "first_3m"
+    if "first " in text and ("2m" in text or "3m" in text or "15m" in text):
+        return "first_2m" if "2m" in text and "3m" not in text else "first_3m"
     if "unknown book" in text:
         return "unknown_book"
     if "paper lock rate" in text or "paper-lock rate" in text or "locks today" in text:
@@ -1115,7 +1116,7 @@ def playable_band_cents(
     window_minutes: Any = None,
     series: Any = None,
 ) -> tuple[float, float]:
-    """Paper Chair YES-mid band. 15m BTC is 20–80; ETH 1H stays 10–90."""
+    """Paper Chair YES-mid band. Satoshi 15m BTC is 10–90; ETH 1H stays 10–90 + its own EV bar."""
     try:
         from backend.learning.btc15m import playable_band_cents_for
         return playable_band_cents_for(
@@ -1149,7 +1150,7 @@ def playable_yes_mid(
     ticker: Any = None,
     window_minutes: Any = None,
 ) -> bool:
-    """Only play books where YES mid is inside the Chair band (20–80 on 15m BTC)."""
+    """Only play books where YES mid is inside the Chair band (10–90 on Satoshi 15m BTC)."""
     mid = odds_to_cents(yes_mid)
     if mid is None:
         return False
@@ -1217,7 +1218,7 @@ def dead_book_reason(
     """
     Skip dead hours: chosen side ≥ playable cap, mid outside the Chair band,
     or a book we actually measured that is empty / one-sided (99¢ / 1¢ wall).
-    15m BTC uses 20–80. ETH 1H stays 10–90.
+    Satoshi 15m BTC uses 10–90. ETH 1H stays 10–90 + its own EV bar.
 
     Null depth (both sides 0 / null / missing, not measured) is UNKNOWN.
     Do not auto-WAIT on unknown — that is not a dead book.

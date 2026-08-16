@@ -572,7 +572,7 @@ class Leader:
                 summary = f"PATH {action} · paper P&L · {goal_txt} · {summary}"
         else:
             firm = False
-            if decision.reason in ("first_3m", "last_2_5m", "dead_book", "chalk", "size_zero"):
+            if decision.reason in ("first_2m", "first_3m", "last_2_5m", "dead_book", "chalk", "size_zero"):
                 summary = f"WAIT · 15m path sit ({decision.reason}) · {goal_txt} · {summary}"
             else:
                 summary = f"WAIT · 15m path · no attractive book · {goal_txt} · {summary}"

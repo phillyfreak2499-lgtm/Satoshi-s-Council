@@ -33,20 +33,22 @@ BTC_15M_DISPLAY_RESET_AT = "2026-08-16T15:50:00+00:00"
 
 # Sit rules from official KXBTC15M tape + the repo's own 15m research gates.
 # First 10m of a 15m window is the 1H clock copied wrong (sits 2/3 of the book).
-# Sit the first ~3m (book form) and the last ~2.5m unless leftover is huge.
-EARLY_NO_LOCK_MINS_15M = 3.0
+# Sit the first ~2m (book form) and the last ~2.5m unless EV is still ≥ 0.
+# Satoshi explore: 10–90 + EV ≥ 0 on a real book. 99¢ / stale / empty still sit.
+# ETH 1H / Ares / Oracle keep their own bars (not these knobs).
+EARLY_NO_LOCK_MINS_15M = 2.0
 EARLY_WINDOW_MINS_15M = 4.0
 LATE_WINDOW_MINS_15M = 2.5
 LATE_MIN_P_15M = 0.70
-LATE_MIN_EV_15M = 8.0
+LATE_MIN_EV_15M = 0.0
 LATE_VOL_PCT_15M = 0.18  # 15m vol, not the 1H 0.40% figure
-SCORE_BAND_LO = 20.0
-SCORE_BAND_HI = 80.0
+SCORE_BAND_LO = 10.0
+SCORE_BAND_HI = 90.0
 CHALK_CENTS = 99.0
-MIN_EV_CENTS = 3.0
-SNAPSHOT_MINS_INTO_15M = 4.0  # after the 3m sit; not the close print
+MIN_EV_CENTS = 0.0  # Satoshi / BTC 15m Chair only — EV ≥ 0 after half-spread
+SNAPSHOT_MINS_INTO_15M = 3.0  # after the 2m sit; not the close print
 CANDLE_LOOKBACK_MIN_15M = 60  # 1m bars: enough for 3/8/15 + volume, not a 1H clone
-GOAL_SHORT_15M = "GOAL · path P&L · dual-sided scalp (20–80¢)"
+GOAL_SHORT_15M = "GOAL · path P&L · dual-sided scalp (10–90¢)"
 P_FINISH_COLD_N = 15
 
 # CoinGlass 1h / 30m is the wrong timeframe for a 15m lock.
@@ -223,7 +225,7 @@ def playable_band_cents_for(
     series: Any = None,
     window_minutes: Any = None,
 ) -> Tuple[float, float]:
-    """15m BTC locks and scores 20–80 after vig. ETH 1H stays 10–90."""
+    """15m BTC Satoshi locks 10–90 after vig when EV ≥ 0. ETH 1H stays 10–90 + its own EV bar."""
     if is_15m_window(window_minutes, ticker, series, asset) and not is_eth_1h_ticker(ticker):
         if str(asset or "btc").lower() in ("btc", "bitcoin", "btc15m", ""):
             return SCORE_BAND_LO, SCORE_BAND_HI
@@ -332,7 +334,7 @@ def paper_lock_score_skip(
     direction: Any = None,
 ) -> Optional[str]:
     """
-    Open-gate only for 15m BTC: do not open 99¢ chalk or odds outside 20–80.
+    Open-gate only for 15m BTC: do not open 99¢ chalk or odds outside 10–90.
     Not the training win. Path P&L grades realized paper dollars.
     ETH 1H is untouched (returns None).
     """

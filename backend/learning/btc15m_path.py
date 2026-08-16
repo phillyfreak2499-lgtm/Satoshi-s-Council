@@ -430,7 +430,7 @@ class PathDecision:
 
 def _sit_new_risk(inp: PathInputs) -> Optional[str]:
     if inp.elapsed_mins < float(EARLY_NO_LOCK_MINS_15M):
-        return "first_3m"
+        return "first_2m"
     if inp.mins_left <= float(LATE_WINDOW_MINS_15M) and not inp.allow_late_open:
         if inp.ev_cents is None or float(inp.ev_cents) < float(LATE_MIN_EV_15M):
             return "last_2_5m"
@@ -601,7 +601,9 @@ def decide_action(inp: PathInputs, book: PathBook) -> PathDecision:
         if held:
             return PathDecision("SIT", [], "second_leg_needs_leftover")
         ask = side_ask(lean, yes_ask, no_ask)
-        ev_ok = inp.ev_cents is None or float(inp.ev_cents) >= 3.0
+        # Satoshi / BTC 15m Chair only: explore paper lock when EV ≥ 0
+        # on a real 10–90 book. Hard maxes still beat Kelly. 99¢ sits.
+        ev_ok = inp.ev_cents is None or float(inp.ev_cents) >= 0.0
         if ask is not None and in_playable_band(ask) and not is_chalk(ask) and ev_ok:
             return PathDecision(
                 "OPEN",

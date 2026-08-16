@@ -204,7 +204,7 @@ class Settings(BaseSettings):
     MIN_P_FINISH: float = 0.55
     MIN_EV_CENTS: float = 3.0
     # ETH 1H: no lock first 10 minutes of the hour.
-    # BTC 15m uses EARLY_NO_LOCK_MINS_15M in backend.learning.btc15m (3m, not 10m).
+    # BTC 15m uses EARLY_NO_LOCK_MINS_15M in backend.learning.btc15m (2m, not 10m).
     EARLY_NO_LOCK_MINS: float = 10.0
     PLAYABLE_MID_MIN: float = 10.0  # Zach hard band — two-sided, not 45–55
     PLAYABLE_MID_MAX: float = 90.0  # 10–90 does not drop EV ≥ 0 after half-spread

@@ -60,8 +60,9 @@ DONE_NAME = "seat-backfill-15m.done"
 MARKER_ENV = "SEAT_BACKFILL_15M_ONCE"
 RATE_LIMIT = "rate_limit"
 KALSHI_429_SLEEP_S = 12.0
-PAGE_LIMIT = 200
-MAX_PAGES = 80  # API ceiling we will walk; stop on empty cursor
+PAGE_LIMIT = 100
+MAX_PAGES = 120  # paginate; checkpoint; stop on empty cursor
+CHECKPOINT_EVERY = 25  # persist brain + cursor so a crash does not wipe work
 
 
 def data_dir() -> Path:
@@ -99,7 +100,7 @@ def backfill_15m_contract() -> Dict[str, Any]:
             {"key": "whale", "callsign": "WHALE", "why": "live tape only"},
         ],
         "coinglass": False,
-        "official_result_only": False,
+        "official_result_only": True,
         "y_finish_marks_terminal_legs": True,
         "score": "realized_paper_pnl",
         "dual_sided": True,
@@ -112,7 +113,8 @@ def backfill_15m_contract() -> Dict[str, Any]:
         "paper": True,
         "follower": False,
         "live_orders": False,
-        "displayed_hit_rate": "untouched — no window_calls written",
+        "displayed_hit_rate": "untouched — no window_calls written; count_as_lock=False",
+        "checkpoint_every": CHECKPOINT_EVERY,
         "eth_1h": "untouched",
         "trigger": {
             "boot_once": f"DATA_DIR/{DONE_NAME} missing and {MARKER_ENV}!=0",
@@ -162,49 +164,64 @@ def _is_rate_limit(err: BaseException) -> bool:
     return status == 429 or "429" in text or "kalshi_backoff" in text
 
 
+async def fetch_settled_15m_page(
+    client: Any,
+    *,
+    cursor: Any = None,
+    limit: int = PAGE_LIMIT,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """One official Kalshi settled KXBTC15M page. Does not keep the whole tape."""
+    getter = getattr(client, "_get_json", None)
+    base = getattr(client, "base", None) or getattr(settings, "KALSHI_BASE", "")
+    url = f"{base}/markets"
+    params: Dict[str, Any] = {
+        "series_ticker": SERIES_BTC_15M,
+        "status": "settled",
+        "limit": int(limit),
+    }
+    if cursor:
+        params["cursor"] = cursor
+    if callable(getter):
+        data = await getter(url, params)
+    else:
+        import httpx
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as http:
+            r = await http.get(url, params=params)
+            if r.status_code == 429:
+                raise KalshiHourSkip(RATE_LIMIT)
+            r.raise_for_status()
+            data = r.json()
+    rows = (data or {}).get("markets") if isinstance(data, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return [], None
+    markets = [m for m in rows if isinstance(m, dict) and is_btc_15m_ticker(m.get("ticker"))]
+    nxt = (data or {}).get("cursor")
+    return markets, (str(nxt) if nxt else None)
+
+
 async def fetch_settled_15m_markets(
     client: Any,
     *,
     limit: int = PAGE_LIMIT,
     max_pages: int = MAX_PAGES,
     sleep_s: float = 0.35,
+    start_cursor: Any = None,
 ) -> List[Dict[str, Any]]:
     """Walk official Kalshi settled KXBTC15M pages until the cursor dies."""
     out: List[Dict[str, Any]] = []
-    cursor = None
-    getter = getattr(client, "_get_json", None)
-    base = getattr(client, "base", None) or getattr(settings, "KALSHI_BASE", "")
-    url = f"{base}/markets"
+    cursor = start_cursor
     for page in range(int(max_pages)):
-        params: Dict[str, Any] = {
-            "series_ticker": SERIES_BTC_15M,
-            "status": "settled",
-            "limit": int(limit),
-        }
-        if cursor:
-            params["cursor"] = cursor
         try:
-            if callable(getter):
-                data = await getter(url, params)
-            else:
-                import httpx
-                async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as http:
-                    r = await http.get(url, params=params)
-                    if r.status_code == 429:
-                        raise KalshiHourSkip(RATE_LIMIT)
-                    r.raise_for_status()
-                    data = r.json()
+            rows, cursor = await fetch_settled_15m_page(client, cursor=cursor, limit=limit)
         except Exception as e:
             if _is_rate_limit(e):
                 await asyncio.sleep(KALSHI_429_SLEEP_S)
                 continue
             logger.debug(f"15m settled page {page}: {type(e).__name__}")
             break
-        rows = (data or {}).get("markets") if isinstance(data, dict) else None
-        if not isinstance(rows, list) or not rows:
+        if not rows:
             break
-        out.extend([m for m in rows if isinstance(m, dict) and is_btc_15m_ticker(m.get("ticker"))])
-        cursor = (data or {}).get("cursor")
+        out.extend(rows)
         if not cursor:
             break
         await asyncio.sleep(float(sleep_s))
@@ -266,7 +283,7 @@ def snapshot_into_15m(
     close_time: datetime,
     candles: List[Dict[str, Any]],
 ) -> Tuple[datetime, Optional[float]]:
-    """Vote snapshot: 4 minutes into the 15m window (after the 3m sit)."""
+    """Vote snapshot: a few minutes into the 15m window (after the early sit)."""
     snap = close_time - timedelta(minutes=WINDOW_MINUTES_15M - SNAPSHOT_MINS_INTO_15M)
     spot = None
     for c in candles:
@@ -489,6 +506,35 @@ def ensure_15m_learner(
     return AdaptiveLearner(asset="btc")
 
 
+def _persist_15m_brain(
+    brain: AdaptiveLearner,
+    root: Path,
+    report: Dict[str, Any],
+    seen: set[str],
+    *,
+    cursor: Any = None,
+    done: bool = False,
+) -> None:
+    """Merge into DATA_DIR brain. Never writes window_calls / displayed hits."""
+    rec = brain.backfill if isinstance(getattr(brain, "backfill", None), dict) else {}
+    rec["tag"] = BACKFILL_TAG
+    rec["series"] = SERIES_BTC_15M
+    rec["window_minutes"] = WINDOW_MINUTES_15M
+    rec["windows_graded"] = int(report.get("windows_graded") or 0)
+    rec["hour_up_rate"] = report.get("hour_up_rate")
+    rec["weekday_up_rate"] = report.get("weekday_up_rate")
+    rec["coinglass"] = False
+    rec["port_1h_weights"] = False
+    rec["score"] = "realized_paper_pnl"
+    rec["dual_sided"] = True
+    rec["displayed_hit_rate"] = "untouched"
+    brain.backfill = rec
+    brain.save(Path(root) / BRAIN_FILE_BTC_15M)
+    save_status({**report, "events": sorted(seen)[-800:], "cursor": cursor}, root)
+    if done:
+        mark_done(root, report)
+
+
 async def run_btc_15m_backfill(
     *,
     learner: AdaptiveLearner | None = None,
@@ -499,11 +545,13 @@ async def run_btc_15m_backfill(
     fetch_candles: Callable | None = None,
     max_windows: int | None = None,
     force: bool = False,
+    wipe: bool = False,
     markets: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """
     One pass over official settled KXBTC15M books. Merge into the 15m brain.
-    Does not write window_calls. Does not touch ETH.
+    Does not write window_calls. Does not bump displayed Chair hits.
+    Does not touch ETH. force re-runs the pass; wipe is the only reset.
     """
     root = data_root or data_dir()
     contract = backfill_15m_contract()
@@ -517,29 +565,15 @@ async def run_btc_15m_backfill(
         kalshi = KalshiClient(series_ticker=SERIES_BTC_15M)
         own_kalshi = True
 
-    try:
-        if markets is None:
-            if fetch_markets is not None:
-                markets = await fetch_markets()
-            else:
-                markets = await fetch_settled_15m_markets(kalshi)
-    finally:
-        if own_kalshi and kalshi is not None and hasattr(kalshi, "close"):
-            try:
-                await kalshi.close()
-            except Exception:
-                pass
-
-    rows = [m for m in (markets or []) if isinstance(m, dict) and official_y_finish(m) in ("UP", "DOWN")]
-    if max_windows is not None:
-        rows = rows[-int(max_windows):]
-
-    brain = ensure_15m_learner(learner, fresh=bool(force))
+    # force = ignore the done marker. Never wipe a tagged path-P&L brain.
+    brain = ensure_15m_learner(learner, fresh=bool(wipe))
     seen = set(status.get("events") or [])
+    prior_graded = int(status.get("windows_graded") or 0)
     candle_cache = None if fetch_candles is not None else _CandleCache()
     graded = 0
     skip_result = 0
     skip_other = 0
+    considered = 0
     seat_n: Dict[str, int] = {}
     tickers: List[str] = []
     events: List[str] = []
@@ -548,20 +582,8 @@ async def run_btc_15m_backfill(
     dow_hits = [0] * 7
     dow_n = [0] * 7
 
-    for i, market in enumerate(rows, start=1):
-        try:
-            rec = await grade_one_15m(
-                market,
-                learner=brain,
-                already=seen,
-                fetch_candles=fetch_candles,
-                candle_cache=candle_cache,
-            )
-        except KalshiHourSkip as e:
-            rec = {"status": "skip", "reason": e.reason}
-        except Exception as e:
-            logger.debug(f"15m backfill skip: {e}")
-            rec = {"status": "skip", "reason": "error"}
+    def _apply(rec: Dict[str, Any]) -> None:
+        nonlocal graded, skip_result, skip_other
         if rec.get("status") == "graded":
             graded += 1
             ev = rec.get("event")
@@ -583,68 +605,143 @@ async def run_btc_15m_backfill(
                     dow_hits[d] += 1
             except (TypeError, ValueError):
                 pass
-        else:
-            reason = rec.get("reason") or "other"
-            if reason in ("no_official_result", "empty_event"):
-                skip_result += 1
-            elif reason != "already_graded":
-                skip_other += 1
-        if i == 1 or i % 100 == 0 or i == len(rows):
-            logger.info(
-                f"15m BTC backfill {i}/{len(rows)} · graded {graded} · "
-                f"skip result {skip_result} · skip other {skip_other}"
-            )
+            return
+        reason = rec.get("reason") or "other"
+        if reason in ("no_official_result", "empty_event"):
+            skip_result += 1
+        elif reason != "already_graded":
+            skip_other += 1
 
-    report = {
-        "ok": True,
-        "tag": BACKFILL_TAG,
-        "series": SERIES_BTC_15M,
-        "windows_considered": len(rows),
-        "windows_graded": graded,
-        "windows_skipped_no_result": skip_result,
-        "windows_skipped_other": skip_other,
-        "seat_samples": seat_n,
-        "tickers_tail": tickers[-12:],
-        "events": events,
-        "hour_up_rate": [
-            None if hour_n[i] < 8 else round(hour_hits[i] / hour_n[i], 3)
-            for i in range(24)
-        ],
-        "weekday_up_rate": [
-            None if dow_n[i] < 8 else round(dow_hits[i] / dow_n[i], 3)
-            for i in range(7)
-        ],
-        "brain_file": BRAIN_FILE_BTC_15M,
-        "score": "realized_paper_pnl",
-        "dual_sided": True,
-        "coinglass": False,
-        "port_1h_weights": False,
-        "eth_1h": "untouched",
-        "paper": True,
-        "follower": False,
-        "live_orders": False,
-        "finished_at": datetime.now(UTC).isoformat(),
-        "contract": contract,
-    }
+    async def _grade_row(market: Dict[str, Any]) -> None:
+        nonlocal considered, skip_result
+        if official_y_finish(market) not in ("UP", "DOWN"):
+            skip_result += 1
+            considered += 1
+            return
+        considered += 1
+        try:
+            rec = await grade_one_15m(
+                market,
+                learner=brain,
+                already=seen,
+                fetch_candles=fetch_candles,
+                candle_cache=candle_cache,
+            )
+        except KalshiHourSkip as e:
+            rec = {"status": "skip", "reason": e.reason}
+        except Exception as e:
+            logger.debug(f"15m backfill skip: {e}")
+            rec = {"status": "skip", "reason": "error"}
+        _apply(rec)
+
+    def _snapshot(cursor: Any = None) -> Dict[str, Any]:
+        total = prior_graded + graded
+        return {
+            "ok": True,
+            "tag": BACKFILL_TAG,
+            "series": SERIES_BTC_15M,
+            "windows_considered": considered,
+            "windows_graded": total,
+            "windows_graded_this_pass": graded,
+            "windows_skipped_no_result": skip_result,
+            "windows_skipped_other": skip_other,
+            "seat_samples": seat_n,
+            "tickers_tail": tickers[-12:],
+            "events": events,
+            "hour_up_rate": [
+                None if hour_n[i] < 8 else round(hour_hits[i] / hour_n[i], 3)
+                for i in range(24)
+            ],
+            "weekday_up_rate": [
+                None if dow_n[i] < 8 else round(dow_hits[i] / dow_n[i], 3)
+                for i in range(7)
+            ],
+            "brain_file": BRAIN_FILE_BTC_15M,
+            "score": "realized_paper_pnl",
+            "dual_sided": True,
+            "coinglass": False,
+            "port_1h_weights": False,
+            "eth_1h": "untouched",
+            "paper": True,
+            "follower": False,
+            "live_orders": False,
+            "merge": True,
+            "wipe_live_brain": False,
+            "displayed_hit_rate": "untouched — no window_calls written",
+            "finished_at": datetime.now(UTC).isoformat(),
+            "contract": contract,
+            "cursor": cursor,
+        }
+
+    try:
+        if markets is not None or fetch_markets is not None:
+            if markets is None:
+                markets = await fetch_markets()
+            rows = [
+                m for m in (markets or [])
+                if isinstance(m, dict) and official_y_finish(m) in ("UP", "DOWN")
+            ]
+            if max_windows is not None:
+                rows = rows[-int(max_windows):]
+            for i, market in enumerate(rows, start=1):
+                await _grade_row(market)
+                if persist and (i == 1 or i % CHECKPOINT_EVERY == 0):
+                    _persist_15m_brain(brain, root, _snapshot(), seen, done=False)
+                if i == 1 or i % 100 == 0 or i == len(rows):
+                    logger.info(
+                        f"15m BTC backfill {i}/{len(rows)} · graded {graded} · "
+                        f"skip result {skip_result} · skip other {skip_other}"
+                    )
+        else:
+            cursor = status.get("cursor") if not force else None
+            pages = 0
+            while pages < int(MAX_PAGES):
+                if max_windows is not None and considered >= int(max_windows):
+                    break
+                try:
+                    page, nxt = await fetch_settled_15m_page(
+                        kalshi, cursor=cursor, limit=PAGE_LIMIT,
+                    )
+                except Exception as e:
+                    if _is_rate_limit(e):
+                        await asyncio.sleep(KALSHI_429_SLEEP_S)
+                        continue
+                    logger.debug(f"15m settled page {pages}: {type(e).__name__}")
+                    break
+                pages += 1
+                if not page:
+                    cursor = None
+                    break
+                page.sort(key=lambda m: str(m.get("close_time") or m.get("ticker") or ""))
+                for market in page:
+                    if max_windows is not None and considered >= int(max_windows):
+                        break
+                    await _grade_row(market)
+                    if persist and graded and graded % CHECKPOINT_EVERY == 0:
+                        _persist_15m_brain(
+                            brain, root, _snapshot(nxt), seen, cursor=nxt, done=False,
+                        )
+                cursor = nxt
+                logger.info(
+                    f"15m BTC backfill page {pages} · graded {graded} · "
+                    f"skip result {skip_result} · skip other {skip_other}"
+                )
+                if not nxt:
+                    break
+                await asyncio.sleep(0.35)
+    finally:
+        if own_kalshi and kalshi is not None and hasattr(kalshi, "close"):
+            try:
+                await kalshi.close()
+            except Exception:
+                pass
+
+    report = _snapshot()
     if persist and hasattr(brain, "save"):
-        rec = brain.backfill if isinstance(getattr(brain, "backfill", None), dict) else {}
-        rec["tag"] = BACKFILL_TAG
-        rec["series"] = SERIES_BTC_15M
-        rec["window_minutes"] = WINDOW_MINUTES_15M
-        rec["windows_graded"] = graded
-        rec["hour_up_rate"] = report["hour_up_rate"]
-        rec["weekday_up_rate"] = report["weekday_up_rate"]
-        rec["coinglass"] = False
-        rec["port_1h_weights"] = False
-        rec["score"] = "realized_paper_pnl"
-        rec["dual_sided"] = True
-        brain.backfill = rec
-        brain.save(Path(root) / BRAIN_FILE_BTC_15M)
-        save_status({**report, "events": sorted(seen)[-800:]}, root)
-        mark_done(root, report)
+        _persist_15m_brain(brain, root, report, seen, done=True)
     logger.info(
-        f"15m BTC backfill done · graded {graded} window(s) · "
-        f"skip result {skip_result} · skip other {skip_other}"
+        f"15m BTC backfill done · graded {report['windows_graded']} window(s) · "
+        f"this pass {graded} · skip result {skip_result} · skip other {skip_other}"
     )
     return report
 

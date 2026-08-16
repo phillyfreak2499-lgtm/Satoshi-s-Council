@@ -2,8 +2,9 @@
 Kalshi public market data.
 BTC Chair: KXBTC15M (15m up/down). ETH Chair: KXETHD (hourly ladder).
 No authentication required for markets / orderbook / series.
-Picks the soonest open window, then the best 20–80-after-vig contract
+Picks the soonest open window, then the best in-band-after-vig contract
 on that stack (not ATM chalk 98/2). Sit if the stack is dead.
+Satoshi / KXBTC15M uses 10–90 + EV ≥ 0. ETH 1H ladder stays 20–80 / +3¢.
 
 Feed flaps: one quiet retry, then last-good quotes. Do not raise RetryError
 or error-log every cycle — the desk stays up on stale Kalshi.
@@ -21,7 +22,7 @@ from backend.agents.chair_gates import (
 )
 import asyncio
 
-# Same-hour ladder: skip chalk ≥80¢ / one-sided. Chair lock band stays 10–90.
+# ETH 1H ladder: skip chalk ≥80¢ / one-sided. Satoshi 15m uses 10–90 below.
 LADDER_BAND_LO = 20.0
 LADDER_BAND_HI = 80.0
 LADDER_P_FINISH = 0.55
@@ -76,6 +77,28 @@ def hour_ladder(markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [m for m in rows if m.get("close_time") == soonest]
 
 
+def _ladder_band_for(m: Dict[str, Any] | None) -> tuple[float, float, float]:
+    """Satoshi 15m: 10–90 + EV ≥ 0. ETH 1H ladder stays 20–80 + MIN_EV 3¢."""
+    ticker = (m or {}).get("ticker")
+    try:
+        from backend.learning.btc15m import (
+            MIN_EV_CENTS as MIN_EV_15M,
+            SCORE_BAND_HI,
+            SCORE_BAND_LO,
+            is_btc_15m_ticker,
+        )
+        if is_btc_15m_ticker(ticker):
+            return float(SCORE_BAND_LO), float(SCORE_BAND_HI), float(MIN_EV_15M)
+    except Exception:
+        pass
+    try:
+        from backend.config import settings
+        min_ev = float(getattr(settings, "MIN_EV_CENTS", 3.0))
+    except Exception:
+        min_ev = 3.0
+    return LADDER_BAND_LO, LADDER_BAND_HI, min_ev
+
+
 def score_ladder_contract(
     m: Dict[str, Any],
     spot: Optional[float] = None,
@@ -91,12 +114,38 @@ def score_ladder_contract(
         except (TypeError, ValueError):
             dist = None
     two_sided = ya is not None and na is not None
-    chalk = (
-        (ya is not None and ya >= LADDER_BAND_HI)
-        or (na is not None and na >= LADDER_BAND_HI)
-        or (mid is not None and (mid >= LADDER_BAND_HI or mid <= LADDER_BAND_LO))
-    )
-    in_band = bool(two_sided and mid is not None and LADDER_BAND_LO < mid < LADDER_BAND_HI and not chalk)
+    band_lo, band_hi, min_ev = _ladder_band_for(m)
+    satoshi_15m = False
+    try:
+        from backend.learning.btc15m import is_btc_15m_ticker
+        satoshi_15m = is_btc_15m_ticker((m or {}).get("ticker"))
+    except Exception:
+        satoshi_15m = False
+    if satoshi_15m:
+        chalk = (
+            (ya is not None and ya >= 99.0)
+            or (na is not None and na >= 99.0)
+            or (mid is not None and (mid >= 99.0 or mid <= 1.0))
+        )
+        in_band = bool(
+            two_sided
+            and mid is not None
+            and float(band_lo) <= float(mid) <= float(band_hi)
+            and not chalk
+        )
+    else:
+        # ETH 1H ladder unchanged: exclusive 20–80, ≥80 / ≤20 is chalk.
+        chalk = (
+            (ya is not None and ya >= LADDER_BAND_HI)
+            or (na is not None and na >= LADDER_BAND_HI)
+            or (mid is not None and (mid >= LADDER_BAND_HI or mid <= LADDER_BAND_LO))
+        )
+        in_band = bool(
+            two_sided
+            and mid is not None
+            and LADDER_BAND_LO < mid < LADDER_BAND_HI
+            and not chalk
+        )
     leftover = None
     if in_band:
         spread = None
@@ -106,11 +155,6 @@ def score_ladder_contract(
         left_up = leftover_after_vig(p_yes, float(ya), spread, kalshi_taker_fee_cents(ya))
         left_dn = leftover_after_vig(1.0 - p_yes, float(na), spread, kalshi_taker_fee_cents(na))
         leftover = max(left_up, left_dn)
-    try:
-        from backend.config import settings
-        min_ev = float(getattr(settings, "MIN_EV_CENTS", 3.0))
-    except Exception:
-        min_ev = 3.0
     playable = leftover is not None and leftover >= min_ev
     if playable:
         why = "leftover"
@@ -157,7 +201,7 @@ def pick_hour_book(
     spot: Optional[float] = None,
     sit_if_dead: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """Best 20–80-after-vig contract on this window's stack, not ATM chalk."""
+    """Best in-band-after-vig contract on this window's stack, not ATM chalk."""
     cohort = hour_ladder(markets)
     if not cohort:
         return None
