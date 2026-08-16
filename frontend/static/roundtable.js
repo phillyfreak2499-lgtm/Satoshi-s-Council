@@ -338,6 +338,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Poll faster than analysis interval so UI stays live after each cycle
 
   // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
+  // ETH chair + Floor Vitalik both use the signed /vitalik-wait.jpg rain close-up.
+  // Leader jpgs are cache-busted: live /vitalik-wait.jpg was max-age=86400, so
+  // phones kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
+  const LEADER_JPG_V = "7b598672c9";
   let chairImgsReady = 0;
   function _chairLoaded() {
     chairImgsReady += 1;
@@ -346,20 +350,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   chairPortrait.crossOrigin = "anonymous";
   chairPortrait.onload = _chairLoaded;
   chairPortrait.onerror = () => console.warn("Chair image failed: WAIT");
-  chairPortrait.src = "/chair-wait.jpg";
+  chairPortrait.src = "/chair-wait.jpg" + "?v=" + LEADER_JPG_V;
   const vitalikPortrait = new Image();
   vitalikPortrait.crossOrigin = "anonymous";
   vitalikPortrait.onload = _chairLoaded;
   vitalikPortrait.onerror = () => console.warn("Vitalik image failed: WAIT");
-  vitalikPortrait.src = "/vitalik-wait.jpg";
+  vitalikPortrait.src = "/vitalik-wait.jpg" + "?v=" + LEADER_JPG_V;
   const raijinPortrait = new Image();
   raijinPortrait.crossOrigin = "anonymous";
   raijinPortrait.onload = _chairLoaded;
   raijinPortrait.onerror = function () {
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    raijinPortrait.src = "/raijin-wait.jpg";
+    raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V;
   };
-  raijinPortrait.src = "/raijin-wait.jpg";
+  raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V;
   const aresPortrait = new Image();
   aresPortrait.crossOrigin = "anonymous";
   aresPortrait.onload = _chairLoaded;
@@ -371,11 +375,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const oraclePortrait = new Image();
   oraclePortrait.crossOrigin = "anonymous";
   oraclePortrait.onload = _chairLoaded;
-  oraclePortrait.src = "/oracle-wait.jpg";
+  oraclePortrait.src = "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V;
   function chairPortraitFor(dir) { return chairPortrait; }
   function vitalikPortraitFor(dir) { return vitalikPortrait; }
   function raijinPortraitFor(dir) { return raijinPortrait; }
-  function raijinPortraitSrc(dir) { return "/raijin-wait.jpg"; }
+  function raijinPortraitSrc(dir) { return "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V; }
   function isOracleTable(which) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
     return w === "oracle" || w === "sibyl";
@@ -1119,7 +1123,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       id: "ORACLE",
       name: "ORACLE",
       job: "CRT chair. Paper lock when the four agree. Follower OFF.",
-      mark: "/oracle-wait.jpg",
+      mark: "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V,
       eye: "WAIT",
       call: "WAIT · CRT",
     };
@@ -3838,7 +3842,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   raijinPortrait.onerror = function () {
     // Same signed Dallas storm cowboy. Never blank the Chair face.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    raijinPortrait.src = "/raijin-wait.jpg";
+    raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V;
   };
   function frontLockDir() {
     const data = (typeof frontBoard !== "undefined" && frontBoard) || {};
@@ -7096,7 +7100,7 @@ function drawCandleChart() {
       id: "RAIJIN",
       name: "RAIJIN",
       job: "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
-      mark: "/raijin-wait.jpg",
+      mark: "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V,
     };
     chair.name = frontChairName(chair);
     const rows = [chair].concat(seats.length ? seats : fallback);
@@ -9369,12 +9373,12 @@ function drawCandleChart() {
     if (!grid) return;
     const ts = (typeof tableState === "function" ? tableState("oracle") : null) || oracleTableState();
     const seats = ts.seats || oracleSeatRoster();
-    const chair = ts.chair || { id: "ORACLE", name: "ORACLE", job: "CRT chair. Paper lock when the four agree. Follower OFF.", mark: "/oracle-wait.jpg" };
+    const chair = ts.chair || { id: "ORACLE", name: "ORACLE", job: "CRT chair. Paper lock when the four agree. Follower OFF.", mark: "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V };
     const rows = [chair].concat(seats);
     grid.innerHTML = rows.map(function (s) {
       const callsign = (s.id === "ORACLE" || s.name === "ORACLE") ? "ORACLE" : String(s.id || "");
       const face = (callsign === "ORACLE")
-        ? "/oracle-wait.jpg"
+        ? "/oracle-wait.jpg" + "?v=" + LEADER_JPG_V
         : (s.mark || ORACLE_SEAT_MARKS[callsign] || "");
       return '<article class="bot-card front-bot-card ora-bot-card" data-ora-seat="' + callsign + '">' +
         '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +

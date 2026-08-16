@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-vitalik-rain-still",
+    "at": "2026-08-16T23:55:00-05:00",
+    "title": "ETH and Floor Vitalik use the signed rain still",
+    "why": "ETH chair and Floor Vitalik both load the signed /vitalik-wait.jpg rain close-up — dark back, no city, no glow. One face per chair. Labels carry UP/DOWN/WAIT. Leader jpgs are cache-busted (max-age=60 + hash query) so phones drop the pre-#44 helmet/glow without a hard refresh. Room plates stay a separate table back. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-floor-nonglow-wait",
     "at": "2026-08-16T23:40:00-05:00",
     "title": "Floor WAIT faces are signed no-glow close-ups",
