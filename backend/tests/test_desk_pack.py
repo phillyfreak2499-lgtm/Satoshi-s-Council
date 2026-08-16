@@ -79,6 +79,9 @@ class MarkupTests(unittest.TestCase):
             'id="tabSchool"',
             'id="tabSide"',
             'id="tabFront"',
+            'id="tabCalls"',
+            'id="callsView"',
+            'id="callsBoard"',
             'id="tapeView"',
             'id="bookView"',
             'id="brainView"',
@@ -399,23 +402,29 @@ class WhyLineTests(unittest.TestCase):
             decision={"direction": "WAIT", "summary": "no lock"},
             market={"kalshi_ticker": "KXBTCD-26AUG1516-T1", "kalshi_yes_bid": 1},
         )
-        self.assertEqual(line, "WAIT · DOWN is 99¢, no edge")
+        self.assertEqual(line, "WAIT · 1H")
         self.assertNotIn("\n", line)
         self.assertLess(len(line), 80)
+        self.assertNotIn("no edge", line)
+        self.assertNotIn("99¢", line)
 
     def test_lock_up_book_size_ev(self):
         book = {"yes": [[48, 20], [47, 10]], "no": [[51, 15]]}
         line = why_line(
             decision={"direction": "UP", "ev_cents": 4},
             market={
-                "kalshi_ticker": "KXBTCD-26AUG1516-T1",
+                "kalshi_ticker": "KXBTCD-26AUG1516-T63000",
+                "floor_strike": 63000,
                 "kalshi_yes_bid": 48,
                 "kalshi_yes_ask": 50,
                 "kalshi_orderbook": book,
+                "seconds_left": 724,
             },
             locked_call={"locked": True, "direction": "UP", "ev_cents": 4},
         )
-        self.assertEqual(line, "LOCK UP · book has size, EV +4¢")
+        self.assertEqual(line, "LOCK UP · $63,000 · 12:04")
+        self.assertNotIn("book has size", line)
+        self.assertNotIn("EV ", line)
 
     def test_why_is_on_floor_and_table(self):
         self.assertIn('id="chairWhy"', HTML)

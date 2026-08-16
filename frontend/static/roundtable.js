@@ -5488,26 +5488,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lastEl = document.getElementById("signalChairLast");
     if (!list) return;
     const view = (typeof getViewState === "function" ? getViewState() : state) || state || {};
-    const d = view.decision || {};
-    const lc = view.locked_call || d.locked_call || {};
-    const locked = !!(lc && lc.locked && lc.direction);
-    const dir = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
-    const m = view.market || {};
-    const secs = secondsLeftOf(m);
-    const mm = secs != null ? String(Math.floor(secs / 60)).padStart(2, "0") : "--";
-    const ss = secs != null ? String(Math.floor(secs % 60)).padStart(2, "0") : "--";
-    let pf = lc.p_finish != null ? lc.p_finish : d.p_finish;
-    pf = Number(pf);
-    if (Number.isFinite(pf) && pf <= 1.5) pf = pf * 100;
-    const pFinish = Number.isFinite(pf) ? (Math.round(pf) + "%") : "—";
-    const ev = (lc && lc.ev_cents != null) ? (Math.round(lc.ev_cents) + "¢")
-      : (d.ev_cents != null) ? (Math.round(d.ev_cents) + "¢")
-      : "—";
+    const card = liveCallCard(view, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    const dir = card.dir;
     if (dirEl) {
-      dirEl.textContent = (locked ? "LOCKED " : "") + dir.replace("_HOLD", "");
-      dirEl.className = "signal-chair-dir " + dir.replace("_HOLD", "");
+      dirEl.textContent = card.status === "LOCK" ? ("LOCK " + dir) : card.status;
+      dirEl.className = "signal-chair-dir " + (card.status === "LOCK" ? dir : card.status);
     }
-    if (metaEl) metaEl.textContent = "P(finish) " + pFinish + " · EV " + ev + " · " + mm + ":" + ss + " left";
+    if (metaEl) {
+      const bits = [];
+      if (card.strike) bits.push(card.strike);
+      if (card.window) bits.push(card.window);
+      metaEl.textContent = bits.length ? bits.join(" · ") : card.line;
+    }
     if (lastEl) {
       const acc = view.accuracy || (state && state.accuracy) || {};
       const settled = (acc.recent || acc.log || []).find(r => r && (r.outcome || r.y_finish));
@@ -7415,48 +7407,102 @@ function drawCandleChart() {
     track.textContent = line + " · " + line;
   }
 
+  function liveCallKind(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    if (w === "oracle" || w === "ora" || w === "sibyl") return "oracle";
+    if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") return "front";
+    if (w === "ats" || w === "ares" || w === "sports") return "ats";
+    if (w === "ethereum" || w === "eth" || w === "vitalik") return "ethereum";
+    return "bitcoin";
+  }
+  function liveCallStrikeText(view, kind) {
+    const m = (view && view.market) || {};
+    const clock = m.clock || {};
+    if (kind === "oracle") return "";
+    if (kind === "front") {
+      const nws = clock.nws_high != null ? clock.nws_high : m.nws_high;
+      const kh = clock.kalshi_high != null ? clock.kalshi_high : m.kalshi_high;
+      const lo = clock.floor_strike != null ? clock.floor_strike : m.floor_strike;
+      const hi = clock.cap_strike != null ? clock.cap_strike : m.cap_strike;
+      if (nws != null && isFinite(Number(nws))) return Math.round(Number(nws)) + "°";
+      if (kh != null && isFinite(Number(kh))) return Math.round(Number(kh)) + "°";
+      if (lo != null && hi != null && isFinite(Number(lo)) && isFinite(Number(hi))) {
+        return Math.round(Number(lo)) + "–" + Math.round(Number(hi)) + "°";
+      }
+      if (lo != null && isFinite(Number(lo))) return Math.round(Number(lo)) + "°";
+      return "";
+    }
+    let s = m.floor_strike != null ? m.floor_strike : (m.kalshi_target != null ? m.kalshi_target : null);
+    if (s == null) {
+      const tick = String(m.kalshi_ticker || m.ticker || "");
+      const mt = tick.match(/-T(\d+(?:\.\d+)?)$/i);
+      if (mt) s = Number(mt[1]);
+    }
+    const n = Number(s);
+    if (!isFinite(n) || n < 20) return "";
+    if (n >= 1000) return "$" + Math.round(n).toLocaleString("en-US");
+    return String(Math.round(n));
+  }
+  function liveCallWindowText(view, kind) {
+    if (kind === "oracle") return "CRT";
+    if (kind === "front") return "DFW";
+    const m = (view && view.market) || {};
+    const secs = (typeof secondsLeftOf === "function") ? secondsLeftOf(m) : null;
+    if (secs != null && isFinite(secs) && secs < 3600 * 6) {
+      const s = Math.max(0, Math.floor(Number(secs)));
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      return mm + ":" + ss;
+    }
+    return "1H";
+  }
+  function liveCallCard(view, which) {
+    const kind = liveCallKind(which);
+    const ts = view || {};
+    const d = ts.decision || {};
+    const lc = ts.locked_call || d.locked_call || {};
+    const raw = String((lc && lc.direction) || d.direction || "WAIT").toUpperCase();
+    let dir = "WAIT";
+    if (kind === "oracle") dir = "WATCH";
+    else if (kind === "front") {
+      if (raw === "ABOVE" || raw === "UP" || raw === "YES" || raw.indexOf("UP") >= 0) dir = "ABOVE";
+      else if (raw === "BELOW" || raw === "DOWN" || raw === "NO" || raw.indexOf("DOWN") >= 0) dir = "BELOW";
+      else if (raw === "BETWEEN") dir = "BETWEEN";
+    } else if (raw.indexOf("UP") >= 0) dir = "UP";
+    else if (raw.indexOf("DOWN") >= 0) dir = "DOWN";
+    const locked = !!(lc && lc.locked && lc.direction && dir !== "WAIT" && dir !== "WATCH");
+    let status = "WAIT";
+    if (kind === "oracle") status = "WATCH";
+    else if (locked) status = "LOCK";
+    const strike = liveCallStrikeText(ts, kind);
+    const windowTxt = liveCallWindowText(ts, kind);
+    const bits = [];
+    if (status === "LOCK") bits.push("LOCK " + dir);
+    else if (status === "WATCH") bits.push("WATCH");
+    else bits.push("WAIT");
+    if (strike) bits.push(strike);
+    else if (status === "WATCH") bits.push("no ticket");
+    if (windowTxt) bits.push(windowTxt);
+    const name = kind === "oracle" ? "ORA" : (kind === "front" ? "FRONT" : (kind === "ethereum" ? "ETH" : "BTC"));
+    return {
+      key: kind,
+      name: name,
+      dir: dir,
+      status: status,
+      strike: strike,
+      window: windowTxt,
+      line: bits.join(" · "),
+      tone: status === "LOCK" ? dir : status,
+    };
+  }
   function chairWhyLineText(ts) {
     const view = ts || (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
-    const d = view.decision || {};
-    const m = view.market || {};
-    const h = view.health || (state && state.health) || {};
-    const lc = view.locked_call || d.locked_call || {};
-    const rawDir = String((lc && lc.direction) || d.direction || "WAIT").toUpperCase();
-    const sportsLock = !!(lc && lc.locked && rawDir && rawDir !== "WAIT" && !/^(UP|DOWN)/.test(rawDir));
-    const locked = !!(lc && lc.locked && lc.direction && (/UP|DOWN/.test(String(lc.direction).toUpperCase()) || sportsLock));
-    const raw = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
-    const side = (raw === "COVER" || raw === "NO-COVER" || raw === "OVER" || raw === "UNDER" || raw === "HOME" || raw === "AWAY" || (raw && raw !== "WAIT" && raw !== "YES" && raw !== "NO" && !raw.includes("UP") && !raw.includes("DOWN") && raw.length <= 5))
-      ? raw
-      : (raw.indexOf("UP") >= 0 ? "UP" : (raw.indexOf("DOWN") >= 0 ? "DOWN" : "WAIT"));
-    const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
-    const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
-    const down = yb != null ? (100 - yb) : (m.down_pct != null ? Number(m.down_pct) : null);
-    const ev = lc.ev_cents != null ? Number(lc.ev_cents) : (d.ev_cents != null ? Number(d.ev_cents) : null);
-    const stale = !!(m.stale || h.stale || (h.quote_age_s != null && Number(h.quote_age_s) > 20));
-    const empty = !(m.kalshi_ticker || m.ticker) || (yb == null && ya == null);
-    const wall99 = (yb != null && yb >= 99) || (down != null && down >= 99) || (ya != null && ya >= 99);
-    const evBit = (ev != null && isFinite(ev)) ? ("EV " + (ev >= 0 ? "+" : "") + Math.round(ev) + "¢") : "";
-    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
-      const lean = displayDir(locked ? lc.direction : (d.direction || "WAIT"));
-      return frontHighLine(view) + " · " + lean + (empty ? " · no Dallas book" : "");
+    const kind = liveCallKind(typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    if (kind === "ats") {
+      const why = view.why || (view.pick && view.pick.why) || {};
+      return String(why.line || "WAIT · no game");
     }
-    if (locked) {
-      const extras = [];
-      if (!empty && !wall99) extras.push("book has size");
-      if (evBit) extras.push(evBit);
-      return extras.length ? ("LOCK " + side + " · " + extras.join(", ")) : ("LOCK " + side);
-    }
-    const bits = ["WAIT"];
-    if (wall99 && down != null && down >= 99) bits.push("DOWN is 99¢, no edge");
-    else if (wall99 && yb != null && yb >= 99) bits.push("UP is 99¢, no edge");
-    else if (wall99) bits.push("≥99¢ wall, no edge");
-    else if (empty) bits.push("empty book");
-    else if (stale) bits.push("stale quote");
-    else if (ev != null && ev <= 0) bits.push("no edge");
-    else if (/dead book/i.test(String(d.summary || ""))) bits.push("dead book");
-    else if (evBit) bits.push(evBit);
-    else bits.push("no edge");
-    return bits.slice(0, 3).join(" · ");
+    return liveCallCard(view, kind).line;
   }
 
   function paintAtsWhy(ts) {
@@ -7493,16 +7539,56 @@ function drawCandleChart() {
     el.hidden = !show;
     if (!show) return;
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const card = liveCallCard(ts, focusTable);
     if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
       const why = ts.why || (ts.pick && ts.pick.why) || {};
       el.textContent = String(why.line || chairWhyLineText(ts));
+      el.setAttribute("data-status", "WAIT");
+      el.setAttribute("data-dir", "WAIT");
     } else {
-      el.textContent = chairWhyLineText(ts);
+      el.textContent = card.line;
+      el.setAttribute("data-status", card.status);
+      el.setAttribute("data-dir", card.dir);
     }
     try { paintAtsWhy(ts); } catch (e) {}
     try { paintAtsWatch(ts); } catch (e) {}
     try { paintOraWhy(ts); } catch (e) {}
     try { paintOraWatch(ts); } catch (e) {}
+    try { paintCurrentCalls(); } catch (e) {}
+  }
+
+  function paintCurrentCalls() {
+    const board = document.getElementById("callsBoard");
+    if (!board) return;
+    const keys = ["bitcoin", "ethereum", "front", "oracle"];
+    keys.forEach(function (key) {
+      const row = board.querySelector('[data-call="' + key + '"]');
+      if (!row) return;
+      const view = (typeof tableState === "function" ? tableState(key) : null) || {};
+      const card = liveCallCard(view, key);
+      row.setAttribute("data-status", card.status);
+      row.setAttribute("data-dir", card.dir);
+      const name = row.querySelector(".calls-name");
+      const status = row.querySelector(".calls-status");
+      const strike = row.querySelector(".calls-strike");
+      const windowEl = row.querySelector(".calls-window");
+      if (name) name.textContent = card.name;
+      if (status) status.textContent = card.status === "LOCK" ? ("LOCK " + card.dir) : card.status;
+      if (strike) strike.textContent = card.strike || (card.status === "WATCH" ? "no ticket" : "—");
+      if (windowEl) windowEl.textContent = card.window || "—";
+    });
+  }
+  function wireCallsBoard() {
+    const board = document.getElementById("callsBoard");
+    if (!board || board.__wiredCalls) return;
+    board.__wiredCalls = true;
+    board.addEventListener("click", function (e) {
+      const row = e.target && e.target.closest && e.target.closest("[data-call]");
+      if (!row) return;
+      const key = row.getAttribute("data-call");
+      try { if (typeof window.setFocusTable === "function") window.setFocusTable(key); } catch (err) {}
+      try { setMode("art"); } catch (err) {}
+    });
   }
 
   function paintOraWhy(ts) {
@@ -7515,7 +7601,7 @@ function drawCandleChart() {
     if (!show) return;
     const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
     const why = view.why || {};
-    if (line) line.textContent = String(why.line || "WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS");
+    if (line) line.textContent = String(why.line || liveCallCard(view, "oracle").line);
     if (strip) strip.textContent = String(why.strip || "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK");
   }
 
@@ -8812,8 +8898,11 @@ function drawCandleChart() {
     const chairCall = document.getElementById("frontChairCall");
     if (chairCall) {
       const lean = (data.chair && data.chair.lean) || wxWord(data.chair && data.chair.eye, data.clock && data.clock.strike_type, data.clock && data.clock.nws_high, data.clock && data.clock.floor_strike, data.clock && data.clock.cap_strike);
-      const high = frontHighLine({ market: { clock: data.clock || {}, strike_type: data.clock && data.clock.strike_type, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike, kalshi_high: data.chair && data.chair.kalshi_high, nws_high: data.clock && data.clock.nws_high, bracket: data.chair && data.chair.bracket } });
-      chairCall.textContent = high + " · " + lean;
+      chairCall.textContent = liveCallCard({
+        decision: { direction: lean },
+        locked_call: (data.chair && data.chair.locked) ? { locked: true, direction: lean } : null,
+        market: { clock: data.clock || {}, nws_high: data.clock && data.clock.nws_high, kalshi_high: data.chair && data.chair.kalshi_high, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike },
+      }, "front").line;
     }
     const chairImg = document.getElementById("frontChairImg");
     if (chairImg) {
@@ -9800,6 +9889,7 @@ function drawCandleChart() {
     const schoolView = document.getElementById("schoolView");
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
+    const callsView = document.getElementById("callsView");
     const showCharts = mode === "charts";
     const showSeats = isSeatsMode(mode);
     const showBots = showSeats;
@@ -9815,6 +9905,7 @@ function drawCandleChart() {
     const showSchool = mode === "school";
     const showSide = mode === "side";
     const showFront = mode === "front";
+    const showCalls = mode === "calls";
     const showMain = mode === "art" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (seatsView) seatsView.classList.toggle("hidden", !showSeats);
@@ -9831,6 +9922,7 @@ function drawCandleChart() {
     if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
+    if (callsView) callsView.classList.toggle("hidden", !showCalls);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", !showSeats);
     try { dockWindowLed(); } catch (e) {}
@@ -9856,6 +9948,10 @@ function drawCandleChart() {
     if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
+    if (mode === "calls") {
+      try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
+      try { paintCurrentCalls(); } catch (e) {}
+    }
     if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || isSeatsMode(mode) || mode === "charts" || mode === "tape" || mode === "paper")) {
       try { loadAtsTable(); } catch (e) {}
     }
@@ -9948,45 +10044,30 @@ function drawCandleChart() {
     }
     const d = state.decision || {};
     const prevDir = decisionDir ? decisionDir.textContent : "";
-    // Prefer locked_call so the strip matches the plaque / portrait after the single call
     const lc = state.locked_call || d.locked_call || null;
     const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN" || lc.direction === "ABOVE" || lc.direction === "BELOW" || lc.direction === "BETWEEN"));
     const rawDir = hasLock ? lc.direction : (d.direction || "WAIT");
+    const live = liveCallCard(state, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
     if (decisionDir) {
-      const shown = displayDir(rawDir);
-      decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + shown) : (d.display_direction || shown));
-      decisionDir.className = "dir " + wxTone(rawDir);
+      decisionDir.textContent = live.status === "LOCK" ? ("LOCK " + live.dir) : live.status;
+      decisionDir.className = "dir " + (live.status === "LOCK" ? wxTone(rawDir) : live.status);
     }
-    // Status strip: phase + lock badge
     try {
-      const sum = String(d.summary || "");
-      let phase = "hold";
-      if (/\bENTRY\b/i.test(sum) || (hasLock && lc.phase === "entry")) phase = "entry";
-      else if (/\bFINAL\b/i.test(sum) || (hasLock && lc.phase === "final")) phase = "final";
-      else if (/\bMID\b/i.test(sum) || (hasLock && lc.phase === "mid")) phase = "mid";
-      else if (/Lock held/i.test(sum) || hasLock) phase = "hold";
       if (decisionPhase) {
-        decisionPhase.textContent = phase === "hold" ? "HELD" : phase.toUpperCase();
-        decisionPhase.className = "decision-phase phase-" + phase;
+        decisionPhase.textContent = live.window || "—";
+        decisionPhase.className = "decision-phase phase-" + (live.status === "LOCK" ? "hold" : "wait");
       }
       if (decisionLock) {
-        decisionLock.textContent = hasLock ? "🔒 LOCKED" : (phase === "entry" ? "NEW ENTRY" : "");
-        decisionLock.className = "decision-lock" + (hasLock ? " is-locked" : "");
+        decisionLock.textContent = live.status;
+        decisionLock.className = "decision-lock" + (live.status === "LOCK" ? " is-locked" : "");
       }
     } catch (e) { /* non-fatal */ }
 
-    // Prefer locked confidence so strip matches plaque/portrait
     if (decisionConf) {
-      decisionConf.textContent = (hasLock && lc && lc.confidence != null)
-        ? (lc.confidence + "%")
-        : (d.confidence != null ? d.confidence + "%" : "—");
+      decisionConf.textContent = live.strike || "—";
     }
     if (decisionSummary) {
-      decisionSummary.textContent = d.summary || "";
-      if (d.regime_key) {
-        decisionSummary.textContent = (decisionSummary.textContent || "") +
-          (decisionSummary.textContent ? " · " : "") + "regime " + d.regime_key;
-      }
+      decisionSummary.textContent = live.line;
     }
     if (btcPrice) btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
     if (fundingEl) fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
@@ -10317,7 +10398,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "seats", "paper", "tape", "book", "brain", "news", "wire", "charts", "settings"];
+        : ["art", "seats", "paper", "calls", "tape", "book", "brain", "news", "wire", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -11610,6 +11691,7 @@ function drawCandleChart() {
   }
   wireFloorChairToggles();
   wirePhoneBackBtn();
+  wireCallsBoard();
   initSeatStorm();
 
   function checkWinStreakCelebrate(acc) {
@@ -11883,7 +11965,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "charts", "settings"];
+    return ["art", "seats", "paper", "calls", "tape", "book", "night", "brain", "news", "wire", "school", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 

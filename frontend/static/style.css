@@ -4840,6 +4840,8 @@ body.mode-charts #tabCharts,
 body.mode-charts #tabCharts.active,
 body.mode-paper #tabPaper,
 body.mode-paper #tabPaper.active,
+body.mode-calls #tabCalls,
+body.mode-calls #tabCalls.active,
 body.mode-settings #tabSettings,
 body.mode-settings #tabSettings.active,
 body.mode-floor #tabFloor,
@@ -5106,6 +5108,7 @@ body.mode-settings #botsView,
 body.mode-settings #ranksView,
 body.mode-settings #chartsView,
 body.mode-settings #paperView,
+body.mode-settings #callsView,
 body.mode-settings #tapeView,
 body.mode-settings #bookView,
 body.mode-settings #brainView,
@@ -5497,6 +5500,8 @@ body.mode-charts #app > header #tabCharts,
 body.mode-charts #app > header #tabCharts.active,
 body.mode-paper #app > header #tabPaper,
 body.mode-paper #app > header #tabPaper.active,
+body.mode-calls #app > header #tabCalls,
+body.mode-calls #app > header #tabCalls.active,
 body.mode-settings #app > header #tabSettings,
 body.mode-settings #app > header #tabSettings.active {
   color: var(--blade) !important;
@@ -5737,6 +5742,9 @@ body.mode-floor #debatePanel.signal-feed {
 .signal-chair-dir.UP { color: #39ff14; }
 .signal-chair-dir.DOWN { color: #ff2d55; }
 .signal-chair-dir.WAIT { color: #00e8ff; }
+.signal-chair-dir.WATCH { color: #ffe7a0; }
+.signal-chair-dir.ABOVE { color: #39ff14; }
+.signal-chair-dir.BELOW { color: #ff2d55; }
 .signal-chair-meta {
   margin-top: 4px;
   font-size: 11px;
@@ -7059,6 +7067,7 @@ body.night-mode #btnHelp,
 body.night-mode #tabSettings,
 body.night-mode #tabSeats,
 body.night-mode #tabPaper,
+body.night-mode #tabCalls,
 body.night-mode #tabTape,
 body.night-mode #tabBook,
 body.night-mode #tabBrain,
@@ -7139,7 +7148,73 @@ body.night-mode .table-stage {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.chair-why[data-status="LOCK"][data-dir="UP"],
+.chair-why[data-status="LOCK"][data-dir="ABOVE"] { color: #39ff14; text-shadow: 0 0 12px rgba(57, 255, 20, 0.55), 0 1px 8px rgba(0, 0, 0, 0.9); }
+.chair-why[data-status="LOCK"][data-dir="DOWN"],
+.chair-why[data-status="LOCK"][data-dir="BELOW"] { color: #ff2d55; text-shadow: 0 0 12px rgba(255, 45, 85, 0.5), 0 1px 8px rgba(0, 0, 0, 0.9); }
+.chair-why[data-status="WAIT"] { color: #00e8ff; text-shadow: 0 0 12px rgba(0, 232, 255, 0.45), 0 1px 8px rgba(0, 0, 0, 0.9); }
+.chair-why[data-status="WATCH"] { color: #ffe7a0; text-shadow: 0 0 12px rgba(240, 193, 74, 0.5), 0 1px 8px rgba(0, 0, 0, 0.9); }
 .chair-why[hidden] { display: none !important; }
+.calls-board {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+}
+.calls-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1.1fr) minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 232, 255, 0.32);
+  background: rgba(6, 10, 16, 0.92);
+  box-shadow: inset 0 0 22px rgba(0, 232, 255, 0.08), 0 0 16px rgba(0, 0, 0, 0.45);
+  font-family: Orbitron, Rajdhani, monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.calls-name { color: #7fe9ff; font-size: 13px; }
+.calls-status { font-size: 16px; color: #00e8ff; text-shadow: 0 0 10px rgba(0, 232, 255, 0.45); }
+.calls-row[data-status="LOCK"][data-dir="UP"] .calls-status,
+.calls-row[data-status="LOCK"][data-dir="ABOVE"] .calls-status { color: #39ff14; text-shadow: 0 0 10px rgba(57, 255, 20, 0.5); }
+.calls-row[data-status="LOCK"][data-dir="DOWN"] .calls-status,
+.calls-row[data-status="LOCK"][data-dir="BELOW"] .calls-status { color: #ff2d55; text-shadow: 0 0 10px rgba(255, 45, 85, 0.45); }
+.calls-row[data-status="WATCH"] .calls-status { color: #ffe7a0; text-shadow: 0 0 10px rgba(240, 193, 74, 0.45); }
+.calls-strike { color: #e8f4ff; font-size: 14px; }
+.calls-window { color: #f0c14a; font-size: 12px; text-align: right; }
+body.mode-calls #tabCalls,
+body.mode-calls #tabCalls.active {
+  color: var(--blade) !important;
+  border-color: rgba(0, 232, 255, 0.5) !important;
+  background: rgba(0, 232, 255, 0.08) !important;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+}
+body[class*="mode-"]:not(.mode-calls) #tabCalls,
+body[class*="mode-"]:not(.mode-calls) #tabCalls.active,
+body.beast-mode[class*="mode-"]:not(.mode-calls) #tabCalls,
+body.beast-mode[class*="mode-"]:not(.mode-calls) #tabCalls.active {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+body.mode-calls .led-float,
+body.mode-calls #windowLed {
+  display: none !important;
+}
+@media (max-width: 480px) {
+  .calls-row {
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 0.9fr) 56px;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+  .calls-status { font-size: 14px; }
+}
 .ats-why {
   position: absolute;
   left: 8%;
@@ -9218,7 +9293,8 @@ body.mode-seats #mainTable { display: none !important; }
   }
 
   body.phone-floor #tabSeats,
-  body.phone-floor #tabPaper {
+  body.phone-floor #tabPaper,
+  body.phone-floor #tabCalls {
     display: inline-flex !important;
   }
   body.phone-floor .color-tally,

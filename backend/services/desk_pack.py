@@ -452,103 +452,47 @@ def why_line(
     locked_call: Dict[str, Any] | None = None,
 ) -> str:
     """
-    One live line under the Chair. This hour only. No paragraph, no debug dump.
-    Reads existing summary/gates — does not lock or grade.
+    One live Chair line: LOCK/WAIT, strike if the ladder pick exists, window.
+    Punchy CRT copy — not a spreadsheet dump. Does not lock or grade.
     """
     d = decision if isinstance(decision, dict) else {}
     m = market if isinstance(market, dict) else {}
-    h = health if isinstance(health, dict) else {}
     lc = locked_call if isinstance(locked_call, dict) else (d.get("locked_call") or {})
     locked = bool(lc.get("locked") and str(lc.get("direction") or "").upper() in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"))
     raw_side = str((lc.get("direction") if locked else d.get("direction")) or "WAIT").upper()
     side = "UP" if "UP" in raw_side else ("DOWN" if "DOWN" in raw_side else "WAIT")
-    flags = book_flags(
-        parse_book_depth(m.get("kalshi_orderbook") or m.get("orderbook")),
-        yes_bid=m.get("kalshi_yes_bid") if m.get("kalshi_yes_bid") is not None else m.get("yes_bid") or m.get("up_pct"),
-        yes_ask=m.get("kalshi_yes_ask") if m.get("kalshi_yes_ask") is not None else m.get("yes_ask"),
-        no_bid=None,
-        no_ask=None,
-    )
-
-    def _desk_cents(raw: Any) -> Optional[float]:
-        """Desk quotes are 0–100¢. Scale true fractions only; 1 stays 1¢."""
-        if raw is None:
-            return None
+    strike = ""
+    raw_strike = m.get("floor_strike")
+    if raw_strike is None:
+        raw_strike = m.get("kalshi_target")
+    if raw_strike is None:
         try:
-            v = float(raw)
-        except (TypeError, ValueError):
-            return None
-        if 0 < v < 1.0:
-            v *= 100.0
-        return v
-
-    yb = _desk_cents(
-        m.get("kalshi_yes_bid") if m.get("kalshi_yes_bid") is not None else m.get("yes_bid") or m.get("up_pct")
-    )
-    ya = _desk_cents(m.get("kalshi_yes_ask") if m.get("kalshi_yes_ask") is not None else m.get("yes_ask"))
-    down_px = _desk_cents(m.get("down_pct") if m.get("down_pct") is not None else m.get("no_bid"))
-    if down_px is None and yb is not None:
-        down_px = round(100.0 - float(yb), 1)
-    ev = lc.get("ev_cents") if lc.get("ev_cents") is not None else d.get("ev_cents")
+            from backend.agents.chair_gates import strike_from_kalshi_ticker
+            raw_strike = strike_from_kalshi_ticker(m.get("kalshi_ticker") or m.get("ticker"))
+        except Exception:
+            raw_strike = None
     try:
-        ev_f = float(ev) if ev is not None else None
+        sn = float(raw_strike) if raw_strike is not None else None
     except (TypeError, ValueError):
-        ev_f = None
-    stale = bool(m.get("stale") or h.get("stale"))
-    age = h.get("quote_age_s")
+        sn = None
+    if sn is not None and sn >= 20:
+        strike = f"${int(round(sn)):,}" if sn >= 1000 else str(int(round(sn)))
+    window = "1H"
+    secs = m.get("seconds_left")
+    if secs is None:
+        secs = m.get("time_remaining")
     try:
-        if age is not None and float(age) > 20:
-            stale = True
+        if secs is not None:
+            left = max(0, int(float(secs)))
+            if left < 6 * 3600:
+                window = f"{left // 60:02d}:{left % 60:02d}"
     except (TypeError, ValueError):
         pass
-    empty = bool(flags.get("empty")) and yb is None and ya is None
-    wall99 = (yb is not None and yb >= 99) or (down_px is not None and down_px >= 99) or (ya is not None and ya >= 99)
-
-    def _ev_bit() -> str:
-        if ev_f is None:
-            return ""
-        sign = "+" if ev_f >= 0 else ""
-        return f"EV {sign}{ev_f:.0f}¢"
-
-    if locked:
-        extras = []
-        if flags.get("has_size") and not flags.get("empty"):
-            extras.append("book has size")
-        evb = _ev_bit()
-        if evb:
-            extras.append(evb)
-        if extras:
-            return f"LOCK {side} · " + ", ".join(extras)
-        return f"LOCK {side}"
-
-    bits = ["WAIT"]
-    if wall99 and down_px is not None and down_px >= 99:
-        bits.append("DOWN is 99¢, no edge")
-    elif wall99 and yb is not None and yb >= 99:
-        bits.append("UP is 99¢, no edge")
-    elif wall99:
-        bits.append("≥99¢ wall, no edge")
-    elif empty:
-        bits.append("empty book")
-    elif flags.get("unknown"):
-        bits.append("unknown book")
-    elif flags.get("sick"):
-        bits.append("sick book")
-    elif stale:
-        bits.append("stale quote")
-    elif ev_f is not None and ev_f <= 0:
-        bits.append("no edge")
-    else:
-        summary = str(d.get("summary") or "")
-        if "dead book" in summary.lower():
-            bits.append("dead book")
-        elif "fresh quote" in summary.lower() or "stale" in summary.lower():
-            bits.append("stale quote")
-        elif ev_f is not None:
-            bits.append(_ev_bit())
-        else:
-            bits.append("no edge")
-    return " · ".join(bits[:3])
+    bits = [f"LOCK {side}" if locked else "WAIT"]
+    if strike:
+        bits.append(strike)
+    bits.append(window)
+    return " · ".join(bits)
 
 
 def close_print(row: Dict[str, Any] | None, *, pair: str, lean: str = "WAIT") -> Dict[str, Any]:

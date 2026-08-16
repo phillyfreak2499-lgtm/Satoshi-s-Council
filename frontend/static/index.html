@@ -267,6 +267,7 @@
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabSeats" class="mode-tab" data-mode="seats" title="Same people — who they are, how they sit, the cards">Seats</button>
         <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabCalls" class="mode-tab" data-mode="calls" title="Current Calls — live Chair board">Calls</button>
         <button type="button" id="tabTape" class="mode-tab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
         <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
@@ -919,6 +920,39 @@
     </section>
 
     <!-- Paper trading journal -->
+    <section id="callsView" class="info-view hidden" aria-label="Current Calls">
+      <div class="info-hero">
+        <h2>CURRENT CALLS</h2>
+        <p>Live Chair board on Satoshi’s Council. Direction, strike when the ladder pick exists, lock vs WAIT. Paper. Follower OFF.</p>
+      </div>
+      <ol id="callsBoard" class="calls-board" aria-live="polite">
+        <li class="calls-row" data-call="bitcoin" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">BTC</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">1H</span>
+        </li>
+        <li class="calls-row" data-call="ethereum" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">ETH</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">1H</span>
+        </li>
+        <li class="calls-row" data-call="front" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">FRONT</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">DFW</span>
+        </li>
+        <li class="calls-row" data-call="oracle" data-status="WATCH" data-dir="WATCH">
+          <span class="calls-name">ORA</span>
+          <span class="calls-status">WATCH</span>
+          <span class="calls-strike">no ticket</span>
+          <span class="calls-window">CRT</span>
+        </li>
+      </ol>
+    </section>
+
     <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
       <div class="info-hero">
         <h2>PAPER TRACKER</h2>

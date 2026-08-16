@@ -193,7 +193,7 @@ class TableFeedTests(unittest.TestCase):
         self.assertIn("No specialist packets yet", JS)
         self.assertNotIn(".filter((s) => s.shout)", JS)
         self.assertIn("sf-in", JS)
-        self.assertIn("P(finish)", JS)
+        self.assertIn("function liveCallCard", JS)
         self.assertIn("last lock", JS)
 
     def test_table_right_column_shows_feed(self):

@@ -149,7 +149,7 @@ class PhoneTabBarTests(unittest.TestCase):
 
     def test_first_class_tabs_stay_and_no_new_tabs(self):
         tabs = HTML.split('id="modeTabs"', 1)[1].split("modeTabsNext", 1)[0]
-        for needle in ('id="tabFloor"', 'id="tabScreensaver"', 'id="tabSeats"', 'id="tabPaper"'):
+        for needle in ('id="tabFloor"', 'id="tabScreensaver"', 'id="tabSeats"', 'id="tabPaper"', 'id="tabCalls"'):
             self.assertIn(needle, tabs)
         self.assertIn('id="tabNight"', tabs)
         self.assertIn('id="soundToggle"', HTML)
@@ -157,6 +157,7 @@ class PhoneTabBarTests(unittest.TestCase):
         last = _phone_last_word()
         self.assertIn("body.phone-floor #tabSeats", last)
         self.assertIn("body.phone-floor #tabPaper", last)
+        self.assertIn("body.phone-floor #tabCalls", last)
 
 
 class PhoneFloorChromeTests(unittest.TestCase):
