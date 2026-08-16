@@ -482,13 +482,13 @@ class AdaptiveLearner:
                     remapped[name] = {**vote, "direction": "UP"}
             elif d in MANAGE_UP:
                 credited = ("UP" in cut) or (pnl <= 0)
-                remapped[name] = {**vote, "direction": "UP" if credited else "DOWN"}
+                remapped[name] = {**vote, "direction": synth if credited else ("DOWN" if synth == "UP" else "UP")}
             elif d in MANAGE_DOWN:
                 credited = ("DOWN" in cut) or (pnl <= 0)
-                remapped[name] = {**vote, "direction": "UP" if credited else "DOWN"}
+                remapped[name] = {**vote, "direction": synth if credited else ("DOWN" if synth == "UP" else "UP")}
             elif d == "FLAT_ALL":
                 credited = bool(cut) or pnl <= 0
-                remapped[name] = {**vote, "direction": "UP" if credited else "DOWN"}
+                remapped[name] = {**vote, "direction": synth if credited else ("DOWN" if synth == "UP" else "UP")}
             else:
                 remapped[name] = vote
         return self.learn_from_settled(
