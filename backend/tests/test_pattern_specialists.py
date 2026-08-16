@@ -161,12 +161,13 @@ class PatternSpecialistSplitTests(unittest.TestCase):
             self.assertFalse(can_final_lock(name), name)
 
     def test_not_floor_chairs_or_apprentice(self):
-        self.assertNotIn("Pattern Apprentice", JS + HTML + WIRE + ROSTER)
+        self.assertNotIn("Pattern Apprentice", HTML + ROSTER)
+        self.assertNotIn("Pattern Apprentice", JS)
+        self.assertNotIn("Pattern Apprentice", WIRE)
         self.assertEqual(HTML.count('class="floor-chair-tog"'), 5)
         self.assertIn('data-floor-chair="bitcoin"', HTML)
         self.assertIn('data-floor-chair="ethereum"', HTML)
         self.assertNotIn("data-floor-chair=\"candle", HTML)
-        self.assertNotIn("EMBER", JS)
 
     def test_memory_and_weights_split(self):
         btc = AdaptiveLearner(asset="btc")

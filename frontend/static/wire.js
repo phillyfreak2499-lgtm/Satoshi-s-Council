@@ -5,7 +5,7 @@ window.COUNCIL_WIRE = [
     "id": "2026-08-16-pattern-specialists",
     "at": "2026-08-16T23:59:45-05:00",
     "title": "BTC and ETH each get a dedicated pattern specialist",
-    "why": "Zach Voice: Pattern Seer is gone as a shared candle role. Bitcoin Pattern Specialist (candle_btc / WICK) reads BTC only. Ethereum Pattern Specialist (candle_eth / WICK) reads ETH only. Separate weights, memory, and settle keys — not a cloned pair. Satoshi calls the BTC specialist plus shared services. Vitalik calls the ETH specialist plus shared services. Shared bots supply data and scores; they never lock. Pattern specialists never answer the other coin. Not new Floor chairs. Not Pattern Apprentice. Satoshi / Vitalik stay the only lockers. Paper. Follower OFF."
+    "why": "Zach Voice: Pattern Seer is gone as a shared candle role. Bitcoin Pattern Specialist (candle_btc / WICK) reads BTC only. Ethereum Pattern Specialist (candle_eth / WICK) reads ETH only. Separate weights, memory, and settle keys — not a cloned pair. Satoshi calls the BTC specialist plus shared services. Vitalik calls the ETH specialist plus shared services. Shared bots supply data and scores; they never lock. Pattern specialists never answer the other coin. Not new Floor chairs. Satoshi / Vitalik stay the only lockers. Paper. Follower OFF."
   },
   {
     "id": "2026-08-16-raijin-cowboy-restore",

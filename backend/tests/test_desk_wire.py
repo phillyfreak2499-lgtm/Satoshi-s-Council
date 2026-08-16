@@ -77,7 +77,7 @@ class WireLogTests(unittest.TestCase):
         self.assertIn("candle_btc", rows[0]["why"])
         self.assertIn("candle_eth", rows[0]["why"])
         self.assertIn("never lock", rows[0]["why"])
-        self.assertIn("Not Pattern Apprentice", rows[0]["why"])
+        self.assertIn("Not new Floor chairs", rows[0]["why"])
         self.assertIn("Paper", rows[0]["why"])
         self.assertIn("Follower OFF", rows[0]["why"])
         self.assertNotIn("ZT", rows[0]["title"])
