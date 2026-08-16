@@ -2121,7 +2121,12 @@ def quorum_peer_dirs(signals: Any, market_data: Any = None) -> Dict[str, str]:
             direction = str(sig.get("direction") or "WAIT")
         else:
             direction = str(getattr(sig, "direction", None) or "WAIT")
-        out[name] = direction
+        try:
+            from backend.agents.base import lean_side
+            side = lean_side(direction)
+            out[name] = side or "WAIT"
+        except Exception:
+            out[name] = direction
     return out
 
 
@@ -2129,8 +2134,14 @@ def color_counts_from_signals(signals: Any) -> Dict[str, int]:
     counted = [s for s in (signals or []) if not signal_excluded_from_quorum(s)]
     def _dir(sig: Any) -> str:
         if isinstance(sig, dict):
-            return str(sig.get("direction") or "WAIT").upper()
-        return str(getattr(sig, "direction", None) or "WAIT").upper()
+            raw = str(sig.get("direction") or "WAIT").upper()
+        else:
+            raw = str(getattr(sig, "direction", None) or "WAIT").upper()
+        try:
+            from backend.agents.base import lean_side
+            return lean_side(raw) or "WAIT"
+        except Exception:
+            return raw
     return {
         "UP": sum(1 for s in counted if _dir(s) == "UP"),
         "DOWN": sum(1 for s in counted if _dir(s) == "DOWN"),

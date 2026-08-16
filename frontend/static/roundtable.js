@@ -5264,16 +5264,36 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const streak = (acc && acc.streak) || 0;
     const label = (acc && acc.label) || (pct != null ? `${correct}/${total} · ${pct}%` : `${correct}/${total} · —`);
     const pctText = pct != null ? `${pct}%` : "—";
+    const pathBoard = acc && acc.path_scoreboard;
+    const pathMode = !!(pathBoard && (focusTable === "bitcoin" || acc.finish_only === false));
     let verdict = (acc && acc.verdict) || "COLLECTING";
-    if (!total) verdict = (typeof isFrontTable === "function" && isFrontTable(focusTable))
-      ? "FINISH-ONLY · WAITING ON DFW CLI"
-      : "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    if (!total) {
+      if (typeof isFrontTable === "function" && isFrontTable(focusTable))
+        verdict = "FINISH-ONLY · WAITING ON DFW CLI";
+      else if (pathMode || focusTable === "bitcoin")
+        verdict = "PATH P&L · WAITING ON FILLS";
+      else
+        verdict = "FINISH-ONLY · WAITING ON HOUR CLOSE";
+    }
 
     if (accuracyPct) accuracyPct.textContent = pctText;
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
-    if (detailEl) detailEl.textContent = (!total)
-      ? ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""))
-      : (`${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : ""));
+    if (detailEl) {
+      if (!total) {
+        detailEl.textContent = (pathMode || focusTable === "bitcoin")
+          ? ("path P&L · 0 settled windows" + (pending ? ` · ${pending} open` : ""))
+          : ("finish-only · 0 settled hours" + (pending ? ` · ${pending} open` : ""));
+      } else if (pathMode && pathBoard) {
+        const d = pathBoard.dual || {};
+        const s = pathBoard.single || {};
+        detailEl.textContent = `${correct}✓ · ${wrong}✗ · path P&L`
+          + (pathBoard.realized_pnl != null ? ` ${pathBoard.realized_pnl}` : "")
+          + ` · dual ${d.n || 0} · single ${s.n || 0}`
+          + (pending ? ` · ${pending} open` : "");
+      } else {
+        detailEl.textContent = `${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : "");
+      }
+    }
     if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
     checkWinStreakCelebrate(acc);
     if (callLogMeta) callLogMeta.textContent = label;
@@ -5289,18 +5309,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (hrTotal) hrTotal.textContent = String(total);
     if (hrPending) hrPending.textContent = String(pending);
 
-    // Path tally: avg peak favorable move on wins (peak − entry Kalshi %)
+    // Path tally: BTC 15m = avg edge captured; ETH = peak favorable move on wins
+    const hrPath = document.getElementById("hrPath");
     const hrPathAvg = document.getElementById("hrPathAvg");
     const hrEntryAvg = document.getElementById("hrEntryAvg");
+    const pathLabs = document.querySelectorAll("#hrPath .hr-path-lab");
+    const pathSub = document.querySelector("#hrPath .hr-path-sub");
     const pathWins = acc && (acc.avg_path_wins != null ? acc.avg_path_wins
       : (acc.path_tally && acc.path_tally.avg_wins));
     const entryAvg = acc && (acc.avg_entry_pct != null ? acc.avg_entry_pct
       : (acc.path_tally && acc.path_tally.avg_entry));
+    if (hrPath) {
+      hrPath.title = pathMode
+        ? "Average leftover/edge captured on path fills · dual vs single"
+        : "Average peak Kalshi move on winning calls (peak − entry)";
+    }
+    if (pathLabs[0]) pathLabs[0].textContent = pathMode ? "AVG EDGE" : "AVG PATH";
+    if (pathSub) pathSub.textContent = pathMode ? "captured" : "on wins";
+    if (pathLabs[1]) pathLabs[1].textContent = pathMode ? "DUAL/SGL" : "ENTRY";
     if (hrPathAvg) {
-      hrPathAvg.textContent = pathWins != null ? ((pathWins >= 0 ? "+" : "") + Number(pathWins).toFixed(1) + " pts") : "—";
+      if (pathMode && pathBoard && pathBoard.avg_edge_cents != null) {
+        const e = Number(pathBoard.avg_edge_cents);
+        hrPathAvg.textContent = (e >= 0 ? "+" : "") + e.toFixed(1) + "¢";
+      } else if (!pathMode && pathWins != null) {
+        hrPathAvg.textContent = (pathWins >= 0 ? "+" : "") + Number(pathWins).toFixed(1) + " pts";
+      } else {
+        hrPathAvg.textContent = "—";
+      }
     }
     if (hrEntryAvg) {
-      hrEntryAvg.textContent = entryAvg != null ? (Number(entryAvg).toFixed(1) + "%") : "—";
+      if (pathMode && pathBoard) {
+        const d = pathBoard.dual || {};
+        const s = pathBoard.single || {};
+        hrEntryAvg.textContent = (d.n || 0) + "d/" + (s.n || 0) + "s";
+      } else {
+        hrEntryAvg.textContent = entryAvg != null ? (Number(entryAvg).toFixed(1) + "%") : "—";
+      }
     }
 
     const l20 = acc && acc.last_20;
@@ -7327,15 +7371,29 @@ function drawCandleChart() {
       const data = await r.json();
       const el = document.getElementById("paperAutoSummary");
       if (el) {
-        el.textContent = (asset.toUpperCase()) + " auto · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0);
+        if (asset === "btc" && data.path_scoreboard) {
+          const ps = data.path_scoreboard;
+          const d = ps.dual || {};
+          const s = ps.single || {};
+          el.textContent = "BTC path P&L · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0)
+            + " · edge " + (ps.avg_edge_cents != null ? ps.avg_edge_cents : "—")
+            + " · dual " + (d.n||0) + " · single " + (s.n||0);
+        } else {
+          el.textContent = (asset.toUpperCase()) + " auto · " + (data.wins||0) + "W/" + (data.losses||0) + "L · PnL " + (data.pnl||0);
+        }
       }
       const list = document.getElementById("paperAutoList");
       if (list && Array.isArray(data.recent)) {
         list.innerHTML = data.recent.slice(0, 12).map(row => {
-          const ok = row.correct ? "RIGHT" : "WRONG";
-          const col = row.correct ? "#39ff14" : "#ff2d55";
+          const pathRow = row.status === "path" || (asset === "btc" && data.path_scoreboard);
+          const ok = pathRow
+            ? (row.status === "path" ? "PATH" : (row.correct ? "WIN" : (row.correct === false ? "LOSS" : "PATH")))
+            : (row.correct ? "RIGHT" : "WRONG");
+          const col = row.correct ? "#39ff14" : (row.status === "path" ? "#ffd166" : "#ff2d55");
           return '<div class="paper-auto-row" style="color:'+col+'">' + ok + " · " + (row.direction||"") + " · " + (row.ticker||"") + " · " + (row.pnl!=null?row.pnl:"") + "</div>";
-        }).join("") || "<div class=\"paper-auto-row\">No finish-graded trades yet</div>";
+        }).join("") || (asset === "btc"
+          ? "<div class=\"paper-auto-row\">No path fills yet</div>"
+          : "<div class=\"paper-auto-row\">No finish-graded trades yet</div>");
       }
     } catch (e) {}
   }

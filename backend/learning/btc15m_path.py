@@ -227,19 +227,47 @@ def other_side(side: str) -> str:
 def lean_from_votes(votes: Dict[str, Any] | None) -> Optional[str]:
     up = 0
     down = 0
+    try:
+        from backend.agents.base import lean_side
+    except Exception:
+        lean_side = None  # type: ignore
     for vote in (votes or {}).values():
         if not isinstance(vote, dict):
             continue
         d = str(vote.get("direction") or "").upper()
-        if d == "UP":
+        side = lean_side(d) if lean_side else (d if d in ("UP", "DOWN") else None)
+        if side == "UP":
             up += 1
-        elif d == "DOWN":
+        elif side == "DOWN":
             down += 1
     if up > down:
         return "UP"
     if down > up:
         return "DOWN"
     return None
+
+
+def open_risk_both_legs(book: Any) -> float:
+    """Open risk counts BOTH legs. Never one side only."""
+    if book is None:
+        return 0.0
+    legs = getattr(book, "open_legs", None) or []
+    return round(sum(float(getattr(leg, "stake", 0) or 0) for leg in legs), 4)
+
+
+def cut_sides_from_path_legs(legs: Iterable[Any]) -> set:
+    """Sides closed by path_cut / path_flip in this window."""
+    out = set()
+    for leg in legs or []:
+        if isinstance(leg, dict):
+            reason = str(leg.get("settle_reason") or "")
+            d = str(leg.get("direction") or "").upper()
+        else:
+            reason = str(getattr(leg, "settle_reason", None) or "")
+            d = str(getattr(leg, "direction", None) or "").upper()
+        if reason in ("path_cut", "path_flip") and d in ("UP", "DOWN"):
+            out.add(d)
+    return out
 
 
 @dataclass

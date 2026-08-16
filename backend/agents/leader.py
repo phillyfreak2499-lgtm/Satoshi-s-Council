@@ -17,7 +17,10 @@ from backend.agents.base import (
     Direction,
     ETH_GOAL_CONTRACT_SHORT,
     GOAL_CONTRACT_SHORT,
+    invert_direction,
+    lean_side,
     side_of,
+    signed_vote,
 )
 from backend.config import settings
 from backend.learning.adaptive import AdaptiveLearner, NON_VOTERS
@@ -304,6 +307,37 @@ class Leader:
                 return True
         return False
 
+    def path_book_snapshot(self, ticker: str | None, close_time: str | None = None) -> Dict[str, Any]:
+        """Live 15m book for specialists. Open risk counts both legs."""
+        from backend.learning.btc15m_path import open_risk_both_legs
+        book = self._path_book_for(close_time) or self._path_book_for(ticker)
+        empty = {
+            "size_up": 0.0,
+            "size_down": 0.0,
+            "up_size": 0.0,
+            "down_size": 0.0,
+            "up_stake": 0.0,
+            "down_stake": 0.0,
+            "avg_up": None,
+            "avg_down": None,
+            "held_sides": [],
+            "open": False,
+            "open_risk": 0.0,
+            "realized": 0.0,
+            "unrealized": 0.0,
+            "next_action": "WAIT",
+        }
+        if book is None:
+            return empty
+        pos = book.position_state()
+        risk = open_risk_both_legs(book)
+        pos["up_size"] = pos.get("size_up") or 0.0
+        pos["down_size"] = pos.get("size_down") or 0.0
+        pos["up_stake"] = pos["up_size"]
+        pos["down_stake"] = pos["down_size"]
+        pos["open_risk"] = risk
+        return pos
+
     def _is_15m_btc_path(self, regime_features: Dict[str, Any] | None, ticker: str | None) -> bool:
         """BTC 15m only. ETH 1H never gets a dual-sided path book."""
         try:
@@ -417,7 +451,7 @@ class Leader:
             mins_left=float(mins_left),
             yes_ask=yes_ask,
             no_ask=no_ask,
-            lean=lean if lean in ("UP", "DOWN") else None,
+            lean=lean_side(lean) or (lean if lean in ("UP", "DOWN") else None),
             ev_cents=ev_cents,
             dead=bool(dead or stale),
             chalk=chalk,
@@ -426,7 +460,8 @@ class Leader:
         decision = decide_action(inp, book)
 
         leftover = combined_leftover(yes_ask, no_ask)
-        open_risk = sum(float(getattr(leg, "stake", 0) or 0) for leg in (book.open_legs or []))
+        from backend.learning.btc15m_path import open_risk_both_legs
+        open_risk = open_risk_both_legs(book)
         spread = None
         try:
             if regime_features.get("spread_cents") is not None:
@@ -985,19 +1020,13 @@ class Leader:
             d = (s.direction or "WAIT").upper()
             can_force = lock_force_allowed(getattr(s, "features", None))
             if can_force:
-                if d in ("UP", "UP_HOLD"):
-                    signed = conf_w
-                elif d in ("DOWN", "DOWN_HOLD"):
-                    signed = -conf_w
+                signed = signed_vote(d, conf_w)
             effective_dir = d
             if invert and signed != 0.0:
                 signed = -signed
                 # Scale by how reliably wrong (mild near 42%, stronger near 30%)
                 w = w * (0.55 + 0.45 * fade_strength)
-                if "UP" in d:
-                    effective_dir = "DOWN" if d == "UP" else "DOWN_HOLD"
-                elif "DOWN" in d:
-                    effective_dir = "UP" if d == "DOWN" else "UP_HOLD"
+                effective_dir = invert_direction(d)
             score += signed * w
             if can_force:
                 weight_sum += w
@@ -1047,10 +1076,7 @@ class Leader:
                     signed = 0.0
                     ed = (d.get("effective_direction") or d.get("direction") or "WAIT").upper()
                     conf = float(d.get("confidence") or 0) / 100.0
-                    if "UP" in ed:
-                        signed = conf
-                    elif "DOWN" in ed:
-                        signed = -conf
+                    signed = signed_vote(ed, conf)
                     score += signed * w
                     weight_sum += w
 
@@ -1061,8 +1087,14 @@ class Leader:
             score /= weight_sum
 
         # Cross-category diversity bonus
-        up_cats = sum(1 for dirs in category_dirs.values() if dirs.count("UP") > len(dirs) / 2)
-        down_cats = sum(1 for dirs in category_dirs.values() if dirs.count("DOWN") > len(dirs) / 2)
+        def _cat_ups(dirs: List[str]) -> int:
+            return sum(1 for x in dirs if lean_side(x) == "UP")
+
+        def _cat_downs(dirs: List[str]) -> int:
+            return sum(1 for x in dirs if lean_side(x) == "DOWN")
+
+        up_cats = sum(1 for dirs in category_dirs.values() if _cat_ups(dirs) > len(dirs) / 2)
+        down_cats = sum(1 for dirs in category_dirs.values() if _cat_downs(dirs) > len(dirs) / 2)
         diversity = max(up_cats, down_cats)
 
         if diversity >= 3:
@@ -1231,8 +1263,9 @@ class Leader:
         top_dirs = []
         for name in top_agents:
             sig = next((s for s in active if s.agent_name == name), None)
-            if sig and sig.direction in ("UP", "DOWN") and chair_top_dir_eligible(sig):
-                top_dirs.append(sig.direction)
+            side = lean_side(getattr(sig, "direction", None)) if sig else None
+            if sig and side in ("UP", "DOWN") and chair_top_dir_eligible(sig):
+                top_dirs.append(side)
         top_agree = False
         top_conflict = False
         if len(top_dirs) >= 2:

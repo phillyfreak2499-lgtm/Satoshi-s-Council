@@ -66,12 +66,27 @@ class QuorumSpecialist(BaseSpecialist):
 
         # Count live colors among peers (exclude self/non-voters)
         skip = {"quorum", "guardian", "law", "leader", "chair"}
-        up_names = [n for n, d in peer_dirs.items() if str(d).upper() in ("UP", "UP_HOLD") and n not in skip]
-        down_names = [n for n, d in peer_dirs.items() if str(d).upper() in ("DOWN", "DOWN_HOLD") and n not in skip]
+        try:
+            from backend.agents.base import lean_side
+        except Exception:
+            lean_side = None  # type: ignore
+
+        def _peer_lean(d: Any) -> Optional[str]:
+            if lean_side:
+                return lean_side(d)
+            u = str(d or "").upper()
+            if u in ("UP", "UP_HOLD", "LONG_UP"):
+                return "UP"
+            if u in ("DOWN", "DOWN_HOLD", "LONG_DOWN"):
+                return "DOWN"
+            return None
+
+        up_names = [n for n, d in peer_dirs.items() if _peer_lean(d) == "UP" and n not in skip]
+        down_names = [n for n, d in peer_dirs.items() if _peer_lean(d) == "DOWN" and n not in skip]
         wait_n = sum(
             1
             for n, d in peer_dirs.items()
-            if str(d).upper() not in ("UP", "UP_HOLD", "DOWN", "DOWN_HOLD") and n not in skip
+            if _peer_lean(d) not in ("UP", "DOWN") and n not in skip
         )
         up_n, down_n = len(up_names), len(down_names)
         total_dir = up_n + down_n

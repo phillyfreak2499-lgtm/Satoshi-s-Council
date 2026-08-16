@@ -637,6 +637,13 @@ class Council:
                 if side not in ("UP", "DOWN"):
                     continue
                 ticker = row.get("ticker") or ""
+                try:
+                    from backend.learning.btc15m import is_btc_15m_ticker
+                    if ticker and is_btc_15m_ticker(ticker):
+                        continue
+                except Exception:
+                    if str(ticker).upper().startswith("KXBTC15M"):
+                        continue
                 conf = int(row.get("confidence") or 70)
                 up = row.get("entry_side_pct") or row.get("open_price")
                 self.leader._set_window_lock(
@@ -651,6 +658,46 @@ class Council:
                 break
         except Exception as e:
             logger.debug(f"lock restore skip ({self.asset}): {e}")
+
+    def _attach_path_context(
+        self,
+        market_data: Dict[str, Any],
+        ticker: str | None,
+        close_time: str | None,
+    ) -> None:
+        """Inject the live 15m path book so specialists keep gathering all 15 minutes."""
+        if not ticker:
+            return
+        try:
+            from backend.learning.btc15m import is_btc_15m_ticker
+            if not is_btc_15m_ticker(ticker):
+                return
+        except Exception:
+            if not str(ticker).upper().startswith("KXBTC15M"):
+                return
+        market_data["ticker"] = ticker
+        if close_time:
+            market_data["close_time"] = close_time
+        try:
+            market_data["path_book"] = self.leader.path_book_snapshot(ticker, close_time) or {}
+        except Exception:
+            market_data.setdefault("path_book", {})
+        try:
+            from backend.learning.btc15m_path import is_chalk, real_yes_no_asks
+            km = market_data.get("kalshi_market") or {}
+            yes, no = real_yes_no_asks(
+                yes_ask=market_data.get("kalshi_yes_ask") or km.get("yes_ask") or market_data.get("yes_ask"),
+                no_ask=market_data.get("kalshi_no_ask") or km.get("no_ask") or market_data.get("no_ask"),
+                yes_bid=market_data.get("kalshi_yes_bid") or km.get("yes_bid"),
+                no_bid=market_data.get("kalshi_no_bid") or km.get("no_bid"),
+            )
+            market_data["path_quotes"] = {
+                "yes_ask": yes,
+                "no_ask": no,
+                "chalk": bool(is_chalk(yes) or is_chalk(no)),
+            }
+        except Exception:
+            market_data.setdefault("path_quotes", {})
 
     async def analyze_once(self) -> Dict[str, Any]:
         try:
@@ -706,8 +753,21 @@ class Council:
             except Exception:
                 _wmins = 15.0 if self.asset == "btc" else 60.0
             self.wm.on_tick(ticker, up_pct, price, mins_left, window_minutes=_wmins)
-            # Reflect Chair entry if already locked this window
-            if getattr(self.leader, "_entry_dir", None) and not self.wm.live.entry_dir:
+            # ETH 1H: stamp Chair lock so mid/final specialists hold entry.
+            # BTC 15m: Chair lock is a path book — keep specialists live the full window.
+            stamp_entry = True
+            try:
+                from backend.learning.btc15m import is_btc_15m_ticker
+                if ticker and is_btc_15m_ticker(ticker):
+                    stamp_entry = False
+            except Exception:
+                if ticker and str(ticker).upper().startswith("KXBTC15M"):
+                    stamp_entry = False
+            if (
+                stamp_entry
+                and getattr(self.leader, "_entry_dir", None)
+                and not self.wm.live.entry_dir
+            ):
                 self.wm.set_entry(
                     self.leader._entry_dir,
                     int(getattr(self.leader, "_entry_conf", 0) or 0),
@@ -786,6 +846,8 @@ class Council:
         if self.law.is_locked():
             self.law.note_window(ticker)
 
+        self._attach_path_context(market_data, ticker, close_time)
+
         signals: List = []
         quorum_agent = next((a for a in self.agents if a.name == "quorum"), None)
         # BEAST: evaluate all non-quorum specialists in parallel
@@ -836,6 +898,12 @@ class Council:
                 logger.error(f"Quorum agent failed: {e}")
                 from backend.agents.base import AgentSignal
                 signals.append(AgentSignal("quorum", "WAIT", 0, f"Error: {e}", "quorum", muted=True))
+
+        try:
+            from backend.agents.base import shape_path_signals
+            shape_path_signals(signals, market_data)
+        except Exception as e:
+            logger.debug(f"path signal shape skip: {e}")
 
         # Guardian updates
         guardian = next((a for a in self.agents if a.name == "guardian"), None)
@@ -1565,8 +1633,16 @@ class Council:
                     if d in ("UP", "DOWN"):
                         held.add(d)
                     reg = reg or leg.get("regime") or leg.get("regime_key")
+                cut = set()
+                try:
+                    from backend.learning.btc15m_path import cut_sides_from_path_legs
+                    cut = cut_sides_from_path_legs(legs)
+                except Exception:
+                    cut = set()
                 if votes:
-                    self.learner.learn_from_path_pnl(votes, net, held, regime=reg, count_as_lock=False)
+                    self.learner.learn_from_path_pnl(
+                        votes, net, held, regime=reg, count_as_lock=False, cut_sides=cut
+                    )
                     learned += 1
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:

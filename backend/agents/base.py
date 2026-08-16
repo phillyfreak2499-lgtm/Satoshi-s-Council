@@ -90,6 +90,48 @@ def side_of(direction: Any) -> Optional[str]:
     return None
 
 
+def lean_side(direction: Any) -> Optional[str]:
+    """Chair / quorum lean. LONG_* counts. REDUCE / FLAT do not add a door."""
+    d = normalize_direction(direction)
+    if d in LEAN_UP:
+        return "UP"
+    if d in LEAN_DOWN:
+        return "DOWN"
+    return None
+
+
+def invert_direction(direction: Any) -> str:
+    d = normalize_direction(direction)
+    swap = {
+        "UP": "DOWN",
+        "UP_HOLD": "DOWN_HOLD",
+        "LONG_UP": "LONG_DOWN",
+        "DOWN": "UP",
+        "DOWN_HOLD": "UP_HOLD",
+        "LONG_DOWN": "LONG_UP",
+        "REDUCE_UP": "REDUCE_DOWN",
+        "FLAT_UP": "FLAT_DOWN",
+        "REDUCE_DOWN": "REDUCE_UP",
+        "FLAT_DOWN": "FLAT_UP",
+    }
+    return swap.get(d, d)
+
+
+def signed_vote(direction: Any, conf_w: float = 1.0) -> float:
+    """+ favors UP. REDUCE/FLAT on a door is a mild opposite, not a +lean."""
+    d = normalize_direction(direction)
+    w = float(conf_w or 0.0)
+    if d in LEAN_UP:
+        return w
+    if d in LEAN_DOWN:
+        return -w
+    if d in MANAGE_UP:
+        return -0.35 * w
+    if d in MANAGE_DOWN:
+        return 0.35 * w
+    return 0.0
+
+
 def is_wait(direction: Any) -> bool:
     return normalize_direction(direction) in WAIT_DIRS
 
@@ -104,6 +146,99 @@ def allows_simultaneous_legs(direction: Any) -> bool:
     if d in WAIT_DIRS:
         return True
     return d in DUAL_DIRS or d in MANAGE_UP or d in MANAGE_DOWN or d in {"LONG_UP", "LONG_DOWN", "UP", "DOWN", "UP_HOLD", "DOWN_HOLD"}
+
+
+PATH_SCALP_MARK = "path scalp · not a finish call"
+_PATH_SKIP_AGENTS = frozenset({"guardian", "law", "leader", "chair"})
+
+
+def _is_btc_15m_market(market_data: Dict[str, Any] | None) -> bool:
+    md = market_data if isinstance(market_data, dict) else {}
+    ticker = str(md.get("ticker") or md.get("market_ticker") or md.get("kalshi_ticker") or "")
+    if ticker.upper().startswith("KXBTC15M"):
+        return True
+    try:
+        from backend.learning.btc15m import is_15m_btc_book
+        return bool(is_15m_btc_book(md))
+    except Exception:
+        return False
+
+
+def manage_from_lean(
+    direction: Any,
+    book: Dict[str, Any] | None = None,
+    quotes: Dict[str, Any] | None = None,
+) -> str:
+    """Map a finish-style lean into a path management action. BTC 15m only."""
+    d = normalize_direction(direction)
+    book = book if isinstance(book, dict) else {}
+    quotes = quotes if isinstance(quotes, dict) else {}
+    up_sz = float(book.get("size_up") or book.get("up_size") or book.get("up_stake") or 0.0)
+    down_sz = float(book.get("size_down") or book.get("down_size") or book.get("down_stake") or 0.0)
+    held_up = up_sz > 0.0
+    held_down = down_sz > 0.0
+    chalk = bool(quotes.get("chalk"))
+    already = d in (
+        "LONG_UP", "LONG_DOWN",
+        "REDUCE_UP", "REDUCE_DOWN",
+        "FLAT_UP", "FLAT_DOWN", "FLAT_ALL",
+        "BOTH", "SWAP",
+    )
+    if chalk and (held_up or held_down):
+        if held_up and held_down:
+            return "FLAT_ALL"
+        if held_up:
+            return "FLAT_UP"
+        return "FLAT_DOWN"
+    if already:
+        return d
+    lean = lean_side(d)
+    if lean == "UP":
+        if held_down and not held_up:
+            return "FLAT_DOWN" if down_sz <= 1.0 else "REDUCE_DOWN"
+        return "LONG_UP"
+    if lean == "DOWN":
+        if held_up and not held_down:
+            return "FLAT_UP" if up_sz <= 1.0 else "REDUCE_UP"
+        return "LONG_DOWN"
+    return "WAIT"
+
+
+def shape_path_signal(signal: "AgentSignal", market_data: Dict[str, Any] | None) -> "AgentSignal":
+    """Rewrite a 15m specialist vote into LONG/REDUCE/FLAT. ETH unchanged."""
+    if signal is None or not _is_btc_15m_market(market_data):
+        return signal
+    name = str(getattr(signal, "agent_name", "") or "")
+    if name in _PATH_SKIP_AGENTS:
+        return signal
+    if bool(getattr(signal, "muted", False)):
+        return signal
+    md = market_data if isinstance(market_data, dict) else {}
+    book = md.get("path_book") if isinstance(md.get("path_book"), dict) else {}
+    quotes = md.get("path_quotes") if isinstance(md.get("path_quotes"), dict) else {}
+    raw = getattr(signal, "direction", "WAIT")
+    shaped = manage_from_lean(raw, book, quotes)
+    feats = dict(getattr(signal, "features", None) or {})
+    feats["lean"] = lean_side(raw) or lean_side(shaped)
+    feats["path_action"] = shaped
+    reason = str(getattr(signal, "reasoning", "") or "")
+    if PATH_SCALP_MARK not in reason:
+        reason = f"{PATH_SCALP_MARK} · {reason}" if reason else PATH_SCALP_MARK
+    signal.direction = shaped  # type: ignore[assignment]
+    signal.reasoning = reason
+    signal.features = feats
+    for sub in getattr(signal, "subs", None) or []:
+        shape_path_signal(sub, market_data)
+    return signal
+
+
+def shape_path_signals(signals: List[Any], market_data: Dict[str, Any] | None) -> List[Any]:
+    if not _is_btc_15m_market(market_data):
+        return list(signals or [])
+    out = []
+    for sig in signals or []:
+        out.append(shape_path_signal(sig, market_data))
+    return out
 
 
 @dataclass
@@ -273,7 +408,14 @@ class BaseSpecialist(ABC):
             goal = goal_short_for(market_data=market_data)
         except Exception:
             pass
-        return f"[{tag}] {goal} · {core}"
+        extra = ""
+        try:
+            from backend.learning.btc15m import is_15m_btc_book
+            if is_15m_btc_book(market_data):
+                extra = f"{PATH_SCALP_MARK} · "
+        except Exception:
+            pass
+        return f"[{tag}] {goal} · {extra}{core}"
 
     def record_signal(self, signal: AgentSignal, limit: int = 40):
         self._recent_signals.append(signal)

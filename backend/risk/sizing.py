@@ -6,8 +6,8 @@ Config hard maxes remain clamps. Never a live order.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -28,8 +28,15 @@ class SizingResult:
     is_dual_sided: bool = False
     clamped: bool = False
     raw_stake: float = 0.0
+    multipliers: List[Dict[str, Any]] = field(default_factory=list)
+    reasons: List[str] = field(default_factory=list)
+    kelly_raw: Optional[float] = None
+    hard_max_beats_kelly: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
+        reasons = list(self.reasons or [])
+        if not reasons and self.reason:
+            reasons = [self.reason]
         return {
             "stake": round(float(self.stake), 4),
             "units": round(float(self.units), 4),
@@ -47,6 +54,11 @@ class SizingResult:
             "is_dual_sided": bool(self.is_dual_sided),
             "clamped": bool(self.clamped),
             "raw_stake": round(float(self.raw_stake), 4),
+            "multipliers": list(self.multipliers or []),
+            "reasons": reasons,
+            "kelly_raw": self.kelly_raw,
+            "hard_max_beats_kelly": True,
+            "open_risk_both_legs": True,
         }
 
 
@@ -112,6 +124,14 @@ def compute_position_size(
     risk = _f(open_risk)
 
     raw = float(unit_amt)
+    multipliers: List[Dict[str, Any]] = []
+    # Informational Kelly only. Never raises size. Hard maxes beat Kelly.
+    kelly_raw = None
+    if p is not None and mid_px is not None and 0.0 < mid_px < 100.0:
+        b = (100.0 - mid_px) / mid_px
+        if b > 0.0:
+            kelly_raw = round(float(p) - (1.0 - float(p)) / b, 6)
+
     if not enabled:
         stake = min(hi, max(0.0, raw))
         return SizingResult(
@@ -131,6 +151,10 @@ def compute_position_size(
             is_dual_sided=bool(is_dual_sided),
             clamped=raw > hi,
             raw_stake=round(raw, 4),
+            multipliers=multipliers,
+            reasons=["dynamic_off"],
+            kelly_raw=kelly_raw,
+            hard_max_beats_kelly=True,
         )
 
     # Dead 99¢ / 1¢ chalk — sit-sized. Cannot scale out of chalk.
@@ -152,44 +176,51 @@ def compute_position_size(
             is_dual_sided=bool(is_dual_sided),
             clamped=True,
             raw_stake=round(raw, 4),
+            multipliers=multipliers,
+            reasons=["chalk_sit"],
+            kelly_raw=kelly_raw,
+            hard_max_beats_kelly=True,
         )
 
     reasons = ["conf"]
     conf_n = max(0.0, min(1.0, conf if conf is not None else 0.55))
     conf_l_n = max(0.0, min(1.0, conf_l if conf_l is not None else 0.45))
-    raw = unit_amt * (0.55 + 0.45 * (0.6 * conf_n + 0.4 * conf_l_n))
+    conf_mult = 0.55 + 0.45 * (0.6 * conf_n + 0.4 * conf_l_n)
+    raw = unit_amt * conf_mult
+    multipliers.append({"name": "conf", "mult": round(conf_mult, 4)})
+
+    def _apply(name: str, factor: float) -> None:
+        nonlocal raw
+        raw *= float(factor)
+        multipliers.append({"name": name, "mult": round(float(factor), 4)})
+        reasons.append(name)
 
     if edge is not None:
-        raw *= 1.0 + min(0.35, max(-0.25, edge / 20.0))
-        reasons.append("edge")
+        _apply("edge", 1.0 + min(0.35, max(-0.25, edge / 20.0)))
     if p is not None:
-        raw *= 1.0 + min(0.20, abs(p - 0.5) * 0.4)
-        reasons.append("p_finish")
+        _apply("p_finish", 1.0 + min(0.20, abs(p - 0.5) * 0.4))
     if spr is not None and spr > 3.0:
-        raw *= max(0.6, 1.0 - (spr - 3.0) * 0.05)
-        reasons.append("spread")
+        _apply("spread", max(0.6, 1.0 - (spr - 3.0) * 0.05))
     if depth is not None and 0.0 < depth < 50.0:
-        raw *= 0.7
-        reasons.append("thin_book")
+        _apply("thin_book", 0.7)
     if secs is not None and secs < 180.0:
-        raw *= 0.75
-        reasons.append("late")
+        _apply("late", 0.75)
     if risk is not None and risk > hi:
-        raw *= 0.6
-        reasons.append("open_risk")
+        _apply("open_risk", 0.6)
+        reasons.append("open_risk_both_legs")
     if is_scalp:
-        raw *= 0.7
-        reasons.append("scalp")
+        _apply("scalp", 0.7)
     if is_dual_sided:
-        raw *= 0.85
-        reasons.append("dual")
+        _apply("dual", 0.85)
 
     clamped = False
     stake = raw
+    # Hard maxes beat Kelly — clamp after every multiplier, never size from kelly_raw.
     if stake > hi:
         stake = hi
         clamped = True
         reasons.append("clamp_max")
+    stake = min(float(stake), float(hi))
     if stake > 0.0 and stake < lo:
         stake = lo
         clamped = True
@@ -213,6 +244,10 @@ def compute_position_size(
         is_dual_sided=bool(is_dual_sided),
         clamped=clamped,
         raw_stake=round(float(raw), 4),
+        multipliers=multipliers,
+        reasons=reasons,
+        kelly_raw=kelly_raw,
+        hard_max_beats_kelly=True,
     )
 
 

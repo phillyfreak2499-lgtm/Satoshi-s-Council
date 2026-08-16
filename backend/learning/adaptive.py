@@ -445,18 +445,21 @@ class AdaptiveLearner:
         credit: float = 1.0,
         count_as_lock: bool = False,
         source: str | None = "path_pnl",
+        cut_sides: Any = None,
     ) -> Dict[str, Any]:
         """
-        Grade 15m seats on whether the path book made money.
-        Not vote == official settle.
+        Grade 15m seats on path P&L and risk control — not finish-direction hits.
+        LONG_* uses the with-book vs faded rule. REDUCE/FLAT credit cuts / losing books.
         """
         try:
             pnl = float(net_pnl)
         except (TypeError, ValueError):
             return {}
         held = {str(s).upper() for s in (held_sides or []) if str(s).upper() in ("UP", "DOWN")}
-        if not held and abs(pnl) <= 1e-9:
+        cut = {str(s).upper() for s in (cut_sides or []) if str(s).upper() in ("UP", "DOWN")}
+        if not held and not cut and abs(pnl) <= 1e-9:
             return {}
+        from backend.agents.base import LEAN_DOWN, LEAN_UP, MANAGE_DOWN, MANAGE_UP, normalize_direction
         # With-book seats → UP, faded seats → DOWN. Outcome is UP iff the path made money.
         synth = "UP" if pnl > 0 else "DOWN"
         remapped: Dict[str, Any] = {}
@@ -464,14 +467,30 @@ class AdaptiveLearner:
             if not isinstance(vote, dict):
                 remapped[name] = vote
                 continue
-            d = str(vote.get("direction") or "").upper()
-            if d not in ("UP", "DOWN"):
-                remapped[name] = vote
-                continue
-            if held and d not in held:
-                remapped[name] = {**vote, "direction": "DOWN"}
+            d = normalize_direction(vote.get("direction"))
+            if d in LEAN_UP:
+                side = "UP"
+                if held and side not in held:
+                    remapped[name] = {**vote, "direction": "DOWN"}
+                else:
+                    remapped[name] = {**vote, "direction": "UP"}
+            elif d in LEAN_DOWN:
+                side = "DOWN"
+                if held and side not in held:
+                    remapped[name] = {**vote, "direction": "DOWN"}
+                else:
+                    remapped[name] = {**vote, "direction": "UP"}
+            elif d in MANAGE_UP:
+                credited = ("UP" in cut) or (pnl <= 0)
+                remapped[name] = {**vote, "direction": "UP" if credited else "DOWN"}
+            elif d in MANAGE_DOWN:
+                credited = ("DOWN" in cut) or (pnl <= 0)
+                remapped[name] = {**vote, "direction": "UP" if credited else "DOWN"}
+            elif d == "FLAT_ALL":
+                credited = bool(cut) or pnl <= 0
+                remapped[name] = {**vote, "direction": "UP" if credited else "DOWN"}
             else:
-                remapped[name] = {**vote, "direction": "UP"}
+                remapped[name] = vote
         return self.learn_from_settled(
             remapped,
             synth,
@@ -1429,12 +1448,19 @@ class AdaptiveLearner:
             if getattr(s, "agent_name", None) not in NON_VOTERS
             and not getattr(s, "muted", False)
         }
+        try:
+            from backend.agents.base import lean_side
+        except Exception:
+            lean_side = None  # type: ignore
         nudge = 0.0
         bits: List[str] = []
         loser_fade: Dict[str, float] = {}
         for ap in self.active_anti_pairs():
             w, l = ap["winner"], ap["loser"]
             dw, dl = dirs.get(w), dirs.get(l)
+            if lean_side:
+                dw = lean_side(dw) or dw
+                dl = lean_side(dl) or dl
             if dw not in ("UP", "DOWN") or dl not in ("UP", "DOWN"):
                 continue
             if dw == dl:
@@ -1467,10 +1493,18 @@ class AdaptiveLearner:
         if direction not in ("UP", "DOWN"):
             return 0.0, []
 
+        try:
+            from backend.agents.base import lean_side
+        except Exception:
+            lean_side = None  # type: ignore
         agreeing = [
             s.agent_name
             for s in signals
-            if getattr(s, "direction", None) == direction
+            if (
+                (lean_side(getattr(s, "direction", None)) == direction)
+                if lean_side
+                else getattr(s, "direction", None) == direction
+            )
             and s.agent_name not in NON_VOTERS
             and not getattr(s, "muted", False)
         ]
@@ -1553,8 +1587,16 @@ class AdaptiveLearner:
                 if d in ("UP", "DOWN"):
                     held.add(d)
                 reg = reg or leg.get("regime") or leg.get("regime_key")
+            cut = set()
+            try:
+                from backend.learning.btc15m_path import cut_sides_from_path_legs
+                cut = cut_sides_from_path_legs(legs)
+            except Exception:
+                cut = set()
             if votes:
-                self.learn_from_path_pnl(votes, net, held, regime=reg, count_as_lock=False)
+                self.learn_from_path_pnl(
+                    votes, net, held, regime=reg, count_as_lock=False, cut_sides=cut
+                )
                 n += 1
         for row in rest:
             direction = str(row.get("direction") or "").upper()

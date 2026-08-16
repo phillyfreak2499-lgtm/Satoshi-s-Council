@@ -2,7 +2,7 @@
 Sub-council micro-bots — two behind each main specialist.
 """
 from __future__ import annotations
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from backend.agents.base import AgentSignal
 
@@ -654,18 +654,34 @@ def synthesize_from_subs(parent_name: str, category: str, subs: List[AgentSignal
     if not subs:
         return fallback
 
+    try:
+        from backend.agents.base import lean_side
+    except Exception:
+        lean_side = None  # type: ignore
+
+    def _sub_lean(d: Any) -> Optional[str]:
+        if lean_side:
+            return lean_side(d)
+        u = str(d or "").upper()
+        if u in ("UP", "UP_HOLD", "LONG_UP"):
+            return "UP"
+        if u in ("DOWN", "DOWN_HOLD", "LONG_DOWN"):
+            return "DOWN"
+        return None
+
     score = 0.0
     conf_sum = 0
     for s in subs:
         conf_sum += s.confidence
-        if s.direction == "UP":
+        side = _sub_lean(s.direction)
+        if side == "UP":
             score += s.confidence
-        elif s.direction == "DOWN":
+        elif side == "DOWN":
             score -= s.confidence
     avg_conf = conf_sum / len(subs)
     abs_score = abs(score)
     # Majority alignment among non-WAIT subs (supports 2+ candle pattern bots)
-    active_dirs = [s.direction for s in subs if s.direction in ("UP", "DOWN")]
+    active_dirs = [_sub_lean(s.direction) for s in subs if _sub_lean(s.direction) in ("UP", "DOWN")]
     agree = False
     if len(active_dirs) >= 2:
         up_n = active_dirs.count("UP")

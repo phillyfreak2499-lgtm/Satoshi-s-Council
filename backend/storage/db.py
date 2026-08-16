@@ -328,6 +328,29 @@ class PerformanceStore:
                 continue
             head = legs[0]
             win = float(net) > 0.0
+            up_stake = 0.0
+            down_stake = 0.0
+            edges: List[float] = []
+            for x in legs:
+                d = str(getattr(x, "direction", None) or "").upper()
+                try:
+                    st = float(getattr(x, "paper_stake", 0) or 0)
+                except (TypeError, ValueError):
+                    st = 0.0
+                if d in ("UP", "UP_HOLD", "LONG_UP"):
+                    up_stake += st
+                elif d in ("DOWN", "DOWN_HOLD", "LONG_DOWN"):
+                    down_stake += st
+                ev = getattr(x, "ev_cents", None)
+                if ev is None:
+                    blob = _json_field(getattr(x, "sizing", None))
+                    if isinstance(blob, dict):
+                        ev = blob.get("edge_cents")
+                try:
+                    if ev is not None:
+                        edges.append(float(ev))
+                except (TypeError, ValueError):
+                    pass
             windows.append(SimpleNamespace(
                 id=getattr(head, "id", None),
                 ticker=getattr(head, "ticker", None),
@@ -360,9 +383,121 @@ class PerformanceStore:
                 ev_cents=getattr(head, "ev_cents", None),
                 floor_strike=getattr(head, "floor_strike", None),
                 asset=getattr(head, "asset", "btc"),
+                dual_sided=bool(up_stake > 0 and down_stake > 0),
+                up_stake=round(up_stake, 4),
+                down_stake=round(down_stake, 4),
+                edge_cents=round(sum(edges) / len(edges), 4) if edges else None,
+                sizing=_json_field(getattr(head, "sizing", None)),
             ))
         windows.sort(key=lambda r: (r.settled_at or r.called_at or "", r.id or 0))
         return windows
+
+    @staticmethod
+    def _path_pnl_scoreboard(windows: List[Any]) -> Dict[str, Any]:
+        """Realized path P&L scoreboard. Finish-direction hit-rate is not the badge."""
+        rows = list(windows or [])
+        realized = round(sum(float(getattr(r, "paper_pnl", 0) or 0) for r in rows), 2)
+        edges = []
+        for r in rows:
+            ev = getattr(r, "edge_cents", None)
+            if ev is None:
+                ev = getattr(r, "ev_cents", None)
+            try:
+                if ev is not None:
+                    edges.append(float(ev))
+            except (TypeError, ValueError):
+                pass
+        buckets = [
+            {"lo": 0.0, "hi": 10.0, "n": 0, "wins": 0, "win_rate": None, "pnl": 0.0},
+            {"lo": 10.0, "hi": 20.0, "n": 0, "wins": 0, "win_rate": None, "pnl": 0.0},
+            {"lo": 20.0, "hi": 40.0, "n": 0, "wins": 0, "win_rate": None, "pnl": 0.0},
+        ]
+        for r in rows:
+            try:
+                stake = float(getattr(r, "paper_stake", 0) or 0)
+            except (TypeError, ValueError):
+                stake = 0.0
+            try:
+                pnl = float(getattr(r, "paper_pnl", 0) or 0)
+            except (TypeError, ValueError):
+                pnl = 0.0
+            won = bool(getattr(r, "correct", 0) == 1)
+            if stake < 10.0:
+                b = buckets[0]
+            elif stake < 20.0:
+                b = buckets[1]
+            else:
+                b = buckets[2]
+            b["n"] += 1
+            b["wins"] += 1 if won else 0
+            b["pnl"] = round(b["pnl"] + pnl, 2)
+        for b in buckets:
+            b["win_rate"] = round(100.0 * b["wins"] / b["n"], 1) if b["n"] else None
+        dual_rows = [r for r in rows if getattr(r, "dual_sided", False)]
+        single_rows = [r for r in rows if not getattr(r, "dual_sided", False)]
+
+        def _side_stats(group: List[Any]) -> Dict[str, Any]:
+            n = len(group)
+            wins = sum(1 for r in group if getattr(r, "correct", 0) == 1)
+            pnl = round(sum(float(getattr(r, "paper_pnl", 0) or 0) for r in group), 2)
+            return {
+                "n": n,
+                "wins": wins,
+                "win_rate": round(100.0 * wins / n, 1) if n else None,
+                "pnl": pnl,
+            }
+
+        return {
+            "realized_pnl": realized,
+            "avg_edge_cents": round(sum(edges) / len(edges), 2) if edges else None,
+            "n": len(rows),
+            "size_buckets": buckets,
+            "dual": _side_stats(dual_rows),
+            "single": _side_stats(single_rows),
+            "score": "realized_paper_pnl",
+        }
+
+    @staticmethod
+    def _finish_hit_secondary(windows: List[Any]) -> Dict[str, Any]:
+        """Majority-stake side vs official settle. Secondary only — not the badge."""
+        hits = 0
+        n = 0
+        for w in windows or []:
+            y = getattr(w, "y_finish", None)
+            if y not in ("UP", "DOWN"):
+                continue
+            try:
+                up_s = float(getattr(w, "up_stake", 0) or 0)
+                down_s = float(getattr(w, "down_stake", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if abs(up_s - down_s) <= 1e-9:
+                continue
+            maj = "UP" if up_s > down_s else "DOWN"
+            n += 1
+            if maj == y:
+                hits += 1
+        return {
+            "hits": hits,
+            "n": n,
+            "pct": round(100.0 * hits / n, 1) if n else None,
+            "secondary": True,
+        }
+
+    @staticmethod
+    def paper_row_status(correct: Any, actual_outcome: Any, settle_reason: Any) -> str:
+        reason = str(settle_reason or "")
+        if actual_outcome is None:
+            return "open"
+        if reason.startswith("path_"):
+            if correct == 1:
+                return "win"
+            if correct == 0:
+                return "loss"
+            return "path"
+        if correct == 1:
+            return "win"
+        return "loss"
 
     @staticmethod
     def _counting_lock_clause():
@@ -1579,7 +1714,7 @@ class PerformanceStore:
         btc_shadow_rows = [r for r in all_finish if is_btc_shadow_row(r)]
         btc_shadow_hits = sum(1 for r in btc_shadow_rows if r.correct == 1)
 
-        return {
+        payload = {
             # Lifetime primary stats
             "correct": correct,
             "total": total,
@@ -1675,6 +1810,17 @@ class PerformanceStore:
             "paper_path_scaled": bool(getattr(settings, "PAPER_PATH_SCALED", True)),
             "finish_only": True,
         }
+        want_asset = (asset or "").lower()
+        if want_asset in ("btc", "bitcoin"):
+            payload["finish_only"] = False
+            payload["score"] = "realized_paper_pnl"
+            payload["path_scoreboard"] = self._path_pnl_scoreboard(settled)
+            payload["finish_hit_rate"] = self._finish_hit_secondary(settled)
+            payload["grade_rule"] = (
+                "Win if net realized paper P&L > 0 across scale-in, scale-out, "
+                "and dual-sided holds. Finish-direction hit-rate is secondary only."
+            )
+        return payload
 
     async def get_lifetime_log(self, limit: int = 500, offset: int = 0) -> Dict[str, Any]:
         """Full paginated lifetime call log for audit / export."""
@@ -1810,7 +1956,7 @@ class PerformanceStore:
                 "stake": stake,
                 "pnl": round(float(pnl), 2) if pnl is not None else None,
                 "correct": (bool(r.correct == 1) if r.correct is not None else None),
-                "status": "open" if r.actual_outcome is None else ("win" if r.correct == 1 else "loss"),
+                "status": self.paper_row_status(r.correct, r.actual_outcome, r.settle_reason),
                 "entry_side_pct": r.open_price,
                 "path_move_pct": r.path_move_pct,
                 "confidence": r.confidence,
@@ -1920,6 +2066,26 @@ class PerformanceStore:
                     continue
                 filtered.append(c)
             calls = filtered
+        if want == "btc":
+            acc = await self.get_accuracy(asset="btc")
+            ps = acc.get("path_scoreboard") or {}
+            path_rows = [
+                c for c in calls
+                if c.get("status") in ("win", "loss", "path") and c.get("pnl") is not None
+            ]
+            return {
+                "asset": "btc",
+                "wins": acc.get("correct") or 0,
+                "losses": acc.get("wrong") or 0,
+                "pnl": ps.get("realized_pnl") if ps.get("realized_pnl") is not None else (
+                    round(sum(float(c.get("pnl") or 0) for c in path_rows), 2) if path_rows else 0.0
+                ),
+                "score": "realized_paper_pnl",
+                "finish_only": False,
+                "path_scoreboard": ps,
+                "recent": path_rows[:20],
+                "open": [c for c in calls if c.get("status") == "open"][:20],
+            }
         settled = [
             c for c in calls
             if c.get("status") in ("win", "loss") and c.get("pnl") is not None

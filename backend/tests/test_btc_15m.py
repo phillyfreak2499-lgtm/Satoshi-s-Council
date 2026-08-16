@@ -992,6 +992,14 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("Kill the One-Call", chunk)
         self.assertIn("Dynamic sizing", chunk)
         self.assertIn("Holding both sides is expected", chunk)
+        self.assertIn("Specialists keep gathering the full 15 minutes", chunk)
+        self.assertIn("LONG_UP", chunk)
+        self.assertIn("REDUCE", chunk)
+        self.assertIn("Path scoreboard", chunk)
+        self.assertIn("Sizing audit", chunk)
+        self.assertIn("Hard maxes beat Kelly", chunk)
+        self.assertIn("open_risk counts both legs", chunk)
+        self.assertIn("Do NOT wire Follower", chunk)
         self.assertIn("Paper", chunk)
         self.assertIn("Follower OFF", chunk)
         self.assertIn("Live OFF", chunk)
@@ -1030,7 +1038,9 @@ class RewriteContractTests(unittest.TestCase):
             allows_simultaneous_legs,
             is_dual_display,
             is_wait,
+            lean_side,
             side_of,
+            signed_vote,
         )
         for name in (
             "UP", "DOWN", "WAIT", "SWAP",
@@ -1044,6 +1054,10 @@ class RewriteContractTests(unittest.TestCase):
         self.assertEqual(side_of("FLAT_UP"), "UP")
         self.assertIsNone(side_of("BOTH"))
         self.assertIsNone(side_of("WAIT"))
+        self.assertEqual(lean_side("LONG_UP"), "UP")
+        self.assertIsNone(lean_side("REDUCE_UP"))
+        self.assertGreater(signed_vote("LONG_UP", 1.0), 0)
+        self.assertLess(signed_vote("REDUCE_UP", 1.0), 0)
         self.assertTrue(is_wait("SIT"))
         self.assertTrue(is_dual_display("BOTH"))
         self.assertTrue(allows_simultaneous_legs("BOTH"))
@@ -1130,6 +1144,10 @@ class RewriteContractTests(unittest.TestCase):
         blob = huge.to_dict()
         self.assertIn("stake", blob)
         self.assertIn("is_dual_sided", blob)
+        self.assertIn("multipliers", blob)
+        self.assertTrue(blob["hard_max_beats_kelly"])
+        self.assertTrue(blob["open_risk_both_legs"])
+        self.assertIsInstance(blob["reasons"], list)
 
     def test_15m_locked_call_is_live_book_not_one_lock(self):
         from backend.agents.leader import Leader
@@ -1217,6 +1235,177 @@ class RewriteContractTests(unittest.TestCase):
         self.assertEqual(settings.DYNAMIC_SIZING_MAX, 25.0)
         self.assertEqual(settings.DYNAMIC_SIZING_MIN, 5.0)
         self.assertEqual(settings.MAX_CALLS_PER_WINDOW, 1)
+
+
+class SpecialistAndScoreboardTests(unittest.TestCase):
+    def test_shape_path_signal_management_dirs(self):
+        from backend.agents.base import AgentSignal, shape_path_signal
+        md = {
+            "ticker": "KXBTC15M-26AUG101200-00",
+            "path_book": {},
+            "path_quotes": {"chalk": False},
+        }
+        up = shape_path_signal(AgentSignal("volume", "UP", 70, "tape up", "volume"), md)
+        self.assertEqual(up.direction, "LONG_UP")
+        self.assertIn("path scalp", up.reasoning)
+        self.assertNotIn("final direction", (up.reasoning or "").lower())
+        cut = shape_path_signal(
+            AgentSignal("volume", "DOWN", 70, "fade", "volume"),
+            {
+                "ticker": "KXBTC15M-26AUG101200-00",
+                "path_book": {"size_up": 10.0, "size_down": 0.0},
+                "path_quotes": {"chalk": False},
+            },
+        )
+        self.assertIn(cut.direction, ("REDUCE_UP", "FLAT_UP"))
+        chalk = shape_path_signal(
+            AgentSignal("volume", "UP", 70, "lean", "volume"),
+            {
+                "ticker": "KXBTC15M-26AUG101200-00",
+                "path_book": {"size_up": 8.0, "size_down": 8.0},
+                "path_quotes": {"chalk": True},
+            },
+        )
+        self.assertEqual(chalk.direction, "FLAT_ALL")
+        eth = shape_path_signal(
+            AgentSignal("volume", "UP", 70, "hourly lean", "volume"),
+            {"ticker": "KXETHD-26AUG1616-T2000.00", "asset": "eth"},
+        )
+        self.assertEqual(eth.direction, "UP")
+        self.assertNotIn("path scalp", eth.reasoning)
+
+    def test_color_counts_long_not_reduce(self):
+        from backend.agents.base import AgentSignal
+        from backend.agents.chair_gates import color_counts_from_signals
+        counts = color_counts_from_signals([
+            AgentSignal("a", "LONG_UP", 70, "x", "c"),
+            AgentSignal("b", "REDUCE_UP", 70, "x", "c"),
+            AgentSignal("c", "LONG_DOWN", 70, "x", "c"),
+        ])
+        self.assertEqual(counts["UP"], 1)
+        self.assertEqual(counts["DOWN"], 1)
+        self.assertEqual(counts["WAIT"], 1)
+
+    def test_open_risk_counts_both_legs(self):
+        from backend.learning.btc15m_path import PathBook, PathLeg, open_risk_both_legs
+        book = PathBook()
+        book.open_legs = [
+            PathLeg(side="UP", entry_cents=42.0, stake=12.0),
+            PathLeg(side="DOWN", entry_cents=41.0, stake=11.5),
+        ]
+        self.assertEqual(open_risk_both_legs(book), 23.5)
+        from backend.agents.leader import Leader
+        chair = Leader()
+        chair._path_books["KXBTC15M-26AUG101200-00"] = book
+        snap = chair.path_book_snapshot("KXBTC15M-26AUG101200-00")
+        self.assertEqual(snap["open_risk"], 23.5)
+        self.assertGreater(snap["size_up"], 0)
+        self.assertGreater(snap["size_down"], 0)
+
+    def test_learn_from_path_pnl_credits_reduce(self):
+        learner = AdaptiveLearner(asset="btc")
+        votes = {"volume": {"direction": "REDUCE_UP", "confidence": 70}}
+        learner.learn_from_path_pnl(votes, -5.0, {"UP"}, cut_sides={"UP"}, count_as_lock=False)
+        self.assertGreater(learner.correct.get("volume", 0), 0)
+        cold = AdaptiveLearner(asset="btc")
+        cold.learn_from_path_pnl(votes, 8.0, {"UP"}, cut_sides=set(), count_as_lock=False)
+        self.assertGreater(cold.wrong.get("volume", 0), 0)
+        long_ok = AdaptiveLearner(asset="btc")
+        long_ok.learn_from_path_pnl(
+            {"candle_btc": {"direction": "LONG_UP", "confidence": 70}},
+            4.0,
+            {"UP"},
+            count_as_lock=False,
+        )
+        self.assertGreater(long_ok.correct.get("candle_btc", 0), 0)
+
+    def test_path_scoreboard_and_journal_status(self):
+        from types import SimpleNamespace
+        from backend.storage.db import PerformanceStore
+        rows = [
+            SimpleNamespace(
+                ticker="KXBTC15M-26AUG101200-00",
+                direction="UP",
+                settle_reason="path_open",
+                paper_pnl=2.0,
+                paper_stake=10.0,
+                close_time="2026-08-10T16:00:00+00:00",
+                y_finish="DOWN",
+                ev_cents=5.0,
+                sizing=None,
+                shadow=0,
+                id=1,
+                called_at="2026-08-10T15:50:00+00:00",
+                settled_at="2026-08-10T16:00:00+00:00",
+                actual_outcome="PATH",
+                correct=None,
+                paper_side="YES",
+                entry_price=64000,
+                open_price=42.0,
+                exit_price=44.0,
+                path_move_pct=2.0,
+                win_pct=None,
+                confidence=70,
+                vetoed=0,
+                side_ask=42.0,
+                wait_reason=None,
+                would_lock_if_strict=0,
+                seat_split=None,
+                book_depth=None,
+                regime_key=None,
+                p_finish=0.6,
+                floor_strike=64000,
+                asset="btc",
+            ),
+            SimpleNamespace(
+                ticker="KXBTC15M-26AUG101200-00",
+                direction="DOWN",
+                settle_reason="path_dual",
+                paper_pnl=1.5,
+                paper_stake=10.0,
+                close_time="2026-08-10T16:00:00+00:00",
+                y_finish="DOWN",
+                ev_cents=5.0,
+                sizing=None,
+                shadow=0,
+                id=2,
+                called_at="2026-08-10T15:50:00+00:00",
+                settled_at="2026-08-10T16:00:00+00:00",
+                actual_outcome="PATH",
+                correct=None,
+                paper_side="NO",
+                entry_price=64000,
+                open_price=41.0,
+                exit_price=43.0,
+                path_move_pct=2.0,
+                win_pct=None,
+                confidence=70,
+                vetoed=0,
+                side_ask=41.0,
+                wait_reason=None,
+                would_lock_if_strict=0,
+                seat_split=None,
+                book_depth=None,
+                regime_key=None,
+                p_finish=0.6,
+                floor_strike=64000,
+                asset="btc",
+            ),
+        ]
+        windows = PerformanceStore._btc15m_windows_for_scorecard(rows)
+        self.assertEqual(len(windows), 1)
+        self.assertTrue(windows[0].dual_sided)
+        self.assertGreater(windows[0].paper_pnl, 0)
+        board = PerformanceStore._path_pnl_scoreboard(windows)
+        self.assertEqual(board["score"], "realized_paper_pnl")
+        self.assertEqual(board["dual"]["n"], 1)
+        self.assertEqual(board["single"]["n"], 0)
+        self.assertEqual(board["avg_edge_cents"], 5.0)
+        self.assertFalse(PerformanceStore.paper_row_status(None, "PATH", "path_cut") == "loss")
+        self.assertEqual(PerformanceStore.paper_row_status(None, "PATH", "path_cut"), "path")
+        self.assertEqual(PerformanceStore.paper_row_status(None, None, None), "open")
+        fin = PerformanceStore._finish_hit_secondary(windows)
+        self.assertTrue(fin["secondary"])
 
 
 if __name__ == "__main__":
