@@ -775,9 +775,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function wxTone(dir) {
     const w = String(dir || "WAIT").toUpperCase();
-    if (w === "ABOVE" || w === "BETWEEN" || w === "UP" || w === "UP_HOLD" || w === "YES") return "UP";
-    if (w === "BELOW" || w === "DOWN" || w === "DOWN_HOLD" || w === "NO") return "DOWN";
+    if (w === "ABOVE" || w === "BETWEEN" || w === "UP" || w === "UP_HOLD" || w === "YES" || w === "LONG_UP" || w === "REDUCE_UP" || w === "FLAT_UP") return "UP";
+    if (w === "BELOW" || w === "DOWN" || w === "DOWN_HOLD" || w === "NO" || w === "LONG_DOWN" || w === "REDUCE_DOWN" || w === "FLAT_DOWN") return "DOWN";
+    if (w === "BOTH" || w === "FLAT_ALL") return "BOTH";
+    if (w === "SWAP") return "SWAP";
     return "WAIT";
+  }
+  function chairLockDir(dir, lc) {
+    if (lc && lc.path_book && lc.locked) return true;
+    const d = String(dir || "").toUpperCase();
+    return d === "UP" || d === "DOWN" || d === "BOTH" || d === "LONG_UP" || d === "LONG_DOWN"
+      || d === "SWAP" || d === "UP_HOLD" || d === "DOWN_HOLD"
+      || d === "ABOVE" || d === "BELOW" || d === "BETWEEN";
   }
   function frontClockOf(board) {
     return (board && board.clock) || {};
@@ -1540,8 +1549,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       } catch (e) {}
       return d === "UP" || d === "DOWN" ? d : d.slice(0, 12);
     }
-    if (d === "UP" || d === "UP_HOLD" || d === "YES" || d === "COVER" || d === "OVER" || d === "HOME") return "UP";
-    if (d === "DOWN" || d === "DOWN_HOLD" || d === "NO" || d === "NO-COVER" || d === "UNDER" || d === "AWAY") return "DOWN";
+    if (d === "UP" || d === "UP_HOLD" || d === "LONG_UP" || d === "REDUCE_UP" || d === "FLAT_UP" || d === "YES" || d === "COVER" || d === "OVER" || d === "HOME") return "UP";
+    if (d === "DOWN" || d === "DOWN_HOLD" || d === "LONG_DOWN" || d === "REDUCE_DOWN" || d === "FLAT_DOWN" || d === "NO" || d === "NO-COVER" || d === "UNDER" || d === "AWAY") return "DOWN";
+    if (d === "BOTH" || d === "FLAT_ALL") return "BOTH";
     if (d === "ABOVE" || d === "BELOW" || d === "BETWEEN") return d;
     return d.slice(0, 10);
   }
@@ -4838,7 +4848,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const isGlitch = now < glitchUntil;
     // Dim floor specialists slightly when Chair has locked (table is the hero)
     const _flc = (state && (state.locked_call || (state.decision && state.decision.locked_call))) || null;
-    const floorLocked = !!( _flc && _flc.locked && _flc.direction && (_flc.direction === "UP" || _flc.direction === "DOWN" || _flc.direction === "BOTH") );
+    const floorLocked = !!( _flc && _flc.locked && chairLockDir(_flc.direction, _flc) );
     const floorAlpha = floorLocked ? 0.55 : 1.0;
 
     order.forEach((name, i) => {
@@ -4941,7 +4951,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
     // Prefer locked_call so portrait matches the LOCKED plaque after the single call
     const _lc = (state.locked_call || (state.decision && state.decision.locked_call) || null);
-    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN" || _lc.direction === "BOTH" || _lc.direction === "ABOVE" || _lc.direction === "BELOW" || _lc.direction === "BETWEEN") );
+    const _hasLock = !!( _lc && _lc.locked && chairLockDir(_lc.direction, _lc) );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const waitFloor = floorLikeMode() && !_hasLock;
@@ -4950,8 +4960,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lr = (floorFit ? floorFit.lrBase : Math.min(w, h) * (mode === "floor" ? 0.22 : 0.24)) * leaderPulse * (0.90 + 0.10 * chairMood.lean);
     const scL = strongColor(leaderDir);
     const eyeGlow =
-      leaderDir === "UP" || leaderDir === "UP_HOLD" || leaderDir === "COVER" || leaderDir === "OVER" || leaderDir === "HOME" ? "rgba(0, 255, 100, 0.85)" :
-      leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" || leaderDir === "NO-COVER" || leaderDir === "UNDER" || leaderDir === "AWAY" ? "rgba(255, 40, 70, 0.85)" :
+      leaderDir === "UP" || leaderDir === "UP_HOLD" || leaderDir === "LONG_UP" || leaderDir === "COVER" || leaderDir === "OVER" || leaderDir === "HOME" ? "rgba(0, 255, 100, 0.85)" :
+      leaderDir === "DOWN" || leaderDir === "DOWN_HOLD" || leaderDir === "LONG_DOWN" || leaderDir === "NO-COVER" || leaderDir === "UNDER" || leaderDir === "AWAY" ? "rgba(255, 40, 70, 0.85)" :
+      leaderDir === "BOTH" || leaderDir === "SWAP" || leaderDir === "FLAT_ALL" ? "rgba(240, 193, 74, 0.85)" :
       "rgba(220, 235, 255, 0.75)";
 
     // Soft aura matching call — loud seats glow, WAIT Chair leans back
@@ -10586,7 +10597,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#tableStage",
       title: "GOAL CONTRACT",
-      body: "1. BTC 15m is path P&L — dual-sided scalp, not one irreversible directional lock.\n2. Hold both Up and Down when combined cost is attractive. Scale / cut / flip inside the window.\n3. Score realized paper P&L, not a close-direction hit.\n4. ETH 1H stays one finish guess at the best available odds (10–90¢). WAIT preferred over low-edge noise.",
+      body: "1. BTC 15m is path P&L — dual-sided scalp, not one irreversible directional lock. Kill the One-Call protocol on this book only.\n2. Hold both Up and Down when combined cost is attractive. Scale / cut / flip either leg the full 15 minutes. Direction: LONG_UP / LONG_DOWN / REDUCE / FLAT.\n3. Score realized paper P&L, not a close-direction hit. Dynamic sizing on the paper journal.\n4. ETH 1H stays one finish guess at the best available odds (10–90¢). WAIT preferred over low-edge noise.",
     },
     {
       mode: "art",

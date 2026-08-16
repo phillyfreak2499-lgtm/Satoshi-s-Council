@@ -565,6 +565,34 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(r.actual_outcome is None for r in rows))
         self.assertEqual({r.settle_reason for r in rows}, {"path_dual"})
 
+    async def test_path_fill_logs_sizing_into_paper_journal(self):
+        tick = "KXBTC15M-26AUG101500-00"
+        sizing = {
+            "stake": 12.5,
+            "units": 1.25,
+            "reason": "conf+edge+dual",
+            "is_scalp": False,
+            "is_dual_sided": True,
+            "clamped": False,
+            "raw_stake": 12.5,
+        }
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time="2026-08-10T19:00:00+00:00",
+            fills=[
+                {"fill_kind": "dual_open", "side": "UP", "entry_cents": 42.0, "stake": 12.5, "sizing": sizing},
+                {"fill_kind": "dual_open", "side": "DOWN", "entry_cents": 42.0, "stake": 12.5, "sizing": sizing},
+            ],
+            asset="btc",
+            sizing=sizing,
+        )
+        journal = await self.store.get_paper_journal()
+        rows = [c for c in journal["calls"] if c["ticker"] == tick]
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(isinstance(c.get("sizing"), dict) for c in rows))
+        self.assertEqual(rows[0]["sizing"]["is_dual_sided"], True)
+        self.assertEqual(rows[0]["sizing"]["stake"], 12.5)
+
     async def test_15m_sit_does_not_open_one_call_ticket(self):
         """Holding UP on the path book must not fall through to max_calls=1."""
         tick = "KXBTC15M-26AUG101400-00"
@@ -961,6 +989,9 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("You cannot scale out of chalk", chunk)
         self.assertIn("ETH 1H stays one-lock", chunk)
         self.assertIn("Do not port 1H weights", chunk)
+        self.assertIn("Kill the One-Call", chunk)
+        self.assertIn("Dynamic sizing", chunk)
+        self.assertIn("Holding both sides is expected", chunk)
         self.assertIn("Paper", chunk)
         self.assertIn("Follower OFF", chunk)
         self.assertIn("Live OFF", chunk)
@@ -986,6 +1017,206 @@ class WireAndUiTests(unittest.TestCase):
         self.assertNotIn("ZT", WIRE.split("2026-08-16-btc-15m-path-pnl", 1)[1][:800])
         self.assertFalse(settings.SIDE_TABLE_LIVE)
         self.assertFalse(settings.FRONT_LIVE)
+
+
+class RewriteContractTests(unittest.TestCase):
+    def test_direction_set_and_helpers(self):
+        from backend.agents.base import (
+            ALL_DIRECTIONS,
+            Direction,
+            GOAL_CONTRACT,
+            GOAL_CONTRACT_SHORT,
+            ETH_GOAL_CONTRACT_SHORT,
+            allows_simultaneous_legs,
+            is_dual_display,
+            is_wait,
+            side_of,
+        )
+        for name in (
+            "UP", "DOWN", "WAIT", "SWAP",
+            "LONG_UP", "LONG_DOWN", "REDUCE_UP", "REDUCE_DOWN",
+            "FLAT_UP", "FLAT_DOWN", "FLAT_ALL", "BOTH",
+            "UP_HOLD", "DOWN_HOLD",
+        ):
+            self.assertIn(name, ALL_DIRECTIONS)
+        self.assertEqual(side_of("LONG_UP"), "UP")
+        self.assertEqual(side_of("REDUCE_DOWN"), "DOWN")
+        self.assertEqual(side_of("FLAT_UP"), "UP")
+        self.assertIsNone(side_of("BOTH"))
+        self.assertIsNone(side_of("WAIT"))
+        self.assertTrue(is_wait("SIT"))
+        self.assertTrue(is_dual_display("BOTH"))
+        self.assertTrue(allows_simultaneous_legs("BOTH"))
+        self.assertTrue(allows_simultaneous_legs("LONG_UP"))
+        self.assertIn("path P&L", GOAL_CONTRACT)
+        self.assertIn("Holding both sides", GOAL_CONTRACT)
+        self.assertIn("No irreversible one-call", GOAL_CONTRACT)
+        self.assertIn("path P&L", GOAL_CONTRACT_SHORT)
+        self.assertIn("10–90¢", ETH_GOAL_CONTRACT_SHORT)
+        self.assertIn("UP", getattr(Direction, "__args__", ("UP",)))
+
+    def test_doctrine_kills_one_call_for_btc_15m(self):
+        doctrine = (ROOT / "DOCTRINE.md").read_text(encoding="utf-8")
+        self.assertIn("Path P&L", doctrine)
+        self.assertIn("dead for BTC 15m", doctrine)
+        self.assertIn("ETH 1H keeps it", doctrine)
+        self.assertIn("Holding both sides", doctrine)
+        self.assertIn("full 15 minutes", doctrine)
+        self.assertIn("directional accuracy", doctrine.lower())
+        self.assertIn("LONG_UP", doctrine)
+        self.assertIn("irreversible` is false", doctrine)
+
+    def test_sizing_respects_dual_scalp_and_clamps(self):
+        from backend.risk.sizing import size_for_leader
+        base = size_for_leader(
+            edge_cents=8.0,
+            p_finish=0.62,
+            confidence=80,
+            confluence=0.6,
+            mid=42.0,
+            spread=2.0,
+            book_size=200,
+            seconds_remaining=600,
+            open_risk=0,
+            is_scalp=False,
+            is_dual_sided=False,
+        )
+        dual = size_for_leader(
+            edge_cents=8.0,
+            p_finish=0.62,
+            confidence=80,
+            confluence=0.6,
+            mid=42.0,
+            spread=2.0,
+            book_size=200,
+            seconds_remaining=600,
+            open_risk=0,
+            is_scalp=False,
+            is_dual_sided=True,
+        )
+        scalp = size_for_leader(
+            edge_cents=8.0,
+            p_finish=0.62,
+            confidence=80,
+            confluence=0.6,
+            mid=42.0,
+            spread=2.0,
+            book_size=200,
+            seconds_remaining=600,
+            open_risk=0,
+            is_scalp=True,
+            is_dual_sided=False,
+        )
+        self.assertGreater(base.stake, 0.0)
+        self.assertLess(dual.stake, base.stake)
+        self.assertLess(scalp.stake, base.stake)
+        self.assertIn("dual", dual.reason)
+        self.assertIn("scalp", scalp.reason)
+        self.assertLessEqual(base.stake, float(settings.DYNAMIC_SIZING_MAX))
+        self.assertGreaterEqual(base.stake, float(settings.DYNAMIC_SIZING_MIN))
+        chalk = size_for_leader(mid=99.0, confidence=90, is_scalp=True)
+        self.assertEqual(chalk.stake, 0.0)
+        self.assertEqual(chalk.reason, "chalk_sit")
+        huge = size_for_leader(
+            edge_cents=40.0,
+            p_finish=0.9,
+            confidence=100,
+            confluence=1.0,
+            mid=40.0,
+            hard_max=25.0,
+        )
+        self.assertLessEqual(huge.stake, 25.0)
+        self.assertTrue(huge.clamped or huge.stake <= 25.0)
+        blob = huge.to_dict()
+        self.assertIn("stake", blob)
+        self.assertIn("is_dual_sided", blob)
+
+    def test_15m_locked_call_is_live_book_not_one_lock(self):
+        from backend.agents.leader import Leader
+        from backend.learning.btc15m_path import PathBook, PathLeg
+        chair = Leader()
+        tick = "KXBTC15M-26AUG162045-45"
+        book = PathBook(ticker=tick)
+        book.open_legs = [
+            PathLeg(side="UP", entry_cents=42.0, stake=12.0),
+            PathLeg(side="DOWN", entry_cents=41.0, stake=11.5),
+        ]
+        chair._path_books[tick] = book
+        chair._locked_ticker = tick
+        chair._last_path_action = "BOTH"
+        chair._last_sizing = {"stake": 12.0, "is_dual_sided": True, "reason": "test"}
+        chair._last_path_position = book.position_state(next_action="BOTH")
+        lc = chair._build_locked_call()
+        self.assertTrue(lc["locked"])
+        self.assertFalse(lc["irreversible"])
+        self.assertTrue(lc["path_book"])
+        self.assertEqual(lc["direction"], "BOTH")
+        self.assertIn("position", lc)
+        self.assertGreater(lc["position"]["size_up"], 0)
+        self.assertGreater(lc["position"]["size_down"], 0)
+        self.assertEqual(lc["position"]["avg_up"], 42.0)
+        self.assertEqual(lc["position"]["avg_down"], 41.0)
+        self.assertTrue(lc["paper_only"])
+        self.assertNotIn("FOLLOW THIS", json.dumps(lc))
+        self.assertIn("path P&L", lc["goal"])
+
+    def test_eth_locked_call_stays_one_lock(self):
+        from backend.agents.leader import Leader
+        chair = Leader()
+        chair._set_window_lock("KXETHD-26AUG1616-T2000.00", "UP", 72, 0.8, up_pct=48.0, call_phase="entry")
+        chair._locked_p_finish = 0.66
+        lc = chair._build_locked_call()
+        self.assertTrue(lc["locked"])
+        self.assertTrue(lc["irreversible"])
+        self.assertFalse(lc.get("path_book"))
+        self.assertEqual(lc["direction"], "UP")
+        self.assertIn("10–90¢", lc["goal"])
+        self.assertNotIn("position", lc)
+
+    def test_leader_overlay_carries_position_and_sizing(self):
+        from backend.agents.leader import Leader
+        chair = Leader()
+        overlay = chair._apply_15m_path_book(
+            ticker="KXBTC15M-26AUG101200-00",
+            window_id="2026-08-10T16:00:00+00:00",
+            lean="UP",
+            conf=70,
+            score=0.4,
+            summary="lean UP",
+            side_odds=48.0,
+            up_pct=48.0,
+            p_finish=0.6,
+            ev_cents=6.0,
+            regime_features={
+                "asset": "btc",
+                "ticker": "KXBTC15M-26AUG101200-00",
+                "mins_left": 10.0,
+                "window_minutes": 15.0,
+                "yes_ask": 42.0,
+                "no_ask": 42.0,
+                "yes_bid": 40.0,
+                "yes_mid": 41.0,
+                "up_pct": 41.0,
+                "kalshi_healthy": True,
+            },
+            gate_notes=[],
+        )
+        self.assertEqual(overlay["direction"], "BOTH")
+        self.assertEqual(overlay["action"], "BOTH")
+        self.assertIn("sizing", overlay)
+        self.assertIn("stake", overlay["sizing"])
+        self.assertTrue(overlay["sizing"]["is_dual_sided"])
+        self.assertGreater(overlay["position"]["size_up"], 0)
+        self.assertGreater(overlay["position"]["size_down"], 0)
+        lc = chair._build_locked_call()
+        self.assertFalse(lc["irreversible"])
+        self.assertEqual(lc["position"]["size_up"], overlay["position"]["size_up"])
+
+    def test_config_has_dynamic_sizing_clamps(self):
+        self.assertTrue(settings.DYNAMIC_SIZING)
+        self.assertEqual(settings.DYNAMIC_SIZING_MAX, 25.0)
+        self.assertEqual(settings.DYNAMIC_SIZING_MIN, 5.0)
+        self.assertEqual(settings.MAX_CALLS_PER_WINDOW, 1)
 
 
 if __name__ == "__main__":

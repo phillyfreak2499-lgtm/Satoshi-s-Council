@@ -12,7 +12,13 @@ GOAL CONTRACT (enforced here):
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-from backend.agents.base import AgentSignal, Direction, GOAL_CONTRACT, GOAL_CONTRACT_SHORT
+from backend.agents.base import (
+    AgentSignal,
+    Direction,
+    ETH_GOAL_CONTRACT_SHORT,
+    GOAL_CONTRACT_SHORT,
+    side_of,
+)
 from backend.config import settings
 from backend.learning.adaptive import AdaptiveLearner, NON_VOTERS
 from backend.agents.roster import display_name
@@ -107,6 +113,9 @@ class Leader:
         self._locked_floor_strike: Optional[float] = None
         self._locked_close_time: Optional[str] = None
         self._path_books: Dict[str, Any] = {}
+        self._last_sizing: Optional[Dict[str, Any]] = None
+        self._last_path_action: Optional[str] = None
+        self._last_path_position: Optional[Dict[str, Any]] = None
         self.edge: Dict[str, Any] = {}
 
     def _normalize_weights(self) -> None:
@@ -145,6 +154,9 @@ class Leader:
         self._locked_floor_strike = None
         self._locked_close_time = None
         self._path_books = {}
+        self._last_sizing = None
+        self._last_path_action = None
+        self._last_path_position = None
 
     def _active_dir(self) -> Optional[str]:
         return self._final_dir or self._mid_dir or self._entry_dir or self._locked_dir
@@ -160,16 +172,12 @@ class Leader:
 
     def _set_window_lock(self, ticker: str, direction: str, conf: int, score: float,
                          up_pct: float | None = None, call_phase: str = "entry") -> None:
-        """Set the single Chair lock for this ticker (GOAL: one call max).
+        """ETH 1H only: set the single irreversible Chair lock for this ticker.
 
-        When MAX_CALLS_PER_WINDOW <= 1 the lock is irreversible for the ticker.
-        Mid/final revision slots are only opened when the config allows >1 calls.
+        BTC 15m never calls this. MAX_CALLS_PER_WINDOW <= 1 means ETH cannot flip.
         """
-        if direction in ("UP", "UP_HOLD"):
-            side = "UP"
-        elif direction in ("DOWN", "DOWN_HOLD"):
-            side = "DOWN"
-        else:
+        side = side_of(direction)
+        if side not in ("UP", "DOWN"):
             return
         if not ticker:
             return
@@ -216,7 +224,7 @@ class Leader:
     ) -> tuple:
         """Return (blocked, reason, allowed_phase).
 
-        GOAL CONTRACT rules (follower-bot ready):
+        ETH 1H one-lock rules (BTC 15m path book never reaches here):
           - Same side as active lock → always blocked (hold)
           - Opposite side → only if MAX_CALLS_PER_WINDOW > 1 and a revision slot remains
           - When MAX_CALLS_PER_WINDOW == 1 → hard irreversible lock after first entry
@@ -335,16 +343,20 @@ class Leader:
         regime_features: Dict[str, Any],
         gate_notes: List[str],
     ) -> Dict[str, Any]:
-        """Dual-sided 15m path. Not an irreversible one-call lock."""
+        """Dual-sided 15m path. Active the full window. Not an irreversible one-call lock."""
         from backend.learning.btc15m import goal_short_for, timeframe_gates
         from backend.learning.btc15m_path import (
             PathBook,
             PathInputs,
             apply_fills,
+            combined_leftover,
             decide_action,
+            equal_contract_stakes,
             is_chalk,
+            map_path_action_to_direction,
             real_yes_no_asks,
         )
+        from backend.risk.sizing import size_for_leader
 
         # Paper fill at the real ask, not mid / up_pct / side_odds.
         yes_ask, no_ask = real_yes_no_asks(
@@ -412,18 +424,92 @@ class Leader:
             allow_late_open=bool(ev_cents is not None and float(ev_cents) >= float(tf.get("late_min_ev") or 8.0)),
         )
         decision = decide_action(inp, book)
+
+        leftover = combined_leftover(yes_ask, no_ask)
+        open_risk = sum(float(getattr(leg, "stake", 0) or 0) for leg in (book.open_legs or []))
+        spread = None
+        try:
+            if regime_features.get("spread_cents") is not None:
+                spread = float(regime_features.get("spread_cents"))
+            elif yes_ask is not None and regime_features.get("yes_bid") is not None:
+                yb = float(regime_features.get("yes_bid"))
+                if yb <= 1.0:
+                    yb *= 100.0
+                spread = float(yes_ask) - yb
+        except (TypeError, ValueError):
+            spread = None
+        depth = None
+        bd = regime_features.get("book_depth")
+        if isinstance(bd, dict):
+            try:
+                depth = float(bd.get("yes_depth") or 0) + float(bd.get("no_depth") or 0)
+            except (TypeError, ValueError):
+                depth = None
+        try:
+            if depth is None and regime_features.get("kalshi_yes_size") is not None:
+                depth = float(regime_features.get("kalshi_yes_size"))
+        except (TypeError, ValueError):
+            pass
+        secs = float(mins_left) * 60.0 if mins_left is not None else None
+        is_scalp = decision.action in {"SCALE", "CUT", "FLIP"}
+        is_dual = decision.action == "DUAL" or book.held_sides() == {"UP", "DOWN"}
+        sizing = size_for_leader(
+            edge_cents=leftover if leftover is not None else ev_cents,
+            p_finish=p_finish,
+            confidence=conf,
+            confluence=abs(float(score or 0.0)),
+            mid=yes_ask,
+            spread=spread,
+            book_size=depth,
+            seconds_remaining=secs,
+            open_risk=open_risk,
+            is_scalp=is_scalp,
+            is_dual_sided=is_dual,
+        )
+        unit = float(sizing.stake or 0.0)
+        if decision.action in {"DUAL", "OPEN", "SCALE", "FLIP"} and unit <= 0.0:
+            from backend.learning.btc15m_path import PathDecision
+            decision = PathDecision("SIT", [], "size_zero")
+        elif decision.fills and unit > 0.0:
+            if decision.action == "DUAL" and yes_ask is not None and no_ask is not None:
+                up_s, down_s = equal_contract_stakes(yes_ask, no_ask, unit=unit)
+                for fill in decision.fills:
+                    if str(fill.side).upper() == "UP":
+                        fill.stake = up_s
+                    elif str(fill.side).upper() == "DOWN":
+                        fill.stake = down_s
+            else:
+                for fill in decision.fills:
+                    if str(fill.fill_kind or "") in ("open", "scale", "flip_open", "dual_open"):
+                        fill.stake = unit
+
+        sizing_d = sizing.to_dict()
         fills = [f.as_dict() for f in decision.fills]
+        for row in fills:
+            row["sizing"] = sizing_d
         if decision.fills:
             apply_fills(book, decision.fills, float(elapsed))
 
+        fill_side = None
+        for fill in decision.fills:
+            if str(fill.side or "").upper() in ("UP", "DOWN"):
+                fill_side = str(fill.side).upper()
+                if str(fill.fill_kind or "") in ("open", "scale", "flip_open", "dual_open", "cut", "flip_close"):
+                    break
+        action = map_path_action_to_direction(decision.action, book, fill_side)
         disp = book.display_direction()
+        position = book.position_state(yes_ask, no_ask, next_action=action)
+        self._last_sizing = sizing_d
+        self._last_path_action = action
+        self._last_path_position = position
+
         goal_txt = goal_short_for(
             asset=regime_features.get("asset"),
             ticker=regime_features.get("ticker") or ticker,
             series=regime_features.get("series_ticker"),
             window_minutes=regime_features.get("window_minutes"),
         )
-        if disp != "WAIT":
+        if disp != "WAIT" or book.open_legs:
             self._locked_dir = "UP" if disp == "UP" else ("DOWN" if disp == "DOWN" else None)
             self._locked_conf = int(conf)
             self._locked_score = float(score or 0.0)
@@ -436,16 +522,21 @@ class Leader:
                 self._locked_floor_strike = None
             ct = regime_features.get("close_time")
             self._locked_close_time = str(ct) if ct else None
-            firm = True
+            firm = bool(book.open_legs) or decision.action != "SIT"
+            up_sz = position.get("size_up") or 0.0
+            down_sz = position.get("size_down") or 0.0
+            pos_bit = f"Up ${up_sz:.0f} @ {position.get('avg_up') or '—'} · Down ${down_sz:.0f} @ {position.get('avg_down') or '—'}"
             if decision.action == "DUAL":
-                summary = f"PATH BOTH · dual-sided · leftover attractive · {goal_txt} · {summary}"
+                summary = f"PATH BOTH · {action} · {pos_bit} · leftover attractive · {goal_txt} · {summary}"
             elif decision.action in ("SCALE", "CUT", "FLIP", "OPEN"):
-                summary = f"PATH {decision.action} {disp} · paper P&L · {goal_txt} · {summary}"
+                summary = f"PATH {decision.action} {action} · {pos_bit} · paper P&L · {goal_txt} · {summary}"
+            elif book.open_legs:
+                summary = f"PATH book {disp} · {action} · {pos_bit} · dual-sided · paper P&L · {goal_txt} · {summary}"
             else:
-                summary = f"PATH book {disp} · dual-sided · paper P&L · {goal_txt} · {summary}"
+                summary = f"PATH {action} · paper P&L · {goal_txt} · {summary}"
         else:
             firm = False
-            if decision.reason in ("first_3m", "last_2_5m", "dead_book", "chalk"):
+            if decision.reason in ("first_3m", "last_2_5m", "dead_book", "chalk", "size_zero"):
                 summary = f"WAIT · 15m path sit ({decision.reason}) · {goal_txt} · {summary}"
             else:
                 summary = f"WAIT · 15m path · no attractive book · {goal_txt} · {summary}"
@@ -453,19 +544,27 @@ class Leader:
             summary += " · " + ", ".join(gate_notes[:2])
         return {
             "direction": disp,
+            "action": action,
             "lean": lean if lean in ("UP", "DOWN") else (disp if disp in ("UP", "DOWN") else None),
             "firm": firm,
             "conf": int(conf),
             "summary": summary,
             "path_fills": fills,
             "call_phase": decision.action.lower() if decision.action != "SIT" else None,
+            "sizing": sizing_d,
+            "position": position,
         }
 
     def _build_locked_call(self) -> Optional[Dict[str, Any]]:
-        """Clean follower-readable lock object. None when no lock is active."""
+        """Follower-readable lock. 15m = live dual-sided book. ETH = one irreversible call."""
         book = self._path_book_for(self._locked_window) or self._path_book_for(self._locked_ticker)
         if book and getattr(book, "open_legs", None):
             disp = book.display_direction()
+            action = self._last_path_action or "WAIT"
+            position = book.position_state(next_action=action)
+            if isinstance(self._last_path_position, dict):
+                position = dict(self._last_path_position)
+                position["next_action"] = action
             goal_txt = GOAL_CONTRACT_SHORT
             try:
                 from backend.learning.btc15m import goal_short_for
@@ -475,6 +574,7 @@ class Leader:
             return {
                 "locked": True,
                 "direction": disp,
+                "action": action,
                 "confidence": int(self._active_conf() or self._locked_conf or 0),
                 "entry_odds_pct": None,
                 "entry_up_pct": self._entry_up_pct,
@@ -489,7 +589,11 @@ class Leader:
                 "floor_strike": self._locked_floor_strike,
                 "close_time": self._locked_close_time,
                 "paper_only": True,
+                "follower_off": True,
+                "live_off": True,
                 "path_book": True,
+                "position": position,
+                "sizing": self._last_sizing,
                 "open_legs": [
                     {"side": leg.side, "entry_cents": leg.entry_cents, "stake": leg.stake}
                     for leg in book.open_legs
@@ -513,6 +617,12 @@ class Leader:
                 locked_at_iso = datetime.fromtimestamp(float(locked_at), tz=timezone.utc).isoformat()
             except Exception:
                 locked_at_iso = str(locked_at)
+        goal_txt = ETH_GOAL_CONTRACT_SHORT
+        try:
+            from backend.learning.btc15m import goal_short_for
+            goal_txt = goal_short_for(ticker=self._locked_ticker)
+        except Exception:
+            pass
         return {
             "locked": True,
             "direction": active,
@@ -525,15 +635,18 @@ class Leader:
                 "mid" if self._mid_dir else
                 "entry"
             ),
-            "irreversible": False if self._path_book_open() else int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1) <= 1,
+            "irreversible": int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1) <= 1,
             "ticker": self._locked_ticker,
-            "goal": GOAL_CONTRACT_SHORT,
+            "goal": goal_txt,
             "p_finish": self._locked_p_finish,
             "ev_cents": self._locked_ev_cents,
             "leftover_after_vig": self._locked_ev_cents,
             "floor_strike": self._locked_floor_strike,
             "close_time": self._locked_close_time,
             "paper_only": True,
+            "follower_off": True,
+            "live_off": True,
+            "path_book": False,
         }
 
     def _price_edge(
@@ -1422,6 +1535,9 @@ class Leader:
             summary = overlay.get("summary") or summary
             path_fills = overlay.get("path_fills") or []
             call_phase = overlay.get("call_phase")
+            path_action = overlay.get("action")
+            path_sizing = overlay.get("sizing")
+            path_position = overlay.get("position")
         elif self._entry_dir or self._active_dir():
             self._lean_pending_dir = None
             self._lean_pending_since = 0.0
@@ -1978,6 +2094,9 @@ class Leader:
             ),
             "path_fills": locals().get("path_fills") or [],
             "path_book": bool(self._path_book_open()),
+            "action": locals().get("path_action") or self._last_path_action,
+            "position": locals().get("path_position") or self._last_path_position,
+            "sizing": locals().get("path_sizing") or self._last_sizing,
             "irreversible": False if self._is_15m_btc_path(regime_features, ticker) else True,
             "entry_dir": self._entry_dir,
             "mid_dir": self._mid_dir,

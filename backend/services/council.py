@@ -237,7 +237,10 @@ class Council:
                 st = self.latest_state or {}
                 mkt = st.get("market") or {}
                 dec = (st.get("decision") or {}).get("direction")
-                hot = dec in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD", "SWAP")
+                hot = dec in (
+                    "UP", "DOWN", "UP_HOLD", "DOWN_HOLD", "SWAP",
+                    "BOTH", "LONG_UP", "LONG_DOWN", "REDUCE_UP", "REDUCE_DOWN",
+                )
                 div = mkt.get("spot_divergence_bps") or 0
                 if float(div) >= 8:
                     hot = True
@@ -1379,7 +1382,13 @@ class Council:
                 )
             except Exception as e:
                 logger.debug(f"WAIT flush skip: {e}")
-        if locked and direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+        if locked and (
+            direction in (
+                "UP", "DOWN", "UP_HOLD", "DOWN_HOLD",
+                "BOTH", "LONG_UP", "LONG_DOWN", "SWAP",
+            )
+            or bool(decision.get("path_book"))
+        ):
             self._wait_snapshot = {"ticker": ticker, "close_time": close_time, "locked": True}
             return
         tick = ticker or (f"WAIT-{self.asset}-{(close_time or '')[:16]}" if close_time else None)

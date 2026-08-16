@@ -169,15 +169,20 @@ class Settings(BaseSettings):
     HARD_ZONE_DAMPEN: float = 0.55       # extreme dampen in hard do-nothing zones
     SPREAD_MAX_CENTS: float = 6.0         # if bid-ask wider → WAIT bias
     # Paper trading journal (not real execution)
-    PAPER_STAKE_DEFAULT: float = 25.0          # $ per full UP/DOWN call
-    PAPER_STAKE_HOLD: float = 10.0             # $ per 1/4 HOLD call
+    PAPER_STAKE_DEFAULT: float = 25.0          # hard-max clamp + ETH 1H flat ticket
+    PAPER_STAKE_HOLD: float = 10.0             # $ per 1/4 HOLD call (ETH / legacy)
+    # BTC 15m Chair path book uses size_for_leader(). These are clamps, not targets.
+    DYNAMIC_SIZING: bool = True
+    DYNAMIC_SIZING_MIN: float = 5.0
+    DYNAMIC_SIZING_MAX: float = 25.0
+    DYNAMIC_SIZING_UNIT: float = 10.0
     # Path-scaled scalp P&L (not full binary settlement)
     PAPER_USE_KALSHI_PAYOFF: bool = False
     PAPER_PATH_SCALED: bool = True
     HOLD_FRACTION: float = 0.25
     MIN_CALL_REENTRY_SEC: float = 90.0
-    # Hard cap graded window_calls per ticker. Strict one-call discipline (GOAL CONTRACT).
-    # Same-side refresh does not count as a new call; opposite revisions are disabled when =1.
+    # ETH 1H only. BTC 15m path book ignores this — no irreversible one-call lock.
+    # Same-side refresh does not count as a new ETH call; opposite revisions disabled when =1.
     MAX_CALLS_PER_WINDOW: int = 1
     CALL_MAX_AGE_SEC: float = 15 * 60  # BTC 15m window (ETH uses 1H via window_minutes)
     # Only lock a directional call when the chosen side’s Kalshi mid is under this %.

@@ -1,12 +1,15 @@
-# One-Call / Best-Odds Protocol (2026-08-14)
+# Path P&L / Dual-Sided Scalp (2026-08-16)
+
+BTC 15m killed the One-Call / Best-Odds Protocol. ETH 1H kept it.
 
 Implemented:
-- MAX_CALLS_PER_WINDOW = 1 (hard, irreversible)
-- MAX_ENTRY_ODDS_PCT = 90.0 — paper lock band is 10–90¢ (never 99¢ chalk)
-- GOAL_CONTRACT in base.py + leader summaries + DOCTRINE.md
-- locked_call object on decision /api/state for follower bots
-- UI: specialist bots moved to outer FLOOR ring; table reserved for Chair + LOCKED plaque with “FOLLOW” label
-- Clear visual lock plate under Chair portrait
+- BTC 15m: no MAX_CALLS_PER_WINDOW lock, no irreversible one-call. Chair manages both doors the full 15 minutes.
+- Direction set: LONG_UP / LONG_DOWN / REDUCE_* / FLAT_* / SWAP / BOTH (UP_HOLD / DOWN_HOLD stay as UI aliases)
+- GOAL_CONTRACT in base.py is path P&L + dual-sided scalp. ETH_GOAL_CONTRACT_SHORT is the old 1H one-lock line.
+- DYNAMIC_SIZING + backend/risk/sizing.py — Chair / paper journal use size_for_leader(); config hard maxes clamp
+- locked_call on /api/state shows live dual-sided position (size, averages, unrealized, next action). irreversible=false on 15m
+- ETH 1H: MAX_CALLS_PER_WINDOW = 1, irreversible, 10–90¢, never 99¢ chalk
+- Paper only. Follower OFF. Live OFF. No new Floor chairs.
 
 See DOCTRINE.md for the full operating rules.
 

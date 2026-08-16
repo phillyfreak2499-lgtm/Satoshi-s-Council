@@ -97,15 +97,16 @@ class WindowCall(Base):
     """
     Graded Chair call (scalp path on Kalshi odds) or a closed-hour WAIT sample.
     Multiple calls allowed inside one 15m window.
-    direction: UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT
+    direction: UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT | LONG_* | BOTH (display)
+    15m BTC rows are path fills (both doors may stay open). ETH stays one-lock.
     WAIT samples are stored so the Chairs learn from hours they sat out.
-    Locks grade on official Kalshi finish. WAIT paper P&L stays $0.
+    ETH locks grade on official Kalshi finish. 15m scores realized path P&L.
     """
     __tablename__ = "window_calls"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # Non-unique: many scalp calls can share a ticker/window
     ticker: Mapped[str] = mapped_column(String(80), index=True)
-    direction: Mapped[str] = mapped_column(String(16))  # UP | DOWN | UP_HOLD | DOWN_HOLD | WAIT
+    direction: Mapped[str] = mapped_column(String(20))  # UP | DOWN | LONG_UP | WAIT | …
     confidence: Mapped[int] = mapped_column(Integer, default=0)
     entry_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     open_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # entry Kalshi side %
@@ -135,6 +136,7 @@ class WindowCall(Base):
     seat_split: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     book_depth: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     would_lock_if_strict: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sizing: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 
@@ -184,6 +186,7 @@ class PerformanceStore:
                 "ALTER TABLE window_calls ADD COLUMN seat_split TEXT",
                 "ALTER TABLE window_calls ADD COLUMN book_depth TEXT",
                 "ALTER TABLE window_calls ADD COLUMN would_lock_if_strict INTEGER",
+                "ALTER TABLE window_calls ADD COLUMN sizing TEXT",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -249,6 +252,7 @@ class PerformanceStore:
                 ),
                 p_finish=decision.get("p_finish") if decision.get("p_finish") is not None else (lc or {}).get("p_finish"),
                 ev_cents=decision.get("ev_cents") if decision.get("ev_cents") is not None else (lc or {}).get("ev_cents"),
+                sizing=decision.get("sizing") or (lc or {}).get("sizing"),
             )
             return signal_id
 
@@ -367,11 +371,15 @@ class PerformanceStore:
 
     @staticmethod
     def _grade_side(direction: str) -> Optional[str]:
-        if direction in ("UP", "UP_HOLD"):
-            return "UP"
-        if direction in ("DOWN", "DOWN_HOLD"):
-            return "DOWN"
-        return None
+        try:
+            from backend.agents.base import side_of
+            return side_of(direction)
+        except Exception:
+            if direction in ("UP", "UP_HOLD", "LONG_UP", "REDUCE_UP", "FLAT_UP"):
+                return "UP"
+            if direction in ("DOWN", "DOWN_HOLD", "LONG_DOWN", "REDUCE_DOWN", "FLAT_DOWN"):
+                return "DOWN"
+            return None
 
     @staticmethod
     def _win_pts(direction: str) -> float:
@@ -469,6 +477,7 @@ class PerformanceStore:
         floor_strike: float | None = None,
         p_finish: float | None = None,
         ev_cents: float | None = None,
+        sizing: Any = None,
     ) -> None:
         """
         Persist 15m path fills. Both sides may stay open. No one-call cap.
@@ -548,6 +557,15 @@ class PerformanceStore:
                     "flip_open": "path_flip",
                     "open": "path_open",
                 }.get(kind)
+                row_sizing = fill.get("sizing") if isinstance(fill.get("sizing"), dict) else sizing
+                sizing_txt = None
+                if isinstance(row_sizing, dict):
+                    try:
+                        sizing_txt = json.dumps(row_sizing)
+                    except Exception:
+                        sizing_txt = None
+                elif isinstance(row_sizing, str) and row_sizing.strip():
+                    sizing_txt = row_sizing
                 session.add(WindowCall(
                     ticker=ticker,
                     direction=side,
@@ -567,6 +585,7 @@ class PerformanceStore:
                     p_finish=float(p_finish) if p_finish is not None else None,
                     ev_cents=float(ev_cents) if ev_cents is not None else None,
                     settle_reason=reason,
+                    sizing=sizing_txt,
                 ))
             await session.commit()
 
@@ -1295,6 +1314,7 @@ class PerformanceStore:
             "would_lock_if_strict": bool(getattr(r, "would_lock_if_strict", 0)),
             "seat_split": _json_field(getattr(r, "seat_split", None)),
             "book_depth": _json_field(getattr(r, "book_depth", None)),
+            "sizing": _json_field(getattr(r, "sizing", None)),
         }
 
     async def get_accuracy(self, asset: str | None = None) -> Dict[str, Any]:
@@ -1795,6 +1815,7 @@ class PerformanceStore:
                 "path_move_pct": r.path_move_pct,
                 "confidence": r.confidence,
                 "asset": (r.asset or ticker_asset(r.ticker)),
+                "sizing": _json_field(getattr(r, "sizing", None)),
             })
 
         def bucket_sum(pred):

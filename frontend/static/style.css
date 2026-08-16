@@ -937,10 +937,15 @@ footer {
 }
 .dir.UP { color: var(--jade); text-shadow: 0 0 18px var(--jade), 0 0 36px rgba(57, 255, 20, 0.45); }
 .dir.DOWN { color: var(--blood); text-shadow: 0 0 18px var(--blood), 0 0 36px rgba(255, 45, 85, 0.45); }
-.dir.BOTH {
+.dir.BOTH,
+.dir.FLAT_ALL,
+.dir.LONG_UP,
+.dir.LONG_DOWN {
   color: var(--gold);
   text-shadow: 0 0 14px rgba(240, 193, 74, 0.55), 0 0 22px rgba(57, 255, 20, 0.25), 0 0 22px rgba(255, 45, 85, 0.25);
 }
+.dir.LONG_UP, .dir.REDUCE_UP, .dir.FLAT_UP { color: var(--jade); text-shadow: 0 0 18px var(--jade), 0 0 36px rgba(57, 255, 20, 0.45); }
+.dir.LONG_DOWN, .dir.REDUCE_DOWN, .dir.FLAT_DOWN { color: var(--blood); text-shadow: 0 0 18px var(--blood), 0 0 36px rgba(255, 45, 85, 0.45); }
 .dir.WAIT { color: var(--blade); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 .dir.SWAP {
   color: var(--gold);

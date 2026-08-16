@@ -393,7 +393,8 @@ def goal_short_for(
     if is_15m_window(window_minutes, ticker, series, asset) and not is_eth_1h_ticker(ticker):
         if str(asset or "btc").lower() in ("btc", "bitcoin", "btc15m", ""):
             return GOAL_SHORT_15M
-    return "GOAL · 1 window-end guess @ best odds (10–90¢)"
+    from backend.agents.base import ETH_GOAL_CONTRACT_SHORT
+    return ETH_GOAL_CONTRACT_SHORT
 
 
 def momentum_horizons_15m() -> Dict[str, Any]:

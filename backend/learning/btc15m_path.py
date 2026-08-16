@@ -298,6 +298,21 @@ class PathBook:
         want = str(side or "").upper()
         return sum(1 for leg in self.open_legs if str(leg.side).upper() == want)
 
+    def size_on(self, side: str) -> float:
+        want = str(side or "").upper()
+        return round(sum(float(leg.stake) for leg in self.open_legs if str(leg.side).upper() == want), 4)
+
+    def avg_on(self, side: str) -> Optional[float]:
+        want = str(side or "").upper()
+        legs = [leg for leg in self.open_legs if str(leg.side).upper() == want]
+        if not legs:
+            return None
+        num = sum(float(leg.entry_cents) * float(leg.stake) for leg in legs)
+        den = sum(float(leg.stake) for leg in legs)
+        if den <= 0:
+            return None
+        return round(num / den, 4)
+
     def oldest(self, side: str) -> Optional[PathLeg]:
         want = str(side or "").upper()
         for leg in self.open_legs:
@@ -305,14 +320,64 @@ class PathBook:
                 return leg
         return None
 
-    def mtm(self, yes_ask: Any, no_ask: Any) -> float:
-        total = float(self.realized_pnl)
+    def unrealized(self, yes_ask: Any, no_ask: Any) -> float:
+        total = 0.0
         for leg in self.open_legs:
             mark = mark_cents(leg.side, yes_ask, no_ask)
             if mark is None:
                 continue
             total += realized_pnl(leg.stake, leg.entry_cents, mark)
         return round(total, 4)
+
+    def mtm(self, yes_ask: Any, no_ask: Any) -> float:
+        return round(float(self.realized_pnl) + self.unrealized(yes_ask, no_ask), 4)
+
+    def position_state(
+        self,
+        yes_ask: Any = None,
+        no_ask: Any = None,
+        next_action: str = "WAIT",
+    ) -> Dict[str, Any]:
+        marked = yes_ask is not None and no_ask is not None
+        return {
+            "size_up": self.size_on("UP"),
+            "size_down": self.size_on("DOWN"),
+            "avg_up": self.avg_on("UP"),
+            "avg_down": self.avg_on("DOWN"),
+            "unrealized": self.unrealized(yes_ask, no_ask) if marked else 0.0,
+            "realized": round(float(self.realized_pnl), 4),
+            "next_action": next_action,
+            "open": bool(self.open_legs),
+            "held_sides": sorted(self.held_sides()),
+        }
+
+
+def map_path_action_to_direction(
+    action: str,
+    book: PathBook,
+    side: Optional[str] = None,
+) -> str:
+    """Chair management Direction after fills have been applied."""
+    a = str(action or "").upper()
+    s = str(side or "").upper()
+    if a == "SIT":
+        return "WAIT"
+    if a == "DUAL":
+        return "BOTH"
+    if a == "FLIP":
+        return "SWAP"
+    if a in {"OPEN", "SCALE"}:
+        return "LONG_UP" if s == "UP" else "LONG_DOWN"
+    if a == "CUT":
+        held = book.held_sides()
+        if not held:
+            return "FLAT_ALL"
+        if s == "UP":
+            return "FLAT_UP" if "UP" not in held else "REDUCE_UP"
+        if s == "DOWN":
+            return "FLAT_DOWN" if "DOWN" not in held else "REDUCE_DOWN"
+        return "FLAT_ALL"
+    return "WAIT"
 
 
 @dataclass

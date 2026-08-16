@@ -15,20 +15,95 @@ from datetime import datetime, timezone
 from backend.agents.roster import display_name, title_of
 
 
-# SWAP = big directional flip (paper signal only — not trade execution advice)
-# UP_HOLD / DOWN_HOLD = 1/4-size scalp (weaker confluence, smaller Kalshi path target)
-Direction = Literal["UP", "DOWN", "WAIT", "SWAP", "UP_HOLD", "DOWN_HOLD"]
+# Chair management set for the BTC 15m path book. Specialists still vote
+# UP / DOWN / WAIT. Holding both doors at once is expected when leftover is real.
+# UP_HOLD / DOWN_HOLD stay as legacy UI aliases. BOTH is the dual-sided display.
+Direction = Literal[
+    "UP",
+    "DOWN",
+    "WAIT",
+    "SWAP",
+    "LONG_UP",
+    "LONG_DOWN",
+    "REDUCE_UP",
+    "REDUCE_DOWN",
+    "FLAT_UP",
+    "FLAT_DOWN",
+    "FLAT_ALL",
+    "BOTH",
+    "UP_HOLD",
+    "DOWN_HOLD",
+]
 
-# Shared non-negotiable mission for every specialist + the Chair.
-GOAL_CONTRACT = (
-    "GOAL CONTRACT: Contribute to exactly ONE high-quality directional guess "
-    "on how this Kalshi 15m BTC window ends (open→close UP or DOWN) at the "
-    "best available odds. Never push when the book is outside 10–90¢ "
-    "or at the 99¢ / 1¢ wall. Once Chair locks, "
-    "support/monitor only. WAIT preferred over low-edge noise."
+LEAN_UP = frozenset({"UP", "UP_HOLD", "LONG_UP"})
+LEAN_DOWN = frozenset({"DOWN", "DOWN_HOLD", "LONG_DOWN"})
+MANAGE_UP = frozenset({"REDUCE_UP", "FLAT_UP"})
+MANAGE_DOWN = frozenset({"REDUCE_DOWN", "FLAT_DOWN"})
+DUAL_DIRS = frozenset({"BOTH", "FLAT_ALL", "SWAP"})
+WAIT_DIRS = frozenset({"WAIT", "SIT"})
+ALL_DIRECTIONS = (
+    LEAN_UP
+    | LEAN_DOWN
+    | MANAGE_UP
+    | MANAGE_DOWN
+    | DUAL_DIRS
+    | WAIT_DIRS
 )
 
-GOAL_CONTRACT_SHORT = "GOAL · 1 window-end guess @ best odds (10–90¢)"
+# BTC 15m: path P&L + dual-sided scalp. Directional accuracy is secondary.
+GOAL_CONTRACT = (
+    "GOAL CONTRACT: Scalp both Up and Down contracts inside the 15m window. "
+    "Primary edge is realized path P&L, not a finish-direction hit. "
+    "Holding both sides at once is expected and normal when UP ask + DOWN ask "
+    "leaves room after vig. The Chair may scale in, scale out, reduce, or flip "
+    "either leg independently for the full 15 minutes. No irreversible one-call "
+    "lock. Dead 99¢ book = sit. Paper fill at the real ask, not mid. "
+    "WAIT preferred over chalk or a book with no leftover."
+)
+
+GOAL_CONTRACT_SHORT = "GOAL · path P&L · dual-sided scalp (20–80¢)"
+
+# ETH 1H stays the old one-lock finish grade. Do not copy this onto BTC 15m.
+ETH_GOAL_CONTRACT = (
+    "ETH 1H GOAL: exactly ONE high-quality directional guess on how this "
+    "hourly window ends (open→close UP or DOWN) at the best available odds. "
+    "Never push outside 10–90¢ or at the 99¢ / 1¢ wall. Once Chair locks, "
+    "the call is irreversible for that window. WAIT preferred over low-edge noise."
+)
+ETH_GOAL_CONTRACT_SHORT = "GOAL · 1 window-end guess @ best odds (10–90¢)"
+
+
+def normalize_direction(direction: Any) -> str:
+    d = str(direction or "").upper().strip()
+    if d == "SIT":
+        return "WAIT"
+    return d
+
+
+def side_of(direction: Any) -> Optional[str]:
+    """Map a lean or management action to UP / DOWN. BOTH / WAIT → None."""
+    d = normalize_direction(direction)
+    if d in LEAN_UP or d in MANAGE_UP:
+        return "UP"
+    if d in LEAN_DOWN or d in MANAGE_DOWN:
+        return "DOWN"
+    return None
+
+
+def is_wait(direction: Any) -> bool:
+    return normalize_direction(direction) in WAIT_DIRS
+
+
+def is_dual_display(direction: Any) -> bool:
+    return normalize_direction(direction) in {"BOTH", "FLAT_ALL"}
+
+
+def allows_simultaneous_legs(direction: Any) -> bool:
+    """BTC 15m path book may hold Up and Down together. Never reject that."""
+    d = normalize_direction(direction)
+    if d in WAIT_DIRS:
+        return True
+    return d in DUAL_DIRS or d in MANAGE_UP or d in MANAGE_DOWN or d in {"LONG_UP", "LONG_DOWN", "UP", "DOWN", "UP_HOLD", "DOWN_HOLD"}
 
 
 @dataclass
