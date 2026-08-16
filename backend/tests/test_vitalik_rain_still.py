@@ -87,9 +87,9 @@ class VitalikRainStillTests(unittest.TestCase):
         self.assertIn("display: flex !important", gate)
         hidden = CSS.split("#passwordGate.password-gate.hidden", 1)[1][:280]
         self.assertIn("display: none !important", hidden)
-        self.assertIn(".hidden {", CSS)
-        hidden_all = CSS.split(".hidden {", 1)[1].split("}", 1)[0]
-        self.assertIn("display: none !important", hidden_all)
+        util = CSS.split("Ensure hidden utility always wins", 1)[1].split("}", 1)[0]
+        self.assertIn(".hidden {", util)
+        self.assertIn("display: none !important", util)
         self.assertNotIn("comma-flex", CSS)
         ora = JS.split("ORACLE_SEAT_MARKS", 1)[1][:400]
         self.assertIn("SIBYL", ora)
