@@ -2,10 +2,16 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-raijin-cowboy-restore",
+    "at": "2026-08-16T23:59:30-05:00",
+    "title": "Raijin Floor and Front use the cowboy still",
+    "why": "Zach Voice: Raijin Floor + Front chair + HUD use the signed cowboy mark /static/bots/raijin-chair.png (same still as /static/bots/raijin-wait.png) so the face matches the home-screen cowboys. Not /raijin-wait.jpg. One face. Labels carry WAIT/UP/DOWN. Dallas storm stays the table back. No glowing-eye canvas swaps. Other chairs stay on their signed WAIT stills. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-hunter-feeder",
     "at": "2026-08-16T23:59:00-05:00",
     "title": "Hunter keeps Ares and Oracle books live",
-    "why": "Hunter is a rotating scout feeder — not a Floor chair, not a locker, not a sixth seat. It surfaces 1–3 live candidates on Ares (sports) and Oracle (politics): exact market, both sides, odds, why it might have edge, source links/timestamps, time sensitivity. No Consensus is valid. Dead air is the failure. Chair still decides. Hits first. 20–80 after vig. Sit if EV under +3¢. Folded leftover from live #45: /static/ares-wait.png and /static/ares-chair.png now get the same short Cache-Control as the other leader stills (public, max-age=60, must-revalidate). JS uses that path; the StaticFiles mount was a 200 with no cache header. Paper. Follower OFF."
+    "why": "Hunter is a rotating scout feeder — not a Floor chair, not a locker, not a sixth seat. It surfaces 1–3 live candidates on Ares (sports) and Oracle (politics): exact market, both sides, odds, why it might have edge, source links/timestamps, time sensitivity. No Consensus is valid. Dead air is the failure. Chair still decides. Hits first. 20–80 after vig. Sit if EV under +3¢. Folded leftover from live #45: /static/ares-wait.png and /static/ares-chair.png now get the same short Cache-Control as the other leader stills (public, max-age=60, must-revalidate). JS uses that path; the StaticFiles mount was a 200 with no cache header. Zach Voice on this same PR: Raijin cowboy restore — Floor + Front + HUD use /static/bots/raijin-chair.png, not /raijin-wait.jpg. Paper. Follower OFF."
   },
   {
     "id": "2026-08-16-vitalik-rain-still",

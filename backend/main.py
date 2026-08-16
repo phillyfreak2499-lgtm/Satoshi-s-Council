@@ -1279,11 +1279,27 @@ if STATIC_DIR.is_dir():
             headers=LEADER_JPG_CACHE,
         )
 
+    @app.get("/static/bots/raijin-chair.png")
+    def _static_raijin_cowboy_chair_png() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "bots" / "raijin-chair.png",
+            media_type="image/png",
+            headers=LEADER_JPG_CACHE,
+        )
+
+    @app.get("/static/bots/raijin-wait.png")
+    def _static_raijin_cowboy_wait_png() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "bots" / "raijin-wait.png",
+            media_type="image/png",
+            headers=LEADER_JPG_CACHE,
+        )
+
     class _StaticLeaderCache(StaticFiles):
         async def get_response(self, path: str, scope):
             response = await super().get_response(path, scope)
             name = str(path).rsplit("/", 1)[-1]
-            if name in ("ares-wait.png", "ares-chair.png"):
+            if name in ("ares-wait.png", "ares-chair.png", "raijin-chair.png", "raijin-wait.png"):
                 response.headers["Cache-Control"] = LEADER_JPG_CACHE["Cache-Control"]
             return response
 

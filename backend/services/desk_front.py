@@ -104,7 +104,7 @@ CHAIR: Dict[str, str] = {
     "id": "RAIJIN",
     "name": "RAIJIN",
     "job": "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
-    "mark": "/raijin-wait.jpg",
+    "mark": "/static/bots/raijin-chair.png",
 }
 
 WX_MODES = ("SUN", "HEAT", "CLOUD", "RAIN", "WIND", "STORM")
@@ -2191,8 +2191,8 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             cap_strike=best.get("cap_strike"),
         )
         eye = weather_eye(lean)
-    # ONE FACE. Labels carry eye/lean. Face stays the signed rain still.
-    signed = "/raijin-wait.jpg"
+    # ONE FACE. Labels carry eye/lean. Face stays the signed cowboy still.
+    signed = "/static/bots/raijin-chair.png"
     marks = {
         "UP": signed,
         "DOWN": signed,

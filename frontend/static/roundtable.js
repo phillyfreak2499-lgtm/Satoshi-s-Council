@@ -338,8 +338,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Poll faster than analysis interval so UI stays live after each cycle
 
   // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
-  // Satoshi /chair-wait.jpg · Vitalik /vitalik-wait.jpg · Raijin /raijin-wait.jpg
-  // Ares /static/ares-wait.png · Oracle /oracle-wait.jpg. Room plates stay backs.
+  // Satoshi /chair-wait.jpg · Vitalik /vitalik-wait.jpg · Raijin cowboy
+  // /static/bots/raijin-chair.png (Zach Voice — matches home-screen cowboys;
+  // not the #45 /raijin-wait.jpg rain close-up). Ares /static/ares-wait.png · Oracle /oracle-wait.jpg.
+  // Room plates stay backs. Dallas storm is the Raijin table back, not the face.
   // Leader stills are cache-busted: live files were max-age=86400, so phones
   // kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
   const LEADER_JPG_V = "7b598672c9";
@@ -362,9 +364,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   raijinPortrait.onload = _chairLoaded;
   raijinPortrait.onerror = function () {
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V;
+    raijinPortrait.src = "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V;
   };
-  raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V;
+  raijinPortrait.src = "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V;
   const aresPortrait = new Image();
   aresPortrait.crossOrigin = "anonymous";
   aresPortrait.onload = _chairLoaded;
@@ -380,7 +382,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function chairPortraitFor(dir) { return chairPortrait; }
   function vitalikPortraitFor(dir) { return vitalikPortrait; }
   function raijinPortraitFor(dir) { return raijinPortrait; }
-  function raijinPortraitSrc(dir) { return "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V; }
+  function raijinPortraitSrc(dir) { return "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V; }
   function aresPortraitSrc(dir) { return "/static/ares-wait.png" + "?v=" + LEADER_JPG_V; }
   function isOracleTable(which) {
     const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
@@ -3848,7 +3850,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   raijinPortrait.onerror = function () {
     // Same signed Dallas storm cowboy. Never blank the Chair face.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    raijinPortrait.src = "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V;
+    raijinPortrait.src = "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V;
   };
   function frontLockDir() {
     const data = (typeof frontBoard !== "undefined" && frontBoard) || {};
@@ -7108,7 +7110,7 @@ function drawCandleChart() {
       id: "RAIJIN",
       name: "RAIJIN",
       job: "Weather chair. Hits count like Satoshi / Vitalik. Does not lock the 1H Chair.",
-      mark: "/raijin-wait.jpg" + "?v=" + LEADER_JPG_V,
+      mark: "/static/bots/raijin-chair.png" + "?v=" + LEADER_JPG_V,
     };
     chair.name = frontChairName(chair);
     const rows = [chair].concat(seats.length ? seats : fallback);
