@@ -1185,7 +1185,8 @@ class PathPnlTests(unittest.TestCase):
         scale = decide_action(PathInputs(6.0, 9.0, 53.0, 49.0, lean="UP", ev_cents=4.0), book)
         self.assertEqual(scale.action, "SCALE")
         cut_book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
-        cut = decide_action(PathInputs(6.0, 9.0, 42.0, 88.0, lean="UP", ev_cents=4.0), cut_book)
+        # Other door at 92¢ is outside 10–90, so flip is blocked and CUT still fires.
+        cut = decide_action(PathInputs(6.0, 9.0, 42.0, 92.0, lean="UP", ev_cents=4.0), cut_book)
         self.assertEqual(cut.action, "CUT")
         flip_book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
         flip = decide_action(PathInputs(6.0, 9.0, 40.0, 55.0, lean="DOWN", ev_cents=4.0), flip_book)
