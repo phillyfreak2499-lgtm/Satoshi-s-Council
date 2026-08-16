@@ -78,9 +78,9 @@ class DeskAccessBundleTests(unittest.TestCase):
         self.assertNotIn("PASSWORD:", DEPLOY)
         self.assertNotIn("Password:", DEPLOY)
         self.assertIn(ENV_NAME, DEPLOY)
-        self.assertIn(ENV_NAME, RENDER)
-        self.assertIn("sync: false", RENDER.split(ENV_NAME, 1)[1][:80])
-        self.assertNotRegex(RENDER, rf"{ENV_NAME}\s*\n\s*value:")
+        self.assertIn(f"- key: {ENV_NAME}", RENDER)
+        self.assertIn("sync: false", RENDER.split(f"- key: {ENV_NAME}", 1)[1][:80])
+        self.assertNotRegex(RENDER, rf"- key: {ENV_NAME}\s*\n\s*value:")
 
     def test_wire_says_env_not_bundle(self):
         why = WIRE.split("2026-08-16-btc-15m-path-pnl", 1)[1]
