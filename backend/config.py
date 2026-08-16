@@ -6,7 +6,7 @@ ETH stays hourly KXETHD until 15m BTC has n settled. Do not start ETH 15m.
 Tuned for Render ~2 CPU / 4 GB — responsive dual without thrashing.
 """
 from pydantic_settings import BaseSettings
-from typing import Dict
+from typing import Dict, List
 import os
 
 
@@ -80,6 +80,26 @@ class Settings(BaseSettings):
         "exhaust": 0.09,    # fade after 1h run + 5m flip
         "guardian": 0.02,  # health only
     }
+
+    # ---- Research mode (longer-horizon pivot) ------------------------------
+    # DOCTRINE.md and ROSTER.md call for muting the Kalshi-specific seats
+    # (odds / strike / cheap) on the primary research path. Those three carry
+    # roughly 30% of BASE_WEIGHTS, with `strike` the second-heaviest specialist
+    # in the system — zeroing them without redistributing would silently shrink
+    # every Chair score and make confluence look weaker than it actually is.
+    #
+    # When RESEARCH_MODE is on, the Leader gives each muted seat a fixed share
+    # of the remaining unmuted weight, then renormalizes, so surviving seats
+    # absorb the freed weight proportionally. No new numbers are invented.
+    #
+    # Learned weights on disk are NOT modified — the mute is applied at
+    # normalization time. Turning this back off restores the previous behavior
+    # exactly, with all learning intact.
+    RESEARCH_MODE: bool = False
+    # Share of remaining unmuted weight each muted seat keeps. 0.0 = silent.
+    RESEARCH_MUTE_SHARE: float = 0.0
+    # Seats muted when RESEARCH_MODE is on.
+    RESEARCH_MUTED_AGENTS: List[str] = ["odds", "strike", "cheap"]
 
     # Top-N ranks must agree for a FULL call; else HOLD/WAIT
     TOP_N_AGREEMENT: int = 3

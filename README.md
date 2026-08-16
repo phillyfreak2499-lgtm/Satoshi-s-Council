@@ -290,7 +290,7 @@ system:
 | Longer-horizon doctrine | ✅ `DOCTRINE.md` | ⏳ Backend loop still runs on a 15m Kalshi window cadence |
 | Decision language | ✅ Accumulate / Buy Zone / … | ⏳ API still emits UP / DOWN / WAIT |
 | Multi-coin research scope | ✅ | ⏳ BTC + ETH only, and hardcoded — adding a third coin is a refactor |
-| Kalshi-specific seats muted | ✅ Listed above | ❌ ODDS / STRIKE / CHEAP still active and carry ~30% of base weight |
+| Kalshi-specific seats muted | ✅ Listed above | ⏳ Available behind `RESEARCH_MODE` (off by default). When on, ODDS / STRIKE / CHEAP are silenced and their ~30% of base weight is redistributed proportionally. See *Research Mode* below |
 | Path P&L grading retired | ✅ | ⏳ Path grading code still present |
 | Process metrics (wait rate, rule adherence, confluence quality, horizon, process grade) | ✅ | ❌ None computed. `/api/accuracy` returns outcome hit-rate only |
 | Risk guardrails (size limits, hard drawdown) | ✅ Doctrine rule 7 | ❌ No drawdown logic exists in the backend. WARDEN is feed-health only |
@@ -301,6 +301,37 @@ system:
 
 Rows marked ❌ are the honest gaps. They are listed here rather than quietly omitted, because the
 first rule of the pivot is not claiming an edge or a capability the system has not demonstrated.
+
+---
+
+## Research Mode
+
+The doctrine calls for muting the Kalshi-specific seats (ODDS, STRIKE, CHEAP) on the primary
+research path. Those three carry roughly 30% of base weight, with `strike` the second-heaviest
+specialist in the system — zeroing them naively would shrink every Chair score and make confluence
+read as weaker than it is.
+
+`RESEARCH_MODE` does it properly. When on, each muted seat is assigned `RESEARCH_MUTE_SHARE` of the
+remaining unmuted weight, and the surviving seats absorb the freed weight proportionally on
+renormalization. No new weight values are invented, and learned weights on disk are never modified —
+the mute is re-derived at normalization time, so turning the flag off restores prior behavior
+exactly with all learning intact.
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `RESEARCH_MODE` | `false` | Master switch |
+| `RESEARCH_MUTE_SHARE` | `0.0` | Share of unmuted total each muted seat keeps. `0.0` = fully silent |
+| `RESEARCH_MUTED_AGENTS` | `["odds","strike","cheap"]` | Seats affected |
+
+Enable on Render by adding an environment variable `RESEARCH_MODE=true`, or locally in `.env`.
+
+**It is off by default deliberately.** Turning it on materially changes Chair behavior and has not
+been backtested. Recommended path: enable it, then paper-track under the new rules and compare wait
+rate and confluence quality against the current baseline before drawing conclusions. If it makes
+things worse, remove the environment variable — nothing is lost.
+
+Covered by `backend/tests/test_research_mode.py`, including a regression guard proving the mute does
+not compound across repeated normalizations.
 
 ---
 

@@ -121,7 +121,41 @@ class Leader:
         self._last_path_position: Optional[Dict[str, Any]] = None
         self.edge: Dict[str, Any] = {}
 
+    def _apply_research_mute(self) -> None:
+        """
+        Longer-horizon research mode: quiet the Kalshi-specific seats.
+
+        Each muted seat is assigned RESEARCH_MUTE_SHARE of the *unmuted* total
+        rather than being multiplied down. That matters: _normalize_weights()
+        runs after every learning update, and a multiplicative mute would
+        compound on each pass until the seat vanished regardless of the
+        configured share. Deriving the muted value from the unmuted total makes
+        this idempotent — running it ten times gives the same answer as once.
+
+        Learned weights are not persisted through this. The mute is re-derived
+        on every normalize, so clearing RESEARCH_MODE restores prior behavior
+        with learning intact.
+        """
+        if not getattr(settings, "RESEARCH_MODE", False):
+            return
+
+        muted = [k for k in getattr(settings, "RESEARCH_MUTED_AGENTS", []) if k in self.weights]
+        if not muted:
+            return
+
+        # Never mute everything — that would leave nothing to normalize against.
+        unmuted = {k: v for k, v in self.weights.items() if k not in muted}
+        if not unmuted:
+            logger.warning("RESEARCH_MODE would mute every seat — skipping mute")
+            return
+
+        share = max(0.0, float(getattr(settings, "RESEARCH_MUTE_SHARE", 0.0)))
+        unmuted_total = sum(unmuted.values()) or 1.0
+        for key in muted:
+            self.weights[key] = share * unmuted_total
+
     def _normalize_weights(self) -> None:
+        self._apply_research_mute()
         total = sum(self.weights.values()) or 1.0
         self.weights = {k: v / total for k, v in self.weights.items()}
 
