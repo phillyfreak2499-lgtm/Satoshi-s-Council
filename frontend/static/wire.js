@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-path-stake-chalk-exit",
+    "at": "2026-08-17T01:10:00-05:00",
+    "title": "Path stake honors sizing — 99¢ exit sits",
+    "why": "Zach Voice: Leftover from the 1–2 PM CT path recap. BTC 15m books printed WAIT / DOWN −$5.65 / DOWN −$8.74 / UP +$12.22 (net −$2.17). On the −$8.74 book, paper_stake was $35 while sizing said $7 — hard max missed the actual fill. Executed paper stake now honors size_for_leader / compute_position_size. Hard maxes beat Kelly AND beat clamp_min. If sizing says $7, the fill cannot be $35. Do not clamp_min a negative-edge add up to PAPER_STAKE_* / min stake — sit or size down. A 99¢ path exit is a sit, not a scale. Dead chalk books sit and cannot scale, same rail as the #50 99¢ sit, now on path exits too. Majority wash still waits for a real Chair lock. Paper. Follower OFF. ETH stays 1H one-lock."
+  },
+  {
     "id": "2026-08-16-majority-wash-lock",
     "at": "2026-08-17T00:40:00-05:00",
     "title": "WAIT Chair does not take a majority wash",

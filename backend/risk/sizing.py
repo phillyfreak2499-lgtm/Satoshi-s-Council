@@ -220,11 +220,21 @@ def compute_position_size(
         stake = hi
         clamped = True
         reasons.append("clamp_max")
-    stake = min(float(stake), float(hi))
-    if stake > 0.0 and stake < lo:
+    # Do not clamp_min a negative-edge add. Sit or size down — never pad
+    # a bad add up to PAPER_STAKE_* / DYNAMIC_SIZING_MIN.
+    negative_edge = edge is not None and edge < 0.0
+    if stake > 0.0 and stake < lo and not negative_edge:
         stake = lo
         clamped = True
         reasons.append("clamp_min")
+    elif negative_edge and stake > 0.0 and stake < lo:
+        reasons.append("no_clamp_min_neg_edge")
+    # Hard maxes beat Kelly AND beat clamp_min.
+    if stake > hi:
+        stake = hi
+        clamped = True
+        reasons.append("clamp_max")
+    stake = min(float(stake), float(hi))
 
     units = round(stake / unit_amt, 4) if unit_amt else 1.0
     return SizingResult(
@@ -254,3 +264,38 @@ def compute_position_size(
 def size_for_leader(**kwargs: Any) -> SizingResult:
     """Chair entry point. Same math as compute_position_size."""
     return compute_position_size(**kwargs)
+
+
+def honor_sized_stake(
+    fill_stake: Any,
+    sizing: Any = None,
+    hard_max: Any = None,
+) -> float:
+    """
+    Executed paper stake must honor size_for_leader / compute_position_size.
+    Hard maxes beat Kelly and beat any clamp_min. If sizing says $7, the
+    fill cannot be $35 (equal-contract expansion or PAPER_STAKE_* default).
+    """
+    from backend.config import settings
+
+    hi = _f(hard_max)
+    if hi is None:
+        hi = float(
+            getattr(settings, "DYNAMIC_SIZING_MAX", None)
+            or getattr(settings, "PAPER_STAKE_DEFAULT", 25.0)
+            or 25.0
+        )
+    sized = None
+    if isinstance(sizing, dict) and sizing.get("stake") is not None:
+        sized = _f(sizing.get("stake"))
+    elif sizing is not None:
+        sized = _f(getattr(sizing, "stake", None))
+    stake = _f(fill_stake)
+    if stake is None:
+        stake = sized
+    if stake is None or stake <= 0.0:
+        return 0.0
+    cap = float(hi)
+    if sized is not None and sized >= 0.0:
+        cap = min(cap, float(sized))
+    return round(min(float(stake), cap), 4)

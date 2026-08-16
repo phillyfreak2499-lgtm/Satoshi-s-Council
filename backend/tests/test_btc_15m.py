@@ -593,6 +593,28 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["sizing"]["is_dual_sided"], True)
         self.assertEqual(rows[0]["sizing"]["stake"], 12.5)
 
+    async def test_executed_stake_honors_sizing_not_default(self):
+        """If sizing says $7, the fill cannot be $35."""
+        tick = "KXBTC15M-26AUG101515-15"
+        sizing = {"stake": 7.0, "reason": "conf+edge+scalp", "clamped": False, "raw_stake": 7.0}
+        await self.store.record_path_fills(
+            ticker=tick,
+            close_time="2026-08-10T19:15:00+00:00",
+            fills=[
+                {"fill_kind": "scale", "side": "DOWN", "entry_cents": 48.0, "stake": 35.0, "sizing": sizing},
+            ],
+            asset="btc",
+            sizing=sizing,
+        )
+        async with self.store.Session() as session:
+            from sqlalchemy import select
+            rows = (await session.execute(
+                select(WindowCall).where(WindowCall.ticker == tick)
+            )).scalars().all()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(float(rows[0].paper_stake), 7.0)
+        self.assertLessEqual(float(rows[0].paper_stake), float(settings.DYNAMIC_SIZING_MAX))
+
     async def test_15m_sit_does_not_open_one_call_ticket(self):
         """Holding UP on the path book must not fall through to max_calls=1."""
         tick = "KXBTC15M-26AUG101400-00"
@@ -711,6 +733,47 @@ class PathBookLiveGuardTests(unittest.TestCase):
         self.assertEqual(sides["UP"]["entry_cents"], 42.0)
         self.assertEqual(sides["DOWN"]["entry_cents"], 42.0)
         self.assertNotEqual(sides["UP"]["entry_cents"], 41.0)
+        sized = float((overlay.get("sizing") or {}).get("stake") or 0)
+        self.assertGreater(sized, 0.0)
+        self.assertLessEqual(float(sides["UP"]["stake"]), sized + 1e-9)
+        self.assertLessEqual(float(sides["DOWN"]["stake"]), sized + 1e-9)
+        self.assertLessEqual(float(sides["UP"]["stake"]), float(settings.DYNAMIC_SIZING_MAX))
+        self.assertLessEqual(float(sides["DOWN"]["stake"]), float(settings.DYNAMIC_SIZING_MAX))
+
+    def test_leader_unbalanced_dual_cannot_exceed_sizing(self):
+        """equal_contract_stakes used to print $35 on the expensive door when sizing said $7."""
+        from backend.agents.leader import Leader
+        chair = Leader()
+        overlay = chair._apply_15m_path_book(
+            ticker="KXBTC15M-26AUG101245-45",
+            window_id="2026-08-10T16:45:00+00:00",
+            lean="DOWN",
+            conf=40,
+            score=0.2,
+            summary="lean DOWN",
+            side_odds=70.0,
+            up_pct=20.0,
+            p_finish=0.45,
+            ev_cents=-8.0,
+            regime_features={
+                "asset": "btc",
+                "ticker": "KXBTC15M-26AUG101245-45",
+                "mins_left": 10.0,
+                "window_minutes": 15.0,
+                "yes_ask": 20.0,
+                "no_ask": 70.0,
+                "yes_bid": 18.0,
+                "no_bid": 68.0,
+                "yes_mid": 19.0,
+                "kalshi_healthy": True,
+            },
+            gate_notes=[],
+        )
+        sized = float((overlay.get("sizing") or {}).get("stake") or 0)
+        for fill in overlay.get("path_fills") or []:
+            self.assertLessEqual(float(fill["stake"]), max(sized, 0.0) + 1e-9)
+            self.assertLessEqual(float(fill["stake"]), float(settings.DYNAMIC_SIZING_MAX))
+            self.assertNotAlmostEqual(float(fill["stake"]), 35.0)
 
     def test_leader_sits_without_real_asks(self):
         from backend.agents.leader import Leader
@@ -899,9 +962,32 @@ class PathPnlTests(unittest.TestCase):
         self.assertEqual(sit.reason, "chalk")
         held = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
         scale = decide_action(PathInputs(6.0, 9.0, 99.0, 1.0, lean="UP", ev_cents=20.0, chalk=True), held)
+        self.assertEqual(scale.action, "SIT")
+        self.assertEqual(scale.reason, "chalk")
+        self.assertEqual(scale.fills, [])
         self.assertNotEqual(scale.action, "SCALE")
         self.assertNotEqual(scale.action, "DUAL")
         self.assertNotEqual(scale.action, "OPEN")
+        self.assertNotEqual(scale.action, "CUT")
+
+    def test_99c_path_exit_sits(self):
+        """A 99¢ path exit is a sit, not a scale/cut. Same rail as the #50 99¢ sit."""
+        from backend.learning.btc15m_path import PathBook, PathInputs, PathLeg, decide_action
+        held_down = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("DOWN", 48.0, 10.0)])
+        out = decide_action(
+            PathInputs(6.0, 9.0, 99.0, 1.0, lean="DOWN", ev_cents=20.0, chalk=True),
+            held_down,
+        )
+        self.assertEqual(out.action, "SIT")
+        self.assertEqual(out.reason, "chalk")
+        self.assertEqual(out.fills, [])
+        self.assertNotEqual(out.action, "CUT")
+        self.assertNotEqual(out.action, "SCALE")
+        self.assertNotEqual(out.action, "FLIP")
+        held_up = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
+        out_up = decide_action(PathInputs(6.0, 9.0, 99.0, 1.0, lean="UP", ev_cents=20.0), held_up)
+        self.assertEqual(out_up.action, "SIT")
+        self.assertEqual(out_up.fills, [])
 
     def test_real_asks_never_use_mid(self):
         from backend.learning.btc15m_path import real_yes_no_asks
@@ -972,9 +1058,11 @@ class PathPnlTests(unittest.TestCase):
 
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
+        self.assertIn("2026-08-16-path-stake-chalk-exit", WIRE)
         self.assertIn("2026-08-16-majority-wash-lock", WIRE)
         self.assertIn("2026-08-16-herald-leftovers", WIRE)
         self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-path-stake-chalk-exit"), WIRE.find("2026-08-16-majority-wash-lock"))
         self.assertLess(WIRE.find("2026-08-16-majority-wash-lock"), WIRE.find("2026-08-16-herald-leftovers"))
         self.assertLess(WIRE.find("2026-08-16-herald-leftovers"), WIRE.find("2026-08-16-btc-15m-path-pnl"))
         self.assertLess(WIRE.find("2026-08-16-btc-15m-path-pnl"), WIRE.find("2026-08-16-btc-15m-retrain"))
@@ -1028,6 +1116,16 @@ class WireAndUiTests(unittest.TestCase):
         self.assertIn("ETH stays 1H one-lock", wash)
         self.assertNotIn("ZT", wash)
         self.assertNotIn("Phantom", wash)
+        stake = WIRE.split("2026-08-16-path-stake-chalk-exit", 1)[1][:1200]
+        self.assertIn("paper_stake was $35", stake)
+        self.assertIn("sizing said $7", stake)
+        self.assertIn("clamp_min", stake)
+        self.assertIn("99¢ path exit", stake)
+        self.assertIn("Paper", stake)
+        self.assertIn("Follower OFF", stake)
+        self.assertIn("ETH stays 1H one-lock", stake)
+        self.assertNotIn("ZT", stake)
+        self.assertNotIn("Phantom", stake)
 
     def test_ui_labels(self):
         self.assertIn('id="ledWindowLabel">15M WINDOW', HTML)
@@ -1213,6 +1311,31 @@ class RewriteContractTests(unittest.TestCase):
         self.assertTrue(blob["hard_max_beats_kelly"])
         self.assertTrue(blob["open_risk_both_legs"])
         self.assertIsInstance(blob["reasons"], list)
+
+    def test_negative_edge_add_is_not_clamp_min_d(self):
+        from backend.risk.sizing import honor_sized_stake, size_for_leader
+        out = size_for_leader(
+            edge_cents=-8.0,
+            p_finish=0.45,
+            confidence=40,
+            confluence=0.3,
+            mid=48.0,
+            spread=2.0,
+            book_size=200,
+            seconds_remaining=600,
+            open_risk=0,
+            is_scalp=True,
+            is_dual_sided=False,
+        )
+        self.assertNotIn("clamp_min", out.reasons)
+        self.assertIn("no_clamp_min_neg_edge", out.reasons)
+        self.assertLess(out.stake, float(settings.DYNAMIC_SIZING_MIN))
+        self.assertLessEqual(out.stake, out.raw_stake + 1e-9)
+        self.assertGreater(out.stake, 0.0)
+        self.assertEqual(honor_sized_stake(35.0, {"stake": 7.0}), 7.0)
+        self.assertEqual(honor_sized_stake(7.0, {"stake": 7.0}), 7.0)
+        self.assertLessEqual(honor_sized_stake(40.0, out), float(settings.DYNAMIC_SIZING_MAX))
+        self.assertLessEqual(honor_sized_stake(40.0, {"stake": 7.0}), 7.0)
 
     def test_15m_locked_call_is_live_book_not_one_lock(self):
         from backend.agents.leader import Leader
