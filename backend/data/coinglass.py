@@ -25,10 +25,12 @@ ALLOWED_INTERVALS = ("30m", "1h")  # 1H pack only. Never 1m. Never drop to 4h/8h
 CHAIR_WINDOW_INTERVALS = ("30m", "1h", "60m")
 HEATMAP_INTERVALS = ("1d", "24h", "4h", "12h", "1w", "7d", "daily")
 PLAN_WALL_REASON = "plan wall: need Startup+ for 30m/1h"
+CACHED_401_REASON = "401 · 30m/1h cached"
 # Process-wide: BTC + ETH + hist share one latch. Stop re-probing after both windows wall.
 _PLAN_WALL: Optional[str] = None
 _PLAN_WALL_LOGGED = False
 _PLAN_BLOCKED: set[str] = set()
+_HTTP_401_BLOCKED: set[str] = set()
 PATHS = (
     "/api/futures/funding-rate/history",
     "/api/futures/open-interest/history",
@@ -259,28 +261,33 @@ def reset_plan_wall() -> None:
     _PLAN_WALL = None
     _PLAN_WALL_LOGGED = False
     _PLAN_BLOCKED.clear()
+    _HTTP_401_BLOCKED.clear()
 
 
 def plan_wall_latched() -> Optional[str]:
     return _PLAN_WALL
 
 
-def latch_plan_wall() -> str:
-    """Both 30m and 1h hit the Hobbyist wall. Stop HTTP. Do not invent bars."""
+def latch_plan_wall(reason: Optional[str] = None) -> str:
+    """Both 30m and 1h hit the Hobbyist wall or 401. Stop HTTP. Do not invent bars."""
     global _PLAN_WALL
     for iv in ALLOWED_INTERVALS:
         _PLAN_BLOCKED.add(iv)
-    _PLAN_WALL = PLAN_WALL_REASON
+    _PLAN_WALL = reason or PLAN_WALL_REASON
     return _PLAN_WALL
 
 
-def note_plan_interval(interval: str) -> Optional[str]:
-    """Remember a plan/upgrade miss. Latch only after both live windows wall."""
+def note_plan_interval(interval: str, http_401: bool = False) -> Optional[str]:
+    """Remember a plan/upgrade/401 miss. Latch only after both live windows wall."""
     iv = str(interval or "").strip().lower()
     if iv not in ALLOWED_INTERVALS:
         return _PLAN_WALL
     _PLAN_BLOCKED.add(iv)
+    if http_401:
+        _HTTP_401_BLOCKED.add(iv)
     if all(x in _PLAN_BLOCKED for x in ALLOWED_INTERVALS):
+        if _HTTP_401_BLOCKED:
+            return latch_plan_wall(CACHED_401_REASON)
         return latch_plan_wall()
     return _PLAN_WALL
 
@@ -311,9 +318,15 @@ def apply_coinglass_health(health: Dict[str, Any], cg: Any) -> Dict[str, Any]:
         _PLAN_WALL
         or snap.get("plan_wall")
         or "plan wall" in reason.lower()
+        or "401" in reason.lower()
     ):
         out["coinglass"] = False
-        out["coinglass_reason"] = PLAN_WALL_REASON
+        if _PLAN_WALL:
+            out["coinglass_reason"] = _PLAN_WALL
+        elif "401" in reason.lower() and "plan wall" not in reason.lower():
+            out["coinglass_reason"] = reason or CACHED_401_REASON
+        else:
+            out["coinglass_reason"] = PLAN_WALL_REASON
         return out
     ok = chair_window_ok(snap)
     if not coinglass_hud_ok(ok, reason):
@@ -325,6 +338,45 @@ def apply_coinglass_health(health: Dict[str, Any], cg: Any) -> Dict[str, Any]:
     out["coinglass"] = True
     out["coinglass_reason"] = reason or None
     return out
+
+
+def glass_seats_must_wait(market_data: Any = None) -> bool:
+    """
+    CARRY/CHAIN/CASCADE sit WAIT while Glass is dark.
+    401 / plan wall / 4h / BTC 15m / missing chair window — never Binance-as-live.
+    """
+    md = market_data if isinstance(market_data, dict) else {}
+    try:
+        from backend.learning.btc15m import coinglass_allowed_on_book
+        if not coinglass_allowed_on_book(
+            ticker=md.get("ticker") or md.get("kalshi_ticker") or md.get("market_ticker"),
+            series=md.get("series_ticker"),
+            window_minutes=md.get("window_minutes"),
+            asset=md.get("asset"),
+        ):
+            return True
+    except Exception:
+        pass
+    if plan_wall_latched():
+        return True
+    health = md.get("health") if isinstance(md.get("health"), dict) else {}
+    if health.get("coinglass") is False:
+        return True
+    cg = md.get("coinglass") if isinstance(md.get("coinglass"), dict) else {}
+    if cg.get("plan_wall") or cg.get("daily_heatmap"):
+        return True
+    reason = str(health.get("coinglass_reason") or cg.get("reason") or "")
+    low = reason.lower()
+    if "401" in low or "plan wall" in low or "upgrade" in low:
+        return True
+    iv = str(cg.get("interval") or md.get("cg_interval") or "").strip().lower()
+    if iv in HEATMAP_INTERVALS:
+        return True
+    if cg and not chair_window_ok(cg) and (
+        cg.get("healthy") is False or bool(cg.get("reason"))
+    ):
+        return True
+    return False
 
 
 def live_interval_order(cached_ok: Optional[str] = None) -> List[str]:
@@ -410,18 +462,19 @@ class CoinGlassClient:
 
     def _mark_plan_wall(self) -> None:
         global _PLAN_WALL_LOGGED
-        latch_plan_wall()
+        if not self._wall():
+            latch_plan_wall()
         if _PLAN_WALL_LOGGED or self._plan_wall_logged:
             return
         _PLAN_WALL_LOGGED = True
         self._plan_wall_logged = True
         logger.warning(
-            "CoinGlass plan wall — " + PLAN_WALL_REASON
-            + " · stop re-probing 30m/1h · Binance futures stay · no 4h heatmap into 1H locks"
+            "CoinGlass plan wall — " + (self._wall() or PLAN_WALL_REASON)
+            + " · stop re-probing 30m/1h · CARRY/CHAIN/CASCADE sit WAIT · no 4h heatmap into 1H locks"
         )
 
-    def _note_plan_interval(self, interval: str) -> None:
-        if note_plan_interval(interval):
+    def _note_plan_interval(self, interval: str, *, http_401: bool = False) -> None:
+        if note_plan_interval(interval, http_401=http_401):
             self._mark_plan_wall()
 
     def _reason_for_health(self, snap: Dict[str, Any]) -> str:
@@ -445,7 +498,7 @@ class CoinGlassClient:
         if self._cycle_misses:
             parts = [self._format_miss(m) for m in self._cycle_misses]
             logger.warning(
-                "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE keep last/Binance "
+                "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE sit WAIT "
                 + " || ".join(parts)
             )
             return
@@ -453,7 +506,7 @@ class CoinGlassClient:
             return
         reason = snap.get("reason") or "no usable funding/OI/liq this cycle"
         logger.warning(
-            "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE keep last/Binance "
+            "CoinGlass miss this cycle — CARRY/CHAIN/CASCADE sit WAIT "
             f"symbol={self.symbol} exchange={self.exchange} {reason}"
         )
 
@@ -516,6 +569,7 @@ class CoinGlassClient:
             miss.plan_interval = is_plan_wall_body(miss.cg_code, miss.cg_msg, r.status_code)
             if r.status_code in (401, 403):
                 miss.auth_fail = True
+                miss.plan_interval = True
                 miss.reason = f"auth failed ({r.status_code})"
                 self._note_miss(miss)
                 return miss
@@ -559,7 +613,10 @@ class CoinGlassClient:
             path, interval, limit=limit, start_time=start_time, end_time=end_time
         )
         if got.plan_interval:
-            self._note_plan_interval(interval)
+            self._note_plan_interval(
+                interval,
+                http_401=bool(got.auth_fail and got.http_status in (401, 403)),
+            )
         return list(got.rows)
 
     async def _rows_with_interval(self, path: str) -> Tuple[List[Dict[str, Any]], str]:
@@ -576,9 +633,10 @@ class CoinGlassClient:
                 self._interval_ok = iv
                 return got.rows, iv
             if got.plan_interval:
-                self._note_plan_interval(iv)
-            if got.auth_fail:
-                return [], iv
+                self._note_plan_interval(
+                    iv,
+                    http_401=bool(got.auth_fail and got.http_status in (401, 403)),
+                )
             if self._wall():
                 return [], iv
         if all(interval_plan_blocked(x) for x in ALLOWED_INTERVALS):
