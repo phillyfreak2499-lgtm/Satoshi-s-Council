@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-side-parked",
+    "at": "2026-08-16T02:40:00-05:00",
+    "title": "Side Table leaves the desk",
+    "why": "The 15m paper arcade is parked. Side is not a nav tab and not on the Floor. Oracle’s room plate is a later chair-room behind ORACLE — not this Side Table. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-ora-kit",
     "at": "2026-08-16T02:30:00-05:00",
     "title": "ORA gold tab + Oracle room plate",

@@ -100,6 +100,10 @@ class SideMarkupTests(unittest.TestCase):
         self.assertIn("Does not lock the 1H Chair", HTML)
         self.assertLess(HTML.find('id="tabSchool"'), HTML.find('id="tabSide"'))
         self.assertLess(HTML.find('id="tabSide"'), HTML.find('id="tabCharts"'))
+        self.assertIn("hidden", HTML.split('id="tabSide"', 1)[1][:80])
+        self.assertIn('document.body.classList.add("side-tab-off")', JS)
+        self.assertIn("body.side-tab-off #tabSide", CSS)
+        self.assertNotIn("/oracle-room.jpg", HTML.split('id="sideView"', 1)[1][:2000])
 
     def test_not_behind_follower_passwords(self):
         self.assertNotIn("tabFollower", HTML)

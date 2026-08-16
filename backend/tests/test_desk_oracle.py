@@ -106,14 +106,15 @@ class OraGateStillCleanTests(unittest.TestCase):
 class OraWireTests(unittest.TestCase):
     def test_newest_is_ora_kit(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-ora-kit")
-        self.assertIn("ORA", rows[0]["why"])
-        self.assertIn("GLD", rows[0]["why"])
-        self.assertIn("SIBYL", rows[0]["why"])
-        self.assertIn("Paper", rows[0]["why"])
-        self.assertIn("Follower OFF", rows[0]["why"])
-        self.assertNotIn("ZT", rows[0]["title"])
-        self.assertNotIn("ZT", rows[0]["why"])
+        self.assertEqual(rows[1]["id"], "2026-08-16-ora-kit")
+        ora = next(r for r in rows if r["id"] == "2026-08-16-ora-kit")
+        self.assertIn("ORA", ora["why"])
+        self.assertIn("GLD", ora["why"])
+        self.assertIn("SIBYL", ora["why"])
+        self.assertIn("Paper", ora["why"])
+        self.assertIn("Follower OFF", ora["why"])
+        self.assertNotIn("ZT", ora["title"])
+        self.assertNotIn("ZT", ora["why"])
         ats = [r["at"] for r in rows]
         self.assertEqual(ats, sorted(ats, reverse=True))
 

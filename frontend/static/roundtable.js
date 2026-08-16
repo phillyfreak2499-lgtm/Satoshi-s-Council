@@ -14,6 +14,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   const ctx = canvas ? canvas.getContext("2d") : null;
   try { document.body.classList.add("front-tab-off"); } catch (e) {}
+  try { document.body.classList.add("side-tab-off"); } catch (e) {}
 
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
   const ADMIN_PASSWORD = "5152622439";
@@ -9719,6 +9720,9 @@ function drawCandleChart() {
     if (next === "front" && document.body.classList.contains("front-tab-off")) {
       next = "art";
     }
+    if (next === "side" && document.body.classList.contains("side-tab-off")) {
+      next = "art";
+    }
     try {
       if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
         stopSeatStorm("desk");
@@ -11838,7 +11842,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "charts", "settings"];
+    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 

@@ -106,6 +106,22 @@ class FrontTabGoneTests(unittest.TestCase):
         self.assertIn('id="frontView"', HTML)
 
 
+class SideTabParkedTests(unittest.TestCase):
+    def test_side_tab_hidden_from_nav_and_desk(self):
+        tabs = HTML.split('id="modeTabs"', 1)[1].split("modeTabsNext", 1)[0]
+        self.assertIn('id="tabSide"', tabs)
+        self.assertIn("hidden", HTML.split('id="tabSide"', 1)[1][:80])
+        self.assertIn('document.body.classList.add("side-tab-off")', JS)
+        self.assertIn("#app > header #tabSide", CSS)
+        self.assertIn("body.side-tab-off #sideView", CSS)
+        cycle = JS.split("window.__deskModeCycle", 1)[1][:400]
+        self.assertNotIn('"side"', cycle)
+        self.assertIn('id="sideView"', HTML)
+        self.assertIn("SIDE TABLE", HTML)
+        self.assertNotIn("/oracle-room.jpg", HTML.split('id="sideView"', 1)[1][:2000])
+        self.assertIn('next === "side" && document.body.classList.contains("side-tab-off")', JS)
+
+
 class FiveLeadersAndClocksTests(unittest.TestCase):
     def test_five_floor_leaders_including_oracle(self):
         keys = JS.split("const FLOOR_CHAIR_KEYS", 1)[1][:240]
@@ -161,13 +177,13 @@ class PhoneBackTests(unittest.TestCase):
 class WireNewestTests(unittest.TestCase):
     def test_notes_newest_first(self):
         rows = _wire_rows()
-        self.assertEqual(rows[0]["id"], "2026-08-16-ora-kit")
+        self.assertEqual(rows[0]["id"], "2026-08-16-side-parked")
         ats = [r["at"] for r in rows]
         self.assertEqual(ats, sorted(ats, reverse=True))
         blob = WIRE_JS
         self.assertIn("Seal the pact first.", blob)
         self.assertNotIn("Check the pact first.", blob)
-        self.assertNotIn("ZT", blob.split("2026-08-16-ora-kit", 1)[1].split("2026-08-16-desk-unlock-stay", 1)[0])
+        self.assertNotIn("ZT", blob.split("2026-08-16-side-parked", 1)[1].split("2026-08-16-desk-unlock-stay", 1)[0])
 
 
 if __name__ == "__main__":
