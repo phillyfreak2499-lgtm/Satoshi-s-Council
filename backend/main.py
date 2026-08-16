@@ -467,6 +467,14 @@ async def api_ats():
 
     return await desk_ats.build_board()
 
+
+@app.get("/api/oracle")
+async def api_oracle():
+    """ORACLE — CRT chair. Paper lock when the four agree. Follower OFF. No Live."""
+    from backend.services import desk_oracle
+
+    return await desk_oracle.build_board()
+
 @app.delete("/api/paper/{trade_id}")
 async def paper_delete(trade_id: int):
     ok = await council.store.delete_manual_trade(trade_id)

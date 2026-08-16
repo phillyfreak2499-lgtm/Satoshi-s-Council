@@ -63,7 +63,6 @@ class PunchyCallCopyTests(unittest.TestCase):
         fn = JS.split("function liveCallCard", 1)[1].split("function chairWhyLineText", 1)[0]
         self.assertIn("LOCK ", fn)
         self.assertIn("WAIT", fn)
-        self.assertIn("WATCH", fn)
         self.assertNotIn("P(finish)", fn)
         self.assertNotIn("book has size", fn)
         self.assertNotIn("regime ", fn)
@@ -122,6 +121,7 @@ class PunchyCallCopyTests(unittest.TestCase):
         self.assertIn("playSampleSfx(\"/static/sfx/lose-trombone.mp3\"", JS)
 
     def test_wire_note(self):
+        self.assertIn("2026-08-16-oracle-can-call", WIRE_JS)
         self.assertIn("2026-08-16-table-room-plates", WIRE_JS)
         self.assertIn("2026-08-16-vitalik-closeup", WIRE_JS)
         self.assertIn("2026-08-16-one-face", WIRE_JS)
@@ -135,6 +135,9 @@ class PunchyCallCopyTests(unittest.TestCase):
         self.assertIn("2026-08-16-chair-table-call", WIRE_JS)
         self.assertIn("2026-08-16-current-calls", WIRE_JS)
         self.assertIn("Current Calls", WIRE_JS)
+        self.assertLess(WIRE_JS.find("2026-08-16-oracle-can-call"), WIRE_JS.find("2026-08-16-gold-floor-mark"))
+        self.assertLess(WIRE_JS.find("2026-08-16-gold-floor-mark"), WIRE_JS.find("2026-08-16-table-room-plates"))
+        self.assertLess(WIRE_JS.find("2026-08-16-oracle-can-call"), WIRE_JS.find("2026-08-16-table-room-plates"))
         self.assertLess(WIRE_JS.find("2026-08-16-table-room-plates"), WIRE_JS.find("2026-08-16-vitalik-closeup"))
         self.assertLess(WIRE_JS.find("2026-08-16-vitalik-closeup"), WIRE_JS.find("2026-08-16-one-face"))
         self.assertLess(WIRE_JS.find("2026-08-16-one-face"), WIRE_JS.find("2026-08-16-header-still"))

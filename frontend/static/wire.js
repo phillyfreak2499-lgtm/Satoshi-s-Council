@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-oracle-can-call",
+    "at": "2026-08-16T06:35:00-05:00",
+    "title": "ORACLE can paper LOCK",
+    "why": "SIBYL / PIT / VEIL / MARBLE feed the chair with CRT seat marks. Paper LOCK when they agree and the book is playable — 20–80 after vig, EV at ask, dead-book sit. Sit when they split. One WAIT face. No WATCH-only. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-gold-floor-mark",
     "at": "2026-08-16T06:20:00-05:00",
     "title": "Gold floor mark is the site logo",
