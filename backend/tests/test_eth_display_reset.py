@@ -70,6 +70,9 @@ class EthDisplayResetContractTests(unittest.TestCase):
         self.assertIn("BTC 5–3 stays", note)
         self.assertIn("eth_shadow", note)
         self.assertIn("Bot memory", note)
+        self.assertIn("/oracle-wait.jpg", note)
+        self.assertIn("laurel", note)
+        self.assertIn("split-light man", note)
         self.assertNotIn("ZT", note)
 
 

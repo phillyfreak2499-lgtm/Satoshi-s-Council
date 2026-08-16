@@ -340,11 +340,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
   // Satoshi /chair-wait.jpg · Vitalik /vitalik-wait.jpg · Raijin cowboy
   // /static/bots/raijin-chair.png (Zach Voice — matches home-screen cowboys;
-  // not the #45 /raijin-wait.jpg rain close-up). Ares /static/ares-wait.png · Oracle /oracle-wait.jpg.
-  // Room plates stay backs. Dallas storm is the Raijin table back, not the face.
+  // not the #45 /raijin-wait.jpg rain close-up). Ares /static/ares-wait.png · Oracle /oracle-wait.jpg
+  // (laurel close-up — not the old split-light man). Room plates stay backs.
+  // Dallas storm is the Raijin table back, not the face.
   // Leader stills are cache-busted: live files were max-age=86400, so phones
   // kept the pre-#44 helmet/glow. Hash query + short max-age on the route.
-  const LEADER_JPG_V = "7b598672c9";
+  const LEADER_JPG_V = "79e1722716";
   let chairImgsReady = 0;
   function _chairLoaded() {
     chairImgsReady += 1;
