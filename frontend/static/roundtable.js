@@ -13,6 +13,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     console.error("roundtable canvas missing");
   }
   const ctx = canvas ? canvas.getContext("2d") : null;
+  try { document.body.classList.add("front-tab-off"); } catch (e) {}
+  try { document.body.classList.add("side-tab-off"); } catch (e) {}
 
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
   const ADMIN_PASSWORD = "5152622439";
@@ -75,6 +77,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {}
     try {
       if (typeof window.loadHealthStrip === "function") window.loadHealthStrip();
+    } catch (e) {}
+    try {
+      if (typeof window.loadFrontTable === "function") window.loadFrontTable();
     } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
@@ -313,6 +318,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const candleCtx = candleCanvas ? candleCanvas.getContext("2d") : null;
   const candlePriceTag = document.getElementById("candlePriceTag");
   const soundToggle = document.getElementById("soundToggle");
+  const stillToggle = document.getElementById("stillToggle");
   const chartsView = document.getElementById("chartsView");
   const mainTable = document.getElementById("mainTable");
   const modeTabs = document.querySelectorAll(".mode-tab");
@@ -330,73 +336,48 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       : "http://127.0.0.1:8000");
   // Poll faster than analysis interval so UI stays live after each cycle
 
-  // Chair portrait (eye color by direction) — armored knight
-  const chairImages = {
-    UP: new Image(),
-    DOWN: new Image(),
-    WAIT: new Image(),
-  };
+  // ONE FACE PER CHAIR. Labels carry UP/DOWN/WAIT/LOCK. Faces stay on the WAIT cut.
   let chairImgsReady = 0;
   function _chairLoaded() {
     chairImgsReady += 1;
-    // force a frame so portrait appears as soon as assets arrive
   }
-  ["UP", "DOWN", "WAIT"].forEach(k => {
-    chairImages[k].crossOrigin = "anonymous";
-    chairImages[k].onload = _chairLoaded;
-    chairImages[k].onerror = () => console.warn("Chair image failed:", k);
-  });
-  chairImages.UP.src = "/chair-up.jpg";
-  chairImages.DOWN.src = "/chair-down.jpg";
-  chairImages.WAIT.src = "/chair-wait.jpg";
-
-  const vitalikImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
-  ["UP", "DOWN", "WAIT"].forEach(k => {
-    vitalikImages[k].crossOrigin = "anonymous";
-    vitalikImages[k].onload = _chairLoaded;
-    vitalikImages[k].onerror = () => console.warn("Vitalik image failed:", k);
-  });
-  vitalikImages.UP.src = "/vitalik-up.jpg";
-  vitalikImages.DOWN.src = "/vitalik-down.jpg";
-  vitalikImages.WAIT.src = "/vitalik-wait.jpg";
-  function vitalikPortraitFor(dir) {
-    const d = String(dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return vitalikImages.UP;
-    if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN;
-    return vitalikImages.WAIT;
-  }
-  const raijinImages = { UP: new Image(), DOWN: new Image(), WAIT: new Image() };
-  ["UP", "DOWN", "WAIT"].forEach(k => {
-    raijinImages[k].crossOrigin = "anonymous";
-    raijinImages[k].onload = _chairLoaded;
-    raijinImages[k].onerror = () => console.warn("Raijin image failed:", k);
-  });
-  raijinImages.UP.src = "/raijin-up.jpg";
-  raijinImages.DOWN.src = "/raijin-down.jpg";
-  raijinImages.WAIT.src = "/raijin-wait.jpg";
-  raijinImages.UP_HOLD = raijinImages.UP;
-  raijinImages.DOWN_HOLD = raijinImages.DOWN;
-  function raijinPortraitFor(dir) {
-    const d = String(dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return raijinImages.UP;
-    if (d === "DOWN" || d === "DOWN_HOLD") return raijinImages.DOWN;
-    return raijinImages.WAIT;
-  }
-  function raijinPortraitSrc(dir) {
-    const d = String(dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return "/raijin-up.jpg";
-    if (d === "DOWN" || d === "DOWN_HOLD") return "/raijin-down.jpg";
-    return "/raijin-wait.jpg";
-  }
-  chairImages.UP_HOLD = chairImages.UP;
-  chairImages.DOWN_HOLD = chairImages.DOWN;
-  chairImages.SWAP = chairImages.WAIT;
-
-  function chairPortraitFor(dir) {
-    const d = (dir || "WAIT").toUpperCase();
-    if (d === "UP" || d === "UP_HOLD") return chairImages.UP;
-    if (d === "DOWN" || d === "DOWN_HOLD") return chairImages.DOWN;
-    return chairImages.WAIT;
+  const chairPortrait = new Image();
+  chairPortrait.crossOrigin = "anonymous";
+  chairPortrait.onload = _chairLoaded;
+  chairPortrait.onerror = () => console.warn("Chair image failed: WAIT");
+  chairPortrait.src = "/chair-wait.jpg";
+  const vitalikPortrait = new Image();
+  vitalikPortrait.crossOrigin = "anonymous";
+  vitalikPortrait.onload = _chairLoaded;
+  vitalikPortrait.onerror = () => console.warn("Vitalik image failed: WAIT");
+  vitalikPortrait.src = "/vitalik-wait.jpg";
+  const raijinPortrait = new Image();
+  raijinPortrait.crossOrigin = "anonymous";
+  raijinPortrait.onload = _chairLoaded;
+  raijinPortrait.onerror = function () {
+    try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    raijinPortrait.src = "/raijin-wait.jpg";
+  };
+  raijinPortrait.src = "/raijin-wait.jpg";
+  const aresPortrait = new Image();
+  aresPortrait.crossOrigin = "anonymous";
+  aresPortrait.onload = _chairLoaded;
+  aresPortrait.onerror = function () {
+    try { aresPortrait.removeAttribute("crossOrigin"); } catch (e) {}
+    aresPortrait.src = "/static/ares-wait.png";
+  };
+  aresPortrait.src = "/static/ares-chair.png";
+  const oraclePortrait = new Image();
+  oraclePortrait.crossOrigin = "anonymous";
+  oraclePortrait.onload = _chairLoaded;
+  oraclePortrait.src = "/oracle-wait.jpg";
+  function chairPortraitFor(dir) { return chairPortrait; }
+  function vitalikPortraitFor(dir) { return vitalikPortrait; }
+  function raijinPortraitFor(dir) { return raijinPortrait; }
+  function raijinPortraitSrc(dir) { return "/raijin-wait.jpg"; }
+  function isOracleTable(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    return w === "oracle" || w === "sibyl";
   }
 
 
@@ -594,10 +575,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     document.body.classList.toggle("night-mode", next === "night");
     const phoneFloor = (next === "floor" || next === "night") && (typeof isPhoneDesk === "function" ? isPhoneDesk() : false);
     document.body.classList.toggle("phone-floor", phoneFloor);
+    try { if (typeof initModeTabsScroll === "function") initModeTabsScroll(); } catch (e) {}
   }
   function syncExclusiveTabActive(next) {
     document.querySelectorAll(".mode-tab, .focus-tab").forEach((btn) => {
-      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "btnHelp" || !btn.dataset.mode) {
+      if (btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra" || btn.id === "btnHelp" || !btn.dataset.mode) {
         btn.classList.remove("active");
         if (btn.hasAttribute("aria-selected")) btn.setAttribute("aria-selected", "false");
         return;
@@ -699,7 +681,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | seats | paper | charts | …  (bots/ranks/dashboard alias to seats)
   let state = null;
-  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats") return v; } catch(e){} return "ethereum"; })();
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats" || v === "oracle") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableHasLiveHour(t) {
     if (!t || typeof t !== "object") return false;
@@ -849,11 +831,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       return s && FRONT_SEAT_IDS.indexOf(String(s.id || "").toUpperCase()) >= 0;
     }).map(function (s) {
       const lean = wxWord(s.dir || s.vote, strikeType, clock.nws_high, clock.floor_strike, clock.cap_strike);
+      const eye = String(s.eye || wxEye(lean) || "WAIT").toUpperCase();
       return {
         agent_name: String(s.id || "").toLowerCase(),
         display_name: s.id,
         title: s.job || "",
         direction: lean,
+        eye: eye,
+        pane: s.pane,
+        ok: s.ok,
         mark: s.mark || frontSeatMark(s.id),
         confidence: s.confidence != null ? s.confidence : 50,
         reasoning: s.call || "",
@@ -1091,7 +1077,78 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       learning: { hierarchy: hierarchy },
     };
   }
+  const ORACLE_SEAT_IDS = ["SIBYL", "PIT", "VEIL", "MARBLE"];
+  const ORACLE_SEAT_JOBS = {
+    SIBYL: "THE READ. First hit of the static.",
+    PIT: "THE WELL. Drops what the glass will not say.",
+    VEIL: "THE MASK. Cuts the fake signal.",
+    MARBLE: "THE SLAB. Cold cut. No heat.",
+  };
+  function isOracleSeatKey(name) {
+    const k = String(name || "").toUpperCase();
+    return ORACLE_SEAT_IDS.indexOf(k) >= 0;
+  }
+  function oracleSeatRoster() {
+    return ORACLE_SEAT_IDS.map(function (id, i) {
+      return {
+        id: id,
+        job: ORACLE_SEAT_JOBS[id],
+        dir: "WAIT",
+        call: id + " · DARK",
+        n: 0,
+        wr: null,
+        rank: i + 1,
+      };
+    });
+  }
+  function oracleTableState() {
+    const seats = oracleSeatRoster();
+    const agents = [{
+      agent_name: "leader",
+      display_name: "ORACLE",
+      title: "CRT · Oracle",
+      direction: "WAIT",
+      confidence: 0,
+      reasoning: "ORACLE does not place orders.",
+      summary: "WATCH · no ticket",
+    }].concat(seats.map(function (s) {
+      return {
+        agent_name: String(s.id).toLowerCase(),
+        display_name: s.id,
+        title: s.job,
+        direction: "WAIT",
+        confidence: 0,
+        reasoning: s.job,
+        summary: s.call,
+      };
+    }));
+    return {
+      agents: agents,
+      seats: seats,
+      chair: {
+        id: "ORACLE",
+        name: "ORACLE",
+        job: "Watch chair. Does not place orders.",
+        mark: "/oracle-wait.jpg",
+      },
+      decision: { direction: "WAIT", confidence: 0, summary: "ORACLE does not place orders." },
+      locked_call: null,
+      market: { window_kind: "watch", window_label: "WATCH", seconds_left: null, time_remaining: null },
+      leader_name: "ORACLE",
+      asset: "oracle",
+      why: {
+        line: "WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS",
+        strip: "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK",
+      },
+      watch: { line: "CRT · WATCH · STATIC ON THE GLASS", listed: false },
+      accuracy: { correct: 0, total: 0, wrong: 0, label: "ORACLE · WATCH" },
+      hierarchy: [{ agent: "leader", display_name: "ORACLE", rank: 0, listen: 1 }].concat(seats.map(function (s) {
+        return { agent: String(s.id).toLowerCase(), display_name: s.id, rank: s.rank, listen: 0, n: 0 };
+      })),
+    };
+  }
   function tableState(which) {
+    if (isOracleTable(which)) return oracleTableState();
     if (isAtsTable(which)) return atsTableState();
     if (isFrontTable(which)) return frontTableState();
     if (!state) return null;
@@ -1140,6 +1197,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         watch: focused.watch || {},
         why: focused.why || {},
         _focusTable: "ats",
+      });
+    }
+    if (typeof isOracleTable === "function" && isOracleTable(focusTable)) {
+      const focused = tableState("oracle") || oracleTableState();
+      return Object.assign({}, state, {
+        decision: focused.decision || {},
+        locked_call: focused.locked_call || null,
+        agents: Array.isArray(focused.agents) ? focused.agents : [],
+        market: focused.market || {},
+        accuracy: focused.accuracy || {},
+        hierarchy: focused.hierarchy || [],
+        learning: focused.learning || {},
+        weights: focused.weights || {},
+        _focusTable: "oracle",
       });
     }
     const focused = tableState(focusTable);
@@ -1214,7 +1285,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let glitchUntil = 0;
   let hourSlamUntil = 0;
   let debateHistory = [];
-  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const systemReduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const SEAT_ORBIT_SPEED = 0.00007; // half of the old 0.00014 fidget spin
   const SEAT_SPIN_KEY = "council_seat_spin";
   let seatOrbitFrozen = false;
@@ -1223,9 +1294,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try {
     seatOrbitFrozen = localStorage.getItem(SEAT_SPIN_KEY) === "0";
   } catch (e) {}
+  // Header STILL and Floor SPIN share this flag. STILL on = same path as prefers-reduced-motion.
+  let reduceMotion = systemReduceMotion || seatOrbitFrozen;
   function seatOrbitAngle() {
     // Screensaver pace. Freeze keeps the last angle so unfreeze does not jump.
-    if (reduceMotion) return 0;
+    if (systemReduceMotion) return 0;
     if (!seatOrbitLastT) seatOrbitLastT = time;
     if (!seatOrbitFrozen) {
       const dt = Math.max(0, time - seatOrbitLastT);
@@ -1368,7 +1441,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const key = (typeof chairKeyOf === "function") ? chairKeyOf(which) : String(which || "").toLowerCase();
     if (key === "ats") return "ares";
     if (key === "ethereum") return "vitalik";
-    if (key === "front") return "";
+    if (key === "front") return "raijin";
+    if (key === "oracle") return "oracle";
     return "satoshi";
   }
   function chairLockIsReal(lc) {
@@ -1466,7 +1540,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { glow: loud ? 1 : 0.55, lean: loud ? 1.08 : 0.96, alpha: loud ? 1 : 0.78, loud: loud };
   }
   function drawChairRoom(w, h, which, weather, cx, cy, tableR) {
-    // Room wash UNDER wisps. Cheap CSS/canvas. Phone: wash only, no extra strokes.
+    // Room plate is CSS under the canvas. Thin veil UNDER wisps. Phone: wash only, no extra strokes.
     if (!ctx || !w || !h) return;
     const room = chairRoomOf(which);
     if (!room) return;
@@ -1487,17 +1561,25 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     let c0, c1, c2;
     if (room === "vitalik") {
-      c0 = "rgba(40, 210, 190," + (0.10 + 0.10 * storm) + ")";
-      c1 = "rgba(8, 36, 42," + (0.42 + 0.10 * storm) + ")";
-      c2 = "rgba(2, 10, 14, 0.55)";
+      c0 = "rgba(40, 210, 190," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(8, 36, 42," + (0.10 + 0.08 * storm) + ")";
+      c2 = "rgba(2, 10, 14, 0.16)";
     } else if (room === "ares") {
-      c0 = "rgba(255, 224, 140," + (0.08 + 0.10 * storm) + ")";
-      c1 = "rgba(8, 14, 28," + (0.50 + 0.08 * storm) + ")";
-      c2 = "rgba(1, 4, 10, 0.62)";
+      c0 = "rgba(255, 224, 140," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(8, 14, 28," + (0.12 + 0.08 * storm) + ")";
+      c2 = "rgba(1, 4, 10, 0.18)";
+    } else if (room === "raijin") {
+      c0 = "rgba(180, 120, 255," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(12, 6, 22," + (0.12 + 0.08 * storm) + ")";
+      c2 = "rgba(4, 2, 10, 0.18)";
+    } else if (room === "oracle") {
+      c0 = "rgba(255, 80, 200," + (0.04 + 0.06 * storm) + ")";
+      c1 = "rgba(8, 4, 22," + (0.10 + 0.08 * storm) + ")";
+      c2 = "rgba(4, 2, 10, 0.16)";
     } else {
-      c0 = "rgba(240, 176, 64," + (0.12 + 0.12 * storm) + ")";
-      c1 = "rgba(36, 20, 6," + (0.48 + 0.10 * storm) + ")";
-      c2 = "rgba(6, 3, 2, 0.58)";
+      c0 = "rgba(240, 176, 64," + (0.05 + 0.07 * storm) + ")";
+      c1 = "rgba(36, 20, 6," + (0.12 + 0.08 * storm) + ")";
+      c2 = "rgba(6, 3, 2, 0.16)";
     }
     const gx = (cx != null) ? cx : w * 0.50;
     const gy = (cy != null) ? (cy - (tableR || h * 0.2) * 0.35) : h * 0.18;
@@ -1532,6 +1614,21 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.lineTo(w * (0.18 + tilt), h * 0.92);
       ctx.moveTo(w * (0.82 - tilt), h * 0.08);
       ctx.lineTo(w * (0.82 - tilt), h * 0.92);
+      ctx.stroke();
+    } else if (room === "oracle") {
+      ctx.strokeStyle = "rgba(0, 232, 255, 0.28)";
+      ctx.lineWidth = 1;
+      const sway = Math.sin(clock * 0.0006 * (wx.motion || 1)) * 3 * storm;
+      for (let i = 0; i < 8; i++) {
+        const y = h * (0.12 + i * 0.10) + sway;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.06, y);
+        ctx.lineTo(w * 0.94, y);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(255, 80, 200, 0.35)";
+      ctx.beginPath();
+      ctx.arc(w * 0.50, h * 0.42, Math.min(w, h) * 0.18, 0, Math.PI * 2);
       ctx.stroke();
     } else if (room === "ares") {
       ctx.fillStyle = "rgba(255, 230, 160," + (0.05 + 0.07 * storm) + ")";
@@ -1604,13 +1701,42 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.title = spinning ? "Freeze seat orbit" : "Resume seat orbit";
     btn.setAttribute("aria-label", spinning ? "Seat orbit on — click to freeze" : "Seat orbit still — click to spin");
   }
+  function syncStillBtn() {
+    const btn = stillToggle || document.getElementById("stillToggle");
+    if (!btn) return;
+    const on = !!seatOrbitFrozen;
+    btn.classList.toggle("still-on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = "STILL";
+    btn.title = on
+      ? "STILL on — motion cut for a thin pipe. Click to restore."
+      : "STILL — cut orbit and heavy FX for slow connections";
+    btn.setAttribute("aria-label", on
+      ? "STILL on — reduced motion. Click to restore motion"
+      : "STILL — reduce motion for slow connections");
+  }
+  function applyMotionFreeze() {
+    // One freeze. Header STILL drives the same flag Floor already respects.
+    reduceMotion = systemReduceMotion || seatOrbitFrozen;
+    try { document.body.classList.toggle("reduce-motion", reduceMotion); } catch (e) {}
+    try { syncSeatSpinBtn(); } catch (e) {}
+    try { syncStillBtn(); } catch (e) {}
+    if (reduceMotion) {
+      try { if (typeof window.__setFloorMoneyRain === "function") window.__setFloorMoneyRain(false); } catch (e) {}
+    }
+  }
   function setSeatSpin(on) {
     seatOrbitFrozen = !on;
     try { localStorage.setItem(SEAT_SPIN_KEY, on ? "1" : "0"); } catch (e) {}
-    try { syncSeatSpinBtn(); } catch (e) {}
+    try { applyMotionFreeze(); } catch (e) {}
+  }
+  function setStill(on) {
+    setSeatSpin(!on);
   }
   window.setSeatSpin = setSeatSpin;
+  window.setStill = setStill;
   window.seatOrbitAngle = seatOrbitAngle;
+  try { applyMotionFreeze(); } catch (e) {}
   let _tableEmberUntil = 0;
   let _tableEmberKey = "";
   let _tableEmberDir = "WAIT";
@@ -1734,12 +1860,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         lastWindowKey = key;
         lastClockBucket = bucket;
         try { beginHourCloseThenSlam(); } catch (e) { try { triggerHourSlam(); } catch (e2) {} }
-        // Skip-window: previous chair was WAIT → awkward silence; else market bell
+        // Skip-window: previous chair was WAIT → stay quiet. No cricket bed.
         try {
           const lastDir = (window.__lastChairDir || "WAIT").toUpperCase();
-          if (lastDir === "WAIT" || lastDir === "HOLD") {
-            playSkipCricketsSfx();
-          } else {
+          if (lastDir !== "WAIT" && lastDir !== "HOLD") {
             playMarketBell();
           }
         } catch (e) {
@@ -2044,24 +2168,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return w === "ethereum" || w === "eth" || w === "vitalik";
   }
   function chairNameOf(which) {
+    if (isOracleTable(which)) return "ORACLE";
     if (isAtsTable(which)) return "ARES";
     if (isFrontTable(which)) return "RAIJIN";
     return isEthTable(which) ? "VITALIK" : "SATOSHI";
   }
   function chairTitleOf(which) {
+    if (isOracleTable(which)) return "CRT · Oracle";
     if (isAtsTable(which)) return "ATS · Ares";
     if (isFrontTable(which)) return "DFW · Raijin";
     return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
   }
   function chairBadgeOf(which) {
+    if (isOracleTable(which)) return "CRT · ORACLE";
     if (isAtsTable(which)) return "ATS · ARES";
     if (isFrontTable(which)) return "DFW · RAIJIN";
     return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
   }
   function chairPortraitOf(which, dir) {
+    if (isOracleTable(which)) return oraclePortrait;
     if (isAtsTable(which)) return aresPortrait;
-    if (isFrontTable(which)) return raijinPortraitFor(wxEye(dir));
-    return isEthTable(which) ? vitalikPortraitFor(dir) : chairPortraitFor(dir);
+    if (isFrontTable(which)) return raijinPortrait;
+    return isEthTable(which) ? vitalikPortrait : chairPortrait;
   }
 
   function labelOf(agent) {
@@ -2830,6 +2958,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function chairKeyOf(which) {
+    if (isOracleTable(which)) return "oracle";
     if (isAtsTable(which)) return "ats";
     if (isFrontTable(which)) return "front";
     return isEthTable(which) ? "ethereum" : "bitcoin";
@@ -3330,7 +3459,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   function playSkipCricketsSfx() {
-    playSampleSfx("/static/sfx/skip-crickets.mp3", 0.45);
+    // Cricket / ambient bed is dead. Do not play, loop, or autoplay.
+    return;
   }
 
 
@@ -3350,10 +3480,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
 
   // Floor Chair leftover grow. Reuse rooms / rings. Scale the visible set.
-  const FLOOR_CHAIR_KEYS = ["bitcoin", "ethereum", "front", "ats"];
+  const FLOOR_CHAIR_KEYS = ["bitcoin", "ethereum", "front", "ats", "oracle"];
   const FLOOR_CHAIR_STORE = "council_floor_chairs";
   function loadFloorChairOn() {
-    const on = { bitcoin: true, ethereum: true, front: true, ats: true };
+    const on = { bitcoin: true, ethereum: true, front: true, ats: true, oracle: true };
     try {
       const raw = localStorage.getItem(FLOOR_CHAIR_STORE);
       if (!raw) return on;
@@ -3373,6 +3503,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (which === "ethereum") return chairNameOf("ethereum") + " · ETH";
     if (which === "front") return chairNameOf("front") + " · DWF";
     if (which === "ats") return chairNameOf("ats") + " · ATS";
+    if (which === "oracle") return chairNameOf("oracle") + " · CRT";
     return chairNameOf("bitcoin") + " · BTC";
   }
   function floorSplitTableR(w, h, n) {
@@ -3414,7 +3545,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }
       const cellH = h / n;
       const cellR = floorSplitTableR(w, cellH, 1);
-      const split = n === 2 ? "half" : (n === 3 ? "thirds" : "fourths");
+      const split = n === 2 ? "half" : (n === 3 ? "thirds" : (n === 4 ? "fourths" : "fifths"));
       for (let i = 0; i < n; i++) {
         out.push({ key: keys[i], x: w * 0.50, y: cellH * (i + 0.5), r: cellR, split: split });
       }
@@ -3437,16 +3568,31 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       out.push({ key: keys[2], x: w * (5 / 6), y: h * 0.50, r: rr, split: "thirds" });
       return out;
     }
-    const rr = quadFloorTableR(w, h);
-    const slots = [
-      { key: "bitcoin", x: w * 0.28, y: h * 0.30 },
-      { key: "ethereum", x: w * 0.72, y: h * 0.30 },
-      { key: "front", x: w * 0.28, y: h * 0.72 },
-      { key: "ats", x: w * 0.72, y: h * 0.72 },
+    if (n === 4) {
+      const rr = quadFloorTableR(w, h);
+      const slots = [
+        { key: "bitcoin", x: w * 0.28, y: h * 0.30 },
+        { key: "ethereum", x: w * 0.72, y: h * 0.30 },
+        { key: "front", x: w * 0.28, y: h * 0.72 },
+        { key: "ats", x: w * 0.72, y: h * 0.72 },
+      ];
+      keys.forEach(function (k) {
+        const slot = slots.filter(function (s) { return s.key === k; })[0];
+        if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fourths" });
+      });
+      return out;
+    }
+    const rr = pentaFloorTableR(w, h);
+    const slots5 = [
+      { x: w * 0.20, y: h * 0.30 },
+      { x: w * 0.50, y: h * 0.30 },
+      { x: w * 0.80, y: h * 0.30 },
+      { x: w * 0.32, y: h * 0.72 },
+      { x: w * 0.68, y: h * 0.72 },
     ];
-    keys.forEach(function (k) {
-      const slot = slots.filter(function (s) { return s.key === k; })[0];
-      if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fourths" });
+    keys.forEach(function (k, i) {
+      const slot = slots5[i];
+      if (slot) out.push({ key: k, x: slot.x, y: slot.y, r: rr, split: "fifths" });
     });
     return out;
   }
@@ -3490,7 +3636,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.hidden = !on || mode === "night";
     btn.setAttribute("aria-hidden", on ? "false" : "true");
   }
+  function syncPhoneBackBtn() {
+    const btn = document.getElementById("phoneBackBtn");
+    if (!btn) return;
+    const phone = typeof isPhoneDesk === "function" && isPhoneDesk();
+    const show = !!(phone && mode !== "floor" && typeof hasDeskAuth === "function" && hasDeskAuth());
+    btn.hidden = !show;
+    btn.setAttribute("aria-hidden", show ? "false" : "true");
+    btn.textContent = "← FLOOR";
+  }
+  function wirePhoneBackBtn() {
+    const btn = document.getElementById("phoneBackBtn");
+    if (!btn || btn.__wiredBack) return;
+    btn.__wiredBack = true;
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      try { setMode("floor"); } catch (err) {}
+    });
+  }
 
+  function pentaFloorTableR(w, h) {
+    const want = Math.min(w, h) * 0.15;
+    const gapX = w * 0.30;
+    const gapY = h * 0.38;
+    const seatR = 14;
+    const labelPad = 20;
+    const maxRx = Math.max(48, (gapX - 2 * (seatR + labelPad) - 10) / (2 * 1.42));
+    const maxRy = Math.max(48, (gapY - 2 * (seatR + labelPad) - 10) / (2 * 1.42));
+    return Math.min(want, maxRx, maxRy);
+  }
   function dualFloorTableR(w, h) {
     // Satoshi/Vitalik stay dual. Shrink the rings so they do not crush at 1042.
     const want = Math.min(w, h) * 0.26;
@@ -3517,114 +3691,35 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return { show: "chair", x: w * 0.50, y: y, photoR: photoR, seatR: seatR, dual: true, phone: false };
   }
 
-  const raijinPortrait = new Image();
-  raijinPortrait.src = "/raijin-wait.jpg";
-  const aresPortrait = new Image();
-  aresPortrait.src = "/static/ares-chair.png";
-  aresPortrait.onerror = function () {
-    try { aresPortrait.removeAttribute("crossOrigin"); } catch (e) {}
-    aresPortrait.src = "/static/ares-wait.png";
-  };
   function aresEyeColors(eyes) {
-    const e = eyes || {};
-    const mode = String(e.mode || "wait").toLowerCase();
-    let a = e.primary || "#F5B942";
-    let b = e.secondary || a;
-    if (mode === "over") { a = "#FF6A1A"; b = "#FFC14A"; }
-    if (mode === "under") { a = "#3DE0FF"; b = "#00E8FF"; }
-    if (mode === "wait") { a = "#F5B942"; b = "#F5B942"; }
-    return { mode: mode, a: a, b: b };
+    return { mode: "wait", a: "#F5B942", b: "#F5B942" };
   }
   function paintAresEyes(eyes) {
     const face = document.getElementById("aresFace");
-    const cols = aresEyeColors(eyes);
-    /* One portrait only: canvas aresPortrait + drawAresEyeTint. Never unhide the HTML overlay. */
+    /* One face. Never unhide the HTML overlay. No canvas eye tint. */
     if (face) {
       face.hidden = true;
       face.setAttribute("aria-hidden", "true");
     }
-    try {
-      document.body.style.setProperty("--ares-eye-a", cols.a);
-      document.body.style.setProperty("--ares-eye-b", cols.b);
-    } catch (e) {}
-    return cols;
+    return aresEyeColors(eyes);
   }
   function drawAresEyeTint(cx, cy, pr, eyes) {
-    const cols = aresEyeColors(eyes);
-    const y = cy - pr * 0.08;
-    const dx = pr * 0.18;
-    const rx = pr * 0.09;
-    const ry = pr * 0.055;
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    [["l", -dx], ["r", dx]].forEach(function (pair) {
-      ctx.beginPath();
-      ctx.ellipse(cx + pair[1], y, rx, ry, 0, 0, Math.PI * 2);
-      const g = ctx.createRadialGradient(cx + pair[1], y, 0, cx + pair[1], y, rx);
-      g.addColorStop(0, cols.a);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.shadowColor = cols.a;
-      ctx.shadowBlur = 10;
-      ctx.fill();
-    });
-    ctx.beginPath();
-    ctx.arc(cx, cy, pr + 2, 0, Math.PI * 2);
-    ctx.strokeStyle = cols.a;
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = cols.b;
-    ctx.shadowBlur = 12;
-    ctx.stroke();
-    ctx.restore();
+    return aresEyeColors(eyes);
   }
   function raijinEyeColors(dir) {
-    const d = (typeof wxEye === "function") ? wxEye(dir) : String(dir || "WAIT").toUpperCase();
-    if (d === "UP") return { mode: "up", a: "#39ff14", b: "#00ff78" };
-    if (d === "DOWN") return { mode: "down", a: "#ff3b5c", b: "#ff1a4a" };
     return { mode: "wait", a: "#FFFFFF", b: "#E8F4FF" };
   }
   function paintRaijinEyes(dir) {
-    const cols = raijinEyeColors(dir);
     const overlay = document.getElementById("raijinFace");
-    /* One portrait only: canvas cowboy + drawRaijinEyeTint. Never unhide a stacked HTML face. */
+    /* One face. Never unhide a stacked HTML face. No canvas eye tint. */
     if (overlay) {
       overlay.hidden = true;
       overlay.setAttribute("aria-hidden", "true");
     }
-    const chair = document.getElementById("frontChair");
-    if (chair) chair.setAttribute("data-eye", cols.mode);
-    try {
-      document.body.style.setProperty("--raijin-eye-a", cols.a);
-      document.body.style.setProperty("--raijin-eye-b", cols.b);
-    } catch (e) {}
-    return cols;
+    return raijinEyeColors(dir);
   }
   function drawRaijinEyeTint(cx, cy, pr, dir) {
-    const cols = raijinEyeColors(dir);
-    /* WAIT keeps the signed white storm glow. Do not turn WAIT gold. */
-    if (cols.mode === "wait") return cols;
-    /* Soft feather on the glowing sockets only. Do not recolor hat or coat. */
-    const y = cy - pr * 0.10;
-    const dx = pr * 0.16;
-    const rx = pr * 0.09;
-    const ry = pr * 0.055;
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    [["l", -dx], ["r", dx]].forEach(function (pair) {
-      ctx.beginPath();
-      ctx.ellipse(cx + pair[1], y, rx, ry, 0, 0, Math.PI * 2);
-      const g = ctx.createRadialGradient(cx + pair[1], y, 0, cx + pair[1], y, rx);
-      g.addColorStop(0, cols.a);
-      g.addColorStop(0.55, cols.b);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.shadowColor = cols.a;
-      ctx.shadowBlur = 12;
-      ctx.fill();
-    });
-    ctx.restore();
-    return cols;
+    return raijinEyeColors(dir);
   }
   function drawPublicTug(cx, cy, radius, tug) {
     // Floor visual only. FADE one way, STEAM the other. Does not override Chair gates.
@@ -3668,7 +3763,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.restore();
   }
   raijinPortrait.onerror = function () {
-    // Same signed Dallas storm cowboy. No CORS, no neon mark, never leave the Chair empty.
+    // Same signed Dallas storm cowboy. Never blank the Chair face.
     try { raijinPortrait.removeAttribute("crossOrigin"); } catch (e) {}
     raijinPortrait.src = "/raijin-wait.jpg";
   };
@@ -3685,7 +3780,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return "WAIT";
   }
   function raijinFace(dir) {
-    const pic = raijinPortraitFor(dir != null ? dir : frontLockDir());
+    const pic = raijinPortrait;
     if (pic && pic.complete && pic.naturalWidth) return pic;
     const el = document.getElementById("frontChairImg");
     if (el && el.complete && el.naturalWidth) return el;
@@ -3784,8 +3879,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const focus = String(focusTable || "");
     if (n === 4 && !phone) {
       const tableR = quadFloorTableR(w, h);
-      drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
-      drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus));
+      drawTableWithBots(w * 0.28, h * 0.30, tableR, "bitcoin", chairNameOf("bitcoin") + " · BTC", !isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus) && !isOracleTable(focus));
+      drawTableWithBots(w * 0.72, h * 0.30, tableR, "ethereum", chairNameOf("ethereum") + " · ETH", isEthTable(focus) && !isFrontTable(focus) && !isAtsTable(focus) && !isOracleTable(focus));
       drawTableWithBots(w * 0.28, h * 0.72, tableR, "front", chairNameOf("front") + " · DWF", isFrontTable(focus));
       drawTableWithBots(w * 0.72, h * 0.72, tableR, "ats", chairNameOf("ats") + " · ATS", isAtsTable(focus));
     } else {
@@ -3795,6 +3890,73 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
     ctx.restore();
+    try { paintFloorLeaderClocks(w, h, slots); } catch (e) {}
+  }
+
+  function drawOracleCrtHud(cx, cy, pr) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr + 6, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0, 232, 255, 0.55)";
+    ctx.lineWidth = 2;
+    ctx.shadowColor = "rgba(255, 80, 200, 0.55)";
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, pr + 10, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 80, 200, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function chairWindowClock(key) {
+    const st = (typeof tableState === "function" ? tableState(key) : null) || {};
+    const m = st.market || {};
+    let secs = m.seconds_left != null ? m.seconds_left : m.time_remaining;
+    if (secs == null && m.close_time) {
+      const ms = Date.parse(m.close_time);
+      if (Number.isFinite(ms)) secs = (ms - Date.now()) / 1000;
+    }
+    let label = "1H";
+    if (key === "front") label = m.window_label || "DFW";
+    else if (key === "ats") label = m.window_label || "KICK";
+    else if (key === "oracle") label = "WATCH";
+    let display = "—";
+    if (secs != null && !isNaN(secs)) {
+      const s = Math.max(0, Math.floor(Number(secs)));
+      display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }
+    return { label: label, display: display };
+  }
+
+  function paintFloorLeaderClocks(w, h, slots) {
+    const host = document.getElementById("floorLeaderClocks");
+    if (!host) return;
+    const on = (typeof floorLikeMode === "function") ? floorLikeMode() : (mode === "floor");
+    host.hidden = !on || mode === "night";
+    if (host.hidden) return;
+    const stage = document.getElementById("tableStage") || document.getElementById("roundtable");
+    const sw = (stage && stage.clientWidth) || w || 1;
+    const sh = (stage && stage.clientHeight) || h || 1;
+    const vis = {};
+    (slots || []).forEach(function (s) { vis[s.key] = s; });
+    host.querySelectorAll("[data-floor-clock]").forEach(function (el) {
+      const key = el.getAttribute("data-floor-clock");
+      const slot = vis[key];
+      if (!slot) {
+        el.hidden = true;
+        return;
+      }
+      el.hidden = false;
+      const clock = chairWindowClock(key);
+      const win = el.querySelector(".flc-win");
+      const time = el.querySelector("[data-flc-time]");
+      if (win) win.textContent = clock.label;
+      if (time) time.textContent = clock.display;
+      el.style.left = ((slot.x / sw) * 100) + "%";
+      el.style.top = (((slot.y + slot.r * 0.92) / sh) * 100) + "%";
+    });
   }
 
   function drawTableWithBots(cx, cy, radius, which, label, focused) {
@@ -3850,7 +4012,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
       const x = cx + Math.cos(ang) * ringR;
       const y = cy + Math.sin(ang) * ringR;
-      const adir = String(a.direction || "WAIT").toUpperCase();
+      const adir = (typeof frontSeatTone === "function")
+        ? frontSeatTone(a)
+        : String(a.direction || "WAIT").toUpperCase();
       let col = "rgba(0,232,255,0.95)";
       if (adir === "UP" || adir === "UP_HOLD" || adir === "COVER" || adir === "OVER" || adir === "HOME") col = "rgba(0,255,120,0.95)";
       if (adir === "DOWN" || adir === "DOWN_HOLD" || adir === "NO-COVER" || adir === "UNDER" || adir === "AWAY") col = "rgba(255,55,90,0.95)";
@@ -3875,6 +4039,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     if (typeof isFrontTable === "function" && isFrontTable(which)) {
       try { drawRaijinEyeTint(cx, portraitY, pr, dir); paintRaijinEyes(dir); } catch (e) {}
+    }
+    if (typeof isOracleTable === "function" && isOracleTable(which)) {
+      try { drawOracleCrtHud(cx, portraitY, pr); } catch (e) {}
     }
     rememberChairHit(cx, portraitY, pr, which);
     // Gold ring when locked / focused, else direction color
@@ -3915,29 +4082,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
     ctx.font = "700 12px Orbitron, monospace";
     const plateY = cy + radius + 14;
-    if (locked) {
-      ctx.fillStyle = gold;
-      ctx.fillText("LOCKED " + dir, cx, plateY);
-      ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "#f0d78a";
-      const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + oddsTxt, cx, plateY + 14);
-
-      try {
-        const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
-        if (q != null) {
-          ctx.font = "600 9px Share Tech Mono, monospace";
-          ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
-          ctx.fillText("Q:" + Math.round(Number(q)), cx, plateY + 28);
-        }
-      } catch (e) {}
-    } else {
-      ctx.fillStyle = "#a8c0d8";
-      ctx.fillText(dir, cx, plateY);
-      ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(180,200,220,0.75)";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · waiting", cx, plateY + 14);
-    }
+    const live = liveCallCard(st, which);
+    paintLiveCallPlate(ctx, cx, plateY, live);
     if (which === "ats" || (typeof isAtsTable === "function" && isAtsTable(which))) {
       const watch = (st && st.watch) || {};
       const wline = String(watch.line || "WATCH · DARK · NO LISTING");
@@ -3968,22 +4114,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       });
     }
 
-    const mkt = st.market || {};
-    const series = mkt.series_ticker || mkt.ticker || which.toUpperCase();
-    const strike = mkt.floor_strike != null ? mkt.floor_strike : null;
-    ctx.font = "600 9px Share Tech Mono, monospace";
-    ctx.fillStyle = focused ? "rgba(180,200,220,0.75)" : "rgba(140,160,180,0.45)";
-    ctx.textAlign = "center";
-    try {
-      let ladder = String(series).slice(0, 18) + (strike != null ? (" · " + strike) : "");
-      if (strike != null && isFinite(Number(strike))) {
-        const s = Number(strike);
-        const step = s >= 1000 ? 1000 : (s >= 100 ? 50 : 5);
-        ladder = Math.round(s - step) + " · " + Math.round(s) + " · " + Math.round(s + step);
-      }
-      ctx.fillText(ladder, cx, cy + ringR + 28);
-    } catch (e) { ctx.fillText(String(series), cx, cy + ringR + 28); }
-
     ctx.restore();
   }
 
@@ -3993,8 +4123,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lc = st.locked_call || d.locked_call || null;
     const locked = !!(lc && lc.locked && lc.direction);
     const dir = locked ? lc.direction : (d.direction || "WAIT");
-    const conf = locked ? (lc.confidence || d.confidence || 0) : (d.confidence || 0);
-    const odds = locked && lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : null;
 
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -4035,36 +4163,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.textAlign = "center";
     ctx.fillText(label || (chairNameOf(which) + (isEthTable(which) ? " · ETH" : " · BTC")), cx, cy - radius - 12);
 
-    ctx.font = "700 14px Orbitron, monospace";
-    if (locked) {
-      ctx.fillStyle = dir === "UP" ? "#39ff14" : "#ff2d55";
-      ctx.fillText("LOCKED " + dir, cx, cy + pr + 18);
-      ctx.font = "600 11px Rajdhani, sans-serif";
-      ctx.fillStyle = "#d8f0ff";
-      const oddsTxt = odds != null ? (" @ " + odds + "¢") : "";
-      ctx.fillText(conf + "%" + oddsTxt + " · FOLLOW THIS", cx, cy + pr + 34);
-
-      try {
-        const q = (lc && lc.quality_score) != null ? lc.quality_score : (d && d.quality_score);
-        if (q != null) {
-          ctx.font = "600 9px Share Tech Mono, monospace";
-          ctx.fillStyle = Number(q) >= 70 ? "#9dffc0" : (Number(q) >= 50 ? "#f0d78a" : "#ff9aa8");
-          ctx.fillText("Q:" + Math.round(Number(q)), cx, cy + pr + 44);
-        }
-      } catch (e) {}
-    } else {
-      ctx.fillStyle = "#a8c0d8";
-      ctx.fillText(dir === "WAIT" ? "WAIT" : String(dir), cx, cy + pr + 18);
-      ctx.font = "600 11px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(180,200,220,0.8)";
-      ctx.fillText((conf || "—") + (conf ? "%" : "") + " · one call / best odds", cx, cy + pr + 34);
-    }
-
-    const m = st.market || {};
-    const px = m.price != null ? Number(m.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
-    ctx.font = "10px Share Tech Mono, monospace";
-    ctx.fillStyle = "rgba(160,180,200,0.7)";
-    ctx.fillText(px, cx, cy + radius + 8);
+    const live = liveCallCard(st, which);
+    paintLiveCallPlate(ctx, cx, cy + pr + 18, live);
   }
 
   let chairHits = [];
@@ -4201,7 +4301,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ringR = radius * 1.18;
       const lr = Math.min(w, h) * 0.24;
       const cx = w / 2, cy = h / 2;
-      const goal = "GOAL · one guess @ best odds (10–90¢)";
+      const goal = "WAIT · $63,100 · 1H";
       const gw = 200;
       const plateY = cy + lr * 0.90;
       out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -4213,12 +4313,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const cx = w / 2, cy = h / 2;
       const lr = fit.lrBase;
       if (fit.phone) {
-        const goal = "GOAL · one guess @ best odds (10–90¢)";
+        const goal = "WAIT · $63,100 · 1H";
         out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
       } else {
-        const goal = "GOAL · one guess @ best odds (10–90¢)";
+        const goal = "WAIT · $63,100 · 1H";
         const gw = 200;
         const plateY = cy + lr * 0.90;
         out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -4268,7 +4368,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = "rgba(2, 4, 10, 0.10)";
       ctx.fillRect(0, 0, w, h);
     } else {
-      ctx.fillStyle = "#02040a";
+      ctx.clearRect(0, 0, w, h);
+      try { syncChairRoom(focusTable, state); } catch (e) {}
+      try { drawChairRoom(w, h, focusTable, _hourWx); } catch (e) {}
+      ctx.fillStyle = "rgba(2, 4, 10, 0.16)";
       ctx.fillRect(0, 0, w, h);
     }
 
@@ -4352,64 +4455,38 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       }
     } catch (e) {}
 
-    // ── CENTER LOCKED CALL PLAQUE (follower-bot clear) ──
-    // Table is reserved for the single GOAL CONTRACT call.
+    // ── CENTER LIVE CALL PLAQUE — LOCK / WAIT, strike, window ──
     try {
-      const d = (state && state.decision) || {};
-      const lc = d.locked_call || state.locked_call || {};
-      const locked = !!(lc && lc.locked && lc.direction);
-      const lockDir = (lc.direction || d.locked_dir || d.entry_dir || "").toUpperCase();
-      if (locked && lockDir && lockDir !== "WAIT") {
-        const conf = lc.confidence || d.confidence || 0;
-        const odds = lc.entry_odds_pct != null ? Math.round(lc.entry_odds_pct) : (d.entry_up_pct != null ? Math.round(lockDir === "UP" ? d.entry_up_pct : 100 - d.entry_up_pct) : null);
-        // Glow plate
+      const live = liveCallCard(state, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+      const lockDir = String(live.dir || "WAIT").toUpperCase();
+      if (live.status === "LOCK") {
         ctx.save();
         ctx.beginPath();
         ctx.arc(cx, cy, radius * 0.42, 0, Math.PI * 2);
-        ctx.fillStyle = lockDir === "UP" ? "rgba(0, 80, 40, 0.55)" : "rgba(80, 10, 20, 0.55)";
+        ctx.fillStyle = (lockDir === "UP" || lockDir === "ABOVE") ? "rgba(0, 80, 40, 0.55)" : "rgba(80, 10, 20, 0.55)";
         ctx.fill();
-        ctx.strokeStyle = lockDir === "UP" ? "rgba(0, 255, 140, 0.9)" : "rgba(255, 80, 100, 0.9)";
+        ctx.strokeStyle = (lockDir === "UP" || lockDir === "ABOVE") ? "rgba(0, 255, 140, 0.9)" : "rgba(255, 80, 100, 0.9)";
         ctx.lineWidth = 3;
-        ctx.shadowColor = lockDir === "UP" ? "#00ff8c" : "#ff4060";
+        ctx.shadowColor = (lockDir === "UP" || lockDir === "ABOVE") ? "#00ff8c" : "#ff4060";
         ctx.shadowBlur = 18;
         ctx.stroke();
         ctx.shadowBlur = 0;
-        // Text
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = liveCallToneColor(live);
         ctx.font = "bold 22px Orbitron, monospace";
-        ctx.fillText("LOCKED " + lockDir, cx, cy - 28);
+        ctx.fillText(liveCallHeadline(live), cx, cy - 10);
         ctx.font = "bold 14px Orbitron, monospace";
-        ctx.fillStyle = "rgba(255,220,120,0.95)";
-        ctx.fillText(isFrontTable(focusTable) ? frontHighLine(state) : "ONE CALL · FOLLOW THIS", cx, cy - 6);
-        ctx.font = "12px Orbitron, monospace";
-        ctx.fillStyle = "rgba(200,230,255,0.9)";
-        let sub = conf ? (conf + "%") : "";
-        if (odds != null) sub += (sub ? "  ·  " : "") + odds + "¢ entry";
-        ctx.fillText(sub, cx, cy + 14);
-        ctx.font = "10px Orbitron, monospace";
-        ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText(
-          isFrontTable(focusTable)
-            ? "GOAL · DFW HIGH · CLI"
-            : (isAtsTable(focusTable) ? "GOAL · one ticket · paper" : "GOAL · best odds 10–90¢"),
-          cx, cy + 30
-        );
+        ctx.fillStyle = "#e8f4ff";
+        ctx.fillText(liveCallSub(live) || live.line, cx, cy + 16);
         ctx.restore();
       } else {
-        // Small goal reminder when not locked
         ctx.save();
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "10px Orbitron, monospace";
-        ctx.fillStyle = "rgba(0, 200, 255, 0.45)";
-        ctx.fillText(
-          isFrontTable(focusTable)
-            ? (frontHighLine(state) + " · CLI")
-            : (isAtsTable(focusTable) ? "GOAL · one ticket @ 20–80¢" : "GOAL · 1 window-end guess @ best odds (10–90¢)"),
-          cx, cy
-        );
+        ctx.font = "12px Orbitron, monospace";
+        ctx.fillStyle = liveCallToneColor(live);
+        ctx.fillText(live.line || "WAIT", cx, cy);
         ctx.restore();
       }
     } catch (e) { /* keep drawing */ }
@@ -4874,21 +4951,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     ctx.fillStyle = "#ffffff";
     ctx.shadowColor = scL;
     ctx.shadowBlur = 12;
-    ctx.fillText(isFrontTable(focusTable) ? displayDir(leaderDir) : leaderDir, cx, dirY);
+    const liveFocus = liveCallCard(state, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    ctx.fillText(liveCallHeadline(liveFocus), cx, dirY);
     ctx.shadowBlur = 0;
     ctx.font = hudTight ? "10px Orbitron, sans-serif" : "11px Orbitron, sans-serif";
     ctx.fillStyle = "#e8f4ff";
-    ctx.fillText(leaderConf + "%", cx, confY);
+    ctx.fillText(liveCallSub(liveFocus) || "—", cx, confY);
 
-        // ===== CLEAR LOCKED CALL plate for follower bots (GOAL: one call @ best odds) =====
+        // ===== LIVE CALL plate — LOCK / WAIT, strike, window =====
     {
-      const lc = state.locked_call || (state.decision && state.decision.locked_call) || {};
-      const isLocked = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN" || lc.direction === "ABOVE" || lc.direction === "BELOW" || lc.direction === "BETWEEN"));
-      const showDir = (isLocked ? lc.direction : (leaderDir || "WAIT")).toUpperCase();
-      const showConf = (lc.confidence != null ? lc.confidence : leaderConf);
-      const entryOdds = lc.entry_odds_pct;
-      const isDir = showDir === "UP" || showDir === "DOWN" || showDir === "UP_HOLD" || showDir === "DOWN_HOLD"
-        || showDir === "ABOVE" || showDir === "BELOW" || showDir === "BETWEEN";
+      const isLocked = liveFocus.status === "LOCK";
+      const isDir = isLocked;
       const plateY = phoneHud ? 36 : (cy + lr * 0.90);
       const plateW = phoneHud ? 120 : (hudTight ? (isLocked && isDir ? 220 : 200) : (isLocked && isDir ? 220 : 200));
       const plateH = phoneHud ? 18 : 28;
@@ -4913,18 +4986,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ctx.fillStyle = isDir ? "#ffffff" : "rgba(180, 200, 220, 0.9)";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      let lockLabel;
-      if (isFrontTable(focusTable)) {
-        lockLabel = isLocked
-          ? (displayDir(showDir) + " · " + frontHighLine(state))
-          : (frontHighLine(state) + " · CLI");
-      } else if (isLocked && isDir) {
-        const oddsPart = entryOdds != null ? ` @ ${Math.round(entryOdds)}¢` : "";
-        lockLabel = `LOCKED ${showDir}${oddsPart} · ${showConf}% · FOLLOW`;
-      } else {
-        lockLabel = "GOAL · one guess @ best odds (10–90¢)";
-      }
-      ctx.fillText(lockLabel, plateX, plateY);
+      ctx.fillText(liveFocus.line || liveCallHeadline(liveFocus), plateX, plateY);
     }
 
     // Scanline overlay on canvas itself (subtle)
@@ -5245,26 +5307,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const lastEl = document.getElementById("signalChairLast");
     if (!list) return;
     const view = (typeof getViewState === "function" ? getViewState() : state) || state || {};
-    const d = view.decision || {};
-    const lc = view.locked_call || d.locked_call || {};
-    const locked = !!(lc && lc.locked && lc.direction);
-    const dir = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
-    const m = view.market || {};
-    const secs = secondsLeftOf(m);
-    const mm = secs != null ? String(Math.floor(secs / 60)).padStart(2, "0") : "--";
-    const ss = secs != null ? String(Math.floor(secs % 60)).padStart(2, "0") : "--";
-    let pf = lc.p_finish != null ? lc.p_finish : d.p_finish;
-    pf = Number(pf);
-    if (Number.isFinite(pf) && pf <= 1.5) pf = pf * 100;
-    const pFinish = Number.isFinite(pf) ? (Math.round(pf) + "%") : "—";
-    const ev = (lc && lc.ev_cents != null) ? (Math.round(lc.ev_cents) + "¢")
-      : (d.ev_cents != null) ? (Math.round(d.ev_cents) + "¢")
-      : "—";
+    const card = liveCallCard(view, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    const dir = card.dir;
     if (dirEl) {
-      dirEl.textContent = (locked ? "LOCKED " : "") + dir.replace("_HOLD", "");
-      dirEl.className = "signal-chair-dir " + dir.replace("_HOLD", "");
+      dirEl.textContent = card.status === "LOCK" ? ("LOCK " + dir) : card.status;
+      dirEl.className = "signal-chair-dir " + (card.status === "LOCK" ? dir : card.status);
     }
-    if (metaEl) metaEl.textContent = "P(finish) " + pFinish + " · EV " + ev + " · " + mm + ":" + ss + " left";
+    if (metaEl) {
+      const bits = [];
+      if (card.strike) bits.push(card.strike);
+      if (card.window) bits.push(card.window);
+      metaEl.textContent = bits.length ? bits.join(" · ") : card.line;
+    }
     if (lastEl) {
       const acc = view.accuracy || (state && state.accuracy) || {};
       const settled = (acc.recent || acc.log || []).find(r => r && (r.outcome || r.y_finish));
@@ -5353,6 +5407,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     list.innerHTML = rows.map((r, idx) => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
+      const tone = (String(r.agent || "").toLowerCase() === "glass")
+        ? ((typeof frontSeatTone === "function") ? frontSeatTone(ag) : wxTone(ag.eye || dir))
+        : wxTone(dir);
       const conf = ag.confidence != null ? ag.confidence : "—";
       const name = r.display_name || DISPLAY[r.agent] || (isFrontSeatKey(r.agent) ? String(r.agent).toUpperCase() : r.agent.toUpperCase());
       const wr = r.win_rate != null ? `${Math.round(r.win_rate * 100)}%` : "—";
@@ -5370,7 +5427,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           <div class="hier-name">${name}</div>
           <div class="hier-meta">${rec} · ${wr} · listen ${listen}%${faded ? " · <span class=\"fade-tag\">FADE</span>" : ""}${isAntiWinner ? " · <span class=\"anti-tag\">ANTI✓</span>" : ""}${isAntiLoser ? " · <span class=\"anti-tag anti-lose\">ANTI✗</span>" : ""}</div>
         </div>
-        <span class="hier-dir ${wxTone(dir)}">${(isFrontTable(focusTable) ? displayDir(dir) : dir)} ${conf}${conf !== "—" ? "%" : ""}</span>
+        <span class="hier-dir ${tone}">${(isFrontTable(focusTable) ? displayDir(dir) : dir)} ${conf}${conf !== "—" ? "%" : ""}</span>
       </div>`;
     }).join("");
     if (meta) meta.textContent = `${rows.length} seats · live ranks`;
@@ -5829,28 +5886,30 @@ function drawCandleChart() {
     const eth = (typeof isEthTable === "function") ? isEthTable(focusTable) : (focusTable === "ethereum");
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
-    document.body.classList.toggle("charts-hero-eth", !!eth && !front && !ats);
-    document.body.classList.toggle("charts-hero-btc", !eth && !front && !ats);
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    document.body.classList.toggle("charts-hero-eth", !!eth && !front && !ats && !oracle);
+    document.body.classList.toggle("charts-hero-btc", !eth && !front && !ats && !oracle);
     document.body.classList.toggle("charts-hero-front", !!front);
     document.body.classList.toggle("charts-hero-ats", !!ats);
+    document.body.classList.toggle("charts-hero-oracle", !!oracle);
     const atsTape = document.getElementById("atsChartTape");
     if (atsTape) atsTape.hidden = !ats;
     try {
-      if (!front && !ats) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
+      if (!front && !ats && !oracle) document.body.dataset.focusTable = eth ? "ethereum" : "bitcoin";
     } catch (e) {}
     const btcCard = document.querySelector(".chart-card.chart-pair-btc");
     const ethCard = document.querySelector(".chart-card.chart-pair-eth");
     if (btcCard) {
-      btcCard.classList.toggle("chart-hero-off", !!eth || !!front || !!ats);
-      btcCard.hidden = !!eth || !!front || !!ats;
+      btcCard.classList.toggle("chart-hero-off", !!eth || !!front || !!ats || !!oracle);
+      btcCard.hidden = !!eth || !!front || !!ats || !!oracle;
     }
     if (ethCard) {
-      ethCard.classList.toggle("chart-hero-off", !eth || !!front || !!ats);
-      ethCard.hidden = !eth || !!front || !!ats;
+      ethCard.classList.toggle("chart-hero-off", !eth || !!front || !!ats || !!oracle);
+      ethCard.hidden = !eth || !!front || !!ats || !!oracle;
     }
     document.querySelectorAll(".chart-card.chart-crypto-odds, .chart-card.chart-crypto-delta, .chart-card.chart-crypto-funding").forEach(function (card) {
-      card.classList.toggle("chart-hero-off", !!front || !!ats);
-      card.hidden = !!front || !!ats;
+      card.classList.toggle("chart-hero-off", !!front || !!ats || !!oracle);
+      card.hidden = !!front || !!ats || !!oracle;
     });
   }
   function setChartNoFeed(canvas, empty) {
@@ -6386,6 +6445,8 @@ function drawCandleChart() {
     const wxSubs = document.getElementById("wxSubStrip");
     const atsStrip = document.getElementById("atsGameStrip");
     const atsSport = document.getElementById("atsSportChip");
+    const oraStrip = document.getElementById("oraWatchStrip");
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
     const kh = document.getElementById("wxKalshiHigh");
     const nh = document.getElementById("wxNwsHigh");
     const cityEl = document.getElementById("wxCity");
@@ -6394,7 +6455,8 @@ function drawCandleChart() {
     if (wxSubs) wxSubs.hidden = !front;
     if (atsStrip) atsStrip.hidden = !ats;
     if (atsSport) atsSport.hidden = !ats;
-    if (dualSub) dualSub.hidden = !!ats;
+    if (oraStrip) oraStrip.hidden = !oracle;
+    if (dualSub) dualSub.hidden = !!ats || !!oracle;
     if (front) {
       if (ledLabel) ledLabel.textContent = "DFW HIGH";
       const ts = (typeof tableState === "function" ? tableState("front") : null) || {};
@@ -6481,9 +6543,26 @@ function drawCandleChart() {
       try { paintAtsGameStrip(ts); } catch (e) {}
       return true;
     }
+    if (oracle) {
+      if (ledLabel) ledLabel.textContent = "WATCH";
+      if (ledT) ledT.textContent = "CRT";
+      const timEl = document.getElementById("windowTimer");
+      if (timEl) timEl.textContent = "WATCH";
+      if (ledSub) ledSub.textContent = "ORACLE does not place orders";
+      if (dualSub) {
+        dualSub.hidden = true;
+        dualSub.textContent = "";
+      }
+      const call = document.getElementById("oraWatchCall");
+      const seats = document.getElementById("oraWatchSeats");
+      if (call) call.textContent = "WATCH";
+      if (seats) seats.textContent = "SIBYL · PIT · VEIL · MARBLE";
+      return true;
+    }
     if (ledLabel) ledLabel.textContent = "1H WINDOW";
     if (atsStrip) atsStrip.hidden = true;
     if (atsSport) atsSport.hidden = true;
+    if (oraStrip) oraStrip.hidden = true;
     return false;
   }
   function dockWindowLed() {
@@ -6491,9 +6570,11 @@ function drawCandleChart() {
     if (!led) return;
     if (mode === "floor" && mode !== "night") {
       const header = document.querySelector("#app > header");
+      const shell = header && header.querySelector(".mode-tabs-shell");
       const tabs = header && header.querySelector(".mode-tabs");
-      if (tabs && tabs.parentNode && led.previousElementSibling !== tabs) {
-        tabs.parentNode.insertBefore(led, tabs.nextSibling);
+      const after = shell || tabs;
+      if (after && after.parentNode && led.previousElementSibling !== after) {
+        after.parentNode.insertBefore(led, after.nextSibling);
       }
     } else {
       const col = document.getElementById("lifetimePanel");
@@ -6511,7 +6592,9 @@ function drawCandleChart() {
           ? '<li class="lock-tape-empty">No Dallas book — waiting on DFW CLI</li>'
           : (isAtsTable(focusTable)
             ? '<li class="lock-tape-empty">No Chair lock this hour — waiting on Ares</li>'
-            : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>');
+            : (isOracleTable(focusTable)
+              ? '<li class="lock-tape-empty">ORACLE does not place orders — WATCH only</li>'
+              : '<li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>'));
       } else {
         list.innerHTML = locks.slice(0, 8).map(p => {
           const result = p.status === "OPEN"
@@ -6931,18 +7014,19 @@ function drawCandleChart() {
       const faded = s.faded ? " faded" : "";
       const callsign = (s.id === "RAIJIN") ? frontChairName(s) : String(s.id || "");
       const face = (s.id === "RAIJIN") ? raijinPortraitSrc((s && s.eye) || frontLockDir()) : s.mark;
+      const eye = String(frontSeatTone(s) || "WAIT").toLowerCase();
       const kids = (s.id === "RAIJIN") ? [] : subsForParent(frontSubsOf(data), s.id);
       const subHtml = kids.length ? ('<div class="front-sub-under">' + kids.map(function (sub) {
         return '<div class="front-sub-row" data-tone="' + String(sub.tone || "") + '">' +
           (sub.mark ? '<img src="' + sub.mark + '" alt="">' : '<span class="front-sub-mark"></span>') +
           "<b>" + String(sub.id || "") + "</b><span>" + String(sub.line || "—") + "</span></div>";
       }).join("") + "</div>") : "";
-      return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '">' +
+      return '<article class="bot-card front-bot-card' + faded + '" data-front-seat="' + String(s.id || "") + '" data-eye="' + eye + '">' +
         '<div class="bot-card-head">' + frontBotMarkHtml(callsign, face) +
         '<span class="bot-callsign">' + callsign + "</span>" +
         '<span class="bot-rank-pill">' + rank + "</span></div>" +
         '<div class="bot-blurb">' + String(s.job || "") + "</div>" +
-        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span></div>" +
+        '<div class="bot-stats"><span>n <b>' + n + "</b></span><span>WR <b>" + wr + "</b></span><span>Rank <b>" + rank + "</b></span><span class=\"hier-dir " + (eye === "up" ? "UP" : (eye === "down" ? "DOWN" : "WAIT")) + '">' + String(s.call || s.dir || "WAIT") + "</span></div>" +
         subHtml +
         "</article>";
     }).join("");
@@ -6983,6 +7067,17 @@ function drawCandleChart() {
       }
       const hero = document.querySelector("#botsView .info-hero p");
       if (hero) hero.textContent = "Five chairs. GLASS is the pane. MESH is the web. PIT is the book. FROST kills. BONE is old bones. HEAT / ECHO / CELL feed them. They do not vote.";
+      return;
+    }
+    if (typeof isOracleTable === "function" && isOracleTable(focusTable)) {
+      try { renderOracleBotsGuide(); } catch (e) {}
+      const grid = document.getElementById("botsGrid");
+      if (grid) {
+        grid.hidden = true;
+        grid.innerHTML = "";
+      }
+      const hero = document.querySelector("#botsView .info-hero p");
+      if (hero) hero.textContent = "Four seats. SIBYL is the read. PIT is the well. VEIL is the mask. MARBLE is the slab. They watch. They do not vote. ORACLE does not place orders.";
       return;
     }
     const botsGrid = document.getElementById("botsGrid");
@@ -7131,48 +7226,143 @@ function drawCandleChart() {
     track.textContent = line + " · " + line;
   }
 
+  function liveCallKind(which) {
+    const w = String(which != null ? which : (typeof focusTable !== "undefined" ? focusTable : "")).toLowerCase();
+    if (w === "oracle" || w === "ora" || w === "sibyl") return "oracle";
+    if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") return "front";
+    if (w === "ats" || w === "ares" || w === "sports") return "ats";
+    if (w === "ethereum" || w === "eth" || w === "vitalik") return "ethereum";
+    return "bitcoin";
+  }
+  function liveCallStrikeText(view, kind) {
+    const m = (view && view.market) || {};
+    const clock = m.clock || {};
+    if (kind === "oracle") return "";
+    if (kind === "front") {
+      const nws = clock.nws_high != null ? clock.nws_high : m.nws_high;
+      const kh = clock.kalshi_high != null ? clock.kalshi_high : m.kalshi_high;
+      const lo = clock.floor_strike != null ? clock.floor_strike : m.floor_strike;
+      const hi = clock.cap_strike != null ? clock.cap_strike : m.cap_strike;
+      if (nws != null && isFinite(Number(nws))) return Math.round(Number(nws)) + "°";
+      if (kh != null && isFinite(Number(kh))) return Math.round(Number(kh)) + "°";
+      if (lo != null && hi != null && isFinite(Number(lo)) && isFinite(Number(hi))) {
+        return Math.round(Number(lo)) + "–" + Math.round(Number(hi)) + "°";
+      }
+      if (lo != null && isFinite(Number(lo))) return Math.round(Number(lo)) + "°";
+      return "";
+    }
+    let s = m.floor_strike != null ? m.floor_strike : (m.kalshi_target != null ? m.kalshi_target : null);
+    if (s == null) {
+      const tick = String(m.kalshi_ticker || m.ticker || "");
+      const mt = tick.match(/-T(\d+(?:\.\d+)?)$/i);
+      if (mt) s = Number(mt[1]);
+    }
+    const n = Number(s);
+    if (!isFinite(n) || n < 20) return "";
+    if (n >= 1000) return "$" + Math.round(n).toLocaleString("en-US");
+    return String(Math.round(n));
+  }
+  function liveCallWindowText(view, kind) {
+    if (kind === "oracle") return "CRT";
+    if (kind === "front") return "DFW";
+    const m = (view && view.market) || {};
+    const secs = (typeof secondsLeftOf === "function") ? secondsLeftOf(m) : null;
+    if (secs != null && isFinite(secs) && secs < 3600 * 6) {
+      const s = Math.max(0, Math.floor(Number(secs)));
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      return mm + ":" + ss;
+    }
+    return "1H";
+  }
+  function liveCallCard(view, which) {
+    const kind = liveCallKind(which);
+    const ts = view || {};
+    const d = ts.decision || {};
+    const lc = ts.locked_call || d.locked_call || {};
+    const raw = String((lc && lc.direction) || d.direction || "WAIT").toUpperCase();
+    let dir = "WAIT";
+    if (kind === "oracle") dir = "WATCH";
+    else if (kind === "front") {
+      if (raw === "ABOVE" || raw === "UP" || raw === "YES" || raw.indexOf("UP") >= 0) dir = "ABOVE";
+      else if (raw === "BELOW" || raw === "DOWN" || raw === "NO" || raw.indexOf("DOWN") >= 0) dir = "BELOW";
+      else if (raw === "BETWEEN") dir = "BETWEEN";
+    } else if (raw.indexOf("UP") >= 0) dir = "UP";
+    else if (raw.indexOf("DOWN") >= 0) dir = "DOWN";
+    const locked = !!(lc && lc.locked && lc.direction && dir !== "WAIT" && dir !== "WATCH");
+    let status = "WAIT";
+    if (kind === "oracle") status = "WATCH";
+    else if (locked) status = "LOCK";
+    const strike = liveCallStrikeText(ts, kind);
+    const windowTxt = liveCallWindowText(ts, kind);
+    const bits = [];
+    if (status === "LOCK") bits.push("LOCK " + dir);
+    else if (status === "WATCH") bits.push("WATCH");
+    else bits.push("WAIT");
+    if (strike) bits.push(strike);
+    else if (status === "WATCH") bits.push("no ticket");
+    if (windowTxt) bits.push(windowTxt);
+    const name = kind === "oracle" ? "ORA" : (kind === "front" ? "FRONT" : (kind === "ethereum" ? "ETH" : "BTC"));
+    return {
+      key: kind,
+      name: name,
+      dir: dir,
+      status: status,
+      strike: strike,
+      window: windowTxt,
+      line: bits.join(" · "),
+      tone: status === "LOCK" ? dir : status,
+    };
+  }
+  function liveCallHeadline(card) {
+    if (!card) return "WAIT";
+    if (card.status === "LOCK") return "LOCK " + card.dir;
+    return card.status || "WAIT";
+  }
+  function liveCallSub(card) {
+    if (!card) return "";
+    const bits = [];
+    if (card.strike) bits.push(card.strike);
+    else if (card.status === "WATCH") bits.push("no ticket");
+    if (card.window) bits.push(card.window);
+    return bits.join(" · ");
+  }
+  function liveCallToneColor(card) {
+    const status = card && card.status;
+    const dir = card && card.dir;
+    if (status === "LOCK" && (dir === "UP" || dir === "ABOVE")) return "#39ff14";
+    if (status === "LOCK" && (dir === "DOWN" || dir === "BELOW")) return "#ff2d55";
+    if (status === "WATCH") return "#ffe7a0";
+    return "#00e8ff";
+  }
+  function paintLiveCallPlate(ctx, cx, y, card, opts) {
+    opts = opts || {};
+    const tight = !!opts.tight;
+    const headline = liveCallHeadline(card);
+    const sub = liveCallSub(card);
+    const col = liveCallToneColor(card);
+    ctx.textAlign = "center";
+    ctx.font = tight ? "700 11px Orbitron, monospace" : "700 12px Orbitron, monospace";
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = opts.glow != null ? opts.glow : 10;
+    ctx.fillText(headline, cx, y);
+    ctx.shadowBlur = 0;
+    if (sub && !opts.oneLine) {
+      ctx.font = tight ? "600 9px Orbitron, monospace" : "600 10px Orbitron, monospace";
+      ctx.fillStyle = "#e8f4ff";
+      ctx.fillText(sub, cx, y + (tight ? 12 : 14));
+    }
+    return { headline: headline, sub: sub, line: (card && card.line) || headline };
+  }
   function chairWhyLineText(ts) {
     const view = ts || (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
-    const d = view.decision || {};
-    const m = view.market || {};
-    const h = view.health || (state && state.health) || {};
-    const lc = view.locked_call || d.locked_call || {};
-    const rawDir = String((lc && lc.direction) || d.direction || "WAIT").toUpperCase();
-    const sportsLock = !!(lc && lc.locked && rawDir && rawDir !== "WAIT" && !/^(UP|DOWN)/.test(rawDir));
-    const locked = !!(lc && lc.locked && lc.direction && (/UP|DOWN/.test(String(lc.direction).toUpperCase()) || sportsLock));
-    const raw = String((locked ? lc.direction : (d.direction || "WAIT"))).toUpperCase();
-    const side = (raw === "COVER" || raw === "NO-COVER" || raw === "OVER" || raw === "UNDER" || raw === "HOME" || raw === "AWAY" || (raw && raw !== "WAIT" && raw !== "YES" && raw !== "NO" && !raw.includes("UP") && !raw.includes("DOWN") && raw.length <= 5))
-      ? raw
-      : (raw.indexOf("UP") >= 0 ? "UP" : (raw.indexOf("DOWN") >= 0 ? "DOWN" : "WAIT"));
-    const yb = m.kalshi_yes_bid != null ? Number(m.kalshi_yes_bid) : (m.up_pct != null ? Number(m.up_pct) : null);
-    const ya = m.kalshi_yes_ask != null ? Number(m.kalshi_yes_ask) : null;
-    const down = yb != null ? (100 - yb) : (m.down_pct != null ? Number(m.down_pct) : null);
-    const ev = lc.ev_cents != null ? Number(lc.ev_cents) : (d.ev_cents != null ? Number(d.ev_cents) : null);
-    const stale = !!(m.stale || h.stale || (h.quote_age_s != null && Number(h.quote_age_s) > 20));
-    const empty = !(m.kalshi_ticker || m.ticker) || (yb == null && ya == null);
-    const wall99 = (yb != null && yb >= 99) || (down != null && down >= 99) || (ya != null && ya >= 99);
-    const evBit = (ev != null && isFinite(ev)) ? ("EV " + (ev >= 0 ? "+" : "") + Math.round(ev) + "¢") : "";
-    if (typeof isFrontTable === "function" && isFrontTable(focusTable)) {
-      const lean = displayDir(locked ? lc.direction : (d.direction || "WAIT"));
-      return frontHighLine(view) + " · " + lean + (empty ? " · no Dallas book" : "");
+    const kind = liveCallKind(typeof focusTable !== "undefined" ? focusTable : "bitcoin");
+    if (kind === "ats") {
+      const why = view.why || (view.pick && view.pick.why) || {};
+      return String(why.line || "WAIT · no game");
     }
-    if (locked) {
-      const extras = [];
-      if (!empty && !wall99) extras.push("book has size");
-      if (evBit) extras.push(evBit);
-      return extras.length ? ("LOCK " + side + " · " + extras.join(", ")) : ("LOCK " + side);
-    }
-    const bits = ["WAIT"];
-    if (wall99 && down != null && down >= 99) bits.push("DOWN is 99¢, no edge");
-    else if (wall99 && yb != null && yb >= 99) bits.push("UP is 99¢, no edge");
-    else if (wall99) bits.push("≥99¢ wall, no edge");
-    else if (empty) bits.push("empty book");
-    else if (stale) bits.push("stale quote");
-    else if (ev != null && ev <= 0) bits.push("no edge");
-    else if (/dead book/i.test(String(d.summary || ""))) bits.push("dead book");
-    else if (evBit) bits.push(evBit);
-    else bits.push("no edge");
-    return bits.slice(0, 3).join(" · ");
+    return liveCallCard(view, kind).line;
   }
 
   function paintAtsWhy(ts) {
@@ -7209,14 +7399,82 @@ function drawCandleChart() {
     el.hidden = !show;
     if (!show) return;
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const card = liveCallCard(ts, focusTable);
     if (typeof isAtsTable === "function" && isAtsTable(focusTable)) {
       const why = ts.why || (ts.pick && ts.pick.why) || {};
       el.textContent = String(why.line || chairWhyLineText(ts));
+      el.setAttribute("data-status", "WAIT");
+      el.setAttribute("data-dir", "WAIT");
     } else {
-      el.textContent = chairWhyLineText(ts);
+      el.textContent = card.line;
+      el.setAttribute("data-status", card.status);
+      el.setAttribute("data-dir", card.dir);
     }
     try { paintAtsWhy(ts); } catch (e) {}
     try { paintAtsWatch(ts); } catch (e) {}
+    try { paintOraWhy(ts); } catch (e) {}
+    try { paintOraWatch(ts); } catch (e) {}
+    try { paintCurrentCalls(); } catch (e) {}
+  }
+
+  function paintCurrentCalls() {
+    const board = document.getElementById("callsBoard");
+    if (!board) return;
+    const keys = ["bitcoin", "ethereum", "front", "oracle"];
+    keys.forEach(function (key) {
+      const row = board.querySelector('[data-call="' + key + '"]');
+      if (!row) return;
+      const view = (typeof tableState === "function" ? tableState(key) : null) || {};
+      const card = liveCallCard(view, key);
+      row.setAttribute("data-status", card.status);
+      row.setAttribute("data-dir", card.dir);
+      const name = row.querySelector(".calls-name");
+      const status = row.querySelector(".calls-status");
+      const strike = row.querySelector(".calls-strike");
+      const windowEl = row.querySelector(".calls-window");
+      if (name) name.textContent = card.name;
+      if (status) status.textContent = card.status === "LOCK" ? ("LOCK " + card.dir) : card.status;
+      if (strike) strike.textContent = card.strike || (card.status === "WATCH" ? "no ticket" : "—");
+      if (windowEl) windowEl.textContent = card.window || "—";
+    });
+  }
+  function wireCallsBoard() {
+    const board = document.getElementById("callsBoard");
+    if (!board || board.__wiredCalls) return;
+    board.__wiredCalls = true;
+    board.addEventListener("click", function (e) {
+      const row = e.target && e.target.closest && e.target.closest("[data-call]");
+      if (!row) return;
+      const key = row.getAttribute("data-call");
+      try { if (typeof window.setFocusTable === "function") window.setFocusTable(key); } catch (err) {}
+      try { setMode("art"); } catch (err) {}
+    });
+  }
+
+  function paintOraWhy(ts) {
+    const wrap = document.getElementById("oraWhy");
+    const line = document.getElementById("oraWhyLine");
+    const strip = document.getElementById("oraWhyStrip");
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    const show = oracle && (mode === "art" || mode === "floor" || mode === "night");
+    if (wrap) wrap.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
+    const why = view.why || {};
+    if (line) line.textContent = String(why.line || liveCallCard(view, "oracle").line);
+    if (strip) strip.textContent = String(why.strip || "SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK");
+  }
+
+  function paintOraWatch(ts) {
+    const el = document.getElementById("oraWatch");
+    if (!el) return;
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    const show = oracle && (mode === "art" || mode === "floor" || mode === "night");
+    el.hidden = !show;
+    if (!show) return;
+    const view = ts || (typeof tableState === "function" ? tableState("oracle") : null) || {};
+    const watch = view.watch || {};
+    el.textContent = String(watch.line || "CRT · WATCH · STATIC ON THE GLASS");
   }
 
   function paintPhoneScore() {
@@ -7229,10 +7487,15 @@ function drawCandleChart() {
     const eth = focusTable === "ethereum";
     const front = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const ats = typeof isAtsTable === "function" && isAtsTable(focusTable);
-    el.textContent = ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0")));
+    const oracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+    el.textContent = oracle ? "ORACLE · WATCH" : (ats ? (sc.ats_text || "ATS 0–0") : (front ? (sc.front_text || "DFW 0–0") : (eth ? (sc.eth_text || "0–0 ETH") : (sc.btc_text || "BTC 0–0"))));
     el.setAttribute("aria-label", "Flip focused Chair");
   }
 
+  function coinglassHudMiss(reason) {
+    const t = String(reason || "").toLowerCase();
+    return t.indexOf("401") >= 0 || t.indexOf("upgrade") >= 0 || t.indexOf("plan wall") >= 0;
+  }
   function paintHealthStrip(data) {
     const strip = document.getElementById("healthStrip");
     if (!strip) return;
@@ -7248,7 +7511,13 @@ function drawCandleChart() {
     const kalshi = data.kalshi_ok != null ? !!data.kalshi_ok : !!(data.kalshi_btc_ok !== false);
     setDot("healthKalshi", kalshi);
     setDot("healthSpot", !!data.spot_ok);
+    const glassWhy = String(data.coinglass_reason || "");
     setDot("healthGlass", !!data.coinglass_ok);
+    const glassEl = document.getElementById("healthGlass");
+    if (glassEl) {
+      glassEl.setAttribute("data-ok", data.coinglass_ok ? "1" : "0");
+      glassEl.title = data.coinglass_ok ? "CoinGlass live" : (glassWhy ? ("CoinGlass · " + glassWhy) : "CoinGlass not-ok");
+    }
     const ageEl = document.getElementById("healthAge");
     const age = data.quote_age_s != null ? data.quote_age_s : data.state_age_s;
     if (ageEl) ageEl.textContent = (age != null && isFinite(Number(age))) ? (Math.round(Number(age)) + "s") : "—";
@@ -8414,7 +8683,7 @@ function drawCandleChart() {
       const isChair = !!(s && (s.id === "RAIJIN" || (data && data.chair && s.id && s.id === data.chair.id)));
       const mark = isChair ? raijinPortraitSrc((s && s.eye) || frontLockDir()) : String((s && s.mark) || "");
       const label = isChair ? frontChairName(s) : String((s && (s.name || s.id)) || "");
-      return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '">' +
+      return '<article class="front-guide-card" data-seat="' + String((s && s.id) || "") + '" data-eye="' + String(frontSeatTone(s) || "WAIT").toLowerCase() + '">' +
         '<span class="front-mark"><img src="' + mark + '" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>' +
         "<div><h3>" + label + "</h3>" +
         "<p>" + String((s && s.job) || "") + "</p>" +
@@ -8488,17 +8757,22 @@ function drawCandleChart() {
     const chairCall = document.getElementById("frontChairCall");
     if (chairCall) {
       const lean = (data.chair && data.chair.lean) || wxWord(data.chair && data.chair.eye, data.clock && data.clock.strike_type, data.clock && data.clock.nws_high, data.clock && data.clock.floor_strike, data.clock && data.clock.cap_strike);
-      const high = frontHighLine({ market: { clock: data.clock || {}, strike_type: data.clock && data.clock.strike_type, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike, kalshi_high: data.chair && data.chair.kalshi_high, nws_high: data.clock && data.clock.nws_high, bracket: data.chair && data.chair.bracket } });
-      chairCall.textContent = high + " · " + lean;
+      chairCall.textContent = liveCallCard({
+        decision: { direction: lean },
+        locked_call: (data.chair && data.chair.locked) ? { locked: true, direction: lean } : null,
+        market: { clock: data.clock || {}, nws_high: data.clock && data.clock.nws_high, kalshi_high: data.chair && data.chair.kalshi_high, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike },
+      }, "front").line;
     }
     const chairImg = document.getElementById("frontChairImg");
     if (chairImg) {
-      chairImg.src = raijinPortraitSrc(frontLockDir());
+      chairImg.src = raijinPortraitSrc();
     }
     try { paintRaijinEyes(frontLockDir()); } catch (e) {}
     (data.seats || []).forEach(function (s) {
       const el = document.querySelector('.front-call[data-call="' + s.id + '"]');
       if (el) el.textContent = s.call || "—";
+      const seat = document.querySelector('#frontRing .front-seat[data-seat="' + s.id + '"]');
+      if (seat) seat.setAttribute("data-eye", String(frontSeatTone(s) || "WAIT").toLowerCase());
     });
     paintFrontSubs(data);
   }
@@ -8574,6 +8848,18 @@ function drawCandleChart() {
     if (d === "DOWN" || d === "NO" || d === "SKIP" || d === "BELOW") return "DOWN";
     return "WAIT";
   }
+  function glassSeatLive(s) {
+    if (!s) return false;
+    const id = String(s.id || s.agent_name || s.display_name || "").toUpperCase();
+    if (id !== "GLASS") return false;
+    if (s.ok === true || s.pane != null) return true;
+    return String(s.eye || "").toUpperCase() === "UP";
+  }
+  function frontSeatTone(s) {
+    if (glassSeatLive(s)) return "UP";
+    const raw = (s && (s.eye || s.dir || s.vote || s.direction)) || "WAIT";
+    return (typeof wxTone === "function") ? wxTone(raw) : frontLeanOf(raw);
+  }
   function drawFrontTable(wxCtx, w, h) {
     if (!wxCtx || !w || !h) return;
     const prev = ctx;
@@ -8622,7 +8908,7 @@ function drawCandleChart() {
         const ang = -Math.PI / 2 + (i / n) * Math.PI * 2 + orbit;
         const x = cx + Math.cos(ang) * ringR;
         const y = cy + Math.sin(ang) * ringR;
-        const adir = frontLeanOf(s.dir || s.vote);
+        const adir = frontSeatTone(s);
         let col = "rgba(0,232,255,0.95)";
         if (adir === "UP") col = "rgba(0,255,120,0.95)";
         if (adir === "DOWN") col = "rgba(255,55,90,0.95)";
@@ -8689,20 +8975,18 @@ function drawCandleChart() {
       ctx.font = "700 12px Orbitron, monospace";
       const plateY = cy + radius + 14;
       const wxDir = wxWord(dir, (data.clock && data.clock.strike_type) || (open && open.strike_type), data.clock && data.clock.nws_high, data.clock && data.clock.floor_strike, data.clock && data.clock.cap_strike);
-      const highLine = frontHighLine({ market: { clock: data.clock || {}, strike_type: data.clock && data.clock.strike_type, floor_strike: data.clock && data.clock.floor_strike, cap_strike: data.clock && data.clock.cap_strike, kalshi_high: data.clock && data.clock.kalshi_high, nws_high: data.clock && data.clock.nws_high, bracket: open && open.bracket || chair.bracket } });
-      if (locked) {
-        ctx.fillStyle = "#7fe9ff";
-        ctx.fillText("LOCKED " + wxDir, cx, plateY);
-        ctx.font = "600 10px Rajdhani, sans-serif";
-        ctx.fillStyle = "rgba(180,200,220,0.85)";
-        ctx.fillText(highLine + " · paper", cx, plateY + 14);
-      } else {
-        ctx.fillStyle = "#a8c0d8";
-        ctx.fillText(wxDir, cx, plateY);
-        ctx.font = "600 10px Rajdhani, sans-serif";
-        ctx.fillStyle = "rgba(180,200,220,0.75)";
-        ctx.fillText(highLine + " · " + (chair.bracket || "waiting on DFW CLI"), cx, plateY + 14);
-      }
+      const liveFront = liveCallCard({
+        decision: { direction: wxDir },
+        locked_call: locked ? { locked: true, direction: wxDir } : null,
+        market: {
+          clock: data.clock || {},
+          nws_high: data.clock && data.clock.nws_high,
+          kalshi_high: data.clock && data.clock.kalshi_high,
+          floor_strike: data.clock && data.clock.floor_strike,
+          cap_strike: data.clock && data.clock.cap_strike,
+        },
+      }, "front");
+      paintLiveCallPlate(ctx, cx, plateY, liveFront);
     } finally {
       ctx = prev;
     }
@@ -8949,6 +9233,26 @@ function drawCandleChart() {
     }, 20000);
   }
   window.loadAtsTable = loadAtsTable;
+  function renderOracleBotsGuide() {
+    const grid = document.getElementById("oracleBotsGrid");
+    if (!grid) return;
+    const ts = (typeof tableState === "function" ? tableState("oracle") : null) || oracleTableState();
+    const seats = ts.seats || oracleSeatRoster();
+    const chair = ts.chair || { id: "ORACLE", name: "ORACLE", job: "Watch chair. Does not place orders.", mark: "/oracle-wait.jpg" };
+    const rows = [chair].concat(seats);
+    grid.innerHTML = rows.map(function (s) {
+      const callsign = (s.id === "ORACLE" || s.name === "ORACLE") ? "ORACLE" : String(s.id || "");
+      const face = (callsign === "ORACLE") ? "/oracle-wait.jpg" : "";
+      const mark = face
+        ? frontBotMarkHtml(callsign, face)
+        : '<span class="ora-seat-mark" data-ora-seat="' + callsign + '">' + callsign.slice(0, 3) + "</span>";
+      return '<article class="bot-card front-bot-card ora-bot-card" data-ora-seat="' + callsign + '">' +
+        '<div class="bot-card-head">' + mark +
+        '<span class="bot-callsign">' + callsign + "</span></div>" +
+        '<div class="bot-blurb">' + String(s.job || s.call || "") + "</div>" +
+        "</article>";
+    }).join("");
+  }
   function renderAtsBotsGuide(data) {
     const grid = document.getElementById("atsBotsGrid");
     if (!grid) return;
@@ -9016,6 +9320,9 @@ function drawCandleChart() {
     const body = rows.map(r => {
       const ag = byName[r.agent] || {};
       const dir = ag.direction || "WAIT";
+      const liveTone = (String(r.agent || "").toLowerCase() === "glass")
+        ? ((typeof frontSeatTone === "function") ? frontSeatTone(ag) : wxTone(ag.eye || dir))
+        : wxTone(dir);
       const conf = ag.confidence != null ? ag.confidence : "—";
       const name = (r.agent === "leader" || r.agent === "chair")
         ? chairNameOf(focusTable)
@@ -9030,7 +9337,7 @@ function drawCandleChart() {
       const top = (r.rank || 99) <= 3;
       return '<div class="rank-row ' + (top ? "top " : "") + (muted ? "muted-rank" : "") + '" role="row">' +
         '<span class="rk">#' + r.rank + '</span><span class="nm">' + markHtml + name + '</span>' +
-        '<span class="dir-live ' + wxTone(dir) + '">' + (isFrontTable(focusTable) ? displayDir(dir) : dir) + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
+        '<span class="dir-live ' + liveTone + '">' + (isFrontTable(focusTable) ? displayDir(dir) : dir) + " " + conf + (conf !== "—" ? "%" : "") + '</span>' +
         '<span>' + (r.correct || 0) + '</span><span>' + (r.wrong || 0) + '</span><span>' + wr + fadeNote + '</span><span class="listen-col">' + listen + '</span>' +
         '<span class="hide-sm">' + (r.weight != null ? Number(r.weight).toFixed(3) : "—") + '</span></div>';
     }).join("") || '<div class="rank-empty">No rank data yet.</div>';
@@ -9400,6 +9707,9 @@ function drawCandleChart() {
     if (next === "front" && document.body.classList.contains("front-tab-off")) {
       next = "art";
     }
+    if (next === "side" && document.body.classList.contains("side-tab-off")) {
+      next = "art";
+    }
     try {
       if (typeof isSeatStormPlaying === "function" && isSeatStormPlaying()) {
         stopSeatStorm("desk");
@@ -9411,6 +9721,7 @@ function drawCandleChart() {
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
     try { syncFloorExitBtn(); } catch (e) {}
+    try { syncPhoneBackBtn(); } catch (e) {}
     try { syncFloorChairToggles(); } catch (e) {}
     try { syncSeatSpinBtn(); } catch (e) {}
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
@@ -9435,6 +9746,7 @@ function drawCandleChart() {
     const schoolView = document.getElementById("schoolView");
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
+    const callsView = document.getElementById("callsView");
     const showCharts = mode === "charts";
     const showSeats = isSeatsMode(mode);
     const showBots = showSeats;
@@ -9450,6 +9762,7 @@ function drawCandleChart() {
     const showSchool = mode === "school";
     const showSide = mode === "side";
     const showFront = mode === "front";
+    const showCalls = mode === "calls";
     const showMain = mode === "art" || mode === "floor" || mode === "night";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (seatsView) seatsView.classList.toggle("hidden", !showSeats);
@@ -9466,6 +9779,7 @@ function drawCandleChart() {
     if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
+    if (callsView) callsView.classList.toggle("hidden", !showCalls);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", !showSeats);
     try { dockWindowLed(); } catch (e) {}
@@ -9491,6 +9805,10 @@ function drawCandleChart() {
     if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
+    if (mode === "calls") {
+      try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
+      try { paintCurrentCalls(); } catch (e) {}
+    }
     if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || isSeatsMode(mode) || mode === "charts" || mode === "tape" || mode === "paper")) {
       try { loadAtsTable(); } catch (e) {}
     }
@@ -9583,45 +9901,30 @@ function drawCandleChart() {
     }
     const d = state.decision || {};
     const prevDir = decisionDir ? decisionDir.textContent : "";
-    // Prefer locked_call so the strip matches the plaque / portrait after the single call
     const lc = state.locked_call || d.locked_call || null;
     const hasLock = !!(lc && lc.locked && lc.direction && (lc.direction === "UP" || lc.direction === "DOWN" || lc.direction === "ABOVE" || lc.direction === "BELOW" || lc.direction === "BETWEEN"));
     const rawDir = hasLock ? lc.direction : (d.direction || "WAIT");
+    const live = liveCallCard(state, typeof focusTable !== "undefined" ? focusTable : "bitcoin");
     if (decisionDir) {
-      const shown = displayDir(rawDir);
-      decisionDir.textContent = lawLocked() ? "LOCKED" : (hasLock ? ("LOCKED " + shown) : (d.display_direction || shown));
-      decisionDir.className = "dir " + wxTone(rawDir);
+      decisionDir.textContent = live.status === "LOCK" ? ("LOCK " + live.dir) : live.status;
+      decisionDir.className = "dir " + (live.status === "LOCK" ? wxTone(rawDir) : live.status);
     }
-    // Status strip: phase + lock badge
     try {
-      const sum = String(d.summary || "");
-      let phase = "hold";
-      if (/\bENTRY\b/i.test(sum) || (hasLock && lc.phase === "entry")) phase = "entry";
-      else if (/\bFINAL\b/i.test(sum) || (hasLock && lc.phase === "final")) phase = "final";
-      else if (/\bMID\b/i.test(sum) || (hasLock && lc.phase === "mid")) phase = "mid";
-      else if (/Lock held/i.test(sum) || hasLock) phase = "hold";
       if (decisionPhase) {
-        decisionPhase.textContent = phase === "hold" ? "HELD" : phase.toUpperCase();
-        decisionPhase.className = "decision-phase phase-" + phase;
+        decisionPhase.textContent = live.window || "—";
+        decisionPhase.className = "decision-phase phase-" + (live.status === "LOCK" ? "hold" : "wait");
       }
       if (decisionLock) {
-        decisionLock.textContent = hasLock ? "🔒 LOCKED" : (phase === "entry" ? "NEW ENTRY" : "");
-        decisionLock.className = "decision-lock" + (hasLock ? " is-locked" : "");
+        decisionLock.textContent = live.status;
+        decisionLock.className = "decision-lock" + (live.status === "LOCK" ? " is-locked" : "");
       }
     } catch (e) { /* non-fatal */ }
 
-    // Prefer locked confidence so strip matches plaque/portrait
     if (decisionConf) {
-      decisionConf.textContent = (hasLock && lc && lc.confidence != null)
-        ? (lc.confidence + "%")
-        : (d.confidence != null ? d.confidence + "%" : "—");
+      decisionConf.textContent = live.strike || "—";
     }
     if (decisionSummary) {
-      decisionSummary.textContent = d.summary || "";
-      if (d.regime_key) {
-        decisionSummary.textContent = (decisionSummary.textContent || "") +
-          (decisionSummary.textContent ? " · " : "") + "regime " + d.regime_key;
-      }
+      decisionSummary.textContent = live.line;
     }
     if (btcPrice) btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
     if (fundingEl) fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
@@ -9689,6 +9992,16 @@ function drawCandleChart() {
     if (lastUpdateEl) lastUpdateEl.textContent = state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—";
     updateAccuracy(((typeof tableState === "function" ? tableState(focusTable) : null) || state || {}).accuracy || state.accuracy);
     try { paintTableHud(); } catch (e) {}
+    try {
+      if (typeof floorLikeMode === "function" && floorLikeMode() && typeof paintFloorLeaderClocks === "function") {
+        const canvas = document.getElementById("roundtable");
+        const keys = (typeof visibleFloorChairs === "function") ? visibleFloorChairs() : [];
+        const w = canvas ? canvas.width : 0;
+        const h = canvas ? canvas.height : 0;
+        const slots = (typeof floorChairLayout === "function") ? floorChairLayout(w, h, keys, typeof isPhoneDesk === "function" && isPhoneDesk()) : [];
+        paintFloorLeaderClocks(w, h, slots);
+      }
+    } catch (e) {}
     updateLaw(state.law);
     if (!deskCinematicOn()) updateHuddle(state.huddle);
     try { syncChartPairTitle(); } catch (e) {}
@@ -9773,10 +10086,11 @@ function drawCandleChart() {
     try { maybeAttractEnter(); } catch (e) {}
     if (mode === "art" || mode === "floor") drawArt();
     if (mode === "night") drawArt();
-    if (!document.hidden) {
+    if (!document.hidden && !reduceMotion) {
       animId = requestAnimationFrame(loop);
     } else {
-      animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, 500);
+      const wait = document.hidden ? 500 : 180;
+      animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, wait);
     }
   }
 
@@ -9803,7 +10117,7 @@ function drawCandleChart() {
     openChartsBtn.addEventListener("click", () => setMode("charts"));
   }
   modeTabs.forEach(btn => {
-    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront") return;
+    if (!btn.dataset.mode || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra") return;
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -9816,13 +10130,47 @@ function drawCandleChart() {
     document.addEventListener("click", (e) => {
       if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
-      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "btnHelp") return;
+      if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra" || btn.id === "btnHelp") return;
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
     }, true);
   }
+  function initModeTabsScroll() {
+    const scroller = document.getElementById("modeTabs");
+    const prev = document.getElementById("modeTabsPrev");
+    const next = document.getElementById("modeTabsNext");
+    if (!scroller || !prev || !next) return;
+    const sync = () => {
+      const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      const x = scroller.scrollLeft;
+      const overflow = max > 8;
+      prev.setAttribute("aria-disabled", (!overflow || x <= 4) ? "true" : "false");
+      next.setAttribute("aria-disabled", (!overflow || x >= max - 4) ? "true" : "false");
+      scroller.classList.toggle("tabs-overflow", overflow);
+      scroller.classList.toggle("tabs-at-start", x <= 4);
+      scroller.classList.toggle("tabs-at-end", !overflow || x >= max - 4);
+    };
+    if (!scroller.__tabScrollWired) {
+      scroller.__tabScrollWired = true;
+      prev.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scroller.scrollBy({ left: -Math.max(120, scroller.clientWidth * 0.7), behavior: "smooth" });
+      });
+      next.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        scroller.scrollBy({ left: Math.max(120, scroller.clientWidth * 0.7), behavior: "smooth" });
+      });
+      scroller.addEventListener("scroll", sync, { passive: true });
+      window.addEventListener("resize", sync);
+    }
+    sync();
+  }
+  try { initModeTabsScroll(); } catch (e) {}
+  window.initModeTabsScroll = initModeTabsScroll;
   if (!window.__seatsHashWired) {
     window.__seatsHashWired = true;
     window.addEventListener("hashchange", function () {
@@ -9858,6 +10206,15 @@ function drawCandleChart() {
       if (!soundMuted) playMarketBell();
     });
   }
+  if (stillToggle && !stillToggle.__wired) {
+    stillToggle.__wired = true;
+    stillToggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setStill(!seatOrbitFrozen);
+    });
+  }
+  try { syncStillBtn(); } catch (e) {}
 
   // Unlock audio on first interaction anywhere (browser policy)
   const armAudioOnce = () => {
@@ -9908,7 +10265,7 @@ function drawCandleChart() {
       // cycle Screensaver → Dashboard → Charts
       const order = (typeof window.__deskModeCycle === "function")
         ? window.__deskModeCycle()
-        : ["art", "seats", "paper", "tape", "book", "brain", "news", "wire", "charts", "settings"];
+        : ["art", "seats", "paper", "calls", "tape", "book", "brain", "news", "wire", "charts", "settings"];
       const i = order.indexOf(mode);
       setMode(order[(i + 1) % order.length]);
     }
@@ -10009,7 +10366,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#finalDecision",
       title: "THE PLAQUE",
-      body: "The center plaque is the single source of truth when locked (LOCKED UP/DOWN @ XX¢ · FOLLOW THIS).\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
+      body: "The chair table plate is the live call: LOCK or WAIT, a plain direction, and the strike/window.\n\nFollower bots poll /api/state and read locked_call (or decision.locked_call). When locked_call is null, there is no active call — stay flat or WAIT.",
     },
     {
       mode: "art",
@@ -10033,13 +10390,13 @@ function drawCandleChart() {
       mode: "floor",
       target: "#tabFloor",
       title: "FLOOR",
-      body: "Floor is four equal chairs: Satoshi, Vitalik, Raijin, Ares. Tap a Chair to focus that table. The strip is a paper match score. Reset is in Settings. ESC or TABLE returns to the desk.",
+      body: "Floor is five equal chairs: Satoshi, Vitalik, Raijin, Ares, ORACLE. Tap a Chair to focus that table. The strip is a paper match score. Reset is in Settings. ESC or TABLE returns to the desk.",
     },
     {
       mode: "seats",
       target: "#tabSeats",
       title: "SEATS",
-      body: "Same people, one page. Field guide (who they are), rank board (how they sit), live cards (the lean). BTC / ETH / ATS / DWF switch which Chair you are reading. Old #bots #ranks #dashboard links land here.",
+      body: "Same people, one page. Field guide (who they are), rank board (how they sit), live cards (the lean). BTC / ETH / ATS / DWF / ORA switch which Chair you are reading. Old #bots #ranks #dashboard links land here.",
     },
     {
       mode: "paper",
@@ -10052,6 +10409,12 @@ function drawCandleChart() {
       target: "#tabFront",
       title: "THE FRONT",
       body: "Raijin / THE FRONT. Raijin is the weather Chair. Raijin’s Floor — same ring as BTC / ETH, not a list.\n\nDallas daily high only (KXHIGHTDAL, DFW / KDFW — not Love Field). Date lives in the ticker. Settles on NWS CLI the next morning.\n\nSeats: GLASS (NWS PANE) · MESH (THE WEB) · PIT (THE PIT) · FROST (FROST KILL) · BONE (BONE CLIMO). Subs: HEAT · ECHO · CELL. They feed. They do not vote.\n\nHits count like Satoshi / Vitalik. Paper first. Small third chair on the shared Floor. Full-size ring on the Front tab. Does not place 1H Chair locks.",
+    },
+    {
+      mode: "art",
+      target: "#focusOra",
+      title: "ORACLE / ORA",
+      body: "ORACLE is the watch Chair. Gold tab ORA. No GLD chair.\n\nSeats: SIBYL · PIT · VEIL · MARBLE. They watch. They do not vote.\n\nCRT / neon room plate is a separate image — not baked into the face. Face is close-up only.\n\nORACLE does not place orders. Paper only. Follower OFF.",
     },
     {
       mode: "art",
@@ -10284,73 +10647,8 @@ function drawCandleChart() {
   }
 
   function runSummonSequence(fog) {
-    ensureAudio();
-    const gate = document.getElementById("summonGate");
-    const inner = document.getElementById("gateInner");
-    const tut = document.getElementById("gateTutorial");
-    const status = document.getElementById("summonStatus");
-    const wrap = document.getElementById("summonVideoWrap");
-    const vid = document.getElementById("summonVideo");
-    const skipBtn = document.getElementById("summonVideoSkip");
-
-    if (inner) inner.classList.add("hidden");
-    if (tut) tut.classList.add("hidden");
-    if (status) status.classList.add("hidden");
-    if (gate) gate.classList.add("summoning");
-    document.body.classList.add("gate-revealing");
-
-    // Prefer the cinematic video full-viewport
-    if (vid && wrap) {
-      wrap.classList.remove("hidden");
-      wrap.classList.add("active");
-      wrap.setAttribute("aria-hidden", "false");
-      const fogBed = document.getElementById("summonFogOverlay");
-      if (fogBed) fogBed.style.opacity = "0.55";
-      try { vid.currentTime = 0; } catch (e) {}
-      vid.muted = !!soundMuted;
-      // Try true browser fullscreen on the video wrap
-      const goFs = () => {
-        const el = wrap;
-        const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-        if (req) {
-          try { req.call(el); } catch (e) {}
-        }
-      };
-      const onEnded = () => {
-        vid.removeEventListener("ended", onEnded);
-        finishSummon(fog);
-      };
-      vid.addEventListener("ended", onEnded);
-      if (skipBtn) {
-        skipBtn.onclick = () => {
-          vid.removeEventListener("ended", onEnded);
-          finishSummon(fog);
-        };
-      }
-      const playPromise = vid.play();
-      if (playPromise && playPromise.then) {
-        playPromise.then(() => {
-          goFs();
-          // If user had sound on, try unmute after gesture-backed play
-          if (!soundMuted) {
-            try { vid.muted = false; } catch (e) {}
-          }
-        }).catch(() => {
-          // Autoplay blocked — mute and retry, still show fullscreen visual
-          vid.muted = true;
-          vid.play().then(goFs).catch(() => {
-            // Fall back to fog text sequence
-            wrap.classList.add("hidden");
-            runSummonFogFallback(fog);
-          });
-        });
-      } else {
-        goFs();
-      }
-      return;
-    }
-
-    runSummonFogFallback(fog);
+    // Parked cinematic. Go straight to the desk. No clip. No fullscreen.
+    try { finishSummon(fog); } catch (e) { try { dismissGate(false, "floor"); } catch (e2) {} }
   }
 
   function runSummonFogFallback(fog) {
@@ -10506,16 +10804,17 @@ function drawCandleChart() {
       const isEth = isEthTable(focusTable);
       const isFront = isFrontTable(focusTable);
       const isAts = typeof isAtsTable === "function" && isAtsTable(focusTable);
-      document.body.dataset.focusTable = isAts ? "ats" : (isFront ? "front" : (isEth ? "ethereum" : "bitcoin"));
+      const isOracle = typeof isOracleTable === "function" && isOracleTable(focusTable);
+      document.body.dataset.focusTable = isOracle ? "oracle" : (isAts ? "ats" : (isFront ? "front" : (isEth ? "ethereum" : "bitcoin")));
       try { syncChairRoom(focusTable, (typeof tableState === "function" ? tableState(focusTable) : null) || state); } catch (e) {}
       if (focusBtc) {
         focusBtc.classList.remove("active", "mode-tab");
-        if (isEth || isFront || isAts) focusBtc.classList.remove("focus-active");
+        if (isEth || isFront || isAts || isOracle) focusBtc.classList.remove("focus-active");
         else focusBtc.classList.add("focus-active");
       }
       if (focusEth) {
         focusEth.classList.remove("active", "mode-tab");
-        if (isEth && !isFront && !isAts) focusEth.classList.add("focus-active");
+        if (isEth && !isFront && !isAts && !isOracle) focusEth.classList.add("focus-active");
         else focusEth.classList.remove("focus-active");
       }
       if (focusFront) {
@@ -10529,6 +10828,12 @@ function drawCandleChart() {
         if (isAts) focusAts.classList.add("focus-active");
         else focusAts.classList.remove("focus-active");
       }
+      const focusOra = document.getElementById("focusOra");
+      if (focusOra) {
+        focusOra.classList.remove("active", "mode-tab");
+        if (isOracle) focusOra.classList.add("focus-active");
+        else focusOra.classList.remove("focus-active");
+      }
       const badge = document.getElementById("focusTableBadge");
       if (badge) {
         badge.textContent = chairBadgeOf(focusTable);
@@ -10538,8 +10843,8 @@ function drawCandleChart() {
       if (stage) {
         const dual = (typeof mode !== "undefined" && floorLikeMode() && typeof floorIsSingle === "function" && !floorIsSingle());
         stage.setAttribute("aria-label", dual
-          ? "Floor — Satoshi BTC, Vitalik ETH, Raijin DFW, Ares ATS"
-          : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table"))));
+          ? "Floor — Satoshi BTC, Vitalik ETH, Raijin DFW, Ares ATS, ORACLE"
+          : (isOracle ? "ORACLE watch table" : (isAts ? "Ares ATS table" : (isFront ? "Raijin DFW table" : (isEth ? "Vitalik ETH table" : "Satoshi BTC table")))));
       }
       try { syncChartPairTitle(); } catch (e) {}
       try { paintFrontWindowChrome(); } catch (e) {}
@@ -10547,7 +10852,8 @@ function drawCandleChart() {
 
     function setFocusTable(which) {
       const w = String(which || "").toLowerCase();
-      if (w === "ats" || w === "ares" || w === "sports") focusTable = "ats";
+      if (w === "oracle" || w === "crt") focusTable = "oracle";
+      else if (w === "ats" || w === "ares" || w === "sports") focusTable = "ats";
       else if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") focusTable = "front";
       else if (w === "ethereum" || w === "eth" || w === "vitalik") focusTable = "ethereum";
       else focusTable = "bitcoin";
@@ -10588,6 +10894,8 @@ function drawCandleChart() {
     bind(focusFront, "front");
     const focusAts = document.getElementById("focusAts");
     bind(focusAts, "ats");
+    const focusOra = document.getElementById("focusOra");
+    bind(focusOra, "oracle");
     applyFocusChrome();
     try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
     const floorExit = document.getElementById("floorExitBtn");
@@ -10614,7 +10922,7 @@ function drawCandleChart() {
       phoneScore.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const order = ["ethereum", "bitcoin", "front", "ats"];
+        const order = ["ethereum", "bitcoin", "front", "ats", "oracle"];
         const idx = order.indexOf(focusTable);
         const next = order[(idx + 1) % order.length];
         if (typeof setFocusTable === "function") setFocusTable(next);
@@ -10652,7 +10960,17 @@ function drawCandleChart() {
         setSeatSpin(seatOrbitFrozen);
       });
     }
+    const stillBtn = document.getElementById("stillToggle");
+    if (stillBtn && !stillBtn.__wired) {
+      stillBtn.__wired = true;
+      stillBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setStill(!seatOrbitFrozen);
+      });
+    }
     try { syncSeatSpinBtn(); } catch (e) {}
+    try { syncStillBtn(); } catch (e) {}
     const focusBadge = document.getElementById("focusTableBadge");
     if (focusBadge && !focusBadge.__wired) {
       focusBadge.__wired = true;
@@ -10725,6 +11043,7 @@ function drawCandleChart() {
   }
 
   function playCelebrateVideo(reason) {
+    if (document.body && document.body.classList.contains("reduce-motion")) return;
     const wrap = document.getElementById("celebrateVideoWrap");
     const vid = document.getElementById("celebrateVideo");
     const skipBtn = document.getElementById("celebrateVideoSkip");
@@ -11216,7 +11535,15 @@ function drawCandleChart() {
       if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
-      try { setFocusTable(hit.which); } catch (err) {}
+      if (hit.which === "front") {
+        try { setFocusTable("front"); } catch (err) {}
+      } else if (hit.which === "ats") {
+        try { setFocusTable("ats"); } catch (err) {}
+      } else if (hit.which === "oracle") {
+        try { setFocusTable("oracle"); } catch (err) {}
+      } else {
+        try { setFocusTable(hit.which); } catch (err) {}
+      }
     };
     targets.forEach((el) => {
       if (el.__chairClickWired) return;
@@ -11241,6 +11568,8 @@ function drawCandleChart() {
     syncFloorChairToggles();
   }
   wireFloorChairToggles();
+  wirePhoneBackBtn();
+  wireCallsBoard();
   initSeatStorm();
 
   function checkWinStreakCelebrate(acc) {
@@ -11256,7 +11585,7 @@ function drawCandleChart() {
     // 5+ win streak → fullscreen close-up money video (once per milestone)
     if (streak >= 5 && streak % 5 === 0 && streak !== lastCelebratedStreak) {
       lastCelebratedStreak = streak;
-      playCelebrateVideo("streak");
+      if (!reduceMotion) playCelebrateVideo("streak");
     }
     if (streak === 0) lastCelebratedStreak = 0;
 
@@ -11346,7 +11675,7 @@ function drawCandleChart() {
     chk("setFrontDallas", true);
     const dallas = document.getElementById("setFrontDallas");
     if (dallas) dallas.disabled = true;
-    document.body.classList.toggle("front-tab-off", F.show_tab === false);
+    document.body.classList.add("front-tab-off");
     document.body.classList.toggle("front-chair-off", F.show_floor_chair === false);
     if (F.show_tab === false && typeof mode !== "undefined" && mode === "front") {
       try { setMode("art"); } catch (e) {}
@@ -11514,7 +11843,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "tape", "book", "night", "brain", "news", "wire", "school", "side", "front", "charts", "settings"];
+    return ["art", "seats", "paper", "calls", "tape", "book", "night", "brain", "news", "wire", "school", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
@@ -11801,92 +12130,13 @@ function drawCandleChart() {
   const DESK_INTRO_KEY = "council_desk_intro_played";
 
   function prefetchDeskIntroVideo() {
-    // Warm zt-intro.mp4 while the desk-code gate is up. Do not load() or swap src.
-    const vid = document.getElementById("deskIntroVideo");
-    if (vid) vid.preload = "auto";
-    try {
-      fetch("/zt-intro.mp4", { cache: "force-cache", credentials: "same-origin" }).catch(function () {});
-    } catch (e) {}
+    // Parked. Zach is remaking the clips. Do not warm or play.
   }
 
   function playDeskUnlockIntro() {
-    // Post-desk-code opening. Plays ONLY /zt-intro.mp4. Never re-lock. No fullscreen.
-    function stayUnlocked() {
-      try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
-    }
-    try {
-      if (sessionStorage.getItem(DESK_INTRO_KEY) === "1") {
-        stayUnlocked();
-        return;
-      }
-    } catch (e) {}
-    if (window.__deskIntroPlaying) return;
-    const wrap = document.getElementById("deskIntroWrap");
-    const vid = document.getElementById("deskIntroVideo");
-    const skipBtn = document.getElementById("deskIntroSkip");
-    try { sessionStorage.setItem(DESK_INTRO_KEY, "1"); } catch (e) {}
-    if (!wrap || !vid) {
-      stayUnlocked();
-      return;
-    }
-    if (vid.currentSrc && !/zt-intro\.mp4/i.test(vid.currentSrc)) {
-      stayUnlocked();
-      return;
-    }
-
-    window.__deskIntroPlaying = true;
-    wrap.classList.remove("hidden");
-    wrap.classList.add("active");
-    wrap.setAttribute("aria-hidden", "false");
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.setAttribute("playsinline", "");
-    vid.setAttribute("webkit-playsinline", "");
-    try { vid.currentTime = 0; } catch (e) {}
-
-    let safety = null;
-    const cleanup = function () {
-      if (!window.__deskIntroPlaying) {
-        stayUnlocked();
-        return false;
-      }
-      window.__deskIntroPlaying = false;
-      if (safety) { clearTimeout(safety); safety = null; }
-      try { vid.pause(); } catch (e) {}
-      wrap.classList.add("hidden");
-      wrap.classList.remove("active");
-      wrap.setAttribute("aria-hidden", "true");
-      stayUnlocked();
-      return true;
-    };
-    window.__dismissDeskIntro = function () {
-      return cleanup();
-    };
-
-    vid.onended = function () { cleanup(); };
-    vid.onerror = function () { cleanup(); };
-    if (skipBtn) skipBtn.onclick = function (e) { if (e) e.stopPropagation(); cleanup(); };
-    wrap.onclick = function () { cleanup(); };
-
-    safety = setTimeout(function () {
-      if (!window.__deskIntroPlaying) return;
-      if (vid.paused && vid.currentTime < 0.05) cleanup();
-    }, 10000);
-
-    const p = vid.play();
-    if (p && p.then) {
-      p.then(function () {
-        try { vid.muted = false; } catch (e) {}
-      }).catch(function () {
-        vid.muted = true;
-        const p2 = vid.play();
-        if (p2 && p2.then) {
-          p2.catch(function () { cleanup(); });
-        } else {
-          cleanup();
-        }
-      });
-    }
+    if (document.body && document.body.classList.contains("reduce-motion")) return;
+    // Parked. After SUMMON go straight to the desk. No clip. No fullscreen.
+    try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
   }
   window.playDeskUnlockIntro = playDeskUnlockIntro;
   window.prefetchDeskIntroVideo = prefetchDeskIntroVideo;
@@ -11901,7 +12151,6 @@ function drawCandleChart() {
     if (typeof window.revealAppAfterDeskUnlock === "function") {
       window.revealAppAfterDeskUnlock();
     }
-    try { playDeskUnlockIntro(); } catch (e) {}
     document.body.classList.remove("admin-unlocked");
     const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
     if (onboarded) {
@@ -11955,7 +12204,7 @@ function drawCandleChart() {
       try { wireFocusAndHelp(); } catch (e) { console.warn(e); }
     };
 
-    if (!vid) { finish(); return; }
+    if (!vid || (document.body && document.body.classList.contains("reduce-motion"))) { finish(); return; }
     vid.muted = false;
     vid.volume = 0.9;
     const onEnd = () => { vid.removeEventListener("ended", onEnd); finish(); };
@@ -12012,10 +12261,19 @@ function drawCandleChart() {
         btn.textContent = "SUMMON THE COUNCIL";
         btn.setAttribute("aria-disabled", sealed ? "false" : "true");
       }
+      if (sealed && err && err.textContent === "Seal the pact first.") {
+        err.classList.add("hidden");
+      }
       return sealed;
     };
     const tryUnlock = () => {
-      if (!syncDeskGateSummon()) return;
+      if (!syncDeskGateSummon()) {
+        if (err) {
+          err.textContent = "Seal the pact first.";
+          err.classList.remove("hidden");
+        }
+        return;
+      }
       const v = (input && input.value) || "";
       if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
         try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
@@ -12025,12 +12283,24 @@ function drawCandleChart() {
         // Fresh password entry → first-login choice, or the desk if already onboarded
         showAppAfterAuth();
       } else {
-        if (err) err.classList.remove("hidden");
+        if (err) {
+          err.textContent = "Wrong password";
+          err.classList.remove("hidden");
+        }
       }
     };
     if (agree) agree.addEventListener("change", syncDeskGateSummon);
     syncDeskGateSummon();
     if (btn) btn.addEventListener("click", tryUnlock);
+    const summonHit = document.getElementById("gateSummonHit");
+    if (summonHit) {
+      summonHit.addEventListener("click", function (e) {
+        if (btn && btn.disabled) {
+          e.preventDefault();
+          tryUnlock();
+        }
+      });
+    }
     if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
     try { prefetchDeskIntroVideo(); } catch (e) {}
   }
@@ -12072,24 +12342,29 @@ function drawCandleChart() {
     resize();
     window.addEventListener("resize", resize);
     function tick() {
+      const still = document.body.classList.contains("reduce-motion");
       if (!document.body.classList.contains("mode-floor") && !document.body.classList.contains("floor-mode")) {
-        requestAnimationFrame(tick);
+        if (still) setTimeout(tick, 800);
+        else requestAnimationFrame(tick);
         return;
       }
       ctx.fillStyle = "rgba(2,4,10,0.35)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       for (const st of stars) {
-        st.y += st.z * 0.72;
-        if (st.y > canvas.height) {
-          st.y = 0;
-          st.x = Math.random() * canvas.width;
+        if (!still) {
+          st.y += st.z * 0.72;
+          if (st.y > canvas.height) {
+            st.y = 0;
+            st.x = Math.random() * canvas.width;
+          }
         }
         ctx.beginPath();
         ctx.fillStyle = `hsla(${200 + st.z * 40}, 90%, ${60 + st.z * 15}%, ${0.5 + st.z * 0.25})`;
         ctx.arc(st.x, st.y, st.s, 0, Math.PI * 2);
         ctx.fill();
       }
-      requestAnimationFrame(tick);
+      if (still) setTimeout(tick, 800);
+      else requestAnimationFrame(tick);
     }
     tick();
   }
@@ -12169,6 +12444,7 @@ function drawCandleChart() {
 /* ===== SUMMON VIDEO + FOG REVEAL ===== */
 (function () {
   function playSummonVideoThenReveal() {
+    try { if (typeof window.revealAppAfterDeskUnlock === "function") window.revealAppAfterDeskUnlock(); } catch (e) {}
     if (typeof window.runSummonSequence === "function") {
       window.runSummonSequence(window.__councilFog || null);
       return;
@@ -12658,7 +12934,12 @@ function drawCandleChart() {
     return { wrap, vid: vid || document.getElementById("floorMoneyRainVideo") };
   }
 
+  function motionStill() {
+    return !!(document.body && document.body.classList.contains("reduce-motion"));
+  }
+
   function startRain() {
+    if (motionStill()) return;
     const { wrap, vid } = ensureEls();
     if (!wrap || !vid) return;
     active = true;
@@ -12689,7 +12970,7 @@ function drawCandleChart() {
   }
 
   window.__setFloorMoneyRain = function (on) {
-    if (on) startRain();
+    if (on && !motionStill()) startRain();
     else stopRain();
   };
 
@@ -12699,7 +12980,7 @@ function drawCandleChart() {
     if (typeof prev === "function") {
       try { prev(isFloor); } catch (e) {}
     }
-    if (isFloor && active) {
+    if (isFloor && active && !motionStill()) {
       const vid = document.getElementById("floorMoneyRainVideo");
       if (vid) {
         const p = vid.play();

@@ -79,6 +79,9 @@ class MarkupTests(unittest.TestCase):
             'id="tabSchool"',
             'id="tabSide"',
             'id="tabFront"',
+            'id="tabCalls"',
+            'id="callsView"',
+            'id="callsBoard"',
             'id="tapeView"',
             'id="bookView"',
             'id="brainView"',
@@ -399,23 +402,29 @@ class WhyLineTests(unittest.TestCase):
             decision={"direction": "WAIT", "summary": "no lock"},
             market={"kalshi_ticker": "KXBTCD-26AUG1516-T1", "kalshi_yes_bid": 1},
         )
-        self.assertEqual(line, "WAIT · DOWN is 99¢, no edge")
+        self.assertEqual(line, "WAIT · 1H")
         self.assertNotIn("\n", line)
         self.assertLess(len(line), 80)
+        self.assertNotIn("no edge", line)
+        self.assertNotIn("99¢", line)
 
     def test_lock_up_book_size_ev(self):
         book = {"yes": [[48, 20], [47, 10]], "no": [[51, 15]]}
         line = why_line(
             decision={"direction": "UP", "ev_cents": 4},
             market={
-                "kalshi_ticker": "KXBTCD-26AUG1516-T1",
+                "kalshi_ticker": "KXBTCD-26AUG1516-T63000",
+                "floor_strike": 63000,
                 "kalshi_yes_bid": 48,
                 "kalshi_yes_ask": 50,
                 "kalshi_orderbook": book,
+                "seconds_left": 724,
             },
             locked_call={"locked": True, "direction": "UP", "ev_cents": 4},
         )
-        self.assertEqual(line, "LOCK UP · book has size, EV +4¢")
+        self.assertEqual(line, "LOCK UP · $63,000 · 12:04")
+        self.assertNotIn("book has size", line)
+        self.assertNotIn("EV ", line)
 
     def test_why_is_on_floor_and_table(self):
         self.assertIn('id="chairWhy"', HTML)
@@ -503,8 +512,18 @@ class HealthStripTests(unittest.TestCase):
         self.assertIn("function loadHealthStrip()", JS)
         self.assertIn("/health", JS)
         self.assertIn(".health-dot.down", CSS)
+        self.assertIn(".health-dot.up::before", CSS)
+        default_dot = CSS.split(".health-dot::before", 1)[1].split("}", 1)[0]
+        self.assertNotIn("#39ff14", default_dot)
+        self.assertIn("#6b7c90", default_dot)
+        up_dot = CSS.split(".health-dot.up::before", 1)[1].split("}", 1)[0]
+        self.assertIn("#39ff14", up_dot)
+        self.assertIn("function coinglassHudMiss", JS)
+        self.assertIn("plan wall", JS.split("function coinglassHudMiss", 1)[1][:250])
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', JS)
+        self.assertIn('data-feed="coinglass"', HTML.split('id="healthGlass"', 1)[1][:80])
         self.assertIn("body.gate-locked #healthStrip", CSS)
-        self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:400])
+        self.assertIn("hasDeskAuth", JS.split("function paintHealthStrip", 1)[1][:800])
 
     def test_strip_shape_dims_down_feeds(self):
         strip = health_strip_from_health(
@@ -514,6 +533,20 @@ class HealthStripTests(unittest.TestCase):
         self.assertTrue(strip["spot"])
         self.assertFalse(strip["coinglass"])
         self.assertEqual(strip["quote_age_s"], 3)
+        plan = health_strip_from_health({
+            "kalshi_ok": True,
+            "spot_ok": True,
+            "coinglass_ok": True,
+            "coinglass_reason": "http=200 code=401 msg=Upgrade plan",
+        })
+        self.assertFalse(plan["coinglass"])
+        wall = health_strip_from_health({
+            "kalshi_ok": True,
+            "spot_ok": True,
+            "coinglass_ok": False,
+            "coinglass_reason": "plan wall: need Startup+ for 30m/1h",
+        })
+        self.assertFalse(wall["coinglass"])
 
 
 class SchoolTests(unittest.TestCase):

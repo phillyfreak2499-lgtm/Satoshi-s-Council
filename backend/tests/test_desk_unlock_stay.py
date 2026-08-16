@@ -66,16 +66,14 @@ class OpeningIntroTests(unittest.TestCase):
     def test_live_unlock_plays_opening_then_stays(self):
         play = _play_fn()
         auth = _auth_fn()
-        self.assertIn("playDeskUnlockIntro()", auth)
+        self.assertNotIn("playDeskUnlockIntro()", auth)
         self.assertIn("revealAppAfterDeskUnlock", auth)
-        self.assertIn("vid.play()", play)
-        self.assertIn("getElementById(\"deskIntroVideo\")", play)
-        self.assertIn("stayUnlocked", play)
+        self.assertNotIn("vid.play()", play)
         self.assertNotIn("requestFullscreen", play)
         self.assertNotIn("getElementById(\"summonVideo\")", play)
         self.assertNotIn("summon-council", play)
         self.assertNotIn("leader-click", play)
-        self.assertEqual(JS.count("playDeskUnlockIntro();"), 1)
+        self.assertEqual(JS.count("playDeskUnlockIntro();"), 0)
 
     def test_summon_council_and_leader_click_untouched(self):
         self.assertIn('id="deskIntroVideo"', HTML)

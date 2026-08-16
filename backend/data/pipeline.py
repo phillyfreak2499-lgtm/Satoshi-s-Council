@@ -10,7 +10,7 @@ from loguru import logger
 from backend.data.binance import BinanceClient, coinbase_product_for_symbol
 from backend.data.kalshi import KalshiClient
 from backend.data.coinbase import CoinbaseClient
-from backend.data.coinglass import CoinGlassClient
+from backend.data.coinglass import CoinGlassClient, apply_coinglass_health, chair_window_ok
 from backend.data.cfbenchmarks import (
     RtiWindow,
     last15_spot,
@@ -219,7 +219,7 @@ class DataPipeline:
         cfb_ok = bool(cfb_snap.get("healthy"))
         spot_ok = bool(binance_data.get("healthy")) or bn_candles_ok or cb_ok or cfb_ok
 
-        # Re-pick ATM strike with the research print (60s CFB avg when we have it)
+        # Re-pick the hour's playable ladder rung with the research print
         spot = research_px or display_px or bn_price or cb_price
         if spot and kalshi_data.get("healthy"):
             try:
@@ -232,11 +232,9 @@ class DataPipeline:
         self.health["binance"] = bool(spot_ok)
         self.health["kalshi"] = bool(kalshi_data.get("healthy", False))
         self.health["coinbase"] = bool(cb_ok)
-        self.health["coinglass"] = bool(cg_data.get("healthy", False))
-        cg_reason = cg_data.get("reason") or cg_data.get("coinglass_reason") or ""
-        if not self.health["coinglass"] and not cg_reason:
-            cg_reason = "no usable funding/OI/liq this cycle"
-        self.health["coinglass_reason"] = str(cg_reason) if cg_reason else None
+        # CoinGlass health is CoinGlass-only. Binance funding/OI last-print
+        # may still fill CARRY below and must not flip this flag.
+        apply_coinglass_health(self.health, cg_data)
         self.health["cfb"] = bool(cfb_ok)
         self.health["spot_source"] = spot_source or ("cfb" if cfb_ok else ("coinbase" if cb_ok else None))
         self.health["research_spot_source"] = research.get("source")
@@ -249,13 +247,14 @@ class DataPipeline:
             stale = {**self.last_good, "stale": True, "health": dict(self.health), "asset": self.asset}
             return stale
 
-        cg_fund = cg_data.get("funding_rate")
+        chair_ok = chair_window_ok(cg_data)
+        cg_fund = cg_data.get("funding_rate") if chair_ok else None
         bn_fund = binance_data.get("funding_rate")
         if bn_fund is None:
             bn_fund = binance_data.get("funding")
         funding_rate = cg_fund if cg_fund is not None else bn_fund
 
-        cg_oi = cg_data.get("open_interest")
+        cg_oi = cg_data.get("open_interest") if chair_ok else None
         bn_oi = binance_data.get("open_interest")
         open_interest = cg_oi if cg_oi is not None else bn_oi
 
@@ -280,15 +279,15 @@ class DataPipeline:
             "spot_source": self.health["spot_source"],
             "funding_rate": funding_rate,
             "open_interest": open_interest,
-            "liq_long_usd": cg_data.get("liq_long_usd"),
-            "liq_short_usd": cg_data.get("liq_short_usd"),
-            "liq_net_usd": cg_data.get("liq_net_usd"),
-            "oi_delta_1h": cg_data.get("oi_delta_1h"),
+            "liq_long_usd": cg_data.get("liq_long_usd") if chair_ok else None,
+            "liq_short_usd": cg_data.get("liq_short_usd") if chair_ok else None,
+            "liq_net_usd": cg_data.get("liq_net_usd") if chair_ok else None,
+            "oi_delta_1h": cg_data.get("oi_delta_1h") if chair_ok else None,
             "cg_interval": cg_data.get("interval"),
-            "cg_daily_heatmap": bool(cg_data.get("daily_heatmap")),
-            "funding_history": cg_data.get("funding_history") or [],
-            "oi_history": cg_data.get("oi_history") or [],
-            "liq_history": cg_data.get("liq_history") or [],
+            "cg_daily_heatmap": False,
+            "funding_history": list(cg_data.get("funding_history") or []) if chair_ok else [],
+            "oi_history": list(cg_data.get("oi_history") or []) if chair_ok else [],
+            "liq_history": list(cg_data.get("liq_history") or []) if chair_ok else [],
             "kalshi_market": kalshi_data.get("primary_market"),
             "kalshi_orderbook": kalshi_data.get("orderbook"),
             "kalshi_yes_bid": kalshi_data.get("yes_bid"),
@@ -330,6 +329,10 @@ class DataPipeline:
         if spot_feed_ok(self.health, snapshot):
             self.health["binance"] = True
             snapshot["health"]["binance"] = True
+        # Re-pin after Binance fill so CARRY last-print cannot flip Glass.
+        apply_coinglass_health(self.health, cg_data)
+        snapshot["health"]["coinglass"] = self.health.get("coinglass")
+        snapshot["health"]["coinglass_reason"] = self.health.get("coinglass_reason")
 
         if self.health["binance"] or self.health["kalshi"]:
             self.last_good = snapshot

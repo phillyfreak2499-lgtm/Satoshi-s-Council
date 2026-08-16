@@ -292,9 +292,9 @@ class SatoshiChairEmblemTests(unittest.TestCase):
         html = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("function coverSatoshiEmblem", js)
         self.assertNotIn("gold ZT chest emblem", js)
-        self.assertIn('"/chair-up.jpg"', js)
-        self.assertIn('"/chair-down.jpg"', js)
         self.assertIn('"/chair-wait.jpg"', js)
+        self.assertNotIn('"/chair-up.jpg"', js)
+        self.assertNotIn('"/chair-down.jpg"', js)
         for name in ("chair-up.jpg", "chair-down.jpg", "chair-wait.jpg"):
             self.assertTrue((ROOT / "frontend" / "static" / name).is_file(), name)
         self.assertIn("Satoshi’s Council", html)
@@ -602,7 +602,7 @@ def _floor_hud_layout(w, h, view="floor"):
                 "y": plate_y - 14,
                 "w": gw,
                 "h": 28,
-                "text": "GOAL · one guess @ best odds (10–90¢)",
+                "text": "WAIT · $63,100 · 1H",
             }
         )
         nw = _text_w("SATOSHI", 11)
@@ -618,7 +618,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": 27,
                     "w": 120,
                     "h": 18,
-                    "text": "GOAL · one guess @ best odds (10–90¢)",
+                    "text": "WAIT · $63,100 · 1H",
                 }
             )
             nw = _text_w("SATOSHI", 10)
@@ -632,7 +632,7 @@ def _floor_hud_layout(w, h, view="floor"):
                     "y": plate_y - 14,
                     "w": gw,
                     "h": 28,
-                    "text": "GOAL · one guess @ best odds (10–90¢)",
+                    "text": "WAIT · $63,100 · 1H",
                 }
             )
             nw = _text_w("SATOSHI", 10)

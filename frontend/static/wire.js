@@ -2,6 +2,156 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-table-room-plates",
+    "at": "2026-08-16T05:50:00-05:00",
+    "title": "Chair rooms are signed plates now",
+    "why": "Satoshi shrine, Vitalik city, Ares stadium, and Raijin Dallas sit behind Floor/Table under the wisps. Same table, different world. Faces stay close-up. Phone keeps a lighter wash. Oracle room stays its own plate. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-vitalik-closeup",
+    "at": "2026-08-16T05:35:00-05:00",
+    "title": "Vitalik files are the close-up cuts",
+    "why": "Watcher close-up Vitalik WAIT/UP/DOWN jpgs are on the desk — teal HOLD, green UP, red DOWN, dark back, no city. Same man. Name stays Vitalik. Satoshi, Ares, and Raijin chairs stay put. Desk still shows one WAIT face. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-one-face",
+    "at": "2026-08-16T04:50:00-05:00",
+    "title": "One face per Chair",
+    "why": "Satoshi, Vitalik, Ares, Raijin, and ORACLE each keep one WAIT face. Labels carry UP/DOWN/WAIT/LOCK. Faces do not swap. Eye tints are off. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-header-still",
+    "at": "2026-08-16T04:45:00-05:00",
+    "title": "Header STILL sits next to mute",
+    "why": "Header STILL next to mute for slow pipes. Cuts seat orbit, money rain, intro thrash, starfield, lock beams, and attract wander — same freeze the Floor already honors. Not a Floor SPIN control. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-vitalik-recenter",
+    "at": "2026-08-16T04:40:00-05:00",
+    "title": "Vitalik chair is a close-up face now",
+    "why": "Vitalik WAIT/UP/DOWN are the signed close-up face cuts — teal HOLD, green UP, red DOWN — simple dark back, no table room. Same man. Name stays Vitalik. Satoshi, Ares, and Raijin chairs stay put. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-1h-only",
+    "at": "2026-08-16T04:25:00-05:00",
+    "title": "CoinGlass Chair-healthy is 1h hist only",
+    "why": "coinglass_ok is true only when a real 30m/1h hist returned numbers. 4h is the Hobbyist floor, not a 1H lock input — PR #31 stays out. No open-interest/exchange-list probe. Fail-soft + plan-wall cache. Startup still required for 1h hist. HUD Glass stays on coinglass_ok. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-wall-tight",
+    "at": "2026-08-16T04:15:00-05:00",
+    "title": "CoinGlass plan wall stays latched",
+    "why": "After 30m and 1h both return Upgrade plan, the desk latches a plan wall and stops re-probing — including the other table. coinglass_ok stays false — plan wall: need Startup+ for 30m/1h. Binance may still fill CARRY last-print; that does not flip the HUD Glass dot. No 4h into 1H locks. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-kill-crickets",
+    "at": "2026-08-16T04:00:00-05:00",
+    "title": "Cricket bed leaves the desk",
+    "why": "The skip-hour cricket bed is off. No ambient cricket loop on the desk, Floor, gate, or Night. Lock, win, and lose SFX stay. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-plan-wall",
+    "at": "2026-08-16T03:55:00-05:00",
+    "title": "CoinGlass plan wall stops the 30m retry",
+    "why": "Hobbyist cannot do 30m/1h. After both windows return Upgrade plan, the desk caches a plan wall and stops re-probing 30m every cycle. coinglass_ok stays false — plan wall: need Startup+ for 30m/1h. No 4h heatmap into 1H locks. Binance futures stay, Oregon 451 soft-fails. HUD Glass stays not-green. Not the weather GLASS seat. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-hud-only",
+    "at": "2026-08-16T03:50:00-05:00",
+    "title": "CoinGlass HUD stays; 401 chase leaves this desk",
+    "why": "The HUD Glass light still matches live health — coinglass_ok=false / 401 Upgrade plan is not green. That light is not the Raijin NWS GLASS seat. This PR does not chase the CoinGlass key and does not add a 401 probe path. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-chair-table-call",
+    "at": "2026-08-16T03:35:00-05:00",
+    "title": "Chair tables speak LOCK / WAIT",
+    "why": "The live call on each chair table is now LOCK or WAIT, a plain direction, and the strike/window — no percent, cents, or Q dump. Current Calls still lists BTC, ETH, Front, and ORA. Phone back still returns to Floor. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-current-calls",
+    "at": "2026-08-16T03:20:00-05:00",
+    "title": "Current Calls + punchy Chair lines",
+    "why": "Each chair table now reads LOCK or WAIT, a plain direction, and the strike/window — CRT/neon, not a spreadsheet dump. A Current Calls tab lists BTC, ETH, Front, and ORA in one place. Phone back still returns to Floor. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-hour-ladder",
+    "at": "2026-08-16T03:10:00-05:00",
+    "title": "Hourly BTC/ETH pick the playable ladder rung",
+    "why": "Hourly BTC and ETH are a strike ladder, not one binary. The desk now takes the hour’s best contract after vig — 64/36 over chalk 98/2 — then the existing 20–80 / EV / dead-book / first-10 / last-15 / BTC-leads-ETH gates still sit. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-coinglass-hud",
+    "at": "2026-08-16T03:00:00-05:00",
+    "title": "CoinGlass HUD light matches the miss",
+    "why": "The HUD Glass dot defaulted green. Live health is coinglass_ok=false on HTTP 200 / code 401 Upgrade plan — the light is not-ok now. This is not the Raijin NWS GLASS seat. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-glass-pane",
+    "at": "2026-08-16T02:50:00-05:00",
+    "title": "GLASS reads the live NWS pane",
+    "why": "GLASS was WAIT / NO PANE when the DAL period forecast was null even though MESH NWS and KDFW were live. The light now goes green from that NWS pane — not CoinGlass, not Open-Meteo. Front stays off the nav. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-side-parked",
+    "at": "2026-08-16T02:40:00-05:00",
+    "title": "Side Table leaves the desk",
+    "why": "The 15m paper arcade is parked. Side is not a nav tab and not on the Floor. Oracle’s room plate is a later chair-room behind ORACLE — not this Side Table. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-ora-kit",
+    "at": "2026-08-16T02:30:00-05:00",
+    "title": "ORA gold tab + Oracle room plate",
+    "why": "Gold tab is ORA, not GLD. Chair name stays ORACLE. Seats are SIBYL / PIT / VEIL / MARBLE. CRT/neon room plate is its own image, not baked into the face. No crypto chrome on this kit. ORACLE does not place orders. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-phone-oracle",
+    "at": "2026-08-16T02:20:00-05:00",
+    "title": "ORACLE sits as the fifth Floor leader",
+    "why": "Floor is five equal chairs: Satoshi, Vitalik, Raijin, Ares, ORACLE. CRT/neon HUD. Face-only placeholder — no signed ORACLE portrait in the repo. SIBYL/PIT/VEIL/MARBLE roster is not parked here. ORACLE does not place orders. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-floor-clocks",
+    "at": "2026-08-16T02:15:00-05:00",
+    "title": "Each Floor leader keeps its own clock",
+    "why": "One middle hour LED hid the real windows. BTC and ETH keep 1H. Raijin keeps DFW high. Ares keeps kick. ORACLE is WATCH. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-phone-back",
+    "at": "2026-08-16T02:10:00-05:00",
+    "title": "Phone views get a Floor back control",
+    "why": "On a 390 phone every tab needed a way out. A 44px ← FLOOR hit sits one-handed. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-front-tab-off",
+    "at": "2026-08-16T02:05:00-05:00",
+    "title": "THE FRONT leaves the nav",
+    "why": "Front is not a tab. Raijin stays a Floor chair. Weather table stays in the tree. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-park-intro",
+    "at": "2026-08-16T02:00:00-05:00",
+    "title": "SUMMON skips the parked clips",
+    "why": "Zach is remaking the openings. After agree + code + SUMMON the desk stays. No clip. No fullscreen. Gate stays hidden. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-16-phone-gate-pact-err",
+    "at": "2026-08-16T01:50:00-05:00",
+    "title": "Agree-off now speaks",
+    "why": "Enter or SUMMON with the pact open used to do nothing. Disabled SUMMON no longer swallows the tap. The gate now says Seal the pact first. on the error line next to agree. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-15-phone-gate-se",
+    "at": "2026-08-16T01:40:00-05:00",
+    "title": "Short phones keep SUMMON on screen",
+    "why": "SE / Safari chrome at 390×667 lost SUMMON under a 36vh pad and a flex-end overlay iOS will not scroll. Short height drops the pad. Tall phones keep 36vh + flex-end on a hidden overlay, not a scroll. SUMMON is a real footer. Agree-off now says Seal the pact first. Paper. Follower OFF."
+  },
+  {
+    "id": "2026-08-15-phone-gate-nav",
+    "at": "2026-08-16T01:30:00-05:00",
+    "title": "Phone gate and nav use the real device width",
+    "why": "iPhone 390 had a dead side strip and SUMMON dropped under the fold and the keyboard. Body now follows 100% / 100dvw — no 375 lock. Agree + SUMMON stick to the bottom with a 44px tap row. Pact type is 16px on phone. Tab row scrolls with fade and arrows. Floor is one-handed and the leader stays tappable. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-16-desk-unlock-stay",
     "at": "2026-08-16T00:20:00-05:00",
     "title": "Unlock stays on the desk",

@@ -393,6 +393,7 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn("focusEth", row)
         self.assertIn("focusFront", row)
         self.assertIn("focusAts", row)
+        self.assertIn("focusOra", row)
         self.assertIn('body[data-focus-table="front"]', CSS)
         self.assertIn("#focusFront.focus-active", CSS)
 
@@ -402,7 +403,7 @@ class FocusFrontWiringTests(unittest.TestCase):
         self.assertIn('bind(focusFront, "front")', JS)
         self.assertIn('focusTable = "front"', JS)
         self.assertIn('if (mode === "front") setMode("art")', JS)
-        self.assertIn("raijinPortraitFor(wxEye(dir))", JS)
+        self.assertIn("return raijinPortrait", JS.split("function chairPortraitOf", 1)[1][:400])
         self.assertIn('chairPortraitOf(which, dir)', JS)
         self.assertIn("DFW · Raijin", JS)
         self.assertIn("DFW · RAIJIN", JS)

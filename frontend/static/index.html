@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Satoshi’s Council</title>
   <meta name="description" content="Satoshi’s Council" />
   <meta property="og:title" content="Satoshi’s Council" />
@@ -23,9 +23,6 @@
   <link rel="preload" as="image" href="/static/bots/fade.png" />
   <link rel="preload" as="image" href="/static/bots/hurt.png" />
   <link rel="preload" as="image" href="/static/bots/ice.png" />
-  <link rel="preload" as="image" href="/raijin-up.jpg" />
-  <link rel="preload" as="image" href="/raijin-down.jpg" />
-  <link rel="preload" as="image" href="/raijin-wait.jpg" />
   <link rel="preload" as="video" href="/zt-intro.mp4" />
   <script>
   /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
@@ -67,12 +64,16 @@
         <li>YOU CAN LOSE THE FULL STAKE. The whole chip can vanish.</li>
         <li>NO PAST SCORE IS A PROMISE. Last hour does not own the next.</li>
       </ul>
-      <label class="gate-agree" for="gateAgree">
-        <input type="checkbox" id="gateAgree" />
-        <span>I agree. Paper. 18+. Eyes open.</span>
-      </label>
-      <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" disabled aria-disabled="true">SUMMON THE COUNCIL</button>
-      <p id="passwordError" class="password-error hidden">Wrong password</p>
+      <div class="gate-sticky-actions" id="gateStickyActions">
+        <label class="gate-agree" for="gateAgree">
+          <input type="checkbox" id="gateAgree" />
+          <span>I agree. Paper. 18+. Eyes open.</span>
+        </label>
+        <div class="gate-summon-hit" id="gateSummonHit">
+          <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" disabled aria-disabled="true">SUMMON THE COUNCIL</button>
+        </div>
+        <p id="passwordError" class="password-error hidden">Wrong password</p>
+      </div>
     </div>
   </div>
 
@@ -131,7 +132,39 @@
         <input type="checkbox" data-floor-chair="front" checked />
         <span>RAIJIN</span>
       </label>
+      <label class="floor-chair-tog" title="Oracle on the Floor">
+        <input type="checkbox" data-floor-chair="oracle" checked />
+        <span>ORACLE</span>
+      </label>
     </div>
+    <div id="floorLeaderClocks" class="floor-leader-clocks" hidden aria-label="Per-leader window clocks">
+      <div class="floor-leader-clock" data-floor-clock="bitcoin" hidden>
+        <span class="flc-name">SATOSHI</span>
+        <span class="flc-win">1H</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="ethereum" hidden>
+        <span class="flc-name">VITALIK</span>
+        <span class="flc-win">1H</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="front" hidden>
+        <span class="flc-name">RAIJIN</span>
+        <span class="flc-win">DFW</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="ats" hidden>
+        <span class="flc-name">ARES</span>
+        <span class="flc-win">KICK</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="oracle" hidden>
+        <span class="flc-name">ORACLE</span>
+        <span class="flc-win">WATCH</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+    </div>
+    <button type="button" id="phoneBackBtn" class="phone-back-btn" hidden aria-label="Back to Floor">← FLOOR</button>
     <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden aria-label="Start Seat Storm">KILL TIME / PLAY</button>
     <div id="seatStormPlay" class="seat-storm-play hidden" hidden aria-hidden="true">
       <div class="ss-hud">
@@ -213,32 +246,39 @@
           </button>
           <button type="button" id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
           <button type="button" id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>
+          <button type="button" id="stillToggle" title="STILL — cut orbit and heavy FX for slow connections" aria-pressed="false">STILL</button>
           <span id="statusDot" class="dot"></span>
           <span id="lastUpdate">—</span>
         </div>
       </div>
+      <div class="mode-tabs-shell" id="modeTabsShell">
+      <button type="button" id="modeTabsPrev" class="mode-tabs-arrow mode-tabs-prev" aria-label="Scroll tabs left">‹</button>
       <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
         <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
         <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
         <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas Weather Forecast / Raijin" aria-label="Focus Dallas Weather Forecast / Raijin" data-focus="front">DWF</button>
         <button type="button" id="focusAts" class="focus-tab" title="Focus ATS / Ares" aria-label="Focus ATS / Ares" data-focus="ats">ATS</button>
+        <button type="button" id="focusOra" class="focus-tab" title="Focus ORACLE / CRT" aria-label="Focus ORACLE / CRT" data-focus="oracle">ORA</button>
         <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabSeats" class="mode-tab" data-mode="seats" title="Same people — who they are, how they sit, the cards">Seats</button>
         <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabCalls" class="mode-tab" data-mode="calls" title="Current Calls — live Chair board">Calls</button>
         <button type="button" id="tabTape" class="mode-tab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
         <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
         <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">WIRE</button>
         <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
-        <button type="button" id="tabSide" class="mode-tab" data-mode="side" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
-        <button type="button" id="tabFront" class="mode-tab" data-mode="front" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
+        <button type="button" id="tabSide" class="mode-tab" data-mode="side" hidden aria-hidden="true" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
+        <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden aria-hidden="true" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
+      </div>
+      <button type="button" id="modeTabsNext" class="mode-tabs-arrow mode-tabs-next" aria-label="Scroll tabs right">›</button>
       </div>
     </header>
 
@@ -310,6 +350,11 @@
           <div id="atsWhyStrip" class="ats-why-strip">LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK</div>
         </div>
         <div id="atsWatch" class="ats-watch" hidden aria-live="polite">WATCH · DARK · NO GAME ON THE TABLE</div>
+        <div id="oraWhy" class="ora-why" hidden aria-live="polite">
+          <div id="oraWhyLine" class="ora-why-line">WATCH · NO TICKET · ORACLE DOES NOT PLACE ORDERS</div>
+          <div id="oraWhyStrip" class="ora-why-strip">SIBYL DARK · PIT DARK · VEIL DARK · MARBLE DARK</div>
+        </div>
+        <div id="oraWatch" class="ora-watch" hidden aria-live="polite">CRT · WATCH · STATIC ON THE GLASS</div>
         <div id="aresFace" class="ares-face" data-eye="wait" hidden aria-hidden="true">
           <img id="aresChairImg" src="/static/ares-chair.png" alt="Ares">
           <span class="ares-eye ares-eye-l" aria-hidden="true"></span>
@@ -357,7 +402,7 @@
         <ol id="signalFeed" class="signal-feed-list" aria-live="polite"></ol>
         <div id="signalChair" class="signal-chair">
           <div class="signal-chair-dir" id="signalChairDir">WAIT</div>
-          <div class="signal-chair-meta" id="signalChairMeta">P(finish) — · EV — · — left</div>
+          <div class="signal-chair-meta" id="signalChairMeta">—</div>
           <div class="signal-chair-last" id="signalChairLast">last lock —</div>
         </div>
       </aside>
@@ -603,6 +648,11 @@
           <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
           <div id="atsBotsGrid" class="bots-grid"></div>
         </section>
+        <section id="oracleBotsGuide" class="front-bots-guide ora-bots-guide" aria-label="ORACLE / ORA">
+          <div class="front-guide-head">ORACLE / ORA</div>
+          <p class="front-bots-sub">Watch Chair. SIBYL · PIT · VEIL · MARBLE. No ticket. Not mixed into WICK / TAPE.</p>
+          <div id="oracleBotsGrid" class="bots-grid"></div>
+        </section>
         <div id="botsGrid" class="bots-grid"></div>
       </section>
 
@@ -790,7 +840,7 @@
         <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
           <canvas id="frontWx" width="920" height="620" aria-label="Raijin Floor"></canvas>
           <div class="front-chair" id="frontChair">
-            <span class="front-mark"><img id="frontChairImg" src="/raijin-wait.jpg" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"><span class="raijin-eye raijin-eye-l" aria-hidden="true"></span><span class="raijin-eye raijin-eye-r" aria-hidden="true"></span></span>
+            <span class="front-mark"><img id="frontChairImg" src="/raijin-wait.jpg" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
             <span class="front-name">RAIJIN</span>
             <span class="front-call" id="frontChairCall">—</span>
           </div>
@@ -868,6 +918,39 @@
     </section>
 
     <!-- Paper trading journal -->
+    <section id="callsView" class="info-view hidden" aria-label="Current Calls">
+      <div class="info-hero">
+        <h2>CURRENT CALLS</h2>
+        <p>Live Chair board on Satoshi’s Council. Direction, strike when the ladder pick exists, lock vs WAIT. Paper. Follower OFF.</p>
+      </div>
+      <ol id="callsBoard" class="calls-board" aria-live="polite">
+        <li class="calls-row" data-call="bitcoin" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">BTC</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">1H</span>
+        </li>
+        <li class="calls-row" data-call="ethereum" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">ETH</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">1H</span>
+        </li>
+        <li class="calls-row" data-call="front" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">FRONT</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">DFW</span>
+        </li>
+        <li class="calls-row" data-call="oracle" data-status="WATCH" data-dir="WATCH">
+          <span class="calls-name">ORA</span>
+          <span class="calls-status">WATCH</span>
+          <span class="calls-strike">no ticket</span>
+          <span class="calls-window">CRT</span>
+        </li>
+      </ol>
+    </section>
+
     <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
       <div class="info-hero">
         <h2>PAPER TRACKER</h2>
@@ -997,6 +1080,7 @@
         <span id="wxHighStrip" class="wx-high-strip" hidden>DALLAS <b id="wxCity">DFW</b> · NOW <b id="wxNowTemp">—</b> · NWS <b id="wxNwsHigh">—</b> · BRACKET <b id="wxKalshiHigh">—</b> · SETTLES <b id="wxCliWindow">7:00 CT</b></span>
         <span id="atsSportChip" class="ats-sport-chip" hidden data-live="off">WAIT</span>
         <span id="atsGameStrip" class="ats-game-strip" hidden>GAME <b id="atsGameName">—</b> · LINE <b id="atsGameLine">—</b></span>
+        <span id="oraWatchStrip" class="ora-watch-strip" hidden>ORA <b id="oraWatchCall">WATCH</b> · <b id="oraWatchSeats">SIBYL · PIT · VEIL · MARBLE</b></span>
         <span id="wxSubStrip" class="wx-sub-strip" hidden>
           <span data-wx-sub="HEAT">HEAT —</span>
           <span data-wx-sub="ECHO">ECHO —</span>

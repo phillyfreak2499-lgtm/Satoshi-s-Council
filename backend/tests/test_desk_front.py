@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import unittest
 from datetime import date, datetime, timezone
@@ -186,9 +187,9 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("/static/bots/mesh.png", HTML)
         self.assertIn("frontMarkFail", JS)
         self.assertIn("frontChairImg", JS)
-        self.assertIn("raijin-up.png", FRONT)
-        self.assertIn("raijin-down.png", FRONT)
         self.assertIn("raijin-wait.png", FRONT)
+        self.assertNotIn('"/static/bots/raijin-up.png"', FRONT)
+        self.assertNotIn('"/static/bots/raijin-down.png"', FRONT)
         self.assertIn("front-mark.blank", CSS)
         self.assertNotIn("front-letter", HTML + JS + CSS)
         self.assertNotIn('textContent = "G"', JS)
@@ -247,7 +248,7 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn("function drawFloorRaijinChair", JS)
         self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn("function raijinPortraitFor", JS)
-        self.assertIn('raijinImages.UP.src = "/raijin-up.jpg"', JS)
+        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn("/raijin-wait.jpg", HTML)
         self.assertIn('rememberChairHit(cx, cy, pr, "front")', JS)
         self.assertIn("function syncSeatSpinBtn", JS)
@@ -284,7 +285,8 @@ class FrontMarkupTests(unittest.TestCase):
         self.assertIn('"FROST"', body)
         self.assertIn('"BONE"', body)
         self.assertIn('"MESH"', body)
-        self.assertIn("LOCKED ", body)
+        self.assertIn("liveCallCard(", body)
+        self.assertIn("paintLiveCallPlate(", body)
         self.assertNotIn("drawLockIgnition(", body)
         self.assertNotIn("rgba(240, 193, 74", body)
         self.assertIn("drawFrontTable(ctx, w, h)", JS)
@@ -403,7 +405,7 @@ class FrontWeatherTests(unittest.TestCase):
         self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
         self.assertIn("containPortrait(raijinFace(", JS)
         self.assertIn("Never blank the Chair face", JS)
-        self.assertIn("chairImg.src = raijinPortraitSrc(frontLockDir())", JS)
+        self.assertIn("chairImg.src = raijinPortraitSrc()", JS)
         self.assertNotIn("front-thunder-mark", HTML + CSS + JS)
         self.assertNotIn("front-raijin-slot", HTML + CSS + JS)
         self.assertNotIn("ZT ·", HTML)
@@ -417,46 +419,29 @@ class FrontWeatherTests(unittest.TestCase):
             self.assertTrue(path.is_file(), name)
             self.assertGreater(path.stat().st_size, 20000)
             self.assertEqual(path.read_bytes()[:2], b"\xff\xd8")
-        self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "chair-up.jpg").read_bytes())
-        self.assertNotEqual((static / "raijin-down.jpg").read_bytes(), (static / "chair-down.jpg").read_bytes())
         self.assertNotEqual((static / "raijin-wait.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
-        # Same cowboy face. WAIT white; UP/DOWN are that face with tinted eyes.
-        self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
-        self.assertNotEqual((static / "raijin-down.jpg").read_bytes(), (static / "raijin-wait.jpg").read_bytes())
-        self.assertNotEqual((static / "raijin-up.jpg").read_bytes(), (static / "raijin-down.jpg").read_bytes())
-        self.assertIn("const raijinImages", JS)
         self.assertIn("function raijinPortraitFor(dir)", JS)
         self.assertIn("function vitalikPortraitFor(dir)", JS)
-        self.assertIn('raijinImages.UP.src = "/raijin-up.jpg"', JS)
-        self.assertIn('raijinImages.DOWN.src = "/raijin-down.jpg"', JS)
-        self.assertIn('raijinImages.WAIT.src = "/raijin-wait.jpg"', JS)
-        self.assertNotIn('raijinImages.UP.src = "/chair-up.jpg"', JS)
-        self.assertNotIn('raijinImages.UP.src = "/vitalik-up.jpg"', JS)
-        self.assertIn('if (d === "UP" || d === "UP_HOLD") return raijinImages.UP', JS)
-        self.assertIn('if (d === "DOWN" || d === "DOWN_HOLD") return raijinImages.DOWN', JS)
+        self.assertIn('raijinPortrait.src = "/raijin-wait.jpg"', JS)
+        self.assertNotIn('raijinPortrait.src = "/raijin-up.jpg"', JS)
+        self.assertNotIn('raijinPortrait.src = "/chair-up.jpg"', JS)
         self.assertIn("containPortrait(raijinPortraitFor(floorDir)", JS)
         self.assertIn("containPortrait(raijinPortraitFor(dir)", JS)
-        self.assertIn("@app.get(\"/raijin-up.jpg\")", MAIN)
-        self.assertIn("@app.get(\"/raijin-down.jpg\")", MAIN)
         self.assertIn("@app.get(\"/raijin-wait.jpg\")", MAIN)
         self.assertIn('btn.textContent = spinning ? "SPIN" : "STILL"', JS)
         self.assertIn("function paintRaijinEyes", JS)
         self.assertIn("function drawRaijinEyeTint", JS)
         self.assertIn("function raijinEyeColors", JS)
         tint = JS.split("function raijinEyeColors", 1)[1].split("function drawPublicTug", 1)[0]
-        self.assertIn('#39ff14', tint)
-        self.assertIn('#ff3b5c', tint)
         self.assertIn('#FFFFFF', tint)
-        self.assertNotIn("#F5B942", tint)
-        self.assertIn("Do not turn WAIT gold", tint)
-        self.assertIn("Soft feather on the glowing sockets only", tint)
-        self.assertIn("drawRaijinEyeTint(cx, portraitY, pr, dir)", JS)
-        self.assertIn("drawRaijinEyeTint(cx, cy, lr, leaderDir)", JS)
+        self.assertNotIn("#39ff14", tint)
+        self.assertNotIn("#ff3b5c", tint)
+        self.assertIn("return raijinEyeColors(dir)", JS.split("function drawRaijinEyeTint", 1)[1][:200])
         wx = JS.split("function wxEye(word)", 1)[1][:400]
         self.assertIn('w === "ABOVE" || w === "BETWEEN" || w === "UP"', wx)
         self.assertIn('w === "BELOW" || w === "DOWN"', wx)
         self.assertIn('return "WAIT"', wx)
-        self.assertIn("raijinPortraitFor(wxEye(dir))", JS)
+        self.assertIn("return raijinPortrait", JS.split("function chairPortraitOf", 1)[1][:400])
         self.assertNotIn("/static/bots/raijin-chair.png", JS)
 
     def test_satoshi_signed_face_keeps_mapping(self):
@@ -466,26 +451,16 @@ class FrontWeatherTests(unittest.TestCase):
             self.assertTrue(path.is_file(), name)
             self.assertGreater(path.stat().st_size, 20000)
             self.assertEqual(path.read_bytes()[:2], b"\xff\xd8")
-        self.assertNotEqual((static / "chair-up.jpg").read_bytes(), (static / "chair-down.jpg").read_bytes())
-        self.assertNotEqual((static / "chair-up.jpg").read_bytes(), (static / "chair-wait.jpg").read_bytes())
-        self.assertNotEqual((static / "chair-down.jpg").read_bytes(), (static / "chair-wait.jpg").read_bytes())
         sell = static / "chair-sell.jpg"
         self.assertTrue(sell.is_file(), "chair-sell.jpg")
         self.assertGreater(sell.stat().st_size, 20000)
         self.assertEqual(sell.read_bytes()[:2], b"\xff\xd8")
-        self.assertNotEqual(sell.read_bytes(), (static / "chair-wait.jpg").read_bytes())
-        self.assertIn('chairImages.UP.src = "/chair-up.jpg"', JS)
-        self.assertIn('chairImages.DOWN.src = "/chair-down.jpg"', JS)
-        self.assertIn('chairImages.WAIT.src = "/chair-wait.jpg"', JS)
-        self.assertIn("chairImages.SWAP = chairImages.WAIT", JS)
+        self.assertIn('chairPortrait.src = "/chair-wait.jpg"', JS)
+        self.assertNotIn('chairPortrait.src = "/chair-up.jpg"', JS)
         self.assertNotIn("chair-sell", JS)
         self.assertNotIn("satoshi-sell", JS)
-        self.assertNotIn('chairImages.UP.src = "/chair-sell.jpg"', JS)
-        self.assertIn('if (d === "UP" || d === "UP_HOLD") return chairImages.UP', JS)
-        self.assertIn('if (d === "DOWN" || d === "DOWN_HOLD") return chairImages.DOWN', JS)
-        fn = JS.split("function chairPortraitFor(dir)", 1)[1][:400]
-        self.assertNotIn("HOLD\") return chairImages.WAIT", fn)
-        self.assertIn("return chairImages.WAIT", fn)
+        fn = JS.split("function chairPortraitFor(dir)", 1)[1][:200]
+        self.assertIn("return chairPortrait", fn)
         self.assertNotIn("SALE", fn)
         self.assertNotIn("SELL", fn)
 
@@ -496,17 +471,12 @@ class FrontWeatherTests(unittest.TestCase):
             self.assertTrue(path.is_file(), name)
             self.assertGreater(path.stat().st_size, 20000)
             self.assertEqual(path.read_bytes()[:2], b"\xff\xd8")
-        self.assertNotEqual((static / "vitalik-up.jpg").read_bytes(), (static / "vitalik-down.jpg").read_bytes())
-        self.assertNotEqual((static / "vitalik-up.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
-        self.assertNotEqual((static / "vitalik-down.jpg").read_bytes(), (static / "vitalik-wait.jpg").read_bytes())
-        self.assertIn('vitalikImages.UP.src = "/vitalik-up.jpg"', JS)
-        self.assertIn('vitalikImages.DOWN.src = "/vitalik-down.jpg"', JS)
-        self.assertIn('vitalikImages.WAIT.src = "/vitalik-wait.jpg"', JS)
-        self.assertIn('if (d === "UP" || d === "UP_HOLD") return vitalikImages.UP', JS)
-        self.assertIn('if (d === "DOWN" || d === "DOWN_HOLD") return vitalikImages.DOWN', JS)
-        fn = JS.split("function vitalikPortraitFor(dir)", 1)[1][:400]
-        self.assertNotIn("HOLD\") return vitalikImages.WAIT", fn)
-        self.assertIn("return vitalikImages.WAIT", fn)
+        self.assertIn('vitalikPortrait.src = "/vitalik-wait.jpg"', JS)
+        self.assertNotIn('vitalikPortrait.src = "/vitalik-up.jpg"', JS)
+        self.assertNotIn('vitalikPortrait.src = "/vitalik-down.jpg"', JS)
+        fn = JS.split("function vitalikPortraitFor(dir)", 1)[1][:200]
+        self.assertIn("return vitalikPortrait", fn)
+        self.assertIn("2026-08-16-one-face", (ROOT / "frontend" / "static" / "wire.js").read_text(encoding="utf-8"))
 
 
 class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
@@ -538,7 +508,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(board["chair"]["portrait"].endswith("raijin-chair.png"))
         self.assertEqual(board["chair"]["eye"], "UP")
         self.assertEqual(board["chair"]["lean"], "BETWEEN")
-        self.assertTrue(board["chair"]["mark"].endswith("raijin-up.png"))
+        self.assertTrue(board["chair"]["mark"].endswith("raijin-wait.png"))
         self.assertEqual(board["clock"]["kind"], "kalshi")
         self.assertEqual(board["clock"]["label"], "DFW HIGH")
         self.assertEqual(board["clock"]["sub"], "settles 7:00 CT")
@@ -590,7 +560,7 @@ class FrontBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(wait["portrait"].endswith("raijin-chair.png"))
         up = desk_front.build_chair({"dont_play": False, "bracket": "103–104"})
         self.assertEqual(up["eye"], "UP")
-        self.assertTrue(up["mark"].endswith("raijin-up.png"))
+        self.assertTrue(up["mark"].endswith("raijin-wait.png"))
         skip = desk_front.build_chair({"dont_play": True, "skip": "thin book"})
         self.assertEqual(skip["eye"], "WAIT")
         self.assertTrue(skip["mark"].endswith("raijin-wait.png"))
@@ -997,6 +967,120 @@ class MeshAndSubTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("cell", keys)
         self.assertIn("wxNowTemp", HTML + JS)
         self.assertIn("wxSubStrip", HTML + JS)
+
+    def test_glass_light_uses_nws_pane_not_coinglass(self):
+        self.assertIn("def nws_pane_high", FRONT)
+        self.assertIn("def glass_eye", FRONT)
+        self.assertIn("function glassSeatLive", JS)
+        self.assertIn("function frontSeatTone", JS)
+        self.assertIn('seat.setAttribute("data-eye"', JS)
+        self.assertIn('class=\\"hier-dir "', JS)
+        self.assertIn('.front-seat[data-eye="up"]', CSS)
+        self.assertIn("front-bot-card[data-eye=\"up\"]", CSS)
+        self.assertIn("front-guide-card[data-eye=\"up\"]", CSS)
+        paint = JS.split("function paintHealthStrip", 1)[1].split("async function loadHealthStrip", 1)[0]
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', paint)
+        self.assertIn("function coinglassHudMiss", JS)
+        self.assertNotIn("frontSeatTone", paint)
+        self.assertNotIn("frontSeatTone", paint)
+        self.assertNotIn("nws_pane", paint)
+        unlock = JS.split("function revealAppAfterDeskUnlock", 1)[1].split("window.revealAppAfterDeskUnlock", 1)[0]
+        self.assertIn("loadFrontTable", unlock)
+        self.assertIn('document.body.classList.add("front-tab-off")', JS)
+        self.assertIn("hidden", HTML.split('id="tabFront"', 1)[1][:80])
+        self.assertNotIn("#passwordGate.password-gate,", CSS)
+        self.assertIn("#passwordGate.password-gate:not(.hidden)", CSS)
+        hidden = CSS.split("#passwordGate.password-gate.hidden", 1)[1].split("}", 1)[0]
+        self.assertIn("display: none !important", hidden)
+        for _m in re.finditer(r"#passwordGate\.password-gate\s*\{", CSS):
+            self.fail("bare #passwordGate.password-gate { must not exist")
+
+
+class GlassPaneTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        desk_front.reset_for_tests(self.tmp)
+
+    def test_pane_high_is_nws_not_open_meteo(self):
+        mesh = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 102),
+            desk_front._mesh_hit("open-meteo", 108),
+        ])
+        self.assertEqual(desk_front.nws_pane_high(None, mesh), 102)
+        self.assertEqual(desk_front.nws_pane_high(103, mesh), 103)
+        self.assertIsNone(desk_front.nws_pane_high(None, desk_front.finish_mesh([
+            desk_front._mesh_hit("open-meteo", 108),
+        ])))
+        self.assertEqual(desk_front.glass_call_line(None, mesh), "GLASS READS 102°")
+        self.assertEqual(desk_front.glass_eye(102), "UP")
+        self.assertEqual(desk_front.glass_eye(None), "WAIT")
+        tight = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 102),
+            desk_front._mesh_hit("open-meteo", 103),
+        ])
+        self.assertIsNone(desk_front.skip_reason({}, None, False, 4000, mesh=tight))
+        self.assertEqual(desk_front.skip_reason({}, None, False, 4000, mesh=desk_front.empty_mesh()), "NO PANE")
+        self.assertNotIn("coinglass", desk_front.glass_call_line.__doc__ or "")
+
+    async def test_nws_high_falls_back_to_grid_when_period_date_misses(self):
+        async def nws(url: str):
+            if "/stations/KDFW" in url and "/observations" not in url:
+                return {"geometry": {"coordinates": [-97.02196, 32.89743]}}
+            if "/points/" in url:
+                return {"properties": {
+                    "forecast": "https://api.weather.gov/gridpoints/FWD/79,105/forecast",
+                    "forecastGridData": "https://api.weather.gov/gridpoints/FWD/79,105",
+                    "gridId": "FWD",
+                    "gridX": 79,
+                    "gridY": 105,
+                }}
+            if str(url).rstrip("/").endswith("/forecast"):
+                return {"properties": {"periods": [
+                    {"isDaytime": True, "startTime": "2026-08-16T06:00:00-05:00", "temperature": 99, "temperatureUnit": "F"},
+                ]}}
+            if "/gridpoints/" in url:
+                return {"properties": {"maxTemperature": {
+                    "uom": "wmoUnit:degC",
+                    "values": [{"validTime": "2026-08-15T12:00:00+00:00/P1D", "value": 38.8889}],
+                }}}
+            return {}
+
+        high = await desk_front.nws_high("KDFW", date(2026, 8, 15), nws=nws)
+        self.assertEqual(int(round(float(high))), 102)
+
+    async def test_glass_green_when_dal_forecast_null_and_mesh_nws_live(self):
+        async def no_period(*_a, **_k):
+            return None
+
+        mesh = desk_front.finish_mesh([
+            desk_front._mesh_hit("nws", 102),
+            desk_front._mesh_hit("open-meteo", 103),
+        ])
+        with patch.object(desk_front, "nws_high", side_effect=no_period):
+            board = await desk_front.build_board(
+                fetch=_fetch_factory(),
+                nws=_nws_high_only,
+                now=NOW,
+                wx_obs={"text": "Clear", "raw": "CLR", "temp_f": 98.6, "wind_kt": 6},
+                mesh=mesh,
+            )
+        glass = next(s for s in board["seats"] if s["id"] == "GLASS")
+        dal = next(b for b in board["brackets"] if b.get("city") == "DAL")
+        self.assertIsNone(dal["forecast"])
+        self.assertEqual(dal["pane"], 102)
+        self.assertEqual(glass["call"], "GLASS READS 102°")
+        self.assertEqual(glass["eye"], "UP")
+        self.assertEqual(glass["pane"], 102)
+        self.assertTrue(glass["ok"])
+        self.assertNotEqual(glass["vote"], "WAIT")
+        self.assertEqual(board["clock"]["nws_high"], 102)
+        self.assertEqual(board["pane"], 102)
+        self.assertNotIn("108", glass["call"] or "")
+        self.assertNotIn("coinglass", str(glass).lower())
+        heat = next(s for s in board["subs"] if s["id"] == "HEAT")
+        self.assertTrue(heat["ok"])
+        self.assertEqual(board["weather"]["mode"], "HEAT")
+        self.assertFalse(board["follower"])
 
 
 if __name__ == "__main__":

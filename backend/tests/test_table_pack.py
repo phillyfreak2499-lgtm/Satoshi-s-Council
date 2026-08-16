@@ -36,7 +36,7 @@ class TablePortraitTests(unittest.TestCase):
         self.assertNotIn("contain + (cover - contain)", JS)
         self.assertIn('ctx.imageSmoothingQuality = "high"', JS)
         self.assertIn("const plateY = cy + radius + 14", JS)
-        self.assertIn("vitalikImages[k].onload = _chairLoaded", JS)
+        self.assertIn("vitalikPortrait.onload = _chairLoaded", JS)
         self.assertIn("function chairPortraitOf", JS)
 
 
@@ -193,7 +193,7 @@ class TableFeedTests(unittest.TestCase):
         self.assertIn("No specialist packets yet", JS)
         self.assertNotIn(".filter((s) => s.shout)", JS)
         self.assertIn("sf-in", JS)
-        self.assertIn("P(finish)", JS)
+        self.assertIn("function liveCallCard", JS)
         self.assertIn("last lock", JS)
 
     def test_table_right_column_shows_feed(self):

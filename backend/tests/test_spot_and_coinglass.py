@@ -27,11 +27,17 @@ from backend.data.cfbenchmarks import pick_research_spot, research_source_label
 from backend.data.coinglass import (
     ALLOWED_INTERVALS,
     PATHS,
+    PLAN_WALL_REASON,
     CoinGlassClient,
+    apply_coinglass_health,
     apply_hist_to_market,
+    chair_window_ok,
     empty_derivatives,
     feeds_present,
+    latch_plan_wall,
     live_interval_order,
+    plan_wall_latched,
+    reset_plan_wall,
     summarize_derivatives,
 )
 from backend.data.secrets import load_coinglass_api_key, load_secret_string, reset_secret_cache
@@ -44,6 +50,7 @@ FOLLOWER_ROUTE = (ROOT / "backend" / "services" / "follower_route.py").read_text
 FOLLOWER_JS = (ROOT / "frontend" / "protected" / "follower_gate.js").read_text(encoding="utf-8")
 GATES = (ROOT / "backend" / "agents" / "chair_gates.py").read_text(encoding="utf-8")
 JS = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+CSS = (ROOT / "frontend" / "static" / "style.css").read_text(encoding="utf-8")
 CG_SRC = (ROOT / "backend" / "data" / "coinglass.py").read_text(encoding="utf-8")
 
 
@@ -197,6 +204,18 @@ class CoinGlassParseTests(unittest.TestCase):
             "1d",
         )
         self.assertTrue(daily["daily_heatmap"])
+        self.assertFalse(daily["healthy"])
+        self.assertFalse(chair_window_ok(daily))
+        four = summarize_derivatives(
+            [{"time": 1, "close": "0.00012"}],
+            [{"time": 1, "close": "9000000000"}],
+            [{"time": 1, "long_liquidation_usd": "4000000", "short_liquidation_usd": "1000000"}],
+            "4h",
+        )
+        self.assertTrue(four["daily_heatmap"])
+        self.assertFalse(four["healthy"])
+        self.assertFalse(chair_window_ok(four))
+        self.assertFalse(apply_coinglass_health({}, four).get("coinglass"))
         hourly = summarize_derivatives(
             [{"time": 1, "close": "0.00012"}],
             [{"time": 1, "close": "100"}, {"time": 2, "close": "110"}],
@@ -210,9 +229,11 @@ class CoinGlassParseTests(unittest.TestCase):
 class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         reset_secret_cache()
+        reset_plan_wall()
 
     def tearDown(self):
         reset_secret_cache()
+        reset_plan_wall()
         os.environ.pop("COINGLASS_API_KEY", None)
 
     def _client(self, key: str = "dummy-cg-key-not-real") -> CoinGlassClient:
@@ -240,8 +261,8 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
             logger.remove(hid)
         text = buf.getvalue()
         self.assertFalse(snap["healthy"])
-        self.assertIn("400", str(snap.get("reason") or ""))
-        self.assertIn("interval not allowed", str(snap.get("reason") or ""))
+        self.assertEqual(snap.get("reason"), PLAN_WALL_REASON)
+        self.assertTrue(snap.get("plan_wall"))
         self.assertIn("400", text)
         self.assertIn("interval not allowed", text)
         self.assertIn("/api/futures/funding-rate/history", text)
@@ -249,7 +270,7 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("dummy-cg-key-not-real", text)
         rows = await cg._get_rows(PATHS[0], "30m")
         self.assertEqual(rows, [])
-        self.assertTrue(cg._cycle_misses)
+        self.assertTrue(cg._plan_wall)
 
     async def test_30m_before_1h_never_1m(self):
         cg = self._client()
@@ -330,8 +351,117 @@ class CoinGlassClientCycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(headers.get("CG-API-KEY"), "dummy-cg-key-not-real")
             self.assertTrue(str(calls[0][0]).startswith("https://open-api-v4.coinglass.com"))
 
+    async def test_upgrade_plan_caches_wall_and_stops_reprobe(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append(str((params or {}).get("interval") or ""))
+            return _FakeCG(200, {"code": "401", "msg": "Upgrade plan", "data": []})
+
+        cg.client.get = fake_get
+        first = await cg.get_derivatives()
+        self.assertFalse(first["healthy"])
+        self.assertEqual(first.get("reason"), PLAN_WALL_REASON)
+        self.assertTrue(first.get("plan_wall"))
+        self.assertFalse(first.get("daily_heatmap"))
+        self.assertIsNone(first.get("funding_rate"))
+        self.assertIsNone(first.get("open_interest"))
+        self.assertIn("30m", calls)
+        self.assertIn("1h", calls)
+        self.assertNotIn("4h", calls)
+        self.assertNotIn("8h", calls)
+        self.assertNotIn("1d", calls)
+        n = len(calls)
+        second = await cg.get_derivatives()
+        self.assertEqual(len(calls), n)
+        self.assertEqual(second.get("reason"), PLAN_WALL_REASON)
+        self.assertFalse(second["healthy"])
+        from backend.data.coinglass import coinglass_hud_ok
+        self.assertFalse(coinglass_hud_ok(False, PLAN_WALL_REASON))
+        self.assertFalse(coinglass_hud_ok(True, PLAN_WALL_REASON))
+
+    async def test_plan_wall_is_process_wide(self):
+        first = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append(str((params or {}).get("interval") or ""))
+            return _FakeCG(200, {"code": "401", "msg": "Upgrade plan", "data": []})
+
+        first.client.get = fake_get
+        await first.get_derivatives()
+        n = len(calls)
+        other = CoinGlassClient(symbol="ETHUSDT")
+        other.client.get = fake_get
+        snap = await other.get_derivatives()
+        self.assertEqual(len(calls), n)
+        self.assertFalse(snap["healthy"])
+        self.assertEqual(snap.get("reason"), PLAN_WALL_REASON)
+        self.assertEqual(plan_wall_latched(), PLAN_WALL_REASON)
+
+    async def test_blocked_30m_not_reprobed_when_1h_ok(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            iv = str((params or {}).get("interval") or "")
+            calls.append(iv)
+            if iv == "30m":
+                return _FakeCG(200, {
+                    "code": "400",
+                    "msg": "interval not allowed for your plan",
+                    "data": [],
+                })
+            return _FakeCG(200, {
+                "code": "0",
+                "msg": "success",
+                "data": [{"time": 1_700_000_000_000, "close": "0.00012"}],
+            })
+
+        cg.client.get = fake_get
+        first = await cg.get_derivatives()
+        self.assertTrue(first["healthy"])
+        self.assertIn("30m", calls)
+        n = len(calls)
+        cg._cache = {}
+        cg._cache_at = 0.0
+        second = await cg.get_derivatives()
+        self.assertTrue(second["healthy"])
+        self.assertNotIn("30m", calls[n:])
+        self.assertIn("1h", calls[n:])
+        self.assertFalse(plan_wall_latched())
+
+    async def test_4h_is_not_probed_or_chair_healthy(self):
+        cg = self._client()
+        calls = []
+
+        async def fake_get(url, params=None, headers=None):
+            calls.append(str((params or {}).get("interval") or ""))
+            return _FakeCG(200, {
+                "code": "0",
+                "msg": "success",
+                "data": [{"time": 1_700_000_000_000, "close": "0.001"}],
+            })
+
+        cg.client.get = fake_get
+        got = await cg._probe(PATHS[0], "4h")
+        self.assertFalse(got.ok)
+        self.assertEqual(got.reason, "not a 1h-window interval")
+        self.assertEqual(calls, [])
+        from backend.data.coinglass import coinglass_hud_ok
+        self.assertFalse(coinglass_hud_ok(
+            True, "Upgrade plan on 30m/1h; 4h ok — key looks Hobbyist"
+        ))
+
 
 class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
     async def test_health_surfaces_coinglass_reason(self):
         from backend import main as m
 
@@ -368,8 +498,191 @@ class HealthReasonTests(unittest.IsolatedAsyncioTestCase):
         finally:
             m.council.running = prev
 
+    async def test_upgrade_plan_200_body_is_not_ok(self):
+        from backend import main as m
+        from backend.data.coinglass import coinglass_hud_ok
+
+        self.assertFalse(coinglass_hud_ok(True, "http=200 code=401 msg=Upgrade plan"))
+        self.assertFalse(coinglass_hud_ok(False, "http=200 code=401 msg=Upgrade plan"))
+        self.assertFalse(coinglass_hud_ok(False, PLAN_WALL_REASON))
+        self.assertTrue(coinglass_hud_ok(True, ""))
+        prev = m.council.running
+        m.council.running = True
+        try:
+            with patch.object(
+                m.council,
+                "get_state",
+                return_value={
+                    "timestamp": "2026-08-15T21:00:00+00:00",
+                    "tables": {
+                        "bitcoin": {
+                            "timestamp": "2026-08-15T21:00:00+00:00",
+                            "health": {
+                                "coinglass": True,
+                                "coinglass_reason": "http=200 code=401 msg=Upgrade plan",
+                                "kalshi": True,
+                                "binance": True,
+                            },
+                        }
+                    },
+                },
+            ):
+                body = await m.health()
+            self.assertFalse(body["coinglass_ok"])
+            self.assertIn("401", body["coinglass_reason"])
+            self.assertIn("Upgrade plan", body["coinglass_reason"])
+        finally:
+            m.council.running = prev
+
+    async def test_health_plan_wall_not_flipped_by_binance(self):
+        from backend import main as m
+
+        latch_plan_wall()
+        prev = m.council.running
+        m.council.running = True
+        try:
+            with patch.object(
+                m.council,
+                "get_state",
+                return_value={
+                    "timestamp": "2026-08-15T21:00:00+00:00",
+                    "tables": {
+                        "bitcoin": {
+                            "timestamp": "2026-08-15T21:00:00+00:00",
+                            "health": {
+                                "coinglass": True,
+                                "coinglass_reason": "",
+                                "kalshi": True,
+                                "binance": True,
+                            },
+                            "funding_rate": 0.00012,
+                            "open_interest": 9_000_000_000,
+                        }
+                    },
+                },
+            ):
+                body = await m.health()
+            self.assertFalse(body["coinglass_ok"])
+            self.assertEqual(body["coinglass_reason"], PLAN_WALL_REASON)
+        finally:
+            m.council.running = prev
+            reset_plan_wall()
+
+    async def test_health_4h_fold_is_not_ok(self):
+        from backend import main as m
+
+        prev = m.council.running
+        m.council.running = True
+        try:
+            with patch.object(
+                m.council,
+                "get_state",
+                return_value={
+                    "timestamp": "2026-08-15T21:00:00+00:00",
+                    "tables": {
+                        "bitcoin": {
+                            "timestamp": "2026-08-15T21:00:00+00:00",
+                            "health": {
+                                "coinglass": True,
+                                "coinglass_reason": (
+                                    "Upgrade plan on 30m/1h; 4h ok — key looks Hobbyist"
+                                ),
+                                "kalshi": True,
+                                "binance": True,
+                            },
+                            "coinglass": {
+                                "source": "coinglass",
+                                "healthy": True,
+                                "interval": "4h",
+                                "daily_heatmap": True,
+                                "funding_rate": 0.00012,
+                                "open_interest": 9_000_000_000,
+                            },
+                        }
+                    },
+                },
+            ):
+                body = await m.health()
+            self.assertFalse(body["coinglass_ok"])
+        finally:
+            m.council.running = prev
+
+
+class CoinGlassHealthPinTests(unittest.TestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
+    def test_binance_last_print_does_not_flip_wall(self):
+        h = {"binance": True, "kalshi": True}
+        cg = {
+            "source": "coinglass",
+            "healthy": False,
+            "plan_wall": True,
+            "reason": PLAN_WALL_REASON,
+            "funding_rate": None,
+            "open_interest": None,
+        }
+        apply_coinglass_health(h, cg)
+        self.assertFalse(h["coinglass"])
+        self.assertEqual(h["coinglass_reason"], PLAN_WALL_REASON)
+        cg_lie = dict(cg)
+        cg_lie["healthy"] = True
+        cg_lie["funding_rate"] = 0.001
+        apply_coinglass_health(h, cg_lie)
+        self.assertFalse(h["coinglass"])
+        self.assertEqual(h["coinglass_reason"], PLAN_WALL_REASON)
+
+    def test_pipeline_pins_coinglass_after_binance_fill(self):
+        src = (ROOT / "backend" / "data" / "pipeline.py").read_text(encoding="utf-8")
+        self.assertIn("apply_coinglass_health(self.health, cg_data)", src)
+        self.assertIn("chair_window_ok(cg_data)", src)
+        self.assertIn("cg_fund if cg_fund is not None else bn_fund", src)
+        self.assertGreater(
+            src.find("apply_coinglass_health(self.health, cg_data)", src.find("funding_rate = cg_fund")),
+            src.find("funding_rate = cg_fund"),
+        )
+        self.assertNotIn("4h", ALLOWED_INTERVALS)
+        self.assertNotIn("8h", ALLOWED_INTERVALS)
+        self.assertNotIn("1d", ALLOWED_INTERVALS)
+
+    def test_4h_hist_does_not_inject_lock_fields(self):
+        prior = {"funding_rate": 0.002, "open_interest": 1.0}
+        four = {
+            "source": "coinglass",
+            "healthy": True,
+            "interval": "4h",
+            "daily_heatmap": True,
+            "funding_rate": 0.001,
+            "open_interest": 9_000_000_000,
+            "liq_long_usd": 4_000_000,
+            "liq_short_usd": 1_000_000,
+            "funding_history": [(1.0, 0.001)],
+        }
+        md = apply_hist_to_market(prior, four)
+        self.assertEqual(md["funding_rate"], 0.002)
+        self.assertEqual(md["open_interest"], 1.0)
+        self.assertFalse(md.get("cg_daily_heatmap"))
+        self.assertFalse(chair_window_ok(four))
+        hour = summarize_derivatives(
+            [{"time": 1, "close": "0.00012"}],
+            [{"time": 1, "close": "100"}, {"time": 2, "close": "110"}],
+            [{"time": 1, "long_liquidation_usd": "1", "short_liquidation_usd": "1"}],
+            "1h",
+        )
+        self.assertTrue(chair_window_ok(hour))
+        self.assertTrue(apply_coinglass_health({}, hour).get("coinglass"))
+
 
 class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
+    def setUp(self):
+        reset_plan_wall()
+
+    def tearDown(self):
+        reset_plan_wall()
+
     def test_wire_note(self):
         self.assertIn("2026-08-15-coinglass-miss", WIRE_JS)
         self.assertIn("CoinGlass now logs the real miss + 30m/1h paths", WIRE_JS)
@@ -383,11 +696,13 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("def decide_open_lock_grade", GATES)
         self.assertIn("function floorSeatDirLocked(", JS)
         self.assertIn("function floorLockedAgents(", JS)
-        self.assertIn("hideWait ? floorLockedAgents(roster) : roster", JS)
+        self.assertIn("return floorLockedAgents(st.agents || [])", JS)
 
     def test_live_paths_never_request_1m(self):
         self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
         self.assertNotIn("1m", ALLOWED_INTERVALS)
+        self.assertNotIn("4h", ALLOWED_INTERVALS)
+        self.assertEqual(len(PATHS), 3)
         self.assertIn("/api/futures/funding-rate/history", CG_SRC)
         self.assertIn("/api/futures/open-interest/history", CG_SRC)
         self.assertIn("/api/futures/liquidation/history", CG_SRC)
@@ -396,15 +711,46 @@ class CoinGlassWireAndLeaveAloneTests(unittest.TestCase):
         self.assertIn("start_time", CG_SRC)
         self.assertIn("end_time", CG_SRC)
 
+    def test_no_401_probe_path_or_secret_chase(self):
+        main = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
+        self.assertNotIn("/api/coinglass", main)
+        self.assertNotIn('"/health/coinglass"', main)
+        self.assertEqual(ALLOWED_INTERVALS, ("30m", "1h"))
+        self.assertNotIn("4h", ALLOWED_INTERVALS)
+        hud = CG_SRC.split("def coinglass_hud_ok", 1)[1].split("def live_interval_order", 1)[0]
+        self.assertIn("Does not chase the key", hud)
+        self.assertIn("401", hud)
+        self.assertIn("function coinglassHudMiss", JS)
+        self.assertIn("background: #6b7c90", CSS.split(".health-dot::before", 1)[1][:200])
+        self.assertIn("background: #39ff14", CSS.split(".health-dot.up::before", 1)[1][:80])
+        self.assertIn("2026-08-16-coinglass-hud-only", WIRE_JS)
+        self.assertIn("does not add a 401 probe path", WIRE_JS)
+        self.assertIn("2026-08-16-coinglass-plan-wall", WIRE_JS)
+        self.assertIn("2026-08-16-coinglass-wall-tight", WIRE_JS)
+        self.assertIn("2026-08-16-coinglass-1h-only", WIRE_JS)
+        self.assertIn(PLAN_WALL_REASON, WIRE_JS)
+        self.assertIn('setDot("healthGlass", !!data.coinglass_ok)', JS)
+        self.assertNotIn("4h", live_interval_order())
+        self.assertNotIn("/api/futures/open-interest/exchange-list", CG_SRC)
+        self.assertTrue(all("exchange-list" not in p for p in PATHS))
+        self.assertNotIn("FEED_INTERVALS", CG_SRC)
+        self.assertNotIn("HOBBYIST_REASON", CG_SRC)
+        bn = (ROOT / "backend" / "data" / "binance.py").read_text(encoding="utf-8")
+        self.assertIn("451", bn)
+        self.assertIn("_FUTURES_COOLDOWN", bn)
+        self.assertIn("_mark_futures_blocked", bn)
+
 
 class CoinGlassHistReuseTests(unittest.IsolatedAsyncioTestCase):
     """Hist backfill reuses the live client. Does not require a real key."""
 
     def setUp(self):
         reset_secret_cache()
+        reset_plan_wall()
 
     def tearDown(self):
         reset_secret_cache()
+        reset_plan_wall()
         os.environ.pop("COINGLASS_API_KEY", None)
 
     async def test_no_key_returns_empty_without_http(self):

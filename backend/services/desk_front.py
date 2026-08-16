@@ -445,6 +445,36 @@ def weather_eye(word: Any) -> str:
     return "WAIT"
 
 
+def nws_pane_high(
+    forecast: Optional[float],
+    mesh: Optional[Dict[str, Any]] = None,
+) -> Optional[float]:
+    """Live NWS pane high. Official period first, else MESH source id=nws. Never Open-Meteo. Never CoinGlass."""
+    if forecast is not None:
+        try:
+            return float(forecast)
+        except (TypeError, ValueError):
+            pass
+    pack = mesh if isinstance(mesh, dict) else {}
+    for src in pack.get("sources") or []:
+        if not isinstance(src, dict):
+            continue
+        if str(src.get("id") or "").lower() != "nws":
+            continue
+        if not src.get("ok") or src.get("high") is None:
+            continue
+        try:
+            return float(src["high"])
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def glass_eye(pane: Optional[float]) -> str:
+    """GLASS light is pane-live, not the Kalshi YES/NO and not CoinGlass."""
+    return "UP" if pane is not None else "WAIT"
+
+
 def build_clock(
     day: Optional[date],
     best: Optional[Dict[str, Any]],
@@ -614,10 +644,14 @@ def frost_line(skip: Optional[str]) -> Optional[str]:
     return text.upper() if text == text.lower() else text
 
 
-def glass_call_line(forecast: Optional[float]) -> str:
-    if forecast is None:
+def glass_call_line(
+    forecast: Optional[float],
+    mesh: Optional[Dict[str, Any]] = None,
+) -> str:
+    pane = nws_pane_high(forecast, mesh)
+    if pane is None:
         return "NO PANE"
-    return f"GLASS READS {int(round(float(forecast)))}°"
+    return f"GLASS READS {int(round(float(pane)))}°"
 
 
 def pit_call_line(m: Optional[Dict[str, Any]]) -> str:
@@ -653,7 +687,8 @@ def vote_seats(
     mesh: Optional[Dict[str, Any]] = None,
     echo: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    p = forecast_p(forecast, m)
+    pane = nws_pane_high(forecast, mesh)
+    p = forecast_p(pane, m)
     q = market_quotes(m)
     implied = None if q.get("yes_ask") is None else q["yes_ask"] / 100.0
     echo_high = echo.get("high") if isinstance(echo, dict) else None
@@ -681,7 +716,7 @@ def vote_seats(
             mesh_dir = "NO"
     mesh_conf = 12 if thin else (22 if wide else 64)
     return [
-        {"id": "GLASS", "dir": glass, "call": glass_call_line(forecast)},
+        {"id": "GLASS", "dir": glass, "call": glass_call_line(forecast, mesh), "pane": pane},
         {"id": "PIT", "dir": pit, "call": pit_call_line(m)},
         {"id": "FROST", "dir": frost, "call": frost_line(skip) or "CLEAR"},
         {"id": "BONE", "dir": bone, "call": bone_call},
@@ -1162,7 +1197,7 @@ def skip_reason(
         return "WIDE SPLIT · SIT"
     if n < THIN_VOL:
         return "THIN BOOK"
-    if forecast is None:
+    if nws_pane_high(forecast, mesh) is None:
         return "NO PANE"
     return frost_line(why_line(flags, None, 0))
 
@@ -1369,7 +1404,7 @@ def pick_event_day(markets: List[Dict[str, Any]], now: datetime, tz_name: str) -
 
 
 async def nws_high(station: str, day: date, nws: Optional[_Nws] = None) -> Optional[float]:
-    """Official/NWS daytime high for that station/day. None if the feed misses — never fake."""
+    """Official/NWS daytime high for that station/day. Periods first, then grid. None if the feed misses — never fake."""
     fn = nws or _nws_get
     try:
         st = await fn(f"https://api.weather.gov/stations/{station}")
@@ -1378,24 +1413,33 @@ async def nws_high(station: str, day: date, nws: Optional[_Nws] = None) -> Optio
             return None
         lon, lat = float(coords[0]), float(coords[1])
         pts = await fn(f"https://api.weather.gov/points/{lat:.4f},{lon:.4f}")
-        forecast_url = ((pts or {}).get("properties") or {}).get("forecast")
-        if not forecast_url:
-            return None
-        fc = await fn(str(forecast_url))
-        for period in ((fc or {}).get("properties") or {}).get("periods") or []:
-            if not isinstance(period, dict) or not period.get("isDaytime"):
-                continue
-            start = str(period.get("startTime") or "")[:10]
-            if start != day.isoformat():
-                continue
-            raw = period.get("temperature")
-            unit = str(period.get("temperatureUnit") or "F").upper()
-            if raw is None:
-                return None
-            val = float(raw)
-            if unit == "C":
-                val = val * 9.0 / 5.0 + 32.0
-            return val
+        props = ((pts or {}).get("properties") or {}) if isinstance(pts, dict) else {}
+        forecast_url = props.get("forecast")
+        if forecast_url:
+            fc = await fn(str(forecast_url))
+            for period in ((fc or {}).get("properties") or {}).get("periods") or []:
+                if not isinstance(period, dict) or not period.get("isDaytime"):
+                    continue
+                start = str(period.get("startTime") or "")[:10]
+                if start != day.isoformat():
+                    continue
+                raw = period.get("temperature")
+                if raw is None:
+                    continue
+                unit = str(period.get("temperatureUnit") or "F").upper()
+                val = float(raw)
+                if unit == "C":
+                    val = val * 9.0 / 5.0 + 32.0
+                return val
+        grid_url = props.get("forecastGridData")
+        if not grid_url:
+            gid = props.get("gridId") or props.get("cwa")
+            gx, gy = props.get("gridX"), props.get("gridY")
+            if gid is not None and gx is not None and gy is not None:
+                grid_url = f"https://api.weather.gov/gridpoints/{gid}/{int(gx)},{int(gy)}"
+        if grid_url:
+            grid = await fn(str(grid_url))
+            return parse_gridpoint_max(grid, day)
     except Exception:
         return None
     return None
@@ -1930,7 +1974,8 @@ def score_bracket(
     q = market_quotes(m)
     flags = book_health(m)
     vol = float(flags.get("volume") or 0)
-    p = forecast_p(forecast, m)
+    pane = nws_pane_high(forecast, mesh)
+    p = forecast_p(pane, m)
     climo = (city.get("climo") or {}).get(day.month)
     echo_high = echo.get("high") if isinstance(echo, dict) else None
     bone_src = echo_high if echo_high is not None else climo
@@ -1966,6 +2011,7 @@ def score_bracket(
         "cap_strike": m.get("cap_strike"),
         "bracket": strike_label(m),
         "forecast": forecast,
+        "pane": None if pane is None else round(float(pane), 1),
         "climo": climo,
         "yes_bid": q.get("yes_bid"),
         "yes_ask": q.get("yes_ask"),
@@ -2008,13 +2054,14 @@ def build_seats(
     recs = {r["id"]: r for r in seat_records()}
     climo = (DALLAS.get("climo") or {}).get(day.month) if day else None
     pack = mesh if isinstance(mesh, dict) else empty_mesh()
+    pane = nws_pane_high(forecast, pack)
     sub_rows = [s for s in (subs or []) if isinstance(s, dict)]
     echo_high = None
     for s in sub_rows:
         if str(s.get("id") or "") == "ECHO" and s.get("high") is not None:
             echo_high = s.get("high")
     defaults = {
-        "GLASS": glass_call_line(forecast),
+        "GLASS": glass_call_line(forecast, pack),
         "PIT": pit_call_line(best),
         "FROST": frost_line((best or {}).get("skip")) or "CLEAR",
         "BONE": bone_call_line(climo, echo_high),
@@ -2032,7 +2079,12 @@ def build_seats(
         vote = votes.get(seat["id"]) or {}
         raw = str(vote.get("dir") or "WAIT").upper()
         fc = forecast
-        if seat["id"] == "MESH" and vote.get("median") is not None:
+        if seat["id"] == "GLASS":
+            if vote.get("pane") is not None:
+                fc = vote.get("pane")
+            elif pane is not None:
+                fc = pane
+        elif seat["id"] == "MESH" and vote.get("median") is not None:
             fc = vote.get("median")
         elif seat["id"] == "MESH" and pack.get("median") is not None:
             fc = pack.get("median")
@@ -2049,7 +2101,7 @@ def build_seats(
             "mark": seat["mark"],
             "call": defaults.get(seat["id"]),
             "dir": lean,
-            "eye": weather_eye(lean),
+            "eye": glass_eye(fc) if seat["id"] == "GLASS" else weather_eye(lean),
             "vote": raw,
             "n": rec.get("n") or 0,
             "wr": rec.get("wr"),
@@ -2060,6 +2112,9 @@ def build_seats(
             "invert": bool(rec.get("invert")),
             "letter": None,
         }
+        if seat["id"] == "GLASS":
+            row["pane"] = None if fc is None else round(float(fc), 1)
+            row["ok"] = fc is not None
         if seat["id"] == "MESH":
             row["median"] = vote.get("median") if vote.get("median") is not None else pack.get("median")
             row["spread"] = vote.get("spread") if vote.get("spread") is not None else pack.get("spread")
@@ -2123,7 +2178,7 @@ def front_would_lock_if_strict(best: Optional[Dict[str, Any]], min_c: int) -> bo
 def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     acc = chair_accuracy()
     rec = seat_record(acc["total"], None if not acc["total"] else acc["correct"] / acc["total"])
-    # Skip / dont_play is a WAIT, not a BELOW lock. Portraits still use UP/WAIT eyes.
+    # Skip / dont_play is a WAIT, not a BELOW lock. Labels carry eye/lean.
     if not best or best.get("dont_play"):
         lean = "WAIT"
         eye = "WAIT"
@@ -2136,10 +2191,10 @@ def build_chair(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             cap_strike=best.get("cap_strike"),
         )
         eye = weather_eye(lean)
-    # v1 wait portrait is the approved Chair face. Up/down reuse the same file.
+    # ONE FACE. Labels carry eye/lean. The mark stays the WAIT cowboy.
     marks = {
-        "UP": "/static/bots/raijin-up.png",
-        "DOWN": "/static/bots/raijin-down.png",
+        "UP": "/static/bots/raijin-wait.png",
+        "DOWN": "/static/bots/raijin-wait.png",
         "WAIT": "/static/bots/raijin-wait.png",
     }
     return {
@@ -2191,9 +2246,12 @@ async def build_board(
                     if isinstance(b, dict) and b.get("best"):
                         best_row = b
                         break
-                fc = None
-                if best_row and best_row.get("forecast") is not None:
-                    fc = best_row.get("forecast")
+                fc = out.get("pane")
+                if fc is None and best_row:
+                    if best_row.get("pane") is not None:
+                        fc = best_row.get("pane")
+                    elif best_row.get("forecast") is not None:
+                        fc = best_row.get("forecast")
                 clock = build_clock(day_d, best_row, datetime.now(timezone.utc), fc)
                 wx = out.get("weather") if isinstance(out.get("weather"), dict) else {}
                 obs = wx.get("obs") if isinstance(wx.get("obs"), dict) else {}
@@ -2278,11 +2336,13 @@ async def build_board(
             dropped.append(str(city["series"]))
             continue
         city_fc = await nws_high(str(city["station"]), event_day, nws)
+        city_fc_pane = city_fc
         if city["id"] == "DAL":
             forecast = city_fc
             day = event_day
             if mesh is None:
                 mesh_pack = await fetch_mesh_highs(event_day, nws=nws, http=http)
+            city_fc_pane = nws_pane_high(city_fc, mesh_pack)
             if echo_pack is None:
                 yday = event_day - timedelta(days=1)
                 yhigh = None
@@ -2306,7 +2366,7 @@ async def build_board(
                 mesh=mesh_pack if city["id"] == "DAL" else None,
                 heat=build_heat(
                     now_f=now_f,
-                    nws_high=city_fc,
+                    nws_high=city_fc_pane if city["id"] == "DAL" else city_fc,
                     kalshi_high=kalshi_high_f(m),
                     stale=bool(weather.get("held")),
                     market=m,
@@ -2369,15 +2429,16 @@ async def build_board(
         except Exception:
             echo_day = (day or n.date()) - timedelta(days=1)
         echo_pack = build_echo(await fetch_cli_high(echo_day, nws, station="KDFW", office="FWD"), echo_day)
+    pane = nws_pane_high(forecast, mesh_pack)
     heat_pack = heat if isinstance(heat, dict) else build_heat(
         now_f=now_f,
-        nws_high=forecast,
+        nws_high=pane if pane is not None else forecast,
         kalshi_high=None if not best else kalshi_high_f(best),
         stale=bool(weather.get("held")),
         market=best,
     )
     sub_rows = build_subs(heat_pack, echo_pack, cell_pack)
-    clock = build_clock(day, best, n, forecast)
+    clock = build_clock(day, best, n, pane if pane is not None else forecast)
     clock["now_f"] = None if now_f is None else now_f
     clock["temp_stale"] = bool(weather.get("held"))
 
@@ -2408,6 +2469,7 @@ async def build_board(
             for c in CITIES
         ],
         "weather": weather,
+        "pane": pane,
         "clock": clock,
         "chair": build_chair(chair_best),
         "seats": build_seats(best, forecast, day, mesh=mesh_pack, subs=sub_rows),
