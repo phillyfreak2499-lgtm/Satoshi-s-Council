@@ -37,18 +37,19 @@ def _row(
     direction: str = "UP",
 ) -> WindowCall:
     hit = int(correct) == 1
+    fifteen = str(ticker).upper().startswith("KXBTC15M")
     return WindowCall(
         ticker=ticker,
         direction=direction,
         confidence=70,
         called_at=when,
         settled_at=when,
-        actual_outcome="UP" if (direction == "UP") == hit else "DOWN",
+        actual_outcome="PATH" if fifteen else ("UP" if (direction == "UP") == hit else "DOWN"),
         y_finish="UP" if (direction == "UP") == hit else "DOWN",
-        correct=1 if hit else 0,
-        settle_reason="finish_match" if hit else "finish_miss",
+        correct=None if fifteen else (1 if hit else 0),
+        settle_reason="path_pnl" if fifteen else ("finish_match" if hit else "finish_miss"),
         paper_stake=0.0 if shadow else 10.0,
-        paper_pnl=0.0,
+        paper_pnl=(12.0 if hit else -10.0) if fifteen else 0.0,
         asset=asset,
         shadow=shadow,
         open_price=48.0,

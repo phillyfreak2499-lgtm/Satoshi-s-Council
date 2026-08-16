@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-btc-15m-path-pnl",
+    "at": "2026-08-17T00:10:00-05:00",
+    "title": "BTC 15m path P&L — dual-sided, not a directional hit",
+    "why": "Zach Voice: HOLD the old win rule. BTC 15m is path P&L, not one irreversible directional lock. Dual-sided scalp: hold both Up and Down when combined cost is attractive. Scale / cut / flip inside the 15m window. Score realized paper P&L, not close-direction hits. Do not treat a single UP/DOWN lock that matches the official settle as the training win. New 15m brain — not a clock change. Satoshi + Bitcoin Pattern Specialist retrained on 15m path behavior. Retrain on old 15-minute books only. Do not port 1H weights. CoinGlass 1h stays off this book. ETH stays 1H. Playable band stays 20–80 after vig. WAIT is a skip, not a miss. 99¢ chalk is not a training win. Displayed 15m BTC scorecard starts clean. ETH displayed hits and ETH 1H bot memory stay. Vitalik / candle_eth stay hourly. Dedicated specialists stay asset-pure. Shared bots never final-lock. Hunter still feeds 1–3; Ares/Oracle paper-lock the best of three. Oracle laurel still. Cowboy Raijin. Signed WAIT stills + cache-bust. Gate CSS #41. Logo /council-mark.png. Header STILL. No new Floor chairs. Paper. Follower OFF. Live OFF."
+  },
+  {
     "id": "2026-08-16-btc-15m-retrain",
     "at": "2026-08-17T00:05:00-05:00",
     "title": "BTC 15m new brain — ETH stays 1H",

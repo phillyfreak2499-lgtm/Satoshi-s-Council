@@ -4838,7 +4838,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const isGlitch = now < glitchUntil;
     // Dim floor specialists slightly when Chair has locked (table is the hero)
     const _flc = (state && (state.locked_call || (state.decision && state.decision.locked_call))) || null;
-    const floorLocked = !!( _flc && _flc.locked && _flc.direction && (_flc.direction === "UP" || _flc.direction === "DOWN") );
+    const floorLocked = !!( _flc && _flc.locked && _flc.direction && (_flc.direction === "UP" || _flc.direction === "DOWN" || _flc.direction === "BOTH") );
     const floorAlpha = floorLocked ? 0.55 : 1.0;
 
     order.forEach((name, i) => {
@@ -4941,7 +4941,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // ===== Central Leader – CHAIR (armored portrait, eyes by direction) =====
     // Prefer locked_call so portrait matches the LOCKED plaque after the single call
     const _lc = (state.locked_call || (state.decision && state.decision.locked_call) || null);
-    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN" || _lc.direction === "ABOVE" || _lc.direction === "BELOW" || _lc.direction === "BETWEEN") );
+    const _hasLock = !!( _lc && _lc.locked && _lc.direction && (_lc.direction === "UP" || _lc.direction === "DOWN" || _lc.direction === "BOTH" || _lc.direction === "ABOVE" || _lc.direction === "BELOW" || _lc.direction === "BETWEEN") );
     const leaderDir = _hasLock ? _lc.direction : (state.decision?.direction || "WAIT");
     const leaderConf = _hasLock ? (_lc.confidence || state.decision?.confidence || 0) : (state.decision?.confidence || 0);
     const waitFloor = floorLikeMode() && !_hasLock;
@@ -10580,13 +10580,13 @@ function drawCandleChart() {
       mode: "art",
       target: "#tabScreensaver",
       title: "WHAT THIS IS",
-      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. The Chair (Satoshi on BTC, Vitalik on ETH) locks exactly one high-quality paper call per window — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
+      body: "A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum table. Satoshi runs a dual-sided 15m path book (hold both / scale / cut / flip) scored on realized paper P&L. Vitalik still locks one high-quality ETH 1H paper call — UP or DOWN — inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.\n\nThis is a research co-pilot. It does not place real orders.",
     },
     {
       mode: "art",
       target: "#tableStage",
       title: "GOAL CONTRACT",
-      body: "1. One directional guess per 15-minute window on how the window ends.\n2. Taken only at the best available odds (book inside 10–90¢).\n3. Once locked → irreversible for that window.\n4. WAIT preferred over low-edge or noisy calls.",
+      body: "1. BTC 15m is path P&L — dual-sided scalp, not one irreversible directional lock.\n2. Hold both Up and Down when combined cost is attractive. Scale / cut / flip inside the window.\n3. Score realized paper P&L, not a close-direction hit.\n4. ETH 1H stays one finish guess at the best available odds (10–90¢). WAIT preferred over low-edge noise.",
     },
     {
       mode: "art",
@@ -10598,7 +10598,7 @@ function drawCandleChart() {
       mode: "art",
       target: "#accuracyBadge",
       title: "HIT RATE",
-      body: "HIT RATE is Chair directional accuracy (WAIT excluded). Calls are graded on the Kalshi odds path, not only the final BTC print. Paper P&L is path-scaled. Only the single locked call per window is graded.",
+      body: "BTC 15m HIT RATE is windows with net paper P&L > 0 (WAIT excluded). Not a single UP/DOWN lock that matches the official settle. ETH 1H still grades the one locked finish call.",
     },
     {
       mode: "art",

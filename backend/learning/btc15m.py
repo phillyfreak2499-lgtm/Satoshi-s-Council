@@ -7,6 +7,9 @@ ETH stays on hourly KXETHD. Do not start KXETH15M.
 
 Do not port 1H weights, 1H settle keys, or CoinGlass 1h features onto this
 book. Displayed BTC hits for this brain start clean.
+
+Scoring is realized paper P&L on a dual-sided path book — not one
+irreversible UP/DOWN lock that matches the official settle.
 """
 from __future__ import annotations
 
@@ -43,7 +46,7 @@ CHALK_CENTS = 99.0
 MIN_EV_CENTS = 3.0
 SNAPSHOT_MINS_INTO_15M = 4.0  # after the 3m sit; not the close print
 CANDLE_LOOKBACK_MIN_15M = 60  # 1m bars: enough for 3/8/15 + volume, not a 1H clone
-GOAL_SHORT_15M = "GOAL · 1 window-end guess @ best odds (20–80¢)"
+GOAL_SHORT_15M = "GOAL · path P&L · dual-sided scalp (20–80¢)"
 P_FINISH_COLD_N = 15
 
 # CoinGlass 1h / 30m is the wrong timeframe for a 15m lock.
@@ -329,8 +332,8 @@ def paper_lock_score_skip(
     direction: Any = None,
 ) -> Optional[str]:
     """
-    15m BTC displayed / training score: only a paper LOCK inside 20–80 after vig.
-    WAIT is a skip (handled elsewhere). 99¢ chalk is not a training win.
+    Open-gate only for 15m BTC: do not open 99¢ chalk or odds outside 20–80.
+    Not the training win. Path P&L grades realized paper dollars.
     ETH 1H is untouched (returns None).
     """
     if not is_btc_15m_ticker(ticker):

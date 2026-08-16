@@ -6,10 +6,9 @@ When historically strong coalitions agree again, their joint vote
 gets an affinity bonus — the Chair "remembers" who is right together.
 
 GOAL CONTRACT (enforced here):
-  Exactly ONE high-quality directional guess per official window
-  (BTC 15m / ETH 1H), taken only when the book is inside the playable
-  band (20–80 after vig on 15m BTC; never 99¢ chalk).
-  Once locked, the call is irreversible for that window.
+  BTC 15m is a dual-sided path book (hold both / scale / cut / flip)
+  scored on realized paper P&L — not one irreversible directional lock.
+  ETH 1H stays one high-quality finish guess inside 10–90¢.
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -107,6 +106,7 @@ class Leader:
         self._locked_ev_cents: Optional[float] = None
         self._locked_floor_strike: Optional[float] = None
         self._locked_close_time: Optional[str] = None
+        self._path_books: Dict[str, Any] = {}
         self.edge: Dict[str, Any] = {}
 
     def _normalize_weights(self) -> None:
@@ -144,6 +144,7 @@ class Leader:
         self._locked_ev_cents = None
         self._locked_floor_strike = None
         self._locked_close_time = None
+        self._path_books = {}
 
     def _active_dir(self) -> Optional[str]:
         return self._final_dir or self._mid_dir or self._entry_dir or self._locked_dir
@@ -284,8 +285,209 @@ class Leader:
             f"have conf {conf} vs locked {locked_conf}, age {age:.0f}s)"
         ), None
 
+    def _path_book_for(self, key: str | None) -> Any:
+        if not key:
+            return None
+        return (self._path_books or {}).get(str(key))
+
+    def _path_book_open(self) -> bool:
+        for book in (self._path_books or {}).values():
+            if getattr(book, "open_legs", None):
+                return True
+        return False
+
+    def _is_15m_btc_path(self, regime_features: Dict[str, Any] | None, ticker: str | None) -> bool:
+        try:
+            from backend.learning.btc15m import is_btc_15m_ticker, is_15m_btc_book
+            if ticker and is_btc_15m_ticker(ticker):
+                return True
+            md = dict(regime_features or {})
+            if ticker:
+                md["ticker"] = ticker
+            return is_15m_btc_book(md)
+        except Exception:
+            return str(ticker or "").upper().startswith("KXBTC15M")
+
+    def _apply_15m_path_book(
+        self,
+        *,
+        ticker: str | None,
+        window_id: str | None,
+        lean: str | None,
+        conf: int,
+        score: float,
+        summary: str,
+        side_odds: float | None,
+        up_pct: float | None,
+        p_finish: float | None,
+        ev_cents: float | None,
+        regime_features: Dict[str, Any],
+        gate_notes: List[str],
+    ) -> Dict[str, Any]:
+        """Dual-sided 15m path. Not an irreversible one-call lock."""
+        from backend.agents.chair_gates import odds_to_cents
+        from backend.learning.btc15m import goal_short_for, timeframe_gates
+        from backend.learning.btc15m_path import (
+            PathBook,
+            PathInputs,
+            apply_fills,
+            decide_action,
+            is_chalk,
+        )
+
+        yes_ask = odds_to_cents(regime_features.get("yes_ask"))
+        no_ask = odds_to_cents(regime_features.get("no_ask"))
+        if yes_ask is None and up_pct is not None:
+            yes_ask = float(up_pct)
+        if no_ask is None and up_pct is not None:
+            no_ask = max(1.0, min(99.0, 100.0 - float(up_pct)))
+        if yes_ask is None and side_odds is not None and lean == "UP":
+            yes_ask = float(side_odds)
+        if no_ask is None and side_odds is not None and lean == "DOWN":
+            no_ask = float(side_odds)
+
+        mins_left = None
+        try:
+            if regime_features.get("mins_left") is not None:
+                mins_left = float(regime_features.get("mins_left"))
+        except (TypeError, ValueError):
+            mins_left = None
+        tf = timeframe_gates(
+            window_minutes=regime_features.get("window_minutes"),
+            ticker=regime_features.get("ticker") or ticker,
+            series=regime_features.get("series_ticker"),
+            asset=regime_features.get("asset"),
+        )
+        win_mins = float(tf.get("window_minutes") or 15.0)
+        elapsed = (win_mins - float(mins_left)) if mins_left is not None else 8.0
+        if mins_left is None:
+            mins_left = max(0.0, win_mins - elapsed)
+
+        key = str(window_id or ticker or "")
+        book = self._path_book_for(key) or self._path_book_for(ticker)
+        if book is None:
+            book = PathBook(ticker=str(ticker or key))
+        if key:
+            self._path_books[key] = book
+        if ticker:
+            self._path_books[str(ticker)] = book
+            self._locked_ticker = ticker
+        if window_id:
+            self._locked_window = window_id
+
+        stale = bool(regime_features.get("stale")) or not bool(regime_features.get("kalshi_healthy", True))
+        dead = bool(regime_features.get("dead_book"))
+        if not dead:
+            try:
+                from backend.agents.chair_gates import dead_book_reason
+                dead = bool(dead_book_reason(
+                    regime_features.get("book_depth") if isinstance(regime_features.get("book_depth"), dict) else None,
+                    lean,
+                    regime_features.get("yes_mid") or yes_ask,
+                    float(tf.get("band_hi") or 80.0),
+                    ticker=ticker,
+                    asset=regime_features.get("asset"),
+                    window_minutes=win_mins,
+                ))
+            except Exception:
+                dead = False
+        chalk = is_chalk(yes_ask) or is_chalk(no_ask)
+        inp = PathInputs(
+            elapsed_mins=float(elapsed),
+            mins_left=float(mins_left),
+            yes_ask=yes_ask,
+            no_ask=no_ask,
+            lean=lean if lean in ("UP", "DOWN") else None,
+            ev_cents=ev_cents,
+            dead=bool(dead or stale),
+            chalk=chalk,
+            allow_late_open=bool(ev_cents is not None and float(ev_cents) >= float(tf.get("late_min_ev") or 8.0)),
+        )
+        decision = decide_action(inp, book)
+        fills = [f.as_dict() for f in decision.fills]
+        if decision.fills:
+            apply_fills(book, decision.fills, float(elapsed))
+
+        disp = book.display_direction()
+        goal_txt = goal_short_for(
+            asset=regime_features.get("asset"),
+            ticker=regime_features.get("ticker") or ticker,
+            series=regime_features.get("series_ticker"),
+            window_minutes=regime_features.get("window_minutes"),
+        )
+        if disp != "WAIT":
+            self._locked_dir = "UP" if disp == "UP" else ("DOWN" if disp == "DOWN" else None)
+            self._locked_conf = int(conf)
+            self._locked_score = float(score or 0.0)
+            self._locked_p_finish = p_finish
+            self._locked_ev_cents = ev_cents
+            try:
+                fs = regime_features.get("floor_strike")
+                self._locked_floor_strike = float(fs) if fs is not None else None
+            except (TypeError, ValueError):
+                self._locked_floor_strike = None
+            ct = regime_features.get("close_time")
+            self._locked_close_time = str(ct) if ct else None
+            firm = True
+            if decision.action == "DUAL":
+                summary = f"PATH BOTH · dual-sided · leftover attractive · {goal_txt} · {summary}"
+            elif decision.action in ("SCALE", "CUT", "FLIP", "OPEN"):
+                summary = f"PATH {decision.action} {disp} · paper P&L · {goal_txt} · {summary}"
+            else:
+                summary = f"PATH book {disp} · dual-sided · paper P&L · {goal_txt} · {summary}"
+        else:
+            firm = False
+            if decision.reason in ("first_3m", "last_2_5m", "dead_book", "chalk"):
+                summary = f"WAIT · 15m path sit ({decision.reason}) · {goal_txt} · {summary}"
+            else:
+                summary = f"WAIT · 15m path · no attractive book · {goal_txt} · {summary}"
+        if gate_notes:
+            summary += " · " + ", ".join(gate_notes[:2])
+        return {
+            "direction": disp,
+            "lean": lean if lean in ("UP", "DOWN") else (disp if disp in ("UP", "DOWN") else None),
+            "firm": firm,
+            "conf": int(conf),
+            "summary": summary,
+            "path_fills": fills,
+            "call_phase": decision.action.lower() if decision.action != "SIT" else None,
+        }
+
     def _build_locked_call(self) -> Optional[Dict[str, Any]]:
         """Clean follower-readable lock object. None when no lock is active."""
+        book = self._path_book_for(self._locked_window) or self._path_book_for(self._locked_ticker)
+        if book and getattr(book, "open_legs", None):
+            disp = book.display_direction()
+            goal_txt = GOAL_CONTRACT_SHORT
+            try:
+                from backend.learning.btc15m import goal_short_for
+                goal_txt = goal_short_for(ticker=self._locked_ticker, asset="btc")
+            except Exception:
+                pass
+            return {
+                "locked": True,
+                "direction": disp,
+                "confidence": int(self._active_conf() or self._locked_conf or 0),
+                "entry_odds_pct": None,
+                "entry_up_pct": self._entry_up_pct,
+                "locked_at": None,
+                "phase": "path",
+                "irreversible": False,
+                "ticker": self._locked_ticker,
+                "goal": goal_txt,
+                "p_finish": self._locked_p_finish,
+                "ev_cents": self._locked_ev_cents,
+                "leftover_after_vig": self._locked_ev_cents,
+                "floor_strike": self._locked_floor_strike,
+                "close_time": self._locked_close_time,
+                "paper_only": True,
+                "path_book": True,
+                "open_legs": [
+                    {"side": leg.side, "entry_cents": leg.entry_cents, "stake": leg.stake}
+                    for leg in book.open_legs
+                ],
+                "realized_pnl": getattr(book, "realized_pnl", 0.0),
+            }
         active = self._active_dir()
         if not active or not (self._entry_dir or self._locked_dir):
             return None
@@ -315,7 +517,7 @@ class Leader:
                 "mid" if self._mid_dir else
                 "entry"
             ),
-            "irreversible": int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1) <= 1,
+            "irreversible": False if self._path_book_open() else int(getattr(settings, "MAX_CALLS_PER_WINDOW", 1) or 1) <= 1,
             "ticker": self._locked_ticker,
             "goal": GOAL_CONTRACT_SHORT,
             "p_finish": self._locked_p_finish,
@@ -1186,10 +1388,33 @@ class Leader:
                     eth_n_for_lock = 0
 
         # ══════════════════════════════════════════════════════════════
-        # GOAL CONTRACT: one irreversible call per window. No flipping.
-        # Hold even if ticker is briefly missing this cycle.
+        # BTC 15m: path P&L book (dual / scale / cut / flip). Not one lock.
+        # ETH 1H: one irreversible call per window. No flipping.
         # ══════════════════════════════════════════════════════════════
-        if self._entry_dir or self._active_dir():
+        path_fills: list = []
+        if self._is_15m_btc_path(regime_features, ticker):
+            overlay = self._apply_15m_path_book(
+                ticker=ticker,
+                window_id=window_id,
+                lean=lean if lean in ("UP", "DOWN") else None,
+                conf=int(conf),
+                score=float(score or 0.0),
+                summary=summary,
+                side_odds=side_odds,
+                up_pct=up_pct,
+                p_finish=p_finish,
+                ev_cents=ev_cents,
+                regime_features=regime_features or {},
+                gate_notes=gate_notes,
+            )
+            direction = overlay["direction"]  # type: ignore[assignment]
+            lean = overlay.get("lean")
+            firm = bool(overlay.get("firm"))
+            conf = int(overlay.get("conf") or conf)
+            summary = overlay.get("summary") or summary
+            path_fills = overlay.get("path_fills") or []
+            call_phase = overlay.get("call_phase")
+        elif self._entry_dir or self._active_dir():
             self._lean_pending_dir = None
             self._lean_pending_since = 0.0
             active = self._active_dir()
@@ -1736,8 +1961,16 @@ class Leader:
             "top_agree": bool(locals().get("top_agree", False)),
             "top_conflict": bool(locals().get("top_conflict", False)),
             "lean": lean,  # underlying UP/DOWN when direction is SWAP
-            "window_locked": bool(self._entry_dir or self._locked_dir),
-            "locked_dir": self._active_dir(),
+            "window_locked": bool(self._entry_dir or self._locked_dir or self._path_book_open()),
+            "locked_dir": self._active_dir() or (
+                book.display_direction()
+                if (book := (self._path_book_for(window_id) or self._path_book_for(ticker))) is not None
+                and getattr(book, "open_legs", None)
+                else None
+            ),
+            "path_fills": locals().get("path_fills") or [],
+            "path_book": bool(self._path_book_open()),
+            "irreversible": False if self._is_15m_btc_path(regime_features, ticker) else True,
             "entry_dir": self._entry_dir,
             "mid_dir": self._mid_dir,
             "final_dir": self._final_dir,

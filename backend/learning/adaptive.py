@@ -436,6 +436,52 @@ class AdaptiveLearner:
             "backfill": dict(self.backfill) if isinstance(getattr(self, "backfill", None), dict) else {},
         }
 
+    def learn_from_path_pnl(
+        self,
+        agent_votes: Dict[str, Any],
+        net_pnl: Any,
+        held_sides: Any = None,
+        regime: str | None = None,
+        credit: float = 1.0,
+        count_as_lock: bool = False,
+        source: str | None = "path_pnl",
+    ) -> Dict[str, Any]:
+        """
+        Grade 15m seats on whether the path book made money.
+        Not vote == official settle.
+        """
+        try:
+            pnl = float(net_pnl)
+        except (TypeError, ValueError):
+            return {}
+        held = {str(s).upper() for s in (held_sides or []) if str(s).upper() in ("UP", "DOWN")}
+        if not held and abs(pnl) <= 1e-9:
+            return {}
+        synth = "UP" if pnl > 0 else "DOWN"
+        remapped: Dict[str, Any] = {}
+        for name, vote in (agent_votes or {}).items():
+            if not isinstance(vote, dict):
+                remapped[name] = vote
+                continue
+            d = str(vote.get("direction") or "").upper()
+            if d not in ("UP", "DOWN"):
+                remapped[name] = vote
+                continue
+            if held and d in held:
+                remapped[name] = {**vote, "direction": synth}
+            elif held:
+                remapped[name] = {**vote, "direction": "DOWN" if synth == "UP" else "UP"}
+            else:
+                remapped[name] = {**vote, "direction": synth}
+        return self.learn_from_settled(
+            remapped,
+            synth,
+            regime=regime,
+            credit=credit,
+            count_as_lock=count_as_lock,
+            source=source or "path_pnl",
+        )
+
     def learn_from_settled(
         self,
         agent_votes: Dict[str, Any],
@@ -1459,7 +1505,41 @@ class AdaptiveLearner:
         # oldest first so learning order is chronological
         ordered = list(reversed(recent))
         n = 0
+        path_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        rest: List[Dict[str, Any]] = []
         for row in ordered:
+            tick = row.get("ticker")
+            try:
+                from backend.learning.btc15m import is_btc_15m_ticker
+                from backend.learning.btc15m_path import is_path_settle_reason
+                if tick and is_btc_15m_ticker(tick):
+                    reason = str(row.get("settle_reason") or "")
+                    if is_path_settle_reason(reason):
+                        key = (str(tick), str(row.get("close_time") or ""))
+                        path_groups.setdefault(key, []).append(row)
+                    continue
+            except Exception:
+                pass
+            rest.append(row)
+        for _key, legs in path_groups.items():
+            net = 0.0
+            votes: Dict[str, Any] = {}
+            held = set()
+            reg = None
+            for leg in legs:
+                try:
+                    net += float(leg.get("paper_pnl") or 0.0)
+                except (TypeError, ValueError):
+                    pass
+                votes.update(leg.get("agent_votes") or {})
+                d = str(leg.get("direction") or "").upper()
+                if d in ("UP", "DOWN"):
+                    held.add(d)
+                reg = reg or leg.get("regime") or leg.get("regime_key")
+            if votes:
+                self.learn_from_path_pnl(votes, net, held, regime=reg, count_as_lock=False)
+                n += 1
+        for row in rest:
             direction = str(row.get("direction") or "").upper()
             settle_reason = str(row.get("settle_reason") or "")
             votes = row.get("agent_votes") or {}

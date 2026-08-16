@@ -48,7 +48,6 @@ from backend.learning.seat_backfill import (
     fetch_historical_candles,
     filter_rebuildable_votes,
     is_rebuildable_seat,
-    merge_backfill_into_learner,
     reconstructed_yes_mid,
     vote_rebuildable_seats,
 )
@@ -100,7 +99,10 @@ def backfill_15m_contract() -> Dict[str, Any]:
             {"key": "whale", "callsign": "WHALE", "why": "live tape only"},
         ],
         "coinglass": False,
-        "official_result_only": True,
+        "official_result_only": False,
+        "y_finish_marks_terminal_legs": True,
+        "score": "realized_paper_pnl",
+        "dual_sided": True,
         "impute_missing_result": False,
         "tag": BACKFILL_TAG,
         "merge": True,
@@ -346,8 +348,9 @@ async def grade_one_15m(
         return {"status": "skip", "reason": "no_close_time", "event": event, "ticker": ticker}
 
     snap_end = close_utc - timedelta(minutes=WINDOW_MINUTES_15M - SNAPSHOT_MINS_INTO_15M)
-    start_ms = int((snap_end - timedelta(minutes=CANDLE_LOOKBACK_MIN_15M)).timestamp() * 1000)
-    end_ms = int(snap_end.timestamp() * 1000)
+    window_open = close_utc - timedelta(minutes=WINDOW_MINUTES_15M)
+    start_ms = int((window_open - timedelta(minutes=CANDLE_LOOKBACK_MIN_15M)).timestamp() * 1000)
+    end_ms = int(close_utc.timestamp() * 1000)
     if fetch_candles is not None:
         candles = await fetch_candles()
     elif candle_cache is not None:
@@ -391,12 +394,49 @@ async def grade_one_15m(
         }
     called_at = as_of.isoformat()
     reg = regime_from_call(called_at, close_utc.isoformat())
-    merge_backfill_into_learner(learner, directional, y, regime=reg, ticker=ticker)
+    from backend.learning.btc15m_path import simulate_path
+    path = simulate_path(
+        candles=candles,
+        floor_strike=strike,
+        close_time=close_utc,
+        votes=directional,
+        y_finish=y,
+        ticker=ticker,
+    )
+    net = path.get("net_pnl")
+    held = path.get("held_sides") or []
+    if path.get("path_win") or path.get("path_loss"):
+        learner.learn_from_path_pnl(
+            directional,
+            net,
+            held,
+            regime=reg,
+            count_as_lock=False,
+            source=BACKFILL_TAG,
+        )
+        learner.note_backfill_hour(
+            ticker=ticker,
+            seats=list(directional.keys()),
+            outcome="UP" if path.get("path_win") else "DOWN",
+        )
+    elif not (path.get("fills") or []):
+        return {
+            "status": "skip",
+            "reason": "no_path_fills",
+            "event": event,
+            "ticker": ticker,
+            "y_finish": y,
+        }
     return {
         "status": "graded",
         "event": event,
         "ticker": ticker,
         "y_finish": y,
+        "net_pnl": net,
+        "path_win": bool(path.get("path_win")),
+        "held_sides": held,
+        "actions": path.get("actions") or [],
+        "score": "realized_paper_pnl",
         "seats": sorted(directional.keys()),
         "tag": BACKFILL_TAG,
         "asset": "btc",
@@ -543,6 +583,8 @@ async def run_btc_15m_backfill(
             for i in range(7)
         ],
         "brain_file": BRAIN_FILE_BTC_15M,
+        "score": "realized_paper_pnl",
+        "dual_sided": True,
         "coinglass": False,
         "port_1h_weights": False,
         "eth_1h": "untouched",
@@ -562,6 +604,8 @@ async def run_btc_15m_backfill(
         rec["weekday_up_rate"] = report["weekday_up_rate"]
         rec["coinglass"] = False
         rec["port_1h_weights"] = False
+        rec["score"] = "realized_paper_pnl"
+        rec["dual_sided"] = True
         brain.backfill = rec
         brain.save(Path(root) / BRAIN_FILE_BTC_15M)
         save_status({**report, "events": sorted(seen)[-800:]}, root)

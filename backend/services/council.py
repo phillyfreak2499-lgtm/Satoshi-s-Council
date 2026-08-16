@@ -1459,6 +1459,7 @@ class Council:
         learned = 0
         wait_learned = 0
         FINISH = {"finish_match", "finish_miss"}
+        path_buf = []
         for row in reversed(recent):  # chronological
             rid = row.get("id")
             if rid is None or rid in self._last_learned_ids:
@@ -1467,6 +1468,16 @@ class Council:
             direction = str(row.get("direction") or "").upper()
             outcome = row.get("y_finish") or row.get("actual_outcome") or row.get("outcome")
             votes = row.get("agent_votes") or {}
+            try:
+                from backend.learning.btc15m import is_btc_15m_ticker
+                from backend.learning.btc15m_path import is_path_settle_reason
+                if is_btc_15m_ticker(row.get("ticker")):
+                    if is_path_settle_reason(settle_reason):
+                        path_buf.append(row)
+                    self._last_learned_ids.add(rid)
+                    continue
+            except Exception:
+                pass
             # BTC WAIT shadow is a parallel paper bin — do not train Chair lock weights from it.
             if is_btc_shadow_row(row):
                 self._last_learned_ids.add(rid)
@@ -1517,6 +1528,29 @@ class Council:
             self._last_learned_ids.add(rid)
             if learned >= int(max_learn):
                 break
+        if path_buf and hasattr(self.learner, "learn_from_path_pnl"):
+            grouped: Dict[tuple, list] = {}
+            for row in path_buf:
+                key = (str(row.get("ticker") or ""), str(row.get("close_time") or ""))
+                grouped.setdefault(key, []).append(row)
+            for legs in grouped.values():
+                net = 0.0
+                votes: Dict[str, Any] = {}
+                held = set()
+                reg = None
+                for leg in legs:
+                    try:
+                        net += float(leg.get("paper_pnl") or 0.0)
+                    except (TypeError, ValueError):
+                        pass
+                    votes.update(leg.get("agent_votes") or {})
+                    d = str(leg.get("direction") or "").upper()
+                    if d in ("UP", "DOWN"):
+                        held.add(d)
+                    reg = reg or leg.get("regime") or leg.get("regime_key")
+                if votes:
+                    self.learner.learn_from_path_pnl(votes, net, held, regime=reg, count_as_lock=False)
+                    learned += 1
         # Bound memory of learned ids
         if len(self._last_learned_ids) > 500:
             keep = set(sorted(self._last_learned_ids)[-300:])

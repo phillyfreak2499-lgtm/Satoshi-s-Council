@@ -73,22 +73,36 @@ def _row(
     correct: int | None,
     direction: str = "UP",
     open_price: float = 48.0,
-    settle_reason: str = "finish_match",
+    settle_reason: str | None = None,
+    paper_pnl: float | None = None,
     when: str = "2026-08-16T16:00:00+00:00",
 ) -> WindowCall:
     hit = correct == 1
+    fifteen = str(ticker).upper().startswith("KXBTC15M")
+    if settle_reason is None:
+        if fifteen:
+            settle_reason = "path_pnl" if correct is not None else "chalk_skip"
+        else:
+            settle_reason = "finish_match" if hit else "finish_miss"
+    if paper_pnl is None:
+        if fifteen and settle_reason == "path_pnl":
+            paper_pnl = 12.0 if hit else -10.0
+        else:
+            paper_pnl = 0.0
     return WindowCall(
         ticker=ticker,
         direction=direction,
         confidence=70,
         called_at=when,
         settled_at=when,
-        actual_outcome="UP" if (direction == "UP") == hit else "DOWN",
+        actual_outcome="PATH" if fifteen and settle_reason.startswith("path_") else (
+            "UP" if (direction == "UP") == hit else "DOWN"
+        ),
         y_finish="UP" if (direction == "UP") == hit else "DOWN",
-        correct=correct,
+        correct=None if fifteen else correct,
         settle_reason=settle_reason,
         paper_stake=10.0,
-        paper_pnl=0.0,
+        paper_pnl=paper_pnl,
         asset=asset,
         shadow=0,
         open_price=open_price,
@@ -368,6 +382,30 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("5–3", sc["btc_text"])
         self.assertIn("1–1", sc["btc_text"])
 
+    async def test_old_finish_match_is_not_a_15m_win(self):
+        async with self.store.Session() as session:
+            session.add(_row(
+                ticker="KXBTC15M-26AUG161245-00",
+                asset="btc",
+                correct=1,
+                open_price=48,
+                settle_reason="finish_match",
+                paper_pnl=12.0,
+            ))
+            session.add(_row(
+                ticker="KXBTC15M-26AUG161300-00",
+                asset="btc",
+                correct=1,
+                open_price=47,
+                settle_reason="path_pnl",
+                paper_pnl=4.5,
+            ))
+            await session.commit()
+        acc = await self.store.get_accuracy(asset="btc")
+        self.assertEqual(acc["total"], 1)
+        self.assertEqual(acc["correct"], 1)
+        self.assertEqual(acc["wrong"], 0)
+
     async def test_settle_skips_chalk_and_wait(self):
         async with self.store.Session() as session:
             session.add(WindowCall(
@@ -419,8 +457,9 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(by_t["KXBTC15M-26AUG101200-00"].correct)
             self.assertEqual(by_t["KXBTC15M-26AUG101215-00"].settle_reason, "wait_finish")
             self.assertIsNone(by_t["KXBTC15M-26AUG101215-00"].correct)
-            self.assertEqual(by_t["KXBTC15M-26AUG101230-00"].settle_reason, "finish_match")
-            self.assertEqual(by_t["KXBTC15M-26AUG101230-00"].correct, 1)
+            self.assertEqual(by_t["KXBTC15M-26AUG101230-00"].settle_reason, "path_pnl")
+            self.assertIsNone(by_t["KXBTC15M-26AUG101230-00"].correct)
+            self.assertGreater(float(by_t["KXBTC15M-26AUG101230-00"].paper_pnl or 0), 0.0)
 
 
 class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
@@ -433,6 +472,8 @@ class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(c["port_1h_weights"])
         self.assertFalse(c["follower"])
         self.assertFalse(c["live_orders"])
+        self.assertEqual(c["score"], "realized_paper_pnl")
+        self.assertTrue(c["dual_sided"])
         self.assertEqual(c["eth_1h"], "untouched")
         self.assertIn("CoinGlass 1h is the wrong timeframe", json.dumps(c["seats_skipped"]))
 
@@ -482,7 +523,9 @@ class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
 
         rec = await grade_one_15m(market, learner=learner, fetch_candles=_candles)
         self.assertEqual(rec.get("status"), "graded")
-        self.assertEqual(rec.get("y_finish"), "UP")
+        self.assertEqual(rec.get("score"), "realized_paper_pnl")
+        self.assertIn(rec.get("y_finish"), ("UP", "DOWN"))
+        self.assertNotEqual(rec.get("score"), "finish_match")
         self.assertNotIn("funding", rec.get("seats") or [])
         n = sum(int(learner.correct.get(s) or 0) + int(learner.wrong.get(s) or 0) for s in learner.correct)
         self.assertGreater(n, 0)
@@ -506,15 +549,108 @@ class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((Path(td) / "council-learning-eth.json").is_file())
 
 
+class PathPnlTests(unittest.TestCase):
+    def test_dual_leftover_and_equal_contracts(self):
+        from backend.learning.btc15m_path import (
+            PathBook,
+            PathInputs,
+            combined_leftover,
+            decide_action,
+            dual_attractive,
+            equal_contract_stakes,
+            realized_pnl,
+            settle_exit_cents,
+        )
+        left = combined_leftover(42.0, 42.0)
+        self.assertIsNotNone(left)
+        self.assertGreaterEqual(left, 3.0)
+        self.assertTrue(dual_attractive(42.0, 42.0))
+        self.assertFalse(dual_attractive(52.0, 52.0))
+        self.assertFalse(dual_attractive(12.0, 12.0))
+        up_s, down_s = equal_contract_stakes(40.0, 50.0, unit=10.0)
+        self.assertAlmostEqual(up_s, 10.0)
+        self.assertAlmostEqual(down_s, 12.5)
+        self.assertAlmostEqual(realized_pnl(10.0, 50.0, 100.0), 10.0)
+        self.assertAlmostEqual(realized_pnl(10.0, 50.0, 0.0), -10.0)
+        self.assertAlmostEqual(realized_pnl(10.0, 48.0, 52.0), 10.0 * 4.0 / 48.0)
+        self.assertEqual(settle_exit_cents("UP", "UP"), 100.0)
+        self.assertEqual(settle_exit_cents("DOWN", "UP"), 0.0)
+
+        book = PathBook(ticker="KXBTC15M-X")
+        dual = decide_action(PathInputs(4.0, 11.0, 42.0, 42.0, lean="UP", ev_cents=4.0), book)
+        self.assertEqual(dual.action, "DUAL")
+        self.assertEqual({f.side for f in dual.fills}, {"UP", "DOWN"})
+
+    def test_scale_cut_flip(self):
+        from backend.learning.btc15m_path import PathBook, PathInputs, PathLeg, apply_fills, decide_action
+        book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
+        scale = decide_action(PathInputs(6.0, 9.0, 53.0, 49.0, lean="UP", ev_cents=4.0), book)
+        self.assertEqual(scale.action, "SCALE")
+        cut_book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
+        cut = decide_action(PathInputs(6.0, 9.0, 42.0, 88.0, lean="UP", ev_cents=4.0), cut_book)
+        self.assertEqual(cut.action, "CUT")
+        flip_book = PathBook(ticker="KXBTC15M-X", open_legs=[PathLeg("UP", 48.0, 10.0)])
+        flip = decide_action(PathInputs(6.0, 9.0, 40.0, 55.0, lean="DOWN", ev_cents=4.0), flip_book)
+        self.assertEqual(flip.action, "FLIP")
+        apply_fills(flip_book, flip.fills, 6.0)
+        self.assertEqual(flip_book.held_sides(), {"DOWN"})
+        self.assertLess(flip_book.realized_pnl, 0.0)
+
+    def test_sit_bands_and_path_not_finish(self):
+        from backend.learning.btc15m_path import PathBook, PathInputs, decide_action, simulate_path
+        book = PathBook()
+        early = decide_action(PathInputs(1.0, 14.0, 42.0, 42.0, lean="UP", ev_cents=8.0), book)
+        self.assertEqual(early.action, "SIT")
+        late = decide_action(PathInputs(13.5, 1.5, 48.0, 52.0, lean="UP", ev_cents=3.0), book)
+        self.assertEqual(late.action, "SIT")
+        start = datetime(2026, 8, 10, 15, 45, tzinfo=timezone.utc)
+        candles = []
+        px = 64020.0
+        for i in range(16):
+            t = start.timestamp() * 1000 + i * 60_000
+            candles.append({"open_time": int(t), "open": px, "high": px + 10, "low": px - 8, "close": px + 3, "volume": 10})
+            px += 3
+        path = simulate_path(
+            candles=candles,
+            floor_strike=64000,
+            close_time=datetime(2026, 8, 10, 16, 0, tzinfo=timezone.utc),
+            votes={"candle_btc": {"direction": "UP", "confidence": 70}},
+            y_finish="DOWN",
+            ticker="KXBTC15M-26AUG101200-00",
+        )
+        self.assertEqual(path["score"], "realized_paper_pnl")
+        self.assertIn("net_pnl", path)
+        # Official settle DOWN is not the win label — P&L is.
+        self.assertEqual(path["y_finish"], "DOWN")
+        self.assertNotIn("finish_match", path)
+
+    def test_learner_uses_pnl_not_settle(self):
+        learner = AdaptiveLearner(asset="btc")
+        votes = {
+            "candle_btc": {"direction": "UP", "confidence": 70},
+            "volume": {"direction": "DOWN", "confidence": 60},
+        }
+        learner.learn_from_path_pnl(votes, 8.0, {"UP"}, count_as_lock=False)
+        self.assertGreater(learner.correct.get("candle_btc", 0), 0)
+        self.assertGreater(learner.wrong.get("volume", 0), 0)
+        cold = AdaptiveLearner(asset="btc")
+        cold.learn_from_path_pnl(votes, -8.0, {"UP"}, count_as_lock=False)
+        self.assertGreater(cold.wrong.get("candle_btc", 0), 0)
+        self.assertGreater(cold.correct.get("volume", 0), 0)
+
+
 class WireAndUiTests(unittest.TestCase):
     def test_wire_newest(self):
-        self.assertIn("2026-08-16-btc-15m-retrain", WIRE)
+        self.assertIn("2026-08-16-btc-15m-path-pnl", WIRE)
+        self.assertLess(WIRE.find("2026-08-16-btc-15m-path-pnl"), WIRE.find("2026-08-16-btc-15m-retrain"))
         self.assertLess(WIRE.find("2026-08-16-btc-15m-retrain"), WIRE.find("2026-08-16-eth-slate-ares-oracle-lock"))
-        chunk = WIRE.split("2026-08-16-btc-15m-retrain", 1)[1][:1200]
+        chunk = WIRE.split("2026-08-16-btc-15m-path-pnl", 1)[1][:1600]
         self.assertIn("new brain", chunk)
         self.assertIn("ETH stays 1H", chunk)
-        self.assertIn("20–80 paper lock", chunk)
-        self.assertIn("official 15m settle", chunk)
+        self.assertIn("path P&L", chunk)
+        self.assertIn("dual-sided", chunk)
+        self.assertIn("not one irreversible directional lock", chunk)
+        self.assertIn("not close-direction hits", chunk)
         self.assertIn("WAIT is a skip", chunk)
         self.assertIn("Paper", chunk)
         self.assertIn("Follower OFF", chunk)
@@ -538,7 +674,7 @@ class WireAndUiTests(unittest.TestCase):
         self.assertTrue(can_final_lock("chair"))
         self.assertFalse(can_final_lock("candle_btc"))
         self.assertFalse(can_final_lock("volume"))
-        self.assertNotIn("ZT", WIRE.split("2026-08-16-btc-15m-retrain", 1)[1][:800])
+        self.assertNotIn("ZT", WIRE.split("2026-08-16-btc-15m-path-pnl", 1)[1][:800])
         self.assertFalse(settings.SIDE_TABLE_LIVE)
         self.assertFalse(settings.FRONT_LIVE)
 
