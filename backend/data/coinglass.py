@@ -347,13 +347,19 @@ def glass_seats_must_wait(market_data: Any = None) -> bool:
     """
     md = market_data if isinstance(market_data, dict) else {}
     try:
-        from backend.learning.btc15m import coinglass_allowed_on_book
-        if not coinglass_allowed_on_book(
-            ticker=md.get("ticker") or md.get("kalshi_ticker") or md.get("market_ticker"),
-            series=md.get("series_ticker"),
-            window_minutes=md.get("window_minutes"),
-            asset=md.get("asset"),
-        ):
+        from backend.learning.btc15m import (
+            is_btc_15m_series,
+            is_btc_15m_ticker,
+            is_15m_window,
+        )
+        ticker = md.get("ticker") or md.get("kalshi_ticker") or md.get("market_ticker")
+        series = md.get("series_ticker")
+        window = md.get("window_minutes")
+        # Ticker/series/window identify the 15m book. Bare asset=btc is not enough —
+        # 1H display fixtures still tag asset=btc.
+        if is_btc_15m_ticker(ticker) or is_btc_15m_series(series):
+            return True
+        if is_15m_window(window, ticker, series, None):
             return True
     except Exception:
         pass
