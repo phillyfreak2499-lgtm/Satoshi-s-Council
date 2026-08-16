@@ -107,6 +107,8 @@ class WireLogTests(unittest.TestCase):
         self.assertIn("Paper", rows[0]["why"])
         self.assertIn("Follower OFF", rows[0]["why"])
         self.assertIn("Live OFF", rows[0]["why"])
+        self.assertIn("Desk access is checked on the server from env", rows[0]["why"])
+        self.assertIn("served bundle does not contain the code", rows[0]["why"])
         self.assertNotIn("ZT", rows[0]["title"])
         self.assertNotIn("ZT", rows[0]["why"])
         self.assertNotIn("KX", rows[0]["why"])

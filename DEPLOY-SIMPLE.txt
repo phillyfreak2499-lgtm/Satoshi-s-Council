@@ -1,5 +1,4 @@
 Satoshi's Council — Fresh Deploy (GitHub + Render)
-PASSWORD: Nakamoto
 
 THIS BUILD INCLUDES (newest fixes):
 - Hard mute toxic bots (CHEAP/PANIC under 40% WR with 40+ samples)
@@ -64,7 +63,7 @@ Instance: Starter
 5. AFTER LIVE
 ================================================
 Open the Render URL
-Password: Nakamoto
+Set COUNCIL_ACCESS_PASSWORD in the Render Dashboard (Environment). Do not put the value in this file.
 Hard refresh (Ctrl+Shift+R)
 
 If you have an old brain.json from before, import it in Settings

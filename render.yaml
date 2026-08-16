@@ -63,6 +63,10 @@ services:
       #   sync: false
       # CoinGlass: Secret File named COINGLASS_API_KEY (same pattern as kalshi.pem).
       # App reads env first, else /etc/secrets/COINGLASS_API_KEY. Never commit the key.
+      # Desk gate: set COUNCIL_ACCESS_PASSWORD in the Dashboard.
+      # Never put the value in this file. The served JS bundle must not contain it.
+      - key: COUNCIL_ACCESS_PASSWORD
+        sync: false
       # Follower locks 2–3: set FOLLOWER_PASSWORD_2 and FOLLOWER_PASSWORD_3 in the
       # Dashboard. Never put the values in this file.
       # Optional lock ping: LOCK_PING_URL (or FOLLOWER_PING_URL) in the Dashboard.

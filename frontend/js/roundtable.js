@@ -3374,7 +3374,6 @@ function drawCandleChart() {
 
 /* ===== LIVE UPDATE PATCH ===== */
 (function () {
-  const ACCESS_PASSWORD = "Nakamoto"; // primary access code
   const passKey = "council_auth_ok";
 
   function showAppAfterAuth() {
@@ -3454,14 +3453,28 @@ function drawCandleChart() {
     document.body.classList.add("gate-locked");
     const tryUnlock = () => {
       const v = (input && input.value) || "";
-      if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
-        localStorage.setItem(passKey, "1");
-        if (err) err.classList.add("hidden");
-        // Fresh password entry → ZT intro video → summon gate
-        showAppAfterAuth();
-      } else {
+      if (tryUnlock.__busy) return;
+      tryUnlock.__busy = true;
+      fetch("/api/desk/unlock", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: v }),
+      }).then((r) => r.json().catch(function () { return {}; })).then((data) => {
+        if (input) input.value = "";
+        if (data && data.ok) {
+          localStorage.setItem(passKey, "1");
+          if (err) err.classList.add("hidden");
+          showAppAfterAuth();
+        } else {
+          if (err) err.classList.remove("hidden");
+        }
+      }).catch(function () {
+        if (input) input.value = "";
         if (err) err.classList.remove("hidden");
-      }
+      }).finally(function () {
+        tryUnlock.__busy = false;
+      });
     };
     if (btn) btn.addEventListener("click", tryUnlock);
     if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });

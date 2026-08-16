@@ -12430,7 +12430,6 @@ function drawCandleChart() {
 
 /* ===== LIVE UPDATE PATCH ===== */
 (function () {
-  const ACCESS_PASSWORD = "Nakamoto"; // primary access code
   const passKey = "council_auth_ok";
 
   const DESK_INTRO_KEY = "council_desk_intro_played";
@@ -12581,19 +12580,37 @@ function drawCandleChart() {
         return;
       }
       const v = (input && input.value) || "";
-      if (v === ACCESS_PASSWORD || v === "Nakamoto" || v.toLowerCase() === "nakamoto") {
-        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
-        try { localStorage.removeItem(passKey); } catch (e) {}
-        window.__deskUnlockedThisPage = true;
-        if (err) err.classList.add("hidden");
-        // Fresh password entry → first-login choice, or the desk if already onboarded
-        showAppAfterAuth();
-      } else {
+      const fail = () => {
         if (err) {
           err.textContent = "Wrong password";
           err.classList.remove("hidden");
         }
-      }
+      };
+      if (tryUnlock.__busy) return;
+      tryUnlock.__busy = true;
+      fetch("/api/desk/unlock", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: v }),
+      }).then((r) => r.json().catch(function () { return {}; })).then((data) => {
+        if (input) input.value = "";
+        if (data && data.ok) {
+          try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+          try { localStorage.removeItem(passKey); } catch (e) {}
+          window.__deskUnlockedThisPage = true;
+          if (err) err.classList.add("hidden");
+          // Fresh password entry → first-login choice, or the desk if already onboarded
+          showAppAfterAuth();
+        } else {
+          fail();
+        }
+      }).catch(function () {
+        if (input) input.value = "";
+        fail();
+      }).finally(function () {
+        tryUnlock.__busy = false;
+      });
     };
     if (agree) agree.addEventListener("change", syncDeskGateSummon);
     syncDeskGateSummon();
