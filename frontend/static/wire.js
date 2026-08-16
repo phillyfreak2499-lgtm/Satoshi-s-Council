@@ -2,6 +2,12 @@
 /* Entry shape: { id, at, title, why } — newest first. at is ISO-8601 America/Chicago. */
 window.COUNCIL_WIRE = [
   {
+    "id": "2026-08-16-desk-unlock-stay",
+    "at": "2026-08-16T00:20:00-05:00",
+    "title": "Unlock stays on the desk",
+    "why": "After SUMMON the gate stays hidden; new 6s opening plays; old logo intro is gone. Leader photo click selects only — no clip. Paper. Follower OFF."
+  },
+  {
     "id": "2026-08-15-hit-slate-reset",
     "at": "2026-08-15T23:59:00-05:00",
     "title": "Chair hit slate reset after tape",

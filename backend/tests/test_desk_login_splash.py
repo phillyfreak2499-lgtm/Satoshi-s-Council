@@ -55,6 +55,22 @@ class LoginSplashPlateTests(unittest.TestCase):
         self.assertIn("to bottom", css)
         self.assertNotIn("align-items: center !important;\n  justify-content: center", css)
 
+    def test_hidden_gate_is_not_forced_flex(self):
+        """#36 splash used a bare #passwordGate.password-gate flex rule that beat .hidden."""
+        css = _gate_css()
+        self.assertIn("#passwordGate.password-gate:not(.hidden)", css)
+        self.assertIn("display: flex !important", css)
+        self.assertIn("#passwordGate.password-gate.hidden", css)
+        self.assertIn("display: none !important", css)
+        self.assertIn("visibility: hidden !important", css)
+        self.assertIn("pointer-events: none !important", css)
+        self.assertNotIn("#passwordGate.password-gate,", css)
+        self.assertNotRegex(
+            CSS,
+            r"#passwordGate\.password-gate\s*\{[^}]*display:\s*flex",
+        )
+        self.assertNotIn("ZT", css)
+
 
 class LoginSplashChromeTests(unittest.TestCase):
     def test_dark_stone_amber_cyan(self):
@@ -119,6 +135,13 @@ class LoginSplashStackTests(unittest.TestCase):
         self.assertNotIn("login-council", JS)
 
     def test_wire_note_newest_first(self):
+        self.assertIn("2026-08-16-desk-unlock-stay", WIRE_JS)
+        self.assertIn("Unlock stays on the desk", WIRE_JS)
+        self.assertIn("After SUMMON the gate stays hidden", WIRE_JS)
+        self.assertIn("new 6s opening plays", WIRE_JS)
+        self.assertIn("old logo intro is gone", WIRE_JS)
+        self.assertIn("Leader photo click selects only", WIRE_JS)
+        self.assertNotIn("ZT", WIRE_JS.split("2026-08-16-desk-unlock-stay", 1)[1].split("2026-08-15-hit-slate-reset", 1)[0])
         self.assertIn("2026-08-15-hit-slate-reset", WIRE_JS)
         self.assertIn("Chair hit slate reset after tape", WIRE_JS)
         self.assertIn("3,053 hours", WIRE_JS)
@@ -131,6 +154,10 @@ class LoginSplashStackTests(unittest.TestCase):
         self.assertIn("2026-08-15-satoshi-face", WIRE_JS)
         self.assertIn("Satoshi chair face swap", WIRE_JS)
         self.assertIn("2026-08-15-raijin-cowboy", WIRE_JS)
+        self.assertLess(
+            WIRE_JS.find("2026-08-16-desk-unlock-stay"),
+            WIRE_JS.find("2026-08-15-hit-slate-reset"),
+        )
         self.assertLess(
             WIRE_JS.find("2026-08-15-hit-slate-reset"),
             WIRE_JS.find("2026-08-15-login-splash"),
