@@ -1320,6 +1320,49 @@ def rank_key(row: Dict[str, Any], priority: List[str], now: Optional[datetime] =
     return (ice_pen, bird_pen, kick_horizon(row, now), pri, -left, unk_pen)
 
 
+def chair_pick_from_hunt(
+    candidates: List[Dict[str, Any]],
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """Ares reviews Hunter's 1–3 on leftover / odds. Hunter does not pick the side."""
+    rows: List[Dict[str, Any]] = []
+    for c in candidates or []:
+        raw = c.get("raw") if isinstance(c, dict) and isinstance(c.get("raw"), dict) else c
+        if not isinstance(raw, dict):
+            continue
+        row = dict(raw)
+        if row.get("leftover") is None:
+            left = None
+            for key in ("leftover", "yes_leftover", "no_leftover"):
+                if c.get(key) is not None:
+                    try:
+                        val = float(c[key])
+                    except (TypeError, ValueError):
+                        continue
+                    if left is None or val > left:
+                        left = val
+            if left is not None:
+                row["leftover"] = left
+        probe = dict(row)
+        apply_ares_gates(probe, now=now)
+        if probe.get("ice") or probe.get("gate") or str(probe.get("call") or "").upper() in ("", "WAIT"):
+            continue
+        leftover = probe.get("leftover")
+        try:
+            if leftover is None or float(leftover) < 3.0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if not playable_kick(probe, now):
+            continue
+        rows.append(probe)
+    if not rows:
+        return None
+    pri = sport_priority(now)
+    rows.sort(key=lambda r: rank_key(r, pri, now))
+    return rows[0]
+
+
 def pick_one_game(rows: List[Dict[str, Any]], now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
     """ONE TICKET: 72h hard cap. Eagles first among eligible, then nearer kick / calendar."""
     if not rows:
@@ -1998,9 +2041,9 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
     from backend.services import desk_hunter
 
     hunt = desk_hunter.feed_ares_from_rows(rows, now=now)
-    pick = pick_one_game(rows, now=now)
     held = open_paper_ticket(now)
-    if held and pick:
+    pick = None
+    if held:
         pinned = next((r for r in rows if r.get("ticker") == held.get("ticker")), None)
         if pinned is None:
             pinned = next((r for r in rows if r.get("game") == held.get("game")), None)
@@ -2010,13 +2053,17 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
             pick["locked"] = True
             if held.get("side") and str(held.get("side")).upper() != "WAIT":
                 pick["call"] = held.get("side")
-        elif pick.get("ticker") != held.get("ticker"):
-            pick = dict(pick)
-            pick["gate"] = "ONE TICKET · ALREADY SAT"
-            pick["call"] = "WAIT"
+    if pick is None:
+        pick = chair_pick_from_hunt(hunt.get("candidates") or [], now=now)
+    if pick is None:
+        pick = pick_one_game(rows, now=now)
     if pick is None and hunt.get("featured_raw"):
         pick = dict(hunt["featured_raw"])
         pick["hunt_fed"] = True
+    if held and pick and pick.get("ticker") != held.get("ticker") and pick.get("game") != held.get("game"):
+        pick = dict(pick)
+        pick["gate"] = "ONE TICKET · ALREADY SAT"
+        pick["call"] = "WAIT"
     watch = await attach_watch(pick, fetch=watch_fetch, events=watch_events)
     if pick:
         pick = dict(pick)
@@ -2029,6 +2076,12 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
     lock = paper_lock_if_clear(pick, now=now) if pick else None
     if lock and pick and not pick.get("ice") and not pick.get("gate"):
         pick["locked"] = True
+    shown = list(hunt.get("candidates") or [])
+    if lock:
+        kept = desk_hunter.keep_locked_candidate(shown, lock.get("ticker"))
+        if not kept:
+            kept = [c for c in shown if c.get("game") and c.get("game") == lock.get("game")][:1]
+        shown = kept or shown[:1]
     tug = public_tug(pick)
     brains = sport_brain((pick or {}).get("sport"))
     chair = build_chair(pick)
@@ -2083,8 +2136,16 @@ async def build_board(fetch: Optional[_Fetch] = None, now: Optional[datetime] = 
         "scanned": len(rows),
         "series": [s for _sp, s, _k in V1_SERIES if s not in _dead_series],
         "dead_series": sorted(_dead_series.keys()),
-        "clock": build_game_clock(pick),
-        "candidates": hunt.get("candidates") or [],
+        "clock": build_game_clock(pick, now=now),
+        "candidates": shown,
+        "reviewing": not bool(lock),
+        "locked_call": {
+            "locked": True,
+            "direction": chair.get("eye"),
+            "ticker": (pick or {}).get("ticker"),
+            "game": (pick or {}).get("game"),
+            "confidence": chair.get("confidence"),
+        } if lock and str(chair.get("eye") or "").upper() not in ("", "WAIT") else None,
         "hunter": {
             "feeder": "HUNTER",
             "chair": False,

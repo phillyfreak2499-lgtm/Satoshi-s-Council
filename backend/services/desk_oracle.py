@@ -2,8 +2,8 @@
 ORACLE — CRT chair. Paper only. Never talks to Follower.
 
 Four seats feed the chair: SIBYL / PIT / VEIL / MARBLE.
-Paper LOCK when they agree and the book is playable.
-Sit when they split or the book is dead.
+Paper LOCK the best of Hunter's 1–3 when leftover clears.
+Sit when the book is dead or EV is under +3¢. No Consensus while reviewing.
 Same Satoshi gates: 20–80 after vig, EV at ask, dead-book sit.
 Follower OFF. No live Kalshi orders.
 """
@@ -440,6 +440,90 @@ def chair_decision(seats: List[Dict[str, Any]], book: Optional[Dict[str, Any]]) 
     }
 
 
+def decision_from_review(book: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Oracle Chair pick from leftover / odds. Hunter does not pick the side."""
+    title = str((book or {}).get("title") or (book or {}).get("ticker") or "THE BET")
+    strip = "CHAIR REVIEW · HUNTER DID NOT PICK"
+    if not book:
+        return {
+            "direction": "WAIT",
+            "confidence": 0,
+            "summary": "NO CONSENSUS · SHOW THE BET",
+            "why": {"line": "NO CONSENSUS · SHOW THE BET", "strip": strip},
+            "watch": {"line": "CRT · NO CONSENSUS · TICKET ON THE GLASS", "listed": True},
+            "gate": "NO CONSENSUS",
+        }
+    lean = leftover_lean(book)
+    sides = leftover_sides(book)
+    leftover = sides.get("up") if lean == "UP" else (sides.get("down") if lean == "DOWN" else book.get("leftover"))
+    if book_dead(book, lean if lean in ("UP", "DOWN") else None):
+        return {
+            "direction": "WAIT",
+            "confidence": 0,
+            "summary": "WAIT · DEAD BOOK",
+            "why": {"line": "WAIT · DEAD BOOK", "strip": strip},
+            "watch": {"line": "CRT · WAIT · STATIC ON THE GLASS", "listed": False},
+            "gate": "DEAD BOOK",
+        }
+    if not book_playable(book):
+        return {
+            "direction": "WAIT",
+            "confidence": 0,
+            "summary": "WAIT · BOOK NOT PLAYABLE",
+            "why": {"line": "WAIT · 20–80 AFTER VIG", "strip": strip},
+            "watch": {"line": "CRT · WAIT · STATIC ON THE GLASS", "listed": False},
+            "gate": "20-80",
+        }
+    if lean not in ("UP", "DOWN") or leftover is None or float(leftover) < 3.0:
+        return {
+            "direction": "WAIT",
+            "confidence": 22,
+            "summary": f"NO CONSENSUS · {title}",
+            "why": {"line": f"NO CONSENSUS · SHOW THE BET · {title}", "strip": strip},
+            "watch": {"line": "CRT · NO CONSENSUS · TICKET ON THE GLASS", "listed": True},
+            "gate": "NO CONSENSUS",
+        }
+    return {
+        "direction": lean,
+        "confidence": 70,
+        "summary": f"LOCK {lean} · CRT · BEST OF SLATE",
+        "why": {"line": f"LOCK {lean} · CRT · BEST OF SLATE", "strip": strip},
+        "watch": {"line": "CRT · LOCK · TICKET ON THE GLASS", "listed": True},
+        "gate": None,
+        "leftover": leftover,
+    }
+
+
+def chair_pick_from_hunt(
+    candidates: List[Dict[str, Any]],
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """Review Hunter's 1–3 on leftover at the real ask. Sit if EV < +3¢."""
+    _ = now
+    best: Optional[Dict[str, Any]] = None
+    best_left: Optional[float] = None
+    for c in candidates or []:
+        raw = c.get("raw") if isinstance(c, dict) and isinstance(c.get("raw"), dict) else c
+        book = normalize_book(raw) if isinstance(raw, dict) else None
+        if not book:
+            continue
+        lean = leftover_lean(book)
+        if book_dead(book, lean if lean in ("UP", "DOWN") else None):
+            continue
+        if not book_playable(book):
+            continue
+        leftover = book.get("leftover")
+        try:
+            if leftover is None or float(leftover) < 3.0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if best is None or float(leftover) > float(best_left or 0):
+            best = book
+            best_left = float(leftover)
+    return best
+
+
 def locks_today(now: Optional[datetime] = None) -> int:
     day = _now_ct(now).date().isoformat()
     n = 0
@@ -463,8 +547,6 @@ def paper_lock_if_clear(
 ) -> Optional[Dict[str, Any]]:
     """Paper only. Cap a few per day. Follower stays off. No live Kalshi."""
     if not pick or not decision:
-        return None
-    if pick.get("prior_unknown"):
         return None
     side = str(decision.get("direction") or "WAIT").upper()
     if side not in ("UP", "DOWN") or decision.get("gate"):
@@ -589,19 +671,84 @@ async def build_board(
     from backend.services import desk_hunter
 
     hunt: Dict[str, Any]
+    markets: List[Dict[str, Any]] = []
     if book is not None:
-        pick = normalize_book(book)
-        hunt = desk_hunter.feed_oracle_from_rows([book], now=now)
+        markets = [book]
+        hunt = desk_hunter.feed_oracle_from_rows(markets, now=now)
     elif fetch is not None:
-        pick = await scan_open(fetch=fetch)
-        hunt = desk_hunter.feed_oracle_from_rows([pick] if pick else [], now=now)
+        try:
+            data = await fetch("/markets", {"series_ticker": "KXBTCD", "status": "open"})
+            if isinstance(data, dict):
+                if isinstance(data.get("book"), dict):
+                    markets = [data["book"]]
+                else:
+                    markets = [m for m in (data.get("markets") or []) if isinstance(m, dict)]
+            elif isinstance(data, list):
+                markets = [m for m in data if isinstance(m, dict)]
+        except Exception:
+            markets = []
+        hunt = desk_hunter.feed_oracle_from_rows(markets, now=now)
     else:
         hunt = await desk_hunter.feed_oracle(now=now, force=True)
-        raw = hunt.get("featured_raw")
-        pick = normalize_book(raw) if raw else None
+
+    cand_books: List[Dict[str, Any]] = []
+    for c in hunt.get("candidates") or []:
+        raw = c.get("raw") if isinstance(c.get("raw"), dict) else c
+        nb = normalize_book(raw) if isinstance(raw, dict) else None
+        if nb:
+            cand_books.append(nb)
+    if not cand_books:
+        fallback = markets if markets else ([book] if book is not None else [])
+        if not fallback and hunt.get("featured_raw"):
+            fallback = [hunt.get("featured_raw")]
+        for raw in fallback:
+            nb = normalize_book(raw) if isinstance(raw, dict) else None
+            if nb:
+                cand_books.append(nb)
+
+    held = open_paper_ticket(now)
+    pick: Optional[Dict[str, Any]] = None
+    lock: Optional[Dict[str, Any]] = None
+    decision: Optional[Dict[str, Any]] = None
+    shown = list(hunt.get("candidates") or [])
+
+    if held:
+        pick = next((nb for nb in cand_books if nb.get("ticker") == held.get("ticker")), None)
+        if pick is None and hunt.get("featured_raw"):
+            pick = normalize_book(hunt.get("featured_raw"))
+        side = str(held.get("side") or "WAIT").upper()
+        decision = {
+            "direction": side,
+            "confidence": 70,
+            "summary": f"LOCK {side} · CRT · ONE TICKET",
+            "why": {"line": f"LOCK {side} · CRT · ONE TICKET", "strip": "HELD"},
+            "watch": {"line": "CRT · LOCK · TICKET ON THE GLASS", "listed": True},
+            "gate": None,
+            "leftover": held.get("leftover"),
+        }
+        lock = held
+        shown = desk_hunter.keep_locked_candidate(shown, held.get("ticker")) or shown[:1]
+    else:
+        winner = chair_pick_from_hunt(cand_books or shown, now=now)
+        if winner is None and hunt.get("featured_raw"):
+            featured = normalize_book(hunt.get("featured_raw"))
+            winner = chair_pick_from_hunt([featured] if featured else [], now=now)
+        if winner is not None:
+            pick = winner
+            decision = decision_from_review(pick)
+            lock = paper_lock_if_clear(pick, decision, now=now)
+            if lock:
+                shown = desk_hunter.keep_locked_candidate(shown, pick.get("ticker")) or shown[:1]
+        else:
+            pick = cand_books[0] if cand_books else None
+            if pick is None and book is not None:
+                pick = normalize_book(book)
+            if pick is None and hunt.get("featured_raw"):
+                pick = normalize_book(hunt.get("featured_raw"))
+
     seat_rows = seats if seats is not None else build_seats(pick)
-    decision = chair_decision(seat_rows, pick)
-    lock = paper_lock_if_clear(pick, decision, now=now)
+    if decision is None:
+        decision = chair_decision(seat_rows, pick)
     if lock and decision.get("direction") in ("UP", "DOWN") and not decision.get("gate"):
         decision = dict(decision)
         decision["locked"] = True
@@ -629,7 +776,8 @@ async def build_board(
         "tape": lock_tape(),
         "fills": lock_tape(),
         "clock": clock,
-        "candidates": hunt.get("candidates") or [],
+        "candidates": shown,
+        "reviewing": not bool(lock),
         "hunter": {
             "feeder": "HUNTER",
             "chair": False,

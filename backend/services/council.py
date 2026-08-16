@@ -152,6 +152,10 @@ class Council:
 
     async def start(self):
         await self.store.init()
+        try:
+            await self.store.ensure_eth_display_reset()
+        except Exception as e:
+            logger.debug(f"ETH display reset skip: {e}")
         # Seed multi-window memory from recent settled calls
         try:
             rows = []

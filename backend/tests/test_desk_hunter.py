@@ -95,6 +95,9 @@ class HunterIdentityTests(unittest.TestCase):
         self.assertIn('"follower": False', HUNT)
         self.assertIn("paper_only", HUNT)
         self.assertIn("Hunter does not pick a side", HUNT)
+        self.assertIn("def keep_locked_candidate", HUNT)
+        self.assertIn("def chair_pick_from_hunt", ATS)
+        self.assertIn("def chair_pick_from_hunt", ORA)
         self.assertIn("Satoshi’s Council", HTML)
         self.assertNotIn("ZT", HUNT.split("HUNTER", 1)[1][:400] if "HUNTER" in HUNT else HUNT)
 
@@ -287,18 +290,21 @@ class HunterBoardTests(unittest.IsolatedAsyncioTestCase):
             "volume": 114000,
             "depth": {"yes_depth": 120, "no_depth": 110, "measured": True, "book_state": "ok"},
         }
-        fills_before = list(desk_oracle._load_fills())
         board = await desk_oracle.build_board(book=raw, now=NOW, force=True)
         self.assertTrue(board.get("candidates") or board.get("pick"))
-        self.assertEqual(board["chair"]["eye"], "WAIT")
-        self.assertIn("NO CONSENSUS", board["why"]["line"])
-        self.assertIsNone(board["locked_call"])
+        self.assertEqual(board["chair"]["eye"], "UP")
+        self.assertTrue(board["chair"]["locked"])
+        self.assertIsNotNone(board["locked_call"])
+        self.assertEqual(len(board.get("candidates") or []), 1)
         self.assertIsNone(board["hunter"]["side"])
         self.assertFalse(board["hunter"]["chair"])
         self.assertTrue(board["paper_only"])
         self.assertFalse(board["follower"])
         self.assertFalse(board["live"])
-        self.assertEqual(len(desk_oracle._load_fills()), len(fills_before))
+        self.assertTrue(board["fills"])
+        self.assertTrue(board["fills"][0]["paper"])
+        self.assertFalse(board["fills"][0]["live"])
+        self.assertIsNotNone((board.get("clock") or {}).get("seconds_left"))
         self.assertEqual([s["id"] for s in board["seats"]], ["SIBYL", "PIT", "VEIL", "MARBLE"])
 
     async def test_oracle_injected_lock_path_still_paper(self):
@@ -312,6 +318,110 @@ class HunterBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(board.get("candidates") or board.get("pick"))
         self.assertEqual([s["id"] for s in board["seats"]], ["SIBYL", "PIT", "VEIL", "MARBLE"])
         _ = _book
+
+    async def test_ares_locks_best_of_three_and_starts_timer(self):
+        from backend.tests.test_desk_ats import _fetch_factory
+
+        extra = {
+            "KXNFLGAME": [
+                {
+                    "ticker": "KXNFLGAME-26AUG15DALSEA-SEA",
+                    "series_ticker": "KXNFLGAME",
+                    "event_ticker": "KXNFLGAME-26AUG15DALSEA",
+                    "title": "Will Seattle win the Dallas vs Seattle Pro Football game?",
+                    "yes_bid_dollars": "0.58",
+                    "yes_ask_dollars": "0.59",
+                    "volume_fp": "94000",
+                    "open_interest_fp": "3900",
+                    "close_time": "2026-08-16T00:00:00Z",
+                    "status": "active",
+                },
+                {
+                    "ticker": "KXNFLGAME-26AUG15KCNY-KC",
+                    "series_ticker": "KXNFLGAME",
+                    "event_ticker": "KXNFLGAME-26AUG15KCNY",
+                    "title": "Will Kansas City win the Kansas City vs New York Pro Football game?",
+                    "yes_bid_dollars": "0.40",
+                    "yes_ask_dollars": "0.42",
+                    "volume_fp": "22000",
+                    "open_interest_fp": "1800",
+                    "close_time": "2026-08-16T01:00:00Z",
+                    "status": "active",
+                },
+            ],
+            "KXNFLSPREAD": [{
+                "ticker": "KXNFLSPREAD-26AUG15DALSEA-SEA7",
+                "series_ticker": "KXNFLSPREAD",
+                "event_ticker": "KXNFLSPREAD-26AUG15DALSEA",
+                "title": "Seattle wins by over 6.5 points?",
+                "yes_bid_dollars": "0.44",
+                "yes_ask_dollars": "0.46",
+                "volume_fp": "1515",
+                "open_interest_fp": "900",
+                "floor_strike": 6.5,
+                "close_time": "2026-08-16T00:00:00Z",
+                "status": "active",
+            }],
+            "KXNFLTOTAL": [],
+            "KXNCAAFGAME": [],
+        }
+        board = await desk_ats.build_board(fetch=_fetch_factory(extra), now=ATS_NOW, force=True)
+        self.assertTrue(board["paper_only"])
+        self.assertFalse(board["follower"])
+        self.assertFalse(board["live"])
+        self.assertIsNone(board["hunter"]["side"])
+        self.assertFalse(board["hunter"]["chair"])
+        self.assertIsNotNone(board.get("locked_call"))
+        self.assertNotIn(str((board.get("pick") or {}).get("call") or "WAIT").upper(), ("", "WAIT"))
+        self.assertEqual(len(board.get("candidates") or []), 1)
+        self.assertIsNotNone((board.get("clock") or {}).get("seconds_to_kick"))
+        self.assertGreater((board.get("clock") or {}).get("seconds_to_kick") or 0, 0)
+        self.assertTrue(board["fills"])
+        self.assertTrue(board["fills"][0]["paper"])
+        self.assertFalse(board["fills"][0]["live"])
+        self.assertEqual([s["id"] for s in board["seats"]], ["LINE", "STEAM", "FADE", "HURT", "ICE"])
+
+    async def test_oracle_review_sits_when_no_edge(self):
+        raw = {
+            "ticker": "KXGOV-26-R",
+            "title": "Will the Republican party win the governorship in Texas",
+            "yes_bid_dollars": "0.56",
+            "yes_ask_dollars": "0.62",
+            "no_bid_dollars": "0.36",
+            "no_ask_dollars": "0.44",
+            "close_time": "2026-08-18T20:00:00Z",
+            "prior_unknown": True,
+            "source": "kalshi",
+            "volume": 114000,
+            "depth": {"yes_depth": 120, "no_depth": 110, "measured": True, "book_state": "ok"},
+        }
+        fills_before = list(desk_oracle._load_fills())
+        board = await desk_oracle.build_board(book=raw, now=NOW, force=True)
+        self.assertEqual(board["chair"]["eye"], "WAIT")
+        self.assertIsNone(board["locked_call"])
+        self.assertTrue("NO CONSENSUS" in board["why"]["line"] or "NO EDGE" in board["why"]["line"] or "WAIT" in board["why"]["line"])
+        self.assertIsNone(board["hunter"]["side"])
+        self.assertEqual(len(desk_oracle._load_fills()), len(fills_before))
+        self.assertTrue(board.get("candidates") or board.get("pick"))
+
+    def test_keep_locked_drops_the_other_two(self):
+        a = desk_hunter.as_candidate(_sports_row(), book="ares", source="kalshi", now=NOW)
+        b = desk_hunter.as_candidate(
+            _sports_row(ticker="KXMLBGAME-26AUG18NYYBOS-NYY", game="NYYBOS", title="NYY @ BOS"),
+            book="ares",
+            source="kalshi",
+            now=NOW,
+        )
+        c = desk_hunter.as_candidate(
+            _sports_row(ticker="KXMLBGAME-26AUG18CHCCIN-CHC", game="CHCCIN", title="CHC @ CIN"),
+            book="ares",
+            source="kalshi",
+            now=NOW,
+        )
+        kept = desk_hunter.keep_locked_candidate([a, b, c], b["ticker"])
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["ticker"], b["ticker"])
+        self.assertIsNone(kept[0]["hunter_side"])
 
     def test_polymarket_row_keeps_both_sides(self):
         ev = {"title": "Florida Governor Republican Primary Winner", "slug": "fl-gov-gop", "endDate": "2026-08-18T00:00:00Z", "volume24hr": 200000}

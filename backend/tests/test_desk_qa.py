@@ -660,6 +660,8 @@ class PacksNotDroppedTests(unittest.TestCase):
         self.assertIn("lock_time_strike", db)
         self.assertIn("def record_eth_shadow_pick", db)
         self.assertIn("def record_btc_shadow_pick", db)
+        self.assertIn("def ensure_eth_display_reset", db)
+        self.assertIn("eth_display_reset.json", db)
         self.assertIn("reliability_n", db)
         self.assertIn("Never current_price vs strike", db)
         self.assertIn("every OPEN paper hour", council)

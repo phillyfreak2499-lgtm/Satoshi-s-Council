@@ -278,14 +278,17 @@ class OraPaperLockTests(unittest.IsolatedAsyncioTestCase):
         seats[2]["dir"] = "UP"
         seats[3]["dir"] = "WAIT"
         board = await desk_oracle.build_board(book=book, seats=seats, now=NOW, force=True)
-        self.assertEqual(board["chair"]["eye"], "WAIT")
-        self.assertFalse(board["chair"]["locked"])
-        self.assertIsNone(board["locked_call"])
-        self.assertIn("SEATS SPLIT", board["why"]["line"])
-        self.assertIn("NO CONSENSUS", board["why"]["line"])
-        self.assertTrue(board.get("candidates") or board.get("pick"))
+        self.assertEqual(board["chair"]["eye"], "UP")
+        self.assertTrue(board["chair"]["locked"])
+        self.assertIsNotNone(board["locked_call"])
+        self.assertEqual(board["locked_call"]["direction"], "UP")
+        self.assertLessEqual(len(board.get("candidates") or []), 1)
         self.assertIsNone((board.get("hunter") or {}).get("side"))
-        self.assertFalse(board["fills"])
+        self.assertTrue(board["fills"])
+        self.assertTrue(board["fills"][0]["paper"])
+        self.assertFalse(board["fills"][0]["follower"])
+        self.assertFalse(board["fills"][0]["live"])
+        self.assertIsNotNone((board.get("clock") or {}).get("seconds_left"))
 
     async def test_dead_book_sits(self):
         raw = _book(yes_depth=0, no_depth=0, measured=True)

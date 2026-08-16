@@ -87,6 +87,10 @@ class DualOrchestrator:
         if self.eth:
             # Separate logical table; same DB file for now (accuracy still mostly BTC-scoped via UI focus)
             await self.eth.store.init()
+        try:
+            await self.btc.store.ensure_eth_display_reset()
+        except Exception as e:
+            logger.debug(f"ETH display reset skip: {e}")
         for c in self._councils():
             try:
                 if hasattr(c.learner, "load"):

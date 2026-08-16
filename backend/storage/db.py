@@ -28,6 +28,11 @@ from backend.agents.chair_gates import (
 )
 from loguru import logger
 
+# Displayed-slate reset for ETH chair + eth_shadow only. Fixed epoch so
+# restarts do not keep wiping new Vitalik hits. Bot memory stays on disk.
+ETH_DISPLAY_RESET_ID = "2026-08-16-eth-display-reset"
+ETH_DISPLAY_RESET_AT = "2026-08-16T13:20:00+00:00"
+
 
 def _json_field(raw: Any) -> Any:
     if raw is None or raw == "":
@@ -233,6 +238,18 @@ class PerformanceStore:
             )
 
         return signal_id
+
+    @staticmethod
+    def _data_dir() -> Path:
+        return Path(getattr(settings, "DATA_DIR", None) or "./data")
+
+    @staticmethod
+    def _is_eth_display_row(r: Any) -> bool:
+        """ETH chair locks and eth_shadow rows that paint Vitalik's slate."""
+        if is_eth_shadow_row(r):
+            return True
+        asset = (getattr(r, "asset", None) or ticker_asset(getattr(r, "ticker", None)) or "")
+        return str(asset).lower() in ("eth", "ethereum")
 
     @staticmethod
     def _counting_lock_clause():
@@ -1065,6 +1082,18 @@ class PerformanceStore:
                     ]
             except Exception:
                 pass
+            # ETH displayed chair / eth_shadow / 0–5 only. BTC 5–3 stays.
+            # Does not delete window_calls or touch AdaptiveLearner JSON.
+            try:
+                eth_mark = await self._reset_mark("eth_display")
+                if eth_mark:
+                    settled = [
+                        r for r in settled
+                        if not self._is_eth_display_row(r)
+                        or (r.settled_at or r.called_at or "") >= eth_mark
+                    ]
+            except Exception:
+                pass
             # Finish-only: path / near_certain / partial / flipped do NOT count
             # Also accept settled rows with outcome but missing reason (legacy → treat as finish)
             FINISH = {"finish_match", "finish_miss"}
@@ -1387,6 +1416,17 @@ class PerformanceStore:
                     total = len(rows)  # approximate for cleared view
             except Exception:
                 pass
+            try:
+                eth_mark = await self._reset_mark("eth_display")
+                if eth_mark:
+                    rows = [
+                        r for r in rows
+                        if not self._is_eth_display_row(r)
+                        or (r.settled_at or r.called_at or "") >= eth_mark
+                    ]
+                    total = len(rows)
+            except Exception:
+                pass
         acc = await self.get_accuracy()
         return {
             "total": total,
@@ -1417,6 +1457,16 @@ class PerformanceStore:
                     select(WindowCall).order_by(WindowCall.id.desc()).limit(2000)
                 )
             ).scalars().all()
+        try:
+            eth_mark = await self._reset_mark("eth_display")
+            if eth_mark:
+                rows = [
+                    r for r in rows
+                    if not self._is_eth_display_row(r)
+                    or (r.settled_at or r.called_at or "") >= eth_mark
+                ]
+        except Exception:
+            pass
 
         def to_ct(iso: str | None):
             if not iso:
@@ -2093,7 +2143,7 @@ class PerformanceStore:
         # Also hard-clear: null out correct/actual for display? Better: keep data but
         # store reset cursor so get_accuracy filters.
         try:
-            DATA = Path(getattr(settings, "DATA_DIR", None) or "./data")
+            DATA = self._data_dir()
             DATA.mkdir(parents=True, exist_ok=True)
             (DATA / "hit_rate_reset.json").write_text(
                 json.dumps({"reset_at": mark, "cleared": "hit_rate"}), encoding="utf-8"
@@ -2113,7 +2163,7 @@ class PerformanceStore:
         from datetime import datetime, timezone
         mark = datetime.now(timezone.utc).isoformat()
         try:
-            DATA = Path(getattr(settings, "DATA_DIR", None) or "./data")
+            DATA = self._data_dir()
             DATA.mkdir(parents=True, exist_ok=True)
             (DATA / "life_log_reset.json").write_text(
                 json.dumps({"reset_at": mark, "cleared": "life_log"}), encoding="utf-8"
@@ -2122,12 +2172,58 @@ class PerformanceStore:
             logger.warning(f"clear_life_log mark failed: {e}")
         return {"ok": True, "reset_at": mark}
 
+    async def ensure_eth_display_reset(self) -> Dict[str, Any]:
+        """Wipe displayed ETH chair / 0–5 / eth_shadow only.
+
+        Soft watermark under DATA_DIR. Does not delete window_calls.
+        Does not touch council-learning-*.json, weights, or adaptive.
+        BTC displayed hits stay. Paper only.
+        """
+        DATA = self._data_dir()
+        DATA.mkdir(parents=True, exist_ok=True)
+        p = DATA / "eth_display_reset.json"
+        if p.exists():
+            try:
+                raw = json.loads(p.read_text(encoding="utf-8"))
+                if raw.get("id") == ETH_DISPLAY_RESET_ID and raw.get("reset_at"):
+                    return {
+                        "ok": True,
+                        "reset_at": raw.get("reset_at"),
+                        "wrote": False,
+                        "id": ETH_DISPLAY_RESET_ID,
+                        "cleared": "eth_display",
+                    }
+            except Exception:
+                pass
+        payload = {
+            "id": ETH_DISPLAY_RESET_ID,
+            "reset_at": ETH_DISPLAY_RESET_AT,
+            "cleared": "eth_display",
+            "paper": True,
+            "follower": False,
+            "live": False,
+        }
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        logger.info("ETH displayed chair/shadow slate reset — BTC hits untouched, brain stays")
+        return {
+            "ok": True,
+            "reset_at": ETH_DISPLAY_RESET_AT,
+            "wrote": True,
+            "id": ETH_DISPLAY_RESET_ID,
+            "cleared": "eth_display",
+        }
+
     async def _reset_mark(self, kind: str) -> str | None:
         """Return ISO reset timestamp if a clear was requested for kind."""
         try:
-            DATA = Path(getattr(settings, "DATA_DIR", None) or "./data")
-            p = DATA / ("hit_rate_reset.json" if kind == "hit_rate" else "life_log_reset.json")
-            if not p.exists():
+            DATA = self._data_dir()
+            names = {
+                "hit_rate": "hit_rate_reset.json",
+                "life_log": "life_log_reset.json",
+                "eth_display": "eth_display_reset.json",
+            }
+            p = DATA / names.get(str(kind or ""), "")
+            if not p.name or not p.exists():
                 return None
             raw = json.loads(p.read_text(encoding="utf-8"))
             return raw.get("reset_at")
