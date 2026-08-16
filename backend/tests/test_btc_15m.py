@@ -463,6 +463,19 @@ class DisplayAndStoreTests(unittest.IsolatedAsyncioTestCase):
 
 
 class Backfill15mTests(unittest.IsolatedAsyncioTestCase):
+    def test_finish_era_brain_is_dropped(self):
+        from backend.learning.seat_backfill_15m import ensure_15m_learner
+        old = AdaptiveLearner(asset="btc")
+        old.backfill = {"tag": "backfill_15m", "windows_graded": 6330}
+        old.correct["candle_btc"] = 3925
+        fresh = ensure_15m_learner(old)
+        self.assertEqual(sum(fresh.correct.values()), 0)
+        path = AdaptiveLearner(asset="btc")
+        path.backfill = {"tag": "backfill_15m", "score": "realized_paper_pnl", "windows_graded": 12}
+        path.correct["candle_btc"] = 4
+        kept = ensure_15m_learner(path)
+        self.assertEqual(kept.correct.get("candle_btc"), 4)
+
     def test_contract(self):
         c = backfill_15m_contract()
         self.assertEqual(c["series"], ["KXBTC15M"])

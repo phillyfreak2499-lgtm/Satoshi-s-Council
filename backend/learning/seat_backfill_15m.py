@@ -446,15 +446,47 @@ async def grade_one_15m(
     }
 
 
-def ensure_15m_learner(learner: AdaptiveLearner | None = None) -> AdaptiveLearner:
+def _brain_is_path_pnl(learner: AdaptiveLearner | None) -> bool:
+    rec = getattr(learner, "backfill", None) if learner is not None else None
+    if not isinstance(rec, dict):
+        return False
+    return str(rec.get("score") or "") == "realized_paper_pnl"
+
+
+def _brain_is_finish_era(learner: AdaptiveLearner | None) -> bool:
+    rec = getattr(learner, "backfill", None) if learner is not None else None
+    if not isinstance(rec, dict):
+        return False
+    if str(rec.get("score") or "") == "realized_paper_pnl":
+        return False
+    return bool(rec.get("windows_graded") or rec.get("tag"))
+
+
+def ensure_15m_learner(
+    learner: AdaptiveLearner | None = None,
+    *,
+    fresh: bool = False,
+) -> AdaptiveLearner:
+    """
+    Path P&L is a new win rule. Do not keep finish-match weights on this brain.
+    A tagged path_pnl brain may merge. Otherwise start from priors.
+    """
     if learner is not None:
+        if _brain_is_path_pnl(learner) and not fresh:
+            return learner
+        if _brain_is_finish_era(learner) or fresh:
+            return AdaptiveLearner(asset="btc")
         return learner
     brain = AdaptiveLearner(asset="btc")
+    if fresh:
+        return brain
     try:
         brain.load()
     except Exception:
-        pass
-    return brain
+        return AdaptiveLearner(asset="btc")
+    if _brain_is_path_pnl(brain):
+        return brain
+    return AdaptiveLearner(asset="btc")
 
 
 async def run_btc_15m_backfill(
@@ -502,7 +534,7 @@ async def run_btc_15m_backfill(
     if max_windows is not None:
         rows = rows[-int(max_windows):]
 
-    brain = ensure_15m_learner(learner)
+    brain = ensure_15m_learner(learner, fresh=bool(force))
     seen = set(status.get("events") or [])
     candle_cache = None if fetch_candles is not None else _CandleCache()
     graded = 0
