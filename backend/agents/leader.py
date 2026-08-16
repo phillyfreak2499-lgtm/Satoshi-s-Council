@@ -33,6 +33,7 @@ from backend.agents.chair_gates import (
     explore_paper_lock_open,
     late_spot_decisive,
     leftover_after_vig,
+    filter_pattern_signals_for_asset,
     lock_force_allowed,
     never_lock_near_certain,
     odds_to_cents,
@@ -588,6 +589,8 @@ class Leader:
         Core confluence logic with adaptive weights + pair affinity.
         """
         self.sync_from_learner()
+        book = (regime_features or {}).get("asset") if isinstance(regime_features, dict) else None
+        signals = filter_pattern_signals_for_asset(signals, book)
 
         active = [
             s for s in signals

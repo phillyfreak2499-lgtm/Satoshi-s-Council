@@ -1,27 +1,79 @@
 """
-WICK – Pattern Seer (Candle).
+Dedicated pattern specialists — not one shared Pattern Seer.
 
-Upgraded from single-candle heuristics to multi-horizon structure:
-  - Last 30–60 1m bars for local pattern
-  - Prior window direction streak / mean-reversion context
-  - Current window path since entry (are we still in the structure?)
+Bitcoin Pattern Specialist (candle_btc): BTC structure only.
+Ethereum Pattern Specialist (candle_eth): ETH structure only.
 
-ENTRY: Is there a clean structural edge that can carry 15 minutes?
-MID/FINAL: Has structure broken relative to the entry thesis?
+They keep separate names, weights, memory, and settle keys. Internals are
+asset-tuned (lookback, % thresholds, wick rules, mean-rev vs trend) so they
+are not a cloned pair. Each refuses the other coin. They vote; they do not lock.
+Satoshi / Vitalik remain the only lockers.
 """
 from __future__ import annotations
-from typing import Any, Dict, Optional
-from backend.agents.base import BaseSpecialist, AgentSignal
-from backend.config import settings
+
+from typing import Any, Dict, Optional, Tuple
+
 import numpy as np
 
+from backend.agents.base import AgentSignal, BaseSpecialist
+from backend.agents.chair_gates import market_book_asset, pattern_specialist_name
+from backend.config import settings
 
-class CandlePatternSpecialist(BaseSpecialist):
+
+def _ohlc_arrays(candles: list, lookback: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    window = candles[-int(lookback) :]
+    closes = np.array([c["close"] for c in window], dtype=float)
+    opens = np.array([c["open"] for c in window], dtype=float)
+    highs = np.array([c["high"] for c in window], dtype=float)
+    lows = np.array([c["low"] for c in window], dtype=float)
+    return closes, opens, highs, lows
+
+
+class _AssetPatternSpecialist(BaseSpecialist):
+    """Asset-pure candle reader. Subclasses set name + book constants."""
+
     name = "candle"
     category = "candle"
-    base_weight = settings.BASE_WEIGHTS.get("candle", 0.12)
+    book_asset = "btc"
+    lookback = 60
+    body_ratio_bar = 0.65
+    ret5_bar = 0.0008
+    ret15_bar = 0.0025
+    wick_rej = 0.55
+    mean_rev_boost = 8
+    streak_boost = 5
+    fade_streak_n = 4
+    quiet_floor_base = 55
+    prefer_mean_rev = False
+    extension_fade = False
+
+    def __init__(self):
+        super().__init__()
+        self.base_weight = settings.BASE_WEIGHTS.get(self.name, 0.10)
+
+    def _wrong_coin(self, market_data: Dict[str, Any]) -> Optional[AgentSignal]:
+        book = market_book_asset(market_data)
+        if book and book != self.book_asset:
+            return AgentSignal(
+                self.name,
+                "WAIT",
+                90,
+                f"Wrong coin — {self.name} answers {self.book_asset.upper()} only",
+                self.category,
+                features={
+                    "asset": self.book_asset,
+                    "refused_asset": book,
+                    "lock_force": False,
+                    "advisory": True,
+                    "final_call": False,
+                },
+            )
+        return None
 
     async def get_signal(self, market_data: Dict[str, Any]) -> AgentSignal:
+        refused = self._wrong_coin(market_data)
+        if refused is not None:
+            return refused
         if self.is_muted:
             return AgentSignal(self.name, "WAIT", 0, "Muted by Guardian", self.category, muted=True)
 
@@ -31,17 +83,13 @@ class CandlePatternSpecialist(BaseSpecialist):
 
         phase = self.phase(market_data)
         quiet = self.is_quiet(market_data)
-        floor = self.quiet_confidence_floor(market_data, base=55)
+        floor = self.quiet_confidence_floor(market_data, base=self.quiet_floor_base)
         streak_dir, streak_n = self.streak(market_data)
         mean_rev = self.mean_reversion_bias(market_data)
         path = self.path_move(market_data)
         entry = self.entry_dir(market_data)
 
-        closes = np.array([c["close"] for c in candles[-60:]], dtype=float)
-        opens = np.array([c["open"] for c in candles[-60:]], dtype=float)
-        highs = np.array([c["high"] for c in candles[-60:]], dtype=float)
-        lows = np.array([c["low"] for c in candles[-60:]], dtype=float)
-
+        closes, _opens, _highs, _lows = _ohlc_arrays(candles, self.lookback)
         last = candles[-1]
         body = abs(last["close"] - last["open"])
         range_ = (last["high"] - last["low"]) or 1e-9
@@ -51,14 +99,12 @@ class CandlePatternSpecialist(BaseSpecialist):
         ret_15 = (closes[-1] - closes[-16]) / closes[-16] if len(closes) > 15 else 0.0
         ret_30 = (closes[-1] - closes[-31]) / closes[-31] if len(closes) > 30 else 0.0
 
-        # Higher-timeframe structure: are we making higher highs / lower lows?
         hh = len(closes) >= 20 and closes[-1] > closes[-20:].max() * 0.999
         ll = len(closes) >= 20 and closes[-1] < closes[-20:].min() * 1.001
-        # Rejection wicks
         upper_wick = last["high"] - max(last["close"], last["open"])
         lower_wick = min(last["close"], last["open"]) - last["low"]
-        upper_rej = upper_wick / range_ > 0.55 and body_ratio < 0.35
-        lower_rej = lower_wick / range_ > 0.55 and body_ratio < 0.35
+        upper_rej = upper_wick / range_ > self.wick_rej and body_ratio < 0.35
+        lower_rej = lower_wick / range_ > self.wick_rej and body_ratio < 0.35
 
         features = {
             "body_ratio": round(body_ratio, 3),
@@ -71,66 +117,83 @@ class CandlePatternSpecialist(BaseSpecialist):
             "horizon": "entry" if phase == "entry" else "revision",
             "path_move": path,
             "streak_n": streak_n,
+            "asset": self.book_asset,
+            "lookback": self.lookback,
+            "book": self.name,
+            "final_call": False,
         }
 
         direction = "WAIT"
         conf = 42
         notes = []
 
-        # ── local structure signals ────────────────────────────────
         local_dir = None
         local_conf = 0
-        if last["close"] > last["open"] and body_ratio > 0.65 and ret_5 > 0.0008:
+        if last["close"] > last["open"] and body_ratio > self.body_ratio_bar and ret_5 > self.ret5_bar:
             local_dir, local_conf = "UP", min(82, 55 + int(abs(ret_5) * 8000))
-            notes.append(f"bull body {body_ratio:.0%} · 5m +{ret_5*100:.2f}%")
-        elif last["close"] < last["open"] and body_ratio > 0.65 and ret_5 < -0.0008:
+            notes.append(f"bull body {body_ratio:.0%} · 5m +{ret_5 * 100:.2f}%")
+        elif last["close"] < last["open"] and body_ratio > self.body_ratio_bar and ret_5 < -self.ret5_bar:
             local_dir, local_conf = "DOWN", min(82, 55 + int(abs(ret_5) * 8000))
-            notes.append(f"bear body {body_ratio:.0%} · 5m {ret_5*100:.2f}%")
-        elif lower_rej and ret_5 > -0.0003:
+            notes.append(f"bear body {body_ratio:.0%} · 5m {ret_5 * 100:.2f}%")
+        elif lower_rej and ret_5 > -self.ret5_bar * 0.4:
             local_dir, local_conf = "UP", 64
             notes.append("lower wick rejection")
-        elif upper_rej and ret_5 < 0.0003:
+        elif upper_rej and ret_5 < self.ret5_bar * 0.4:
             local_dir, local_conf = "DOWN", 64
             notes.append("upper wick rejection")
-        elif ret_15 > 0.0025 and ret_5 > 0:
-            local_dir, local_conf = "UP", 62
-            notes.append(f"15m trend +{ret_15*100:.2f}%")
-        elif ret_15 < -0.0025 and ret_5 < 0:
-            local_dir, local_conf = "DOWN", 62
-            notes.append(f"15m trend {ret_15*100:.2f}%")
-        elif hh and ret_5 > 0:
+        elif ret_15 > self.ret15_bar and ret_5 > 0:
+            if self.extension_fade and abs(ret_15) > self.ret15_bar * 1.8:
+                local_dir, local_conf = "DOWN", 60
+                notes.append(f"ETH extension fade 15m +{ret_15 * 100:.2f}%")
+            else:
+                local_dir, local_conf = "UP", 62
+                notes.append(f"15m trend +{ret_15 * 100:.2f}%")
+        elif ret_15 < -self.ret15_bar and ret_5 < 0:
+            if self.extension_fade and abs(ret_15) > self.ret15_bar * 1.8:
+                local_dir, local_conf = "UP", 60
+                notes.append(f"ETH extension fade 15m {ret_15 * 100:.2f}%")
+            else:
+                local_dir, local_conf = "DOWN", 62
+                notes.append(f"15m trend {ret_15 * 100:.2f}%")
+        elif (not self.prefer_mean_rev) and hh and ret_5 > 0:
             local_dir, local_conf = "UP", 58
             notes.append("higher-high break")
-        elif ll and ret_5 < 0:
+        elif (not self.prefer_mean_rev) and ll and ret_5 < 0:
             local_dir, local_conf = "DOWN", 58
             notes.append("lower-low break")
+        elif self.prefer_mean_rev and hh and ret_5 > 0 and mean_rev == "DOWN":
+            local_dir, local_conf = "DOWN", 57
+            notes.append("ETH fade stretched HH")
+        elif self.prefer_mean_rev and ll and ret_5 < 0 and mean_rev == "UP":
+            local_dir, local_conf = "UP", 57
+            notes.append("ETH fade stretched LL")
 
-        # ── multi-window overlay ───────────────────────────────────
         if phase == "entry":
             if local_dir:
                 direction, conf = local_dir, local_conf
-                # Boost when multi-window agrees
                 if mean_rev == local_dir:
-                    conf = min(90, conf + 8)
+                    conf = min(90, conf + self.mean_rev_boost)
                     notes.append("mean-rev agrees")
+                elif self.prefer_mean_rev and mean_rev and mean_rev != local_dir:
+                    conf = max(50, conf - 6)
+                    notes.append("ETH mean-rev disagrees")
                 if streak_dir == local_dir and streak_n >= 3:
-                    conf = min(90, conf + 5)
+                    conf = min(90, conf + self.streak_boost)
                     notes.append(f"streak {streak_dir}×{streak_n}")
-                if streak_dir and streak_dir != local_dir and streak_n >= 4:
+                if streak_dir and streak_dir != local_dir and streak_n >= self.fade_streak_n:
                     conf = max(50, conf - 8)
                     notes.append("fighting strong streak")
             elif mean_rev and not quiet:
-                direction, conf = mean_rev, 56
+                direction, conf = mean_rev, 58 if self.prefer_mean_rev else 56
                 notes.append(f"structure quiet — multi-window mean-rev {mean_rev}")
             else:
                 notes.append("no clean entry structure")
         else:
-            # Revision phase: compare path + structure to entry
             if entry in ("UP", "DOWN") and path is not None:
-                if entry == "UP" and path <= -5.0 and (local_dir == "DOWN" or ret_15 < -0.001):
+                if entry == "UP" and path <= -5.0 and (local_dir == "DOWN" or ret_15 < -self.ret15_bar * 0.4):
                     direction, conf = "DOWN", max(local_conf, 62)
                     notes.append(f"structure broke entry UP (path {path:.1f})")
-                elif entry == "DOWN" and path >= 5.0 and (local_dir == "UP" or ret_15 > 0.001):
+                elif entry == "DOWN" and path >= 5.0 and (local_dir == "UP" or ret_15 > self.ret15_bar * 0.4):
                     direction, conf = "UP", max(local_conf, 62)
                     notes.append(f"structure broke entry DOWN (path +{path:.1f})")
                 elif local_dir == entry:
@@ -158,3 +221,50 @@ class CandlePatternSpecialist(BaseSpecialist):
 
         reason = self.annotate_reason(market_data, " · ".join(notes))
         return AgentSignal(self.name, direction, conf, reason, self.category, features=features)
+
+
+class BitcoinPatternSpecialist(_AssetPatternSpecialist):
+    """Pure BTC patterns. Satoshi calls this seat + shared services."""
+
+    name = "candle_btc"
+    book_asset = "btc"
+    lookback = 60
+    body_ratio_bar = 0.65
+    ret5_bar = 0.0008
+    ret15_bar = 0.0025
+    wick_rej = 0.55
+    mean_rev_boost = 8
+    streak_boost = 5
+    fade_streak_n = 4
+    quiet_floor_base = 55
+    prefer_mean_rev = False
+    extension_fade = False
+
+
+class EthereumPatternSpecialist(_AssetPatternSpecialist):
+    """Pure ETH patterns. Vitalik calls this seat + shared services."""
+
+    name = "candle_eth"
+    book_asset = "eth"
+    lookback = 45
+    body_ratio_bar = 0.58
+    ret5_bar = 0.0014
+    ret15_bar = 0.0040
+    wick_rej = 0.48
+    mean_rev_boost = 11
+    streak_boost = 2
+    fade_streak_n = 3
+    quiet_floor_base = 60
+    prefer_mean_rev = True
+    extension_fade = True
+
+
+# Back-compat alias — do not instantiate on a live desk. Use the asset class.
+CandlePatternSpecialist = BitcoinPatternSpecialist
+
+
+def pattern_specialist_for_asset(asset: str | None) -> _AssetPatternSpecialist:
+    key = pattern_specialist_name(asset)
+    if key == "candle_eth":
+        return EthereumPatternSpecialist()
+    return BitcoinPatternSpecialist()

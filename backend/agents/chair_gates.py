@@ -267,6 +267,87 @@ def ticker_asset(ticker: Any) -> Optional[str]:
     return None
 
 
+# Dedicated pattern seats. Not a shared Pattern Seer. Not Floor chairs. Not lockers.
+PATTERN_SPECIALISTS = ("candle_btc", "candle_eth")
+CHAIR_LOCKERS = ("leader", "chair")
+LEGACY_PATTERN_SEAT = "candle"
+
+
+def normalize_book_asset(asset: Any) -> Optional[str]:
+    a = str(asset or "").strip().lower()
+    if a in ("eth", "ethereum"):
+        return "eth"
+    if a in ("btc", "bitcoin"):
+        return "btc"
+    return None
+
+
+def market_book_asset(market_data: Any = None) -> Optional[str]:
+    """Resolve BTC/ETH from payload asset, ticker, or symbol. Shared feeds stay shared."""
+    md = market_data if isinstance(market_data, dict) else {}
+    book = normalize_book_asset(md.get("asset"))
+    if book:
+        return book
+    km = md.get("kalshi_market") if isinstance(md.get("kalshi_market"), dict) else {}
+    book = ticker_asset(md.get("ticker") or md.get("market_ticker") or km.get("ticker"))
+    if book:
+        return book
+    sym = str(md.get("symbol") or md.get("pair") or "").upper()
+    if "ETH" in sym:
+        return "eth"
+    if "BTC" in sym:
+        return "btc"
+    return None
+
+
+def pattern_specialist_name(asset: Any) -> str:
+    book = normalize_book_asset(asset) or market_book_asset({"asset": asset})
+    return "candle_eth" if book == "eth" else "candle_btc"
+
+
+def is_pattern_specialist(name: Any) -> bool:
+    n = str(name or "").strip().lower()
+    return n in PATTERN_SPECIALISTS or n == LEGACY_PATTERN_SEAT
+
+
+def canonicalize_pattern_vote_name(name: Any, asset: Any) -> Optional[str]:
+    """
+    Map legacy 'candle' onto the desk's specialist. Drop the other coin's seat.
+    BTC and ETH never share a pattern settle identity.
+    """
+    n = str(name or "").strip().lower()
+    if not is_pattern_specialist(n):
+        return n
+    want = pattern_specialist_name(asset)
+    if n in PATTERN_SPECIALISTS and n != want:
+        return None
+    return want
+
+
+def can_final_lock(name: Any) -> bool:
+    """Shared bots and pattern specialists vote. Only Satoshi / Vitalik lock."""
+    return str(name or "").strip().lower() in CHAIR_LOCKERS
+
+
+def filter_pattern_signals_for_asset(signals: Any, asset: Any) -> list:
+    """Satoshi never hears candle_eth. Vitalik never hears candle_btc."""
+    book = normalize_book_asset(asset)
+    rows = list(signals or [])
+    if not book:
+        return rows
+    keep = []
+    for sig in rows:
+        if isinstance(sig, dict):
+            name = str(sig.get("agent_name") or "")
+        else:
+            name = str(getattr(sig, "agent_name", None) or "")
+        mapped = canonicalize_pattern_vote_name(name, book)
+        if mapped is None:
+            continue
+        keep.append(sig)
+    return keep
+
+
 def close_time_from_kalshi_ticker(ticker: Any) -> Optional[datetime]:
     """
     KXBTCD-26AUG1415-T62999.99 → 15:00 America/New_York on 2026-08-14.

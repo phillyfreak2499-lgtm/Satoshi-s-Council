@@ -228,8 +228,10 @@ class MergeAndTagTests(unittest.IsolatedAsyncioTestCase):
             "orderflow": {"direction": "DOWN", "confidence": 90},
         }
         out = sb.merge_backfill_into_learner(learner, votes, "UP", ticker="KXETHD-26AUG1016-T1")
-        self.assertGreaterEqual(learner.correct["candle"], 6)
-        self.assertEqual(learner.wrong["candle"], 2)
+        self.assertGreaterEqual(learner.correct["candle_eth"], 6)
+        self.assertEqual(learner.wrong["candle_eth"], 2)
+        self.assertNotIn("candle", learner.correct)
+        self.assertNotIn("candle_btc", learner.correct)
         self.assertGreater(learner.updates, 7)
         self.assertEqual(learner.lock_n, 3)
         self.assertIn("backfill", (out.get("notes") or []) + [out.get("source")])
@@ -315,7 +317,8 @@ class MergeAndTagTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(report["wipe_live_brain"])
             self.assertFalse(report["follower"])
             self.assertFalse(report["live_orders"])
-            self.assertGreaterEqual(int(btc.correct.get("candle") or 0), 4)
+            self.assertGreaterEqual(int(btc.correct.get("candle_btc") or 0), 4)
+            self.assertNotIn("candle_eth", btc.correct)
             self.assertEqual(report["contract"]["days"], 90)
             self.assertTrue((Path(td) / sb.DONE_NAME).is_file())
             status = json.loads((Path(td) / sb.STATUS_NAME).read_text(encoding="utf-8"))

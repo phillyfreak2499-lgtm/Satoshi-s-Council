@@ -89,16 +89,18 @@ def _near_level(price: float, highs: List[float], lows: List[float], tol: float 
     return ""
 
 
-def run_candle_subs(md: Dict[str, Any]) -> List[AgentSignal]:
+def run_candle_subs(md: Dict[str, Any], parent: str | None = None) -> List[AgentSignal]:
+    from backend.agents.chair_gates import market_book_asset, pattern_specialist_name
+    parent = parent or pattern_specialist_name(market_book_asset(md) or (md or {}).get("asset"))
     candles = md.get("candles") or []
     thin = [
-        _sig("candle", "body", "WAIT", 25, "Thin history", "candle"),
-        _sig("candle", "structure", "WAIT", 25, "Thin history", "candle"),
-        _sig("candle", "pin", "WAIT", 20, "Thin history", "candle"),
-        _sig("candle", "engulf", "WAIT", 20, "Thin history", "candle"),
-        _sig("candle", "marubozu", "WAIT", 20, "Thin history", "candle"),
-        _sig("candle", "doji", "WAIT", 20, "Thin history", "candle"),
-        _sig("candle", "star", "WAIT", 20, "Thin history", "candle"),
+        _sig(parent, "body", "WAIT", 25, "Thin history", "candle"),
+        _sig(parent, "structure", "WAIT", 25, "Thin history", "candle"),
+        _sig(parent, "pin", "WAIT", 20, "Thin history", "candle"),
+        _sig(parent, "engulf", "WAIT", 20, "Thin history", "candle"),
+        _sig(parent, "marubozu", "WAIT", 20, "Thin history", "candle"),
+        _sig(parent, "doji", "WAIT", 20, "Thin history", "candle"),
+        _sig(parent, "star", "WAIT", 20, "Thin history", "candle"),
     ]
     if len(candles) < 20:
         return thin
@@ -274,13 +276,13 @@ def run_candle_subs(md: Dict[str, Any]) -> List[AgentSignal]:
                 star_conf, star_reason = 88, "Evening star at resistance"
 
     return [
-        _sig("candle", "body", body_dir, body_conf, body_reason, "candle", {"body_ratio": round(body_ratio, 3)}),
-        _sig("candle", "structure", struct_dir, struct_conf, struct_reason, "candle", {"level": level or "none"}),
-        _sig("candle", "pin", pin_dir, pin_conf, pin_reason, "candle", {"level": level or "none"}),
-        _sig("candle", "engulf", eng_dir, eng_conf, eng_reason, "candle", {"level": level or "none"}),
-        _sig("candle", "marubozu", maru_dir, maru_conf, maru_reason, "candle", {"streak": streak}),
-        _sig("candle", "doji", doji_dir, doji_conf, doji_reason, "candle"),
-        _sig("candle", "star", star_dir, star_conf, star_reason, "candle", {"level": level or "none"}),
+        _sig(parent, "body", body_dir, body_conf, body_reason, "candle", {"body_ratio": round(body_ratio, 3)}),
+        _sig(parent, "structure", struct_dir, struct_conf, struct_reason, "candle", {"level": level or "none"}),
+        _sig(parent, "pin", pin_dir, pin_conf, pin_reason, "candle", {"level": level or "none"}),
+        _sig(parent, "engulf", eng_dir, eng_conf, eng_reason, "candle", {"level": level or "none"}),
+        _sig(parent, "marubozu", maru_dir, maru_conf, maru_reason, "candle", {"streak": streak}),
+        _sig(parent, "doji", doji_dir, doji_conf, doji_reason, "candle"),
+        _sig(parent, "star", star_dir, star_conf, star_reason, "candle", {"level": level or "none"}),
     ]
 
 
@@ -629,8 +631,12 @@ def run_odds_subs(md: Dict[str, Any]) -> List[AgentSignal]:
 
 
 def run_all_subs(md: Dict[str, Any]) -> Dict[str, List[AgentSignal]]:
+    from backend.agents.chair_gates import market_book_asset, pattern_specialist_name
+    parent = pattern_specialist_name(market_book_asset(md) or (md or {}).get("asset"))
+    candle_subs = run_candle_subs(md, parent=parent)
     return {
-        "candle": run_candle_subs(md),
+        parent: candle_subs,
+        "candle": candle_subs,
         "volume": run_volume_subs(md),
         "momentum": run_momentum_subs(md),
         "orderflow": run_orderflow_subs(md),

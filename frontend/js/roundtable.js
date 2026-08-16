@@ -497,10 +497,12 @@
   }
   syncSoundButton();
 
-  const AGENT_ORDER = ["candle", "volume", "momentum", "orderflow", "funding", "regime", "volatility", "oi_pressure", "streak", "odds", "strike", "session_tod", "whale", "quorum", "panic", "cheap", "spotlag", "news", "liq", "exhaust", "guardian", "law"];
+  const AGENT_ORDER = ["candle_btc", "candle_eth", "volume", "momentum", "orderflow", "funding", "regime", "volatility", "oi_pressure", "streak", "odds", "strike", "session_tod", "whale", "quorum", "panic", "cheap", "spotlag", "news", "liq", "exhaust", "guardian", "law"];
   // Cool callsigns — internal keys stay the same for API/weights
   const AGENT_LABELS = {
     candle: "WICK",
+    candle_btc: "WICK",
+    candle_eth: "WICK",
     volume: "PULSE",
     momentum: "DRIFT",
     orderflow: "TAPE",
@@ -525,6 +527,8 @@
   };
   const AGENT_TITLES = {
     candle: "Pattern Seer",
+    candle_btc: "Bitcoin Pattern Specialist",
+    candle_eth: "Ethereum Pattern Specialist",
     volume: "Flow Reader",
     momentum: "Trend Scout",
     orderflow: "Book Walker",
@@ -1546,7 +1550,7 @@
 
   
   const DISPLAY = {
-    candle: "WICK", volume: "PULSE", momentum: "DRIFT", orderflow: "TAPE",
+    candle: "WICK", candle_btc: "WICK", candle_eth: "WICK", volume: "PULSE", momentum: "DRIFT", orderflow: "TAPE",
     funding: "CARRY", regime: "ORBIT", volatility: "VOLT", oi_pressure: "CHAIN",
     streak: "STREAK", odds: "ODDS", guardian: "WARDEN", law: "LAW",
   };

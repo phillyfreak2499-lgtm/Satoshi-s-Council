@@ -1,7 +1,7 @@
 """
 Cool callsigns for Satoshi's Council members.
 
-Internal agent keys stay stable (candle, volume, …) for weights + logic.
+Internal agent keys stay stable (candle_btc / candle_eth, volume, …) for weights + logic.
 Display names are what the Round Table and Debate Log show.
 """
 from __future__ import annotations
@@ -9,7 +9,9 @@ from typing import Dict, Optional, Tuple
 
 # Main specialists: key → (callsign, title)
 MAIN_ROSTER: Dict[str, Tuple[str, str]] = {
-    "candle": ("WICK", "Pattern Seer"),
+    "candle": ("WICK", "Pattern Seer"),  # legacy — remapped; not a live desk seat
+    "candle_btc": ("WICK", "Bitcoin Pattern Specialist"),
+    "candle_eth": ("WICK", "Ethereum Pattern Specialist"),
     "volume": ("PULSE", "Flow Reader"),
     "momentum": ("DRIFT", "Trend Scout"),
     "orderflow": ("TAPE", "Book Walker"),
