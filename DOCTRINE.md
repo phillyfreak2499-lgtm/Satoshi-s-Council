@@ -1,90 +1,152 @@
 # Satoshi’s Council — Operating Doctrine
 
-**Version:** 2026-08-16 (Path P&L / Dual-Sided Scalp)
+**Version:** Longer-Horizon Research Desk (August 2026)  
+**Status:** Adopted as governing doctrine — implementation in progress
 
-The One-Call / Best-Odds Protocol is **dead for BTC 15m**. ETH 1H keeps it.
+> This document states the rules the system is **held to**, not a description of current behavior.
+> Several rules below are ahead of the code: the analysis loop still runs on a short Kalshi window
+> cadence, the API still emits `UP` / `DOWN` / `WAIT`, and the process metrics in the *Metrics That
+> Matter* section are not yet computed. Where doctrine and code disagree, the doctrine is the target
+> and the gap is a bug. See `README.md` → *Implementation Status* for the current scorecard, and
+> `PIVOT.md` for why this changed. The superseded short-horizon doctrine is archived in
+> `DOCTRINE-LEGACY-PATH.md`.
+
+---
 
 ## Mission
 
-**BTC 15m:** scalp both Up and Down contracts inside the window. Realized path P&L is the scoreboard. Directional accuracy — did the official settle match a single door — is secondary.
+Help the user make fewer, higher-quality decisions by requiring specialist debate and meaningful confluence before action.
 
-**ETH 1H:** still exactly one high-quality finish guess at the best available odds (10–90¢). One irreversible lock. Not dual-sided.
+The Council exists to improve **process under uncertainty**.  
+Profit is a possible byproduct of good process — never the primary target of the system itself.
 
-## BTC 15m — Non-Negotiable Rules
+---
 
-1. **Path P&L is primary.**  
-   The real grade is realized paper P&L on the path book. A window that made money is a win even if the official settle disagrees with the first lean. Final-direction hit-rate is a footnote.
+## Non-Negotiable Rules
 
-2. **Dual-sided scalp is the edge.**  
-   Hold both Up and Down when combined cost is attractive. Holding both sides at once is expected and normal. It is not a bug, a hedge apology, or a broken lock.
+1. **Paper first**  
+   No real-capital recommendations or live signals until a meaningful sample of decisions has been tracked under these rules.
 
-3. **Both legs only when leftover is real.**  
-   Open the second door only when UP ask + DOWN ask leaves room after vig. Never invent a pair from mid.
+2. **Longer horizons preferred**  
+   The system is oriented toward multi-hour to multi-day / swing decisions. Short-term noise is de-emphasized.
 
-4. **The Chair stays active the full 15 minutes.**  
-   There is no irreversible one-call lock. The Chair may scale in, scale out, reduce, or flip either leg independently for the whole window.
+3. **Confluence required**  
+   The Chair needs clear agreement among higher-ranked agents before issuing anything stronger than Wait.
 
-5. **Paper fill at the real ask, not mid.**  
-   Missing NO ask may be 100 − yes bid. Missing YES ask may be 100 − no bid. Mid is display only.
+4. **WAIT is a first-class outcome**  
+   Sitting when agreement is weak is correct process, not failure. Celebrate clean waits.
 
-6. **Dead 99¢ book = sit.**  
-   You cannot scale out of chalk. 1¢ / 99¢ is a hard no.
+5. **Process metrics matter**  
+   Track confluence quality, wait rate, rule adherence, and agent usefulness alongside any paper results.
 
-7. **Quality filters stay — pointed at scalping.**  
-   Sit the first ~3 minutes and the last ~2.5 unless leftover is huge. Playable band 20–80 after vig. WAIT is a skip, not a miss.
+6. **No auto-trading**  
+   The Council never places an order on its own initiative. Nothing the Chair or any specialist
+   emits reaches an exchange automatically.
 
-8. **Retrain on old 15-minute books only.**  
-   Do not port 1H weights, 1H settle keys, or CoinGlass 1h onto this book.
+   *Accurate statement of the code:* a manual Follower order route exists in the backend
+   (`POST /api/follower/order`) and can reach a live Kalshi client. It is disabled by default and
+   requires a session unlock, an explicit typed confirmation phrase, and configured credentials
+   before it will do anything. Under this doctrine it stays off. The route is documented here rather
+   than denied, because a doctrine that misdescribes its own attack surface is not a safety control.
 
-## ETH 1H — One-Lock (unchanged)
+   The same applies to the Side Table and THE FRONT desks, which carry their own arming phrases and
+   loss caps. Both stay disarmed under this doctrine.
 
-1. One graded directional call per hourly ticker.
-2. Once locked, irreversible for that window.
-3. Book must be inside 10–90¢. Never 99¢ chalk.
-4. WAIT preferred over a low-edge, noisy, early, or late call.
+7. **Risk awareness is mandatory**  
+   Any future real-capital use must include explicit position-size limits, maximum concurrent risk, and hard drawdown rules.
 
-## Chair management directions (BTC 15m)
+8. **Agents are ranked by recent usefulness**  
+   Chronic under-performers lose influence. Rankings are evidence-based, not static.
 
-Specialists recommend `LONG_UP` / `LONG_DOWN` / `REDUCE_*` / `FLAT_*` — path/scalp edge, not a finish call. They keep gathering the full 15 minutes. A Chair book does not silence them.
+9. **Free public data preferred for core analysis**  
+   The system runs on publicly available feeds and must never *require* a paid plan to start.
 
-The Chair emits management actions:
+   *Known exception:* the CoinGlass-backed seats — CARRY (`funding`), CHAIN (`oi_pressure`), and
+   CASCADE (`liq`) — sit behind a plan wall and force WAIT when it latches. Resolving this so those
+   seats degrade gracefully instead of going silent is an open item, not a solved one.
 
-`LONG_UP` · `LONG_DOWN` · `REDUCE_UP` · `REDUCE_DOWN` · `FLAT_UP` · `FLAT_DOWN` · `FLAT_ALL` · `SWAP` · `WAIT`
+10. **Honesty over marketing**  
+    The system will not pretend to have an edge it has not demonstrated in paper tracking.
 
-`BOTH` is the live display when both doors are open. `UP_HOLD` / `DOWN_HOLD` stay as legacy UI aliases.
+---
 
-`/api/state` `locked_call` on a 15m book is **not** “FOLLOW THIS / IRREVERSIBLE”. It is live position state: size Up, size Down, average prices, unrealized edge, next action, last sizing. `irreversible` is false. ETH `locked_call` stays one-lock.
+## Chair Behavior
 
-## Sizing
+The Chair synthesizes. It does not invent conviction.
 
-BTC 15m Chair and paper-journal fills use `size_for_leader()` / `compute_position_size()`. Inputs are real edge, P(finish), confidence, confluence, ask, spread, book size, seconds left, and open risk. `open_risk` counts **both legs**. Hard maxes beat Kelly — Kelly is informational only and never raises size past `DYNAMIC_SIZING_MAX` / `PAPER_STAKE_DEFAULT`. Scalp clips and dual-sided pairs size smaller. Each paper fill stores the sizing audit (reasons + multipliers). ETH stays a flat paper ticket. Do NOT wire Follower.
+- When diversity is low or top agents disagree → default output is **Wait**
+- When confluence is strong and ranked agents align → directional lean with confidence and horizon
+- The Chair may revise an open decision if new information changes the balance of ranked agreement. A revision is a normal outcome over a multi-day horizon, not a failed call
 
-## Visual Hierarchy
+---
 
-- **Table (art mode):** Clean decision stage. BTC 15m plaque shows the live dual-sided book (sizes, averages, next action). ETH plaque still reads as a single LOCKED call.
-- **Floor:** Specialists remain fully visible. Dual-sided gold (`BOTH`) is a valid Chair color, not an error.
-- Hierarchy, adaptive weights, ranking, and learning continue. 15m learning grades path P&L, not finish match.
+## Decision Language
 
-## Follower Interface
+Replace short-term directional calls with:
 
-Follower stays **OFF**. Live stays **OFF**. Paper only. No new Floor chairs.
+- **Accumulate**
+- **Buy Zone**
+- **Hold**
+- **Reduce**
+- **Sell**
+- **Wait**
 
-`/api/state` still exposes `locked_call`. On BTC 15m it carries `path_book`, `position`, `sizing`, and `irreversible: false`. On ETH 1H it stays a single irreversible door.
+Every non-Wait decision should carry:
+- Confidence score
+- Suggested horizon (example: “days to weeks”)
+- Brief synthesis of why the ranked agents agree
+
+---
+
+## Grading & Learning
+
+Paper decisions are logged with:
+- Prevailing confluence score
+- Agent rankings at the time of decision
+- Stated horizon
+- Later outcome over that horizon
+- Process grade (did we follow the rules?)
+
+Weights and ranks update from this history.  
+Path or short-window Kalshi-style grading is retired for the primary research desk.
+
+---
+
+## Visual & UX Hierarchy
+
+- **Table (Art mode)**: Clean decision stage with live dual or multi-asset plaques
+- **Floor / Dashboard**: Full specialist visibility, ranks, debate log
+- Hierarchy, adaptive weights, and ranking continue to operate
+- Gold / special highlighting for strong confluence remains available
+
+---
+
+## Follower / Live Interface
+
+Follower stays **OFF** by default.  
+Live capital execution stays **OFF**.  
+Paper only until the doctrine conditions above are met.
+
+---
 
 ## Metrics That Matter
 
 Track on the Paper / Accuracy surfaces:
 
-- Realized path P&L per 15m window (the scoreboard)
-- Dual-sided utilization (windows that held both doors)
-- Scale / cut / flip counts
-- Average leftover after vig on dual opens
-- Sit rate on chalk / dead / first-3m / last-2.5m
-- ETH 1H hit-rate on the single graded call (unchanged)
+- Confluence quality distribution
+- Wait rate
+- Rule adherence rate
+- Agent usefulness ranking over time
+- Paper expectancy over stated horizons (secondary)
+- Maximum paper drawdown under the rules
 
-## Why This Exists
+---
 
-15-minute BTC direction is efficient. A single irreversible guess donates the path.  
-The Council stays in the book for the full 15 minutes and takes leftover on both doors when the pair is cheap.
+## Final Principle
 
-Paper-track expectancy before any size.
+The goal is better process under uncertainty.  
+
+A clean Wait is a successful use of the system.  
+A forced low-confluence action is a process failure even if it happens to make money.
+
+Paper-track expectancy and process quality before any size.
