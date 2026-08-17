@@ -1,85 +1,45 @@
-# Satoshi’s Council — New Operator Tutorial
+# Satoshi’s Council — Operator Tutorial
 
-**Version:** 2026-08-16 (Path P&L / Dual-Sided Scalp)
+**Version:** 2026-08-16 (Longer-Horizon Research Desk)
 
 ## What this is
-A living Round Table of specialist bots watching Kalshi’s 15-minute Bitcoin market (KXBTC15M) and the Ethereum hourly table.  
-Satoshi runs a **dual-sided 15m path book** — hold both, scale, cut, or flip — scored on realized paper P&L. Vitalik still locks **exactly one** high-quality ETH 1H paper call — UP or DOWN — only when the book is inside 10–90¢ (never 99¢ chalk). Otherwise WAIT.
+A paper research desk. Specialist agents debate market structure; **Satoshi** sits fixed at the center and issues the only final call.
 
-This is a research co-pilot. It does **not** place real orders.
+This is **not** a betting terminal, not a scalp bot, and not a Kalshi product.  
+It does **not** place real orders. Paper only. Process over prediction.
 
-## GOAL CONTRACT (non-negotiable)
-1. BTC 15m is path P&L — dual-sided scalp, not one irreversible directional lock.
-2. Hold both Up and Down when combined cost is attractive. Scale / cut / flip either leg the full 15 minutes.
-3. Score realized paper P&L, not a close-direction hit. Directional accuracy is secondary.
-4. ETH 1H stays one finish guess at the best available odds (10–90¢). WAIT preferred over low-edge noise.
+## How to read the table in ~15 seconds
+1. **Center** = Satoshi. The only final call. He never moves, is never ranked, and cannot be outvoted.
+2. **Four leaders** (VITALIK, ARES, RAIJIN, ORACLE) debate and sit by rank. They lean; they do not override Satoshi.
+3. **Final call language (closed set)**  
+   - **Accumulate**  
+   - **Reduce**  
+   - **Maintain**  
+   - **Stand down**
+4. **Alignment / Confluence** shows how many leaders lean the same way. Strong confluence is required for anything stronger than Stand down.
+5. **Risk / microstructure** state can force Stand down even when leaders lean directional. When a veto is active it appears next to the final call.
+6. **Paper / Process** metrics sit beside any directional hit rate. Standing down is disciplined process, not a miss.
 
-## How to read the screen
-- **Center plaque** = live BTC 15m position (size Up, size Down, averages, next action) or the ETH one-lock (`LOCKED UP/DOWN @ XX¢`).
-- **Floor** (outer ring) = specialists still voting and ranking.
-- **HIT RATE** badge = Chair score. BTC 15m is path P&L (WAIT excluded). ETH is directional accuracy (WAIT excluded).
-- **LAW** badge = enforcer status after repeated misses.
+## What “good” looks like
+- Satoshi’s voice line ends in one of the four closed actions.
+- You can see whether the table is aligned and whether risk is clear.
+- Stand down appears often and is treated as success when confluence or risk conditions are not met.
+- No control on the screen can demote or move Satoshi.
+- Paper context is always visible.
 
-## How a call is made
-1. BTC 15m specialists recommend LONG_UP / LONG_DOWN / REDUCE / FLAT — path scalp, not a finish call. They keep gathering the full 15 minutes.
-2. Higher-ranked bots count more. Adaptive weights reward path P&L and risk control, not official-settle hits.
-3. Chair requires confluence + pair affinity — pointed at leftover and scalp quality, not a single door.
-4. Odds gate: BTC 15m 20–80 after vig. ETH 1H 10–90¢. Never play 99¢ chalk. Fill at the real ask.
-5. BTC 15m stays active the full window: both legs, scale / cut / flip. No irreversible one-call lock. ETH’s first firm full UP/DOWN that clears the gates becomes the single LOCKED call.
-6. After an ETH lock, the plaque is what the UI follows. BTC 15m plaque is the live book. Follower stays OFF.
+## How a decision is formed
+1. Specialists publish lean + confidence.
+2. Leaders rank by recent usefulness and debate.
+3. Confluence + risk gates are applied.
+4. Satoshi synthesizes and issues the final research call (or Stand down).
+5. Outcome is logged for process quality and later calibration. Paper expectancy is secondary.
 
-## Scoring
-BTC 15m grades **realized paper P&L** on the path book. Official settle only marks leftover legs.  
-ETH 1H still grades the single locked call. Paper P&L is path-scaled.
+## Tabs & surfaces
+Table (Round Table art) · Floor · Hierarchy · Paper · Charts · Settings
 
-## Tabs
-Table · Floor · Dashboard · Bots · Ranks · Paper · Front · Charts · Settings  
+Settings are machine-local. BEAST mode only changes refresh density and HUD detail — it does not enable live trading.
 
-**Keys:** 1–7 tabs · Floor tab · X BEAST · ESC exit Floor · **?** Help (replay this tutorial)
-
-## Raijin / THE FRONT
-Raijin is the weather Chair. THE FRONT is his Floor — a real ring table, not a city list.
-
-- **Dallas daily high only.** Series `KXHIGHTDAL`. Settle **DFW / KDFW**, not Love Field. Date lives in the ticker.
-- **Seats:** **GLASS** (NWS PANE) · **PIT** (THE PIT) · **FROST** (FROST KILL) · **BONE** (BONE CLIMO) · **MESH** (THE WEB).
-- **Subs** (feed a chair, do not vote): **HEAT** (NOW VS THE HIGH) · **ECHO** (YDAY BONES) · **CELL** (STORM CAP).
-- Hits count like BTC / ETH. Pending until NWS CLI posts the next morning.
-- Paper first. Live stays off until you arm this tab. Does not place 1H Chair locks. Never talks to Follower.
-- Equal chair on the shared Floor (Satoshi · Vitalik · Raijin · Ares). Full-size ring on the Front tab.
-
-## Ares / ATS
-Ares is the sports Chair. One game. Gold tab **ATS**. Calls are COVER / NO-COVER, the team name, or OVER / UNDER. WAIT stays WAIT. Seats: LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs. Paper only. Follower off.
-
-Do not look for other cities on this board. v1 is Dallas only.
-
-## Follower bots
-Poll `/api/state` and read `locked_call` (or `decision.locked_call`):
-
-```json
-{
-  "locked": true,
-  "direction": "BOTH",
-  "action": "LONG_UP",
-  "irreversible": false,
-  "path_book": true,
-  "ticker": "KXBTC15M-...",
-  "goal": "GOAL · path P&L · dual-sided scalp (20–80¢)",
-  "position": {
-    "size_up": 10,
-    "size_down": 10,
-    "avg_up": 42,
-    "avg_down": 42
-  }
-}
-```
-
-ETH 1H `locked_call` is still one door, `irreversible: true`, goal `GOAL · 1 window-end guess @ best odds (10–90¢)`.
-
-When `locked_call` is `null`, there is no active call — stay flat or WAIT.
-
-Follower stays OFF. Live stays OFF.
-
-## Philosophy
-Paper-track expectancy before any size.  
-BTC 15m: stay in the book and take leftover on both doors.  
-ETH 1H: quality over quantity. One high-edge guess per window.
+## Core creed
+Process over prediction.  
+A clean Stand down is a successful use of the desk.  
+Paper first. No real capital until process metrics are proven.
