@@ -855,7 +855,9 @@ def build_round_table(
         from backend.services.htf import classify_regime, posture as regime_posture
 
         stance_posture = regime_posture(classify_regime(table), base_alignment=MIN_ALIGNMENT)
-    except ImportError:
+    except Exception:
+        # A runtime error in the regime read must not 500 the Round Table
+        # endpoints — degrade to a neutral posture, same as council_final().
         stance_posture = {}
     final = satoshi_call(
         stances, vetoes=vetoes, cautions=cautions,
@@ -904,7 +906,9 @@ def build_round_table(
             "funding_read": funding_signal(table),
             "oi_read": oi_signal(table),
         }
-    except ImportError:
+    except Exception:
+        # Any HUD builder throwing (bad feed shape, etc.) must not 500 the
+        # endpoint — the risk panel just comes back empty for that cycle.
         hud = {}
 
     return {

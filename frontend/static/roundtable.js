@@ -7695,6 +7695,12 @@ function drawCandleChart() {
         : "no microstructure feed");
     set("crowdRegime", htf.regime, htf.tone,
       htf.available ? ((htf.bias || "—") + " · " + (htf.timeframe || "")) : "structure unknown");
+    // When the CoinGlass-derived reads are all unavailable, the feed is dark
+    // (plan wall) — show ONE clear explanation instead of a column of ambiguous
+    // "warming up" placeholders that read as "broken".
+    var darkFeed = !(f.available || o.available || l.available || cr.available || odv.available);
+    var darkNote = document.getElementById("crowdDark");
+    if (darkNote) darkNote.hidden = !darkFeed;
   }
 
   /* 4. LEADER USEFULNESS — rolling score, seat 1 nearest Satoshi. */
