@@ -219,7 +219,7 @@
         <button type="button" id="grpCalls" class="mode-tab mode-group" data-group="calls" title="The desk's live calls &amp; paper record — Calls, 15-min, Paper, Tape">Calls ▾</button>
         <button type="button" id="grpResearch" class="mode-tab mode-group" data-group="research" title="Does the desk verify? — Calibration, Backtest, Health">Research ▾</button>
         <button type="button" id="grpMarket" class="mode-tab mode-group" data-group="market" title="The market feeds — Book, News, Huddle">Market ▾</button>
-        <button type="button" id="tabDojo" class="mode-tab" data-mode="dojo" title="Candle Dojo — the pattern-language arcade. Opens the Dojo app in a new tab (it runs on its own server; set its address via window.DOJO_URL).">Dojo</button>
+        <button type="button" id="tabDojo" class="mode-tab" data-mode="dojo" title="Candle Dojo — learn the candle first, then fight it. Stays on this tab.">Dojo</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">Changes</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
@@ -799,6 +799,15 @@
           <ol id="newsBreaking" class="news-list"></ol>
         </article>
       </div>
+    </section>
+
+    <section id="dojoView" class="info-view hidden" aria-label="Dojo">
+      <div class="info-hero">
+        <h2>DOJO</h2>
+        <p>Learn the candle first. Then fight it. Body is who won. Wick is who got shoved. Close is the scoreboard. Display only — never changes a Chair lock.</p>
+      </div>
+      <iframe id="dojoFrame" class="dojo-frame" title="Candle Dojo" src="/dojo-frame" allow="autoplay"></iframe>
+      <p class="dojo-pop"><button type="button" id="dojoPop" class="school-back">Open in a new tab</button></p>
     </section>
 
     <section id="schoolView" class="info-view hidden" aria-label="School">
@@ -1425,7 +1434,7 @@
   <!-- Candle Dojo address — the Dojo tab opens this in a new tab. The Dojo is a
        separate app with its own server; run it (npm install && npm run dev in the
        candle-dojo folder → http://localhost:8080) or point this at your deployed dojo. -->
-  <script>window.DOJO_URL = window.DOJO_URL || "http://localhost:8080";</script>
+  <script>window.DOJO_URL = window.DOJO_URL || "";</script>
   <script src="/wire.js"></script>
   <script src="/roundtable.js"></script>
 

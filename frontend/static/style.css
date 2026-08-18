@@ -10738,3 +10738,51 @@ body.mode-seats #mainTable { display: none !important; }
 }
 .process-win-toast.show { opacity: 1; }
 .process-win-toast[hidden] { display: block; }
+
+/* Candle Dojo — in-tab arcade. Later than the school leftovers so #tabDojo paints. */
+.dojo-frame {
+  display: block;
+  width: 100%;
+  min-height: calc(100dvh - 180px);
+  border: 1px solid rgba(240, 193, 74, 0.25);
+  background: #02040a;
+}
+.dojo-pop { margin: 10px 0 24px; }
+.dojo-pop button { min-height: 40px; }
+
+body[data-focus-table="ats"] #tabDojo,
+body[data-focus-table="front"] #tabDojo,
+body[data-focus-table="oracle"] #tabDojo {
+  display: none !important;
+}
+
+body.night-mode #tabDojo,
+body.phone-floor #tabDojo {
+  display: none !important;
+}
+
+body[class*="mode-"]:not(.mode-dojo) #tabDojo,
+body[class*="mode-"]:not(.mode-dojo) #tabDojo.active,
+body.beast-mode[class*="mode-"]:not(.mode-dojo) #tabDojo,
+body.beast-mode[class*="mode-"]:not(.mode-dojo) #tabDojo.active {
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+body.mode-dojo #tabDojo,
+body.mode-dojo #tabDojo.active {
+  color: var(--blade) !important;
+  border-color: rgba(0, 232, 255, 0.5) !important;
+  background: rgba(0, 232, 255, 0.08) !important;
+  box-shadow: 0 0 14px rgba(0, 232, 255, 0.15) !important;
+}
+body.beast-mode.mode-dojo #tabDojo,
+body.beast-mode.mode-dojo #tabDojo.active {
+  border-color: rgba(240, 193, 74, 0.7) !important;
+  color: #ffe49a !important;
+  text-shadow: 0 0 10px rgba(240, 193, 74, 0.4) !important;
+}

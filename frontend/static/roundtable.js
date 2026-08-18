@@ -10803,6 +10803,7 @@ function drawCandleChart() {
   function aliasDeskMode(next) {
     const n = String(next || "").toLowerCase();
     if (n === "bots" || n === "ranks" || n === "dashboard") return "seats";
+    if (n === "school") return "dojo";
     return n;
   }
   function isSeatsMode(m) {
@@ -10841,18 +10842,41 @@ function drawCandleChart() {
     try { renderDashboard(); } catch (e) {}
   }
 
-  // The Dojo tab launches the standalone Candle Dojo app (its own server) rather
-  // than switching a desk view. Address is configurable via window.DOJO_URL.
+  // Candle Dojo lives in the Dojo tab. Empty window.DOJO_URL uses the in-tab
+  // teach-first kata at /dojo-frame. Set DOJO_URL to embed a hosted arcade.
+  function dojoTarget() {
+    var url = (typeof window !== "undefined" && window.DOJO_URL) || "";
+    url = String(url).trim().replace(/\/$/, "");
+    return url ? (url + "/") : "/dojo-frame";
+  }
+  function mountDojoFrame() {
+    var frame = document.getElementById("dojoFrame");
+    if (!frame) return;
+    var want = dojoTarget();
+    if (frame.dataset.bound === want) return;
+    frame.dataset.bound = want;
+    frame.src = want;
+  }
   function openDojo() {
-    var url = (typeof window !== "undefined" && window.DOJO_URL) || "http://localhost:8080";
+    var url = dojoTarget();
     try { window.open(url, "candle-dojo"); }
     catch (e) { try { window.location.href = url; } catch (e2) {} }
   }
   window.openDojo = openDojo;
+  window.mountDojoFrame = mountDojoFrame;
+  (function wireDojoPop() {
+    var btn = document.getElementById("dojoPop");
+    if (!btn || btn.__wired) return;
+    btn.__wired = true;
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      openDojo();
+    });
+  })();
+
 
   function setMode(next) {
     next = aliasDeskMode(next);
-    if (next === "dojo") { openDojo(); return; }
     if (!hasDeskAuth()) {
       document.body.classList.add("gate-locked");
       document.body.classList.remove("admin-unlocked");
@@ -10922,6 +10946,7 @@ function drawCandleChart() {
     const newsView = document.getElementById("newsView");
     const wireView = document.getElementById("wireView");
     const schoolView = document.getElementById("schoolView");
+    const dojoView = document.getElementById("dojoView");
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
     const callsView = document.getElementById("callsView");
@@ -10938,6 +10963,7 @@ function drawCandleChart() {
     const showNews = mode === "news";
     const showWire = mode === "wire";
     const showSchool = mode === "school";
+    const showDojo = mode === "dojo";
     const showSide = mode === "side";
     const showFront = mode === "front";
     const showCalls = mode === "calls";
@@ -10956,6 +10982,8 @@ function drawCandleChart() {
     if (newsView) newsView.classList.toggle("hidden", !showNews);
     if (wireView) wireView.classList.toggle("hidden", !showWire);
     if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
+    if (dojoView) dojoView.classList.toggle("hidden", !showDojo);
+    if (showDojo) { try { mountDojoFrame(); } catch (e) {} }
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
     if (callsView) callsView.classList.toggle("hidden", !showCalls);
@@ -14184,7 +14212,7 @@ function drawCandleChart() {
   window.setMode = setMode;
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "calls", "tape", "book", "night", "brain", "news", "wire", "school", "charts", "settings"];
+    return ["art", "seats", "paper", "calls", "tape", "book", "night", "brain", "news", "wire", "dojo", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
