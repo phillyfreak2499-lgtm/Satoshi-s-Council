@@ -272,7 +272,7 @@
         <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
         <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
         <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">WIRE</button>
-        <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
+        <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Candle Dojo — learn the candle, then fight it">Dojo</button>
         <button type="button" id="tabSide" class="mode-tab" data-mode="side" hidden aria-hidden="true" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
         <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden aria-hidden="true" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
@@ -766,11 +766,14 @@
       </div>
     </section>
 
-    <section id="schoolView" class="info-view hidden" aria-label="School">
+    <section id="schoolView" class="info-view hidden" aria-label="Dojo">
       <div class="info-hero">
-        <h2>SCHOOL</h2>
-        <p>Short lessons for WAIT downtime. This desk only — 1-hour BTC/ETH Kalshi. Display only. Lessons do not change Chair locks.</p>
+        <h2>DOJO</h2>
+        <p>Learn the candle first. Then fight it. Body is who won. Wick is who got shoved. Close is the scoreboard. Display only — does not lock the Chair.</p>
       </div>
+      <iframe id="dojoFrame" class="dojo-frame" title="Candle Dojo" src="/dojo-frame" allow="autoplay"></iframe>
+      <details class="school-notes">
+        <summary>Floor notes · old School lessons</summary>
       <button type="button" id="schoolContinue" class="school-continue">START · The hour</button>
       <p id="schoolStreak" class="school-streak">0 lessons this week</p>
       <ol id="schoolList" class="school-list"></ol>
@@ -793,6 +796,7 @@
           <button type="button" id="schoolNextQ" class="school-next" hidden>NEXT</button>
         </div>
       </article>
+      </details>
     </section>
 
     <section id="sideView" class="info-view hidden" aria-label="Side Table">

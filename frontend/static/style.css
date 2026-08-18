@@ -9486,3 +9486,24 @@ body.mode-seats #mainTable { display: none !important; }
     left: max(8px, env(safe-area-inset-left, 8px));
   }
 }
+
+/* Candle Dojo embed */
+.dojo-frame {
+  display: block;
+  width: 100%;
+  min-height: calc(100dvh - 180px);
+  border: 1px solid rgba(240, 193, 74, 0.25);
+  background: #02040a;
+}
+.school-notes {
+  margin: 16px 0 24px;
+  color: #6b7c90;
+}
+.school-notes summary {
+  cursor: pointer;
+  font-family: Orbitron, Rajdhani, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0c14a;
+}
+body.mode-school #dojoFrame { display: block; }

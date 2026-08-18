@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Candle Dojo · First kata</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#02040a; --fg:#e8f4ff; --muted:#6b7c90; --gold:#f0c14a; --bull:#39ff14; --bear:#ff2d55; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; background:var(--bg); color:var(--fg); font-family: Rajdhani, sans-serif; }
+    body { padding: 16px 18px 28px; }
+    .kicker { font-family: Orbitron, sans-serif; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--gold); }
+    h1 { font-family: Orbitron, sans-serif; font-size:28px; margin:6px 0 8px; letter-spacing:.06em; }
+    p { margin: 0 0 12px; color: var(--muted); line-height:1.45; }
+    .say { color: var(--fg); }
+    .stage { border:1px solid rgba(240,193,74,.25); background:#070b14; padding:18px 16px 12px; margin:14px 0 16px; min-height:160px; }
+    .row { display:flex; align-items:flex-end; justify-content:center; gap:10px; height:140px; }
+    .c { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; width:22px; height:100%; }
+    .wick { width:2px; background:#8ba3b8; }
+    .body { width:16px; }
+    .body.bull { background: var(--bull); }
+    .body.bear { background: var(--bear); }
+    .line { height:1px; background: var(--gold); margin-top:-48px; opacity:.85; }
+    .btns { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    button { font-family: Orbitron, sans-serif; letter-spacing:.08em; text-transform:uppercase; min-height:52px; border:1px solid rgba(240,193,74,.35); background:#0c1220; color:var(--fg); cursor:pointer; }
+    button.primary { background: var(--gold); color:#02040a; border-color: var(--gold); }
+    button.ghost { background: transparent; }
+    .ok { color: var(--bull); }
+    .retry { color: var(--gold); }
+    .done h1 { color: var(--gold); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const BEATS = [
+      { k:"Beat 1 · The body", t:"Who won this print?", s:"The fat part is the body. Open to close. This close is above the open. Buyers won.", e:"Green body = close above open. That is the only rule.", a:"buyers",
+        ch:[["buyers","Buyers"],["sellers","Sellers"]],
+        cs:[{h:20,b:55,k:8,side:"bull"},{h:16,b:70,k:10,side:"bull",hi:1}] },
+      { k:"Beat 2 · The body", t:"Who won this one?", s:"Close is under the open. Sellers finished in control. The body is red.", e:"Do not name it by the wicks. Name it by the close versus the open.", a:"sellers",
+        ch:[["buyers","Buyers"],["sellers","Sellers"]],
+        cs:[{h:18,b:50,k:8,side:"bear"},{h:14,b:68,k:10,side:"bear",hi:1}] },
+      { k:"Beat 3 · The wick", t:"What is that thin line?", s:"Price ran down there and got shoved back. The wick is a rejected price.", e:"Long lower wick after a dump is buyers showing up. That fighter is Anvil.", a:"wick",
+        ch:[["body","The body"],["wick","A wick"]],
+        cs:[{h:10,b:40,k:8,side:"bear"},{h:8,b:28,k:55,side:"bull",hi:1}] },
+      { k:"Beat 4 · The close", t:"What is the scoreboard?", s:"Wicks are the fight. The close is who won. Trade the close. Don't bet the wick.", e:"A wick through a level is often a stop hunt. A close through it is the actual break.", a:"close",
+        ch:[["wick","The wick"],["close","The close"]],
+        cs:[{h:16,b:48,k:10,side:"bull"},{h:22,b:72,k:12,side:"bull",hi:1}] },
+      { k:"Beat 5 · Break or fake", t:"Did they break the floor?", s:"Gold line is the floor. The wick punched through. The close came back above. That is a fake.", e:"Wait for the close. A wick through the gate is a fight, not a decision.", a:"fake",
+        ch:[["break","Break"],["fake","Fake"]], line:1,
+        cs:[{h:12,b:36,k:8,side:"bear"},{h:10,b:24,k:50,side:"bull",hi:1}] },
+      { k:"Beat 6 · Break or fake", t:"This time — break or fake?", s:"Same gold floor. This close stayed through it. That is a break.", e:"Body. Wick. Close. The Ring will test those three.", a:"break",
+        ch:[["break","Break"],["fake","Fake"]], line:1,
+        cs:[{h:12,b:40,k:8,side:"bear"},{h:8,b:70,k:14,side:"bear",hi:1}] },
+    ];
+    let i = 0, phase = "show";
+    const el = document.getElementById("app");
+    function draw(cs, line) {
+      return `<div class="stage"><div class="row">${cs.map(c => {
+        const op = c.hi ? 1 : .45;
+        return `<div class="c" style="opacity:${op}"><div class="wick" style="height:${c.h}px"></div><div class="body ${c.side}" style="height:${c.b}px"></div><div class="wick" style="height:${c.k}px"></div></div>`;
+      }).join("")}</div>${line ? '<div class="line"></div>' : ""}</div>`;
+    }
+    function render() {
+      if (phase === "done") {
+        el.innerHTML = `<div class="done"><p class="kicker">First kata</p><h1>White belt</h1><p class="say">Body is who won. Wick is who got shoved. Close is the scoreboard. Deploy Candle Dojo and set DOJO_URL on this box to open The Ring, Flash, Call It, and Break inside this tab.</p><p>Until then you already have the three laws. The Chair still owns the hour. This room does not lock.</p></div>`;
+        return;
+      }
+      const b = BEATS[i];
+      let extra = "";
+      if (phase === "ok") extra = `<p class="ok">${b.e}</p>`;
+      if (phase === "retry") extra = `<p class="retry">Look again. ${b.e}</p>`;
+      let actions = "";
+      if (phase === "show") actions = `<button class="primary" id="go">I see it</button>`;
+      else if (phase === "ok") actions = `<button class="primary" id="go">${i+1>=BEATS.length ? "Cinch the belt" : "Next beat"}</button>`;
+      else if (phase === "retry") actions = `<button class="ghost" id="go">Try again</button>`;
+      else actions = `<div class="btns">${b.ch.map(([id,l]) => `<button data-id="${id}">${l}</button>`).join("")}</div>`;
+      el.innerHTML = `<p class="kicker">${b.k} · ${i+1}/${BEATS.length}</p><h1>${b.t}</h1><p class="say">${b.s}</p>${extra}${draw(b.cs, b.line)}${actions}`;
+      el.querySelectorAll("button").forEach(btn => btn.onclick = () => {
+        if (phase === "show") { phase = "ask"; render(); return; }
+        if (phase === "ok") { if (i+1 >= BEATS.length) { phase = "done"; } else { i++; phase = "show"; } render(); return; }
+        if (phase === "retry") { phase = "ask"; render(); return; }
+        phase = btn.dataset.id === b.a ? "ok" : "retry";
+        render();
+      });
+    }
+    render();
+  </script>
+</body>
+</html>

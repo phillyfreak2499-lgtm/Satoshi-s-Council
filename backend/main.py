@@ -1263,6 +1263,30 @@ async def follower_audit(request: Request, limit: int = 80):
 
 
 
+@app.get("/dojo-frame")
+@app.get("/dojo-frame/")
+async def dojo_frame():
+    """Dojo tab iframe. If DOJO_URL is set, wrap the live Candle Dojo. Else teach-first gate."""
+    from fastapi.responses import HTMLResponse
+    url = (os.environ.get("DOJO_URL") or "").strip().rstrip("/")
+    if url:
+        safe = url.replace("&", "&").replace('"', "")
+        html = (
+            "<!doctype html><html lang=\"en\"><head><meta charset=utf-8>"
+            "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
+            "<title>Dojo</title>"
+            "<style>html,body,iframe{margin:0;height:100%;width:100%;background:#02040a;border:0}</style>"
+            "</head><body>"
+            f'<iframe src="{safe}/" title="Candle Dojo" allow="autoplay"></iframe>'
+            "</body></html>"
+        )
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    gate = STATIC_DIR / "dojo-gate.html"
+    if gate.is_file():
+        return FileResponse(gate, media_type="text/html", headers={"Cache-Control": "no-store"})
+    return HTMLResponse("<p>Set DOJO_URL to your Candle Dojo origin.</p>", status_code=200)
+
+
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def api_unknown(rest: str):
     """Unknown /api/* must stay JSON. A miss must never fall through to index.html."""
