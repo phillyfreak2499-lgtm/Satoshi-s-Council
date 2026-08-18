@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Satoshi’s Council – Research Desk</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body >
+
+  <!-- Startup gate: Tutorial or Summon -->
+  <div id="app">
+    <div class="floor-hint" id="floorHint">FLOOR · ESC or TABLE to exit</div>
+    <div id="ztWatermark" class="zt-watermark" aria-hidden="true"></div>
+    <div id="huddleBanner" class="huddle-banner" role="status" aria-live="polite"></div>
+    <header>
+      <div class="logo">
+        <span class="glyph">⚔</span>
+        <span class="title">SATOSHI’S COUNCIL</span>
+        <span class="tagline" style="font-size:11px; opacity:0.75; letter-spacing:0.5px; margin-left:10px;">Research Desk · Paper-first · Confluence required</span>
+        <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
+      </div>
+      <div class="controls">
+        <div id="huddleBadge" class="huddle-badge" title="Nightly 3–4 AM CT cool-down review">
+          <span class="huddle-label">HUDDLE</span>
+          <span id="huddleStatus" class="huddle-status">—</span>
+        </div>
+        <div id="accuracyBadge" class="accuracy-badge cold" title="Chair paper hit-rate (WAIT excluded)">
+          <div class="acc-col">
+            <span class="acc-label">PAPER</span>
+            <span id="accuracyPct" class="acc-pct">—</span>
+          </div>
+          <div class="acc-col acc-col-right">
+            <span id="accuracyFrac" class="acc-frac">0 / 0</span>
+            <span id="accuracyDetail" class="acc-detail">0✓ · 0✗</span>
+          </div>
+        </div>
+        <div id="lawBadge" class="law-badge" title="Process enforcer">
+          <span class="law-label">LAW</span>
+          <span id="lawStatus" class="law-status">OK</span>
+        </div>
+        <div class="mode-tabs" role="tablist" aria-label="View mode">
+          <button id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — table only">Floor</button>
+          <button id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
+          <button id="tabDashboard" class="mode-tab" data-mode="dashboard" title="Seat cards">Dashboard</button>
+          <button id="tabBots" class="mode-tab" data-mode="bots" title="What each bot does">Bots</button>
+          <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Live ranks & hit counts">Ranks</button>
+          <button id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+          <button id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
+          <button id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
+        </div>
+        <button type="button" id="ztLogoBtn" class="zt-logo-btn" title="Play cinematic (also unlocks after 5 wins in a row)" aria-label="Play cinematic">
+          <img src="/council-mark.png" alt="" width="28" height="28" />
+        </button>
+        <button id="beastBadge" class="beast-badge" title="Toggle BEAST MODE" aria-pressed="true">BEAST</button>
+        <button id="soundToggle" title="Mute / unmute market open bell" aria-pressed="false">🔔 Bell</button>
+        <span id="statusDot" class="dot"></span>
+        <span id="lastUpdate">—</span>
+      </div>
+    </header>
+
+    <main id="mainTable">
+      <!-- LEFT: Hit-rate + Call log + Debate -->
+      <!-- debate panel removed -->
+
+      <!-- CENTER: Round table -->
+      <div id="tableStage" class="table-stage">
+        <canvas id="roundtable" width="1100" height="780"></canvas>
+        <div id="dashboardOverlay" class="hidden"></div>
+      </div>
+
+      <!-- RIGHT: Hierarchy ranks — bots climb toward Chair by being right -->
+      <aside id="hierarchyPanel" class="side-panel side-right" aria-label="Bot hierarchy">
+        <div class="panel-head">
+          <span class="panel-title">HIERARCHY</span>
+          <span class="panel-sub" id="hierarchyMeta">rank by record</span>
+        </div>
+        <div class="hierarchy-hint">Top of the ring = rank #1 · closer seats still carry more listen weight. Wrong streak → muted until they earn back.</div>
+        <div id="hierarchyList" class="hierarchy-list" aria-live="polite"></div>
+        <button type="button" id="openChartsBtn" class="open-charts-btn" title="Open full chart wall">📊 Full Charts</button>
+      </aside>
+</main>
+
+    
+    <!-- Settings: BEAST MODE + system -->
+    <section id="settingsView" class="info-view hidden" aria-label="System settings">
+      <div class="settings-panel">
+        <header class="settings-head">
+          <h2>SYSTEM</h2>
+          <p class="settings-sub">Per-machine profile. BEAST cranks refresh, dual-spot, and premium HUD.</p>
+        </header>
+        <div class="beast-card" id="beastCard">
+          <div class="beast-card-top">
+            <div>
+              <div class="beast-title">BEAST MODE</div>
+              <div class="beast-blurb" id="beastBlurb">Max refresh · dual spot · parallel seats · premium HUD</div>
+            </div>
+            <label class="beast-switch" title="Toggle BEAST MODE">
+              <input type="checkbox" id="beastToggle" checked />
+              <span class="beast-slider"></span>
+            </label>
+          </div>
+          <div class="beast-stats" id="beastStats"></div>
+        </div>
+        <div class="settings-row-extra">
+          <label class="set-check"><input type="checkbox" id="callSfxToggle" checked /> Call voice (UP / DOWN / SWAP)</label>
+          <label class="set-check"><input type="checkbox" id="teamLoopToggle" checked /> Team loops on table</label>
+        </div>
+        <div class="settings-grid">
+          <div class="set-row"><span>Analysis cycle</span><strong id="setInterval">—</strong></div>
+          <div class="set-row"><span>Hot cycle</span><strong id="setHot">—</strong></div>
+          <div class="set-row"><span>Flat cycle</span><strong id="setFlat">—</strong></div>
+          <div class="set-row"><span>Dual spot</span><strong id="setDual">—</strong></div>
+          <div class="set-row"><span>Parallel agents</span><strong id="setParallel">—</strong></div>
+          <div class="set-row"><span>UI poll</span><strong id="setPoll">—</strong></div>
+        </div>
+        
+        <div class="brain-card" id="brainCard">
+          <div class="beast-title">LEARNING BRAIN</div>
+          <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
+          <div class="brain-actions">
+            <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="/api/brain/export" download>Download brain.json</a>
+            <label class="gate-btn gate-btn-ghost brain-upload">
+              Upload brain.json
+              <input type="file" id="brainFile" accept="application/json,.json" hidden />
+            </label>
+          </div>
+          <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
+        </div>
+
+        <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
+      </div>
+    </section>
+
+
+
+    <!-- Bots tab: learn what each specialist does -->
+    <section id="botsView" class="info-view hidden" aria-label="Bot field guide">
+      <div class="info-hero">
+        <h2>BOT FIELD GUIDE</h2>
+        <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
+      </div>
+      <div id="botsGrid" class="bots-grid"></div>
+    </section>
+
+    <!-- Ranks tab: hierarchy + hit counts + learning phase -->
+    <section id="ranksView" class="info-view hidden" aria-label="Rank board">
+      <div class="info-hero">
+        <h2>RANK BOARD</h2>
+        <p id="ranksPhase">Learning phase: collecting samples — Chair starts loose, then gets pickier as the lifetime log fills in.</p>
+      </div>
+      <div class="ranks-legend">
+        <span><b>#</b> rank</span>
+        <span><b>HIT</b> right calls</span>
+        <span><b>MISS</b> wrong calls</span>
+        <span><b>WR%</b> win rate</span>
+        <span><b>LISTEN</b> how hard Chair hears them</span>
+        <span><b>WT</b> adaptive weight</span>
+      </div>
+      <div id="ranksTable" class="ranks-table" role="table"></div>
+      <div class="ranks-notes">
+        <div class="panel-head"><span class="panel-title">LEARNING NOTES</span></div>
+        <ul id="learnNotes" class="learn-notes"></ul>
+      </div>
+    </section>
+
+    <!-- Paper trading journal -->
+    <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
+      <div class="info-hero">
+        <h2>PAPER TRACKER</h2>
+        <p>Manual paper log — your decisions, not the Chair. Enter side, stake, and result. Totals use <b>America/Chicago</b>. Paper first.</p>
+      </div>
+
+      <div class="paper-entry" id="paperEntry">
+        <div class="pe-sides">
+          <button type="button" class="pe-side up active" data-side="UP" id="peSideUp">UP</button>
+          <button type="button" class="pe-side down" data-side="DOWN" id="peSideDown">DOWN</button>
+        </div>
+        <div class="pe-fields">
+          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" /></label>
+          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="0" placeholder="0 if lost" /></label>
+          <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
+        </div>
+        <div class="pe-preview">P&amp;L: <strong id="pePnl">-$25.00</strong></div>
+        <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
+      </div>
+
+      <div class="paper-summary" id="paperSummary"></div>
+      <div class="paper-cal-tabs">
+        <button type="button" class="paper-cal-btn active" data-cal="daily">Daily</button>
+        <button type="button" class="paper-cal-btn" data-cal="weekly">Weekly</button>
+        <button type="button" class="paper-cal-btn" data-cal="monthly">Monthly</button>
+        <button type="button" class="paper-cal-btn" data-cal="yearly">Yearly</button>
+      </div>
+      <div id="paperCalendar" class="paper-calendar"></div>
+      <div class="panel-head" style="margin-top:16px"><span class="panel-title">TRADES</span><span class="panel-sub" id="paperCallMeta">—</span></div>
+      <div id="paperCalls" class="paper-calls"></div>
+    </section>
+
+    <!-- Charts tab: full wall of useful views -->
+    <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
+      <div class="charts-grid">
+        <article class="chart-card chart-wide">
+          <header class="chart-card-head"><span>BTC · 1m</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
+          <canvas id="chartBtc"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>VOLUME</span><span class="chart-meta" id="chartVolMeta">—</span></header>
+          <canvas id="chartVolume"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>MARKET SKEW</span><span class="chart-meta" id="chartOddsMeta">—</span></header>
+          <canvas id="chartOdds"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>VS TARGET</span><span class="chart-meta" id="chartDeltaMeta">—</span></header>
+          <canvas id="chartDelta"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
+          <canvas id="chartFunding"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">—</span></header>
+          <canvas id="chartTape"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>HIT RATE</span><span class="chart-meta" id="chartAccMeta">—</span></header>
+          <canvas id="chartAccuracy"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>SEAT WEIGHTS</span><span class="chart-meta">adaptive</span></header>
+          <canvas id="chartWeights"></canvas>
+        </article>
+      </div>
+    </section>
+
+    <div id="colorTally" class="color-tally" aria-label="Bot color counts">
+      <div class="ct-title">FLOOR</div>
+      <div class="ct-row"><span class="ct-dot up"></span><span class="ct-lab">UP</span><b id="ctUp">0</b></div>
+      <div class="ct-row"><span class="ct-dot down"></span><span class="ct-lab">DOWN</span><b id="ctDown">0</b></div>
+      <div class="ct-row"><span class="ct-dot wait"></span><span class="ct-lab">WAIT</span><b id="ctWait">0</b></div>
+      <div class="ct-quorum" id="ctQuorum" title="Historical winning quorum size">Q —</div>
+    </div>
+    <footer>
+      <div id="finalDecision">
+        <span class="label">COUNCIL</span>
+        <span id="decisionDir" class="dir WAIT">WAIT</span>
+        <span id="decisionConf">—</span>
+        <span id="decisionSummary"></span>
+      </div>
+      <div id="marketStrip">
+        <span>BTC <b id="btcPrice">—</b></span>
+        <span class="odds-live">UP <b id="liveUpPct">—</b></span>
+        <span class="odds-live down">DOWN <b id="liveDownPct">—</b></span>
+        <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
+        <span>Funding <b id="funding">—</b></span>
+        <span>Market <b id="kalshiTicker">—</b></span>
+        <span class="acc-strip">Record <b id="accuracyStrip">0/0 · —</b></span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/roundtable.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<div id="fgGate" class="admin-gate hidden" role="dialog" aria-modal="true" aria-label="Additional locks">
+  <div class="admin-card fg-card">
+    <div class="admin-title">LOCKS</div>
+    <div class="admin-sub">Three locks, in order. Desk code and Settings unlock are not enough.</div>
+    <label class="fg-lock-label" for="fgPw1">Password 1
+      <input type="password" id="fgPw1" class="password-input" placeholder="Password 1" autocomplete="off" />
+    </label>
+    <label class="fg-lock-label" for="fgPw2">Password 2
+      <input type="password" id="fgPw2" class="password-input" placeholder="Password 2" autocomplete="off" disabled />
+    </label>
+    <label class="fg-lock-label" for="fgPw3">Password 3
+      <input type="password" id="fgPw3" class="password-input" placeholder="Password 3" autocomplete="off" disabled />
+    </label>
+    <div class="admin-actions">
+      <button type="button" id="fgCancel" class="gate-btn gate-btn-ghost">Cancel</button>
+      <button type="button" id="fgSubmit" class="gate-btn gate-btn-summon">Unlock</button>
+    </div>
+    <p id="fgError" class="password-error hidden">Wrong password</p>
+  </div>
+</div>
+<button type="button" id="deskExtBtn" class="mode-tab desk-ext-btn" title="Additional locks">⚿</button>

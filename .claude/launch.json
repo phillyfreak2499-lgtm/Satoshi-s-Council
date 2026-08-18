@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "council",
+      "runtimeExecutable": "C:\\Users\\phill\\AppData\\Local\\Temp\\claude\\C--Users-phill-Downloads-Satoshi-Council-Updated-Satoshi-s-Council-main\\a550adce-f682-4dfa-98f6-08bd48b2adfe\\scratchpad\\venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8011"],
+      "port": 8011
+    }
+  ]
+}
