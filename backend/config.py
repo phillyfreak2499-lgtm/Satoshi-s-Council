@@ -235,8 +235,8 @@ class Settings(BaseSettings):
     PREFERRED_ENTRY_ODDS_MAX: float = 65.0
     NEVER_LOCK_CENTS: float = 99.0           # never lock ≥99¢ / one-sided 100¢
     # Next-layer edge gates
-    ANTI_CHASE_PTS: float = 4.0          # if side mid jumped this many ¢ recently → WAIT
-    ANTI_CHASE_LOOKBACK_S: float = 180.0
+    ANTI_CHASE_PTS: float = 3.0          # if side mid jumped this many ¢ recently → WAIT (don't lock the jump)
+    ANTI_CHASE_LOOKBACK_S: float = 90.0
     MAX_SPREAD_CENTS: float = 5.0        # no ENTRY if bid-ask wider than this
     TWO_STAGE_HOLD_S: float = 12.0       # lean must hold this long before hard LOCK
     DUAL_CORRELATION_VETO: bool = True   # demote weaker table when both lean same weakly

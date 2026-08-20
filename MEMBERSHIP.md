@@ -1,67 +1,45 @@
-# Membership & Access Structure
+# Membership
 
-Simple, low-friction tiers designed to start recovering sunk cost while keeping the barrier to entry low.
+Two doors. Same legal oath on both.
 
----
+## Free — Stream
 
-## Free Access
+What’s on the site without paying:
 
-**What you get**
-- Limited or delayed Round Table view
-- Basic overall decision and summary
-- Public process / accuracy statistics
-- Ability to see the system and feel the difference
+- **Bitcoin Stream** — Satoshi + five seats. TV on the counter.
+- Chair first. Polaroid after the lock. No live Kalshi ¢ until he speaks.
+- **Classroom** — 18 short lessons (why Bitcoin exists, the 15-minute window, WAIT is a position).
+- **Candle Dojo** — first kata, Green Fist vs Red Fade, fighter files.
+- Rolling training ticker. Same slang as the Dojo.
+- Hit rates never on Floor or Stream.
 
-**Goal**  
-Let people experience the Council without friction. Convert the ones who want the full live debate, rankings, and history.
+## Council Member — $25 / month
 
----
+What you get when you join:
 
-## Council Member — $24 / month
+- **ETH** — Vitalik’s four: WICK, PULSE, VEL, CHEAP
+- **DWF** — Raijin, Dallas daily high
+- **ATS** — Ares, one sports ticket
+- **ORA** — Oracle CRT
+- Full **Table**, **Seats**, **Paper tape**, **Charts** — the desk you sit down at
+- Same paper rules. Same Chair. Same slang.
 
-**What you get**
-- Full live Bitcoin Round Table
-- Complete agent reasoning and rankings
-- Full debate log
-- Historical decisions and paper-tracking view
-- Priority access to doctrine and logic updates
-- Ability to follow the process in real time
+Recommended price: **$25 USD / month**.  
+Annual later (~2 months free) if people stay.
 
-**Recommended starting price:** $24 USD / month  
-(Early supporters can be offered annual pricing at a discount.)
+## The oath (always)
 
----
+- PAPER ONLY. Ink on the slate — not cash on the wire.
+- NOT FINANCIAL ADVICE. The Chair talks. You still own the click.
+- 18+ · grown seats only. No kids at this table.
+- NOT KALSHI. This desk is not Kalshi.
+- YOU CAN LOSE THE FULL STAKE. The whole chip can vanish.
+- NO PAST SCORE IS A PROMISE. Last hour does not own the next.
 
-## Early Supporter / Annual Options
+This is a research co-pilot. It does not place real orders. Follower OFF. Live OFF.
 
-- **Annual**: ~$199–229 / year (roughly 2 months free)
-- **Lifetime** (optional, limited): Higher one-time fee while the system is early and still evolving
+## Implementation
 
-These options help with cash recovery and reward people who support the pivot early.
-
----
-
-## Bundle Option
-
-**Council Member + The Council Method playbook**
-
-Offer a combined price (example: first month + playbook, or annual + playbook) so the digital product and the live tool reinforce each other.
-
----
-
-## Implementation Notes
-
-- Use Stripe (or equivalent) for simplicity.
-- Start with manual or lightweight access control if needed (password tiers, invite codes, or simple member flag).
-- Do not over-build feature gating at launch. The main value is the full live Round Table + history + reasoning.
-- Free tier should still feel useful so visitors understand what they are buying.
-
----
-
-## Pricing Philosophy
-
-- Low enough that a serious researcher will try it
-- High enough that it begins to offset hosting, domain, and development costs
-- Transparent and simple — no dark patterns or complex tier ladders at the start
-
-Adjust after real usage data. The first goal is recovery and validation, not maximum extraction.
+- Stripe (or equivalent) when money is real.
+- Sandbox join flag is `localStorage.council_joined` until Stripe is wired.
+- Do not hide Classroom or Dojo behind the paywall. Those convert the new guy.

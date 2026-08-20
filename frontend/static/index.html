@@ -16,6 +16,7 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/campus-tab.css" />
   <link rel="preload" as="image" href="/login-council.jpg" />
   <link rel="preload" as="image" href="/static/bots/raijin-chair.png?v=280a18fb49" />
   <link rel="preload" as="image" href="/static/ares-wait.png?v=280a18fb49" />
@@ -55,7 +56,7 @@
     <div class="password-card">
       <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
-      <div class="password-sub">Password-protected private desk · Enter access code. Then seal the pact.</div>
+      <div class="password-sub">Preview desk · code <b>council</b> · then Summon</div>
       <input type="password" id="passwordInput" class="password-input" placeholder="Desk code" autocomplete="current-password" />
       <ul class="gate-oath" id="gateOath">
         <li>PAPER ONLY. Ink on the slate — not cash on the wire.</li>
@@ -81,13 +82,22 @@
   <!-- First-login choice: Tutorial or Summon. Returning users skip this. -->
   <div id="summonGate" class="summon-gate hidden" aria-label="First visit">
     <canvas id="gateFog" class="gate-fog"></canvas>
+    <div class="gate-vignette" aria-hidden="true"></div>
     <div id="gateInner" class="gate-inner">
       <img class="gate-mark" src="/council-mark.png" alt="" width="88" height="88" />
-      <div class="gate-brand">SATOSHI’S COUNCIL</div>
+      <div class="gate-kicker">THE MAT IS OPEN</div>
+      <h1 class="gate-brand">SATOSHI’S<br/>COUNCIL</h1>
+      <p class="gate-tagline">Learn Bitcoin. Watch the Chair. Paper first.</p>
+      <ul class="gate-creed">
+        <li>WAIT is a call — permission to do nothing</li>
+        <li>Wicks are the fight. The close is the scoreboard</li>
+        <li>The Chair speaks before Kalshi jumps</li>
+      </ul>
       <div class="gate-actions">
-        <button type="button" id="btnTutorial" class="gate-btn gate-btn-ghost">Tutorial</button>
         <button type="button" id="btnSummon" class="gate-btn gate-btn-summon">Summon the Council</button>
       </div>
+      <button type="button" id="btnTutorial" class="gate-skip">Walkthrough anytime — press ?</button>
+      <p class="gate-hint">TV on the counter · $25 · Paper only · Never chase chalk</p>
     </div>
     <div id="summonStatus" class="summon-status hidden" aria-live="polite">
       <p id="summonLine"></p>
@@ -95,6 +105,37 @@
     <div id="gateTutorial" class="gate-tutorial hidden"></div>
   </div>
 
+  <div id="joinGate" class="join-gate hidden" role="dialog" aria-modal="true" aria-label="Join the desk">
+    <div class="join-card">
+      <div class="gate-kicker">WHAT’S ON THE SITE</div>
+      <h2>FREE · STREAM</h2>
+      <ul class="join-col">
+        <li>Bitcoin Stream — Satoshi + five seats. TV on the counter.</li>
+        <li>Chair first. Polaroid after the lock. No live ¢ until he speaks.</li>
+        <li>Classroom — 18 short lessons. Why Bitcoin exists. WAIT is a position.</li>
+        <li>Candle Dojo — first kata, Green Fist vs Red Fade, Vitalik’s files.</li>
+        <li>Word of the Hour slang on the ticker. Paper only.</li>
+      </ul>
+      <h2 class="join-paid">$25 / MONTH · THE FLOOR</h2>
+      <ul class="join-col">
+        <li>ETH — Vitalik’s four: WICK, PULSE, VEL, CHEAP</li>
+        <li>DWF — Raijin, Dallas daily high</li>
+        <li>ATS — Ares, one sports ticket</li>
+        <li>ORA — Oracle CRT</li>
+        <li>Full Table, Seats, Paper tape, Charts — the desk you sit down at</li>
+      </ul>
+      <ul class="gate-oath" id="joinOath">
+        <li>PAPER ONLY. Ink on the slate — not cash on the wire.</li>
+        <li>NOT FINANCIAL ADVICE. The Chair talks. You still own the click.</li>
+        <li>18+ · grown seats only. No kids at this table.</li>
+        <li>NOT KALSHI. This desk is not Kalshi.</li>
+        <li>YOU CAN LOSE THE FULL STAKE. The whole chip can vanish.</li>
+        <li>NO PAST SCORE IS A PROMISE. Last hour does not own the next.</li>
+      </ul>
+      <button type="button" id="joinEnter" class="gate-btn gate-btn-summon">I’m in · $25 · paper</button>
+      <button type="button" id="joinStay" class="gate-skip">Stay on Bitcoin Stream · free</button>
+    </div>
+  </div>
   <div id="coachOverlay" class="coach-overlay hidden" hidden aria-hidden="true">
     <div id="coachHole" class="coach-hole" aria-hidden="true"></div>
     <aside id="coachCard" class="coach-card" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
@@ -116,6 +157,55 @@
     <div id="ztWatermark" class="zt-watermark" aria-hidden="true"><img src="/council-mark.png" alt="" /></div>
     <div class="floor-hint" id="floorHint">FLOOR</div>
     <button type="button" id="floorExitBtn" class="floor-exit-btn" hidden>TABLE</button>
+    <div id="floorChairToggles" class="floor-chair-toggles" hidden role="group" aria-label="Floor chairs">
+      <label class="floor-chair-tog" title="Satoshi on the Floor">
+        <input type="checkbox" data-floor-chair="bitcoin" checked />
+        <span>SATOSHI</span>
+      </label>
+      <label class="floor-chair-tog" title="Vitalik on the Floor">
+        <input type="checkbox" data-floor-chair="ethereum" checked />
+        <span>VITALIK</span>
+      </label>
+      <label class="floor-chair-tog" title="Ares on the Floor">
+        <input type="checkbox" data-floor-chair="ats" checked />
+        <span>ARES</span>
+      </label>
+      <label class="floor-chair-tog" title="Raijin on the Floor">
+        <input type="checkbox" data-floor-chair="front" checked />
+        <span>RAIJIN</span>
+      </label>
+      <label class="floor-chair-tog" title="Oracle on the Floor">
+        <input type="checkbox" data-floor-chair="oracle" checked />
+        <span>ORACLE</span>
+      </label>
+    </div>
+    <div id="floorLeaderClocks" class="floor-leader-clocks" hidden aria-label="Per-leader window clocks">
+      <div class="floor-leader-clock" data-floor-clock="bitcoin" hidden>
+        <span class="flc-name">SATOSHI</span>
+        <span class="flc-win">1H</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="ethereum" hidden>
+        <span class="flc-name">VITALIK</span>
+        <span class="flc-win">1H</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="front" hidden>
+        <span class="flc-name">RAIJIN</span>
+        <span class="flc-win">DFW</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="ats" hidden>
+        <span class="flc-name">ARES</span>
+        <span class="flc-win">KICK</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+      <div class="floor-leader-clock" data-floor-clock="oracle" hidden>
+        <span class="flc-name">ORACLE</span>
+        <span class="flc-win">WATCH</span>
+        <span class="flc-time" data-flc-time>--</span>
+      </div>
+    </div>
     <button type="button" id="phoneBackBtn" class="phone-back-btn" hidden aria-label="Back to Floor">← FLOOR</button>
     <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden aria-label="Start Seat Storm">KILL TIME / PLAY</button>
     <div id="seatStormPlay" class="seat-storm-play hidden" hidden aria-hidden="true">
@@ -130,6 +220,15 @@
       <div id="ssRing" class="ss-ring" role="group" aria-label="Seat Storm ring"></div>
       <p id="ssStatus" class="ss-status">Tap the lit seat</p>
     </div>
+    <div id="rivalryStrip" class="rivalry-strip" hidden aria-label="Paper book match · BTC sized locks vs ETH shadow picks" title="BTC sized locks vs ETH shadow picks · finish-only · reset in Settings">
+      <span class="rival-tag">PAPER</span>
+      <span class="rival-tag">BOOKS</span>
+      <span id="rivalBtc">BTC 0–0</span>
+      <b class="rival-vs">VS</b>
+      <span id="rivalEth">0–0 ETH</span>
+      <span id="rivalLead" class="rival-lead">BTC 0 · ETH 0</span>
+      <span id="rivalTrash" class="rival-trash"></span>
+    </div>
     <div id="hourSlam" class="hour-slam" hidden aria-hidden="true"></div>
     <div id="closeRecap" class="close-recap hidden" hidden aria-hidden="true" role="dialog" aria-label="Hour close">
       <div class="close-recap-card">
@@ -141,7 +240,7 @@
       </div>
     </div>
     <div id="healthStrip" class="health-strip" hidden aria-label="Feed health">
-      <span id="healthKalshi" class="health-dot" data-feed="kalshi">Market</span>
+      <span id="healthKalshi" class="health-dot" data-feed="kalshi">Kalshi</span>
       <span id="healthSpot" class="health-dot" data-feed="spot">Spot</span>
       <span id="healthGlass" class="health-dot" data-feed="coinglass">Glass</span>
       <span id="healthAge" class="health-age">—</span>
@@ -170,22 +269,15 @@
             <span class="huddle-label">HUDDLE</span>
             <span id="huddleStatus" class="huddle-status">—</span>
           </div>
-          <div id="accuracyBadge" class="accuracy-badge cold acc-locked" hidden title="CALL ACCURACY is the honest headline — of settled directional calls, how often BTC actually moved the called way (Accumulate → up, Reduce → down) from the moment of the call. It ignores the Kalshi strike, so near-decided 'chalk' windows can't inflate it. P&L (right) is the realized paper profit per 15m window. Both build as new calls settle.">
-            <div class="acc-col acc-move-lead" title="CALL / MOVE accuracy — did BTC move the called way (buy → up, sell → down) from the moment of the call, independent of the Kalshi strike. Chalk-immune: a 99¢ near-decided window can't game it. Builds as new calls settle.">
-              <span class="acc-label">CALL ACCURACY</span>
-              <span id="moveAccPct" class="acc-pct move">—</span>
-              <span id="moveAccFrac" class="acc-frac">0 / 0</span>
+          <div id="accuracyBadge" class="accuracy-badge cold" title="Finish-only hit rate per table (WAIT excluded). Resets in Settings.">
+            <div class="acc-col">
+              <span class="acc-label">HIT RATE</span>
+              <span id="accuracyPct" class="acc-pct">—</span>
             </div>
-            <div class="acc-col acc-col-right acc-secondary" title="P&L — of the 15m windows the desk actually traded (paper), the share that closed net profitable. The detail line shows the win/loss split and net paper P&L.">
-              <span class="acc-label">P&amp;L</span>
-              <span id="accuracyPct" class="acc-pct acc-pct-sec">—</span>
+            <div class="acc-col acc-col-right">
               <span id="accuracyFrac" class="acc-frac">0 / 0</span>
               <span id="accuracyDetail" class="acc-detail">0✓ · 0✗</span>
             </div>
-          </div>
-          <div id="learnChip" class="learn-chip" title="The bots learn on the backend — re-ranking and re-weighting the desk from settled outcomes. Win/loss tallies live in the Calibration and Backtest research tabs, not on the desk face.">
-            <span class="lc-dot" aria-hidden="true"></span>
-            <span>MODEL <b id="learnState">LEARNING</b></span>
           </div>
           <div id="lawBadge" class="law-badge" title="LAW enforcer">
             <span class="law-label">LAW</span>
@@ -199,75 +291,64 @@
           <button type="button" id="stillToggle" title="STILL — cut orbit and heavy FX for slow connections" aria-pressed="false">STILL</button>
           <span id="statusDot" class="dot"></span>
           <span id="lastUpdate">—</span>
-          <button type="button" id="feedHealthPill" class="feed-health-pill" data-state="warming" title="Data feed health — click to open" aria-label="Data feed health">
-            <span class="fh-dot"></span><span id="feedHealthPillText">feeds —</span>
-          </button>
         </div>
       </div>
       <div class="mode-tabs-shell" id="modeTabsShell">
       <button type="button" id="modeTabsPrev" class="mode-tabs-arrow mode-tabs-prev" aria-label="Scroll tabs left">‹</button>
       <div id="modeTabs" class="mode-tabs" role="tablist" aria-label="View mode">
-        <!-- One Bitcoin desk. SATOSHI is the centre seat; the four debate
-             leaders (VITALIK / ARES / RAIJIN / ORACLE) live on the Round
-             Table and in the debate panel, not as switchable market tabs. -->
-        <button type="button" id="focusBtc" class="focus-tab focus-tab-center focus-active" title="SATOSHI — centre seat, final authority. The only seat that issues a call." aria-label="SATOSHI — centre seat, final authority" data-focus="bitcoin">SATOSHI<span class="focus-tab-mark" aria-hidden="true">★</span></button>
-        <span id="focusTableBadge" class="focus-table-badge" title="Dojo · research desk" aria-label="Satoshi · final authority">SATOSHI · DOJO</span>
-        <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table — the council in the room">Table</button>
-        <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — price, the council's call, and the bots">Floor</button>
+        <button type="button" id="focusBtc" class="focus-tab" title="Focus Bitcoin / Satoshi" aria-label="Focus Bitcoin / Satoshi" data-focus="bitcoin">BTC</button>
+        <button type="button" id="focusEth" class="focus-tab focus-active" title="Focus Ethereum / Vitalik" aria-label="Focus Ethereum / Vitalik" data-focus="ethereum">ETH</button>
+        <button type="button" id="focusFront" class="focus-tab" title="Focus Dallas Weather Forecast / Raijin" aria-label="Focus Dallas Weather Forecast / Raijin" data-focus="front">DWF</button>
+        <button type="button" id="focusAts" class="focus-tab" title="Focus ATS / Ares" aria-label="Focus ATS / Ares" data-focus="ats">ATS</button>
+        <button type="button" id="focusOra" class="focus-tab" title="Focus ORACLE / CRT" aria-label="Focus ORACLE / CRT" data-focus="oracle">ORA</button>
+        <span id="focusTableBadge" class="focus-table-badge" title="Focused table" aria-label="ETH · Vitalik">ETH · VITALIK</span>
+        <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — both tables">Floor</button>
+        <button type="button" id="tabStream" class="mode-tab" data-mode="stream" title="24/7 Bitcoin stream — Satoshi + five seats, Word of the Hour">Stream</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
+        <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table">Table</button>
         <button type="button" id="tabSeats" class="mode-tab" data-mode="seats" title="Same people — who they are, how they sit, the cards">Seats</button>
-        <button type="button" id="grpCalls" class="mode-tab mode-group" data-group="calls" title="The desk's live calls &amp; paper record — Calls, 15-min, Paper, Tape">Calls ▾</button>
-        <button type="button" id="grpResearch" class="mode-tab mode-group" data-group="research" title="Does the desk verify? — Calibration, Backtest, Health">Research ▾</button>
-        <button type="button" id="grpMarket" class="mode-tab mode-group" data-group="market" title="The market feeds — Book, News, Huddle">Market ▾</button>
-        <button type="button" id="tabDojo" class="mode-tab" data-mode="school" title="The Dojo — train the process, not the P&L.">Dojo</button>
+        <button type="button" id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+        <button type="button" id="tabCalls" class="mode-tab" data-mode="calls" title="Current Calls — live Chair board">Calls</button>
+        <button type="button" id="tabTape" class="mode-tab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
+        <button type="button" id="tabBook" class="mode-tab" data-mode="book" title="Live Kalshi depth">Book</button>
+        <button type="button" id="tabBrain" class="mode-tab" data-mode="brain" title="Last huddle recap">Brain</button>
+        <button type="button" id="tabNews" class="mode-tab" data-mode="news" title="Hour-moving prints and headlines">News</button>
+        <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">WIRE</button>
+        <button type="button" id="tabSchool" class="mode-tab" data-mode="school" title="Short Floor lessons — WAIT downtime">School</button>
+        <button type="button" id="tabSide" class="mode-tab" data-mode="side" hidden aria-hidden="true" title="Side Table — 15m paper arcade. Manual taps only.">Side</button>
+        <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden aria-hidden="true" title="THE FRONT — Dallas DFW weather council. Paper taps only.">Front</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
-        <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">Changes</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         <button type="button" id="btnHelp" class="mode-tab" title="Tutorial — how the Council works (? key)" aria-label="Open tutorial">?</button>
       </div>
       <button type="button" id="modeTabsNext" class="mode-tabs-arrow mode-tabs-next" aria-label="Scroll tabs right">›</button>
       </div>
-      <!-- Sub-tabs for the grouped primaries (Calls / Research / Market). Only the
-           active group's row shows. The buttons keep their original data-mode and
-           wiring — this only reorganises the bar, never the views. -->
-      <div id="modeSubtabs" class="mode-subtabs" role="tablist" aria-label="Sub-views" hidden>
-        <div class="mode-subrow" data-subrow="calls" hidden>
-          <button type="button" id="tabCalls" class="mode-tab mode-subtab" data-mode="calls" title="Current Calls — live Chair board">Calls</button>
-          <button type="button" id="tabKalshi" class="mode-tab mode-subtab" data-mode="kalshi" title="Kalshi 15-minute BTC up/down — the council's lean on the fast market. Paper research only.">15-min</button>
-          <button type="button" id="tabPaper" class="mode-tab mode-subtab" data-mode="paper" title="Paper trading log">Paper</button>
-          <button type="button" id="tabTape" class="mode-tab mode-subtab" data-mode="tape" title="Chair paper tape — last 24 hours">Tape</button>
-        </div>
-        <div class="mode-subrow" data-subrow="research" hidden>
-          <button type="button" id="tabCalib" class="mode-tab mode-subtab" data-mode="calib" title="Calibration — does the desk's confidence actually verify? Reliability, Brier, ECE.">Calibration</button>
-          <button type="button" id="tabBacktest" class="mode-tab mode-subtab" data-mode="backtest" title="Backtest — walk-forward over the desk's live record. Does the edge hold out-of-sample?">Backtest</button>
-          <button type="button" id="tabHealth" class="mode-tab mode-subtab" data-mode="health" title="Data health — which feeds are live, stale, or down, and how fresh.">Health</button>
-        </div>
-        <div class="mode-subrow" data-subrow="market" hidden>
-          <button type="button" id="tabBook" class="mode-tab mode-subtab" data-mode="book" title="Live Kalshi depth">Book</button>
-          <button type="button" id="tabNews" class="mode-tab mode-subtab" data-mode="news" title="Hour-moving prints and headlines">News</button>
-          <button type="button" id="tabBrain" class="mode-tab mode-subtab" data-mode="brain" title="Last huddle recap — how the council talked itself to the call">Huddle</button>
-        </div>
-      </div>
     </header>
 
     <main id="mainTable">
-      <!-- LEFT: window clock + desk discipline (process, patience). The
-           win/loss scoreboard is off the face by design — the bots still learn
-           on the backend, and the detailed record lives in the research tabs. -->
-      <aside id="lifetimePanel" class="side-panel side-left" aria-label="Desk discipline">
+      <!-- LEFT: window clock + LIFETIME. BTC 15m / ETH 1H. -->
+      <aside id="lifetimePanel" class="side-panel side-left" aria-label="Lifetime accuracy">
+        <div id="windowLed" class="led-float led-window" aria-label="Window countdown">
+          <div class="led-bezel">
+            <div class="led-label" id="ledWindowLabel">15M WINDOW</div>
+            <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+            <div class="led-foot" id="ledWindowSub">until close</div>
+            <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
+          </div>
+        </div>
         <div class="panel-head">
-          <span class="panel-title">DISCIPLINE</span>
-          <span class="panel-sub" id="callLogMeta">process over outcome</span>
+          <span class="panel-title">LIFETIME</span>
+          <span class="panel-sub" id="callLogMeta">0/0 · —</span>
         </div>
         <div id="hitRateCard" class="hit-rate-card" aria-live="polite">
           <div class="hr-big">
             <span id="hrPct" class="hr-pct">—</span>
-            <span class="hr-pct-label">right · lifetime</span>
+            <span class="hr-pct-label">lifetime</span>
           </div>
           <div class="hr-stats">
             <div class="hr-stat"><b id="hrCorrect">0</b><span>right</span></div>
             <div class="hr-stat"><b id="hrWrong">0</b><span>wrong</span></div>
-            <div class="hr-stat"><b id="hrTotal">0</b><span>directional</span></div>
+            <div class="hr-stat"><b id="hrTotal">0</b><span>calls</span></div>
             <div class="hr-stat"><b id="hrPending">0</b><span>open</span></div>
           </div>
         </div>
@@ -276,29 +357,14 @@
           <span>L50 <b id="hrL50">—</b></span>
           <span id="hrVerdict" class="hr-verdict">COLLECTING</span>
         </div>
-        <!-- Process quality sits beside the hit rate. A disciplined WAIT is
-             an outcome, not a gap in the record. -->
-        <div id="hrProcess" class="hr-path" title="Process quality — how often the confluence and veto rules were followed. WAIT decisions count here.">
-          <span class="hr-path-lab">CONFLUENCE</span>
-          <b id="hrConfluence">—</b>
+        <div id="hrPath" class="hr-path" title="Average peak Kalshi move on winning calls (peak − entry)">
+          <span class="hr-path-lab">AVG PATH</span>
+          <b id="hrPathAvg">—</b>
+          <span class="hr-path-sub">on wins</span>
           <span class="hr-path-sep">·</span>
-          <span class="hr-path-lab">PROCESS</span>
-          <b id="hrAdherence">—</b>
+          <span class="hr-path-lab">ENTRY</span>
+          <b id="hrEntryAvg">—</b>
         </div>
-        <div id="hrWait" class="hr-path" title="Standing down is a valid, disciplined outcome — not a missed trade.">
-          <span class="hr-path-lab">STAND DOWN</span>
-          <b id="hrWaitCount">—</b>
-          <span class="hr-path-sub">held — a valid outcome</span>
-        </div>
-        <div id="hrPatience" class="hr-path" title="Patience streak and, where the window resolved, calls a WAIT saved.">
-          <span class="hr-path-lab">PATIENCE</span>
-          <b id="hrPatienceStreak">—</b>
-          <span class="hr-path-sep">·</span>
-          <span class="hr-path-lab">AVOIDED</span>
-          <b id="hrAvoided">—</b>
-          <span class="hr-path-sub" id="hrAvoidedSub">losses a stand-down saved</span>
-        </div>
-        <p class="desk-creed">Patience is a position.</p>
         <div id="lifetimeLogBlock" class="lifetime-log-block idle">
           <div class="panel-head panel-head-sub">
             <span class="panel-title">LIFETIME LOG</span>
@@ -306,62 +372,14 @@
           </div>
           <div id="callLog" class="call-log" aria-label="Lifetime graded window calls"></div>
         </div>
-
-        <!-- DEBATE — the four leaders feeding Satoshi. Always visible. -->
-        <div id="debatePanel" class="debate-panel" aria-label="Council debate summary">
-          <div class="panel-head">
-            <span class="panel-title">DEBATE</span>
-            <span class="panel-sub" id="debateAlignment">—</span>
-          </div>
-          <div id="debateVeto" class="debate-veto" hidden aria-live="polite"></div>
-          <div id="debateRows" class="debate-rows" aria-live="polite"></div>
-          <div id="debateDissent" class="debate-dissent" hidden aria-live="polite"></div>
-          <div class="debate-final" id="debateFinal" role="button" tabindex="0" title="Show the inputs behind this call">
-            <span class="debate-final-who">SATOSHI</span>
-            <span class="debate-final-call" id="debateFinalCall">Stand down</span>
-            <!-- The Chair's statement of record. Highest-authority line on the page. -->
-            <span class="debate-voice" id="debateVoice">The table has not spoken.</span>
-            <span class="debate-final-note" id="debateFinalNote">final authority</span>
-            <span class="debate-final-why">ⓘ why</span>
-          </div>
-          <div class="debate-creed">Satoshi locks only when the table earns it.</div>
-        </div>
       </aside>
 
       <!-- CENTER: Round table -->
 <div id="tableStage" class="table-stage">
         <canvas id="roundtable" width="1100" height="780" role="img" aria-label="Vitalik ETH table"></canvas>
-        <div id="callMarker" class="call-marker" data-call="wait" aria-live="polite" aria-label="Satoshi's current call">
-          <span class="cm-arrow" aria-hidden="true">■</span>
-          <span class="cm-body">
-            <span class="cm-lab">THE CALL</span>
-            <span class="cm-word">STAND DOWN</span>
-            <span class="cm-sub">no confluence</span>
-          </span>
-        </div>
-        <div id="floorSplit" class="floor-split" hidden aria-label="Floor read — the coin on the left, the council on the right">
-          <div class="fs-half fs-price">
-            <div class="fs-h"><span>WHAT THE COIN IS DOING</span><span id="fsSym">BTC · 15m</span></div>
-            <div class="fs-price-top">
-              <span id="fsPrice" class="fs-price-now">—</span>
-              <span id="fsChg" class="fs-price-chg">—</span>
-            </div>
-            <div class="fs-chart-wrap"><canvas id="fsChart" class="fs-chart" width="560" height="230"></canvas></div>
-            <div class="fs-price-foot" id="fsFoot">live price · last ~30 min</div>
-          </div>
-          <div class="fs-half fs-council">
-            <div class="fs-h"><span>WHAT THE COUNCIL SAYS</span><span id="fsAlign">—</span></div>
-            <div id="fsSat" class="fs-sat" data-call="wait">
-              <span class="fs-sat-arrow" aria-hidden="true">■</span>
-              <span class="fs-sat-body"><span class="fs-sat-word">STAND DOWN</span><span class="fs-sat-sub">SATOSHI · the final call</span></span>
-            </div>
-            <div id="fsLeaders" class="fs-leaders"></div>
-            <div id="fsVerdict" class="fs-verdict">Floor warming up…</div>
-            <div class="fs-grade" title="How often the desk's lean matched BTC's move ~60s later, over the last 30 minutes. The point of the desk: spot the direction before it happens.">
-              <span class="fs-grade-lab">CALLS AHEAD OF PRICE</span>
-              <span id="fsGradeVal" class="fs-grade-val">—</span>
-            </div>
-          </div>
+        <div id="deskLead" class="desk-lead hidden" aria-live="polite">
+          <span id="deskLeadKicker">WIND-UP</span>
+          <b id="deskLeadLine">Seats leaning. Chair sitting.</b>
         </div>
         <button type="button" id="seatSpinBtn" class="seat-spin-btn" hidden aria-pressed="true" title="Freeze seat orbit">SPIN</button>
         <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
@@ -374,19 +392,6 @@
           <div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div>
         </div>
         <div id="chairWhy" class="chair-why" aria-live="polite">WAIT · —</div>
-        <div id="chairWhyReason" class="chair-why-reason" hidden aria-live="polite"></div>
-        <div id="leanSparkBox" class="lean-spark-box" hidden aria-label="Floor lean vs BTC price, last 30 minutes">
-          <div class="lean-spark-head">
-            <span>LEAN vs BTC</span>
-            <span class="lean-spark-reads"><span id="leanSparkNow" class="lean-spark-now">—</span> <span id="priceSparkNow" class="lean-spark-now price">—</span></span>
-          </div>
-          <canvas id="leanSpark" class="lean-spark" width="220" height="60"></canvas>
-          <div class="lean-spark-foot"><span class="lsline lean"></span> floor lean · <span class="lsline price"></span> BTC price · last 30 min</div>
-          <div class="lean-grade" id="leanGrade" title="How often the floor's lean matched BTC's move ~60s later, over the last 30 minutes. A rough live gauge — the settled record is in the Calibration and Backtest tabs.">
-            <span class="lean-grade-lab">CALLS AHEAD OF PRICE</span>
-            <span class="lean-grade-val" id="leanGradeVal">—</span>
-          </div>
-        </div>
         <div id="atsWhy" class="ats-why" hidden aria-live="polite">
           <div id="atsWhyLine" class="ats-why-line">WHY · DARK · NO GAME ON THE TABLE</div>
           <div id="atsWhyStrip" class="ats-why-strip">LINE SIT · STEAM SIT · FADE SIT · HURT DARK · ICE DARK</div>
@@ -421,7 +426,7 @@
 
 <aside id="debatePanel" class="side-panel side-right signal-feed" aria-label="Table HUD">
         <section id="lockTapeCard" class="hud-card lock-tape-card" aria-label="Last locks tape">
-          <header class="hud-card-head"><span>RECENT CALLS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
           <ol id="lockTapeList" class="lock-tape-list" aria-live="polite">
             <li class="lock-tape-empty">No Chair lock this hour — waiting on Satoshi / Vitalik / Raijin / Ares</li>
           </ol>
@@ -429,6 +434,14 @@
         <section id="whyLockCard" class="hud-card why-lock-card hidden" aria-label="Why this lock">
           <header class="hud-card-head"><span>WHY THIS LOCK</span></header>
           <p id="whyLockLine" class="why-lock-line">—</p>
+        </section>
+        <section id="dualFightCard" class="hud-card dual-fight-card" aria-label="BTC versus ETH">
+          <header class="hud-card-head"><span>BTC · ETH</span><span class="hud-meta" id="dualFightMeta">—</span></header>
+          <div id="dualFightStrip" class="dual-fight-strip">
+            <span id="dualFightBtc">BTC —</span>
+            <span id="dualFightVs" class="dual-fight-vs">·</span>
+            <span id="dualFightEth">ETH —</span>
+          </div>
         </section>
         <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden aria-label="Start Seat Storm">START SEAT STORM</button>
         <div class="panel-head">
@@ -447,10 +460,8 @@
           <span class="panel-title">HIERARCHY</span>
           <span class="panel-sub" id="hierarchyMeta">rank by record</span>
         </div>
-        <div class="hierarchy-hint">Rank #1 sits closest and is heard hardest. Wrong streak → muted until they earn back. <b>SATOSHI is rank 0 and is never listed here</b> — the centre seat cannot be ranked, moved, or demoted.</div>
+        <div class="hierarchy-hint">Top of the ring = rank #1 · closer seats still carry more listen weight. Wrong streak → muted until they earn back.</div>
         <div id="hierarchyList" class="hierarchy-list" aria-live="polite"></div>
-        <div id="seatNotes" class="seat-notes" aria-live="polite" aria-label="Recent seat changes"></div>
-        <p class="desk-creed">Confluence over noise.</p>
       </aside>
 </main>
 
@@ -460,8 +471,46 @@
       <div class="settings-panel">
         <header class="settings-head">
           <h2>SYSTEM</h2>
-          <p class="settings-sub">Per-machine profile. BEAST cranks refresh, dual-spot, and premium HUD.</p>
+          <p class="settings-sub">Per-machine profile. Hit rate lives here — admin only. Never on Floor or Stream.</p>
         </header>
+        <div class="beast-card settings-card" id="microCard">
+          <div class="beast-title">MICRO-INTERACTIONS</div>
+          <p class="settings-sub">How the desk moves. Shrine, not carnival. Off if the OS asks for reduced motion.</p>
+          <ol class="micro-ol">
+            <li>Summon mark breathes. Title rises.</li>
+            <li>Tutorial hole + slide-in card.</li>
+            <li>Tabs lift. Gold underline.</li>
+            <li>HANDS — seats rise before the gavel.</li>
+            <li>Gavel thud + gold wash + spoken line.</li>
+            <li>Polaroid drops. Frozen ¢ never moves.</li>
+            <li>STAND DOWN slam. First WAIT honored.</li>
+            <li>Word of the Hour breathes. Ticker rolls.</li>
+            <li>Live Kalshi ¢ hidden on Stream until lock.</li>
+            <li>Buttons press in. Kata green/red. Paper pin.</li>
+          </ol>
+        </div>
+        <div class="beast-card settings-card" id="mondayPaperCard">
+          <div class="beast-title">MONDAY PAPER · $1,000</div>
+          <p class="settings-sub">Fake stack. Resets every Monday. Private — never on Floor or Stream. No wall leaderboard.</p>
+          <div class="hr-big"><span id="paperStackAmt" class="hr-pct">$1,000</span><span class="hr-pct-label">this week</span></div>
+          <label class="set-field">Journal (before the outcome)
+            <textarea id="paperJournalIn" rows="3" placeholder="Thesis · probability · size · invalidation"></textarea>
+          </label>
+          <button type="button" id="paperJournalSave" class="gate-btn gate-btn-ghost">Pin this note</button>
+          <div id="paperJournalLog" class="paper-journal-log"></div>
+        </div>
+        <div class="beast-card settings-card" id="trainingScoreCard">
+          <div class="beast-title">TRAINING SCORE · ADMIN</div>
+          <p class="settings-sub">Finish-only. Hidden on Floor / Table / Stream. Not a promise about the next hour.</p>
+          <div class="hr-big"><span id="setHrPct" class="hr-pct">—</span><span class="hr-pct-label">lifetime</span></div>
+          <div class="hr-stats">
+            <div class="hr-stat"><b id="setHrCorrect">0</b><span>right</span></div>
+            <div class="hr-stat"><b id="setHrWrong">0</b><span>wrong</span></div>
+            <div class="hr-stat"><b id="setHrTotal">0</b><span>calls</span></div>
+            <div class="hr-stat"><b id="setHrPending">0</b><span>open</span></div>
+          </div>
+          <p class="settings-foot" id="setHrLine">Unlock Settings to see graded calls.</p>
+        </div>
         <div class="beast-card" id="beastCard">
           <div class="beast-card-top">
             <div>
@@ -506,20 +555,7 @@
           </div>
 
           <div class="beast-card settings-card">
-            <div class="beast-title">TABLE HIERARCHY — fixed rules</div>
-            <p class="settings-sub">These are structural, not preferences. There is no control here or anywhere else that can move, demote, fade, mute or override the centre seat.</p>
-            <ul class="hierarchy-rules">
-              <li><b>SATOSHI</b> — rank 0, centre seat, final authority. Never ranked, never moved. The only seat that issues a call.</li>
-              <li><b>VITALIK · ARES · RAIJIN · ORACLE</b> — ranked debate leaders. Rank sets seat distance from the centre; rank 1 is closest.</li>
-              <li>Specialist bots keep their own records and feed their assigned leader. They are never promoted to a leader seat.</li>
-              <li>A directional call needs <b>3 of 4</b> leaders on the same side. Below that the Council stands down.</li>
-              <li>RAIJIN and ORACLE hold a protective veto that forces a stand-down. Overriding it takes all four leaders at high conviction.</li>
-            </ul>
-          </div>
-
-          <div class="beast-card settings-card">
             <div class="beast-title fade-title">FADE — invert chronic losers</div>
-            <p class="settings-sub">Applies to specialist bots and the four ranked leaders only. SATOSHI is excluded — the centre seat cannot be faded or muted.</p>
             <label class="set-field">Min graded samples
               <input type="number" step="1" min="5" max="100" id="setFadeMinN" />
             </label>
@@ -552,8 +588,7 @@
             <label class="set-field">Min directional confidence
               <input type="number" step="1" min="30" max="80" id="setMinDirConf" />
             </label>
-            <label class="set-field">Top-N specialist ranks must agree
-              <span class="set-note">Specialist-level only. Leader confluence is fixed at 3 of 4 and is not tunable.</span>
+            <label class="set-field">Top-N ranks must agree
               <input type="number" step="1" min="1" max="7" id="setTopN" />
             </label>
             <label class="set-field">Explore samples / Calibrate / Exploit
@@ -671,20 +706,6 @@
 
         <div id="adminDeskHost"></div>
 
-        <div class="beast-card settings-card" id="trainingCard">
-          <div class="beast-title">TRAINING RECORD</div>
-          <p class="settings-sub">Hits and misses train listen weight on the backend. They never appear on the floor or table. This card is inside Settings, behind the chair lock.</p>
-          <div class="settings-grid">
-            <div class="set-row"><span>Settled</span><strong id="trainTotal">—</strong></div>
-            <div class="set-row"><span>Hits</span><strong id="trainHits">—</strong></div>
-            <div class="set-row"><span>Misses</span><strong id="trainMisses">—</strong></div>
-            <div class="set-row"><span>Hit rate</span><strong id="trainPct">—</strong></div>
-            <div class="set-row"><span>Last 20</span><strong id="trainL20">—</strong></div>
-            <div class="set-row"><span>Last 50</span><strong id="trainL50">—</strong></div>
-          </div>
-          <p class="settings-foot">Wilson-style listen weight still grades specialists off-floor. Floor art stays clean.</p>
-        </div>
-
         <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
       </div>
     </section>
@@ -695,15 +716,30 @@
     <section id="seatsView" class="info-view seats-view hidden" aria-label="Seats — who they are, how they sit">
       <div class="info-hero seats-hero">
         <h2>SEATS</h2>
-        <p>Same council. Field guide on the strip, rank board under it, live cards for each leader’s read. One door — not three.</p>
+        <p>Same council. Field guide on the strip. Rank board under that. Live cards for the lean. One door — not three.</p>
       </div>
 
       <!-- Bots field guide (was its own tab) -->
       <section id="botsView" class="seats-strip" aria-label="Bot field guide">
         <div class="info-hero">
           <h2>BOT FIELD GUIDE</h2>
-          <p>Each specialist reads its own lane and feeds one leader. Leaders are heard in proportion to their <b>rank</b>. Right reads climb; wrong reads get quieter until they earn it back. SATOSHI is outside this — the centre seat is never ranked.</p>
+          <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
         </div>
+        <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
+          <div class="front-guide-head">FRONT / RAIJIN</div>
+          <p class="front-bots-sub">Five chairs. Three subs. Dallas high only. Not mixed into WICK / TAPE.</p>
+          <div id="frontBotsGrid" class="bots-grid"></div>
+        </section>
+        <section id="atsBotsGuide" class="front-bots-guide" aria-label="ATS / ARES">
+          <div class="front-guide-head">ATS / ARES</div>
+          <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
+          <div id="atsBotsGrid" class="bots-grid"></div>
+        </section>
+        <section id="oracleBotsGuide" class="front-bots-guide ora-bots-guide" aria-label="ORACLE / ORA">
+          <div class="front-guide-head">ORACLE / ORA</div>
+          <p class="front-bots-sub">CRT Chair. SIBYL · PIT · VEIL · MARBLE. They feed. Paper lock when they agree. Not mixed into WICK / TAPE.</p>
+          <div id="oracleBotsGrid" class="bots-grid"></div>
+        </section>
         <div id="botsGrid" class="bots-grid"></div>
       </section>
 
@@ -711,15 +747,14 @@
       <section id="ranksView" class="seats-board" aria-label="Rank board">
         <div class="info-hero">
           <h2>RANK BOARD</h2>
-          <p id="ranksPhase">Learning phase: collecting samples — the bar starts loose and tightens as the record fills in.</p>
-          <p class="ranks-rule">Ranking moves VITALIK, ARES, RAIJIN and ORACLE only. SATOSHI holds the centre at rank 0 and is excluded from every ranking, fade and mute rule on this page.</p>
+          <p id="ranksPhase">Learning phase: collecting samples — the Chair starts loose, then gets pickier as the lifetime log fills in.</p>
         </div>
         <div class="ranks-legend">
           <span><b>#</b> rank</span>
-          <span><b>RIGHT</b> correct calls</span>
-          <span><b>WRONG</b> wrong calls</span>
-          <span><b>ACC%</b> accuracy</span>
-          <span><b>LISTEN</b> how hard SATOSHI hears them</span>
+          <span><b>HIT</b> right calls</span>
+          <span><b>MISS</b> wrong calls</span>
+          <span><b>WR%</b> win rate</span>
+          <span><b>LISTEN</b> how hard the Chair hears them</span>
           <span><b>WT</b> adaptive weight</span>
         </div>
         <div id="ranksTable" class="ranks-table" role="table"></div>
@@ -742,7 +777,7 @@
     <section id="tapeView" class="info-view hidden" aria-label="Chair paper tape">
       <div class="info-hero">
         <h2>CHAIR TAPE</h2>
-        <p>Auto-graded paper results for the last 24 hours — Satoshi (BTC), Vitalik (ETH), and Ares (ATS) when focused. Official <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
+        <p>Auto-graded paper hours for the last 24 hours — Satoshi (BTC), Vitalik (ETH), and Ares (ATS) when focused. Official Kalshi <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
       </div>
       <div id="tapeCalib" class="tape-calib" aria-label="Calibration strip"></div>
       <div class="panel-head"><span class="panel-title">LAST 24H</span><span class="panel-sub" id="tapeMeta">—</span></div>
@@ -752,7 +787,7 @@
     <section id="bookView" class="info-view hidden" aria-label="Kalshi book">
       <div class="info-hero">
         <h2>THE BOOK</h2>
-        <p>Live order-book depth for the current window. A thin or empty book is one of the reasons Satoshi holds at WAIT.</p>
+        <p>Live Kalshi depth for the current hours. A sick or empty book, or a ≥99¢ wall, is why the Chair can WAIT.</p>
       </div>
       <div class="book-dual">
         <article id="bookSatoshi" class="book-card" aria-label="Satoshi BTC book">
@@ -815,10 +850,10 @@
       </div>
     </section>
 
-    <section id="schoolView" class="info-view hidden" aria-label="The Dojo">
+    <section id="schoolView" class="info-view hidden" aria-label="School">
       <div class="info-hero">
-        <h2>THE DOJO</h2>
-        <p>Train the process, not the P&L. Research and teaching only — lessons never change a Council conclusion.</p>
+        <h2>SCHOOL</h2>
+        <p>Short lessons for WAIT downtime. This desk only — 1-hour BTC/ETH Kalshi. Display only. Lessons do not change Chair locks.</p>
       </div>
       <button type="button" id="schoolContinue" class="school-continue">START · The hour</button>
       <p id="schoolStreak" class="school-streak">0 lessons this week</p>
@@ -829,7 +864,7 @@
           <h3 id="schoolTitle">The hour</h3>
           <span id="schoolMins">6 min</span>
         </header>
-        <p id="schoolIdea" class="school-idea">A single window is not a view on Bitcoin forever. It is one decision.</p>
+        <p id="schoolIdea" class="school-idea">Kalshi is not “is Bitcoin going up forever.” It is one window.</p>
         <div id="schoolBody" class="school-body"></div>
         <figure class="school-board-wrap">
           <canvas id="schoolBoard" width="640" height="220" aria-label="Chalkboard"></canvas>
@@ -949,7 +984,7 @@
           <div id="frontHrVerdict" class="hr-verdict">COLLECTING</div>
         </div>
         <section class="front-tape-card" aria-label="Last locks tape">
-          <header class="hud-card-head"><span>RECENT CALLS</span><span class="hud-meta">RAIJIN · DFW CLI</span></header>
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta">RAIJIN · DFW CLI</span></header>
           <ol id="frontTape" class="lock-tape-list" aria-live="polite">
             <li class="lock-tape-empty">No Raijin lock — waiting on DFW CLI</li>
           </ol>
@@ -977,152 +1012,36 @@
       </div>
       <ol id="callsBoard" class="calls-board" aria-live="polite">
         <li class="calls-row" data-call="bitcoin" data-status="WAIT" data-dir="WAIT">
-          <span class="calls-name">SATOSHI</span>
-          <span class="calls-status">Stand down</span>
+          <span class="calls-name">BTC</span>
+          <span class="calls-status">WAIT</span>
           <span class="calls-strike">—</span>
-          <span class="calls-window">BTC</span>
+          <span class="calls-window">1H</span>
+        </li>
+        <li class="calls-row" data-call="ethereum" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">ETH</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">1H</span>
+        </li>
+        <li class="calls-row" data-call="front" data-status="WAIT" data-dir="WAIT">
+          <span class="calls-name">FRONT</span>
+          <span class="calls-status">WAIT</span>
+          <span class="calls-strike">—</span>
+          <span class="calls-window">DFW</span>
+        </li>
+        <li class="calls-row" data-call="oracle" data-status="WATCH" data-dir="WATCH">
+          <span class="calls-name">ORA</span>
+          <span class="calls-status">WATCH</span>
+          <span class="calls-strike">no ticket</span>
+          <span class="calls-window">CRT</span>
         </li>
       </ol>
-    </section>
-
-    <!-- Kalshi 15m BTC up/down — a lens on the existing council read. Paper only. -->
-    <section id="kalshiView" class="info-view kalshi-view hidden" aria-label="Kalshi 15m up/down">
-      <div class="info-hero">
-        <h2>KALSHI · BTC 15M UP/DOWN</h2>
-        <p>The council's read, framed for the fast market. No new bots — this reuses the same specialists and leaders. <b>Paper research only</b>, never a live order.</p>
-      </div>
-      <div class="k15-grid">
-        <div class="k15-card k15-window">
-          <div class="k15-lab">WINDOW</div>
-          <div class="k15-clock" id="k15Clock">—:—</div>
-          <div class="k15-sub" id="k15Ticker">—</div>
-        </div>
-        <div class="k15-card k15-lean" id="k15LeanCard">
-          <div class="k15-lab">COUNCIL LEAN</div>
-          <div class="k15-lean-side" id="k15LeanSide">—</div>
-          <div class="k15-sub" id="k15LeanText">warming up</div>
-          <div class="k15-strength"><div class="k15-strength-fill" id="k15StrengthFill"></div></div>
-        </div>
-        <div class="k15-card k15-satoshi" id="k15SatoshiCard">
-          <div class="k15-lab">SATOSHI SAYS</div>
-          <div class="k15-call" id="k15Call">Stand down</div>
-          <div class="k15-sub" id="k15Voice">—</div>
-        </div>
-        <div class="k15-card k15-odds">
-          <div class="k15-lab">MARKET ODDS</div>
-          <div class="k15-odds-row"><span>UP</span><b id="k15UpPct">—</b></div>
-          <div class="k15-odds-row"><span>DOWN</span><b id="k15DownPct">—</b></div>
-          <div class="k15-sub" id="k15Edge">—</div>
-        </div>
-        <div class="k15-card k15-risk" id="k15RiskCard">
-          <div class="k15-lab">MICRO RISK</div>
-          <div class="k15-risk-state" id="k15RiskState">—</div>
-          <div class="k15-sub" id="k15RiskReason">—</div>
-        </div>
-        <div class="k15-card k15-align" id="k15AlignCard">
-          <div class="k15-lab">ALIGNMENT</div>
-          <div class="k15-align-count" id="k15AlignCount">—</div>
-          <div class="k15-sub" id="k15AlignText">—</div>
-        </div>
-      </div>
-
-      <div class="k15-floor" id="k15FloorPanel">
-        <div class="k15-floor-head">ON THE FLOOR</div>
-        <div class="k15-leaders" id="k15Leaders"></div>
-        <div class="k15-lines" id="k15Lines"></div>
-      </div>
-
-      <p class="k15-foot" id="k15Note">Research lens on the existing council read. Paper only.</p>
-    </section>
-
-    <section id="calibView" class="info-view calib-view hidden" aria-label="Calibration — confidence vs reality">
-      <div class="info-hero">
-        <h2>CALIBRATION</h2>
-        <p>A confidence number only means something if it verifies. When the desk says 70%, BTC should finish the called way about 70% of the time. This scores that from the settled directional calls. <b>Paper research only.</b></p>
-      </div>
-
-      <div id="calibVerdict" class="calib-verdict" data-state="gathering">warming up…</div>
-
-      <div class="calib-translator" id="calibTranslator" hidden>
-        <div class="calib-tr-head">TRUE READ — what the desk's confidence has actually delivered</div>
-        <div class="calib-tr-chips" id="calibTrChips"></div>
-        <div class="calib-tr-foot">Smoothed with isotonic regression, so a thin noisy band can't distort the read. Discount stated confidence by the gap.</div>
-      </div>
-
-      <div class="calib-grid">
-        <div class="calib-card"><div class="calib-lab">SETTLED CALLS</div><div class="calib-val" id="calibN">—</div><div class="calib-sub">directional, graded</div></div>
-        <div class="calib-card"><div class="calib-lab">STATED vs REAL</div><div class="calib-val" id="calibConfHit">—</div><div class="calib-sub" id="calibGap">—</div></div>
-        <div class="calib-card"><div class="calib-lab">BRIER</div><div class="calib-val" id="calibBrier">—</div><div class="calib-sub">0 perfect · 0.25 coin flip</div></div>
-        <div class="calib-card"><div class="calib-lab">SKILL vs BASE</div><div class="calib-val" id="calibSkill">—</div><div class="calib-sub">&gt;0 beats base rate</div></div>
-        <div class="calib-card"><div class="calib-lab">ECE</div><div class="calib-val" id="calibEce">—</div><div class="calib-sub">avg confidence gap</div></div>
-      </div>
-
-      <div class="calib-main">
-        <div class="calib-chartwrap">
-          <div class="calib-chart-head">RELIABILITY — stated confidence vs actual hit rate</div>
-          <canvas id="calibChart" width="440" height="440" role="img" aria-label="Reliability diagram"></canvas>
-          <div class="calib-chart-key">
-            <span><span class="ck-line ck-ideal"></span> perfect</span>
-            <span><span class="ck-dot"></span> observed</span>
-            <span><span class="ck-line ck-true"></span> true read</span>
-          </div>
-        </div>
-        <div class="calib-side">
-          <div class="calib-bands-head">BY CONFIDENCE BAND</div>
-          <table class="calib-bands"><thead><tr><th>Band</th><th>n</th><th>Says</th><th>Hits</th><th>Gap</th></tr></thead><tbody id="calibBands"></tbody></table>
-          <div class="calib-bands-head" style="margin-top:14px;">BY REGIME</div>
-          <table class="calib-bands"><thead><tr><th>Regime</th><th>n</th><th>Hits</th><th>Gap</th></tr></thead><tbody id="calibRegimes"></tbody></table>
-        </div>
-      </div>
-
-      <p class="k15-foot" id="calibNote">Scored from settled directional calls. WAIT is excluded, never counted as a miss. Paper only.</p>
-    </section>
-
-    <section id="backtestView" class="info-view backtest-view hidden" aria-label="Walk-forward backtest">
-      <div class="info-hero">
-        <h2>BACKTEST · WALK-FORWARD</h2>
-        <p>The cleanest backtest a live desk has is its own forward record — every graded call was a real out-of-sample prediction, no lookahead, real friction. This trains on the older calls and tests on the newer held-out slice: if the edge is real, they agree; if it's overfit or decaying, the newer slice is worse. <b>Paper research only.</b></p>
-      </div>
-
-      <div id="btSufficiency" class="bt-sufficiency" data-state="gathering">warming up…</div>
-      <div id="btVerdict" class="bt-verdict" data-state="gathering">—</div>
-
-      <div class="bt-split">
-        <div class="bt-split-card" id="btIsCard">
-          <div class="bt-split-lab">IN-SAMPLE <span class="bt-split-sub">older calls · trained on</span></div>
-          <div class="bt-split-acc" id="btIsAcc">—</div>
-          <div class="bt-split-meta" id="btIsMeta">—</div>
-        </div>
-        <div class="bt-split-arrow" id="btSplitArrow">→</div>
-        <div class="bt-split-card" id="btOosCard">
-          <div class="bt-split-lab">OUT-OF-SAMPLE <span class="bt-split-sub">newest 30% · held out</span></div>
-          <div class="bt-split-acc" id="btOosAcc">—</div>
-          <div class="bt-split-meta" id="btOosMeta">—</div>
-        </div>
-      </div>
-
-      <div class="bt-trend-wrap">
-        <div class="bt-trend-head">ACCURACY BY PERIOD <span id="btTrendState" class="bt-trend-state">—</span></div>
-        <canvas id="btChart" width="640" height="200" role="img" aria-label="Accuracy per period"></canvas>
-      </div>
-
-      <p class="k15-foot" id="btNote">Walk-forward over the live record — lookahead-free. A true across-regimes backtest needs historical replay. Paper only.</p>
-    </section>
-
-    <section id="healthView" class="info-view health-view hidden" aria-label="Data feed health">
-      <div class="info-hero">
-        <h2>DATA HEALTH</h2>
-        <p>A research desk is only as good as its inputs. This shows every feed the desk depends on — live, stale, or down — with the age of its last successful update. If a critical feed drops, the desk should not be calling.</p>
-      </div>
-      <div id="healthOverall" class="health-overall" data-state="warming">warming up…</div>
-      <div id="healthFeeds" class="health-feeds"></div>
-      <p class="k15-foot" id="healthNote">Freshness of the desk's inputs. Ages are last successful update. Paper research only.</p>
     </section>
 
     <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
       <div class="info-hero">
         <h2>PAPER TRACKER</h2>
-        <p>Manual paper log — your own entries, kept separate from the Council’s record. Enter side, stake, and what came back. Totals use <b>America/Chicago</b>.</p>
+        <p>Manual trade log — your bets, not the Chair. Enter side, stake, and what you got back. Totals use <b>America/Chicago</b>.</p>
       </div>
 
       <div class="paper-entry" id="paperEntry">
@@ -1139,65 +1058,6 @@
         <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
       </div>
 
-      <!-- PROCESS QUALITY — discipline alongside hit rate, never instead of it. -->
-      <div class="process-card" id="processCard">
-        <div class="panel-head">
-          <span class="panel-title">PROCESS QUALITY</span>
-          <span class="panel-sub" id="processMeta">—</span>
-        </div>
-        <p class="process-sub">Accuracy says whether the calls landed. These say whether the rules were followed. Both are kept — but a research desk is judged on process first. A clean Stand down is a process win.</p>
-        <div class="process-stats">
-          <div class="process-stat">
-            <div class="ps-value" id="psProcessGrade">—</div>
-            <div class="ps-label">PROCESS GRADE</div>
-            <div class="ps-note" id="psGradeNote">weighted process score, 0–100</div>
-          </div>
-          <div class="process-stat">
-            <div class="ps-value" id="psCleanStreak">—</div>
-            <div class="ps-label">CLEAN STAND-DOWN STREAK</div>
-            <div class="ps-note" id="psStreakNote">a clean Stand down is a process win</div>
-          </div>
-          <div class="process-stat">
-            <div class="ps-value" id="psConfluence">—</div>
-            <div class="ps-label">CONFLUENCE RATE</div>
-            <div class="ps-note" id="psConfluenceNote">directional calls meeting 3 of 4</div>
-          </div>
-          <div class="process-stat">
-            <div class="ps-value" id="psAdherence">—</div>
-            <div class="ps-label">PROCESS ADHERENCE</div>
-            <div class="ps-note" id="psAdherenceNote">calls matching the confluence / veto rules</div>
-          </div>
-          <div class="process-stat">
-            <div class="ps-value" id="psWaitShare">—</div>
-            <div class="ps-label">STAND-DOWN SHARE</div>
-            <div class="ps-note" id="psWaitNote">sitting is a valid outcome</div>
-          </div>
-          <div class="process-stat">
-            <div class="ps-value" id="psHitRate">—</div>
-            <div class="ps-label">ACCURACY</div>
-            <div class="ps-note" id="psHitNote">of settled directional calls, share right</div>
-          </div>
-        </div>
-        <div id="psTopAgents" class="ps-top-agents" hidden></div>
-        <p id="psSampleWarning" class="sample-warning" hidden></p>
-        <div class="process-actions">
-          <button type="button" class="gate-btn gate-btn-ghost" id="psExportCsv">Export CSV</button>
-          <button type="button" class="gate-btn gate-btn-ghost" id="psExportJson">Export JSON</button>
-          <button type="button" class="gate-btn gate-btn-ghost" id="psWeeklyReview" title="Auto-score for the Weekly Process Scorecard">Weekly Review</button>
-          <span class="ps-export-note" id="psExportNote">Full decision history — call, alignment, confluence, veto, outcome.</span>
-        </div>
-        <div class="process-weekly" id="psWeeklyResult" hidden></div>
-        <div class="process-breach" id="psBreach" hidden></div>
-        <div class="process-templates">
-          <span class="ps-export-note">Council Method templates:</span>
-          <a class="gate-btn gate-btn-ghost" href="/templates/decision-log.md" download>Decision Log</a>
-          <a class="gate-btn gate-btn-ghost" href="/templates/weekly-process-scorecard.md" download>Weekly Scorecard</a>
-          <a class="gate-btn gate-btn-ghost" href="/templates/confluence-checklist.md" download>Confluence Checklist</a>
-          <a class="gate-btn gate-btn-ghost" href="/templates/agent-role-definition.md" download>Agent Role Sheet</a>
-        </div>
-      </div>
-      <div id="processWinToast" class="process-win-toast" hidden>Process Win</div>
-
       <div class="paper-summary" id="paperSummary"></div>
       <div class="paper-cal-tabs">
         <button type="button" class="paper-cal-btn active" data-cal="daily">Daily</button>
@@ -1210,103 +1070,46 @@
       <div id="paperCalls" class="paper-calls"></div>
     </section>
 
-<!-- Charts tab: Bitcoin research wall. Process quality leads; price is context. -->
+<!-- Charts tab: game HUD wall — BTC and ETH 1m both visible -->
     <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
-      <!-- Research charts lead. Process quality is the headline; price and
-           positioning are supporting context, not the whole story. -->
-      <div class="charts-grid charts-primary">
-        <article class="chart-card chart-wide">
-          <header class="chart-card-head">
-            <span>PAPER EQUITY</span>
-            <span class="chart-meta" id="chartEquityMeta">paper only</span>
-          </header>
-          <canvas id="chartEquity"></canvas>
-          <p class="chart-note">Flat stretches are stand-downs — the desk holding, not losing.</p>
+      <article id="atsChartTape" class="chart-card chart-wide chart-ats-tape" hidden>
+        <header class="chart-card-head"><span>ARES · GAME TAPE</span><span class="chart-meta" id="atsChartMeta">one game</span></header>
+        <p id="atsChartLine" class="ats-chart-line">WAIT · no game on the table</p>
+      </article>
+      <div class="charts-pairs">
+        <article class="chart-card chart-wide chart-pair chart-pair-btc">
+          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">15M WINDOW</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
+          <canvas id="chartBtc"></canvas>
         </article>
-        <article class="chart-card chart-wide">
-          <header class="chart-card-head">
-            <span>ALIGNMENT TIMELINE</span>
-            <span class="chart-meta" id="chartAlignMeta">—</span>
-          </header>
-          <canvas id="chartAlign"></canvas>
-          <p class="chart-note">Bars are leaders aligned. The line is the 3-of-4 floor; below it Satoshi stands down.</p>
+        <article class="chart-card chart-wide chart-pair chart-pair-eth">
+          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartEthMeta">—</span></header>
+          <canvas id="chartEth"></canvas>
         </article>
       </div>
-
-      <div class="charts-grid charts-secondary">
-        <!-- Microstructure risk: current score, state, and a heat strip of
-             recent cycles. Compact by design — it must not compete with
-             Satoshi's call or the debate panel. -->
-        <article class="chart-card chart-risk">
-          <header class="chart-card-head">
-            <span>MICROSTRUCTURE RISK</span>
-            <span class="chart-meta" id="riskMeta">RAIJIN</span>
-          </header>
-          <div class="risk-now" id="riskNow">
-            <div class="risk-score-wrap">
-              <b class="risk-score" id="riskScore">—</b>
-              <span class="risk-of">/ 100</span>
-            </div>
-            <div class="risk-state-wrap">
-              <span class="risk-state" id="riskState">Clear</span>
-              <span class="risk-reason" id="riskReason">warming up</span>
-            </div>
-          </div>
-          <canvas id="riskStrip" aria-label="Recent microstructure risk"></canvas>
-          <div class="risk-legend">
-            <span><i class="rl rl-clear"></i>Clear</span>
-            <span><i class="rl rl-elev"></i>Elevated</span>
-            <span><i class="rl rl-danger"></i>Dangerous</span>
-            <span class="risk-coverage" id="riskCoverage"></span>
-          </div>
-          <div class="risk-parts" id="riskParts" aria-label="Component contribution"></div>
-        </article>
-        <article class="chart-card chart-crowding">
-          <header class="chart-card-head">
-            <span>CROWDING</span>
-            <span class="chart-meta" id="chartCrowdMeta">RAIJIN</span>
-          </header>
-          <div id="crowdDark" class="feed-dark-note" hidden>Derivatives feed dark — CoinGlass plan wall (needs Startup+). Funding / OI / liquidation are unreadable, so RAIJIN sizes down. Not broken — intentionally dark.</div>
-          <div id="crowdPanel" class="crowd-panel">
-            <div class="crowd-row"><span class="crowd-lab">FUNDING</span><b id="crowdFunding">—</b><span class="crowd-sub" id="crowdFundingSub">—</span></div>
-            <div class="crowd-row"><span class="crowd-lab">OPEN INTEREST</span><b id="crowdOi">—</b><span class="crowd-sub" id="crowdOiSub">—</span></div>
-            <div class="crowd-row"><span class="crowd-lab">LIQUIDATION</span><b id="crowdLiq">—</b><span class="crowd-sub" id="crowdLiqSub">—</span></div>
-            <div class="crowd-row"><span class="crowd-lab">FUND DIVERG</span><b id="crowdDiv">—</b><span class="crowd-sub" id="crowdDivSub">—</span></div>
-            <div class="crowd-row"><span class="crowd-lab">OI DIVERG</span><b id="crowdOiDiv">—</b><span class="crowd-sub" id="crowdOiDivSub">—</span></div>
-            <div class="crowd-row"><span class="crowd-lab">CARRY</span><b id="crowdCarry">—</b><span class="crowd-sub" id="crowdCarrySub">—</span></div>
-            <div class="crowd-row"><span class="crowd-lab">LIQ FLOW</span><b id="crowdFlow">—</b><span class="crowd-sub" id="crowdFlowSub">—</span></div>
-            <div class="crowd-row crowd-row-score"><span class="crowd-lab">MICRO RISK</span><b id="crowdMicro">—</b><span class="crowd-sub" id="crowdMicroSub">—</span></div>
-            <div class="crowd-row crowd-row-regime"><span class="crowd-lab">REGIME</span><b id="crowdRegime">—</b><span class="crowd-sub" id="crowdRegimeSub">—</span></div>
-          </div>
-        </article>
-        <article class="chart-card">
-          <header class="chart-card-head">
-            <span>LEADER USEFULNESS</span>
-            <span class="chart-meta" id="chartRankMeta">rolling 30</span>
-          </header>
-          <canvas id="chartRanks"></canvas>
-          <p class="chart-note">Seat 1 is closest to Satoshi. SATOSHI is not ranked.</p>
-        </article>
-      </div>
-
-      <!-- Supporting context. -->
-      <div class="charts-grid charts-support">
-        <article class="chart-card chart-crypto-funding">
-          <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
-          <canvas id="chartFunding"></canvas>
-        </article>
+      <div class="charts-grid">
         <article class="chart-card">
           <header class="chart-card-head"><span>VOLUME</span><span class="chart-meta" id="chartVolMeta">—</span></header>
           <canvas id="chartVolume"></canvas>
         </article>
-        <article class="chart-card chart-tape">
-          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">calls</span></header>
-          <canvas id="chartTape"></canvas>
-          <ol id="chartTapeList" class="chart-lock-list" aria-label="Recent Council calls"></ol>
+        <article class="chart-card chart-crypto-odds">
+          <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">UP — · DOWN —</span></header>
+          <canvas id="chartOdds"></canvas>
         </article>
-        <!-- Accuracy chart lives in Settings (admin lock), not on the chart wall. Canvas kept for JS bindings. -->
-        <article class="chart-card hidden acc-locked" hidden aria-hidden="true">
-          <header class="chart-card-head"><span>TRAINING</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
+        <article class="chart-card chart-crypto-delta">
+          <header class="chart-card-head"><span>VS TARGET</span><span class="chart-meta" id="chartDeltaMeta">—</span></header>
+          <canvas id="chartDelta"></canvas>
+        </article>
+        <article class="chart-card chart-crypto-funding">
+          <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
+          <canvas id="chartFunding"></canvas>
+        </article>
+        <article class="chart-card chart-tape">
+          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">locks</span></header>
+          <canvas id="chartTape"></canvas>
+          <ol id="chartTapeList" class="chart-lock-list" aria-label="Chair lock history"></ol>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>HIT RATE · FINISH-ONLY</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
           <canvas id="chartAccuracy"></canvas>
         </article>
         <article class="chart-card">
@@ -1370,24 +1173,16 @@
           <span data-wx-sub="ECHO">ECHO —</span>
           <span data-wx-sub="CELL">CELL —</span>
         </span>
-        <span id="ethDecisionStrip" class="eth-decision-strip">VITALIK <b id="ethDir">—</b> <b id="ethConf"></b></span>
-        <!-- BTC's lean is Satoshi's call, shown explicitly below. Kept in the
-             DOM (JS writes to it) but hidden so the strip does not say it twice. -->
-        <span id="btcDecisionStrip" class="btc-decision-strip" hidden>BTC <b id="btcDir">—</b> <b id="btcConf"></b></span>
-        <!-- Satoshi's call and how much of the floor backed it. This
-             replaces the old UP%/DOWN% pair, which read as a binary bet
-             ticket rather than a research call. -->
-        <span id="stripCall" class="strip-call">SATOSHI <b id="stripCallDir">Stand down</b></span>
-        <span id="stripAlign" class="strip-align" title="Leaders holding the same side. 3 of 4 is the minimum for a directional call.">
-          <b id="stripAlignCount">—</b> aligned
-        </span>
-        <span id="stripRegime" class="strip-regime" hidden title="Higher-timeframe regime">REGIME <b id="stripRegimeState">—</b></span>
-        <span id="stripRisk" class="strip-risk" hidden title="Microstructure risk">RISK <b id="stripRiskState">—</b></span>
+        <span id="ethDecisionStrip" class="eth-decision-strip">ETH <b id="ethDir">—</b> <b id="ethConf"></b></span>
+        <span id="btcDecisionStrip" class="btc-decision-strip">BTC <b id="btcDir">—</b> <b id="btcConf"></b></span>
+        <span class="odds-live">UP <b id="liveUpPct">—</b></span>
+        <span class="odds-live down">DOWN <b id="liveDownPct">—</b></span>
+        <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
+        <span id="dualVoteStrip" class="dual-vote-strip">BTC <b id="btcVotes">—</b> · ETH <b id="ethVotes">—</b></span>
         <span id="stripFunding">Funding <b id="funding">—</b></span>
-        <span id="stripKalshi" hidden>Market <b id="kalshiTicker">—</b></span>
-        <span class="acc-strip acc-locked" hidden aria-hidden="true">DIR <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
-        <span class="acc-strip" id="stripProcess" title="Process quality — confluence rate and rule adherence.">PROC <b id="stripProcessPct">—</b></span>
-        <span id="paperAutoSummary" class="paper-auto-summary">paper —</span>
+        <span id="stripKalshi">Kalshi <b id="kalshiTicker">—</b></span>
+        <span class="acc-strip">BTC <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
+        <span id="paperAutoSummary" class="paper-auto-summary">auto —</span>
       </div>
     </footer>
   </div>
@@ -1437,12 +1232,14 @@
     </video>
   </div>
 
-  <!-- Candle Dojo address — the Dojo tab opens this in a new tab. The Dojo is a
-       separate app with its own server; run it (npm install && npm run dev in the
-       candle-dojo folder → http://localhost:8080) or point this at your deployed dojo. -->
-  <script>window.DOJO_URL = window.DOJO_URL || "http://localhost:8080";</script>
   <script src="/wire.js"></script>
   <script src="/roundtable.js"></script>
+  <link rel="stylesheet" href="/campus-tab.css" />
+  <script>
+    window.CAMPUS_URL = "/campus";
+    window.CAMPUS_DOJO_HIJACK = true;
+  </script>
+  <script src="/campus-tab.js"></script>
 
     <!-- Hidden hive easter egg -->
     <div id="hiveEgg" class="hive-egg hidden" role="dialog" aria-modal="true" aria-label="Hidden">
@@ -1457,7 +1254,7 @@
       <div class="beast-title">ADMIN TOOLS</div>
       <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities. Floor book-match reset lives here (BTC sized locks vs ETH shadow picks, finish-only) — not on the public Floor.</p>
       <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
-        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Accuracy &amp; Scorecard</button>
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate &amp; Scorecard</button>
         <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
         <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
       </div>
@@ -1477,11 +1274,78 @@
     </div>
   </template>
 
-  <div id="callWarn" class="call-warn hidden" role="alert" aria-live="assertive">
-    <div class="call-warn-card">
-      <p class="call-warn-kicker">Call switching</p>
-      <p class="call-warn-line"><span id="callWarnFrom">—</span><em>→</em><span id="callWarnTo">—</span></p>
-      <p class="call-warn-note">Stand down until the Chair settles.</p>
+  <div id="streamChrome" class="stream-chrome hidden" aria-live="polite">
+    <div id="gavelFlash" class="gavel-flash-el" aria-hidden="true"></div>
+    <div id="streamWordHour" class="stream-word-hour">
+      <span class="swh-kicker">WORD OF THE HOUR</span>
+      <span id="swhTerm" class="swh-term">Wick</span>
+      <span id="swhBite" class="swh-bite">A rejected price. Price went there and got shoved back.</span>
+    </div>
+    <div id="streamLead" class="stream-lead hidden">
+      <span class="flash-kicker" id="streamLeadKicker">WIND-UP</span>
+      <strong id="streamLeadLine">Seats leaning. Chair sitting.</strong>
+      <span id="streamLeadSub">The call should land before Kalshi jumps — not after.</span>
+    </div>
+    <div id="streamPolaroid" class="stream-polaroid hidden">
+      <span class="flash-kicker">LOCKED HERE</span>
+      <strong id="polaroidCents">—¢</strong>
+      <span id="polaroidLive"></span>
+    </div>
+    <div id="streamWhy" class="stream-why">
+      <span class="sw-kicker">WHY</span>
+      <span id="streamWhyLine" class="sw-line">Waiting on the Chair · Bitcoin only on Stream</span>
+    </div>
+    <div id="streamJoinCta" class="stream-join-cta">
+      <span>Stream is Bitcoin only.</span>
+      <strong>Want ETH, DWF, ATS, Oracle + the full desk?</strong>
+      <span class="stream-join-pill">Join the site · $25</span>
+    </div>
+    <div id="streamRecap" class="stream-flash hidden">
+      <span class="flash-kicker">4PM CT · RECAP</span>
+      <strong id="recapHead">THE CHAIR SAT</strong>
+      <span id="recapLine">One line. No leaderboard.</span>
+    </div>
+    <div id="streamSitHonor" class="stream-flash hidden">
+      <span class="flash-kicker">CLEAN SIT</span>
+      <strong>THE CHAIR IS SITTING</strong>
+      <span>That’s the call. Permission to do nothing.</span>
+    </div>
+    <div id="streamSilence" class="stream-silence hidden">
+      <span class="flash-kicker">WAIT</span>
+      <strong>The Chair is sitting.</strong>
+      <span>That’s the call. Permission to do nothing.</span>
+    </div>
+    <div id="streamSpot" class="stream-spot hidden">
+      <span class="flash-kicker" id="streamSpotName">WICK</span>
+      <span id="streamSpotLine">Wick says WAIT — no clean rejection yet.</span>
+    </div>
+    <div id="streamStandDown" class="stream-flash hidden">
+      <span class="flash-kicker">CALL SWITCH</span>
+      <strong>STAND DOWN</strong>
+      <span id="streamStandDownLine">Chair flipped. Freeze. Wait for it to settle.</span>
+    </div>
+    <div id="streamReplay" class="stream-replay hidden">
+      <span class="flash-kicker">15M CLOSE · ONE CANDLE</span>
+      <div class="replay-grid">
+        <div><b>WICK</b><span id="replayWick">rejected or not</span></div>
+        <div><b>BODY</b><span id="replayBody">who won the period</span></div>
+        <div><b>CLOSE</b><span id="replayClose">the scoreboard</span></div>
+        <div><b>CHAIR</b><span id="replayChair">what Satoshi did</span></div>
+      </div>
+    </div>
+    <div id="streamLesson" class="stream-lesson">
+      <span class="flash-kicker">LESSON OF THE HOUR</span>
+      <strong id="slTitle">Why Bitcoin exists</strong>
+      <span id="slBite">You cannot price Bitcoin if you think it is only a chart.</span>
+    </div>
+    <div id="streamDojoCard" class="stream-spot hidden">
+      <span class="flash-kicker">WATCH → DRILL</span>
+      <strong id="streamDojoName">That wick is Anvil.</strong>
+      <span id="streamDojoWhy">Long lower wick. A dump got bought back.</span>
+      <button type="button" id="streamDojoBtn" class="stream-dojo-btn">First kata</button>
+    </div>
+      <span class="train-ticker-kicker">LEARN</span>
+      <div class="stream-train-mask"><div id="streamTrainTrack" class="stream-train-track"></div></div>
     </div>
   </div>
 
@@ -1496,18 +1360,6 @@
         <button type="button" id="adminSubmit" class="gate-btn gate-btn-summon">Unlock</button>
       </div>
       <p id="adminError" class="password-error hidden">Wrong password</p>
-    </div>
-  </div>
-
-  <div id="provenanceModal" class="prov-modal hidden" role="dialog" aria-modal="true" aria-labelledby="provTitle">
-    <div class="prov-card">
-      <button type="button" id="provClose" class="prov-close" aria-label="Close">✕</button>
-      <div class="prov-head">
-        <span class="prov-eyebrow">PROVENANCE · SHOW YOUR WORK</span>
-        <h3 id="provTitle">Why this call</h3>
-      </div>
-      <div id="provBody" class="prov-body"></div>
-      <p class="prov-foot">The live inputs behind the desk's current read. Paper research only.</p>
     </div>
   </div>
 

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Classroom</title>
+  <style>
+    :root { --gold:#d4b36a; --ink:#f3ead8; --muted:#9a8f7c; --bg:#07080c; --card:#10131a; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; background:var(--bg); color:var(--ink); font-family: Rajdhani, Segoe UI, sans-serif; }
+    body { background: radial-gradient(1200px 600px at 20% -10%, rgba(212,179,106,.12), transparent), #07080c; }
+    header { padding: 22px 22px 8px; }
+    .kicker { font-family: Orbitron, sans-serif; letter-spacing:.28em; font-size:.62rem; color:var(--gold); }
+    h1 { font-family: Orbitron, sans-serif; font-size: clamp(1.6rem, 4vw, 2.4rem); margin: 8px 0 6px; }
+    .lede { max-width: 52ch; color:var(--muted); line-height:1.45; }
+    main { padding: 8px 22px 48px; display:grid; gap:14px; }
+    .tracks { display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); }
+    .card { background:var(--card); border:1px solid rgba(212,179,106,.22); border-radius:14px; padding:14px 16px; cursor:pointer; }
+    .card:hover { border-color: var(--gold); }
+    .card b { display:block; font-family: Orbitron, sans-serif; font-size:.95rem; }
+    .card span { color:var(--muted); font-size:.85rem; }
+    .lesson { display:none; }
+    .lesson.on { display:block; }
+    .idea { color:var(--gold); font-size:1.05rem; margin: 6px 0 12px; }
+    .body p { color:#e8dcc4; line-height:1.55; }
+    .callout { border-left: 3px solid var(--gold); padding: 8px 12px; margin: 16px 0; color:#f3ead8; }
+    .quiz { margin-top: 18px; }
+    button { font-family: Orbitron, sans-serif; background:transparent; color:var(--ink); border:1px solid rgba(212,179,106,.45); border-radius:999px; padding:8px 14px; cursor:pointer; margin: 4px 6px 4px 0; }
+    button.pick { display:block; width:100%; text-align:left; border-radius:10px; margin:8px 0; padding:10px 12px; font-family: Rajdhani, sans-serif; }
+    button.pick.good { border-color:#39ff14; color:#39ff14; }
+    button.pick.bad { border-color:#ff2d55; color:#ff6b8a; }
+    .why { color:var(--muted); margin-top:8px; }
+    a { color:var(--gold); }
+    .cmds { display:grid; gap:8px; }
+    .cmd { font-size:.92rem; color:#d8ccb4; }
+    .cmd b { color:var(--gold); margin-right:6px; font-family: Orbitron, sans-serif; font-size:.7rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="kicker">SATOSHI’S COUNCIL · SCHOOL</div>
+    <h1>The Classroom</h1>
+    <p class="lede">Paper first. Same slang as the Dojo and the Stream. Six tracks. Eighteen short lessons. A clean WAIT is a completed decision.</p>
+    <p><a href="/campus/dojo">Open the Dojo →</a></p>
+    <div class="card" id="paperHome" style="margin-top:14px;cursor:default">
+      <span>MONDAY PAPER</span>
+      <b id="classStack">$1,000</b>
+      <span>Fake stack. Resets Monday. Private journal — not a leaderboard.</span>
+    </div>
+  </header>
+  <main>
+    <section id="home"></section>
+    <section id="reader" class="lesson"></section>
+  </main>
+  <script>
+    const home = document.getElementById("home");
+    const reader = document.getElementById("reader");
+    let data = { tracks: [], lessons: [], commandments: [] };
+    fetch("curriculum.json").then(r => r.json()).then(d => { data = d; paintHome(); });
+    try {
+      const bag = JSON.parse(localStorage.getItem("council_monday_paper") || "{}");
+      const el = document.getElementById("classStack");
+      if (el && bag.stack) el.textContent = "$" + Number(bag.stack).toLocaleString();
+    } catch (e) {}
+    function paintHome() {
+      reader.classList.remove("on");
+      home.style.display = "grid";
+      home.innerHTML = `
+        <div class="kicker">TRACKS</div>
+        <div class="tracks">${data.tracks.map(t => `
+          <div class="card" data-track="${t.id}">
+            <span>${t.weeks}</span>
+            <b>${t.title}</b>
+            <span>${t.subtitle}</span>
+          </div>`).join("")}</div>
+        <div class="kicker" style="margin-top:18px">MICRO-INTERACTIONS</div>
+        <div class="cmds" id="microList">
+          <div class="cmd"><b>01</b> Summon mark breathes gold. Title rises out of the fog.</div>
+          <div class="cmd"><b>02</b> Tutorial card slides in. Hole around the thing you’re looking at.</div>
+          <div class="cmd"><b>03</b> Tabs lift 1px. Active gold underline.</div>
+          <div class="cmd"><b>04</b> HANDS — leaning seats lerp up, pulse, label, before the Chair talks.</div>
+          <div class="cmd"><b>05</b> Gavel — thud + half-second gold wash. Then the spoken line.</div>
+          <div class="cmd"><b>06</b> Polaroid drops, over-rotates, sticks at 3°. Frozen ¢ never moves.</div>
+          <div class="cmd"><b>07</b> STAND DOWN slams in on a flip. First WAIT of the window gets the same hit.</div>
+          <div class="cmd"><b>08</b> Word of the Hour breathes. Rolling ticker never stops.</div>
+          <div class="cmd"><b>09</b> Live Kalshi ¢ hidden on Stream until after the lock. Book is proof, not preview.</div>
+          <div class="cmd"><b>10</b> Buttons press in. Kata picks flash green/red. Paper note pins in Settings.</div>
+        </div>
+        <div class="cmds">${data.commandments.map(c => `<div class="cmd"><b>${String(c.n).padStart(2,"0")}</b> ${c.title} — ${c.body}</div>`).join("")}</div>
+      `;
+      home.querySelectorAll("[data-track]").forEach(el => el.onclick = () => openTrack(el.dataset.track));
+    }
+    function openTrack(id) {
+      const track = data.tracks.find(t => t.id === id);
+      const lessons = data.lessons.filter(l => l.track === id);
+      home.style.display = "none";
+      reader.classList.add("on");
+      reader.innerHTML = `<button onclick="paintHome()">← Classroom</button>
+        <div class="kicker">${track.weeks}</div>
+        <h2>${track.title}</h2>
+        ${lessons.map(l => `<div class="card" data-lid="${l.id}"><span>${l.minutes} min · lesson ${l.n}</span><b>${l.title}</b><span>${l.idea}</span></div>`).join("")}`;
+      reader.querySelectorAll("[data-lid]").forEach(el => el.onclick = () => openLesson(el.dataset.lid));
+    }
+    function openLesson(id) {
+      const l = data.lessons.find(x => x.id === id);
+      reader.innerHTML = `<button onclick="openTrack('${l.track}')">← ${l.kicker}</button>
+        <div class="kicker">${l.kicker} · ${l.minutes} min</div>
+        <h2>${l.title}</h2>
+        <div class="idea">${l.idea}</div>
+        <div class="body">${l.body.map(p => `<p>${p}</p>`).join("")}</div>
+        <div class="callout">${l.callout}</div>
+        <ul>${l.remember.map(r => `<li>${r}</li>`).join("")}</ul>
+        <div class="quiz" id="quiz"></div>`;
+      const qel = document.getElementById("quiz");
+      (l.quiz || []).forEach((q, i) => {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = `<p><b>Q${i+1}.</b> ${q.q}</p>`;
+        q.choices.forEach(c => {
+          const b = document.createElement("button");
+          b.className = "pick";
+          b.textContent = c.label;
+          b.onclick = () => {
+            const good = c.id === q.answer;
+            b.classList.add(good ? "good" : "bad");
+            wrap.querySelectorAll("button").forEach(x => x.disabled = true);
+            const why = document.createElement("div");
+            why.className = "why";
+            why.textContent = (good ? "Right. " : "Not that. ") + q.why;
+            wrap.appendChild(why);
+          };
+          wrap.appendChild(b);
+        });
+        qel.appendChild(wrap);
+      });
+    }
+  </script>
+</body>
+</html>

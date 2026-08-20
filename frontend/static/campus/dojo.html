@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Candle Dojo</title>
+  <style>
+    :root { --gold:#d4b36a; --ink:#f3ead8; --muted:#9a8f7c; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; min-height:100%; color:var(--ink); font-family: Rajdhani, Segoe UI, sans-serif; }
+    body {
+      min-height: 100dvh;
+      background: #050505 url("/campus/dojo-hall.jpg") center/cover no-repeat;
+      background-color: #050505;
+    }
+    .veil { min-height:100dvh; background: linear-gradient(180deg, rgba(5,5,8,.55), rgba(5,5,8,.88)); padding: 24px 20px 48px; }
+    .kicker { font-family: Orbitron, sans-serif; letter-spacing:.28em; font-size:.62rem; color:var(--gold); }
+    h1 { font-family: Orbitron, sans-serif; font-size: clamp(2rem, 7vw, 3.4rem); margin: 8px 0; line-height: .95; }
+    .lede { max-width: 46ch; color:#d8ccb4; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; margin: 18px 0; }
+    button, a.btn {
+      font-family: Orbitron, sans-serif; text-decoration:none; color:#070605;
+      background: var(--gold); border:0; border-radius:999px; padding:12px 18px; cursor:pointer; display:inline-block;
+    }
+    a.ghost, button.ghost { background:transparent; color:var(--ink); border:1px solid rgba(212,179,106,.45); }
+    .plate { max-width: 640px; background: rgba(8,10,16,.78); border:1px solid rgba(212,179,106,.28); border-radius:16px; padding:16px 18px; margin-top:14px; }
+    .primer { display:grid; gap:8px; }
+    .primer b { color:var(--gold); font-family: Orbitron, sans-serif; font-size:.78rem; letter-spacing:.12em; }
+    .kata button.pick { display:block; width:100%; text-align:left; margin:8px 0; padding:10px 12px; border-radius:10px; background:transparent; color:var(--ink); border:1px solid rgba(212,179,106,.35); font-family: Rajdhani, sans-serif; }
+    .pick.good { border-color:#39ff14; color:#39ff14; }
+    .pick.bad { border-color:#ff2d55; color:#ff6b8a; }
+    .fighters { display:grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap:8px; }
+    .fighters div { border:1px solid rgba(212,179,106,.2); border-radius:10px; padding:8px 10px; font-size:.9rem; }
+    .fighters b { display:block; color:var(--gold); }
+  </style>
+</head>
+<body>
+  <div class="veil">
+    <div class="kicker">THE MAT IS OPEN</div>
+    <h1>CANDLE<br/>DOJO</h1>
+    <p class="lede">Chart candles are the fighters. Body is who won. Wick is who got shoved. Close is the scoreboard. Paper only. Same slang as Stream and Classroom.</p>
+    <div class="row">
+      <button id="btnKata">First kata</button>
+      <a class="btn ghost" href="/campus/">Classroom</a>
+    </div>
+    <div class="plate fight" id="fight">
+      <div class="kicker">TODAY’S FIGHT · ROOKIE CARD</div>
+      <h2 style="margin:8px 0 4px;font-family:Orbitron,sans-serif">GREEN FIST <span style="color:#9a8f7c">vs</span> RED FADE</h2>
+      <p class="lede">Body vs body. Who won the period. No wicks, no swallows, no tricks. Green close above open. Red close below. One candle. That’s the fight.</p>
+      <p id="fightLine" class="lede"></p>
+    </div>
+    <div class="plate primer">
+      <div><b>BODY</b> Open to close. Who won the period.</div>
+      <div><b>WICK</b> Price went there and got shoved back.</div>
+      <div><b>CLOSE</b> Wicks are the fight. The close is the scoreboard.</div>
+      <div><b>WAIT</b> Standing down is a call — not a missed trade.</div>
+      <div><b>CONFLUENCE</b> One seat is opinion. Two or more is a case.</div>
+    </div>
+    <div class="plate kata" id="kata" hidden>
+      <div class="kicker">WHITE BELT · SIX BEATS</div>
+      <p id="kataQ"></p>
+      <div id="kataA"></div>
+      <p id="kataWhy"></p>
+    </div>
+    <div class="plate">
+      <div class="kicker">VITALIK’S FOUR · ETH CREW</div>
+      <p class="lede" style="margin:8px 0 12px">ETH is not the BTC zoo. Four seats. WICK reads the print. PULSE feels flow. VEL names the lag. CHEAP sits on the soft side.</p>
+      <div class="fighters" id="ethcrew"></div>
+    </div>
+    <div class="plate">
+      <div class="kicker">GREEN FIST CREW · BULL CORNER</div>
+      <p class="lede" style="margin:8px 0 12px">Green Fist is the captain. His roster is the green prints that walk with him: bounce, swallow, clean cut.</p>
+      <div class="fighters" id="crew"></div>
+    </div>
+    <div class="plate" id="file">
+      <div class="kicker" id="fileKicker">FILE</div>
+      <h2 id="fileName">Green Fist</h2>
+      <p id="fileAka" class="lede"></p>
+      <div id="fileBody"></div>
+    </div>
+    <div class="plate">
+      <div class="kicker">FULL ROSTER</div>
+      <div class="fighters" id="roster"></div>
+    </div>
+  </div>
+  <script>
+    const beats = [
+      { q: "Open 100, close 104, tiny wicks. Who won?", a: "Body / buyers", why: "Body is the scoreboard. Close above open = buyers finished on top.", opts: ["Body / buyers", "Wick / sellers", "WAIT / nobody"] },
+      { q: "Long upper wick, close back near the open. What happened?", a: "Wick — price got shoved", why: "A wick is a rejected price. Do not bet the fight.", opts: ["Breakout UP", "Wick — price got shoved", "Chalk — already decided"] },
+      { q: "The candle is not closed. What is the call?", a: "WAIT", why: "Wicks are noise until the candle finishes. Close is the decision.", opts: ["Jump in now", "WAIT", "Double size"] },
+      { q: "Two seats say UP, Clock says WAIT. Do you have confluence?", a: "Not yet", why: "One seat is opinion. Two or more agreeing is a case — Clock is still sitting.", opts: ["Yes, trade it", "Not yet", "Fade it"] },
+      { q: "The yes is 96¢. What’s the slang?", a: "Chalk", why: "Almost decided. Don’t chase a 95¢ yes.", opts: ["Confluence", "Chalk", "Strike"] },
+      { q: "Chair has no lock. You sit. Is that a missed trade?", a: "No — WAIT is a call", why: "A clean stand-down is a completed decision.", opts: ["Yes, you blew it", "No — WAIT is a call", "Size up next time"] },
+    ];
+    let i = 0;
+    const box = document.getElementById("kata");
+    const qel = document.getElementById("kataQ");
+    const ael = document.getElementById("kataA");
+    const why = document.getElementById("kataWhy");
+    document.getElementById("btnKata").onclick = () => { i = 0; box.hidden = false; paint(); box.scrollIntoView({behavior:"smooth"}); };
+    function paint() {
+      const b = beats[i];
+      qel.textContent = "Beat " + (i+1) + " / 6 — " + b.q;
+      why.textContent = "";
+      ael.innerHTML = "";
+      b.opts.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.className = "pick";
+        btn.textContent = opt;
+        btn.onclick = () => {
+          const good = opt === b.a;
+          btn.classList.add(good ? "good" : "bad");
+          why.textContent = b.why;
+          ael.querySelectorAll("button").forEach(x => x.disabled = true);
+          setTimeout(() => { i += 1; if (i < beats.length) paint(); else { qel.textContent = "White belt kata complete. Body, wick, close, WAIT."; ael.innerHTML = ""; why.textContent = "Classroom next — or keep this slang on Stream."; } }, good ? 900 : 1400);
+        };
+        ael.appendChild(btn);
+      });
+    }
+
+    let F = { fighters: {}, order: [] };
+    function card(id, host) {
+      const f = F.fighters[id];
+      if (!f) return;
+      const el = document.createElement("div");
+      el.dataset.id = id;
+      el.innerHTML = `<b>${f.name}</b>${f.aka} · ${f.card}`;
+      el.onclick = () => openFile(id);
+      host.appendChild(el);
+    }
+    function openFile(id) {
+      const f = F.fighters[id];
+      if (!f) return;
+      document.getElementById("fileKicker").textContent = (f.crew ? "GREEN FIST CREW · " : "") + f.card.toUpperCase();
+      document.getElementById("fileName").textContent = f.name;
+      document.getElementById("fileAka").textContent = f.aka + " · " + f.move + " · " + f.job;
+      const likes = (f.lookalikes || []).map(x => (F.fighters[x] || {}).name || x).join(" · ");
+      document.getElementById("fileBody").innerHTML = `
+        <p><b>TELL.</b> ${f.tell}</p>
+        <p><b>ANATOMY.</b> ${f.anatomy}</p>
+        <p><b>WHEN.</b> ${f.when}</p>
+        <p><b>TRAP.</b> ${f.trap}</p>
+        <p><b>COUNTER.</b> ${f.counter}</p>
+        <p><b>DEAD IF.</b> ${f.invalidation}</p>
+        <p><b>CLASSROOM.</b> ${f.classroom}</p>
+        <p><b>WALKS WITH.</b> ${likes}</p>
+        <p style="color:#9a8f7c">${f.origin}</p>`;
+      document.getElementById("file").scrollIntoView({behavior:"smooth", block:"nearest"});
+      document.querySelectorAll(".fighters div").forEach(n => n.style.borderColor = n.dataset.id === id ? "#d4b36a" : "rgba(212,179,106,.2)");
+    }
+    fetch("fighters.json").then(r => r.json()).then(d => {
+      F = d;
+      const crew = document.getElementById("crew");
+      const roster = document.getElementById("roster");
+      const eth = document.getElementById("ethcrew");
+      ["bull","hammer","engulf-bull","marubozu"].forEach(id => card(id, crew));
+      (d.eth || []).forEach(id => card(id, eth));
+      d.order.forEach(id => card(id, roster));
+      openFile("bull");
+      const lines = [
+        "Fist walks in more than anyone. Fade is the mirror. Don’t pick a side until the close.",
+        "One green is not a trend. One red is not a collapse. Rookie card: name who won.",
+        "If you cannot say who won the body, you do not have a fighter. Sit."
+      ];
+      const fl = document.getElementById("fightLine");
+      if (fl) fl.textContent = lines[Math.floor(Date.now() / 86400000) % lines.length];
+      if (location.hash === "#kata") document.getElementById("btnKata").click();
+    });
+  </script>
+</body>
+</html>
+

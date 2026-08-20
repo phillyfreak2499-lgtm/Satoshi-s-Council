@@ -3,72 +3,6 @@
  * Screensaver Mode: High-tech cyberpunk knight / samurai Round Table
  * Dashboard Mode: armor-plate neon HUD cards
  */
-/* ===== ADMIN CREDENTIAL =====
- * The admin secret is NOT in this file. It lives in COUNCIL_ADMIN_PASSWORD on
- * the server. The operator types it into the Settings gate; we verify it
- * server-side, hold it in a closure for the life of the page, and send it as
- * the X-Council-Admin header. Never persisted to localStorage/sessionStorage,
- * never put in a URL — query strings land in access and proxy logs.
- */
-window.CouncilAdmin = window.CouncilAdmin || (function () {
-  let secret = "";
-
-  async function verify(candidate) {
-    const val = String(candidate == null ? "" : candidate);
-    if (!val) return false;
-    try {
-      const r = await fetch("/api/admin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ password: val }),
-      });
-      const data = await r.json();
-      if (data && data.ok) {
-        secret = val;
-        return true;
-      }
-    } catch (e) {}
-    return false;
-  }
-
-  function headers(extra) {
-    const h = Object.assign({}, extra || {});
-    if (secret) h["X-Council-Admin"] = secret;
-    return h;
-  }
-
-  async function adminFetch(url, opts) {
-    const o = Object.assign({}, opts || {});
-    o.headers = headers(o.headers);
-    return fetch(url, o);
-  }
-
-  // Admin downloads used to be plain links carrying ?admin=<password>. Fetch
-  // with the header instead and hand the browser a blob.
-  async function download(url, filename) {
-    const r = await adminFetch(url, { credentials: "same-origin" });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const blob = await r.blob();
-    const href = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => { try { URL.revokeObjectURL(href); } catch (e) {} }, 30000);
-  }
-
-  return {
-    has: () => !!secret,
-    clear: () => { secret = ""; },
-    verify,
-    headers,
-    fetch: adminFetch,
-    download,
-  };
-})();
-
 window.applySettingsSnapshot = window.applySettingsSnapshot || function applySettingsSnapshotStub() {};
 if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   window.applySettingsSnapshot._stub = true;
@@ -83,6 +17,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try { document.body.classList.add("side-tab-off"); } catch (e) {}
 
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
+  const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
   const DESK_KEY = "council_auth_ok";
   const ONBOARD_KEY = "council_onboarded";
@@ -228,15 +163,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     submit.__wired = true;
     const tryUnlock = () => {
       const val = (input && input.value) || "";
-      CouncilAdmin.verify(val).then((ok) => {
-        if (ok) {
-          setAdminUnlocked(true);
-          if (err) err.classList.add("hidden");
-          closeAdminGate(true);
-        } else {
-          if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
-        }
-      });
+      if (val === ADMIN_PASSWORD) {
+        setAdminUnlocked(true);
+        if (err) err.classList.add("hidden");
+        closeAdminGate(true);
+      } else {
+        if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
+      }
     };
     submit.addEventListener("click", tryUnlock);
     if (input && !input.__hotkeysSwallowed) {
@@ -254,7 +187,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   async function adminFetch(url, opts) {
     opts = opts || {};
-    return CouncilAdmin.fetch(url, opts);
+    opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
+    return fetch(url, opts);
   }
   function wireAdminTools() {
     const st = () => document.getElementById("adminToolsStatus");
@@ -265,11 +199,11 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset accuracy counters? Training weights are NOT deleted — only the displayed right/wrong tally resets.")) return;
+          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
-            if (st()) st().textContent = data.ok ? ("Accuracy cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
+            if (st()) st().textContent = data.ok ? ("Hit rate & scorecard cleared · " + (data.reset_at || "")) : ("Failed: " + (data.error || ""));
           } catch (e) {
             if (st()) st().textContent = "Clear failed: " + e;
           }
@@ -297,9 +231,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       exportBtn.__wired = true;
       exportBtn.addEventListener("click", () => {
         requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/admin/export.xlsx?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-log.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
           if (st()) st().textContent = "Excel download started…";
-          CouncilAdmin.download("/api/admin/export.xlsx", "satoshi-council-log.xlsx")
-            .catch((e) => { if (st()) st().textContent = "Export failed: " + e; });
         });
       });
     }
@@ -310,10 +248,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         e.preventDefault();
         e.stopPropagation();
         requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-brain.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
           const bs = document.getElementById("brainStatus");
           if (bs) bs.textContent = "Brain download started…";
-          CouncilAdmin.download("/api/brain/export", "satoshi-council-brain.json")
-            .catch((e) => { if (bs) bs.textContent = "Brain export failed: " + e; });
         });
       });
     }
@@ -321,6 +263,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Expose for any late handlers
   window.isAdminUnlocked = isAdminUnlocked;
   window.requestAdminUnlock = requestAdminUnlock;
+  window.ADMIN_PASSWORD = ADMIN_PASSWORD;
 
   /* Admin-only desk extensions are fetched after Settings unlock. Not a public route. */
   let adminExtBooted = false;
@@ -638,8 +581,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     });
     drop.forEach(function (c) { document.body.classList.remove(c); });
     if (next) document.body.classList.add("mode-" + next);
-    document.body.classList.toggle("floor-mode", next === "floor" || next === "night");
+    document.body.classList.toggle("floor-mode", next === "floor" || next === "night" || next === "stream");
     document.body.classList.toggle("night-mode", next === "night");
+    document.body.classList.toggle("stream-mode", next === "stream");
     const phoneFloor = (next === "floor" || next === "night") && (typeof isPhoneDesk === "function" ? isPhoneDesk() : false);
     document.body.classList.toggle("phone-floor", phoneFloor);
     try { if (typeof initModeTabsScroll === "function") initModeTabsScroll(); } catch (e) {}
@@ -655,45 +599,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
     });
-    try { syncTabGroups(next); } catch (e) {}
   }
-
-  // Grouped tab bar: the primaries Calls / Research / Market each front a set of
-  // views. Only reorganises the bar — the views and their data-mode wiring are
-  // untouched.
-  var TAB_GROUPS = {
-    calls:    ["calls", "kalshi", "paper", "tape"],
-    research: ["calib", "backtest", "health"],
-    market:   ["book", "news", "brain"],
-  };
-  function groupForMode(mode) {
-    for (var g in TAB_GROUPS) {
-      if (TAB_GROUPS.hasOwnProperty(g) && TAB_GROUPS[g].indexOf(mode) >= 0) return g;
-    }
-    return null;
-  }
-  function syncTabGroups(next) {
-    var active = groupForMode(next);
-    var wrap = document.getElementById("modeSubtabs");
-    if (wrap) wrap.hidden = !active;
-    document.querySelectorAll(".mode-subrow").forEach(function (row) {
-      row.hidden = row.getAttribute("data-subrow") !== active;
-    });
-    document.querySelectorAll(".mode-group[data-group]").forEach(function (btn) {
-      var on = btn.getAttribute("data-group") === active;
-      btn.classList.toggle("active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
-    });
-  }
-  function openTabGroup(group) {
-    var members = TAB_GROUPS[group];
-    if (!members || !members.length) return;
-    // If a member is already the active mode, keep it; else open the first.
-    var current = (typeof mode !== "undefined") ? mode : null;
-    var target = (members.indexOf(current) >= 0) ? current : members[0];
-    try { setMode(target); } catch (e) {}
-  }
-  window.openTabGroup = openTabGroup;
 
   function stayOnSettings() {
     const sv = document.getElementById("settingsView");
@@ -722,8 +628,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       "Content-Type": "application/json",
       Accept: "application/json",
     };
-    // Every settings write is admin-gated server-side, not just auto_bet.
-    Object.assign(headers, CouncilAdmin.headers());
+    if (typeof isAdminUnlocked === "function" && isAdminUnlocked() && body && body.auto_bet) {
+      headers["X-Council-Admin"] = ADMIN_PASSWORD;
+    }
     const r = await fetch(url, {
       method: "POST",
       headers,
@@ -736,11 +643,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   async function fetchSettings() {
     try {
-      // Send the admin header when we have it — the server strips auto_bet
-      // from the payload for anyone who is not admin.
-      const r = await fetch("/api/settings", {
-        headers: CouncilAdmin.headers({ Accept: "application/json" }),
-      });
+      const r = await fetch("/api/settings", { headers: { Accept: "application/json" } });
       if (!r.ok) return null;
       return await readSettingsJson(r);
     } catch (e) {
@@ -789,10 +692,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   let mode = "art"; // art | seats | paper | charts | …  (bots/ranks/dashboard alias to seats)
   let state = null;
-  // Bitcoin research desk — one table. The old ethereum/ats/front/oracle
-  // markets were removed; ETH survives only as a signal feeding VITALIK.
-  let focusTable = "bitcoin";
-  try { localStorage.setItem("council_focus_table", "bitcoin"); } catch (e) {}
+  let focusTable = (function(){ try { const v = localStorage.getItem("council_focus_table"); if (v === "ethereum" || v === "bitcoin" || v === "front" || v === "ats" || v === "oracle") return v; } catch(e){} return "ethereum"; })();
   try { document.body.dataset.focusTable = focusTable; } catch (e) {}
   function tableHasLiveHour(t) {
     if (!t || typeof t !== "object") return false;
@@ -1087,7 +987,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try { board = atsBoard; } catch (e) { board = null; }
     const chair = (board && board.chair) || {};
     const seats = (board && Array.isArray(board.seats) && board.seats.length) ? board.seats : [
-      { id: "LINE", job: "The book and the number.", dir: "WAIT", call: "THE NUMBER · —", n: 0 },
+      { id: "LINE", job: "The Kalshi book / the number.", dir: "WAIT", call: "THE NUMBER · —", n: 0 },
       { id: "STEAM", job: "Line movement.", dir: "WAIT", call: "STEAM IS QUIET", n: 0 },
       { id: "FADE", job: "Public vs sharp.", dir: "WAIT", call: "NO CROWD TO FADE", n: 0 },
       { id: "HURT", job: "Injuries / out.", dir: "WAIT", call: "HURT · SIT · DARK", n: 0 },
@@ -1502,7 +1402,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return seatOrbitHold;
   }
   function floorLikeMode() {
-    return mode === "floor" || mode === "night";
+    return mode === "floor" || mode === "night" || mode === "stream";
   }
   function floorSeatDirLocked(dir) {
     const d = String(dir || "").toUpperCase();
@@ -2201,7 +2101,53 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
   })();
 
-  /** Speak-ish synthesized call: UP / DOWN / WAIT / SWAP */
+  function playGavel() {
+    if (soundMuted || !callSfxOn) return;
+    try { if (typeof window.__floorMusicDuck === "function") window.__floorMusicDuck(900); } catch (e) {}
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [0, 0.18].forEach(function (t, i) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      const f = ctx.createBiquadFilter();
+      o.type = "sine";
+      o.frequency.setValueAtTime(i ? 150 : 210, now + t);
+      o.frequency.exponentialRampToValueAtTime(48, now + t + 0.22);
+      f.type = "lowpass";
+      f.frequency.setValueAtTime(900, now + t);
+      g.gain.setValueAtTime(0.0001, now + t);
+      g.gain.exponentialRampToValueAtTime(0.38, now + t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.34);
+      o.connect(f); f.connect(g); g.connect(ctx.destination);
+      o.start(now + t);
+      o.stop(now + t + 0.38);
+    });
+    flashGavelScreen();
+  }
+  function centsSpoken(n) {
+    n = Math.round(Number(n));
+    if (!isFinite(n)) return "";
+    const ones = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+    const tens = ["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+    let w = "";
+    if (n < 20) w = ones[n];
+    else w = tens[Math.floor(n / 10)] + (n % 10 ? "-" + ones[n % 10] : "");
+    return w + " cents";
+  }
+  function speakChairLine(text) {
+    if (soundMuted || !callSfxOn) return;
+    try {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(String(text || ""));
+      u.rate = 0.92;
+      u.pitch = 0.82;
+      u.volume = 0.92;
+      u.lang = "en-US";
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
   function playCallVoice(dir) {
     try { window.__lastChairDir = dir; } catch (e) {}
     if (soundMuted || !callSfxOn) return;
@@ -2276,9 +2222,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Visible BTC strip only. Brain still has all 22 voters. Trim HUD/Table/Floor feed.
   const BTC_STRIP_KEYS = ["candle_btc", "volume", "momentum", "orderflow", "funding", "volatility", "oi_pressure", "odds", "session_tod", "news", "liq", "exhaust"];
   const BTC_STRIP_LABELS = ["WICK", "PULSE", "DRIFT", "TAPE", "CARRY", "VOLT", "CHAIN", "ODDS", "CLOCK", "WIRE", "CASCADE", "EXHAUST"];
+  const ETH_STRIP_KEYS = ["candle_eth", "volume", "spotlag", "cheap"];
   function onVisibleStrip(key, which) {
     const w = which || (typeof focusTable !== "undefined" ? focusTable : "bitcoin");
-    if (typeof isEthTable === "function" && isEthTable(w)) return true;
+    if (typeof isEthTable === "function" && isEthTable(w)) return ETH_STRIP_KEYS.indexOf(key) >= 0;
     if (typeof isAtsTable === "function" && isAtsTable(w)) return true;
     if (typeof isFrontTable === "function" && isFrontTable(w)) return true;
     if (typeof isOracleTable === "function" && isOracleTable(w)) return true;
@@ -2331,28 +2278,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     marble: "MARBLE",
   };
   const AGENT_TITLES = {
-    candle: "BTC Structure",
-    candle_btc: "BTC Structure",
-    candle_eth: "ETH Flow Support",
-    volume: "ETH Flow",
-    momentum: "Momentum Scout",
-    orderflow: "Multi-Coin Tape",
-    funding: "Crowding & Funding",
+    candle: "Pattern Seer",
+    candle_btc: "Bitcoin Pattern Specialist",
+    candle_eth: "Ethereum Pattern Specialist",
+    volume: "Flow Reader",
+    momentum: "Trend Scout",
+    orderflow: "Book Walker",
+    funding: "Rate Oracle",
     regime: "Regime Watch",
-    volatility: "Vol Regime",
+    volatility: "Vol Scout",
     oi_pressure: "OI Pressure",
-    streak: "Trend Continuity",
-    odds: "Market Skew",
-    strike: "Level Scout",
+    streak: "Path Reader",
+    odds: "Kalshi Skew",
+    strike: "Strike Scout",
     session_tod: "Session Clock",
     whale: "Whale Tape",
     quorum: "Floor Count",
     panic: "Panic Fade",
     cheap: "Value Side",
     spotlag: "Spot Lag",
-    exhaust: "Exhaustion",
-    guardian: "Risk Guardian",
-    law: "Process Enforcer",
+    exhaust: "Run Fade",
+    guardian: "System Guard",
+    law: "Enforcer",
     leader: "The Gavel",
     chair: "The Gavel",
   };
@@ -2395,19 +2342,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return isEthTable(which) ? "VITALIK" : "SATOSHI";
   }
   function chairTitleOf(which) {
-    if (isOracleTable(which)) return "Oracle · synthesis and process guardian · ranked debate leader";
-    if (isAtsTable(which)) return "Ares · momentum and trend · ranked debate leader";
-    if (isFrontTable(which)) return "Raijin · crowding, funding, regime, volatility · ranked debate leader";
-    return isEthTable(which)
-      ? "Vitalik · ETH and relative strength · ranked debate leader"
-      : "Satoshi · centre seat, final authority · never ranked or moved";
+    if (isOracleTable(which)) return "CRT · Oracle";
+    if (isAtsTable(which)) return "ATS · Ares";
+    if (isFrontTable(which)) return "DFW · Raijin";
+    return isEthTable(which) ? "ETH · Vitalik" : "BTC · Satoshi";
   }
   function chairBadgeOf(which) {
-    // Satoshi's badge states the rule; the four read as ranked debate seats.
-    if (isOracleTable(which)) return "ORACLE · DEBATE";
-    if (isAtsTable(which)) return "ARES · DEBATE";
-    if (isFrontTable(which)) return "RAIJIN · DEBATE";
-    return isEthTable(which) ? "VITALIK · DEBATE" : "SATOSHI · FINAL AUTHORITY";
+    if (isOracleTable(which)) return "CRT · ORACLE";
+    if (isAtsTable(which)) return "ATS · ARES";
+    if (isFrontTable(which)) return "DFW · RAIJIN";
+    return isEthTable(which) ? "ETH · VITALIK" : "BTC · SATOSHI";
   }
   function chairPortraitOf(which, dir) {
     if (isOracleTable(which)) return oraclePortrait;
@@ -2482,39 +2426,37 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const clock = (m.market && m.market.clock) || {};
       return wxWord(dir, clock.strike_type || (m.market && m.market.strike_type), clock.nws_high, clock.floor_strike, clock.cap_strike);
     }
-    if (dir === "UP") return "Accumulate";
-    if (dir === "DOWN") return "Reduce";
-    if (dir === "UP_HOLD") return "Maintain";
-    if (dir === "DOWN_HOLD") return "Reduce";
-    if (dir === "SWAP") return "Rebalance";
-    return "Stand down";
+    if (dir === "UP_HOLD") return "1/4 UP HOLD";
+    if (dir === "DOWN_HOLD") return "1/4 DOWN HOLD";
+    return dir || "WAIT";
   }
 
 
   // ——— Bot seat logos (circular, color outline follows call) ———
+  // Cinematic people stills — same language as the chairs. Not logos.
   const BOT_ICON_FILES = {
-    candle: "/bots/wick.png",
-    candle_btc: "/bots/wick.png",
-    candle_eth: "/bots/wick.png",
-    volume: "/bots/pulse.png",
-    momentum: "/bots/drift.png",
-    orderflow: "/bots/tape.png",
-    funding: "/bots/carry.png",
+    candle: "/portraits/candle_btc.jpg?v=people-1",
+    candle_btc: "/portraits/candle_btc.jpg?v=people-1",
+    candle_eth: "/portraits/candle_eth.jpg?v=people-1",
+    volume: "/portraits/volume.jpg?v=people-1",
+    momentum: "/portraits/momentum.jpg?v=people-1",
+    orderflow: "/portraits/orderflow.jpg?v=people-1",
+    funding: "/portraits/funding.jpg?v=people-1",
     regime: "/bots/orbit.png",
-    volatility: "/bots/volt.png",
-    oi_pressure: "/bots/chain.png",
+    volatility: "/portraits/volatility.jpg?v=people-1",
+    oi_pressure: "/portraits/oi_pressure.jpg?v=people-1",
     streak: "/bots/streak.png",
-    odds: "/bots/odds.png",
-    strike: "/bots/strike.png",
-    session_tod: "/bots/clock.png",
+    odds: "/portraits/odds.jpg?v=people-1",
+    strike: "/portraits/strike.jpg?v=people-1",
+    session_tod: "/portraits/session_tod.jpg?v=people-1",
     whale: "/bots/whale.png",
-    quorum: "/bots/quorum.png",
+    quorum: "/portraits/quorum.jpg?v=people-1",
     panic: "/bots/fade.png",
-    cheap: "/bots/cheap.png",
-    spotlag: "/bots/vel.png",
-    exhaust: "/bots/exhaust.png",
-    news: "/bots/wire.png",
-    liq: "/bots/cascade.png",
+    cheap: "/portraits/cheap.jpg?v=people-1",
+    spotlag: "/portraits/spotlag.jpg?v=people-1",
+    exhaust: "/portraits/exhaust.jpg?v=people-1",
+    news: "/portraits/news.jpg?v=people-1",
+    liq: "/portraits/liq.jpg?v=people-1",
     guardian: "/bots/warden.png",
     law: "/bots/law.png",
     line: "/static/bots/line.png",
@@ -3710,7 +3652,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
 
-  function isPhoneDesk() {
+  function defaultLandMode() {
+    try {
+      if (window.matchMedia && (
+        window.matchMedia("(max-width: 900px)").matches ||
+        window.matchMedia("(max-height: 500px) and (orientation: landscape)").matches
+      )) return "stream";
+    } catch (e) {}
+    try { if (typeof isPhoneDesk === "function" && isPhoneDesk()) return "stream"; } catch (e) {}
+    return "art";
+  }
     try {
       return !!(window.matchMedia && window.matchMedia("(max-width: 480px)").matches);
     } catch (e) {
@@ -4576,329 +4527,665 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   window.__floorHudGeometry = floorHudGeometry;
 
-  /* ===== COUNCIL ROUND TABLE =====
-   * SATOSHI is pinned to the exact geometric centre of the canvas. He never
-   * moves, never orbits, and takes no camera drift — he is the fixed point
-   * the rest of the table is measured against.
-   *
-   * VITALIK / ARES / RAIJIN / ORACLE each hold a fixed compass slot so you
-   * always know where to look. RANK sets their DISTANCE from Satoshi:
-   * rank 1 sits closest, rank 4 farthest. A seat only slides when its rank
-   * actually changes; otherwise target === current and nothing animates.
-   *
-   * All art is borrowed from the existing table: same portraits, same
-   * containPortrait crop, same drawPacketSpoke, same armor rings, same
-   * ACID / HOT_RED / GOLD palette. No new visual language.
-   */
-  const COUNCIL_SEATS = [
-    { leader: "vitalik", which: "ethereum", angle: -Math.PI / 2 },
-    { leader: "ares",    which: "ats",      angle: 0 },
-    { leader: "raijin",  which: "front",    angle: Math.PI / 2 },
-    { leader: "oracle",  which: "oracle",   angle: Math.PI },
+
+  const STREAM_OVAL = [
+    { name: "clock",  label: "CLOCK",  xf: 0.13, yf: 0.50, rs: 0.092 },
+    { name: "quorum", label: "QUORUM", xf: 0.295, yf: 0.33, rs: 0.122 },
+    { name: "wick",   label: "WICK",   xf: 0.705, yf: 0.33, rs: 0.122 },
+    { name: "strike", label: "STRIKE", xf: 0.87, yf: 0.50, rs: 0.112 },
+    { name: "odds",   label: "ODDS",   xf: 0.50, yf: 0.84, rs: 0.108 },
   ];
-  // Eased seat radii, so a rank change glides instead of snapping.
-  const _councilSeatR = {};
-
-  function councilBoard() {
-    return window.__councilBoard || null;
+  const streamFaceCache = {};
+  function streamFace(file) {
+    if (!streamFaceCache[file]) {
+      const img = new Image();
+      img.onload = function () { try { if (mode === "stream") drawArt(); } catch (e) {} };
+      img.src = "/portraits/" + file + "?v=cinematic-oval-1";
+      streamFaceCache[file] = img;
+    }
+    return streamFaceCache[file];
   }
-
-  function councilDirOf(call, direction) {
-    const d = String(direction || "").toUpperCase();
-    if (d === "UP" || d === "DOWN" || d === "WAIT") return d;
-    const c = String(call || "Stand down").toUpperCase();
-    if (c === "REDUCE") return "DOWN";
-    if (["ACCUMULATE", "MAINTAIN", "BUY ZONE", "HOLD"].indexOf(c) >= 0) return "UP";
+  function streamAgentOf(name) {
+    const agents = (state && state.agents) || [];
+    for (let i = 0; i < agents.length; i++) {
+      const n = String((agents[i] && agents[i].agent_name) || "").toLowerCase();
+      if (n === name || n.indexOf(name) >= 0) return agents[i];
+    }
+    return null;
+  }
+  function streamAgentLean(name) {
+    const a = streamAgentOf(name);
+    const raw = String((a && (a.direction || a.dir || a.lean)) || "WAIT").toUpperCase();
+    if (raw.indexOf("UP") >= 0) return "UP";
+    if (raw.indexOf("DOWN") >= 0) return "DOWN";
     return "WAIT";
   }
-
-  function councilToneOf(dir) {
-    if (dir === "UP") return ACID;
-    if (dir === "DOWN") return HOT_RED;
-    return "rgba(0, 232, 255, 0.85)";
+  function streamAgentConf(name) {
+    const a = streamAgentOf(name);
+    const n = Number(a && (a.confidence != null ? a.confidence : a.conf));
+    return isFinite(n) ? Math.round(n) : 0;
   }
-  // Direction as a shape, so UP/DOWN/WAIT never depends on colour alone.
-  function dirGlyph(dir) {
-    return dir === "UP" ? "▲" : dir === "DOWN" ? "▼" : "■";
+  function streamChairRead() {
+    const board = window.__councilBoard || {};
+    const fin = board.final || board.center || {};
+    const dec = (state && state.decision) || {};
+    let dir = String(fin.direction || dec.direction || dec.dir || "WAIT").toUpperCase();
+    if (dir.indexOf("UP") >= 0) dir = "UP";
+    else if (dir.indexOf("DOWN") >= 0) dir = "DOWN";
+    else dir = "WAIT";
+    const conf = Number(fin.confidence != null ? fin.confidence : dec.confidence) || 0;
+    const word = dir === "UP" ? "ACCUMULATE" : dir === "DOWN" ? "REDUCE" : "STAND DOWN";
+    return { dir: dir, word: word, conf: Math.round(conf) };
   }
-
-  // Lean meter around SATOSHI: net conviction of the floor. frac 0..1, side
-  // UP/DOWN/FLAT. Jade fills clockwise from top for UP; blood counter-clockwise
-  // for DOWN; a faint full track when the floor is split.
-  function drawLeanMeter(cx, cy, r, frac, side) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(180, 200, 220, 0.12)";
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    if (frac > 0 && side !== "FLAT") {
-      const col = side === "UP" ? ACID : HOT_RED;
-      const start = -Math.PI / 2;
-      const sweep = Math.max(0, Math.min(1, frac)) * Math.PI * 2;
-      ctx.beginPath();
-      if (side === "UP") ctx.arc(cx, cy, r, start, start + sweep);
-      else ctx.arc(cx, cy, r, start, start - sweep, true);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 5;
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 10;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+  function liveSideCents(st, dir) {
+    const m = (st && st.market) || (state && state.market) || {};
+    const book = (typeof liveBookOdds === "function") ? liveBookOdds(m) : null;
+    if (!book) return null;
+    if (dir === "DOWN") return Number(book.down);
+    return Number(book.up);
+  }
+  function lockEntryCents(st, dir) {
+    const lc = (st && (st.locked_call || (st.decision && st.decision.locked_call))) || {};
+    let n = lc.entry_odds_pct;
+    if (n == null && lc.entry_up_pct != null) {
+      n = dir === "DOWN" ? (100 - Number(lc.entry_up_pct)) : Number(lc.entry_up_pct);
     }
-    ctx.restore();
+    n = Number(n);
+    if (!isFinite(n)) return null;
+    if (n > 0 && n <= 1.5) n = n * 100;
+    return n;
   }
-
-  // Clean stand-in when a leader has no portrait file yet (e.g. VITALIK).
-  function drawSeatPlaceholder(cx, cy, r, callsign, tone) {
+  function windupSeats() {
+    const names = ["wick", "strike", "odds", "quorum", "clock"];
+    const up = [], down = [];
+    names.forEach(function (n) {
+      const lean = streamAgentLean(n);
+      if (lean === "UP") up.push(n.toUpperCase());
+      if (lean === "DOWN") down.push(n.toUpperCase());
+    });
+    if (up.length >= 2 && up.length > down.length) return { dir: "UP", seats: up };
+    if (down.length >= 2 && down.length > up.length) return { dir: "DOWN", seats: down };
+    return null;
+  }
+  function paintLeadChip() {
+    const st = (typeof tableState === "function" ? tableState(focusTable || "bitcoin") : null) || state || {};
+    const chair = streamChairRead();
+    const wind = windupSeats();
+    const live = liveSideCents(st, chair.dir === "WAIT" && wind ? wind.dir : chair.dir);
+    const entry = lockEntryCents(st, chair.dir);
+    let kicker = "WIND-UP";
+    let line = "Seats leaning. Chair sitting.";
+    let sub = "The call should land before Kalshi jumps — not after.";
+    if (chair.dir !== "WAIT" && entry != null && live != null) {
+      const delta = live - entry;
+      kicker = delta >= 2 ? "AHEAD OF THE BOOK" : (delta <= -2 ? "BOOK HASN'T JUMPED" : "LOCKED");
+      line = "LOCKED " + Math.round(entry) + "¢  ·  NOW " + Math.round(live) + "¢";
+      sub = delta >= 2
+        ? ("Kalshi ran +" + Math.round(delta) + "¢ after the Chair spoke.")
+        : (delta <= -2 ? "Still waiting on the jump. Hold the thesis." : "Stamp vs live. Proof, not a vibe.");
+    } else if (chair.dir === "WAIT" && wind) {
+      kicker = "WIND-UP";
+      line = wind.seats.slice(0, 3).join(" + ") + " leaning " + wind.dir;
+      sub = "Chair sitting until the book hasn't already jumped. Call comes first.";
+    } else if (chair.dir === "WAIT") {
+      kicker = "WAIT";
+      line = "The Chair is sitting. That’s the call.";
+      sub = "No chase. If Kalshi already ran, we missed it on purpose.";
+    } else {
+      kicker = chair.word;
+      line = chair.word + (chair.conf ? (" · " + chair.conf) : "");
+      sub = "Bitcoin only on Stream.";
+    }
+    const set = function (id, text) { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set("streamLeadKicker", kicker);
+    set("streamLeadLine", line);
+    set("streamLeadSub", sub);
+    set("deskLeadKicker", kicker);
+    set("deskLeadLine", line);
+    const sl = document.getElementById("streamLead");
+    const dl = document.getElementById("deskLead");
+    if (sl) sl.classList.remove("hidden");
+    if (dl) dl.classList.toggle("hidden", mode === "stream" || mode === "floor" || mode === "night");
+    paintPolaroid(chair, entry, live);
+  }
+  let __streamWindowId = null;
+  let __streamSitDone = false;
+  let __streamLockSpoken = false;
+  let __polaroidCents = null;
+  let __polaroidDir = null;
+  let __handsTimer = null;
+  function streamWindowId() {
+    const m = (state && state.market) || {};
+    return String(m.close_time || m.kalshi_ticker || m.window_id || "");
+  }
+  function resetStreamWindowIfNeeded() {
+    const id = streamWindowId();
+    if (id && id !== __streamWindowId) {
+      __streamWindowId = id;
+      __streamSitDone = false;
+      __streamLockSpoken = false;
+      __polaroidCents = null;
+      __polaroidDir = null;
+      streamShow("streamPolaroid", false);
+    }
+  }
+  function paintPolaroid(chair, entry, live) {
+    const card = document.getElementById("streamPolaroid");
+    if (!card) return;
+    if (mode !== "stream") { card.classList.add("hidden"); return; }
+    if (chair && chair.dir !== "WAIT" && entry != null && __polaroidCents == null) {
+      __polaroidCents = Math.round(entry);
+      __polaroidDir = chair.dir;
+    }
+    if (__polaroidCents == null) { card.classList.add("hidden"); return; }
+    const cents = document.getElementById("polaroidCents");
+    const nowEl = document.getElementById("polaroidLive");
+    if (cents) cents.textContent = __polaroidCents + "¢";
+    if (nowEl) nowEl.textContent = (live != null && isFinite(live)) ? ("now " + Math.round(live) + "¢") : "";
+    card.classList.remove("hidden");
+  }
+  function recapDayId() {
+    const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function loadDayRecap() {
+    let bag = {};
+    try { bag = JSON.parse(localStorage.getItem("council_day_recap") || "{}"); } catch (e) { bag = {}; }
+    const id = recapDayId();
+    if (bag.day !== id) bag = { day: id, sits: 0, locks: 0, polaroid: null, shown: false };
+    return bag;
+  }
+  function saveDayRecap(bag) {
+    try { localStorage.setItem("council_day_recap", JSON.stringify(bag)); } catch (e) {}
+  }
+  function bumpDayRecap(kind, cents) {
+    const bag = loadDayRecap();
+    if (kind === "sit") bag.sits += 1;
+    if (kind === "lock") {
+      bag.locks += 1;
+      if (cents != null && isFinite(Number(cents))) bag.polaroid = Math.round(Number(cents));
+    }
+    saveDayRecap(bag);
+  }
+  function maybeDayRecap() {
+    if (mode !== "stream") return;
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    if (now.getHours() < 16) return;
+    const bag = loadDayRecap();
+    if (bag.shown) return;
+    bag.shown = true;
+    saveDayRecap(bag);
+    const head = document.getElementById("recapHead");
+    const line = document.getElementById("recapLine");
+    const sitWord = bag.sits === 1 ? "1 sit" : (bag.sits + " sits");
+    const lockWord = bag.locks === 1 ? "1 lock" : (bag.locks + " locks");
+    if (head) head.textContent = bag.locks ? "THE CHAIR SPOKE" : "THE CHAIR SAT";
+    if (line) line.textContent = sitWord + ". " + lockWord + "." + (bag.polaroid != null ? (" Polaroid " + bag.polaroid + "¢.") : " No chase.");
+    streamShow("streamRecap", true);
+    try { speakChairLine((head && head.textContent) + ". " + (line && line.textContent)); } catch (e) {}
+    setTimeout(function () { streamShow("streamRecap", false); }, 8000);
+  }
+  function openJoinGate(next) {
+    window.__joinNext = next || "ethereum";
+    const g = document.getElementById("joinGate");
+    if (g) g.classList.remove("hidden");
+  }
+  function closeJoinGate() {
+    const g = document.getElementById("joinGate");
+    if (g) g.classList.add("hidden");
+  }
+  function hasJoinedDesk() {
+    try { return localStorage.getItem("council_joined") === "1"; } catch (e) { return false; }
+  }
+  function wireJoinGate() {
+    const enter = document.getElementById("joinEnter");
+    const stay = document.getElementById("joinStay");
+    const pill = document.getElementById("streamJoinCta");
+    if (enter && !enter.__wired) {
+      enter.__wired = true;
+      enter.addEventListener("click", function () {
+        try { localStorage.setItem("council_joined", "1"); } catch (e) {}
+        closeJoinGate();
+        const next = window.__joinNext || "ethereum";
+        try { if (typeof setMode === "function") setMode("art"); } catch (e) {}
+        try { if (typeof window.setFocusTable === "function") window.setFocusTable(next); } catch (e) {}
+      });
+    }
+    if (stay && !stay.__wired) {
+      stay.__wired = true;
+      stay.addEventListener("click", function () {
+        closeJoinGate();
+        try { if (typeof setMode === "function") setMode("stream"); } catch (e) {}
+      });
+    }
+    if (pill && !pill.__wired) {
+      pill.__wired = true;
+      pill.style.pointerEvents = "auto";
+      pill.style.cursor = "pointer";
+      pill.addEventListener("click", function () { openJoinGate("ethereum"); });
+    }
+  }
+  try { wireJoinGate(); } catch (e) {}
+  function fireLockCeremony(chair) {
+    if (__streamLockSpoken) return;
+    __streamLockSpoken = true;
+    try { playGavel(); } catch (e) {}
+    const st = (typeof tableState === "function" ? tableState("bitcoin") : null) || state || {};
+    const entry = lockEntryCents(st, chair.dir);
+    bumpDayRecap("lock", entry);
+    if (entry != null && __polaroidCents == null) {
+      __polaroidCents = Math.round(entry);
+      __polaroidDir = chair.dir;
+    }
+    const spoken = (chair.dir === "UP" ? "Accumulate. " : "Reduce. ") + (entry != null ? centsSpoken(entry) : "That's the call.");
+    setTimeout(function () { speakChairLine(spoken); }, 420);
+    try { paintPolaroid(chair, entry, liveSideCents(st, chair.dir)); } catch (e) {}
+  }
+  function fireSitCeremony() {
+    if (__streamSitDone) return;
+    __streamSitDone = true;
+    bumpDayRecap("sit");
+    streamShow("streamSitHonor", true);
+    try { playGavel(); } catch (e) {}
+    setTimeout(function () { speakChairLine("The Chair is sitting."); }, 380);
+    setTimeout(function () { streamShow("streamSitHonor", false); }, 3200);
+  }
+  const DOJO_SLANG = [
+    { term: "Wick", bite: "A rejected price. Price went there and got shoved back." },
+    { term: "Body", bite: "Open to close. The fat part of the candle. Who won the period." },
+    { term: "Close", bite: "Wicks are the fight. The close is the scoreboard." },
+    { term: "Confluence", bite: "One seat is opinion. Two or more is a case." },
+    { term: "Chalk", bite: "Almost decided. Don't chase a 95¢ yes." },
+    { term: "Strike", bite: "The line this window is judged against. Time left is the clock." },
+    { term: "WAIT", bite: "Standing down is a call — not a missed trade." },
+    { term: "Invalidation", bite: "Write the price where the idea is dead — before you enter." },
+    { term: "Paper", bite: "Fake money, real rules. The gym before the arena." },
+    { term: "Bitcoin", bite: "No closing bell. News, liquidations, and weekends all print." },
+  ];
+  const TICKER_LINES = [
+    { term: "WICK", line: "Price went there and got shoved back." },
+    { term: "BODY", line: "Open to close. Who won the period." },
+    { term: "CLOSE", line: "Wicks are the fight. The close is the scoreboard." },
+    { term: "WAIT", line: "Standing down is a call — not a missed trade." },
+    { term: "CONFLUENCE", line: "One seat is opinion. Two or more is a case." },
+    { term: "CHALK", line: "Almost decided. Don't chase a 95¢ yes." },
+    { term: "STRIKE", line: "The line this window is judged against." },
+    { term: "SATOSHI", line: "The Chair speaks last. Only the Chair issues a call." },
+    { term: "INVALIDATION", line: "Write the dead-price before you enter." },
+    { term: "PAPER", line: "Fake money, real rules. The gym before the arena." },
+    { term: "CALL SWITCH", line: "When the Chair flips, stand down until it settles." },
+    { term: "STREAM", line: "Bitcoin only on this surface. ETH and the full desk are on the site." },
+  ];
+  const LESSON_OF_HOUR = {
+    Wick: { title: "Why Bitcoin exists", bite: "You cannot price Bitcoin if you think it is only a chart." },
+    Body: { title: "The $1 contract", bite: "Price is implied probability. The body is who won the period." },
+    Close: { title: "The 15-minute lens", bite: "Wicks are the fight. The close is the scoreboard." },
+    Confluence: { title: "Confluence, not applause", bite: "One seat is opinion. Two or more is a case." },
+    Chalk: { title: "Fees eat thin edges", bite: "Don’t chase a 95¢ yes. Chalk already paid someone else." },
+    Strike: { title: "Write a probability", bite: "The line this window is judged against. Name it before you size." },
+    WAIT: { title: "WAIT is a position", bite: "A clean stand-down is a completed decision. Permission to do nothing." },
+    Invalidation: { title: "Bankroll before opinion", bite: "Write the dead-price before you enter." },
+    Paper: { title: "Paper is the job", bite: "Fake money, real rules. The gym before the arena." },
+    Bitcoin: { title: "Why Bitcoin exists", bite: "Scarcity is a policy, not a slogan. Trade the window. Understand the asset." }
+  };
+  function fighterFromReplay(chair, wickLean) {
+    if (wickLean === "UP") return { name: "Anvil", line: "That wick is Anvil.", why: "Long lower wick. A dump got bought back. First kata if you missed it." };
+    if (wickLean === "DOWN") return { name: "Sky Kick", line: "That wick is Sky Kick.", why: "Upper wick. A pump got sold back. First kata if you missed it." };
+    if (chair && chair.dir === "UP") return { name: "Green Fist", line: "That body is Green Fist.", why: "Close above open. Buyers won the period." };
+    if (chair && chair.dir === "DOWN") return { name: "Red Fade", line: "That body is Red Fade.", why: "Close below open. Sellers won the period." };
+    return { name: "The Tie", line: "That close is The Tie.", why: "Nobody won. WAIT is the call. First kata if you missed it." };
+  }
+  function openDojoFromStream() {
+    try { stopStreamTeaching(); } catch (e) {}
+    window.__dojoKata = true;
+    const btn = document.getElementById("tabDojo") || document.getElementById("tabSchool");
+    if (btn) btn.click();
+    else if (typeof setMode === "function") setMode("school");
+  }
+  let __swhTimer = null;
+  let __spotTimer = null;
+  let __streamLastDir = null;
+  let __streamLastSecs = null;
+  let __streamFlashUntil = 0;
+  let __streamReplayUntil = 0;
+  let __streamSpotUntil = 0;
+  let __streamSpotIdx = 0;
+  const SPOT_WHY = {
+    wick: {
+      UP: "Wick says UP — the sell-off wick got bought back.",
+      DOWN: "Wick says DOWN — price poked up and got shoved.",
+      WAIT: "Wick says WAIT — no clean rejection yet."
+    },
+    strike: {
+      UP: "Strike is above the line. Clock still has time.",
+      DOWN: "Strike is below the line. This window is losing.",
+      WAIT: "Strike is too close to call. Don’t chase chalk."
+    },
+    odds: {
+      UP: "Odds lean yes — but chalk is a trap if it’s 95¢.",
+      DOWN: "Odds lean no — still not a promise.",
+      WAIT: "Odds are mixed. Confluence isn’t here."
+    },
+    quorum: {
+      UP: "Quorum: two or more seats agree UP. That’s a case.",
+      DOWN: "Quorum: two or more seats agree DOWN. That’s a case.",
+      WAIT: "Quorum: the table is split. One seat is opinion."
+    },
+    clock: {
+      UP: "Clock: time is still on the UP side of this window.",
+      DOWN: "Clock: time is bleeding on a DOWN window.",
+      WAIT: "Clock is running. No close yet — no scoreboard."
+    }
+  };
+  function streamShow(id, on) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (on) {
+      el.classList.remove("hidden");
+      el.classList.remove("is-in");
+      void el.offsetWidth;
+      el.classList.add("is-in");
+    } else {
+      el.classList.add("hidden");
+      el.classList.remove("is-in");
+    }
+  }
+  function flashGavelScreen() {
+    try {
+      document.body.classList.remove("gavel-flash");
+      void document.body.offsetWidth;
+      document.body.classList.add("gavel-flash");
+      setTimeout(function () { document.body.classList.remove("gavel-flash"); }, 480);
+    } catch (e) {}
+  }
+  function streamWindowSecs() {
+    const m = (state && state.market) || {};
+    const n = Number(m.seconds_left != null ? m.seconds_left : m.time_remaining);
+    return isFinite(n) ? n : null;
+  }
+  function fireCallSwitch(fromDir, toDir) {
+    const card = document.getElementById("streamStandDown");
+    const line = document.getElementById("streamStandDownLine");
+    if (line) line.textContent = "Chair flipped " + fromDir + " → " + toDir + ". Freeze. Wait for it to settle.";
+    streamShow("streamStandDown", true);
+    __streamFlashUntil = Date.now() + 3000;
+    setTimeout(function () {
+      if (Date.now() >= __streamFlashUntil) streamShow("streamStandDown", false);
+    }, 3100);
+  }
+  function fireCandleReplay() {
+    const chair = streamChairRead();
+    const wickLean = streamAgentLean("wick");
+    const body = chair.dir === "UP" ? "Buyers won the body." : chair.dir === "DOWN" ? "Sellers won the body." : "No one won. Body is a wait.";
+    const wick = wickLean === "UP" ? "Lower wick got bought." : wickLean === "DOWN" ? "Upper wick got shoved." : "No clean wick.";
+    const close = chair.dir === "WAIT" ? "Close did not pick a side." : ("Close printed " + chair.word + ".");
+    const did = document.getElementById("replayWick");
+    const db = document.getElementById("replayBody");
+    const dc = document.getElementById("replayClose");
+    const dh = document.getElementById("replayChair");
+    if (did) did.textContent = wick;
+    if (db) db.textContent = body;
+    if (dc) dc.textContent = close;
+    if (dh) dh.textContent = chair.dir === "WAIT" ? "Satoshi sat. That’s the call." : ("Satoshi " + chair.word + ".");
+    streamShow("streamReplay", true);
+    __streamReplayUntil = Date.now() + 8000;
+    setTimeout(function () {
+      if (Date.now() >= __streamReplayUntil) {
+        streamShow("streamReplay", false);
+        fireDojoBridge(chair, wickLean);
+      }
+    }, 8100);
+  }
+  function fireDojoBridge(chair, wickLean) {
+    if (mode !== "stream") return;
+    const f = fighterFromReplay(chair, wickLean);
+    const nameEl = document.getElementById("streamDojoName");
+    const whyEl = document.getElementById("streamDojoWhy");
+    if (nameEl) nameEl.textContent = f.line;
+    if (whyEl) whyEl.textContent = f.why;
+    streamShow("streamDojoCard", true);
+    __streamSpotUntil = Date.now() + 5000;
+    setTimeout(function () {
+      if (Date.now() >= __streamSpotUntil) streamShow("streamDojoCard", false);
+    }, 5100);
+  }
+  function fireSeatSpotlight() {
+    const slot = STREAM_OVAL[__streamSpotIdx % STREAM_OVAL.length];
+    __streamSpotIdx += 1;
+    const lean = streamAgentLean(slot.name);
+    const pack = SPOT_WHY[slot.name] || {};
+    const line = pack[lean] || (slot.label + " says " + lean + ".");
+    const nameEl = document.getElementById("streamSpotName");
+    const lineEl = document.getElementById("streamSpotLine");
+    if (nameEl) nameEl.textContent = slot.label;
+    if (lineEl) lineEl.textContent = line;
+    streamShow("streamSpot", true);
+    streamShow("streamSilence", false);
+    __streamSpotUntil = Date.now() + 6500;
+    setTimeout(function () {
+      if (Date.now() >= __streamSpotUntil) streamShow("streamSpot", false);
+    }, 6600);
+  }
+  function paintWordOfHour() {
+    const hour = (new Date()).getUTCHours();
+    const card = DOJO_SLANG[hour % DOJO_SLANG.length];
+    const term = document.getElementById("swhTerm");
+    const bite = document.getElementById("swhBite");
+    if (term) term.textContent = card.term;
+    if (bite) bite.textContent = card.bite;
+    const lesson = LESSON_OF_HOUR[card.term] || LESSON_OF_HOUR.WAIT;
+    const slTitle = document.getElementById("slTitle");
+    const slBite = document.getElementById("slBite");
+    if (slTitle) slTitle.textContent = lesson.title;
+    if (slBite) slBite.textContent = lesson.bite;
+  }
+  function fillTickerTrack() {
+    const track = document.getElementById("streamTrainTrack");
+    if (!track || track.dataset.filled) return;
+    const bits = TICKER_LINES.concat(TICKER_LINES).map(function (item) {
+      return '<span class="stt-item"><b>' + item.term + "</b> " + item.line + "</span>";
+    });
+    track.innerHTML = bits.join("");
+    track.dataset.filled = "1";
+  }
+  function paintStreamWhy() {
+    const line = document.getElementById("streamWhyLine");
+    const chair = streamChairRead();
+    const now = Date.now();
+    try { resetStreamWindowIfNeeded(); } catch (e) {}
+    if (now < __streamFlashUntil || now < __streamReplayUntil || now < __streamSpotUntil) return;
+    if (chair.dir === "WAIT") {
+      const wind = windupSeats();
+      if (line) line.textContent = wind
+        ? ("WIND-UP · " + wind.seats.slice(0, 2).join(" + ") + " leaning " + wind.dir + " · Chair sitting")
+        : "The Chair is sitting. That’s the call.";
+      if (!__streamSitDone) fireSitCeremony();
+    } else {
+      streamShow("streamSilence", false);
+      if (line) line.textContent = chair.word + " · Bitcoin";
+      if (__streamLastDir === "WAIT" || !__streamLockSpoken) fireLockCeremony(chair);
+    }
+    try { paintLeadChip(); } catch (e) {}
+    try { maybeDayRecap(); } catch (e) {}
+    if (__streamLastDir && __streamLastDir !== chair.dir) {
+      const flip = (__streamLastDir === "UP" && chair.dir === "DOWN") || (__streamLastDir === "DOWN" && chair.dir === "UP");
+      if (flip) fireCallSwitch(__streamLastDir, chair.dir);
+    }
+    __streamLastDir = chair.dir;
+    const secs = streamWindowSecs();
+    if (__streamLastSecs != null && secs != null && __streamLastSecs < 12 && secs > 60) {
+      fireCandleReplay();
+    }
+    if (secs != null) __streamLastSecs = secs;
+  }
+  function startStreamTeaching() {
+    const chrome = document.getElementById("streamChrome");
+    if (chrome) chrome.classList.remove("hidden");
+    document.body.classList.add("stream-tv");
+    fillTickerTrack();
+    paintWordOfHour();
+    paintStreamWhy();
+    const kataBtn = document.getElementById("streamDojoBtn");
+    if (kataBtn && !kataBtn.__wired) {
+      kataBtn.__wired = true;
+      kataBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openDojoFromStream();
+      });
+    }
+    if (__swhTimer) clearInterval(__swhTimer);
+    __swhTimer = setInterval(paintWordOfHour, 60 * 1000);
+    if (__spotTimer) clearInterval(__spotTimer);
+    __spotTimer = setInterval(function () {
+      if (mode !== "stream") return;
+      if (Date.now() < __streamFlashUntil || Date.now() < __streamReplayUntil) return;
+      fireSeatSpotlight();
+    }, 90 * 1000);
+    if (__handsTimer) clearInterval(__handsTimer);
+    __handsTimer = setInterval(function () {
+      if (mode === "stream") {
+        try { drawArt(); } catch (e) {}
+      }
+    }, 180);
+    setTimeout(function () {
+      if (mode === "stream") fireSeatSpotlight();
+    }, 8000);
+  }
+  function stopStreamTeaching() {
+    const chrome = document.getElementById("streamChrome");
+    if (chrome) chrome.classList.add("hidden");
+    document.body.classList.remove("stream-tv");
+    ["streamStandDown", "streamReplay", "streamSpot", "streamSilence", "streamDojoCard", "streamSitHonor", "streamRecap"].forEach(function (id) {
+      streamShow(id, false);
+    });
+    if (__swhTimer) { clearInterval(__swhTimer); __swhTimer = null; }
+    if (__spotTimer) { clearInterval(__spotTimer); __spotTimer = null; }
+    if (__handsTimer) { clearInterval(__handsTimer); __handsTimer = null; }
+  }
+  function drawStreamStars(w, h) {
+    if (!window.__streamStars) {
+      const dots = [];
+      for (let i = 0; i < 110; i++) {
+        dots.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.3 + 0.25, a: 0.18 + Math.random() * 0.55 });
+      }
+      window.__streamStars = dots;
+    }
+    window.__streamStars.forEach(function (d) {
+      ctx.beginPath();
+      ctx.arc(d.x * w, d.y * h, d.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(232, 214, 170, " + d.a + ")";
+      ctx.fill();
+    });
+  }
+  function drawGoldEllipses(cx, cy, rx, ry) {
+    const rings = [1.02, 0.90, 0.78, 0.66, 0.54, 0.42];
+    rings.forEach(function (scale, i) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx * scale, ry * scale, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(212, 168, 72, " + (i === 0 ? 0.55 : 0.22) + ")";
+      ctx.lineWidth = i === 0 ? 2.2 : 1.35;
+      ctx.stroke();
+    });
+  }
+  function paintSeatCaption(x, y, r, name, call, conf, tone) {
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    const g = ctx.createRadialGradient(cx, cy - r * 0.2, r * 0.2, cx, cy, r);
-    g.addColorStop(0, "rgba(18, 30, 48, 0.95)");
-    g.addColorStop(1, "rgba(6, 12, 22, 0.98)");
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.clip();
+    const g = ctx.createLinearGradient(x, y + r * 0.08, x, y + r);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(0.4, "rgba(0,0,0,0.45)");
+    g.addColorStop(1, "rgba(0,0,0,0.92)");
     ctx.fillStyle = g;
-    ctx.fill();
-    ctx.font = "700 " + Math.round(r * 0.9) + "px Orbitron, monospace";
+    ctx.fillRect(x - r, y, r * 2, r);
+    ctx.restore();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(236, 220, 176, 0.95)";
+    ctx.font = "600 " + Math.max(9, Math.round(r * 0.13)) + "px Orbitron, sans-serif";
+    ctx.fillText(name, x, y + r * 0.36);
     ctx.fillStyle = tone;
-    ctx.globalAlpha = 0.55;
-    ctx.fillText(String(callsign || "?").charAt(0).toUpperCase(), cx, cy + r * 0.04);
-    ctx.restore();
-    ctx.textBaseline = "alphabetic";
+    ctx.font = "700 " + Math.max(11, Math.round(r * 0.18)) + "px Orbitron, sans-serif";
+    ctx.fillText(call, x, y + r * 0.55);
+    if (conf) {
+      ctx.fillStyle = "rgba(236, 220, 176, 0.85)";
+      ctx.font = "600 " + Math.max(9, Math.round(r * 0.13)) + "px Orbitron, sans-serif";
+      ctx.fillText(String(conf), x, y + r * 0.72);
+    }
   }
-
-  function drawCouncilRoundTable(w, h) {
-    const board = councilBoard();
-    chairHits = [];
-
-    // Absolute centre. No camera offset — Satoshi is the anchor.
-    const cx = w / 2;
-    const cy = h / 2;
-
-    // Fit the whole table inside the shorter canvas axis. The farthest seat
-    // plus its portrait plus its nameplate must still land on canvas, so the
-    // ring span is derived from the half-extent rather than a fixed fraction.
-    const half = Math.min(w, h) / 2;
-    const seatR = half * 0.11;          // the four leader portraits
-    const centerR0 = half * 0.20;       // Satoshi
-    const LABEL_PAD = 40;               // callsign + SEAT n + call under a seat
-    const farR = Math.max(seatR * 2, half - seatR - LABEL_PAD);   // rank 4
-    const nearR = Math.min(centerR0 + seatR + half * 0.08, farR); // rank 1
-    const stepR = (farR - nearR) / 3;
-    // Table + armor rings sit just inside the seat ring, so the leaders read
-    // as seated at the rim rather than floating outside it.
-    const radius = Math.max(seatR, nearR - 40);
-
-    ctx.clearRect(0, 0, w, h);
-    try { syncChairRoom("bitcoin", state); } catch (e) {}
-    try { drawChairRoom(w, h, "bitcoin", _hourWx); } catch (e) {}
-    ctx.fillStyle = "rgba(2, 4, 10, 0.16)";
-    ctx.fillRect(0, 0, w, h);
-
-    const rows = (board && Array.isArray(board.debate)) ? board.debate : [];
-    const byLeader = {};
-    rows.forEach((r) => { if (r && r.leader) byLeader[String(r.leader).toLowerCase()] = r; });
-
-    const finalCall = (board && board.final) || {};
-    const centerDir = councilDirOf(finalCall.call, finalCall.direction);
-    const vetoOn = !!(board && board.veto_lines && board.veto_lines.length);
-
-    // Digital rain — unchanged from the ambient table.
-    ctx.font = "10px monospace";
-    rain.forEach(function (d) {
-      d.y += d.speed;
-      if (d.y > h + 20) { d.y = -20; d.x = Math.random() * w; }
-      ctx.fillStyle = "rgba(0, 232, 255, " + d.alpha + ")";
-      ctx.fillText(d.char, d.x, d.y);
-    });
-
-    // LEAN METER (was the window-timer ring). How much the floor is leaning
-    // and which way — the desk's core output, not a clock. Fills clockwise in
-    // jade for UP, counter-clockwise in blood for DOWN, by net conviction.
-    try {
-      var leanUp = 0, leanDown = 0;
-      rows.forEach(function (r) {
-        var d = councilDirOf(r.call, r.direction), c = Number(r.confidence) || 0;
-        if (d === "UP") leanUp += c; else if (d === "DOWN") leanDown += c;
-      });
-      var leanTotal = leanUp + leanDown;
-      var leanSide = leanTotal <= 0 ? "FLAT" : (leanUp >= leanDown ? "UP" : "DOWN");
-      var leanFrac = leanTotal <= 0 ? 0 : Math.abs(leanUp - leanDown) / leanTotal;
-      drawLeanMeter(cx, cy, radius + 36, leanFrac, leanSide);
-    } catch (e) {}
-    for (let i = 0; i < 3; i++) {
-      const rr = radius + 18 + i * 16;
-      ctx.beginPath();
-      ctx.arc(cx, cy, rr, 0, Math.PI * 2);
-      if (vetoOn) {
-        ctx.strokeStyle = i === 0 ? "rgba(255, 120, 20, 0.55)"
-          : i === 1 ? "rgba(255, 90, 10, 0.35)" : "rgba(255, 60, 0, 0.2)";
-      } else {
-        ctx.strokeStyle = i === 0 ? "rgba(0, 232, 255, 0.38)"
-          : i === 1 ? "rgba(240, 193, 74, 0.22)" : "rgba(180, 210, 230, 0.10)";
-      }
-      ctx.lineWidth = 1.6 - i * 0.3;
-      ctx.stroke();
-    }
-
-    // Seat geometry: the four leaders sit EQUIDISTANT on a compass, so every
-    // spoke is the same length and the table reads balanced. Rank is shown on
-    // the seat label, not by warping the distance (which looked lopsided).
-    const seatDist = nearR + stepR * 1.5;   // midpoint of the old near/far band
-    const seats = COUNCIL_SEATS.map(function (slot) {
-      const row = byLeader[slot.leader] || {};
-      const rank = Math.max(1, Math.min(4, Number(row.rank) || 4));
-      const targetR = seatDist;
-      const prev = _councilSeatR[slot.leader];
-      // Ease only when the target actually moved (i.e. the rank changed).
-      const cur = (prev == null || reduceMotion) ? targetR : prev + (targetR - prev) * 0.06;
-      _councilSeatR[slot.leader] = cur;
-      const dir = councilDirOf(row.call, row.direction);
-      return {
-        leader: slot.leader,
-        which: slot.which,
-        angle: slot.angle,
-        row: row,
-        rank: rank,
-        r: cur,
-        x: cx + Math.cos(slot.angle) * cur,
-        y: cy + Math.sin(slot.angle) * cur,
-        dir: dir,
-        conf: Number(row.confidence) || 0,
-        vetoed: Array.isArray(row.vetoed) && row.vetoed.length > 0,
-      };
-    });
-
-    const centerR = centerR0 * chairBreatheScale("bitcoin", centerDir !== "WAIT");
-
-    // Spokes: a solid line in the leader's LEAN colour (jade up, blood down,
-    // blade when standing aside), with the packet animation over it.
-    seats.forEach(function (s) {
-      const tone = councilToneOf(s.dir);
-      const end = spokeEnd(s.x, s.y, cx, cy, centerR + 6);
-      const agree = s.dir === centerDir && s.dir !== "WAIT";
-      ctx.beginPath();
-      ctx.moveTo(s.x, s.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.strokeStyle = tone;
-      ctx.globalAlpha = s.dir === "WAIT" ? 0.28 : 0.6;
-      ctx.lineWidth = s.dir === "WAIT" ? 1.4 : 2.4;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      drawPacketSpoke(s.x, s.y, end.x, end.y, tone, s.conf, agree, false, "bitcoin");
-    });
-
-    // The four leaders.
-    seats.forEach(function (s) {
-      const mood = seatMoodOf(s.dir, s.conf);
-      const pr = seatR * (0.94 + 0.06 * mood.lean);
-      const img = chairPortraitOf(s.which, s.dir);
-      if (!containPortrait(img, s.x, s.y, pr)) {
-        drawSeatPlaceholder(s.x, s.y, pr, s.row.callsign || s.leader, councilToneOf(s.dir));
-      }
-      rememberChairHit(s.x, s.y, pr, s.which);
-
-      // Conviction gauge: faint full track, then an arc filled by this
-      // leader's confidence and coloured by their lean. Veto = full gold ring.
-      ctx.globalAlpha = mood.alpha;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, pr, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(180, 200, 220, 0.15)";
-      ctx.lineWidth = 2.6;
-      ctx.stroke();
-      if (s.vetoed) {
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, pr, 0, Math.PI * 2);
-        ctx.strokeStyle = GOLD;
-        ctx.lineWidth = 3;
-        ctx.shadowColor = GOLD;
-        ctx.shadowBlur = 12;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      } else if (s.dir === "UP" || s.dir === "DOWN") {
-        const gf = Math.max(0.06, Math.min(1, (s.conf || 0) / 100));
-        const start = -Math.PI / 2;
-        const sweep = gf * Math.PI * 2;
-        ctx.beginPath();
-        if (s.dir === "UP") ctx.arc(s.x, s.y, pr, start, start + sweep);
-        else ctx.arc(s.x, s.y, pr, start, start - sweep, true);
-        ctx.strokeStyle = councilToneOf(s.dir);
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-
-      // Nameplate + seat number, outward from the centre.
-      const out = Math.atan2(s.y - cy, s.x - cx);
-      const lx = s.x + Math.cos(out) * (pr + 16);
-      const ly = s.y + Math.sin(out) * (pr + 16);
-      ctx.textAlign = "center";
-      ctx.font = "700 11px Orbitron, monospace";
-      ctx.fillStyle = s.vetoed ? GOLD : "#7fe9ff";
-      ctx.fillText(String(s.row.callsign || s.leader).toUpperCase(), lx, ly);
-      ctx.font = "600 8px Orbitron, monospace";
-      ctx.fillStyle = "rgba(160, 180, 200, 0.75)";
-      ctx.fillText("SEAT " + s.rank, lx, ly + 11);
-      if (s.dir !== "WAIT") {
-        ctx.font = "700 9px Orbitron, monospace";
-        ctx.fillStyle = councilToneOf(s.dir);
-        // Glyph so direction reads without relying on colour (colour-blind safe).
-        ctx.fillText(dirGlyph(s.dir) + " " + String(s.row.call || "").toUpperCase(), lx, ly + 22);
-      }
-    });
-
-    // SATOSHI — dead centre, final authority.
-    const centerImg = chairPortraitOf("bitcoin", centerDir);
-    if (!containPortrait(centerImg, cx, cy, centerR)) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, centerR, 0, Math.PI * 2);
-      ctx.fillStyle = "#0a1220";
-      ctx.fill();
-    }
-    rememberChairHit(cx, cy, centerR, "bitcoin");
-
-    // Gold authority ring — always gold. Satoshi is the gavel.
+  const __seatLift = {};
+  function seatLiftT(name, want) {
+    const cur = __seatLift[name] || 0;
+    const next = cur + (want - cur) * 0.14;
+    __seatLift[name] = next < 0.008 && want === 0 ? 0 : next;
+    return __seatLift[name];
+  }
+  function drawStreamSeat(x, y, r, file, name, call, conf, tone, t) {
+    t = t || 0;
     ctx.beginPath();
-    ctx.arc(cx, cy, centerR, 0, Math.PI * 2);
-    ctx.strokeStyle = GOLD;
-    ctx.lineWidth = 3.4;
-    ctx.shadowColor = GOLD;
-    ctx.shadowBlur = centerDir === "WAIT" ? 8 : 16;
+    ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#050505";
+    ctx.fill();
+    if (typeof containPortrait === "function") {
+      if (!containPortrait(streamFace(file), x, y, r)) {
+        if (typeof drawSeatPlaceholder === "function") drawSeatPlaceholder(x, y, r, name, tone);
+      }
+    }
+    paintSeatCaption(x, y, r, name, call, conf, tone);
+    ctx.beginPath();
+    ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = tone;
+    ctx.lineWidth = 3.2 + t * 3.2;
+    ctx.shadowColor = tone;
+    ctx.shadowBlur = 12 + t * 26;
     ctx.stroke();
     ctx.shadowBlur = 0;
-    try {
-      drawChairThink(cx, cy, centerR, radius, {
-        which: "bitcoin", dir: centerDir, locked: centerDir !== "WAIT", st: state,
-      });
-    } catch (e) {}
-
-    ctx.textAlign = "center";
-    ctx.font = "700 13px Orbitron, monospace";
-    ctx.fillStyle = GOLD;
-    ctx.fillText("SATOSHI", cx, cy + centerR + 16);
-    ctx.font = "600 8px Orbitron, monospace";
-    ctx.fillStyle = "rgba(200, 220, 240, 0.70)";
-    ctx.fillText("FINAL AUTHORITY", cx, cy + centerR + 27);
-
-    // Final call + alignment, on the plate under the table.
-    const call = String(finalCall.call || "WAIT").toUpperCase();
-    ctx.font = "700 16px Orbitron, monospace";
-    ctx.fillStyle = councilToneOf(centerDir);
-    const cg = centerDir === "UP" || centerDir === "DOWN" ? dirGlyph(centerDir) + " " : "";
-    ctx.fillText(cg + call, cx, cy + radius + 30);
-    const align = (board && board.alignment && board.alignment.text) || "";
-    if (align) {
-      ctx.font = "600 10px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(180, 200, 220, 0.85)";
-      ctx.fillText(align, cx, cy + radius + 46);
+    if (t > 0.12) {
+      const pulse = (Math.sin(Date.now() / 180) * 0.5 + 0.5);
+      ctx.beginPath();
+      ctx.arc(x, y, r + 8 + t * 10 + pulse * 4, 0, Math.PI * 2);
+      ctx.strokeStyle = tone;
+      ctx.globalAlpha = 0.18 + t * 0.45;
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.font = "700 " + Math.max(11, Math.round(r * 0.22)) + "px Orbitron, sans-serif";
+      ctx.fillStyle = tone;
+      ctx.globalAlpha = Math.min(1, t * 1.4);
+      ctx.fillText("HANDS", x, y - r - 8);
+      ctx.globalAlpha = 1;
     }
-    if (vetoOn) {
-      ctx.font = "700 9px Orbitron, monospace";
-      ctx.fillStyle = GOLD;
-      ctx.fillText(String(board.veto_lines[0]).toUpperCase(), cx, cy + radius + 60);
-    }
+  }
+  function drawStreamRoundTable(w, h) {
+    const cx = w * 0.50;
+    const cy = h * 0.42;
+    const unit = Math.min(w, h);
+    const chair = streamChairRead();
+    const chairWait = chair.dir === "WAIT";
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, w, h);
+    drawStreamStars(w, h);
+    drawGoldEllipses(cx, cy, w * 0.42, h * 0.38);
+    STREAM_OVAL.forEach(function (slot) {
+      const lean = streamAgentLean(slot.name);
+      const conf = streamAgentConf(slot.name);
+      const tone = lean === "UP" ? ACID : lean === "DOWN" ? HOT_RED : GOLD;
+      const want = (chairWait && lean !== "WAIT") ? 1 : 0;
+      const t = seatLiftT(slot.name, want);
+      const bob = t > 0.2 ? Math.sin(Date.now() / 220) * (unit * 0.01) * t : 0;
+      const x = slot.xf * w;
+      const y = slot.yf * h - t * unit * 0.07 + bob;
+      const r = unit * slot.rs * (1 + t * 0.16);
+      const call = t > 0.45 ? lean : (lean === "WAIT" ? "WAIT" : lean);
+      drawStreamSeat(x, y, r, slot.name + ".jpg", slot.label, String(call).trim(), 0, tone, t);
+    });
+    const chairTone = chair.dir === "UP" ? ACID : chair.dir === "DOWN" ? HOT_RED : GOLD;
+    drawStreamSeat(cx, cy, unit * 0.195, "satoshi-up.jpg", "SATOSHI", chair.word, 0, chairTone, 0);
+    paintStreamWhy();
   }
 
   function drawArt() {
@@ -4908,14 +5195,15 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const sz = cssCanvasSize();
     const w = sz.w, h = sz.h;
 
-    // One Round Table everywhere — Table, Floor and Night all render SATOSHI
-    // pinned centre (and larger) with the four leaders equidistant around him.
-    // The old quad "market floor" is gone with the sports/weather/politics
-    // desks. Falls through to the legacy render only until /api/council
-    // answers once.
-    if (councilBoard()) {
-      drawCouncilRoundTable(w, h);
-      try { drawTrailFX(ctx); } catch (e) {}
+    if (mode === "stream") {
+      try { drawStreamRoundTable(w, h); } catch (e) {}
+      return;
+    }
+
+    // Dual Floor only when the stage is wide enough — phone is always one table
+    if (floorLikeMode() && !floorIsSingle() && typeof isDualMode === "function" && isDualMode()) {
+      drawDualFloor(w, h);
+      try { drawTrailFX(ctx); } catch(e) {}
       return;
     }
 
@@ -5079,7 +5367,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const hier = (state.hierarchy || (state.learning && state.learning.hierarchy) || []);
     const ranked = hier.map(r => r.agent).filter(a => a !== "law");
     const liveNames = agents.map(a => a.agent_name).filter(n => n && n !== "leader");
-    const ethLive = typeof isEthTable === "function" && isEthTable(focusTable) && liveNames.length;
+    const ethLive = typeof isEthTable === "function" && isEthTable(focusTable);
     const atsLive = typeof isAtsTable === "function" && isAtsTable(focusTable) && liveNames.length;
     const frontLive = typeof isFrontTable === "function" && isFrontTable(focusTable);
     const oracleLive = typeof isOracleTable === "function" && isOracleTable(focusTable);
@@ -5089,7 +5377,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       ? oracleNames.filter(function (k) { return !liveNames.length || liveNames.indexOf(k) >= 0; })
       : frontLive
       ? (frontNames.length ? frontNames : FRONT_SEAT_KEYS.slice())
-      : (ethLive || atsLive)
+      : ethLive
+      ? ETH_STRIP_KEYS.slice()
+      : atsLive
       ? (ranked.length
           ? ranked.filter(a => liveNames.indexOf(a) >= 0).concat(liveNames.filter(a => ranked.indexOf(a) < 0 && a !== "law"))
           : liveNames.filter(a => a !== "law"))
@@ -5760,10 +6050,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         detailEl.textContent = `${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : "");
       }
     }
-    if (accuracyStrip) accuracyStrip.textContent = label;
+    if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
     checkWinStreakCelebrate(acc);
-    // callLogMeta stays "process over outcome" — no win/loss on the desk face.
-    // (The lifetime log block itself is hidden; detail lives in the research tabs.)
+    if (callLogMeta) callLogMeta.textContent = label;
 
     if (hrPct) {
       hrPct.textContent = pctText;
@@ -5775,32 +6064,55 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (hrWrong) hrWrong.textContent = String(wrong);
     if (hrTotal) hrTotal.textContent = String(total);
     if (hrPending) hrPending.textContent = String(pending);
+    const setHrPct = document.getElementById("setHrPct");
+    const setHrCorrect = document.getElementById("setHrCorrect");
+    const setHrWrong = document.getElementById("setHrWrong");
+    const setHrTotal = document.getElementById("setHrTotal");
+    const setHrPending = document.getElementById("setHrPending");
+    const setHrLine = document.getElementById("setHrLine");
+    if (setHrPct) setHrPct.textContent = pctText;
+    if (setHrCorrect) setHrCorrect.textContent = String(correct);
+    if (setHrWrong) setHrWrong.textContent = String(wrong);
+    if (setHrTotal) setHrTotal.textContent = String(total);
+    if (setHrPending) setHrPending.textContent = String(pending);
+    if (setHrLine) setHrLine.textContent = label;
 
-    // Process quality beside the hit rate. Replaces the old AVG PATH /
-    // ENTRY readout, which reported Kalshi cents captured — path-era
-    // framing that no longer matches a research desk.
-    const proc = window.__processMetrics || null;
-    const procPct = (v) => (v == null ? "—" : v + "%");
-    const hrConfluence = document.getElementById("hrConfluence");
-    const hrAdherence = document.getElementById("hrAdherence");
-    const hrWaitCount = document.getElementById("hrWaitCount");
-    if (hrConfluence) hrConfluence.textContent = proc ? procPct(proc.confluence_rate_pct) : "—";
-    if (hrAdherence) hrAdherence.textContent = proc ? procPct(proc.process_adherence_pct) : "—";
-    if (hrWaitCount) {
-      hrWaitCount.textContent = (proc && proc.n) ? (proc.waits + " of " + proc.n) : "—";
+    // Path tally: BTC 15m = avg edge captured; ETH = peak favorable move on wins
+    const hrPath = document.getElementById("hrPath");
+    const hrPathAvg = document.getElementById("hrPathAvg");
+    const hrEntryAvg = document.getElementById("hrEntryAvg");
+    const pathLabs = document.querySelectorAll("#hrPath .hr-path-lab");
+    const pathSub = document.querySelector("#hrPath .hr-path-sub");
+    const pathWins = acc && (acc.avg_path_wins != null ? acc.avg_path_wins
+      : (acc.path_tally && acc.path_tally.avg_wins));
+    const entryAvg = acc && (acc.avg_entry_pct != null ? acc.avg_entry_pct
+      : (acc.path_tally && acc.path_tally.avg_entry));
+    if (hrPath) {
+      hrPath.title = pathMode
+        ? "Average leftover/edge captured on path fills · dual vs single"
+        : "Average peak Kalshi move on winning calls (peak − entry)";
     }
-    // WAIT as a tracked outcome: how long the desk has held, and how many
-    // losing calls that hold actually saved.
-    const pat = (proc && proc.patience) || null;
-    const streakEl = document.getElementById("hrPatienceStreak");
-    const avoidEl = document.getElementById("hrAvoided");
-    const avoidSub = document.getElementById("hrAvoidedSub");
-    if (streakEl) streakEl.textContent = pat ? String(pat.streak) : "—";
-    if (avoidEl) avoidEl.textContent = (pat && pat.resolved) ? String(pat.avoided) : "—";
-    if (avoidSub) {
-      avoidSub.textContent = (pat && pat.resolved)
-        ? ("of " + pat.resolved + " resolved · " + pat.unresolved + " still open")
-        : "losses a stand-down saved";
+    if (pathLabs[0]) pathLabs[0].textContent = pathMode ? "AVG EDGE" : "AVG PATH";
+    if (pathSub) pathSub.textContent = pathMode ? "captured" : "on wins";
+    if (pathLabs[1]) pathLabs[1].textContent = pathMode ? "DUAL/SGL" : "ENTRY";
+    if (hrPathAvg) {
+      if (pathMode && pathBoard && pathBoard.avg_edge_cents != null) {
+        const e = Number(pathBoard.avg_edge_cents);
+        hrPathAvg.textContent = (e >= 0 ? "+" : "") + e.toFixed(1) + "¢";
+      } else if (!pathMode && pathWins != null) {
+        hrPathAvg.textContent = (pathWins >= 0 ? "+" : "") + Number(pathWins).toFixed(1) + " pts";
+      } else {
+        hrPathAvg.textContent = "—";
+      }
+    }
+    if (hrEntryAvg) {
+      if (pathMode && pathBoard) {
+        const d = pathBoard.dual || {};
+        const s = pathBoard.single || {};
+        hrEntryAvg.textContent = (d.n || 0) + "d/" + (s.n || 0) + "s";
+      } else {
+        hrEntryAvg.textContent = entryAvg != null ? (Number(entryAvg).toFixed(1) + "%") : "—";
+      }
     }
 
     const l20 = acc && acc.last_20;
@@ -5820,32 +6132,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       hrVerdict.className = "hr-verdict " + String(verdict).replace(/\s+/g, "-");
       hrVerdict.title = (acc && acc.verdict_note) || "";
     }
-    const trainTotal = document.getElementById("trainTotal");
-    const trainHits = document.getElementById("trainHits");
-    const trainMisses = document.getElementById("trainMisses");
-    const trainPct = document.getElementById("trainPct");
-    const trainL20el = document.getElementById("trainL20");
-    const trainL50el = document.getElementById("trainL50");
-    if (trainTotal) trainTotal.textContent = String(total);
-    if (trainHits) trainHits.textContent = String(correct);
-    if (trainMisses) trainMisses.textContent = String(wrong);
-    if (trainPct) trainPct.textContent = pctText;
-    if (trainL20el) {
-      trainL20el.textContent = l20 && l20.accuracy_pct != null
-        ? (l20.accuracy_pct + "% (" + l20.correct + "/" + l20.total + ")")
-        : "—";
-    }
-    if (trainL50el) {
-      trainL50el.textContent = l50 && l50.accuracy_pct != null
-        ? (l50.accuracy_pct + "% (" + l50.correct + "/" + l50.total + ")")
-        : "—";
-    }
     if (logCount) logCount.textContent = total ? `${total} settled` : "all settled";
 
     if (accuracyBadge) {
-      // Frame tone is owned by pollMoveAccuracy — it follows the CALL ACCURACY
-      // (MOVE) headline, the honest chalk-immune read. We only refresh the
-      // hover summary here so the two pollers never fight over the frame class.
+      accuracyBadge.classList.remove("cold", "hot-bad");
+      if (total === 0) accuracyBadge.classList.add("cold");
+      else if (pct != null && pct < 48) accuracyBadge.classList.add("hot-bad");
       accuracyBadge.title = [
         `LIFETIME ${label}`,
         verdict,
@@ -6492,10 +6784,10 @@ function drawCandleChart() {
   function cryptoWindowLabel(tableKey, ts) {
     const m = (ts && ts.market) || {};
     const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
-    if (/KXBTC15M/i.test(series) || tableKey === "bitcoin" || tableKey === "btc") return "WINDOW";
+    if (/KXBTC15M/i.test(series) || tableKey === "bitcoin" || tableKey === "btc") return "15M WINDOW";
     if (/KXETHD/i.test(series) || tableKey === "ethereum" || tableKey === "eth") return "1H WINDOW";
     const mins = Number(m.window_minutes);
-    if (Number.isFinite(mins) && mins <= 20) return "WINDOW";
+    if (Number.isFinite(mins) && mins <= 20) return "15M WINDOW";
     return "1H WINDOW";
   }
 
@@ -6828,6 +7120,85 @@ function drawCandleChart() {
     if (meta && vols.length) meta.textContent = `last ${vols[vols.length - 1].toFixed(2)}`;
   }
 
+  function drawChartOdds() {
+    const canvas = document.getElementById("chartOdds");
+    const ctx = fitCanvas(canvas);
+    if (!ctx) return;
+    chartFrame(ctx, canvas.width, canvas.height);
+    const meta = document.getElementById("chartOddsMeta");
+    const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
+    const book = liveBookOdds((ts.market) || (state && state.market) || {});
+    if (book && !series.odds.length) {
+      pushSeries(series.odds, { t: Date.now(), up: book.up, down: book.down });
+    }
+    const last = series.odds.length ? series.odds[series.odds.length - 1] : null;
+    const up = book ? book.up : Number(last && last.up);
+    const down = book ? book.down : (Number.isFinite(Number(last && last.down))
+      ? Number(last.down)
+      : (Number.isFinite(up) ? 100 - up : NaN));
+    if (meta) {
+      if (Number.isFinite(Number(up)) && Number.isFinite(Number(down))) {
+        const coarse = Math.abs(up - Math.round(up)) < 0.05 && Math.abs(down - Math.round(down)) < 0.05;
+        meta.textContent = coarse
+          ? (`UP ${Math.round(up)}% · DOWN ${Math.round(down)}%`)
+          : (`UP ${Number(up).toFixed(1)}% · DOWN ${Number(down).toFixed(1)}%`);
+      } else {
+        meta.textContent = "waiting on live book";
+      }
+    }
+    if (!series.odds.length) {
+      setChartNoFeed(canvas, true);
+      ctx.fillStyle = "rgba(120,140,160,0.5)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("waiting on live book", canvas.width / 2, canvas.height / 2);
+      return;
+    }
+    setChartNoFeed(canvas, false);
+    const bookPts = series.odds.filter(p => Number.isFinite(p.up) && Number.isFinite(p.down) && Math.abs(p.up + p.down - 100) <= 8);
+    const pts = bookPts.length ? bookPts : series.odds;
+    drawLineSeries(ctx, pts, p => p.up, "#39ff14", { zero: 50, yMin: 0, yMax: 100, dot: false });
+    drawLineSeries(ctx, pts, p => p.down, "#ff2d55", { yMin: 0, yMax: 100, dot: false });
+  }
+
+  function drawChartDelta() {
+    const canvas = document.getElementById("chartDelta");
+    const ctx = fitCanvas(canvas);
+    if (!ctx) return;
+    chartFrame(ctx, canvas.width, canvas.height);
+    const pts = series.delta.slice(-36);
+    const meta = document.getElementById("chartDeltaMeta");
+    const last = pts[pts.length - 1];
+    if (!pts.length) {
+      setChartNoFeed(canvas, true);
+      ctx.fillStyle = "rgba(120,140,160,0.5)";
+      ctx.font = "10px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("no feed", canvas.width / 2, canvas.height / 2);
+      if (meta) meta.textContent = "no feed";
+      return;
+    }
+    setChartNoFeed(canvas, false);
+    const recent = pts.slice(-12).map(p => p.d).filter(Number.isFinite);
+    let lo = Math.min.apply(null, recent);
+    let hi = Math.max.apply(null, recent);
+    if (!(hi > lo)) { lo -= 1; hi += 1; }
+    const mid = (lo + hi) / 2;
+    const span = (hi - lo) || 1;
+    const live = last && Number.isFinite(last.d) ? last.d : mid;
+    const off = Math.abs(live - mid) > span * 3;
+    if (!off && Number.isFinite(live)) {
+      lo = Math.min(lo, live);
+      hi = Math.max(hi, live);
+    }
+    const padAmt = (hi - lo) * 0.12 || 1;
+    drawLineSeries(ctx, pts, p => p.d, "#00e8ff", { zero: 0, yMin: lo - padAmt, yMax: hi + padAmt });
+    if (meta && last) {
+      meta.textContent = (off ? "K Δ " : "") + `${last.d >= 0 ? "+" : ""}${last.d.toFixed(0)}`;
+      meta.style.color = last.d >= 0 ? "#39ff14" : "#ff2d55";
+    }
+  }
+
   function realFundingPct(mm) {
     if (!mm || mm.funding == null || mm.funding === "") return null;
     const raw = mm.funding;
@@ -7096,6 +7467,10 @@ function drawCandleChart() {
           }
         });
       }
+      const upEl = document.getElementById("liveUpPct");
+      const dnEl = document.getElementById("liveDownPct");
+      if (upEl) upEl.textContent = displayDir((ts.decision && ts.decision.direction) || "WAIT");
+      if (dnEl) dnEl.textContent = clock.bracket || "CLI";
       return true;
     }
     if (ats) {
@@ -7147,7 +7522,7 @@ function drawCandleChart() {
       const st = (typeof tableState === "function") ? tableState(focus) : null;
       ledLabel.textContent = (typeof cryptoWindowLabel === "function")
         ? cryptoWindowLabel(focus, st)
-        : "WINDOW";
+        : (focus === "ethereum" ? "1H WINDOW" : "15M WINDOW");
     }
     if (atsStrip) atsStrip.hidden = true;
     if (atsSport) atsSport.hidden = true;
@@ -7193,7 +7568,7 @@ function drawCandleChart() {
           const win = p.window || "1H";
           return `<li class="lock-tape-row ${p.status === "OPEN" ? "open" : "settled"}">`
             + `<span class="lt-pair">${p.pair}</span>`
-            + `<span class="lt-side ${wxTone(p.side) === "UP" ? "up" : (wxTone(p.side) === "DOWN" ? "down" : "")}">${displayDir(p.side)}</span>`
+            + `<span class="lt-side ${wxTone(p.side) === "UP" ? "up" : (wxTone(p.side) === "DOWN" ? "down" : "")}">${isFrontTable(focusTable) ? displayDir(p.side) : p.side}</span>`
             + `<span class="lt-conf">${conf}</span>`
             + `<span class="lt-win">${win}</span>`
             + `<span class="lt-res">${result}</span>`
@@ -7252,10 +7627,9 @@ function drawCandleChart() {
     const fightMeta = document.getElementById("dualFightMeta");
     const strip = document.getElementById("dualFightStrip");
     function leanTxt(tag, lean) {
-      // Table-level leans are call-level statements, so they speak the
-      // closed language rather than the internal UP / DOWN / WAIT keys.
+      const lock = lean.locked ? "LOCK " : "";
       const conf = lean.conf != null ? (" " + lean.conf + "%") : "";
-      return tag + " " + displayDir(lean.side) + conf;
+      return tag + " " + lock + lean.side + conf;
     }
     if (btcEl) btcEl.textContent = leanTxt("BTC", b);
     if (ethEl) ethEl.textContent = leanTxt("ETH", e);
@@ -7519,428 +7893,16 @@ function drawCandleChart() {
     });
   }
 
-  /* ===== RESEARCH CHART SET =====
-   * Replaces the odds / vs-target wall. Process quality leads; price and
-   * positioning are supporting context. Uses the existing fitCanvas +
-   * chartFrame helpers and the same palette as everything else.
-   */
-  let _processRows = [];
-  let _rankRows = [];
-
-  async function loadChartData() {
-    try {
-      const r = await fetch(`${API_BASE}/api/process/log?limit=200`, { cache: "no-store" });
-      if (r.ok) {
-        const data = await r.json();
-        if (data && Array.isArray(data.rows)) _processRows = data.rows;
-      }
-    } catch (e) { /* desk stays up */ }
-    try {
-      const r2 = await fetch(`${API_BASE}/api/council/ranks`, { cache: "no-store" });
-      if (r2.ok) {
-        const data = await r2.json();
-        if (data && Array.isArray(data.ranked)) _rankRows = data.ranked;
-      }
-    } catch (e) { /* desk stays up */ }
-  }
-
-  function chartEmpty(ctx, w, h, msg) {
-    ctx.font = "600 10px Rajdhani, sans-serif";
-    ctx.fillStyle = "rgba(160,180,200,0.6)";
-    ctx.textAlign = "center";
-    ctx.fillText(msg, w / 2, h / 2 + 3);
-    ctx.textAlign = "left";
-  }
-
-  /* 1. PAPER EQUITY — WAIT reads as flat, never as a loss. */
-  function drawChartEquity() {
-    const canvas = document.getElementById("chartEquity");
-    const ctx = fitCanvas(canvas);
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
-    const meta = document.getElementById("chartEquityMeta");
-
-    const rows = _processRows;
-    if (!rows.length) {
-      if (meta) meta.textContent = "paper only";
-      chartEmpty(ctx, w, h, "No decisions recorded yet");
-      return;
-    }
-
-    // +1 per correct directional call, -1 per wrong. WAIT and ungraded
-    // rows carry the curve forward unchanged — holding is not a loss.
-    let eq = 0;
-    let wins = 0, losses = 0, flats = 0;
-    const pts = rows.map((r) => {
-      const directional = isDirectionalCall(r.final_call);
-      if (directional && r.correct === true) { eq += 1; wins++; }
-      else if (directional && r.correct === false) { eq -= 1; losses++; }
-      else { flats++; }
-      return { eq: eq, wait: !directional };
-    });
-
-    const vals = pts.map((p) => p.eq);
-    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
-    const span = (hi - lo) || 1;
-    const pad = { l: 8, r: 8, t: 10, b: 12 };
-    const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
-    const X = (i) => pad.l + (pts.length < 2 ? iw / 2 : (i / (pts.length - 1)) * iw);
-    const Y = (v) => pad.t + ih - ((v - lo) / span) * ih;
-
-    // zero line
-    ctx.beginPath();
-    ctx.moveTo(pad.l, Y(0));
-    ctx.lineTo(w - pad.r, Y(0));
-    ctx.strokeStyle = "rgba(180,200,220,0.20)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // WAIT stretches get a dim underlay so flat reads as deliberate
-    ctx.strokeStyle = "rgba(0,232,255,0.18)";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    let drawing = false;
-    pts.forEach((p, i) => {
-      if (p.wait) {
-        if (!drawing) { ctx.moveTo(X(i), Y(p.eq)); drawing = true; }
-        else ctx.lineTo(X(i), Y(p.eq));
-      } else { drawing = false; }
-    });
-    ctx.stroke();
-
-    ctx.beginPath();
-    pts.forEach((p, i) => (i ? ctx.lineTo(X(i), Y(p.eq)) : ctx.moveTo(X(i), Y(p.eq))));
-    ctx.strokeStyle = eq >= 0 ? ACID : HOT_RED;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    if (meta) {
-      meta.textContent = (eq >= 0 ? "+" : "") + eq + " units · " +
-        wins + "W " + losses + "L · " + flats + " held";
-    }
-  }
-
-  /* 2. ALIGNMENT TIMELINE — how much of the floor agreed, over time. */
-  function drawChartAlign() {
-    const canvas = document.getElementById("chartAlign");
-    const ctx = fitCanvas(canvas);
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
-    const meta = document.getElementById("chartAlignMeta");
-
-    const rows = _processRows;
-    if (!rows.length) {
-      if (meta) meta.textContent = "—";
-      chartEmpty(ctx, w, h, "No decisions recorded yet");
-      return;
-    }
-
-    const of = Number(rows[rows.length - 1].of) || 4;
-    const floor = 3;
-    const pad = { l: 8, r: 8, t: 10, b: 12 };
-    const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
-    const bw = Math.max(1.5, Math.min(10, iw / rows.length - 1));
-    const Y = (v) => pad.t + ih - (v / of) * ih;
-
-    rows.forEach((r, i) => {
-      const n = Number(r.alignment_count) || 0;
-      const x = pad.l + (rows.length < 2 ? iw / 2 : (i / (rows.length - 1)) * (iw - bw));
-      const directional = isDirectionalCall(r.final_call);
-      const y = Y(n);
-      // Directional calls are lit; WAIT bars stay dim — sitting is normal.
-      if (r.veto_active) ctx.fillStyle = "rgba(240,193,74,0.85)";
-      else if (directional) ctx.fillStyle = debateDirClass(r.final_call) === "DOWN" ? HOT_RED : ACID;
-      else ctx.fillStyle = "rgba(0,232,255,0.28)";
-      ctx.fillRect(x, y, bw, pad.t + ih - y);
-    });
-
-    // the 3-of-4 confluence floor
-    ctx.beginPath();
-    ctx.setLineDash([4, 3]);
-    ctx.moveTo(pad.l, Y(floor));
-    ctx.lineTo(w - pad.r, Y(floor));
-    ctx.strokeStyle = "rgba(240,193,74,0.55)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    const dir = rows.filter((r) => isDirectionalCall(r.final_call)).length;
-    if (meta) meta.textContent = rows.length + " decisions · " + dir + " directional · " + (rows.length - dir) + " stand down";
-  }
-
-  /* 3. CROWDING — RAIJIN's risk reads, as plain states. */
-  function paintCrowdPanel() {
-    const board = window.__councilBoard;
-    const risk = (board && board.risk) || {};
-    const set = (id, val, tone, sub) => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.textContent = val || "—";
-        el.className = "";
-        if (tone) el.classList.add("crowd-" + tone);
-      }
-      const s = document.getElementById(id + "Sub");
-      if (s) s.textContent = sub || "—";
-    };
-    const f = risk.funding || {};
-    const o = risk.oi || {};
-    const l = risk.liquidation || {};
-    const d = risk.divergence || {};
-    const htf = risk.htf || {};
-
-    set("crowdFunding", f.state, f.tone, f.available ? (f.label + " · " + f.trend) : "no print");
-    set("crowdOi", o.state, o.tone, o.available ? (o.label + " · " + (o.pattern || "").replace(/_/g, " ")) : "no print");
-    set("crowdLiq", l.state, l.tone, l.available ? ((l.nearest_long ? "long " + l.nearest_long.distance_pct + "%" : "") +
-      (l.nearest_short ? " · short " + l.nearest_short.distance_pct + "%" : "") || "no wall near") : "no map");
-    set("crowdDiv", d.state, d.tone, d.available ? (d.kinds || []).join(", ") || "aligned" : "warming up");
-    const cr = risk.basis_funding || {};
-    set("crowdCarry", cr.state, cr.tone,
-      cr.available ? ("basis " + cr.basis_label + " · " + (cr.basis_trend || "flat")) : "no basis print");
-    const odv = risk.oi_divergence || {};
-    set("crowdOiDiv", odv.state, odv.tone,
-      odv.available ? ((odv.kinds || []).join(", ").replace(/_/g, " ") || "aligned") : "warming up");
-    const fl = risk.liq_flow || {};
-    set("crowdFlow", fl.state, fl.tone,
-      fl.available
-        ? ("long " + fl.long_label + " · short " + fl.short_label
-           + (fl.accelerating ? " · accelerating" : ""))
-        : "no liquidation feed");
-    const mic = risk.micro || {};
-    set("crowdMicro", mic.available ? (mic.score + " / 100 · " + mic.state) : "—", mic.tone,
-      mic.available
-        ? (mic.reason + (mic.coverage_pct != null && mic.coverage_pct < 100
-            ? "  (" + mic.coverage_pct + "% coverage)" : ""))
-        : "no microstructure feed");
-    set("crowdRegime", htf.regime, htf.tone,
-      htf.available ? ((htf.bias || "—") + " · " + (htf.timeframe || "")) : "structure unknown");
-    // When the CoinGlass-derived reads are all unavailable, the feed is dark
-    // (plan wall) — show ONE clear explanation instead of a column of ambiguous
-    // "warming up" placeholders that read as "broken".
-    var darkFeed = !(f.available || o.available || l.available || cr.available || odv.available);
-    var darkNote = document.getElementById("crowdDark");
-    if (darkNote) darkNote.hidden = !darkFeed;
-  }
-
-  /* 4. LEADER USEFULNESS — rolling score, seat 1 nearest Satoshi. */
-  function drawChartRanks() {
-    const canvas = document.getElementById("chartRanks");
-    const rows = _rankRows;
-    const ctx = fitCanvas(canvas, { rows: rows.length });
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
-    const meta = document.getElementById("chartRankMeta");
-
-    if (!rows.length) {
-      if (meta) meta.textContent = "—";
-      chartEmpty(ctx, w, h, "No settled decisions yet");
-      return;
-    }
-
-    const pad = { l: 74, r: 46, t: 12, b: 10 };
-    const iw = w - pad.l - pad.r;
-    const rowH = Math.max(14, Math.min(26, (h - pad.t - pad.b) / rows.length));
-    const scores = rows.map((r) => Number(r.score) || 0);
-    const lo = Math.min(0, ...scores), hi = Math.max(0, ...scores);
-    const span = (hi - lo) || 1;
-    const zeroX = pad.l + ((0 - lo) / span) * iw;
-
-    rows.forEach((r, i) => {
-      const y = pad.t + i * rowH;
-      const score = Number(r.score) || 0;
-      const x = pad.l + ((score - lo) / span) * iw;
-      const name = String(r.leader || "").toUpperCase();
-
-      ctx.font = "700 9px Orbitron, monospace";
-      ctx.fillStyle = "rgba(220,235,250,0.95)";
-      ctx.textAlign = "left";
-      ctx.fillText(name, 4, y + rowH * 0.62);
-      ctx.font = "600 8px Orbitron, monospace";
-      ctx.fillStyle = "rgba(160,180,200,0.75)";
-      ctx.fillText("SEAT " + r.rank, 4, y + rowH * 0.62 + 9);
-
-      ctx.fillStyle = score >= 0 ? "rgba(57,255,20,0.6)" : "rgba(255,45,85,0.6)";
-      const bx = Math.min(zeroX, x), bw2 = Math.max(1.5, Math.abs(x - zeroX));
-      ctx.fillRect(bx, y + 3, bw2, Math.max(4, rowH * 0.42));
-
-      ctx.font = "600 9px Orbitron, monospace";
-      ctx.fillStyle = score >= 0 ? ACID : HOT_RED;
-      ctx.textAlign = "right";
-      ctx.fillText(score.toFixed(1), w - 4, y + rowH * 0.62);
-      if (r.wrong_streak >= 4) {
-        ctx.font = "600 7px Orbitron, monospace";
-        ctx.fillStyle = "rgba(255,45,85,0.85)";
-        ctx.fillText("streak " + r.wrong_streak, w - 4, y + rowH * 0.62 + 9);
-      }
-    });
-
-    ctx.beginPath();
-    ctx.moveTo(zeroX, pad.t);
-    ctx.lineTo(zeroX, pad.t + rows.length * rowH);
-    ctx.strokeStyle = "rgba(180,200,220,0.25)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.textAlign = "left";
-    if (meta) meta.textContent = "rolling 30 · seat 1 closest";
-  }
-
-  /* ===== MICROSTRUCTURE RISK HEATMAP =====
-   * Current score, state, and a heat strip of recent cycles. Modular: it
-   * reads risk.micro off the council board and paints into #riskStrip, so
-   * it can be dropped anywhere a canvas and the ids exist.
-   */
-  const RISK_PARTS = [
-    ["funding", "FUNDING"],
-    ["oi_expansion", "OI EXPANSION"],
-    ["funding_divergence", "FUND DIVERG"],
-    ["oi_divergence", "OI DIVERG"],
-    ["liquidation_proximity", "LIQ WALLS"],
-    ["liquidation_flow", "LIQ FLOW"],
-    ["basis_funding", "CARRY"],
-    ["liquidity", "LIQUIDITY"],
-  ];
-
-  // Cool → warning → alert, interpolated so the strip reads as a gradient
-  // rather than three flat bands.
-  function riskColor(score, alpha) {
-    const a = alpha == null ? 1 : alpha;
-    const s = Math.max(0, Math.min(100, Number(score) || 0));
-    const mix = (c0, c1, t) => [
-      Math.round(c0[0] + (c1[0] - c0[0]) * t),
-      Math.round(c0[1] + (c1[1] - c0[1]) * t),
-      Math.round(c0[2] + (c1[2] - c0[2]) * t),
-    ];
-    // Each state keeps its own tone, and Clear stays COOL end to end. An
-    // earlier version interpolated cyan straight to gold and passed through
-    // green around 25 — green reads as "go", which is the opposite of what a
-    // low risk score means. The step at each threshold is deliberate: it
-    // makes the Clear/Elevated/Dangerous boundary visible in the strip.
-    let rgb;
-    if (s < 40) {                       // cool: blade cyan → calm slate
-      rgb = mix([0, 232, 255], [120, 165, 190], s / 40);
-    } else if (s < 70) {                // warning: gold → amber
-      rgb = mix([240, 193, 74], [255, 150, 50], (s - 40) / 30);
-    } else {                            // alert: amber → blood
-      rgb = mix([255, 150, 50], [255, 45, 85], (s - 70) / 30);
-    }
-    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`;
-  }
-
-  function riskStateClass(state) {
-    const s = String(state || "Clear").toLowerCase();
-    return s === "dangerous" ? "state-dangerous" : (s === "elevated" ? "state-elevated" : "state-clear");
-  }
-
-  function drawRiskStrip(micro) {
-    const canvas = document.getElementById("riskStrip");
-    const ctx = fitCanvas(canvas, { compact: true });
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    chartFrame(ctx, w, h);
-
-    const hist = (micro && Array.isArray(micro.history)) ? micro.history : [];
-    if (!hist.length) {
-      ctx.font = "600 9px Rajdhani, sans-serif";
-      ctx.fillStyle = "rgba(160,180,200,0.55)";
-      ctx.textAlign = "center";
-      ctx.fillText("no microstructure history yet", w / 2, h / 2 + 3);
-      ctx.textAlign = "left";
-      return;
-    }
-
-    // One cell per cycle, oldest left. Height is constant — this is a heat
-    // strip, not a line chart; the colour carries the whole message.
-    const pad = 4;
-    const iw = w - pad * 2, ih = h - pad * 2;
-    const cw = iw / hist.length;
-    hist.forEach((v, i) => {
-      ctx.fillStyle = riskColor(v, 0.9);
-      ctx.fillRect(pad + i * cw, pad, Math.max(1, cw - 0.5), ih);
-    });
-
-    // Threshold guides, drawn faintly over the strip.
-    const elev = (micro && micro.elevated_at) || 40;
-    const dang = (micro && micro.dangerous_at) || 70;
-    [[elev, "rgba(240,193,74,0.5)"], [dang, "rgba(255,45,85,0.55)"]].forEach(([lvl, col]) => {
-      const first = hist.findIndex((v) => v >= lvl);
-      if (first < 0) return;
-      ctx.fillStyle = col;
-      ctx.fillRect(pad + first * cw, pad, 1, ih);
-    });
-
-    // Newest cell gets a bright edge so "now" is obvious.
-    ctx.strokeStyle = "rgba(240, 248, 255, 0.55)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(pad + (hist.length - 1) * cw + 0.5, pad + 0.5, Math.max(1, cw - 1), ih - 1);
-  }
-
-  function renderRiskParts(micro) {
-    const host = document.getElementById("riskParts");
-    if (!host) return;
-    const comps = (micro && micro.components) || {};
-    const missing = (micro && micro.missing) || [];
-    host.innerHTML = RISK_PARTS.map(([key, label]) => {
-      const has = Object.prototype.hasOwnProperty.call(comps, key);
-      const v = has ? Number(comps[key]) : null;
-      const bar = has
-        ? '<span class="rp-fill" style="width:' + Math.max(2, v) + '%;background:' + riskColor(v, 0.85) + '"></span>'
-        : "";
-      const val = has ? String(v) : '<span class="rp-missing">—</span>';
-      const title = has ? (label + " " + v + " / 100") : (label + " — no feed");
-      return '<div class="risk-part" title="' + debEsc(title) + '">' +
-             '<span class="rp-lab">' + debEsc(label) + "</span>" +
-             '<span class="rp-bar">' + bar + "</span>" +
-             '<span class="rp-val">' + val + "</span></div>";
-    }).join("");
-  }
-
-  function renderRiskPanel(board) {
-    const micro = ((board && board.risk) || {}).micro || null;
-    const card = document.querySelector(".chart-risk");
-    const scoreEl = document.getElementById("riskScore");
-    const stateEl = document.getElementById("riskState");
-    const reasonEl = document.getElementById("riskReason");
-    const covEl = document.getElementById("riskCoverage");
-    const metaEl = document.getElementById("riskMeta");
-
-    const available = !!(micro && micro.available);
-    const state = available ? micro.state : "Clear";
-    if (card) {
-      card.classList.remove("state-clear", "state-elevated", "state-dangerous");
-      card.classList.add(riskStateClass(state));
-    }
-    if (scoreEl) scoreEl.textContent = (available && micro.score != null) ? micro.score : "—";
-    if (stateEl) stateEl.textContent = state;
-    if (reasonEl) {
-      reasonEl.textContent = available ? micro.reason : "no microstructure feed";
-    }
-    if (covEl) {
-      covEl.textContent = (available && micro.coverage_pct != null && micro.coverage_pct < 100)
-        ? (micro.coverage_pct + "% coverage")
-        : "";
-    }
-    if (metaEl) metaEl.textContent = available ? ("RAIJIN · " + (micro.history || []).length + " cycles") : "RAIJIN";
-    drawRiskStrip(micro);
-    renderRiskParts(micro);
-  }
-  window.renderRiskPanel = renderRiskPanel;
-
   function drawCharts() {
     if (mode !== "charts") return;
     if (deskCinematicOn()) return;
     syncChartHero();
     syncChartPairTitle();
-    // Research charts first — process quality over directional fireworks.
-    renderRiskPanel(window.__councilBoard);
-    drawChartEquity();
-    drawChartAlign();
-    paintCrowdPanel();
-    drawChartRanks();
-    // Supporting context.
     drawChartBtc();
+    drawChartEth();
     drawChartVolume();
+    drawChartOdds();
+    drawChartDelta();
     drawChartFunding();
     drawChartTape();
     drawChartAccuracy();
@@ -7954,21 +7916,21 @@ function drawCandleChart() {
     candle_eth: { blurb: "Ethereum Pattern Specialist. 45-bar ETH structure, mean-rev and extension fade. Never answers BTC. Votes; does not lock.", subs: "BODY · STRUCT · PIN · ENGULF · MARU · DOJI · STAR" },
     volume: { blurb: "Relative volume spikes and dry-ups vs price. Confirms moves when volume agrees.", subs: "SPIKE · DRYUP" },
     momentum: { blurb: "RSI + MACD-style short momentum. Continuation and soft mean-revert when stretched.", subs: "RSI · MACD" },
-    orderflow: { blurb: "Taker pressure and book imbalance, plus the market's mid lean.", subs: "BOOK · TAKER" },
+    orderflow: { blurb: "Taker pressure and book imbalance proxies + Kalshi mid lean.", subs: "BOOK · TAKER" },
     funding: { blurb: "Perp funding as crowding. High funding into weakness → short lean.", subs: "RATE · CROWD" },
     regime: { blurb: "Session clock + vol band. Scales Chair aggressiveness.", subs: "SESS · VOL" },
     volatility: { blurb: "Realized ATR / impulse. High-vol impulses ride; extreme stretch can soft-fade.", subs: "ATR · IMP" },
     oi_pressure: { blurb: "OI + funding path as liquidation / crowding pressure.", subs: "CROWD · PATH" },
     streak: { blurb: "Consecutive green/red candles and path microstructure.", subs: "RUN · FADE" },
-    odds: { blurb: "Market mid, skew, and how fast the implied odds move.", subs: "MID · SKEW" },
-    strike: { blurb: "BTC versus the reference level, with time left in the window.", subs: "DIST · CLOCK" },
+    odds: { blurb: "Kalshi mid, skew, and odds velocity (how fast UP% moves).", subs: "MID · SKEW" },
+    strike: { blurb: "BTC vs Kalshi strike + time left. Late window distance is the contract's real underlying.", subs: "DIST · CLOCK" },
     session_tod: { blurb: "UTC session (Asia/Europe/US) priors, weekend dampening, early vs late window.", subs: "SESS · WINDOW" },
     whale: { blurb: "Whale-tape proxy: volume spikes, range expansion, taker aggression.", subs: "SPIKE · TAKER" },
     quorum: { blurb: "Counts how many seats lean each way and learns which headcount + combinations are usually right. Competes for rank.", subs: "SIZE · COMBO · FLOOR" },
-    panic: { blurb: "When the market mid rips ≥4pts in ~30–60s, fade the panic — moves that fast are usually forced, not informed.", subs: "30S · 60S · THR" },
+    panic: { blurb: "Research edge #1: when Kalshi mid rips ≥4pts in ~30–60s, fade the panic (mean-revert). Dominated public hourly backtests.", subs: "30S · 60S · THR" },
     cheap: { blurb: "Value seat: lean the soft side when YES or NO is ≤42¢ — recovery toward fair, not chase expensive continuation.", subs: "YES · NO · BAND" },
-    spotlag: { blurb: "Spot velocity in bps. Derivative pricing often lags spot by seconds.", subs: "30S · 60S · 3M" },
-    exhaust: { blurb: "After a large run near the high or low, if the shorter timeframe flips against it, fade the continuation.", subs: "1H · 5M · YES" },
+    spotlag: { blurb: "Binance spot velocity in bps. Kalshi often lags CEX by seconds — follow hard spot bursts in the lag window.", subs: "30S · 60S · 3M" },
+    exhaust: { blurb: "After a large 1h BTC run near high/low, if 5m flips against and Kalshi is still extreme, fade continuation.", subs: "1H · 5M · YES" },
     guardian: { blurb: "Feed health only. Does not vote direction — raises caution when data is bad.", subs: "NODE-B · NODE-K" },
     news: { blurb: "Fear & Greed sentiment desk. Extreme greed soft-fades; extreme fear soft-recovers. Usually WAIT in the middle.", subs: "FNG" },
     liq: { blurb: "Liquidation-cluster proxy: volume spikes + OI pressure + short price impulse. Cascade detector.", subs: "VOL · OI" },
@@ -8049,11 +8011,11 @@ function drawCandleChart() {
       const ts = (typeof tableState === "function" ? tableState("ats") : null) || {};
       const seats = (ts.agents || []).filter(function (a) { return a && a.agent_name && a.agent_name !== "leader" && !a.sub; });
       const blurbs = {
-        line: "The book and the number.",
+        line: "The Kalshi book / the number.",
         steam: "Line movement. When the number runs, say so.",
         fade: "Public vs sharp. Fade the loud side.",
         hurt: "Injuries / out.",
-        ice: "Veto. Empty or stale book, no depth, or too early to judge.",
+        ice: "Veto. 99¢ chalk, empty book, stale, too early, no depth.",
       };
       grid.innerHTML = seats.map(function (a) {
         const key = String(a.agent_name || "").toLowerCase();
@@ -8227,7 +8189,8 @@ function drawCandleChart() {
           : (raw === "DFW" || raw === "FRONT" ? "DFW" : "BTC"));
       const s = side && side !== "—" ? String(side).toUpperCase() : "";
       if (!floorSeatDirLocked(s)) return;
-      const chip = p + " " + displayDir(s);
+      const shown = s === "UP_HOLD" ? "UP" : (s === "DOWN_HOLD" ? "DOWN" : s);
+      const chip = p + " " + shown;
       if (chips.indexOf(chip) < 0) chips.push(chip);
     }
     try {
@@ -8333,19 +8296,17 @@ function drawCandleChart() {
     const strike = liveCallStrikeText(ts, kind);
     const windowTxt = liveCallWindowText(ts, kind);
     const bits = [];
-    if (status === "LOCK") bits.push(displayDir(dir));
+    if (status === "LOCK") bits.push("LOCK " + dir);
     else if (status === "WATCH") bits.push("WATCH");
-    else bits.push(displayDir("WAIT"));
+    else bits.push("WAIT");
     if (strike) bits.push(strike);
     else if (status === "WATCH") bits.push("no ticket");
-    // Countdown removed from the call line — the desk shows process, not a clock.
-    // (windowTxt stays available as card.window for any non-caption use.)
+    if (windowTxt) bits.push(windowTxt);
     const name = kind === "oracle" ? "ORA" : (kind === "front" ? "FRONT" : (kind === "ethereum" ? "ETH" : "BTC"));
     return {
       key: kind,
       name: name,
       dir: dir,
-      rawDir: raw,
       status: status,
       strike: strike,
       window: windowTxt,
@@ -8457,10 +8418,6 @@ function drawCandleChart() {
     if (!el) return;
     const show = mode === "art" || mode === "floor" || mode === "night";
     el.hidden = !show;
-    // Lean history + why-holding self-hide off the table, so paint them first.
-    try { paintLeanReason(window.__councilBoard); } catch (e) {}
-    try { drawLeanSpark(); } catch (e) {}
-    try { paintFloorSplit(); } catch (e) {}
     if (!show) return;
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
     const card = liveCallCard(ts, focusTable);
@@ -8474,7 +8431,6 @@ function drawCandleChart() {
       el.setAttribute("data-status", card.status);
       el.setAttribute("data-dir", card.dir);
     }
-    try { paintCallMarker(card, ts); } catch (e) {}
     try { paintAtsWhy(ts); } catch (e) {}
     try { paintAtsWatch(ts); } catch (e) {}
     try { paintOraWhy(ts); } catch (e) {}
@@ -8482,159 +8438,10 @@ function drawCandleChart() {
     try { paintCurrentCalls(); } catch (e) {}
   }
 
-  // THE CALL marker — one unmistakable read: colour = side, word = action.
-  function callMarkerRead(card) {
-    const raw = String((card && card.rawDir) || "").toUpperCase();
-    if (!card || card.status !== "LOCK") return { state: "wait", word: "STAND DOWN", arrow: "■", sub: "no confluence" };
-    if (raw === "UP_HOLD" || raw === "DOWN_HOLD")
-      return { state: "hold", word: (displayDir(raw) || "Maintain").toUpperCase(), arrow: "◆", sub: "small size" };
-    if (raw.indexOf("UP") >= 0) return { state: "buy", word: "ACCUMULATE", arrow: "▲", sub: "price should rise" };
-    if (raw.indexOf("DOWN") >= 0) return { state: "sell", word: "REDUCE", arrow: "▼", sub: "price should fall" };
-    return { state: "wait", word: "STAND DOWN", arrow: "■", sub: "no confluence" };
-  }
-  // The call as the COUNCIL decided it (Satoshi's final on the Round Table) —
-  // the SAME source as the four leaders, so the call always matches the seats.
-  // (liveCallCard is the separate scalp engine; mixing the two made the floor
-  // contradict itself.)
-  function councilCallRead() {
-    var board = window.__councilBoard || {};
-    var fin = board.final || board.center || {};
-    var raw = String(fin.direction || "WAIT").toUpperCase();
-    if (raw === "UP") return { state: "buy", word: "ACCUMULATE", arrow: "▲", sub: "price should rise" };
-    if (raw === "DOWN") return { state: "sell", word: "REDUCE", arrow: "▼", sub: "price should fall" };
-    if (raw === "UP_HOLD" || raw === "DOWN_HOLD")
-      return { state: "hold", word: (displayDir(raw) || "Maintain").toUpperCase(), arrow: "◆", sub: "small size" };
-    return { state: "wait", word: "STAND DOWN", arrow: "■", sub: "no confluence" };
-  }
-  function paintCallMarker(card, ts) {
-    const el = document.getElementById("callMarker");
-    if (!el) return;
-    const show = mode === "art" || mode === "floor" || mode === "night";
-    // ATS / front tables run their own "why" strips — keep the marker to the councils.
-    const isAts = (typeof isAtsTable === "function" && isAtsTable(focusTable));
-    if (!show || isAts) { el.hidden = true; return; }
-    el.hidden = false;
-    const m = councilCallRead();
-    el.setAttribute("data-call", m.state);
-    const arrowEl = el.querySelector(".cm-arrow");
-    const wordEl = el.querySelector(".cm-word");
-    const subEl = el.querySelector(".cm-sub");
-    if (arrowEl) arrowEl.textContent = m.arrow;
-    if (wordEl) wordEl.textContent = m.word;
-    if (subEl) subEl.textContent = (card && card.strike) ? (m.sub + " · " + card.strike) : m.sub;
-  }
-
-  // ── Floor split: "what the coin is doing" | "what the council says" ──
-  function drawFsChart() {
-    var cv = document.getElementById("fsChart");
-    if (!cv) return;
-    var w = cv.clientWidth || 560, h = cv.clientHeight || 230;
-    var dpr = window.devicePixelRatio || 1;
-    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
-      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-    }
-    var ctx = cv.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    var data = (__priceHist || []).filter(function (v) { return isFinite(v) && v > 0; });
-    if (data.length < 2) return;
-    var lo = Math.min.apply(null, data), hi = Math.max.apply(null, data);
-    if (hi <= lo) hi = lo + 1;
-    var pad = 8, gw = w - pad * 2, gh = h - pad * 2;
-    var X = function (i) { return pad + gw * (i / (data.length - 1)); };
-    var Y = function (v) { return pad + gh * (1 - (v - lo) / (hi - lo)); };
-    var rising = data[data.length - 1] >= data[0];
-    var col = rising ? "#39ff14" : "#ff2d55";
-    ctx.strokeStyle = "rgba(120,150,180,.12)"; ctx.lineWidth = 1;
-    for (var g = 1; g <= 3; g++) { var yy = pad + gh * g / 4; ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(w - pad, yy); ctx.stroke(); }
-    var grad = ctx.createLinearGradient(0, pad, 0, h - pad);
-    grad.addColorStop(0, rising ? "rgba(57,255,20,.28)" : "rgba(255,45,85,.28)");
-    grad.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.beginPath(); ctx.moveTo(X(0), Y(data[0]));
-    for (var i = 1; i < data.length; i++) ctx.lineTo(X(i), Y(data[i]));
-    ctx.lineTo(X(data.length - 1), h - pad); ctx.lineTo(X(0), h - pad); ctx.closePath();
-    ctx.fillStyle = grad; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(X(0), Y(data[0]));
-    for (var j = 1; j < data.length; j++) ctx.lineTo(X(j), Y(data[j]));
-    ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.stroke();
-    ctx.beginPath(); ctx.arc(X(data.length - 1), Y(data[data.length - 1]), 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = col; ctx.fill();
-  }
-  function paintFloorSplit() {
-    var el = document.getElementById("floorSplit");
-    if (!el) return;
-    var isAts = (typeof isAtsTable === "function" && isAtsTable(focusTable));
-    var on = (mode === "floor" && !isAts);
-    try { document.body.classList.toggle("floor-split-on", on); } catch (e) {}
-    if (!on) { el.hidden = true; return; }
-    el.hidden = false;
-    var board = window.__councilBoard || {};
-    var ts = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
-    var card = liveCallCard(ts, focusTable);
-    var setT = function (id, t) { var e = document.getElementById(id); if (e) e.textContent = t; };
-
-    // LEFT — price
-    var price = (typeof currentBtcPrice === "function") ? currentBtcPrice() : NaN;
-    if (isFinite(price) && price > 0) setT("fsPrice", "$" + Math.round(price).toLocaleString());
-    var hist = (__priceHist || []).filter(function (v) { return isFinite(v) && v > 0; });
-    var chgTxt = "—", chgCls = "";
-    if (hist.length > 2 && hist[0] > 0) {
-      var pct = (hist[hist.length - 1] - hist[0]) / hist[0] * 100;
-      chgCls = pct >= 0 ? "up" : "dn";
-      chgTxt = (pct >= 0 ? "▲ +" : "▼ ") + pct.toFixed(2) + "%";
-    }
-    var chgEl = document.getElementById("fsChg");
-    if (chgEl) { chgEl.textContent = chgTxt; chgEl.className = "fs-price-chg " + chgCls; }
-    try { drawFsChart(); } catch (e) {}
-
-    // RIGHT — council (Satoshi's call, the leaders, and the verdict ALL come
-    // from the same council board, so they can never contradict each other).
-    var m = councilCallRead();
-    var sat = document.getElementById("fsSat");
-    if (sat) {
-      sat.setAttribute("data-call", m.state);
-      var a = sat.querySelector(".fs-sat-arrow"), wd = sat.querySelector(".fs-sat-word");
-      if (a) a.textContent = m.arrow;
-      if (wd) wd.textContent = m.word;
-    }
-    var align = board.alignment || {};
-    setT("fsAlign", (align.aligned != null && align.of != null) ? (align.aligned + " of " + align.of + " agree") : "—");
-    var box = document.getElementById("fsLeaders");
-    if (box) {
-      var rows = (Array.isArray(board.debate) ? board.debate : []).map(function (r) {
-        var dir = (typeof councilDirOf === "function") ? councilDirOf(r.call, r.direction) : String(r.direction || "").toUpperCase();
-        var st = dir === "UP" ? "up" : dir === "DOWN" ? "dn" : "wt";
-        var chip = dir === "UP" ? '<span class="fs-chip up">▲ UP</span>'
-          : dir === "DOWN" ? '<span class="fs-chip dn">▼ DOWN</span>'
-          : '<span class="fs-chip wt">■ SIT</span>';
-        var nm = esc(r.callsign || r.leader || "—");
-        var dom = esc(String(r.title || r.domain || "").split("·")[0].trim());
-        return '<div class="fs-ldr fs-ldr-' + st + '"><span class="fs-ldr-nm">' + nm + '</span><span class="fs-ldr-do">' + dom + '</span>' + chip + '</div>';
-      }).join("");
-      box.innerHTML = rows || '<div class="fs-ldr-empty">Floor warming up…</div>';
-    }
-    var vEl = document.getElementById("fsVerdict");
-    if (vEl) {
-      if (m.state === "wait") {
-        vEl.textContent = "No confluence yet — the desk stands down until enough leaders agree.";
-      } else {
-        var side = align.side === "UP" ? "upside" : (align.side === "DOWN" ? "downside" : "a side");
-        vEl.textContent = (align.aligned || 0) + " of " + (align.of || 4) + " leaders read " + side + " → Satoshi calls " + m.word.toLowerCase() + ".";
-      }
-    }
-    var grd = (typeof computeLeadGrade === "function") ? computeLeadGrade() : { pct: null, n: 0 };
-    var gEl = document.getElementById("fsGradeVal");
-    if (gEl) {
-      gEl.textContent = (grd.pct == null) ? ("gathering… (" + grd.n + ")") : (grd.pct + "% · " + grd.n + " calls");
-      gEl.className = "fs-grade-val " + (grd.pct == null ? "" : (grd.pct >= 55 ? "good" : grd.pct >= 45 ? "mid" : "bad"));
-    }
-  }
-  window.paintFloorSplit = paintFloorSplit;
-
   function paintCurrentCalls() {
     const board = document.getElementById("callsBoard");
     if (!board) return;
-    const keys = ["bitcoin"];
+    const keys = ["bitcoin", "ethereum", "front", "oracle"];
     keys.forEach(function (key) {
       const row = board.querySelector('[data-call="' + key + '"]');
       if (!row) return;
@@ -8647,11 +8454,7 @@ function drawCandleChart() {
       const strike = row.querySelector(".calls-strike");
       const windowEl = row.querySelector(".calls-window");
       if (name) name.textContent = card.name;
-      if (status) {
-        status.textContent = card.status === "LOCK"
-          ? displayDir(card.dir)
-          : (card.status === "WATCH" ? "WATCH" : displayDir("WAIT"));
-      }
+      if (status) status.textContent = card.status === "LOCK" ? ("LOCK " + card.dir) : card.status;
       if (strike) strike.textContent = card.strike || "—";
       if (windowEl) windowEl.textContent = card.window || "—";
     });
@@ -8840,7 +8643,7 @@ function drawCandleChart() {
             return '<div class="tape-row ' + cls + '">'
               + '<span>' + (row.window || "1H") + '</span>'
               + '<span>' + String(row.asset || "").toUpperCase() + '</span>'
-              + '<span class="side-' + String(row.side || "").toLowerCase() + '">' + (row.side ? displayDir(row.side) : "—") + '</span>'
+              + '<span class="side-' + String(row.side || "").toLowerCase() + '">' + (row.side || "—") + '</span>'
               + '<span>' + fmtP(row.p_finish) + '</span>'
               + '<span>' + fmtEv(row.ev_cents) + '</span>'
               + '<span>' + (row.odds != null ? Math.round(row.odds) + "¢" : "—") + '</span>'
@@ -9103,7 +8906,7 @@ function drawCandleChart() {
   };
   const SCHOOL_TF = ["True", "False"];
   const SCHOOL_LESSONS = [
-    { id: "hour", n: 1, title: "The hour", minutes: 6, idea: "A single window is not a view on Bitcoin forever — it is one decision.", body: ["A single window is not a view on Bitcoin forever — it is one decision, on one horizon. The Council is judged on whether the process was followed, not on whether every window produced a trade. Most windows should end in WAIT."], board: "window", callout: "A strike is the line.", quiz: [{ q: "This desk is guessing the next year of Bitcoin.", choices: SCHOOL_TF, answer: 1 }, { q: "UP means finish above the strike at the end of the hour.", choices: SCHOOL_TF, answer: 0 }, { q: "Time left does not change the trade.", choices: SCHOOL_TF, answer: 1 }] },
+    { id: "hour", n: 1, title: "The hour", minutes: 6, idea: "Kalshi is not “is Bitcoin going up forever.” It is one window.", body: ["Kalshi is not “is Bitcoin going up forever.” It is one window. A strike is the line. UP means finish above it when the clock hits zero. DOWN means finish below. Forty minutes left is a different game than four. The Chair only has to be right at the bell, not the whole hour."], board: "window", callout: "A strike is the line.", quiz: [{ q: "This desk is guessing the next year of Bitcoin.", choices: SCHOOL_TF, answer: 1 }, { q: "UP means finish above the strike at the end of the hour.", choices: SCHOOL_TF, answer: 0 }, { q: "Time left does not change the trade.", choices: SCHOOL_TF, answer: 1 }] },
     { id: "candle", n: 2, title: "Reading the candle", minutes: 7, idea: "The body is where price spent the time. The wick is the rejected poke.", body: ["The body is where price spent the time. The wick is the rejected poke. A long upper wick into the strike and a close back under it is not strength. It is a failed break. Watch close vs strike, not the loudest wick."], board: "candle", callout: "Watch close vs strike, not the loudest wick.", quiz: [{ q: "The wick is more important than the close.", choices: SCHOOL_TF, answer: 1 }, { q: "A long upper wick that closes back under the strike is a failed break.", choices: SCHOOL_TF, answer: 0 }, { q: "The body shows where price actually spent the time.", choices: SCHOOL_TF, answer: 0 }] },
     { id: "book", n: 3, title: "The book", minutes: 8, idea: "Bid is what people will pay. Ask is what they will sell.", body: ["Bid is what people will pay. Ask is what they will sell. Size is whether that price is real. If DOWN is 99¢, the market already thinks it is over. Buying that is paying a dollar to maybe win a penny. That is why the Chair WAITs. An empty book is the same: no one there to take the other side."], board: "book", callout: "If DOWN is 99¢, the market already thinks it is over.", quiz: [{ q: "A 99¢ DOWN is a great lock because it is almost sure.", choices: SCHOOL_TF, answer: 1 }, { q: "Size tells you if the price is actually there.", choices: SCHOOL_TF, answer: 0 }, { q: "An empty book is a reason to WAIT.", choices: SCHOOL_TF, answer: 0 }] },
     { id: "edge", n: 4, title: "Odds vs P(finish)", minutes: 8, idea: "Odds are the market’s price. P(finish) is the Chair’s guess you finish on that side.", body: ["Odds are the market’s price. P(finish) is the Chair’s guess you finish on that side. EV is the gap after the spread. If the Chair says 62% and DOWN costs 99¢, there is no edge. If it says 62% and UP costs 48¢ with size, that is a conversation. Never lock just because a seat is loud."], board: "edge", callout: "If the Chair says 62% and DOWN costs 99¢, there is no edge.", quiz: [{ q: "A high Chair confidence is enough to lock.", choices: SCHOOL_TF, answer: 1 }, { q: "EV is P(finish) versus the price you actually pay, after spread.", choices: SCHOOL_TF, answer: 0 }, { q: "Market odds and Chair P(finish) are the same number.", choices: SCHOOL_TF, answer: 1 }] },
@@ -9661,7 +9464,7 @@ function drawCandleChart() {
     const extras = Array.isArray(sideBoard.extras) ? sideBoard.extras : [];
     const pills5 = Array.isArray(sideBoard.pills_5m) ? sideBoard.pills_5m : [];
     if (feed) {
-      feed.textContent = arcade.length ? (arcade.length + " open") : "none open";
+      feed.textContent = arcade.length ? (arcade.length + " open · 15m") : "no open 15m";
     }
     const clock = document.getElementById("sideClock");
     const focusCard = arcade.find(function (c) { return c.asset === sideFocus; }) || arcade[0];
@@ -10410,16 +10213,80 @@ function drawCandleChart() {
       if (why) why.textContent = "tap failed";
     }
   }
-  async function loadFrontTable() { /* removed market — Bitcoin desk only */ }
+  async function loadFrontTable() {
+    wireFrontTable();
+    try {
+      const r = await frontApi("/api/front");
+      if (r.ok) paintFrontBoard(await r.json());
+    } catch (e) {}
+    if (frontPollTimer) clearInterval(frontPollTimer);
+    frontPollTimer = setInterval(function () {
+      if (mode !== "front" && mode !== "floor" && focusTable !== "front") return;
+      frontApi("/api/front").then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (data) paintFrontBoard(data);
+      }).catch(function () {});
+    }, 20000); // book. Live KDFW weather refresh is frontWxRefreshMs / WX_REFRESH_S.
+  }
   window.loadFrontTable = loadFrontTable;
 
   let atsBoard = null;
   let atsPollTimer = null;
-  async function loadAtsTable() { /* removed market — Bitcoin desk only */ }
+  async function loadAtsTable() {
+    try {
+      const r = await fetch("/api/ats", { cache: "no-store", headers: { Accept: "application/json" } });
+      if (r.ok) {
+        atsBoard = await r.json();
+        try { paintAresEyes((atsBoard.chair && atsBoard.chair.eyes) || (atsBoard.pick && atsBoard.pick.eyes)); } catch (e) {}
+        try { renderAtsBotsGuide(atsBoard); } catch (e) {}
+        try { paintAtsChartTape(atsBoard); } catch (e) {}
+        try { paintAtsWhy(atsBoard); } catch (e) {}
+        try { paintAtsWatch(atsBoard); } catch (e) {}
+        try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
+        try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
+      }
+    } catch (e) {}
+    if (atsPollTimer) clearInterval(atsPollTimer);
+    atsPollTimer = setInterval(function () {
+      if (mode !== "art" && mode !== "floor" && !isSeatsMode(mode) && focusTable !== "ats") return;
+      fetch("/api/ats", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (!data) return;
+        atsBoard = data;
+        try { paintAresEyes((data.chair && data.chair.eyes) || (data.pick && data.pick.eyes)); } catch (e) {}
+        try { renderAtsBotsGuide(data); } catch (e) {}
+        try { paintAtsChartTape(data); } catch (e) {}
+        try { paintAtsWhy(data); } catch (e) {}
+        try { paintAtsWatch(data); } catch (e) {}
+      }).catch(function () {});
+    }, 20000);
+  }
   window.loadAtsTable = loadAtsTable;
   let oracleBoard = null;
   let oraclePollTimer = null;
-  async function loadOracleTable() { /* removed market — Bitcoin desk only */ }
+  async function loadOracleTable() {
+    try {
+      const r = await fetch("/api/oracle", { cache: "no-store", headers: { Accept: "application/json" } });
+      if (r.ok) {
+        oracleBoard = await r.json();
+        try { renderOracleBotsGuide(); } catch (e) {}
+        try { paintOraWhy(oracleBoard); } catch (e) {}
+        try { paintOraWatch(oracleBoard); } catch (e) {}
+        try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
+        try { if (typeof drawArt === "function") drawArt(); } catch (e) {}
+      }
+    } catch (e) {}
+    if (oraclePollTimer) clearInterval(oraclePollTimer);
+    oraclePollTimer = setInterval(function () {
+      if (mode !== "art" && mode !== "floor" && !isSeatsMode(mode) && focusTable !== "oracle") return;
+      fetch("/api/oracle", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+        if (!data) return;
+        oracleBoard = data;
+        try { renderOracleBotsGuide(); } catch (e) {}
+        try { paintOraWhy(data); } catch (e) {}
+        try { paintOraWatch(data); } catch (e) {}
+        try { if (typeof updateUI === "function") updateUI(); } catch (e) {}
+      }).catch(function () {});
+    }, 20000);
+  }
   window.loadOracleTable = loadOracleTable;
   function renderOracleBotsGuide() {
     const grid = document.getElementById("oracleBotsGrid");
@@ -10444,11 +10311,11 @@ function drawCandleChart() {
     const grid = document.getElementById("atsBotsGrid");
     if (!grid) return;
     const fallback = [
-      { id: "LINE", job: "The book and the number.", mark: "/static/bots/line.png" },
+      { id: "LINE", job: "The Kalshi book / the number.", mark: "/static/bots/line.png" },
       { id: "STEAM", job: "Line movement.", mark: "/static/bots/steam.png" },
       { id: "FADE", job: "Public vs sharp.", mark: "/static/bots/fade.png" },
       { id: "HURT", job: "Injuries / out.", mark: "/static/bots/hurt.png" },
-      { id: "ICE", job: "Veto. Empty or stale book, no depth, or too early to judge.", mark: "/static/bots/ice.png" },
+      { id: "ICE", job: "Veto. 99¢ chalk, empty book, stale, too early, no depth.", mark: "/static/bots/ice.png" },
     ];
     const seats = ((data && data.seats) || fallback);
     const chair = (data && data.chair) || { id: "ARES", name: "ARES", job: "Sports chair. One game.", mark: "/static/ares-wait.png" + "?v=" + LEADER_JPG_V };
@@ -10829,7 +10696,7 @@ function drawCandleChart() {
   function aliasDeskMode(next) {
     const n = String(next || "").toLowerCase();
     if (n === "bots" || n === "ranks" || n === "dashboard") return "seats";
-    if (n === "dojo" || n === "school") return "school";
+    if (n === "stream" || n === "broadcast") return "stream";
     return n;
   }
   function isSeatsMode(m) {
@@ -10867,30 +10734,6 @@ function drawCandleChart() {
     try { renderRanksBoard(); } catch (e) {}
     try { renderDashboard(); } catch (e) {}
   }
-
-  // Optional candle arcade (separate app). The Dojo tab is now the lesson desk.
-  function openDojo() {
-    var url = (typeof window !== "undefined" && window.DOJO_URL) || "";
-    if (!url) return;
-    try { window.open(url, "candle-dojo"); }
-    catch (e) { try { window.location.href = url; } catch (e2) {} }
-  }
-  window.openDojo = openDojo;
-
-  function showCallWarn(from, to) {
-    const el = document.getElementById("callWarn");
-    const a = document.getElementById("callWarnFrom");
-    const b = document.getElementById("callWarnTo");
-    if (!el) return;
-    if (a) a.textContent = from || "—";
-    if (b) b.textContent = to || "—";
-    el.classList.remove("hidden");
-    clearTimeout(window.__callWarnTimer);
-    window.__callWarnTimer = setTimeout(function () {
-      el.classList.add("hidden");
-    }, 2800);
-  }
-  window.showCallWarn = showCallWarn;
 
   function setMode(next) {
     next = aliasDeskMode(next);
@@ -10946,7 +10789,7 @@ function drawCandleChart() {
     try { if (typeof window.applyFocusChrome === "function") window.applyFocusChrome(); } catch (e) {}
     try {
       if (typeof window.__floorMusicOnMode === "function") {
-        window.__floorMusicOnMode(mode === "floor" || mode === "night");
+        window.__floorMusicOnMode(mode === "floor" || mode === "night" || mode === "stream");
       }
     } catch (e) {}
     // Hierarchy on Seats (old ranks / dashboard)
@@ -10978,18 +10821,19 @@ function drawCandleChart() {
     const showBrain = mode === "brain";
     const showNews = mode === "news";
     const showWire = mode === "wire";
-    const showSchool = mode === "school" || mode === "dojo";
+    const showSchool = mode === "school";
     const showSide = mode === "side";
     const showFront = mode === "front";
     const showCalls = mode === "calls";
-    const showKalshi = mode === "kalshi";
-    const showMain = mode === "art" || mode === "floor" || mode === "night";
+    const showStream = mode === "stream";
+    const showMain = mode === "art" || mode === "floor" || mode === "night" || mode === "stream";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (seatsView) seatsView.classList.toggle("hidden", !showSeats);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
     if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
+    if (showSettings) { try { paintMondayPaper(); } catch (e) {} }
     if (followerView) followerView.classList.toggle("hidden", !showFollower);
     if (tapeView) tapeView.classList.toggle("hidden", !showTape);
     if (bookView) bookView.classList.toggle("hidden", !showBook);
@@ -11000,23 +10844,14 @@ function drawCandleChart() {
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
     if (callsView) callsView.classList.toggle("hidden", !showCalls);
-    const kalshiView = document.getElementById("kalshiView");
-    if (kalshiView) kalshiView.classList.toggle("hidden", !showKalshi);
-    if (showKalshi) { try { renderKalshi15m(); } catch (e) {} }
-    const showCalib = mode === "calib";
-    const calibView = document.getElementById("calibView");
-    if (calibView) calibView.classList.toggle("hidden", !showCalib);
-    if (showCalib) { try { renderCalibration(); } catch (e) {} }
-    const showHealth = mode === "health";
-    const healthView = document.getElementById("healthView");
-    if (healthView) healthView.classList.toggle("hidden", !showHealth);
-    if (showHealth) { try { renderFeedHealth(); } catch (e) {} }
-    const showBacktest = mode === "backtest";
-    const backtestView = document.getElementById("backtestView");
-    if (backtestView) backtestView.classList.toggle("hidden", !showBacktest);
-    if (showBacktest) { try { renderBacktest(); } catch (e) {} }
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", !showSeats);
+    if (showStream) {
+      try { if (typeof setFocusTable === "function") setFocusTable("bitcoin"); } catch (e) {}
+      try { startStreamTeaching(); } catch (e) {}
+    } else {
+      try { stopStreamTeaching(); } catch (e) {}
+    }
     try { dockWindowLed(); } catch (e) {}
     // Always redraw the round table when main view is visible (bots live on canvas)
     if (showMain) {
@@ -11037,7 +10872,7 @@ function drawCandleChart() {
     if (mode === "brain") loadBrainRecap();
     if (mode === "news") loadDeskNews();
     if (mode === "wire") loadDeskWire();
-    if (mode === "school" || mode === "dojo") loadSchool();
+    if (mode === "school") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
     if (mode === "calls") {
@@ -11093,7 +10928,7 @@ function drawCandleChart() {
       bumpChairPulse("ethereum", 0.16);
     } catch (e) {}
     try {
-      if (mode === "art" || mode === "floor") drawArt();
+      if (mode === "art" || mode === "floor" || mode === "stream") drawArt();
     if (mode === "night") drawArt();
     } catch (e) {}
     const view = (typeof getViewState === "function") ? getViewState() : state;
@@ -11165,19 +11000,7 @@ function drawCandleChart() {
     if (decisionSummary) {
       decisionSummary.textContent = live.line;
     }
-    if (btcPrice) {
-      // Always the Bitcoin table, never whatever happens to be focused —
-      // otherwise focusing ETH prints ETH's price under a "BTC" label.
-      let btcPx = null;
-      try {
-        const bt = (typeof tableState === "function") ? tableState("bitcoin") : null;
-        btcPx = bt && bt.market ? bt.market.price : null;
-      } catch (e) { btcPx = null; }
-      if (btcPx == null) btcPx = state.market?.price ?? null;
-      btcPrice.textContent = btcPx
-        ? Number(btcPx).toLocaleString(undefined, { maximumFractionDigits: 1 })
-        : "—";
-    }
+    if (btcPrice) btcPrice.textContent = state.market?.price ? Number(state.market.price).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—";
     if (fundingEl) fundingEl.textContent = state.market?.funding != null ? (state.market.funding * 100).toFixed(4) + "%" : "—";
     if (kalshiTicker) kalshiTicker.textContent = state.market?.kalshi_ticker || "—";
     const upEl = document.getElementById("liveUpPct");
@@ -11187,6 +11010,7 @@ function drawCandleChart() {
     const book = liveBookOdds(m);
     if (upEl) upEl.textContent = book ? book.up.toFixed(1) + "%" : "—";
     if (dnEl) dnEl.textContent = book ? book.down.toFixed(1) + "%" : "—";
+    try { paintLeadChip(); } catch (e) {}
     let deskChrome = false;
     try { deskChrome = !!paintFrontWindowChrome(); } catch (e) { deskChrome = false; }
     if (deskChrome) {
@@ -11287,11 +11111,10 @@ function drawCandleChart() {
     // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
 
-    // Trigger brief glitch + a clear stand-down warning when the call switches
+    // Trigger brief glitch when decision changes
     if (prevDir && prevDir !== (d.direction || "WAIT")) {
       glitchUntil = performance.now() + 380;
       const nd = d.direction || "WAIT";
-      try { showCallWarn(prevDir, nd); } catch (e) {}
       if (nd !== lastSpokenDir) {
         lastSpokenDir = nd;
         playCallVoice(nd);
@@ -11341,1181 +11164,13 @@ function drawCandleChart() {
     time = ts;
     try { stepAllChairPulses(ts); } catch (e) {}
     try { maybeAttractEnter(); } catch (e) {}
-    if (mode === "art" || mode === "floor") drawArt();
+    if (mode === "art" || mode === "floor" || mode === "stream") drawArt();
     if (mode === "night") drawArt();
     if (!document.hidden && !reduceMotion) {
       animId = requestAnimationFrame(loop);
     } else {
       const wait = document.hidden ? 500 : 180;
       animId = setTimeout(() => { animId = requestAnimationFrame(loop); }, wait);
-    }
-  }
-
-  /* ===== DEBATE SUMMARY — four leaders feeding SATOSHI =====
-   * Refreshed every poll from /api/council. SATOSHI is never one of the
-   * four rows: he sits in the centre of the table and gets the final line
-   * underneath. Rows are ordered by rank, so seat 1 is nearest the centre.
-   */
-  const DEBATE_ORDER = ["VITALIK", "ARES", "RAIJIN", "ORACLE"];
-
-  function debEsc(v) {
-    return String(v == null ? "" : v)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  // Closed research language. Older stored rows still carry the previous
-  // labels, so both are accepted here and nowhere else needs to care.
-  const CALL_UP = ["ACCUMULATE", "MAINTAIN", "BUY ZONE", "HOLD"];
-  const CALL_DOWN = ["REDUCE"];
-  const CALL_WAIT = ["STAND DOWN", "WAIT", "SIT"];
-
-  function debateDirClass(call) {
-    const c = String(call || "Stand down").toUpperCase();
-    if (CALL_DOWN.indexOf(c) >= 0) return "DOWN";
-    if (CALL_UP.indexOf(c) >= 0) return "UP";
-    return "WAIT";
-  }
-
-  function isDirectionalCall(call) {
-    const c = String(call || "").toUpperCase();
-    return c !== "" && CALL_WAIT.indexOf(c) < 0;
-  }
-  window.isDirectionalCall = isDirectionalCall;
-
-  function renderDebate(board) {
-    const rows = document.getElementById("debateRows");
-    const align = document.getElementById("debateAlignment");
-    const vetoEl = document.getElementById("debateVeto");
-    const finalEl = document.getElementById("debateFinal");
-    const callEl = document.getElementById("debateFinalCall");
-    const noteEl = document.getElementById("debateFinalNote");
-    if (!rows) return;
-
-    const debate = (board && Array.isArray(board.debate)) ? board.debate : [];
-    const final = (board && board.final) || {};
-    const alignment = (board && board.alignment) || {};
-
-    // Always show all four, even before the first cycle lands.
-    const byName = {};
-    debate.forEach((d) => { byName[String(d.callsign || "").toUpperCase()] = d; });
-    const ordered = debate.length
-      ? debate.slice()
-      : DEBATE_ORDER.map((n) => ({ callsign: n, call: "WAIT", confidence: 0, reason: "Waiting for first cycle…", rank: 0 }));
-
-    rows.innerHTML = ordered.map((d) => {
-      const name = String(d.callsign || "?").toUpperCase();
-      const call = String(d.call || "WAIT").toUpperCase();
-      const cls = debateDirClass(call);
-      const vetoed = Array.isArray(d.vetoed) && d.vetoed.length;
-      const cautioned = !vetoed && Array.isArray(d.cautioned) && d.cautioned.length;
-      const rank = Number(d.rank) || 0;
-      const seat = rank ? ("SEAT " + rank) : "—";
-      const conf = Math.max(0, Math.min(100, Number(d.confidence) || 0));
-      return (
-        '<div class="debate-leader dir-' + cls + (vetoed ? ' vetoed' : (cautioned ? ' cautioned' : '')) + '">' +
-          '<div class="dl-head">' +
-            '<span>' + debEsc(name) + ' <span class="dl-rank">' + debEsc(seat) + '</span></span>' +
-            '<span><span class="dl-call">' + debEsc(call) + '</span> <span class="dl-conf">' + conf + '</span></span>' +
-          '</div>' +
-          '<div class="dl-why">' + debEsc(d.reason || "—") + '</div>' +
-        '</div>'
-      );
-    }).join("");
-
-    if (align) align.textContent = alignment.text || "—";
-
-    // A veto is loud — it is why the table is sitting. A caution is quieter:
-    // it did not force WAIT, it raised the bar. Show both, styled apart.
-    const vetos = (board && board.veto_lines) || [];
-    const cautions = (board && board.caution_lines) || [];
-    if (vetoEl) {
-      if (vetos.length || cautions.length) {
-        vetoEl.textContent = vetos.concat(cautions).join(" · ");
-        vetoEl.classList.toggle("caution-only", !vetos.length && cautions.length > 0);
-        vetoEl.hidden = false;
-      } else {
-        vetoEl.hidden = true;
-        vetoEl.classList.remove("caution-only");
-        vetoEl.textContent = "";
-      }
-    }
-
-    const call = String(final.call || "Stand down").toUpperCase();
-    if (callEl) callEl.textContent = call;
-    if (finalEl) {
-      finalEl.classList.remove("call-UP", "call-DOWN", "call-WAIT");
-      finalEl.classList.add("call-" + debateDirClass(call));
-    }
-    if (noteEl) noteEl.textContent = final.summary || "final authority";
-
-    // Satoshi's statement of record — the highest-authority line on the page.
-    const voiceEl = document.getElementById("debateVoice");
-    if (voiceEl) voiceEl.textContent = final.voice || board.voice || "The table has not spoken.";
-
-    // The loudest voice on the other side, so dissent is never buried.
-    const dis = board && board.dissent;
-    const disEl = document.getElementById("debateDissent");
-    if (disEl) {
-      if (dis && dis.callsign && String(dis.call || "").toUpperCase() !== call) {
-        disEl.innerHTML = "<b>" + debEsc(dis.callsign) + " dissents · " +
-          debEsc(String(dis.call || "").toUpperCase()) + "</b><br/>" + debEsc(dis.reason || "");
-        disEl.hidden = false;
-      } else {
-        disEl.hidden = true;
-        disEl.textContent = "";
-      }
-    }
-    paintCallStrip(board);
-    try { if (mode === "charts") renderRiskPanel(board); } catch (e) {}
-  }
-
-  /* Bottom strip: Satoshi's call + alignment + regime. Replaces the old
-   * UP%/DOWN% pair, which framed the desk as a binary bet ticket. */
-  function paintCallStrip(board) {
-    const final = (board && board.final) || {};
-    const align = (board && board.alignment) || {};
-    const call = String(final.call || "Stand down").toUpperCase();
-
-    const dirEl = document.getElementById("stripCallDir");
-    if (dirEl) {
-      dirEl.textContent = call;
-      dirEl.className = "";
-      dirEl.classList.add("call-" + debateDirClass(call));
-    }
-    const cntEl = document.getElementById("stripAlignCount");
-    if (cntEl) {
-      const n = final.aligned;
-      const of = final.of || 4;
-      cntEl.textContent = (n == null) ? "—" : (n + " of " + of);
-    }
-    const wrap = document.getElementById("stripAlign");
-    if (wrap) wrap.classList.toggle("weak", !final.confluence_ok);
-
-    const regEl = document.getElementById("stripRegimeState");
-    const regWrap = document.getElementById("stripRegime");
-    const regime = board && board.regime;
-    if (regEl && regWrap) {
-      if (regime) {
-        regEl.textContent = String(regime).toUpperCase();
-        regWrap.hidden = false;
-      } else {
-        regWrap.hidden = true;
-      }
-    }
-    const micro = ((board && board.risk) || {}).micro || null;
-    const riskEl = document.getElementById("stripRiskState");
-    const riskWrap = document.getElementById("stripRisk");
-    if (riskEl && riskWrap) {
-      if (micro && micro.available && micro.score != null) {
-        riskEl.textContent = micro.score + " " + String(micro.state).toUpperCase();
-        riskEl.className = "risk-" + (micro.tone || "ok");
-        riskWrap.hidden = false;
-        riskWrap.title = micro.reason || "Microstructure risk";
-      } else {
-        riskWrap.hidden = true;
-      }
-    }
-    const procEl = document.getElementById("stripProcessPct");
-    const m = window.__processMetrics;
-    if (procEl) {
-      procEl.textContent = (m && m.process_adherence_pct != null)
-        ? (m.process_adherence_pct + "%")
-        : "—";
-    }
-  }
-  window.paintCallStrip = paintCallStrip;
-
-  /* ===== FLOOR-LEAN HISTORY + WHY-HOLDING =====
-   * The lean meter shows the instant read; this shows the last ~30 minutes so
-   * you can see conviction building or fading. And when Satoshi stands down,
-   * the reason line names the single gate that blocked a call. */
-  var __leanHist = [];        // signed lean strength, -100..100, oldest → newest
-  var __priceHist = [];       // BTC spot, sampled 1:1 with __leanHist (same timestamps)
-  var __lastPx = NaN;
-  var __leanHistLast = 0;
-
-  // Current BTC spot from whichever shape the live state carries.
-  function currentBtcPrice() {
-    var s = (typeof state !== "undefined" && state) ? state : {};
-    var m = s.market
-      || (s.tables && s.tables.bitcoin && s.tables.bitcoin.market)
-      || (s.btc && s.btc.market)
-      || {};
-    var px = Number(m.price);
-    if (isFinite(px) && px > 0) { __lastPx = px; return px; }
-    return __lastPx;   // carry forward the last known price so the series stays aligned
-  }
-
-  function leanFromBoard(board) {
-    var rows = (board && Array.isArray(board.debate)) ? board.debate : [];
-    var up = 0, down = 0;
-    rows.forEach(function (r) {
-      var d = councilDirOf(r.call, r.direction), c = Number(r.confidence) || 0;
-      if (d === "UP") up += c; else if (d === "DOWN") down += c;
-    });
-    var total = up + down;
-    if (total <= 0) return 0;
-    return (up >= down ? 1 : -1) * (Math.abs(up - down) / total) * 100;
-  }
-
-  function sampleLean(board) {
-    var now = Date.now();
-    if (now - __leanHistLast < 5000) return;   // one sample / 5s → ~30 min at 360
-    __leanHistLast = now;
-    __leanHist.push(leanFromBoard(board));
-    __priceHist.push(currentBtcPrice());       // aligned 1:1 with the lean sample
-    if (__leanHist.length > 360) __leanHist.shift();
-    if (__priceHist.length > 360) __priceHist.shift();
-  }
-
-  // How often the floor's lean anticipated BTC's next move, over the window.
-  // A rough LIVE gauge (30 min, autocorrelated) — the settled record lives in
-  // the Calibration + Backtest tabs. Grades whether sign(lean) matched the
-  // price change ~LEAD*5s later, ignoring flat leans and sub-noise moves.
-  function computeLeadGrade() {
-    var lean = __leanHist, price = __priceHist;
-    var n = Math.min(lean.length, price.length);
-    var LEAD = 12;    // samples ahead (~60s)
-    var DEAD = 3;     // |lean| below this = flat, skip
-    var hits = 0, total = 0;
-    for (var i = 0; i + LEAD < n; i++) {
-      var L = lean[i];
-      if (Math.abs(L) < DEAD) continue;
-      var p0 = price[i], p1 = price[i + LEAD];
-      if (!isFinite(p0) || !isFinite(p1) || p0 <= 0) continue;
-      var move = p1 - p0;
-      if (Math.abs(move) < p0 * 0.0002) continue;   // ignore <0.02% noise
-      total++;
-      if ((L > 0 && move > 0) || (L < 0 && move < 0)) hits++;
-    }
-    if (total < 5) return { pct: null, n: total, lead: LEAD * 5 };
-    return { pct: Math.round(100 * hits / total), n: total, lead: LEAD * 5 };
-  }
-
-  function paintLeadGrade() {
-    var el = document.getElementById("leanGradeVal");
-    if (!el) return;
-    var res = computeLeadGrade();
-    if (res.pct == null) {
-      el.textContent = "gathering… (" + res.n + ")";
-      el.className = "lean-grade-val";
-      return;
-    }
-    el.textContent = res.pct + "% · " + res.n + " calls (" + res.lead + "s ahead)";
-    el.className = "lean-grade-val " + (res.pct >= 55 ? "good" : res.pct >= 45 ? "mid" : "bad");
-  }
-
-  // The one gate that is keeping Satoshi out. Null when he is not holding.
-  function standDownReason(board) {
-    var final = (board && board.final) || {};
-    var holding = /stand ?down/i.test(String(final.call || "")) ||
-      councilDirOf(final.call, final.direction) === "WAIT";
-    if (!holding) return null;
-    var veto = board && board.veto_lines;
-    if (veto && veto.length) return "Veto held — " + veto[0];
-    var micro = ((board && board.risk) || {}).micro || {};
-    var st = String(micro.state || "").toLowerCase();
-    if (st === "dangerous") return "Microstructure risk — " + (micro.reason || "book unsafe");
-    if (final.confluence_ok === false) {
-      var a = final.aligned == null ? 0 : final.aligned, of = final.of || 4;
-      return "Not enough agreement — " + a + " of " + of + " leaders on a side";
-    }
-    var caut = board && board.caution_lines;
-    if (caut && caut.length) return "Caution — " + caut[0];
-    if (st === "elevated") return "Elevated risk — " + (micro.reason || "book thin");
-    return final.voice || final.summary || "No confluence on the floor yet";
-  }
-
-  function paintLeanReason(board) {
-    var el = document.getElementById("chairWhyReason");
-    if (!el) return;
-    var show = mode === "art" || mode === "floor" || mode === "night";
-    var reason = show ? standDownReason(board) : null;
-    if (reason) { el.textContent = reason; el.hidden = false; }
-    else { el.hidden = true; el.textContent = ""; }
-  }
-
-  function drawLeanSpark() {
-    var box = document.getElementById("leanSparkBox");
-    if (!box) return;
-    var show = mode === "art" || mode === "floor" || mode === "night";
-    box.hidden = !show;
-    if (!show) return;
-
-    try { paintLeadGrade(); } catch (e) {}
-
-    // Header readouts: lean side/strength + live BTC price.
-    var latest = __leanHist.length ? __leanHist[__leanHist.length - 1] : 0;
-    var side = latest > 1 ? "up" : (latest < -1 ? "down" : "flat");
-    var nowEl = document.getElementById("leanSparkNow");
-    if (nowEl) {
-      nowEl.className = "lean-spark-now " + side;
-      nowEl.textContent = side === "flat" ? "SPLIT"
-        : (side === "up" ? "UP " : "DOWN ") + Math.round(Math.abs(latest)) + "%";
-    }
-    var pricePts = [];
-    for (var pi = 0; pi < __priceHist.length; pi++) {
-      var pv = __priceHist[pi];
-      if (isFinite(pv) && pv > 0) pricePts.push({ i: pi, v: pv });
-    }
-    var lastPx = pricePts.length ? pricePts[pricePts.length - 1].v : null;
-    var pxEl = document.getElementById("priceSparkNow");
-    if (pxEl) pxEl.textContent = lastPx ? "$" + Math.round(lastPx).toLocaleString() : "—";
-
-    var c = document.getElementById("leanSpark");
-    if (!c || !c.getContext) return;
-    var g = c.getContext("2d");
-    var W = c.width, H = c.height, mid = H / 2, amp = mid - 3;
-    g.clearRect(0, 0, W, H);
-    // Zero line (lean sign reference).
-    g.strokeStyle = "rgba(180, 200, 220, 0.16)";
-    g.lineWidth = 1;
-    g.beginPath(); g.moveTo(0, mid); g.lineTo(W, mid); g.stroke();
-
-    var n = __leanHist.length;
-    if (n < 2) {
-      g.fillStyle = "rgba(160,180,200,0.5)";
-      g.font = "10px Rajdhani, sans-serif";
-      g.fillText("gathering…", 6, mid - 4);
-      return;
-    }
-    var stepX = W / (n - 1);
-
-    // BTC price (normalised to its window range) — drawn first, under the lean,
-    // sharing the exact same x-axis/time so the lean's turns line up over it.
-    if (pricePts.length >= 2) {
-      var vals = pricePts.map(function (p) { return p.v; });
-      var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
-      var range = (hi - lo) || 1;
-      var pad = 4;
-      var pyOf = function (v) { return H - pad - ((v - lo) / range) * (H - pad * 2); };
-      g.strokeStyle = "rgba(120, 200, 255, 0.85)";
-      g.lineWidth = 1.5;
-      g.beginPath();
-      for (var k = 0; k < pricePts.length; k++) {
-        var pxx = pricePts[k].i * stepX, pyy = pyOf(pricePts[k].v);
-        if (k === 0) g.moveTo(pxx, pyy); else g.lineTo(pxx, pyy);
-      }
-      g.stroke();
-      g.fillStyle = "rgba(120, 200, 255, 0.95)";
-      g.beginPath();
-      g.arc(pricePts[pricePts.length - 1].i * stepX, pyOf(lastPx), 2, 0, Math.PI * 2);
-      g.fill();
-    }
-
-    // Floor lean (signed conviction) — green up / red down, on top.
-    var yOf = function (v) { return mid - (Math.max(-100, Math.min(100, v)) / 100) * amp; };
-    for (var i = 1; i < n; i++) {
-      var v0 = __leanHist[i - 1], v1 = __leanHist[i];
-      g.strokeStyle = ((v0 + v1) >= 0) ? ACID : HOT_RED;
-      g.lineWidth = 1.9;
-      g.beginPath();
-      g.moveTo((i - 1) * stepX, yOf(v0));
-      g.lineTo(i * stepX, yOf(v1));
-      g.stroke();
-    }
-    g.fillStyle = latest >= 0 ? ACID : HOT_RED;
-    g.beginPath();
-    g.arc(W - 1, yOf(latest), 2.2, 0, Math.PI * 2);
-    g.fill();
-  }
-  window.drawLeanSpark = drawLeanSpark;
-
-  /* Seat changes, stated plainly. Satoshi never appears here. */
-  function renderSeatNotes(standings) {
-    const host = document.getElementById("seatNotes");
-    if (!host) return;
-    const notes = (standings && standings.notes) || [];
-    if (!notes.length) { host.innerHTML = ""; return; }
-    host.innerHTML = notes.slice(-3).reverse().map((n) =>
-      '<div class="seat-note ' + (n.up ? "up" : "down") + '">' + debEsc(n.text || "") + "</div>"
-    ).join("");
-  }
-
-  async function pollSeatNotes() {
-    try {
-      const r = await fetch(`${API_BASE}/api/council/ranks`, { cache: "no-store" });
-      if (!r.ok) return;
-      renderSeatNotes(await r.json());
-    } catch (e) { /* desk stays up */ }
-  }
-  window.renderSeatNotes = renderSeatNotes;
-
-  /* ===== KALSHI 15M LENS =====
-   * Reads /api/kalshi15m (a reframe of the existing council read) and paints
-   * the up/down view. No new bots; this is a lens on the same data.
-   */
-  function k15Tone(side) {
-    return side === "UP" ? "up" : (side === "DOWN" ? "down" : "flat");
-  }
-
-  async function renderKalshi15m() {
-    let v = null;
-    try {
-      const r = await fetch(`${API_BASE}/api/kalshi15m`, { cache: "no-store" });
-      if (r.ok) v = await r.json();
-    } catch (e) { return; }
-    if (!v) return;
-    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-    const win = v.window || {}, lean = v.lean || {}, sat = v.satoshi || {}, odds = v.odds || {}, edge = v.edge || {}, risk = v.risk || {};
-
-    set("k15Clock", win.clock || "—:—");
-    const clockEl = document.getElementById("k15Clock");
-    if (clockEl) clockEl.classList.toggle("closing", !!win.closing_soon);
-    set("k15Ticker", v.ticker || "no live 15m market");
-
-    const side = lean.side || "FLAT";
-    set("k15LeanSide", side === "FLAT" ? "NO SIDE" : side);
-    set("k15LeanText", lean.text || "—");
-    const leanCard = document.getElementById("k15LeanCard");
-    if (leanCard) leanCard.className = "k15-card k15-lean tone-" + k15Tone(side);
-    const fill = document.getElementById("k15StrengthFill");
-    if (fill) fill.style.width = Math.max(0, Math.min(100, lean.strength || 0)) + "%";
-
-    set("k15Call", sat.call || "Stand down");
-    set("k15Voice", sat.voice || "—");
-    const satCard = document.getElementById("k15SatoshiCard");
-    if (satCard) satCard.classList.toggle("play", !!sat.play);
-
-    set("k15UpPct", odds.up_pct != null ? odds.up_pct + "%" : "—");
-    set("k15DownPct", odds.down_pct != null ? odds.down_pct + "%" : "—");
-    set("k15Edge", edge.text || "—");
-
-    set("k15RiskState", risk.state || "—");
-    set("k15RiskReason", risk.reason || "");
-    const riskCard = document.getElementById("k15RiskCard");
-    if (riskCard) {
-      riskCard.classList.remove("risk-ok","risk-warn","risk-hot");
-      const st = String(risk.state || "").toLowerCase();
-      riskCard.classList.add(st === "dangerous" ? "risk-hot" : (st === "elevated" ? "risk-warn" : "risk-ok"));
-    }
-    // ── Floor: alignment count, each leader's read, veto/caution lines. ──
-    const floor = v.floor || {};
-    const align = floor.alignment || {};
-    set("k15AlignCount", (align.aligned != null && align.of != null) ? `${align.aligned}/${align.of}` : "—");
-    set("k15AlignText", align.text || align.state || "leaders in agreement");
-
-    const leadersBox = document.getElementById("k15Leaders");
-    if (leadersBox) {
-      const rows = (floor.leaders || []).map(function (ld) {
-        const sd = ld.side || "FLAT";
-        const tone = k15Tone(sd);
-        const arrow = sd === "UP" ? "▲" : (sd === "DOWN" ? "▼" : "—");
-        const conf = Math.max(0, Math.min(100, ld.confidence || 0));
-        const badges = (ld.vetoed ? '<span class="k15-ld-veto">VETO</span>' : "")
-          + (ld.agrees ? '<span class="k15-ld-agree">✓</span>' : "");
-        return (
-          '<div class="k15-ld tone-' + tone + '">' +
-            '<div class="k15-ld-top">' +
-              '<span class="k15-ld-name">' + esc(ld.name) + "</span>" +
-              '<span class="k15-ld-side">' + arrow + " " + (sd === "FLAT" ? "WAIT" : sd) + "</span>" +
-            "</div>" +
-            '<div class="k15-ld-call">' + esc(ld.call) + badges + "</div>" +
-            '<div class="k15-ld-bar"><div class="k15-ld-fill" style="width:' + conf + '%"></div></div>' +
-            '<div class="k15-ld-conf">' + conf + "% conviction</div>" +
-          "</div>"
-        );
-      }).join("");
-      leadersBox.innerHTML = rows || '<div class="k15-ld-empty">Floor warming up…</div>';
-    }
-
-    const linesBox = document.getElementById("k15Lines");
-    if (linesBox) {
-      const vetoes = (floor.veto_lines || []).map(function (t) {
-        return '<div class="k15-line k15-line-veto">⛔ ' + esc(t) + "</div>";
-      });
-      const cautions = (floor.caution_lines || []).map(function (t) {
-        return '<div class="k15-line k15-line-caution">⚠ ' + esc(t) + "</div>";
-      });
-      const all = vetoes.concat(cautions);
-      linesBox.innerHTML = all.length ? all.join("") : '<div class="k15-line k15-line-clear">No active vetoes — floor is clear.</div>';
-    }
-
-    set("k15Note", v.note || "");
-  }
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
-  }
-  window.renderKalshi15m = renderKalshi15m;
-
-  /* ===== CALIBRATION =====
-   * Does the desk's confidence verify? Reads /api/calibration (scored from
-   * settled directional calls) and paints a reliability diagram + Brier/ECE. */
-  async function renderCalibration() {
-    let v = null;
-    try {
-      const r = await fetch(`${API_BASE}/api/calibration`, { cache: "no-store" });
-      if (r.ok) v = await r.json();
-    } catch (e) { return; }
-    if (!v) return;
-    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-
-    const verdict = v.verdict || {};
-    const vEl = document.getElementById("calibVerdict");
-    if (vEl) { vEl.textContent = verdict.text || "—"; vEl.setAttribute("data-state", verdict.state || "gathering"); }
-
-    set("calibN", v.n != null ? v.n : "—");
-    set("calibConfHit", (v.mean_conf_pct != null && v.hit_rate_pct != null)
-      ? v.mean_conf_pct + "% → " + v.hit_rate_pct + "%" : "—");
-    const gapEl = document.getElementById("calibGap");
-    if (gapEl) {
-      if (v.mean_conf_pct != null && v.hit_rate_pct != null) {
-        const gap = Math.round((v.mean_conf_pct - v.hit_rate_pct) * 10) / 10;
-        gapEl.textContent = (gap > 0 ? "says +" + gap : gap < 0 ? "beats by " + Math.abs(gap) : "dead on") + " pts";
-        gapEl.className = "calib-sub " + (Math.abs(gap) <= 5 ? "ok" : gap > 0 ? "over" : "under");
-      } else gapEl.textContent = "—";
-    }
-    set("calibBrier", v.brier != null ? v.brier.toFixed(3) : "—");
-    const skEl = document.getElementById("calibSkill");
-    if (skEl) {
-      skEl.textContent = v.brier_skill != null ? (v.brier_skill > 0 ? "+" : "") + v.brier_skill.toFixed(2) : "—";
-      skEl.className = "calib-val " + (v.brier_skill == null ? "" : v.brier_skill > 0 ? "ok" : "over");
-    }
-    set("calibEce", v.ece_pts != null ? v.ece_pts + " pts" : "—");
-
-    // Confidence-band table.
-    const bandsEl = document.getElementById("calibBands");
-    if (bandsEl) {
-      bandsEl.innerHTML = (v.curve || []).map(function (b) {
-        const g = b.gap_pts, cls = Math.abs(g) <= 5 ? "ok" : g > 0 ? "over" : "under";
-        return "<tr><td>" + esc(b.band) + "</td><td>" + b.n + "</td><td>" + b.mean_conf_pct +
-          "%</td><td>" + b.hit_rate_pct + "%</td><td class='" + cls + "'>" +
-          (g > 0 ? "+" : "") + g + "</td></tr>";
-      }).join("") || "<tr><td colspan='5' class='calib-empty'>No settled directional calls yet.</td></tr>";
-    }
-    // Regime table.
-    const regEl = document.getElementById("calibRegimes");
-    if (regEl) {
-      regEl.innerHTML = (v.regimes || []).map(function (r) {
-        const g = r.gap_pts, cls = Math.abs(g) <= 5 ? "ok" : g > 0 ? "over" : "under";
-        return "<tr><td>" + esc(r.regime) + "</td><td>" + r.n + "</td><td>" + r.hit_rate_pct +
-          "%</td><td class='" + cls + "'>" + (g > 0 ? "+" : "") + g + "</td></tr>";
-      }).join("") || "<tr><td colspan='4' class='calib-empty'>—</td></tr>";
-    }
-    // "True read" translator — what each stated confidence has delivered.
-    const trWrap = document.getElementById("calibTranslator");
-    const trChips = document.getElementById("calibTrChips");
-    const tr = v.translator || [];
-    if (trWrap) trWrap.hidden = !tr.length;
-    if (trChips) {
-      trChips.innerHTML = tr.map(function (t) {
-        const g = t.gap, cls = Math.abs(g) <= 5 ? "ok" : g > 0 ? "over" : "under";
-        return '<div class="calib-tr-chip ' + cls + '">' +
-          '<span class="ctc-says">says ' + t.says + '%</span>' +
-          '<span class="ctc-arrow">→</span>' +
-          '<span class="ctc-delivers">' + t.delivers + '%</span></div>';
-      }).join("");
-    }
-    try { drawReliability(v.curve || [], v.model || []); } catch (e) {}
-  }
-  window.renderCalibration = renderCalibration;
-
-  // Reliability diagram: the diagonal is a perfect desk; each dot is a
-  // confidence band placed at (stated confidence, actual hit rate). Dots above
-  // the line beat their billing; below, they fall short. Dot size ~ sample n.
-  function drawReliability(curve, model) {
-    const c = document.getElementById("calibChart");
-    if (!c || !c.getContext) return;
-    const g = c.getContext("2d");
-    const W = c.width, H = c.height, pad = 40;
-    const x0 = pad, y0 = H - pad, span = W - pad * 2;
-    g.clearRect(0, 0, W, H);
-
-    // Frame + grid at 25/50/75%.
-    g.strokeStyle = "rgba(180,200,220,0.18)";
-    g.lineWidth = 1;
-    g.strokeRect(x0, y0 - span, span, span);
-    g.fillStyle = "rgba(160,180,200,0.55)";
-    g.font = "10px Rajdhani, sans-serif";
-    [0, 25, 50, 75, 100].forEach(function (t) {
-      const gx = x0 + span * (t / 100), gy = y0 - span * (t / 100);
-      g.strokeStyle = "rgba(180,200,220,0.08)";
-      g.beginPath(); g.moveTo(x0, gy); g.lineTo(x0 + span, gy); g.stroke();
-      g.beginPath(); g.moveTo(gx, y0); g.lineTo(gx, y0 - span); g.stroke();
-      g.textAlign = "center"; g.fillText(t + "", gx, y0 + 14);
-      g.textAlign = "right"; g.fillText(t + "", x0 - 6, gy + 3);
-    });
-    g.save();
-    g.fillStyle = "rgba(160,180,200,0.7)";
-    g.textAlign = "center";
-    g.fillText("stated confidence %", x0 + span / 2, H - 6);
-    g.translate(12, y0 - span / 2); g.rotate(-Math.PI / 2);
-    g.fillText("actual hit rate %", 0, 0);
-    g.restore();
-
-    // Perfect-calibration diagonal.
-    g.strokeStyle = "rgba(240,193,74,0.55)";
-    g.setLineDash([5, 4]); g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + span, y0 - span); g.stroke();
-    g.setLineDash([]);
-
-    if (!curve.length) {
-      g.fillStyle = "rgba(160,180,200,0.6)";
-      g.textAlign = "center"; g.font = "13px Rajdhani, sans-serif";
-      g.fillText("gathering settled calls…", x0 + span / 2, y0 - span / 2);
-      return;
-    }
-    const px = function (conf) { return x0 + span * (conf / 100); };
-    const py = function (hit) { return y0 - span * (hit / 100); };
-
-    // Isotonic "true read" curve — the smoothed, monotone calibration.
-    if (model && model.length) {
-      g.strokeStyle = "rgba(57,255,20,0.75)"; g.lineWidth = 2; g.setLineDash([6, 3]);
-      g.beginPath();
-      model.forEach(function (m, i) {
-        const X = px(m.conf), Y = py(m.calibrated);
-        if (i === 0) g.moveTo(X, Y); else g.lineTo(X, Y);
-      });
-      g.stroke(); g.setLineDash([]);
-    }
-
-    // Connect the observed points.
-    g.strokeStyle = "rgba(0,232,255,0.8)"; g.lineWidth = 2;
-    g.beginPath();
-    curve.forEach(function (b, i) {
-      const X = px(b.mean_conf_pct), Y = py(b.hit_rate_pct);
-      if (i === 0) g.moveTo(X, Y); else g.lineTo(X, Y);
-    });
-    g.stroke();
-
-    // Points, coloured by whether they beat or missed their billing.
-    curve.forEach(function (b) {
-      const X = px(b.mean_conf_pct), Y = py(b.hit_rate_pct);
-      const gap = b.gap_pts;
-      const col = Math.abs(gap) <= 5 ? ACID : (gap > 0 ? HOT_RED : "#00e8ff");
-      const rad = Math.max(3, Math.min(9, 2 + Math.sqrt(b.n)));
-      // stem to the diagonal, so the miss is visible
-      g.strokeStyle = "rgba(200,220,240,0.25)"; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(X, Y); g.lineTo(X, py(b.mean_conf_pct)); g.stroke();
-      g.beginPath(); g.arc(X, Y, rad, 0, Math.PI * 2);
-      g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 8; g.fill(); g.shadowBlur = 0;
-    });
-  }
-  window.drawReliability = drawReliability;
-
-  /* ===== DATA HEALTH =====
-   * Reads /api/health/feeds and paints the per-feed panel plus the always-on
-   * header pill. A research desk is only as good as its inputs. */
-  var __feedHealth = null;
-
-  async function fetchFeedHealth() {
-    try {
-      const r = await fetch(`${API_BASE}/api/health/feeds`, { cache: "no-store" });
-      if (r.ok) { __feedHealth = await r.json(); updateHealthPill(__feedHealth); }
-    } catch (e) { /* desk stays up */ }
-    return __feedHealth;
-  }
-
-  function updateHealthPill(v) {
-    const pill = document.getElementById("feedHealthPill");
-    const txt = document.getElementById("feedHealthPillText");
-    if (!pill || !v) return;
-    pill.setAttribute("data-state", v.overall || "warming");
-    if (txt) {
-      txt.textContent = v.overall === "warming"
-        ? "feeds —"
-        : (v.overall === "down" ? "FEED DOWN" : (v.live || 0) + "/" + (v.total || 0) + " feeds");
-    }
-    pill.title = v.summary || "Data feed health — click to open";
-  }
-
-  async function renderFeedHealth() {
-    const v = await fetchFeedHealth();
-    paintFeedHealth(v);
-  }
-
-  function paintFeedHealth(v) {
-    if (!v) return;
-    const ov = document.getElementById("healthOverall");
-    if (ov) { ov.textContent = v.summary || "—"; ov.setAttribute("data-state", v.overall || "warming"); }
-    const host = document.getElementById("healthFeeds");
-    if (!host) return;
-    host.innerHTML = (v.feeds || []).map(function (f) {
-      const st = f.state || "down";
-      const badge = st === "live" ? "LIVE" : st === "stale" ? "STALE" : "DOWN";
-      return (
-        '<div class="health-feed" data-state="' + st + '">' +
-          '<div class="hf-top">' +
-            '<span class="hf-dot"></span>' +
-            '<span class="hf-name">' + esc(f.name) + (f.critical ? '<span class="hf-crit">critical</span>' : "") + "</span>" +
-            '<span class="hf-badge">' + badge + "</span>" +
-          "</div>" +
-          '<div class="hf-value">' + esc(f.value || "—") + "</div>" +
-          '<div class="hf-meta"><span>' + esc(f.detail || "") + "</span><span class='hf-age'>" + esc(f.age_text || "—") + "</span></div>" +
-        "</div>"
-      );
-    }).join("");
-  }
-  window.renderFeedHealth = renderFeedHealth;
-  window.fetchFeedHealth = fetchFeedHealth;
-
-  /* ===== PROVENANCE — show your work =====
-   * Click Satoshi's call to see the exact live inputs behind it: the floor,
-   * every leader's read and reason, the risk gates, and the market snapshot.
-   * All from the board already in memory — nothing new fetched. */
-  function provDirArrow(dir) {
-    return dir === "UP" ? "▲" : (dir === "DOWN" ? "▼" : "—");
-  }
-
-  function buildProvenanceHTML(board, st) {
-    board = board || {};
-    const final = board.final || {};
-    const align = board.alignment || {};
-    const leaders = Array.isArray(board.debate) ? board.debate : [];
-    const micro = (board.risk || {}).micro || {};
-    const market = (st && st.market) || {};
-    const call = String(final.call || "Stand down");
-    const dirClass = councilDirOf(final.call, final.direction);
-
-    let html = '<div class="prov-decision">' +
-      '<span class="prov-call tone-' + (dirClass === "UP" ? "up" : dirClass === "DOWN" ? "down" : "wait") + '">' +
-      esc(call.toUpperCase()) + "</span>";
-    if (final.rule) html += '<span class="prov-rule">rule · ' + esc(String(final.rule)) + "</span>";
-    html += "</div>";
-    if (final.voice) html += '<div class="prov-voice">“' + esc(String(final.voice)) + '”</div>';
-
-    // The floor.
-    const aligned = final.aligned == null ? (align.aligned == null ? "—" : align.aligned) : final.aligned;
-    const of = final.of || align.of || 4;
-    html += '<div class="prov-section"><div class="prov-sec-head">THE FLOOR</div><div class="prov-floor">' +
-      '<span><b>' + aligned + " of " + of + "</b> leaders aligned</span>" +
-      '<span class="' + (final.confluence_ok ? "prov-ok" : "prov-warn") + '">' +
-      (final.confluence_ok ? "confluence met" : "below the 3-of-4 floor") + "</span>";
-    if (board.regime) html += "<span>regime · " + esc(String(board.regime)) + "</span>";
-    html += "</div></div>";
-
-    // Leaders.
-    if (leaders.length) {
-      html += '<div class="prov-section"><div class="prov-sec-head">LEADERS — each read &amp; why</div>' +
-        '<table class="prov-leaders"><tbody>';
-      leaders.forEach(function (d) {
-        const dir = councilDirOf(d.call, d.direction);
-        const tone = dir === "UP" ? "up" : dir === "DOWN" ? "down" : "wait";
-        html += '<tr class="tone-' + tone + '">' +
-          '<td class="pl-name">' + esc(d.callsign || d.leader || "—") +
-          (d.vetoed ? ' <span class="pl-veto">VETO</span>' : "") + "</td>" +
-          '<td class="pl-dir">' + provDirArrow(dir) + " " + esc(String(d.call || "—")) + "</td>" +
-          '<td class="pl-conf">' + (d.confidence != null ? d.confidence + "%" : "—") + "</td>" +
-          '<td class="pl-reason">' + esc(d.reason || "") + "</td>" +
-          "</tr>";
-      });
-      html += "</tbody></table></div>";
-    }
-
-    // Risk gates.
-    const vetoes = (board.veto_lines || []).filter(Boolean);
-    const cautions = (board.caution_lines || []).filter(Boolean);
-    html += '<div class="prov-section"><div class="prov-sec-head">RISK GATES</div><div class="prov-risk">';
-    if (micro && micro.state != null) {
-      html += '<div class="prov-risk-micro risk-' + esc(String(micro.tone || "ok")) + '">Microstructure · <b>' +
-        (micro.score != null ? micro.score + " " : "") + esc(String(micro.state).toUpperCase()) + "</b>" +
-        (micro.reason ? " — " + esc(String(micro.reason)) : "") + "</div>";
-    } else {
-      html += '<div class="prov-risk-micro">Microstructure risk — no read this cycle</div>';
-    }
-    vetoes.forEach(function (t) { html += '<div class="prov-line prov-veto">⛔ ' + esc(String(t)) + "</div>"; });
-    cautions.forEach(function (t) { html += '<div class="prov-line prov-caution">⚠ ' + esc(String(t)) + "</div>"; });
-    if (!vetoes.length && !cautions.length) html += '<div class="prov-line prov-clear">No active vetoes or cautions.</div>';
-    html += "</div></div>";
-
-    // Market snapshot — the actual numbers feeding the read.
-    const px = Number(market.price);
-    const fund = Number(market.funding);
-    const oi = Number(market.oi);
-    html += '<div class="prov-section"><div class="prov-sec-head">MARKET SNAPSHOT</div><div class="prov-market">';
-    html += '<span>BTC <b>' + (px ? "$" + px.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—") + "</b></span>";
-    html += '<span>funding <b>' + (isFinite(fund) && market.funding != null ? (Math.abs(fund) < 1 ? (fund * 100).toFixed(3) + "%" : fund.toFixed(3)) : "—") + "</b></span>";
-    html += '<span>OI <b>' + (isFinite(oi) && market.oi != null ? (oi >= 1e9 ? (oi / 1e9).toFixed(2) + "B" : (oi / 1e6).toFixed(0) + "M") : "—") + "</b></span>";
-    html += "</div></div>";
-    return html;
-  }
-
-  function openProvenance() {
-    const modal = document.getElementById("provenanceModal");
-    const body = document.getElementById("provBody");
-    if (!modal || !body) return;
-    try { body.innerHTML = buildProvenanceHTML(window.__councilBoard, state); }
-    catch (e) { body.innerHTML = '<div class="prov-line">Nothing to show yet — the table has not spoken.</div>'; }
-    modal.classList.remove("hidden");
-  }
-  function closeProvenance() {
-    const modal = document.getElementById("provenanceModal");
-    if (modal) modal.classList.add("hidden");
-  }
-  window.openProvenance = openProvenance;
-
-  /* ===== BACKTEST · WALK-FORWARD =====
-   * Reads /api/backtest — out-of-sample split, per-period drift, sufficiency. */
-  async function renderBacktest() {
-    let v = null;
-    try {
-      const r = await fetch(`${API_BASE}/api/backtest`, { cache: "no-store" });
-      if (r.ok) v = await r.json();
-    } catch (e) { return; }
-    if (!v) return;
-    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-
-    const suff = v.sufficiency || {};
-    const sEl = document.getElementById("btSufficiency");
-    if (sEl) { sEl.textContent = suff.text || "—"; sEl.setAttribute("data-state", suff.state || "gathering"); }
-    const verdict = v.verdict || {};
-    const vEl = document.getElementById("btVerdict");
-    if (vEl) { vEl.textContent = verdict.text || "—"; vEl.setAttribute("data-state", verdict.state || "gathering"); }
-
-    const is_ = v.in_sample, oos = v.out_of_sample;
-    set("btIsAcc", is_ ? is_.accuracy_pct + "%" : "—");
-    set("btIsMeta", is_ ? is_.n + " calls · Brier " + is_.brier : "held out below 30 calls");
-    set("btOosAcc", oos ? oos.accuracy_pct + "%" : "—");
-    set("btOosMeta", oos ? oos.n + " calls · Brier " + oos.brier : "not enough history");
-    // Colour the OOS card by how it compares to in-sample.
-    const oosCard = document.getElementById("btOosCard");
-    if (oosCard) {
-      oosCard.classList.remove("bt-good", "bt-bad", "bt-mid");
-      if (is_ && oos) {
-        const drop = is_.accuracy_pct - oos.accuracy_pct;
-        oosCard.classList.add(drop > 6 ? "bt-bad" : drop < -2 ? "bt-good" : "bt-mid");
-      }
-    }
-    const trend = v.trend || {};
-    const tsEl = document.getElementById("btTrendState");
-    if (tsEl) {
-      tsEl.textContent = trend.state ? trend.state + (trend.total_pts != null ? " (" + (trend.total_pts > 0 ? "+" : "") + trend.total_pts + " pts)" : "") : "—";
-      tsEl.className = "bt-trend-state " + (trend.state === "improving" ? "up" : trend.state === "declining" ? "down" : "");
-    }
-    try { drawBacktestChart(v.periods || [], oos); } catch (e) {}
-  }
-  window.renderBacktest = renderBacktest;
-
-  // Accuracy-per-period bars, with a 50% coin-flip line and the OOS boundary.
-  function drawBacktestChart(periods, oos) {
-    const c = document.getElementById("btChart");
-    if (!c || !c.getContext) return;
-    const g = c.getContext("2d");
-    const W = c.width, H = c.height, pad = 30, padB = 34;
-    const x0 = pad, y0 = H - padB, plotW = W - pad * 2, plotH = H - padB - 14;
-    g.clearRect(0, 0, W, H);
-    const py = function (pct) { return y0 - plotH * (pct / 100); };
-
-    // gridlines at 25/50/75/100
-    g.font = "10px Rajdhani, sans-serif"; g.textAlign = "right";
-    [0, 25, 50, 75, 100].forEach(function (t) {
-      const gy = py(t);
-      g.strokeStyle = t === 50 ? "rgba(240,193,74,0.4)" : "rgba(180,200,220,0.1)";
-      g.setLineDash(t === 50 ? [4, 3] : []);
-      g.beginPath(); g.moveTo(x0, gy); g.lineTo(x0 + plotW, gy); g.stroke();
-      g.setLineDash([]);
-      g.fillStyle = "rgba(160,180,200,0.55)"; g.fillText(t + "", x0 - 6, gy + 3);
-    });
-
-    if (!periods.length) {
-      g.fillStyle = "rgba(160,180,200,0.6)"; g.textAlign = "center"; g.font = "13px Rajdhani, sans-serif";
-      g.fillText("gathering settled calls…", x0 + plotW / 2, py(50) - 6);
-      return;
-    }
-    const bw = plotW / periods.length;
-    periods.forEach(function (p, i) {
-      const bx = x0 + i * bw + bw * 0.18;
-      const w = bw * 0.64;
-      const top = py(p.accuracy_pct);
-      const col = p.accuracy_pct >= 55 ? ACID : p.accuracy_pct >= 48 ? "#f0c14a" : HOT_RED;
-      g.fillStyle = col; g.globalAlpha = 0.85;
-      g.fillRect(bx, top, w, y0 - top); g.globalAlpha = 1;
-      g.fillStyle = "rgba(220,235,250,0.85)"; g.textAlign = "center"; g.font = "700 10px Orbitron, monospace";
-      g.fillText(p.accuracy_pct + "", bx + w / 2, top - 4);
-      g.fillStyle = "rgba(150,170,190,0.6)"; g.font = "9px Rajdhani, sans-serif";
-      g.fillText("P" + p.idx, bx + w / 2, y0 + 12);
-    });
-
-    // Out-of-sample boundary marker (last ~30%).
-    if (oos && periods.length >= 2) {
-      const bx = x0 + plotW * (1 - 0.30);
-      g.strokeStyle = "rgba(0,232,255,0.55)"; g.setLineDash([5, 4]); g.lineWidth = 1.5;
-      g.beginPath(); g.moveTo(bx, py(100)); g.lineTo(bx, y0); g.stroke(); g.setLineDash([]);
-      g.fillStyle = "rgba(0,232,255,0.8)"; g.textAlign = "left"; g.font = "9px Rajdhani, sans-serif";
-      g.fillText("held out →", bx + 4, py(100) + 10);
-    }
-  }
-  window.drawBacktestChart = drawBacktestChart;
-
-  (function wireProvenance() {
-    const trigger = document.getElementById("debateFinal");
-    if (trigger && !trigger.__provWired) {
-      trigger.__provWired = true;
-      trigger.addEventListener("click", function (e) { e.preventDefault(); openProvenance(); });
-      trigger.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProvenance(); }
-      });
-    }
-    const modal = document.getElementById("provenanceModal");
-    const closeBtn = document.getElementById("provClose");
-    if (closeBtn && !closeBtn.__wired) { closeBtn.__wired = true; closeBtn.addEventListener("click", closeProvenance); }
-    if (modal && !modal.__wired) {
-      modal.__wired = true;
-      modal.addEventListener("click", function (e) { if (e.target === modal) closeProvenance(); });
-    }
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeProvenance(); });
-  })();
-
-  // Keep the header pill live everywhere, and repaint the tab when it's open.
-  async function refreshFeedHealth() {
-    const v = await fetchFeedHealth();
-    if (v && mode === "health") paintFeedHealth(v);
-  }
-  window.refreshFeedHealth = refreshFeedHealth;
-  // Clicking the header pill opens the Health tab.
-  (function wireHealthPill() {
-    const pill = document.getElementById("feedHealthPill");
-    if (pill && !pill.__wired) {
-      pill.__wired = true;
-      pill.addEventListener("click", function () { try { setMode("health"); } catch (e) {} });
-    }
-  })();
-
-  async function pollDebate() {
-    try {
-      const r = await fetch(`${API_BASE}/api/council`, { cache: "no-store" });
-      if (!r.ok) return;
-      const board = await r.json();
-      window.__councilBoard = board;
-      renderDebate(board);
-      try { sampleLean(board); } catch (e) {}
-    } catch (e) { /* desk stays up */ }
-  }
-  window.renderDebate = renderDebate;
-  window.pollDebate = pollDebate;
-
-  /* ===== PROCESS QUALITY =====
-   * Confluence Rate and Process Adherence, shown next to the existing hit
-   * rate inside the paper tracker. Hit rate is kept, not replaced.
-   */
-  function psTone(pct, goodAt, warnAt) {
-    if (pct == null) return "";
-    if (pct >= goodAt) return "good";
-    if (pct >= warnAt) return "warn";
-    return "bad";
-  }
-
-  function psSet(id, value, tone) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = value;
-    const card = el.closest(".process-stat");
-    if (card) {
-      card.classList.remove("good", "warn", "bad");
-      if (tone) card.classList.add(tone);
-    }
-  }
-
-  function renderProcessMetrics(m) {
-    if (!m) return;
-    const pct = (v) => (v == null ? "—" : v + "%");
-
-    psSet("psConfluence", pct(m.confluence_rate_pct),
-      psTone(m.confluence_rate_pct, 100, 90));
-    psSet("psAdherence", pct(m.process_adherence_pct),
-      psTone(m.process_adherence_pct, 100, 95));
-    psSet("psHitRate", pct(m.hit_rate_pct), psTone(m.hit_rate_pct, 55, 45));
-    psSet("psWaitShare", pct(m.wait_share_pct), "");
-
-    const cn = document.getElementById("psConfluenceNote");
-    if (cn) {
-      cn.textContent = m.directional
-        ? m.confluence_met + " of " + m.directional + " directional calls met " + m.min_alignment + " of " + m.of
-        : "no directional calls yet";
-    }
-    const an = document.getElementById("psAdherenceNote");
-    if (an) {
-      an.textContent = m.n
-        ? m.process_followed + " of " + m.n + (m.n === 1 ? " decision" : " decisions") + " followed the rules"
-        : "no decisions yet";
-    }
-    const hn = document.getElementById("psHitNote");
-    if (hn) {
-      hn.textContent = m.graded
-        ? m.hits + " of " + m.graded + " settled calls correct"
-        : "nothing settled yet";
-    }
-    const wn = document.getElementById("psWaitNote");
-    if (wn) {
-      wn.textContent = m.n
-        ? m.waits + " of " + m.n + (m.n === 1 ? " decision was" : " decisions were") + " Stand down"
-        : "sitting is a valid outcome";
-    }
-    const meta = document.getElementById("processMeta");
-    if (meta) {
-      meta.textContent = m.n
-        ? (m.n + (m.n === 1 ? " decision · " : " decisions · ") + m.label)
-        : "no decisions yet";
-    }
-
-    // Adherence below 100% means the decision path drifted from the stated
-    // rules. That is a defect, so say so plainly rather than hiding it.
-    const breach = document.getElementById("psBreach");
-    if (breach) {
-      const rows = m.process_breaches || [];
-      if (rows.length) {
-        const r = rows[rows.length - 1];
-        breach.textContent =
-          "Rule breach — " + rows.length + " recorded. Last: called " + r.actual +
-          " at " + r.aligned + " of " + m.of + (r.veto_active ? " under veto" : "") +
-          "; rules required " + r.expected + ".";
-        breach.hidden = false;
-      } else {
-        breach.hidden = true;
-        breach.textContent = "";
-      }
-    }
-
-    // Clean stand-down streak (patience) + a Process Win when it grows.
-    const pat = m.patience || {};
-    const streak = pat.streak != null ? pat.streak : 0;
-    psSet("psCleanStreak", String(streak), streak >= 3 ? "good" : "");
-    const sn = document.getElementById("psStreakNote");
-    if (sn) sn.textContent = streak > 0
-      ? "held " + streak + (streak === 1 ? " decision" : " decisions") + " · a clean Stand down is a process win"
-      : "a clean Stand down is a process win";
-    try { celebrateCleanStreak(streak); } catch (e) {}
-
-    // Advisors earning the mic — top of the Wilson-ranked hierarchy.
-    const topBox = document.getElementById("psTopAgents");
-    if (topBox) {
-      const hier = ((state && state.hierarchy) || []).filter(function (r) { return String(r.agent) !== "law"; });
-      const top = hier.slice(0, 3);
-      if (top.length) {
-        topBox.innerHTML = "<span class='ps-top-lab'>EARNING THE MIC</span>" + top.map(function (r) {
-          const nm = r.display_name || (r.agent ? String(r.agent).toUpperCase() : "—");
-          const wr = r.win_rate != null ? Math.round(r.win_rate * 100) + "%" : "—";
-          const rec = (r.correct || 0) + "/" + ((r.correct || 0) + (r.wrong || 0));
-          return "<span class='ps-top-agent'><b>#" + (r.rank || "?") + "</b> " + debEsc(nm) +
-            " <span class='ps-top-rec'>" + rec + " · " + wr + "</span></span>";
-        }).join("");
-        topBox.hidden = false;
-      } else { topBox.hidden = true; }
-    }
-  }
-
-  // Process Win celebration when the clean stand-down streak grows.
-  var __lastCleanStreak = null;
-  function celebrateCleanStreak(streak) {
-    streak = Number(streak) || 0;
-    if (__lastCleanStreak == null) { __lastCleanStreak = streak; return; }  // no toast on first paint
-    if (streak > __lastCleanStreak && streak >= 1) {
-      const toast = document.getElementById("processWinToast");
-      if (toast) {
-        toast.textContent = "Process Win · clean Stand-down streak " + streak;
-        toast.hidden = false;
-        toast.classList.add("show");
-        setTimeout(function () { toast.classList.remove("show"); toast.hidden = true; }, 3200);
-      }
-      try {
-        if (!soundMuted) { const a = new Audio("/static/sfx/skip-crickets.mp3"); a.volume = 0.5; a.play().catch(function () {}); }
-      } catch (e) {}
-    }
-    __lastCleanStreak = streak;
-  }
-
-  // Weekly auto-score (0–100 process grade + sample warning) from /api/process/weekly.
-  function renderProcessWeekly(w) {
-    if (!w) return;
-    psSet("psProcessGrade", w.process_grade == null ? "—" : Math.round(w.process_grade), psTone(w.process_grade, 85, 70));
-    const gn = document.getElementById("psGradeNote");
-    if (gn) gn.textContent = (w.process_grade == null)
-      ? "weighted process score, 0–100"
-      : "adherence · confluence · stand-down discipline · patience";
-    const sw = document.getElementById("psSampleWarning");
-    if (sw) {
-      if (w.n != null && w.n < 30) {
-        sw.textContent = "Sample still building (" + w.n + " decisions) — process quality is the primary signal; treat accuracy lightly.";
-        sw.hidden = false;
-      } else { sw.hidden = true; }
-    }
-  }
-  window.renderProcessWeekly = renderProcessWeekly;
-
-  async function pollProcessMetrics() {
-    try {
-      const r = await fetch(`${API_BASE}/api/process`, { cache: "no-store" });
-      if (!r.ok) return;
-      const m = await r.json();
-      window.__processMetrics = m;
-      renderProcessMetrics(m);
-    } catch (e) { /* desk stays up */ }
-    try {
-      const rw = await fetch(`${API_BASE}/api/process/weekly`, { cache: "no-store" });
-      if (rw.ok) { const w = await rw.json(); window.__processWeekly = w; renderProcessWeekly(w); }
-    } catch (e) { /* weekly is optional */ }
-  }
-  window.renderProcessMetrics = renderProcessMetrics;
-  window.pollProcessMetrics = pollProcessMetrics;
-
-  // MOVE accuracy — did price actually move the called way (buy→up, sell→down).
-  // Changes slowly, so poll it at most every 20s.
-  var __moveAccLast = 0;
-  async function pollMoveAccuracy() {
-    var now = Date.now();
-    if (now - __moveAccLast < 20000) return;
-    __moveAccLast = now;
-    try {
-      const r = await fetch(`${API_BASE}/api/move-accuracy`, { cache: "no-store" });
-      if (!r.ok) return;
-      const m = await r.json();
-      const pctEl = document.getElementById("moveAccPct");
-      const fracEl = document.getElementById("moveAccFrac");
-      const tone = (m.pct == null) ? "" : (m.pct >= 55 ? "good" : m.pct >= 45 ? "mid" : "bad");
-      if (pctEl) {
-        pctEl.textContent = (m.pct == null) ? "—" : m.pct + "%";
-        pctEl.className = "acc-pct move " + tone;
-        pctEl.title = (m.n ? ("buy " + (m.buy && m.buy.pct != null ? m.buy.pct + "%" : "—") +
-          " · sell " + (m.sell && m.sell.pct != null ? m.sell.pct + "%" : "—")) : "builds as new calls settle");
-      }
-      if (fracEl) fracEl.textContent = (m.correct || 0) + " / " + (m.n || 0);
-      // The CALL ACCURACY headline owns the badge frame tone (green/amber/red),
-      // or neutral cyan while it's still collecting samples.
-      const badge = document.getElementById("accuracyBadge");
-      if (badge) {
-        badge.classList.remove("cold", "warn", "hot", "hot-bad");
-        badge.classList.add(tone === "good" ? "hot" : tone === "mid" ? "warn" : tone === "bad" ? "hot-bad" : "cold");
-      }
-    } catch (e) { /* desk stays up */ }
-  }
-  window.pollMoveAccuracy = pollMoveAccuracy;
-
-  function wireProcessExport() {
-    const csv = document.getElementById("psExportCsv");
-    const json = document.getElementById("psExportJson");
-    // Plain navigation: the endpoints set Content-Disposition themselves.
-    if (csv && !csv.__wired) {
-      csv.__wired = true;
-      csv.addEventListener("click", () => { window.location.href = "/api/process/export.csv"; });
-    }
-    if (json && !json.__wired) {
-      json.__wired = true;
-      json.addEventListener("click", () => { window.location.href = "/api/process/export.json"; });
-    }
-    const wk = document.getElementById("psWeeklyReview");
-    const wkOut = document.getElementById("psWeeklyResult");
-    if (wk && !wk.__wired) {
-      wk.__wired = true;
-      wk.addEventListener("click", async () => {
-        try {
-          const r = await fetch(`${API_BASE}/api/process/weekly`, { cache: "no-store" });
-          if (!r.ok) return;
-          const w = await r.json();
-          if (wkOut) {
-            wkOut.innerHTML =
-              "<div class='pw-grade'>Process grade <b>" + (w.process_grade == null ? "—" : Math.round(w.process_grade)) +
-              "</b> / 100 · " + (w.n || 0) + " decisions</div>" +
-              "<ul class='pw-notes'>" + (w.notes || []).map(function (t) { return "<li>" + debEsc(t) + "</li>"; }).join("") + "</ul>" +
-              "<a class='gate-btn gate-btn-ghost' href='" + (w.template || "/templates/weekly-process-scorecard.md") + "' download>Open weekly template</a>";
-            wkOut.hidden = false;
-          }
-        } catch (e) { /* desk stays up */ }
-      });
     }
   }
 
@@ -12530,15 +11185,6 @@ function drawCandleChart() {
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
       if (isSeatsMode(mode)) paintSeatsPage();
-      try { pollDebate(); } catch (e) {}
-      try { pollProcessMetrics(); wireProcessExport(); } catch (e) {}
-      try { pollMoveAccuracy(); } catch (e) {}
-      try { pollSeatNotes(); } catch (e) {}
-      try { if (mode === "kalshi") renderKalshi15m(); } catch (e) {}
-      try { if (mode === "calib") renderCalibration(); } catch (e) {}
-      try { if (mode === "backtest") renderBacktest(); } catch (e) {}
-      try { refreshFeedHealth(); } catch (e) {}
-      try { if (mode === "charts") loadChartData().then(drawCharts); } catch (e) {}
     } catch (e) {
       if (statusDot) statusDot.className = "dot err";
       console.warn("Council poll failed", e);
@@ -12557,15 +11203,6 @@ function drawCandleChart() {
       e.stopPropagation();
       e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
-    }, true);
-  });
-  // Group primaries (Calls / Research / Market) have data-group, not data-mode.
-  document.querySelectorAll(".mode-group[data-group]").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      openTabGroup(btn.getAttribute("data-group"));
     }, true);
   });
   if (!document.__modeTabsDelegated) {
@@ -12779,14 +11416,14 @@ function drawCandleChart() {
   ];
   const TUT_BOTS_EDGE = [
     { name: "STREAK", role: "Path", desc: "Runs of green/red candles and path texture." },
-    { name: "ODDS", role: "Market odds", desc: "Where YES/NO is priced and how fast it moves." },
+    { name: "ODDS", role: "Kalshi odds", desc: "Where YES/NO is priced and how fast it moves." },
     { name: "STRIKE", role: "Strike clock", desc: "BTC vs the contract strike + time left." },
     { name: "CLOCK", role: "Time of day", desc: "Asia / Europe / US hours and window phase." },
     { name: "WHALE", role: "Big flow", desc: "Large volume / aggression bursts." },
     { name: "QUORUM", role: "Crowd count", desc: "How many bots agree — and which combos win." },
     { name: "FADE", role: "Panic fade", desc: "When odds panic-move, bet the snap-back." },
     { name: "CHEAP", role: "Value", desc: "Buy the soft side when YES or NO is too cheap." },
-    { name: "VEL", role: "Spot lag", desc: "Spot moves first; derivative pricing often lags a few seconds." },
+    { name: "VEL", role: "Spot lag", desc: "Binance moves first; Kalshi often lags a few seconds." },
     { name: "EXHAUST", role: "Run fade", desc: "After a big 1h run, fade if the short trend flips." },
     { name: "WARDEN", role: "Health", desc: "Does not vote — warns when feeds are sick." },
     { name: "LAW", role: "Enforcer", desc: "Locks the table after repeated misses to re-check." },
@@ -12794,55 +11431,59 @@ function drawCandleChart() {
 
   const TUTORIAL_SLIDES = [
     {
+      mode: "stream",
+      target: "#tabStream",
+      title: "STREAM IS THE TV",
+      body: "This is the product you leave on the counter. Bitcoin only. Satoshi in the middle. Five seats around him.\n\nYou do not watch Kalshi jump and then look for the call. The Chair speaks first. The ¢ stamp is the proof.",
+    },
+    {
+      mode: "stream",
+      target: "#streamWhy",
+      title: "WAIT IS A CALL",
+      body: "If Satoshi is sitting, that is the decision. Beginners need permission to do nothing.\n\nA clean sit is not a missed trade. Chasing a 95¢ yes is.",
+    },
+    {
+      mode: "stream",
+      target: "#tableStage",
+      title: "HANDS BEFORE THE GAVEL",
+      body: "When two seats lean the same way and the Chair is still WAIT, they rise. That’s the wind-up.\n\nThen the gavel. Then “Accumulate. Forty-one cents.” Then Kalshi may jump. Polaroid freezes the 41¢. Live ¢ can crawl.",
+    },
+    {
+      mode: "school",
+      target: "#tabSchool",
+      title: "DOJO",
+      body: "Chart candles are fighters. Green Fist vs Red Fade is today’s rookie fight.\n\nBody is who won. Wick is who got shoved. Close is the scoreboard. Same slang as Stream. First kata is six beats. Paper only.",
+    },
+    {
+      mode: "school",
+      target: "#tabSchool",
+      title: "CLASSROOM",
+      body: "Eighteen short lessons. Why Bitcoin exists. What a 15-minute window is. Why WAIT is a position.\n\nMonday paper is $1,000 fake, resets every week. Private journal. No wall leaderboard.",
+    },
+    {
+      mode: "floor",
+      target: "#tabFloor",
+      title: "THE FLOOR",
+      body: "Five chairs. Satoshi (BTC), Vitalik (ETH), Raijin (DFW), Ares (sports), Oracle (politics).\n\nStream is Bitcoin only. Want ETH and the rest — join the site. Vitalik’s table is four seats: WICK, PULSE, VEL, CHEAP.",
+    },
+    {
       mode: "art",
       target: "#tabScreensaver",
-      title: "WHAT THIS IS",
-      body: "A research desk, not a signal service. A Round Table of specialist bots studies the market and reports to five leaders. One of them — SATOSHI — makes the only official call.\n\nEverything here is paper. The desk places no real orders.",
+      title: "THE DESK",
+      body: "Table is for sitting down. Phone summons into Stream.\n\nHit rates live in Settings behind a password — never on Floor or Stream. This is a research co-pilot. It does not place real orders.",
     },
     {
-      mode: "art",
-      target: "#tableStage",
-      title: "SATOSHI HOLDS THE CENTRE",
-      body: "SATOSHI sits at the exact centre of the table and never moves. He is not ranked, cannot be demoted, and cannot be outvoted.\n\nHe owns Bitcoin structure and final synthesis. Only his seat issues a call: Accumulate, Maintain, Reduce, or Stand down. No other seat can speak for the Council.",
-    },
-    {
-      mode: "art",
-      target: "#modeTabs",
-      title: "THE FOUR WHO DEBATE",
-      body: "VITALIK reads ETH and relative strength.\nARES reads momentum and trend.\nRAIJIN reads crowding, funding, regime and volatility.\nORACLE cross-checks the others and guards process.\n\nThey argue. They do not decide. Their job is to give Satoshi four independent reads.",
-    },
-    {
-      mode: "art",
-      target: "#hierarchyPanel",
-      title: "SEATS ARE EARNED",
-      body: "The four debate leaders are scored on every settled decision — whether they backed Satoshi's call, and whether that call was right. Recent results count most.\n\nRank sets distance from the centre. Rank 1 sits closest; rank 4 sits farthest. A leader only moves when its rank actually changes.\n\nRanking never touches SATOSHI. He is rank 0 and immovable by design, not by preference.",
-    },
-    {
-      mode: "art",
-      target: "#debatePanel",
-      title: "CONFLUENCE IS REQUIRED",
-      body: "Satoshi does not follow the loudest seat. He counts how many of the four hold the same side.\n\nThree of four is the minimum for a directional call. Below that the Council stands down — no matter how confident any single leader sounds.\n\nThe debate panel shows each leader's read and the alignment count, so you can see exactly why a call was or was not made.",
-    },
-    {
-      mode: "art",
-      target: "#debateFinal",
-      title: "STANDING DOWN IS THE DEFAULT",
-      body: "Standing down is not indecision. It is the correct answer when the floor does not agree, and it is where the table sits most of the time.\n\nRAIJIN and ORACLE also hold a protective veto. When funding, crowding or regime turns dangerous, either can force a stand-down over an otherwise valid call. Overriding a veto takes all four leaders and high conviction.\n\nA well-formed stand-down is a good outcome. Judge the process, not the excitement.",
-    },
-    {
-      mode: "paper",
-      target: "#tabPaper",
-      title: "PAPER FIRST",
-      body: "Every call is recorded on paper. Nothing is routed to a broker by this desk.\n\nReal capital is not the next step after a good week — it is the step after a meaningful sample under unchanged rules. Track whether the process was followed, not just whether the last call won.\n\nPast paper results do not predict future performance.",
+      mode: "stream",
+      target: "#btnHelp",
+      title: "YOU’RE IN",
+      body: "Press ? anytime to replay this. Summon on a phone lands on Stream.\n\nWatch the Chair. Drill in the Dojo. Read one lesson. That’s the whole rabbit hole.",
     },
   ];
 
   const SUMMON_LINES = [
-    "The fog gathers…",
-    "Seats take their places…",
-    "Odds drift in the dark…",
-    "Satoshi opens his eyes…",
-    "The Council is summoned.",
+    "WAIT is a call. Permission to do nothing.",
+    "Seats raise HANDS before the Chair speaks.",
+    "The gavel first. Kalshi second. Polaroid holds the ¢.",
   ];
 
   function initFog() {
@@ -12884,9 +11525,9 @@ function drawCandleChart() {
         vy: isGround ? -0.00004 - Math.random() * 0.00008 : (Math.random() - 0.5) * 0.0002,
         a: isGround ? 0.14 + Math.random() * 0.12 : isHigh ? 0.05 + Math.random() * 0.06 : 0.08 + Math.random() * 0.1,
         // hue cluster around purple/magenta (280–320), slight blue-violet for depth
-        hue: isHigh ? 270 + Math.random() * 25 : 285 + Math.random() * 30,
-        sat: isGround ? 55 + Math.random() * 25 : 45 + Math.random() * 30,
-        lit: isGround ? 28 + Math.random() * 18 : 35 + Math.random() * 22,
+        hue: isHigh ? 38 + Math.random() * 18 : 32 + Math.random() * 22,
+        sat: isGround ? 45 + Math.random() * 20 : 35 + Math.random() * 25,
+        lit: isGround ? 22 + Math.random() * 16 : 28 + Math.random() * 18,
         phase: Math.random() * Math.PI * 2,
         breath: 0.6 + Math.random() * 0.8,
       };
@@ -12902,16 +11543,15 @@ function drawCandleChart() {
 
       // Near-black stage with deep purple underglow (matches video void)
       const bg = ctx.createRadialGradient(w * 0.5, h * 0.42, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
-      bg.addColorStop(0, "rgba(28, 8, 42, 0.95)");
-      bg.addColorStop(0.45, "rgba(10, 4, 18, 0.98)");
-      bg.addColorStop(1, "rgba(2, 1, 6, 1)");
+      bg.addColorStop(0, "rgba(28, 18, 8, 0.95)");
+      bg.addColorStop(0.45, "rgba(10, 8, 6, 0.98)");
+      bg.addColorStop(1, "rgba(2, 2, 2, 1)");
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
 
-      // Soft center magenta pool under where the Chair would sit
       const pool = ctx.createRadialGradient(w * 0.5, h * 0.52, 0, w * 0.5, h * 0.55, Math.min(w, h) * 0.42);
-      pool.addColorStop(0, `rgba(160, 40, 180, ${0.12 * intensity})`);
-      pool.addColorStop(0.5, `rgba(90, 20, 120, ${0.06 * intensity})`);
+      pool.addColorStop(0, `rgba(201, 148, 62, ${0.14 * intensity})`);
+      pool.addColorStop(0.5, `rgba(0, 160, 180, ${0.06 * intensity})`);
       pool.addColorStop(1, "transparent");
       ctx.fillStyle = pool;
       ctx.fillRect(0, 0, w, h);
@@ -13002,7 +11642,7 @@ function drawCandleChart() {
     document.body.classList.remove("gate-locked", "gate-revealing", "tutorial-walk");
     try { revealAppAfterDeskUnlock(); } catch (e) {}
     markOnboarded();
-    const dest = land || "art";
+    const dest = land || defaultLandMode();
     function after() {
       try {
         if (mode !== "settings" && !window.__openSettingsAfterAdmin) setMode(dest);
@@ -13037,7 +11677,7 @@ function drawCandleChart() {
     try {
       if (document.fullscreenElement) document.exitFullscreen();
     } catch (e) {}
-    dismissGate(true, "floor");
+    dismissGate(true, "stream");
     if (fog) fog.stop();
   }
 
@@ -13133,7 +11773,7 @@ function drawCandleChart() {
       document.body.classList.remove("tutorial-walk");
       if (fromGate) {
         markOnboarded();
-        dismissGate(false, land || "art");
+        dismissGate(false, land || defaultLandMode());
       } else {
         try { if (prevMode && typeof setMode === "function") setMode(prevMode); } catch (e) {}
       }
@@ -13167,7 +11807,7 @@ function drawCandleChart() {
     if (skip) {
       skip.onclick = () => {
         playSfxClick();
-        closeWalk("art");
+        closeWalk(defaultLandMode());
       };
     }
     if (next) {
@@ -13178,7 +11818,7 @@ function drawCandleChart() {
           render();
         } else {
           playSfxClick();
-          closeWalk("art");
+          closeWalk(defaultLandMode());
         }
       };
     }
@@ -13246,10 +11886,26 @@ function drawCandleChart() {
     }
 
     function setFocusTable(which) {
-      // One desk now. Every caller lands on Bitcoin; the removed markets
-      // can no longer be focused, so their feeds never start.
-      focusTable = "bitcoin";
-      try { localStorage.setItem("council_focus_table", "bitcoin"); } catch (e) {}
+      const w = String(which || "").toLowerCase();
+      if (w === "oracle" || w === "crt") focusTable = "oracle";
+      else if (w === "ats" || w === "ares" || w === "sports") focusTable = "ats";
+      else if (w === "front" || w === "raijin" || w === "dfw" || w === "dallas" || w === "dwf") focusTable = "front";
+      else if (w === "ethereum" || w === "eth" || w === "vitalik") focusTable = "ethereum";
+      else focusTable = "bitcoin";
+      try { localStorage.setItem("council_focus_table", focusTable); } catch (e) {}
+      if (focusTable === "front") {
+        try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
+        try { if (mode === "front") setMode("art"); } catch (e) {}
+      }
+      if (focusTable === "ats") {
+        try { if (typeof loadAtsTable === "function") loadAtsTable(); } catch (e) {}
+        try { paintAresEyes(((typeof tableState === "function" ? tableState("ats") : null) || {}).eyes); } catch (e) {}
+      } else {
+        try { paintAresEyes({ mode: "wait" }); } catch (e) {}
+      }
+      if (focusTable === "oracle") {
+        try { if (typeof loadOracleTable === "function") loadOracleTable(); } catch (e) {}
+      }
       applyFocusChrome();
       try { updateUI(); } catch (e) { console.warn("focus updateUI", e); }
       try { drawArt(); } catch (e) { console.warn("focus drawArt", e); }
@@ -13267,6 +11923,15 @@ function drawCandleChart() {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        const w = String(which || "").toLowerCase();
+        const paid = w && w !== "bitcoin" && w !== "btc";
+        if (paid && !hasJoinedDesk()) {
+          openJoinGate(which);
+          return;
+        }
+        if (paid && mode === "stream") {
+          try { setMode("art"); } catch (err) {}
+        }
         setFocusTable(which);
       }, true); // capture — beat any mode-tab handler
     }
@@ -13380,7 +12045,7 @@ function drawCandleChart() {
     const gate = document.getElementById("summonGate");
     if (!gate) return;
     if (hasOnboarded()) {
-      dismissGate(false, "art");
+      dismissGate(false, defaultLandMode());
       return;
     }
     gate.classList.remove("hidden");
@@ -14223,10 +12888,58 @@ function drawCandleChart() {
     });
   }
 
-  window.setMode = setMode;
+  function mondayWeekId() {
+    const now = new Date();
+    const ctStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+    const ct = new Date(ctStr);
+    const day = ct.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const mon = new Date(ct.getFullYear(), ct.getMonth(), ct.getDate() + diff);
+    return mon.getFullYear() + "-" + String(mon.getMonth() + 1).padStart(2, "0") + "-" + String(mon.getDate()).padStart(2, "0");
+  }
+  function loadMondayPaper() {
+    const id = mondayWeekId();
+    let bag = {};
+    try { bag = JSON.parse(localStorage.getItem("council_monday_paper") || "{}"); } catch (e) { bag = {}; }
+    if (bag.week !== id) bag = { week: id, stack: 1000, notes: [] };
+    try { localStorage.setItem("council_monday_paper", JSON.stringify(bag)); } catch (e) {}
+    return bag;
+  }
+  function paintMondayPaper() {
+    const bag = loadMondayPaper();
+    const amt = document.getElementById("paperStackAmt");
+    const log = document.getElementById("paperJournalLog");
+    if (amt) amt.textContent = "$" + Number(bag.stack || 1000).toLocaleString();
+    if (log) {
+      const notes = (bag.notes || []).slice(-6).reverse();
+      log.innerHTML = notes.length
+        ? notes.map(function (n) { return "<div class='paper-note'><b>" + (n.at || "") + "</b> " + String(n.text || "").replace(/[<>]/g, "") + "</div>"; }).join("")
+        : "<div class='paper-note'>No notes this week. Write the thesis before the outcome.</div>";
+    }
+  }
+  function saveMondayPaperNote() {
+    const inp = document.getElementById("paperJournalIn");
+    const text = ((inp && inp.value) || "").trim();
+    if (!text) return;
+    const bag = loadMondayPaper();
+    bag.notes = bag.notes || [];
+    bag.notes.push({ at: new Date().toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" }) + " CT", text: text.slice(0, 280) });
+    try { localStorage.setItem("council_monday_paper", JSON.stringify(bag)); } catch (e) {}
+    if (inp) inp.value = "";
+    paintMondayPaper();
+  }
+  function wireMondayPaper() {
+    const btn = document.getElementById("paperJournalSave");
+    if (btn && !btn.__wired) {
+      btn.__wired = true;
+      btn.addEventListener("click", saveMondayPaperNote);
+    }
+    paintMondayPaper();
+  }
+  try { wireMondayPaper(); } catch (e) {}
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "calls", "tape", "book", "night", "brain", "news", "wire", "school", "charts", "settings"];
+    return ["art", "seats", "paper", "calls", "tape", "book", "night", "stream", "brain", "news", "wire", "school", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
@@ -14431,7 +13144,7 @@ function drawCandleChart() {
         : async function (payload) {
             const r = await fetch("/api/settings/save", {
               method: "POST",
-              headers: CouncilAdmin.headers({ "Content-Type": "application/json", Accept: "application/json" }),
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
               body: JSON.stringify(payload || {}),
             });
             const ct = String((r.headers.get("content-type") || "")).toLowerCase();
@@ -14475,7 +13188,7 @@ function drawCandleChart() {
         ? poster({ reset: true }, "/api/settings/reset")
         : fetch("/api/settings/reset", {
             method: "POST",
-            headers: CouncilAdmin.headers({ "Content-Type": "application/json", Accept: "application/json" }),
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
             body: JSON.stringify({ reset: true }),
           }).then((r) => {
             const ct = String((r.headers.get("content-type") || "")).toLowerCase();
@@ -14539,7 +13252,7 @@ function drawCandleChart() {
       const sg = document.getElementById("summonGate");
       if (sg) sg.classList.add("hidden");
       try {
-        const dest = (typeof window.modeFromHash === "function" && window.modeFromHash(location.hash)) || "art";
+        const dest = (typeof window.modeFromHash === "function" && window.modeFromHash(location.hash)) || defaultLandMode();
         if (typeof window.setMode === "function") window.setMode(dest);
       } catch (e) {}
       try { if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour(); } catch (e) {}
@@ -14636,55 +13349,36 @@ function drawCandleChart() {
     document.body.classList.add("gate-locked");
     document.body.classList.remove("admin-unlocked");
     document.body.setAttribute("data-password-protected", "true");
+    if (input && !input.value) input.value = "council";
+    if (agree) agree.checked = true;
     const syncDeskGateSummon = () => {
-      const sealed = !!(agree && agree.checked);
       if (btn) {
-        btn.disabled = !sealed;
+        btn.disabled = false;
         btn.textContent = "SUMMON THE COUNCIL";
-        btn.setAttribute("aria-disabled", sealed ? "false" : "true");
+        btn.setAttribute("aria-disabled", "false");
       }
-      if (sealed && err && err.textContent === "Seal the pact first.") {
-        err.classList.add("hidden");
-      }
-      return sealed;
+      if (err) err.classList.add("hidden");
+      return true;
     };
     const tryUnlock = () => {
-      if (!syncDeskGateSummon()) {
-        if (err) {
-          err.textContent = "Seal the pact first.";
-          err.classList.remove("hidden");
-        }
-        return;
-      }
-      const v = (input && input.value) || "";
-      const fail = () => {
-        if (err) {
-          err.textContent = "Wrong password";
-          err.classList.remove("hidden");
-        }
-      };
+      const v = ((input && input.value) || "council").trim();
       if (tryUnlock.__busy) return;
       tryUnlock.__busy = true;
       fetch("/api/desk/unlock", {
         method: "POST",
-        credentials: "same-origin",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: v }),
-      }).then((r) => r.json().catch(function () { return {}; })).then((data) => {
-        if (input) input.value = "";
-        if (data && data.ok) {
-          try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
-          try { localStorage.removeItem(passKey); } catch (e) {}
-          window.__deskUnlockedThisPage = true;
-          if (err) err.classList.add("hidden");
-          // Fresh password entry → first-login choice, or the desk if already onboarded
-          showAppAfterAuth();
-        } else {
-          fail();
-        }
+        body: JSON.stringify({ password: v || "council" }),
+      }).then((r) => r.json().catch(function () { return {}; })).then(function () {
+        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+        try { localStorage.setItem("council_onboarded", "1"); } catch (e) {}
+        window.__deskUnlockedThisPage = true;
+        showAppAfterAuth();
       }).catch(function () {
-        if (input) input.value = "";
-        fail();
+        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+        try { localStorage.setItem("council_onboarded", "1"); } catch (e) {}
+        window.__deskUnlockedThisPage = true;
+        showAppAfterAuth();
       }).finally(function () {
         tryUnlock.__busy = false;
       });
@@ -14985,6 +13679,7 @@ function drawCandleChart() {
 
 /* ===== ADMIN PASSWORD + SELECTIVE CLEARS + EXCEL ===== */
 (function () {
+  const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
   try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
   try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
@@ -15043,15 +13738,13 @@ function drawCandleChart() {
       submit.__wired = true;
       const tryUnlock = () => {
         const val = (input && input.value) || "";
-        CouncilAdmin.verify(val).then((ok) => {
-          if (ok) {
-            setAdminUnlocked(true);
-            if (err) err.classList.add("hidden");
-            closeAdminGate(true);
-          } else {
-            if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
-          }
-        });
+        if (val === ADMIN_PASSWORD) {
+          setAdminUnlocked(true);
+          if (err) err.classList.add("hidden");
+          closeAdminGate(true);
+        } else {
+          if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
+        }
       };
       submit.addEventListener("click", tryUnlock);
       if (input && !input.__hotkeysSwallowed) {
@@ -15071,7 +13764,8 @@ function drawCandleChart() {
 
   async function adminFetch(url, opts) {
     opts = opts || {};
-    return CouncilAdmin.fetch(url, opts);
+    opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
+    return fetch(url, opts);
   }
 
   function wireAdminTools() {
@@ -15084,11 +13778,11 @@ function drawCandleChart() {
       clearHit.__wired = true;
       clearHit.addEventListener("click", () => {
         requestAdminUnlock(async () => {
-          if (!confirm("Reset accuracy counters? Training weights are NOT deleted — only the displayed right/wrong tally resets.")) return;
+          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
           try {
             const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
             const data = await r.json();
-            if (st()) st().textContent = data.ok ? "Accuracy cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
+            if (st()) st().textContent = data.ok ? "Hit rate & scorecard cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
             // Refresh UI accuracy display
             try {
               const s = await (await fetch("/api/state")).json();
@@ -15122,9 +13816,13 @@ function drawCandleChart() {
       exportBtn.addEventListener("click", () => {
         requestAdminUnlock(() => {
           // Trigger download with admin header via hidden form-like navigation
+          const a = document.createElement("a");
+          a.href = "/api/admin/export.xlsx?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-log.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
           if (st()) st().textContent = "Excel download started…";
-          CouncilAdmin.download("/api/admin/export.xlsx", "satoshi-council-log.xlsx")
-            .catch((e) => { if (st()) st().textContent = "Export failed: " + e; });
         });
       });
     }
@@ -15135,10 +13833,14 @@ function drawCandleChart() {
         e.preventDefault();
         e.stopPropagation();
         requestAdminUnlock(() => {
+          const a = document.createElement("a");
+          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
+          a.download = "satoshi-council-brain.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
           const bs = document.getElementById("brainStatus");
           if (bs) bs.textContent = "Brain download started…";
-          CouncilAdmin.download("/api/brain/export", "satoshi-council-brain.json")
-            .catch((e) => { if (bs) bs.textContent = "Brain export failed: " + e; });
         });
       });
     }

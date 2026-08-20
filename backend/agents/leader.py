@@ -1953,7 +1953,7 @@ class Leader:
                                     if side_odds is not None:
                                         self._odds_hist.append((now, float(side_odds), lean))
                                         self._odds_hist = [h for h in self._odds_hist if now - h[0] <= look]
-                                        old = [h for h in self._odds_hist if h[2] == lean and now - h[0] >= min(30.0, look * 0.3)]
+                                        old = [h for h in self._odds_hist if h[2] == lean and now - h[0] >= min(20.0, look * 0.25)]
                                         if old:
                                             oldest = old[0][1]
                                             delta = float(side_odds) - float(oldest)
