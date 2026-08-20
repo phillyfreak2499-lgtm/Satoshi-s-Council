@@ -426,8 +426,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function restartPoll() {
     try { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } } catch (e) {}
-    pollTimer = setInterval(poll, activePollMs());
+    const ms = activePollMs();
+    if (typeof Worker !== "undefined") {
+      try {
+        if (!deskWorker) {
+          deskWorker = new Worker("/desk-worker.js?v=20260820k");
+          deskWorker.onmessage = onDeskWorkerMsg;
+          deskWorker.onerror = function () {
+            try { deskWorker.terminate(); } catch (err) {}
+            deskWorker = null;
+            pollTimer = setInterval(poll, activePollMs());
+          };
+        }
+        deskWorker.postMessage({ type: "start", url: (API_BASE || "") + "/api/state", ms: ms });
+        return;
+      } catch (e) {
+        deskWorker = null;
+      }
+    }
+    pollTimer = setInterval(poll, ms);
   }
+  let deskWorker = null;
   let beastMode = localStorage.getItem("council_beast") !== "0";
   let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
   let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
@@ -11217,23 +11236,37 @@ function drawCandleChart() {
     if (el) el.classList.toggle("hidden", !on);
     try { document.body.classList.toggle("wire-quiet-on", !!on); } catch (e) {}
   }
+  function ingestDeskPayload(payload) {
+    applyDeskState(payload);
+    __pollMiss = 0;
+    setWireQuiet(false);
+    try { loadHealthStrip(); } catch (e) {}
+    try { maybePlayJailDoor(); } catch (e) {}
+    try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
+    try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
+    if (isSeatsMode(mode)) paintSeatsPage();
+  }
+  function notePollMiss() {
+    __pollMiss += 1;
+    if (statusDot) statusDot.className = "dot err";
+    if (__pollMiss >= 2) setWireQuiet(true);
+  }
+  function onDeskWorkerMsg(ev) {
+    const msg = (ev && ev.data) || {};
+    if (msg.type === "state" && msg.payload) {
+      try { ingestDeskPayload(msg.payload); } catch (e) { notePollMiss(); }
+      return;
+    }
+    if (msg.type === "miss") notePollMiss();
+  }
   async function poll() {
     try {
       const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
-      applyDeskState(payload);
-      __pollMiss = 0;
-      setWireQuiet(false);
-      try { loadHealthStrip(); } catch (e) {}
-      try { maybePlayJailDoor(); } catch (e) {}
-      try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
-      try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
-      if (isSeatsMode(mode)) paintSeatsPage();
+      ingestDeskPayload(payload);
     } catch (e) {
-      __pollMiss += 1;
-      if (statusDot) statusDot.className = "dot err";
-      if (__pollMiss >= 2) setWireQuiet(true);
+      notePollMiss();
       console.warn("Council poll failed", e);
     }
   }

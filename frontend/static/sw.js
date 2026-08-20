@@ -11,7 +11,7 @@ const PRECACHE = [
   "/style.css?v=" + VERSION,
   "/campus-tab.js?v=" + VERSION,
   "/campus-tab.css?v=" + VERSION,
-  "/wire.js?v=" + VERSION,
+  "/desk-worker.js?v=" + VERSION,
   "/council-mark.png",
   "/favicon.svg",
 ];

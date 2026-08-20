@@ -1893,6 +1893,13 @@ if STATIC_DIR.is_dir():
             {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
+    @app.get("/desk-worker.js")
+    async def desk_worker_js():
+        return _file_or_404(
+            STATIC_DIR / "desk-worker.js", "application/javascript",
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
+        )
+
     @app.get("/seat.js")
     async def seat_js():
         return _file_or_404(
