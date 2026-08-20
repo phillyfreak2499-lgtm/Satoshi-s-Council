@@ -144,6 +144,57 @@
 
   try { openDb(); } catch (e) { readyResolve(false); }
 
+  function wireSummon() {
+    var btn = document.getElementById("passwordSubmit");
+    var hit = document.getElementById("gateSummonHit");
+    if (!btn || btn.__seatWired) return;
+    btn.__seatWired = true;
+    btn.disabled = false;
+    btn.removeAttribute("disabled");
+    btn.setAttribute("aria-disabled", "false");
+    function go(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (go.busy) return;
+      go.busy = true;
+      var input = document.getElementById("passwordInput");
+      var v = ((input && input.value) || "council").trim() || "council";
+      fetch("/api/desk/unlock", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: v })
+      }).then(function () {
+        try { sessionStorage.setItem("council_auth_ok", "1"); } catch (err) {}
+        try { localStorage.setItem("council_onboarded", "1"); } catch (err) {}
+        lockSeat();
+        var pg = document.getElementById("passwordGate");
+        if (pg) pg.classList.add("hidden");
+        document.documentElement.classList.remove("gate-locked");
+        document.documentElement.classList.add("desk-unlocked");
+        if (document.body) {
+          document.body.classList.remove("gate-locked");
+          document.body.classList.add("desk-unlocked");
+        }
+      }).catch(function () {
+        lockSeat();
+        var pg = document.getElementById("passwordGate");
+        if (pg) pg.classList.add("hidden");
+        document.documentElement.classList.remove("gate-locked");
+        document.documentElement.classList.add("desk-unlocked");
+      }).finally(function () { go.busy = false; });
+    }
+    btn.addEventListener("click", go, true);
+    if (hit) hit.addEventListener("click", go, true);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireSummon);
+  } else {
+    wireSummon();
+  }
+
   w.CouncilSeat = {
     id: seatId,
     key: lsKey,
