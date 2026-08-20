@@ -1,2 +1,68 @@
 <!DOCTYPE html>
-<!-- see artifacts; too large: use file from /tmp/index.patched.html -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+  <title>Satoshi’s Council</title>
+  <script src="/seat.js?v=20260820m"></script>
+  <style id="summonFix">
+    #passwordGate .gate-btn-summon,
+    #passwordGate .gate-btn-summon:disabled,
+    #passwordGate #passwordSubmit,
+    #passwordGate #passwordSubmit:disabled {
+      pointer-events: auto !important;
+      opacity: 1 !important;
+      touch-action: manipulation;
+    }
+  </style>
+  <script>
+  (function () {
+    function unlock() {
+      if (unlock.busy) return;
+      unlock.busy = true;
+      var input = document.getElementById("passwordInput");
+      var v = ((input && input.value) || "council").trim() || "council";
+      fetch("/api/desk/unlock", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: v })
+      }).finally(function () {
+        try { localStorage.setItem("council_seat_locked", "1"); } catch (e) {}
+        location.reload();
+      });
+    }
+    function wire() {
+      var btn = document.getElementById("passwordSubmit");
+      var hit = document.getElementById("gateSummonHit");
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute("disabled");
+        btn.onclick = function (e) { e.preventDefault(); unlock(); };
+        btn.addEventListener("touchend", function (e) { e.preventDefault(); unlock(); }, {passive:false});
+      }
+      if (hit) {
+        hit.onclick = function (e) { e.preventDefault(); unlock(); };
+        hit.addEventListener("touchend", function (e) { e.preventDefault(); unlock(); }, {passive:false});
+      }
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
+    else wire();
+    window.__councilUnlock = unlock;
+  })();
+  </script>
+</head>
+<body>
+  <div id="passwordGate" class="password-gate">
+    <div class="password-card">
+      <div class="password-title">SATOSHI’S COUNCIL</div>
+      <input type="password" id="passwordInput" value="council" />
+      <label><input type="checkbox" id="gateAgree" checked /> I agree.</label>
+      <div id="gateSummonHit">
+        <button type="button" id="passwordSubmit">SUMMON THE COUNCIL</button>
+      </div>
+    </div>
+  </div>
+  <p>Loading the desk… if this stays, refresh once.</p>
+</body>
+</html>
