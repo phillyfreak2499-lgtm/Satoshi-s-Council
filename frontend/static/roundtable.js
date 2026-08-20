@@ -11046,7 +11046,7 @@ function drawCandleChart() {
 
   async function hydrateLiveHour() {
     try {
-      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
+      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store", credentials: "same-origin" });
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
       applyDeskState(payload);
@@ -11313,7 +11313,7 @@ function drawCandleChart() {
   }
   async function poll() {
     try {
-      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
+      const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store", credentials: "same-origin" });
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
       ingestDeskPayload(payload);

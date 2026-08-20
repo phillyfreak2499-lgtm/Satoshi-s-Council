@@ -189,14 +189,13 @@ async def require_desk_session(request: Request, call_next):
         request.method == "OPTIONS"
         or not request.url.path.startswith("/api/")
         or request.url.path == "/api/desk/unlock"
-        # Free funnel: public proof/workspace pages + Stripe billing (webhook is
-        # server-to-server, its signature is its auth). /api/billing/grant is NOT
-        # exempted — it stays admin + desk gated.
         or request.url.path.startswith("/api/public/")
         or request.url.path in {
             "/api/billing/webhook", "/api/billing/status",
             "/api/billing/checkout", "/api/billing/claim",
         }
+        # Stream is the free TV. Chair state is read-only.
+        or (request.method == "GET" and request.url.path == "/api/state")
     ):
         return await call_next(request)
     if _desk_ok(request):
