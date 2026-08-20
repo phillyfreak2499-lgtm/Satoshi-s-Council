@@ -1869,6 +1869,16 @@ if STATIC_DIR.is_dir():
         )
 
     # Flat asset paths used by static/index.html (style.css, roundtable.js)
+    @app.get("/sw.js")
+    async def service_worker_js():
+        return _file_or_404(
+            STATIC_DIR / "sw.js", "application/javascript",
+            {
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Service-Worker-Allowed": "/",
+            },
+        )
+
     @app.get("/style.css")
     async def style_css():
         return _file_or_404(

@@ -15,8 +15,8 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/style.css?v=20260820i" />
-  <link rel="stylesheet" href="/campus-tab.css?v=20260820i" />
+  <link rel="stylesheet" href="/style.css?v=20260820j" />
+  <link rel="stylesheet" href="/campus-tab.css?v=20260820j" />
   <link rel="preload" as="image" href="/login-council.jpg" />
   <link rel="preload" as="image" href="/static/bots/raijin-chair.png?v=280a18fb49" />
   <link rel="preload" as="image" href="/static/ares-wait.png?v=280a18fb49" />
@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="/static/bots/hurt.png" />
   <link rel="preload" as="image" href="/static/bots/ice.png" />
   <link rel="preload" as="video" href="/zt-intro.mp4" />
-  <script src="/seat.js?v=20260820i"></script>
+  <script src="/seat.js?v=20260820j"></script>
   <script>
   /* Cold-load lock. After first oath this browser is their seat — skip the gate. */
   (function () {
@@ -1250,14 +1250,14 @@
     </video>
   </div>
 
-  <script src="/wire.js?v=20260820i"></script>
-  <script src="/roundtable.js?v=20260820i"></script>
-  <link rel="stylesheet" href="/campus-tab.css" />
+  <script src="/wire.js?v=20260820j"></script>
+  <script src="/roundtable.js?v=20260820j"></script>
+  <link rel="stylesheet" href="/campus-tab.css?v=20260820j" />
   <script>
     window.CAMPUS_URL = "/campus";
     window.CAMPUS_DOJO_HIJACK = true;
   </script>
-  <script src="/campus-tab.js?v=20260820i"></script>
+  <script src="/campus-tab.js?v=20260820j"></script>
 
     <!-- Hidden hive easter egg -->
     <div id="hiveEgg" class="hive-egg hidden" role="dialog" aria-modal="true" aria-label="Hidden">
@@ -1381,5 +1381,12 @@
     </div>
   </div>
 
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>
