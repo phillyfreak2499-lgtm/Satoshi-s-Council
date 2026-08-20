@@ -1869,6 +1869,13 @@ if STATIC_DIR.is_dir():
         )
 
     # Flat asset paths used by static/index.html (style.css, roundtable.js)
+    @app.get("/offline.html")
+    async def offline_html():
+        return _file_or_404(
+            STATIC_DIR / "offline.html", "text/html",
+            {"Cache-Control": "public, max-age=86400"},
+        )
+
     @app.get("/sw.js")
     async def service_worker_js():
         return _file_or_404(

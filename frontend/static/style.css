@@ -10086,3 +10086,23 @@ body.mode-stream .stream-train-ticker { pointer-events: none; }
   letter-spacing: .04em;
   font-size: .82rem;
 }
+
+.wire-quiet {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 80;
+  pointer-events: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(8,6,6,.82);
+  border: 1px solid rgba(212,179,106,.4);
+  color: #d4b36a;
+  font-family: Orbitron, sans-serif;
+  font-size: .58rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.wire-quiet.hidden { display: none !important; }
+body.wire-quiet-on #statusDot { background: #c9a227; }

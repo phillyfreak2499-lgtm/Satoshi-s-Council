@@ -11211,19 +11211,29 @@ function drawCandleChart() {
     }
   }
 
+  let __pollMiss = 0;
+  function setWireQuiet(on) {
+    const el = document.getElementById("wireQuiet");
+    if (el) el.classList.toggle("hidden", !on);
+    try { document.body.classList.toggle("wire-quiet-on", !!on); } catch (e) {}
+  }
   async function poll() {
     try {
       const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
       applyDeskState(payload);
+      __pollMiss = 0;
+      setWireQuiet(false);
       try { loadHealthStrip(); } catch (e) {}
       try { maybePlayJailDoor(); } catch (e) {}
       try { if (typeof updateLightsaber === "function") updateLightsaber(state); } catch (e) {}
       try { if (typeof playOutcomeFx === "function") playOutcomeFx(state); } catch (e) {}
       if (isSeatsMode(mode)) paintSeatsPage();
     } catch (e) {
+      __pollMiss += 1;
       if (statusDot) statusDot.className = "dot err";
+      if (__pollMiss >= 2) setWireQuiet(true);
       console.warn("Council poll failed", e);
     }
   }

@@ -1,9 +1,11 @@
 /* Satoshi's Council — shrine cache.
    Static files stay. /api/state never does. */
-const VERSION = "20260820j";
+const VERSION = "20260820k";
 const STATIC_CACHE = "council-static-" + VERSION;
 
 const PRECACHE = [
+  "/",
+  "/offline.html",
   "/seat.js?v=" + VERSION,
   "/roundtable.js?v=" + VERSION,
   "/style.css?v=" + VERSION,
@@ -48,7 +50,9 @@ self.addEventListener("fetch", function (event) {
       fetch(req).then(function (res) {
         return res;
       }).catch(function () {
-        return caches.match(req).then(function (hit) { return hit || caches.match("/"); });
+        return caches.match(req).then(function (hit) {
+          return hit || caches.match("/offline.html") || caches.match("/");
+        });
       })
     );
     return;
