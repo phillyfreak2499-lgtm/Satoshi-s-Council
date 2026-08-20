@@ -15,8 +15,8 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/style.css" />
-  <link rel="stylesheet" href="/campus-tab.css" />
+  <link rel="stylesheet" href="/style.css?v=20260820g" />
+  <link rel="stylesheet" href="/campus-tab.css?v=20260820g" />
   <link rel="preload" as="image" href="/login-council.jpg" />
   <link rel="preload" as="image" href="/static/bots/raijin-chair.png?v=280a18fb49" />
   <link rel="preload" as="image" href="/static/ares-wait.png?v=280a18fb49" />
@@ -26,13 +26,31 @@
   <link rel="preload" as="image" href="/static/bots/hurt.png" />
   <link rel="preload" as="image" href="/static/bots/ice.png" />
   <link rel="preload" as="video" href="/zt-intro.mp4" />
+  <script src="/seat.js?v=20260820g"></script>
   <script>
-  /* Cold-load lock: runs before roundtable.js. Never start admin-unlocked. */
+  /* Cold-load lock. After first oath this browser is their seat — skip the gate. */
   (function () {
-    try { localStorage.removeItem("council_auth_ok"); } catch (e) {}
-    try { sessionStorage.removeItem("council_auth_ok"); } catch (e) {}
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    var locked = false;
+    try { locked = localStorage.getItem("council_seat_locked") === "1"; } catch (e) {}
+    if (locked) {
+      document.documentElement.classList.add("desk-unlocked");
+      document.documentElement.classList.remove("gate-locked");
+      document.addEventListener("DOMContentLoaded", function () {
+        document.documentElement.classList.add("desk-unlocked");
+        document.documentElement.classList.remove("gate-locked");
+        document.body.classList.add("desk-unlocked");
+        document.body.classList.remove("gate-locked");
+        var pg = document.getElementById("passwordGate");
+        if (pg) pg.classList.add("hidden");
+        var sg = document.getElementById("summonGate");
+        if (sg) sg.classList.add("hidden");
+      });
+      return;
+    }
+    try { localStorage.removeItem("council_auth_ok"); } catch (e) {}
+    try { sessionStorage.removeItem("council_auth_ok"); } catch (e) {}
     document.documentElement.classList.add("gate-locked");
     document.documentElement.classList.remove("desk-unlocked");
     document.addEventListener("DOMContentLoaded", function () {
@@ -56,7 +74,7 @@
     <div class="password-card">
       <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
       <div class="password-title">SATOSHI’S COUNCIL</div>
-      <div class="password-sub">Preview desk · code <b>council</b> · then Summon</div>
+      <div class="password-sub">One oath. One button. The TV turns on.</div>
       <input type="password" id="passwordInput" class="password-input" placeholder="Desk code" autocomplete="current-password" />
       <ul class="gate-oath" id="gateOath">
         <li>PAPER ONLY. Ink on the slate — not cash on the wire.</li>
@@ -1232,14 +1250,14 @@
     </video>
   </div>
 
-  <script src="/wire.js"></script>
-  <script src="/roundtable.js"></script>
+  <script src="/wire.js?v=20260820g"></script>
+  <script src="/roundtable.js?v=20260820g"></script>
   <link rel="stylesheet" href="/campus-tab.css" />
   <script>
     window.CAMPUS_URL = "/campus";
     window.CAMPUS_DOJO_HIJACK = true;
   </script>
-  <script src="/campus-tab.js"></script>
+  <script src="/campus-tab.js?v=20260820g"></script>
 
     <!-- Hidden hive easter egg -->
     <div id="hiveEgg" class="hive-egg hidden" role="dialog" aria-modal="true" aria-label="Hidden">

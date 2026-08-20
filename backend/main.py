@@ -1830,11 +1830,49 @@ if STATIC_DIR.is_dir():
     if bots_dir.is_dir():
         app.mount("/bots", StaticFiles(directory=str(bots_dir)), name="bots")
 
+    portraits_dir = STATIC_DIR / "portraits"
+    if portraits_dir.is_dir():
+        app.mount("/portraits", StaticFiles(directory=str(portraits_dir)), name="portraits")
+
+    campus_dir = STATIC_DIR / "campus"
+    if campus_dir.is_dir():
+        @app.get("/campus/dojo")
+        @app.get("/campus/dojo/")
+        async def campus_dojo():
+            return FileResponse(
+                campus_dir / "dojo.html",
+                media_type="text/html",
+                headers={"Cache-Control": "no-store"},
+            )
+
+        app.mount("/campus", StaticFiles(directory=str(campus_dir), html=True), name="campus")
+
+    @app.get("/campus-tab.js")
+    async def campus_tab_js():
+        return _file_or_404(
+            STATIC_DIR / "campus-tab.js", "application/javascript",
+            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
+    @app.get("/campus-tab.css")
+    async def campus_tab_css():
+        return _file_or_404(
+            STATIC_DIR / "campus-tab.css", "text/css",
+            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
     # Flat asset paths used by static/index.html (style.css, roundtable.js)
     @app.get("/style.css")
     async def style_css():
         return _file_or_404(
             STATIC_DIR / "style.css", "text/css",
+            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
+    @app.get("/seat.js")
+    async def seat_js():
+        return _file_or_404(
+            STATIC_DIR / "seat.js", "application/javascript",
             {"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
 
@@ -1849,6 +1887,13 @@ if STATIC_DIR.is_dir():
     async def wire_js():
         return _file_or_404(
             STATIC_DIR / "wire.js", "application/javascript",
+            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
+    @app.get("/shrine-faces.js")
+    async def shrine_faces_js():
+        return _file_or_404(
+            STATIC_DIR / "shrine-faces.js", "application/javascript",
             {"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
 

@@ -52,19 +52,27 @@
     <section id="home"></section>
     <section id="reader" class="lesson"></section>
   </main>
+  <script src="/seat.js?v=20260820g"></script>
   <script>
     const home = document.getElementById("home");
     const reader = document.getElementById("reader");
     let data = { tracks: [], lessons: [], commandments: [] };
+    function classBag() {
+      return (window.CouncilSeat && CouncilSeat.getJson("council_class_v1", null)) || { done: [] };
+    }
+    function saveClass(bag) {
+      if (window.CouncilSeat) CouncilSeat.setJson("council_class_v1", bag);
+    }
     fetch("curriculum.json").then(r => r.json()).then(d => { data = d; paintHome(); });
     try {
-      const bag = JSON.parse(localStorage.getItem("council_monday_paper") || "{}");
+      const bag = (window.CouncilSeat && CouncilSeat.getJson("council_monday_paper", null)) || JSON.parse(localStorage.getItem("council_monday_paper") || "{}");
       const el = document.getElementById("classStack");
-      if (el && bag.stack) el.textContent = "$" + Number(bag.stack).toLocaleString();
+      if (el && bag && bag.stack) el.textContent = "$" + Number(bag.stack).toLocaleString();
     } catch (e) {}
     function paintHome() {
       reader.classList.remove("on");
       home.style.display = "grid";
+      const done = (classBag().done || []);
       home.innerHTML = `
         <div class="kicker">TRACKS</div>
         <div class="tracks">${data.tracks.map(t => `
@@ -73,6 +81,8 @@
             <b>${t.title}</b>
             <span>${t.subtitle}</span>
           </div>`).join("")}</div>
+        <div class="kicker" style="margin-top:18px">YOUR SEAT</div>
+        <div class="cmds"><div class="cmd"><b>DONE</b> ${done.length} lesson${done.length===1?"":"s"} on this browser. Not a shared chalkboard.</div></div>
         <div class="kicker" style="margin-top:18px">MICRO-INTERACTIONS</div>
         <div class="cmds" id="microList">
           <div class="cmd"><b>01</b> Summon mark breathes gold. Title rises out of the fog.</div>
@@ -127,6 +137,12 @@
             why.className = "why";
             why.textContent = (good ? "Right. " : "Not that. ") + q.why;
             wrap.appendChild(why);
+            if (good) {
+              const bag = classBag();
+              bag.done = bag.done || [];
+              if (bag.done.indexOf(l.id) < 0) bag.done.push(l.id);
+              saveClass(bag);
+            }
           };
           wrap.appendChild(b);
         });

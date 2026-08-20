@@ -83,6 +83,7 @@
       <div class="fighters" id="roster"></div>
     </div>
   </div>
+  <script src="/seat.js?v=20260820g"></script>
   <script>
     const beats = [
       { q: "Open 100, close 104, tiny wicks. Who won?", a: "Body / buyers", why: "Body is the scoreboard. Close above open = buyers finished on top.", opts: ["Body / buyers", "Wick / sellers", "WAIT / nobody"] },
@@ -97,7 +98,15 @@
     const qel = document.getElementById("kataQ");
     const ael = document.getElementById("kataA");
     const why = document.getElementById("kataWhy");
-    document.getElementById("btnKata").onclick = () => { i = 0; box.hidden = false; paint(); box.scrollIntoView({behavior:"smooth"}); };
+    const kataBag = () => (window.CouncilSeat && CouncilSeat.getJson("council_kata_v1", null)) || { i: 0, done: false };
+    const saveKata = (bag) => { if (window.CouncilSeat) CouncilSeat.setJson("council_kata_v1", bag); };
+    document.getElementById("btnKata").onclick = () => {
+      const bag = kataBag();
+      i = bag.done ? 0 : (bag.i || 0);
+      box.hidden = false;
+      paint();
+      box.scrollIntoView({behavior:"smooth"});
+    };
     function paint() {
       const b = beats[i];
       qel.textContent = "Beat " + (i+1) + " / 6 — " + b.q;
@@ -112,7 +121,18 @@
           btn.classList.add(good ? "good" : "bad");
           why.textContent = b.why;
           ael.querySelectorAll("button").forEach(x => x.disabled = true);
-          setTimeout(() => { i += 1; if (i < beats.length) paint(); else { qel.textContent = "White belt kata complete. Body, wick, close, WAIT."; ael.innerHTML = ""; why.textContent = "Classroom next — or keep this slang on Stream."; } }, good ? 900 : 1400);
+          setTimeout(() => {
+            i += 1;
+            if (i < beats.length) {
+              saveKata({ i: i, done: false, at: Date.now() });
+              paint();
+            } else {
+              saveKata({ i: 6, done: true, at: Date.now() });
+              qel.textContent = "White belt kata complete. Body, wick, close, WAIT. Saved on this seat.";
+              ael.innerHTML = "";
+              why.textContent = "Classroom next — or keep this slang on Stream.";
+            }
+          }, good ? 900 : 1400);
         };
         ael.appendChild(btn);
       });

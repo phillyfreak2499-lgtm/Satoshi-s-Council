@@ -21,29 +21,48 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   const ADMIN_KEY = "council_admin_unlocked";
   const DESK_KEY = "council_auth_ok";
   const ONBOARD_KEY = "council_onboarded";
+  function storeGet(k) {
+    try { if (window.CouncilSeat) return CouncilSeat.get(k); } catch (e) {}
+    try { return localStorage.getItem(k); } catch (e) { return null; }
+  }
+  function storeSet(k, v) {
+    try { if (window.CouncilSeat) { CouncilSeat.set(k, v); return; } } catch (e) {}
+    try { localStorage.setItem(k, v); } catch (e) {}
+  }
   function hasOnboarded() {
     try {
-      return localStorage.getItem(ONBOARD_KEY) === "1" || localStorage.getItem("council_entered") === "1";
+      if (window.CouncilSeat && CouncilSeat.isLocked()) return true;
+      return storeGet(ONBOARD_KEY) === "1" || storeGet("council_entered") === "1";
     } catch (e) { return false; }
   }
   function markOnboarded() {
-    try { localStorage.setItem(ONBOARD_KEY, "1"); } catch (e) {}
-    try { localStorage.setItem("council_entered", "1"); } catch (e) {}
+    storeSet(ONBOARD_KEY, "1");
+    storeSet("council_entered", "1");
+    try { if (window.CouncilSeat) CouncilSeat.lockSeat(); } catch (e) {}
   }
   window.hasOnboarded = hasOnboarded;
   window.markOnboarded = markOnboarded;
-  // Cold load: leftover storage must not paint privileged chrome.
+  // Cold load: wipe ADMIN. Keep the seat if they already took the oath.
   try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
-  try { localStorage.removeItem(DESK_KEY); } catch (e) {}
   try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
-  try { sessionStorage.removeItem(DESK_KEY); } catch (e) {}
-  window.__deskUnlockedThisPage = false;
   window.__adminUnlockedThisPage = false;
-  document.documentElement.classList.add("gate-locked");
-  document.documentElement.classList.remove("desk-unlocked");
-  document.body.classList.add("gate-locked");
-  document.body.classList.remove("admin-unlocked", "follower-unlocked", "desk-unlocked");
-  document.body.setAttribute("data-password-protected", "true");
+  if (window.CouncilSeat && CouncilSeat.isLocked()) {
+    window.__deskUnlockedThisPage = true;
+    try { sessionStorage.setItem(DESK_KEY, "1"); } catch (e) {}
+    document.documentElement.classList.remove("gate-locked");
+    document.documentElement.classList.add("desk-unlocked");
+    document.body.classList.remove("gate-locked");
+    document.body.classList.add("desk-unlocked");
+  } else {
+    try { localStorage.removeItem(DESK_KEY); } catch (e) {}
+    try { sessionStorage.removeItem(DESK_KEY); } catch (e) {}
+    window.__deskUnlockedThisPage = false;
+    document.documentElement.classList.add("gate-locked");
+    document.documentElement.classList.remove("desk-unlocked");
+    document.body.classList.add("gate-locked");
+    document.body.classList.remove("admin-unlocked", "follower-unlocked", "desk-unlocked");
+    document.body.setAttribute("data-password-protected", "true");
+  }
   function revealAppAfterDeskUnlock() {
     // Successful desk code: never leave #app hidden. Clear lock classes on
     // BOTH html and body — CSS also keys off html.gate-locked and leftover
@@ -3654,13 +3673,17 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
   function defaultLandMode() {
     try {
+      const last = storeGet("council_last_mode");
+      if (last && last !== "settings" && last !== "night") return last;
+    } catch (e) {}
+    try {
       if (window.matchMedia && (
         window.matchMedia("(max-width: 900px)").matches ||
         window.matchMedia("(max-height: 500px) and (orientation: landscape)").matches
       )) return "stream";
     } catch (e) {}
     try { if (typeof isPhoneDesk === "function" && isPhoneDesk()) return "stream"; } catch (e) {}
-    return "art";
+    return "stream";
   }
     try {
       return !!(window.matchMedia && window.matchMedia("(max-width: 480px)").matches);
@@ -4690,13 +4713,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   function loadDayRecap() {
     let bag = {};
-    try { bag = JSON.parse(localStorage.getItem("council_day_recap") || "{}"); } catch (e) { bag = {}; }
+    try { bag = JSON.parse(storeGet("council_day_recap") || "{}"); } catch (e) { bag = {}; }
     const id = recapDayId();
     if (bag.day !== id) bag = { day: id, sits: 0, locks: 0, polaroid: null, shown: false };
     return bag;
   }
   function saveDayRecap(bag) {
-    try { localStorage.setItem("council_day_recap", JSON.stringify(bag)); } catch (e) {}
+    try { storeSet("council_day_recap", JSON.stringify(bag)); } catch (e) {}
   }
   function bumpDayRecap(kind, cents) {
     const bag = loadDayRecap();
@@ -4735,7 +4758,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (g) g.classList.add("hidden");
   }
   function hasJoinedDesk() {
-    try { return localStorage.getItem("council_joined") === "1"; } catch (e) { return false; }
+    try { return storeGet("council_joined") === "1"; } catch (e) { return false; }
   }
   function wireJoinGate() {
     const enter = document.getElementById("joinEnter");
@@ -4744,7 +4767,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (enter && !enter.__wired) {
       enter.__wired = true;
       enter.addEventListener("click", function () {
-        try { localStorage.setItem("council_joined", "1"); } catch (e) {}
+        try { storeSet("council_joined", "1"); } catch (e) {}
         closeJoinGate();
         const next = window.__joinNext || "ethereum";
         try { if (typeof setMode === "function") setMode("art"); } catch (e) {}
@@ -8935,7 +8958,7 @@ function drawCandleChart() {
   }
   function loadSchoolProgress() {
     try {
-      const raw = localStorage.getItem(SCHOOL_KEY);
+      const raw = storeGet(SCHOOL_KEY);
       const p = raw ? JSON.parse(raw) : {};
       if (!p || typeof p !== "object") return { done: [], current: "hour", q: 0, week: { id: schoolWeekId(), n: 0 } };
       if (!Array.isArray(p.done)) p.done = [];
@@ -8946,7 +8969,7 @@ function drawCandleChart() {
     }
   }
   function saveSchoolProgress(p) {
-    try { localStorage.setItem(SCHOOL_KEY, JSON.stringify(p)); } catch (e) {}
+    try { storeSet(SCHOOL_KEY, JSON.stringify(p)); } catch (e) {}
   }
   function schoolById(id) {
     return schoolLessons.find(function (l) { return l.id === id; }) || schoolLessons[0];
@@ -10737,6 +10760,9 @@ function drawCandleChart() {
 
   function setMode(next) {
     next = aliasDeskMode(next);
+    if (next && next !== "settings") {
+      try { storeSet("council_last_mode", next); } catch (e) {}
+    }
     if (!hasDeskAuth()) {
       document.body.classList.add("gate-locked");
       document.body.classList.remove("admin-unlocked");
@@ -12044,7 +12070,7 @@ function drawCandleChart() {
   function initSummonGate() {
     const gate = document.getElementById("summonGate");
     if (!gate) return;
-    if (hasOnboarded()) {
+    if (hasOnboarded() || (window.CouncilSeat && CouncilSeat.isLocked())) {
       dismissGate(false, defaultLandMode());
       return;
     }
@@ -12900,9 +12926,9 @@ function drawCandleChart() {
   function loadMondayPaper() {
     const id = mondayWeekId();
     let bag = {};
-    try { bag = JSON.parse(localStorage.getItem("council_monday_paper") || "{}"); } catch (e) { bag = {}; }
+    try { bag = JSON.parse(storeGet("council_monday_paper") || "{}"); } catch (e) { bag = {}; }
     if (bag.week !== id) bag = { week: id, stack: 1000, notes: [] };
-    try { localStorage.setItem("council_monday_paper", JSON.stringify(bag)); } catch (e) {}
+    try { storeSet("council_monday_paper", JSON.stringify(bag)); } catch (e) {}
     return bag;
   }
   function paintMondayPaper() {
@@ -13243,27 +13269,22 @@ function drawCandleChart() {
   });
 
   function showAppAfterAuth() {
+    try { markOnboarded(); } catch (e) {}
+    try { if (window.CouncilSeat) CouncilSeat.lockSeat(); } catch (e) {}
+    window.__deskUnlockedThisPage = true;
+    try { sessionStorage.setItem(DESK_KEY, "1"); } catch (e) {}
     if (typeof window.revealAppAfterDeskUnlock === "function") {
       window.revealAppAfterDeskUnlock();
     }
     document.body.classList.remove("admin-unlocked");
-    const onboarded = (typeof window.hasOnboarded === "function") ? window.hasOnboarded() : false;
-    if (onboarded) {
-      const sg = document.getElementById("summonGate");
-      if (sg) sg.classList.add("hidden");
-      try {
-        const dest = (typeof window.modeFromHash === "function" && window.modeFromHash(location.hash)) || defaultLandMode();
-        if (typeof window.setMode === "function") window.setMode(dest);
-      } catch (e) {}
-      try { if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour(); } catch (e) {}
-      return;
-    }
-    // First-login choice overlays the desk. Do not re-lock html/body —
-    // a leftover html.gate-locked would keep #app visibility:hidden.
     const sg = document.getElementById("summonGate");
-    if (sg) sg.classList.remove("hidden");
-    try { if (typeof window.initSummonGate === "function") window.initSummonGate(); } catch (e) {}
-    try { if (typeof wireFocusAndHelp === "function") wireFocusAndHelp(); } catch (e) {}
+    if (sg) sg.classList.add("hidden");
+    try {
+      const dest = defaultLandMode() || "stream";
+      if (typeof window.setMode === "function") window.setMode(dest);
+      else if (typeof setMode === "function") setMode(dest);
+    } catch (e) {}
+    try { if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour(); } catch (e) {}
   }
 
   function playZtIntroThenSummonGate() {
@@ -13329,15 +13350,18 @@ function drawCandleChart() {
   function initPasswordGate() {
     if (initPasswordGate.__wired) return;
     initPasswordGate.__wired = true;
-    // Never skip the desk code from leftover storage. Cold tab / hard refresh
-    // must see the access overlay. A leftover unlocked session is not the public default.
-    try { localStorage.removeItem(passKey); } catch (e) {}
-    try { sessionStorage.removeItem(passKey); } catch (e) {}
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
     try { sessionStorage.removeItem("council_admin_unlocked"); } catch (e) {}
-    window.__deskUnlockedThisPage = false;
-    document.body.classList.remove("admin-unlocked", "desk-unlocked");
-    document.documentElement.classList.remove("desk-unlocked");
+    window.__adminUnlockedThisPage = false;
+    document.body.classList.remove("admin-unlocked");
+    if (window.CouncilSeat && CouncilSeat.isLocked()) {
+      window.__deskUnlockedThisPage = true;
+      try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
+      const pg0 = document.getElementById("passwordGate");
+      if (pg0) pg0.classList.add("hidden");
+      showAppAfterAuth();
+      return;
+    }
     const pg = document.getElementById("passwordGate");
     const input = document.getElementById("passwordInput");
     const btn = document.getElementById("passwordSubmit");
