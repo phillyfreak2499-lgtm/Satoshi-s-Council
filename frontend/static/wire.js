@@ -3,14 +3,13 @@
  *
  * Boot notes and desk wiring that must load before roundtable.js paints.
  *
- * 2026-08-20-shrine-floor
- *   Remap Wick/Strike/Odds/Quorum/Clock/Satoshi to shrine portraits.
- *   Hide hit-rate HUD on Floor/Table. Accuracy stays in Settings.
+ * 2026-08-20-shrine-floor-2
+ *   Floor/Table are the ring + stars + Chair call only.
  */
 (() => {
   "use strict";
 
-  const BUILD = "2026-08-20-shrine-floor";
+  const BUILD = "2026-08-20-shrine-floor-2";
   window.COUNCIL_BUILD = BUILD;
 
   window.assetTag = function assetTag(url) {
