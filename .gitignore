@@ -10,7 +10,8 @@ FOLLOWER_PASSWORD_*
 COINGLASS_API_KEY
 
 # ── Runtime state (lives on the Render disk, not in git) ──────────────
-data/
+/data/
+!backend/data/
 *.db
 *.db-journal
 *.db-wal
