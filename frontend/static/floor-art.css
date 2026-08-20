@@ -1,80 +1,119 @@
-/* Floor / Table = art only. Training numbers live in Settings. */
-#hitRateCard,
-#hrRoll,
-#hrProcess,
-#hrWait,
-#hrPatience,
-#lifetimeLogBlock,
+/*
+ * TWO SURFACES
+ * ────────────
+ * Desk (Floor / Table + all tabs): full professional desk — hierarchy,
+ * debate, charts, tape, ETH, weather, paper, dojo, settings.
+ *
+ * Stream (Night tab, labeled Stream): 24/7 broadcast surface for X /
+ * YouTube / Twitch / OBS. Art-first ring only. Hook people, then send
+ * them to the desk.
+ */
+
+/* Accuracy / training still off the public desk face; lives in Settings. */
 #accuracyBadge,
 .acc-strip,
-.acc-locked,
-#leanGrade,
-.fs-grade,
-#leanSparkBox,
-#leanSparkBox .lean-grade,
-#floorSplit,
-#floorCrawl,
-#lightsaberWrap,
-#chairWhy,
-#chairWhyReason,
-#healthStrip,
-#ztWatermark,
-#huddleBanner,
-#openChartsBtn,
-#floorRaijin,
-#learnChip,
-#huddleBadge,
-#lawBadge,
-#feedHealthPill,
-#beastBadge,
-#stillToggle,
-#soundToggle,
-#ztLogoBtn,
-#hiveBtn {
+.acc-locked {
   display: none !important;
 }
 
-body.mode-floor #lifetimePanel,
-body.mode-art #lifetimePanel,
+/* ── Stream only (mode-night / mode-stream) ───────────────── */
+body.mode-night #hitRateCard,
+body.mode-stream #hitRateCard,
+body.mode-night #hrRoll,
+body.mode-stream #hrRoll,
+body.mode-night #hrProcess,
+body.mode-stream #hrProcess,
+body.mode-night #hrWait,
+body.mode-stream #hrWait,
+body.mode-night #hrPatience,
+body.mode-stream #hrPatience,
+body.mode-night #lifetimeLogBlock,
+body.mode-stream #lifetimeLogBlock,
+body.mode-night #leanGrade,
+body.mode-stream #leanGrade,
+body.mode-night .fs-grade,
+body.mode-stream .fs-grade,
+body.mode-night #leanSparkBox,
+body.mode-stream #leanSparkBox,
+body.mode-night #floorSplit,
+body.mode-stream #floorSplit,
+body.mode-night #floorCrawl,
+body.mode-stream #floorCrawl,
+body.mode-night #lightsaberWrap,
+body.mode-stream #lightsaberWrap,
+body.mode-night #chairWhy,
+body.mode-stream #chairWhy,
+body.mode-night #chairWhyReason,
+body.mode-stream #chairWhyReason,
+body.mode-night #healthStrip,
+body.mode-stream #healthStrip,
+body.mode-night #ztWatermark,
+body.mode-stream #ztWatermark,
+body.mode-night #huddleBanner,
+body.mode-stream #huddleBanner,
+body.mode-night #openChartsBtn,
+body.mode-stream #openChartsBtn,
+body.mode-night #floorRaijin,
+body.mode-stream #floorRaijin,
+body.mode-night #learnChip,
+body.mode-stream #learnChip,
+body.mode-night #huddleBadge,
+body.mode-stream #huddleBadge,
+body.mode-night #lawBadge,
+body.mode-stream #lawBadge,
+body.mode-night #feedHealthPill,
+body.mode-stream #feedHealthPill,
+body.mode-night #beastBadge,
+body.mode-stream #beastBadge,
+body.mode-night #stillToggle,
+body.mode-stream #stillToggle,
+body.mode-night #soundToggle,
+body.mode-stream #soundToggle,
+body.mode-night #ztLogoBtn,
+body.mode-stream #ztLogoBtn,
+body.mode-night #hiveBtn,
+body.mode-stream #hiveBtn {
+  display: none !important;
+}
+
 body.mode-night #lifetimePanel,
-body.mode-floor #hierarchyPanel,
-body.mode-art #hierarchyPanel,
+body.mode-stream #lifetimePanel,
 body.mode-night #hierarchyPanel,
-body.mode-floor aside.side-panel,
-body.mode-art aside.side-panel,
+body.mode-stream #hierarchyPanel,
 body.mode-night aside.side-panel,
-body.mode-floor #debatePanel,
-body.mode-art #debatePanel,
+body.mode-stream aside.side-panel,
 body.mode-night #debatePanel,
-body.mode-floor footer,
-body.mode-art footer,
+body.mode-stream #debatePanel,
 body.mode-night footer,
-body.mode-floor .header-row .controls,
-body.mode-art .header-row .controls,
-body.mode-floor #floorHint,
-body.mode-art #floorHint {
+body.mode-stream footer,
+body.mode-night .header-row .controls,
+body.mode-stream .header-row .controls,
+body.mode-night #floorHint,
+body.mode-stream #floorHint,
+body.mode-night #modeTabsShell,
+body.mode-stream #modeTabsShell,
+body.mode-night #modeSubtabs,
+body.mode-stream #modeSubtabs {
   display: none !important;
 }
 
-body.mode-floor,
-body.mode-art,
 body.mode-night,
-body.mode-floor #app,
-body.mode-art #app,
-body.mode-night #app {
+body.mode-stream,
+body.mode-night #app,
+body.mode-stream #app {
   background: #030303 !important;
 }
 
-body.mode-floor #app,
-body.mode-art #app {
+body.mode-night #app,
+body.mode-stream #app {
   background:
-    radial-gradient(circle at 18% 22%, rgba(212, 179, 106, 0.07), transparent 18%),
-    radial-gradient(circle at 82% 78%, rgba(90, 140, 200, 0.05), transparent 22%),
+    radial-gradient(circle at 18% 22%, rgba(212, 179, 106, 0.08), transparent 18%),
+    radial-gradient(circle at 82% 78%, rgba(90, 140, 200, 0.06), transparent 22%),
     radial-gradient(ellipse at 50% 50%, #0a0908 0%, #030303 58%, #000 100%) !important;
 }
 
-body.mode-floor #app::before,
-body.mode-art #app::before {
+body.mode-night #app::before,
+body.mode-stream #app::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -101,19 +140,25 @@ body.mode-art #app::before {
   50% { opacity: 1; }
 }
 
-body.mode-floor header,
-body.mode-art header {
+body.mode-night header,
+body.mode-stream header {
   position: absolute;
   left: 0;
   right: 0;
   z-index: 12;
-  background: linear-gradient(180deg, rgba(3,3,3,0.82), transparent) !important;
+  background: linear-gradient(180deg, rgba(3,3,3,0.75), transparent) !important;
   border: 0 !important;
   box-shadow: none !important;
+  pointer-events: none;
 }
 
-body.mode-floor #mainTable,
-body.mode-art #mainTable {
+body.mode-night .logo,
+body.mode-stream .logo {
+  pointer-events: auto;
+}
+
+body.mode-night #mainTable,
+body.mode-stream #mainTable {
   position: fixed !important;
   inset: 0 !important;
   display: block !important;
@@ -124,8 +169,8 @@ body.mode-art #mainTable {
   background: transparent !important;
 }
 
-body.mode-floor #tableStage,
-body.mode-art #tableStage {
+body.mode-night #tableStage,
+body.mode-stream #tableStage {
   position: absolute !important;
   top: 50% !important;
   left: 50% !important;
@@ -136,15 +181,22 @@ body.mode-art #tableStage {
   z-index: 2;
 }
 
-body.mode-floor #roundtable,
-body.mode-art #roundtable {
+body.mode-night #roundtable,
+body.mode-stream #roundtable {
   width: 100% !important;
   height: 100% !important;
 }
 
-body.mode-floor #callMarker,
-body.mode-art #callMarker {
+body.mode-night #callMarker,
+body.mode-stream #callMarker {
   z-index: 6;
+}
+
+/* Esc / click logo to leave stream — keep a quiet exit affordance */
+body.mode-night #ztHeaderLogo,
+body.mode-stream #ztHeaderLogo {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 #callWarn:not(.hidden) {

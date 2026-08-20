@@ -1,16 +1,17 @@
 /**
  * Satoshi’s Council — wire.js
  *
- * Boot notes and desk wiring that must load before roundtable.js paints.
+ * Boot before roundtable.js.
  *
- * 2026-08-20-shrine-floor-3
- *   Canvas floor/table: black glittering stars + ring. No chamber photo,
- *   no HIT RATE text on the canvas. CSS still strips the HTML HUD.
+ * 2026-08-20-stream-desk-split
+ *   Desk = Floor / Table + every professional tab (ETH, weather, charts,
+ *   tape, paper, dojo, settings). Stream = Night tab, cinematic 24/7
+ *   broadcast for X / YouTube / Twitch / OBS.
  */
 (() => {
   "use strict";
 
-  const BUILD = "2026-08-20-shrine-floor-3";
+  const BUILD = "2026-08-20-stream-desk-split";
   window.COUNCIL_BUILD = BUILD;
 
   window.assetTag = function assetTag(url) {
@@ -82,12 +83,11 @@
     return origSet.call(this, name, value);
   };
 
-  function artMode() {
+  function streamMode() {
     var b = document.body;
     if (!b) return false;
-    return b.classList.contains("mode-floor") ||
-           b.classList.contains("mode-art") ||
-           b.classList.contains("mode-night");
+    return b.classList.contains("mode-night") ||
+           b.classList.contains("mode-stream");
   }
 
   var STAR_SEED = [];
@@ -146,21 +146,21 @@
     var strokeText = ctx.strokeText.bind(ctx);
 
     ctx.fillRect = function (x, y, w, h) {
-      if (artMode() && isFullClear(ctx, x, y, w, h)) {
+      if (streamMode() && isFullClear(ctx, x, y, w, h)) {
         paintVoid(ctx);
         return;
       }
       return fillRect(x, y, w, h);
     };
     ctx.clearRect = function (x, y, w, h) {
-      if (artMode() && isFullClear(ctx, x, y, w, h)) {
+      if (streamMode() && isFullClear(ctx, x, y, w, h)) {
         paintVoid(ctx);
         return;
       }
       return clearRect(x, y, w, h);
     };
     ctx.drawImage = function (img) {
-      if (artMode() && img) {
+      if (streamMode() && img) {
         var src = "";
         try { src = String(img.src || img.currentSrc || ""); } catch (e) { src = ""; }
         if (/chamber|satoshi-table|login-council|hive-egg/i.test(src)) return;
@@ -177,11 +177,11 @@
       return /HIT\s*RATE|ACC%|WR%|\bMISS\b|\bHITS?\b|ACCURACY|L20|L50|P&L|CALL ACCURACY/i.test(t);
     }
     ctx.fillText = function (text) {
-      if (artMode() && muteCopy(text)) return;
+      if (streamMode() && muteCopy(text)) return;
       return fillText.apply(ctx, arguments);
     };
     ctx.strokeText = function (text) {
-      if (artMode() && muteCopy(text)) return;
+      if (streamMode() && muteCopy(text)) return;
       return strokeText.apply(ctx, arguments);
     };
     return ctx;
@@ -199,6 +199,13 @@
   link.href = "/floor-art.css?v=" + encodeURIComponent(BUILD);
   document.head.appendChild(link);
 
+  function labelStreamTab() {
+    var tab = document.getElementById("tabNight");
+    if (!tab) return;
+    tab.textContent = "Stream";
+    tab.title = "24/7 broadcast surface — art-first table for X / YouTube / Twitch / OBS. Full desk stays on Floor, Table, Charts, and the rest.";
+  }
+
   function stamp() {
     if (document.getElementById("councilBuildStamp")) return;
     var el = document.createElement("div");
@@ -207,11 +214,17 @@
     el.style.cssText = "position:fixed;right:10px;bottom:8px;z-index:90;font:10px/1 Share Tech Mono,monospace;letter-spacing:.12em;color:rgba(212,179,106,.55);pointer-events:none";
     document.body.appendChild(el);
   }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", stamp);
-  } else {
+
+  function bootUi() {
+    labelStreamTab();
     stamp();
   }
 
-  console.info("Satoshi’s Council · build " + BUILD);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootUi);
+  } else {
+    bootUi();
+  }
+
+  console.info("Satoshi’s Council · build " + BUILD + " · desk + stream split");
 })();
