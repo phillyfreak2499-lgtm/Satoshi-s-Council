@@ -52,7 +52,7 @@
     <section id="home"></section>
     <section id="reader" class="lesson"></section>
   </main>
-  <script src="/seat.js?v=20260820g"></script>
+  <script src="/seat.js?v=20260820h"></script>
   <script>
     const home = document.getElementById("home");
     const reader = document.getElementById("reader");
@@ -63,12 +63,18 @@
     function saveClass(bag) {
       if (window.CouncilSeat) CouncilSeat.setJson("council_class_v1", bag);
     }
-    fetch("curriculum.json").then(r => r.json()).then(d => { data = d; paintHome(); });
-    try {
-      const bag = (window.CouncilSeat && CouncilSeat.getJson("council_monday_paper", null)) || JSON.parse(localStorage.getItem("council_monday_paper") || "{}");
-      const el = document.getElementById("classStack");
-      if (el && bag && bag.stack) el.textContent = "$" + Number(bag.stack).toLocaleString();
-    } catch (e) {}
+    fetch("curriculum.json").then(r => r.json()).then(d => { data = d; boot(); });
+    function boot() {
+      var p = (window.CouncilSeat && CouncilSeat.ready) || Promise.resolve();
+      p.then(function () { paintHome(); paintStack(); });
+    }
+    function paintStack() {
+      try {
+        const bag = (window.CouncilSeat && CouncilSeat.getJson("council_monday_paper", null)) || {};
+        const el = document.getElementById("classStack");
+        if (el && bag && bag.stack) el.textContent = "$" + Number(bag.stack).toLocaleString();
+      } catch (e) {}
+    }
     function paintHome() {
       reader.classList.remove("on");
       home.style.display = "grid";
