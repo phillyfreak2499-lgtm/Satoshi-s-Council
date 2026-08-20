@@ -17,7 +17,10 @@
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/style.css?v=20260820k" />
   <link rel="stylesheet" href="/campus-tab.css?v=20260820k" />
-  <link rel="preload" as="image" href="/login-council.jpg" />
+  <link rel="preload" as="image" href="/portraits/satoshi-up.webp?v=people-2" />
+  <link rel="preload" as="image" href="/portraits/wick.webp?v=people-2" />
+  <link rel="preload" as="image" href="/portraits/clock.webp?v=people-2" />
+  <link rel="preload" as="image" href="/login-council.jpg" media="(min-width: 901px)" />
   <link rel="preload" as="image" href="/static/bots/raijin-chair.png?v=280a18fb49" />
   <link rel="preload" as="image" href="/static/ares-wait.png?v=280a18fb49" />
   <link rel="preload" as="image" href="/static/bots/line.png" />
@@ -25,7 +28,7 @@
   <link rel="preload" as="image" href="/static/bots/fade.png" />
   <link rel="preload" as="image" href="/static/bots/hurt.png" />
   <link rel="preload" as="image" href="/static/bots/ice.png" />
-  <link rel="preload" as="video" href="/zt-intro.mp4" />
+  <link rel="preload" as="video" href="/zt-intro.mp4" media="(min-width: 901px)" />
   <script src="/seat.js?v=20260820k"></script>
   <script>
   /* Cold-load lock. After first oath this browser is their seat — skip the gate. */
@@ -151,6 +154,7 @@
         <li>NO PAST SCORE IS A PROMISE. Last hour does not own the next.</li>
       </ul>
       <button type="button" id="joinEnter" class="gate-btn gate-btn-summon">I’m in · $25 · paper</button>
+      <p id="joinErr" class="password-error hidden"></p>
       <button type="button" id="joinStay" class="gate-skip">Stay on Bitcoin Stream · free</button>
     </div>
   </div>
@@ -1323,6 +1327,7 @@
       <span class="flash-kicker">4PM CT · RECAP</span>
       <strong id="recapHead">THE CHAIR SAT</strong>
       <span id="recapLine">One line. No leaderboard.</span>
+      <button type="button" id="recapKata" class="gate-btn gate-btn-ghost recap-kata">Tonight’s kata</button>
     </div>
     <div id="streamSitHonor" class="stream-flash hidden">
       <span class="flash-kicker">CLEAN SIT</span>

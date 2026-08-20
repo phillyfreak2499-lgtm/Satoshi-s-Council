@@ -91,15 +91,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try {
       if (typeof window.hydrateLiveHour === "function") window.hydrateLiveHour();
     } catch (e) {}
+    var lite = false;
     try {
-      if (typeof window.prefetchLeaderClickVideo === "function") window.prefetchLeaderClickVideo();
+      lite = !!(window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
+      if (storeGet("council_last_mode") === "stream") lite = true;
     } catch (e) {}
+    if (!lite) {
+      try {
+        if (typeof window.prefetchLeaderClickVideo === "function") window.prefetchLeaderClickVideo();
+      } catch (e) {}
+      try {
+        if (typeof window.loadFrontTable === "function") window.loadFrontTable();
+        if (typeof window.loadOracleTable === "function") window.loadOracleTable();
+      } catch (e) {}
+    }
     try {
       if (typeof window.loadHealthStrip === "function") window.loadHealthStrip();
-    } catch (e) {}
-    try {
-      if (typeof window.loadFrontTable === "function") window.loadFrontTable();
-      if (typeof window.loadOracleTable === "function") window.loadOracleTable();
     } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
@@ -2481,28 +2488,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // ——— Bot seat logos (circular, color outline follows call) ———
   // Cinematic people stills — same language as the chairs. Not logos.
   const BOT_ICON_FILES = {
-    candle: "/portraits/candle_btc.jpg?v=people-1",
-    candle_btc: "/portraits/candle_btc.jpg?v=people-1",
-    candle_eth: "/portraits/candle_eth.jpg?v=people-1",
-    volume: "/portraits/volume.jpg?v=people-1",
-    momentum: "/portraits/momentum.jpg?v=people-1",
-    orderflow: "/portraits/orderflow.jpg?v=people-1",
-    funding: "/portraits/funding.jpg?v=people-1",
+    candle: "/portraits/candle_btc.webp?v=people-2",
+    candle_btc: "/portraits/candle_btc.webp?v=people-2",
+    candle_eth: "/portraits/candle_eth.webp?v=people-2",
+    volume: "/portraits/volume.webp?v=people-2",
+    momentum: "/portraits/momentum.webp?v=people-2",
+    orderflow: "/portraits/orderflow.webp?v=people-2",
+    funding: "/portraits/funding.webp?v=people-2",
     regime: "/bots/orbit.png",
-    volatility: "/portraits/volatility.jpg?v=people-1",
-    oi_pressure: "/portraits/oi_pressure.jpg?v=people-1",
+    volatility: "/portraits/volatility.webp?v=people-2",
+    oi_pressure: "/portraits/oi_pressure.webp?v=people-2",
     streak: "/bots/streak.png",
-    odds: "/portraits/odds.jpg?v=people-1",
-    strike: "/portraits/strike.jpg?v=people-1",
-    session_tod: "/portraits/session_tod.jpg?v=people-1",
+    odds: "/portraits/odds.webp?v=people-2",
+    strike: "/portraits/strike.webp?v=people-2",
+    session_tod: "/portraits/session_tod.webp?v=people-2",
     whale: "/bots/whale.png",
-    quorum: "/portraits/quorum.jpg?v=people-1",
+    quorum: "/portraits/quorum.webp?v=people-2",
     panic: "/bots/fade.png",
-    cheap: "/portraits/cheap.jpg?v=people-1",
-    spotlag: "/portraits/spotlag.jpg?v=people-1",
-    exhaust: "/portraits/exhaust.jpg?v=people-1",
-    news: "/portraits/news.jpg?v=people-1",
-    liq: "/portraits/liq.jpg?v=people-1",
+    cheap: "/portraits/cheap.webp?v=people-2",
+    spotlag: "/portraits/spotlag.webp?v=people-2",
+    exhaust: "/portraits/exhaust.webp?v=people-2",
+    news: "/portraits/news.webp?v=people-2",
+    liq: "/portraits/liq.webp?v=people-2",
     guardian: "/bots/warden.png",
     law: "/bots/law.png",
     line: "/static/bots/line.png",
@@ -4590,7 +4597,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (!streamFaceCache[file]) {
       const img = new Image();
       img.onload = function () { try { if (mode === "stream") drawArt(); } catch (e) {} };
-      img.src = "/portraits/" + file + "?v=cinematic-oval-1";
+      img.src = "/portraits/" + String(file).replace(/\.jpg$/i,".webp") + "?v=people-2";
+      img.onerror = function () {
+        if (img.dataset.fb) return;
+        img.dataset.fb = "1";
+        img.src = "/portraits/" + String(file).replace(/\.webp$/i, ".jpg") + "?v=people-1";
+      };
       streamFaceCache[file] = img;
     }
     return streamFaceCache[file];
@@ -4770,10 +4782,16 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const sitWord = bag.sits === 1 ? "1 sit" : (bag.sits + " sits");
     const lockWord = bag.locks === 1 ? "1 lock" : (bag.locks + " locks");
     if (head) head.textContent = bag.locks ? "THE CHAIR SPOKE" : "THE CHAIR SAT";
-    if (line) line.textContent = sitWord + ". " + lockWord + "." + (bag.polaroid != null ? (" Polaroid " + bag.polaroid + "¢.") : " No chase.");
+    if (line) line.textContent = sitWord + ". " + lockWord + "." + (bag.polaroid != null ? (" Polaroid " + bag.polaroid + "¢.") : " No chase.") + " Tonight’s kata: name the wick.";
     streamShow("streamRecap", true);
-    try { speakChairLine((head && head.textContent) + ". " + (line && line.textContent)); } catch (e) {}
-    setTimeout(function () { streamShow("streamRecap", false); }, 8000);
+    try { speakChairLine((head && head.textContent) + ". Tonight's kata. Name the wick."); } catch (e) {}
+    const kataBtn = document.getElementById("recapKata");
+    if (kataBtn && !kataBtn.__wired) {
+      kataBtn.__wired = true;
+      kataBtn.style.pointerEvents = "auto";
+      kataBtn.addEventListener("click", function () { try { openDojoFromStream(); } catch (e) {} });
+    }
+    setTimeout(function () { streamShow("streamRecap", false); }, 12000);
   }
   function openJoinGate(next) {
     window.__joinNext = next || "ethereum";
@@ -4794,11 +4812,24 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (enter && !enter.__wired) {
       enter.__wired = true;
       enter.addEventListener("click", function () {
-        try { storeSet("council_joined", "1"); } catch (e) {}
-        closeJoinGate();
-        const next = window.__joinNext || "ethereum";
-        try { if (typeof setMode === "function") setMode("art"); } catch (e) {}
-        try { if (typeof window.setFocusTable === "function") window.setFocusTable(next); } catch (e) {}
+        enter.disabled = true;
+        enter.textContent = "Opening checkout…";
+        fetch("/api/billing/checkout", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" })
+          .then(function (r) { return r.json().catch(function () { return {}; }); })
+          .then(function (d) {
+            if (d && d.ok && d.url) { location.href = d.url; return; }
+            return fetch("/api/billing/status", { credentials: "include" }).then(function (r) { return r.json(); }).then(function (s) {
+              if (s && s.payment_link) { location.href = s.payment_link; return; }
+              enter.disabled = false;
+              enter.textContent = "I’m in · $25 · paper";
+              const err = document.getElementById("joinErr");
+              if (err) { err.textContent = "Stripe isn’t live on this desk yet. Set STRIPE_SECRET_KEY + STRIPE_PRICE_ID (or STRIPE_PAYMENT_LINK) on Render."; err.classList.remove("hidden"); }
+            });
+          })
+          .catch(function () {
+            enter.disabled = false;
+            enter.textContent = "I’m in · $25 · paper";
+          });
       });
     }
     if (stay && !stay.__wired) {
@@ -4816,6 +4847,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
   }
   try { wireJoinGate(); } catch (e) {}
+  (function claimJoinFromUrl() {
+    try {
+      const q = new URLSearchParams(location.search);
+      const sid = q.get("session_id");
+      if (q.get("join") === "1") {
+        openJoinGate("ethereum");
+      }
+      if (q.get("joined") === "1" && !sid) {
+        storeSet("council_joined", "1");
+        return;
+      }
+      if (!sid) return;
+      fetch("/api/billing/claim", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid })
+      }).then(function (r) { return r.json().catch(function () { return {}; }); }).then(function (d) {
+        if (d && d.ok) storeSet("council_joined", "1");
+      }).catch(function () {});
+    } catch (e) {}
+  })();
   function fireLockCeremony(chair) {
     if (__streamLockSpoken) return;
     __streamLockSpoken = true;

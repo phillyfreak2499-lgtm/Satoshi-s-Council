@@ -10106,3 +10106,10 @@ body.mode-stream .stream-train-ticker { pointer-events: none; }
 }
 .wire-quiet.hidden { display: none !important; }
 body.wire-quiet-on #statusDot { background: #c9a227; }
+.recap-kata {
+  margin-top: 12px;
+  pointer-events: auto;
+  font-size: .7rem;
+}
+#streamRecap { pointer-events: none; }
+#streamRecap .recap-kata { pointer-events: auto; }

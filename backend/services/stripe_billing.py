@@ -49,8 +49,8 @@ def create_checkout_session(account_id: str, email: Optional[str] = None) -> Dic
     stripe = _stripe()
     price = (os.environ.get("STRIPE_PRICE_ID") or "").strip()
     success = (os.environ.get("STRIPE_SUCCESS_URL")
-               or "http://localhost:8000/workspace?member=1&session_id={CHECKOUT_SESSION_ID}").strip()
-    cancel = (os.environ.get("STRIPE_CANCEL_URL") or "http://localhost:8000/workspace").strip()
+               or "https://satoshiscouncil.com/?joined=1&session_id={CHECKOUT_SESSION_ID}").strip()
+    cancel = (os.environ.get("STRIPE_CANCEL_URL") or "https://satoshiscouncil.com/?join=1").strip()
     key = (account_id or "anonymous").strip()
 
     params: Dict[str, Any] = {

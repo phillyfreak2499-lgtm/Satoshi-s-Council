@@ -532,7 +532,8 @@ async def workspace_review(request: Request):
 @app.get("/api/billing/status")
 async def billing_status():
     from backend.services import stripe_billing
-    return {"configured": bool(stripe_billing.configured())}
+    link = (os.environ.get("STRIPE_PAYMENT_LINK") or "").strip()
+    return {"configured": bool(stripe_billing.configured()), "payment_link": link or None}
 
 
 @app.post("/api/billing/checkout")
