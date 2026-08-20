@@ -39,8 +39,10 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "static"
 # Leader portraits keep the same URL when the signed still is swapped.
 # Phones cached the pre-#44 helmet/glow Vitalik at /vitalik-wait.jpg for 24h.
 # Short max-age here; JS also appends a content-hash query.
-LEADER_JPG_CACHE = {"Cache-Control": "public, max-age=60, must-revalidate"}
+LEADER_JPG_CACHE = {"Cache-Control": "public, max-age=86400"}
 ROOM_JPG_CACHE = {"Cache-Control": "public, max-age=86400"}
+ASSET_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+PORTRAIT_CACHE = {"Cache-Control": "public, max-age=604800"}
 PROTECTED_DIR = Path(__file__).resolve().parent.parent / "frontend" / "protected"
 DATA_DIR = Path(getattr(settings, "DATA_DIR", None) or (Path(__file__).resolve().parent.parent / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1832,7 +1834,12 @@ if STATIC_DIR.is_dir():
 
     portraits_dir = STATIC_DIR / "portraits"
     if portraits_dir.is_dir():
-        app.mount("/portraits", StaticFiles(directory=str(portraits_dir)), name="portraits")
+        class _PortraitCache(StaticFiles):
+            async def get_response(self, path: str, scope):
+                response = await super().get_response(path, scope)
+                response.headers["Cache-Control"] = PORTRAIT_CACHE["Cache-Control"]
+                return response
+        app.mount("/portraits", _PortraitCache(directory=str(portraits_dir)), name="portraits")
 
     campus_dir = STATIC_DIR / "campus"
     if campus_dir.is_dir():
@@ -1851,14 +1858,14 @@ if STATIC_DIR.is_dir():
     async def campus_tab_js():
         return _file_or_404(
             STATIC_DIR / "campus-tab.js", "application/javascript",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     @app.get("/campus-tab.css")
     async def campus_tab_css():
         return _file_or_404(
             STATIC_DIR / "campus-tab.css", "text/css",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     # Flat asset paths used by static/index.html (style.css, roundtable.js)
@@ -1866,35 +1873,35 @@ if STATIC_DIR.is_dir():
     async def style_css():
         return _file_or_404(
             STATIC_DIR / "style.css", "text/css",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     @app.get("/seat.js")
     async def seat_js():
         return _file_or_404(
             STATIC_DIR / "seat.js", "application/javascript",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     @app.get("/roundtable.js")
     async def roundtable_js():
         return _file_or_404(
             STATIC_DIR / "roundtable.js", "application/javascript",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     @app.get("/wire.js")
     async def wire_js():
         return _file_or_404(
             STATIC_DIR / "wire.js", "application/javascript",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     @app.get("/shrine-faces.js")
     async def shrine_faces_js():
         return _file_or_404(
             STATIC_DIR / "shrine-faces.js", "application/javascript",
-            {"Cache-Control": "no-store, no-cache, must-revalidate"},
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
     @app.get("/app.js")

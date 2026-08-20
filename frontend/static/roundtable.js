@@ -416,7 +416,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   document.body.classList.add("gate-locked");
   document.body.classList.remove("admin-unlocked", "desk-unlocked");
 
-  let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 800;
+  let POLL_MS = Number(localStorage.getItem("council_poll_ms")) || 2500;
+  const STREAM_POLL_MS = 7000;
+  const HIDDEN_POLL_MS = 15000;
+  function activePollMs() {
+    try { if (document.hidden) return HIDDEN_POLL_MS; } catch (e) {}
+    try { if (mode === "stream") return STREAM_POLL_MS; } catch (e) {}
+    return POLL_MS;
+  }
+  function restartPoll() {
+    try { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } } catch (e) {}
+    pollTimer = setInterval(poll, activePollMs());
+  }
   let beastMode = localStorage.getItem("council_beast") !== "0";
   let callSfxOn = localStorage.getItem("council_call_sfx") !== "0";
   let teamLoopsOn = localStorage.getItem("council_team_loops") !== "0";
@@ -583,10 +594,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const next = Number(s.ui_poll_ms) || (s.beast_mode ? 800 : 2500);
       if (next !== POLL_MS) {
         POLL_MS = next;
-        if (pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = setInterval(poll, POLL_MS);
-        }
+        restartPoll();
       }
     }
   }
@@ -10805,6 +10813,9 @@ function drawCandleChart() {
     } catch (e) {}
     const prevMode = mode;
     mode = next;
+    if (prevMode !== mode) {
+      try { restartPoll(); } catch (e) {}
+    }
     // Exactly one mode-* class and one .active pill — leftover ranks+charts lit two tabs
     syncExclusiveBodyMode(mode);
     syncExclusiveTabActive(mode);
@@ -10972,7 +10983,7 @@ function drawCandleChart() {
       console.warn("hydrateLiveHour failed", e);
     }
     try {
-      if (!pollTimer) pollTimer = setInterval(poll, POLL_MS);
+      if (!pollTimer) restartPoll();
     } catch (e) {}
   }
   window.hydrateLiveHour = hydrateLiveHour;
@@ -13012,7 +13023,8 @@ function drawCandleChart() {
   try { syncAutoBetVisibility(); } catch (e) {}
   try { wireAttractIdle(); } catch (e) {}
   poll();
-  pollTimer = setInterval(poll, POLL_MS);
+  restartPoll();
+  try { document.addEventListener("visibilitychange", restartPoll); } catch (e) {}
   animId = requestAnimationFrame(loop);
 })();
 
