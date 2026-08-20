@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Satoshi’s Council – Research Desk</title>
+  <title>Satoshi’s Council – Dojo</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19,7 +19,7 @@
       <div class="logo">
         <span class="glyph">⚔</span>
         <span class="title">SATOSHI’S COUNCIL</span>
-        <span class="tagline" style="font-size:11px; opacity:0.75; letter-spacing:0.5px; margin-left:10px;">Research Desk · Paper-first · Confluence required</span>
+        <span class="tagline" style="font-size:11px; opacity:0.75; letter-spacing:0.5px; margin-left:10px;">Dojo · Research desk · Paper-first</span>
         <span id="liveClock" class="live-clock" title="Central Time (America/Chicago)">--:--:-- CT</span>
       </div>
       <div class="controls">
@@ -27,7 +27,7 @@
           <span class="huddle-label">HUDDLE</span>
           <span id="huddleStatus" class="huddle-status">—</span>
         </div>
-        <div id="accuracyBadge" class="accuracy-badge cold" title="Chair paper hit-rate (WAIT excluded)">
+        <div id="accuracyBadge" class="accuracy-badge cold acc-locked" hidden title="Training record — Settings only">
           <div class="acc-col">
             <span class="acc-label">PAPER</span>
             <span id="accuracyPct" class="acc-pct">—</span>
@@ -48,6 +48,7 @@
           <button id="tabBots" class="mode-tab" data-mode="bots" title="What each bot does">Bots</button>
           <button id="tabRanks" class="mode-tab" data-mode="ranks" title="Live ranks & hit counts">Ranks</button>
           <button id="tabPaper" class="mode-tab" data-mode="paper" title="Paper trading log">Paper</button>
+          <button id="tabDojo" class="mode-tab" data-mode="school" title="The Dojo — train the process">Dojo</button>
           <button id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
           <button id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
         </div>
@@ -130,6 +131,16 @@
           <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
         </div>
 
+        <div class="beast-card" id="trainingCard">
+          <div class="beast-title">TRAINING RECORD</div>
+          <p class="settings-sub">Hits and misses train listen weight. Off the floor. Chair lock required.</p>
+          <div class="settings-grid">
+            <div class="set-row"><span>Settled</span><strong id="trainTotal">—</strong></div>
+            <div class="set-row"><span>Hits</span><strong id="trainHits">—</strong></div>
+            <div class="set-row"><span>Misses</span><strong id="trainMisses">—</strong></div>
+            <div class="set-row"><span>Hit rate</span><strong id="trainPct">—</strong></div>
+          </div>
+        </div>
         <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
       </div>
     </section>
@@ -226,8 +237,8 @@
           <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">—</span></header>
           <canvas id="chartTape"></canvas>
         </article>
-        <article class="chart-card">
-          <header class="chart-card-head"><span>HIT RATE</span><span class="chart-meta" id="chartAccMeta">—</span></header>
+        <article class="chart-card hidden acc-locked" hidden aria-hidden="true">
+          <header class="chart-card-head"><span>TRAINING</span><span class="chart-meta" id="chartAccMeta">—</span></header>
           <canvas id="chartAccuracy"></canvas>
         </article>
         <article class="chart-card">
@@ -258,9 +269,43 @@
         <span class="window-timer">⏱ <b id="windowTimer">—:——</b></span>
         <span>Funding <b id="funding">—</b></span>
         <span>Market <b id="kalshiTicker">—</b></span>
-        <span class="acc-strip">Record <b id="accuracyStrip">0/0 · —</b></span>
+        <span class="acc-strip acc-locked" hidden aria-hidden="true">Record <b id="accuracyStrip">0/0 · —</b></span>
       </div>
     </footer>
+  </div>
+
+    <section id="schoolView" class="info-view hidden" aria-label="The Dojo">
+      <div class="info-hero">
+        <h2>THE DOJO</h2>
+        <p>Train the process, not the P&L. Lessons never change a Council conclusion.</p>
+      </div>
+      <button type="button" id="schoolContinue" class="school-continue">START</button>
+      <p id="schoolStreak" class="school-streak">0 lessons this week</p>
+      <ol id="schoolList" class="school-list"></ol>
+      <article id="schoolLesson" class="school-lesson hidden">
+        <header class="school-lesson-head">
+          <button type="button" id="schoolBack" class="school-back">BACK</button>
+          <h3 id="schoolTitle">Lesson</h3>
+          <span id="schoolMins">6 min</span>
+        </header>
+        <p id="schoolIdea" class="school-idea"></p>
+        <div id="schoolBody" class="school-body"></div>
+        <p id="schoolCallout" class="school-callout"></p>
+        <div id="schoolQuiz" class="school-quiz">
+          <p id="schoolQ"></p>
+          <div id="schoolChoices" class="school-choices"></div>
+          <p id="schoolGrade" class="school-grade" hidden></p>
+          <button type="button" id="schoolNextQ" class="school-next" hidden>NEXT</button>
+        </div>
+      </article>
+    </section>
+
+  <div id="callWarn" class="call-warn hidden" role="alert" aria-live="assertive">
+    <div class="call-warn-card">
+      <p class="call-warn-kicker">Call switching</p>
+      <p class="call-warn-line"><span id="callWarnFrom">—</span><em>→</em><span id="callWarnTo">—</span></p>
+      <p class="call-warn-note">Stand down until the Chair settles.</p>
+    </div>
   </div>
 
   <script src="/roundtable.js"></script>

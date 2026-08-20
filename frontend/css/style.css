@@ -2454,3 +2454,25 @@ body.gate-locked #app { visibility: hidden; }
   mix-blend-mode: screen;
 }
 .summon-gate.fade-out { opacity: 0; transition: opacity 0.9s ease; pointer-events: none; }
+
+/* desk-dojo-art-lock */
+#accuracyBadge, .acc-locked, footer .acc-strip { display: none !important; }
+body.mode-floor #hierarchyPanel, body.mode-art #hierarchyPanel,
+body.floor-mode #hierarchyPanel { display: none !important; }
+.call-warn {
+  position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
+  background: rgba(3,3,3,0.78); pointer-events: none;
+}
+.call-warn.hidden { display: none !important; }
+.call-warn-card {
+  min-width: min(92vw, 420px); padding: 28px 36px 24px; text-align: center;
+  background: rgba(8,6,5,0.96); border: 1px solid #d4b36a; border-radius: 20px;
+}
+.call-warn-kicker { margin: 0 0 8px; letter-spacing: 0.28em; text-transform: uppercase; color: #d4b36a; font-size: 0.78rem; }
+.call-warn-line { margin: 0; display: flex; justify-content: center; gap: 0.55em; font-size: 1.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.call-warn-line em { font-style: normal; color: #d4b36a; }
+.call-warn-note { margin: 12px 0 0; color: #9a8f7c; }
+.info-view { padding: 28px 24px 80px; overflow: auto; }
+.school-list { list-style: none; padding: 0; }
+.school-pick { width: 100%; text-align: left; padding: 10px 12px; margin: 6px 0; }
+.school-lesson.hidden { display: none; }

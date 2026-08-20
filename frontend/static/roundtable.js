@@ -5820,6 +5820,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       hrVerdict.className = "hr-verdict " + String(verdict).replace(/\s+/g, "-");
       hrVerdict.title = (acc && acc.verdict_note) || "";
     }
+    const trainTotal = document.getElementById("trainTotal");
+    const trainHits = document.getElementById("trainHits");
+    const trainMisses = document.getElementById("trainMisses");
+    const trainPct = document.getElementById("trainPct");
+    const trainL20el = document.getElementById("trainL20");
+    const trainL50el = document.getElementById("trainL50");
+    if (trainTotal) trainTotal.textContent = String(total);
+    if (trainHits) trainHits.textContent = String(correct);
+    if (trainMisses) trainMisses.textContent = String(wrong);
+    if (trainPct) trainPct.textContent = pctText;
+    if (trainL20el) {
+      trainL20el.textContent = l20 && l20.accuracy_pct != null
+        ? (l20.accuracy_pct + "% (" + l20.correct + "/" + l20.total + ")")
+        : "—";
+    }
+    if (trainL50el) {
+      trainL50el.textContent = l50 && l50.accuracy_pct != null
+        ? (l50.accuracy_pct + "% (" + l50.correct + "/" + l50.total + ")")
+        : "—";
+    }
     if (logCount) logCount.textContent = total ? `${total} settled` : "all settled";
 
     if (accuracyBadge) {
@@ -10809,6 +10829,7 @@ function drawCandleChart() {
   function aliasDeskMode(next) {
     const n = String(next || "").toLowerCase();
     if (n === "bots" || n === "ranks" || n === "dashboard") return "seats";
+    if (n === "dojo" || n === "school") return "school";
     return n;
   }
   function isSeatsMode(m) {
@@ -10847,18 +10868,32 @@ function drawCandleChart() {
     try { renderDashboard(); } catch (e) {}
   }
 
-  // The Dojo tab launches the standalone Candle Dojo app (its own server) rather
-  // than switching a desk view. Address is configurable via window.DOJO_URL.
+  // Optional candle arcade (separate app). The Dojo tab is now the lesson desk.
   function openDojo() {
-    var url = (typeof window !== "undefined" && window.DOJO_URL) || "http://localhost:8080";
+    var url = (typeof window !== "undefined" && window.DOJO_URL) || "";
+    if (!url) return;
     try { window.open(url, "candle-dojo"); }
     catch (e) { try { window.location.href = url; } catch (e2) {} }
   }
   window.openDojo = openDojo;
 
+  function showCallWarn(from, to) {
+    const el = document.getElementById("callWarn");
+    const a = document.getElementById("callWarnFrom");
+    const b = document.getElementById("callWarnTo");
+    if (!el) return;
+    if (a) a.textContent = from || "—";
+    if (b) b.textContent = to || "—";
+    el.classList.remove("hidden");
+    clearTimeout(window.__callWarnTimer);
+    window.__callWarnTimer = setTimeout(function () {
+      el.classList.add("hidden");
+    }, 2800);
+  }
+  window.showCallWarn = showCallWarn;
+
   function setMode(next) {
     next = aliasDeskMode(next);
-    if (next === "dojo") { openDojo(); return; }
     if (!hasDeskAuth()) {
       document.body.classList.add("gate-locked");
       document.body.classList.remove("admin-unlocked");
@@ -10943,7 +10978,7 @@ function drawCandleChart() {
     const showBrain = mode === "brain";
     const showNews = mode === "news";
     const showWire = mode === "wire";
-    const showSchool = mode === "school";
+    const showSchool = mode === "school" || mode === "dojo";
     const showSide = mode === "side";
     const showFront = mode === "front";
     const showCalls = mode === "calls";
@@ -11002,7 +11037,7 @@ function drawCandleChart() {
     if (mode === "brain") loadBrainRecap();
     if (mode === "news") loadDeskNews();
     if (mode === "wire") loadDeskWire();
-    if (mode === "school") loadSchool();
+    if (mode === "school" || mode === "dojo") loadSchool();
     if (mode === "side") loadSideTable();
     if (mode === "front") loadFrontTable();
     if (mode === "calls") {
@@ -11252,10 +11287,11 @@ function drawCandleChart() {
     // Market-open bell when a new hourly window/contract appears
     maybeRingForNewWindow(state);
 
-    // Trigger brief glitch when decision changes
+    // Trigger brief glitch + a clear stand-down warning when the call switches
     if (prevDir && prevDir !== (d.direction || "WAIT")) {
       glitchUntil = performance.now() + 380;
       const nd = d.direction || "WAIT";
+      try { showCallWarn(prevDir, nd); } catch (e) {}
       if (nd !== lastSpokenDir) {
         lastSpokenDir = nd;
         playCallVoice(nd);

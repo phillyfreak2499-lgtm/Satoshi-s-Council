@@ -888,8 +888,9 @@ async def desk_news():
 
 
 @app.get("/api/school")
+@app.get("/api/dojo")
 async def desk_school():
-    """Short Floor lessons. Display only — never locks."""
+    """Dojo lessons (formerly School). Display only — never locks."""
     from backend.services.desk_school import school_payload
 
     return school_payload()

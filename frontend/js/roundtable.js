@@ -1450,6 +1450,14 @@
     if (accuracyFrac) accuracyFrac.textContent = `${correct} / ${total}`;
     if (detailEl) detailEl.textContent = `${correct}✓ · ${wrong}✗` + (pending ? ` · ${pending} open` : "");
     if (accuracyStrip) accuracyStrip.textContent = "Life " + label;
+    const trainTotal = document.getElementById("trainTotal");
+    const trainHits = document.getElementById("trainHits");
+    const trainMisses = document.getElementById("trainMisses");
+    const trainPctEl = document.getElementById("trainPct");
+    if (trainTotal) trainTotal.textContent = String(total);
+    if (trainHits) trainHits.textContent = String(correct);
+    if (trainMisses) trainMisses.textContent = String(wrong);
+    if (trainPctEl) trainPctEl.textContent = pctText;
     checkWinStreakCelebrate(acc);
     if (callLogMeta) callLogMeta.textContent = label;
 
@@ -2435,7 +2443,20 @@ function drawCandleChart() {
   }
 
 
+  function showCallWarn(from, to) {
+    const el = document.getElementById("callWarn");
+    const a = document.getElementById("callWarnFrom");
+    const b = document.getElementById("callWarnTo");
+    if (!el) return;
+    if (a) a.textContent = from || "—";
+    if (b) b.textContent = to || "—";
+    el.classList.remove("hidden");
+    clearTimeout(window.__callWarnTimer);
+    window.__callWarnTimer = setTimeout(function () { el.classList.add("hidden"); }, 2800);
+  }
+
   function setMode(next) {
+    if (next === "dojo") next = "school";
     mode = next;
     modeTabs.forEach(btn => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
@@ -2450,13 +2471,17 @@ function drawCandleChart() {
     const showRanks = mode === "ranks";
     const showPaper = mode === "paper";
     const showSettings = mode === "settings";
+    const showSchool = mode === "school";
     const showMain = mode === "art" || mode === "dashboard" || mode === "floor";
+    const schoolView = document.getElementById("schoolView");
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
     if (botsView) botsView.classList.toggle("hidden", !showBots);
     if (ranksView) ranksView.classList.toggle("hidden", !showRanks);
     if (paperView) paperView.classList.toggle("hidden", !showPaper);
     if (settingsView) settingsView.classList.toggle("hidden", !showSettings);
+    if (schoolView) schoolView.classList.toggle("hidden", !showSchool);
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
+    if (showSchool) { try { loadSchool(); } catch (e) {} }
     if (overlay) overlay.classList.toggle("hidden", mode !== "dashboard");
     if (mode === "floor") {
       try { resizeRoundtable(); drawArt(); } catch (e) {}
@@ -2549,6 +2574,7 @@ function drawCandleChart() {
 
     // Trigger brief glitch when decision changes
     if (prevDir && prevDir !== (d.direction || "WAIT")) {
+      try { showCallWarn(prevDir, d.direction || "WAIT"); } catch (e) {}
       glitchUntil = performance.now() + 380;
       const nd = d.direction || "WAIT";
       if (nd !== lastSpokenDir) {
@@ -3725,3 +3751,43 @@ function drawCandleChart() {
   // Also expose
   window.playSummonVideoThenReveal = playSummonVideoThenReveal;
 })();
+
+
+  async function loadSchool() {
+    const list = document.getElementById("schoolList");
+    if (!list || list.dataset.loaded === "1") return;
+    try {
+      const r = await fetch("/api/dojo", { cache: "no-store" });
+      const data = await r.json();
+      const lessons = (data && data.lessons) || [];
+      list.dataset.loaded = "1";
+      list.innerHTML = lessons.map(function (l) {
+        return '<li><button type="button" class="school-pick" data-lesson="' + l.id + '">'
+          + '<span class="school-n">' + l.n + "</span> " + l.title
+          + '<span class="school-min">' + l.minutes + " min</span></button></li>";
+      }).join("");
+      list.addEventListener("click", function (e) {
+        const btn = e.target.closest && e.target.closest(".school-pick");
+        if (!btn) return;
+        const les = lessons.find(function (x) { return x.id === btn.getAttribute("data-lesson"); });
+        if (!les) return;
+        const wrap = document.getElementById("schoolLesson");
+        const title = document.getElementById("schoolTitle");
+        const idea = document.getElementById("schoolIdea");
+        const body = document.getElementById("schoolBody");
+        const call = document.getElementById("schoolCallout");
+        const qEl = document.getElementById("schoolQ");
+        const box = document.getElementById("schoolChoices");
+        if (wrap) wrap.classList.remove("hidden");
+        if (title) title.textContent = les.title;
+        if (idea) idea.textContent = les.idea || "";
+        if (body) body.textContent = (les.body && les.body[0]) || "";
+        if (call) call.textContent = les.callout || "";
+        const quiz = les.quiz || [];
+        if (qEl) qEl.textContent = quiz[0] ? quiz[0].q : "";
+        if (box) box.innerHTML = (quiz[0] && quiz[0].choices || []).map(function (c, i) {
+          return '<button type="button" class="school-choice">' + c + "</button>";
+        }).join("");
+      });
+    } catch (e) {}
+  }

@@ -10748,3 +10748,77 @@ body.mode-seats #mainTable { display: none !important; }
 }
 .process-win-toast.show { opacity: 1; }
 .process-win-toast[hidden] { display: block; }
+
+/* desk-dojo-art-lock */
+#accuracyBadge.acc-locked,
+.acc-locked,
+.acc-strip.acc-locked,
+body.mode-art #accuracyBadge,
+body.mode-floor #accuracyBadge,
+body.mode-night #accuracyBadge,
+body.mode-school #accuracyBadge,
+#accuracyBadge {
+  display: none !important;
+}
+body.mode-art .acc-strip,
+body.mode-floor .acc-strip,
+body.mode-night .acc-strip,
+footer .acc-strip {
+  display: none !important;
+}
+body.mode-floor #lifetimePanel,
+body.mode-art #lifetimePanel,
+body.mode-night #lifetimePanel,
+body.mode-floor #hierarchyPanel,
+body.mode-art #hierarchyPanel,
+body.mode-night #hierarchyPanel {
+  display: none !important;
+}
+body.mode-school #tabDojo,
+body.mode-school #tabDojo.active {
+  color: var(--gold, #d4b36a);
+}
+.call-warn {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 3, 3, 0.78);
+  pointer-events: none;
+}
+.call-warn.hidden { display: none !important; }
+.call-warn-card {
+  min-width: min(92vw, 420px);
+  padding: 28px 36px 24px;
+  text-align: center;
+  background: rgba(8, 6, 5, 0.96);
+  border: 1px solid #d4b36a;
+  border-radius: 20px;
+  box-shadow: 0 0 40px rgba(212, 179, 106, 0.22);
+}
+.call-warn-kicker {
+  margin: 0 0 8px;
+  font-family: Orbitron, Rajdhani, sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #d4b36a;
+}
+.call-warn-line {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.55em;
+  font-family: Orbitron, Rajdhani, sans-serif;
+  font-size: clamp(1.35rem, 4vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f3ead8;
+}
+.call-warn-line em { font-style: normal; color: #d4b36a; }
+.call-warn-note { margin: 12px 0 0; color: #9a8f7c; font-size: 0.92rem; }
+#trainingCard .settings-sub { max-width: 52ch; }
+

@@ -1,4 +1,4 @@
-"""Desk School — Bitcoin research-desk lessons.
+"""Desk Dojo — Bitcoin research-desk lessons.
 
 Progressive lessons that teach the desk's process — reading the table,
 building a case, and running a personal review loop. They never change a
@@ -144,4 +144,10 @@ def school_payload() -> Dict[str, Any]:
         "note": "Research and teaching only. Lessons never change a Council conclusion.",
         "streak_label": "lessons this week",
         "paths": ["Beginner · Read the Table", "Intermediate · Build a Case", "Advanced · Personal Process"],
+        "title": "The Dojo",
     }
+
+
+def dojo_payload() -> Dict[str, Any]:
+    """Alias — the School was renamed the Dojo."""
+    return school_payload()

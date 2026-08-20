@@ -170,7 +170,7 @@
             <span class="huddle-label">HUDDLE</span>
             <span id="huddleStatus" class="huddle-status">—</span>
           </div>
-          <div id="accuracyBadge" class="accuracy-badge cold" title="CALL ACCURACY is the honest headline — of settled directional calls, how often BTC actually moved the called way (Accumulate → up, Reduce → down) from the moment of the call. It ignores the Kalshi strike, so near-decided 'chalk' windows can't inflate it. P&L (right) is the realized paper profit per 15m window. Both build as new calls settle.">
+          <div id="accuracyBadge" class="accuracy-badge cold acc-locked" hidden title="CALL ACCURACY is the honest headline — of settled directional calls, how often BTC actually moved the called way (Accumulate → up, Reduce → down) from the moment of the call. It ignores the Kalshi strike, so near-decided 'chalk' windows can't inflate it. P&L (right) is the realized paper profit per 15m window. Both build as new calls settle.">
             <div class="acc-col acc-move-lead" title="CALL / MOVE accuracy — did BTC move the called way (buy → up, sell → down) from the moment of the call, independent of the Kalshi strike. Chalk-immune: a 99¢ near-decided window can't game it. Builds as new calls settle.">
               <span class="acc-label">CALL ACCURACY</span>
               <span id="moveAccPct" class="acc-pct move">—</span>
@@ -211,7 +211,7 @@
              leaders (VITALIK / ARES / RAIJIN / ORACLE) live on the Round
              Table and in the debate panel, not as switchable market tabs. -->
         <button type="button" id="focusBtc" class="focus-tab focus-tab-center focus-active" title="SATOSHI — centre seat, final authority. The only seat that issues a call." aria-label="SATOSHI — centre seat, final authority" data-focus="bitcoin">SATOSHI<span class="focus-tab-mark" aria-hidden="true">★</span></button>
-        <span id="focusTableBadge" class="focus-table-badge" title="Bitcoin research desk" aria-label="Satoshi · final authority">SATOSHI · FINAL AUTHORITY</span>
+        <span id="focusTableBadge" class="focus-table-badge" title="Dojo · research desk" aria-label="Satoshi · final authority">SATOSHI · DOJO</span>
         <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art" title="Ambient round table — the council in the room">Table</button>
         <button type="button" id="tabFloor" class="mode-tab" data-mode="floor" title="Immersive floor — price, the council's call, and the bots">Floor</button>
         <button type="button" id="tabNight" class="mode-tab" data-mode="night" title="TV / screensaver — Floor only">Night</button>
@@ -219,7 +219,7 @@
         <button type="button" id="grpCalls" class="mode-tab mode-group" data-group="calls" title="The desk's live calls &amp; paper record — Calls, 15-min, Paper, Tape">Calls ▾</button>
         <button type="button" id="grpResearch" class="mode-tab mode-group" data-group="research" title="Does the desk verify? — Calibration, Backtest, Health">Research ▾</button>
         <button type="button" id="grpMarket" class="mode-tab mode-group" data-group="market" title="The market feeds — Book, News, Huddle">Market ▾</button>
-        <button type="button" id="tabDojo" class="mode-tab" data-mode="dojo" title="Candle Dojo — the pattern-language arcade. Opens the Dojo app in a new tab (it runs on its own server; set its address via window.DOJO_URL).">Dojo</button>
+        <button type="button" id="tabDojo" class="mode-tab" data-mode="school" title="The Dojo — train the process, not the P&L.">Dojo</button>
         <button type="button" id="tabCharts" class="mode-tab" data-mode="charts" title="Chart wall">Charts</button>
         <button type="button" id="tabWire" class="mode-tab" data-mode="wire" title="What changed on this desk — and why">Changes</button>
         <button type="button" id="tabSettings" class="mode-tab" data-mode="settings" title="System settings">Settings</button>
@@ -671,6 +671,20 @@
 
         <div id="adminDeskHost"></div>
 
+        <div class="beast-card settings-card" id="trainingCard">
+          <div class="beast-title">TRAINING RECORD</div>
+          <p class="settings-sub">Hits and misses train listen weight on the backend. They never appear on the floor or table. This card is inside Settings, behind the chair lock.</p>
+          <div class="settings-grid">
+            <div class="set-row"><span>Settled</span><strong id="trainTotal">—</strong></div>
+            <div class="set-row"><span>Hits</span><strong id="trainHits">—</strong></div>
+            <div class="set-row"><span>Misses</span><strong id="trainMisses">—</strong></div>
+            <div class="set-row"><span>Hit rate</span><strong id="trainPct">—</strong></div>
+            <div class="set-row"><span>Last 20</span><strong id="trainL20">—</strong></div>
+            <div class="set-row"><span>Last 50</span><strong id="trainL50">—</strong></div>
+          </div>
+          <p class="settings-foot">Wilson-style listen weight still grades specialists off-floor. Floor art stays clean.</p>
+        </div>
+
         <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
       </div>
     </section>
@@ -801,10 +815,10 @@
       </div>
     </section>
 
-    <section id="schoolView" class="info-view hidden" aria-label="School">
+    <section id="schoolView" class="info-view hidden" aria-label="The Dojo">
       <div class="info-hero">
-        <h2>SCHOOL</h2>
-        <p>Short lessons for WAIT periods. Display only — lessons never change a call.</p>
+        <h2>THE DOJO</h2>
+        <p>Train the process, not the P&L. Research and teaching only — lessons never change a Council conclusion.</p>
       </div>
       <button type="button" id="schoolContinue" class="school-continue">START · The hour</button>
       <p id="schoolStreak" class="school-streak">0 lessons this week</p>
@@ -1290,10 +1304,10 @@
           <canvas id="chartTape"></canvas>
           <ol id="chartTapeList" class="chart-lock-list" aria-label="Recent Council calls"></ol>
         </article>
-        <article class="chart-card">
-          <header class="chart-card-head"><span>DIRECTIONAL ACCURACY</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
+        <!-- Accuracy chart lives in Settings (admin lock), not on the chart wall. Canvas kept for JS bindings. -->
+        <article class="chart-card hidden acc-locked" hidden aria-hidden="true">
+          <header class="chart-card-head"><span>TRAINING</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
           <canvas id="chartAccuracy"></canvas>
-          <p class="chart-note">Settled directional calls only. Stand-downs are excluded, not counted against.</p>
         </article>
         <article class="chart-card">
           <header class="chart-card-head"><span>SEAT WEIGHTS</span><span class="chart-meta">adaptive</span></header>
@@ -1371,7 +1385,7 @@
         <span id="stripRisk" class="strip-risk" hidden title="Microstructure risk">RISK <b id="stripRiskState">—</b></span>
         <span id="stripFunding">Funding <b id="funding">—</b></span>
         <span id="stripKalshi" hidden>Market <b id="kalshiTicker">—</b></span>
-        <span class="acc-strip" title="Directional calls only — WAIT is excluded, not counted as a miss.">DIR <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
+        <span class="acc-strip acc-locked" hidden aria-hidden="true">DIR <b id="accuracyStrip">0/0</b> · ETH <b id="accuracyStripEth">0/0</b></span>
         <span class="acc-strip" id="stripProcess" title="Process quality — confluence rate and rule adherence.">PROC <b id="stripProcessPct">—</b></span>
         <span id="paperAutoSummary" class="paper-auto-summary">paper —</span>
       </div>
@@ -1462,6 +1476,14 @@
       <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
     </div>
   </template>
+
+  <div id="callWarn" class="call-warn hidden" role="alert" aria-live="assertive">
+    <div class="call-warn-card">
+      <p class="call-warn-kicker">Call switching</p>
+      <p class="call-warn-line"><span id="callWarnFrom">—</span><em>→</em><span id="callWarnTo">—</span></p>
+      <p class="call-warn-note">Stand down until the Chair settles.</p>
+    </div>
+  </div>
 
   <!-- Admin password modal (Settings / destructive actions) -->
   <div id="adminGate" class="admin-gate hidden" role="dialog" aria-modal="true" aria-label="Admin password">
