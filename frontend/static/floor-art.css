@@ -1,4 +1,4 @@
-/* Floor / Table = art. Accuracy stays in Settings. */
+/* Floor / Table = art only. Training numbers live in Settings. */
 #hitRateCard,
 #hrRoll,
 #hrProcess,
@@ -10,7 +10,27 @@
 .acc-locked,
 #leanGrade,
 .fs-grade,
-#leanSparkBox .lean-grade {
+#leanSparkBox,
+#leanSparkBox .lean-grade,
+#floorSplit,
+#floorCrawl,
+#lightsaberWrap,
+#chairWhy,
+#chairWhyReason,
+#healthStrip,
+#ztWatermark,
+#huddleBanner,
+#openChartsBtn,
+#floorRaijin,
+#learnChip,
+#huddleBadge,
+#lawBadge,
+#feedHealthPill,
+#beastBadge,
+#stillToggle,
+#soundToggle,
+#ztLogoBtn,
+#hiveBtn {
   display: none !important;
 }
 
@@ -20,43 +40,111 @@ body.mode-night #lifetimePanel,
 body.mode-floor #hierarchyPanel,
 body.mode-art #hierarchyPanel,
 body.mode-night #hierarchyPanel,
+body.mode-floor aside.side-panel,
+body.mode-art aside.side-panel,
+body.mode-night aside.side-panel,
 body.mode-floor #debatePanel,
 body.mode-art #debatePanel,
 body.mode-night #debatePanel,
-body.mode-floor #openChartsBtn,
-body.mode-art #openChartsBtn,
-body.mode-floor #floorRaijin,
-body.mode-art #floorRaijin,
-body.mode-floor #learnChip,
-body.mode-art #learnChip,
-body.mode-floor #huddleBadge,
-body.mode-art #huddleBadge,
-body.mode-floor #lawBadge,
-body.mode-art #lawBadge,
-body.mode-floor #feedHealthPill,
-body.mode-art #feedHealthPill,
-body.mode-floor #beastBadge,
-body.mode-art #beastBadge,
-body.mode-floor #healthStrip,
-body.mode-art #healthStrip {
+body.mode-floor footer,
+body.mode-art footer,
+body.mode-night footer,
+body.mode-floor .header-row .controls,
+body.mode-art .header-row .controls,
+body.mode-floor #floorHint,
+body.mode-art #floorHint {
   display: none !important;
 }
 
 body.mode-floor,
 body.mode-art,
-body.mode-night {
+body.mode-night,
+body.mode-floor #app,
+body.mode-art #app,
+body.mode-night #app {
   background: #030303 !important;
 }
 
 body.mode-floor #app,
 body.mode-art #app {
   background:
-    radial-gradient(ellipse at 50% 50%, #0a0908 0%, #030303 62%, #000 100%) !important;
+    radial-gradient(circle at 18% 22%, rgba(212, 179, 106, 0.07), transparent 18%),
+    radial-gradient(circle at 82% 78%, rgba(90, 140, 200, 0.05), transparent 22%),
+    radial-gradient(ellipse at 50% 50%, #0a0908 0%, #030303 58%, #000 100%) !important;
+}
+
+body.mode-floor #app::before,
+body.mode-art #app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 8% 12%, rgba(255,255,255,0.55), transparent),
+    radial-gradient(1px 1px at 22% 38%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 41% 18%, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 63% 8%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 78% 26%, rgba(255,255,255,0.55), transparent),
+    radial-gradient(1.5px 1.5px at 91% 14%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 14% 72%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(1px 1px at 33% 88%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 52% 64%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 71% 81%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 88% 69%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 6% 48%, rgba(255,255,255,0.25), transparent);
+  animation: dojo-glitter 5.4s ease-in-out infinite;
+}
+
+@keyframes dojo-glitter {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+body.mode-floor header,
+body.mode-art header {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  background: linear-gradient(180deg, rgba(3,3,3,0.82), transparent) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+body.mode-floor #mainTable,
+body.mode-art #mainTable {
+  position: fixed !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
 }
 
 body.mode-floor #tableStage,
 body.mode-art #tableStage {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: min(96vmin, 96vw) !important;
+  height: min(96vmin, 96vw) !important;
+  transform: translate(-50%, -50%) !important;
   background: transparent !important;
+  z-index: 2;
+}
+
+body.mode-floor #roundtable,
+body.mode-art #roundtable {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+body.mode-floor #callMarker,
+body.mode-art #callMarker {
+  z-index: 6;
 }
 
 #callWarn:not(.hidden) {
@@ -65,31 +153,32 @@ body.mode-art #tableStage {
   z-index: 80;
   display: grid !important;
   place-items: center;
-  background: rgba(3, 3, 3, 0.78);
+  background: rgba(3, 3, 3, 0.82);
 }
 #callWarn .call-warn-card {
-  min-width: min(92vw, 420px);
-  padding: 28px 36px 24px;
+  min-width: min(92vw, 480px);
+  padding: 32px 40px 28px;
   text-align: center;
   background: rgba(8, 6, 5, 0.96);
   border: 1px solid #d4b36a;
   border-radius: 20px;
   color: #f3ead8;
+  box-shadow: 0 0 48px rgba(212, 179, 106, 0.22);
 }
 #callWarn .call-warn-kicker {
   margin: 0 0 8px;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.32em;
   text-transform: uppercase;
   color: #d4b36a;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 #callWarn .call-warn-line {
   margin: 0;
-  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  font-size: clamp(1.6rem, 5vw, 2.6rem);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 #callWarn .call-warn-note {
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   color: #9a8f7c;
 }
