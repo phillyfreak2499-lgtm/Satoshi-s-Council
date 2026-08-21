@@ -12,31 +12,47 @@
   (function () {
     var n = 12;
     var boot = document.getElementById("boot");
-    function fail(err) {
-      boot.textContent = "Desk still loading. Wait one minute, then refresh.";
-    }
+    var tries = 0;
     function paint(html) {
-      if (!html || html.indexOf("passwordSubmit") === -1) { fail(); return; }
+      if (!html || html.indexOf("passwordSubmit") === -1) { throw new Error("bad desk"); }
       document.open();
       document.write(html);
       document.close();
     }
-    Promise.all(
-      Array.from({ length: n }, function (_, i) {
-        return fetch("/static/desk-" + i + ".b64?v=2", { cache: "no-store" }).then(function (r) {
-          if (!r.ok) throw new Error(r.status);
-          return r.text();
+    function attempt() {
+      tries += 1;
+      // Unique t= per attempt so the service worker's cache-first static
+      // branch can never serve a stale chunk from the outage.
+      var bust = "?v=3&t=" + Date.now() + "-" + tries;
+      Promise.all(
+        Array.from({ length: n }, function (_, i) {
+          return fetch("/static/desk-" + i + ".b64" + bust, { cache: "no-store" }).then(function (r) {
+            if (!r.ok) throw new Error(r.status);
+            return r.text();
+          });
+        })
+      )
+        .then(function (parts) {
+          var b64 = parts.join("").replace(/\s/g, "");
+          var bin = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+          if (typeof DecompressionStream === "undefined") throw new Error("no gzip");
+          return new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+        })
+        .then(paint)
+        .catch(function () {
+          boot.textContent = "Desk loading… retrying (" + tries + ")";
+          setTimeout(attempt, Math.min(8000, 2000 * tries));
         });
-      })
-    )
-      .then(function (parts) {
-        var b64 = parts.join("").replace(/\s/g, "");
-        var bin = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
-        if (typeof DecompressionStream === "undefined") throw new Error("no gzip");
-        return new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
-      })
-      .then(paint)
-      .catch(fail);
+    }
+    if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
+      // Drop any outage-era service worker before the first attempt; a new
+      // one re-registers once the restored desk paints.
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.unregister(); }));
+      }).catch(function () {}).then(attempt);
+    } else {
+      attempt();
+    }
   })();
   </script>
 </body>
