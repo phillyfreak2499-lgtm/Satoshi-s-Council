@@ -1506,6 +1506,11 @@ class PerformanceStore:
             await session.commit()
         if settled_n:
             logger.info(f"Settled {settled_n} call(s) [finish-only grade]")
+            try:
+                from backend.services.proof_cache import refresh_proof
+                await refresh_proof(self)
+            except Exception as e:
+                logger.debug(f"proof cache refresh skip: {e}")
         return settled_n
 
 
@@ -2253,6 +2258,36 @@ class PerformanceStore:
                 "direction": r.direction,
                 "shadow": bool(getattr(r, "shadow", 0)),
                 "vetoed": bool(getattr(r, "vetoed", 0)),
+            })
+        return out
+
+    async def proof_ledger_rows(self, limit: int = 5000, asset: str | None = "btc") -> List[Dict[str, Any]]:
+        """Cheap settled rows for the public proof page. No vote blobs, no N+1."""
+        cap = max(1, min(int(limit or 5000), 8000))
+        want = (asset or "btc").strip().lower()
+        async with self.Session() as session:
+            stmt = select(
+                WindowCall.direction,
+                WindowCall.correct,
+                WindowCall.regime_key,
+                WindowCall.ticker,
+                WindowCall.asset,
+            ).where(WindowCall.actual_outcome.isnot(None))
+            if want in ("btc", "bitcoin"):
+                stmt = stmt.where(WindowCall.ticker.like("KXBTC15M%"))
+            stmt = stmt.order_by(WindowCall.id.desc()).limit(cap)
+            rows = (await session.execute(stmt)).all()
+        out: List[Dict[str, Any]] = []
+        for direction, correct, regime_key, ticker, row_asset in rows:
+            if want in ("btc", "bitcoin") and not is_btc_15m_ticker(ticker):
+                continue
+            out.append({
+                "direction": direction,
+                "correct": correct,
+                "regime_key": regime_key,
+                "regime": regime_key,
+                "ticker": ticker,
+                "asset": row_asset,
             })
         return out
 

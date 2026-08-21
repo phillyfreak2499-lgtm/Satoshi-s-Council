@@ -27,6 +27,7 @@ from backend.services.admin_auth import WRONG as ADMIN_WRONG
 from backend.services.admin_auth import admin_configured, load_admin_password, verify_admin
 from backend.services.desk_access import unlock_result as desk_unlock_result
 from backend.services.state_poll import thin_poll_state
+from backend.services.proof_cache import get_proof_summary
 from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
 from backend.services.follower_gate import WRONG as FOLLOWER_WRONG
 from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerRuntime
@@ -169,6 +170,11 @@ async def _boot_council():
     """Hydrate + first Kalshi/candle fetch. Must not run before the HTTP port is bound."""
     try:
         await council.start()
+        try:
+            from backend.services.proof_cache import refresh_proof
+            await refresh_proof(council.store)
+        except Exception:
+            logger.debug("proof cache boot skip")
         logger.info(
             f"{settings.APP_NAME} online · analysis every {settings.ANALYSIS_INTERVAL}s · "
             f"http_timeout={settings.HTTP_TIMEOUT}s"
@@ -431,45 +437,10 @@ def _committed_finish_rows(rows):
 async def public_proof():
     """
     Public transparent record: counts, WAIT share, and directional evaluation
-    by regime. Counts are not an edge claim — sample size before any rate, and
-    WAIT is a process outcome, never a win. Paper research only.
+    by regime. Cached summary — rebuilt on settle, not 5k rows on every GET.
     """
-    try:
-        rows = await council.store.recent_settled_calls(limit=5000, asset="btc")
-    except Exception:
-        rows = []
-    directional = wait = hits = 0
-    by_horizon: dict = {}
-    for r in rows:
-        d = str(r.get("direction") or "").upper()
-        if d in ("", "WAIT"):
-            wait += 1
-            continue
-        # Only count genuinely committed finish calls the settler graded. Chalk /
-        # band / path legs (correct=None) are not directional forecasts and must
-        # not inflate the denominator or be re-graded by direction-vs-finish.
-        if r.get("correct") not in (0, 1):
-            continue
-        directional += 1
-        ok = 1 if r.get("correct") in (1, True) else 0
-        hits += ok
-        key = str(r.get("regime") or r.get("regime_key") or "15m")
-        b = by_horizon.setdefault(key, {"n": 0, "correct": 0})
-        b["n"] += 1
-        b["correct"] += ok
-    return {
-        "decision_records": directional + wait,
-        "wait_records": wait,
-        "records_by_asset": {"BTC": directional + wait},
-        "evaluation": {
-            "evaluated_directional_n": directional,
-            "wait_reviewed_n": wait,
-            "by_horizon": by_horizon,
-        },
-        "note": "Counts are not an edge claim. Sample size before any rate. "
-                "WAIT stays a process outcome and is never counted as a win. "
-                "The desk does not auto-trade or promise performance.",
-    }
+    body = await get_proof_summary(council.store)
+    return ORJSONResponse(body, headers={"Cache-Control": "public, max-age=30"})
 
 
 @app.get("/api/public/membership")
