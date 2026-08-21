@@ -92,7 +92,7 @@ class SwUnstickTests(unittest.TestCase):
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
         self.assertIn('cache: "no-store"', SW)
-        self.assertIn("20260821g", SW)
+        self.assertIn("20260821h", SW)
 
     def test_assembler_drops_old_workers(self) -> None:
         self.assertIn("getRegistrations", ASSEMBLER)
@@ -115,8 +115,9 @@ class DeskHtmlTests(unittest.TestCase):
         self.assertIn("acc-locked", badge)
         card = html.split('id="hitRateCard"', 1)[1].split(">", 1)[0]
         self.assertIn("hidden", card)
-        self.assertIn("sw.js?v=20260821g", html)
-        self.assertIn("roundtable.js?v=20260821g", html)
+        self.assertIn("sw.js?v=20260821h", html)
+        self.assertIn("roundtable.js?v=20260821h", html)
+        self.assertIn("desk-fx.js?v=20260821h", html)
         self.assertIn("updateViaCache", html)
 
     def test_gate_is_an_oath_not_a_password(self) -> None:
@@ -156,17 +157,27 @@ class RoundtableParseTests(unittest.TestCase):
         node = shutil.which("node") or shutil.which("nodejs")
         if not node:
             self.skipTest("node not on PATH")
-        r = subprocess.run(
-            [node, "--check", str(ROOT / "frontend" / "static" / "roundtable.js")],
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(r.returncode, 0, r.stderr or r.stdout)
+        for name in ("roundtable.js", "desk-fx.js"):
+            r = subprocess.run(
+                [node, "--check", str(ROOT / "frontend" / "static" / name)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, name + " " + (r.stderr or r.stdout))
+
+    def test_trailing_iifes_live_in_desk_fx(self) -> None:
+        fx = (ROOT / "frontend" / "static" / "desk-fx.js").read_text(encoding="utf-8")
+        self.assertNotIn("initFloorMoneyRain", ROUNDTABLE)
+        self.assertIn("initFloorMoneyRain", fx)
+        self.assertIn("initFloorMusic", fx)
+        self.assertIn("wireSettingsSaveFallback", fx)
+        self.assertIn("/desk-fx.js", (ROOT / "backend" / "main.py").read_text(encoding="utf-8"))
 
     def test_deploy_runs_parse_check(self) -> None:
         self.assertIn("scripts/check.py", RENDER)
         check_sh = (ROOT / "scripts" / "check.sh").read_text(encoding="utf-8")
         self.assertIn("node --check frontend/static/roundtable.js", check_sh)
+        self.assertIn("node --check frontend/static/desk-fx.js", check_sh)
 
     def test_admin_password_is_not_in_the_browser(self) -> None:
         self.assertNotIn("5152622439", ROUNDTABLE)

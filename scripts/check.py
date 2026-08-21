@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "frontend" / "static" / "roundtable.js"
+FX = ROOT / "frontend" / "static" / "desk-fx.js"
 
 
 def main() -> int:
@@ -23,11 +24,12 @@ def main() -> int:
         return 1
     node = shutil.which("node") or shutil.which("nodejs")
     if node:
-        r = subprocess.run([node, "--check", str(JS)], capture_output=True, text=True)
-        if r.returncode != 0:
-            sys.stderr.write(r.stderr or r.stdout or "node --check failed\n")
-            return r.returncode or 1
-        print("ok: node --check frontend/static/roundtable.js")
+        for path in (JS, FX):
+            r = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+            if r.returncode != 0:
+                sys.stderr.write(r.stderr or r.stdout or f"node --check {path.name} failed\n")
+                return r.returncode or 1
+            print(f"ok: node --check frontend/static/{path.name}")
         return 0
     print("warn: node not on PATH; skipped parse check (isPhoneDesk present)")
     return 0
