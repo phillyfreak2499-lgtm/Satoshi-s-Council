@@ -2,76 +2,217 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Satoshi’s Council</title>
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
-  <style>html,body{margin:0;background:#07070c;color:#c9a44a;font-family:sans-serif}#boot{padding:24px;line-height:1.45}button{margin-top:12px;background:transparent;color:#c9a44a;border:1px solid #c9a44a;border-radius:999px;padding:10px 16px}</style>
-</head>
-<body>
-  <p id="boot">Opening the desk…</p>
+  <meta name="description" content="Satoshi’s Council" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/fonts.css?v=20260821n" />
+  <link rel="stylesheet" href="/style.css?v=20260821n" />
+  <link rel="preload" as="font" href="/fonts/orbitron-700.woff2" type="font/woff2" crossorigin />
+  <script src="/seat.js?v=20260821n"></script>
   <script>
   (function () {
-    var n = 12;
-    var boot = document.getElementById("boot");
-    var tries = 0;
-    function paint(html) {
-      if (!html || html.indexOf("passwordSubmit") === -1) { throw new Error("bad desk"); }
-      document.open();
-      document.write(html);
-      document.close();
+    try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
+    var locked = false;
+    try { locked = localStorage.getItem("council_seat_locked") === "1"; } catch (e) {}
+    if (locked) {
+      document.documentElement.classList.add("desk-unlocked");
+      document.documentElement.classList.remove("gate-locked");
+      document.addEventListener("DOMContentLoaded", function () {
+        document.body.classList.add("desk-unlocked");
+        document.body.classList.remove("gate-locked");
+        var pg = document.getElementById("passwordGate");
+        if (pg) pg.classList.add("hidden");
+      });
+      return;
     }
-    function dropCaches() {
-      var jobs = [];
-      if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
-        jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
-          return Promise.all(regs.map(function (r) { return r.unregister(); }));
-        }));
-      }
-      if (window.caches && caches.keys) {
-        jobs.push(caches.keys().then(function (keys) {
-          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-        }));
-      }
-      return Promise.all(jobs).catch(function () {});
-    }
-    function attempt() {
-      tries += 1;
-      // Unique t= per attempt so a cache-first worker can never serve a
-      // stale chunk from the outage. v=4 is this unstick.
-      var bust = "?v=4&t=" + Date.now() + "-" + tries;
-      Promise.all(
-        Array.from({ length: n }, function (_, i) {
-          return fetch("/static/desk-" + i + ".b64" + bust, { cache: "no-store" }).then(function (r) {
-            if (!r.ok) throw new Error(r.status);
-            return r.text();
-          });
-        })
-      )
-        .then(function (parts) {
-          var b64 = parts.join("").replace(/\s/g, "");
-          var bin = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
-          if (typeof DecompressionStream === "undefined") throw new Error("no gzip");
-          return new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
-        })
-        .then(paint)
-        .catch(function () {
-          if (tries >= 3) {
-            boot.innerHTML = "Desk still loading (" + tries + "). On a phone that was stuck on this screen, clear site data for this site (Chrome → Site settings → Clear data), then reopen.";
-            var btn = document.createElement("button");
-            btn.type = "button";
-            btn.textContent = "Retry";
-            btn.onclick = function () { location.reload(); };
-            boot.appendChild(document.createElement("br"));
-            boot.appendChild(btn);
-            setTimeout(attempt, Math.min(12000, 2500 * tries));
-            return;
-          }
-          boot.textContent = "Desk loading… retrying (" + tries + ")";
-          setTimeout(attempt, Math.min(8000, 2000 * tries));
-        });
-    }
-    dropCaches().then(attempt);
+    document.documentElement.classList.add("gate-locked");
+    document.addEventListener("DOMContentLoaded", function () {
+      document.body.classList.add("gate-locked");
+      var pg = document.getElementById("passwordGate");
+      if (pg) pg.classList.remove("hidden");
+    });
   })();
+  </script>
+</head>
+<body class="gate-locked" data-password-protected="true">
+  <div id="passwordGate" class="password-gate">
+    <div class="password-card">
+      <img class="gate-mark" src="/council-mark.png" alt="" width="72" height="72" />
+      <div class="password-title">SATOSHI’S COUNCIL</div>
+      <div class="password-sub">One oath. One button. The TV turns on.</div>
+      <ul class="gate-oath" id="gateOath">
+        <li>PAPER ONLY. Ink on the slate — not cash on the wire.</li>
+        <li>NOT FINANCIAL ADVICE. The Chair talks. You still own the click.</li>
+        <li>18+ · grown seats only. No kids at this table.</li>
+        <li>NOT KALSHI. This desk is not Kalshi.</li>
+        <li>YOU CAN LOSE THE FULL STAKE. The whole chip can vanish.</li>
+        <li>NO PAST SCORE IS A PROMISE. Last hour does not own the next.</li>
+      </ul>
+      <div class="gate-sticky-actions" id="gateStickyActions">
+        <label class="gate-agree" for="gateAgree">
+          <input type="checkbox" id="gateAgree" />
+          <span>I agree. Paper. 18+. Eyes open.</span>
+        </label>
+        <div class="gate-summon-hit" id="gateSummonHit">
+          <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" aria-disabled="false">SUMMON THE COUNCIL</button>
+        </div>
+        <p id="passwordError" class="password-error hidden">Wrong password</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="summonGate" class="summon-gate hidden" aria-label="First visit">
+    <div id="gateInner" class="gate-inner">
+      <div class="gate-kicker">THE MAT IS OPEN</div>
+      <h1 class="gate-brand">SATOSHI’S<br/>COUNCIL</h1>
+      <p class="gate-tagline">Learn Bitcoin. Watch the Chair. Paper first.</p>
+      <button type="button" id="btnSummon" class="gate-btn gate-btn-summon">Summon the Council</button>
+    </div>
+  </div>
+
+  <div id="app">
+    <div id="ztWatermark" class="zt-watermark" aria-hidden="true"><img src="/council-mark.png" alt="" /></div>
+    <div class="floor-hint" id="floorHint">FLOOR</div>
+    <header>
+      <div class="header-row">
+        <div class="logo">
+          <button type="button" id="ztHeaderLogo" class="zt-header-logo" aria-label="Satoshi’s Council">
+            <img src="/council-mark.png" alt="" width="36" height="36" />
+          </button>
+          <span class="title">SATOSHI’S COUNCIL</span>
+          <span id="liveClock" class="live-clock">--:--:-- CT</span>
+        </div>
+        <div class="controls">
+          <div id="huddleBadge" class="huddle-badge"><span class="huddle-label">HUDDLE</span><span id="huddleStatus" class="huddle-status">—</span></div>
+          <div id="accuracyBadge" class="accuracy-badge cold hidden acc-locked" hidden>
+            <span id="accuracyPct" class="acc-pct">—</span>
+          </div>
+          <div id="lawBadge" class="law-badge"><span class="law-label">LAW</span><span id="lawStatus" class="law-status">OK</span></div>
+          <button type="button" id="beastBadge" class="beast-badge">BEAST</button>
+          <button type="button" id="soundToggle">🔔 Bell</button>
+          <button type="button" id="stillToggle">STILL</button>
+          <span id="statusDot" class="dot"></span>
+          <span id="lastUpdate">—</span>
+        </div>
+      </div>
+      <div class="mode-tabs-shell" id="modeTabsShell">
+        <div id="modeTabs" class="mode-tabs" role="tablist">
+          <button type="button" id="focusBtc" class="focus-tab" data-focus="bitcoin">BTC</button>
+          <button type="button" id="focusEth" class="focus-tab" data-focus="ethereum">ETH</button>
+          <button type="button" id="tabFloor" class="mode-tab" data-mode="floor">Floor</button>
+          <button type="button" id="tabStream" class="mode-tab" data-mode="stream">Stream</button>
+          <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art">Table</button>
+          <button type="button" id="tabSeats" class="mode-tab" data-mode="seats">Seats</button>
+          <button type="button" id="tabPaper" class="mode-tab" data-mode="paper">Paper</button>
+          <button type="button" id="tabCalls" class="mode-tab" data-mode="calls">Calls</button>
+          <button type="button" id="tabTape" class="mode-tab" data-mode="tape">Tape</button>
+          <button type="button" id="tabBook" class="mode-tab" data-mode="book">Book</button>
+          <button type="button" id="tabBrain" class="mode-tab" data-mode="brain">Brain</button>
+          <button type="button" id="tabNews" class="mode-tab" data-mode="news">News</button>
+          <button type="button" id="tabWire" class="mode-tab" data-mode="wire">WIRE</button>
+          <button type="button" id="tabSchool" class="mode-tab" data-mode="school">School</button>
+          <button type="button" id="tabCharts" class="mode-tab" data-mode="charts">Charts</button>
+          <button type="button" id="tabSettings" class="mode-tab" data-mode="settings">Settings</button>
+          <button type="button" id="btnHelp" class="mode-tab">?</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="mainTable">
+      <aside id="lifetimePanel" class="side-panel side-left">
+        <div id="windowLed" class="led-float led-window">
+          <div class="led-bezel">
+            <div class="led-label" id="ledWindowLabel">1H WINDOW</div>
+            <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+          </div>
+        </div>
+        <div id="hitRateCard" class="hit-rate-card hidden acc-locked" hidden>
+          <span id="hrPct" class="hr-pct">—</span>
+        </div>
+        <div id="callLog" class="call-log"></div>
+      </aside>
+      <div id="tableStage" class="table-stage">
+        <canvas id="roundtable" width="1100" height="780" role="img" aria-label="Satoshi table"></canvas>
+        <div id="deskLead" class="desk-lead hidden">
+          <span id="deskLeadKicker">WIND-UP</span>
+          <b id="deskLeadLine">Seats leaning. Chair sitting.</b>
+        </div>
+        <div id="chairWhy" class="chair-why">WAIT · —</div>
+      </div>
+      <aside id="debatePanel" class="side-panel side-right signal-feed">
+        <ol id="signalFeed" class="signal-feed-list"></ol>
+      </aside>
+    </main>
+
+    <section id="settingsView" class="info-view hidden">
+      <div class="settings-panel">
+        <header class="settings-head"><h2>SYSTEM</h2></header>
+        <div id="adminDeskHost"></div>
+        <div class="settings-actions">
+          <button type="button" class="gate-btn gate-btn-summon" id="btnSaveSettings">Save settings</button>
+        </div>
+      </div>
+    </section>
+    <section id="seatsView" class="info-view hidden"></section>
+    <section id="tapeView" class="info-view hidden"></section>
+    <section id="bookView" class="info-view hidden"></section>
+    <section id="brainView" class="info-view hidden"></section>
+    <section id="wireView" class="info-view hidden"><ol id="wireList" class="wire-list"></ol></section>
+    <section id="newsView" class="info-view hidden"></section>
+    <section id="schoolView" class="info-view hidden"></section>
+    <section id="callsView" class="info-view hidden">
+      <ol id="callsBoard" class="calls-board">
+        <li class="calls-row" data-call="bitcoin"><span class="calls-name">BTC</span><span class="calls-status">WAIT</span></li>
+        <li class="calls-row" data-call="ethereum"><span class="calls-name">ETH</span><span class="calls-status">WAIT</span></li>
+      </ol>
+    </section>
+    <section id="paperView" class="info-view hidden"></section>
+    <section id="chartsView" class="charts-view hidden">
+      <canvas id="chartBtc"></canvas>
+      <canvas id="chartEth"></canvas>
+    </section>
+    <footer>
+      <div id="finalDecision" class="status-strip">
+        <span class="label">COUNCIL</span>
+        <span id="decisionDir" class="dir WAIT">WAIT</span>
+        <span id="decisionSummary" class="decision-summary"></span>
+      </div>
+      <div id="marketStrip">
+        <span>BTC <b id="btcPrice">—</b></span>
+        <span>ETH <b id="ethPrice">—</b></span>
+      </div>
+    </footer>
+  </div>
+
+  <video id="summonVideo" preload="none" playsinline></video>
+  <video id="leaderClickVideo" preload="none" playsinline></video>
+
+  <div id="streamChrome" class="stream-chrome hidden">
+    <div id="streamWhy" class="stream-why">
+      <span class="sw-kicker">WHY</span>
+      <span id="streamWhyLine" class="sw-line">Waiting on the Chair</span>
+    </div>
+  </div>
+
+  <div id="adminGate" class="admin-gate hidden">
+    <div class="admin-card">
+      <input type="password" id="adminInput" class="password-input" autocomplete="off" />
+      <button type="button" id="adminSubmit" class="gate-btn gate-btn-summon">Unlock</button>
+      <p id="adminError" class="password-error hidden">Wrong password</p>
+    </div>
+  </div>
+
+  <script src="/wire.js?v=20260821n"></script>
+  <script src="/roundtable.js?v=20260821n"></script>
+  <script src="/desk-fx.js?v=20260821n"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js?v=20260821n", { updateViaCache: "none" }).catch(function () {});
+      });
+    }
   </script>
 </body>
 </html>
