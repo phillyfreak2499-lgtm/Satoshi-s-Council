@@ -4,36 +4,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Satoshi’s Council</title>
-  <style>html,body{margin:0;background:#07070c;color:#c9a44a;font-family:sans-serif}#boot{padding:24px}</style>
+  <style>html,body{margin:0;background:#07070c;color:#c9a44a;font-family:sans-serif}#boot{padding:24px;max-width:28rem}</style>
 </head>
 <body>
   <p id="boot">Opening the desk…</p>
   <script>
   (function () {
-    var n = 8;
-    var parts = new Array(n);
-    var left = n;
-    function done() {
-      if (--left) return;
-      var html = parts.join("");
-      if (html.indexOf("passwordSubmit") === -1) {
-        document.getElementById("boot").textContent = "Desk pieces still deploying. Wait 30s and refresh.";
-        return;
-      }
+    var urls = [
+      "https://cdn.jsdelivr.net/gh/phillyfreak2499-lgtm/Satoshi-s-Council@9cc3ec130c15e999d4ceff5b453ba3ef092ea083/frontend/static/index.html",
+      "https://raw.githubusercontent.com/phillyfreak2499-lgtm/Satoshi-s-Council/9cc3ec130c15e999d4ceff5b453ba3ef092ea083/frontend/static/index.html",
+      "https://cdn.jsdelivr.net/gh/phillyfreak2499-lgtm/Satoshi-s-Council@e3ce9c374431662f44e9417b813b17b2bc5d0a96/frontend/static/index.html",
+      "https://raw.githubusercontent.com/phillyfreak2499-lgtm/Satoshi-s-Council/e3ce9c374431662f44e9417b813b17b2bc5d0a96/frontend/static/index.html"
+    ];
+    function paint(html) {
       document.open();
       document.write(html);
       document.close();
     }
-    for (var i = 0; i < n; i++) {
-      (function (i) {
-        fetch("/index-p" + i + ".txt?v=desk1", { cache: "no-store" })
-          .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-          .then(function (t) { parts[i] = t; done(); })
-          .catch(function () {
-            document.getElementById("boot").textContent = "Desk pieces still deploying. Wait 30s and refresh.";
-          });
-      })(i);
+    function tryUrl(i) {
+      if (i >= urls.length) {
+        document.getElementById("boot").innerHTML =
+          "Could not load the desk from GitHub.<br>Turn off airplane mode, then refresh.";
+        return;
+      }
+      fetch(urls[i], { cache: "no-store", mode: "cors" })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function (t) {
+          if (!t || t.indexOf("passwordSubmit") === -1) throw new Error("bad html");
+          paint(t);
+        })
+        .catch(function () { tryUrl(i + 1); });
     }
+    tryUrl(0);
   })();
   </script>
 </body>
