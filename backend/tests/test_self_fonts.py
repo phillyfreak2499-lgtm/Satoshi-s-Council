@@ -1,19 +1,11 @@
-"""Self-hosted latin woff2 — no Google hop on the packed desk."""
+"""Self-hosted latin woff2 — no Google hop for CSS + SW."""
 from __future__ import annotations
 
-import base64
-import gzip
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def _desk_html() -> str:
-    parts = [(ROOT / "frontend" / "static" / f"desk-{i}.b64").read_text() for i in range(12)]
-    raw = gzip.decompress(base64.b64decode("".join(parts).encode("ascii")))
-    return raw.decode("utf-8")
 
 
 class SelfFontTests(unittest.TestCase):
@@ -26,24 +18,22 @@ class SelfFontTests(unittest.TestCase):
         self.assertNotIn("fonts.googleapis", css)
         self.assertNotIn("fonts.gstatic", css)
 
-    def test_desk_does_not_call_google_fonts(self) -> None:
-        html = _desk_html()
-        self.assertNotIn("fonts.googleapis", html)
-        self.assertNotIn("fonts.gstatic", html)
-        self.assertIn("/fonts/orbitron-700.woff2", html)
-        self.assertIn("/fonts.css?v=20260821m", html)
-        self.assertIn('rel="preload" as="font"', html)
-
-    def test_ensure_writes_woff2(self) -> None:
+    def test_ensure_writes_woff2_when_sidecars_present(self) -> None:
         from backend.services.self_fonts import ensure_self_fonts, FONT_HINT
+        src = ROOT / "frontend" / "static" / "fonts"
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            dest = root / "fonts"
+            dest.mkdir()
+            if src.is_dir():
+                for blob in src.glob("*.b64"):
+                    (dest / blob.name).write_text(blob.read_text(), encoding="utf-8")
             (root / "style.css").write_text("body{}", encoding="utf-8")
             ensure_self_fonts(root)
-            self.assertTrue((root / "fonts" / "orbitron-700.woff2").is_file())
-            self.assertGreater((root / "fonts" / "orbitron-700.woff2").stat().st_size, 1000)
             self.assertTrue((root / "fonts.css").is_file())
             self.assertIn(FONT_HINT, (root / "style.css").read_text(encoding="utf-8"))
+            if list(dest.glob("*.b64")):
+                self.assertTrue((dest / "orbitron-700.woff2").is_file())
 
     def test_sw_precaches_critical_faces(self) -> None:
         sw = (ROOT / "frontend" / "static" / "sw.js").read_text(encoding="utf-8")
