@@ -6,6 +6,14 @@
   var CAMPUS = String(window.CAMPUS_URL || "").replace(/\/$/, "");
   if (!CAMPUS) return;
 
+  function loadScreens() {
+    if (document.getElementById("screensJs")) return;
+    var s = document.createElement("script");
+    s.id = "screensJs";
+    s.src = "/screens.js?v=20260820s";
+    document.head.appendChild(s);
+  }
+
   function ensureView() {
     var view = document.getElementById("classroomView");
     if (view) return view;
@@ -55,7 +63,7 @@
     if (frame && frame.getAttribute("src") !== url) frame.src = url;
     view.classList.remove("hidden");
     document.body.classList.add("mode-classroom");
-    document.body.classList.remove("mode-school");
+    document.body.classList.remove("mode-school", "mode-screen1", "mode-screen2");
     document.querySelectorAll(".mode-tab").forEach(function (el) {
       var on = (path === "/dojo" && el.id === "tabDojo") || (path !== "/dojo" && el.id === "tabClassroom");
       el.classList.toggle("active", on);
@@ -65,7 +73,7 @@
     if (school) school.classList.add("hidden");
     var main = document.getElementById("mainTable");
     if (main) main.classList.add("hidden");
-    ["seatsView","paperView","settingsView","tapeView","bookView","brainView","newsView","wireView","callsView","chartsView","streamChrome"].forEach(function (id) {
+    ["seatsView","paperView","settingsView","tapeView","bookView","brainView","newsView","wireView","callsView","chartsView","streamChrome","screenOne","screenTwo"].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.classList.add("hidden");
     });
@@ -80,6 +88,7 @@
   function boot() {
     ensureTab();
     ensureView();
+    loadScreens();
   }
 
   if (document.readyState === "loading") {
