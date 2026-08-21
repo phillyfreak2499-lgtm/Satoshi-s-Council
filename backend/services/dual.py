@@ -114,6 +114,9 @@ class DualOrchestrator:
                 c.ensure_seat_shell("warming")
             except Exception as e:
                 logger.debug(f"seat shell {c.asset}: {e}")
+        # Sweep after both tables are painted. The official-finish pass is
+        # the ~90s wait; last-good seats+price should already be on /api/state.
+        for c in self._councils():
             try:
                 n = await c.sweep_official_finishes()
                 if n:

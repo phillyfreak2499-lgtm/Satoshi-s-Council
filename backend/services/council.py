@@ -1478,6 +1478,11 @@ class Council:
             "quorum": (self.learner.quorum_snapshot() if hasattr(self.learner, "quorum_snapshot") else {}),
         }
         self.latest_state = state
+        try:
+            from backend.services.desk_snapshot import save_desk_snapshot
+            save_desk_snapshot(self.asset, state)
+        except Exception:
+            pass
         logger.info(
             f"[{self.asset}/{self.leader_name}] Council: {decision['direction']} "
             f"({decision['confidence']}%) – {decision['summary']} "
@@ -1864,9 +1869,28 @@ class Council:
         """Read lifetime log + huddle from disk into latest_state.
 
         Used after deploy / process start so /api/state is not an empty
-        'Initializing… 50%' shell. Never deletes council.db, brain, or
+        'Initializing… 50%' shell. Prefers the last painted snapshot on
+        disk (seats + clock + price) so the table is not blank during the
+        official-finish sweep. Never deletes council.db, brain, or
         learning JSON — analyze_once also only reads get_accuracy.
         """
+        from backend.services.desk_snapshot import (
+            apply_snapshot_to_pipeline,
+            load_desk_snapshot,
+        )
+
+        snap = None
+        try:
+            snap = load_desk_snapshot(self.asset)
+        except Exception as e:
+            logger.debug(f"desk snapshot hydrate skip ({self.asset}): {e}")
+            snap = None
+        if snap:
+            try:
+                apply_snapshot_to_pipeline(self.pipeline, snap)
+            except Exception:
+                pass
+
         acc = None
         try:
             acc = await self.store.get_accuracy(asset=self.asset)
@@ -1883,6 +1907,28 @@ class Council:
         except Exception:
             huddle = None
         live = self.latest_state or {}
+        if snap and (snap.get("agents") or snap.get("market")):
+            seed = dict(snap)
+            seed["accuracy"] = acc if acc is not None else seed.get("accuracy") or {
+                "correct": 0, "total": 0, "wrong": 0, "accuracy_pct": None,
+                "pending": 0, "streak": 0, "wrong_streak": 0, "label": "0/0 · —",
+                "hydrating": True,
+            }
+            if huddle:
+                seed["huddle"] = huddle
+            seed["law"] = self.law.status()
+            seed["learning"] = self.learner.snapshot()
+            seed["hierarchy"] = self.learner.hierarchy_ranks()
+            seed["hydrating"] = True
+            seed["from_snapshot"] = True
+            seed["last_good"] = True
+            self.latest_state = seed
+            logger.info(
+                f"[{self.asset}] Desk painted from last snapshot "
+                f"seats={len(seed.get('agents') or [])} "
+                f"price={(seed.get('market') or {}).get('price')}"
+            )
+            return seed
         if live and (live.get("accuracy") or {}).get("hydrated"):
             # Keep a live analyze_once payload; only fill missing huddle.
             if huddle and not live.get("huddle"):

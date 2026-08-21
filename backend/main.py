@@ -1223,6 +1223,17 @@ def _file_or_404(path: Path, media_type: str, headers: dict | None = None) -> Re
     return FileResponse(path, media_type=media_type, headers=headers or {})
 
 
+def _file_image(stem: str, headers: dict | None = None, folder: Path | None = None) -> Response:
+    """Prefer WebP twin, then jpg/png. Missing asset is a 404, never a 500."""
+    base = Path(folder or STATIC_DIR)
+    cache = headers or LEADER_JPG_CACHE
+    for ext, mime in (("webp", "image/webp"), ("jpg", "image/jpeg"), ("jpeg", "image/jpeg"), ("png", "image/png")):
+        path = base / f"{stem}.{ext}"
+        if path.is_file():
+            return _file_or_404(path, mime, cache)
+    return Response(status_code=404)
+
+
 def _read_protected(name: str) -> Path | None:
     if name not in _PROTECTED_OK:
         return None
@@ -1814,32 +1825,37 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "workspace.html",
                             headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
-    # JS paints Ares from /static/ares-wait.png. The StaticFiles mount
-    # would serve that path with no Cache-Control. Register these first
-    # so they get the same short cache as the other leader stills.
+    # JS paints Ares / Raijin from /static/*.webp (png kept as fallback).
     @app.get("/static/ares-wait.png")
+    @app.get("/static/ares-wait.webp")
     def _static_ares_wait_png() -> Response:
-        wait = STATIC_DIR / "ares-wait.png"
-        path = wait if wait.is_file() else STATIC_DIR / "ares-chair.png"
-        return _file_or_404(path, "image/png", LEADER_JPG_CACHE)
+        return _file_image("ares-wait")
 
     @app.get("/static/ares-chair.png")
+    @app.get("/static/ares-chair.webp")
     def _static_ares_chair_png() -> Response:
-        return _file_or_404(STATIC_DIR / "ares-chair.png", "image/png", LEADER_JPG_CACHE)
+        return _file_image("ares-chair")
 
     @app.get("/static/bots/raijin-chair.png")
+    @app.get("/static/bots/raijin-chair.webp")
     def _static_raijin_cowboy_chair_png() -> Response:
-        return _file_or_404(STATIC_DIR / "bots" / "raijin-chair.png", "image/png", LEADER_JPG_CACHE)
+        return _file_image("raijin-chair", folder=STATIC_DIR / "bots")
 
     @app.get("/static/bots/raijin-wait.png")
+    @app.get("/static/bots/raijin-wait.webp")
     def _static_raijin_cowboy_wait_png() -> Response:
-        return _file_or_404(STATIC_DIR / "bots" / "raijin-wait.png", "image/png", LEADER_JPG_CACHE)
+        return _file_image("raijin-wait", folder=STATIC_DIR / "bots")
 
     class _StaticLeaderCache(StaticFiles):
         async def get_response(self, path: str, scope):
             response = await super().get_response(path, scope)
             name = str(path).rsplit("/", 1)[-1]
-            if name in ("ares-wait.png", "ares-chair.png", "raijin-chair.png", "raijin-wait.png"):
+            if name in (
+                "ares-wait.png", "ares-wait.webp",
+                "ares-chair.png", "ares-chair.webp",
+                "raijin-chair.png", "raijin-chair.webp",
+                "raijin-wait.png", "raijin-wait.webp",
+            ):
                 response.headers["Cache-Control"] = LEADER_JPG_CACHE["Cache-Control"]
             return response
 
@@ -2052,7 +2068,7 @@ if STATIC_DIR.is_dir():
             return Response(status_code=404)
         media = "image/png" if path.suffix == ".png" else "image/jpeg"
         return FileResponse(path, media_type=media,
-                            headers={"Cache-Control": "no-store"})
+                            headers={"Cache-Control": "public, max-age=604800"})
 
     @app.get("/zt-watermark.jpg")
     async def zt_watermark():
@@ -2064,65 +2080,96 @@ if STATIC_DIR.is_dir():
                             headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/chair-up.jpg")
+    @app.get("/chair-up.webp")
     async def chair_up():
-        return _file_or_404(STATIC_DIR / "chair-up.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("chair-up")
 
     @app.get("/chair-down.jpg")
+    @app.get("/chair-down.webp")
     async def chair_down():
-        return _file_or_404(STATIC_DIR / "chair-down.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("chair-down")
 
     @app.get("/chair-wait.jpg")
+    @app.get("/chair-wait.webp")
     async def chair_wait():
-        return _file_or_404(STATIC_DIR / "chair-wait.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("chair-wait")
 
     @app.get("/vitalik-up.jpg")
+    @app.get("/vitalik-up.webp")
     async def vitalik_up():
-        return _file_or_404(STATIC_DIR / "vitalik-up.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("vitalik-up")
 
     @app.get("/vitalik-down.jpg")
+    @app.get("/vitalik-down.webp")
     async def vitalik_down():
-        return _file_or_404(STATIC_DIR / "vitalik-down.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("vitalik-down")
 
     @app.get("/vitalik-wait.jpg")
+    @app.get("/vitalik-wait.webp")
     async def vitalik_wait():
-        return _file_or_404(STATIC_DIR / "vitalik-wait.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("vitalik-wait")
 
     # ORACLE is still a debate-leader face on the Round Table (synthesis /
     # process guardian). Its old CRT desk is gone; the portrait stays.
     @app.get("/oracle-wait.jpg")
+    @app.get("/oracle-wait.webp")
     async def oracle_wait():
-        return _file_or_404(STATIC_DIR / "oracle-wait.jpg", "image/jpeg",
-                            LEADER_JPG_CACHE)
+        return _file_image("oracle-wait")
 
     @app.get("/satoshi-shrine.jpg")
+    @app.get("/satoshi-shrine.webp")
     async def satoshi_shrine():
-        return _file_or_404(STATIC_DIR / "satoshi-shrine.jpg", "image/jpeg",
-                            ROOM_JPG_CACHE)
+        return _file_image("satoshi-shrine", ROOM_JPG_CACHE)
 
     @app.get("/vitalik-city.jpg")
+    @app.get("/vitalik-city.webp")
     async def vitalik_city():
-        return _file_or_404(STATIC_DIR / "vitalik-city.jpg", "image/jpeg",
-                            ROOM_JPG_CACHE)
+        return _file_image("vitalik-city", ROOM_JPG_CACHE)
+
+    @app.get("/ares-stadium.jpg")
+    @app.get("/ares-stadium.webp")
+    async def ares_stadium():
+        return _file_image("ares-stadium", ROOM_JPG_CACHE)
+
+    @app.get("/raijin-dallas.jpg")
+    @app.get("/raijin-dallas.webp")
+    async def raijin_dallas():
+        return _file_image("raijin-dallas", ROOM_JPG_CACHE)
+
+    @app.get("/oracle-room.jpg")
+    @app.get("/oracle-room.webp")
+    async def oracle_room():
+        return _file_image("oracle-room", ROOM_JPG_CACHE)
+
+    @app.get("/chair-sell.jpg")
+    @app.get("/chair-sell.webp")
+    async def chair_sell():
+        return _file_image("chair-sell")
+
+    @app.get("/raijin-up.jpg")
+    @app.get("/raijin-up.webp")
+    async def raijin_up():
+        return _file_image("raijin-up")
+
+    @app.get("/raijin-down.jpg")
+    @app.get("/raijin-down.webp")
+    async def raijin_down():
+        return _file_image("raijin-down")
+
+    @app.get("/raijin-wait.jpg")
+    @app.get("/raijin-wait.webp")
+    async def raijin_wait():
+        return _file_image("raijin-wait")
 
     @app.get("/hive-egg.png")
+    @app.get("/hive-egg.webp")
     async def hive_egg_png():
-        path = STATIC_DIR / "hive-egg.png"
-        if not path.exists():
-            from fastapi.responses import Response
-            return Response(status_code=404)
-        return FileResponse(path, media_type="image/png",
-                            headers={"Cache-Control": "public, max-age=86400"})
+        return _file_image("hive-egg", {"Cache-Control": "public, max-age=86400"})
 
     @app.get("/login-council.jpg")
+    @app.get("/login-council.webp")
     async def login_council_jpg():
-        return _file_or_404(STATIC_DIR / "login-council.jpg", "image/jpeg",
-                            {"Cache-Control": "public, max-age=86400"})
+        return _file_image("login-council", {"Cache-Control": "public, max-age=86400"})
 
 
 if __name__ == "__main__":

@@ -8750,7 +8750,7 @@ body.mode-art[data-chair-room="satoshi"] .table-stage {
   background-color: #0a0704 !important;
   background-image:
     linear-gradient(180deg, rgba(10, 7, 4, 0.28) 0%, rgba(10, 7, 4, 0.12) 42%, rgba(5, 3, 2, 0.50) 100%),
-    url("/satoshi-shrine.jpg") !important;
+    url("/satoshi-shrine.webp") !important;
   background-size: cover !important;
   background-position: center 42% !important;
   background-repeat: no-repeat !important;
@@ -8767,7 +8767,7 @@ body.mode-art[data-chair-room="vitalik"] .table-stage {
   background-color: #031014 !important;
   background-image:
     linear-gradient(180deg, rgba(3, 16, 20, 0.28) 0%, rgba(3, 16, 20, 0.12) 42%, rgba(2, 8, 12, 0.50) 100%),
-    url("/vitalik-city.jpg") !important;
+    url("/vitalik-city.webp") !important;
   background-size: cover !important;
   background-position: center 40% !important;
   background-repeat: no-repeat !important;
@@ -8784,7 +8784,7 @@ body.mode-art[data-chair-room="ares"] .table-stage {
   background-color: #02060e !important;
   background-image:
     linear-gradient(180deg, rgba(2, 6, 14, 0.30) 0%, rgba(2, 6, 14, 0.12) 42%, rgba(1, 3, 8, 0.52) 100%),
-    url("/ares-stadium.jpg") !important;
+    url("/ares-stadium.webp") !important;
   background-size: cover !important;
   background-position: center 38% !important;
   background-repeat: no-repeat !important;
@@ -8801,7 +8801,7 @@ body.mode-art[data-chair-room="raijin"] .table-stage {
   background-color: #06040c !important;
   background-image:
     linear-gradient(180deg, rgba(6, 4, 12, 0.30) 0%, rgba(6, 4, 12, 0.12) 42%, rgba(4, 2, 10, 0.52) 100%),
-    url("/raijin-dallas.jpg") !important;
+    url("/raijin-dallas.webp") !important;
   background-size: cover !important;
   background-position: center 36% !important;
   background-repeat: no-repeat !important;
@@ -8811,25 +8811,25 @@ body.mode-art[data-chair-room="raijin"] .table-stage {
   body.phone-floor[data-chair-room="satoshi"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(10, 7, 4, 0.72) 0%, rgba(10, 7, 4, 0.50) 42%, rgba(5, 3, 2, 0.78) 100%),
-      url("/satoshi-shrine.jpg") !important;
+      url("/satoshi-shrine.webp") !important;
   }
   body.phone-floor[data-chair-room="vitalik"] #tableStage,
   body.phone-floor[data-chair-room="vitalik"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(3, 16, 20, 0.72) 0%, rgba(3, 16, 20, 0.50) 42%, rgba(2, 8, 12, 0.78) 100%),
-      url("/vitalik-city.jpg") !important;
+      url("/vitalik-city.webp") !important;
   }
   body.phone-floor[data-chair-room="ares"] #tableStage,
   body.phone-floor[data-chair-room="ares"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(2, 6, 14, 0.74) 0%, rgba(2, 6, 14, 0.52) 42%, rgba(1, 3, 8, 0.80) 100%),
-      url("/ares-stadium.jpg") !important;
+      url("/ares-stadium.webp") !important;
   }
   body.phone-floor[data-chair-room="raijin"] #tableStage,
   body.phone-floor[data-chair-room="raijin"] .table-stage {
     background-image:
       linear-gradient(180deg, rgba(6, 4, 12, 0.74) 0%, rgba(6, 4, 12, 0.52) 42%, rgba(4, 2, 10, 0.80) 100%),
-      url("/raijin-dallas.jpg") !important;
+      url("/raijin-dallas.webp") !important;
   }
 }
 body[data-hour-weather="wild"][data-chair-room="satoshi"] #tableStage {
@@ -8856,7 +8856,7 @@ body[data-focus-table="oracle"] .table-stage {
   background-color: #06040c !important;
   background-image:
     linear-gradient(180deg, rgba(6, 4, 12, 0.28) 0%, rgba(6, 4, 12, 0.12) 42%, rgba(4, 2, 8, 0.55) 100%),
-    url("/oracle-room.jpg") !important;
+    url("/oracle-room.webp") !important;
   background-size: cover !important;
   background-position: center 40% !important;
   background-repeat: no-repeat !important;
@@ -9041,7 +9041,7 @@ body.mode-seats #mainTable { display: none !important; }
   overflow-x: clip !important;
   overflow-y: auto !important;
   background-color: #08080a !important;
-  background-image: url("/login-council.jpg") !important;
+  background-image: url("/login-council.webp") !important;
   background-size: cover !important;
   background-position: center 18% !important;
   background-repeat: no-repeat !important;

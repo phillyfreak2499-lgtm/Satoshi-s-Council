@@ -32,6 +32,34 @@ _SERIES = {"btc": "KXBTC15M", "eth": "KXETH"}
 _FETCH_TIMEOUT = httpx.Timeout(3.5, connect=2.0)
 _HEADERS = {"User-Agent": "SatoshiCouncil/1.0 paper-desk", "Accept": "application/json"}
 
+# Render Oregon is a restricted Binance location. Five 451s every cycle
+# cost ~3.5s on the only worker. Default: skip. Set TRY_BINANCE_COM=1
+# if you deploy somewhere Binance.com actually answers.
+_SKIP_COM = (os.environ.get("TRY_BINANCE_COM") or "").strip().lower() not in ("1", "true", "yes")
+_BLOCKED_HOSTS: set[str] = set()
+if _SKIP_COM:
+    _BLOCKED_HOSTS.update({"api.binance.com", "fapi.binance.com"})
+
+
+def _host(url: str) -> str:
+    try:
+        return url.split("/", 3)[2]
+    except Exception:
+        return ""
+
+
+def geo_blocked(url: str) -> bool:
+    return _host(url) in _BLOCKED_HOSTS
+
+
+def _note_451(url: str) -> None:
+    h = _host(url)
+    if not h or h in _BLOCKED_HOSTS:
+        return
+    _BLOCKED_HOSTS.add(h)
+    logger.info(f"geo-block latched {h} — skipping for this process")
+
+
 
 def _f(v: Any) -> Optional[float]:
     if v is None or v == "":
@@ -115,7 +143,8 @@ class DataPipeline:
             return await self._get(url, params)
         except httpx.HTTPStatusError as e:
             code = int(getattr(e.response, "status_code", 0) or 0)
-            # 451 is Binance geo-block from US/Render Oregon — expected, not a flap.
+            if code == 451:
+                _note_451(url)
             if code in (401, 403, 404, 418, 451):
                 logger.debug(f"{label}: HTTP {code}")
             else:
@@ -155,51 +184,45 @@ class DataPipeline:
         symbol = self.symbol
         okx_inst = _okx_inst(self.asset)
         cb_pair = _cb_pair(self.asset)
-        ticker_p = self._one("binance vision ticker", f"{BINANCE}/api/v3/ticker/price", {"symbol": symbol})
-        ticker_us_p = self._one("binance.us ticker", f"{BINANCE_US}/api/v3/ticker/price", {"symbol": symbol})
-        ticker_com_p = self._one("binance.com ticker", f"{BINANCE_COM}/api/v3/ticker/price", {"symbol": symbol})
-        cb_p = self._one("coinbase spot", f"{COINBASE}/v2/prices/{cb_pair}/spot")
-        klines_p = self._one(
-            "binance vision klines",
-            f"{BINANCE}/api/v3/klines",
-            {"symbol": symbol, "interval": "1m", "limit": 60},
-        )
-        klines_us_p = self._one(
-            "binance.us klines",
-            f"{BINANCE_US}/api/v3/klines",
-            {"symbol": symbol, "interval": "1m", "limit": 60},
-        )
-        kalshi_p = self._one(
-            "kalshi markets",
-            f"{KALSHI}/markets",
-            {"status": "open", "series_ticker": self.series_ticker, "limit": 1},
-        )
-        fund_p = self._one("binance funding", f"{FAPI}/fapi/v1/premiumIndex", {"symbol": symbol})
-        oi_p = self._one("binance oi", f"{FAPI}/fapi/v1/openInterest", {"symbol": symbol})
-        fund_hist_p = self._one(
-            "binance funding hist",
-            f"{FAPI}/fapi/v1/fundingRate",
-            {"symbol": symbol, "limit": 20},
-        )
-        ls_p = self._one(
-            "binance long/short",
-            f"{FAPI}/futures/data/globalLongShortAccountRatio",
-            {"symbol": symbol, "period": "5m", "limit": 2},
-        )
-        okx_fund_p = self._one("okx funding", f"{OKX}/api/v5/public/funding-rate", {"instId": okx_inst})
-        okx_oi_p = self._one("okx oi", f"{OKX}/api/v5/public/open-interest", {"instId": okx_inst})
-        okx_hist_p = self._one(
-            "okx funding hist",
-            f"{OKX}/api/v5/public/funding-rate-history",
-            {"instId": okx_inst, "limit": 20},
-        )
-        (
-            ticker, ticker_us, ticker_com, cb_spot, raw_klines, raw_klines_us, book,
-            prem, oi_raw, fund_hist, ls_raw, okx_fund, okx_oi, okx_hist,
-        ) = await asyncio.gather(
-            ticker_p, ticker_us_p, ticker_com_p, cb_p, klines_p, klines_us_p, kalshi_p,
-            fund_p, oi_p, fund_hist_p, ls_p, okx_fund_p, okx_oi_p, okx_hist_p,
-        )
+        jobs: list = []
+        keys: list = []
+
+        def add(label: str, url: str, params: Optional[dict] = None) -> None:
+            if geo_blocked(url):
+                return
+            jobs.append(self._one(label, url, params))
+            keys.append(label)
+
+        add("vision", f"{BINANCE}/api/v3/ticker/price", {"symbol": symbol})
+        add("us", f"{BINANCE_US}/api/v3/ticker/price", {"symbol": symbol})
+        add("com", f"{BINANCE_COM}/api/v3/ticker/price", {"symbol": symbol})
+        add("coinbase", f"{COINBASE}/v2/prices/{cb_pair}/spot")
+        add("klines", f"{BINANCE}/api/v3/klines", {"symbol": symbol, "interval": "1m", "limit": 60})
+        add("klines_us", f"{BINANCE_US}/api/v3/klines", {"symbol": symbol, "interval": "1m", "limit": 60})
+        add("kalshi", f"{KALSHI}/markets", {"status": "open", "series_ticker": self.series_ticker, "limit": 1})
+        add("fund", f"{FAPI}/fapi/v1/premiumIndex", {"symbol": symbol})
+        add("oi", f"{FAPI}/fapi/v1/openInterest", {"symbol": symbol})
+        add("fund_hist", f"{FAPI}/fapi/v1/fundingRate", {"symbol": symbol, "limit": 20})
+        add("ls", f"{FAPI}/futures/data/globalLongShortAccountRatio", {"symbol": symbol, "period": "5m", "limit": 2})
+        add("okx_fund", f"{OKX}/api/v5/public/funding-rate", {"instId": okx_inst})
+        add("okx_oi", f"{OKX}/api/v5/public/open-interest", {"instId": okx_inst})
+        add("okx_hist", f"{OKX}/api/v5/public/funding-rate-history", {"instId": okx_inst, "limit": 20})
+        raw = await asyncio.gather(*jobs) if jobs else []
+        got = dict(zip(keys, raw))
+        ticker = got.get("vision")
+        ticker_us = got.get("us")
+        ticker_com = got.get("com")
+        cb_spot = got.get("coinbase")
+        raw_klines = got.get("klines")
+        raw_klines_us = got.get("klines_us")
+        book = got.get("kalshi")
+        prem = got.get("fund")
+        oi_raw = got.get("oi")
+        fund_hist = got.get("fund_hist")
+        ls_raw = got.get("ls")
+        okx_fund = got.get("okx_fund")
+        okx_oi = got.get("okx_oi")
+        okx_hist = got.get("okx_hist")
 
         price, spot_source = pick_spot(ticker, ticker_us, cb_spot, ticker_com)
         candles = []
