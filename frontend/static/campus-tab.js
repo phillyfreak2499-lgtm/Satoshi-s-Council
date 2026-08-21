@@ -10,7 +10,7 @@
     if (document.getElementById("screensJs")) return;
     var s = document.createElement("script");
     s.id = "screensJs";
-    s.src = "/screens.js?v=20260820s";
+    s.src = "/static/screens.js?v=20260820s";
     document.head.appendChild(s);
   }
 
