@@ -26,6 +26,7 @@ from backend.services.runtime_settings import runtime_settings
 from backend.services.admin_auth import WRONG as ADMIN_WRONG
 from backend.services.admin_auth import admin_configured, load_admin_password, verify_admin
 from backend.services.desk_access import unlock_result as desk_unlock_result
+from backend.services.state_poll import thin_poll_state
 from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
 from backend.services.follower_gate import WRONG as FOLLOWER_WRONG
 from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerRuntime
@@ -194,8 +195,6 @@ async def require_desk_session(request: Request, call_next):
             "/api/billing/webhook", "/api/billing/status",
             "/api/billing/checkout", "/api/billing/claim",
         }
-        # Stream is the free TV. Chair state is read-only.
-        or (request.method == "GET" and request.url.path == "/api/state")
     ):
         return await call_next(request)
     if _desk_ok(request):
@@ -289,13 +288,17 @@ async def health():
 
 @app.get("/api/state")
 async def get_state(response: Response):
-    """Primary endpoint polled by the Round Table. Cache-Control: no-store for live."""
+    """Primary endpoint polled by the Round Table. Desk session required.
+
+    Thin on purpose: decision, clock, seat directions, health flags.
+    Accuracy / weights / hierarchy / learning / huddle / lifetime stay
+    on their own gated routes. Cache-Control: no-store for live.
+    """
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     state = council.get_state()
-    # Surface server-side lag for the UI
     if isinstance(state, dict):
-        state = _strip_public_auto_bet(dict(state))
+        state = thin_poll_state(_strip_public_auto_bet(dict(state)))
         state["server_time"] = time.time()
     return state
 

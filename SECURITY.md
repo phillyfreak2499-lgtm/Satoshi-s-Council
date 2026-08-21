@@ -7,16 +7,19 @@ Satoshi’s Council is a web app. The browser must load HTML/JS/CSS — that par
 1. **Access is gated by server-side desk sessions.**
    Unlocking the desk mints a random `secrets.token_urlsafe(32)` token that is stored **server-side** (in `_desk_sessions`) and set as an HttpOnly `council_desk` cookie (`SameSite=lax`, 12h idle expiry). The token is **not derived from any secret**, so it cannot be forged; it is **revocable** at any time by dropping the server-side entry. This is stronger than a signed/stateless cookie (which cannot be revoked before expiry and forges en masse if the signing secret leaks).
 
-2. **A middleware gates the entire API.**
-   `require_desk_session` returns **401 on every `/api/*` request** except `OPTIONS` (CORS preflight) and `/api/desk/unlock`. The static shell (`/`, `/static/*`, `/templates/*`) and `/health` load without a session; nothing live — state, reasoning, history, process metrics, calibration, backtest — is served until the desk is unlocked.
+2. **A middleware gates the entire API, including `GET /api/state`.**
+   `require_desk_session` returns **401 on every `/api/*` request** except `OPTIONS` (CORS preflight), `/api/desk/unlock`, `/api/public/*`, and the listed billing webhooks. The static shell (`/`, `/static/*`, `/templates/*`) and `/health` load without a session.
 
-3. **Desk unlock is brute-force throttled.**
+3. **`GET /api/state` is a thin poll, not the research book.**
+   After a desk session is minted, `/api/state` returns **decision, clock, seat directions, and health flags only** (target < 30 KB). It does **not** include accuracy, weights, hierarchy, learning, huddle, or lifetime logs. Those live on their own gated routes (`/api/accuracy`, `/api/learning`, `/api/huddle`, `/api/lifetime`, `/api/council/ranks`). A scraper without the cookie gets 401, not a megabyte of edge.
+
+4. **Desk unlock is brute-force throttled.**
    `AttemptLimiter` allows **8 failed attempts per 15 minutes per IP**; further attempts return a generic wrong-password result (no lockout signal is leaked). The password itself is compared with `hmac.compare_digest`.
 
-4. **Admin stays fail-closed.**
-   If `COUNCIL_ADMIN_PASSWORD` is unset, admin routes (brain export, forced analyze, settings writes, seat backfill) stay **closed**.
+5. **Admin stays fail-closed.**
+   If `COUNCIL_ADMIN_PASSWORD` is unset, admin routes (brain export, forced analyze, settings writes, seat backfill) stay **closed**. The admin password is **never** stored in frontend JS.
 
-5. **Follower / live-order path is session-gated and idempotent.**
+6. **Follower / live-order path is session-gated and idempotent.**
    The Follower bundle and live paths require the follower session cookie. Live orders additionally require a per-order idempotency key (16–160 chars, deduped per session) and reserve daily risk/contract exposure **atomically** before the broker call, releasing it if the order never routes — so concurrent requests cannot both exceed a cap and a failed route cannot silently consume the day’s book.
 
 > Paper-only by default: the desk places no live orders unless the Follower is explicitly armed. Live routing and the Follower stay **off** by default.
@@ -53,11 +56,12 @@ COINGLASS_API_KEY=...        # optional; enables funding/OI/liquidations
 1. Incognito, no unlock → `GET /api/state` returns **401** (the whole API is gated).
 2. `GET /health` returns **200** without a session (intended — liveness only).
 3. Correct desk unlock → subsequent `/api/*` calls succeed (the `council_desk` cookie is set).
-4. Eight wrong unlock attempts within 15 min → further attempts are throttled.
-5. Without `COUNCIL_ADMIN_PASSWORD` set → admin routes (e.g. brain export) return **401**.
+4. Unlocked `GET /api/state` is **under 30 KB** and has no `accuracy` / `weights` / `hierarchy` / `learning` / `huddle` keys.
+5. Eight wrong unlock attempts within 15 min → further attempts are throttled.
+6. Without `COUNCIL_ADMIN_PASSWORD` set → admin routes (e.g. brain export) return **401**.
 
 If any of those fail, stop and fix before exposing the desk.
 
 ## Note on a future free tier
 
-The desk is currently **fully gated** — there is no thinned public data view. If a free→paid conversion funnel is added later, keep the server-side desk sessions and relax the middleware to serve only a **thinned** `/api/state` publicly; do not switch to stateless signed cookies, which are weaker and non-revocable.
+The live poll is **session-gated and thinned**. Do not add a public unauthenticated `/api/state`. If a free→paid funnel needs a teaser, serve a **separate** `/api/public/*` snapshot with no seats, no clock edge, and no learning — and keep the desk session cookie as the gate for the real poll. Do not switch to stateless signed cookies, which are weaker and non-revocable.
