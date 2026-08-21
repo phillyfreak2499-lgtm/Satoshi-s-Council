@@ -17,7 +17,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   try { document.body.classList.add("side-tab-off"); } catch (e) {}
 
   /* ===== ADMIN (must be early — Settings tab depends on these) ===== */
-  const ADMIN_PASSWORD = "5152622439";
   const ADMIN_KEY = "council_admin_unlocked";
   const DESK_KEY = "council_auth_ok";
   const ONBOARD_KEY = "council_onboarded";
@@ -195,13 +194,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     submit.__wired = true;
     const tryUnlock = () => {
       const val = (input && input.value) || "";
-      if (val === ADMIN_PASSWORD) {
-        setAdminUnlocked(true);
-        if (err) err.classList.add("hidden");
-        closeAdminGate(true);
-      } else {
+      fetch("/api/admin/verify", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: val })
+      }).then((r) => r.json()).then((data) => {
+        if (data && data.ok) {
+          setAdminUnlocked(true);
+          if (err) err.classList.add("hidden");
+          closeAdminGate(true);
+        } else {
+          if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
+        }
+      }).catch(() => {
         if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
-      }
+      });
     };
     submit.addEventListener("click", tryUnlock);
     if (input && !input.__hotkeysSwallowed) {
@@ -219,8 +227,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   }
   async function adminFetch(url, opts) {
     opts = opts || {};
-    opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
+    opts.credentials = "same-origin";
+    opts.headers = Object.assign({}, opts.headers || {});
     return fetch(url, opts);
+  }
+  async function adminDownload(url, filename) {
+    const r = await adminFetch(url, { credentials: "same-origin" });
+    if (!r.ok) throw new Error("download " + r.status);
+    const blob = await r.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(href); } catch (e) {} }, 2000);
   }
   function wireAdminTools() {
     const st = () => document.getElementById("adminToolsStatus");
@@ -263,13 +285,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       exportBtn.__wired = true;
       exportBtn.addEventListener("click", () => {
         requestAdminUnlock(() => {
-          const a = document.createElement("a");
-          a.href = "/api/admin/export.xlsx?admin=" + encodeURIComponent(ADMIN_PASSWORD);
-          a.download = "satoshi-council-log.xlsx";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          if (st()) st().textContent = "Excel download started…";
+          adminDownload("/api/admin/export.xlsx", "satoshi-council-log.xlsx").then(() => {
+            if (st()) st().textContent = "Excel download started…";
+          }).catch((e) => { if (st()) st().textContent = "Export failed: " + e; });
         });
       });
     }
@@ -280,14 +298,13 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         e.preventDefault();
         e.stopPropagation();
         requestAdminUnlock(() => {
-          const a = document.createElement("a");
-          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
-          a.download = "satoshi-council-brain.json";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          const bs = document.getElementById("brainStatus");
-          if (bs) bs.textContent = "Brain download started…";
+          adminDownload("/api/brain/export", "satoshi-council-brain.json").then(() => {
+            const bs = document.getElementById("brainStatus");
+            if (bs) bs.textContent = "Brain download started…";
+          }).catch((e) => {
+            const bs = document.getElementById("brainStatus");
+            if (bs) bs.textContent = "Brain export failed: " + e;
+          });
         });
       });
     }
@@ -295,7 +312,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   // Expose for any late handlers
   window.isAdminUnlocked = isAdminUnlocked;
   window.requestAdminUnlock = requestAdminUnlock;
-  window.ADMIN_PASSWORD = ADMIN_PASSWORD;
 
   /* Admin-only desk extensions are fetched after Settings unlock. Not a public route. */
   let adminExtBooted = false;
@@ -687,9 +703,6 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       "Content-Type": "application/json",
       Accept: "application/json",
     };
-    if (typeof isAdminUnlocked === "function" && isAdminUnlocked() && body && body.auto_bet) {
-      headers["X-Council-Admin"] = ADMIN_PASSWORD;
-    }
     const r = await fetch(url, {
       method: "POST",
       headers,
@@ -13823,191 +13836,6 @@ function drawCandleChart() {
   }
 })();
 
-
-
-/* ===== ADMIN PASSWORD + SELECTIVE CLEARS + EXCEL ===== */
-(function () {
-  const ADMIN_PASSWORD = "5152622439";
-  const ADMIN_KEY = "council_admin_unlocked";
-  try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
-  try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
-  document.body.classList.remove("admin-unlocked");
-
-  window.isAdminUnlocked = function isAdminUnlocked() {
-    try { return sessionStorage.getItem(ADMIN_KEY) === "1" && !!window.__adminUnlockedThisPage; } catch (e) { return !!window.__adminUnlockedThisPage; }
-  };
-  function setAdminUnlocked(on) {
-    try { sessionStorage.setItem(ADMIN_KEY, on ? "1" : "0"); } catch (e) {}
-    try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
-    if (on) window.__adminUnlockedThisPage = true;
-    document.body.classList.toggle("admin-unlocked", !!on);
-    ["accuracyBadge", "hitRateCard", "hrRoll", "hrPath"].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (!el) return;
-      if (on) el.removeAttribute("hidden");
-      else el.setAttribute("hidden", "");
-    });
-    if (on) {
-      try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
-    }
-  }
-
-  let pendingAdminCb = null;
-
-  window.requestAdminUnlock = function requestAdminUnlock(cb) {
-    if (isAdminUnlocked()) { if (cb) cb(); return; }
-    pendingAdminCb = cb || null;
-    const gate = document.getElementById("adminGate");
-    const input = document.getElementById("adminInput");
-    const err = document.getElementById("adminError");
-    if (err) err.classList.add("hidden");
-    if (input) { input.value = ""; }
-    if (gate) gate.classList.remove("hidden");
-    setTimeout(() => { try { input && input.focus(); } catch (e) {} }, 50);
-  };
-
-  function closeAdminGate(ok) {
-    const gate = document.getElementById("adminGate");
-    if (gate) gate.classList.add("hidden");
-    const cb = pendingAdminCb || window.__pendingAdminUnlock;
-    pendingAdminCb = null;
-    window.__pendingAdminUnlock = null;
-    if (ok && typeof cb === "function") cb();
-    if (ok) {
-      window.__adminUnlockedThisPage = true;
-      try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
-    }
-    if (ok && window.__openSettingsAfterAdmin && typeof window.setMode === "function") {
-      window.__openSettingsAfterAdmin = false;
-      window.setMode("settings");
-    }
-  }
-
-  function wireAdminGate() {
-    const submit = document.getElementById("adminSubmit");
-    const cancel = document.getElementById("adminCancel");
-    const input = document.getElementById("adminInput");
-    const err = document.getElementById("adminError");
-    if (submit && !submit.__wired) {
-      submit.__wired = true;
-      const tryUnlock = () => {
-        const val = (input && input.value) || "";
-        if (val === ADMIN_PASSWORD) {
-          setAdminUnlocked(true);
-          if (err) err.classList.add("hidden");
-          closeAdminGate(true);
-        } else {
-          if (err) { err.textContent = "Wrong password"; err.classList.remove("hidden"); }
-        }
-      };
-      submit.addEventListener("click", tryUnlock);
-      if (input && !input.__hotkeysSwallowed) {
-        input.__hotkeysSwallowed = true;
-        input.addEventListener("keydown", (e) => {
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          if (e.key === "Enter") tryUnlock();
-        }, true);
-      }
-    }
-    if (cancel && !cancel.__wired) {
-      cancel.__wired = true;
-      cancel.addEventListener("click", () => closeAdminGate(false));
-    }
-  }
-
-  async function adminFetch(url, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign({}, opts.headers || {}, { "X-Council-Admin": ADMIN_PASSWORD });
-    return fetch(url, opts);
-  }
-
-  function wireAdminTools() {
-    const st = () => document.getElementById("adminToolsStatus");
-    const clearHit = document.getElementById("btnClearHitRate");
-    const clearLog = document.getElementById("btnClearLifeLog");
-    const exportBtn = document.getElementById("btnExportExcel");
-
-    if (clearHit && !clearHit.__wired) {
-      clearHit.__wired = true;
-      clearHit.addEventListener("click", () => {
-        requestAdminUnlock(async () => {
-          if (!confirm("Reset hit-rate and the Floor book match (BTC sized locks vs ETH shadow picks)? Training weights will NOT be deleted. Path-era scores will stop counting.")) return;
-          try {
-            const r = await adminFetch("/api/admin/clear-hit-rate", { method: "POST" });
-            const data = await r.json();
-            if (st()) st().textContent = data.ok ? "Hit rate & scorecard cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
-            // Refresh UI accuracy display
-            try {
-              const s = await (await fetch("/api/state")).json();
-              if (window.state !== undefined) { /* poll will refresh */ }
-            } catch (e) {}
-          } catch (e) {
-            if (st()) st().textContent = "Clear failed: " + e;
-          }
-        });
-      });
-    }
-    if (clearLog && !clearLog.__wired) {
-      clearLog.__wired = true;
-      clearLog.addEventListener("click", () => {
-        requestAdminUnlock(async () => {
-          if (!confirm("Clear lifetime log display? Training weights will NOT be deleted.")) return;
-          try {
-            const r = await adminFetch("/api/admin/clear-life-log", { method: "POST" });
-            const data = await r.json();
-            if (st()) st().textContent = data.ok ? "Life log cleared · " + (data.reset_at || "") : ("Failed: " + (data.error || ""));
-            const log = document.getElementById("callLog");
-            if (log) log.innerHTML = `<div class="call-empty">LIFETIME LOG CLEARED<br/>New settled calls will appear here</div>`;
-          } catch (e) {
-            if (st()) st().textContent = "Clear failed: " + e;
-          }
-        });
-      });
-    }
-    if (exportBtn && !exportBtn.__wired) {
-      exportBtn.__wired = true;
-      exportBtn.addEventListener("click", () => {
-        requestAdminUnlock(() => {
-          // Trigger download with admin header via hidden form-like navigation
-          const a = document.createElement("a");
-          a.href = "/api/admin/export.xlsx?admin=" + encodeURIComponent(ADMIN_PASSWORD);
-          a.download = "satoshi-council-log.xlsx";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          if (st()) st().textContent = "Excel download started…";
-        });
-      });
-    }
-    const brainBtn = document.getElementById("btnBrainExport");
-    if (brainBtn && !brainBtn.__wired) {
-      brainBtn.__wired = true;
-      brainBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        requestAdminUnlock(() => {
-          const a = document.createElement("a");
-          a.href = "/api/brain/export?admin=" + encodeURIComponent(ADMIN_PASSWORD);
-          a.download = "satoshi-council-brain.json";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          const bs = document.getElementById("brainStatus");
-          if (bs) bs.textContent = "Brain download started…";
-        });
-      });
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    wireAdminGate();
-    wireAdminTools();
-  });
-  if (document.readyState !== "loading") {
-    setTimeout(() => { wireAdminGate(); wireAdminTools(); }, 200);
-  }
-})();
 
 
 

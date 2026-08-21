@@ -17,7 +17,9 @@ Satoshi’s Council is a web app. The browser must load HTML/JS/CSS — that par
    `AttemptLimiter` allows **8 failed attempts per 15 minutes per IP**; further attempts return a generic wrong-password result (no lockout signal is leaked). The password itself is compared with `hmac.compare_digest`.
 
 5. **Admin stays fail-closed.**
-   If `COUNCIL_ADMIN_PASSWORD` is unset, admin routes (brain export, forced analyze, settings writes, seat backfill) stay **closed**. The admin password is **never** stored in frontend JS.
+   If `COUNCIL_ADMIN_PASSWORD` is unset, admin routes (brain export, forced analyze, settings writes, seat backfill) stay **closed**. The admin password is **never** stored in frontend JS. The UI posts the typed value to `POST /api/admin/verify`; success mints an HttpOnly `council_admin` cookie. Downloads use that cookie — never `?admin=` query strings.
+
+   The previous client-side literal is burned. Set a **new** `COUNCIL_ADMIN_PASSWORD` on Render after this deploy even if the old env value was already different.
 
 6. **Follower / live-order path is session-gated and idempotent.**
    The Follower bundle and live paths require the follower session cookie. Live orders additionally require a per-order idempotency key (16–160 chars, deduped per session) and reserve daily risk/contract exposure **atomically** before the broker call, releasing it if the order never routes — so concurrent requests cannot both exceed a cap and a failed route cannot silently consume the day’s book.

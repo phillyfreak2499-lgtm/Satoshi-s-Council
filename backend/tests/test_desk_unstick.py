@@ -68,7 +68,7 @@ class SwUnstickTests(unittest.TestCase):
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
         self.assertIn('cache: "no-store"', SW)
-        self.assertIn("20260821d", SW)
+        self.assertIn("20260821e", SW)
 
     def test_assembler_drops_old_workers(self) -> None:
         self.assertIn("getRegistrations", ASSEMBLER)
@@ -91,8 +91,8 @@ class DeskHtmlTests(unittest.TestCase):
         self.assertIn("acc-locked", badge)
         card = html.split('id="hitRateCard"', 1)[1].split(">", 1)[0]
         self.assertIn("hidden", card)
-        self.assertIn("sw.js?v=20260821d", html)
-        self.assertIn("roundtable.js?v=20260821d", html)
+        self.assertIn("sw.js?v=20260821e", html)
+        self.assertIn("roundtable.js?v=20260821e", html)
         self.assertIn("updateViaCache", html)
 
     def test_crowd_and_flow_portraits_exist(self) -> None:
@@ -124,6 +124,16 @@ class RoundtableParseTests(unittest.TestCase):
         self.assertIn("scripts/check.py", RENDER)
         check_sh = (ROOT / "scripts" / "check.sh").read_text(encoding="utf-8")
         self.assertIn("node --check frontend/static/roundtable.js", check_sh)
+
+    def test_admin_password_is_not_in_the_browser(self) -> None:
+        self.assertNotIn("5152622439", ROUNDTABLE)
+        self.assertNotIn("ADMIN_PASSWORD", ROUNDTABLE)
+        self.assertNotIn("window.ADMIN_PASSWORD", ROUNDTABLE)
+        self.assertNotIn("?admin=", ROUNDTABLE)
+        self.assertIn("/api/admin/verify", ROUNDTABLE)
+        html = _desk_html()
+        self.assertNotIn("5152622439", html)
+        self.assertNotIn("?admin=", html)
 
 
 if __name__ == "__main__":

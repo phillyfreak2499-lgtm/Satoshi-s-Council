@@ -60,6 +60,9 @@ DESK_COOKIE = "council_desk"
 DESK_IDLE_S = 12 * 60 * 60
 _desk_sessions: dict[str, float] = {}
 _desk_sessions_lock = threading.Lock()
+ADMIN_COOKIE = "council_admin"
+_admin_sessions: dict[str, float] = {}
+_admin_sessions_lock = threading.Lock()
 
 
 def _desk_token(request: Request) -> str:
@@ -92,6 +95,41 @@ def _issue_desk_session(response: Response) -> None:
                     _desk_sessions.pop(old, None)
     response.set_cookie(
         key=DESK_COOKIE,
+        value=token,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+        path="/",
+        max_age=DESK_IDLE_S,
+    )
+
+
+def _admin_session_ok(request: Request) -> bool:
+    token = (request.cookies.get(ADMIN_COOKIE) or "").strip()
+    if not token:
+        return False
+    now = time.time()
+    with _admin_sessions_lock:
+        seen = _admin_sessions.get(token)
+        if seen is None or now - seen >= DESK_IDLE_S:
+            _admin_sessions.pop(token, None)
+            return False
+        _admin_sessions[token] = now
+    return True
+
+
+def _issue_admin_session(response: Response) -> None:
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _admin_sessions_lock:
+        _admin_sessions[token] = now
+        if len(_admin_sessions) > 500:
+            cutoff = now - DESK_IDLE_S
+            for old, seen in list(_admin_sessions.items()):
+                if seen < cutoff:
+                    _admin_sessions.pop(old, None)
+    response.set_cookie(
+        key=ADMIN_COOKIE,
         value=token,
         httponly=True,
         secure=_cookie_secure(),
@@ -1332,11 +1370,13 @@ def _chair_lock(asset: str) -> dict | None:
 
 
 def _admin_ok(request: Request) -> bool:
+    """Admin session cookie, or X-Council-Admin header for curl.
+
+    The old ?admin= query form is gone — query strings land in access logs,
+    proxy logs, and Referer headers. Unset secret fails closed.
     """
-    Header X-Council-Admin only. The old ?admin= query form is gone —
-    query strings land in access logs, proxy logs, and Referer headers.
-    Constant-time compare; unset secret fails closed.
-    """
+    if _admin_session_ok(request):
+        return True
     try:
         return verify_admin(request.headers.get("X-Council-Admin") or "")
     except Exception:
@@ -1494,8 +1534,11 @@ async def admin_verify(request: Request):
     """
     UI calls this to check the settings password without mutating state.
     Rate-limited per IP so it cannot be used as a brute-force oracle.
+    Success mints an HttpOnly admin session cookie. The password never
+    needs to ride again in JS, query strings, or window.* globals.
     """
     from backend.services.admin_auth import verify_limiter
+    from fastapi.responses import JSONResponse
 
     try:
         body = await request.json()
@@ -1503,14 +1546,16 @@ async def admin_verify(request: Request):
         body = {}
     ip = _client_ip(request)
     if verify_limiter.limited(ip):
-        return {"ok": False, "error": ADMIN_WRONG}
+        return JSONResponse({"ok": False, "error": ADMIN_WRONG, "configured": admin_configured()})
     pw = (body or {}).get("password") or ""
     ok = verify_admin(pw)
     if ok:
         verify_limiter.note_success(ip)
-    else:
-        verify_limiter.note_fail(ip)
-    return {"ok": ok, "configured": admin_configured()}
+        resp = JSONResponse({"ok": True, "configured": True})
+        _issue_admin_session(resp)
+        return resp
+    verify_limiter.note_fail(ip)
+    return JSONResponse({"ok": False, "error": ADMIN_WRONG, "configured": admin_configured()})
 
 
 @app.get("/api/desk/extensions")
