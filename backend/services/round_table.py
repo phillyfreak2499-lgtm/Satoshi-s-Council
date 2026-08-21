@@ -336,7 +336,11 @@ def risk_snapshot(table: Dict[str, Any]) -> Dict[str, Any]:
         "price_change_pct": price_chg,
         "vol_pct": vol_pct,
         "utc_hour": int(hour) if hour is not None else None,
-        "feed_ok": bool(health.get("coinglass", True)),
+        "feed_ok": bool(
+            health.get("derivs_ok")
+            or health.get("coinglass", True)
+            or funding is not None
+        ),
     }
 
 

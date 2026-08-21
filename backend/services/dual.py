@@ -13,6 +13,7 @@ from backend.agents.chair_gates import build_btc_lead, floor_scorecard
 
 DUAL_FLOOR_S = 2.0
 BEAST_FLOOR_S = 1.2
+ANALYZE_TIMEOUT_S = 15.0
 
 
 def compute_dual_interval(
@@ -109,6 +110,10 @@ class DualOrchestrator:
                 await c.hydrate_persisted_desk()
             except Exception as e:
                 logger.debug(f"desk hydrate {c.asset}: {e}")
+            try:
+                c.ensure_seat_shell("warming")
+            except Exception as e:
+                logger.debug(f"seat shell {c.asset}: {e}")
             try:
                 n = await c.sweep_official_finishes()
                 if n:
@@ -259,13 +264,25 @@ class DualOrchestrator:
                     if not self.running:
                         break
                     try:
-                        await c.analyze_once()
+                        await asyncio.wait_for(c.analyze_once(), timeout=ANALYZE_TIMEOUT_S)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Dual analysis hung ({c.asset}) after {ANALYZE_TIMEOUT_S:.0f}s — keeping seat shell"
+                        )
+                        try:
+                            c.ensure_seat_shell("cycle timed out")
+                        except Exception:
+                            pass
                     except Exception as e:
                         name = type(e).__name__
                         if name in ("HTTPStatusError", "TimeoutException", "ConnectError", "ReadTimeout", "RuntimeError"):
                             logger.warning(f"Dual analysis flap ({c.asset}): {name} — desk stays up")
                         else:
                             logger.warning(f"Dual analysis error ({c.asset}): {name}: {e}")
+                        try:
+                            c.ensure_seat_shell("cycle error")
+                        except Exception:
+                            pass
                         try:
                             await c.settle_due_windows()
                         except Exception as se:

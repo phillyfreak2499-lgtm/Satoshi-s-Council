@@ -197,6 +197,10 @@ class Council:
         except Exception as e:
             logger.debug(f"desk hydrate skip ({self.asset}): {e}")
         try:
+            self.ensure_seat_shell("warming")
+        except Exception as e:
+            logger.debug(f"seat shell skip ({self.asset}): {e}")
+        try:
             n = await self.sweep_official_finishes()
             if n:
                 logger.info(f"[{self.asset}] Official closer swept {n} open hour(s)")
@@ -1788,6 +1792,74 @@ class Council:
             )
         return learned
 
+    def _wait_agent_shell(self, reason: str = "warming") -> list:
+        """WAIT stubs so /api/state never ships agents: [] while the loop is up."""
+        from backend.agents.base import AgentSignal
+        out = []
+        for a in self.agents or []:
+            name = getattr(a, "name", None) or getattr(a, "agent_name", None)
+            if not name:
+                continue
+            cat = getattr(a, "category", None) or name
+            sig = AgentSignal(name, "WAIT", 0, reason, cat)
+            out.append(sig.to_dict())
+        return out
+
+    def _empty_state(self, reason: str = "Initializing...") -> Dict[str, Any]:
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "asset": self.asset,
+            "leader_name": self.leader_name,
+            "decision": {
+                "direction": "WAIT",
+                "confidence": 50,
+                "summary": reason,
+                "locked_call": None,
+                "p_finish": None,
+                "ev_cents": None,
+            },
+            "agents": self._wait_agent_shell(reason),
+            "weights": self.leader.weights,
+            "market": {},
+            "health": {},
+            "sub_council_count": 0,
+            "hydrating": True,
+            "accuracy": {
+                "correct": 0,
+                "total": 0,
+                "wrong": 0,
+                "accuracy_pct": None,
+                "pending": 0,
+                "streak": 0,
+                "wrong_streak": 0,
+                "label": "0/0 · —",
+                "hydrating": True,
+            },
+            "locked_call": None,
+            "p_finish": None,
+            "ev_cents": None,
+            "law": self.law.status(),
+            "learning": self.learner.snapshot(),
+            "hierarchy": self.learner.hierarchy_ranks(),
+        }
+
+    def ensure_seat_shell(self, reason: str = "warming") -> Dict[str, Any]:
+        """If the loop hung before analyze_once painted seats, keep WAIT chairs."""
+        live = self.latest_state if isinstance(self.latest_state, dict) else {}
+        agents = live.get("agents") if isinstance(live.get("agents"), list) else []
+        if agents:
+            return live
+        seed = self._empty_state(reason)
+        for k in ("accuracy", "huddle", "law", "learning", "hierarchy", "weights", "market", "health"):
+            if live.get(k):
+                seed[k] = live[k]
+        if live.get("decision"):
+            seed["decision"] = live["decision"]
+        seed["agents"] = self._wait_agent_shell(reason)
+        seed["timestamp"] = datetime.now(timezone.utc).isoformat()
+        self.latest_state = seed
+        return seed
+
     async def hydrate_persisted_desk(self) -> Dict[str, Any]:
         """Read lifetime log + huddle from disk into latest_state.
 
@@ -1817,6 +1889,8 @@ class Council:
                 live = dict(live)
                 live["huddle"] = huddle
                 self.latest_state = live
+            if not (live.get("agents") or []):
+                return self.ensure_seat_shell("hydrating")
             return live
         seed = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1828,7 +1902,7 @@ class Council:
                 "p_finish": None,
                 "ev_cents": None,
             },
-            "agents": live.get("agents") or [],
+            "agents": live.get("agents") or self._wait_agent_shell("hydrating"),
             "weights": self.leader.weights,
             "market": live.get("market") or {},
             "health": live.get("health") or {},
@@ -1866,41 +1940,12 @@ class Council:
         # Empty accuracy here is hydrating — not a disk wipe. No log/open
         # arrays so the UI will not paint LIFETIME LOG EMPTY over a reload.
         if self.latest_state:
-            return self.latest_state
-        return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "decision": {
-                "direction": "WAIT",
-                "confidence": 50,
-                "summary": "Initializing...",
-                "locked_call": None,
-                "p_finish": None,
-                "ev_cents": None,
-            },
-            "agents": [],
-            "weights": self.leader.weights,
-            "market": {},
-            "health": {},
-            "sub_council_count": 0,
-            "hydrating": True,
-            "accuracy": {
-                "correct": 0,
-                "total": 0,
-                "wrong": 0,
-                "accuracy_pct": None,
-                "pending": 0,
-                "streak": 0,
-                "wrong_streak": 0,
-                "label": "0/0 · —",
-                "hydrating": True,
-            },
-            "locked_call": None,
-            "p_finish": None,
-            "ev_cents": None,
-            "law": self.law.status(),
-            "learning": self.learner.snapshot(),
-            "hierarchy": self.learner.hierarchy_ranks(),
-        }
+            st = self.latest_state
+            agents = st.get("agents") if isinstance(st.get("agents"), list) else []
+            if not agents:
+                return self.ensure_seat_shell("hydrating")
+            return st
+        return self._empty_state("Initializing...")
 
     async def maybe_reweight(self):
         """Periodic snapshot of agent stats (adaptive learner runs continuously)."""

@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Satoshi’s Council</title>
-  <style>html,body{margin:0;background:#07070c;color:#c9a44a;font-family:sans-serif}#boot{padding:24px}</style>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <style>html,body{margin:0;background:#07070c;color:#c9a44a;font-family:sans-serif}#boot{padding:24px;line-height:1.45}button{margin-top:12px;background:transparent;color:#c9a44a;border:1px solid #c9a44a;border-radius:999px;padding:10px 16px}</style>
 </head>
 <body>
   <p id="boot">Opening the desk…</p>
@@ -19,11 +20,25 @@
       document.write(html);
       document.close();
     }
+    function dropCaches() {
+      var jobs = [];
+      if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
+        jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (r) { return r.unregister(); }));
+        }));
+      }
+      if (window.caches && caches.keys) {
+        jobs.push(caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        }));
+      }
+      return Promise.all(jobs).catch(function () {});
+    }
     function attempt() {
       tries += 1;
-      // Unique t= per attempt so the service worker's cache-first static
-      // branch can never serve a stale chunk from the outage.
-      var bust = "?v=3&t=" + Date.now() + "-" + tries;
+      // Unique t= per attempt so a cache-first worker can never serve a
+      // stale chunk from the outage. v=4 is this unstick.
+      var bust = "?v=4&t=" + Date.now() + "-" + tries;
       Promise.all(
         Array.from({ length: n }, function (_, i) {
           return fetch("/static/desk-" + i + ".b64" + bust, { cache: "no-store" }).then(function (r) {
@@ -40,19 +55,22 @@
         })
         .then(paint)
         .catch(function () {
+          if (tries >= 3) {
+            boot.innerHTML = "Desk still loading (" + tries + "). On a phone that was stuck on this screen, clear site data for this site (Chrome → Site settings → Clear data), then reopen.";
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = "Retry";
+            btn.onclick = function () { location.reload(); };
+            boot.appendChild(document.createElement("br"));
+            boot.appendChild(btn);
+            setTimeout(attempt, Math.min(12000, 2500 * tries));
+            return;
+          }
           boot.textContent = "Desk loading… retrying (" + tries + ")";
           setTimeout(attempt, Math.min(8000, 2000 * tries));
         });
     }
-    if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
-      // Drop any outage-era service worker before the first attempt; a new
-      // one re-registers once the restored desk paints.
-      navigator.serviceWorker.getRegistrations().then(function (regs) {
-        return Promise.all(regs.map(function (r) { return r.unregister(); }));
-      }).catch(function () {}).then(attempt);
-    } else {
-      attempt();
-    }
+    dropCaches().then(attempt);
   })();
   </script>
 </body>

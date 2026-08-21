@@ -121,6 +121,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
     if (on) window.__adminUnlockedThisPage = true;
     document.body.classList.toggle("admin-unlocked", !!on);
+    ["accuracyBadge", "hitRateCard", "hrRoll", "hrPath"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (on) el.removeAttribute("hidden");
+      else el.setAttribute("hidden", "");
+    });
     if (on) {
       try { mountAdminDesk(); } catch (e) {}
     }
@@ -2493,7 +2499,9 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     candle_eth: "/portraits/candle_eth.webp?v=people-2",
     volume: "/portraits/volume.webp?v=people-2",
     momentum: "/portraits/momentum.webp?v=people-2",
-    orderflow: "/portraits/orderflow.webp?v=people-2",
+    orderflow: "/portraits/orderflow.webp?v=people-3",
+    crowd: "/portraits/crowd.webp?v=people-3",
+    flow: "/portraits/flow.webp?v=people-3",
     funding: "/portraits/funding.webp?v=people-2",
     regime: "/bots/orbit.png",
     volatility: "/portraits/volatility.webp?v=people-2",
@@ -13485,6 +13493,7 @@ function drawCandleChart() {
     const syncDeskGateSummon = () => {
       if (btn) {
         btn.disabled = false;
+        btn.removeAttribute("disabled");
         btn.textContent = "SUMMON THE COUNCIL";
         btn.setAttribute("aria-disabled", "false");
       }
@@ -13516,15 +13525,22 @@ function drawCandleChart() {
     };
     if (agree) agree.addEventListener("change", syncDeskGateSummon);
     syncDeskGateSummon();
-    if (btn) btn.addEventListener("click", tryUnlock);
+    if (btn) {
+      btn.addEventListener("click", function (e) { e.preventDefault(); tryUnlock(); });
+      btn.addEventListener("pointerup", function (e) { e.preventDefault(); tryUnlock(); }, { passive: false });
+    }
     const summonHit = document.getElementById("gateSummonHit");
     if (summonHit) {
+      // Always unlock from the hit pad. Samsung ignores clicks on disabled
+      // buttons; the pad used to no-op when the button was already live.
       summonHit.addEventListener("click", function (e) {
-        if (btn && btn.disabled) {
-          e.preventDefault();
-          tryUnlock();
-        }
+        e.preventDefault();
+        tryUnlock();
       });
+      summonHit.addEventListener("pointerup", function (e) {
+        e.preventDefault();
+        tryUnlock();
+      }, { passive: false });
     }
     if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
     try { prefetchDeskIntroVideo(); } catch (e) {}
@@ -13824,6 +13840,12 @@ function drawCandleChart() {
     try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
     if (on) window.__adminUnlockedThisPage = true;
     document.body.classList.toggle("admin-unlocked", !!on);
+    ["accuracyBadge", "hitRateCard", "hrRoll", "hrPath"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (on) el.removeAttribute("hidden");
+      else el.setAttribute("hidden", "");
+    });
     if (on) {
       try { if (typeof window.mountAdminDesk === "function") window.mountAdminDesk(); } catch (e) {}
     }

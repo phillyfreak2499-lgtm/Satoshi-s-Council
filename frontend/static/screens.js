@@ -4,8 +4,8 @@
     { id: "wick", name: "WICK", img: "/portraits/wick.webp?v=people-2" },
     { id: "clock", name: "CLOCK", img: "/portraits/clock.webp?v=people-2" },
     { id: "tape", name: "TAPE", img: "/portraits/tape.webp?v=people-2" },
-    { id: "crowd", name: "CROWD", img: "/portraits/crowd.webp?v=people-2" },
-    { id: "flow", name: "FLOW", img: "/portraits/flow.webp?v=people-2" }
+    { id: "crowd", name: "CROWD", img: "/portraits/crowd.webp?v=people-3" },
+    { id: "flow", name: "FLOW", img: "/portraits/flow.webp?v=people-3" }
   ];
   var RAIL = ["WATCH", "WIND-UP", "GAVEL", "POLAROID", "SIT"];
 

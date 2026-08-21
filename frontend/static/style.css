@@ -9490,16 +9490,27 @@ body.mode-seats #mainTable { display: none !important; }
 /* Hit rate / accuracy — public desk off. Admin Settings only. */
 body:not(.admin-unlocked) #accuracyBadge,
 body:not(.mode-settings) #accuracyBadge,
-#hitRateCard,
-#hrRoll,
-#hrPath,
-.acc-strip,
-#frontHitRate,
-#chartAccuracy,
-#lifetimeLogBlock,
-#callLogMeta,
-#lifetimePanel .panel-head {
+body:not(.admin-unlocked) #hitRateCard,
+body:not(.admin-unlocked) #hrRoll,
+body:not(.admin-unlocked) #hrPath,
+body:not(.admin-unlocked) .acc-strip,
+body:not(.admin-unlocked) #frontHitRate,
+body:not(.admin-unlocked) #chartAccuracy,
+body:not(.admin-unlocked) #lifetimeLogBlock,
+body:not(.admin-unlocked) #callLogMeta,
+body:not(.admin-unlocked) #lifetimePanel .panel-head,
+#hitRateCard[hidden],
+#accuracyBadge[hidden] {
   display: none !important;
+}
+body.admin-unlocked.mode-settings #accuracyBadge,
+body.admin-unlocked.mode-settings #hitRateCard,
+body.admin-unlocked.mode-settings #hrRoll,
+body.admin-unlocked.mode-settings #hrPath,
+body.admin-unlocked.mode-settings #lifetimeLogBlock,
+body.admin-unlocked.mode-settings #callLogMeta,
+body.admin-unlocked.mode-settings #lifetimePanel .panel-head {
+  display: block !important;
 }
 body.admin-unlocked.mode-settings #trainingScoreCard { display: block; }
 
