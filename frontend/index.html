@@ -4,9 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Satoshi’s Council – Dojo</title>
+  <link rel="stylesheet" href="/fonts.css" />
+  <link rel="preload" href="/fonts/orbitron-700.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/rajdhani-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/share-tech-mono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body >
 
@@ -194,7 +196,7 @@
           <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="0" placeholder="0 if lost" /></label>
           <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
         </div>
-        <div class="pe-preview">P&amp;L: <strong id="pePnl">-$25.00</strong></div>
+        <div class="pe-preview">P&L: <strong id="pePnl">-$25.00</strong></div>
         <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
       </div>
 
