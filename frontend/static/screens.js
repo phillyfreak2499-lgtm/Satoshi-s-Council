@@ -21,7 +21,7 @@
     var l = document.createElement("link");
     l.id = "screensCss";
     l.rel = "stylesheet";
-    l.href = "/screens.css?v=20260820s";
+    l.href = "/static/screens.css?v=20260820s";
     document.head.appendChild(l);
   }
 
