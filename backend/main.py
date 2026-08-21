@@ -28,6 +28,7 @@ from backend.services.admin_auth import admin_configured, load_admin_password, v
 from backend.services.desk_access import unlock_result as desk_unlock_result
 from backend.services.state_poll import thin_poll_state
 from backend.services.proof_cache import get_proof_summary
+from backend.services.security_headers import apply_security_headers
 from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
 from backend.services.follower_gate import WRONG as FOLLOWER_WRONG
 from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerRuntime
@@ -245,6 +246,13 @@ async def require_desk_session(request: Request, call_next):
         return await call_next(request)
     from fastapi.responses import JSONResponse
     return JSONResponse({"ok": False, "error": "desk session required"}, status_code=401)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    apply_security_headers(response)
+    return response
 
 
 @app.get("/health")
