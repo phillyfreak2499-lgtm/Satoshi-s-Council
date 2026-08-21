@@ -480,7 +480,7 @@ def run_regime_subs(md: Dict[str, Any]) -> List[AgentSignal]:
 def run_guardian_subs(md: Dict[str, Any]) -> List[AgentSignal]:
     from backend.data.spot_health import spot_feed_ok
     health = md.get("health") or {}
-    binance = bool(health.get("binance", True)) or spot_feed_ok(health, md)
+    binance = bool(health.get("binance")) or spot_feed_ok(health, md)
     kalshi = bool(health.get("kalshi", True))
     src = health.get("spot_source") or md.get("spot_source")
     bn_reason = "Binance feed OK" if binance else "Binance feed DOWN"

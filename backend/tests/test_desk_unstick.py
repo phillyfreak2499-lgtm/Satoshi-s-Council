@@ -29,9 +29,33 @@ def _desk_html() -> str:
 class GlassFallbackTests(unittest.TestCase):
     def test_binance_perp_is_the_fallback(self) -> None:
         self.assertIn("fapi.binance.com", PIPELINE)
+        self.assertIn("data-api.binance.vision", PIPELINE)
+        self.assertIn("www.okx.com", PIPELINE)
         self.assertIn("derivs_ok", PIPELINE)
         self.assertIn("lastFundingRate", PIPELINE)
         self.assertIn("openInterest", PIPELINE)
+        self.assertIn("okx_perp", PIPELINE)
+
+    def test_spot_feed_ok_can_be_false(self) -> None:
+        from backend.data.spot_health import spot_feed_ok
+        self.assertFalse(spot_feed_ok())
+        self.assertFalse(spot_feed_ok({}, {}))
+        self.assertFalse(spot_feed_ok({"binance": False, "coinbase": False}, {"current_price": 72583, "last_good": True}))
+        self.assertTrue(spot_feed_ok({"binance": True}, {}))
+        self.assertTrue(spot_feed_ok({"coinbase": True}, {}))
+        src = (ROOT / "backend" / "data" / "spot_health.py").read_text(encoding="utf-8")
+        self.assertNotIn("return True", src.split("def spot_feed_ok", 1)[1].split("if h.get", 1)[0])
+
+    def test_pick_spot_and_okx_row(self) -> None:
+        from backend.data.pipeline import _okx_row, pick_spot
+        price, src = pick_spot({"price": "77756.13"}, None, None)
+        self.assertAlmostEqual(price, 77756.13)
+        self.assertEqual(src, "binance_vision")
+        price, src = pick_spot(None, None, {"data": {"amount": "77698.59"}})
+        self.assertEqual(src, "coinbase")
+        row = _okx_row({"code": "0", "data": [{"fundingRate": "0.0001", "oiCcy": "30483"}]})
+        self.assertEqual(row.get("fundingRate"), "0.0001")
+        self.assertEqual(_okx_row({"code": "451"}), {})
 
     def test_glass_wait_only_when_no_derivs(self) -> None:
         self.assertIn("def glass_seats_must_wait", COINGLASS)

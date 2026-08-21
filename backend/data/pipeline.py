@@ -1,27 +1,36 @@
-"""Binance spot + Binance perps + Kalshi public book. Paper research only.
+"""Spot + perps + Kalshi public book. Paper research only.
 
-CoinGlass is optional. When it is down or unkeyed, CARRY / CHAIN / CASCADE
-keep voting from Binance USDT-M public funding, open interest, and a
-liquidation proxy. Never invent numbers; last-good is used only for fields
-that already printed.
+CoinGlass is optional. api.binance.com / fapi.binance.com return 451 from
+US regions (Render Oregon included). Spot uses Binance's public data API
+(data-api.binance.vision) with Binance.US / Coinbase fallbacks. Perps
+(funding + OI) try Binance USDT-M first, then OKX public swaps — the
+path that actually answers from Render. Never invent numbers; last-good
+is used only for fields that already printed.
 """
 from __future__ import annotations
 
 import asyncio
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 from loguru import logger
 
-BINANCE = "https://api.binance.com"
+# api.binance.com is geo-blocked from the US (HTTP 451). The vision host is
+# Binance's public market-data API and answers from Render Oregon.
+BINANCE = "https://data-api.binance.vision"
+BINANCE_US = "https://api.binance.us"
+BINANCE_COM = "https://api.binance.com"
 FAPI = "https://fapi.binance.com"
+OKX = "https://www.okx.com"
+COINBASE = "https://api.coinbase.com"
 KALSHI = "https://api.elections.kalshi.com/trade-api/v2"
 
 _SYMBOL = {"btc": "BTCUSDT", "eth": "ETHUSDT"}
 _SERIES = {"btc": "KXBTC15M", "eth": "KXETH"}
 _FETCH_TIMEOUT = httpx.Timeout(3.5, connect=2.0)
+_HEADERS = {"User-Agent": "SatoshiCouncil/1.0 paper-desk", "Accept": "application/json"}
 
 
 def _f(v: Any) -> Optional[float]:
@@ -46,12 +55,54 @@ def _candle(row: Any) -> Dict[str, Any]:
     }
 
 
+def _okx_inst(asset: str) -> str:
+    return "ETH-USDT-SWAP" if str(asset or "").lower().startswith("eth") else "BTC-USDT-SWAP"
+
+
+def _cb_pair(asset: str) -> str:
+    return "ETH-USD" if str(asset or "").lower().startswith("eth") else "BTC-USD"
+
+
+def _okx_row(body: Any) -> Dict[str, Any]:
+    if not isinstance(body, dict) or str(body.get("code")) != "0":
+        return {}
+    data = body.get("data")
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        return data[0]
+    return {}
+
+
+def _okx_rows(body: Any) -> list:
+    if not isinstance(body, dict) or str(body.get("code")) != "0":
+        return []
+    data = body.get("data")
+    return data if isinstance(data, list) else []
+
+
+def pick_spot(vision: Any, us: Any, coinbase: Any, com: Any = None) -> Tuple[Optional[float], Optional[str]]:
+    """First live spot print. Vision is the Render-reachable Binance path."""
+    for body, src in (
+        (vision, "binance_vision"),
+        (us, "binance_us"),
+        (com, "binance"),
+        (coinbase, "coinbase"),
+    ):
+        if src == "coinbase":
+            data = body.get("data") if isinstance(body, dict) else None
+            price = _f((data or {}).get("amount")) if isinstance(data, dict) else None
+        else:
+            price = _f((body or {}).get("price")) if isinstance(body, dict) else None
+        if price is not None and price > 0:
+            return price, src
+    return None, None
+
+
 class DataPipeline:
     def __init__(self, asset: str = "btc", series_ticker: str | None = None, symbol: str | None = None):
         self.asset = (asset or "btc").lower()
         self.series_ticker = series_ticker or _SERIES.get(self.asset, "KXBTC15M")
         self.symbol = symbol or _SYMBOL.get(self.asset, "BTCUSDT")
-        self._client = httpx.AsyncClient(timeout=_FETCH_TIMEOUT)
+        self._client = httpx.AsyncClient(timeout=_FETCH_TIMEOUT, headers=_HEADERS, follow_redirects=True)
         self._last_good: Dict[str, Any] | None = None
 
     async def _get(self, url: str, params: Optional[dict] = None) -> Any:
@@ -62,6 +113,14 @@ class DataPipeline:
     async def _one(self, label: str, url: str, params: Optional[dict] = None) -> Any:
         try:
             return await self._get(url, params)
+        except httpx.HTTPStatusError as e:
+            code = int(getattr(e.response, "status_code", 0) or 0)
+            # 451 is Binance geo-block from US/Render Oregon — expected, not a flap.
+            if code in (401, 403, 404, 418, 451):
+                logger.debug(f"{label}: HTTP {code}")
+            else:
+                logger.warning(f"{label}: HTTP {code}")
+            return None
         except Exception as e:
             logger.warning(f"{label}: {type(e).__name__}: {e}")
             return None
@@ -94,10 +153,20 @@ class DataPipeline:
         now = time.time()
         t0 = now
         symbol = self.symbol
-        ticker_p = self._one("binance ticker", f"{BINANCE}/api/v3/ticker/price", {"symbol": symbol})
+        okx_inst = _okx_inst(self.asset)
+        cb_pair = _cb_pair(self.asset)
+        ticker_p = self._one("binance vision ticker", f"{BINANCE}/api/v3/ticker/price", {"symbol": symbol})
+        ticker_us_p = self._one("binance.us ticker", f"{BINANCE_US}/api/v3/ticker/price", {"symbol": symbol})
+        ticker_com_p = self._one("binance.com ticker", f"{BINANCE_COM}/api/v3/ticker/price", {"symbol": symbol})
+        cb_p = self._one("coinbase spot", f"{COINBASE}/v2/prices/{cb_pair}/spot")
         klines_p = self._one(
-            "binance klines",
+            "binance vision klines",
             f"{BINANCE}/api/v3/klines",
+            {"symbol": symbol, "interval": "1m", "limit": 60},
+        )
+        klines_us_p = self._one(
+            "binance.us klines",
+            f"{BINANCE_US}/api/v3/klines",
             {"symbol": symbol, "interval": "1m", "limit": 60},
         )
         kalshi_p = self._one(
@@ -117,19 +186,32 @@ class DataPipeline:
             f"{FAPI}/futures/data/globalLongShortAccountRatio",
             {"symbol": symbol, "period": "5m", "limit": 2},
         )
-        ticker, raw_klines, book, prem, oi_raw, fund_hist, ls_raw = await asyncio.gather(
-            ticker_p, klines_p, kalshi_p, fund_p, oi_p, fund_hist_p, ls_p
+        okx_fund_p = self._one("okx funding", f"{OKX}/api/v5/public/funding-rate", {"instId": okx_inst})
+        okx_oi_p = self._one("okx oi", f"{OKX}/api/v5/public/open-interest", {"instId": okx_inst})
+        okx_hist_p = self._one(
+            "okx funding hist",
+            f"{OKX}/api/v5/public/funding-rate-history",
+            {"instId": okx_inst, "limit": 20},
+        )
+        (
+            ticker, ticker_us, ticker_com, cb_spot, raw_klines, raw_klines_us, book,
+            prem, oi_raw, fund_hist, ls_raw, okx_fund, okx_oi, okx_hist,
+        ) = await asyncio.gather(
+            ticker_p, ticker_us_p, ticker_com_p, cb_p, klines_p, klines_us_p, kalshi_p,
+            fund_p, oi_p, fund_hist_p, ls_p, okx_fund_p, okx_oi_p, okx_hist_p,
         )
 
-        price = _f((ticker or {}).get("price")) if isinstance(ticker, dict) else None
+        price, spot_source = pick_spot(ticker, ticker_us, cb_spot, ticker_com)
         candles = []
-        if isinstance(raw_klines, list):
+        kline_src = raw_klines if isinstance(raw_klines, list) and raw_klines else raw_klines_us
+        if isinstance(kline_src, list):
             try:
-                candles = [_candle(c) for c in raw_klines]
+                candles = [_candle(c) for c in kline_src]
             except Exception as e:
                 logger.warning(f"binance klines parse: {e}")
         if price is None and candles:
             price = _f(candles[-1].get("c"))
+            spot_source = spot_source or "binance_vision"
 
         km: Dict[str, Any] = {}
         up_pct = None
@@ -170,11 +252,25 @@ class DataPipeline:
                 }
 
         funding_rate = None
+        derivs_source = None
         if isinstance(prem, dict):
             funding_rate = _f(prem.get("lastFundingRate"))
+            if funding_rate is not None:
+                derivs_source = "binance_perp"
+        if funding_rate is None:
+            funding_rate = _f(_okx_row(okx_fund).get("fundingRate"))
+            if funding_rate is not None:
+                derivs_source = "okx_perp"
         open_interest = None
         if isinstance(oi_raw, dict):
             open_interest = _f(oi_raw.get("openInterest"))
+            if open_interest is not None:
+                derivs_source = derivs_source or "binance_perp"
+        if open_interest is None:
+            row = _okx_row(okx_oi)
+            open_interest = _f(row.get("oiCcy") or row.get("oi"))
+            if open_interest is not None:
+                derivs_source = derivs_source or "okx_perp"
 
         funding_history = []
         if isinstance(fund_hist, list):
@@ -183,6 +279,14 @@ class DataPipeline:
                     continue
                 ts = _f(row.get("fundingTime"))
                 rate = _f(row.get("fundingRate"))
+                if ts is not None and rate is not None:
+                    funding_history.append((ts / 1000.0 if ts > 1e12 else ts, rate))
+        if not funding_history:
+            for row in _okx_rows(okx_hist):
+                if not isinstance(row, dict):
+                    continue
+                ts = _f(row.get("fundingTime"))
+                rate = _f(row.get("fundingRate") or row.get("realizedRate"))
                 if ts is not None and rate is not None:
                     funding_history.append((ts / 1000.0 if ts > 1e12 else ts, rate))
 
@@ -227,7 +331,10 @@ class DataPipeline:
 
         derivs_ok = funding_rate is not None or open_interest is not None
         if not cg_ok:
-            cg_reason = cg_reason or ("CoinGlass down · Binance perps fallback" if derivs_ok else "no usable funding/OI/liq")
+            if derivs_ok:
+                cg_reason = f"{cg_reason or 'CoinGlass down'} · {derivs_source} fallback"
+            else:
+                cg_reason = cg_reason or "no usable funding/OI/liq"
             if derivs_ok:
                 cg_snap = {
                     **(cg_snap or {}),
@@ -235,7 +342,7 @@ class DataPipeline:
                     "funding": funding_rate,
                     "oi": open_interest,
                     "liq": {"long": liq_long, "short": liq_short} if (liq_long or liq_short) else None,
-                    "source": "binance_perp",
+                    "source": derivs_source or "binance_perp",
                     "skip_reason": cg_reason,
                     "fetched_at": now,
                 }
@@ -268,12 +375,13 @@ class DataPipeline:
             "coinglass": cg_snap,
             "health": {
                 "kalshi": bool(km.get("ticker")),
-                "binance": price is not None,
+                "binance": spot_source in ("binance_vision", "binance_us", "binance") and price is not None,
+                "coinbase": spot_source == "coinbase",
                 "coinglass": bool(cg_ok),
                 "coinglass_reason": cg_reason,
                 "derivs_ok": bool(derivs_ok),
-                "derivs_source": "coinglass" if cg_ok else ("binance_perp" if derivs_ok else None),
-                "spot_source": "binance" if price is not None else None,
+                "derivs_source": "coinglass" if cg_ok else (derivs_source if derivs_ok else None),
+                "spot_source": spot_source if price is not None else None,
                 "last_fetch_ms": fetch_ms,
             },
             "candles": candles,

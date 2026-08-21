@@ -40,7 +40,7 @@ class GuardianBot(BaseSpecialist):
         entry = self.entry_dir(market_data)
 
         health = market_data.get("health") or {}
-        binance_ok = bool(health.get("binance", True)) or spot_feed_ok(health, market_data)
+        binance_ok = bool(health.get("binance")) or spot_feed_ok(health, market_data)
         kalshi_ok = health.get("kalshi", True)
 
         features = {
