@@ -18,8 +18,16 @@ class SelfFontTests(unittest.TestCase):
         self.assertNotIn("fonts.googleapis", css)
         self.assertNotIn("fonts.gstatic", css)
 
+    def test_dojo_head_is_local(self) -> None:
+        html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("/fonts.css", html)
+        self.assertIn("/fonts/orbitron-700.woff2", html)
+        self.assertNotIn("fonts.googleapis", html)
+        self.assertNotIn("fonts.gstatic", html)
+        self.assertNotIn("family=Inter", html)
+
     def test_ensure_writes_woff2_when_sidecars_present(self) -> None:
-        from backend.services.self_fonts import ensure_self_fonts, FONT_HINT
+        from backend.services.self_fonts import ensure_self_fonts, FONT_HINT, FONT_FILES
         src = ROOT / "frontend" / "static" / "fonts"
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -32,12 +40,19 @@ class SelfFontTests(unittest.TestCase):
             ensure_self_fonts(root)
             self.assertTrue((root / "fonts.css").is_file())
             self.assertIn(FONT_HINT, (root / "style.css").read_text(encoding="utf-8"))
-            if list(dest.glob("*.b64")):
+            blobs = list(dest.glob("*.b64"))
+            if blobs:
                 self.assertTrue((dest / "orbitron-700.woff2").is_file())
+            names = {p.name for p in src.glob("*.b64")}
+            for face in FONT_FILES:
+                self.assertIn(face + ".b64", names, face)
 
     def test_sw_precaches_critical_faces(self) -> None:
         sw = (ROOT / "frontend" / "static" / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("20260821m", sw)
+        self.assertIn("20260821n", sw)
         self.assertIn("/fonts.css?v=", sw)
         self.assertIn("/fonts/orbitron-700.woff2", sw)
+        self.assertIn("/fonts/rajdhani-500.woff2", sw)
         self.assertIn("/fonts/rajdhani-600.woff2", sw)
+        self.assertIn("/fonts/rajdhani-700.woff2", sw)
+        self.assertIn("/fonts/share-tech-mono-400.woff2", sw)
