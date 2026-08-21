@@ -22,6 +22,7 @@ _DECISION_KEYS = (
     "direction",
     "confidence",
     "summary",
+    "why",
     "lean",
     "score",
     "lockdown",
@@ -101,6 +102,21 @@ def _pick(src: Any, keys: tuple) -> Dict[str, Any]:
     return out
 
 
+def _punch_decision(src: Any) -> Dict[str, Any]:
+    """One-line Chair thesis for the TV. Does not change lock gates."""
+    row = _pick(src or {}, _DECISION_KEYS)
+    try:
+        from backend.agents.chair_gates import punch_chair_why
+        punched = punch_chair_why(row.get("summary"), row.get("direction"))
+        if punched:
+            row["summary"] = punched
+            row["why"] = punched
+    except Exception:
+        if row.get("summary") and "why" not in row:
+            row["why"] = row["summary"]
+    return row
+
+
 def _thin_agent(agent: Any) -> Dict[str, Any]:
     if not isinstance(agent, dict):
         return {}
@@ -132,7 +148,7 @@ def thin_table(table: Any) -> Optional[Dict[str, Any]]:
         "timestamp": table.get("timestamp"),
         "asset": table.get("asset"),
         "leader_name": table.get("leader_name"),
-        "decision": _pick(table.get("decision") or {}, _DECISION_KEYS),
+        "decision": _punch_decision(table.get("decision") or {}),
         "agents": [_thin_agent(a) for a in agents],
         "market": _pick(table.get("market") or {}, _MARKET_KEYS),
         "health": _pick(table.get("health") or {}, _HEALTH_KEYS),
@@ -156,7 +172,7 @@ def thin_poll_state(state: Any) -> Dict[str, Any]:
         "asset": state.get("asset") or (btc or {}).get("asset") or "btc",
         "dual": bool(state.get("dual") or eth),
         "leader_name": state.get("leader_name") or (btc or {}).get("leader_name"),
-        "decision": _pick(state.get("decision") or (btc or {}).get("decision") or {}, _DECISION_KEYS),
+        "decision": _punch_decision(state.get("decision") or (btc or {}).get("decision") or {}),
         "agents": [_thin_agent(a) for a in agents],
         "market": _pick(state.get("market") or (btc or {}).get("market") or {}, _MARKET_KEYS),
         "health": _pick(state.get("health") or (btc or {}).get("health") or {}, _HEALTH_KEYS),
@@ -171,3 +187,11 @@ def thin_poll_state(state: Any) -> Dict[str, Any]:
                 if isinstance(t, dict):
                     t.pop(banned, None)
     return out
+
+
+# Paint missing room stills + stitch self-hosted fonts once at import.
+try:
+    from backend.services.room_plates import ensure_room_stills
+    ensure_room_stills()
+except Exception:
+    pass
