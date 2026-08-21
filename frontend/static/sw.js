@@ -3,7 +3,7 @@
    Old workers that cache-first "/" pin the assembler stub on phones.
    This worker does not precache "/", does not cache documents, and
    claims clients as soon as it installs. */
-const VERSION = "20260821k";
+const VERSION = "20260821m";
 const STATIC_CACHE = "council-static-" + VERSION;
 
 const PRECACHE = [
@@ -12,6 +12,9 @@ const PRECACHE = [
   "/roundtable.js?v=" + VERSION,
   "/desk-fx.js?v=" + VERSION,
   "/style.css?v=" + VERSION,
+  "/fonts.css?v=" + VERSION,
+  "/fonts/orbitron-700.woff2",
+  "/fonts/rajdhani-600.woff2",
   "/desk-worker.js?v=" + VERSION,
   "/council-mark.png",
   "/favicon.svg",
