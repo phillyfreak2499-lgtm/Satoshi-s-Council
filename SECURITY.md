@@ -5,7 +5,7 @@ Satoshi’s Council is a web app. The browser must load HTML/JS/CSS — that par
 ## What is hardened in code
 
 1. **Access is gated by server-side desk sessions.**
-   Unlocking the desk mints a random `secrets.token_urlsafe(32)` token that is stored **server-side** (in `_desk_sessions`) and set as an HttpOnly `council_desk` cookie (`SameSite=lax`, 12h idle expiry). The token is **not derived from any secret**, so it cannot be forged; it is **revocable** at any time by dropping the server-side entry. This is stronger than a signed/stateless cookie (which cannot be revoked before expiry and forges en masse if the signing secret leaks).
+   The Stream is a **public paper TV**. Checking the oath (`POST /api/desk/unlock` with `{oath: true}`) mints a random `secrets.token_urlsafe(32)` token that is stored **server-side** (in `_desk_sessions`) and set as an HttpOnly `council_desk` cookie (`SameSite=lax`, 12h idle expiry). There is no visitor password and no hardcoded `"council"` accept. A real `COUNCIL_ACCESS_PASSWORD` still works if you set one. The token is **not derived from any secret**, so it cannot be forged; it is **revocable** at any time by dropping the server-side entry.
 
 2. **A middleware gates the entire API, including `GET /api/state`.**
    `require_desk_session` returns **401 on every `/api/*` request** except `OPTIONS` (CORS preflight), `/api/desk/unlock`, `/api/public/*`, and the listed billing webhooks. The static shell (`/`, `/static/*`, `/templates/*`) and `/health` load without a session.
@@ -14,7 +14,7 @@ Satoshi’s Council is a web app. The browser must load HTML/JS/CSS — that par
    After a desk session is minted, `/api/state` returns **decision, clock, seat directions, and health flags only** (target < 30 KB). It does **not** include accuracy, weights, hierarchy, learning, huddle, or lifetime logs. Those live on their own gated routes (`/api/accuracy`, `/api/learning`, `/api/huddle`, `/api/lifetime`, `/api/council/ranks`). A scraper without the cookie gets 401, not a megabyte of edge.
 
 4. **Desk unlock is brute-force throttled.**
-   `AttemptLimiter` allows **8 failed attempts per 15 minutes per IP**; further attempts return a generic wrong-password result (no lockout signal is leaked). The password itself is compared with `hmac.compare_digest`.
+   Empty / no-oath posts fail closed with **401**. `AttemptLimiter` allows **8 failed attempts per 15 minutes per IP**; further attempts return a generic wrong-password result (no lockout signal is leaked). If `COUNCIL_ACCESS_PASSWORD` is set, it is compared with `hmac.compare_digest`.
 
 5. **Admin stays fail-closed.**
    If `COUNCIL_ADMIN_PASSWORD` is unset, admin routes (brain export, forced analyze, settings writes, seat backfill) stay **closed**. The admin password is **never** stored in frontend JS. The UI posts the typed value to `POST /api/admin/verify`; success mints an HttpOnly `council_admin` cookie. Downloads use that cookie — never `?admin=` query strings.
@@ -33,7 +33,7 @@ Set strong values — long random strings, not dictionary words:
 
 ```
 COUNCIL_ADMIN_PASSWORD=...
-COUNCIL_ACCESS_PASSWORD=...
+COUNCIL_ACCESS_PASSWORD=...   # optional extra lock; Stream oath is enough without it
 FOLLOWER_PASSWORD_2=...
 FOLLOWER_PASSWORD_3=...
 COINGLASS_API_KEY=...        # optional; enables funding/OI/liquidations
@@ -57,7 +57,7 @@ COINGLASS_API_KEY=...        # optional; enables funding/OI/liquidations
 
 1. Incognito, no unlock → `GET /api/state` returns **401** (the whole API is gated).
 2. `GET /health` returns **200** without a session (intended — liveness only).
-3. Correct desk unlock → subsequent `/api/*` calls succeed (the `council_desk` cookie is set).
+3. `POST /api/desk/unlock` with `{oath: true}` → subsequent `/api/*` calls succeed (the `council_desk` cookie is set). Empty / `"council"` posts stay **401**.
 4. Unlocked `GET /api/state` is **under 30 KB** and has no `accuracy` / `weights` / `hierarchy` / `learning` / `huddle` keys.
 5. Eight wrong unlock attempts within 15 min → further attempts are throttled.
 6. Without `COUNCIL_ADMIN_PASSWORD` set → admin routes (e.g. brain export) return **401**.

@@ -69,18 +69,20 @@ def passwords_match(got: Any, want: str) -> bool:
     return hmac.compare_digest(left, right)
 
 
-def unlock_result(submitted: Any, client_key: str = "") -> Dict[str, Any]:
-    """ok or generic wrong. Never include submitted or stored values."""
+def unlock_result(submitted: Any, client_key: str = "", oath: bool = False) -> Dict[str, Any]:
+    """ok or generic wrong. Never include submitted or stored values.
+
+    The Stream is a public paper TV. Checking the oath (oath=True) mints a
+    desk session. A real COUNCIL_ACCESS_PASSWORD still works if set.
+    """
     import os
     if unlock_limiter.limited(client_key):
         return {"ok": False, "error": WRONG}
-    # Sandbox preview: never trap the operator on the gate.
     preview = (os.environ.get("PREVIEW_OPEN") or "").strip().lower() in ("1", "true", "yes")
     if preview:
         unlock_limiter.note_success(client_key)
         return {"ok": True}
-    # Public Stream oath. "council" is the visitor code on the gate card.
-    if _clean(submitted).casefold() == "council":
+    if oath is True:
         unlock_limiter.note_success(client_key)
         return {"ok": True}
     if passwords_match(submitted, load_desk_password()):

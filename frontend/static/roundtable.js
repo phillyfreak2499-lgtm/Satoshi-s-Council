@@ -13492,7 +13492,6 @@ function drawCandleChart() {
       return;
     }
     const pg = document.getElementById("passwordGate");
-    const input = document.getElementById("passwordInput");
     const btn = document.getElementById("passwordSubmit");
     const err = document.getElementById("passwordError");
     const agree = document.getElementById("gateAgree");
@@ -13502,8 +13501,7 @@ function drawCandleChart() {
     document.body.classList.add("gate-locked");
     document.body.classList.remove("admin-unlocked");
     document.body.setAttribute("data-password-protected", "true");
-    if (input && !input.value) input.value = "council";
-    if (agree) agree.checked = true;
+    if (agree) agree.checked = false;
     const syncDeskGateSummon = () => {
       if (btn) {
         btn.disabled = false;
@@ -13515,24 +13513,28 @@ function drawCandleChart() {
       return true;
     };
     const tryUnlock = () => {
-      const v = ((input && input.value) || "council").trim();
+      if (agree && !agree.checked) {
+        if (err) { err.textContent = "Check the oath first."; err.classList.remove("hidden"); }
+        return;
+      }
       if (tryUnlock.__busy) return;
       tryUnlock.__busy = true;
       fetch("/api/desk/unlock", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: v || "council" }),
-      }).then((r) => r.json().catch(function () { return {}; })).then(function () {
+        body: JSON.stringify({ oath: true }),
+      }).then((r) => r.json().catch(function () { return {}; })).then(function (d) {
+        if (!d || !d.ok) {
+          if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
+          return;
+        }
         try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
         try { localStorage.setItem("council_onboarded", "1"); } catch (e) {}
         window.__deskUnlockedThisPage = true;
         showAppAfterAuth();
       }).catch(function () {
-        try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
-        try { localStorage.setItem("council_onboarded", "1"); } catch (e) {}
-        window.__deskUnlockedThisPage = true;
-        showAppAfterAuth();
+        if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
       }).finally(function () {
         tryUnlock.__busy = false;
       });
@@ -13556,7 +13558,6 @@ function drawCandleChart() {
         tryUnlock();
       }, { passive: false });
     }
-    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
     try { prefetchDeskIntroVideo(); } catch (e) {}
   }
 

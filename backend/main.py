@@ -1637,9 +1637,11 @@ async def desk_unlock(request: Request):
     if not isinstance(body, dict):
         body = {}
     submitted = body.get("password") or body.get("code") or ""
-    result = desk_unlock_result(str(submitted), _client_ip(request))
+    raw_oath = body.get("oath")
+    oath = raw_oath is True or str(raw_oath or "").strip().lower() in ("1", "true", "yes")
+    result = desk_unlock_result(str(submitted), _client_ip(request), oath=oath)
     if not result.get("ok"):
-        return result
+        return ORJSONResponse(result, status_code=401)
     response = ORJSONResponse(result)
     _issue_desk_session(response)
     return response

@@ -68,7 +68,7 @@ class SwUnstickTests(unittest.TestCase):
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
         self.assertIn('cache: "no-store"', SW)
-        self.assertIn("20260821e", SW)
+        self.assertIn("20260821f", SW)
 
     def test_assembler_drops_old_workers(self) -> None:
         self.assertIn("getRegistrations", ASSEMBLER)
@@ -91,9 +91,24 @@ class DeskHtmlTests(unittest.TestCase):
         self.assertIn("acc-locked", badge)
         card = html.split('id="hitRateCard"', 1)[1].split(">", 1)[0]
         self.assertIn("hidden", card)
-        self.assertIn("sw.js?v=20260821e", html)
-        self.assertIn("roundtable.js?v=20260821e", html)
+        self.assertIn("sw.js?v=20260821f", html)
+        self.assertIn("roundtable.js?v=20260821f", html)
         self.assertIn("updateViaCache", html)
+
+    def test_gate_is_an_oath_not_a_password(self) -> None:
+        html = _desk_html()
+        self.assertIn("Public paper Stream", html)
+        self.assertNotIn('id="passwordInput"', html)
+        self.assertNotIn('value="council"', html)
+        agree = html.split('id="gateAgree"', 1)[1].split(">", 1)[0]
+        self.assertNotIn("checked", agree)
+        self.assertIn("oath: true", html)
+        seat = (ROOT / "frontend" / "static" / "seat.js").read_text(encoding="utf-8")
+        self.assertIn("oath: true", seat)
+        self.assertNotIn('"council"', seat)
+        access = (ROOT / "backend" / "services" / "desk_access.py").read_text(encoding="utf-8")
+        self.assertIn("if oath is True", access)
+        self.assertNotIn('== "council"', access)
 
     def test_crowd_and_flow_portraits_exist(self) -> None:
         self.assertTrue((PORTRAITS / "crowd.webp").is_file())

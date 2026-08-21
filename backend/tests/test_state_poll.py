@@ -9,7 +9,23 @@ ROOT = Path(__file__).resolve().parents[2]
 MAIN = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
 SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
 
+from backend.services.desk_access import unlock_result
 from backend.services.state_poll import POLL_STRIP, thin_poll_state
+
+
+class OathUnlockTests(unittest.TestCase):
+    def test_oath_opens_public_stream(self) -> None:
+        self.assertTrue(unlock_result("", "t-oath", oath=True).get("ok"))
+        self.assertFalse(unlock_result("council", "t-code").get("ok"))
+        self.assertFalse(unlock_result("", "t-empty").get("ok"))
+
+    def test_failed_unlock_is_401(self) -> None:
+        block = MAIN.split("async def desk_unlock", 1)[1].split("async def follower_unlock", 1)[0]
+        self.assertIn("status_code=401", block)
+        self.assertIn("oath=oath", block)
+        self.assertIn("public paper", SECURITY.lower())
+        self.assertIn("{oath: true}", SECURITY)
+        self.assertIn("no hardcoded", SECURITY.lower())
 
 
 def _fat_state() -> dict:

@@ -158,17 +158,25 @@
         e.stopPropagation();
       }
       if (go.busy) return;
+      var agree = document.getElementById("gateAgree");
+      var err = document.getElementById("passwordError");
+      if (agree && !agree.checked) {
+        if (err) { err.textContent = "Check the oath first."; err.classList.remove("hidden"); }
+        return;
+      }
       go.busy = true;
-      var input = document.getElementById("passwordInput");
-      var v = ((input && input.value) || "council").trim() || "council";
       fetch("/api/desk/unlock", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: v })
-      }).then(function () {
-        try { sessionStorage.setItem("council_auth_ok", "1"); } catch (err) {}
-        try { localStorage.setItem("council_onboarded", "1"); } catch (err) {}
+        body: JSON.stringify({ oath: true })
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok && d && d.ok }; }).catch(function () { return { ok: false }; }); }).then(function (res) {
+        if (!res.ok) {
+          if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
+          return;
+        }
+        try { sessionStorage.setItem("council_auth_ok", "1"); } catch (e2) {}
+        try { localStorage.setItem("council_onboarded", "1"); } catch (e2) {}
         lockSeat();
         var pg = document.getElementById("passwordGate");
         if (pg) pg.classList.add("hidden");
@@ -179,11 +187,7 @@
           document.body.classList.add("desk-unlocked");
         }
       }).catch(function () {
-        lockSeat();
-        var pg = document.getElementById("passwordGate");
-        if (pg) pg.classList.add("hidden");
-        document.documentElement.classList.remove("gate-locked");
-        document.documentElement.classList.add("desk-unlocked");
+        if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
       }).finally(function () { go.busy = false; });
     }
     btn.addEventListener("click", go, true);
