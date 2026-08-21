@@ -92,7 +92,7 @@ class SwUnstickTests(unittest.TestCase):
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
         self.assertIn('cache: "no-store"', SW)
-        self.assertIn("20260821i", SW)
+        self.assertIn("20260821m", SW)
 
     def test_assembler_drops_old_workers(self) -> None:
         self.assertIn("getRegistrations", ASSEMBLER)
