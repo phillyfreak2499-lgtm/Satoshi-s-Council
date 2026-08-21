@@ -1,9 +1,6 @@
 /* Satoshi's Council — shrine cache.
-   Static files stay. HTML and /api/state never do.
-   Old workers that cache-first "/" pin the assembler stub on phones.
-   This worker does not precache "/", does not cache documents, and
-   claims clients as soon as it installs. */
-const VERSION = "20260821n";
+   Static files stay. HTML and /api/state never do. */
+const VERSION = "20260821p";
 const STATIC_CACHE = "council-static-" + VERSION;
 
 const PRECACHE = [
@@ -13,11 +10,6 @@ const PRECACHE = [
   "/desk-fx.js?v=" + VERSION,
   "/style.css?v=" + VERSION,
   "/fonts.css?v=" + VERSION,
-  "/fonts/orbitron-700.woff2",
-  "/fonts/rajdhani-500.woff2",
-  "/fonts/rajdhani-600.woff2",
-  "/fonts/rajdhani-700.woff2",
-  "/fonts/share-tech-mono-400.woff2",
   "/desk-worker.js?v=" + VERSION,
   "/council-mark.png",
   "/favicon.svg",
@@ -39,14 +31,9 @@ function isDocument(req, url) {
 
 function localFontPath(url) {
   const p = (url.pathname || "").toLowerCase();
-  if (p.indexOf("orbitron") !== -1) return "/fonts/orbitron-700.woff2";
-  if (p.indexOf("sharetech") !== -1) return "/fonts/share-tech-mono-400.woff2";
-  if (p.indexOf("rajdhani") !== -1 || p.indexOf("ldi2apcsobg7s-qt7p") !== -1) {
-    if (p.indexOf("pa8") !== -1) return "/fonts/rajdhani-700.woff2";
-    if (p.indexOf("pby") !== -1) return "/fonts/rajdhani-600.woff2";
-    if (p.indexOf("pb0") !== -1) return "/fonts/rajdhani-500.woff2";
-    return "/fonts/rajdhani-600.woff2";
-  }
+  if (p.indexOf("orbitron") !== -1) return "/static/fonts/orbitron-700.woff2";
+  if (p.indexOf("sharetech") !== -1) return "/static/fonts/share-tech-mono-400.woff2";
+  if (p.indexOf("rajdhani") !== -1) return "/static/fonts/rajdhani-600.woff2";
   return "";
 }
 
@@ -70,15 +57,11 @@ self.addEventListener("activate", function (event) {
 
 self.addEventListener("message", function (event) {
   const data = event.data || {};
-  if (data === "SKIP_WAITING" || data.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
+  if (data === "SKIP_WAITING" || data.type === "SKIP_WAITING") self.skipWaiting();
   if (data === "UNPIN" || data.type === "UNPIN") {
-    event.waitUntil(
-      caches.keys().then(function (keys) {
-        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-      })
-    );
+    event.waitUntil(caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+    }));
   }
 });
 
@@ -89,7 +72,7 @@ self.addEventListener("fetch", function (event) {
   try { url = new URL(req.url); } catch (e) { return; }
 
   if (url.hostname === "fonts.googleapis.com") {
-    event.respondWith(fetch("/fonts.css?v=" + VERSION, { cache: "reload" }));
+    event.respondWith(fetch("/static/fonts.css?v=" + VERSION, { cache: "reload" }));
     return;
   }
   if (url.hostname === "fonts.gstatic.com") {
@@ -101,13 +84,11 @@ self.addEventListener("fetch", function (event) {
   }
 
   if (url.origin !== self.location.origin) return;
-  if (isApi(url)) return; // live Chair — never cache
+  if (isApi(url)) return;
 
   if (isDocument(req, url)) {
     event.respondWith(
-      fetch(req, { cache: "no-store" }).then(function (res) {
-        return res;
-      }).catch(function () {
+      fetch(req, { cache: "no-store" }).then(function (res) { return res; }).catch(function () {
         return caches.match("/offline.html");
       })
     );
