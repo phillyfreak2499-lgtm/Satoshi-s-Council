@@ -34,6 +34,19 @@ function isDocument(req, url) {
   return accept.indexOf("text/html") !== -1;
 }
 
+function localFontPath(url) {
+  const p = (url.pathname || "").toLowerCase();
+  if (p.indexOf("orbitron") !== -1) return "/fonts/orbitron-700.woff2";
+  if (p.indexOf("sharetech") !== -1) return "/fonts/share-tech-mono-400.woff2";
+  if (p.indexOf("rajdhani") !== -1 || p.indexOf("ldi2apcsobg7s-qt7p") !== -1) {
+    if (p.indexOf("pa8") !== -1) return "/fonts/rajdhani-700.woff2";
+    if (p.indexOf("pby") !== -1) return "/fonts/rajdhani-600.woff2";
+    if (p.indexOf("pb0") !== -1) return "/fonts/rajdhani-500.woff2";
+    return "/fonts/rajdhani-600.woff2";
+  }
+  return "";
+}
+
 self.addEventListener("install", function (event) {
   event.waitUntil(
     caches.open(STATIC_CACHE).then(function (cache) {
@@ -71,6 +84,19 @@ self.addEventListener("fetch", function (event) {
   if (req.method !== "GET") return;
   let url;
   try { url = new URL(req.url); } catch (e) { return; }
+
+  if (url.hostname === "fonts.googleapis.com") {
+    event.respondWith(fetch("/fonts.css?v=" + VERSION, { cache: "reload" }));
+    return;
+  }
+  if (url.hostname === "fonts.gstatic.com") {
+    const local = localFontPath(url);
+    if (local) {
+      event.respondWith(fetch(local, { cache: "reload" }));
+      return;
+    }
+  }
+
   if (url.origin !== self.location.origin) return;
   if (isApi(url)) return; // live Chair — never cache
 
