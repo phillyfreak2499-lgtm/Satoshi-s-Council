@@ -7,10 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/fonts.css?v=20260821n" />
-  <link rel="stylesheet" href="/style.css?v=20260821n" />
-  <link rel="preload" as="font" href="/fonts/orbitron-700.woff2" type="font/woff2" crossorigin />
-  <script src="/seat.js?v=20260821n"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260821p" />
+  <link rel="stylesheet" href="/style.css?v=20260821p" />
+  <script src="/seat.js?v=20260821p"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -75,6 +74,60 @@
   <div id="app">
     <div id="ztWatermark" class="zt-watermark" aria-hidden="true"><img src="/council-mark.png" alt="" /></div>
     <div class="floor-hint" id="floorHint">FLOOR</div>
+    <button type="button" id="floorExitBtn" class="floor-exit-btn" hidden>TABLE</button>
+    <div id="floorChairToggles" class="floor-chair-toggles" hidden role="group" aria-label="Floor chairs">
+      <label class="floor-chair-tog" title="Satoshi on the Floor"><input type="checkbox" data-floor-chair="bitcoin" checked /><span>SATOSHI</span></label>
+      <label class="floor-chair-tog" title="Vitalik on the Floor"><input type="checkbox" data-floor-chair="ethereum" checked /><span>VITALIK</span></label>
+      <label class="floor-chair-tog" title="Ares on the Floor"><input type="checkbox" data-floor-chair="ats" checked /><span>ARES</span></label>
+      <label class="floor-chair-tog" title="Raijin on the Floor"><input type="checkbox" data-floor-chair="front" checked /><span>RAIJIN</span></label>
+      <label class="floor-chair-tog" title="Oracle on the Floor"><input type="checkbox" data-floor-chair="oracle" checked /><span>ORACLE</span></label>
+    </div>
+    <div id="floorLeaderClocks" class="floor-leader-clocks" hidden aria-label="Per-leader window clocks">
+      <div class="floor-leader-clock" data-floor-clock="bitcoin" hidden><span class="flc-name">SATOSHI</span><span class="flc-win">1H</span><span class="flc-time" data-flc-time>--</span></div>
+      <div class="floor-leader-clock" data-floor-clock="ethereum" hidden><span class="flc-name">VITALIK</span><span class="flc-win">1H</span><span class="flc-time" data-flc-time>--</span></div>
+      <div class="floor-leader-clock" data-floor-clock="front" hidden><span class="flc-name">RAIJIN</span><span class="flc-win">DFW</span><span class="flc-time" data-flc-time>--</span></div>
+      <div class="floor-leader-clock" data-floor-clock="ats" hidden><span class="flc-name">ARES</span><span class="flc-win">KICK</span><span class="flc-time" data-flc-time>--</span></div>
+      <div class="floor-leader-clock" data-floor-clock="oracle" hidden><span class="flc-name">ORACLE</span><span class="flc-win">WATCH</span><span class="flc-time" data-flc-time>--</span></div>
+    </div>
+    <button type="button" id="phoneBackBtn" class="phone-back-btn" hidden aria-label="Back to Floor">← FLOOR</button>
+    <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden>KILL TIME / PLAY</button>
+    <div id="seatStormPlay" class="seat-storm-play hidden" hidden>
+      <div class="ss-hud">
+        <span class="ss-title">SEAT STORM</span>
+        <span id="ssStreak" class="ss-streak">0</span>
+        <span id="ssBest" class="ss-best">BEST 0</span>
+        <span id="ssClock" class="ss-clock">0:40</span>
+        <span id="ssPair" class="ss-pair">ETH</span>
+        <button type="button" id="ssExit" class="ss-exit">BACK TO DESK</button>
+      </div>
+      <div id="ssRing" class="ss-ring"></div>
+      <p id="ssStatus" class="ss-status">Tap the lit seat</p>
+    </div>
+    <div id="rivalryStrip" class="rivalry-strip" hidden>
+      <span class="rival-tag">PAPER</span>
+      <span class="rival-tag">BOOKS</span>
+      <span id="rivalBtc">BTC 0–0</span>
+      <b class="rival-vs">VS</b>
+      <span id="rivalEth">0–0 ETH</span>
+      <span id="rivalLead" class="rival-lead">BTC 0 · ETH 0</span>
+      <span id="rivalTrash" class="rival-trash"></span>
+    </div>
+    <div id="hourSlam" class="hour-slam" hidden></div>
+    <div id="closeRecap" class="close-recap hidden" hidden>
+      <div class="close-recap-card">
+        <div class="close-kicker">HOUR CLOSE</div>
+        <p id="closeSatoshi" class="close-line">SATOSHI · —</p>
+        <p id="closeVitalik" class="close-line">VITALIK · —</p>
+        <p id="closeBooks" class="close-books">BOOKS · —</p>
+      </div>
+    </div>
+    <div id="healthStrip" class="health-strip" hidden>
+      <span id="healthKalshi" class="health-dot" data-feed="kalshi">Kalshi</span>
+      <span id="healthSpot" class="health-dot" data-feed="spot">Spot</span>
+      <span id="healthGlass" class="health-dot" data-feed="coinglass">Glass</span>
+      <span id="healthAge" class="health-age">—</span>
+    </div>
+    <div id="huddleBanner" class="huddle-banner" role="status"></div>
     <header>
       <div class="header-row">
         <div class="logo">
@@ -85,11 +138,15 @@
           <span id="liveClock" class="live-clock">--:--:-- CT</span>
         </div>
         <div class="controls">
+          <button type="button" id="hiveBtn" class="hive-btn" aria-label="hive"><span>HIVE</span></button>
           <div id="huddleBadge" class="huddle-badge"><span class="huddle-label">HUDDLE</span><span id="huddleStatus" class="huddle-status">—</span></div>
           <div id="accuracyBadge" class="accuracy-badge cold hidden acc-locked" hidden>
             <span id="accuracyPct" class="acc-pct">—</span>
+            <span id="accuracyFrac" class="acc-frac">0 / 0</span>
+            <span id="accuracyDetail" class="acc-detail">0✓ · 0✗</span>
           </div>
           <div id="lawBadge" class="law-badge"><span class="law-label">LAW</span><span id="lawStatus" class="law-status">OK</span></div>
+          <button type="button" id="ztLogoBtn" class="zt-logo-btn" aria-label="Play cinematic"><img src="/council-mark.png" alt="" width="28" height="28" /></button>
           <button type="button" id="beastBadge" class="beast-badge">BEAST</button>
           <button type="button" id="soundToggle">🔔 Bell</button>
           <button type="button" id="stillToggle">STILL</button>
@@ -98,11 +155,17 @@
         </div>
       </div>
       <div class="mode-tabs-shell" id="modeTabsShell">
+        <button type="button" id="modeTabsPrev" class="mode-tabs-arrow mode-tabs-prev" aria-label="Scroll tabs left">‹</button>
         <div id="modeTabs" class="mode-tabs" role="tablist">
           <button type="button" id="focusBtc" class="focus-tab" data-focus="bitcoin">BTC</button>
           <button type="button" id="focusEth" class="focus-tab" data-focus="ethereum">ETH</button>
+          <button type="button" id="focusFront" class="focus-tab" data-focus="front">DWF</button>
+          <button type="button" id="focusAts" class="focus-tab" data-focus="ats">ATS</button>
+          <button type="button" id="focusOra" class="focus-tab" data-focus="oracle">ORA</button>
+          <span id="focusTableBadge" class="focus-table-badge">ETH · VITALIK</span>
           <button type="button" id="tabFloor" class="mode-tab" data-mode="floor">Floor</button>
           <button type="button" id="tabStream" class="mode-tab" data-mode="stream">Stream</button>
+          <button type="button" id="tabNight" class="mode-tab" data-mode="night">Night</button>
           <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art">Table</button>
           <button type="button" id="tabSeats" class="mode-tab" data-mode="seats">Seats</button>
           <button type="button" id="tabPaper" class="mode-tab" data-mode="paper">Paper</button>
@@ -113,10 +176,13 @@
           <button type="button" id="tabNews" class="mode-tab" data-mode="news">News</button>
           <button type="button" id="tabWire" class="mode-tab" data-mode="wire">WIRE</button>
           <button type="button" id="tabSchool" class="mode-tab" data-mode="school">School</button>
+          <button type="button" id="tabSide" class="mode-tab" data-mode="side" hidden>Side</button>
+          <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden>Front</button>
           <button type="button" id="tabCharts" class="mode-tab" data-mode="charts">Charts</button>
           <button type="button" id="tabSettings" class="mode-tab" data-mode="settings">Settings</button>
           <button type="button" id="btnHelp" class="mode-tab">?</button>
         </div>
+        <button type="button" id="modeTabsNext" class="mode-tabs-arrow mode-tabs-next" aria-label="Scroll tabs right">›</button>
       </div>
     </header>
 
@@ -124,8 +190,10 @@
       <aside id="lifetimePanel" class="side-panel side-left">
         <div id="windowLed" class="led-float led-window">
           <div class="led-bezel">
-            <div class="led-label" id="ledWindowLabel">1H WINDOW</div>
+            <div class="led-label" id="ledWindowLabel">15M WINDOW</div>
             <div id="ledWindowTime" class="led-digits led-time">--:--</div>
+            <div class="led-foot" id="ledWindowSub">until close</div>
+            <div class="led-foot dual-window-sub" id="dualWindowSub">BTC — · ETH —</div>
           </div>
         </div>
         <div id="hitRateCard" class="hit-rate-card hidden acc-locked" hidden>
@@ -139,10 +207,61 @@
           <span id="deskLeadKicker">WIND-UP</span>
           <b id="deskLeadLine">Seats leaning. Chair sitting.</b>
         </div>
+        <button type="button" id="seatSpinBtn" class="seat-spin-btn" hidden>SPIN</button>
+        <div id="lightsaberWrap" class="lightsaber-wrap" aria-hidden="true">
+          <div id="lightsaberBar" class="lightsaber-bar"><div class="lightsaber-sparks" id="lightsaberSparks"></div></div>
+          <div id="lightsaberLabel" class="lightsaber-label">0%</div>
+        </div>
+        <div id="floorCrawl" class="floor-crawl" hidden><div id="floorCrawlTrack" class="floor-crawl-track">BTC WAIT · ETH WAIT</div></div>
         <div id="chairWhy" class="chair-why">WAIT · —</div>
+        <div id="atsWhy" class="ats-why" hidden>
+          <div id="atsWhyLine" class="ats-why-line">WHY · DARK</div>
+          <div id="atsWhyStrip" class="ats-why-strip">LINE SIT · STEAM SIT</div>
+          <div id="atsHunt" class="ats-hunt">HUNT · —</div>
+        </div>
+        <div id="atsWatch" class="ats-watch" hidden>WATCH · DARK</div>
+        <div id="oraWhy" class="ora-why" hidden>
+          <div id="oraWhyLine" class="ora-why-line">WAIT · CRT</div>
+          <div id="oraWhyStrip" class="ora-why-strip">SIBYL DARK</div>
+          <div id="oraHunt" class="ora-hunt">HUNT · —</div>
+        </div>
+        <div id="oraWatch" class="ora-watch" hidden>CRT · WATCH</div>
+        <div id="aresFace" class="ares-face" data-eye="wait" hidden>
+          <img id="aresChairImg" src="/static/ares-wait.png" alt="Ares">
+        </div>
+        <div id="raijinFace" class="raijin-face" data-eye="wait" hidden>
+          <img id="raijinChairOverlay" src="/static/bots/raijin-chair.png" alt="">
+        </div>
+        <button type="button" id="phoneScore" class="phone-score" hidden>BTC 0–0</button>
+        <button type="button" id="floorRaijin" class="floor-raijin" aria-label="Open THE FRONT">
+          <img src="/static/bots/raijin-chair.png" alt="" width="44" height="44">
+          <span>RAIJIN</span>
+        </button>
       </div>
+      <button type="button" id="openChartsBtn" class="open-charts-btn">📊 Full Charts</button>
       <aside id="debatePanel" class="side-panel side-right signal-feed">
+        <section id="lockTapeCard" class="hud-card lock-tape-card">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta" id="lockTapeMeta">tape</span></header>
+          <ol id="lockTapeList" class="lock-tape-list"><li class="lock-tape-empty">No Chair lock this hour</li></ol>
+        </section>
+        <section id="whyLockCard" class="hud-card why-lock-card hidden"><p id="whyLockLine" class="why-lock-line">—</p></section>
+        <section id="dualFightCard" class="hud-card dual-fight-card">
+          <div id="dualFightStrip" class="dual-fight-strip">
+            <span id="dualFightBtc">BTC —</span>
+            <span id="dualFightVs">·</span>
+            <span id="dualFightEth">ETH —</span>
+          </div>
+        </section>
+        <button type="button" id="seatStormTableBtn" class="seat-storm-table-btn hidden" hidden>START SEAT STORM</button>
         <ol id="signalFeed" class="signal-feed-list"></ol>
+        <div id="signalChair" class="signal-chair">
+          <div class="signal-chair-dir" id="signalChairDir">WAIT</div>
+          <div class="signal-chair-meta" id="signalChairMeta">—</div>
+          <div class="signal-chair-last" id="signalChairLast">last lock —</div>
+        </div>
+      </aside>
+      <aside id="hierarchyPanel" class="side-panel side-right hierarchy-ranks-only">
+        <div id="hierarchyList" class="hierarchy-list"></div>
       </aside>
     </main>
 
@@ -162,10 +281,14 @@
     <section id="wireView" class="info-view hidden"><ol id="wireList" class="wire-list"></ol></section>
     <section id="newsView" class="info-view hidden"></section>
     <section id="schoolView" class="info-view hidden"></section>
+    <section id="sideView" class="info-view hidden"></section>
+    <section id="frontView" class="info-view hidden"></section>
     <section id="callsView" class="info-view hidden">
       <ol id="callsBoard" class="calls-board">
         <li class="calls-row" data-call="bitcoin"><span class="calls-name">BTC</span><span class="calls-status">WAIT</span></li>
         <li class="calls-row" data-call="ethereum"><span class="calls-name">ETH</span><span class="calls-status">WAIT</span></li>
+        <li class="calls-row" data-call="front"><span class="calls-name">FRONT</span><span class="calls-status">WAIT</span></li>
+        <li class="calls-row" data-call="oracle"><span class="calls-name">ORA</span><span class="calls-status">WATCH</span></li>
       </ol>
     </section>
     <section id="paperView" class="info-view hidden"></section>
@@ -173,21 +296,42 @@
       <canvas id="chartBtc"></canvas>
       <canvas id="chartEth"></canvas>
     </section>
+    <div id="floorLed" class="led-float led-floor hidden" hidden>
+      <span id="ledUp">00</span><span id="ledDown">00</span><span id="ledWait">00</span><span id="ledHold">00</span>
+    </div>
+    <div id="colorTally" class="color-tally hidden" aria-hidden="true">
+      <b id="ctUp">0</b><b id="ctDown">0</b><b id="ctWait">0</b><span id="ctQuorum"></span>
+    </div>
     <footer>
       <div id="finalDecision" class="status-strip">
         <span class="label">COUNCIL</span>
+        <span id="decisionPhase" class="decision-phase">—</span>
         <span id="decisionDir" class="dir WAIT">WAIT</span>
+        <span id="decisionConf" class="decision-conf">—</span>
+        <span id="decisionLock" class="decision-lock"></span>
+        <span id="lockLiveHost" class="lock-live-host" hidden></span>
         <span id="decisionSummary" class="decision-summary"></span>
       </div>
       <div id="marketStrip">
         <span>BTC <b id="btcPrice">—</b></span>
         <span>ETH <b id="ethPrice">—</b></span>
+        <span id="wxHighStrip" class="wx-high-strip" hidden>DALLAS <b id="wxCity">DFW</b> · NOW <b id="wxNowTemp">—</b></span>
+        <span id="atsSportChip" class="ats-sport-chip" hidden>WAIT</span>
+        <span id="ethDecisionStrip">ETH <b id="ethDir">—</b></span>
+        <span id="btcDecisionStrip">BTC <b id="btcDir">—</b></span>
+        <span>UP <b id="liveUpPct">—</b></span>
+        <span>DOWN <b id="liveDownPct">—</b></span>
+        <span>⏱ <b id="windowTimer">—:——</b></span>
       </div>
     </footer>
   </div>
 
-  <video id="summonVideo" preload="none" playsinline></video>
-  <video id="leaderClickVideo" preload="none" playsinline></video>
+  <div id="deskIntroWrap" class="desk-intro-wrap hidden"><video id="deskIntroVideo" playsinline muted preload="none"></video></div>
+  <div id="summonVideoWrap" class="summon-video-wrap"><video id="summonVideo" preload="none" playsinline></video></div>
+  <div id="celebrateVideoWrap" class="celebrate-video-wrap hidden"><video id="celebrateVideo" preload="none" playsinline></video></div>
+  <div id="leaderClickWrap" class="celebrate-video-wrap hidden"><video id="leaderClickVideo" preload="none" playsinline></video></div>
+  <div id="floorMoneyRain" class="floor-money-rain hidden"><video id="floorMoneyRainVideo" playsinline muted loop></video></div>
+  <div id="hiveEgg" class="hive-egg hidden"></div>
 
   <div id="streamChrome" class="stream-chrome hidden">
     <div id="streamWhy" class="stream-why">
@@ -204,13 +348,13 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260821n"></script>
-  <script src="/roundtable.js?v=20260821n"></script>
-  <script src="/desk-fx.js?v=20260821n"></script>
+  <script src="/wire.js?v=20260821p"></script>
+  <script src="/roundtable.js?v=20260821p"></script>
+  <script src="/desk-fx.js?v=20260821p"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260821n", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260821p", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>
