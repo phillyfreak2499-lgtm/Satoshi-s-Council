@@ -86,10 +86,39 @@
     return get("council_seat_locked") === "1";
   }
 
+  function paintUnlocked() {
+    w.__deskUnlockedThisPage = true;
+    try { sessionStorage.setItem("council_auth_ok", "1"); } catch (e) {}
+    try { localStorage.setItem("council_auth_ok", "1"); } catch (e) {}
+    var html = document.documentElement;
+    var body = document.body;
+    if (html) {
+      html.classList.remove("gate-locked", "gate-revealing");
+      html.classList.add("desk-unlocked");
+    }
+    if (body) {
+      body.classList.remove("gate-locked", "gate-revealing");
+      body.classList.add("desk-unlocked");
+    }
+    ["passwordGate", "summonGate"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.classList.add("hidden");
+        el.style.pointerEvents = "none";
+      }
+    });
+    var wrap = document.getElementById("summonVideoWrap");
+    if (wrap) wrap.classList.remove("active");
+    try {
+      if (typeof w.revealAppAfterDeskUnlock === "function") w.revealAppAfterDeskUnlock();
+    } catch (e) {}
+  }
+
   function lockSeat() {
     set("council_seat_locked", "1");
     set("council_onboarded", "1");
     set("council_entered", "1");
+    paintUnlocked();
   }
 
   function openDb() {
@@ -155,7 +184,6 @@
     function go(e) {
       if (e) {
         e.preventDefault();
-        e.stopPropagation();
       }
       if (go.busy) return;
       var agree = document.getElementById("gateAgree");
@@ -178,14 +206,6 @@
         try { sessionStorage.setItem("council_auth_ok", "1"); } catch (e2) {}
         try { localStorage.setItem("council_onboarded", "1"); } catch (e2) {}
         lockSeat();
-        var pg = document.getElementById("passwordGate");
-        if (pg) pg.classList.add("hidden");
-        document.documentElement.classList.remove("gate-locked");
-        document.documentElement.classList.add("desk-unlocked");
-        if (document.body) {
-          document.body.classList.remove("gate-locked");
-          document.body.classList.add("desk-unlocked");
-        }
       }).catch(function () {
         if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
       }).finally(function () { go.busy = false; });
@@ -197,6 +217,39 @@
     document.addEventListener("DOMContentLoaded", wireSummon);
   } else {
     wireSummon();
+  }
+
+  function wireDeskClicks() {
+    if (document.__deskClicksWired) return;
+    document.__deskClicksWired = true;
+    document.addEventListener("click", function (e) {
+      var t = e.target && e.target.closest && e.target.closest("button, [data-mode], [data-focus]");
+      if (!t) return;
+      if (document.body && document.body.classList.contains("gate-locked") && isLocked()) {
+        paintUnlocked();
+      }
+      if (t.classList && t.classList.contains("mode-tab") && t.getAttribute("data-mode")) {
+        if (typeof w.setMode === "function") {
+          try { w.setMode(t.getAttribute("data-mode")); } catch (err) {}
+        }
+      }
+      if (t.classList && t.classList.contains("focus-tab") && t.getAttribute("data-focus")) {
+        if (typeof w.setFocusTable === "function") {
+          try { w.setFocusTable(t.getAttribute("data-focus")); } catch (err) {}
+        } else if (typeof w.setMode === "function") {
+          try { w.setMode("art"); } catch (err) {}
+        }
+      }
+    }, false);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      if (isLocked()) paintUnlocked();
+      wireDeskClicks();
+    });
+  } else {
+    if (isLocked()) paintUnlocked();
+    wireDeskClicks();
   }
 
   w.CouncilSeat = {
