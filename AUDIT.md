@@ -1,3 +1,12 @@
+# Archived 2026-08-21
+
+This file is a **2026-08-12** snapshot. It is not the live desk.
+
+The desk that is running is the dual 22-seat (BTC) + 18-seat (ETH) paper Stream
+on satoshiscouncil.com. See `README.md` and `SECURITY.md`.
+
+---
+
 # Deep chat-vs-code audit (2026-08-12)
 
 ## Critical bug fixed earlier

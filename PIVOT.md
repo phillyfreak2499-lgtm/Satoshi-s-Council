@@ -1,4 +1,13 @@
+# Archived 2026-08-21
+
+This file is historical. The "Bitcoin-only four advisors" note below is **not**
+what is running. Live: dual chairs (Satoshi BTC 15m · Vitalik ETH 1H), 22 + 18
+seats, public paper Stream. See `README.md`.
+
+---
+
 # Pivot Notes — From Short-Horizon Kalshi Desk to Longer-Horizon Research Council
+
 
 **Date:** August 2026
 
