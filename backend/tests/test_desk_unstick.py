@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import base64
 import gzip
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -13,6 +15,8 @@ COINGLASS = (ROOT / "backend" / "data" / "coinglass.py").read_text(encoding="utf
 PIPELINE = (ROOT / "backend" / "data" / "pipeline.py").read_text(encoding="utf-8")
 DUAL = (ROOT / "backend" / "services" / "dual.py").read_text(encoding="utf-8")
 COUNCIL = (ROOT / "backend" / "services" / "council.py").read_text(encoding="utf-8")
+ROUNDTABLE = (ROOT / "frontend" / "static" / "roundtable.js").read_text(encoding="utf-8")
+RENDER = (ROOT / "render.yaml").read_text(encoding="utf-8")
 PORTRAITS = ROOT / "frontend" / "static" / "portraits"
 
 
@@ -64,7 +68,7 @@ class SwUnstickTests(unittest.TestCase):
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
         self.assertIn('cache: "no-store"', SW)
-        self.assertIn("20260821c", SW)
+        self.assertIn("20260821d", SW)
 
     def test_assembler_drops_old_workers(self) -> None:
         self.assertIn("getRegistrations", ASSEMBLER)
@@ -87,7 +91,8 @@ class DeskHtmlTests(unittest.TestCase):
         self.assertIn("acc-locked", badge)
         card = html.split('id="hitRateCard"', 1)[1].split(">", 1)[0]
         self.assertIn("hidden", card)
-        self.assertIn("sw.js?v=20260821c", html)
+        self.assertIn("sw.js?v=20260821d", html)
+        self.assertIn("roundtable.js?v=20260821d", html)
         self.assertIn("updateViaCache", html)
 
     def test_crowd_and_flow_portraits_exist(self) -> None:
@@ -95,6 +100,30 @@ class DeskHtmlTests(unittest.TestCase):
         self.assertTrue((PORTRAITS / "flow.webp").is_file())
         self.assertGreater((PORTRAITS / "crowd.webp").stat().st_size, 2000)
         self.assertGreater((PORTRAITS / "flow.webp").stat().st_size, 2000)
+
+
+class RoundtableParseTests(unittest.TestCase):
+    def test_is_phone_desk_is_a_real_function(self) -> None:
+        self.assertIn("function isPhoneDesk()", ROUNDTABLE)
+        after = ROUNDTABLE.split("function defaultLandMode()", 1)[1]
+        self.assertLess(after.find("function isPhoneDesk()"), after.find("function floorIsSingle()"))
+        self.assertGreater(after.find("function isPhoneDesk()"), 0)
+
+    def test_node_check_roundtable(self) -> None:
+        node = shutil.which("node") or shutil.which("nodejs")
+        if not node:
+            self.skipTest("node not on PATH")
+        r = subprocess.run(
+            [node, "--check", str(ROOT / "frontend" / "static" / "roundtable.js")],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr or r.stdout)
+
+    def test_deploy_runs_parse_check(self) -> None:
+        self.assertIn("scripts/check.py", RENDER)
+        check_sh = (ROOT / "scripts" / "check.sh").read_text(encoding="utf-8")
+        self.assertIn("node --check frontend/static/roundtable.js", check_sh)
 
 
 if __name__ == "__main__":

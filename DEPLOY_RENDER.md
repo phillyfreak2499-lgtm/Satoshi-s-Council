@@ -17,6 +17,15 @@ Uses **three** Render resources so the council stays live and learns overnight:
 2. Upload **this folder as the repo root** (must contain `backend/`, `frontend/`, `requirements.txt`, `render.yaml`).
 3. Push to `main`.
 
+Parse-check the desk JS before every push (this is the dark-desk bug):
+
+```bash
+sh scripts/check.sh
+# or: node --check frontend/static/roundtable.js
+```
+
+The Render build also runs `python3 scripts/check.py`, which calls `node --check` when node is on PATH.
+
 ```bash
 git init
 git add .
@@ -40,7 +49,7 @@ git push -u origin main
 
 1. **New → Web Service** → connect repo  
 2. Runtime **Python 3**  
-3. Build: `pip install -r requirements.txt`  
+3. Build: `pip install -r requirements.txt && python3 scripts/check.py`  
 4. Start:
 
 ```

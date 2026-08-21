@@ -3727,6 +3727,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try { if (typeof isPhoneDesk === "function" && isPhoneDesk()) return "stream"; } catch (e) {}
     return "stream";
   }
+  function isPhoneDesk() {
     try {
       return !!(window.matchMedia && window.matchMedia("(max-width: 480px)").matches);
     } catch (e) {

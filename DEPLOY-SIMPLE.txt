@@ -40,7 +40,7 @@ VERIFY on GitHub: requirements.txt and backend/ are at the ROOT.
 New → Web Service → connect the repo
 
 Build Command:
-  pip install -r requirements.txt
+  pip install -r requirements.txt && python3 scripts/check.py
 
 Start Command:
   PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1
