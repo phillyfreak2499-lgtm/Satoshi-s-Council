@@ -10,9 +10,9 @@
   <p id="boot">Opening the desk…</p>
   <script>
   (function () {
-    var n = 5;
+    var n = 12;
     var boot = document.getElementById("boot");
-    function fail() {
+    function fail(err) {
       boot.textContent = "Desk still loading. Wait one minute, then refresh.";
     }
     function paint(html) {
@@ -23,7 +23,7 @@
     }
     Promise.all(
       Array.from({ length: n }, function (_, i) {
-        return fetch("/static/desk-" + i + ".b64?v=1", { cache: "no-store" }).then(function (r) {
+        return fetch("/static/desk-" + i + ".b64?v=2", { cache: "no-store" }).then(function (r) {
           if (!r.ok) throw new Error(r.status);
           return r.text();
         });
