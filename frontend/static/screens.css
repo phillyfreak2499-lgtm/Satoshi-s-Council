@@ -1,0 +1,150 @@
+/* Night TV — Screen 1 mesh + Screen 2 charts */
+.screen-view {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  background: #07070c;
+  color: #e8d5a3;
+  font-family: Rajdhani, Inter, sans-serif;
+}
+body.mode-screen1 #screenOne,
+body.mode-screen2 #screenTwo { display: flex; flex-direction: column; }
+body.mode-screen1 #app > header,
+body.mode-screen2 #app > header { z-index: 50; }
+body.mode-screen1 #mainTable,
+body.mode-screen2 #mainTable,
+body.mode-screen1 #streamChrome,
+body.mode-screen2 #streamChrome { display: none !important; }
+
+.s-rail {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px 12px 0;
+  flex-wrap: wrap;
+}
+.s-rail span {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.35;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+}
+.s-rail span.on {
+  opacity: 1;
+  color: #c9a44a;
+  border-color: rgba(201,164,74,.45);
+}
+
+#screenOne .s1-stage {
+  flex: 1;
+  position: relative;
+  min-height: 280px;
+}
+#s1Orbit {
+  position: absolute;
+  inset: 12% 8%;
+  animation: s1spin 48s linear infinite;
+}
+body.still #s1Orbit { animation: none; }
+@keyframes s1spin { to { transform: rotate(360deg); } }
+.s1-seat {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 72px;
+  margin: -36px;
+  text-align: center;
+  animation: s1counter 48s linear infinite;
+}
+body.still .s1-seat { animation: none; }
+@keyframes s1counter { to { transform: rotate(-360deg); } }
+.s1-seat img {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(201,164,74,.35);
+  box-shadow: 0 0 0 1px #07070c;
+}
+.s1-seat.lean img {
+  border-color: #c9a44a;
+  box-shadow: 0 0 18px rgba(201,164,74,.45);
+}
+.s1-seat b {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  margin-top: 4px;
+}
+#s1Chair {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 110px; height: 110px;
+  margin: -55px;
+  z-index: 2;
+}
+#s1Chair img {
+  width: 110px; height: 110px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #c9a44a;
+}
+.s1-foot {
+  text-align: center;
+  padding: 8px 16px 18px;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+.s1-foot small { display: block; opacity: .5; font-size: 11px; letter-spacing: .14em; }
+
+#screenTwo .s2-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 8px 12px 16px;
+}
+.s2-card {
+  border: 1px solid rgba(201,164,74,.22);
+  background: rgba(12,12,18,.72);
+  padding: 10px 12px;
+}
+.s2-card h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: .16em;
+  color: #c9a44a;
+  font-weight: 600;
+}
+.s2-bars { display: flex; align-items: flex-end; gap: 8px; height: 88px; }
+.s2-bars i {
+  flex: 1;
+  background: linear-gradient(180deg, #c9a44a, #6a5420);
+  min-height: 6px;
+  opacity: .85;
+  position: relative;
+}
+.s2-bars i em {
+  position: absolute;
+  bottom: -16px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: .08em;
+  font-style: normal;
+  opacity: .7;
+}
+#s2Tape { width: 100%; height: 72px; display: block; }
+.s2-wide { grid-column: 1 / -1; }
+.s2-line { font-size: 16px; }
+.s2-clock { font-size: 28px; letter-spacing: .08em; color: #c9a44a; }
+
+@media (max-width: 700px) {
+  #screenTwo .s2-grid { grid-template-columns: 1fr; }
+  .s1-seat { width: 58px; margin: -29px; }
+  .s1-seat img { width: 46px; height: 46px; }
+  #s1Chair, #s1Chair img { width: 84px; height: 84px; }
+  #s1Chair { margin: -42px; }
+}
