@@ -92,7 +92,7 @@ class SwUnstickTests(unittest.TestCase):
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
         self.assertIn('cache: "no-store"', SW)
-        self.assertIn("20260821f", SW)
+        self.assertIn("20260821g", SW)
 
     def test_assembler_drops_old_workers(self) -> None:
         self.assertIn("getRegistrations", ASSEMBLER)
@@ -115,8 +115,8 @@ class DeskHtmlTests(unittest.TestCase):
         self.assertIn("acc-locked", badge)
         card = html.split('id="hitRateCard"', 1)[1].split(">", 1)[0]
         self.assertIn("hidden", card)
-        self.assertIn("sw.js?v=20260821f", html)
-        self.assertIn("roundtable.js?v=20260821f", html)
+        self.assertIn("sw.js?v=20260821g", html)
+        self.assertIn("roundtable.js?v=20260821g", html)
         self.assertIn("updateViaCache", html)
 
     def test_gate_is_an_oath_not_a_password(self) -> None:
@@ -127,6 +127,10 @@ class DeskHtmlTests(unittest.TestCase):
         agree = html.split('id="gateAgree"', 1)[1].split(">", 1)[0]
         self.assertNotIn("checked", agree)
         self.assertIn("oath: true", html)
+        self.assertNotIn("campus-tab.css", html)
+        self.assertNotIn("zt-intro.mp4", html)
+        self.assertNotIn("money-rain.mp4", html)
+        self.assertNotIn('rel="preload" as="image" href="/static/bots/', html)
         seat = (ROOT / "frontend" / "static" / "seat.js").read_text(encoding="utf-8")
         self.assertIn("oath: true", seat)
         self.assertNotIn('"council"', seat)

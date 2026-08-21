@@ -2549,27 +2549,28 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     marble: "/static/bots/marble.svg",
   };
   const botIconCache = {}; // name -> HTMLImageElement | null
-  let botIconsReady = false;
+  let botIconsReady = true;
+
+  function getBotIcon(key) {
+    if (!key) return null;
+    if (Object.prototype.hasOwnProperty.call(botIconCache, key)) return botIconCache[key];
+    const src = BOT_ICON_FILES[key];
+    if (!src) {
+      botIconCache[key] = null;
+      return null;
+    }
+    const img = new Image();
+    img.decoding = "async";
+    botIconCache[key] = img;
+    img.onload = () => { botIconCache[key] = img; };
+    img.onerror = () => { botIconCache[key] = null; };
+    img.src = src;
+    return img;
+  }
 
   function preloadBotIcons() {
-    const keys = Object.keys(BOT_ICON_FILES);
-    let left = keys.length;
-    if (!left) { botIconsReady = true; return; }
-    keys.forEach((k) => {
-      const img = new Image();
-      img.decoding = "async";
-      img.onload = () => {
-        botIconCache[k] = img;
-        left -= 1;
-        if (left <= 0) botIconsReady = true;
-      };
-      img.onerror = () => {
-        botIconCache[k] = null;
-        left -= 1;
-        if (left <= 0) botIconsReady = true;
-      };
-      img.src = BOT_ICON_FILES[k];
-    });
+    // Do not fetch 1 MB bot PNGs on boot. First draw loads that seat.
+    botIconsReady = true;
   }
   preloadBotIcons();
 
@@ -2577,7 +2578,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function drawBotIcon(name, x, y, r, dirColor, conf) {
     const raw = String(name || "").toLowerCase();
     const key = (typeof isOracleTable === "function" && isOracleTable(focusTable) && raw === "pit") ? "ora_pit" : raw;
-    const img = botIconCache[key] || botIconCache[name];
+    const img = getBotIcon(key) || getBotIcon(raw);
     const ringR = r + 2;
     // Dark plate behind
     ctx.beginPath();
@@ -12334,11 +12335,8 @@ function drawCandleChart() {
     // Files that exist in this repo. /zt-celebrate.mp4 is not checked in.
     const sources = [
       "/static/video/money-closeup.mp4",
-      "/zt-intro.mp4",
       "/summon-council.mp4",
-      "/static/zt-intro.mp4",
       "/static/summon-council.mp4",
-      "/zt-celebrate.mp4",
     ];
 
     let srcIdx = 0;
@@ -14002,7 +14000,7 @@ function drawCandleChart() {
       vid.muted = true;
       vid.loop = true;
       const src = document.createElement("source");
-      src.src = "/static/video/money-rain.mp4";
+      src.src = "/static/video/money-closeup.mp4";
       src.type = "video/mp4";
       vid.appendChild(src);
       wrap.appendChild(vid);

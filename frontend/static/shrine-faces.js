@@ -1,15 +1,15 @@
 /* Remap canvas / img faces to the shrine portraits before roundtable.js loads. */
 (function () {
   var FACE = {
-    wick: "/portraits/wick.jpg",
-    strike: "/portraits/strike.jpg",
-    odds: "/portraits/odds.jpg",
-    quorum: "/portraits/quorum.jpg",
-    clock: "/portraits/clock.jpg",
-    satoshi: "/portraits/satoshi-up.jpg",
-    chair: "/portraits/satoshi-up.jpg",
-    table: "/portraits/satoshi-table.jpg",
-    shrine: "/portraits/satoshi-table.jpg"
+    wick: "/portraits/wick.webp",
+    strike: "/portraits/strike.webp",
+    odds: "/portraits/odds.webp",
+    quorum: "/portraits/quorum.webp",
+    clock: "/portraits/clock.webp",
+    satoshi: "/portraits/satoshi-up.webp",
+    chair: "/portraits/satoshi-up.webp",
+    table: "/portraits/satoshi-table.webp",
+    shrine: "/portraits/satoshi-table.webp"
   };
 
   function remap(url) {
