@@ -1,3 +1,29 @@
+/* Phone desk first — hide empty lifetime rail on coarse/narrow/portrait. */
+(function () {
+  function phoneDeskOn() {
+    var w = window.innerWidth || 0;
+    var h = window.innerHeight || 0;
+    var coarse = false;
+    try { coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches; } catch (e) {}
+    return coarse || w <= 1100 || (h >= w && w <= 1400);
+  }
+  function applyPhoneDesk() {
+    var on = phoneDeskOn();
+    document.documentElement.classList.toggle("phone-desk", on);
+    if (document.body) document.body.classList.toggle("phone-desk", on);
+  }
+  if (!document.getElementById("phoneDeskInline")) {
+    var s = document.createElement("style");
+    s.id = "phoneDeskInline";
+    s.textContent = "html.phone-desk #lifetimePanel{display:none!important;width:0!important;max-width:0!important;overflow:hidden!important;border:0!important;padding:0!important;margin:0!important}html.phone-desk #mainTable,html.phone-desk body #mainTable,html.phone-desk body.mode-art #mainTable{display:flex!important;flex-direction:column!important;grid-template-columns:none!important;grid-template-areas:none!important;grid-template-rows:none!important;height:auto!important;max-height:none!important;overflow:visible!important;padding:0!important;gap:0!important;column-gap:0!important}html.phone-desk #tableStage,html.phone-desk #mainTable #tableStage{order:1!important;width:100%!important;min-width:0!important;min-height:min(62dvh,560px)!important;height:min(62dvh,560px)!important;flex:0 0 auto!important;display:flex!important;grid-area:auto!important}html.phone-desk #roundtable{width:100%!important;height:100%!important;max-width:none!important}html.phone-desk #debatePanel,html.phone-desk body.mode-art #debatePanel{display:flex!important;order:2!important;position:relative!important;width:100%!important;max-width:none!important;min-height:180px!important;max-height:42dvh!important;flex:1 1 auto!important;border-left:none!important;border-top:1px solid rgba(0,232,255,.18)!important;grid-area:auto!important}html.phone-desk #hierarchyPanel{display:none!important}";
+    (document.head || document.documentElement).appendChild(s);
+  }
+  applyPhoneDesk();
+  window.addEventListener("resize", applyPhoneDesk);
+  window.addEventListener("orientationchange", applyPhoneDesk);
+  document.addEventListener("DOMContentLoaded", applyPhoneDesk);
+})();
+
 /* Per-browser seat in IndexedDB.
    School, Dojo, paper, join, last tab live on THIS device.
    localStorage only mirrors the lock flag so the gate can skip on a cold load.
