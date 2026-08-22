@@ -109,6 +109,52 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     } catch (e) {}
   }
   window.revealAppAfterDeskUnlock = revealAppAfterDeskUnlock;
+
+  // Re-mint a lost desk session. The server keeps desk sessions in memory, so a
+  // redeploy or a 12h idle-out wipes them — but a returning browser still has
+  // the localStorage oath flag and skips the gate, leaving every /api/* call at
+  // 401 with no recovery. This transparently re-takes the oath (a public
+  // paper-TV desk) for anyone who already unlocked, so the desk never goes dead.
+  var __deskReauth = null;
+  function wasDeskUnlocked() {
+    try {
+      if (localStorage.getItem("council_seat_locked") === "1") return true;
+      if (sessionStorage.getItem("council_auth_ok") === "1") return true;
+    } catch (e) {}
+    return false;
+  }
+  function ensureDeskSession() {
+    if (!wasDeskUnlocked()) return Promise.resolve(false);
+    if (__deskReauth) return __deskReauth;
+    __deskReauth = fetch(`${API_BASE}/api/desk/unlock`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oath: true })
+    }).then(function (r) { return !!(r && r.ok); }, function () { return false; });
+    __deskReauth.then(clearReauth, clearReauth);
+    function clearReauth() { __deskReauth = null; }
+    return __deskReauth;
+  }
+  window.ensureDeskSession = ensureDeskSession;
+  var __reauthRetryAt = 0;
+  function reauthDesk() {
+    // Debounce so a burst of 401s collapses into one recovery attempt.
+    var now = Date.now();
+    if (now - __reauthRetryAt < 1500) { try { notePollMiss(); } catch (e) {} return; }
+    __reauthRetryAt = now;
+    ensureDeskSession().then(function (ok) {
+      if (ok) {
+        try { revealAppAfterDeskUnlock(); } catch (e) {}
+        try { __pollMiss = 0; setWireQuiet(false); } catch (e) {}
+        try { poll(); } catch (e) {}
+      } else {
+        try { notePollMiss(); } catch (e) {}
+      }
+    });
+  }
+  window.reauthDesk = reauthDesk;
+
   function hasDeskAuth() {
     try { return sessionStorage.getItem(DESK_KEY) === "1" && !!window.__deskUnlockedThisPage; } catch (e) { return !!window.__deskUnlockedThisPage; }
   }
@@ -459,7 +505,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (typeof Worker !== "undefined") {
       try {
         if (!deskWorker) {
-          deskWorker = new Worker("/desk-worker.js?v=20260820k");
+          deskWorker = new Worker("/desk-worker.js?v=20260822c");
           deskWorker.onmessage = onDeskWorkerMsg;
           deskWorker.onerror = function () {
             try { deskWorker.terminate(); } catch (err) {}
@@ -7257,8 +7303,8 @@ function drawCandleChart() {
       pushSeries(series.odds, { t: Date.now(), up: book.up, down: book.down });
     }
     const last = series.odds.length ? series.odds[series.odds.length - 1] : null;
-    const up = book ? book.up : Number(last && last.up);
-    const down = book ? book.down : (Number.isFinite(Number(last && last.down))
+    const up = book ? book.up : (last ? Number(last.up) : NaN);
+    const down = book ? book.down : (last && Number.isFinite(Number(last.down))
       ? Number(last.down)
       : (Number.isFinite(up) ? 100 - up : NaN));
     if (meta) {
@@ -11332,11 +11378,15 @@ function drawCandleChart() {
       try { ingestDeskPayload(msg.payload); } catch (e) { notePollMiss(); }
       return;
     }
-    if (msg.type === "miss") notePollMiss();
+    if (msg.type === "miss") {
+      if (msg.status === 401) { reauthDesk(); return; }
+      notePollMiss();
+    }
   }
   async function poll() {
     try {
       const r = await fetch(`${API_BASE}/api/state`, { cache: "no-store", credentials: "same-origin" });
+      if (r.status === 401) { reauthDesk(); return; }
       if (!r.ok) throw new Error(r.status);
       const payload = await r.json();
       ingestDeskPayload(payload);
@@ -13137,6 +13187,11 @@ function drawCandleChart() {
   try { paintTableHud(); } catch (e) {}
   try { syncAutoBetVisibility(); } catch (e) {}
   try { wireAttractIdle(); } catch (e) {}
+  // Returning visitor who already took the oath: re-mint the server session
+  // before the first poll so a redeploy-wiped session never shows a dead desk.
+  try {
+    if (wasDeskUnlocked()) { ensureDeskSession().then(function () { try { poll(); } catch (e) {} }); }
+  } catch (e) {}
   poll();
   restartPoll();
   try { document.addEventListener("visibilitychange", restartPoll); } catch (e) {}

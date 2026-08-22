@@ -9,7 +9,7 @@ async function tick() {
     const payload = await r.json();
     self.postMessage({ type: "state", payload: payload });
   } catch (err) {
-    self.postMessage({ type: "miss" });
+    self.postMessage({ type: "miss", status: Number(err && err.message) || 0 });
   }
 }
 

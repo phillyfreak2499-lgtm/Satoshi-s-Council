@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260822a" />
-  <link rel="stylesheet" href="/style.css?v=20260822a" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260822a" />
-  <script src="/seat.js?v=20260822a"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260822c" />
+  <link rel="stylesheet" href="/style.css?v=20260822c" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260822c" />
+  <script src="/seat.js?v=20260822c"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -266,24 +266,524 @@
       </aside>
     </main>
 
-    <section id="settingsView" class="info-view hidden">
+    <section id="settingsView" class="info-view hidden" aria-label="System settings">
       <div class="settings-panel">
-        <header class="settings-head"><h2>SYSTEM</h2></header>
-        <div id="adminDeskHost"></div>
+        <header class="settings-head">
+          <h2>SYSTEM</h2>
+          <p class="settings-sub">Per-machine profile. Hit rate lives here — admin only. Never on Floor or Stream.</p>
+        </header>
+        <div class="beast-card settings-card" id="microCard">
+          <div class="beast-title">MICRO-INTERACTIONS</div>
+          <p class="settings-sub">How the desk moves. Shrine, not carnival. Off if the OS asks for reduced motion.</p>
+          <ol class="micro-ol">
+            <li>Summon mark breathes. Title rises.</li>
+            <li>Tutorial hole + slide-in card.</li>
+            <li>Tabs lift. Gold underline.</li>
+            <li>HANDS — seats rise before the gavel.</li>
+            <li>Gavel thud + gold wash + spoken line.</li>
+            <li>Polaroid drops. Frozen ¢ never moves.</li>
+            <li>STAND DOWN slam. First WAIT honored.</li>
+            <li>Word of the Hour breathes. Ticker rolls.</li>
+            <li>Live Kalshi ¢ hidden on Stream until lock.</li>
+            <li>Buttons press in. Kata green/red. Paper pin.</li>
+          </ol>
+        </div>
+        <div class="beast-card settings-card" id="mondayPaperCard">
+          <div class="beast-title">MONDAY PAPER · $1,000</div>
+          <p class="settings-sub">Fake stack. Resets every Monday. Private — never on Floor or Stream. No wall leaderboard.</p>
+          <div class="hr-big"><span id="paperStackAmt" class="hr-pct">$1,000</span><span class="hr-pct-label">this week</span></div>
+          <label class="set-field">Journal (before the outcome)
+            <textarea id="paperJournalIn" rows="3" placeholder="Thesis · probability · size · invalidation"></textarea>
+          </label>
+          <button type="button" id="paperJournalSave" class="gate-btn gate-btn-ghost">Pin this note</button>
+          <div id="paperJournalLog" class="paper-journal-log"></div>
+        </div>
+        <div class="beast-card settings-card" id="trainingScoreCard">
+          <div class="beast-title">TRAINING SCORE · ADMIN</div>
+          <p class="settings-sub">Finish-only. Hidden on Floor / Table / Stream. Not a promise about the next hour.</p>
+          <div class="hr-big"><span id="setHrPct" class="hr-pct">—</span><span class="hr-pct-label">lifetime</span></div>
+          <div class="hr-stats">
+            <div class="hr-stat"><b id="setHrCorrect">0</b><span>right</span></div>
+            <div class="hr-stat"><b id="setHrWrong">0</b><span>wrong</span></div>
+            <div class="hr-stat"><b id="setHrTotal">0</b><span>calls</span></div>
+            <div class="hr-stat"><b id="setHrPending">0</b><span>open</span></div>
+          </div>
+          <p class="settings-foot" id="setHrLine">Unlock Settings to see graded calls.</p>
+        </div>
+        <div class="beast-card" id="beastCard">
+          <div class="beast-card-top">
+            <div>
+              <div class="beast-title">BEAST MODE</div>
+              <div class="beast-blurb" id="beastBlurb">Max refresh · dual spot · parallel seats · premium HUD</div>
+            </div>
+            <label class="beast-switch" title="Toggle BEAST MODE">
+              <input type="checkbox" id="beastToggle" checked />
+              <span class="beast-slider"></span>
+            </label>
+          </div>
+          <div class="beast-stats" id="beastStats"></div>
+        </div>
+        <div class="settings-row-extra">
+          <label class="set-check"><input type="checkbox" id="callSfxToggle" checked /> Call voice (UP / DOWN / SWAP)</label>
+          <label class="set-check"><input type="checkbox" id="teamLoopToggle" checked /> Team loops on table</label>
+        </div>
+        <div class="settings-grid">
+          <div class="set-row"><span>Analysis cycle (s)</span><input type="number" step="0.1" min="0.5" max="30" id="setIntervalInput" style="width:72px" /></div>
+          <div class="set-row"><span>Hot cycle (s)</span><input type="number" step="0.1" min="0.4" max="15" id="setHotInput" style="width:72px" /></div>
+          <div class="set-row"><span>Flat cycle (s)</span><input type="number" step="0.1" min="1" max="60" id="setFlatInput" style="width:72px" /></div>
+          <div class="set-row"><span>Dual spot</span><label class="set-check"><input type="checkbox" id="setDualInput" /></label></div>
+          <div class="set-row"><span>Parallel agents</span><label class="set-check"><input type="checkbox" id="setParallelInput" /></label></div>
+          <div class="set-row"><span>UI poll (ms)</span><input type="number" step="50" min="300" max="10000" id="setPollInput" style="width:72px" /></div>
+        </div>
+        <!-- legacy readouts kept for compatibility -->
+        <div class="hidden"><strong id="setInterval">—</strong><strong id="setHot">—</strong><strong id="setFlat">—</strong><strong id="setDual">—</strong><strong id="setParallel">—</strong><strong id="setPoll">—</strong></div>
+        
+        
+        <div class="settings-grid-advanced">
+          <div class="beast-card settings-card">
+            <div class="beast-title">PATH GRADING</div>
+            <label class="set-field">Full path target (pts)
+              <input type="number" step="0.5" min="3" max="20" id="setPathWin" />
+            </label>
+            <label class="set-field">HOLD fraction of full
+              <input type="number" step="0.05" min="0.1" max="0.8" id="setHoldFrac" />
+            </label>
+            <label class="set-field">Near-certain auto-win bar
+              <input type="number" step="1" min="80" max="99" id="setNearBar" />
+            </label>
+          </div>
+
+          <div class="beast-card settings-card">
+            <div class="beast-title fade-title">FADE — invert chronic losers</div>
+            <label class="set-field">Min graded samples
+              <input type="number" step="1" min="5" max="100" id="setFadeMinN" />
+            </label>
+            <label class="set-field">WR threshold (below → fade)
+              <input type="number" step="0.01" min="0.2" max="0.5" id="setFadeWr" />
+            </label>
+            <label class="set-field">Max fade influence
+              <input type="number" step="0.01" min="0.05" max="0.4" id="setFadeCap" />
+            </label>
+          </div>
+
+          <div class="beast-card settings-card">
+            <div class="beast-title">ANTI PAIRS</div>
+            <label class="set-field">Min clashes
+              <input type="number" step="1" min="5" max="50" id="setAntiMin" />
+            </label>
+            <label class="set-field">Stronger-side win rate
+              <input type="number" step="0.01" min="0.5" max="0.9" id="setAntiWr" />
+            </label>
+            <label class="set-field">Max anti nudge
+              <input type="number" step="0.01" min="0.02" max="0.3" id="setAntiCap" />
+            </label>
+          </div>
+
+          <div class="beast-card settings-card">
+            <div class="beast-title">CALL BAR</div>
+            <label class="set-field">Min confluence
+              <input type="number" step="0.01" min="0.2" max="0.8" id="setMinConf" />
+            </label>
+            <label class="set-field">Min directional confidence
+              <input type="number" step="1" min="30" max="80" id="setMinDirConf" />
+            </label>
+            <label class="set-field">Top-N ranks must agree
+              <input type="number" step="1" min="1" max="7" id="setTopN" />
+            </label>
+            <label class="set-field">Explore samples / Calibrate / Exploit
+              <div class="set-row-3">
+                <input type="number" id="setColdN" min="5" max="50" title="explore until" />
+                <input type="number" id="setCalN" min="10" max="100" title="calibrate until" />
+                <input type="number" id="setExpN" min="20" max="200" title="exploit after" />
+              </div>
+            </label>
+          </div>
+
+          <div class="beast-card settings-card">
+            <div class="beast-title">LAW LOCK</div>
+            <label class="set-field">Wrongs in a row before lock
+              <input type="number" step="1" min="1" max="5" id="setLawWrongs" />
+            </label>
+            <label class="set-field">Lock duration (windows)
+              <input type="number" step="1" min="1" max="5" id="setLawWindows" />
+            </label>
+            <label class="set-field">Shadow early-unlock rights needed
+              <input type="number" step="1" min="1" max="5" id="setLawShadow" />
+            </label>
+          </div>
+
+          <div class="beast-card settings-card">
+            <div class="beast-title">NIGHTLY HUDDLE (CT)</div>
+            <label class="set-check"><input type="checkbox" id="setHuddleOn" /> Enabled</label>
+            <label class="set-field">Hour (0–23 America/Chicago)
+              <input type="number" step="1" min="0" max="23" id="setHuddleHour" />
+            </label>
+            <label class="set-field">Duration (minutes)
+              <input type="number" step="1" min="5" max="60" id="setHuddleDur" />
+            </label>
+            <label class="set-field">Rebuild history depth
+              <input type="number" step="50" min="50" max="1000" id="setHuddleRebuild" />
+            </label>
+          </div>
+
+          <div class="beast-card settings-card">
+            <div class="beast-title">SOUND &amp; UI</div>
+            <label class="set-check"><input type="checkbox" id="setSoundOn" /> Master sound</label>
+            <label class="set-check"><input type="checkbox" id="setSoundUp" /> UP call</label>
+            <label class="set-check"><input type="checkbox" id="setSoundDown" /> DOWN call</label>
+            <label class="set-check"><input type="checkbox" id="setSoundSwap" /> SWAP call</label>
+            <label class="set-check"><input type="checkbox" id="setSoundBell" /> Window bell</label>
+            <label class="set-check"><input type="checkbox" id="setBeamGlow" /> Agreement beam glow</label>
+            <label class="set-field">Watermark opacity (0–1)
+              <input type="number" step="0.05" min="0" max="0.6" id="setWatermark" />
+            </label>
+          </div>
+        </div>
+
+        <div class="beast-card settings-card hidden" id="autoBetCard" aria-hidden="true">
+          <div class="beast-title">AUTO-BET SETUP</div>
+          <p class="settings-sub">Admin only. Desk access code cannot open this. No live orders — this is setup only.</p>
+          <label class="set-check"><input type="checkbox" id="setAutoBetOn" /> Enable auto-bet setup</label>
+          <label class="set-field">Mode
+            <select id="setAutoBetMode">
+              <option value="off">Off — no auto betting</option>
+              <option value="paper_chair">Paper — Chair locks only (no live orders)</option>
+              <option value="follow_leaders">Follow leaders — reserved slot (not live)</option>
+            </select>
+          </label>
+          <label class="set-field">Size $
+            <input type="number" step="1" min="0" max="10000" id="setAutoBetSize" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setAutoBetBtc" checked /> Bitcoin / Satoshi table</label>
+          <label class="set-check"><input type="checkbox" id="setAutoBetEth" checked /> Ethereum / Vitalik table</label>
+          <p class="settings-foot" id="autoBetFollowNote">Follow leaders is a reserved mode for later. It does not place orders.</p>
+        </div>
+
+        <div class="beast-card settings-card" id="atsSettingsCard">
+          <div class="beast-title">ARES · ATS</div>
+          <p class="settings-sub">Sports Chair. One ticket. Kalshi moneyline / spread / total — no player props. Gates: ONE TICKET · KEY NUMBERS · SIT AFTER KICK · SPORT BRAINS · PUBLIC TUG (visual). Band 20–80. 99¢ chalk sits. Paper default. Never auto-bets. Never talks to Follower. Dallas / Front stays untouched.</p>
+          <label class="set-check"><input type="radio" name="atsMode" id="setAtsPaper" value="paper" checked /> Paper (default)</label>
+          <label class="set-check"><input type="radio" name="atsMode" id="setAtsLive" value="live" disabled /> Live — off. Ares is paper only.</label>
+          <p class="settings-foot">Follower OFF. A few paper locks per day. Empty book is UNKNOWN, not DEAD.</p>
+        </div>
+
+        <div class="beast-card settings-card" id="frontSettingsCard">
+          <div class="beast-title">RAIJIN · THE FRONT</div>
+          <p class="settings-sub">Weather Chair. Dallas only (KXHIGHTDAL / KDFW / DFW — not Love Field). Hits count like Satoshi / Vitalik. Pending until NWS CLI. Paper default. Never auto-bets. Never talks to Follower. Does not place 1H Chair locks.</p>
+          <label class="set-check"><input type="checkbox" id="setFrontShowTab" checked /> Show Front tab</label>
+          <label class="set-check"><input type="checkbox" id="setFrontShowChair" checked /> Show small Floor chair</label>
+          <label class="set-check"><input type="radio" name="frontMode" id="setFrontPaper" value="paper" checked /> Paper (default)</label>
+          <label class="set-check"><input type="radio" name="frontMode" id="setFrontLive" value="live" disabled /> Live — type LIVE THE FRONT on the Front tab (v1 paper-only here)</label>
+          <label class="set-field">Min confidence to lock
+            <input type="number" step="1" min="0" max="99" id="setFrontMinConf" />
+          </label>
+          <label class="set-field">Max stake per WX tap $
+            <input type="number" step="1" min="1" max="100" id="setFrontMaxStake" />
+          </label>
+          <label class="set-field">Max daily WX paper/live loss $
+            <input type="number" step="1" min="1" max="500" id="setFrontDailyLoss" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setFrontNoLockFrost" checked /> No-lock when FROST / SICK</label>
+          <label class="set-check"><input type="checkbox" id="setFrontSound" checked /> Sound on WX lock (uses existing SFX toggles)</label>
+          <label class="set-check"><input type="checkbox" id="setFrontFadeOn" checked /> Fade underperformers</label>
+          <label class="set-field">Fade min graded samples
+            <input type="number" step="1" min="5" max="100" id="setFrontFadeMinN" />
+          </label>
+          <label class="set-field">Fade WR threshold (below → fade)
+            <input type="number" step="0.01" min="0.2" max="0.5" id="setFrontFadeWr" />
+          </label>
+          <label class="set-check"><input type="checkbox" id="setFrontDallas" checked disabled /> Dallas on (KXHIGHTDAL / DFW). No city picker in v1.</label>
+          <p class="settings-foot">Backdrop follows live KDFW METAR. Dead feed holds last mode. Desk-code only. This block is not Follower.</p>
+        </div>
+
         <div class="settings-actions">
           <button type="button" class="gate-btn gate-btn-summon" id="btnSaveSettings">Save settings</button>
+          <button type="button" class="gate-btn gate-btn-ghost" id="btnResetSettings">Reset defaults</button>
+          <span id="settingsSaveStatus" class="settings-foot"></span>
         </div>
+
+
+        <div id="adminDeskHost"></div>
+
+        <p class="settings-foot">Saved on this server in <code>data/system-settings.json</code>. Same toggle on every PC that hits this backend.</p>
       </div>
     </section>
-    <section id="seatsView" class="info-view hidden"></section>
-    <section id="tapeView" class="info-view hidden"></section>
-    <section id="bookView" class="info-view hidden"></section>
-    <section id="brainView" class="info-view hidden"></section>
+    <section id="seatsView" class="info-view seats-view hidden" aria-label="Seats — who they are, how they sit">
+      <div class="info-hero seats-hero">
+        <h2>SEATS</h2>
+        <p>Same council. Field guide on the strip. Rank board under that. Live cards for the lean. One door — not three.</p>
+      </div>
+
+      <!-- Bots field guide (was its own tab) -->
+      <section id="botsView" class="seats-strip" aria-label="Bot field guide">
+        <div class="info-hero">
+          <h2>BOT FIELD GUIDE</h2>
+          <p>Each seat reads its own lane + its sub-bots. The Chair only listens as hard as their <b>rank</b> allows. Right calls climb the ladder; wrong calls get quieter until they earn back.</p>
+        </div>
+        <section id="frontBotsGuide" class="front-bots-guide" aria-label="FRONT / RAIJIN">
+          <div class="front-guide-head">FRONT / RAIJIN</div>
+          <p class="front-bots-sub">Five chairs. Three subs. Dallas high only. Not mixed into WICK / TAPE.</p>
+          <div id="frontBotsGrid" class="bots-grid"></div>
+        </section>
+        <section id="atsBotsGuide" class="front-bots-guide" aria-label="ATS / ARES">
+          <div class="front-guide-head">ATS / ARES</div>
+          <p class="front-bots-sub">Sports Chair. LINE · STEAM · FADE · HURT · ICE. CLOCK / FORM / WX are subs, not chairs. Not mixed into WICK / TAPE.</p>
+          <div id="atsBotsGrid" class="bots-grid"></div>
+        </section>
+        <section id="oracleBotsGuide" class="front-bots-guide ora-bots-guide" aria-label="ORACLE / ORA">
+          <div class="front-guide-head">ORACLE / ORA</div>
+          <p class="front-bots-sub">CRT Chair. SIBYL · PIT · VEIL · MARBLE. They feed. Paper lock when they agree. Not mixed into WICK / TAPE.</p>
+          <div id="oracleBotsGrid" class="bots-grid"></div>
+        </section>
+        <div id="botsGrid" class="bots-grid"></div>
+      </section>
+
+      <!-- Rank board (was its own tab) -->
+      <section id="ranksView" class="seats-board" aria-label="Rank board">
+        <div class="info-hero">
+          <h2>RANK BOARD</h2>
+          <p id="ranksPhase">Learning phase: collecting samples — the Chair starts loose, then gets pickier as the lifetime log fills in.</p>
+        </div>
+        <div class="ranks-legend">
+          <span><b>#</b> rank</span>
+          <span><b>HIT</b> right calls</span>
+          <span><b>MISS</b> wrong calls</span>
+          <span><b>WR%</b> win rate</span>
+          <span><b>LISTEN</b> how hard the Chair hears them</span>
+          <span><b>WT</b> adaptive weight</span>
+        </div>
+        <div id="ranksTable" class="ranks-table" role="table"></div>
+        <div class="ranks-notes">
+          <div class="panel-head"><span class="panel-title">LEARNING NOTES</span></div>
+          <ul id="learnNotes" class="learn-notes"></ul>
+        </div>
+      </section>
+
+      <!-- Seat cards (was Dashboard overlay) — compact row, toggle inside Seats -->
+      <section class="seats-cards-block" aria-label="Seat cards">
+        <div class="seats-cards-head">
+          <h2>SEAT CARDS</h2>
+          <button type="button" id="seatsCardsToggle" class="seats-cards-toggle" aria-pressed="true" title="Show or stash the live cards">CARDS ON</button>
+        </div>
+        <div id="dashboardOverlay"></div>
+      </section>
+    </section>
+    <section id="tapeView" class="info-view hidden" aria-label="Chair paper tape">
+      <div class="info-hero">
+        <h2>CHAIR TAPE</h2>
+        <p>Auto-graded paper hours for the last 24 hours — Satoshi (BTC), Vitalik (ETH), and Ares (ATS) when focused. Official Kalshi <b>market.result</b> only. Open hours stay <b>OPEN</b>. Not the manual Paper Tracker.</p>
+      </div>
+      <div id="tapeCalib" class="tape-calib" aria-label="Calibration strip"></div>
+      <div class="panel-head"><span class="panel-title">LAST 24H</span><span class="panel-sub" id="tapeMeta">—</span></div>
+      <div id="tapeTable" class="tape-table" role="table"></div>
+    </section>
+    <section id="bookView" class="info-view hidden" aria-label="Kalshi book">
+      <div class="info-hero">
+        <h2>THE BOOK</h2>
+        <p>Live Kalshi depth for the current hours. A sick or empty book, or a ≥99¢ wall, is why the Chair can WAIT.</p>
+      </div>
+      <div class="book-dual">
+        <article id="bookSatoshi" class="book-card" aria-label="Satoshi BTC book">
+          <header class="book-card-head"><span>SATOSHI · BTC</span><span class="book-flag" id="bookBtcFlag">—</span></header>
+          <div id="bookBtcBody" class="book-body">Loading depth…</div>
+        </article>
+        <article id="bookVitalik" class="book-card" aria-label="Vitalik ETH book">
+          <header class="book-card-head"><span>VITALIK · ETH</span><span class="book-flag" id="bookEthFlag">—</span></header>
+          <div id="bookEthBody" class="book-body">Loading depth…</div>
+        </article>
+      </div>
+    </section>
+    <section id="brainView" class="info-view hidden" aria-label="Huddle recap">
+      <div class="info-hero">
+        <h2>BRAIN</h2>
+        <p>Public recap of the last huddle / weight move. Which seats got louder, which got faded. Admin knobs stay in Settings.</p>
+      </div>
+      <p id="brainHeadline" class="brain-headline">—</p>
+      <div class="brain-dual">
+        <article class="brain-card">
+          <header>LOUDER</header>
+          <ul id="brainLouder" class="brain-list"></ul>
+        </article>
+        <article class="brain-card">
+          <header>FADED</header>
+          <ul id="brainFaded" class="brain-list"></ul>
+        </article>
+      </div>
+      <div class="brain-chairs">
+        <div id="brainSatoshi" class="brain-chair">SATOSHI · —</div>
+        <div id="brainVitalik" class="brain-chair">VITALIK · —</div>
+      </div>
+      <ul id="brainNotes" class="brain-notes"></ul>
+    </section>
     <section id="wireView" class="info-view hidden"><ol id="wireList" class="wire-list"></ol></section>
-    <section id="newsView" class="info-view hidden"></section>
-    <section id="schoolView" class="info-view hidden"></section>
-    <section id="sideView" class="info-view hidden"></section>
-    <section id="frontView" class="info-view hidden"></section>
+    <section id="newsView" class="info-view hidden" aria-label="Hour news">
+      <div class="info-hero">
+        <h2>NEWS</h2>
+        <p>Only BTC, ETH, and macro that can move a 1-hour window. Times in <b>America/Chicago</b>. Headlines do not change Chair locks.</p>
+      </div>
+      <p id="newsLiq" class="news-liq hidden"></p>
+      <div class="news-rails">
+        <article class="news-rail">
+          <header>COMING UP</header>
+          <ol id="newsComing" class="news-list"></ol>
+        </article>
+        <article class="news-rail">
+          <header>BREAKING</header>
+          <ol id="newsBreaking" class="news-list"></ol>
+        </article>
+      </div>
+    </section>
+    <section id="schoolView" class="info-view hidden" aria-label="School">
+      <div class="info-hero">
+        <h2>SCHOOL</h2>
+        <p>Short lessons for WAIT downtime. This desk only — 1-hour BTC/ETH Kalshi. Display only. Lessons do not change Chair locks.</p>
+      </div>
+      <button type="button" id="schoolContinue" class="school-continue">START · The hour</button>
+      <p id="schoolStreak" class="school-streak">0 lessons this week</p>
+      <ol id="schoolList" class="school-list"></ol>
+      <article id="schoolLesson" class="school-lesson hidden">
+        <header class="school-lesson-head">
+          <button type="button" id="schoolBack" class="school-back">BACK</button>
+          <h3 id="schoolTitle">The hour</h3>
+          <span id="schoolMins">6 min</span>
+        </header>
+        <p id="schoolIdea" class="school-idea">Kalshi is not “is Bitcoin going up forever.” It is one window.</p>
+        <div id="schoolBody" class="school-body"></div>
+        <figure class="school-board-wrap">
+          <canvas id="schoolBoard" width="640" height="220" aria-label="Chalkboard"></canvas>
+          <figcaption id="schoolCallout" class="school-callout">Strike is the line. Time left is the only clock.</figcaption>
+        </figure>
+        <div id="schoolQuiz" class="school-quiz" aria-label="Lesson quiz">
+          <p id="schoolQ"></p>
+          <div id="schoolChoices" class="school-choices"></div>
+          <p id="schoolGrade" class="school-grade" hidden></p>
+          <button type="button" id="schoolNextQ" class="school-next" hidden>NEXT</button>
+        </div>
+      </article>
+    </section>
+    <section id="sideView" class="info-view hidden" aria-label="Side Table">
+      <div class="info-hero">
+        <h2>SIDE TABLE</h2>
+        <p>15-minute arcade. Manual taps only. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+      </div>
+      <div id="sideHud" class="side-hud">
+        <div class="side-clock" id="sideClock">--:--</div>
+        <div class="side-mode-row">
+          <span class="side-badge paper" id="sideModeBadge">PAPER</span>
+          <span class="side-status" id="sideFeedStatus">loading</span>
+        </div>
+        <div class="side-pills" id="sidePills"></div>
+        <div class="side-size-row">
+          <span class="side-size-label">SIZE</span>
+          <button type="button" class="side-step on" data-size="5">$5</button>
+          <button type="button" class="side-step" data-size="10">$10</button>
+          <button type="button" class="side-step" data-size="25">$25</button>
+        </div>
+        <div id="sideArcade" class="side-arcade"></div>
+        <div class="side-hot-head">HOT STRIP · not the 1H Chair</div>
+        <div id="sideHot" class="side-hot"></div>
+        <div id="sideFills" class="side-fills"></div>
+        <div id="sideWhy" class="side-why"></div>
+        <details class="side-live-box">
+          <summary>LIVE (off · this tab only)</summary>
+          <p class="side-live-note">Default PAPER. Type the phrase, wait the delay, then tap. Kill switch kills Side Table live too. Same Kalshi keys already on the box. Never auto-bets.</p>
+          <input type="text" id="sideArmPhrase" class="side-arm-input" placeholder="LIVE SIDE TABLE" autocomplete="off" spellcheck="false">
+          <button type="button" class="side-arm-btn" id="sideArmBtn">ARM LIVE</button>
+          <button type="button" class="side-kill-btn" id="sideKillBtn">KILL LIVE</button>
+          <div id="sideArmStatus" class="side-arm-status"></div>
+        </details>
+      </div>
+    </section>
+    <section id="frontView" class="info-view hidden" aria-label="THE FRONT">
+      <div class="info-hero">
+        <h2>THE FRONT</h2>
+        <p>Raijin’s Floor. Dallas DFW daily high. Same ring as BTC / ETH. Paper default. Never talks to Follower. Does not lock the 1H Chair.</p>
+      </div>
+      <div id="frontHud" class="front-hud">
+        <div class="front-mode-row">
+          <span class="front-wx-badge" id="frontWxBadge">WX · —</span>
+          <span class="side-badge paper" id="frontModeBadge">PAPER</span>
+          <span class="side-status" id="frontFeedStatus">loading</span>
+        </div>
+        <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
+          <canvas id="frontWx" width="920" height="620" aria-label="Raijin Floor"></canvas>
+          <div class="front-chair" id="frontChair">
+            <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-chair.png?v=280a18fb49" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+            <span class="front-name">RAIJIN</span>
+            <span class="front-call" id="frontChairCall">—</span>
+          </div>
+          <div id="frontRing" class="front-ring" aria-hidden="true">
+            <button type="button" class="front-seat" data-seat="GLASS" style="--a:-90">
+              <span class="front-mark"><img src="/static/bots/glass.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">GLASS</span>
+              <span class="front-call" data-call="GLASS">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="PIT" style="--a:-18">
+              <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">PIT</span>
+              <span class="front-call" data-call="PIT">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="FROST" style="--a:54">
+              <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">FROST</span>
+              <span class="front-call" data-call="FROST">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="BONE" style="--a:126">
+              <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">BONE</span>
+              <span class="front-call" data-call="BONE">—</span>
+            </button>
+            <button type="button" class="front-seat" data-seat="MESH" style="--a:198">
+              <span class="front-mark"><img src="/static/bots/mesh.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-name">MESH</span>
+              <span class="front-call" data-call="MESH">—</span>
+            </button>
+          </div>
+        </div>
+        <div id="frontSubHud" class="front-sub-hud" aria-label="Front subs">
+          <div class="front-sub" data-sub="HEAT"><span class="front-sub-mark" aria-hidden="true"></span><b>HEAT</b><span data-sub-line="HEAT">—</span><i>→ GLASS / FROST</i></div>
+          <div class="front-sub" data-sub="ECHO"><span class="front-sub-mark" aria-hidden="true"></span><b>ECHO</b><span data-sub-line="ECHO">—</span><i>→ BONE</i></div>
+          <div class="front-sub" data-sub="CELL"><span class="front-sub-mark" aria-hidden="true"></span><b>CELL</b><span data-sub-line="CELL">—</span><i>→ FROST</i></div>
+        </div>
+        <div class="side-size-row">
+          <span class="side-size-label">SIZE</span>
+          <button type="button" class="front-step on" data-size="5">$5</button>
+          <button type="button" class="front-step" data-size="10">$10</button>
+          <button type="button" class="front-step" data-size="25">$25</button>
+        </div>
+        <div id="frontBook" class="front-book"></div>
+        <div id="frontHitRate" class="front-hit-rate" aria-label="Raijin lifetime">
+          <div class="hr-big">
+            <span id="frontHrPct" class="hr-pct">—</span>
+            <span class="hr-pct-label">lifetime</span>
+          </div>
+          <div class="hr-stats">
+            <div class="hr-stat"><b id="frontHrRight">0</b><span>right</span></div>
+            <div class="hr-stat"><b id="frontHrWrong">0</b><span>wrong</span></div>
+            <div class="hr-stat"><b id="frontHrPending">0</b><span>open</span></div>
+          </div>
+          <div id="frontHrVerdict" class="hr-verdict">COLLECTING</div>
+        </div>
+        <section class="front-tape-card" aria-label="Last locks tape">
+          <header class="hud-card-head"><span>LAST LOCKS</span><span class="hud-meta">RAIJIN · DFW CLI</span></header>
+          <ol id="frontTape" class="lock-tape-list" aria-live="polite">
+            <li class="lock-tape-empty">No Raijin lock — waiting on DFW CLI</li>
+          </ol>
+        </section>
+        <div id="frontWhy" class="side-why"></div>
+        <div class="front-guide-head">BOT FIELD GUIDE · THE FRONT</div>
+        <div id="frontGuide" class="front-guide"></div>
+        <div id="frontFills" class="side-fills"></div>
+        <details class="side-live-box">
+          <summary>LIVE (off · this tab only)</summary>
+          <p class="side-live-note">Default PAPER. Type the phrase, wait the delay, then tap. Kill switch kills THE FRONT live too. Same Kalshi keys already on the box. Never auto-bets. Does not place 1H Chair locks.</p>
+          <input type="text" id="frontArmPhrase" class="side-arm-input" placeholder="LIVE THE FRONT" autocomplete="off" spellcheck="false">
+          <button type="button" class="side-arm-btn" id="frontArmBtn">ARM LIVE</button>
+          <button type="button" class="side-kill-btn" id="frontKillBtn">KILL LIVE</button>
+          <div id="frontArmStatus" class="side-arm-status"></div>
+        </details>
+      </div>
+    </section>
     <section id="callsView" class="info-view hidden">
       <ol id="callsBoard" class="calls-board">
         <li class="calls-row" data-call="bitcoin"><span class="calls-name">BTC</span><span class="calls-status">WAIT</span></li>
@@ -292,10 +792,83 @@
         <li class="calls-row" data-call="oracle"><span class="calls-name">ORA</span><span class="calls-status">WATCH</span></li>
       </ol>
     </section>
-    <section id="paperView" class="info-view hidden"></section>
-    <section id="chartsView" class="charts-view hidden">
-      <canvas id="chartBtc"></canvas>
-      <canvas id="chartEth"></canvas>
+    <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
+      <div class="info-hero">
+        <h2>PAPER TRACKER</h2>
+        <p>Manual trade log — your bets, not the Chair. Enter side, stake, and what you got back. Totals use <b>America/Chicago</b>.</p>
+      </div>
+
+      <div class="paper-entry" id="paperEntry">
+        <div class="pe-sides">
+          <button type="button" class="pe-side up active" data-side="UP" id="peSideUp">UP</button>
+          <button type="button" class="pe-side down" data-side="DOWN" id="peSideDown">DOWN</button>
+        </div>
+        <div class="pe-fields">
+          <label>Stake $<input type="number" id="peStake" min="0" step="1" value="25" autocomplete="off" /></label>
+          <label>Got back $<input type="number" id="peReturned" min="0" step="1" value="" placeholder="enter after fill" autocomplete="off" /></label>
+          <label class="pe-note">Note <input type="text" id="peNote" maxlength="120" placeholder="optional" /></label>
+        </div>
+        <div class="pe-preview">P&amp;L: <strong id="pePnl">—</strong></div>
+        <button type="button" class="gate-btn gate-btn-summon" id="peSubmit">Add trade</button>
+      </div>
+
+      <div class="paper-summary" id="paperSummary"></div>
+      <div class="paper-cal-tabs">
+        <button type="button" class="paper-cal-btn active" data-cal="daily">Daily</button>
+        <button type="button" class="paper-cal-btn" data-cal="weekly">Weekly</button>
+        <button type="button" class="paper-cal-btn" data-cal="monthly">Monthly</button>
+        <button type="button" class="paper-cal-btn" data-cal="yearly">Yearly</button>
+      </div>
+      <div id="paperCalendar" class="paper-calendar"></div>
+      <div class="panel-head" style="margin-top:16px"><span class="panel-title">TRADES</span><span class="panel-sub" id="paperCallMeta">—</span></div>
+      <div id="paperCalls" class="paper-calls"></div>
+    </section>
+    <section id="chartsView" class="charts-view hidden" aria-label="Chart wall">
+      <article id="atsChartTape" class="chart-card chart-wide chart-ats-tape" hidden>
+        <header class="chart-card-head"><span>ARES · GAME TAPE</span><span class="chart-meta" id="atsChartMeta">one game</span></header>
+        <p id="atsChartLine" class="ats-chart-line">WAIT · no game on the table</p>
+      </article>
+      <div class="charts-pairs">
+        <article class="chart-card chart-wide chart-pair chart-pair-btc">
+          <header class="chart-card-head"><span id="chartPairTitle">BTC · 1m</span><span class="chart-window-chip">15M WINDOW</span><span class="chart-meta" id="chartBtcMeta">—</span></header>
+          <canvas id="chartBtc"></canvas>
+        </article>
+        <article class="chart-card chart-wide chart-pair chart-pair-eth">
+          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartEthMeta">—</span></header>
+          <canvas id="chartEth"></canvas>
+        </article>
+      </div>
+      <div class="charts-grid">
+        <article class="chart-card">
+          <header class="chart-card-head"><span>VOLUME</span><span class="chart-meta" id="chartVolMeta">—</span></header>
+          <canvas id="chartVolume"></canvas>
+        </article>
+        <article class="chart-card chart-crypto-odds">
+          <header class="chart-card-head"><span>KALSHI ODDS</span><span class="chart-meta" id="chartOddsMeta">UP — · DOWN —</span></header>
+          <canvas id="chartOdds"></canvas>
+        </article>
+        <article class="chart-card chart-crypto-delta">
+          <header class="chart-card-head"><span>VS TARGET</span><span class="chart-meta" id="chartDeltaMeta">—</span></header>
+          <canvas id="chartDelta"></canvas>
+        </article>
+        <article class="chart-card chart-crypto-funding">
+          <header class="chart-card-head"><span>FUNDING</span><span class="chart-meta" id="chartFundMeta">—</span></header>
+          <canvas id="chartFunding"></canvas>
+        </article>
+        <article class="chart-card chart-tape">
+          <header class="chart-card-head"><span>COUNCIL TAPE</span><span class="chart-meta" id="chartTapeMeta">locks</span></header>
+          <canvas id="chartTape"></canvas>
+          <ol id="chartTapeList" class="chart-lock-list" aria-label="Chair lock history"></ol>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>HIT RATE · FINISH-ONLY</span><span class="chart-meta" id="chartAccMeta">0/0</span></header>
+          <canvas id="chartAccuracy"></canvas>
+        </article>
+        <article class="chart-card">
+          <header class="chart-card-head"><span>SEAT WEIGHTS</span><span class="chart-meta">adaptive</span></header>
+          <canvas id="chartWeights"></canvas>
+        </article>
+      </div>
     </section>
     <div id="floorLed" class="led-float led-floor hidden" hidden>
       <span id="ledUp">00</span><span id="ledDown">00</span><span id="ledWait">00</span><span id="ledHold">00</span>
@@ -341,21 +914,61 @@
     </div>
   </div>
 
+  <template id="adminDeskTemplate">
+    <div class="beast-card settings-card" id="adminToolsCard">
+      <div class="beast-title">ADMIN TOOLS</div>
+      <p class="settings-sub">Password-protected. Clears never touch trained weights or pair affinities. Floor book-match reset lives here (BTC sized locks vs ETH shadow picks, finish-only) — not on the public Floor.</p>
+      <div class="brain-actions" style="flex-wrap:wrap;gap:8px">
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearHitRate">Clear Hit Rate &amp; Scorecard</button>
+        <button type="button" class="gate-btn gate-btn-ghost" id="btnClearLifeLog">Clear Life Log</button>
+        <button type="button" class="gate-btn gate-btn-summon" id="btnExportExcel">Download Excel</button>
+      </div>
+      <p class="settings-foot" id="adminToolsStatus">Training brain is never deleted by these actions.</p>
+    </div>
+    <div class="brain-card" id="brainCard">
+      <div class="beast-title">LEARNING BRAIN</div>
+      <p class="settings-sub">Download all weights, coalitions, regime stats, and lifetime graded calls. Re-upload on a new machine so you never lose training.</p>
+      <div class="brain-actions">
+        <a class="gate-btn gate-btn-summon" id="btnBrainExport" href="#" role="button">Download brain.json</a>
+        <label class="gate-btn gate-btn-ghost brain-upload">
+          Upload brain.json
+          <input type="file" id="brainFile" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="settings-foot" id="brainStatus">Export anytime. Import merges history by default.</p>
+    </div>
+  </template>
+
+  <div id="coachOverlay" class="coach-overlay hidden" hidden aria-hidden="true">
+    <div id="coachHole" class="coach-hole" aria-hidden="true"></div>
+    <aside id="coachCard" class="coach-card" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
+      <div class="coach-step" id="coachStep">1 / 1</div>
+      <h2 id="coachTitle">Tutorial</h2>
+      <p id="coachBody"></p>
+      <div class="coach-actions">
+        <button type="button" id="coachBack" class="gate-btn gate-btn-ghost">Back</button>
+        <button type="button" id="coachSkip" class="gate-btn gate-btn-ghost">Skip</button>
+        <button type="button" id="coachNext" class="gate-btn gate-btn-summon">Next</button>
+      </div>
+    </aside>
+  </div>
+
   <div id="adminGate" class="admin-gate hidden">
     <div class="admin-card">
       <input type="password" id="adminInput" class="password-input" autocomplete="off" />
       <button type="button" id="adminSubmit" class="gate-btn gate-btn-summon">Unlock</button>
+      <button type="button" id="adminCancel" class="gate-btn gate-btn-ghost">Cancel</button>
       <p id="adminError" class="password-error hidden">Wrong password</p>
     </div>
   </div>
 
-  <script src="/wire.js?v=20260822a"></script>
-  <script src="/roundtable.js?v=20260822a"></script>
-  <script src="/desk-fx.js?v=20260822a"></script>
+  <script src="/wire.js?v=20260822c"></script>
+  <script src="/roundtable.js?v=20260822c"></script>
+  <script src="/desk-fx.js?v=20260822c"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260822a", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260822c", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>

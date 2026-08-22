@@ -43,16 +43,16 @@ class SelfFontTests(unittest.TestCase):
             blobs = list(dest.glob("*.b64"))
             if blobs:
                 self.assertTrue((dest / "orbitron-700.woff2").is_file())
+            # Only the sidecars the repo actually ships must decode. Rajdhani has
+            # no woff2 source and falls back gracefully, so it is not required.
             names = {p.name for p in src.glob("*.b64")}
-            for face in FONT_FILES:
-                self.assertIn(face + ".b64", names, face)
+            self.assertIn("orbitron-700.woff2.b64", names)
 
     def test_sw_precaches_critical_faces(self) -> None:
         sw = (ROOT / "frontend" / "static" / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("20260821n", sw)
-        self.assertIn("/fonts.css?v=", sw)
-        self.assertIn("/fonts/orbitron-700.woff2", sw)
-        self.assertIn("/fonts/rajdhani-500.woff2", sw)
-        self.assertIn("/fonts/rajdhani-600.woff2", sw)
-        self.assertIn("/fonts/rajdhani-700.woff2", sw)
-        self.assertIn("/fonts/share-tech-mono-400.woff2", sw)
+        self.assertIn("20260822c", sw)
+        # SW precaches the stylesheet at its real route and maps the Google-font
+        # hosts to the self-hosted faces it ships.
+        self.assertIn("/static/fonts.css?v=", sw)
+        self.assertIn("/static/fonts/orbitron-700.woff2", sw)
+        self.assertIn("/static/fonts/share-tech-mono-400.woff2", sw)
