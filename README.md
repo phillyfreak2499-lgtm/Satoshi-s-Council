@@ -1,43 +1,34 @@
 # Teas Playbook Academy
 
-Football training games for **Jameson Teas** — built from the real Scrimmage1 playbook.
+**Free football training games for Jameson Teas** — built from the real Scrimmage1 playbook.
 
-Mobile-first. Works great on phone. Progress saves in the browser.
+Open the site → play instantly.  
+Or hit **Download** on the main menu to save a single HTML file that works offline on any phone or computer. No install, no account, free forever.
 
 ## Themes
 - 🦅 **Eagles** (Midnight / Kelly green)
 - 🐯 **Carroll High** (Orange & Black)
 
-Swap themes anytime from the main menu.
+Swap anytime from the main menu.
 
 ## Modes
+- **Pre-Snap Calm** — Guided breathing + mindset walkthrough (great before games or when nerves hit)
+- **Playbook Dash** — Endless runner: collect the correct assignment for your position
+- **Series Hopper** — Platformer: jump to the correct series color
+- **Draw & Sim** — Sketch routes, then simulate them
+- **Call Master** — Position-specific questions on real plays
+- **Series Match** — Memory match play names to series colors
 
-### Pre-Snap Calm (start here)
-Guided breathing + focus walkthrough before games. Box breathing, short mindset cards, and a message from Dad. Built to help settle nerves and panic.
+## Extra features
+- Play of the Day (real play + your exact job)
+- Daily streak 🔥
+- Occasional positive messages from Dad
+- Sound effects + phone vibration
+- Progress (stars / high score / streak) saved in the browser
 
-### Playbook Dash
-Endless runner. Collect the **correct assignment for your position** on the called play. Avoid the wrong ones.
+## How to play
+1. Open this repo’s `index.html` (or the GitHub Pages link if enabled)
+2. Or download the free offline copy from the main menu button
+3. Choose theme + position → pick a mode
 
-### Series Hopper
-Platformer. Jump to the platform that matches the correct **series color**.
-
-### Draw & Sim
-Sketch your own routes on the field, then hit Sim and watch the players run them.
-
-### Call Master
-Timed position-specific questions on real plays, series, and assignments.
-
-### Series Match
-Memory match — pair each play name with its series color from the playbook.
-
-## Dad messages
-Every so often when you get things right, a short positive message from Dad appears. Not constant — just enough so you know he’s proud and thinking about you.
-
-## How to open on your phone
-1. Go to the repo on GitHub
-2. Open `index.html`
-3. Or enable GitHub Pages (Settings → Pages → Deploy from main branch / root) for a clean link
-
-Progress (stars + high score) stays on the device.
-
-Made for learning the real Buck, Trap, Knife, Counter, Quick Jet series and position jobs.
+Made for learning Buck, Trap, Knife, Counter, Quick Jet and the real position jobs from the team playbook.
