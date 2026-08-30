@@ -505,7 +505,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (typeof Worker !== "undefined") {
       try {
         if (!deskWorker) {
-          deskWorker = new Worker("/desk-worker.js?v=20260822c");
+          deskWorker = new Worker("/desk-worker.js?v=20260822d");
           deskWorker.onmessage = onDeskWorkerMsg;
           deskWorker.onerror = function () {
             try { deskWorker.terminate(); } catch (err) {}
@@ -1580,15 +1580,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     return false;
   }
   function maybeAttractEnter() {
-    // Cabinet attract: idle auto-enter Floor. Not a packed WAIT roster.
-    if (document.hidden) return;
-    if (attractEnterBlocked()) return;
-    if (mode === "floor") return;
-    if (!_attractLastAct) _attractLastAct = Date.now();
-    if (Date.now() - _attractLastAct < ATTRACT_IDLE_MS) return;
-    _attractEntered = true;
-    try { setMode("floor"); } catch (e) {}
-    try { document.body.classList.add("floor-attract"); } catch (e) {}
+    // Idle auto-switch to Floor is disabled: it kept yanking viewers off the
+    // Table after ~24s of stillness. The desk now stays on whatever view the
+    // user chose. Floor is still reachable any time via its tab or the "0" key.
+    return;
   }
   function wireAttractIdle() {
     if (_attractWired) return;
