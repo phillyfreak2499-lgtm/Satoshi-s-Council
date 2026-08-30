@@ -10464,3 +10464,32 @@ body.mode-art .bot-scope.show {
   .room-feed { max-height: calc(100vh - 260px); }
   .room-text { font-size: 0.85rem; }
 }
+
+/* The Room — current call bar (for people watching only the Room) */
+.room-call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  max-width: 760px;
+  margin: 12px auto 2px;
+  padding: 10px 18px;
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(6, 12, 22, 0.86);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.room-call.UP { border-color: rgba(57, 255, 20, 0.4); }
+.room-call.DOWN { border-color: rgba(255, 45, 85, 0.4); }
+.rc-label { font-family: 'Orbitron', sans-serif; font-size: 0.55rem; letter-spacing: 0.18em; color: rgba(150, 180, 205, 0.7); }
+.rc-chair { font-family: 'Orbitron', sans-serif; font-size: 0.8rem; letter-spacing: 0.05em; color: #eaf6ff; }
+.rc-win { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: #8fa6bd; }
+.rc-call { font-family: 'Orbitron', sans-serif; font-size: 1.15rem; letter-spacing: 0.04em; }
+.rc-call.UP { color: #39ff14; }
+.rc-call.DOWN { color: #ff2d55; }
+.rc-call.WAIT { color: #00e8ff; }

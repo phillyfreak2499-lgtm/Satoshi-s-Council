@@ -4239,7 +4239,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ms = Date.parse(m.close_time);
       if (Number.isFinite(ms)) secs = (ms - Date.now()) / 1000;
     }
-    let label = "1H";
+    let label = (key === "bitcoin" || key === "btc") ? "15M" : "1H";
     if (key === "front") label = m.window_label || "DFW";
     else if (key === "ats") label = m.window_label || "KICK";
     else if (key === "oracle") label = m.window_label || "CRT";
@@ -4702,11 +4702,33 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     __roomLastKey = agent.agent_name;
   }
+  function _roomUpdateCall() {
+    const el = document.getElementById("roomCall");
+    if (!el) return;
+    const d = (window.state && window.state.decision) || {};
+    const dir = _dirClass(d.direction);
+    const chair = (typeof chairNameOf === "function" && chairNameOf(focusTable)) || "COUNCIL";
+    let win = "";
+    try {
+      win = (typeof cryptoWindowLabel === "function")
+        ? cryptoWindowLabel(focusTable, (typeof tableState === "function" ? tableState(focusTable) : null))
+        : "";
+    } catch (e) {}
+    const tag = lawLocked() ? "LOCKED"
+      : (dir === "WAIT" ? "WAIT" : effectiveDir(d.direction) + " " + Math.round(d.confidence || 0) + "%");
+    el.className = "room-call " + dir;
+    el.innerHTML =
+      '<span class="rc-label">THE CALL</span>' +
+      '<span class="rc-chair">' + _escBot(String(chair).toUpperCase()) + '</span>' +
+      (win ? '<span class="rc-win">' + _escBot(win) + '</span>' : '') +
+      '<span class="rc-call ' + dir + '">' + _escBot(tag) + '</span>';
+  }
   function startRoomChat() {
     const feed = document.getElementById("roomFeed");
+    _roomUpdateCall();
     if (feed && !feed.childElementCount) { _roomTickFn(); _roomTickFn(); _roomTickFn(); }
     if (__roomTimer) clearInterval(__roomTimer);
-    __roomTimer = setInterval(_roomTickFn, 4200);
+    __roomTimer = setInterval(function () { _roomUpdateCall(); _roomTickFn(); }, 4200);
   }
   function stopRoomChat() {
     if (__roomTimer) { clearInterval(__roomTimer); __roomTimer = null; }
@@ -4828,7 +4850,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ringR = radius * 1.18;
       const lr = Math.min(w, h) * 0.24;
       const cx = w / 2, cy = h / 2;
-      const goal = "WAIT · $63,100 · 1H";
+      const goal = "WAIT · $63,100 · 15M";
       const gw = 200;
       const plateY = cy + lr * 0.90;
       out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -4840,12 +4862,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const cx = w / 2, cy = h / 2;
       const lr = fit.lrBase;
       if (fit.phone) {
-        const goal = "WAIT · $63,100 · 1H";
+        const goal = "WAIT · $63,100 · 15M";
         out.goals.push({ x: 8, y: 27, w: 120, h: 18, text: goal });
         const nw = tw("SATOSHI", 10);
         out.nameplates.push({ x: cx - nw / 2, y: cy + lr * 0.50 - 8, w: nw, h: 12, text: "SATOSHI" });
       } else {
-        const goal = "WAIT · $63,100 · 1H";
+        const goal = "WAIT · $63,100 · 15M";
         const gw = 200;
         const plateY = cy + lr * 0.90;
         out.goals.push({ x: cx - gw / 2, y: plateY - 14, w: gw, h: 28, text: goal });
@@ -7844,7 +7866,7 @@ function drawCandleChart() {
     }
     const m = tick.match(/(\d{2})(\d{2})(?!.*\d)/);
     if (m) return m[1] + ":" + m[2];
-    return "1H";
+    return "—";
   }
 
   function tableLean(ts) {
@@ -8107,7 +8129,7 @@ function drawCandleChart() {
             ? "OPEN"
             : (p.grade || p.outcome || "SETTLED");
           const conf = p.conf != null ? (p.conf + "%") : "—";
-          const win = p.window || "1H";
+          const win = p.window || (/BTC/i.test(String(p.pair || "")) ? "15M" : "1H");
           return `<li class="lock-tape-row ${p.status === "OPEN" ? "open" : "settled"}">`
             + `<span class="lt-pair">${p.pair}</span>`
             + `<span class="lt-side ${wxTone(p.side) === "UP" ? "up" : (wxTone(p.side) === "DOWN" ? "down" : "")}">${isFrontTable(focusTable) ? displayDir(p.side) : p.side}</span>`
@@ -8817,7 +8839,7 @@ function drawCandleChart() {
       const ss = String(s % 60).padStart(2, "0");
       return mm + ":" + ss;
     }
-    return "1H";
+    return "—";
   }
   function liveCallCard(view, which) {
     const kind = liveCallKind(which);
@@ -9219,7 +9241,7 @@ function drawCandleChart() {
             const res = row.result || "OPEN";
             const cls = res === "HIT" ? "hit" : (res === "MISS" ? "miss" : "open");
             return '<div class="tape-row ' + cls + '">'
-              + '<span>' + (row.window || "1H") + '</span>'
+              + '<span>' + (row.window || (String(row.asset || "").toUpperCase() === "BTC" ? "15M" : "1H")) + '</span>'
               + '<span>' + String(row.asset || "").toUpperCase() + '</span>'
               + '<span class="side-' + String(row.side || "").toLowerCase() + '">' + (row.side || "—") + '</span>'
               + '<span>' + fmtP(row.p_finish) + '</span>'
