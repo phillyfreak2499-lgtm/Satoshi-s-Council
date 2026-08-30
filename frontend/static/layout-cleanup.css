@@ -1,0 +1,213 @@
+/* Layout cleanup only. Shrine look stays.
+   Z-INDEX SCALE
+   1   watermark
+   20  canvas overlays (why, saber, faces, deskLead)
+   24  openCharts / floorRaijin / spin
+   30  strips (health, huddle, rivalry, hourSlam, closeRecap)
+   40  header + tabs
+   50  stream chrome
+   55  phone back
+   60  coach
+   70  videos
+   80+ gates (password, summon, admin)
+*/
+
+#ztWatermark { z-index: 1; pointer-events: none; }
+
+#deskLead,
+#chairWhy,
+#atsWhy,
+#oraWhy,
+#aresFace,
+#raijinFace,
+#lightsaberWrap,
+#floorCrawl { z-index: 20; }
+
+#openChartsBtn,
+#floorRaijin,
+#seatSpinBtn { z-index: 24; }
+
+#healthStrip,
+#huddleBanner,
+#rivalryStrip,
+#hourSlam,
+#closeRecap { z-index: 30; }
+
+#app > header,
+#modeTabsShell { z-index: 40; }
+
+#streamChrome { z-index: 50; }
+#phoneBackBtn { z-index: 55; }
+
+#coachOverlay { z-index: 60; }
+
+#deskIntroWrap,
+#summonVideoWrap,
+#celebrateVideoWrap,
+#leaderClickWrap,
+#floorMoneyRain { z-index: 70; }
+
+#passwordGate,
+#summonGate,
+#adminGate { z-index: 80; }
+
+.hidden,
+[hidden],
+.info-view.hidden {
+  display: none !important;
+}
+#passwordGate.hidden,
+#summonGate.hidden,
+#adminGate.hidden,
+#coachOverlay.hidden,
+#deskIntroWrap.hidden,
+#celebrateVideoWrap.hidden,
+#leaderClickWrap.hidden,
+#hiveEgg.hidden,
+#floorMoneyRain.hidden,
+#seatStormPlay.hidden,
+.summon-video-wrap:not(.active) {
+  pointer-events: none !important;
+}
+
+#app > header {
+  position: relative;
+  overflow-x: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+#app > header .header-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+#app > header .logo {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+#app > header .controls {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+#modeTabsShell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+#modeTabs {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
+}
+#modeTabsPrev,
+#modeTabsNext {
+  flex: 0 0 auto;
+  z-index: 41;
+  pointer-events: auto;
+}
+
+#app > footer,
+body #app footer {
+  position: relative;
+  z-index: 28;
+  overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+#chairWhy {
+  bottom: 10%;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  pointer-events: none;
+}
+
+body.mode-art #hierarchyPanel,
+body.mode-stream #hierarchyPanel,
+body:not(.show-hierarchy) #hierarchyPanel {
+  display: none !important;
+}
+
+body:not(.mode-floor) #floorHint,
+body:not(.mode-floor) #floorExitBtn,
+body:not(.mode-floor) #floorChairToggles,
+body:not(.mode-floor) #floorLeaderClocks,
+body:not(.mode-floor) #floorCrawl,
+body:not(.mode-floor) #floorRaijin,
+body:not(.mode-floor) #floorLed,
+body:not(.mode-floor) #colorTally,
+body:not(.mode-floor) #floorMoneyRain {
+  display: none !important;
+}
+
+body:not([data-focus="ats"]) #atsWhy,
+body:not([data-focus="ats"]) #atsWatch,
+body:not([data-focus="ats"]) #aresFace,
+body:not([data-focus="oracle"]) #oraWhy,
+body:not([data-focus="oracle"]) #oraWatch,
+body:not([data-focus="front"]) #raijinFace {
+  display: none !important;
+}
+
+body.mode-stream #accuracyBadge,
+body.mode-stream #hitRateCard,
+body.mode-floor #accuracyBadge,
+body.mode-floor #hitRateCard,
+body.mode-stream #shWaitRate {
+  display: none !important;
+}
+
+body.mode-settings #mainTable,
+body.mode-seats #mainTable,
+body.mode-paper #mainTable,
+body.mode-calls #mainTable,
+body.mode-tape #mainTable,
+body.mode-book #mainTable,
+body.mode-brain #mainTable,
+body.mode-news #mainTable,
+body.mode-wire #mainTable,
+body.mode-school #mainTable,
+body.mode-charts #mainTable,
+body.mode-side #mainTable,
+body.mode-front #mainTable,
+body.mode-settings #streamChrome,
+body.mode-seats #streamChrome,
+body.mode-paper #streamChrome,
+body.mode-school #streamChrome,
+body.mode-charts #streamChrome {
+  display: none !important;
+}
+
+.info-view:not(.hidden) { position: relative; z-index: 26; }
+#seatStormPlay:not(.hidden) { z-index: 58; }
+
+html.phone-desk #lifetimePanel,
+html.phone-desk #hierarchyPanel { display: none !important; }
+html.phone-desk { overflow-x: hidden; }
+html.phone-desk #app { overflow-x: hidden; max-width: 100vw; }
+html.phone-desk #app > header .controls #hiveBtn,
+html.phone-desk #app > header .controls #huddleBadge,
+html.phone-desk #app > header .controls #beastBadge,
+html.phone-desk #app > header .controls #ztLogoBtn,
+html.phone-desk #app > header .controls #lastUpdate {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  #lifetimePanel,
+  #hierarchyPanel { display: none !important; }
+  #modeTabs { flex-wrap: nowrap !important; }
+  #openChartsBtn { display: none !important; }
+}
+@media (max-width: 390px) {
+  #app > header .title { font-size: 0.78rem; }
+  #app > header .controls #stillToggle { display: none !important; }
+}
