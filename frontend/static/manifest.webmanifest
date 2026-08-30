@@ -1,0 +1,26 @@
+{
+  "name": "Satoshi's Council",
+  "short_name": "Council",
+  "description": "Paper desk. Watch the Chair.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07070c",
+  "theme_color": "#07070c",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/council-mark.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/council-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
