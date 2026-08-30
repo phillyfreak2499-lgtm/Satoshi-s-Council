@@ -13,22 +13,21 @@
  * 2026-08-30-session-windows
  *   Loads session-window.js so the header chip can show NY / lunch /
  *   afternoon / Asia / London windows against America/New_York.
+ *
+ * 2026-08-30-aggr-tape
+ *   Loads the AGGR multi-exchange tape chip (aegx workspace: taker + liq).
  */
 (() => {
   "use strict";
 
-  const BUILD = "2026-08-30-session-windows";
+  const BUILD = "2026-08-30-aggr-tape";
   window.COUNCIL_BUILD = BUILD;
 
-  // Cache-bust leader stills. Portraits keep a stable URL when the signed
-  // image is swapped, so the tag alone decides what a phone repaints.
   window.assetTag = function assetTag(url) {
     if (!url) return url;
     return url + (url.indexOf("?") === -1 ? "?" : "&") + "v=" + encodeURIComponent(BUILD);
   };
 
-  // The desk polls /health while the council hydrates. "warming" is not an
-  // error — it means the port is up and the first fetch has not landed yet.
   window.councilHealth = async function councilHealth() {
     try {
       const r = await fetch("/health", { headers: { Accept: "application/json" } });
@@ -41,8 +40,12 @@
 
   console.info("Satoshi’s Council · build " + BUILD + " · morning desk restored");
 
-  var s = document.createElement("script");
-  s.src = "/session-window.js?v=20260830k";
-  s.defer = true;
-  document.head.appendChild(s);
+  function boot(src) {
+    var s = document.createElement("script");
+    s.src = src;
+    s.defer = true;
+    document.head.appendChild(s);
+  }
+  boot("/static/session-window.js?v=20260830k");
+  boot("/static/aggr-tape.js?v=20260830a");
 })();

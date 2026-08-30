@@ -1,0 +1,42 @@
+.aggr-wrap { position: relative; display: inline-flex; align-items: center; margin-left: 8px; }
+.aggr-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(8,12,22,.72);
+  color: #d7deea;
+  font: 600 11px/1.1 "Barlow Semi Condensed", "Barlow", sans-serif;
+  letter-spacing: .04em;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.aggr-chip .aggr-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #6b7280; box-shadow: 0 0 8px currentColor;
+}
+.aggr-chip #aggrNote, .aggr-chip .aggr-left { opacity: .72; font-weight: 500; }
+.aggr-chip.press-up { border-color: rgba(52,211,153,.45); color: #bbf7d0; }
+.aggr-chip.press-up .aggr-dot { background: #34d399; }
+.aggr-chip.press-down { border-color: rgba(248,113,113,.45); color: #fecaca; }
+.aggr-chip.press-down .aggr-dot { background: #f87171; }
+.aggr-chip.press-mixed { border-color: rgba(250,204,21,.35); color: #fde68a; }
+.aggr-chip.press-mixed .aggr-dot { background: #facc15; }
+.aggr-chip.off { opacity: .7; }
+.aggr-panel {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 40;
+  min-width: 260px; padding: 10px 12px;
+  background: rgba(8,12,22,.94);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.35);
+}
+.aggr-row { display: grid; gap: 2px; margin-bottom: 8px; }
+.aggr-row b { font-size: 11px; letter-spacing: .06em; }
+.aggr-row span, .aggr-row small { font-size: 11px; opacity: .8; }
+.aggr-row.press-up b { color: #6ee7b7; }
+.aggr-row.press-down b { color: #fca5a5; }
+.aggr-link { color: #93c5fd; font-size: 11px; text-decoration: none; }
+.aggr-link:hover { text-decoration: underline; }
+@media (max-width: 720px) {
+  .aggr-chip #aggrNote { display: none; }
+}
