@@ -12,6 +12,12 @@ from typing import Any, Dict, Optional, Tuple
 from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
 
+try:
+    from backend.agents.structure_hook import install_structure_gates
+    install_structure_gates()
+except Exception:
+    pass
+
 
 # Soft priors: (start_hour, end_hour, name, trend_bias -1..+1, activity 0..1)
 SESSION_PRIORS = [
@@ -98,11 +104,9 @@ class SessionTodSpecialist(BaseSpecialist):
             )
         except Exception:
             fifteen = False
-        # Weekend 15m books are choppier — dampen session force, do not invent a side.
         if fifteen and weekday >= 5:
             activity = max(0.35, activity * 0.82)
             bias *= 0.55
-        # Blend official 15m Kalshi hour / weekday finish rates when the 15m brain has them.
         if fifteen:
             emp_h, emp_d = _empirical_15m_clock(hour, weekday)
             if emp_h is not None:
@@ -138,7 +142,6 @@ class SessionTodSpecialist(BaseSpecialist):
         local_dir = None
         local_conf = 42
 
-        # Soft directional prior only when activity is meaningful
         if abs(bias) >= 0.06 and activity >= 0.55:
             local_dir = "UP" if bias > 0 else "DOWN"
             local_conf = min(62, 48 + int(abs(bias) * 80) + int(activity * 8))
@@ -149,7 +152,6 @@ class SessionTodSpecialist(BaseSpecialist):
         else:
             notes.append(f"{name} session neutral bias")
 
-        # Window clock: early vs late
         if mins_left_f is not None:
             if mins_left_f > 12:
                 notes.append("early clock")
@@ -173,7 +175,6 @@ class SessionTodSpecialist(BaseSpecialist):
             else:
                 notes.append("no whole-window session edge")
         else:
-            # Session alone almost never flips mid/final
             if entry in ("UP", "DOWN"):
                 if local_dir == entry:
                     direction, conf = entry, max(local_conf, 52)
