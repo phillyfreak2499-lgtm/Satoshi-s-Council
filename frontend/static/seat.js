@@ -291,4 +291,14 @@
     ready: ready,
     backend: "indexeddb"
   };
+
+  /* Pull in the missing setFocusTable without waiting on a cache-busted index.html. */
+  if (!w.__focusTableScript) {
+    w.__focusTableScript = true;
+    var focusSrc = "/focus-table.js?v=20260830a";
+    var tag = document.createElement("script");
+    tag.src = focusSrc;
+    tag.async = false;
+    (document.head || document.documentElement).appendChild(tag);
+  }
 })(window);
