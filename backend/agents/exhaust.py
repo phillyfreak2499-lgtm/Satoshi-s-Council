@@ -132,6 +132,8 @@ class ExhaustSpecialist(BaseSpecialist):
         notes = []
         local_dir = None
         local_conf = 48
+        from backend.agents.regime import orbit_context
+        orbit = orbit_context(market_data)
 
         # Fade run-up
         fade_up_run = (
@@ -173,12 +175,27 @@ class ExhaustSpecialist(BaseSpecialist):
             fp = f"{flip_px:+.2f}%" if flip_px is not None else "—"
             notes.append(f"no exhaust ({run_label} {rp} · {flip_label} {fp})")
 
+        hard = bool(
+            local_dir is not None
+            and run_px is not None
+            and abs(float(run_px)) >= run_thr * 1.5
+        )
+        features["hard_trigger"] = hard
+        features["orbit_agg"] = orbit["aggressiveness"]
+
         direction = "WAIT"
         conf = 48
 
         if phase == "entry":
+            if local_dir and orbit["trend_day"] and not hard:
+                # ORBIT trend day: do not fade initiative without a hard exhaust.
+                local_dir = None
+                notes.append(f"ORBIT trend day {orbit['streak_dir']}×{orbit['streak_n']} — fade muted")
             if local_dir:
                 direction, conf = local_dir, local_conf
+                if (orbit["aggressiveness"] < 0.35 or orbit["quiet"]) and not hard:
+                    conf = min(conf, floor)
+                    notes.append("ORBIT quiet/low-agg — fade capped")
                 # Multi-window: exhaustion fades work better after extended streaks
                 if streak_dir and streak_dir != local_dir and streak_n >= 3:
                     conf = min(94, conf + 5)

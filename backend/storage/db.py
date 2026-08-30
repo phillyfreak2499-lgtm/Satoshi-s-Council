@@ -145,6 +145,30 @@ class WindowCall(Base):
 
 
 
+class DecisionJournal(Base):
+    """
+    One honest row per window: what the Chair said, which FAMILIES backed it,
+    what vetoed it, the ask it would fill at, and how it settled. WAIT is a
+    first-class outcome here — wait_flag rows are never misses.
+    Served as CSV to Member Paper / admin only; never on Stream.
+    """
+    __tablename__ = "decision_journal"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    window_id: Mapped[str] = mapped_column(String(80), index=True)
+    ticker: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, index=True)
+    asset: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    phase: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    chair_dir: Mapped[str] = mapped_column(String(16), default="WAIT")
+    families: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
+    vetoes: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    fill_at_ask: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    path_pnl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    settle: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    wait_flag: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[str] = mapped_column(String(40))
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+
 class ManualTrade(Base):
     """
     User-entered paper tracker (not auto Chair fills).
@@ -2226,6 +2250,131 @@ class PerformanceStore:
             "open": [c for c in calls if c.get("status") == "open"][:20],
         }
 
+
+    async def journal_window(
+        self,
+        *,
+        window_id: str,
+        ticker: str | None,
+        asset: str | None,
+        phase: str | None,
+        chair_dir: str,
+        families: Any = None,
+        vetoes: str | None = None,
+        fill_at_ask: float | None = None,
+    ) -> None:
+        """Upsert the one journal row for this window (latest read wins)."""
+        import json as _json
+        if not window_id:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        d = str(chair_dir or "WAIT").upper()
+        fam_txt = None
+        if families is not None:
+            try:
+                fam_txt = _json.dumps(families, separators=(",", ":"))[:800]
+            except (TypeError, ValueError):
+                fam_txt = None
+        try:
+            async with self.Session() as session:
+                row = (
+                    await session.execute(
+                        select(DecisionJournal)
+                        .where(DecisionJournal.window_id == str(window_id))
+                        .order_by(DecisionJournal.id.desc()).limit(1)
+                    )
+                ).scalar_one_or_none()
+                if row is None:
+                    row = DecisionJournal(
+                        window_id=str(window_id)[:80], created_at=now, updated_at=now,
+                    )
+                    session.add(row)
+                row.ticker = (str(ticker)[:80] if ticker else row.ticker)
+                row.asset = (str(asset)[:8].lower() if asset else row.asset)
+                row.phase = (str(phase)[:16] if phase else row.phase)
+                row.chair_dir = d[:16]
+                if fam_txt is not None:
+                    row.families = fam_txt
+                if vetoes:
+                    row.vetoes = str(vetoes)[:200]
+                if fill_at_ask is not None:
+                    try:
+                        row.fill_at_ask = float(fill_at_ask)
+                    except (TypeError, ValueError):
+                        pass
+                row.wait_flag = 0 if d in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD", "BOTH") else 1
+                row.updated_at = now
+                await session.commit()
+        except Exception as e:
+            logger.debug(f"journal_window skip: {e}")
+
+    async def journal_mark_settled(self, asset: str | None = None) -> int:
+        """Copy settle outcome + paper path P&L from settled window_calls onto
+        journal rows that don't have one yet. WAIT rows settle as 'WAIT'."""
+        n = 0
+        try:
+            async with self.Session() as session:
+                rows = (
+                    await session.execute(
+                        select(DecisionJournal)
+                        .where(DecisionJournal.settle.is_(None))
+                        .order_by(DecisionJournal.id.desc()).limit(200)
+                    )
+                ).scalars().all()
+                for jr in rows:
+                    if asset and (jr.asset or "") not in ("", asset.lower()):
+                        continue
+                    if not jr.ticker:
+                        continue
+                    call = (
+                        await session.execute(
+                            select(WindowCall)
+                            .where(
+                                WindowCall.ticker == jr.ticker,
+                                WindowCall.actual_outcome.isnot(None),
+                            )
+                            .order_by(WindowCall.id.desc()).limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if call is None:
+                        continue
+                    if jr.wait_flag:
+                        jr.settle = "WAIT"          # a WAIT is never a miss
+                    else:
+                        jr.settle = str(call.y_finish or call.actual_outcome or "")[:16]
+                    try:
+                        if call.paper_pnl is not None:
+                            jr.path_pnl = float(call.paper_pnl)
+                    except (TypeError, ValueError):
+                        pass
+                    jr.updated_at = datetime.now(timezone.utc).isoformat()
+                    n += 1
+                if n:
+                    await session.commit()
+        except Exception as e:
+            logger.debug(f"journal_mark_settled skip: {e}")
+        return n
+
+    async def journal_rows(self, limit: int = 500) -> List[Dict[str, Any]]:
+        async with self.Session() as session:
+            rows = (
+                await session.execute(
+                    select(DecisionJournal)
+                    .order_by(DecisionJournal.id.desc())
+                    .limit(max(1, min(int(limit), 5000)))
+                )
+            ).scalars().all()
+        return [
+            {
+                "window_id": r.window_id, "ticker": r.ticker, "asset": r.asset,
+                "phase": r.phase, "chair_dir": r.chair_dir, "families": r.families,
+                "vetoes": r.vetoes, "fill_at_ask": r.fill_at_ask,
+                "path_pnl": r.path_pnl, "settle": r.settle,
+                "wait_flag": int(r.wait_flag or 0),
+                "created_at": r.created_at, "updated_at": r.updated_at,
+            }
+            for r in rows
+        ]
 
     async def prune_old_signals(self, days: int = 7, keep_max: int = 150_000) -> int:
         """

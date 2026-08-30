@@ -178,6 +178,8 @@ class _AssetPatternSpecialist(BaseSpecialist):
             "hh": bool(hh),
             "ll": bool(ll),
             "location": location,
+            "upper_rej": bool(upper_rej),
+            "lower_rej": bool(lower_rej),
             "inside_bar": bool(inside_bar),
             "provisional_bar": bool(provisional),
             "phase": phase,
@@ -200,6 +202,9 @@ class _AssetPatternSpecialist(BaseSpecialist):
         if inside_bar and body_ratio < self.body_ratio_bar:
             # Coil — vote the break close, not the poke. Nothing else fires.
             notes.append("inside bar — coil, vote the break")
+        elif body_ratio < 0.15 and location == "mid":
+            # Doji / spin in transit: indecision with no level. Nothing.
+            notes.append("mid-range doji — no story")
         elif last["close"] > last["open"] and body_ratio > self.body_ratio_bar and ret_5 > self.ret5_bar:
             local_dir, local_conf = "UP", min(82, 55 + int(abs(ret_5) * 8000))
             invalidation = float(last["low"])
@@ -259,13 +264,15 @@ class _AssetPatternSpecialist(BaseSpecialist):
                 invalidation = float(last["high"])
                 notes.append(f"15m trend {ret_15 * 100:.2f}%")
         elif (not self.prefer_mean_rev) and hh and ret_5 > 0:
-            local_dir, local_conf = "UP", 58
+            held = len(closes) >= 21 and closes[-2] >= closes[-21:-1].max() * 0.999
+            local_dir, local_conf = "UP", (60 if held else 55)
             invalidation = float(last["low"])
-            notes.append("higher-high break")
+            notes.append("higher-high break" + (" · hold-close" if held else " — no hold yet"))
         elif (not self.prefer_mean_rev) and ll and ret_5 < 0:
-            local_dir, local_conf = "DOWN", 58
+            held = len(closes) >= 21 and closes[-2] <= closes[-21:-1].min() * 1.001
+            local_dir, local_conf = "DOWN", (60 if held else 55)
             invalidation = float(last["high"])
-            notes.append("lower-low break")
+            notes.append("lower-low break" + (" · hold-close" if held else " — no hold yet"))
         elif self.prefer_mean_rev and hh and ret_5 > 0 and mean_rev == "DOWN":
             local_dir, local_conf = "DOWN", 57
             invalidation = float(last["high"])
@@ -282,6 +289,7 @@ class _AssetPatternSpecialist(BaseSpecialist):
             notes.append("no invalidation — WAIT")
         if invalidation is not None:
             features["invalidation"] = round(invalidation, 2)
+            features["invalidation_hint"] = round(invalidation, 2)
 
         if phase == "entry":
             if local_dir:

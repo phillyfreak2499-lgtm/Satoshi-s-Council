@@ -154,6 +154,8 @@ class LawBot(BaseSpecialist):
             self._lock_started_at = datetime.now(timezone.utc).isoformat()
             self._lock_started_mono = time.monotonic()
             self._windows_seen_during_lock = set()
+            self._blame_top = []
+            self._blame_concentrated = False
             self.shadows = []
             self.shadow_stats = {"open": 0, "right": 0, "wrong": 0, "expired": 0}
             self.last_lock_reason = (
@@ -307,10 +309,15 @@ class LawBot(BaseSpecialist):
 
         self.shadow_stats["open"] = sum(1 for s in self.shadows if s["status"] == "open")
 
-        # Early unlock: fix validated by shadow rights
+        # Early unlock: fix validated by shadow rights. When the same 2-3
+        # seats dominated blame, a single shadow-right is not proof the fix
+        # works — require one more. Time cap and post_unlock_strict unchanged.
+        _needed = SHADOW_EARLY_UNLOCK_RIGHTS + (
+            1 if getattr(self, "_blame_concentrated", False) else 0
+        )
         if (
             self.is_locked()
-            and self.shadow_stats["right"] >= SHADOW_EARLY_UNLOCK_RIGHTS
+            and self.shadow_stats["right"] >= _needed
             and self.shadow_stats["right"] > self.shadow_stats["wrong"]
         ):
             self._lift(
@@ -374,6 +381,13 @@ class LawBot(BaseSpecialist):
                 "Over-weighted on faults: "
                 + ", ".join(f"{display_name(n)} ({s:.1f})" for n, s in worst)
             )
+            # Early-unlock discipline: if the same 2-3 seats carry most of the
+            # blame, one lucky shadow-right must not lift the lock — the fault
+            # pattern is specific, so demand more proof.
+            total_blame = sum(blame.values()) or 1.0
+            top_share = sum(sc for _n, sc in worst) / total_blame
+            self._blame_top = [n for n, _sc in worst]
+            self._blame_concentrated = bool(top_share >= 0.75)
         if credit:
             best = sorted(credit.items(), key=lambda x: -x[1])[:3]
             findings.append(

@@ -972,6 +972,18 @@ class Leader:
         book = (regime_features or {}).get("asset") if isinstance(regime_features, dict) else None
         signals = filter_pattern_signals_for_asset(signals, book)
 
+        # ── WARDEN veto (hard, before any debate) ─────────────────────────
+        # Both home feeds down → the Chair cannot issue a side at all.
+        # One feed down → every directional confidence is capped. WARDEN
+        # itself never votes a side; it only reports health.
+        from backend.agents.chair_gates import feeds_from_signals
+        _feeds = feeds_from_signals(signals)
+        if not _feeds["spot_ok"] and not _feeds["kalshi_ok"]:
+            return self._wait_result(
+                "WARDEN veto — both spot and Kalshi feeds unhealthy; no directional call", 92
+            )
+        warden_cap = None if (_feeds["spot_ok"] and _feeds["kalshi_ok"]) else 62
+
         active = [
             s for s in signals
             if not s.muted and s.agent_name not in ("guardian", "law")
@@ -1085,6 +1097,36 @@ class Leader:
                     signed = signed_vote(ed, conf)
                     score += signed * w
                     weight_sum += w
+
+        # ── Fade pile-up fold (one fact = one family) ─────────────────────
+        # panic + exhaust + cheap + news leaning the same way is ONE fade
+        # fact, not four confirmations. Scale the pile so its combined weight
+        # equals the loudest single fade seat, then rebuild the score.
+        from backend.agents.chair_gates import seat_family as _seat_family
+        for side in ("UP", "DOWN"):
+            pile = [
+                d for d in details
+                if _seat_family(d.get("agent")) == "fade"
+                and d.get("lock_force") is not False
+                and lean_side(d.get("effective_direction") or d.get("direction")) == side
+            ]
+            if len(pile) >= 2:
+                pile_w = sum(float(d["weight"]) for d in pile)
+                top_w = max(float(d["weight"]) for d in pile)
+                if pile_w > top_w > 0:
+                    fold = top_w / pile_w
+                    for d in pile:
+                        d["weight"] = round(float(d["weight"]) * fold, 3)
+                        d["family_folded"] = True
+                    score = 0.0
+                    weight_sum = 0.0
+                    for d in details:
+                        if d.get("lock_force") is False:
+                            continue
+                        w = float(d["weight"])
+                        ed = (d.get("effective_direction") or d.get("direction") or "WAIT").upper()
+                        score += signed_vote(ed, (float(d.get("confidence") or 0) / 100.0)) * w
+                        weight_sum += w
 
         # Sort details by rank for UI
         details.sort(key=lambda d: d.get("rank") or 99)
@@ -1526,6 +1568,74 @@ class Leader:
         shadow_side = lean if lean in ("UP", "DOWN") else None
         shadow_conf = int(conf) if conf is not None else 0
         shadow_vetoed = False
+
+        # ── Pre-lock checklist (hard code, no debate) ─────────────────────
+        # Every directional lock must pass ALL items or the Chair WAITs.
+        # LAW lockdown is enforced upstream in council.analyze_once (which
+        # never paper-trades while locked and uses this synthesize only for
+        # the shadow), so it is deliberately not re-checked here.
+        from backend.agents.chair_gates import family_lean_counts as _flc
+        from backend.agents.chair_gates import pre_lock_checklist as _plc
+        from backend.learning.btc15m_path import (
+            is_chalk as _ic,
+            kalshi_taker_fee_cents as _fee,
+            real_yes_no_asks as _rya,
+        )
+        _ya, _na = _rya(
+            yes_ask=(regime_features or {}).get("yes_ask"),
+            no_ask=(regime_features or {}).get("no_ask"),
+            yes_bid=(regime_features or {}).get("yes_bid"),
+            no_bid=(regime_features or {}).get("no_bid"),
+        )
+        _orbit_quiet = False
+        _orbit_agg = None
+        for _s in signals:
+            if getattr(_s, "agent_name", None) == "regime":
+                _rf = getattr(_s, "features", None) or {}
+                _orbit_quiet = bool(_rf.get("quiet"))
+                _orbit_agg = _rf.get("aggressiveness")
+                break
+        if _orbit_agg is None and regime_features and regime_features.get("aggressiveness") is not None:
+            _orbit_agg = regime_features.get("aggressiveness")
+        try:
+            _low_agg = _orbit_agg is not None and float(_orbit_agg) < 0.35
+        except (TypeError, ValueError):
+            _low_agg = False
+        _hard = any(bool((getattr(_s, "features", None) or {}).get("hard_trigger")) for _s in active)
+        _fams = _flc(details)
+        _side_ask = _ya if lean == "UP" else (_na if lean == "DOWN" else None)
+        _side_leftover = None
+        if _side_ask is not None:
+            try:
+                _side_leftover = 100.0 - float(_side_ask) - float(_fee(_side_ask) or 0.0)
+            except (TypeError, ValueError):
+                _side_leftover = None
+        _aligned = len(_fams["family_up"] if lean == "UP" else _fams["family_down"]) if lean in ("UP", "DOWN") else 0
+        checklist_veto = ""
+        if paper_lock_candidate:
+            _ok, _why = _plc(
+                spot_ok=_feeds["spot_ok"],
+                kalshi_ok=_feeds["kalshi_ok"],
+                law_locked=False,  # enforced upstream; see note above
+                chalk=bool(_ic(_ya) or _ic(_na)),
+                leftover_cents=_side_leftover,
+                is_15m=bool(fifteen),
+                quiet=bool(_orbit_quiet or _low_agg),
+                hard_trigger=_hard,
+                families_aligned=_aligned,
+            )
+            if not _ok:
+                checklist_veto = _why
+                direction = "WAIT"
+                firm = False
+                is_directional = False
+                paper_lock_candidate = False
+                shadow_vetoed = True
+                lean = None  # path book must not open a new leg from a vetoed lean
+                conf = max(int(conf or 0), 70)
+                summary = f"Checklist refuse: {_why} — WAIT"
+                gate_notes.append(f"checklist:{_why}")
+
 
         edge = self._price_edge(conf, lean, side_odds, regime_features)
         p_finish = edge["p_finish"]
@@ -2105,12 +2215,23 @@ class Leader:
         except Exception:
             eth_pick = None
             btc_pick = None
+        # WARDEN partial-feed cap: one home feed down → the FINAL directional
+        # conviction is capped, after every boost and the path overlay.
+        if warden_cap is not None and direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+            if int(conf or 0) > warden_cap:
+                conf = warden_cap
+                summary = (summary or "") + " · warden partial-feed cap"
+        if (_orbit_quiet or _low_agg) and direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+            gate_notes.append("orbit quiet/low-agg — raised bar")
         return {
             "direction": direction,
             "confidence": conf,
             "summary": self._clean_summary(summary),
             "score": round(score, 4),
             "diversity": diversity,
+            "families": _fams,
+            "checklist_veto": checklist_veto,
+            "feeds": dict(_feeds),
             "aggressiveness": aggressiveness,
             "threshold_used": round(threshold, 3),
             "threshold_base": round(bars["confluence"], 3),

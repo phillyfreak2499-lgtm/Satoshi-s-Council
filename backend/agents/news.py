@@ -93,10 +93,21 @@ class NewsSpecialist(BaseSpecialist):
 
         direction = "WAIT"
         conf = 40 + abs(50 - val) // 5
+        from backend.agents.regime import orbit_context
+        orbit = orbit_context(market_data)
+        features["hard_trigger"] = False  # sentiment has no hard trigger
+        features["orbit_agg"] = orbit["aggressiveness"]
 
         if phase == "entry":
+            if local_dir and orbit["trend_day"]:
+                # ORBIT trend day: sentiment fades sit out initiative days.
+                local_dir = None
+                notes.append(f"ORBIT trend day {orbit['streak_dir']}×{orbit['streak_n']} — sentiment muted")
             if local_dir:
                 direction, conf = local_dir, local_conf
+                if orbit["aggressiveness"] < 0.35 or orbit["quiet"]:
+                    conf = min(conf, floor)
+                    notes.append("ORBIT quiet/low-agg — capped")
                 if mean_rev == local_dir:
                     conf = min(80, conf + 5)
                     notes.append("mean-rev agrees")

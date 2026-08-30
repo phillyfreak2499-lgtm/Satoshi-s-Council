@@ -97,11 +97,15 @@ class PanicSpecialist(BaseSpecialist):
 
         thr = float(getattr(settings, "PANIC_THRESHOLD_PTS", 4.0))
         hard = move >= thr * 2
+        from backend.agents.regime import orbit_context
+        orbit = orbit_context(market_data)
 
         features = {
             **{k: round(v, 2) if isinstance(v, float) else v for k, v in stats.items()},
             "threshold": thr,
             "move": round(move, 2),
+            "hard_trigger": bool(hard),
+            "orbit_agg": orbit["aggressiveness"],
             "phase": phase,
             "horizon": "entry" if phase == "entry" else "revision",
             "path_move": path,
@@ -132,8 +136,15 @@ class PanicSpecialist(BaseSpecialist):
         conf = 48
 
         if phase == "entry":
+            if local_dir and orbit["trend_day"] and not hard:
+                # ORBIT trend day: do not fade initiative without a hard panic.
+                local_dir = None
+                notes.append(f"ORBIT trend day {orbit['streak_dir']}×{orbit['streak_n']} — fade muted")
             if local_dir and move >= thr:
                 direction, conf = local_dir, local_conf
+                if (orbit["aggressiveness"] < 0.35 or orbit["quiet"]) and not hard:
+                    conf = min(conf, floor)
+                    notes.append("ORBIT quiet/low-agg — fade capped")
                 # Fades work better after one-sided streaks (exhaustion context)
                 if streak_dir and streak_dir != local_dir and streak_n >= 3:
                     conf = min(94, conf + 5)

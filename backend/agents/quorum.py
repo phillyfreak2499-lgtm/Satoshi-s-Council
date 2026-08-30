@@ -91,14 +91,23 @@ class QuorumSpecialist(BaseSpecialist):
         up_n, down_n = len(up_names), len(down_names)
         total_dir = up_n + down_n
 
+        # One fact = one family. Six fade seats leaning the same way is ONE
+        # fade fact — a lean needs >=2 FAMILIES on the same side, not >=2 seats.
+        from backend.agents.chair_gates import seat_family
+        fam_up = sorted({f for f in (seat_family(n) for n in up_names) if f})
+        fam_down = sorted({f for f in (seat_family(n) for n in down_names) if f})
+
         lean = "WAIT"
         lean_names: List[str] = []
+        lean_families: List[str] = []
         if up_n > down_n:
             lean = "UP"
             lean_names = up_names
+            lean_families = fam_up
         elif down_n > up_n:
             lean = "DOWN"
             lean_names = down_names
+            lean_families = fam_down
 
         features: Dict[str, Any] = {
             "up_count": up_n,
@@ -106,11 +115,19 @@ class QuorumSpecialist(BaseSpecialist):
             "wait_count": wait_n,
             "dir_count": total_dir,
             "lean_size": len(lean_names),
+            "family_up": fam_up,
+            "family_down": fam_down,
+            "families_aligned": max(len(fam_up), len(fam_down)),
             "phase": phase,
             "horizon": "entry" if phase == "entry" else "revision",
             "path_move": path,
             "entry_dir": entry,
         }
+        fam_gated = False
+        if lean in ("UP", "DOWN") and len(lean_families) < 2:
+            fam_gated = True
+            lean = "WAIT"
+            lean_names = []
 
         # Historical optimal size + combo stats from learner
         opt_size = 3
@@ -135,7 +152,12 @@ class QuorumSpecialist(BaseSpecialist):
         local_dir = None
         local_conf = 48
 
-        if lean == "WAIT" or total_dir == 0:
+        if fam_gated:
+            notes.append(
+                f"one-family lean · U{up_n}/D{down_n} but families "
+                f"U{len(fam_up)}/D{len(fam_down)} — need 2 families"
+            )
+        elif lean == "WAIT" or total_dir == 0:
             notes.append(f"no directional majority · U{up_n}/D{down_n}/W{wait_n}")
         else:
             size = len(lean_names)

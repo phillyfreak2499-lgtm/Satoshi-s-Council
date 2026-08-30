@@ -751,6 +751,36 @@ async def process_export_csv(limit: int = 5000):
     )
 
 
+@app.get("/api/admin/journal.csv")
+async def journal_csv(request: Request, limit: int = 500):
+    """Decision journal — one row per window. Admin/Member Paper only, never Stream."""
+    denied = _admin_required(request)
+    if denied is not None:
+        return denied
+    from datetime import datetime, timezone
+    import csv
+    import io
+
+    rows = await council.store.journal_rows(limit=_clamp_limit(limit, 5000, 500))
+    cols = ["window_id", "ticker", "asset", "phase", "chair_dir", "families",
+            "vetoes", "fill_at_ask", "path_pnl", "settle", "wait_flag",
+            "created_at", "updated_at"]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="decision-journal-{stamp}.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @app.get("/api/kalshi15m")
 async def kalshi_15m():
     """

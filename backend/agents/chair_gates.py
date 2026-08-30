@@ -7,7 +7,7 @@ definition of the math.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def odds_to_cents(raw: Any) -> Optional[float]:
@@ -2292,3 +2292,105 @@ def finish_outcome(spot: Any, strike: Any) -> Optional[str]:
     if px < k:
         return "DOWN"
     return None
+
+
+# ── Seat families (one fact = one family) ─────────────────────────────
+# The Chair counts FAMILIES, not seats. Six fade bots leaning the same way is
+# one fade fact, not six independent confirmations.
+SEAT_FAMILY: Dict[str, str] = {
+    # structure
+    "candle": "structure", "candle_btc": "structure", "candle_eth": "structure",
+    "momentum": "structure", "streak": "structure",
+    # flow
+    "volume": "flow", "orderflow": "flow", "spotlag": "flow",
+    # positioning
+    "funding": "position", "oi_pressure": "position", "liq": "position", "whale": "position",
+    # fade / sentiment
+    "panic": "fade", "exhaust": "fade", "cheap": "fade", "news": "fade",
+    # time-of-day
+    "session_tod": "time",
+}
+
+
+def seat_family(agent_name: Any) -> Optional[str]:
+    return SEAT_FAMILY.get(str(agent_name or "").strip().lower())
+
+
+def family_lean_counts(votes: Any) -> Dict[str, Any]:
+    """
+    Count FAMILIES leaning each way from a list of signals or detail dicts.
+    A family leans a side when a majority of its directional seats agree.
+    Returns {"family_up": [...], "family_down": [...], "families_aligned": int}.
+    """
+    from backend.agents.base import lean_side
+    fam_votes: Dict[str, Dict[str, int]] = {}
+    for v in votes or []:
+        if isinstance(v, dict):
+            name = v.get("agent") or v.get("agent_name")
+            d = v.get("effective_direction") or v.get("direction")
+        else:
+            name = getattr(v, "agent_name", None)
+            d = getattr(v, "direction", None)
+        fam = seat_family(name)
+        if not fam:
+            continue
+        side = lean_side(d)
+        if side not in ("UP", "DOWN"):
+            continue
+        fam_votes.setdefault(fam, {"UP": 0, "DOWN": 0})[side] += 1
+    fam_up = [f for f, c in fam_votes.items() if c["UP"] > c["DOWN"]]
+    fam_down = [f for f, c in fam_votes.items() if c["DOWN"] > c["UP"]]
+    return {
+        "family_up": sorted(fam_up),
+        "family_down": sorted(fam_down),
+        "families_aligned": max(len(fam_up), len(fam_down)),
+    }
+
+
+def feeds_from_signals(signals: Any) -> Dict[str, bool]:
+    """WARDEN's read: spot/kalshi health off the guardian signal's features."""
+    spot_ok = True
+    kalshi_ok = True
+    for s in signals or []:
+        if getattr(s, "agent_name", None) != "guardian":
+            continue
+        f = getattr(s, "features", None) or {}
+        spot_ok = bool(f.get("binance", True))
+        kalshi_ok = bool(f.get("kalshi", True))
+        break
+    return {"spot_ok": spot_ok, "kalshi_ok": kalshi_ok}
+
+
+def pre_lock_checklist(
+    *,
+    spot_ok: bool,
+    kalshi_ok: bool,
+    law_locked: bool,
+    chalk: bool,
+    leftover_cents: Any,
+    is_15m: bool,
+    quiet: bool,
+    hard_trigger: bool,
+    families_aligned: int,
+) -> Tuple[bool, str]:
+    """
+    Hard pre-lock checklist. Every item must pass or the Chair WAITs — no
+    debate, no LLM judgement. Order = cheapest refusal first.
+    """
+    if not spot_ok and not kalshi_ok:
+        return False, "feeds dead"
+    if law_locked:
+        return False, "LAW locked"
+    if chalk:
+        return False, "chalk book"
+    if is_15m:
+        try:
+            if leftover_cents is not None and float(leftover_cents) <= 0:
+                return False, "no leftover after vig"
+        except (TypeError, ValueError):
+            pass
+    if quiet and not hard_trigger:
+        return False, "quiet tape, no hard trigger"
+    if families_aligned < 2:
+        return False, "one-family lean"
+    return True, ""

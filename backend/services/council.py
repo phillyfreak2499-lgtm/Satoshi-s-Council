@@ -583,6 +583,11 @@ class Council:
                 kalshi_results=kalshi_results,
             )
             self._grade_council_from_results(kalshi_results)
+            if settled_n:
+                try:
+                    await self.store.journal_mark_settled(asset=self.asset)
+                except Exception as e:
+                    logger.debug(f"journal settle skip: {e}")
             try:
                 due = False
                 if close_time:
@@ -1394,6 +1399,36 @@ class Council:
         )
         await self._maybe_record_eth_shadow(decision, ticker, close_time)
         await self._maybe_record_btc_shadow(decision, ticker, close_time)
+
+        # Decision journal: one honest row per window (Member/admin CSV only).
+        try:
+            _dir = str(decision.get("direction") or "WAIT").upper()
+            _vetoes = []
+            if decision.get("checklist_veto"):
+                _vetoes.append(f"checklist:{decision['checklist_veto']}")
+            if decision.get("lockdown"):
+                _vetoes.append("law")
+            _feeds = decision.get("feeds") or {}
+            if _feeds and not (_feeds.get("spot_ok", True) and _feeds.get("kalshi_ok", True)):
+                _vetoes.append("warden")
+            _lean = decision.get("lean")
+            _ask = None
+            if _dir in ("UP", "UP_HOLD") or _lean == "UP":
+                _ask = market_data.get("yes_ask") or market_data.get("kalshi_yes_ask")
+            elif _dir in ("DOWN", "DOWN_HOLD") or _lean == "DOWN":
+                _ask = market_data.get("no_ask") or market_data.get("kalshi_no_ask")
+            await self.store.journal_window(
+                window_id=str(close_time or ticker or ""),
+                ticker=ticker,
+                asset=self.asset,
+                phase=(market_data.get("wm") or {}).get("phase"),
+                chair_dir=_dir,
+                families=decision.get("families"),
+                vetoes=";".join(_vetoes) if _vetoes else None,
+                fill_at_ask=_ask,
+            )
+        except Exception as e:
+            logger.debug(f"journal skip: {e}")
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
         # Feed lifetime edge into Chair so WAIT bar loosens as hit-rate proves out

@@ -19,6 +19,58 @@ from backend.agents.base import BaseSpecialist, AgentSignal
 from backend.config import settings
 
 
+def orbit_context(market_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    ORBIT's regime read as a plain function, so fade seats and the Chair
+    consume the SAME aggressiveness/quiet the regime seat reports instead of
+    each keeping a drifting copy. Returns {aggressiveness, quiet, streak_dir,
+    streak_n, trend_day}. ORBIT stays a label — this never votes a side.
+    """
+    md = market_data if isinstance(market_data, dict) else {}
+    wm = md.get("wm") or {}
+    atr = _f(md.get("atr_pct"))
+    volp = _f(md.get("volume_percentile"))
+    streak_dir = wm.get("streak_dir")
+    try:
+        streak_n = int(wm.get("streak_n") or 0)
+    except (TypeError, ValueError):
+        streak_n = 0
+    prior_hr = wm.get("prior_hit_rate")
+
+    quiet = bool(wm.get("quiet"))
+    if atr is not None and atr < 0.12:
+        quiet = True
+    if volp is not None and volp < 25:
+        quiet = True
+
+    aggressiveness = 0.55
+    if quiet:
+        aggressiveness = 0.28
+    elif atr is not None and atr > 0.35:
+        aggressiveness = 0.78
+    elif volp is not None and volp > 75:
+        aggressiveness = 0.70
+    if streak_n >= 4 and streak_dir in ("UP", "DOWN"):
+        aggressiveness = min(0.85, aggressiveness + 0.12)
+    if prior_hr is not None:
+        try:
+            hr = float(prior_hr)
+            if hr < 0.45:
+                aggressiveness = max(0.20, aggressiveness - 0.15)
+            elif hr > 0.62:
+                aggressiveness = min(0.90, aggressiveness + 0.08)
+        except (TypeError, ValueError):
+            pass
+
+    return {
+        "aggressiveness": round(aggressiveness, 3),
+        "quiet": quiet,
+        "streak_dir": streak_dir,
+        "streak_n": streak_n,
+        "trend_day": bool(streak_n >= 4 and streak_dir in ("UP", "DOWN")),
+    }
+
+
 class RegimeSpecialist(BaseSpecialist):
     name = "regime"
     category = "regime"

@@ -59,6 +59,17 @@ class CheapSpecialist(BaseSpecialist):
         direction = "WAIT"
         conf = 48
         notes = []
+        from backend.agents.regime import orbit_context
+        orbit = orbit_context(market_data)
+        features["hard_trigger"] = False  # value has no hard trigger
+        features["orbit_agg"] = orbit["aggressiveness"]
+
+        if phase == "entry" and orbit["trend_day"]:
+            # ORBIT trend day: buying "cheap" against initiative is how value
+            # seats get run over. Sit the entry out.
+            notes.append(f"ORBIT trend day {orbit['streak_dir']}×{orbit['streak_n']} — value muted")
+            reason = self.annotate_reason(market_data, "; ".join(notes))
+            return AgentSignal(self.name, "WAIT", max(floor, 55), reason, self.category, features=features)
 
         if phase == "entry":
             # Strong value only if not fighting a hard streak without mean-rev support
@@ -115,6 +126,9 @@ class CheapSpecialist(BaseSpecialist):
             else:
                 notes.append(f"mid {up:.0f}¢ — no value revise")
 
+        if phase == "entry" and direction != "WAIT" and (orbit["aggressiveness"] < 0.35 or orbit["quiet"]):
+            conf = min(conf, floor)
+            notes.append("ORBIT quiet/low-agg — value capped")
         if quiet and direction != "WAIT" and conf < floor + 5:
             direction, conf = "WAIT", floor
             notes.append("quiet gate")
