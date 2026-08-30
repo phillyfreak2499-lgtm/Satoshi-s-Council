@@ -4611,6 +4611,109 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   window.openBotScope = openBotScope;
   window.closeBotScope = closeBotScope;
 
+  // --- Council Room: the seats talk to each other. Every line is built from
+  // that seat's live signal (its direction, confidence and reasoning), so the
+  // table talk is dramatized truth, never invented. Paper-safe, client-side. ---
+  let __roomTimer = null;
+  let __roomLastKey = null;
+  let __roomTick = 0;
+  const ROOM_OPENERS = ["Look —", "Okay,", "Honestly,", "From my seat,", "On my read,", "Watching this,", "Alright,", "Yeah,", "Right now,"];
+  const ROOM_MAX = 60;
+  function _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function _roomStance(agent) {
+    const dir = _dirClass(agent.direction);
+    const conf = Math.round(agent.confidence || 0);
+    if (dir === "UP") return conf >= 60
+      ? _pick(["I like this one up", "buyers have it, I'm up", "this pushes up from here"])
+      : _pick(["slight lean up, nothing loud yet", "soft up read, not betting the stack", "a hair long, watching"]);
+    if (dir === "DOWN") return conf >= 60
+      ? _pick(["I'm short this", "sellers own it, down for me", "this rolls over"])
+      : _pick(["soft down read here", "leaning down, lightly", "a touch short, not loud"]);
+    return _pick([
+      "I'm sitting this one out",
+      "nothing clean here, I pass",
+      "no edge for me yet, holding",
+      "staying flat until it firms up",
+      "too quiet to lean, I wait",
+    ]);
+  }
+  function _roomTag(agent) {
+    if (lawLocked()) return "LOCKED";
+    const dir = _dirClass(agent.direction);
+    if (dir === "WAIT") return "WAIT";
+    return effectiveDir(agent.direction) + " " + Math.round(agent.confidence || 0) + "%";
+  }
+  function _roomLine(agent) {
+    const reason = String(agent.reasoning || "").replace(/\s+/g, " ").trim();
+    const op = ROOM_OPENERS[Math.floor(Math.random() * ROOM_OPENERS.length)];
+    let core = reason && reason.length > 4 ? reason : _roomStance(agent);
+    core = core.charAt(0).toLowerCase() + core.slice(1);
+    return op + " " + core + " — " + _roomTag(agent) + ".";
+  }
+  function _roomAgree(prevName, tag) {
+    const other = labelOf({ agent_name: prevName }) || String(prevName).toUpperCase();
+    const lines = ["same read as " + other + " — " + tag + ".", "+1 to " + other + ".",
+      "I'm with " + other + " here — " + tag + ".", other + "'s right. " + tag + " for me too."];
+    return lines[Math.floor(Math.random() * lines.length)];
+  }
+  function _roomPush(name, text, dir, displayName) {
+    const feed = document.getElementById("roomFeed");
+    if (!feed) return;
+    const row = document.createElement("div");
+    row.className = "room-msg " + _dirClass(dir);
+    const icon = (typeof BOT_ICON_FILES !== "undefined" && BOT_ICON_FILES[name]) || "";
+    const callsign = _escBot(displayName || labelOf({ agent_name: name }) || String(name).toUpperCase());
+    row.innerHTML =
+      '<span class="room-av' + (icon ? '' : ' room-av-letter') + '"' + (icon ? ' style="background-image:url(\'' + icon + '\')"' : '') + '>' +
+        (icon ? '' : callsign.charAt(0)) + '</span>' +
+      '<div class="room-body"><span class="room-who ' + _dirClass(dir) + '">' + callsign + '</span>' +
+      '<span class="room-text">' + _escBot(text) + '</span></div>';
+    feed.appendChild(row);
+    while (feed.childElementCount > ROOM_MAX) feed.removeChild(feed.firstChild);
+    feed.scrollTop = feed.scrollHeight;
+  }
+  function _roomChair() {
+    const d = (window.state && window.state.decision) || {};
+    const dir = _dirClass(d.direction);
+    const chair = (typeof chairNameOf === "function" && chairNameOf(focusTable)) || "CHAIR";
+    let text;
+    if (lawLocked()) text = "LAW has us locked — we sit until we earn it back.";
+    else if (dir === "WAIT") text = "Council's on WAIT. I want two families on one side before we move.";
+    else text = "I'm calling it " + effectiveDir(d.direction) + " — " + Math.round(d.confidence || 0) + "%. That's the table.";
+    _roomPush("leader", text, d.direction, String(chair).toUpperCase());
+  }
+  function _roomTickFn() {
+    const agents = ((window.state && window.state.agents) || []).filter(function (a) {
+      return a.agent_name && a.agent_name !== "leader" && !a.sub;
+    });
+    if (!agents.length) return;
+    __roomTick++;
+    if (__roomTick % 5 === 0) { _roomChair(); return; }
+    let agent = agents[Math.floor(Math.random() * agents.length)];
+    if (agent.agent_name === __roomLastKey && agents.length > 1) {
+      agent = agents[(agents.indexOf(agent) + 1) % agents.length];
+    }
+    const prev = __roomLastKey && agents.find(function (a) { return a.agent_name === __roomLastKey; });
+    if (prev && prev.agent_name !== agent.agent_name &&
+        _dirClass(prev.direction) === _dirClass(agent.direction) && Math.random() < 0.35) {
+      _roomPush(agent.agent_name, _roomAgree(prev.agent_name, _roomTag(agent)), agent.direction);
+    } else {
+      _roomPush(agent.agent_name, _roomLine(agent), agent.direction);
+    }
+    __roomLastKey = agent.agent_name;
+  }
+  function startRoomChat() {
+    const feed = document.getElementById("roomFeed");
+    if (feed && !feed.childElementCount) { _roomTickFn(); _roomTickFn(); _roomTickFn(); }
+    if (__roomTimer) clearInterval(__roomTimer);
+    __roomTimer = setInterval(_roomTickFn, 4200);
+  }
+  function stopRoomChat() {
+    if (__roomTimer) { clearInterval(__roomTimer); __roomTimer = null; }
+  }
+  window.startRoomChat = startRoomChat;
+  window.stopRoomChat = stopRoomChat;
+
   function floorChromeFit(w) {
     // TABLE HUD chip vs SATOSHI’S COUNCIL wordmark (1280) and ETH/BTC (390).
     // Mid-width (~1040) drops PAPER/BOOKS + huddle/hit so they do not crush.
@@ -11290,6 +11393,7 @@ function drawCandleChart() {
     const sideView = document.getElementById("sideView");
     const frontView = document.getElementById("frontView");
     const callsView = document.getElementById("callsView");
+    const roomView = document.getElementById("roomView");
     const showCharts = mode === "charts";
     const showSeats = isSeatsMode(mode);
     const showBots = showSeats;
@@ -11306,6 +11410,7 @@ function drawCandleChart() {
     const showSide = mode === "side";
     const showFront = mode === "front";
     const showCalls = mode === "calls";
+    const showRoom = mode === "room";
     const showStream = mode === "stream";
     const showMain = mode === "art" || mode === "floor" || mode === "night" || mode === "stream";
     if (chartsView) chartsView.classList.toggle("hidden", !showCharts);
@@ -11325,6 +11430,8 @@ function drawCandleChart() {
     if (sideView) sideView.classList.toggle("hidden", !showSide);
     if (frontView) frontView.classList.toggle("hidden", !showFront);
     if (callsView) callsView.classList.toggle("hidden", !showCalls);
+    if (roomView) roomView.classList.toggle("hidden", !showRoom);
+    if (showRoom) { try { startRoomChat(); } catch (e) {} } else { try { stopRoomChat(); } catch (e) {} }
     if (mainTable) mainTable.classList.toggle("hidden", !showMain);
     if (overlay) overlay.classList.toggle("hidden", !showSeats);
     if (showStream) {
@@ -13454,7 +13561,7 @@ function drawCandleChart() {
   try { wireMondayPaper(); } catch (e) {}
   try { syncWireHot(); } catch (e) {}
   window.__deskModeCycle = function () {
-    return ["art", "seats", "paper", "calls", "tape", "book", "night", "stream", "brain", "news", "wire", "school", "charts", "settings"];
+    return ["art", "seats", "room", "paper", "calls", "tape", "book", "night", "stream", "brain", "news", "wire", "school", "charts", "settings"];
   };
   window.applySettingsSnapshot = applySettingsSnapshot;
 
