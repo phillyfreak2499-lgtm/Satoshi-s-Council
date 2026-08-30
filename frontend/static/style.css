@@ -10180,3 +10180,65 @@ body.wire-quiet-on #statusDot { background: #c9a227; }
 .cc-out{margin-top:8px;font-size:.78rem;font-weight:700}
 .cc-out.cc-win{color:#39ff14}.cc-out.cc-loss{color:#ff2d55}.cc-out.cc-wait{color:#c9a44a}
 .cc-empty{color:#8fa2c4;font-size:.85rem;padding:14px}
+
+/* ============================================================================
+   POLISH LAYER — refine the HUD (quick wins) · 2026-08-30
+   Chrome only. No canvas, no logic, no color-identity change. Reversible as a
+   block: delete from this banner to end-of-file to fully revert.
+   ========================================================================== */
+
+/* 1) Gate checkbox — retire the native square for a drawn gold check.
+      The one unstyled control on the first screen; biggest amateur tell fixed. */
+#passwordGate .gate-agree input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px; height: 22px;
+  min-width: 22px; min-height: 22px;
+  margin: 0 2px 0 0;
+  border: 1.5px solid rgba(201, 148, 62, 0.55);
+  border-radius: 6px;
+  background: rgba(14, 12, 10, 0.9);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+#passwordGate .gate-agree input[type="checkbox"]::before {
+  content: "";
+  width: 12px; height: 12px;
+  transform: scale(0);
+  transition: transform .12s cubic-bezier(.2,.8,.2,1);
+  background: linear-gradient(160deg, #ffe1a0, #d99a3a);
+  clip-path: polygon(14% 46%, 0 62%, 40% 100%, 100% 20%, 84% 6%, 38% 70%);
+}
+#passwordGate .gate-agree input[type="checkbox"]:checked {
+  border-color: rgba(240, 193, 74, 0.95);
+  background: rgba(22, 17, 8, 0.95);
+  box-shadow: 0 0 10px rgba(240, 193, 74, 0.30);
+}
+#passwordGate .gate-agree input[type="checkbox"]:checked::before { transform: scale(1); }
+#passwordGate .gate-agree input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(240, 193, 74, 0.35);
+}
+
+/* 2) Gate card — read it as glass over the hero, not a flat panel. */
+#passwordGate .password-card {
+  backdrop-filter: blur(14px) saturate(1.05) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.05) !important;
+  background: rgba(18, 16, 14, 0.9) !important;
+}
+
+/* 3) Gate — one accent, not two. The oath box borrowed a cyan border while the
+      card is gold; unify to warm gold so the gate reads as a single object. */
+#passwordGate .gate-oath {
+  border-color: rgba(201, 148, 62, 0.24) !important;
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.5) !important;
+  border-radius: 9px;
+}
+#passwordGate .gate-agree { border-radius: 9px; }
+
+/* 4) Nav — trim the wide sci-fi tracking a touch. Calmer, more designed;
+      active-tab identity (cyan) untouched. */
+.mode-tab { letter-spacing: 0.045em; }
+.focus-tab { letter-spacing: 0.03em; }
