@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260822e" />
-  <link rel="stylesheet" href="/style.css?v=20260822e" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260822e" />
-  <script src="/seat.js?v=20260822e"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260822f" />
+  <link rel="stylesheet" href="/style.css?v=20260822f" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260822f" />
+  <script src="/seat.js?v=20260822f"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -791,6 +791,8 @@
         <li class="calls-row" data-call="front"><span class="calls-name">FRONT</span><span class="calls-status">WAIT</span></li>
         <li class="calls-row" data-call="oracle"><span class="calls-name">ORA</span><span class="calls-status">WATCH</span></li>
       </ol>
+      <div class="calls-cards-head">SETTLED CALLS · <small>losers stay on the card</small></div>
+      <div id="callCards" class="call-cards"></div>
     </section>
     <section id="paperView" class="info-view hidden" aria-label="Paper trading log">
       <div class="info-hero">
@@ -912,6 +914,20 @@
       <span class="sw-kicker">WHY</span>
       <span id="streamWhyLine" class="sw-line">Waiting on the Chair</span>
     </div>
+    <div id="streamHero" class="stream-hero" aria-label="Desk status">
+      <div class="sh-row sh-top">
+        <span id="shWindow" class="sh-window">BTC 15m window</span>
+        <span id="shCall" class="sh-call WAIT">WAIT</span>
+      </div>
+      <div id="shFamilyWhy" class="sh-why">Families forming…</div>
+      <div id="shKill" class="sh-kill">Unlocks: 2+ families on one side · healthy feeds</div>
+      <div class="sh-row sh-lights">
+        <span id="lightDesk" class="sh-light on">DESK ON</span>
+        <span id="lightLaw" class="sh-light">LAW OK</span>
+        <span id="lightFeeds" class="sh-light">FEEDS —</span>
+        <span id="shWaitRate" class="sh-waitrate">WAIT rate warming</span>
+      </div>
+    </div>
   </div>
 
   <template id="adminDeskTemplate">
@@ -962,13 +978,13 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260822e"></script>
-  <script src="/roundtable.js?v=20260822e"></script>
-  <script src="/desk-fx.js?v=20260822e"></script>
+  <script src="/wire.js?v=20260822f"></script>
+  <script src="/roundtable.js?v=20260822f"></script>
+  <script src="/desk-fx.js?v=20260822f"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260822e", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260822f", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>

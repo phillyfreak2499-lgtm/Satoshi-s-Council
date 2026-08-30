@@ -505,7 +505,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (typeof Worker !== "undefined") {
       try {
         if (!deskWorker) {
-          deskWorker = new Worker("/desk-worker.js?v=20260822e");
+          deskWorker = new Worker("/desk-worker.js?v=20260822f");
           deskWorker.onmessage = onDeskWorkerMsg;
           deskWorker.onerror = function () {
             try { deskWorker.terminate(); } catch (err) {}
@@ -5187,6 +5187,79 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       fireCandleReplay();
     }
     if (secs != null) __streamLastSecs = secs;
+    try { paintStreamHero(); } catch (e) {}
+  }
+  let __waitHero = null;
+  let __waitHeroAt = 0;
+  function refreshWaitHero() {
+    const now = Date.now();
+    if (now - __waitHeroAt < 5 * 60 * 1000) return;
+    __waitHeroAt = now;
+    fetch("/api/public/proof", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.wait_hero) __waitHero = d.wait_hero; })
+      .catch(function () {});
+  }
+  function paintStreamHero() {
+    // The free door answers five things: window, call, family why,
+    // what kills it, desk lights. Satoshi/BTC only — no seats, no hit rates.
+    const hero = document.getElementById("streamHero");
+    if (!hero) return;
+    const btc = (state && state.tables && state.tables.bitcoin) || state || {};
+    const dec = (btc && btc.decision) || (state && state.decision) || {};
+    const dir = String(dec.direction || "WAIT").toUpperCase();
+    const isDual = String(dec.action || "").toUpperCase() === "DUAL";
+    const callWord = isDual ? "BOTH" : (dir.indexOf("UP") === 0 ? "UP" : dir.indexOf("DOWN") === 0 ? "DOWN" : "WAIT");
+    const secs = (typeof streamWindowSecs === "function") ? streamWindowSecs() : null;
+    const winEl = document.getElementById("shWindow");
+    if (winEl) {
+      let t = "BTC 15m window";
+      if (secs != null && isFinite(secs)) {
+        const m = Math.max(0, Math.floor(secs / 60));
+        const ss = Math.max(0, Math.floor(secs % 60));
+        t += " · closes " + m + ":" + (ss < 10 ? "0" : "") + ss;
+      }
+      winEl.textContent = t;
+    }
+    const callEl = document.getElementById("shCall");
+    if (callEl) { callEl.textContent = callWord; callEl.className = "sh-call " + callWord; }
+    const whyEl = document.getElementById("shFamilyWhy");
+    if (whyEl) whyEl.textContent = dec.family_why || dec.why || dec.summary || "Families forming…";
+    const killEl = document.getElementById("shKill");
+    if (killEl) {
+      if (callWord === "WAIT") {
+        killEl.textContent = dec.checklist_veto
+          ? ("Standing down: " + dec.checklist_veto)
+          : "Unlocks: 2+ families on one side · healthy feeds";
+      } else {
+        killEl.textContent = "Kills it: adverse Kalshi path vs entry · LAW lockdown · feeds dark";
+      }
+    }
+    const h = (typeof window !== "undefined" && window.__lastHealthData) || null;
+    const feedsOk = h ? (
+      (h.kalshi_ok != null ? !!h.kalshi_ok : h.kalshi_btc_ok !== false) && !!h.spot_ok
+    ) : null;
+    function light(id, on, textOn, textOff, unknown) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (on == null) { el.className = "sh-light"; el.textContent = unknown; return; }
+      el.className = "sh-light " + (on ? "on" : "off");
+      el.textContent = on ? textOn : textOff;
+    }
+    light("lightDesk", (typeof __pollMiss === "number" ? __pollMiss < 2 : null), "DESK ON", "DESK QUIET", "DESK —");
+    light("lightLaw", dec.lockdown ? false : true, "LAW OK", "LAW LOCK", "LAW —");
+    light("lightFeeds", feedsOk, "FEEDS OK", "FEEDS DEAD", "FEEDS —");
+    refreshWaitHero();
+    const wr = document.getElementById("shWaitRate");
+    if (wr) {
+      if (__waitHero && __waitHero.wait_rate != null) {
+        wr.textContent = "WAIT rate " + __waitHero.wait_rate + "% · n=" + __waitHero.total_n;
+      } else if (__waitHero) {
+        wr.textContent = "WAIT rate warming (n=" + (__waitHero.total_n || 0) + " < " + (__waitHero.min_sample || 10) + ")";
+      } else {
+        wr.textContent = "WAIT is not a miss.";
+      }
+    }
   }
   function startStreamTeaching() {
     const chrome = document.getElementById("streamChrome");
@@ -6037,6 +6110,47 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     try { if (typeof __prevState !== 'undefined' && __prevState) state = __prevState; } catch (e) {}
   }
 
+  let __seatRanks = {};
+  let __seatRanksAt = 0;
+  function refreshSeatRanks() {
+    const now = Date.now();
+    if (now - __seatRanksAt < 60 * 1000) return;
+    __seatRanksAt = now;
+    fetch("/api/council/ranks", { cache: "no-store", credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        const rows = (d && (d.rows || d.standings || d.ranks)) || (Array.isArray(d) ? d : []);
+        const map = {};
+        (rows || []).forEach(function (r) {
+          const k = r && (r.agent || r.agent_name || r.name);
+          if (k) map[String(k)] = r;
+        });
+        __seatRanks = map;
+      })
+      .catch(function () {});
+  }
+  function seatOffSet() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("council_seat_off") || "[]"));
+    } catch (e) { return new Set(); }
+  }
+  function saveSeatOff(set) {
+    try { localStorage.setItem("council_seat_off", JSON.stringify([...set])); } catch (e) {}
+  }
+  function wireSeatToggles() {
+    if (!overlay || overlay.__seatTogglesWired) return;
+    overlay.__seatTogglesWired = true;
+    overlay.addEventListener("click", function (e) {
+      const t = e.target && e.target.closest && e.target.closest("[data-seat-toggle]");
+      if (!t) return;
+      e.preventDefault();
+      const name = t.getAttribute("data-seat-toggle");
+      const off = seatOffSet();
+      if (off.has(name)) off.delete(name); else off.add(name);
+      saveSeatOff(off);
+      try { renderDashboard(); } catch (err) {}
+    });
+  }
   function renderDashboard() {
     const ts = (typeof tableState === "function" ? tableState(focusTable) : null) || {};
     const view = Object.assign({}, (typeof getViewState === "function" ? getViewState() : null) || state || {}, ts, { _focusTable: focusTable });
@@ -6076,6 +6190,18 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
           return a && (a.agent_name === "leader" || isFrontSeatKey(a.agent_name));
         })
       : view.agents;
+    refreshSeatRanks();
+    wireSeatToggles();
+    const __off = seatOffSet();
+    const hiddenSeats = dashAgents.filter(function (a) { return a && __off.has(a.agent_name); });
+    dashAgents = dashAgents.filter(function (a) { return a && !__off.has(a.agent_name); });
+    const hiddenChips = hiddenSeats.length
+      ? '<div class="agent-card seat-hidden-card"><div class="name">HIDDEN SEATS</div>'
+        + hiddenSeats.map(function (a) {
+            return '<button type="button" class="seat-restore" data-seat-toggle="' + a.agent_name + '">+ ' + labelOf(a) + "</button>";
+          }).join("")
+        + "</div>"
+      : "";
     const agentCards = dashAgents.map(a => {
       const col = strongColor(a.direction);
       const callsign = labelOf(a);
@@ -6108,14 +6234,27 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
             <span>wt ${w != null ? Number(w).toFixed(3) : "—"}</span>
             <span>hit ${wr}</span>
             <span>${record}</span>
+            <button type="button" class="seat-off-btn" data-seat-toggle="${a.agent_name}" title="Hide this seat card (display only)">×</button>
           </div>
+          ${(function () {
+            const rk = __seatRanks[a.agent_name];
+            if (!rk) return "";
+            const listen = rk.listen != null ? Number(rk.listen).toFixed(2) : null;
+            const ln = rk.last_n != null ? rk.last_n : (rk.n != null ? rk.n : null);
+            const lwr = rk.last_wr != null ? Math.round(Number(rk.last_wr) * 100) + "%" : (rk.wr != null ? Math.round(Number(rk.wr) * 100) + "%" : null);
+            if (listen == null && ln == null) return "";
+            return '<div class="meta-row seat-rank-row">'
+              + (listen != null ? "<span>listen " + listen + "</span>" : "")
+              + (ln != null ? "<span>last-" + ln + (lwr ? " · " + lwr : "") + "</span>" : "")
+              + "</div>";
+          })()}
           <div class="conf-bar"><div class="conf-fill" style="width:${a.confidence}%;background:${col}"></div></div>
           <div class="reason">${a.reasoning || ""}</div>
           ${subHtml ? `<div class="subs">${subHtml}</div>` : ""}
         </div>`;
     }).join("");
 
-    overlay.innerHTML = `<div class="dash-focus-banner">${focusName}${frontDash ? (" · " + frontHighLine(view)) : ""}</div>` + pairCard + agentCards;
+    overlay.innerHTML = `<div class="dash-focus-banner">${focusName}${frontDash ? (" · " + frontHighLine(view)) : ""}</div>` + pairCard + agentCards + hiddenChips;
   }
 
   function updateLaw(law) {
@@ -8608,6 +8747,41 @@ function drawCandleChart() {
     try { paintCurrentCalls(); } catch (e) {}
   }
 
+  async function loadCallCards() {
+    const host = document.getElementById("callCards");
+    if (!host) return;
+    let cards = [];
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/journal/cards?limit=60",
+                            { cache: "no-store", credentials: "same-origin" });
+      if (r.ok) { const d = await r.json(); cards = (d && d.cards) || []; }
+    } catch (e) {}
+    cards = cards.filter(function (c) { return c && c.result; });  // settled only
+    if (!cards.length) { host.innerHTML = '<div class="cc-empty">No settled windows yet — cards appear as windows grade. Paper.</div>'; return; }
+    function esc(x) { return String(x == null ? "" : x).replace(/[<>&]/g, function (m) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[m]; }); }
+    host.innerHTML = cards.map(function (c) {
+      const call = String(c.call || "WAIT").toUpperCase();
+      const res = String(c.result || "").toUpperCase();
+      const isWait = c.wait_flag || call === "WAIT";
+      let outcome = "cc-wait", outLabel = "WAIT · not a miss";
+      if (!isWait) {
+        const won = res && (res === (call.indexOf("UP") === 0 ? "UP" : "DOWN"));
+        outcome = won ? "cc-win" : "cc-loss";
+        outLabel = won ? ("WON · " + res) : ("LOST · settled " + res);
+      }
+      const fams = c.families && (c.families.family_up || c.families.family_down)
+        ? ((call.indexOf("UP") === 0 ? c.families.family_up : c.families.family_down) || []).join(" + ")
+        : "";
+      const pnl = c.path_pnl != null ? (Number(c.path_pnl) >= 0 ? "+" : "") + Number(c.path_pnl).toFixed(2) : null;
+      return '<div class="call-card ' + outcome + '">'
+        + '<div class="cc-top"><span class="cc-window">' + esc((c.window || "").slice(0, 16)) + '</span>'
+        + '<span class="cc-call ' + (isWait ? "WAIT" : (call.indexOf("UP") === 0 ? "UP" : "DOWN")) + '">' + esc(isWait ? "WAIT" : call) + "</span></div>"
+        + (fams ? '<div class="cc-fam">' + esc(fams) + " family</div>" : "")
+        + (c.vetoes ? '<div class="cc-veto">veto: ' + esc(c.vetoes) + "</div>" : "")
+        + '<div class="cc-out ' + outcome + '">' + esc(outLabel) + (pnl != null ? ' · path ' + esc(pnl) : "") + "</div>"
+        + "</div>";
+    }).join("");
+  }
   function paintCurrentCalls() {
     const board = document.getElementById("callsBoard");
     if (!board) return;
@@ -8694,6 +8868,7 @@ function drawCandleChart() {
     return t.indexOf("401") >= 0 || t.indexOf("upgrade") >= 0 || t.indexOf("plan wall") >= 0;
   }
   function paintHealthStrip(data) {
+    try { window.__lastHealthData = data || null; } catch (e) {}
     const strip = document.getElementById("healthStrip");
     if (!strip) return;
     const unlocked = (typeof hasDeskAuth === "function") ? hasDeskAuth() : true;
@@ -11055,6 +11230,7 @@ function drawCandleChart() {
       try { if (typeof loadFrontTable === "function") loadFrontTable(); } catch (e) {}
       try { if (typeof loadOracleTable === "function") loadOracleTable(); } catch (e) {}
       try { paintCurrentCalls(); } catch (e) {}
+      try { loadCallCards(); } catch (e) {}
     }
     if (typeof isAtsTable === "function" && isAtsTable(focusTable) && (mode === "art" || mode === "floor" || isSeatsMode(mode) || mode === "charts" || mode === "tape" || mode === "paper")) {
       try { loadAtsTable(); } catch (e) {}

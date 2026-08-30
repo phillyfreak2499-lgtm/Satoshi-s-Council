@@ -920,7 +920,13 @@ class Council:
 
         # LAW evaluates streak / may trigger lockdown + find-out fixes
         try:
-            await self.law.evaluate_after_settle(self.store, self.leader, self.agents)
+            _law_out = await self.law.evaluate_after_settle(self.store, self.leader, self.agents)
+            if isinstance(_law_out, dict) and _law_out.get("triggered"):
+                try:
+                    from backend.services.desk_alerts import desk_alert
+                    desk_alert("law_lockdown", self.asset)
+                except Exception:
+                    pass
             self.leader.sync_from_learner()
         except Exception as e:
             logger.debug(f"LAW evaluate skip: {e}")
@@ -1417,11 +1423,21 @@ class Council:
                 _ask = market_data.get("yes_ask") or market_data.get("kalshi_yes_ask")
             elif _dir in ("DOWN", "DOWN_HOLD") or _lean == "DOWN":
                 _ask = market_data.get("no_ask") or market_data.get("kalshi_no_ask")
+            _phase = (market_data.get("wm") or {}).get("phase")
+            if not _phase:
+                # Fallback: derive entry/mid/final from time left in window.
+                try:
+                    _ml = market_data.get("mins_left")
+                    _ml = float(_ml) if _ml is not None else None
+                    if _ml is not None:
+                        _phase = "entry" if _ml > 10 else ("mid" if _ml > 5 else "final")
+                except (TypeError, ValueError):
+                    _phase = None
             await self.store.journal_window(
                 window_id=str(close_time or ticker or ""),
                 ticker=ticker,
                 asset=self.asset,
-                phase=(market_data.get("wm") or {}).get("phase"),
+                phase=_phase,
                 chair_dir=_dir,
                 families=decision.get("families"),
                 vetoes=";".join(_vetoes) if _vetoes else None,
@@ -1429,6 +1445,30 @@ class Council:
             )
         except Exception as e:
             logger.debug(f"journal skip: {e}")
+
+        # Desk alerts (stub, default OFF): edge-triggered, never per-cycle.
+        try:
+            from backend.services.desk_alerts import desk_alert
+            _dir_now = str(decision.get("direction") or "WAIT").upper()
+            _prev = getattr(self, "_alert_state", {}) or {}
+            _state = {
+                "locked": _dir_now in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"),
+                "veto": bool(decision.get("checklist_veto")),
+                "feeds_dead": bool(
+                    isinstance(decision.get("feeds"), dict)
+                    and not decision["feeds"].get("spot_ok", True)
+                    and not decision["feeds"].get("kalshi_ok", True)
+                ),
+            }
+            if _state["locked"] and not _prev.get("locked"):
+                desk_alert("chair_lock", f"{self.asset}:{_dir_now}")
+            if _state["veto"] and not _prev.get("veto"):
+                desk_alert("wait_veto", decision.get("checklist_veto"))
+            if _state["feeds_dead"] and not _prev.get("feeds_dead"):
+                desk_alert("feeds_dead", self.asset)
+            self._alert_state = _state
+        except Exception as e:
+            logger.debug(f"alert edge skip: {e}")
 
         accuracy = await self.store.get_accuracy(asset=self.asset)
         # Feed lifetime edge into Chair so WAIT bar loosens as hit-rate proves out

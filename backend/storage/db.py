@@ -2476,13 +2476,21 @@ class PerformanceStore:
                 WindowCall.regime_key,
                 WindowCall.ticker,
                 WindowCall.asset,
+                WindowCall.paper_pnl,
+                WindowCall.paper_stake,
+                WindowCall.open_price,
+                WindowCall.settled_at,
+                WindowCall.settle_reason,
+                WindowCall.y_finish,
             ).where(WindowCall.actual_outcome.isnot(None))
             if want in ("btc", "bitcoin"):
                 stmt = stmt.where(WindowCall.ticker.like("KXBTC15M%"))
             stmt = stmt.order_by(WindowCall.id.desc()).limit(cap)
             rows = (await session.execute(stmt)).all()
         out: List[Dict[str, Any]] = []
-        for direction, correct, regime_key, ticker, row_asset in rows:
+        for (direction, correct, regime_key, ticker, row_asset,
+             paper_pnl, paper_stake, open_price, settled_at,
+             settle_reason, y_finish) in rows:
             if want in ("btc", "bitcoin") and not is_btc_15m_ticker(ticker):
                 continue
             out.append({
@@ -2492,6 +2500,12 @@ class PerformanceStore:
                 "regime": regime_key,
                 "ticker": ticker,
                 "asset": row_asset,
+                "paper_pnl": paper_pnl,
+                "paper_stake": paper_stake,
+                "open_price": open_price,
+                "settled_at": settled_at,
+                "settle_reason": settle_reason,
+                "y_finish": y_finish,
             })
         return out
 

@@ -238,3 +238,36 @@ class DecisionJournalRows(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Phase2Surfaces(unittest.TestCase):
+    def test_family_why_on_decision(self):
+        leader = Leader()
+        out = leader.synthesize([_guardian()] + _strong_board(), dict(_RF_OK))
+        self.assertTrue(out.get("family_why"))
+        self.assertIn("lean", out["family_why"])
+
+    def test_proof_wait_hero_and_pnl(self):
+        from datetime import datetime, timezone
+        from backend.services.proof_cache import summarize_proof_rows
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        rows = ([{"direction": "WAIT", "correct": None}] * 6
+                + [{"direction": "UP", "correct": 1, "regime_key": "15m",
+                    "paper_pnl": 5.0, "open_price": 55.0, "y_finish": "UP",
+                    "settled_at": now}] * 5)
+        out = summarize_proof_rows(rows)
+        self.assertEqual(out["wait_hero"]["wait_rate"], 54.5)   # 6 of 11
+        self.assertEqual(out["wait_hero"]["line"], "WAIT is not a miss.")
+        self.assertIn("path_pnl", out)
+        self.assertEqual(out["path_pnl"]["base"], 1000.0)
+
+    def test_proof_wait_hero_thin_sample_no_rate(self):
+        from backend.services.proof_cache import summarize_proof_rows
+        out = summarize_proof_rows([{"direction": "WAIT", "correct": None}] * 4)
+        self.assertIsNone(out["wait_hero"]["wait_rate"])
+
+    def test_alerts_off_by_default(self):
+        from backend.services.desk_alerts import alerts_enabled, desk_alert
+        self.assertFalse(alerts_enabled())
+        self.assertFalse(desk_alert("chair_lock", "btc"))   # OFF
+        self.assertFalse(desk_alert("not_allowed"))         # allowlist

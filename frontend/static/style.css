@@ -10162,3 +10162,42 @@ body.wire-quiet-on #statusDot { background: #c9a227; }
 }
 #streamRecap { pointer-events: none; }
 #streamRecap .recap-kata { pointer-events: auto; }
+
+/* ── Stream hero (free door: window · call · family why · kill · lights) ── */
+.stream-hero{position:absolute;left:18px;bottom:18px;max-width:min(520px,86vw);padding:14px 16px;border:1px solid rgba(120,160,220,.28);border-radius:12px;background:rgba(4,9,20,.78);backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:8px;z-index:40;pointer-events:none}
+.stream-hero .sh-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sh-window{font-family:'Share Tech Mono',monospace;font-size:.78rem;letter-spacing:.06em;color:#9fb4d8;text-transform:uppercase}
+.sh-call{font-family:Orbitron,monospace;font-weight:700;font-size:1.05rem;letter-spacing:.08em;padding:2px 10px;border-radius:7px;border:1px solid}
+.sh-call.UP{color:#39ff14;border-color:rgba(57,255,20,.5)}
+.sh-call.DOWN{color:#ff2d55;border-color:rgba(255,45,85,.5)}
+.sh-call.WAIT{color:#c9a44a;border-color:rgba(201,164,74,.5)}
+.sh-call.BOTH{color:#4ce0ff;border-color:rgba(76,224,255,.5)}
+.sh-why{color:#e7eefb;font-size:.92rem;line-height:1.4}
+.sh-kill{color:#93a5c4;font-size:.78rem;line-height:1.35}
+.sh-lights{gap:8px}
+.sh-light{font-family:'Share Tech Mono',monospace;font-size:.68rem;letter-spacing:.08em;padding:2px 8px;border-radius:6px;border:1px solid rgba(130,150,190,.35);color:#8fa2c4}
+.sh-light.on{color:#39ff14;border-color:rgba(57,255,20,.45)}
+.sh-light.off{color:#ff2d55;border-color:rgba(255,45,85,.5)}
+.sh-waitrate{margin-left:auto;font-size:.7rem;color:#c9a44a;letter-spacing:.04em}
+@media(max-width:600px){.stream-hero{left:8px;right:8px;bottom:8px;max-width:none}}
+
+/* ── Member seat toggles + settled call cards (Table/Seats & Calls only) ── */
+.seat-off-btn{margin-left:auto;background:none;border:1px solid rgba(150,160,190,.4);color:#8fa2c4;border-radius:5px;width:20px;height:20px;line-height:1;cursor:pointer;font-size:13px}
+.seat-off-btn:hover{color:#ff2d55;border-color:rgba(255,45,85,.5)}
+.seat-rank-row{color:#7f93b6;font-size:.7rem}
+.seat-hidden-card .name{color:#8fa2c4}
+.seat-restore{display:inline-block;margin:4px 6px 0 0;padding:3px 9px;border:1px dashed rgba(120,150,200,.45);border-radius:6px;background:none;color:#9fb4d8;cursor:pointer;font-size:.75rem}
+.seat-restore:hover{color:#39ff14;border-color:rgba(57,255,20,.5)}
+.calls-cards-head{margin:18px 4px 10px;color:#9fb4d8;font-family:'Share Tech Mono',monospace;letter-spacing:.08em;font-size:.8rem}
+.calls-cards-head small{color:#7f93b6;text-transform:none;letter-spacing:0}
+.call-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.call-card{border:1px solid var(--line,rgba(120,150,200,.25));border-left-width:3px;border-radius:9px;padding:12px 13px;background:rgba(4,9,20,.5)}
+.call-card.cc-win{border-left-color:#39ff14}.call-card.cc-loss{border-left-color:#ff2d55}.call-card.cc-wait{border-left-color:#c9a44a}
+.cc-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cc-window{font-family:'Share Tech Mono',monospace;font-size:.72rem;color:#8fa2c4}
+.cc-call{font-family:Orbitron,monospace;font-weight:700;font-size:.85rem;padding:1px 7px;border-radius:5px;border:1px solid}
+.cc-call.UP{color:#39ff14;border-color:rgba(57,255,20,.5)}.cc-call.DOWN{color:#ff2d55;border-color:rgba(255,45,85,.5)}.cc-call.WAIT{color:#c9a44a;border-color:rgba(201,164,74,.5)}
+.cc-fam{color:#dbe6f8;font-size:.8rem;margin-top:7px}.cc-veto{color:#c9a44a;font-size:.72rem;margin-top:4px}
+.cc-out{margin-top:8px;font-size:.78rem;font-weight:700}
+.cc-out.cc-win{color:#39ff14}.cc-out.cc-loss{color:#ff2d55}.cc-out.cc-wait{color:#c9a44a}
+.cc-empty{color:#8fa2c4;font-size:.85rem;padding:14px}

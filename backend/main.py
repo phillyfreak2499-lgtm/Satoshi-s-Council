@@ -781,6 +781,38 @@ async def journal_csv(request: Request, limit: int = 500):
     )
 
 
+@app.get("/api/journal/cards")
+async def journal_cards(limit: int = 60):
+    """
+    Call cards for Member Paper: one card per settled window — window, call,
+    families, vetoes, result, path P&L. Losers stay on the card. Desk session
+    required (middleware); never rendered on the public Stream.
+    """
+    import json as _json
+    rows = await council.store.journal_rows(limit=_clamp_limit(limit, 300, 60))
+    cards = []
+    for r in rows:
+        fams = None
+        try:
+            fams = _json.loads(r.get("families") or "null")
+        except (TypeError, ValueError):
+            fams = None
+        cards.append({
+            "window": r.get("window_id"),
+            "ticker": r.get("ticker"),
+            "asset": r.get("asset"),
+            "call": r.get("chair_dir"),
+            "families": fams,
+            "vetoes": r.get("vetoes"),
+            "fill_at_ask": r.get("fill_at_ask"),
+            "path_pnl": r.get("path_pnl"),
+            "result": r.get("settle"),
+            "wait_flag": r.get("wait_flag"),
+            "at": r.get("updated_at"),
+        })
+    return {"ok": True, "cards": cards}
+
+
 @app.get("/api/kalshi15m")
 async def kalshi_15m():
     """

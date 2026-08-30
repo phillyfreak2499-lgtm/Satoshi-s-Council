@@ -2223,10 +2223,30 @@ class Leader:
                 summary = (summary or "") + " · warden partial-feed cap"
         if (_orbit_quiet or _low_agg) and direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
             gate_notes.append("orbit quiet/low-agg — raised bar")
+        # Stream one-liner: which FAMILIES back the call (never 22 seats),
+        # or the reason the desk is standing down.
+        try:
+            if checklist_veto:
+                family_why = f"Stand down — {checklist_veto}"
+            elif direction in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+                _side_fams = _fams["family_up"] if (lean or direction).startswith("UP") else _fams["family_down"]
+                family_why = (
+                    " + ".join(_side_fams[:3]) + f" lean {lean or direction}"
+                    if _side_fams else f"confluence lean {lean or direction}"
+                )
+            else:
+                _n = _fams.get("families_aligned") or 0
+                family_why = (
+                    f"families split ({len(_fams['family_up'])} up / {len(_fams['family_down'])} down)"
+                    if _n else "no family agreement — WAIT"
+                )
+        except Exception:
+            family_why = ""
         return {
             "direction": direction,
             "confidence": conf,
             "summary": self._clean_summary(summary),
+            "family_why": family_why,
             "score": round(score, 4),
             "diversity": diversity,
             "families": _fams,

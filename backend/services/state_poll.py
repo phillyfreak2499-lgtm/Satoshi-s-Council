@@ -23,6 +23,8 @@ _DECISION_KEYS = (
     "confidence",
     "summary",
     "why",
+    "family_why",
+    "checklist_veto",
     "lean",
     "score",
     "lockdown",
