@@ -124,7 +124,7 @@ class Settings(BaseSettings):
     # Top-N ranks must agree for a FULL call; else HOLD/WAIT
     TOP_N_AGREEMENT: int = 3
     # After a path-hit win, block same-direction re-call for this many seconds
-    POST_HIT_COOLDOWN_SEC: float = 120.0
+    POST_HIT_COOLDOWN_SEC: float = 75.0   # shorter so scalps can re-enter faster
     # After a miss, require higher confluence for this many seconds
     POST_MISS_PENALTY_SEC: float = 180.0
     POST_MISS_CONFLUENCE_BUMP: float = 0.12
@@ -162,23 +162,24 @@ class Settings(BaseSettings):
     ANTI_SOFT_FADE: float = 0.55  # scale down weaker side of active anti-pair
 
     # Leader confluence / WAIT bias (base). Adaptive Chair loosens as lifetime edge proves out.
-    MIN_CONFLUENCE_SCORE: float = 0.42          # start loose — learn by calling, then tighten
-    MIN_DIRECTIONAL_CONFIDENCE: int = 50        # start loose conf floor; edge adapts up/down
+    # Loosened for more scalp calls — lower bars = the Chair leans more often.
+    MIN_CONFLUENCE_SCORE: float = 0.36          # start loose — learn by calling, then tighten
+    MIN_DIRECTIONAL_CONFIDENCE: int = 46        # start loose conf floor; edge adapts up/down
     CROSS_CATEGORY_BONUS: float = 0.12          # extra weight when different categories agree
     WAIT_DEFAULT_CONFIDENCE: int = 72
     # 1/4 HOLD scalp band — weaker confluence still produces a partial call
-    HOLD_CONFLUENCE_RATIO: float = 0.45         # easier 1/4 HOLD early for more scalp samples
-    HOLD_CONFIDENCE_FLOOR: int = 44
+    HOLD_CONFLUENCE_RATIO: float = 0.40         # easier 1/4 HOLD early for more scalp samples
+    HOLD_CONFIDENCE_FLOOR: int = 40
     # Adaptive anti-WAIT bounds
-    CONFLUENCE_FLOOR: float = 0.28              # never more aggressive than this
+    CONFLUENCE_FLOOR: float = 0.24              # never more aggressive than this
     CONFLUENCE_CEILING: float = 0.72            # tighten hard if recent edge is bad
-    DIR_CONF_FLOOR: int = 44
+    DIR_CONF_FLOOR: int = 40
     DIR_CONF_CEILING: int = 68
     ADAPT_WAIT_MIN_SAMPLES: int = 8             # start adapting sooner
     # Cold-start: even looser for first N settles so hierarchy gets data fast
     COLD_START_SAMPLES: int = 15
-    COLD_START_CONFLUENCE: float = 0.36
-    COLD_START_DIR_CONF: int = 46
+    COLD_START_CONFLUENCE: float = 0.30
+    COLD_START_DIR_CONF: int = 42
 
     # Scalp path grading on KALSHI odds (percentage points), not BTC $
     # Full UP/DOWN: Kalshi side moves >= PATH_WIN_PCT pts after entry
@@ -220,7 +221,7 @@ class Settings(BaseSettings):
     PAPER_USE_KALSHI_PAYOFF: bool = False
     PAPER_PATH_SCALED: bool = True
     HOLD_FRACTION: float = 0.25
-    MIN_CALL_REENTRY_SEC: float = 90.0
+    MIN_CALL_REENTRY_SEC: float = 60.0   # loosened so the desk can call more often
     # ETH 1H only. BTC 15m path book ignores this — no irreversible one-call lock.
     # Same-side refresh does not count as a new ETH call; opposite revisions disabled when =1.
     MAX_CALLS_PER_WINDOW: int = 1
