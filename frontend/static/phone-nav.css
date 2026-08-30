@@ -26,7 +26,10 @@ html.phone-desk #app > header .live-clock {
   display: none !important;
 }
 html.phone-desk body.mode-art #deskChipBar #hlChip,
-html.phone-desk #deskChipBar #hlChip {
+html.phone-desk #deskChipBar #hlChip,
+html.phone-desk .aggr-wrap,
+html.phone-desk #aggrChip,
+html.phone-desk #aggrPanel {
   display: none !important;
 }
 
