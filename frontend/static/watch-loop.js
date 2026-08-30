@@ -9,7 +9,7 @@
     var l = document.createElement("link");
     l.id = "watchLoopCss";
     l.rel = "stylesheet";
-    l.href = "/watch-loop.css?v=20260830w";
+    l.href = "/static/watch-loop.css?v=20260830q";
     document.head.appendChild(l);
   }
 

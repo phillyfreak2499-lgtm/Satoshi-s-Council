@@ -290,7 +290,7 @@
     var lc = document.createElement("link");
     lc.id = "layoutCleanupCss";
     lc.rel = "stylesheet";
-    lc.href = "/layout-cleanup.css?v=20260830l";
+    lc.href = "/static/layout-cleanup.css?v=20260830q";
     (document.head || document.documentElement).appendChild(lc);
   }
 
@@ -302,6 +302,6 @@
     tag.async = false;
     (document.head || document.documentElement).appendChild(tag);
   }
-  loadScript("__focusTableScript", "/focus-table.js?v=20260830a");
-  loadScript("__watchLoopScript", "/watch-loop.js?v=20260830w");
+  loadScript("__focusTableScript", "/static/focus-table.js?v=20260830q");
+  loadScript("__watchLoopScript", "/static/watch-loop.js?v=20260830q");
 })(window);
