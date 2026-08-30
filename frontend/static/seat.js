@@ -286,6 +286,14 @@
     backend: "indexeddb"
   };
 
+  if (!document.getElementById("layoutCleanupCss")) {
+    var lc = document.createElement("link");
+    lc.id = "layoutCleanupCss";
+    lc.rel = "stylesheet";
+    lc.href = "/layout-cleanup.css?v=20260830l";
+    (document.head || document.documentElement).appendChild(lc);
+  }
+
   function loadScript(flag, src) {
     if (w[flag]) return;
     w[flag] = true;
