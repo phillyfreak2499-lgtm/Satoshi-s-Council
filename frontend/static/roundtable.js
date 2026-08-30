@@ -4505,6 +4505,111 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     }
     return null;
   }
+  // Per-seat click zones for the Table view. Rebuilt each frame by drawArt so a
+  // click on a bot can open its scope panel. (Chair = center; seats = the ring.)
+  let seatHits = [];
+  function rememberSeatHit(x, y, r, name) {
+    if (mode !== "art") return;
+    seatHits.push({ x: x, y: y, r: Math.max(20, (r || 20) + 8), name: name });
+  }
+  function seatHitAt(x, y) {
+    let best = null;
+    let bestD = Infinity;
+    for (let i = 0; i < seatHits.length; i++) {
+      const s = seatHits[i];
+      const dx = x - s.x;
+      const dy = y - s.y;
+      const d = dx * dx + dy * dy;
+      if (d <= s.r * s.r && d < bestD) { best = s; bestD = d; }
+    }
+    return best;
+  }
+
+  // --- Bot scope: click a seat to see what it's thinking and what it's using ---
+  let __botScopeSeat = null;
+  let __botScopeTimer = null;
+  function _dirClass(d) {
+    const u = String(d || "WAIT").toUpperCase();
+    if (u === "UP" || u === "YES" || u === "ABOVE") return "UP";
+    if (u === "DOWN" || u === "NO" || u === "BELOW") return "DOWN";
+    return "WAIT";
+  }
+  function _escBot(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function botScopeFill(name) {
+    const panel = document.getElementById("botScope");
+    if (!panel) return;
+    const agents = (window.state && window.state.agents) || [];
+    const agent = agents.find(function (a) { return a.agent_name === name; });
+    if (!agent) { closeBotScope(); return; }
+    const callsign = labelOf(agent.agent_name ? agent : name);
+    const role = titleOf(agent.agent_name ? agent : name) || "";
+    const dir = lawLocked() ? "LOCKED" : effectiveDir(agent.direction);
+    const dc = lawLocked() ? "WAIT" : _dirClass(agent.direction);
+    const conf = Math.max(0, Math.min(100, Math.round(agent.confidence || 0)));
+    const subs = Array.isArray(agent.subs) ? agent.subs : [];
+    let subsHtml = "";
+    if (subs.length) {
+      subsHtml = subs.map(function (s) {
+        const sl = labelOf(s.agent_name ? s : (s.agent_name || "")) || (s.agent_name || "").toUpperCase();
+        const sd = _dirClass(s.direction);
+        const sc = Math.max(0, Math.min(100, Math.round(s.confidence || 0)));
+        return '<div class="bs-sub">' +
+          '<span class="bs-sub-name">' + _escBot(sl) + '</span>' +
+          '<span class="bs-bar"><i class="bs-bar-fill ' + sd + '" style="width:' + sc + '%"></i></span>' +
+          '<span class="bs-sub-dir ' + sd + '">' + _escBot(s.direction || "—") + '</span>' +
+          '</div>';
+      }).join("");
+    } else {
+      subsHtml = '<div class="bs-sub">' +
+        '<span class="bs-sub-name">SIGNAL</span>' +
+        '<span class="bs-bar"><i class="bs-bar-fill ' + dc + '" style="width:' + conf + '%"></i></span>' +
+        '<span class="bs-sub-dir ' + dc + '">' + _escBot(dir) + '</span></div>';
+    }
+    const guide = (typeof BOT_GUIDE !== "undefined" && BOT_GUIDE[name]) || null;
+    const blurb = guide && guide.blurb ? guide.blurb : "";
+    const reason = agent.reasoning || (dir === "WAIT" ? "Standing by — no strong read yet." : "");
+    panel.innerHTML =
+      '<div class="bs-head">' +
+        '<div class="bs-id"><span class="bs-name">' + _escBot(callsign) + '</span>' +
+        (role ? '<span class="bs-role">' + _escBot(role) + '</span>' : '') + '</div>' +
+        '<button type="button" class="bs-x" aria-label="Close">×</button>' +
+      '</div>' +
+      '<div class="bs-call ' + dc + '"><span class="bs-call-dir">' + _escBot(dir) + '</span>' +
+        (dir === "LOCKED" ? '' : '<span class="bs-call-conf">' + conf + '%</span>') + '</div>' +
+      '<div class="bs-sec"><div class="bs-kick">WHAT IT’S WATCHING</div>' +
+        '<div class="bs-subs">' + subsHtml + '</div></div>' +
+      (reason ? '<div class="bs-sec"><div class="bs-kick">WHAT IT’S THINKING</div>' +
+        '<div class="bs-reason">' + _escBot(reason) + '</div></div>' : '') +
+      (blurb ? '<div class="bs-blurb">' + _escBot(blurb) + '</div>' : '');
+    const x = panel.querySelector(".bs-x");
+    if (x) x.addEventListener("click", function (e) { e.stopPropagation(); closeBotScope(); });
+  }
+  function openBotScope(name) {
+    const panel = document.getElementById("botScope");
+    if (!panel) return;
+    if (__botScopeSeat === name && !panel.hidden) { closeBotScope(); return; }
+    __botScopeSeat = name;
+    panel.hidden = false;
+    panel.classList.add("show");
+    botScopeFill(name);
+    if (__botScopeTimer) clearInterval(__botScopeTimer);
+    __botScopeTimer = setInterval(function () {
+      if (!__botScopeSeat) return;
+      botScopeFill(__botScopeSeat);
+    }, 2000);
+  }
+  function closeBotScope() {
+    const panel = document.getElementById("botScope");
+    __botScopeSeat = null;
+    if (__botScopeTimer) { clearInterval(__botScopeTimer); __botScopeTimer = null; }
+    if (panel) { panel.classList.remove("show"); panel.hidden = true; }
+  }
+  window.openBotScope = openBotScope;
+  window.closeBotScope = closeBotScope;
 
   function floorChromeFit(w) {
     // TABLE HUD chip vs SATOSHI’S COUNCIL wordmark (1280) and ETH/BTC (390).
@@ -5850,12 +5955,14 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const floorLocked = !!( _flc && _flc.locked && chairLockDir(_flc.direction, _flc) );
     const floorAlpha = floorLocked ? 0.55 : 1.0;
 
+    seatHits = [];
     order.forEach((name, i) => {
       const pos = positions[name];
       if (!pos) return;
       const agent = agents.find(a => a.agent_name === name) || { direction: "WAIT", confidence: 0 };
       ctx.globalAlpha = floorAlpha;
       const r = floorFit ? floorFit.seatR : ((isPhoneDesk() || mode === "floor") ? 24 : 20);
+      rememberSeatHit(pos.x, pos.y, r, name);
       const col = colorFor(agent.direction, agent.confidence);
       const sc = strongColor(agent.direction);
       const face = floorLocked ? Math.atan2(cy - pos.y, cx - pos.x) : pos.angle;
@@ -5905,6 +6012,29 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const titleOff = 29;
       const dirOff = compact ? 26 : (titleOf(agent.agent_name ? agent : name) ? 41 : 30);
       const labelY = Math.min(h - 6, pos.y + r + nameOff);
+      // Legibility backdrop: the NAME/ROLE/CALL stack drops straight down into
+      // the dashed rings, so back it with a soft chip to keep it readable.
+      (function () {
+        const nameStr = labelOf(agent.agent_name ? agent : name);
+        const titleStr = compact ? "" : titleOf(agent.agent_name ? agent : name);
+        const callStr = lawLocked() ? "LOCKED" : `${effectiveDir(agent.direction)} ${agent.confidence}%`;
+        ctx.save();
+        ctx.font = compact ? "700 9px Orbitron, monospace" : "700 11px Orbitron, monospace";
+        let mw = ctx.measureText(nameStr).width;
+        ctx.font = compact ? "8px Orbitron, monospace" : "9px Orbitron, monospace";
+        mw = Math.max(mw, ctx.measureText(callStr).width);
+        if (titleStr) { ctx.font = "8px Rajdhani, Inter, monospace"; mw = Math.max(mw, ctx.measureText(titleStr).width); }
+        const bx = pos.x - mw / 2 - 6;
+        const by = labelY - 11;
+        const bw = mw + 12;
+        const bh = (dirOff - nameOff) + 18;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 6);
+        else ctx.rect(bx, by, bw, bh);
+        ctx.fillStyle = "rgba(4, 9, 18, 0.62)";
+        ctx.fill();
+        ctx.restore();
+      })();
       ctx.font = compact ? "700 9px Orbitron, monospace" : "700 11px Orbitron, monospace";
       ctx.fillStyle = "#d8f0ff";
       ctx.textAlign = "center";
@@ -12956,6 +13086,14 @@ function drawCandleChart() {
       if ((mode !== "floor" && mode !== "art") || celebratePlaying) return;
       if (document.body.classList.contains("gate-locked")) return;
       const pt = canvasCssPoint(e);
+      // A click on an orbiting seat opens that bot's scope panel (Table view).
+      const seat = pt && mode === "art" && seatHitAt(pt.x, pt.y);
+      if (seat) {
+        e.preventDefault();
+        e.stopPropagation();
+        try { openBotScope(seat.name); } catch (err) {}
+        return;
+      }
       const hit = pt && chairHitAt(pt.x, pt.y);
       if (!hit) return;
       e.preventDefault();

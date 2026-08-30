@@ -10341,5 +10341,68 @@ body { font-variant-numeric: tabular-nums; }
    screen. The nightly huddle (cool-down, learning consolidation) still runs;
    updateHuddle() keeps updating these hidden nodes harmlessly.
    -------------------------------------------------------------------------- */
+/* Must out-specify the header rule `#app > header .huddle-badge {
+   display: inline-flex !important }` (specificity 1,1,1). */
+#app > header #huddleBadge,
+#app #huddleBadge,
 #huddleBadge,
 #huddleBanner { display: none !important; }
+
+/* ============================================================================
+   BOT SCOPE — click a seat to see what it's watching + thinking · 2026-08-30
+   Right-side panel, below the tabs / above the footer. Table (art) view only;
+   auto-hidden elsewhere via body.mode-art. Non-destructive overlay.
+   ========================================================================== */
+.bot-scope { display: none; }
+body.mode-art .bot-scope.show {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: fixed;
+  left: 14px;                 /* the empty left column, above the 1H timer */
+  top: 190px;
+  width: min(330px, 30vw);
+  max-height: calc(100vh - 190px - 210px);  /* stop above the 1H WINDOW box */
+  overflow-y: auto;
+  z-index: 60;
+  padding: 14px 14px 16px;
+  border: 1px solid rgba(0, 232, 255, 0.30);
+  border-radius: 12px;
+  background: rgba(6, 12, 22, 0.94);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.62);
+  animation: bsIn 0.18s ease both;
+}
+@keyframes bsIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+.bs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.bs-id { display: flex; flex-direction: column; gap: 2px; }
+.bs-name { font-family: 'Orbitron', sans-serif; font-size: 1.05rem; letter-spacing: 0.05em; color: #eaf6ff; }
+.bs-role { font-size: 0.72rem; color: rgba(240, 193, 74, 0.82); }
+.bs-x { background: transparent; border: 0; color: #8fa6bd; font-size: 1.35rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+.bs-x:hover { color: #fff; }
+.bs-call { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.32); }
+.bs-call-dir { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; }
+.bs-call-conf { font-family: 'Share Tech Mono', monospace; font-variant-numeric: tabular-nums; color: #c9d6e2; }
+.bs-call.UP .bs-call-dir { color: #39ff14; }
+.bs-call.DOWN .bs-call-dir { color: #ff2d55; }
+.bs-call.WAIT .bs-call-dir { color: #00e8ff; }
+.bs-sec { display: flex; flex-direction: column; gap: 6px; }
+.bs-kick { font-family: 'Orbitron', sans-serif; font-size: 0.55rem; letter-spacing: 0.16em; color: rgba(150, 180, 205, 0.75); }
+.bs-subs { display: flex; flex-direction: column; gap: 5px; }
+.bs-sub { display: grid; grid-template-columns: 60px 1fr 42px; align-items: center; gap: 8px; }
+.bs-sub-name { font-family: 'Share Tech Mono', monospace; font-size: 0.66rem; color: #b9c9d8; }
+.bs-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.bs-bar-fill { display: block; height: 100%; border-radius: 3px; }
+.bs-bar-fill.UP { background: #39ff14; }
+.bs-bar-fill.DOWN { background: #ff2d55; }
+.bs-bar-fill.WAIT { background: #00b8d4; }
+.bs-sub-dir { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; text-align: right; }
+.bs-sub-dir.UP { color: #39ff14; }
+.bs-sub-dir.DOWN { color: #ff2d55; }
+.bs-sub-dir.WAIT { color: #7fd8e8; }
+.bs-reason { font-size: 0.82rem; line-height: 1.5; color: #d7e4f0; }
+.bs-blurb { font-size: 0.72rem; line-height: 1.5; color: rgba(180, 198, 214, 0.7); border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 8px; }
+@media (max-width: 640px) {
+  body.mode-art .bot-scope.show { right: 8px; left: 8px; width: auto; top: auto; bottom: 74px; max-height: 52vh; }
+}
