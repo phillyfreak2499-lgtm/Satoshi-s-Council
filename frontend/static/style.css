@@ -10306,3 +10306,31 @@ body.wire-quiet-on #statusDot { background: #c9a227; }
 @media (prefers-reduced-motion: reduce) {
   .lock-tape-empty::before { animation: none; }
 }
+
+/* ----------------------------------------------------------------------------
+   POLISH LAYER (cont.) — type finish · 2026-08-30
+   Make the HUD's own type read as deliberately shaped. Identity kept: Orbitron
+   stays the face (brand + display + canvas untouched); this just refines how it
+   renders. Direction: "refine the HUD", not "swap the font".
+   -------------------------------------------------------------------------- */
+
+/* 8) Crisp rendering everywhere — the single biggest subconscious "pro" signal,
+      and the one amateur builds forget. Lightens Orbitron's heavy strokes too. */
+body, #app, .password-gate {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 9) Aligned numbers across the data desk. A HUD full of shifting-width digits
+      reads amateur; tabular figures lock the columns like a real instrument. */
+body { font-variant-numeric: tabular-nums; }
+#windowTimer, .win-clock, #liveUpPct, #liveDownPct, #btcPrice, #ethPrice {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* 10) Rein in the two widest kicker trackings so letters read as designed
+       spacing, not drift. (0.2–0.22em kickers are intentional and left alone.) */
+.flash-kicker { letter-spacing: 0.2em !important; }
+.led-label { letter-spacing: 0.2em !important; }
