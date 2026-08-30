@@ -54,7 +54,7 @@ class SelfFontTests(unittest.TestCase):
 
     def test_sw_precaches_critical_faces(self) -> None:
         sw = (ROOT / "frontend" / "static" / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("20260830d", sw)
+        self.assertIn("20260830e", sw)
         # SW precaches the stylesheet at its real route and maps the Google-font
         # hosts to the self-hosted faces it ships.
         self.assertIn("/static/fonts.css?v=", sw)

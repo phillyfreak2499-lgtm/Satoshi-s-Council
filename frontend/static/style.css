@@ -10334,3 +10334,12 @@ body { font-variant-numeric: tabular-nums; }
        spacing, not drift. (0.2–0.22em kickers are intentional and left alone.) */
 .flash-kicker { letter-spacing: 0.2em !important; }
 .led-label { letter-spacing: 0.2em !important; }
+
+/* ----------------------------------------------------------------------------
+   Hide HUDDLE from the desk (backend untouched) · 2026-08-30
+   Removes the top-right HUDDLE badge and the transient huddle banner from the
+   screen. The nightly huddle (cool-down, learning consolidation) still runs;
+   updateHuddle() keeps updating these hidden nodes harmlessly.
+   -------------------------------------------------------------------------- */
+#huddleBadge,
+#huddleBanner { display: none !important; }
