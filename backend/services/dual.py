@@ -92,6 +92,14 @@ class DualOrchestrator:
         if self.eth:
             # Separate logical table; same DB file for now (accuracy still mostly BTC-scoped via UI focus)
             await self.eth.store.init()
+        # Boot-time disk recovery: the signals table only prunes in the nightly
+        # huddle, so a long-bloated DB gets its space back on deploy too.
+        try:
+            pruned = await self.btc.store.prune_old_signals()
+            if pruned:
+                logger.info(f"Boot prune: removed {pruned} old signal rows")
+        except Exception as e:
+            logger.debug(f"boot signal prune skip: {e}")
         try:
             await self.btc.store.ensure_eth_display_reset()
         except Exception as e:

@@ -383,6 +383,12 @@ class NightlyHuddle:
             pruned = 0
             if hasattr(store, "prune_old_window_calls"):
                 pruned = await store.prune_old_window_calls(days=PRUNE_DAYS)
+            if hasattr(store, "prune_old_signals"):
+                sig_pruned = await store.prune_old_signals()
+                if sig_pruned:
+                    msg = f"Pruned {sig_pruned} old signal rows"
+                    house.append(msg)
+                    self._log(msg)
             if pruned:
                 msg = f"Pruned {pruned} graded windows older than {PRUNE_DAYS} days"
                 house.append(msg)

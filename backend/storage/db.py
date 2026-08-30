@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Float, Integer, Text, or_, select, func
+from sqlalchemy import String, Float, Integer, Text, delete, or_, select, func
 from backend.config import settings
 from backend.risk.sizing import honor_sized_stake
 from backend.agents.chair_gates import (
@@ -159,6 +159,10 @@ class ManualTrade(Base):
     note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     traded_at: Mapped[str] = mapped_column(String(40), index=True)  # ISO UTC
     created_at: Mapped[str] = mapped_column(String(40))
+    # Visitor scope (workspace cookie UUID). The journal used to be one global
+    # log any oath visitor could read AND delete from. NULL = legacy rows,
+    # visible to all but deletable by nobody.
+    owner: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
 
 
 # ── Workspace: personal process journal + membership entitlements ─────────
@@ -264,6 +268,14 @@ class PerformanceStore:
                 # ("buy → did price go up") independent of the Kalshi strike.
                 "ALTER TABLE window_calls ADD COLUMN spot_at_call FLOAT",
                 "ALTER TABLE window_calls ADD COLUMN spot_at_close FLOAT",
+                # Hot-path indexes: the settle/learn loop looks up the latest
+                # signal per market_ticker every cycle — unindexed, that is a
+                # full scan of an ever-growing table.
+                "ALTER TABLE manual_trades ADD COLUMN owner VARCHAR(40)",
+                "CREATE INDEX IF NOT EXISTS ix_manual_trades_owner ON manual_trades (owner)",
+                "CREATE INDEX IF NOT EXISTS ix_signals_market_ticker ON signals (market_ticker)",
+                "CREATE INDEX IF NOT EXISTS ix_window_calls_settled_at ON window_calls (settled_at)",
+                "CREATE INDEX IF NOT EXISTS ix_window_calls_outcome ON window_calls (actual_outcome)",
             ):
                 try:
                     await conn.exec_driver_sql(stmt)
@@ -1574,13 +1586,19 @@ class PerformanceStore:
             ac = _asset_clause(WindowCall.asset)
             if ac is not None:
                 filters.append(ac)
+            # Newest 5000 settled rows, returned oldest-first. Uncapped, this
+            # materialized every row ever settled on every 2s cycle; the 90-day
+            # prune keeps real counts far below the cap, so numbers are
+            # unchanged in practice while the cost stays bounded.
             settled = (
                 await session.execute(
                     select(WindowCall)
                     .where(*filters)
-                    .order_by(WindowCall.id.asc())
+                    .order_by(WindowCall.id.desc())
+                    .limit(5000)
                 )
             ).scalars().all()
+            settled = list(reversed(settled))
             # Optional soft-clear: only count settles after hit_rate_reset mark
             try:
                 hr_mark = await self._reset_mark("hit_rate")
@@ -1663,7 +1681,10 @@ class PerformanceStore:
             if ac is not None:
                 wait_q.append(ac)
             wait_rows = (
-                await session.execute(select(WindowCall).where(*wait_q))
+                await session.execute(
+                    select(WindowCall).where(*wait_q)
+                    .order_by(WindowCall.id.desc()).limit(5000)
+                )
             ).scalars().all()
             if (asset or "").lower() in ("btc", "bitcoin"):
                 wait_rows = [r for r in wait_rows if self._is_btc_15m_display_row(r)]
@@ -1854,7 +1875,8 @@ class PerformanceStore:
             "last_20": last_20,
             "last_50": last_50,
             "pending": int(pending),
-            "open": int(pending),
+            # NOTE: "open" (the open-call list) is set further down; a second
+            # numeric "open" key here was silently discarded. Use "pending".
             "calls_logged": int(pending) + int(total),
             "calls_settled": int(total),
             "reliability_n": len(reliability),
@@ -2205,6 +2227,39 @@ class PerformanceStore:
         }
 
 
+    async def prune_old_signals(self, days: int = 7, keep_max: int = 150_000) -> int:
+        """
+        Bound the signals table. It gains a multi-KB row every ~2s per council
+        and nothing else ever deletes from it — on the 2 GB Render disk that is
+        a slow-motion outage. Keep `days` of history, and never more than
+        `keep_max` rows regardless of age.
+        """
+        from datetime import datetime, timedelta, timezone
+        removed = 0
+        try:
+            async with self.Session() as session:
+                cutoff_iso = (
+                    datetime.now(timezone.utc) - timedelta(days=int(days))
+                ).strftime("%Y-%m-%dT%H:%M:%S")
+                res = await session.execute(
+                    delete(SignalRecord).where(SignalRecord.timestamp < cutoff_iso)
+                )
+                removed += int(res.rowcount or 0)
+                # Hard cap by id (autoincrement — newest N survive)
+                max_id = (
+                    await session.execute(select(func.max(SignalRecord.id)))
+                ).scalar()
+                if max_id and int(max_id) > int(keep_max):
+                    res2 = await session.execute(
+                        delete(SignalRecord).where(SignalRecord.id <= int(max_id) - int(keep_max))
+                    )
+                    removed += int(res2.rowcount or 0)
+                if removed:
+                    await session.commit()
+        except Exception as e:
+            logger.warning(f"prune_old_signals: {e}")
+        return removed
+
     async def prune_old_window_calls(self, days: int = 90) -> int:
         """Delete settled window_calls older than `days`. Returns rows removed."""
         from datetime import datetime, timedelta, timezone
@@ -2487,6 +2542,7 @@ class PerformanceStore:
         returned: float,
         note: str | None = None,
         traded_at: str | None = None,
+        owner: str | None = None,
     ) -> Dict[str, Any]:
         """User paper entry: bet amount in, cash back out."""
         side_u = (side or "").upper().strip()
@@ -2506,6 +2562,7 @@ class PerformanceStore:
                 note=(note or "")[:200] or None,
                 traded_at=when,
                 created_at=now,
+                owner=(str(owner)[:40] if owner else None),
             )
             session.add(row)
             await session.commit()
@@ -2520,7 +2577,7 @@ class PerformanceStore:
                 "traded_at": row.traded_at,
             }
 
-    async def delete_manual_trade(self, trade_id: int) -> bool:
+    async def delete_manual_trade(self, trade_id: int, owner: str | None = None) -> bool:
         async with self.Session() as session:
             result = await session.execute(
                 select(ManualTrade).where(ManualTrade.id == int(trade_id))
@@ -2528,11 +2585,16 @@ class PerformanceStore:
             row = result.scalar_one_or_none()
             if not row:
                 return False
+            # Only the visitor who logged a trade may delete it. Legacy rows
+            # (owner NULL) are read-only — the old behavior let any anonymous
+            # visitor wipe everyone's journal by iterating ids.
+            if not owner or (row.owner or None) != str(owner):
+                return False
             await session.delete(row)
             await session.commit()
             return True
 
-    async def get_manual_journal(self) -> Dict[str, Any]:
+    async def get_manual_journal(self, owner: str | None = None) -> Dict[str, Any]:
         """Spreadsheet-style totals for user paper tracker."""
         try:
             from zoneinfo import ZoneInfo
@@ -2541,8 +2603,14 @@ class PerformanceStore:
             ct = timezone.utc
 
         async with self.Session() as session:
+            # This visitor's rows plus legacy (pre-scoping) rows.
+            scope = (
+                or_(ManualTrade.owner == str(owner), ManualTrade.owner.is_(None))
+                if owner else ManualTrade.owner.is_(None)
+            )
             result = await session.execute(
-                select(ManualTrade).order_by(ManualTrade.id.desc()).limit(2000)
+                select(ManualTrade).where(scope)
+                .order_by(ManualTrade.id.desc()).limit(2000)
             )
             rows = list(result.scalars().all())
 

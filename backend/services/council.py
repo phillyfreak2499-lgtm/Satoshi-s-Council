@@ -138,13 +138,58 @@ class Council:
         self.latest_state: Dict[str, Any] = {}
         self._task: asyncio.Task | None = None
         self.running = False
+        # Learned-settlement dedup survives restarts: an in-memory-only set
+        # meant every deploy replayed the recent tape into the loaded learner,
+        # compounding duplicate weight updates. Watermark + recent-id set are
+        # persisted per asset in DATA_DIR.
         self._last_learned_ids: set = set()
+        self._learned_watermark: int = 0
+        self._load_learned_ids()
         self._shadow_book: list = []
         self._wait_snapshot: Dict[str, Any] | None = None
         self._last_settle_review = None
         self._last_spot: float | None = None
         self._btc_lead: Dict[str, Any] | None = None
         self.huddle = NightlyHuddle()
+
+    def _learned_ids_path(self):
+        from pathlib import Path
+        root = Path(getattr(settings, "DATA_DIR", None) or "./data")
+        return root / f"council-learned-ids-{self.asset}.json"
+
+    def _load_learned_ids(self) -> None:
+        try:
+            import json
+            path = self._learned_ids_path()
+            if not path.is_file():
+                return
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self._learned_watermark = int(data.get("watermark") or 0)
+            self._last_learned_ids = {int(i) for i in (data.get("ids") or []) if i is not None}
+        except Exception as e:
+            logger.debug(f"learned-ids load skip: {e}")
+
+    def _save_learned_ids(self) -> None:
+        try:
+            import json
+            path = self._learned_ids_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({
+                "watermark": int(self._learned_watermark),
+                "ids": sorted(int(i) for i in self._last_learned_ids)[-500:],
+            }), encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"learned-ids save skip: {e}")
+
+    def _already_learned(self, rid) -> bool:
+        if rid is None:
+            return True
+        if rid in self._last_learned_ids:
+            return True
+        try:
+            return int(rid) <= self._learned_watermark
+        except (TypeError, ValueError):
+            return False
 
     def attach_btc_lead(self, lead: Dict[str, Any] | None) -> None:
         """Vitalik input: Satoshi move / lock / hour spot delta."""
@@ -476,7 +521,8 @@ class Council:
             _mkt = (self.latest_state or {}).get("market") or {}
             settled_n = await self.store.settle_expired_calls(
                 current_price=_mkt.get("current_price") or _mkt.get("price"),
-                asset=None,
+                # Scope to THIS council — never grade one asset with the other's spot.
+                asset=self.asset,
                 kalshi_results=kalshi_results,
             )
             self._grade_council_from_results(kalshi_results)
@@ -531,7 +577,9 @@ class Council:
                 up_pct=up_pct,
                 down_pct=down_pct,
                 floor_strike=None,
-                asset=None,
+                # Scope to THIS council's rows — asset=None let a BTC pass
+                # write BTC spot/odds onto ETH rows (and vice versa).
+                asset=self.asset,
                 kalshi_results=kalshi_results,
             )
             self._grade_council_from_results(kalshi_results)
@@ -752,10 +800,9 @@ class Council:
             self.leader.cool_down_bump = 0.0
             logger.debug(f"Huddle cycle: {e}")
 
-        try:
-            await self.settle_due_windows()
-        except Exception:
-            pass
+        # (Single settle pass per cycle: the post-fetch call below settles with
+        # fresh quotes. A second pre-fetch pass here doubled every Kalshi fetch
+        # and unsettled-table scan for no benefit.)
         market_data = await self.pipeline.fetch()
         if self._btc_lead:
             market_data["btc_lead"] = self._btc_lead
@@ -1653,11 +1700,12 @@ class Council:
         recent = await self.store.recent_settled_calls(limit=limit, asset=self.asset)
         learned = 0
         wait_learned = 0
+        _dedup_before = (len(self._last_learned_ids), self._learned_watermark)
         FINISH = {"finish_match", "finish_miss"}
         path_buf = []
         for row in reversed(recent):  # chronological
             rid = row.get("id")
-            if rid is None or rid in self._last_learned_ids:
+            if self._already_learned(rid):
                 continue
             settle_reason = row.get("settle_reason") or ""
             direction = str(row.get("direction") or "").upper()
@@ -1767,10 +1815,19 @@ class Council:
                         votes, net, held, regime=reg, count_as_lock=False, cut_sides=cut
                     )
                     learned += 1
-        # Bound memory of learned ids
+        # Bound memory of learned ids; dropped ids advance the watermark so
+        # they still count as learned after a restart.
         if len(self._last_learned_ids) > 500:
-            keep = set(sorted(self._last_learned_ids)[-300:])
-            self._last_learned_ids = keep
+            ordered = sorted(self._last_learned_ids)
+            dropped, keep = ordered[:-300], ordered[-300:]
+            if dropped:
+                try:
+                    self._learned_watermark = max(self._learned_watermark, int(dropped[-1]))
+                except (TypeError, ValueError):
+                    pass
+            self._last_learned_ids = set(keep)
+        if (len(self._last_learned_ids), self._learned_watermark) != _dedup_before:
+            self._save_learned_ids()
         if learned or wait_learned:
             self.leader.sync_from_learner()
             # Persist brain so longer runs survive restarts

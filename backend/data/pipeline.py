@@ -132,6 +132,10 @@ class DataPipeline:
         self.symbol = symbol or _SYMBOL.get(self.asset, "BTCUSDT")
         self._client = httpx.AsyncClient(timeout=_FETCH_TIMEOUT, headers=_HEADERS, follow_redirects=True)
         self._last_good: Dict[str, Any] | None = None
+        # Official-results client for the settle sweep (council reads
+        # pipeline.kalshi via getattr — without it no call ever grades).
+        from backend.data.kalshi import KalshiClient
+        self.kalshi = KalshiClient()
 
     async def _get(self, url: str, params: Optional[dict] = None) -> Any:
         r = await self._client.get(url, params=params)
@@ -424,6 +428,10 @@ class DataPipeline:
         return snap
 
     async def close(self) -> None:
+        try:
+            await self.kalshi.close()
+        except Exception:
+            pass
         try:
             await self._client.aclose()
         except Exception:
