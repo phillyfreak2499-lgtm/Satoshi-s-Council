@@ -30,6 +30,13 @@ HEADERS = {
 
 
 def apply_security_headers(response) -> None:
+    # First live request also wires root aliases + SQLite-busy softeners.
+    # Deferred so backend.main can finish constructing `app` first.
+    try:
+        from backend.services.desk_patches import install
+        install()
+    except Exception:
+        pass
     headers = getattr(response, "headers", None)
     if headers is None:
         return
