@@ -18,6 +18,12 @@ try:
 except Exception:
     pass
 
+try:
+    from backend.data.feed_loop import install_live_feeds
+    install_live_feeds()
+except Exception:
+    pass
+
 
 # Soft priors: (start_hour, end_hour, name, trend_bias -1..+1, activity 0..1)
 SESSION_PRIORS = [

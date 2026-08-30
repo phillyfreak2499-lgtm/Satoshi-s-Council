@@ -28,6 +28,7 @@ _DECISION_KEYS = (
     "lean",
     "score",
     "lockdown",
+    "stake_pct",
 )
 _MARKET_KEYS = (
     "price",
@@ -42,6 +43,14 @@ _MARKET_KEYS = (
     "close_time",
     "window_minutes",
     "stale",
+    "kalshi_yes_ask",
+    "kalshi_no_ask",
+    "kalshi_yes_bid",
+    "kalshi_no_bid",
+    "yes_ask",
+    "no_ask",
+    "leftover_cents",
+    "combined_ask_cents",
 )
 _HEALTH_KEYS = (
     "kalshi",
@@ -54,6 +63,11 @@ _HEALTH_KEYS = (
     "spot_source",
     "last_fetch_ms",
     "quote_age_s",
+    "quote_stale",
+    "quote_source",
+    "leftover_cents",
+    "hl_crowded",
+    "force_n",
 )
 _LOCKED_KEYS = ("direction", "confidence", "side", "asset")
 
@@ -182,6 +196,11 @@ def thin_poll_state(state: Any) -> Dict[str, Any]:
         "tables": {"bitcoin": btc, "ethereum": eth},
         "leaders": state.get("leaders") or {"bitcoin": "satoshi", "ethereum": "vitalik" if eth else None},
     }
+    try:
+        from backend.data.live_feeds import public_payload
+        out["feeds"] = {"btc": public_payload("btc"), "eth": public_payload("eth")}
+    except Exception:
+        pass
     for banned in POLL_STRIP:
         out.pop(banned, None)
         if isinstance(out.get("tables"), dict):
