@@ -211,7 +211,7 @@
       if (e) {
         e.preventDefault();
       }
-      if (go.busy) return;
+      if (go.busy || window.__councilUnlockInFlight) return;
       var agree = document.getElementById("gateAgree");
       var err = document.getElementById("passwordError");
       if (agree && !agree.checked) {
@@ -219,6 +219,7 @@
         return;
       }
       go.busy = true;
+      window.__councilUnlockInFlight = true;  // shared with desk-fx.js — one POST per tap
       fetch("/api/desk/unlock", {
         method: "POST",
         credentials: "include",
@@ -234,7 +235,7 @@
         lockSeat();
       }).catch(function () {
         if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
-      }).finally(function () { go.busy = false; });
+      }).finally(function () { go.busy = false; window.__councilUnlockInFlight = false; });
     }
     btn.addEventListener("click", go, true);
     if (hit) hit.addEventListener("click", go, true);

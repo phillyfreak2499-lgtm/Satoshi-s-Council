@@ -372,8 +372,11 @@
         if (err) { err.textContent = "Check the oath first."; err.classList.remove("hidden"); }
         return;
       }
-      if (tryUnlock.__busy) return;
+      // Shared guard across seat.js + desk-fx.js — both wire this button, so a
+      // single tap otherwise fired two /api/desk/unlock POSTs.
+      if (tryUnlock.__busy || window.__councilUnlockInFlight) return;
       tryUnlock.__busy = true;
+      window.__councilUnlockInFlight = true;
       fetch("/api/desk/unlock", {
         method: "POST",
         credentials: "include",
@@ -392,6 +395,7 @@
         if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
       }).finally(function () {
         tryUnlock.__busy = false;
+        window.__councilUnlockInFlight = false;
       });
     };
     if (agree) agree.addEventListener("change", syncDeskGateSummon);
@@ -514,8 +518,8 @@
     el.className = "sfx-flash show " + kind;
     el.textContent = kind === "win" ? "💰" : "⚠️";
     try {
-      if (kind === "win") playWinCashSfx();
-      else playLoseTromboneSfx();
+      if (kind === "win") { if (window.playWinCashSfx) window.playWinCashSfx(); }
+      else { if (window.playLoseTromboneSfx) window.playLoseTromboneSfx(); }
     } catch (e) {}
     try {
       if (typeof window.__onGradedOutcome === "function") window.__onGradedOutcome(kind, acc);
@@ -523,19 +527,9 @@
     setTimeout(() => el.classList.remove("show"), 700);
   }
 
-  const _origApply = window.applyState || null;
-  // Hook poll updates if applyCouncilState exists
-  const hook = () => {
-    if (typeof window.applyCouncilState === "function" && !window.__lsHooked) {
-      const orig = window.applyCouncilState;
-      window.applyCouncilState = function (s) {
-        orig(s);
-        try { updateLightsaber(s); playOutcomeFx(s); } catch (e) {}
-      };
-      window.__lsHooked = true;
-    }
-  };
-  setInterval(hook, 1000);
+  // (Removed a 1s setInterval that waited forever for window.applyCouncilState,
+  // a function nothing defines. roundtable.js already calls playOutcomeFx on
+  // every poll via ingestDeskPayload, so the graded-outcome flash works.)
 
   document.addEventListener("DOMContentLoaded", () => {
     initPasswordGate();

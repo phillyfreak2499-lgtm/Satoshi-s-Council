@@ -505,7 +505,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (typeof Worker !== "undefined") {
       try {
         if (!deskWorker) {
-          deskWorker = new Worker("/desk-worker.js?v=20260822d");
+          deskWorker = new Worker("/desk-worker.js?v=20260822e");
           deskWorker.onmessage = onDeskWorkerMsg;
           deskWorker.onerror = function () {
             try { deskWorker.terminate(); } catch (err) {}
@@ -3760,6 +3760,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   function playLoseTromboneSfx() {
     playSampleSfx("/static/sfx/lose-trombone.mp3", 0.55);
   }
+  // Exported so desk-fx.js's graded-outcome flash can actually play the sound
+  // (it lives in a separate file / IIFE).
+  window.playWinCashSfx = playWinCashSfx;
+  window.playLoseTromboneSfx = playLoseTromboneSfx;
 
   function playSkipCricketsSfx() {
     // Cricket / ambient bed is dead. Do not play, loop, or autoplay.
