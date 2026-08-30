@@ -16,11 +16,14 @@
  *
  * 2026-08-30-aggr-tape
  *   Loads the AGGR multi-exchange tape chip (aegx workspace: taker + liq).
+ *
+ * 2026-08-30-desk-chips
+ *   Quote age, combined YES+NO leftover, Hyperliquid crowding / force liq.
  */
 (() => {
   "use strict";
 
-  const BUILD = "2026-08-30-aggr-tape";
+  const BUILD = "2026-08-30-desk-chips";
   window.COUNCIL_BUILD = BUILD;
 
   window.assetTag = function assetTag(url) {
@@ -48,4 +51,5 @@
   }
   boot("/static/session-window.js?v=20260830k");
   boot("/static/aggr-tape.js?v=20260830a");
+  boot("/static/desk-chips.js?v=20260830m");
 })();

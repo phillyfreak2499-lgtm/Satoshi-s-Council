@@ -1,0 +1,55 @@
+.desk-chip-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+.desk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(180, 210, 255, 0.18);
+  background: rgba(8, 14, 24, 0.72);
+  color: #c9d6ea;
+  font: 600 10px/1 "Share Tech Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  padding: 6px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.desk-chip .desk-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6b7c93;
+}
+.desk-chip.live .desk-dot { background: #3ee0a2; }
+.desk-chip.stale { color: #ffb4a2; border-color: rgba(255, 120, 80, 0.45); }
+.desk-chip.stale .desk-dot { background: #ff6b4a; }
+.desk-chip.edge { color: #9ff3c4; }
+.desk-chip.noedge { color: #f0c27a; }
+.desk-chip.crowd { color: #ffb347; border-color: rgba(255, 179, 71, 0.45); }
+.desk-chip.liq { color: #9fd7ff; }
+.desk-chip.off { opacity: 0.62; }
+.desk-chip-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 260px;
+  z-index: 40;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(6, 10, 18, 0.94);
+  border: 1px solid rgba(180, 210, 255, 0.16);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.desk-chip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font: 500 11px/1.4 "Share Tech Mono", ui-monospace, monospace;
+  color: #d5deec;
+  padding: 3px 0;
+}
+.desk-chip-row b { color: #8ea0b8; font-weight: 600; }
