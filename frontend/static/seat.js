@@ -24,10 +24,6 @@
   document.addEventListener("DOMContentLoaded", applyPhoneDesk);
 })();
 
-/* Per-browser seat in IndexedDB.
-   School, Dojo, paper, join, last tab live on THIS device.
-   localStorage only mirrors the lock flag so the gate can skip on a cold load.
-   Admin / Chair brain stays on the server. */
 (function (w) {
   var DB_NAME = "council_seat";
   var DB_VER = 1;
@@ -208,9 +204,7 @@
     btn.removeAttribute("disabled");
     btn.setAttribute("aria-disabled", "false");
     function go(e) {
-      if (e) {
-        e.preventDefault();
-      }
+      if (e) e.preventDefault();
       if (go.busy || window.__councilUnlockInFlight) return;
       var agree = document.getElementById("gateAgree");
       var err = document.getElementById("passwordError");
@@ -219,7 +213,7 @@
         return;
       }
       go.busy = true;
-      window.__councilUnlockInFlight = true;  // shared with desk-fx.js — one POST per tap
+      window.__councilUnlockInFlight = true;
       fetch("/api/desk/unlock", {
         method: "POST",
         credentials: "include",
@@ -292,13 +286,14 @@
     backend: "indexeddb"
   };
 
-  /* Pull in the missing setFocusTable without waiting on a cache-busted index.html. */
-  if (!w.__focusTableScript) {
-    w.__focusTableScript = true;
-    var focusSrc = "/focus-table.js?v=20260830a";
+  function loadScript(flag, src) {
+    if (w[flag]) return;
+    w[flag] = true;
     var tag = document.createElement("script");
-    tag.src = focusSrc;
+    tag.src = src;
     tag.async = false;
     (document.head || document.documentElement).appendChild(tag);
   }
+  loadScript("__focusTableScript", "/focus-table.js?v=20260830a");
+  loadScript("__watchLoopScript", "/watch-loop.js?v=20260830w");
 })(window);
