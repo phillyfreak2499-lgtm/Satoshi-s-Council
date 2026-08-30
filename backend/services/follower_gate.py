@@ -274,6 +274,111 @@ class FollowerRuntime:
             self.save()
 
 
+class FollowerOrderLedger:
+    """
+    Durable per-order idempotency ledger.
+
+    FollowerSession.order_keys is an in-memory set, lost on restart. If the
+    process restarts between the broker send and its ack, that in-memory dedup
+    is gone and the same idempotency key could re-place a live order. This
+    ledger persists keys to disk (same synchronous, low-volume pattern as
+    FollowerRuntime) so a send-without-ack cannot double-fire after a restart.
+
+    reserve(key) records a key durably and returns False if it was already
+    used. release(key) removes a key that never reached the broker so a genuine
+    retry can proceed. Keys expire after ttl_s and are hard-capped by count.
+    """
+
+    def __init__(
+        self,
+        path: Path | None = None,
+        *,
+        now: Callable[[], float] | None = None,
+        ttl_s: float = 48 * 3600.0,
+        max_keys: int = 5000,
+    ):
+        self.path = path
+        self._now = now or time.time
+        self.ttl_s = float(ttl_s)
+        self.max_keys = int(max_keys)
+        self._lock = threading.RLock()
+        self._keys: Dict[str, Dict[str, Any]] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if self.path is None or not self.path.is_file():
+            return
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if isinstance(raw, dict) and isinstance(raw.get("keys"), dict):
+            for k, v in raw["keys"].items():
+                if isinstance(k, str) and isinstance(v, dict):
+                    self._keys[k] = {
+                        "ts": float(v.get("ts") or 0.0),
+                        "order_id": v.get("order_id"),
+                        "status": str(v.get("status") or "pending"),
+                    }
+        self._prune()
+
+    def _save(self) -> None:
+        if self.path is None:
+            return
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps({"keys": self._keys}, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def _prune(self) -> None:
+        now = float(self._now())
+        if self.ttl_s > 0:
+            dead = [k for k, v in self._keys.items() if now - float(v.get("ts") or 0.0) >= self.ttl_s]
+            for k in dead:
+                self._keys.pop(k, None)
+        if len(self._keys) > self.max_keys:
+            for k, _v in sorted(self._keys.items(), key=lambda kv: kv[1].get("ts") or 0.0)[
+                : len(self._keys) - self.max_keys
+            ]:
+                self._keys.pop(k, None)
+
+    def seen(self, key: str) -> bool:
+        with self._lock:
+            self._prune()
+            return key in self._keys
+
+    def reserve(self, key: str) -> bool:
+        """Record key as used. False if it was already reserved (duplicate)."""
+        if not key:
+            return False
+        with self._lock:
+            self._prune()
+            if key in self._keys:
+                return False
+            self._keys[key] = {"ts": float(self._now()), "order_id": None, "status": "pending"}
+            self._save()
+            return True
+
+    def record_result(self, key: str, order_id: Any, status: str) -> None:
+        with self._lock:
+            rec = self._keys.get(key)
+            if rec is None:
+                return
+            rec["order_id"] = str(order_id) if order_id else rec.get("order_id")
+            rec["status"] = str(status or "routed")
+            self._save()
+
+    def release(self, key: str) -> None:
+        """Free a key whose order never reached the broker."""
+        with self._lock:
+            if self._keys.pop(key, None) is not None:
+                self._save()
+
+
 def _sanitize_caps(patch: Dict[str, Any], base: Dict[str, float] | None = None) -> Dict[str, float]:
     out = dict(base or DEFAULT_CAPS)
     if not isinstance(patch, dict):
@@ -315,6 +420,7 @@ class FollowerGate:
         load_p3: Callable[[], str] | None = None,
         audit: FollowerAudit | None = None,
         runtime: FollowerRuntime | None = None,
+        order_ledger: "FollowerOrderLedger | None" = None,
         ping: Callable[[str], None] | None = None,
     ):
         # Lock 1 may be a literal (tests) or a loader read per-request, so a
@@ -335,6 +441,8 @@ class FollowerGate:
         self._sessions: dict[str, FollowerSession] = {}
         self.audit = audit or FollowerAudit()
         self.runtime = runtime or FollowerRuntime()
+        # Durable idempotency across restarts (in-memory order_keys is not enough).
+        self.order_ledger = order_ledger if order_ledger is not None else FollowerOrderLedger()
         self._ping = ping
 
     def rate_limited(self, ip: str) -> bool:
@@ -587,12 +695,22 @@ class FollowerGate:
                 rec["refuse"] = "idempotency"
                 self.audit.write("order", **rec)
                 return rec
-            if key in sess.order_keys:
+            # In-memory (this session) OR durable (survives restart / other
+            # session) — either hit is a duplicate.
+            if key in sess.order_keys or self.order_ledger.seen(key):
                 rec["refuse"] = "duplicate"
                 self.audit.write("order", **rec)
                 return rec
             if not self.runtime.reserve(rec["stake"], rec["contracts"]):
                 rec["refuse"] = "caps"
+                self.audit.write("order", **rec)
+                return rec
+            # Durably burn the key BEFORE the broker is ever contacted. If it
+            # lost a race and was already recorded, refund the exposure we just
+            # reserved and refuse as duplicate.
+            if not self.order_ledger.reserve(key):
+                self.runtime.release(rec["stake"], rec["contracts"])
+                rec["refuse"] = "duplicate"
                 self.audit.write("order", **rec)
                 return rec
             sess.order_keys.add(key)

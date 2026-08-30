@@ -31,7 +31,7 @@ from backend.services.proof_cache import get_proof_summary
 from backend.services.security_headers import apply_security_headers
 from backend.services.follower_gate import COOKIE as FOLLOWER_COOKIE
 from backend.services.follower_gate import WRONG as FOLLOWER_WRONG
-from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerRuntime
+from backend.services.follower_gate import FollowerAudit, FollowerGate, FollowerOrderLedger, FollowerRuntime
 from backend.services.follower_ping import ping_lock_event
 from backend.learning.leader_ranks import rank_book
 
@@ -1208,6 +1208,7 @@ follower_gate = FollowerGate(
     load_admin_password,
     audit=FollowerAudit(DATA_DIR / "follower-audit.jsonl"),
     runtime=FollowerRuntime(DATA_DIR / "follower-runtime.json"),
+    order_ledger=FollowerOrderLedger(DATA_DIR / "follower-order-keys.json"),
     ping=ping_lock_event,
 )
 
@@ -1821,14 +1822,29 @@ async def follower_order(request: Request):
         route_lock["side"] = result.get("side")
         if lock:
             route_lock.update({k: lock[k] for k in ("ticker", "yes_bid", "yes_ask", "up_pct") if lock.get(k) is not None})
+        key = result.get("idempotency_key") or ""
         result = await route_accepted_live(result, route_lock)
         # Exposure was atomically reserved before the broker request. Do not
         # record it again after routing or the daily book would double-count.
-        # But if routing failed, release the reservation so a transient broker/
-        # quote/intent error does not permanently consume the day's caps.
-        if not result.get("routed"):
+        if result.get("routed"):
+            # Mark the durable idempotency key with the broker's order id.
+            try:
+                follower_gate.order_ledger.record_result(key, result.get("order_id"), "routed")
+            except Exception:
+                pass
+        else:
+            # Routing failed before the broker accepted: release the reservation
+            # AND the durable key so a transient broker/quote error does not
+            # permanently consume the day's caps or burn the key.
             try:
                 follower_gate.runtime.release(reserved_stake, reserved_contracts)
+            except Exception:
+                pass
+            try:
+                follower_gate.order_ledger.release(key)
+                sess = follower_gate.touch(_follower_token(request))
+                if sess is not None:
+                    sess.order_keys.discard(key)
             except Exception:
                 pass
     return {
