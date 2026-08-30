@@ -345,11 +345,21 @@ class FollowerGate:
         return len(hits) >= self.max_attempts
 
     def note_fail(self, ip: str) -> None:
+        self._sweep()
         key = ip or "unknown"
         self._fails.setdefault(key, []).append(float(self._now()))
 
     def note_success(self, ip: str) -> None:
         self._fails.pop(ip or "unknown", None)
+
+    def _sweep(self) -> None:
+        # Keys are client-influenced; cap the dict.
+        if len(self._fails) <= 5000:
+            return
+        now = float(self._now())
+        for k, hits in list(self._fails.items()):
+            if not hits or now - hits[-1] >= self.window_s:
+                self._fails.pop(k, None)
 
     def verify(self, p1: str, p2: str, p3: str) -> bool:
         """Check all three. Do not say which failed."""

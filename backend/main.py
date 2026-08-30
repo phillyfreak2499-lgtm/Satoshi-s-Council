@@ -95,6 +95,14 @@ def _issue_desk_session(response: Response) -> None:
             for old, seen in list(_desk_sessions.items()):
                 if seen < cutoff:
                     _desk_sessions.pop(old, None)
+            # Oath minting is unlimited, so expiry alone cannot bound this
+            # dict — a flood of fresh tokens (all 12h-valid) would grow memory
+            # forever. Hard-cap by evicting the oldest sessions.
+            if len(_desk_sessions) > 4000:
+                for old, _seen in sorted(_desk_sessions.items(), key=lambda kv: kv[1])[
+                    : len(_desk_sessions) - 4000
+                ]:
+                    _desk_sessions.pop(old, None)
     response.set_cookie(
         key=DESK_COOKIE,
         value=token,
@@ -369,9 +377,18 @@ async def force_analyze(request: Request):
     return _strip_public_auto_bet(state) if isinstance(state, dict) else state
 
 
+def _clamp_limit(limit: Any, cap: int, default: int = 50) -> int:
+    """User-supplied ?limit= must never materialize an unbounded table."""
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        n = default
+    return max(1, min(n, cap))
+
+
 @app.get("/api/history")
 async def history(limit: int = 50):
-    return await council.store.recent_signals(limit)
+    return await council.store.recent_signals(_clamp_limit(limit, 500))
 
 
 @app.get("/api/council")
@@ -400,7 +417,7 @@ async def process_metrics(limit: int = 5000):
     """
     from backend.services.process_log import process_log
 
-    return process_log().metrics(limit=limit)
+    return process_log().metrics(limit=_clamp_limit(limit, 10000, 5000))
 
 
 @app.get("/api/process/weekly")
@@ -412,7 +429,7 @@ async def process_weekly(limit: int = 5000):
     """
     from backend.services.process_log import process_log
 
-    return process_log().weekly_review(limit=limit)
+    return process_log().weekly_review(limit=_clamp_limit(limit, 10000, 5000))
 
 
 @app.get("/api/move-accuracy")
@@ -568,7 +585,11 @@ async def billing_checkout(request: Request):
     account_id = _workspace_id(request) or str(uuid.uuid4())
     try:
         await council.store.get_or_create_workspace_account(account_id)
-        session = stripe_billing.create_checkout_session(account_id, email)
+        # Stripe's SDK is blocking (timeouts up to ~80s). On the single-worker
+        # event loop that freezes /health and the analysis loop — off-thread it.
+        session = await asyncio.to_thread(
+            stripe_billing.create_checkout_session, account_id, email
+        )
     except Exception as exc:
         return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=503)
     resp = ORJSONResponse({"ok": True, "url": session.get("url"), "id": session.get("id")})
@@ -603,7 +624,8 @@ async def billing_claim(request: Request):
     if not session_id or not account_id:
         return ORJSONResponse({"ok": False, "error": "need a session and a workspace"}, status_code=400)
     try:
-        info = stripe_billing.retrieve_checkout_session(session_id)
+        # Blocking SDK call — keep it off the event loop (see billing_checkout).
+        info = await asyncio.to_thread(stripe_billing.retrieve_checkout_session, session_id)
     except Exception as exc:
         return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     # Grant only if the session was paid AND references THIS workspace account.
@@ -638,7 +660,7 @@ async def process_rows(limit: int = 200):
     """Recent Satoshi decisions with their alignment and veto context."""
     from backend.services.process_log import process_log
 
-    return {"ok": True, "rows": process_log().rows(limit=limit)}
+    return {"ok": True, "rows": process_log().rows(limit=_clamp_limit(limit, 2000, 200))}
 
 
 @app.get("/api/health/feeds")
@@ -695,7 +717,7 @@ async def process_export_json(limit: int = 5000):
     from datetime import datetime, timezone
     from backend.services.process_log import process_log
 
-    rows = process_log().export_rows(limit=limit)
+    rows = process_log().export_rows(limit=_clamp_limit(limit, 20000, 5000))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return Response(
         content=_json.dumps(
@@ -717,7 +739,7 @@ async def process_export_csv(limit: int = 5000):
     from datetime import datetime, timezone
     from backend.services.process_log import process_log, rows_to_csv
 
-    body = rows_to_csv(process_log().export_rows(limit=limit))
+    body = rows_to_csv(process_log().export_rows(limit=_clamp_limit(limit, 20000, 5000)))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return Response(
         content=body,
@@ -796,9 +818,21 @@ async def huddle_status():
 
 
 @app.get("/api/paper")
-async def paper_journal():
-    """Manual user paper tracker — daily/weekly/monthly/yearly (America/Chicago)."""
-    return await council.store.get_manual_journal()
+async def paper_journal(request: Request):
+    """Manual user paper tracker — daily/weekly/monthly/yearly (America/Chicago).
+
+    Scoped per visitor by the workspace cookie: the journal used to be one
+    global log any oath visitor could read and delete from.
+    """
+    owner = _workspace_id(request)
+    journal = await council.store.get_manual_journal(owner=owner)
+    if owner:
+        return journal
+    # First visit without a workspace id: mint one so future entries are theirs.
+    owner = str(uuid.uuid4())
+    resp = ORJSONResponse(journal)
+    _issue_workspace_cookie(resp, owner)
+    return resp
 
 
 @app.post("/api/paper")
@@ -812,6 +846,10 @@ async def paper_add(request: Request):
         body = await request.json()
     except Exception:
         return {"ok": False, "error": "invalid JSON"}
+    owner = _workspace_id(request)
+    minted = None
+    if not owner:
+        owner = minted = str(uuid.uuid4())
     try:
         trade = await council.store.add_manual_trade(
             side=body.get("side") or "",
@@ -819,8 +857,15 @@ async def paper_add(request: Request):
             returned=float(body.get("returned") if body.get("returned") is not None else body.get("got_back") or 0),
             note=body.get("note"),
             traded_at=body.get("traded_at"),
+            owner=owner,
         )
-        return {"ok": True, "trade": trade, "journal": await council.store.get_manual_journal()}
+        payload = {"ok": True, "trade": trade,
+                   "journal": await council.store.get_manual_journal(owner=owner)}
+        if minted:
+            resp = ORJSONResponse(payload)
+            _issue_workspace_cookie(resp, minted)
+            return resp
+        return payload
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -924,9 +969,10 @@ async def desk_school():
 
 
 @app.delete("/api/paper/{trade_id}")
-async def paper_delete(trade_id: int):
-    ok = await council.store.delete_manual_trade(trade_id)
-    return {"ok": ok, "journal": await council.store.get_manual_journal() if ok else None}
+async def paper_delete(trade_id: int, request: Request):
+    owner = _workspace_id(request)
+    ok = await council.store.delete_manual_trade(trade_id, owner=owner)
+    return {"ok": ok, "journal": await council.store.get_manual_journal(owner=owner) if ok else None}
 
 
 
@@ -946,7 +992,7 @@ async def huddle_force(request: Request):
 @app.get("/api/lifetime")
 async def lifetime(limit: int = 500, offset: int = 0):
     """Full lifetime graded call log (paginated) for long-run audit."""
-    return await council.store.get_lifetime_log(limit=limit, offset=offset)
+    return await council.store.get_lifetime_log(limit=_clamp_limit(limit, 2000, 200), offset=max(0, min(int(offset or 0), 1_000_000)))
 
 
 
@@ -1176,9 +1222,15 @@ def _cookie_secure() -> bool:
 
 
 def _client_ip(request: Request) -> str:
+    # Rate limiters key on this. The LEFTMOST X-Forwarded-For entry is written
+    # by the client itself, so taking it let brute-forcers rotate their key per
+    # request. Render's proxy APPENDS the real peer address — trust only the
+    # rightmost hop.
     xff = (request.headers.get("x-forwarded-for") or "").strip()
     if xff:
-        return xff.split(",")[0].strip() or "unknown"
+        last = xff.split(",")[-1].strip()
+        if last:
+            return last
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
@@ -1793,8 +1845,24 @@ async def follower_order(request: Request):
 async def follower_audit(request: Request, limit: int = 80):
     if not _follower_ok(request):
         return Response(status_code=404)
-    return {"ok": True, "events": follower_gate.audit.recent(limit)}
+    return {"ok": True, "events": follower_gate.audit.recent(_clamp_limit(limit, 2000, 200))}
 
+
+
+# Specialty leader tables (Raijin/Ares/Oracle/Side) have no engine yet. The
+# desk polls these every ~20s; without a route each poll 404'd forever. Serve
+# an honest "dark" 200 so the panels render a clean WATCH state and the console
+# stays quiet. Replace with a real engine when those leaders ship.
+_DARK_LEADER = {"ok": True, "status": "dark", "state": "WATCH", "live": False,
+                "note": "not live yet", "rows": [], "seats": []}
+
+
+@app.get("/api/front")
+@app.get("/api/ats")
+@app.get("/api/oracle")
+@app.get("/api/side")
+async def leader_dark():
+    return ORJSONResponse(dict(_DARK_LEADER))
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

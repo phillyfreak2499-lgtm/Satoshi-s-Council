@@ -34,6 +34,16 @@ class AttemptLimiter:
 
     def note_fail(self, key: str) -> None:
         self._fails.setdefault(key or "unknown", []).append(time.time())
+        self._sweep()
+
+    def _sweep(self) -> None:
+        # Keys are client-influenced; without a cap the dict grows forever.
+        if len(self._fails) <= 5000:
+            return
+        now = time.time()
+        for k, hits in list(self._fails.items()):
+            if not hits or now - hits[-1] >= self.window_s:
+                self._fails.pop(k, None)
 
     def note_success(self, key: str) -> None:
         self._fails.pop(key or "unknown", None)
