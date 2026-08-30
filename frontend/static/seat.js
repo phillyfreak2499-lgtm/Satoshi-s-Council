@@ -290,7 +290,7 @@
     var lc = document.createElement("link");
     lc.id = "layoutCleanupCss";
     lc.rel = "stylesheet";
-    lc.href = "/static/layout-cleanup.css?v=20260830q";
+    lc.href = "/static/layout-cleanup.css?v=20260830r";
     (document.head || document.documentElement).appendChild(lc);
   }
 
@@ -304,4 +304,5 @@
   }
   loadScript("__focusTableScript", "/static/focus-table.js?v=20260830q");
   loadScript("__watchLoopScript", "/static/watch-loop.js?v=20260830q");
+  loadScript("__phoneNavScript", "/static/phone-nav.js?v=20260830r");
 })(window);
