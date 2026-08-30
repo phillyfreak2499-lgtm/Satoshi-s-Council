@@ -161,6 +161,9 @@
     var mins = minutesNow();
     var on = pick(activeWindows(mins));
     var next = nextWindow(mins);
+    var leftTxt = "";
+    var noteTxt = "";
+    var titleTxt = "";
 
     chip.className = "session-chip " + (on ? "grade-" + on.grade : "off");
     chip.dataset.session = on ? on.id : "off";
@@ -169,13 +172,19 @@
 
     if (on) {
       nameEl.textContent = on.name;
-      if (noteEl) noteEl.textContent = on.note;
-      if (leftEl) leftEl.textContent = fmtMins(leftIn(on, mins)) + " left";
+      noteTxt = on.note;
+      leftTxt = fmtMins(leftIn(on, mins)) + " left";
+      titleTxt = on.name + " · " + on.note + " · " + leftTxt;
     } else {
       nameEl.textContent = "OFF SESSION";
-      if (noteEl) noteEl.textContent = next.win ? "Next " + next.win.name : "quiet tape";
-      if (leftEl) leftEl.textContent = next.win ? "in " + fmtMins(next.wait) : "";
+      noteTxt = next.win ? "Next " + next.win.name : "quiet tape";
+      leftTxt = next.win ? "in " + fmtMins(next.wait) : "";
+      titleTxt = noteTxt + (leftTxt ? " · " + leftTxt : "");
     }
+    if (noteEl) noteEl.textContent = noteTxt;
+    if (leftEl) leftEl.textContent = leftTxt;
+    chip.title = titleTxt || "Best trading times";
+    chip.setAttribute("aria-label", titleTxt || "Session window");
     renderPanel();
   }
 
@@ -205,7 +214,7 @@
     if (!document.querySelector("link[data-session-window]")) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/session-window.css?v=20260830k";
+      link.href = "/static/session-window.css?v=20260830n";
       link.setAttribute("data-session-window", "1");
       document.head.appendChild(link);
     }
@@ -215,7 +224,9 @@
       '<button type="button" id="sessionChip" class="session-chip off" aria-expanded="false" aria-controls="sessionPanel" title="Best trading times">' +
       '<span class="session-dot" aria-hidden="true"></span>' +
       '<span id="sessionName">OFF SESSION</span>' +
+      '<span class="session-sep" aria-hidden="true">·</span>' +
       '<span id="sessionNote">quiet tape</span>' +
+      '<span class="session-sep session-sep-left" aria-hidden="true">·</span>' +
       '<span id="sessionLeft" class="session-left"></span>' +
       "</button>" +
       '<div id="sessionPanel" class="session-panel" hidden></div>';

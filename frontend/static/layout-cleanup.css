@@ -77,13 +77,17 @@
 }
 #app > header .header-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   min-width: 0;
   gap: 8px;
 }
 #app > header .logo {
-  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
   min-width: 0;
 }
 #app > header .controls {
@@ -114,6 +118,33 @@
   flex: 0 0 auto;
   z-index: 41;
   pointer-events: auto;
+}
+
+/* Fallback if session-window.css misses: never smash LUNCH+note+time. */
+#sessionChip {
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(8, 10, 14, 0.88);
+  color: #e8d9a4;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 999px;
+}
+#sessionChip #sessionName,
+#sessionChip #sessionNote,
+#sessionChip #sessionLeft {
+  display: inline;
+}
+#sessionChip #sessionNote::before,
+#sessionChip #sessionLeft::before {
+  content: " \00b7 ";
+  opacity: 0.55;
+}
+html.phone-desk #sessionChip #sessionNote,
+html.phone-desk #sessionChip .session-sep:not(.session-sep-left) {
+  display: none !important;
+}
+html.phone-desk #sessionChip #sessionNote::before {
+  content: none;
 }
 
 #app > footer,

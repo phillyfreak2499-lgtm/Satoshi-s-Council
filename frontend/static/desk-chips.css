@@ -2,21 +2,26 @@
   position: relative;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  margin-left: 10px;
+  margin-left: 8px;
+  min-width: 0;
 }
 .desk-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   border: 1px solid rgba(180, 210, 255, 0.18);
-  background: rgba(8, 14, 24, 0.72);
+  background: rgba(8, 14, 24, 0.88);
   color: #c9d6ea;
   font: 600 10px/1 "Share Tech Mono", ui-monospace, monospace;
   letter-spacing: 0.06em;
   padding: 6px 8px;
   border-radius: 999px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  white-space: nowrap;
 }
 .desk-chip .desk-dot {
   width: 7px;
@@ -53,3 +58,17 @@
   padding: 3px 0;
 }
 .desk-chip-row b { color: #8ea0b8; font-weight: 600; }
+
+@media (max-width: 1100px) {
+  #hlChip { display: none; }
+}
+html.phone-desk .desk-chip-wrap {
+  margin-left: 4px;
+  gap: 4px;
+}
+html.phone-desk #hlChip {
+  display: none;
+}
+html.phone-desk .desk-chip {
+  padding: 4px 7px;
+}
