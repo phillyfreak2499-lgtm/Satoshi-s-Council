@@ -10493,3 +10493,37 @@ body.mode-art .bot-scope.show {
 .rc-call.UP { color: #39ff14; }
 .rc-call.DOWN { color: #ff2d55; }
 .rc-call.WAIT { color: #00e8ff; }
+
+/* ============================================================================
+   Tab overflow — "More" dropdown holds the secondary tabs · 2026-08-30
+   ========================================================================== */
+.mode-more { position: relative; display: inline-flex; }
+.mode-more-btn { cursor: pointer; }
+.more-menu {
+  position: fixed;            /* fixed: escape the tab strip's clip-path/overflow */
+  top: 0;
+  right: 0;
+  min-width: 156px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(8, 14, 24, 0.98);
+  border: 1px solid rgba(0, 232, 255, 0.25);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.more-menu[hidden] { display: none; }
+.more-menu .more-item {
+  text-align: left;
+  width: 100%;
+  border-radius: 5px;
+  padding: 8px 12px;
+}
+.more-menu .more-item:hover { background: rgba(0, 232, 255, 0.10); color: var(--gold); }
+@media (max-width: 640px) {
+  .more-menu { right: auto; left: 0; }
+}

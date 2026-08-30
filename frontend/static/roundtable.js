@@ -720,6 +720,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
     });
+    // Light the "More" button when the active tab lives inside its dropdown.
+    try {
+      const moreBtn = document.getElementById("moreBtn");
+      if (moreBtn) {
+        const OVERFLOW = ["floor", "night", "tape", "book", "brain", "news", "wire", "school", "charts"];
+        moreBtn.classList.toggle("active", OVERFLOW.indexOf(next) >= 0);
+      }
+      const moreMenu = document.getElementById("moreMenu");
+      if (moreMenu && !moreMenu.hidden) {
+        moreMenu.hidden = true;
+        if (moreBtn) moreBtn.setAttribute("aria-expanded", "false");
+      }
+    } catch (e) {}
   }
 
   function stayOnSettings() {
@@ -4618,8 +4631,24 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
   let __roomLastKey = null;
   let __roomTick = 0;
   const ROOM_OPENERS = ["Look —", "Okay,", "Honestly,", "From my seat,", "On my read,", "Watching this,", "Alright,", "Yeah,", "Right now,"];
-  const ROOM_MAX = 60;
+  const ROOM_MAX = 16;   // keep only recent talk on screen — no back-scroll history
   function _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  // What each seat watches — used to say WHY it's calling what it's calling.
+  const ROOM_WATCH = {
+    candle_btc: "the structure", candle_eth: "the structure", volume: "the flow",
+    momentum: "the trend", orderflow: "the tape", funding: "funding", volatility: "the vol",
+    oi_pressure: "open interest", odds: "the Kalshi skew", session_tod: "the session",
+    whale: "the whale prints", quorum: "the floor count", panic: "the fade setup",
+    cheap: "the price", spotlag: "the spot lag", exhaust: "the run", news: "sentiment",
+    liq: "liquidations", regime: "the regime", streak: "the streak", strike: "the strike",
+  };
+  function _roomWhy(agent) {
+    const w = ROOM_WATCH[agent.agent_name] || "the read";
+    const dir = _dirClass(agent.direction);
+    if (dir === "UP") return _pick([w + "'s lining up long", w + "'s backing the push up", w + " says buyers"]);
+    if (dir === "DOWN") return _pick([w + "'s rolling over", w + "'s backing the fade", w + " says sellers"]);
+    return _pick([w + "'s not giving me anything yet", w + "'s too quiet to call", w + " hasn't picked a side", "no confirmation from " + w]);
+  }
   function _roomStance(agent) {
     const dir = _dirClass(agent.direction);
     const conf = Math.round(agent.confidence || 0);
@@ -4648,7 +4677,10 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const op = ROOM_OPENERS[Math.floor(Math.random() * ROOM_OPENERS.length)];
     let core = reason && reason.length > 4 ? reason : _roomStance(agent);
     core = core.charAt(0).toLowerCase() + core.slice(1);
-    return op + " " + core + " — " + _roomTag(agent) + ".";
+    // Add the WHY — the seat says what it's watching and how it reads it. If the
+    // real reasoning is already a full "why", don't tack a synthetic one on.
+    const why = (reason && reason.length > 4) ? "" : " — " + _roomWhy(agent);
+    return op + " " + core + why + " · " + _roomTag(agent) + ".";
   }
   function _roomAgree(prevName, tag) {
     const other = labelOf({ agent_name: prevName }) || String(prevName).toUpperCase();
@@ -11855,6 +11887,42 @@ function drawCandleChart() {
       e.stopImmediatePropagation();
       setMode(btn.dataset.mode);
     }, true);
+  }
+  // "More" overflow menu: toggle open, close on outside click / Escape. Item
+  // clicks flow through the tab delegation above and close via the mode sync.
+  if (!document.__moreMenuWired) {
+    document.__moreMenuWired = true;
+    const moreBtn = document.getElementById("moreBtn");
+    const moreMenu = document.getElementById("moreMenu");
+    if (moreBtn && moreMenu) {
+      function placeMenu() {
+        const r = moreBtn.getBoundingClientRect();
+        moreMenu.style.top = Math.round(r.bottom + 6) + "px";
+        moreMenu.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + "px";
+        moreMenu.style.left = "auto";
+      }
+      moreBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const open = moreMenu.hidden;
+        if (open) placeMenu();
+        moreMenu.hidden = !open;
+        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      window.addEventListener("resize", function () { if (!moreMenu.hidden) placeMenu(); });
+      document.addEventListener("click", function (e) {
+        if (moreMenu.hidden) return;
+        if (e.target === moreBtn || moreBtn.contains(e.target) || moreMenu.contains(e.target)) return;
+        moreMenu.hidden = true;
+        moreBtn.setAttribute("aria-expanded", "false");
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !moreMenu.hidden) {
+          moreMenu.hidden = true;
+          moreBtn.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
   }
   function initModeTabsScroll() {
     const scroller = document.getElementById("modeTabs");

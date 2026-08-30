@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260830h" />
-  <link rel="stylesheet" href="/style.css?v=20260830h" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260830h" />
-  <script src="/seat.js?v=20260830h"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260830j" />
+  <link rel="stylesheet" href="/style.css?v=20260830j" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260830j" />
+  <script src="/seat.js?v=20260830j"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -164,23 +164,28 @@
           <button type="button" id="focusAts" class="focus-tab" data-focus="ats">ATS</button>
           <button type="button" id="focusOra" class="focus-tab" data-focus="oracle">ORA</button>
           <span id="focusTableBadge" class="focus-table-badge">ETH · VITALIK</span>
-          <button type="button" id="tabFloor" class="mode-tab" data-mode="floor">Floor</button>
-          <button type="button" id="tabStream" class="mode-tab" data-mode="stream">Stream</button>
-          <button type="button" id="tabNight" class="mode-tab" data-mode="night">Night</button>
           <button type="button" id="tabScreensaver" class="mode-tab active" data-mode="art">Table</button>
-          <button type="button" id="tabSeats" class="mode-tab" data-mode="seats">Seats</button>
           <button type="button" id="tabRoom" class="mode-tab" data-mode="room">Room</button>
+          <button type="button" id="tabSeats" class="mode-tab" data-mode="seats">Seats</button>
           <button type="button" id="tabPaper" class="mode-tab" data-mode="paper">Paper</button>
           <button type="button" id="tabCalls" class="mode-tab" data-mode="calls">Calls</button>
-          <button type="button" id="tabTape" class="mode-tab" data-mode="tape">Tape</button>
-          <button type="button" id="tabBook" class="mode-tab" data-mode="book">Book</button>
-          <button type="button" id="tabBrain" class="mode-tab" data-mode="brain">Brain</button>
-          <button type="button" id="tabNews" class="mode-tab" data-mode="news">News</button>
-          <button type="button" id="tabWire" class="mode-tab" data-mode="wire">WIRE</button>
-          <button type="button" id="tabSchool" class="mode-tab" data-mode="school">School</button>
+          <button type="button" id="tabStream" class="mode-tab" data-mode="stream">Stream</button>
           <button type="button" id="tabSide" class="mode-tab" data-mode="side" hidden>Side</button>
           <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden>Front</button>
-          <button type="button" id="tabCharts" class="mode-tab" data-mode="charts">Charts</button>
+          <div class="mode-more" id="modeMore">
+            <button type="button" id="moreBtn" class="mode-tab mode-more-btn" aria-haspopup="true" aria-expanded="false">More ▾</button>
+            <div id="moreMenu" class="more-menu" role="menu" hidden>
+              <button type="button" id="tabFloor" class="mode-tab more-item" data-mode="floor" role="menuitem">Floor</button>
+              <button type="button" id="tabNight" class="mode-tab more-item" data-mode="night" role="menuitem">Night</button>
+              <button type="button" id="tabTape" class="mode-tab more-item" data-mode="tape" role="menuitem">Tape</button>
+              <button type="button" id="tabBook" class="mode-tab more-item" data-mode="book" role="menuitem">Book</button>
+              <button type="button" id="tabBrain" class="mode-tab more-item" data-mode="brain" role="menuitem">Brain</button>
+              <button type="button" id="tabNews" class="mode-tab more-item" data-mode="news" role="menuitem">News</button>
+              <button type="button" id="tabWire" class="mode-tab more-item" data-mode="wire" role="menuitem">WIRE</button>
+              <button type="button" id="tabSchool" class="mode-tab more-item" data-mode="school" role="menuitem">School</button>
+              <button type="button" id="tabCharts" class="mode-tab more-item" data-mode="charts" role="menuitem">Charts</button>
+            </div>
+          </div>
           <button type="button" id="tabSettings" class="mode-tab" data-mode="settings">Settings</button>
           <button type="button" id="btnHelp" class="mode-tab">?</button>
         </div>
@@ -989,13 +994,13 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260830h"></script>
-  <script src="/roundtable.js?v=20260830h"></script>
-  <script src="/desk-fx.js?v=20260830h"></script>
+  <script src="/wire.js?v=20260830j"></script>
+  <script src="/roundtable.js?v=20260830j"></script>
+  <script src="/desk-fx.js?v=20260830j"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260830h", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260830j", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>
