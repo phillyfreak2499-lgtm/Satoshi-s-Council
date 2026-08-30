@@ -10242,3 +10242,67 @@ body.wire-quiet-on #statusDot { background: #c9a227; }
       active-tab identity (cyan) untouched. */
 .mode-tab { letter-spacing: 0.045em; }
 .focus-tab { letter-spacing: 0.03em; }
+
+/* ----------------------------------------------------------------------------
+   POLISH LAYER (cont.) — standing-by states · 2026-08-30
+   A warming/cold-start desk should read "designed", not "broken".
+   -------------------------------------------------------------------------- */
+
+/* 5) Empty lock tape — center it and give it a quiet live pulse so the panel
+      reads as "standing by", not an empty box with a stray line. Only renders
+      when there are no locks; real rows (.lock-tape-row) are untouched. */
+.lock-tape-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 88px;
+  padding: 14px 12px !important;
+  text-align: center;
+  color: rgba(150, 170, 190, 0.72) !important;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+.lock-tape-empty::before {
+  content: "";
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(0, 232, 255, 0.6);
+  box-shadow: 0 0 10px rgba(0, 232, 255, 0.5);
+  animation: standbyPulse 2.4s ease-in-out infinite;
+}
+@keyframes standbyPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+
+/* 6) Room empty states — a designed "no data yet" card instead of stray text. */
+.calib-empty, .tape-empty, .brain-empty, .news-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 96px;
+  text-align: center;
+  border: 1px dashed rgba(120, 150, 180, 0.22);
+  border-radius: 10px;
+  background: rgba(8, 14, 24, 0.35);
+  color: rgba(170, 190, 210, 0.7) !important;
+}
+
+/* 7) Footer readout — a real instrument. Values in tabular mono so the strip
+      stays aligned whether it shows a number or a standing-by dash, and the
+      cyan bloom on every value is dialled back to a calm data tone. */
+#marketStrip b,
+#finalDecision .decision-conf {
+  font-family: "Share Tech Mono", ui-monospace, monospace !important;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none !important;
+  letter-spacing: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lock-tape-empty::before { animation: none; }
+}
