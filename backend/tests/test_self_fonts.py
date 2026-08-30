@@ -13,8 +13,12 @@ class SelfFontTests(unittest.TestCase):
         css = (ROOT / "frontend" / "static" / "fonts.css").read_text(encoding="utf-8")
         self.assertIn("font-display: swap", css)
         self.assertIn("/fonts/orbitron-700.woff2", css)
-        self.assertIn("/fonts/rajdhani-600.woff2", css)
+        self.assertIn("/fonts/share-tech-mono-400.woff2", css)
         self.assertIn("Share Tech Mono", css)
+        # Rajdhani has no shipped woff2 source; referencing it would 404 on
+        # every load. It must NOT appear in fonts.css — its font-family usages
+        # fall back through their stacks instead.
+        self.assertNotIn("rajdhani-", css.lower())
         self.assertNotIn("fonts.googleapis", css)
         self.assertNotIn("fonts.gstatic", css)
 
@@ -50,7 +54,7 @@ class SelfFontTests(unittest.TestCase):
 
     def test_sw_precaches_critical_faces(self) -> None:
         sw = (ROOT / "frontend" / "static" / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("20260822f", sw)
+        self.assertIn("20260830a", sw)
         # SW precaches the stylesheet at its real route and maps the Google-font
         # hosts to the self-hosted faces it ships.
         self.assertIn("/static/fonts.css?v=", sw)

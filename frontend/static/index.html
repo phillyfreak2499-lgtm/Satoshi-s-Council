@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260822f" />
-  <link rel="stylesheet" href="/style.css?v=20260822f" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260822f" />
-  <script src="/seat.js?v=20260822f"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260830a" />
+  <link rel="stylesheet" href="/style.css?v=20260830a" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260830a" />
+  <script src="/seat.js?v=20260830a"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -231,11 +231,11 @@
           <img id="aresChairImg" src="/static/ares-wait.png" alt="Ares">
         </div>
         <div id="raijinFace" class="raijin-face" data-eye="wait" hidden>
-          <img id="raijinChairOverlay" src="/static/bots/raijin-chair.png" alt="">
+          <img id="raijinChairOverlay" src="/static/bots/raijin-chair.webp" alt="">
         </div>
         <button type="button" id="phoneScore" class="phone-score" hidden>BTC 0–0</button>
         <button type="button" id="floorRaijin" class="floor-raijin" aria-label="Open THE FRONT">
-          <img src="/static/bots/raijin-chair.png" alt="" width="44" height="44">
+          <img src="/static/bots/raijin-chair.webp" alt="" width="44" height="44">
           <span>RAIJIN</span>
         </button>
       </div>
@@ -708,33 +708,33 @@
         <div id="frontStageWrap" class="front-stage-wrap" data-wx="">
           <canvas id="frontWx" width="920" height="620" aria-label="Raijin Floor"></canvas>
           <div class="front-chair" id="frontChair">
-            <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-chair.png?v=280a18fb49" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+            <span class="front-mark"><img id="frontChairImg" src="/static/bots/raijin-chair.webp?v=280a18fb49" alt="Raijin" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
             <span class="front-name">RAIJIN</span>
             <span class="front-call" id="frontChairCall">—</span>
           </div>
           <div id="frontRing" class="front-ring" aria-hidden="true">
             <button type="button" class="front-seat" data-seat="GLASS" style="--a:-90">
-              <span class="front-mark"><img src="/static/bots/glass.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-mark"><img src="/static/bots/glass.webp" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">GLASS</span>
               <span class="front-call" data-call="GLASS">—</span>
             </button>
             <button type="button" class="front-seat" data-seat="PIT" style="--a:-18">
-              <span class="front-mark"><img src="/static/bots/pit.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-mark"><img src="/static/bots/pit.webp" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">PIT</span>
               <span class="front-call" data-call="PIT">—</span>
             </button>
             <button type="button" class="front-seat" data-seat="FROST" style="--a:54">
-              <span class="front-mark"><img src="/static/bots/frost.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-mark"><img src="/static/bots/frost.webp" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">FROST</span>
               <span class="front-call" data-call="FROST">—</span>
             </button>
             <button type="button" class="front-seat" data-seat="BONE" style="--a:126">
-              <span class="front-mark"><img src="/static/bots/bone.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-mark"><img src="/static/bots/bone.webp" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">BONE</span>
               <span class="front-call" data-call="BONE">—</span>
             </button>
             <button type="button" class="front-seat" data-seat="MESH" style="--a:198">
-              <span class="front-mark"><img src="/static/bots/mesh.png" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
+              <span class="front-mark"><img src="/static/bots/mesh.webp" alt="" onerror="window.frontMarkFail&&frontMarkFail(this)"></span>
               <span class="front-name">MESH</span>
               <span class="front-call" data-call="MESH">—</span>
             </button>
@@ -978,13 +978,13 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260822f"></script>
-  <script src="/roundtable.js?v=20260822f"></script>
-  <script src="/desk-fx.js?v=20260822f"></script>
+  <script src="/wire.js?v=20260830a"></script>
+  <script src="/roundtable.js?v=20260830a"></script>
+  <script src="/desk-fx.js?v=20260830a"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260822f", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260830a", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>

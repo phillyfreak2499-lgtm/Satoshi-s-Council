@@ -505,7 +505,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     if (typeof Worker !== "undefined") {
       try {
         if (!deskWorker) {
-          deskWorker = new Worker("/desk-worker.js?v=20260822f");
+          deskWorker = new Worker("/desk-worker.js?v=20260830a");
           deskWorker.onmessage = onDeskWorkerMsg;
           deskWorker.onerror = function () {
             try { deskWorker.terminate(); } catch (err) {}
@@ -2557,23 +2557,23 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     crowd: "/portraits/crowd.webp?v=people-3",
     flow: "/portraits/flow.webp?v=people-3",
     funding: "/portraits/funding.webp?v=people-2",
-    regime: "/bots/orbit.png",
+    regime: "/portraits/orbit.webp?v=people-2",
     volatility: "/portraits/volatility.webp?v=people-2",
     oi_pressure: "/portraits/oi_pressure.webp?v=people-2",
-    streak: "/bots/streak.png",
+    streak: "/portraits/streak.webp?v=people-2",
     odds: "/portraits/odds.webp?v=people-2",
     strike: "/portraits/strike.webp?v=people-2",
     session_tod: "/portraits/session_tod.webp?v=people-2",
-    whale: "/bots/whale.png",
+    whale: "/portraits/whale.webp?v=people-2",
     quorum: "/portraits/quorum.webp?v=people-2",
-    panic: "/bots/fade.webp",
+    panic: "/static/bots/fade.webp",
     cheap: "/portraits/cheap.webp?v=people-2",
     spotlag: "/portraits/spotlag.webp?v=people-2",
     exhaust: "/portraits/exhaust.webp?v=people-2",
     news: "/portraits/news.webp?v=people-2",
     liq: "/portraits/liq.webp?v=people-2",
-    guardian: "/bots/warden.png",
-    law: "/bots/law.png",
+    guardian: "/portraits/warden.webp?v=people-2",
+    law: "/portraits/law.webp?v=people-2",
     line: "/static/bots/line.webp",
     steam: "/static/bots/steam.webp",
     fade: "/static/bots/fade.webp",

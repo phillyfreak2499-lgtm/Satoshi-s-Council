@@ -1,6 +1,6 @@
 /* Satoshi's Council — shrine cache.
    Static files stay. HTML and /api/state never do. */
-const VERSION = "20260822f";
+const VERSION = "20260830a";
 const STATIC_CACHE = "council-static-" + VERSION;
 
 const PRECACHE = [
@@ -34,7 +34,6 @@ function localFontPath(url) {
   const p = (url.pathname || "").toLowerCase();
   if (p.indexOf("orbitron") !== -1) return "/static/fonts/orbitron-700.woff2";
   if (p.indexOf("sharetech") !== -1) return "/static/fonts/share-tech-mono-400.woff2";
-  if (p.indexOf("rajdhani") !== -1) return "/static/fonts/rajdhani-600.woff2";
   return "";
 }
 

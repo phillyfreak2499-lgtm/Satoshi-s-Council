@@ -4,11 +4,11 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
+# Only faces we actually ship a woff2 (or decodable .b64) for. Rajdhani has
+# no source, so it is intentionally absent — its font-family usages fall back
+# through their stacks. Listing it here would 404 the missing file on load.
 FONT_FILES = (
     "orbitron-700.woff2",
-    "rajdhani-500.woff2",
-    "rajdhani-600.woff2",
-    "rajdhani-700.woff2",
     "share-tech-mono-400.woff2",
 )
 
@@ -24,27 +24,6 @@ FONTS_CSS = """/* self-hosted latin — no Google hop */
   src: url('/static/fonts/orbitron-700.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Rajdhani';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/static/fonts/rajdhani-500.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Rajdhani';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/static/fonts/rajdhani-600.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Rajdhani';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/static/fonts/rajdhani-700.woff2') format('woff2');
-}
-@font-face {
   font-family: 'Share Tech Mono';
   font-style: normal;
   font-weight: 400;
@@ -52,6 +31,12 @@ FONTS_CSS = """/* self-hosted latin — no Google hop */
   src: url('/static/fonts/share-tech-mono-400.woff2') format('woff2');
 }
 """
+
+
+def _b64_bytes(text: str) -> bytes:
+    """Decode a base64 sidecar tolerant of stray whitespace and missing padding."""
+    s = "".join(text.split())
+    return base64.b64decode(s + "=" * ((-len(s)) % 4))
 
 
 def ensure_self_fonts(static_dir=None) -> None:
@@ -71,7 +56,7 @@ def ensure_self_fonts(static_dir=None) -> None:
         if not blob.is_file():
             continue
         try:
-            path.write_bytes(base64.b64decode(blob.read_text().strip()))
+            path.write_bytes(_b64_bytes(blob.read_text()))
         except (OSError, ValueError):
             pass
     css_path = root / "fonts.css"

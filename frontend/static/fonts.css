@@ -1,31 +1,13 @@
 /* self-hosted latin — no Google hop */
+/* Only faces we actually ship a woff2 for. Rajdhani has no source and
+   falls back through its font-family stack, so no @font-face here (a
+   missing src would 404 on every load). */
 @font-face {
   font-family: 'Orbitron';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
   src: url('/static/fonts/orbitron-700.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Rajdhani';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/static/fonts/rajdhani-500.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Rajdhani';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/static/fonts/rajdhani-600.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Rajdhani';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/static/fonts/rajdhani-700.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Share Tech Mono';
