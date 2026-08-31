@@ -4756,13 +4756,22 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       '<span class="rc-call ' + dir + '">' + _escBot(tag) + '</span>';
   }
   function startRoomChat() {
+    // The Room is now the self-contained war room (room.js). Delegate to it.
+    if (window.CouncilRoom && typeof window.CouncilRoom.start === "function") {
+      try { window.CouncilRoom.start(); return; } catch (e) {}
+    }
+    // Fallback (old feed) if room.js failed to load.
     const feed = document.getElementById("roomFeed");
+    if (!feed) return;
     _roomUpdateCall();
-    if (feed && !feed.childElementCount) { _roomTickFn(); _roomTickFn(); _roomTickFn(); }
+    if (!feed.childElementCount) { _roomTickFn(); _roomTickFn(); _roomTickFn(); }
     if (__roomTimer) clearInterval(__roomTimer);
     __roomTimer = setInterval(function () { _roomUpdateCall(); _roomTickFn(); }, 4200);
   }
   function stopRoomChat() {
+    if (window.CouncilRoom && typeof window.CouncilRoom.stop === "function") {
+      try { window.CouncilRoom.stop(); } catch (e) {}
+    }
     if (__roomTimer) { clearInterval(__roomTimer); __roomTimer = null; }
   }
   window.startRoomChat = startRoomChat;

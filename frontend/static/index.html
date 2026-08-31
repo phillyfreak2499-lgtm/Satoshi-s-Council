@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260831a" />
-  <link rel="stylesheet" href="/style.css?v=20260831a" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831a" />
-  <script src="/seat.js?v=20260831a"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260831b" />
+  <link rel="stylesheet" href="/style.css?v=20260831b" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831b" />
+  <script src="/seat.js?v=20260831b"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -610,13 +610,8 @@
       </div>
       <ul id="brainNotes" class="brain-notes"></ul>
     </section>
-    <section id="roomView" class="info-view hidden" aria-label="Council room">
-      <div class="info-hero">
-        <h2>THE ROOM</h2>
-        <p>Live table talk. Every line comes straight from that seat's read — its direction, confidence, and reasoning. Dramatized, never invented. Paper only.</p>
-      </div>
-      <div id="roomCall" class="room-call WAIT" aria-live="polite" aria-label="Current council call"></div>
-      <div id="roomFeed" class="room-feed" aria-live="polite" aria-label="Council conversation"></div>
+    <section id="roomView" class="info-view room-view hidden" aria-label="Council war room">
+      <div id="warRoom" class="war-room"></div>
     </section>
     <section id="wireView" class="info-view hidden"><ol id="wireList" class="wire-list"></ol></section>
     <section id="newsView" class="info-view hidden" aria-label="Hour news">
@@ -1012,13 +1007,14 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260831a"></script>
-  <script src="/roundtable.js?v=20260831a"></script>
-  <script src="/desk-fx.js?v=20260831a"></script>
+  <script src="/wire.js?v=20260831b"></script>
+  <script src="/roundtable.js?v=20260831b"></script>
+  <script src="/room.js?v=20260831b"></script>
+  <script src="/desk-fx.js?v=20260831b"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260831a", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260831b", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>
