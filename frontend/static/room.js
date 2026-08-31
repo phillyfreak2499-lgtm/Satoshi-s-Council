@@ -107,7 +107,7 @@
     }
     if (key === "volume") return d === "WAIT"
       ? pick(["Flow's thin — a lot of ticks, no size behind them.", "Volume died on the last push. Decoration, not conviction."])
-      : pick(["Volume stepped in on the " + d.toLowerCase() + " bar — that's real.", "Size is finally showing. Backing the " + d.toLowerCase() + "."]);
+      : pick(["Volume stepped in on the " + d.toLowerCase() + " bar — that's real.", "Size is finally showing. I'm with the " + (d === "UP" ? "buyers" : "sellers") + "."]);
     if (key === "momentum") return d === "WAIT"
       ? pick(["Trend's flat — both sides poking, nobody winning.", "No slope here. Chop until it picks a side."])
       : pick(["Lower highs stacking — momentum rolled " + (d === "UP" ? "up" : "over") + ".", "Slope's turned " + (d === "UP" ? "up" : "down") + ". I'm with it while it lasts."]);
@@ -116,7 +116,7 @@
       : pick(["Bids stacking under — someone's building a position.", "Offers pulling — path of least resistance is " + d.toLowerCase() + "."]);
     if (key === "cheap") return d === "WAIT"
       ? pick(["Nothing's cheap here. Fair is fair. I pass.", "No edge in the price. I don't pay up for hope."])
-      : (yes != null ? "YES at " + yes + "c is a gift if " + lvl + " holds." : pick(["Price finally dislocated — there's value on the " + d.toLowerCase() + ".", "Cheap enough to lean now."]));
+      : (yes != null ? "YES at " + yes + "c is a gift if " + lvl + " holds." : pick(["Price finally dislocated — there's value on the " + (d === "UP" ? "upside" : "downside") + ".", "Cheap enough to lean " + d.toLowerCase() + " now."]));
     if (key === "funding") return pick(["Funding's calm — no crowd to squeeze.", "Rates flat. No one's overcommitted yet."]);
     if (key === "panic") return d === "WAIT" ? pick(["No capitulation. Nothing to fade.", "Move's orderly. I only fade the panic, and there isn't one."]) : "Overreaction on the " + (d === "UP" ? "flush" : "spike") + " — fading it back toward fair.";
     if (key === "exhaust") return d === "WAIT" ? "Run's not extended enough to fade." : "This leg's tired — late longs into " + lvl + ". Fading the exhaustion.";
@@ -282,15 +282,20 @@
 
   function layoutSeats(s) {
     if (!el.seats) return;
-    var seats = s.agents.slice(0, 9);
+    // Every seat that made a call sits at the table — no cap. Ring gets tighter
+    // and portraits shrink as the table fills so nobody is dropped.
+    var seats = s.agents;
     var n = seats.length || 1;
+    el.seats.className = "war-seats" + (n > 16 ? " dense2" : (n > 10 ? " dense" : ""));
+    var rx = n > 16 ? 45 : 42;
+    var ry = n > 16 ? 44 : 40;
     var html = "";
     SEAT_POS = [];
     for (var i = 0; i < seats.length; i++) {
       var a = seats[i];
       var ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
-      var x = 50 + Math.cos(ang) * 42;
-      var y = 50 + Math.sin(ang) * 40;
+      var x = 50 + Math.cos(ang) * rx;
+      var y = 50 + Math.sin(ang) * ry;
       SEAT_POS.push({ x: x, y: y, key: a.agent_name });
       var name = NAMES[a.agent_name] || String(a.agent_name).toUpperCase();
       var dc = dirClass(a.direction);

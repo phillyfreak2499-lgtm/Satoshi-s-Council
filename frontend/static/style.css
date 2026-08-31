@@ -10673,14 +10673,16 @@ body.mode-art .bot-scope.show {
 .war-charts {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   grid-auto-rows: 1fr;
-  gap: 18px; padding: 22px;
-  opacity: 0.16;
+  gap: 14px; padding: 16px;
+  opacity: 0.42;
+  -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, transparent 30%, #000 72%);
+  mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, transparent 30%, #000 72%);
 }
-.war-chart { border: 1px solid rgba(120, 170, 210, 0.25); border-radius: 8px; background: rgba(10, 20, 34, 0.4); }
+.war-chart { border: 1px solid rgba(120, 170, 210, 0.28); border-radius: 8px; background: rgba(10, 20, 34, 0.5); position: relative; overflow: hidden; }
 .war-chart svg { width: 100%; height: 100%; display: block; }
-.war-chart polyline { fill: none; stroke: rgba(120, 200, 230, 0.7); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.war-chart polyline { fill: none; stroke: rgba(120, 210, 235, 0.8); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 
 /* Floating ticker */
 .war-ticker {
@@ -10704,28 +10706,36 @@ body.mode-art .bot-scope.show {
     conic-gradient(from 0deg, rgba(0,232,255,0.10), rgba(240,193,74,0.10), rgba(0,232,255,0.10), rgba(240,193,74,0.10), rgba(0,232,255,0.10));
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6), inset 0 0 60px rgba(0, 232, 255, 0.08);
   border: 1px solid rgba(0, 232, 255, 0.25);
-  animation: warSpin 60s linear infinite;
 }
 @keyframes warSpin { to { transform: rotate(360deg); } }
-.war-table-rings { position: absolute; inset: 6%; border-radius: 50%; border: 1px dashed rgba(240, 193, 74, 0.28); box-shadow: inset 0 0 0 1px rgba(0,232,255,0.10), inset 0 0 40px rgba(0,232,255,0.06); }
+/* Spin only the decorative rings — never the positioned seats/call/bubble,
+   whose transform is their placement, not a rotation to counter. */
+.war-table-rings { position: absolute; inset: 6%; border-radius: 50%; border: 1px dashed rgba(240, 193, 74, 0.28); box-shadow: inset 0 0 0 1px rgba(0,232,255,0.10), inset 0 0 40px rgba(0,232,255,0.06); animation: warSpin 90s linear infinite; }
 .war-table-rings::after { content: ""; position: absolute; inset: 14%; border-radius: 50%; border: 1px solid rgba(0, 232, 255, 0.16); }
-/* counter-rotate the contents so text stays upright while the table spins */
-.war-call, .war-seats, .war-bubble { animation: warSpin 60s linear infinite reverse; }
 
 /* THE CALL at the table's heart */
 .war-call {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; z-index: 4;
-  width: 60%;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; z-index: 4;
+  width: min(42%, 220px);
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 38%, rgba(6, 16, 28, 0.9), rgba(3, 8, 16, 0.78));
+  border: 1px solid rgba(0, 232, 255, 0.16);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  box-shadow: 0 0 44px rgba(0, 232, 255, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.4);
 }
-.war-call .wc-win { font-family: 'Share Tech Mono', monospace; font-size: 0.66rem; color: #8fa6bd; letter-spacing: 0.04em; }
-.war-call .wc-chair { font-family: 'Orbitron', sans-serif; font-size: 0.8rem; letter-spacing: 0.08em; color: #eaf6ff; }
-.war-call .wc-tag { font-family: 'Orbitron', sans-serif; font-size: 1.9rem; letter-spacing: 0.03em; line-height: 1.05; }
+.war-call .wc-win { font-family: 'Share Tech Mono', monospace; font-size: 0.64rem; color: #8fa6bd; letter-spacing: 0.04em; }
+.war-call .wc-chair { font-family: 'Orbitron', sans-serif; font-size: 0.78rem; letter-spacing: 0.08em; color: #eaf6ff; }
+.war-call .wc-tag { font-family: 'Orbitron', sans-serif; font-size: 1.55rem; letter-spacing: 0.03em; line-height: 1.05; }
 .war-call .wc-tag.UP { color: #39ff14; text-shadow: 0 0 22px rgba(57,255,20,0.4); }
 .war-call .wc-tag.DOWN { color: #ff2d55; text-shadow: 0 0 22px rgba(255,45,85,0.4); }
 .war-call .wc-tag.WAIT { color: #00e8ff; text-shadow: 0 0 20px rgba(0,232,255,0.35); }
 .war-call.lock .wc-tag { color: #ff9b2e; text-shadow: 0 0 22px rgba(255,155,46,0.45); }
-.war-call .wc-why { font-size: 0.7rem; color: #b7c6d6; max-width: 100%; line-height: 1.35; margin-top: 2px; }
+.war-call .wc-why {
+  font-size: 0.64rem; color: #aebfce; line-height: 1.35; margin-top: 3px; max-width: 100%;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 
 /* Seats ON the rim */
 .war-seats { position: absolute; inset: 0; z-index: 5; }
@@ -10745,8 +10755,15 @@ body.mode-art .bot-scope.show {
 .war-seat-name { font-family: 'Orbitron', sans-serif; font-size: 0.56rem; letter-spacing: 0.05em; color: #ddeaf5; text-shadow: 0 1px 3px #000; }
 .war-seat-call { font-family: 'Share Tech Mono', monospace; font-size: 0.56rem; }
 .war-seat-call.UP { color: #7dff5a; } .war-seat-call.DOWN { color: #ff6a86; } .war-seat-call.WAIT { color: #7fd6e8; }
-.war-seat.talking { filter: drop-shadow(0 0 10px rgba(0,232,255,0.8)); }
+.war-seat.talking { filter: drop-shadow(0 0 10px rgba(0,232,255,0.8)); z-index: 7; }
 .war-seat.talking .war-av { border-color: #ffe7a0; box-shadow: 0 0 18px rgba(240,193,74,0.7); }
+/* Tighten the seats as the table fills so every caller fits on the rim. */
+.war-seats.dense .war-seat { width: 60px; }
+.war-seats.dense .war-av { width: 38px; height: 38px; }
+.war-seats.dense2 .war-seat { width: 50px; gap: 1px; }
+.war-seats.dense2 .war-av { width: 30px; height: 30px; border-width: 1.5px; }
+.war-seats.dense2 .war-seat-name { font-size: 0.5rem; }
+.war-seats.dense2 .war-seat-call { font-size: 0.5rem; }
 
 /* Speech bubble popping over the speaker */
 .war-bubble {
@@ -10777,5 +10794,5 @@ body.mode-art .bot-scope.show {
   .war-table { width: min(46vh, 82vw); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .war-table, .war-call, .war-seats, .war-bubble, .war-ticker-row { animation: none !important; }
+  .war-table-rings, .war-ticker-row { animation: none !important; }
 }
