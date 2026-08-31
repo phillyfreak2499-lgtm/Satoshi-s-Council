@@ -10403,6 +10403,41 @@ body.mode-art .bot-scope.show {
 .bs-sub-dir.WAIT { color: #7fd8e8; }
 .bs-reason { font-size: 0.82rem; line-height: 1.5; color: #d7e4f0; }
 .bs-blurb { font-size: 0.72rem; line-height: 1.5; color: rgba(180, 198, 214, 0.7); border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 8px; }
+
+/* Seven-section inspector (swap engine) ----------------------------------- */
+body.mode-art .bot-scope.show { width: min(360px, 32vw); top: 168px; max-height: calc(100vh - 168px - 150px); }
+.bs-warn { border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; gap: 3px;
+  border: 1px solid rgba(240, 193, 74, 0.45); background: rgba(240, 193, 74, 0.08); }
+.bs-warn.armed { border-color: rgba(240, 193, 74, 0.7); background: rgba(240, 193, 74, 0.12); }
+.bs-warn.swapped { border-color: rgba(240, 193, 74, 0.85); background: rgba(240, 193, 74, 0.14); }
+.bs-warn.lock { border-color: rgba(150, 160, 175, 0.6); background: rgba(150, 160, 175, 0.12); }
+.bs-warn-top { font-family: 'Orbitron', sans-serif; font-size: 0.62rem; letter-spacing: 0.12em; color: #ffe7a0; }
+.bs-warn.lock .bs-warn-top { color: #c7d0dc; }
+.bs-warn-line { font-family: 'Share Tech Mono', monospace; font-size: 0.68rem; color: #e6d29a; }
+.bs-warn.lock .bs-warn-line { color: #b9c2ce; }
+.bs-warn-why { font-size: 0.76rem; line-height: 1.45; color: #e7eef6; margin-top: 2px; }
+.bs-charts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.bs-charts li { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: #cddbe8; padding-left: 12px; position: relative; }
+.bs-charts li::before { content: "›"; position: absolute; left: 0; color: rgba(0, 232, 255, 0.7); }
+.bs-feeds { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.bs-feed { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; letter-spacing: 0.04em; color: rgba(240, 193, 74, 0.92);
+  border: 1px solid rgba(240, 193, 74, 0.4); border-radius: 999px; padding: 2px 8px; }
+.bs-read { font-size: 0.82rem; line-height: 1.5; color: #dbe7f2; }
+.bs-think { display: flex; align-items: flex-start; gap: 9px; }
+.bs-conf { font-family: 'Orbitron', sans-serif; font-size: 1.05rem; color: #eaf6ff; line-height: 1; min-width: 34px; }
+.bs-think-txt { font-size: 0.8rem; line-height: 1.45; color: #d7e4f0; }
+.bs-others { font-size: 0.78rem; line-height: 1.45; color: #c3d2e0; }
+.bs-ask { font-family: 'Orbitron', sans-serif; font-size: 0.95rem; letter-spacing: 0.05em; }
+.bs-ask.UP { color: #39ff14; } .bs-ask.DOWN { color: #ff2d55; } .bs-ask.WAIT { color: #00e8ff; }
+.bs-invalid { font-size: 0.74rem; line-height: 1.4; color: rgba(180, 198, 214, 0.82); }
+
+/* Header WHIP / halo-lock summary chip ------------------------------------ */
+.whip-chip { display: inline-flex; align-items: center; font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem; letter-spacing: 0.05em; color: #cdd9e5; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid rgba(150, 170, 190, 0.35); background: rgba(10, 18, 28, 0.7); white-space: nowrap; }
+.whip-chip.whip { color: #ffe7a0; border-color: rgba(240, 193, 74, 0.6); background: rgba(240, 193, 74, 0.10); }
+.whip-chip[hidden] { display: none; }
+
 @media (max-width: 640px) {
   body.mode-art .bot-scope.show { right: 8px; left: 8px; width: auto; top: auto; bottom: 74px; max-height: 52vh; }
 }

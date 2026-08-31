@@ -1,12 +1,13 @@
 /* Satoshi's Council — shrine cache.
    Static files stay. HTML and /api/state never do. */
-const VERSION = "20260831c";
+const VERSION = "20260831d";
 const STATIC_CACHE = "council-static-" + VERSION;
 
 const PRECACHE = [
   "/offline.html",
   "/seat.js?v=" + VERSION,
   "/roundtable.js?v=" + VERSION,
+  "/swap.js?v=" + VERSION,
   "/room.js?v=" + VERSION,
   "/desk-fx.js?v=" + VERSION,
   "/style.css?v=" + VERSION,

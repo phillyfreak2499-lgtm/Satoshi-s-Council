@@ -4558,32 +4558,65 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const agents = (window.state && window.state.agents) || [];
     const agent = agents.find(function (a) { return a.agent_name === name; });
     if (!agent) { closeBotScope(); return; }
+    // The seven-section inspector (spec order) comes from the swap engine, which
+    // knows this seat's charts, live read, thinking, the floor around it, and
+    // whether it is itchy about leaving its pick.
+    const info = (window.CouncilSwap && window.CouncilSwap.inspector) ? window.CouncilSwap.inspector(name) : null;
+    if (!info) { botScopeFillLegacy(name, agent); return; }
+    const warnCls = { WATCH: "watch", ARMED: "armed", SWAPPED: "swapped", LOCK: "lock" };
+
+    // 2 — warning strip (only when not clean)
+    let warnHtml = "";
+    if (info.warn) {
+      const w = info.warn;
+      const bits = [w.pick, (w.fromTo ? w.fromTo + (w.time ? " · " + w.time : "") : null),
+        (w.swaps ? "swaps " + w.swaps : null)].filter(Boolean);
+      warnHtml =
+        '<div class="bs-warn ' + (warnCls[w.state] || "watch") + '">' +
+          '<div class="bs-warn-top">' + _escBot(w.state.replace("LOCK", "CHURN LOCK")) + '</div>' +
+          '<div class="bs-warn-line">' + _escBot(bits.join(" · ")) + '</div>' +
+          (w.why ? '<div class="bs-warn-why">' + _escBot(w.why) + '</div>' : '') +
+        '</div>';
+    }
+
+    // 3 — charts + feed chips
+    const chartsHtml = (info.charts || []).map(function (c) { return '<li>' + _escBot(c) + '</li>'; }).join("");
+    const feedsHtml = (info.feeds || []).map(function (f) { return '<span class="bs-feed">' + _escBot(f) + '</span>'; }).join("");
+
+    // 7 — chair ask
+    const askCls = /LONG/.test(info.ask.call) ? "UP" : /SHORT/.test(info.ask.call) ? "DOWN" : "WAIT";
+
+    panel.innerHTML =
+      '<div class="bs-head">' +
+        '<div class="bs-id"><span class="bs-name">' + _escBot(info.who.name) + '</span>' +
+        '<span class="bs-role">' + _escBot(info.who.lane) + '</span></div>' +
+        '<button type="button" class="bs-x" aria-label="Close">×</button>' +
+      '</div>' +
+      warnHtml +
+      '<div class="bs-sec"><div class="bs-kick">CHARTS THEY READ</div>' +
+        '<ul class="bs-charts">' + chartsHtml + '</ul>' +
+        (feedsHtml ? '<div class="bs-feeds">' + feedsHtml + '</div>' : '') + '</div>' +
+      '<div class="bs-sec"><div class="bs-kick">LOOKING AT NOW</div>' +
+        '<div class="bs-read">' + _escBot(info.liveRead) + '</div></div>' +
+      '<div class="bs-sec"><div class="bs-kick">THINKING</div>' +
+        '<div class="bs-think"><span class="bs-conf">' + info.thinking.conf + '</span>' +
+        '<span class="bs-think-txt">' + _escBot(info.thinking.text) + '</span></div></div>' +
+      '<div class="bs-sec"><div class="bs-kick">THE FLOOR SEES</div>' +
+        '<div class="bs-others">' + _escBot(info.others) + '</div></div>' +
+      '<div class="bs-sec"><div class="bs-kick">WANTS THE CHAIR TO KNOW</div>' +
+        '<div class="bs-ask ' + askCls + '">' + _escBot(info.ask.call) + '</div>' +
+        '<div class="bs-invalid">' + _escBot(info.ask.invalidation) + '</div></div>';
+    const x = panel.querySelector(".bs-x");
+    if (x) x.addEventListener("click", function (e) { e.stopPropagation(); closeBotScope(); });
+  }
+  function botScopeFillLegacy(name, agent) {
+    const panel = document.getElementById("botScope");
+    if (!panel) return;
     const callsign = labelOf(agent.agent_name ? agent : name);
     const role = titleOf(agent.agent_name ? agent : name) || "";
     const dir = lawLocked() ? "LOCKED" : effectiveDir(agent.direction);
     const dc = lawLocked() ? "WAIT" : _dirClass(agent.direction);
     const conf = Math.max(0, Math.min(100, Math.round(agent.confidence || 0)));
-    const subs = Array.isArray(agent.subs) ? agent.subs : [];
-    let subsHtml = "";
-    if (subs.length) {
-      subsHtml = subs.map(function (s) {
-        const sl = labelOf(s.agent_name ? s : (s.agent_name || "")) || (s.agent_name || "").toUpperCase();
-        const sd = _dirClass(s.direction);
-        const sc = Math.max(0, Math.min(100, Math.round(s.confidence || 0)));
-        return '<div class="bs-sub">' +
-          '<span class="bs-sub-name">' + _escBot(sl) + '</span>' +
-          '<span class="bs-bar"><i class="bs-bar-fill ' + sd + '" style="width:' + sc + '%"></i></span>' +
-          '<span class="bs-sub-dir ' + sd + '">' + _escBot(s.direction || "—") + '</span>' +
-          '</div>';
-      }).join("");
-    } else {
-      subsHtml = '<div class="bs-sub">' +
-        '<span class="bs-sub-name">SIGNAL</span>' +
-        '<span class="bs-bar"><i class="bs-bar-fill ' + dc + '" style="width:' + conf + '%"></i></span>' +
-        '<span class="bs-sub-dir ' + dc + '">' + _escBot(dir) + '</span></div>';
-    }
-    const guide = (typeof BOT_GUIDE !== "undefined" && BOT_GUIDE[name]) || null;
-    const blurb = guide && guide.blurb ? guide.blurb : "";
     const reason = agent.reasoning || (dir === "WAIT" ? "Standing by — no strong read yet." : "");
     panel.innerHTML =
       '<div class="bs-head">' +
@@ -4593,11 +4626,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       '</div>' +
       '<div class="bs-call ' + dc + '"><span class="bs-call-dir">' + _escBot(dir) + '</span>' +
         (dir === "LOCKED" ? '' : '<span class="bs-call-conf">' + conf + '%</span>') + '</div>' +
-      '<div class="bs-sec"><div class="bs-kick">WHAT IT’S WATCHING</div>' +
-        '<div class="bs-subs">' + subsHtml + '</div></div>' +
       (reason ? '<div class="bs-sec"><div class="bs-kick">WHAT IT’S THINKING</div>' +
-        '<div class="bs-reason">' + _escBot(reason) + '</div></div>' : '') +
-      (blurb ? '<div class="bs-blurb">' + _escBot(blurb) + '</div>' : '');
+        '<div class="bs-reason">' + _escBot(reason) + '</div></div>' : '');
     const x = panel.querySelector(".bs-x");
     if (x) x.addEventListener("click", function (e) { e.stopPropagation(); closeBotScope(); });
   }
@@ -6133,6 +6163,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const sc = strongColor(agent.direction);
       const face = floorLocked ? Math.atan2(cy - pos.y, cx - pos.x) : pos.angle;
       drawGameBot(name, pos.x, pos.y, r, agent.direction, agent.confidence || 0, face, i);
+      // Swap/whip table language: gold halo (itchy) or broken halo (locked).
+      try {
+        ctx.globalAlpha = 1;
+        if (window.CouncilSwap) window.CouncilSwap.drawSeatMark(ctx, name, pos.x, pos.y, r, (typeof performance !== "undefined" ? performance.now() : Date.now()));
+        ctx.globalAlpha = floorAlpha;
+      } catch (e) {}
 
       // Occasional glitch offset
       if (isGlitch && Math.random() < 0.3) {
@@ -11567,6 +11603,7 @@ function drawCandleChart() {
     if (!payload || typeof payload !== "object") return false;
     state = payload;
     try { window.state = state; } catch (e) {}
+    try { if (window.CouncilSwap) window.CouncilSwap.observe(state); } catch (e) {}
     try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
     try { paintTableHud(); } catch (e) {}
     try { paintFloorCrawl(); } catch (e) {}

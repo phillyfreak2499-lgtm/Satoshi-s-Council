@@ -2239,6 +2239,13 @@ if STATIC_DIR.is_dir():
             {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
+    @app.get("/swap.js")
+    async def swap_js():
+        return _file_or_404(
+            STATIC_DIR / "swap.js", "application/javascript",
+            {"Cache-Control": ASSET_CACHE["Cache-Control"]},
+        )
+
     @app.get("/desk-fx.js")
     async def desk_fx_js():
         return _file_or_404(

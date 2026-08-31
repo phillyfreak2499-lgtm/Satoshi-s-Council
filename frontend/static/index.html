@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260831c" />
-  <link rel="stylesheet" href="/style.css?v=20260831c" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831c" />
-  <script src="/seat.js?v=20260831c"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260831d" />
+  <link rel="stylesheet" href="/style.css?v=20260831d" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831d" />
+  <script src="/seat.js?v=20260831d"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -147,6 +147,7 @@
             <span id="accuracyDetail" class="acc-detail">0✓ · 0✗</span>
           </div>
           <div id="lawBadge" class="law-badge"><span class="law-label">LAW</span><span id="lawStatus" class="law-status">OK</span></div>
+          <span id="whipChip" class="whip-chip" hidden></span>
           <button type="button" id="ztLogoBtn" class="zt-logo-btn" aria-label="Play cinematic"><img src="/council-mark.png" alt="" width="28" height="28" /></button>
           <button type="button" id="beastBadge" class="beast-badge">BEAST</button>
           <button type="button" id="soundToggle">🔔 Bell</button>
@@ -1007,14 +1008,15 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260831c"></script>
-  <script src="/roundtable.js?v=20260831c"></script>
-  <script src="/room.js?v=20260831c"></script>
-  <script src="/desk-fx.js?v=20260831c"></script>
+  <script src="/wire.js?v=20260831d"></script>
+  <script src="/swap.js?v=20260831d"></script>
+  <script src="/roundtable.js?v=20260831d"></script>
+  <script src="/room.js?v=20260831d"></script>
+  <script src="/desk-fx.js?v=20260831d"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260831c", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260831d", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>
