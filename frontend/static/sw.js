@@ -1,6 +1,6 @@
 /* Satoshi's Council — shrine cache.
    Static files stay. HTML and /api/state never do. */
-const VERSION = "20260831d";
+const VERSION = "20260831e";
 const STATIC_CACHE = "council-static-" + VERSION;
 
 const PRECACHE = [
@@ -23,10 +23,15 @@ function isApi(url) {
   return p.indexOf("/api/") === 0 || p === "/health" || p === "/api";
 }
 
+function isProof(url) {
+  const p = url.pathname || "";
+  return p === "/proof" || p.indexOf("/static/proof") === 0 || /\/proof\.(js|css|html)$/i.test(p);
+}
+
 function isDocument(req, url) {
   if (req.mode === "navigate") return true;
   const p = url.pathname || "/";
-  if (p === "/" || p === "/index.html" || p === "/offline.html") return true;
+  if (p === "/" || p === "/index.html" || p === "/offline.html" || p === "/proof" || p === "/workspace") return true;
   if (/\.html$/i.test(p)) return true;
   const accept = req.headers.get("accept") || "";
   return accept.indexOf("text/html") !== -1;
@@ -42,7 +47,9 @@ function localFontPath(url) {
 self.addEventListener("install", function (event) {
   event.waitUntil(
     caches.open(STATIC_CACHE).then(function (cache) {
-      return cache.addAll(PRECACHE.map(function (u) { return new Request(u, { cache: "reload" }); })).catch(function () {});
+      return Promise.all(PRECACHE.map(function (u) {
+        return cache.add(new Request(u, { cache: "reload" })).catch(function () {});
+      }));
     }).then(function () { return self.skipWaiting(); })
   );
 });
@@ -87,6 +94,11 @@ self.addEventListener("fetch", function (event) {
 
   if (url.origin !== self.location.origin) return;
   if (isApi(url)) return;
+
+  if (isProof(url)) {
+    event.respondWith(fetch(req, { cache: "no-store" }));
+    return;
+  }
 
   if (isDocument(req, url)) {
     event.respondWith(

@@ -2,21 +2,22 @@
   "use strict";
   const $ = (selector) => document.querySelector(selector);
   const clean = (value, fallback = "0") => value == null || value === "" ? fallback : String(value);
+  function set(sel, value) { const el = $(sel); if (el) el.textContent = value; }
   function node(tag, value, className) { const item = document.createElement(tag); if (className) item.className = className; item.textContent = value; return item; }
-  function renderHorizon(metrics) { const host = $("#horizonRows"); host.replaceChildren(); const rows = metrics && metrics.by_horizon && typeof metrics.by_horizon === "object" ? Object.entries(metrics.by_horizon) : [];
+  function renderHorizon(metrics) { const host = $("#horizonRows"); if (!host) return; host.replaceChildren(); const rows = metrics && metrics.by_horizon && typeof metrics.by_horizon === "object" ? Object.entries(metrics.by_horizon) : [];
     if (!rows.length) { host.append(node("div", "No directional horizons have completed yet. That is a sample-size fact, not a gap to fill with confidence.", "entry-empty")); return; }
     rows.sort(([a], [b]) => a.localeCompare(b)).forEach(([horizon, bucket]) => { const row = document.createElement("div"); row.className = "horizon-row"; const completed = Number(bucket && bucket.n || 0); const correct = Number(bucket && bucket.correct || 0); row.append(node("span", horizon), node("small", `${correct} directional outcomes aligned / ${completed} completed reviews`)); host.append(row); });
   }
-  function renderAssets(byAsset) { const host = $("#assetRows"); host.replaceChildren(); const pairs = Object.entries(byAsset && typeof byAsset === "object" ? byAsset : {}); if (!pairs.length) { host.append(node("div", "The desk is warming; coverage appears here as append-only records are created.", "entry-empty")); return; } pairs.sort(([a], [b]) => a.localeCompare(b)).forEach(([asset, count]) => { const card = document.createElement("div"); card.className = "asset-row"; card.append(node("strong", clean(asset).toUpperCase()), node("span", `${clean(count)} recorded decisions`)); host.append(card); }); }
+  function renderAssets(byAsset) { const host = $("#assetRows"); if (!host) return; host.replaceChildren(); const pairs = Object.entries(byAsset && typeof byAsset === "object" ? byAsset : {}); if (!pairs.length) { host.append(node("div", "The desk is warming; coverage appears here as append-only records are created.", "entry-empty")); return; } pairs.sort(([a], [b]) => a.localeCompare(b)).forEach(([asset, count]) => { const card = document.createElement("div"); card.className = "asset-row"; card.append(node("strong", clean(asset).toUpperCase()), node("span", `${clean(count)} recorded decisions`)); host.append(card); }); }
   function renderWaitHero(wh) {
     const big = $("#waitRateBig"), line = $("#waitHeroLine"), small = $("#waitHeroSample");
     if (!big) return;
     if (wh && wh.wait_rate != null) {
       big.textContent = "WAIT — " + wh.wait_rate + "% of all calls";
-      small.textContent = wh.wait_n + " documented WAITs across " + wh.total_n + " decisions.";
+      if (small) small.textContent = wh.wait_n + " documented WAITs across " + wh.total_n + " decisions.";
     } else if (wh) {
       big.textContent = "WAIT — sample warming";
-      small.textContent = "Only " + (wh.total_n || 0) + " decisions so far; rates appear at " + (wh.min_sample || 10) + "+.";
+      if (small) small.textContent = "Only " + (wh.total_n || 0) + " decisions so far; rates appear at " + (wh.min_sample || 10) + "+.";
     }
     if (line && wh && wh.line) line.textContent = wh.line + " Sitting when agreement is weak is correct process.";
   }
@@ -31,7 +32,10 @@
     const series = [["desk", "#39ff14"], ["coin_flip", "#8fa2c4"], ["fade_mid", "#c9a44a"], ["sit_flat", "#5a6b8c"]];
     let lo = Infinity, hi = -Infinity;
     pts.forEach(function (r) { series.forEach(function (sd) { const v = Number(r[sd[0]]); if (isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }); });
-    if (!isFinite(lo)) return;
+    if (!isFinite(lo)) {
+      if (label) label.textContent = "Path book warming.";
+      return;
+    }
     if (hi - lo < 20) { hi += 10; lo -= 10; }
     const W = 640, H = 240, PAD = 8;
     const x = function (i) { return pts.length < 2 ? W / 2 : PAD + (W - 2 * PAD) * i / (pts.length - 1); };
@@ -59,9 +63,27 @@
         " · fade-mid $" + clean(last.fade_mid) + " · sit $1000. " + clean(pp.label, "Paper only — not a promise.");
     }
   }
-  async function load() { try { const response = await fetch("/api/public/proof", { credentials: "same-origin" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "The public ledger is unavailable."); const metrics = data.evaluation || {};
-      renderWaitHero(data.wait_hero); renderPnl(data.path_pnl);
-      $("#decisions").textContent = clean(data.decision_records); $("#waits").textContent = clean(data.wait_records); $("#evaluations").textContent = clean(metrics.evaluated_directional_n); $("#waitReviews").textContent = clean(metrics.wait_reviewed_n); $("#proofNote").textContent = clean(data.note, "Read sample size before interpreting outcomes."); renderHorizon(metrics); renderAssets(data.records_by_asset);
-    } catch (error) { $("#proofNote").textContent = error.message; renderHorizon({}); renderAssets({}); } }
+  async function load() {
+    try {
+      const response = await fetch("/api/public/proof", { credentials: "same-origin", cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The public ledger is unavailable.");
+      const metrics = data.evaluation || {};
+      set("#decisions", clean(data.decision_records));
+      set("#waits", clean(data.wait_records));
+      set("#evaluations", clean(metrics.evaluated_directional_n));
+      set("#waitReviews", clean(metrics.wait_reviewed_n));
+      set("#proofNote", clean(data.note, "Read sample size before interpreting outcomes."));
+      try { renderWaitHero(data.wait_hero); } catch (e) {}
+      try { renderPnl(data.path_pnl); } catch (e) { set("#pnlLabel", "Path book warming."); }
+      try { renderHorizon(metrics); } catch (e) { renderHorizon({}); }
+      try { renderAssets(data.records_by_asset); } catch (e) { renderAssets({}); }
+    } catch (error) {
+      set("#proofNote", error && error.message ? error.message : "The public ledger is unavailable.");
+      set("#pnlLabel", "Ledger fetch failed — retry.");
+      renderHorizon({});
+      renderAssets({});
+    }
+  }
   load();
 })();
