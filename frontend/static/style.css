@@ -10435,6 +10435,9 @@ body.mode-art .bot-scope.show { width: min(360px, 32vw); top: 168px; max-height:
 .bs-flip.up b { color: #7dff5a; } .bs-flip.dn b { color: #ff6a86; }
 .bs-flip-arrow { font-size: 0.64rem; letter-spacing: 0.04em; margin-left: 4px; }
 .bs-flip.up .bs-flip-arrow { color: rgba(125,255,90,0.85); } .bs-flip.dn .bs-flip-arrow { color: rgba(255,106,134,0.85); }
+.bs-flip-avg { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; line-height: 1.4; color: rgba(180,198,214,0.9); margin-top: 3px; }
+.bs-flip-avg b { font-weight: 700; }
+.bs-flip-avg.up b { color: #7dff5a; } .bs-flip-avg.dn b { color: #ff6a86; }
 
 /* Header WHIP / halo-lock summary chip ------------------------------------ */
 .whip-chip { display: inline-flex; align-items: center; font-family: 'Share Tech Mono', monospace;

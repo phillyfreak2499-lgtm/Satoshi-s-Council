@@ -4586,17 +4586,26 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // 7 — chair ask
     const askCls = /LONG/.test(info.ask.call) ? "UP" : /SHORT/.test(info.ask.call) ? "DOWN" : "WAIT";
 
-    // call P&L: how far the Kalshi market has moved since they picked this side
+    // call P&L: how far the Kalshi market has moved since they picked this side,
+    // plus the average of their closed calls this session.
     let flipHtml = "";
-    if (info.flip && info.flip.delta != null) {
-      const f = info.flip;
-      const pos = f.delta >= 0;
-      const sideWord = f.dir === "UP" ? "UP" : "DOWN";
-      flipHtml =
-        '<div class="bs-sec"><div class="bs-kick">CALL P&amp;L</div>' +
-          '<div class="bs-flip ' + (pos ? "up" : "dn") + '">Picked ' + sideWord +
+    const hasOpen = info.flip && info.flip.delta != null;
+    if (hasOpen || info.avg) {
+      let inner = "";
+      if (hasOpen) {
+        const f = info.flip;
+        const pos = f.delta >= 0;
+        const sideWord = f.dir === "UP" ? "UP" : "DOWN";
+        inner += '<div class="bs-flip ' + (pos ? "up" : "dn") + '">Picked ' + sideWord +
           ' at <b>' + f.entry + '¢</b> · now <b>' + f.now + '¢</b> ' +
-          '<span class="bs-flip-arrow">' + (pos ? "+" : "") + f.delta + '%</span></div></div>';
+          '<span class="bs-flip-arrow">' + (pos ? "+" : "") + f.delta + '%</span></div>';
+      }
+      if (info.avg) {
+        const ap = info.avg.avg >= 0;
+        inner += '<div class="bs-flip-avg ' + (ap ? "up" : "dn") + '">Avg closed call <b>' +
+          (ap ? "+" : "") + info.avg.avg + '%</b> · ' + info.avg.n + ' call' + (info.avg.n === 1 ? "" : "s") + '</div>';
+      }
+      flipHtml = '<div class="bs-sec"><div class="bs-kick">CALL P&amp;L</div>' + inner + '</div>';
     }
 
     panel.innerHTML =
@@ -6272,11 +6281,21 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         if (!compact && !lawLocked() && window.CouncilSwap && window.CouncilSwap.flip) {
           const _f = window.CouncilSwap.flip(name);
           const _dir = String(showDir || "").toUpperCase();
-          if (_f && _f.delta && _dir !== "WAIT") {
-            const _pos = _f.delta > 0;
-            ctx.font = "8px 'Share Tech Mono', Consolas, monospace";
-            ctx.fillStyle = _pos ? "rgba(125,255,90,0.62)" : "rgba(255,106,134,0.68)";
-            ctx.fillText((_pos ? "+" : "") + _f.delta + "%", pos.x, Math.min(h - 3, pos.y + r + dirOff + 11));
+          if (_f && _f.delta != null && _dir !== "WAIT") {
+            // ease the shown number toward the true delta so it visibly counts
+            // up/down in real time as the Kalshi price moves.
+            if (!window.__pnlEase) window.__pnlEase = {};
+            const _pe = window.__pnlEase, _tgt = _f.delta;
+            let _cur = (_pe[name] == null) ? _tgt : _pe[name];
+            _cur += (_tgt - _cur) * 0.18;
+            if (Math.abs(_tgt - _cur) < 0.5) _cur = _tgt;
+            _pe[name] = _cur;
+            const _shown = Math.round(_cur);
+            if (_shown !== 0 || _tgt !== 0) {
+              ctx.font = "700 9px 'Share Tech Mono', Consolas, monospace";
+              ctx.fillStyle = _shown > 0 ? "rgba(125,255,90,0.72)" : _shown < 0 ? "rgba(255,106,134,0.78)" : "rgba(150,170,190,0.6)";
+              ctx.fillText((_shown > 0 ? "+" : "") + _shown + "%", pos.x, Math.min(h - 3, pos.y + r + dirOff + 12));
+            }
           }
         }
       } catch (e) {}

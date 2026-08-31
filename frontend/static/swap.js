@@ -119,7 +119,10 @@
         // probability of THAT side the moment they picked it (entryKalshi), where
         // that side sits now (nowKalshi), and the delta the market has moved
         // toward/against the call. DOWN picked at 50c, DOWN now 80c => +30.
-        flipDir: null, flipTs: 0, entryKalshi: null, nowKalshi: null, delta: null };
+        flipDir: null, flipTs: 0, entryKalshi: null, nowKalshi: null, delta: null,
+        // realized call P&L: each time a seat leaves a color, the delta the
+        // market had moved on that closed call is pushed here; avg is the mean.
+        history: [] };
     }
     return SEATS[name];
   }
@@ -170,6 +173,12 @@
         if (r.pend === side) r.pendN++; else { r.pend = side; r.pendN = 1; }
         if (r.pendN >= PERSIST_POLLS) {
           var from = r.official, to = side;
+          // realize the call being left: how far the market moved on it
+          var closedAt = sideProb(from, mkt);
+          if (r.entryKalshi != null && closedAt != null) {
+            r.history.push(closedAt - r.entryKalshi);
+            if (r.history.length > 40) r.history.shift();
+          }
           r.from = from; r.to = to; r.ts = Date.now(); r.official = to; r.pend = null; r.pendN = 0; r.swaps++;
           r.flipDir = to; r.flipTs = r.ts; r.entryKalshi = sideProb(to, mkt);  // Kalshi price of the new side at the flip
           var ft = leanWord(from) + " → " + leanWord(to);
@@ -393,7 +402,8 @@
         : ("I'm " + conf + " on this. " + (conf <= ARMED_CONF ? "Barely — one more print the other way and I'm gone." : "Holding it while the read holds.")) },
       others: others,
       ask: { call: ask, invalidation: invalid },
-      flip: flipInfo(name)
+      flip: flipInfo(name),
+      avg: avgInfo(name)
     };
   }
 
@@ -412,6 +422,14 @@
     var entry = r.entryKalshi;
     var delta = (now != null && entry != null) ? (now - entry) : null;
     return { dir: r.flipDir, entry: entry, now: now, delta: delta };
+  }
+  // Average realized call P&L over the seat's closed calls this session.
+  function avgInfo(name) {
+    var r = SEATS[name];
+    if (!r || !r.history || !r.history.length) return null;
+    var sum = 0;
+    for (var i = 0; i < r.history.length; i++) sum += r.history[i];
+    return { avg: Math.round(sum / r.history.length), n: r.history.length };
   }
   function seatState(name) { return SEATS[name] || { state: "CLEAN" }; }
   function drainEvents() { var e = EVENTS; EVENTS = []; return e; }
