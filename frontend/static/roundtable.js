@@ -7011,7 +7011,8 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const list = document.getElementById("hierarchyList");
     const meta = document.getElementById("hierarchyMeta");
     if (!list) return;
-    const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
+    const _rh = (typeof seatHierFocus === "function") ? seatHierFocus() : null;
+    const hier = (_rh && _rh.length) ? _rh : ((state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || []);
     const agents = (state && state.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
@@ -8758,7 +8759,8 @@ function drawCandleChart() {
     }
     const grid = document.getElementById("botsGrid");
     if (!grid) return;
-    const hier = (state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || [];
+    const _rh = (typeof seatHierFocus === "function") ? seatHierFocus() : null;
+    const hier = (_rh && _rh.length) ? _rh : ((state && state.hierarchy) || (state && state.learning && state.learning.hierarchy) || []);
     const rankMap = {};
     hier.forEach(r => { rankMap[r.agent] = r; });
     const agents = (state && state.agents) || [];
@@ -11080,11 +11082,13 @@ function drawCandleChart() {
     if (!table) return;
     // Strict asset split — ranks for focused table only
     const src = (typeof tableState === "function" ? tableState(focusTable) : null) || state || {};
-    const hier = (src.hierarchy) || (src.learning && src.learning.hierarchy) || [];
+    const _rh = (typeof seatHierFocus === "function") ? seatHierFocus() : null;
+    const hier = (_rh && _rh.length) ? _rh : ((src.hierarchy) || (src.learning && src.learning.hierarchy) || []);
     const agents = (src.agents) || [];
     const byName = {};
     agents.forEach(a => { byName[a.agent_name] = a; });
-    const acc = (src.accuracy) || (state && state.accuracy) || {};
+    const _ra = (typeof seatAccFocus === "function") ? seatAccFocus() : null;
+    const acc = _ra || (src.accuracy) || (state && state.accuracy) || {};
     const n = acc.total || 0;
     const thr = state && state.decision && state.decision.threshold_used;
     const edge = state && state.decision && state.decision.edge_score;
@@ -11452,10 +11456,46 @@ function drawCandleChart() {
   window.modeFromHash = modeFromHash;
   window.applyHashMode = applyHashMode;
 
+  // The thin poll strips per-bot hierarchy/accuracy for security; the real
+  // numbers live at /api/brain/recap (served from the in-memory brain). Cache
+  // them here so the field guide and rank board can show HIT/MISS/WR/LISTEN
+  // instead of blank zeros.
+  var __recap = { btc: [], eth: [], accBtc: null, accEth: null, at: 0 };
+  function seatHierFocus() {
+    if (!__recap) return [];
+    var eth = (typeof isEthTable === "function" && isEthTable(focusTable));
+    return (eth ? __recap.eth : __recap.btc) || [];
+  }
+  function seatAccFocus() {
+    if (!__recap) return null;
+    var eth = (typeof isEthTable === "function" && isEthTable(focusTable));
+    return eth ? __recap.accEth : __recap.accBtc;
+  }
+  var __recapPending = false;
+  async function fetchSeatRecap() {
+    if (__recapPending) return;
+    __recapPending = true;
+    try {
+      const r = await fetch((typeof API_BASE === "string" ? API_BASE : "") + "/api/brain/recap", { cache: "no-store" });
+      if (r.ok) {
+        const d = await r.json();
+        __recap.btc = Array.isArray(d.hierarchy_btc) ? d.hierarchy_btc : [];
+        __recap.eth = Array.isArray(d.hierarchy_eth) ? d.hierarchy_eth : [];
+        __recap.accBtc = d.btc_acc || null;
+        __recap.accEth = d.eth_acc || null;
+        __recap.at = Date.now();
+        if (isSeatsMode(mode)) { try { renderBotsGuide(); renderRanksBoard(); } catch (e) {} }
+      }
+    } catch (e) {}
+    __recapPending = false;
+  }
+  window.fetchSeatRecap = fetchSeatRecap;
+
   function paintSeatsPage() {
     try { renderBotsGuide(); } catch (e) {}
     try { renderRanksBoard(); } catch (e) {}
     try { renderDashboard(); } catch (e) {}
+    try { fetchSeatRecap(); } catch (e) {}  // pull real HIT/MISS/WR/LISTEN from the brain
   }
 
   function setMode(next) {
@@ -11650,6 +11690,7 @@ function drawCandleChart() {
     state = payload;
     try { window.state = state; } catch (e) {}
     try { if (window.CouncilSwap) window.CouncilSwap.observe(state); } catch (e) {}
+    try { if (isSeatsMode(mode) && Date.now() - (__recap && __recap.at || 0) > 15000) fetchSeatRecap(); } catch (e) {}
     try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
     try { paintTableHud(); } catch (e) {}
     try { paintFloorCrawl(); } catch (e) {}
