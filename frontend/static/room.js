@@ -97,6 +97,10 @@
     var d = st.decision || {};
     var m = st.market || {};
     var up = Number(m.up_pct);
+    var idleWin = !isFinite(up);
+    var rawWhy = d.family_why || d.why || d.summary || "";
+    if (/^\s*initiali[sz]/i.test(rawWhy)) rawWhy = idleWin ? "The window is rolling over — the desk is re-reading the tape." : "Weighing the reads across the desk…";
+    else if (idleWin && !rawWhy) rawWhy = "Quiet tape — waiting for the next clean read.";
     return {
       agents: agents,
       decision: d,
@@ -110,7 +114,7 @@
       secs: m.seconds_left,
       windowLabel: (String(st.asset || "").toLowerCase() === "eth") ? "ETH 15m" : "BTC 15m",
       feedsDead: !((st.health || {}).binance || (st.health || {}).coinbase) && !(st.health || {}).kalshi,
-      why: d.family_why || d.why || d.summary || ""
+      why: rawWhy
     };
   }
   // Where price sits in the window, from Kalshi implied prob (a real number).
