@@ -10527,3 +10527,124 @@ body.mode-art .bot-scope.show {
 @media (max-width: 640px) {
   .more-menu { right: auto; left: 0; }
 }
+
+/* ============================================================================
+   Beta notice + feedback · 2026-08-31
+   ========================================================================== */
+.beta-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 74px;
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(680px, 94vw);
+  padding: 9px 12px 9px 14px;
+  border: 1px solid rgba(240, 193, 74, 0.4);
+  border-radius: 999px;
+  background: rgba(16, 14, 10, 0.94);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  font-size: 0.82rem;
+  color: #e9dcc0;
+}
+.beta-tag {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  color: #04070e;
+  background: linear-gradient(160deg, #ffe1a0, #d99a3a);
+  padding: 3px 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+.beta-msg { flex: 1 1 auto; min-width: 0; }
+.beta-cta {
+  flex: 0 0 auto;
+  cursor: pointer;
+  border: 1px solid rgba(240, 193, 74, 0.5);
+  background: rgba(240, 193, 74, 0.12);
+  color: #ffe7a0;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+}
+.beta-cta:hover { background: rgba(240, 193, 74, 0.22); }
+.beta-x { flex: 0 0 auto; background: transparent; border: 0; color: #b9a97f; font-size: 1.15rem; line-height: 1; cursor: pointer; padding: 0 2px; }
+.beta-x:hover { color: #fff; }
+
+.fb-reopen {
+  position: fixed;
+  right: 14px;
+  bottom: 74px;
+  z-index: 3900;
+  cursor: pointer;
+  border: 1px solid rgba(240, 193, 74, 0.35);
+  background: rgba(16, 14, 10, 0.85);
+  color: #e0c98a;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.fb-reopen:hover { color: #ffe7a0; border-color: rgba(240, 193, 74, 0.6); }
+
+.fb-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 5, 12, 0.72);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  padding: 18px;
+}
+.fb-card {
+  width: min(460px, 96vw);
+  border: 1px solid rgba(0, 232, 255, 0.28);
+  border-radius: 14px;
+  background: rgba(10, 16, 26, 0.98);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
+  padding: 16px 16px 14px;
+}
+.fb-head { display: flex; align-items: center; justify-content: space-between; font-family: 'Orbitron', sans-serif; font-size: 0.9rem; letter-spacing: 0.05em; color: #eaf6ff; }
+.fb-x { background: transparent; border: 0; color: #8fa6bd; font-size: 1.35rem; line-height: 1; cursor: pointer; }
+.fb-x:hover { color: #fff; }
+.fb-sub { font-size: 0.8rem; color: #a9c0d4; margin: 6px 0 10px; line-height: 1.45; }
+.fb-text {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid rgba(120, 150, 180, 0.3);
+  border-radius: 8px;
+  background: rgba(4, 9, 18, 0.8);
+  color: #e7f0f8;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+.fb-text:focus { outline: none; border-color: rgba(0, 232, 255, 0.5); }
+.fb-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; gap: 10px; }
+.fb-status { font-size: 0.78rem; color: #8fd6b0; }
+.fb-send {
+  cursor: pointer;
+  border: 1px solid rgba(0, 232, 255, 0.5);
+  background: rgba(0, 232, 255, 0.12);
+  color: #bff0ff;
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 0.85rem;
+}
+.fb-send:hover:not(:disabled) { background: rgba(0, 232, 255, 0.22); }
+.fb-send:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 640px) {
+  .beta-banner { flex-wrap: wrap; bottom: 66px; border-radius: 14px; }
+  .beta-msg { flex-basis: 100%; order: 3; }
+}

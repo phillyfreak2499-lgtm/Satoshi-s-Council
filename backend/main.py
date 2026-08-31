@@ -236,6 +236,53 @@ app.add_middleware(
 )
 
 
+class _WriteRateLimiter:
+    """Per-IP sliding-window cap for public write endpoints. Stops a bot from
+    flooding paper/workspace rows or hammering Stripe. Generous for humans."""
+    def __init__(self, limit: int = 40, window: float = 60.0, cap: int = 5000):
+        self._limit = limit
+        self._window = window
+        self._cap = cap
+        self._hits: dict = {}
+
+    def limited(self, key: str) -> bool:
+        now = time.time()
+        cutoff = now - self._window
+        q = [t for t in self._hits.get(key, ()) if t >= cutoff]
+        if len(q) >= self._limit:
+            self._hits[key] = q
+            return True
+        q.append(now)
+        self._hits[key] = q
+        if len(self._hits) > self._cap:
+            for k in [k for k, v in list(self._hits.items()) if not v or v[-1] < cutoff]:
+                self._hits.pop(k, None)
+        return False
+
+
+_write_limiter = _WriteRateLimiter()
+_WRITE_LIMIT_PREFIXES = (
+    "/api/public/", "/api/paper", "/api/billing/checkout",
+    "/api/billing/claim", "/api/feedback",
+)
+
+
+@app.middleware("http")
+async def limit_public_writes(request: Request, call_next):
+    """Throttle unauthenticated write endpoints so a script can't flood the DB
+    or Stripe. Reads and desk/admin-gated routes are unaffected."""
+    if request.method in ("POST", "PATCH", "PUT", "DELETE"):
+        p = request.url.path
+        if any(p == pre or p.startswith(pre) for pre in _WRITE_LIMIT_PREFIXES):
+            if _write_limiter.limited(_client_ip(request)):
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    {"ok": False, "error": "Too many requests — slow down."},
+                    status_code=429,
+                )
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def require_desk_session(request: Request, call_next):
     """Require a valid desk session for every API route except the unlock."""
@@ -243,6 +290,7 @@ async def require_desk_session(request: Request, call_next):
         request.method == "OPTIONS"
         or not request.url.path.startswith("/api/")
         or request.url.path == "/api/desk/unlock"
+        or request.url.path == "/api/feedback"
         or request.url.path.startswith("/api/public/")
         or request.url.path in {
             "/api/billing/webhook", "/api/billing/status",
@@ -346,6 +394,9 @@ async def health():
     }
 
 
+_state_thin_cache: dict = {"key": None, "thinned": None}
+
+
 @app.get("/api/state")
 async def get_state(response: Response):
     """Primary endpoint polled by the Round Table. Desk session required.
@@ -353,14 +404,23 @@ async def get_state(response: Response):
     Thin on purpose: decision, clock, seat directions, health flags.
     Accuracy / weights / hierarchy / learning / huddle / lifetime stay
     on their own gated routes. Cache-Control: no-store for live.
+
+    The thinning (deep strip + rebuild) is memoized per analysis tick, keyed
+    on state["timestamp"], so N concurrent pollers don't each recompute it.
+    Only server_time is stamped fresh per request.
     """
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     state = council.get_state()
-    if isinstance(state, dict):
-        state = thin_poll_state(_strip_public_auto_bet(dict(state)))
-        state["server_time"] = time.time()
-    return state
+    if not isinstance(state, dict):
+        return state
+    key = state.get("timestamp")
+    if key is None or _state_thin_cache.get("key") != key or _state_thin_cache.get("thinned") is None:
+        _state_thin_cache["thinned"] = thin_poll_state(_strip_public_auto_bet(dict(state)))
+        _state_thin_cache["key"] = key
+    out = dict(_state_thin_cache["thinned"])  # shallow top-level copy; nested data is read-only
+    out["server_time"] = time.time()
+    return out
 
 
 @app.post("/api/analyze")
@@ -749,6 +809,66 @@ async def process_export_csv(limit: int = 5000):
             "Cache-Control": "no-store",
         },
     )
+
+
+@app.post("/api/feedback")
+async def submit_feedback(request: Request):
+    """Public beta feedback box. Throttled by the write-limiter middleware.
+    Appended to feedback.jsonl in DATA_DIR; read via /api/admin/feedback.csv.
+    No account, no PII required — just the note plus a hashed IP for dedup."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": False, "error": "invalid JSON"}
+    text = str(body.get("text") or body.get("message") or "").strip()
+    if not text:
+        return {"ok": False, "error": "empty"}
+    text = text[:2000]
+    kind = str(body.get("kind") or "feedback")[:24]
+    import json as _json
+    import hashlib as _hashlib
+    rec = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "kind": kind,
+        "text": text,
+        "iph": _hashlib.sha256(("fb:" + _client_ip(request)).encode()).hexdigest()[:12],
+    }
+    try:
+        root = Path(getattr(settings, "DATA_DIR", None) or "./data")
+        root.mkdir(parents=True, exist_ok=True)
+        with open(root / "feedback.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        return {"ok": False, "error": "store failed"}
+    return {"ok": True}
+
+
+@app.get("/api/admin/feedback.csv")
+async def admin_feedback_csv(request: Request):
+    """Read all beta feedback. Admin only."""
+    denied = _admin_required(request)
+    if denied is not None:
+        return denied
+    import json as _json
+    import csv
+    import io
+    root = Path(getattr(settings, "DATA_DIR", None) or "./data")
+    path = root / "feedback.jsonl"
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["ts", "kind", "text", "iph"])
+    try:
+        if path.is_file():
+            for ln in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    r = _json.loads(ln)
+                except Exception:
+                    continue
+                w.writerow([r.get("ts", ""), r.get("kind", ""), r.get("text", ""), r.get("iph", "")])
+    except Exception:
+        pass
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv")
 
 
 @app.get("/api/admin/journal.csv")

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Float, Integer, Text, delete, or_, select, func
+from sqlalchemy import String, Float, Integer, Text, delete, or_, select, func, event
 from backend.config import settings
 from backend.risk.sizing import honor_sized_stake
 from backend.agents.chair_gates import (
@@ -260,6 +260,23 @@ class WeeklyProcessReview(Base):
 class PerformanceStore:
     def __init__(self):
         self.engine = create_async_engine(settings.DATABASE_URL, echo=False)
+        # SQLite defaults serialize writers and fail fast with "database is
+        # locked". With the in-process analysis loop writing while request
+        # handlers also write (paper rows, workspace journals), that surfaces
+        # under real multi-user load. WAL lets readers run alongside a writer,
+        # busy_timeout makes a blocked writer wait instead of erroring, and
+        # synchronous=NORMAL is the safe WAL pairing.
+        if str(settings.DATABASE_URL).startswith("sqlite"):
+            @event.listens_for(self.engine.sync_engine, "connect")
+            def _sqlite_pragmas(dbapi_conn, _rec):  # noqa: ANN001
+                try:
+                    cur = dbapi_conn.cursor()
+                    cur.execute("PRAGMA journal_mode=WAL")
+                    cur.execute("PRAGMA busy_timeout=5000")
+                    cur.execute("PRAGMA synchronous=NORMAL")
+                    cur.close()
+                except Exception:
+                    pass
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 
     async def init(self):

@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260830k" />
-  <link rel="stylesheet" href="/style.css?v=20260830k" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260830k" />
-  <script src="/seat.js?v=20260830k"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260831a" />
+  <link rel="stylesheet" href="/style.css?v=20260831a" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831a" />
+  <script src="/seat.js?v=20260831a"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -947,6 +947,23 @@
 
   <aside id="botScope" class="bot-scope" hidden aria-label="Bot detail — what this seat is watching and thinking"></aside>
 
+  <!-- Beta notice + feedback (paper-only research build) -->
+  <div id="betaBanner" class="beta-banner" hidden role="status">
+    <span class="beta-tag">BETA</span>
+    <span class="beta-msg">Paper only — no real money. A research desk in active development.</span>
+    <button type="button" id="betaFeedbackBtn" class="beta-cta">Feedback / ideas</button>
+    <button type="button" id="betaDismiss" class="beta-x" aria-label="Dismiss">×</button>
+  </div>
+  <button type="button" id="feedbackReopen" class="fb-reopen" hidden aria-label="Send beta feedback">Beta · feedback</button>
+  <div id="feedbackModal" class="fb-modal" hidden aria-modal="true" role="dialog" aria-label="Beta feedback">
+    <div class="fb-card">
+      <div class="fb-head"><span>Beta feedback</span><button type="button" id="fbClose" class="fb-x" aria-label="Close">×</button></div>
+      <p class="fb-sub">Found a bug, or have an idea? Tell us. Paper-only, no account needed.</p>
+      <textarea id="fbText" class="fb-text" maxlength="2000" placeholder="What's working, what's broken, what you'd love to see…"></textarea>
+      <div class="fb-actions"><span id="fbStatus" class="fb-status" aria-live="polite"></span><button type="button" id="fbSend" class="fb-send">Send</button></div>
+    </div>
+  </div>
+
   <template id="adminDeskTemplate">
     <div class="beast-card settings-card" id="adminToolsCard">
       <div class="beast-title">ADMIN TOOLS</div>
@@ -995,15 +1012,66 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260830k"></script>
-  <script src="/roundtable.js?v=20260830k"></script>
-  <script src="/desk-fx.js?v=20260830k"></script>
+  <script src="/wire.js?v=20260831a"></script>
+  <script src="/roundtable.js?v=20260831a"></script>
+  <script src="/desk-fx.js?v=20260831a"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260830k", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260831a", { updateViaCache: "none" }).catch(function () {});
       });
     }
+  </script>
+  <script>
+  (function () {
+    try {
+      var KEY = "council_beta_dismissed_v1";
+      var banner = document.getElementById("betaBanner");
+      var modal = document.getElementById("feedbackModal");
+      var reopen = document.getElementById("feedbackReopen");
+      if (!banner || !modal) return;
+      var dismissed = false;
+      try { dismissed = localStorage.getItem(KEY) === "1"; } catch (e) {}
+      if (dismissed) { if (reopen) reopen.hidden = false; } else { banner.hidden = false; }
+      function openModal() { modal.hidden = false; var t = document.getElementById("fbText"); if (t) { t.focus(); } }
+      function closeModal() { modal.hidden = true; }
+      function dismiss() {
+        banner.hidden = true;
+        if (reopen) reopen.hidden = false;
+        try { localStorage.setItem(KEY, "1"); } catch (e) {}
+      }
+      var d = document.getElementById("betaDismiss"); if (d) d.addEventListener("click", dismiss);
+      var fb = document.getElementById("betaFeedbackBtn"); if (fb) fb.addEventListener("click", openModal);
+      if (reopen) reopen.addEventListener("click", openModal);
+      var c = document.getElementById("fbClose"); if (c) c.addEventListener("click", closeModal);
+      modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !modal.hidden) closeModal(); });
+      var send = document.getElementById("fbSend");
+      if (send) send.addEventListener("click", function () {
+        var t = document.getElementById("fbText");
+        var st = document.getElementById("fbStatus");
+        var text = ((t && t.value) || "").trim();
+        if (!text) { if (st) st.textContent = "Type something first."; return; }
+        send.disabled = true; if (st) st.textContent = "Sending…";
+        fetch("/api/feedback", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text, kind: "beta" })
+        }).then(function (r) { return r.json().catch(function () { return {}; }); })
+          .then(function (data) {
+            if (data && data.ok) {
+              if (t) t.value = "";
+              if (st) st.textContent = "Thank you \u2014 got it.";
+              setTimeout(closeModal, 1200);
+            } else if (data && /Too many/.test(data.error || "")) {
+              if (st) st.textContent = "Easy \u2014 give it a moment.";
+            } else {
+              if (st) st.textContent = "Could not send \u2014 try again.";
+            }
+          }).catch(function () { if (st) st.textContent = "Network error \u2014 try again."; })
+          .then(function () { send.disabled = false; });
+      });
+    } catch (e) {}
+  })();
   </script>
 </body>
 </html>
