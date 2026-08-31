@@ -31,8 +31,8 @@ from loguru import logger
 
 # Displayed-slate reset for ETH chair + eth_shadow only. Fixed epoch so
 # restarts do not keep wiping new Vitalik hits. Bot memory stays on disk.
-ETH_DISPLAY_RESET_ID = "2026-08-16-eth-display-reset"
-ETH_DISPLAY_RESET_AT = "2026-08-16T13:20:00+00:00"
+ETH_DISPLAY_RESET_ID = "2026-08-31-eth-15m-display-reset"
+ETH_DISPLAY_RESET_AT = "2026-08-31T17:29:00+00:00"  # ETH switched to the 15m KXETH15M book — clean 15m scorecard
 try:
     from backend.learning.btc15m import (
         BTC_15M_DISPLAY_RESET_AT,

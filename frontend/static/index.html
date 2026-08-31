@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260831i" />
-  <link rel="stylesheet" href="/style.css?v=20260831i" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831i" />
-  <script src="/seat.js?v=20260831i"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260831j" />
+  <link rel="stylesheet" href="/style.css?v=20260831j" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831j" />
+  <script src="/seat.js?v=20260831j"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -91,7 +91,7 @@
     </div>
     <div id="floorLeaderClocks" class="floor-leader-clocks" hidden aria-label="Per-leader window clocks">
       <div class="floor-leader-clock" data-floor-clock="bitcoin" hidden><span class="flc-name">SATOSHI</span><span class="flc-win">15m</span><span class="flc-time" data-flc-time>--</span></div>
-      <div class="floor-leader-clock" data-floor-clock="ethereum" hidden><span class="flc-name">VITALIK</span><span class="flc-win">1H</span><span class="flc-time" data-flc-time>--</span></div>
+      <div class="floor-leader-clock" data-floor-clock="ethereum" hidden><span class="flc-name">VITALIK</span><span class="flc-win">15m</span><span class="flc-time" data-flc-time>--</span></div>
       <div class="floor-leader-clock" data-floor-clock="front" hidden><span class="flc-name">RAIJIN</span><span class="flc-win">DFW</span><span class="flc-time" data-flc-time>--</span></div>
       <div class="floor-leader-clock" data-floor-clock="ats" hidden><span class="flc-name">ARES</span><span class="flc-win">KICK</span><span class="flc-time" data-flc-time>--</span></div>
       <div class="floor-leader-clock" data-floor-clock="oracle" hidden><span class="flc-name">ORACLE</span><span class="flc-win">WATCH</span><span class="flc-time" data-flc-time>--</span></div>
@@ -841,7 +841,7 @@
           <canvas id="chartBtc"></canvas>
         </article>
         <article class="chart-card chart-wide chart-pair chart-pair-eth">
-          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">1H WINDOW</span><span class="chart-meta" id="chartEthMeta">—</span></header>
+          <header class="chart-card-head"><span id="chartEthTitle">ETH · 1m</span><span class="chart-window-chip">15M WINDOW</span><span class="chart-meta" id="chartEthMeta">—</span></header>
           <canvas id="chartEth"></canvas>
         </article>
       </div>
@@ -1014,15 +1014,15 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260831i"></script>
-  <script src="/swap.js?v=20260831i"></script>
-  <script src="/roundtable.js?v=20260831i"></script>
-  <script src="/room.js?v=20260831i"></script>
-  <script src="/desk-fx.js?v=20260831i"></script>
+  <script src="/wire.js?v=20260831j"></script>
+  <script src="/swap.js?v=20260831j"></script>
+  <script src="/roundtable.js?v=20260831j"></script>
+  <script src="/room.js?v=20260831j"></script>
+  <script src="/desk-fx.js?v=20260831j"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260831i", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260831j", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>

@@ -27,7 +27,7 @@ HL = "https://api.hyperliquid.xyz/info"
 BYBIT_WS = "wss://stream.bybit.com/v5/public/linear"
 BINANCE_WS = "wss://fstream.binance.com/market/ws/btcusdt@forceOrder"
 
-_SERIES = {"btc": "KXBTC15M", "eth": "KXETHD"}
+_SERIES = {"btc": "KXBTC15M", "eth": "KXETH15M"}  # both on the real 15m Kalshi books
 _HL_COIN = {"btc": "BTC", "eth": "ETH"}
 _BYBIT_SYM = {"btc": "BTCUSDT", "eth": "ETHUSDT"}
 

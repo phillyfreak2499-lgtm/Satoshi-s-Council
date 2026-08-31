@@ -55,7 +55,7 @@
       price: m.price,
       mins: (m.mins_left != null ? m.mins_left : (m.seconds_left != null ? Math.round(m.seconds_left / 60) : null)),
       secs: m.seconds_left,
-      windowLabel: (String(st.asset || "").toLowerCase() === "eth") ? "ETH 1H" : "BTC 15m",
+      windowLabel: (String(st.asset || "").toLowerCase() === "eth") ? "ETH 15m" : "BTC 15m",
       feedsDead: !((st.health || {}).binance || (st.health || {}).coinbase) && !(st.health || {}).kalshi,
       why: d.family_why || d.why || d.summary || ""
     };

@@ -1503,7 +1503,7 @@ class Leader:
         window_id = str(window_id) if window_id else None
 
         if window_id and self._locked_window and window_id != self._locked_window:
-            # True new hourly window → clear
+            # True new window (close_time changed — 15m or 1H) → clear
             self._clear_window_lock()
         elif ticker and self._locked_ticker and ticker != self._locked_ticker and self._entry_dir:
             # Same window, market ticker hopped (ATM ladder) — keep lock, update ticker tag

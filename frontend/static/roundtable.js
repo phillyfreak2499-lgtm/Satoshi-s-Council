@@ -4252,7 +4252,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const ms = Date.parse(m.close_time);
       if (Number.isFinite(ms)) secs = (ms - Date.now()) / 1000;
     }
-    let label = (key === "bitcoin" || key === "btc") ? "15M" : "1H";
+    let label = (key === "bitcoin" || key === "btc" || key === "ethereum" || key === "eth") ? "15M" : "1H";
     if (key === "front") label = m.window_label || "DFW";
     else if (key === "ats") label = m.window_label || "KICK";
     else if (key === "oracle") label = m.window_label || "CRT";
@@ -7472,11 +7472,13 @@ function drawCandleChart() {
   function cryptoWindowLabel(tableKey, ts) {
     const m = (ts && ts.market) || {};
     const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
-    if (/KXBTC15M/i.test(series) || tableKey === "bitcoin" || tableKey === "btc") return "15M WINDOW";
-    if (/KXETHD/i.test(series) || tableKey === "ethereum" || tableKey === "eth") return "1H WINDOW";
+    // Both crypto tables run the real 15m Kalshi books now (KXBTC15M / KXETH15M).
+    if (/KX(BTC|ETH)15M/i.test(series)) return "15M WINDOW";
+    if (/KXBTCD|KXETHD/i.test(series)) return "1H WINDOW";
     const mins = Number(m.window_minutes);
-    if (Number.isFinite(mins) && mins <= 20) return "15M WINDOW";
-    return "1H WINDOW";
+    if (Number.isFinite(mins)) return mins <= 20 ? "15M WINDOW" : "1H WINDOW";
+    if (tableKey === "bitcoin" || tableKey === "btc" || tableKey === "ethereum" || tableKey === "eth") return "15M WINDOW";
+    return "15M WINDOW";
   }
 
   function hourWindowMs(ts) {
@@ -7485,7 +7487,7 @@ function drawCandleChart() {
     const close = parseStampMs(m.close_time || lc.close_time);
     const mins = Number(m.window_minutes);
     const series = String(m.series_ticker || m.kalshi_ticker || m.ticker || "");
-    const dur = (/KXBTC15M/i.test(series) || (Number.isFinite(mins) && mins <= 20))
+    const dur = (/KX(BTC|ETH)15M/i.test(series) || (Number.isFinite(mins) && mins <= 20))
       ? 15 * 60 * 1000
       : 60 * 60 * 1000;
     if (close) return { start: close - dur, end: close };
@@ -8210,7 +8212,7 @@ function drawCandleChart() {
       const st = (typeof tableState === "function") ? tableState(focus) : null;
       ledLabel.textContent = (typeof cryptoWindowLabel === "function")
         ? cryptoWindowLabel(focus, st)
-        : (focus === "ethereum" ? "1H WINDOW" : "15M WINDOW");
+        : "15M WINDOW";
     }
     if (atsStrip) atsStrip.hidden = true;
     if (atsSport) atsSport.hidden = true;
@@ -8253,7 +8255,7 @@ function drawCandleChart() {
             ? "OPEN"
             : (p.grade || p.outcome || "SETTLED");
           const conf = p.conf != null ? (p.conf + "%") : "—";
-          const win = p.window || (/BTC/i.test(String(p.pair || "")) ? "15M" : "1H");
+          const win = p.window || (/BTC|ETH/i.test(String(p.pair || "")) ? "15M" : "1H");
           return `<li class="lock-tape-row ${p.status === "OPEN" ? "open" : "settled"}">`
             + `<span class="lt-pair">${p.pair}</span>`
             + `<span class="lt-side ${wxTone(p.side) === "UP" ? "up" : (wxTone(p.side) === "DOWN" ? "down" : "")}">${isFrontTable(focusTable) ? displayDir(p.side) : p.side}</span>`
@@ -9366,7 +9368,7 @@ function drawCandleChart() {
             const res = row.result || "OPEN";
             const cls = res === "HIT" ? "hit" : (res === "MISS" ? "miss" : "open");
             return '<div class="tape-row ' + cls + '">'
-              + '<span>' + (row.window || (String(row.asset || "").toUpperCase() === "BTC" ? "15M" : "1H")) + '</span>'
+              + '<span>' + (row.window || (["BTC", "ETH"].indexOf(String(row.asset || "").toUpperCase()) >= 0 ? "15M" : "1H")) + '</span>'
               + '<span>' + String(row.asset || "").toUpperCase() + '</span>'
               + '<span class="side-' + String(row.side || "").toLowerCase() + '">' + (row.side || "—") + '</span>'
               + '<span>' + fmtP(row.p_finish) + '</span>'

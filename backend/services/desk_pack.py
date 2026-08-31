@@ -54,8 +54,16 @@ def _in_last_hours(dt: Optional[datetime], hours: int, now: Optional[datetime] =
 
 
 def window_label_ct(ticker: Any = None, close_time: Any = None) -> str:
-    """Hour window in America/Chicago, e.g. 'Aug 14 14:00–15:00 CT'."""
+    """Window in America/Chicago, span matched to the real book (15m or 1H).
+
+    e.g. 'Aug 14 14:00–14:15 CT' for a 15m book, '14:00–15:00 CT' for hourly.
+    """
     close = _parse_iso(close_time) or close_time_from_kalshi_ticker(ticker)
+    try:
+        from backend.learning.btc15m import window_minutes_for
+        dur_min = float(window_minutes_for(ticker=ticker))
+    except Exception:
+        dur_min = 60.0
     if close is None:
         tick = str(ticker or "")
         m = None
@@ -66,9 +74,9 @@ def window_label_ct(ticker: Any = None, close_time: Any = None) -> str:
             m = None
         if m:
             return f"{m.group(1)}:{m.group(2)} CT"
-        return "1H"
+        return "15M" if dur_min <= 20 else "1H"
     local = close.astimezone(CT)
-    start = local - timedelta(hours=1)
+    start = local - timedelta(minutes=dur_min)
     day = str(int(start.strftime("%d")))
     return f"{start.strftime('%b')} {day} {start.strftime('%H:%M')}–{local.strftime('%H:%M')} CT"
 

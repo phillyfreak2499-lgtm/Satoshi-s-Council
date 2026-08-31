@@ -1,8 +1,8 @@
 """
 Satoshi’s Council – Configuration
-Dual-table: Bitcoin 15m (Satoshi) + Ethereum 1H (Vitalik).
-BTC is a full 15m retrain on KXBTC15M — not a 1H clock change.
-ETH stays hourly KXETHD until 15m BTC has n settled. Do not start ETH 15m.
+Dual-table: Bitcoin 15m (Satoshi) + Ethereum 15m (Vitalik).
+Both run a full 15m retrain — BTC on KXBTC15M, ETH on KXETH15M.
+ETH moved off hourly KXETHD once a real 15m ETH market existed + BTC 15m settled.
 Tuned for Render ~2 CPU / 4 GB — responsive dual without thrashing.
 """
 from pydantic_settings import BaseSettings
@@ -67,10 +67,10 @@ class Settings(BaseSettings):
     # Legacy single-table defaults (BTC 15m brain)
     SERIES_TICKER: str = "KXBTC15M"
     SYMBOL: str = "BTCUSDT"
-    # Explicit per-table. ETH stays 1H. Do not start KXETH15M.
+    # Explicit per-table. ETH now runs the real 15m KXETH15M book (was KXETHD).
     SERIES_BTC: str = "KXBTC15M"
     SERIES_BTC_1H: str = "KXBTCD"
-    SERIES_ETH: str = "KXETHD"
+    SERIES_ETH: str = "KXETH15M"
     SYMBOL_BTC: str = "BTCUSDT"
     SYMBOL_ETH: str = "ETHUSDT"
 

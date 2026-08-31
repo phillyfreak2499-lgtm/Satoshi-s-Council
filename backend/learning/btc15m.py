@@ -3,7 +3,9 @@ BTC 15-minute Chair brain — a full retrain, not a 1H clock change.
 
 Official Kalshi series is KXBTC15M: one up/down book per 15m window,
 settled on the 60s CFB BRTI average (same print as the series terms).
-ETH stays on hourly KXETHD. Do not start KXETH15M.
+ETH now runs the same 15m clock on KXETH15M (a real Kalshi market that
+did not exist when this note first said "Do not start KXETH15M"). ETH 15m
+uses these same 15m timers/bands — never the old 1H copy.
 
 Do not port 1H weights, 1H settle keys, or CoinGlass 1h features onto this
 book. Displayed BTC hits for this brain start clean.
@@ -21,6 +23,7 @@ from zoneinfo import ZoneInfo
 SERIES_BTC_15M = "KXBTC15M"
 SERIES_BTC_1H = "KXBTCD"
 SERIES_ETH_1H = "KXETHD"
+SERIES_ETH_15M = "KXETH15M"  # real Kalshi 15m ETH book — the live ETH series now
 WINDOW_MINUTES_15M = 15.0
 WINDOW_MINUTES_1H = 60.0
 BRAIN_TAG_BTC_15M = "btc15m"
@@ -65,10 +68,10 @@ _MONTHS = {
     "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
 }
 _15M_TICK = re.compile(
-    r"^KXBTC15M-(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})(?:-(\d{2}))?$",
+    r"^KX(?:BTC|ETH)15M-(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})(?:-(\d{2}))?$",
     re.I,
 )
-_15M_EVENT = re.compile(r"^(KXBTC15M-\d{2}[A-Z]{3}\d{6})", re.I)
+_15M_EVENT = re.compile(r"^(KX(?:BTC|ETH)15M-\d{2}[A-Z]{3}\d{6})", re.I)
 _1H_BTC = re.compile(r"^KXBTCD-", re.I)
 _1H_ETH = re.compile(r"^KXETHD-", re.I)
 
@@ -144,7 +147,7 @@ def window_minutes_for(
     if is_btc_15m_ticker(ticker) or is_btc_15m_series(series):
         return WINDOW_MINUTES_15M
     if is_eth_15m_ticker(ticker):
-        # Desk does not run ETH 15m. If a ticker leaks in, still measure honestly.
+        # ETH now runs the 15m KXETH15M book on the same clock as BTC.
         return WINDOW_MINUTES_15M
     a = str(asset or "").strip().lower()
     if a in ("btc", "bitcoin") and not is_btc_1h_ticker(ticker):
@@ -161,7 +164,7 @@ def window_minutes_for(
 def series_for_live_asset(asset: Any) -> str:
     a = str(asset or "btc").strip().lower()
     if a in ("eth", "ethereum"):
-        return SERIES_ETH_1H
+        return SERIES_ETH_15M
     return SERIES_BTC_15M
 
 
@@ -181,7 +184,7 @@ def event_ticker_from_15m(ticker: Any) -> Optional[str]:
     m = _15M_EVENT.match(text)
     if m:
         return m.group(1).upper()
-    if text.upper().startswith("KXBTC15M-") and text.count("-") >= 1:
+    if text.upper().startswith(("KXBTC15M-", "KXETH15M-")) and text.count("-") >= 1:
         parts = text.split("-")
         if len(parts) >= 2:
             return f"{parts[0].upper()}-{parts[1].upper()}"
@@ -247,6 +250,7 @@ def early_no_lock_mins_for(
 ) -> float:
     if is_15m_window(window_minutes, ticker, series, asset) and (
         is_btc_15m_ticker(ticker) or is_btc_15m_series(series)
+        or is_eth_15m_ticker(ticker)
         or str(asset or "").lower() in ("btc", "bitcoin", "btc15m", "")
     ):
         return EARLY_NO_LOCK_MINS_15M
@@ -269,6 +273,7 @@ def timeframe_gates(
     if fifteen and (
         is_btc_15m_ticker(ticker)
         or is_btc_15m_series(series)
+        or is_eth_15m_ticker(ticker)
         or str(asset or "btc").lower() in ("btc", "bitcoin", "btc15m", "")
     ):
         return {
@@ -360,8 +365,8 @@ def coinglass_allowed_on_book(
     window_minutes: Any = None,
     asset: Any = None,
 ) -> bool:
-    """CoinGlass 1h/30m may inform ETH 1H. Never a 15m BTC lock feature."""
-    if is_btc_15m_ticker(ticker) or is_btc_15m_series(series):
+    """CoinGlass 1h/30m is the wrong timeframe for any 15m lock (BTC or ETH)."""
+    if is_btc_15m_ticker(ticker) or is_btc_15m_series(series) or is_eth_15m_ticker(ticker):
         return False
     if is_15m_window(window_minutes, ticker, series, asset) and str(asset or "btc").lower() in (
         "btc", "bitcoin", "btc15m", "",

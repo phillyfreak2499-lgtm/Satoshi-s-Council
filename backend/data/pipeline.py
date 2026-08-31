@@ -28,7 +28,7 @@ COINBASE = "https://api.coinbase.com"
 KALSHI = "https://api.elections.kalshi.com/trade-api/v2"
 
 _SYMBOL = {"btc": "BTCUSDT", "eth": "ETHUSDT"}
-_SERIES = {"btc": "KXBTC15M", "eth": "KXETHD"}  # ETH is the hourly KXETHD series (was "KXETH" → no market → no ETH calls)
+_SERIES = {"btc": "KXBTC15M", "eth": "KXETH15M"}  # both on the real 15m Kalshi books (ETH moved off hourly KXETHD)
 _FETCH_TIMEOUT = httpx.Timeout(3.5, connect=2.0)
 _HEADERS = {"User-Agent": "SatoshiCouncil/1.0 paper-desk", "Accept": "application/json"}
 
