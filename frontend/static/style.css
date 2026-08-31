@@ -3812,6 +3812,9 @@ body.mode-art .led-window {
 
 
 /* ===== BTC / ETH focus — exclusive, never mode-tab ===== */
+/* Simplified to BTC + ETH for now — hide the experimental focus tables
+   (DWF / ATS / ORA). Remove this rule to bring them back. */
+#focusFront, #focusAts, #focusOra { display: none !important; }
 .focus-tab {
   pointer-events: auto !important;
   cursor: pointer !important;

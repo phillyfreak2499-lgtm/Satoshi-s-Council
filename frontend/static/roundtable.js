@@ -12781,7 +12781,8 @@ function drawCandleChart() {
         e.stopPropagation();
         e.stopImmediatePropagation();
         const w = String(which || "").toLowerCase();
-        const paid = w && w !== "bitcoin" && w !== "btc";
+        // BTC and ETH are both free/core tables — never gate them behind Join.
+        const paid = w && w !== "bitcoin" && w !== "btc" && w !== "ethereum" && w !== "eth" && w !== "vitalik";
         if (paid && !hasJoinedDesk()) {
           openJoinGate(which);
           return;
