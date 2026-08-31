@@ -7,10 +7,10 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260831j" />
-  <link rel="stylesheet" href="/style.css?v=20260831j" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831j" />
-  <script src="/seat.js?v=20260831j"></script>
+  <link rel="stylesheet" href="/static/fonts.css?v=20260831k" />
+  <link rel="stylesheet" href="/style.css?v=20260831k" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831k" />
+  <script src="/seat.js?v=20260831k"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -96,7 +96,7 @@
       <div class="floor-leader-clock" data-floor-clock="ats" hidden><span class="flc-name">ARES</span><span class="flc-win">KICK</span><span class="flc-time" data-flc-time>--</span></div>
       <div class="floor-leader-clock" data-floor-clock="oracle" hidden><span class="flc-name">ORACLE</span><span class="flc-win">WATCH</span><span class="flc-time" data-flc-time>--</span></div>
     </div>
-    <button type="button" id="phoneBackBtn" class="phone-back-btn" hidden aria-label="Back to Floor">← FLOOR</button>
+    <button type="button" id="phoneBackBtn" class="phone-back-btn" hidden aria-label="Back to Table">← TABLE</button>
     <button type="button" id="seatStormPrompt" class="seat-storm-prompt hidden" hidden>KILL TIME / PLAY</button>
     <div id="seatStormPlay" class="seat-storm-play hidden" hidden>
       <div class="ss-hud">
@@ -176,7 +176,7 @@
           <button type="button" id="tabSeats" class="mode-tab" data-mode="seats">Seats</button>
           <button type="button" id="tabPaper" class="mode-tab" data-mode="paper">Paper</button>
           <button type="button" id="tabCalls" class="mode-tab" data-mode="calls">Calls</button>
-          <button type="button" id="tabStream" class="mode-tab" data-mode="stream">Stream</button>
+          <button type="button" id="tabStream" class="mode-tab" data-mode="stream" hidden>Stream</button>
           <button type="button" id="tabSide" class="mode-tab" data-mode="side" hidden>Side</button>
           <button type="button" id="tabFront" class="mode-tab" data-mode="front" hidden>Front</button>
           <div class="mode-more" id="modeMore">
@@ -936,7 +936,7 @@
   </div>
 
   <div id="moreMenu" class="more-menu" role="menu" hidden>
-    <button type="button" id="tabFloor" class="mode-tab more-item" data-mode="floor" role="menuitem">Floor</button>
+    <button type="button" id="tabFloor" class="mode-tab more-item" data-mode="floor" role="menuitem" hidden>Floor</button>
     <button type="button" id="tabNight" class="mode-tab more-item" data-mode="night" role="menuitem">Night</button>
     <button type="button" id="tabTape" class="mode-tab more-item" data-mode="tape" role="menuitem">Tape</button>
     <button type="button" id="tabBook" class="mode-tab more-item" data-mode="book" role="menuitem">Book</button>
@@ -1014,15 +1014,15 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260831j"></script>
-  <script src="/swap.js?v=20260831j"></script>
-  <script src="/roundtable.js?v=20260831j"></script>
-  <script src="/room.js?v=20260831j"></script>
-  <script src="/desk-fx.js?v=20260831j"></script>
+  <script src="/wire.js?v=20260831k"></script>
+  <script src="/swap.js?v=20260831k"></script>
+  <script src="/roundtable.js?v=20260831k"></script>
+  <script src="/room.js?v=20260831k"></script>
+  <script src="/desk-fx.js?v=20260831k"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260831j", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260831k", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>

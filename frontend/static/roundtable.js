@@ -3786,18 +3786,12 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
 
 
   function defaultLandMode() {
+    // Floor + Stream retired from the UI — land on the Table instead.
     try {
       const last = storeGet("council_last_mode");
-      if (last && last !== "settings" && last !== "night") return last;
+      if (last && last !== "settings" && last !== "night" && last !== "stream" && last !== "floor") return last;
     } catch (e) {}
-    try {
-      if (window.matchMedia && (
-        window.matchMedia("(max-width: 900px)").matches ||
-        window.matchMedia("(max-height: 500px) and (orientation: landscape)").matches
-      )) return "stream";
-    } catch (e) {}
-    try { if (typeof isPhoneDesk === "function" && isPhoneDesk()) return "stream"; } catch (e) {}
-    return "stream";
+    return "art";
   }
   function isPhoneDesk() {
     try {
@@ -3977,7 +3971,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     const show = !!(phone && mode !== "floor" && typeof hasDeskAuth === "function" && hasDeskAuth());
     btn.hidden = !show;
     btn.setAttribute("aria-hidden", show ? "false" : "true");
-    btn.textContent = "← FLOOR";
+    btn.textContent = "← TABLE";
   }
   function wirePhoneBackBtn() {
     const btn = document.getElementById("phoneBackBtn");
@@ -3985,7 +3979,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     btn.__wiredBack = true;
     btn.addEventListener("click", function (e) {
       e.preventDefault();
-      try { setMode("floor"); } catch (err) {}
+      try { setMode("art"); } catch (err) {}
     });
   }
 
@@ -5228,7 +5222,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       stay.__wired = true;
       stay.addEventListener("click", function () {
         closeJoinGate();
-        try { if (typeof setMode === "function") setMode("stream"); } catch (e) {}
+        try { if (typeof setMode === "function") setMode("art"); } catch (e) {}
       });
     }
     if (pill && !pill.__wired) {
