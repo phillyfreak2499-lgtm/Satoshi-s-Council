@@ -134,6 +134,25 @@ class DeskSnapshotTests(unittest.TestCase):
         # Two loops: paint every table, then sweep. ETH must not wait on BTC's closer.
         self.assertGreaterEqual(start.count("for c in self._councils()"), 2)
 
+    def test_boot_starts_loop_before_closer(self) -> None:
+        start = DUAL.split("async def start", 1)[1].split("def _councils", 1)[0]
+        loop = start.find("create_task(self._loop())")
+        sweep = start.find("sweep_official_finishes")
+        self.assertGreater(loop, 0)
+        self.assertGreater(sweep, 0)
+        self.assertLess(loop, sweep)
+        self.assertIn("boot-closers", start)
+        self.assertIn("wait_for", start)
+        self.assertIn("checkpoint_wal", DUAL)
+
+    def test_official_closer_caps_kalshi_fetches(self) -> None:
+        fn = COUNCIL.split("async def _official_results_for_opens", 1)[1].split(
+            "def _grade_council_from_results", 1
+        )[0]
+        self.assertIn("MAX_EVENTS", fn)
+        self.assertIn("limit=64", fn)
+        self.assertIn("asset=self.asset", fn)
+
 
 class GeoSkipTests(unittest.TestCase):
     def test_oregon_skips_binance_com_by_default(self) -> None:

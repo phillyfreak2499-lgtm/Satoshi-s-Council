@@ -404,11 +404,23 @@ class Council:
         opens = []
         getter = getattr(self.store, "list_open_calls", None)
         if callable(getter):
-            # Every OPEN row — a BTC loop must still see a finalized ETH ticker.
-            maybe = getter()
+            # Newest OPEN rows for THIS council. An unbounded all-asset scan
+            # plus one Kalshi fetch per event hung Dual.start() (desk stuck
+            # warming, running=false) after the WAL-disk stall piled up opens.
+            try:
+                maybe = getter(asset=self.asset, limit=64)
+            except TypeError:
+                maybe = getter()
             opens = await maybe if inspect.isawaitable(maybe) else (maybe or [])
         if not isinstance(opens, list):
             opens = []
+        def _row_id(r):
+            try:
+                return int((r or {}).get("id") or 0)
+            except (TypeError, ValueError):
+                return 0
+        opens = [r for r in opens if isinstance(r, dict)]
+        opens.sort(key=_row_id, reverse=True)
         tickers: list[str] = []
         for row in opens:
             if not isinstance(row, dict):
@@ -455,6 +467,11 @@ class Council:
             if not ev:
                 leftover.append(t)
         if callable(fn_event):
+            # Cap so a backlog cannot own the event loop. Remaining opens
+            # settle on later analyze_once / settle_due_windows passes.
+            MAX_EVENTS = 24
+            if len(events) > MAX_EVENTS:
+                events = events[:MAX_EVENTS]
             for ev in events:
                 try:
                     body = await _await(fn_event(ev))
@@ -475,6 +492,9 @@ class Council:
                 rest_seen.add(t)
                 rest.append(t)
         if callable(fn_market):
+            MAX_MARKETS = 24
+            if len(rest) > MAX_MARKETS:
+                rest = rest[:MAX_MARKETS]
             for ticker in rest:
                 if official_y_finish(results.get(ticker)):
                     continue

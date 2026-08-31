@@ -49,6 +49,8 @@ class DualOrchestrator:
         self.running = False
         self._task: Optional[asyncio.Task] = None
         self._backfill_task: Optional[asyncio.Task] = None
+        self._closer_task: Optional[asyncio.Task] = None
+        self._last_wal_ckpt = 0.0
         # One analysis pass at a time. The background loop and a forced
         # POST /api/analyze share the same store and latest_state; letting
         # them interleave races the lock/settle path.
@@ -122,18 +124,35 @@ class DualOrchestrator:
                 c.ensure_seat_shell("warming")
             except Exception as e:
                 logger.debug(f"seat shell {c.asset}: {e}")
-        # Sweep after both tables are painted. The official-finish pass is
-        # the ~90s wait; last-good seats+price should already be on /api/state.
+        # Light the loop BEFORE the official closer. A hung Kalshi tape
+        # (unbounded OPEN rows after a disk/WAL stall) must not leave
+        # /health at warming + running=false and the table on Initializing…
+        # forever. The closer still runs; it just cannot own the desk.
         for c in self._councils():
-            try:
-                n = await c.sweep_official_finishes()
-                if n:
-                    logger.info(f"[{c.asset}] Official closer swept {n} open hour(s)")
-            except Exception as e:
-                logger.debug(f"official closer sweep skip ({c.asset}): {e}")
             c.running = True
         self.running = True
         self._task = asyncio.create_task(self._loop())
+        self._last_wal_ckpt = 0.0
+
+        async def _boot_closers():
+            for c in self._councils():
+                try:
+                    async with self._analyze_lock:
+                        n = await asyncio.wait_for(c.sweep_official_finishes(), timeout=75)
+                    if n:
+                        logger.info(f"[{c.asset}] Official closer swept {n} open hour(s)")
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"[{c.asset}] Official closer timed out — analysis loop already running"
+                    )
+                except Exception as e:
+                    logger.debug(f"official closer sweep skip ({c.asset}): {e}")
+            try:
+                await self.btc.store.checkpoint_wal()
+            except Exception as e:
+                logger.debug(f"boot wal checkpoint skip: {e}")
+
+        self._closer_task = asyncio.create_task(_boot_closers(), name="boot-closers")
         try:
             from backend.learning.seat_backfill import maybe_run_boot_backfill
             from backend.learning.seat_backfill_15m import maybe_run_boot_backfill_15m
@@ -170,6 +189,12 @@ class DualOrchestrator:
             self._backfill_task.cancel()
             try:
                 await self._backfill_task
+            except asyncio.CancelledError:
+                pass
+        if self._closer_task:
+            self._closer_task.cancel()
+            try:
+                await self._closer_task
             except asyncio.CancelledError:
                 pass
         for c in self._councils():
@@ -316,6 +341,17 @@ class DualOrchestrator:
                 self._record_process()
             except Exception as e:
                 logger.debug(f"process log skip: {e}")
+            # Dual owns the analysis loop — Council._loop never runs here,
+            # so the WAL checkpoint has to live on this path. Without it the
+            # -wal balloons, fills the 2 GB disk, writes fail, opens pile up,
+            # and the next boot hangs on the official closer.
+            try:
+                now = asyncio.get_event_loop().time()
+                if now - getattr(self, "_last_wal_ckpt", 0.0) > 600:
+                    self._last_wal_ckpt = now
+                    await self.btc.store.checkpoint_wal()
+            except Exception as e:
+                logger.debug(f"periodic wal checkpoint skip: {e}")
             elapsed = asyncio.get_event_loop().time() - t0
             try:
                 prof = runtime_settings.profile()

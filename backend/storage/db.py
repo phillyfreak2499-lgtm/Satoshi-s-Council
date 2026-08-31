@@ -2502,13 +2502,23 @@ class PerformanceStore:
             except Exception as e:
                 logger.warning(f"reclaim vacuum skip: {e}")
 
-    async def list_open_calls(self, asset: str | None = None) -> List[Dict[str, Any]]:
+    async def list_open_calls(self, asset: str | None = None, limit: int | None = None) -> List[Dict[str, Any]]:
         """Open (unsettled) window calls for hour-close grading. Never deletes."""
         want = (asset or "").strip().lower() or None
+        cap = None
+        try:
+            if limit is not None:
+                cap = max(1, min(int(limit), 500))
+        except (TypeError, ValueError):
+            cap = None
         async with self.Session() as session:
-            result = await session.execute(
-                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
-            )
+            stmt = select(WindowCall).where(WindowCall.actual_outcome.is_(None))
+            if want:
+                stmt = stmt.where(WindowCall.asset == want)
+            stmt = stmt.order_by(WindowCall.id.desc())
+            if cap:
+                stmt = stmt.limit(cap)
+            result = await session.execute(stmt)
             rows = result.scalars().all()
         out: List[Dict[str, Any]] = []
         for r in rows:
