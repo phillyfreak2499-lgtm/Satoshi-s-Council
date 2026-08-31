@@ -2246,6 +2246,18 @@ if STATIC_DIR.is_dir():
             {"Cache-Control": ASSET_CACHE["Cache-Control"]},
         )
 
+    @app.get("/legal")
+    @app.get("/terms")
+    @app.get("/privacy")
+    @app.get("/refunds")
+    @app.get("/about")
+    async def legal_pages():
+        # Terms / Privacy / Refunds / "what this is" — one page, deep-linked.
+        return _file_or_404(
+            STATIC_DIR / "legal.html", "text/html",
+            {"Cache-Control": "public, max-age=3600"},
+        )
+
     @app.get("/desk-fx.js")
     async def desk_fx_js():
         return _file_or_404(
