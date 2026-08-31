@@ -70,6 +70,31 @@
   pointer-events: none !important;
 }
 
+/* Stuck cinematic layers must never eat taps after the clip ends. */
+#summonVideoWrap:not(.active),
+#deskIntroWrap:not(.active),
+#celebrateVideoWrap:not(.active),
+#leaderClickWrap:not(.active),
+#hiveEgg:not(.show):not(.open),
+#streamChrome {
+  pointer-events: none !important;
+}
+
+button,
+[role="button"],
+.mode-tab,
+.focus-tab,
+.gate-btn,
+input,
+select,
+textarea,
+label[for],
+#phoneDock button,
+#phoneMoreSheet button,
+#moreMenu button {
+  pointer-events: auto !important;
+}
+
 #app > header {
   position: relative;
   overflow-x: hidden;
@@ -120,7 +145,6 @@
   pointer-events: auto;
 }
 
-/* Fallback if session-window.css misses: never smash LUNCH+note+time. */
 #sessionChip {
   appearance: none;
   -webkit-appearance: none;

@@ -56,19 +56,22 @@
       var l = document.createElement("link");
       l.id = "phoneNavCss";
       l.rel = "stylesheet";
-      l.href = "/static/phone-nav.css?v=20260830r";
+      l.href = "/static/phone-nav.css?v=20260830s";
       document.head.appendChild(l);
     }
   }
 
   function setMode(mode) {
+    if (!mode) return;
+    if (typeof window.setMode === "function") {
+      try { window.setMode(mode); return; } catch (e) {}
+    }
+    if (typeof window.__deskSetModeFallback === "function") {
+      try { window.__deskSetModeFallback(mode); return; } catch (e) {}
+    }
     var btn = document.querySelector('.mode-tab[data-mode="' + mode + '"]');
     if (btn) {
-      btn.click();
-      return;
-    }
-    if (typeof window.setMode === "function") {
-      try { window.setMode(mode); } catch (e) {}
+      try { btn.click(); } catch (e) {}
     }
   }
 
@@ -132,6 +135,8 @@
     dock.addEventListener("click", function (e) {
       var b = e.target.closest("[data-dock]");
       if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
       var id = b.getAttribute("data-dock");
       if (id === "more") {
         toggleMore();
@@ -144,6 +149,8 @@
     sheet.addEventListener("click", function (e) {
       var b = e.target.closest("[data-more-mode]");
       if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
       closeMore();
       setMode(b.getAttribute("data-more-mode"));
       paintDock();
