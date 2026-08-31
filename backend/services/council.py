@@ -251,6 +251,16 @@ class Council:
                 logger.info(f"[{self.asset}] Official closer swept {n} open hour(s)")
         except Exception as e:
             logger.debug(f"official closer sweep skip ({self.asset}): {e}")
+        # Reclaim disk before the write loop starts: collapse any runaway -wal
+        # file and (btc only, to avoid two councils VACUUMing one file at once)
+        # shrink the DB. Runs here — after hydrate, before the loop — because
+        # VACUUM needs no concurrent writer. Best-effort; a full disk can't hurt
+        # boot since every step is guarded.
+        try:
+            await self.store.reclaim_disk(vacuum=(self.asset == "btc"))
+        except Exception as e:
+            logger.debug(f"boot disk reclaim skip ({self.asset}): {e}")
+        self._last_wal_ckpt = 0.0
         self.running = True
         self._task = asyncio.create_task(self._loop())
         logger.info(f"Council continuous analysis started asset={self.asset} leader={self.leader_name}")
@@ -274,6 +284,14 @@ class Council:
                 await self.analyze_once()
             except Exception as e:
                 logger.exception(f"Analysis cycle error: {e}")
+            # Keep the -wal bounded: a TRUNCATE checkpoint every ~10 min folds it
+            # back into the DB even if a reader has been holding it open.
+            try:
+                if t0 - getattr(self, "_last_wal_ckpt", 0.0) > 600:
+                    self._last_wal_ckpt = t0
+                    await self.store.checkpoint_wal()
+            except Exception as e:
+                logger.debug(f"periodic wal checkpoint skip ({self.asset}): {e}")
             elapsed = asyncio.get_event_loop().time() - t0
             try:
                 prof = runtime_settings.profile()

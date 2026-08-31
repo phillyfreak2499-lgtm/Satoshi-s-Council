@@ -274,6 +274,12 @@ class PerformanceStore:
                     cur.execute("PRAGMA journal_mode=WAL")
                     cur.execute("PRAGMA busy_timeout=5000")
                     cur.execute("PRAGMA synchronous=NORMAL")
+                    # Cap the -wal file: auto-checkpoint every ~512 pages (~2 MB)
+                    # so a busy writer keeps folding the WAL back into the DB.
+                    # A periodic TRUNCATE checkpoint (checkpoint_wal) is the real
+                    # guard against a long-lived reader letting it balloon and
+                    # fill the disk.
+                    cur.execute("PRAGMA wal_autocheckpoint=512")
                     cur.close()
                 except Exception:
                     pass
@@ -2450,6 +2456,51 @@ class PerformanceStore:
         except Exception as e:
             logger.warning(f"prune_old_window_calls: {e}")
             return 0
+
+    async def checkpoint_wal(self) -> bool:
+        """Fold the -wal file back into the main DB and truncate it to zero.
+
+        Without this a long-lived reader can let the WAL grow without bound and
+        fill the disk, which then blocks every write — including the pruning
+        meant to reclaim space. Safe no-op on non-sqlite backends. Returns True
+        if it ran cleanly.
+        """
+        if not str(settings.DATABASE_URL).startswith("sqlite"):
+            return False
+        try:
+            async with self.engine.connect() as conn:
+                ac = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                await ac.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+            return True
+        except Exception as e:
+            logger.warning(f"wal checkpoint skip: {e}")
+            return False
+
+    async def reclaim_disk(self, vacuum: bool = False) -> None:
+        """Best-effort disk reclaim: prune, truncate the WAL, optionally VACUUM.
+
+        Each step is guarded because on a full disk these are exactly what's
+        needed yet may partly fail — a failure must never crash the caller. Pass
+        vacuum=True only off the hot path (e.g. at boot): VACUUM rewrites the
+        whole DB file to shrink it and needs transient free space.
+        """
+        try:
+            await self.prune_old_signals()
+        except Exception as e:
+            logger.warning(f"reclaim prune signals: {e}")
+        try:
+            await self.prune_old_window_calls()
+        except Exception as e:
+            logger.warning(f"reclaim prune windows: {e}")
+        await self.checkpoint_wal()
+        if vacuum and str(settings.DATABASE_URL).startswith("sqlite"):
+            try:
+                async with self.engine.connect() as conn:
+                    ac = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                    await ac.exec_driver_sql("VACUUM")
+                await self.checkpoint_wal()
+            except Exception as e:
+                logger.warning(f"reclaim vacuum skip: {e}")
 
     async def list_open_calls(self, asset: str | None = None) -> List[Dict[str, Any]]:
         """Open (unsettled) window calls for hour-close grading. Never deletes."""
