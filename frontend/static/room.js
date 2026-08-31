@@ -15,10 +15,12 @@
     news: "WIRE", liq: "CASCADE", regime: "ORBIT", streak: "STREAK",
     strike: "STRIKE", guardian: "WARDEN", law: "LAW"
   };
-  // Portrait per seat (falls back to a letter chip if missing).
+  // Portrait per seat. A few files are named by callsign, not the internal
+  // key, so map those or the seat renders as a blank disc.
+  var PORTRAIT_FILE = { guardian: "warden", panic: "fade", regime: "orbit" };
   function portrait(key) {
     if (!key) return "";
-    return "/portraits/" + key + ".webp";
+    return "/portraits/" + (PORTRAIT_FILE[key] || key) + ".webp";
   }
 
   // ---- Learn Live: an opt-in left drawer that shows how one bot reads the desk.

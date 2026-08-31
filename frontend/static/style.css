@@ -10713,7 +10713,7 @@ body.mode-room #roomView.hidden { display: none !important; }
   z-index: 1;
   overflow: hidden;
   background:
-    radial-gradient(78% 68% at 50% 46%, rgba(74, 55, 18, 0.42), transparent 62%),
+    radial-gradient(100% 80% at 50% 48%, rgba(78, 58, 20, 0.4), transparent 66%),
     radial-gradient(120% 90% at 50% 10%, rgba(26, 33, 54, 0.45), transparent 58%),
     radial-gradient(100% 82% at 50% 112%, rgba(60, 44, 13, 0.55), transparent 55%),
     linear-gradient(180deg, #070810 0%, #04050b 100%);
@@ -10879,7 +10879,7 @@ body.mode-room #roomView.hidden { display: none !important; }
 .fb-flip.up { color: rgba(125,255,90,0.7); } .fb-flip.dn { color: rgba(255,106,134,0.72); }
 
 /* ── THE FLOOR board (left rail) ── */
-.war-board { position: absolute; left: 16px; top: 16px; bottom: 16px; width: min(292px, 23vw); z-index: 5;
+.war-board { position: absolute; left: 16px; top: 16px; bottom: auto; max-height: calc(100% - 32px); width: min(300px, 22vw); z-index: 5;
   display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 18px; overflow: hidden;
   border: 1px solid rgba(201,162,39,0.22); border-radius: 14px;
   background: linear-gradient(180deg, rgba(14,11,6,0.82), rgba(6,5,3,0.86));
