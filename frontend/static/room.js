@@ -21,6 +21,59 @@
     return "/portraits/" + key + ".webp";
   }
 
+  // ---- Learn Live: an opt-in left drawer that shows how one bot reads the desk.
+  // Off-screen by default — the room is untouched unless a visitor opens it.
+  var ROLES = {
+    candle_btc: "Candle anatomist", candle_eth: "Candle anatomist", orderflow: "Order-flow reader",
+    oi_pressure: "Derivatives · OI", volume: "Volume", momentum: "Momentum", funding: "Funding / crowd",
+    panic: "Panic fade", exhaust: "Exhaustion fade", strike: "Distance to strike", quorum: "Confluence",
+    guardian: "Risk / veto", cheap: "Best-odds", session_tod: "Session clock", whale: "Big prints",
+    odds: "Odds", spotlag: "Spot lead", regime: "Regime", news: "The wire", liq: "Liquidations",
+    streak: "Streak", volatility: "Volatility", law: "The Law"
+  };
+  // A lesson is the transferable rule the read teaches. Pro + plain-English.
+  var LESSONS = {
+    candle_btc: { pro: "Hunt vs break: a wick through a level on dead volume grabbed stops — the body, not the wick, tells the truth.", plain: "A quick spike that falls right back on little trading is a trap, not a real move. Watch where the candle closes." },
+    candle_eth: { pro: "Hunt vs break: a wick through a level on dead volume grabbed stops — the body, not the wick, tells the truth.", plain: "A quick spike that falls right back on little trading is a trap, not a real move. Watch where the candle closes." },
+    orderflow: { pro: "Absorb vs hit: the bid eating sells is absorption; the offer running through is a hit. Watch speed, not the wick.", plain: "If buyers quietly soak up the selling, that's strength. A real drop is sellers pushing hard and fast." },
+    oi_pressure: { pro: "Squeeze vs poke: open interest must climb the move to be a squeeze. Flat OI on a spike is a stop-hunt.", plain: "In a real surge, new money piles in. If it doesn't, the jump was just a jab to trigger stops." },
+    volume: { pro: "Volume confirms, it never leads. One spike is a flare; a real trend prints a second and third bar.", plain: "Heavy trading confirms a move, it doesn't start one. One loud moment is a flash in the pan." },
+    momentum: { pro: "Momentum is slope, not one bar. Trade with the stack of higher-highs or lower-highs, not a single candle.", plain: "A trend is a direction that keeps going, not one big candle. Follow the slope." },
+    funding: { pro: "Fact vs a long: 'crowded' is positioning, not permission. Name the observation before you name a side.", plain: "'Everyone's already betting up' is a warning, not a green light — there's no one left to push it higher." },
+    panic: { pro: "Fade the panic: a violent move in seconds near an extreme tends to snap back. Don't chase the flare.", plain: "When price moves too fast too quickly, it often bounces back. Don't chase it — wait for the turn." },
+    exhaust: { pro: "Late-move exhaustion: fade a tired leg into an extreme, but only once it stops making progress.", plain: "A move that's run a long way runs out of steam. Wait for it to stall before betting on a bounce." },
+    strike: { pro: "Time + distance: near the strike with the clock running, the current side is hard to dislodge.", plain: "Close to the finish with little time left, whichever side is winning tends to hold." },
+    quorum: { pro: "Two families rhyme or you WAIT — one family talking is not a signal.", plain: "One voice agreeing isn't enough. Wait until different kinds of signals line up." },
+    guardian: { pro: "A wick is not an entry — a close is. If you can't name the kill in dollars, you stand down.", plain: "Know your exit before you enter. If you can't say where you'd be wrong, don't bet." },
+    cheap: { pro: "Best-odds: only pay up when price has actually dislocated from fair — hope is not an edge.", plain: "Only take a bet when the price is genuinely good, not just because you want it to work out." },
+    law: { pro: "After two forced misses the desk sits in cooldown — discipline beats a revenge trade.", plain: "After a couple of losses, the smart move is to stop and wait, not to win it back in a hurry." }
+  };
+  var LESSON_FALLBACK = { pro: "Every read needs a second family to confirm and a named invalidation before it becomes a call.", plain: "One signal is a hint. Wait for a second to agree, and always know where you'd be wrong." };
+
+  var LEARN_HTML =
+    '<button class="wll-close" id="wllClose" type="button" aria-label="Close">×</button>' +
+    '<div class="wll-mode" id="wllMode">LIVE WITH</div>' +
+    '<div class="wll-who"><span class="wll-av" id="wllAv"></span>' +
+      '<div><div class="wll-name" id="wllName">—</div><div class="wll-role" id="wllRole">—</div></div></div>' +
+    '<div class="wll-lean" id="wllLean">—</div>' +
+    '<div class="wll-pnl" id="wllPnl" hidden></div>' +
+    '<div class="wll-sec"><div class="wll-lbl">What they\'re reading</div><p class="wll-read" id="wllRead">—</p></div>' +
+    '<div class="wll-sec"><div class="wll-lbl">The lesson</div><p class="wll-lesson" id="wllLesson">—</p></div>' +
+    '<div class="wll-sec"><div class="wll-lbl">To the chair</div><p class="wll-chair" id="wllChair">—</p></div>' +
+    '<div class="wll-tools">' +
+      '<label class="wll-tog"><input type="checkbox" id="wllAloud" /><span>🔊 Read aloud</span></label>' +
+      '<label class="wll-tog"><input type="checkbox" id="wllPlain" /><span>🎓 Plain English</span></label>' +
+      '<label class="wll-tog"><input type="checkbox" id="wllGame" /><span>🎯 Call it yourself</span></label>' +
+    '</div>' +
+    '<div class="wll-callit" id="wllCallit" hidden>' +
+      '<span class="wll-q" id="wllQ">Your call?</span>' +
+      '<div class="wll-btns" id="wllBtns"><button type="button" data-g="UP">UP</button><button type="button" data-g="DOWN">DOWN</button><button type="button" data-g="WAIT">WAIT</button></div>' +
+      '<span class="wll-res" id="wllRes"></span>' +
+      '<span class="wll-tally" id="wllTally" hidden></span>' +
+    '</div>' +
+    '<button class="wll-follow" id="wllFollow" type="button" hidden>↩ FOLLOW THE DESK</button>' +
+    '<div class="wll-foot">Paper research only · this is how the desk reads it, not advice · you own the click</div>';
+
   function pick(a) { return a[(Math.random() * a.length) | 0]; }
   function chance(p) { return Math.random() < p; }
   function esc(s) {
@@ -236,6 +289,119 @@
   // ---- scene -----------------------------------------------------------------
   var el = {}, rainCtx = null, rainDrops = [], rainRAF = 0, timer = null, callTimer = null;
   var SEAT_POS = []; // {x,y} on the table rim, %.
+  // Learn Live drawer state
+  var learnKey = null, learnPinned = false, learnPlain = false, learnAloud = false,
+      learnGame = false, gameOpen = false, gTot = 0, gMatch = 0, learnLastFollow = null;
+
+  function setText(id, t) { var e = document.getElementById(id); if (e) e.textContent = t; }
+  function agentByKey(s, key) {
+    for (var i = 0; i < s.agents.length; i++) if (s.agents[i].agent_name === key) return s.agents[i];
+    return null;
+  }
+  function chairLine(dc, conf) {
+    if (dc === "WAIT") return "WAIT — no clean read yet. A lean is not a gavel; the Chair waits for two families to rhyme.";
+    return "Leaning " + dc + " at " + conf + "% — with a named kill if the level fails. Their vote goes to the Chair, who still needs confluence to lock it.";
+  }
+  function paintLearn(key) {
+    try {
+      if (!el.learn || !el.learn.classList.contains("open") || !key) return;
+      var s = snap();
+      var agent = agentByKey(s, key);
+      if (!agent) return;            // rail/leader voices keep the last real seat
+      learnKey = key;
+      var name = NAMES[key] || String(key).toUpperCase();
+      var dc = dirClass(agent.direction);
+      var conf = Math.round(agent.confidence || 0);
+      setText("wllName", name);
+      setText("wllRole", ROLES[key] || "Council specialist");
+      var av = document.getElementById("wllAv"); if (av) av.style.backgroundImage = "url('" + portrait(key) + "')";
+      var lean = document.getElementById("wllLean");
+      if (lean) { lean.className = "wll-lean " + dc; lean.textContent = (dc === "WAIT" ? "WAITING" : dc) + " · " + conf + "%"; }
+      setText("wllRead", readFor(agent, s));
+      var les = LESSONS[key] || LESSON_FALLBACK;
+      setText("wllLesson", learnPlain ? les.plain : les.pro);
+      setText("wllChair", chairLine(dc, conf));
+      var pnlEl = document.getElementById("wllPnl");
+      if (pnlEl) {
+        var f = (window.CouncilSwap && window.CouncilSwap.flip) ? window.CouncilSwap.flip(key) : null;
+        if (f && f.delta) { pnlEl.innerHTML = '<span class="' + (f.delta > 0 ? "up" : "dn") + '">' + (f.delta > 0 ? "+" : "") + f.delta + '%</span> <small>this window · market-implied</small>'; pnlEl.hidden = false; }
+        else { pnlEl.hidden = true; }
+      }
+      setText("wllMode", learnPinned ? "PINNED" : "LIVE WITH");
+      var fb = document.getElementById("wllFollow"); if (fb) fb.hidden = !learnPinned;
+    } catch (e) { /* never let the drawer break the room */ }
+  }
+  function speakAloud(key) {
+    try {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      var s = snap(); var agent = agentByKey(s, key); if (!agent) return;
+      var les = LESSONS[key] || LESSON_FALLBACK;
+      var u = new SpeechSynthesisUtterance(readFor(agent, s) + ". " + (learnPlain ? les.plain : les.pro));
+      u.rate = 1.0; window.speechSynthesis.speak(u);
+    } catch (e) { }
+  }
+  function stopAloud() { try { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); } catch (e) { } }
+  function armGame(key) {
+    gameOpen = true;
+    setText("wllRes", "");
+    var q = document.getElementById("wllQ"); if (q) q.textContent = "Your call — which way does " + (NAMES[key] || "this bot") + " lean?";
+    var btns = document.querySelectorAll("#wllBtns button");
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+  }
+  function gradeGuess(g) {
+    if (!gameOpen) return; gameOpen = false;
+    var s = snap(); var agent = agentByKey(s, learnKey); if (!agent) return;
+    var dc = dirClass(agent.direction);
+    var matched = g === dc;
+    gTot++; if (matched) gMatch++;
+    var btns = document.querySelectorAll("#wllBtns button");
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    var deskWord = dc === "UP" ? "leaned UP" : dc === "DOWN" ? "leaned DOWN" : "chose to WAIT";
+    var res = document.getElementById("wllRes");
+    if (res) res.innerHTML = matched
+      ? '<span class="ok">✓ You read it like the desk.</span> ' + (NAMES[learnKey] || "") + ' ' + deskWord + '.'
+      : '<span class="no">✗ Different read.</span> ' + (NAMES[learnKey] || "") + ' ' + deskWord + ' — see their read above to catch what they saw.';
+    var t = document.getElementById("wllTally"); if (t) { t.hidden = false; t.textContent = "You read " + gMatch + "/" + gTot + " like the desk"; }
+  }
+  function openLearn(key) {
+    if (!el.learn) return;
+    el.learn.classList.add("open");
+    if (key) {
+      learnPinned = true; learnKey = key; paintLearn(key);
+      if (learnAloud) speakAloud(key); if (learnGame) armGame(key);
+    } else {
+      learnPinned = false;
+      var painted = learnKey;
+      if (!painted) { var s = snap(); if (s.agents[0]) painted = s.agents[0].agent_name; }
+      if (painted) { paintLearn(painted); if (learnGame) armGame(painted); }
+    }
+    var fb = document.getElementById("wllFollow"); if (fb) fb.hidden = !learnPinned;
+    setText("wllMode", learnPinned ? "PINNED" : "LIVE WITH");
+  }
+  function closeLearn() { if (el.learn) el.learn.classList.remove("open"); stopAloud(); }
+  function wireLearn() {
+    if (!el.learn || el.learn.__wired) return; el.learn.__wired = true;
+    if (el.learnTab) el.learnTab.addEventListener("click", function () { openLearn(null); });
+    var c = document.getElementById("wllClose"); if (c) c.addEventListener("click", closeLearn);
+    var fb = document.getElementById("wllFollow");
+    if (fb) fb.addEventListener("click", function () { learnPinned = false; fb.hidden = true; setText("wllMode", "LIVE WITH"); });
+    if (el.seats) el.seats.addEventListener("click", function (e) {
+      if (document.body && document.body.classList.contains("gate-locked")) return;
+      var seat = e.target && e.target.closest ? e.target.closest(".war-seat") : null;
+      if (!seat) return;
+      openLearn(seat.getAttribute("data-key"));
+    });
+    var a = document.getElementById("wllAloud"); if (a) a.addEventListener("change", function () { learnAloud = a.checked; if (learnAloud && learnKey) speakAloud(learnKey); else stopAloud(); });
+    var p = document.getElementById("wllPlain"); if (p) p.addEventListener("change", function () { learnPlain = p.checked; if (learnKey) paintLearn(learnKey); });
+    var g = document.getElementById("wllGame"); if (g) g.addEventListener("change", function () {
+      learnGame = g.checked;
+      var ci = document.getElementById("wllCallit"); if (ci) ci.hidden = !learnGame;
+      if (learnGame && learnKey) armGame(learnKey);
+    });
+    var btns = document.querySelectorAll("#wllBtns button");
+    for (var i = 0; i < btns.length; i++) (function (b) { b.addEventListener("click", function () { gradeGuess(b.getAttribute("data-g")); }); })(btns[i]);
+  }
 
   function buildScene() {
     var host = document.getElementById("warRoom");
@@ -259,6 +425,8 @@
       '</div>' +
       '<aside class="war-board" id="warBoard" aria-label="The floor"></aside>' +
       '<div class="war-transcript" id="warTranscript" aria-live="polite"></div>' +
+      '<button class="war-learn-tab" id="warLearnTab" type="button">🎓 LEARN LIVE · watch a bot think</button>' +
+      '<aside class="war-learn" id="warLearn" aria-label="Learn live — how a bot reads the market">' + LEARN_HTML + '</aside>' +
       '<div class="war-vignette" aria-hidden="true"></div>' +
       '<div class="war-grain" aria-hidden="true"></div>';
     el.charts = host.querySelector("#warCharts");
@@ -269,8 +437,11 @@
     el.tickerRow = host.querySelector("#warTickerRow");
     el.rain = host.querySelector("#warRain");
     el.board = host.querySelector("#warBoard");
+    el.learn = host.querySelector("#warLearn");
+    el.learnTab = host.querySelector("#warLearnTab");
     buildCharts();
     startRain();
+    wireLearn();
     return true;
   }
 
@@ -418,6 +589,16 @@
     } else if (el.bubble) {
       // rail voice — no seat on this table
       el.bubble.hidden = true;
+    }
+    // Learn Live: ride the speaker (only while the drawer is open and not pinned)
+    if (el.learn && el.learn.classList.contains("open") && !learnPinned && beat.key && beat.key !== learnLastFollow) {
+      learnLastFollow = beat.key;
+      var before = learnKey;
+      paintLearn(beat.key);
+      if (learnKey !== before) {          // advanced to a real seat
+        if (learnAloud) speakAloud(learnKey);
+        if (learnGame) armGame(learnKey);
+      }
     }
   }
 
