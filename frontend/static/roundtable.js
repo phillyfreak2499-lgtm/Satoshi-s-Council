@@ -4586,6 +4586,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
     // 7 — chair ask
     const askCls = /LONG/.test(info.ask.call) ? "UP" : /SHORT/.test(info.ask.call) ? "DOWN" : "WAIT";
 
+    // call P&L: how far the Kalshi market has moved since they picked this side
+    let flipHtml = "";
+    if (info.flip && info.flip.delta != null) {
+      const f = info.flip;
+      const pos = f.delta >= 0;
+      const sideWord = f.dir === "UP" ? "UP" : "DOWN";
+      flipHtml =
+        '<div class="bs-sec"><div class="bs-kick">CALL P&amp;L</div>' +
+          '<div class="bs-flip ' + (pos ? "up" : "dn") + '">Picked ' + sideWord +
+          ' at <b>' + f.entry + '¢</b> · now <b>' + f.now + '¢</b> ' +
+          '<span class="bs-flip-arrow">' + (pos ? "+" : "") + f.delta + '%</span></div></div>';
+    }
+
     panel.innerHTML =
       '<div class="bs-head">' +
         '<div class="bs-id"><span class="bs-name">' + _escBot(info.who.name) + '</span>' +
@@ -4601,6 +4614,7 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       '<div class="bs-sec"><div class="bs-kick">THINKING</div>' +
         '<div class="bs-think"><span class="bs-conf">' + info.thinking.conf + '</span>' +
         '<span class="bs-think-txt">' + _escBot(info.thinking.text) + '</span></div></div>' +
+      flipHtml +
       '<div class="bs-sec"><div class="bs-kick">THE FLOOR SEES</div>' +
         '<div class="bs-others">' + _escBot(info.others) + '</div></div>' +
       '<div class="bs-sec"><div class="bs-kick">WANTS THE CHAIR TO KNOW</div>' +
@@ -6253,6 +6267,19 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
       const showDir = effectiveDir(agent.direction);
       ctx.fillStyle = lawLocked() ? "rgba(255, 120, 20, 0.95)" : sc;
       ctx.fillText(lawLocked() ? "LOCKED" : `${showDir} ${agent.confidence}%`, pos.x, Math.min(h - 6, pos.y + r + dirOff));
+      // flip tag: the % it was at when it last turned this color
+      try {
+        if (!compact && !lawLocked() && window.CouncilSwap && window.CouncilSwap.flip) {
+          const _f = window.CouncilSwap.flip(name);
+          const _dir = String(showDir || "").toUpperCase();
+          if (_f && _f.delta && _dir !== "WAIT") {
+            const _pos = _f.delta > 0;
+            ctx.font = "8px 'Share Tech Mono', Consolas, monospace";
+            ctx.fillStyle = _pos ? "rgba(125,255,90,0.62)" : "rgba(255,106,134,0.68)";
+            ctx.fillText((_pos ? "+" : "") + _f.delta + "%", pos.x, Math.min(h - 3, pos.y + r + dirOff + 11));
+          }
+        }
+      } catch (e) {}
     });
     ctx.globalAlpha = 1;
     if (frontLive) {

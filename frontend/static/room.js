@@ -257,7 +257,10 @@
           '<div class="war-bubble" id="warBubble" hidden></div>' +
         '</div>' +
       '</div>' +
-      '<div class="war-transcript" id="warTranscript" aria-live="polite"></div>';
+      '<aside class="war-board" id="warBoard" aria-label="The floor"></aside>' +
+      '<div class="war-transcript" id="warTranscript" aria-live="polite"></div>' +
+      '<div class="war-vignette" aria-hidden="true"></div>' +
+      '<div class="war-grain" aria-hidden="true"></div>';
     el.charts = host.querySelector("#warCharts");
     el.seats = host.querySelector("#warSeats");
     el.bubble = host.querySelector("#warBubble");
@@ -265,6 +268,7 @@
     el.transcript = host.querySelector("#warTranscript");
     el.tickerRow = host.querySelector("#warTickerRow");
     el.rain = host.querySelector("#warRain");
+    el.board = host.querySelector("#warBoard");
     buildCharts();
     startRain();
     return true;
@@ -281,6 +285,53 @@
         '<polyline points="' + pts.join(" ") + '"/></svg></div>';
     }
     el.charts.innerHTML = html;
+  }
+
+  // Call P&L: how far the Kalshi market has moved toward (+) or against (-) the
+  // side this seat picked, since it picked it.
+  function flipTag(key, dc) {
+    if (dc === "WAIT") return "";
+    var f = (window.CouncilSwap && window.CouncilSwap.flip) ? window.CouncilSwap.flip(key) : null;
+    if (!f || !f.delta) return "";   // hide until the market actually moves
+    var pos = f.delta > 0;
+    return '<span class="war-seat-flip ' + (pos ? "up" : "dn") + '">' + (pos ? "+" : "") + f.delta + "%</span>";
+  }
+  function boardFlip(key) {
+    var f = (window.CouncilSwap && window.CouncilSwap.flip) ? window.CouncilSwap.flip(key) : null;
+    if (!f || !f.delta) return "";
+    var pos = f.delta > 0;
+    return ' <span class="fb-flip ' + (pos ? "up" : "dn") + '">' + (pos ? "+" : "") + f.delta + "%</span>";
+  }
+
+  function paintBoard(s) {
+    if (!el.board) return;
+    var a = s.agents || [], m = (window.state && window.state.market) || {};
+    var up = 0, dn = 0, wt = 0, i;
+    for (i = 0; i < a.length; i++) { var d = dirClass(a[i].direction); if (d === "UP") up++; else if (d === "DOWN") dn++; else wt++; }
+    var tot = up + dn + wt || 1;
+    var reads = a.filter(function (x) { return dirClass(x.direction) !== "WAIT"; })
+      .sort(function (p, q) { return (q.confidence || 0) - (p.confidence || 0); }).slice(0, 4);
+    var readsHtml = reads.map(function (x) {
+      var dd = dirClass(x.direction), cl = dd === "UP" ? "up" : "dn", cf = Math.round(x.confidence || 0);
+      var nm = NAMES[x.agent_name] || String(x.agent_name).toUpperCase();
+      return '<div class="fb-read"><span class="nm">' + esc(nm) + '</span>' +
+        '<span class="cf ' + cl + '">' + dd + " " + cf + "%" + boardFlip(x.agent_name, cf) + '</span>' +
+        '<span class="fb-bar"><i class="' + cl + '" style="width:' + cf + '%"></i></span></div>';
+    }).join("");
+    var cent = (m.up_pct != null && isFinite(Number(m.up_pct))) ? Math.round(Number(m.up_pct)) : "—";
+    var win = s.windowLabel + (s.mins != null ? " · " + s.mins + "m to close" : "");
+    var h = (window.state && window.state.health) || {};
+    function dot(on) { return '<span class="fb-dot' + (on ? "" : " off") + '">●</span> '; }
+    el.board.innerHTML =
+      '<div><div class="fb-kick">THE FLOOR</div><div class="fb-win">' + esc(win) + '</div></div>' +
+      '<div class="fb-sec"><div class="fb-kick">KALSHI</div><div class="fb-cent">' + cent + '¢ <small>P(up)</small></div></div>' +
+      '<div class="fb-sec"><div class="fb-kick">THE TALLY</div>' +
+        '<div class="fb-tally"><i class="up" style="width:' + (up / tot * 100) + '%"></i>' +
+        '<i class="dn" style="width:' + (dn / tot * 100) + '%"></i>' +
+        '<i class="wt" style="width:' + (wt / tot * 100) + '%"></i></div>' +
+        '<div class="fb-legend"><span class="up">LONG ' + up + '</span><span class="dn">SHORT ' + dn + '</span><span class="wt">WAIT ' + wt + '</span></div></div>' +
+      (readsHtml ? '<div class="fb-sec"><div class="fb-kick">LOUDEST READS</div><div class="fb-reads">' + readsHtml + '</div></div>' : "") +
+      '<div class="fb-sec fb-feeds">' + dot(h.binance) + 'Binance ' + dot(h.coinbase) + 'Coinbase ' + dot(h.kalshi) + 'Kalshi</div>';
   }
 
   function layoutSeats(s) {
@@ -307,6 +358,7 @@
         '<span class="war-av" style="background-image:url(\'' + portrait(a.agent_name) + '\')"></span>' +
         '<span class="war-seat-name">' + esc(name) + '</span>' +
         '<span class="war-seat-call ' + dc + '">' + (dc === "WAIT" ? "WAIT" : dc + " " + conf + "%") + '</span>' +
+        flipTag(a.agent_name, dc, conf) +
         '</div>';
     }
     el.seats.innerHTML = html;
@@ -416,10 +468,10 @@
   function start() {
     if (!buildScene()) return;
     var s = snap();
-    layoutSeats(s); paintCall(s); paintTicker(s);
+    layoutSeats(s); paintCall(s); paintTicker(s); paintBoard(s);
     if (el.transcript && !el.transcript.childElementCount) { beatOnce(); beatOnce(); }
     if (callTimer) clearInterval(callTimer);
-    callTimer = setInterval(function () { var s2 = snap(); layoutSeats(s2); paintCall(s2); paintTicker(s2); }, 2000);
+    callTimer = setInterval(function () { var s2 = snap(); layoutSeats(s2); paintCall(s2); paintTicker(s2); paintBoard(s2); }, 2000);
     schedule();
   }
   function stop() {

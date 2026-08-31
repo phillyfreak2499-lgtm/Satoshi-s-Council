@@ -93,9 +93,20 @@
   }
   function hourBucket() { return Math.floor(Date.now() / 3600000); }
   function leanWord(side) { return side === "UP" ? "LEAN LONG" : side === "DOWN" ? "LEAN SHORT" : "WAIT"; }
+  // Kalshi implied probability of a given side, from the poll's up_pct/down_pct.
+  function sideProb(side, m) {
+    m = m || {};
+    var up = Number(m.up_pct);
+    if (!isFinite(up)) return null;
+    var dn = isFinite(Number(m.down_pct)) ? Number(m.down_pct) : (100 - up);
+    if (side === "UP") return Math.round(up);
+    if (side === "DOWN") return Math.round(dn);
+    return null; // WAIT — no side to price
+  }
 
   // ---- state ----------------------------------------------------------------
   var SEATS = {};        // name -> record
+  var LASTMKT = {};      // latest market block, for on-demand Kalshi deltas
   var EVENTS = [];       // room-tape queue of real state changes
   var HOUR = hourBucket();
   var MK = { crossings: 0, lastBand: null, whip: false, whipAnnounced: false, hour: HOUR };
@@ -103,7 +114,12 @@
   function rec(name) {
     if (!SEATS[name]) {
       SEATS[name] = { official: null, pend: null, pendN: 0, swaps: 0, hour: HOUR,
-        state: "CLEAN", from: null, to: null, ts: 0, why: "", conf: 0, event: null, eventAt: 0 };
+        state: "CLEAN", from: null, to: null, ts: 0, why: "", conf: 0, event: null, eventAt: 0,
+        // Call P&L in Kalshi terms: the color a seat is in, the market-implied
+        // probability of THAT side the moment they picked it (entryKalshi), where
+        // that side sits now (nowKalshi), and the delta the market has moved
+        // toward/against the call. DOWN picked at 50c, DOWN now 80c => +30.
+        flipDir: null, flipTs: 0, entryKalshi: null, nowKalshi: null, delta: null };
     }
     return SEATS[name];
   }
@@ -132,6 +148,8 @@
       Object.keys(SEATS).forEach(function (k) { var r = SEATS[k]; r.swaps = 0; r.hour = now; r.state = "CLEAN"; r.from = r.to = null; r.event = null; });
       MK.crossings = 0; MK.whip = false; MK.whipAnnounced = false; MK.hour = now; MK.lastBand = null;
     }
+    var mkt = state.market || {};
+    LASTMKT = mkt;
     var agents = (state.agents || []).filter(function (a) {
       return a && a.agent_name && a.agent_name !== "leader" && !a.sub && String(a.category || "") !== "health";
     });
@@ -140,7 +158,12 @@
       var side = norm(a.direction);
       var conf = Math.max(0, Math.min(100, Math.round(a.confidence || 0)));
       r.conf = conf;
-      if (r.official === null) { r.official = side; r.pend = null; r.pendN = 0; return; }
+      if (r.official === null) {
+        // first sighting: treat the current color as its entry point
+        r.official = side; r.pend = null; r.pendN = 0;
+        r.flipDir = side; r.flipTs = Date.now(); r.entryKalshi = sideProb(side, mkt);
+        return;
+      }
 
       if (side !== r.official) {
         // candidate swap — must persist to count as official
@@ -148,6 +171,7 @@
         if (r.pendN >= PERSIST_POLLS) {
           var from = r.official, to = side;
           r.from = from; r.to = to; r.ts = Date.now(); r.official = to; r.pend = null; r.pendN = 0; r.swaps++;
+          r.flipDir = to; r.flipTs = r.ts; r.entryKalshi = sideProb(to, mkt);  // Kalshi price of the new side at the flip
           var ft = leanWord(from) + " → " + leanWord(to);
           var tstr = fmtTime(r.ts);
           if (r.swaps >= 2) {
@@ -368,7 +392,8 @@
         ? "I stay quiet until the screens give me one. No edge, no call."
         : ("I'm " + conf + " on this. " + (conf <= ARMED_CONF ? "Barely — one more print the other way and I'm gone." : "Holding it while the read holds.")) },
       others: others,
-      ask: { call: ask, invalidation: invalid }
+      ask: { call: ask, invalidation: invalid },
+      flip: flipInfo(name)
     };
   }
 
@@ -380,6 +405,14 @@
     return "the pivot";
   }
 
+  function flipInfo(name) {
+    var r = SEATS[name];
+    if (!r || !r.flipDir || r.flipDir === "WAIT") return null;
+    var now = sideProb(r.flipDir, LASTMKT);
+    var entry = r.entryKalshi;
+    var delta = (now != null && entry != null) ? (now - entry) : null;
+    return { dir: r.flipDir, entry: entry, now: now, delta: delta };
+  }
   function seatState(name) { return SEATS[name] || { state: "CLEAN" }; }
   function drainEvents() { var e = EVENTS; EVENTS = []; return e; }
   function marketWhip() { return MK.whip; }
@@ -393,6 +426,11 @@
     drainEvents: drainEvents,
     marketWhip: marketWhip,
     chairState: chairState,
-    callsign: callsign
+    callsign: callsign,
+    // Call P&L in Kalshi terms: {dir, entry, now, delta}. entry = the market
+    // probability of the seat's side when it picked that color; now = where that
+    // side sits currently; delta = how far the market has moved toward (+) or
+    // against (-) the call. null for WAIT or before a priced pick.
+    flip: flipInfo
   };
 })();
