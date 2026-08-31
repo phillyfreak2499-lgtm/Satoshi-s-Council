@@ -10690,6 +10690,12 @@ body.mode-art .bot-scope.show { width: min(360px, 32vw); top: 168px; max-height:
    floating ticker, running transcript. Gold + dark. Never carnival.
    ========================================================================== */
 .room-view { padding: 0 !important; }
+/* The war room is a position:fixed child of #roomView. Info views default to
+   collapsed unless their mode lights them, and #roomView had no such rule — so
+   in room mode the wrapper stayed display:none and the fixed war room rendered
+   at 0x0 (a blank black Room). Light the wrapper for room mode. */
+body.mode-room #roomView { display: block !important; }
+body.mode-room #roomView.hidden { display: none !important; }
 .war-room {
   position: fixed;
   inset: 150px 0 56px 0;               /* below the tab strip, above the footer */

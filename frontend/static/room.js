@@ -240,7 +240,10 @@
   function buildScene() {
     var host = document.getElementById("warRoom");
     if (!host) return false;
-    if (host.__built) return true;
+    // Rebuild if the scene isn't actually in the DOM — a stale __built flag
+    // with an emptied host (view re-rendered, el.* references gone) is exactly
+    // what left the Room a blank black panel.
+    if (host.__built && host.childElementCount > 0 && el.seats && host.contains(el.seats)) return true;
     host.__built = true;
     host.innerHTML =
       '<canvas id="warRain" class="war-rain"></canvas>' +

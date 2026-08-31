@@ -11926,6 +11926,35 @@ function drawCandleChart() {
     document.__modeTabsDelegated = true;
     document.addEventListener("click", (e) => {
       if (e.target && e.target.closest && e.target.closest("#settingsView")) return;
+      // The More overflow button has no data-mode — toggle its menu here, in
+      // the handler that reliably attaches, so it can't be left dead by the
+      // dedicated wiring racing the DOM.
+      const moreHit = e.target && e.target.closest && e.target.closest("#moreBtn");
+      if (moreHit) {
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        const mm = document.getElementById("moreMenu");
+        const mb = document.getElementById("moreBtn");
+        if (mm && mb) {
+          const willOpen = mm.hidden;
+          if (willOpen) {
+            const r = mb.getBoundingClientRect();
+            mm.style.top = Math.round(r.bottom + 6) + "px";
+            mm.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + "px";
+            mm.style.left = "auto";
+          }
+          mm.hidden = !willOpen;
+          mb.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        }
+        return;
+      }
+      // Click outside an open More menu closes it (menu items fall through to
+      // the mode-tab branch below).
+      const mmOpen = document.getElementById("moreMenu");
+      if (mmOpen && !mmOpen.hidden && e.target && e.target.closest && !e.target.closest("#moreMenu")) {
+        mmOpen.hidden = true;
+        const mb2 = document.getElementById("moreBtn");
+        if (mb2) mb2.setAttribute("aria-expanded", "false");
+      }
       const btn = e.target && e.target.closest && e.target.closest(".mode-tab[data-mode]");
       if (!btn || btn.id === "focusBtc" || btn.id === "focusEth" || btn.id === "focusFront" || btn.id === "focusAts" || btn.id === "focusOra" || btn.id === "btnHelp") return;
       e.preventDefault();
@@ -11947,21 +11976,9 @@ function drawCandleChart() {
         moreMenu.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + "px";
         moreMenu.style.left = "auto";
       }
-      moreBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const open = moreMenu.hidden;
-        if (open) placeMenu();
-        moreMenu.hidden = !open;
-        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
-      });
+      // (Toggle + outside-close now live in the delegated capture handler
+      // above, which always attaches. Keep resize repositioning + Escape here.)
       window.addEventListener("resize", function () { if (!moreMenu.hidden) placeMenu(); });
-      document.addEventListener("click", function (e) {
-        if (moreMenu.hidden) return;
-        if (e.target === moreBtn || moreBtn.contains(e.target) || moreMenu.contains(e.target)) return;
-        moreMenu.hidden = true;
-        moreBtn.setAttribute("aria-expanded", "false");
-      });
       document.addEventListener("keydown", function (e) {
         if (e.key === "Escape" && !moreMenu.hidden) {
           moreMenu.hidden = true;
