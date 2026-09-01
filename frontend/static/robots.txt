@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /legal
+Allow: /terms
+Allow: /privacy
+Allow: /refunds
+Allow: /about
+Allow: /proof
+Disallow: /api/
+Disallow: /admin
+Disallow: /workspace
+
+Sitemap: https://satoshiscouncil.com/proof
