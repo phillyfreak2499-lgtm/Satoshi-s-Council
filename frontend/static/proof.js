@@ -78,6 +78,11 @@
       try { renderPnl(data.path_pnl); } catch (e) { set("#pnlLabel", "Path book warming."); }
       try { renderHorizon(metrics); } catch (e) { renderHorizon({}); }
       try { renderAssets(data.records_by_asset); } catch (e) { renderAssets({}); }
+      if (Number(data.decision_records) === 0 && Number(data.wait_records) === 0) {
+        const fresh = "No graded 15m windows yet. The desk is live. This ledger stays empty until an official Kalshi finish is written.";
+        set("#proofNote", fresh);
+        set("#pnlLabel", fresh);
+      }
     } catch (error) {
       set("#proofNote", error && error.message ? error.message : "The public ledger is unavailable.");
       set("#pnlLabel", "Ledger fetch failed — retry.");

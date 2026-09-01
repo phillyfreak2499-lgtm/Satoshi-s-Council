@@ -32,13 +32,17 @@
     var m = (btc && btc.market) || {};
     var feeds = (btc && btc.feeds) || {};
     var age = ageFrom(h, feeds);
-    var leftover = leftoverFrom(Object.assign({}, m, feeds));
+    // The Chair's table book wins; the live feed only fills gaps, and when it
+    // does, the chip says FEED instead of dressing feed cents as the table book.
+    var fromFeed = (m.leftover_cents == null && m.yes_ask == null && m.kalshi_yes_ask == null);
+    var ageFromFeed = !(h.quote_age_s != null) && (feeds.quote_age_s != null);
+    var leftover = leftoverFrom(Object.assign({}, feeds, m));
     var stale = h.quote_stale === true || (age != null && age > 25);
     if (ageChip) {
       ageChip.className = "desk-chip " + (stale ? "stale" : age == null ? "off" : "live");
       var ageName = document.getElementById("quoteAgeName");
       var ageNote = document.getElementById("quoteAgeNote");
-      if (ageName) ageName.textContent = stale ? "QUOTE STALE" : "QUOTE";
+      if (ageName) ageName.textContent = (stale ? "QUOTE STALE" : "QUOTE") + (ageFromFeed && age != null ? " \u00b7 FEED" : "");
       if (ageNote) ageNote.textContent = age == null ? "\u2014" : age.toFixed(0) + "s";
     }
     if (leftChip) {
@@ -46,7 +50,7 @@
       leftChip.className = "desk-chip " + (leftover == null ? "off" : edge ? "edge" : "noedge");
       var leftName = document.getElementById("leftoverName");
       var leftNote = document.getElementById("leftoverNote");
-      if (leftName) leftName.textContent = "LEFTOVER";
+      if (leftName) leftName.textContent = (fromFeed && leftover != null) ? "LEFTOVER \u00b7 FEED" : "LEFTOVER";
       if (leftNote) {
         leftNote.textContent = leftover == null ? "\u2014" : (leftover > 0 ? "+" : "") + leftover.toFixed(1) + "\u00a2";
       }
@@ -66,10 +70,10 @@
       return "<div class=\"desk-chip-row\"><b>" + label + "</b><span>" + body + "</span></div>";
     }
     var bits = [];
-    bits.push(row("BTC quote", age == null ? "dark" : age.toFixed(1) + "s \u00b7 " + (feeds.quote_source || h.quote_source || "pipeline")));
-    bits.push(row("Leftover", leftover == null ? "need both asks" : leftover.toFixed(2) + "\u00a2 (100 \u2212 YES \u2212 NO)"));
-    bits.push(row("HL", feeds.hl_funding != null ? ("funding " + Number(feeds.hl_funding).toFixed(5) + (crowded ? " \u00b7 crowded" : "")) : "no print"));
-    bits.push(row("Force 2m", "L " + (feeds.force_long_usd || 0) + " / S " + (feeds.force_short_usd || 0)));
+    bits.push(row("BTC quote", age == null ? "dark" : age.toFixed(1) + "s \u00b7 " + (h.quote_source || feeds.quote_source || "pipeline")));
+    bits.push(row("Leftover", leftover == null ? "need both asks" : leftover.toFixed(2) + "\u00a2 (100 \u2212 YES \u2212 NO)" + (fromFeed ? " \u00b7 live feed" : " \u00b7 table book")));
+    bits.push(row("FEED \u00b7 HL", feeds.hl_funding != null ? ("funding " + Number(feeds.hl_funding).toFixed(5) + (crowded ? " \u00b7 crowded" : "")) : "no print"));
+    bits.push(row("FEED \u00b7 Force 2m", "L " + (feeds.force_long_usd || 0) + " / S " + (feeds.force_short_usd || 0)));
     panel.innerHTML = bits.join("");
   }
 
@@ -124,7 +128,7 @@
     wrap.id = "deskChipBar";
     wrap.innerHTML =
       '<button type="button" id="quoteAgeChip" class="desk-chip off" title="Kalshi quote age"><span class="desk-dot"></span><span id="quoteAgeName">QUOTE</span><span id="quoteAgeNote">\u2014</span></button>' +
-      '<button type="button" id="leftoverChip" class="desk-chip off" title="YES ask + NO ask leftover"><span id="leftoverName">LEFTOVER</span><span id="leftoverNote">\u2014</span></button>' +
+      '<button type="button" id="leftoverChip" class="desk-chip off" title="YES ask + NO ask leftover \u2014 table book the Chair prices; FEED = live-feed quote"><span id="leftoverName">LEFTOVER</span><span id="leftoverNote">\u2014</span></button>' +
       '<button type="button" id="hlChip" class="desk-chip off" title="Hyperliquid crowding + force liqs"><span id="hlName">HL / LIQ</span><span id="hlNote">quiet</span></button>' +
       '<div id="deskChipPanel" class="desk-chip-panel" hidden></div>';
     if (session && session.nextSibling) host.insertBefore(wrap, session.nextSibling);

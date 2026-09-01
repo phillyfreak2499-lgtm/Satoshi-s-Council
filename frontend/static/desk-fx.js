@@ -384,7 +384,7 @@
         body: JSON.stringify({ oath: true }),
       }).then((r) => r.json().catch(function () { return {}; })).then(function (d) {
         if (!d || !d.ok) {
-          if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
+          if (err) { err.textContent = "Couldn't open the desk. Try again."; err.classList.remove("hidden"); }
           return;
         }
         try { sessionStorage.setItem(passKey, "1"); } catch (e) {}
@@ -392,7 +392,7 @@
         window.__deskUnlockedThisPage = true;
         showAppAfterAuth();
       }).catch(function () {
-        if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
+        if (err) { err.textContent = "Couldn't open the desk. Try again."; err.classList.remove("hidden"); }
       }).finally(function () {
         tryUnlock.__busy = false;
         window.__councilUnlockInFlight = false;

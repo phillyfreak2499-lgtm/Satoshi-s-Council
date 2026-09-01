@@ -57,7 +57,7 @@ class SwUnstickTests(unittest.TestCase):
     def test_sw_does_not_precache_root(self) -> None:
         self.assertNotIn('"/",', SW.split("const PRECACHE")[1].split("];")[0])
         self.assertIn("isDocument", SW)
-        self.assertIn("20260831q", SW)
+        self.assertIn("20260901a", SW)
 
     def test_homepage_is_the_desk(self) -> None:
         self.assertIn("passwordSubmit", ASSEMBLER)

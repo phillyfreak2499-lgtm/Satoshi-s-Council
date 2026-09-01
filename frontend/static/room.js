@@ -508,7 +508,7 @@
         '<i class="wt" style="width:' + (wt / tot * 100) + '%"></i></div>' +
         '<div class="fb-legend"><span class="up">LONG ' + up + '</span><span class="dn">SHORT ' + dn + '</span><span class="wt">WAIT ' + wt + '</span></div></div>' +
       (readsHtml ? '<div class="fb-sec"><div class="fb-kick">LOUDEST READS</div><div class="fb-reads">' + readsHtml + '</div></div>' : "") +
-      '<div class="fb-sec fb-feeds">' + dot(h.binance) + 'Binance ' + dot(h.coinbase) + 'Coinbase ' + dot(h.kalshi) + 'Kalshi</div>';
+      '<div class="fb-sec fb-feeds">' + dot(h.binance || h.coinbase) + 'Spot' + (h.spot_source ? ' · ' + esc(String(h.spot_source).replace(/_/g, " ")) : "") + ' ' + dot(h.kalshi) + 'Kalshi</div>';
   }
 
   function layoutSeats(s) {

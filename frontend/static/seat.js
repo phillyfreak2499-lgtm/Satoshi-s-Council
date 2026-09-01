@@ -276,14 +276,14 @@
         body: JSON.stringify({ oath: true })
       }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok && d && d.ok }; }).catch(function () { return { ok: false }; }); }).then(function (res) {
         if (!res.ok) {
-          if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
+          if (err) { err.textContent = "Couldn't open the desk. Try again."; err.classList.remove("hidden"); }
           return;
         }
         try { sessionStorage.setItem("council_auth_ok", "1"); } catch (e2) {}
         try { localStorage.setItem("council_onboarded", "1"); } catch (e2) {}
         lockSeat();
       }).catch(function () {
-        if (err) { err.textContent = "Oath failed. Try again."; err.classList.remove("hidden"); }
+        if (err) { err.textContent = "Couldn't open the desk. Try again."; err.classList.remove("hidden"); }
       }).finally(function () { go.busy = false; window.__councilUnlockInFlight = false; });
     }
     btn.addEventListener("click", go, true);

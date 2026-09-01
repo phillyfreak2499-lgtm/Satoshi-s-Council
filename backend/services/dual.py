@@ -285,6 +285,8 @@ class DualOrchestrator:
         asyncio.create_task(_boot_store(), name="boot-store")
 
         async def _boot_closers():
+            # Do NOT take _analyze_lock here: the boot sweep runs beside the
+            # analysis loop, and holding the lock would starve the first ticks.
             for c in self._councils():
                 try:
                     n = await asyncio.wait_for(c.sweep_official_finishes(), timeout=75)

@@ -2258,6 +2258,21 @@ if STATIC_DIR.is_dir():
             {"Cache-Control": "public, max-age=3600"},
         )
 
+    @app.get("/robots.txt")
+    async def robots_txt():
+        return _file_or_404(
+            STATIC_DIR / "robots.txt", "text/plain; charset=utf-8",
+            {"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.get("/manifest.webmanifest")
+    @app.get("/manifest.json")
+    async def web_manifest():
+        return _file_or_404(
+            STATIC_DIR / "manifest.webmanifest", "application/manifest+json",
+            {"Cache-Control": "public, max-age=3600"},
+        )
+
     @app.get("/desk-fx.js")
     async def desk_fx_js():
         return _file_or_404(

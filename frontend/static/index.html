@@ -7,10 +7,12 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta name="description" content="Satoshi’s Council" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/static/fonts.css?v=20260831q" />
-  <link rel="stylesheet" href="/style.css?v=20260831q" />
-  <link rel="stylesheet" href="/static/phone-desk.css?v=20260831q" />
-  <script src="/seat.js?v=20260831q"></script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="stylesheet" href="/static/fonts.css?v=20260901a" />
+  <link rel="stylesheet" href="/style.css?v=20260901a" />
+  <link rel="stylesheet" href="/static/phone-desk.css?v=20260901a" />
+  <script src="/seat.js?v=20260901a"></script>
   <script>
   (function () {
     try { localStorage.removeItem("council_admin_unlocked"); } catch (e) {}
@@ -58,7 +60,7 @@
         <div class="gate-summon-hit" id="gateSummonHit">
           <button type="button" id="passwordSubmit" class="gate-btn gate-btn-summon" aria-disabled="false">SUMMON THE COUNCIL</button>
         </div>
-        <p id="passwordError" class="password-error hidden">Wrong password</p>
+        <p id="passwordError" class="password-error hidden">Check the oath first.</p>
         <p class="gate-legal-links" style="margin-top:14px;font-size:11px;letter-spacing:0.03em;color:#8fa6bd;text-align:center;">
           <a href="/about" target="_blank" rel="noopener" style="color:#7fd6e8;">What this is</a> ·
           <a href="/terms" target="_blank" rel="noopener" style="color:#7fd6e8;">Terms</a> ·
@@ -1014,15 +1016,15 @@
     </div>
   </div>
 
-  <script src="/wire.js?v=20260831q"></script>
-  <script src="/swap.js?v=20260831q"></script>
-  <script src="/roundtable.js?v=20260831q"></script>
-  <script src="/room.js?v=20260831q"></script>
-  <script src="/desk-fx.js?v=20260831q"></script>
+  <script src="/wire.js?v=20260901a"></script>
+  <script src="/swap.js?v=20260901a"></script>
+  <script src="/roundtable.js?v=20260901a"></script>
+  <script src="/room.js?v=20260901a"></script>
+  <script src="/desk-fx.js?v=20260901a"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js?v=20260831q", { updateViaCache: "none" }).catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=20260901a", { updateViaCache: "none" }).catch(function () {});
       });
     }
   </script>

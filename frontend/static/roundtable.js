@@ -150,6 +150,20 @@ if (window.applySettingsSnapshot && !window.applySettingsSnapshot._real) {
         try { poll(); } catch (e) {}
       } else {
         try { notePollMiss(); } catch (e) {}
+        // Server refused the re-mint: the session is truly gone, so reopen the
+        // oath gate instead of leaving a silent dead desk behind it.
+        try {
+          window.__deskUnlockedThisPage = false;
+          try { sessionStorage.removeItem(DESK_KEY); } catch (e2) {}
+          document.documentElement.classList.add("gate-locked");
+          document.documentElement.classList.remove("desk-unlocked");
+          document.body.classList.add("gate-locked");
+          document.body.classList.remove("admin-unlocked", "desk-unlocked");
+          var pg = document.getElementById("passwordGate");
+          if (pg) { pg.classList.remove("hidden"); pg.removeAttribute("aria-hidden"); }
+          var pe = document.getElementById("passwordError");
+          if (pe) { pe.textContent = "Session ended — summon the Council to rejoin."; pe.classList.remove("hidden"); }
+        } catch (e) {}
       }
     });
   }
@@ -11683,9 +11697,14 @@ function drawCandleChart() {
 
   function applyDeskState(payload) {
     if (!payload || typeof payload !== "object") return false;
+    if (payload.ok === false || (!payload.market && !payload.tables && !payload.dual && !(payload.btc && payload.eth))) {
+      // Error body on a 2xx (session died mid-flight): keep the last good floor.
+      try { notePollMiss(); } catch (e) {}
+      return false;
+    }
     state = payload;
     try { window.state = state; } catch (e) {}
-    try { if (window.CouncilSwap) window.CouncilSwap.observe(state); } catch (e) {}
+    try { if (window.CouncilSwap) window.CouncilSwap.observe(getViewState() || state); } catch (e) {}
     try { if (isSeatsMode(mode) && Date.now() - (__recap && __recap.at || 0) > 15000) fetchSeatRecap(); } catch (e) {}
     try { updateUI(); } catch (e) { console.warn("applyDeskState updateUI", e); }
     try { paintTableHud(); } catch (e) {}
@@ -11795,14 +11814,23 @@ function drawCandleChart() {
       let display = "--:--";
       if (secs != null && !isNaN(secs)) {
         const s = Math.max(0, Math.floor(Number(secs)));
+        try { window.__lastCloseMs = Date.now() + s * 1000; } catch (e) {}
         const mm = String(Math.floor(s / 60)).padStart(2, "0");
         const ss = String(s % 60).padStart(2, "0");
         display = mm + ":" + ss;
       } else {
         const now = Date.now();
-        const focus = (typeof focusTable === "string") ? focusTable : "bitcoin";
-        const bucket = (focus === "ethereum") ? (60 * 60 * 1000) : (15 * 60 * 1000);
-        const left = bucket - (now % bucket);
+        // A data gap must not flip the floor to a wall-clock hour: reuse the
+        // last real close if it is still ahead, else synth a 15m bucket —
+        // both crypto tables run 15m windows now.
+        const cached = Number(window.__lastCloseMs || 0);
+        let left;
+        if (cached > now) {
+          left = cached - now;
+        } else {
+          const bucket = 15 * 60 * 1000;
+          left = bucket - (now % bucket);
+        }
         const s = Math.floor(left / 1000);
         display = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
       }
