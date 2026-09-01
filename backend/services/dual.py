@@ -16,6 +16,12 @@ from backend.agents.chair_gates import build_btc_lead, floor_scorecard
 DUAL_FLOOR_S = 2.0
 BEAST_FLOOR_S = 1.2
 ANALYZE_TIMEOUT_S = 15.0
+# The first cycle after a boot is cold: fresh HTTP connections to ~14 hosts,
+# Kalshi client init, and the first settle sweep can push one pass past the
+# steady-state cap. A council with no hydrated snapshot (its disk snapshot was
+# never written, e.g. during a disk-full window) shows 0% shells until a real
+# cycle completes, so the first pass gets a longer budget to land it.
+COLD_ANALYZE_TIMEOUT_S = 45.0
 INIT_TIMEOUT_S = 20.0
 STORE_RETRY_S = 30.0
 LOCK_WAIT_S = 4.0
@@ -67,6 +73,7 @@ class DualOrchestrator:
         self.loop_heartbeat = 0.0
         self._analyze_lock = asyncio.Lock()
         self._settle_capped = False
+        self._warmed_assets: set = set()
 
     @property
     def store(self):
@@ -471,12 +478,15 @@ class DualOrchestrator:
                     for i, c in enumerate(councils):
                         if not self.running:
                             break
+                        _cold = c.asset not in self._warmed_assets
+                        _budget = COLD_ANALYZE_TIMEOUT_S if _cold else ANALYZE_TIMEOUT_S
                         try:
-                            await asyncio.wait_for(c.analyze_once(), timeout=ANALYZE_TIMEOUT_S)
+                            await asyncio.wait_for(c.analyze_once(), timeout=_budget)
                             self._touch(c, "ok")
+                            self._warmed_assets.add(c.asset)
                         except asyncio.TimeoutError:
                             logger.warning(
-                                f"Dual analysis hung ({c.asset}) after {ANALYZE_TIMEOUT_S:.0f}s — painting feeds"
+                                f"Dual analysis hung ({c.asset}) after {_budget:.0f}s — painting feeds"
                             )
                             self._touch(c, "timeout")
                             try:
