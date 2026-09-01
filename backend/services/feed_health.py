@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 _FAST = (20.0, 150.0)      # price feeds, refreshed every ~4.5s cycle
 _KALSHI = (30.0, 240.0)    # Kalshi quote
 _SLOW = (2400.0, 5400.0)   # CoinGlass 30m-bar derivatives: 40m live, 90m stale
+_ANALYSIS = (30.0, 300.0)  # completed analyze_once passes (seats re-vote)
 
 
 def _num(v: Any) -> Optional[float]:
@@ -60,6 +61,17 @@ def _feed(name: str, key: str, state: str, *, critical: bool,
         "value": value,
         "detail": detail,
     }
+
+
+def _iso_age(ts: Any, now: float) -> Optional[float]:
+    if not ts:
+        return None
+    try:
+        from datetime import datetime
+        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+        return max(0.0, now - t)
+    except Exception:
+        return None
 
 
 def _age_text(age: Optional[float]) -> str:
@@ -149,6 +161,28 @@ def build_feed_health(state: Dict[str, Any]) -> Dict[str, Any]:
             value=(f"${eth_px:,.0f}" if eth_px else "—"),
             detail="feeds VITALIK",
         ))
+
+    # ── 5. Analysis loop (critical) — are the seats actually re-voting? ──
+    # The loop heartbeat keeps /health green through failed cycles by design
+    # (Render must not restart-loop the desk), so this row is the honest tell:
+    # `cycle` is the last loop outcome and `analysis_ok_at` only moves when a
+    # full analyze pass completes. Frozen seats show up here, nowhere else.
+    cycle = str(health.get("cycle") or "")
+    ok_age = _iso_age(health.get("analysis_ok_at"), now)
+    failing = cycle in ("error", "timeout", "lock_busy")
+    if failing and (ok_age is None or ok_age > 60.0):
+        a_state = "down"
+    elif failing:
+        a_state = "stale"
+    else:
+        a_state = _state_of(ok_age, True, _ANALYSIS)
+    feeds.append(_feed(
+        "Analysis", "analysis", a_state,
+        critical=True, age=ok_age,
+        value=(cycle or "—"),
+        detail=(f"seats frozen at their last completed vote ({cycle})" if a_state == "down"
+                else "seats re-vote every completed cycle"),
+    ))
 
     # ── Overall roll-up ──
     crit = [f for f in feeds if f["critical"]]

@@ -374,6 +374,7 @@ async def health():
     quote_age = btc_h.get("quote_age_s")
     if quote_age is None:
         quote_age = age
+    analysis_ok_age = _age(btc_h.get("analysis_ok_at"))
     return {
         "status": status,
         "service": settings.APP_NAME,
@@ -391,6 +392,9 @@ async def health():
         "quote_age_s": round(float(quote_age), 1) if quote_age is not None else None,
         "analysis_interval_s": settings.ANALYSIS_INTERVAL,
         "fetch_ms": (state.get("health") or {}).get("last_fetch_ms") or btc_h.get("last_fetch_ms"),
+        "btc_cycle": btc_h.get("cycle"),
+        "eth_cycle": (eth_h.get("cycle") if eth else None),
+        "analysis_ok_age_s": round(analysis_ok_age, 1) if analysis_ok_age is not None else None,
     }
 
 
@@ -433,7 +437,15 @@ async def force_analyze(request: Request):
     denied = _admin_required(request)
     if denied is not None:
         return denied
-    state = await council.analyze_once()
+    try:
+        state = await asyncio.wait_for(council.analyze_once(), timeout=30.0)
+    except asyncio.TimeoutError:
+        # Cancelling releases the analyze lock — a hung manual pass must never
+        # starve the background loop into feed-paint-only cycles.
+        return ORJSONResponse(
+            {"ok": False, "error": "analysis pass timed out — background loop unaffected"},
+            status_code=504,
+        )
     return _strip_public_auto_bet(state) if isinstance(state, dict) else state
 
 

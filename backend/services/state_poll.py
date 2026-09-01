@@ -68,6 +68,8 @@ _HEALTH_KEYS = (
     "leftover_cents",
     "hl_crowded",
     "force_n",
+    "cycle",
+    "analysis_ok_at",
 )
 _LOCKED_KEYS = ("direction", "confidence", "side", "asset")
 

@@ -9283,6 +9283,20 @@ function drawCandleChart() {
     const ageEl = document.getElementById("healthAge");
     const age = data.quote_age_s != null ? data.quote_age_s : data.state_age_s;
     if (ageEl) ageEl.textContent = (age != null && isFinite(Number(age))) ? (Math.round(Number(age)) + "s") : "—";
+    // The heartbeat keeps /health green through failed analyze cycles, so the
+    // strip must say when the seats stopped re-voting instead of looking fine.
+    const cyc = String(data.btc_cycle || "");
+    const stalled = !!cyc && cyc !== "ok" && cyc !== "warming";
+    if (ageEl) {
+      if (stalled) {
+        ageEl.textContent = "STALLED";
+        const okAge = Number(data.analysis_ok_age_s);
+        ageEl.title = "Analysis loop not completing (" + cyc + ") — seats show their last completed vote" +
+          (isFinite(okAge) ? " from " + Math.round(okAge / 60) + "m ago" : "") + ". Quotes stay live.";
+      } else {
+        ageEl.title = "";
+      }
+    }
   }
 
   async function loadHealthStrip() {

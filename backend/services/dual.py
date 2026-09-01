@@ -138,6 +138,11 @@ class DualOrchestrator:
             st["loop_reason"] = reason
             health = dict(st.get("health") or {})
             health["cycle"] = reason
+            if reason == "ok":
+                # Only a completed analyze_once stamps this — feed-paint ticks
+                # don't, so its age is how long the seats have been frozen.
+                st["analysis_ok_at"] = iso
+                health["analysis_ok_at"] = iso
             st["health"] = health
             c.latest_state = st
         except Exception:
