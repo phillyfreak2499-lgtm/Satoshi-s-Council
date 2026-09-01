@@ -5,6 +5,7 @@ Proxies store/leader/learner/huddle/law to BTC so existing main.py routes keep w
 """
 from __future__ import annotations
 import asyncio
+import time
 from typing import Any, Dict, Optional
 from loguru import logger
 from backend.config import settings
@@ -15,6 +16,8 @@ DUAL_FLOOR_S = 2.0
 BEAST_FLOOR_S = 1.2
 ANALYZE_TIMEOUT_S = 15.0
 INIT_TIMEOUT_S = 20.0
+STORE_RETRY_S = 30.0
+LOCK_WAIT_S = 4.0
 
 
 def compute_dual_interval(
@@ -52,12 +55,14 @@ class DualOrchestrator:
         self._backfill_task: Optional[asyncio.Task] = None
         self._closer_task: Optional[asyncio.Task] = None
         self._last_wal_ckpt = 0.0
+        self._store_ready = False
+        self._last_store_retry = 0.0
+        self.loop_heartbeat = 0.0
         # One analysis pass at a time. The background loop and a forced
         # POST /api/analyze share the same store and latest_state; letting
         # them interleave races the lock/settle path.
         self._analyze_lock = asyncio.Lock()
 
-    # ── back-compat proxies (main.py still uses council.store / .leader / …) ──
     @property
     def store(self):
         return self.btc.store
@@ -90,6 +95,50 @@ class DualOrchestrator:
     def latest_state(self):
         return self.get_state()
 
+    def _touch(self, c: Council, reason: str = "ok") -> None:
+        """Bump latest_state.timestamp so /health.state_age_s cannot freeze.
+
+        analyze_once used to hang on a WAL-locked store. Dual timed the
+        call out and painted a WAIT shell, but the shell kept the old
+        hydrate timestamp — state_age_s then grew for hours while quotes
+        stayed fresh. Always stamp the cycle, even on timeout / lock busy.
+        """
+        now = time.time()
+        self.loop_heartbeat = now
+        try:
+            st = dict(getattr(c, "latest_state", None) or {})
+            st["timestamp"] = now
+            st["loop_heartbeat"] = now
+            st["loop_reason"] = reason
+            health = dict(st.get("health") or {})
+            health["cycle"] = reason
+            st["health"] = health
+            c.latest_state = st
+        except Exception:
+            pass
+        try:
+            c._loop_heartbeat = now
+        except Exception:
+            pass
+
+    async def _ensure_store(self) -> None:
+        if self._store_ready:
+            return
+        now = time.time()
+        if now - self._last_store_retry < STORE_RETRY_S and self._last_store_retry:
+            return
+        self._last_store_retry = now
+        try:
+            await asyncio.wait_for(self.btc.store.init(), timeout=INIT_TIMEOUT_S)
+            self._store_ready = True
+            if self.eth and self.eth.store is not self.btc.store:
+                self.eth.store = self.btc.store
+            logger.info("store.init recovered")
+        except asyncio.TimeoutError:
+            logger.warning(f"store.init retry timed out after {INIT_TIMEOUT_S:.0f}s")
+        except Exception as e:
+            logger.warning(f"store.init retry failed: {e}")
+
     async def start(self):
         # Light /health BEFORE any SQLite work. store.init / a second ETH
         # init on the same file / prune / hydrate can hang on a WAL-locked
@@ -101,10 +150,13 @@ class DualOrchestrator:
             except Exception as e:
                 logger.debug(f"seat shell {c.asset}: {e}")
             c.running = True
+            self._touch(c, "warming")
         self.running = True
+        self.loop_heartbeat = time.time()
 
         try:
             await asyncio.wait_for(self.btc.store.init(), timeout=INIT_TIMEOUT_S)
+            self._store_ready = True
         except asyncio.TimeoutError:
             logger.warning(
                 f"store.init timed out after {INIT_TIMEOUT_S:.0f}s — analysis loop still starts"
@@ -148,10 +200,13 @@ class DualOrchestrator:
         asyncio.create_task(_boot_store(), name="boot-store")
 
         async def _boot_closers():
+            # Do NOT take _analyze_lock. A hung official closer used to
+            # own the lock for the life of the process; Dual._loop then
+            # never called analyze_once and every seat stayed WAIT while
+            # /health.running stayed true.
             for c in self._councils():
                 try:
-                    async with self._analyze_lock:
-                        n = await asyncio.wait_for(c.sweep_official_finishes(), timeout=75)
+                    n = await asyncio.wait_for(c.sweep_official_finishes(), timeout=75)
                     if n:
                         logger.info(f"[{c.asset}] Official closer swept {n} open hour(s)")
                 except asyncio.TimeoutError:
@@ -220,7 +275,6 @@ class DualOrchestrator:
             except Exception:
                 pass
 
-
     def snapshot_btc_lead(self) -> Dict[str, Any]:
         """Satoshi lock / lean / hour spot delta for Vitalik."""
         st = self.btc.latest_state or {}
@@ -257,7 +311,6 @@ class DualOrchestrator:
         e = (self.eth.latest_state or {}).get("decision") or {}
         bd = (b.get("direction") or "").upper()
         ed = (e.get("direction") or "").upper()
-        # Only veto pre-lock leans / directional not yet irreversible
         bl = (b.get("locked_call") or {}).get("locked") or b.get("window_locked")
         el = (e.get("locked_call") or {}).get("locked") or e.get("window_locked")
         if bl or el:
@@ -271,7 +324,6 @@ class DualOrchestrator:
             return
         bc = int(b.get("confidence") or 0)
         ec = int(e.get("confidence") or 0)
-        # Demote weaker confidence table's displayed decision note
         weaker = self.eth if ec <= bc else self.btc
         st = weaker.latest_state or {}
         d = dict(st.get("decision") or {})
@@ -306,58 +358,74 @@ class DualOrchestrator:
         while self.running:
             t0 = asyncio.get_event_loop().time()
             councils = self._councils()
-            # Same lock a forced POST /api/analyze takes, so the two paths
-            # never run a pass concurrently on the same store.
-            async with self._analyze_lock:
-                for i, c in enumerate(councils):
-                    if not self.running:
-                        break
+            try:
+                await self._ensure_store()
+            except Exception as e:
+                logger.debug(f"store retry skip: {e}")
+            got_lock = False
+            try:
+                await asyncio.wait_for(self._analyze_lock.acquire(), timeout=LOCK_WAIT_S)
+                got_lock = True
+            except asyncio.TimeoutError:
+                logger.warning("analyze lock busy — heartbeat and skip this tick")
+                for c in councils:
+                    self._touch(c, "lock_busy")
                     try:
-                        await asyncio.wait_for(c.analyze_once(), timeout=ANALYZE_TIMEOUT_S)
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            f"Dual analysis hung ({c.asset}) after {ANALYZE_TIMEOUT_S:.0f}s — keeping seat shell"
-                        )
+                        c.ensure_seat_shell("lock busy")
+                    except Exception:
+                        pass
+            except asyncio.CancelledError:
+                return
+            if got_lock:
+                try:
+                    for i, c in enumerate(councils):
+                        if not self.running:
+                            break
                         try:
-                            c.ensure_seat_shell("cycle timed out")
-                        except Exception:
-                            pass
-                    except Exception as e:
-                        name = type(e).__name__
-                        if name in ("HTTPStatusError", "TimeoutException", "ConnectError", "ReadTimeout", "RuntimeError"):
-                            logger.warning(f"Dual analysis flap ({c.asset}): {name} — desk stays up")
-                        else:
-                            logger.warning(f"Dual analysis error ({c.asset}): {name}: {e}")
-                        try:
-                            c.ensure_seat_shell("cycle error")
-                        except Exception:
-                            pass
-                        try:
-                            await c.settle_due_windows()
-                        except Exception as se:
-                            logger.debug(f"Dual settle-after-error skip ({c.asset}): {se}")
-                    if c.asset == "btc":
-                        self._feed_btc_lead()
-                    # Jitter between tables so Kalshi calls don't stampede
-                    if i < len(councils) - 1:
-                        try:
-                            await asyncio.sleep(0.15 + random.random() * 0.35)
-                        except asyncio.CancelledError:
-                            return
+                            await asyncio.wait_for(c.analyze_once(), timeout=ANALYZE_TIMEOUT_S)
+                            self._touch(c, "ok")
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Dual analysis hung ({c.asset}) after {ANALYZE_TIMEOUT_S:.0f}s — keeping seat shell"
+                            )
+                            self._touch(c, "timeout")
+                            try:
+                                c.ensure_seat_shell("cycle timed out")
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            name = type(e).__name__
+                            if name in ("HTTPStatusError", "TimeoutException", "ConnectError", "ReadTimeout", "RuntimeError"):
+                                logger.warning(f"Dual analysis flap ({c.asset}): {name} — desk stays up")
+                            else:
+                                logger.warning(f"Dual analysis error ({c.asset}): {name}: {e}")
+                            self._touch(c, "error")
+                            try:
+                                c.ensure_seat_shell("cycle error")
+                            except Exception:
+                                pass
+                            try:
+                                await c.settle_due_windows()
+                            except Exception as se:
+                                logger.debug(f"Dual settle-after-error skip ({c.asset}): {se}")
+                        if c.asset == "btc":
+                            self._feed_btc_lead()
+                        if i < len(councils) - 1:
+                            try:
+                                await asyncio.sleep(0.15 + random.random() * 0.35)
+                            except asyncio.CancelledError:
+                                return
+                finally:
+                    if self._analyze_lock.locked():
+                        self._analyze_lock.release()
             try:
                 self._correlation_veto()
             except Exception as e:
                 logger.debug(f"correlation veto skip: {e}")
-            # Record Satoshi's decision for the process metrics. Server-side
-            # and deduped, so the log fills whether or not a browser is open.
             try:
                 self._record_process()
             except Exception as e:
                 logger.debug(f"process log skip: {e}")
-            # Dual owns the analysis loop — Council._loop never runs here,
-            # so the WAL checkpoint has to live on this path. Without it the
-            # -wal balloons, fills the 2 GB disk, writes fail, opens pile up,
-            # and the next boot hangs on the official closer.
             try:
                 now = asyncio.get_event_loop().time()
                 if now - getattr(self, "_last_wal_ckpt", 0.0) > 600:
@@ -406,7 +474,6 @@ class DualOrchestrator:
     def get_state(self) -> Dict[str, Any]:
         btc_state = self.btc.get_state()
         eth_state = self.eth.get_state() if self.eth else None
-        # Back-compat top-level = BTC so older UI still renders
         base = {k: v for k, v in btc_state.items() if k not in ("tables", "btc", "eth", "dual")}
         btc_acc = (btc_state or {}).get("accuracy") or {}
         eth_acc = (eth_state or {}).get("accuracy") or {}
@@ -424,13 +491,16 @@ class DualOrchestrator:
                 "ethereum": "vitalik" if self.eth else None,
             },
             "scorecard": floor_scorecard(btc_acc, eth_acc),
+            "loop_heartbeat": self.loop_heartbeat,
         })
         return base
 
     async def analyze_once(self) -> Dict[str, Any]:
         async with self._analyze_lock:
             await self.btc.analyze_once()
+            self._touch(self.btc, "ok")
             self._feed_btc_lead()
             if self.eth:
                 await self.eth.analyze_once()
+                self._touch(self.eth, "ok")
         return self.get_state()
