@@ -1,0 +1,2396 @@
+"""
+Paper-only Chair gates: P(finish), EV, book depth, official window, odds bands.
+
+No live Kalshi orders. Helpers stay pure so the lock path and tests share one
+definition of the math.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+
+def odds_to_cents(raw: Any) -> Optional[float]:
+    """Kalshi yes/no as 0–100¢. Dollars (0–1) are scaled."""
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if v <= 1.0:
+        v *= 100.0
+    return max(0.0, min(100.0, v))
+
+
+def clamp_p_finish(conf: Any) -> float:
+    """Raw Chair conf → 0.01–0.99. Do not use as P(finish) until calibrated."""
+    try:
+        raw = float(conf) / 100.0
+    except (TypeError, ValueError):
+        raw = 0.01
+    return max(0.01, min(0.99, raw))
+
+
+def chair_conf_bin(conf: Any) -> str:
+    """Chair confidence bin. 90%+ is its own bucket (fade until settled)."""
+    try:
+        c = float(conf)
+    except (TypeError, ValueError):
+        return "unknown"
+    if c >= 90.0:
+        return "90+"
+    if c >= 80.0:
+        return "80-90"
+    if c >= 70.0:
+        return "70-80"
+    if c >= 60.0:
+        return "60-70"
+    if c >= 50.0:
+        return "50-60"
+    return "0-50"
+
+
+def hot_chair_bin_faded(conf: Any, bin_settled_n: Any, min_n: int | None = None) -> bool:
+    """
+    Fade any 90%+ Chair bin until that bin has enough actually settled hours.
+    OPEN rows (including live 1062/1063 while OPEN) do not count — pass only
+    finish-graded hours into bin_settled_n.
+    """
+    try:
+        c = float(conf)
+    except (TypeError, ValueError):
+        return False
+    if c < 90.0:
+        return False
+    if bin_settled_n is None:
+        return False
+    try:
+        n = int(bin_settled_n)
+    except (TypeError, ValueError):
+        n = 0
+    need = min_n
+    if need is None:
+        try:
+            from backend.config import settings
+            need = int(getattr(settings, "CHAIR_HOT_BIN_MIN_N", getattr(settings, "P_FINISH_COLD_N", 15)))
+        except Exception:
+            need = 15
+    return n < int(need)
+
+
+def is_actually_settled(row: Any) -> bool:
+    """
+    True only for an official finish-graded hour.
+    OPEN 1062/1063 (and any OPEN / path-era row) do not count.
+    """
+    if row is None:
+        return False
+    if isinstance(row, dict):
+        cid = row.get("id")
+        y = row.get("y_finish") or row.get("actual_outcome")
+        settled_at = row.get("settled_at")
+        reason = row.get("settle_reason")
+        status = row.get("status")
+    else:
+        cid = getattr(row, "id", None)
+        y = getattr(row, "y_finish", None) or getattr(row, "actual_outcome", None)
+        settled_at = getattr(row, "settled_at", None)
+        reason = getattr(row, "settle_reason", None)
+        status = getattr(row, "status", None)
+    if str(status or "").strip().lower() in ("open", "active", "initialized"):
+        return False
+    try:
+        if int(cid) in KNOWN_OFFICIAL_BY_ID and not settled_at:
+            return False
+    except (TypeError, ValueError):
+        pass
+    if y not in ("UP", "DOWN"):
+        return False
+    if reason and str(reason) not in ("finish_match", "finish_miss"):
+        return False
+    return True
+
+
+def chair_bin_settled_count(rows: Any, bin_key: str = "90+") -> int:
+    """Count actually settled hours in one Chair confidence bin."""
+    n = 0
+    for row in rows or []:
+        if not is_actually_settled(row):
+            continue
+        if isinstance(row, dict):
+            conf = row.get("confidence")
+        else:
+            conf = getattr(row, "confidence", None)
+        if chair_conf_bin(conf) == bin_key:
+            n += 1
+    return n
+
+
+def chair_bins_from_settled(rows: Any) -> Dict[str, Any]:
+    """Per-bin settled counts. 90%+ starts faded until CHAIR_HOT_BIN_MIN_N."""
+    bins = ("90+", "80-90", "70-80", "60-70", "50-60", "0-50")
+    out: Dict[str, Any] = {}
+    for key in bins:
+        settled = chair_bin_settled_count(rows, key)
+        faded = key == "90+" and hot_chair_bin_faded(91, settled)
+        out[key] = {"settled": settled, "faded": faded}
+    return out
+
+
+def estimate_p_finish(conf: Any, settled_n: int = 0, bin_settled_n: Any = None) -> float:
+    """
+    Shrink Chair confidence toward a coin-flip until enough finish-graded hours.
+    91% Chair on a cold book is the lesson — that is not P(finish).
+    A 90%+ Chair bin stays faded until that bin has enough actually settled hours.
+    """
+    raw = clamp_p_finish(conf)
+    try:
+        n = int(settled_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if hot_chair_bin_faded(conf, bin_settled_n):
+        try:
+            n = min(n, int(bin_settled_n or 0))
+        except (TypeError, ValueError):
+            n = 0
+    cold_n, warm_n = 15, 40
+    try:
+        from backend.config import settings
+        cold_n = int(getattr(settings, "P_FINISH_COLD_N", 15))
+        warm_n = int(getattr(settings, "P_FINISH_WARM_N", 40))
+    except Exception:
+        pass
+    if n < cold_n:
+        shrink, cap = 0.30, 0.62
+    elif n < warm_n:
+        shrink, cap = 0.55, 0.70
+    else:
+        shrink, cap = 0.85, 0.80
+    p = 0.50 + (raw - 0.50) * float(shrink)
+    return max(0.01, min(float(cap), p))
+
+
+def lock_force_allowed(features: Any) -> bool:
+    """CARRY/CHAIN/CASCADE may display; lock_force=False cannot force a lock."""
+    if not isinstance(features, dict):
+        return True
+    if features.get("lock_force") is False:
+        return False
+    if features.get("advisory") is True and features.get("lock_force") is not True:
+        return False
+    return True
+
+
+def cg_interval_is_daily_heatmap(interval: Any) -> bool:
+    text = str(interval or "").strip().lower()
+    return text in ("1d", "24h", "4h", "12h", "1w", "7d", "daily")
+
+
+def funding_cannot_force_lock() -> bool:
+    """Funding is an 8h clock — never a 1h UP/DOWN lock tell."""
+    return True
+
+
+def liq_spike_is_not_p_finish() -> bool:
+    """A 1h long/short liq spike is a local flush, not P(finish)."""
+    return True
+
+
+def kalshi_taker_fee_cents(ask_cents: Any) -> float:
+    """Kalshi-style taker fee ≈ 7¢ * p * (1-p), in cents."""
+    px = odds_to_cents(ask_cents)
+    if px is None:
+        return 1.75
+    p = px / 100.0
+    return max(0.0, 7.0 * p * (1.0 - p))
+
+
+def compute_ev_cents(
+    p_finish: float,
+    side_ask: float,
+    spread_cents: float | None = None,
+    fee_cents: float | None = None,
+) -> float:
+    """Paper-fill at ask: 100*P(finish) − ask − fees − half-spread."""
+    half = 0.0
+    try:
+        if spread_cents is not None:
+            half = max(0.0, float(spread_cents) / 2.0)
+    except (TypeError, ValueError):
+        half = 0.0
+    ask = float(side_ask)
+    fee = float(fee_cents) if fee_cents is not None else kalshi_taker_fee_cents(ask)
+    return float(100.0 * float(p_finish) - ask - fee - half)
+
+
+def leftover_after_vig(
+    p_finish: float,
+    side_ask: float,
+    spread_cents: float | None = None,
+    fee_cents: float | None = None,
+) -> float:
+    """Zach leftover at the real ask: 100*P(finish) − ask − fee − half-spread."""
+    return compute_ev_cents(p_finish, side_ask, spread_cents, fee_cents)
+
+
+def ev_gate_blocks(p_finish: float, ev_cents: float, min_p: float, min_ev: float) -> bool:
+    """WAIT if p_finish or EV is under the (possibly time-tightened) hurdle."""
+    return float(p_finish) < float(min_p) or float(ev_cents) < float(min_ev)
+
+
+def parse_iso_utc(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+_KALSHI_MONTHS = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def ticker_asset(ticker: Any) -> Optional[str]:
+    """KXBTCD-… → btc, KXETHD-… → eth."""
+    text = str(ticker or "").upper()
+    if text.startswith("KXETHD") or text.startswith("KXETH"):
+        return "eth"
+    if text.startswith("KXBTCD") or text.startswith("KXBTC"):
+        return "btc"
+    return None
+
+
+# Dedicated pattern seats. Not a shared Pattern Seer. Not Floor chairs. Not lockers.
+PATTERN_SPECIALISTS = ("candle_btc", "candle_eth")
+CHAIR_LOCKERS = ("leader", "chair")
+LEGACY_PATTERN_SEAT = "candle"
+
+
+def normalize_book_asset(asset: Any) -> Optional[str]:
+    a = str(asset or "").strip().lower()
+    if a in ("eth", "ethereum"):
+        return "eth"
+    if a in ("btc", "bitcoin"):
+        return "btc"
+    return None
+
+
+def market_book_asset(market_data: Any = None) -> Optional[str]:
+    """Resolve BTC/ETH from payload asset, ticker, or symbol. Shared feeds stay shared."""
+    md = market_data if isinstance(market_data, dict) else {}
+    book = normalize_book_asset(md.get("asset"))
+    if book:
+        return book
+    km = md.get("kalshi_market") if isinstance(md.get("kalshi_market"), dict) else {}
+    book = ticker_asset(md.get("ticker") or md.get("market_ticker") or km.get("ticker"))
+    if book:
+        return book
+    sym = str(md.get("symbol") or md.get("pair") or "").upper()
+    if "ETH" in sym:
+        return "eth"
+    if "BTC" in sym:
+        return "btc"
+    return None
+
+
+def pattern_specialist_name(asset: Any) -> str:
+    book = normalize_book_asset(asset) or market_book_asset({"asset": asset})
+    return "candle_eth" if book == "eth" else "candle_btc"
+
+
+def is_pattern_specialist(name: Any) -> bool:
+    n = str(name or "").strip().lower()
+    return n in PATTERN_SPECIALISTS or n == LEGACY_PATTERN_SEAT
+
+
+def canonicalize_pattern_vote_name(name: Any, asset: Any) -> Optional[str]:
+    """
+    Map legacy 'candle' onto the desk's specialist. Drop the other coin's seat.
+    BTC and ETH never share a pattern settle identity.
+    """
+    n = str(name or "").strip().lower()
+    if not is_pattern_specialist(n):
+        return n
+    want = pattern_specialist_name(asset)
+    if n in PATTERN_SPECIALISTS and n != want:
+        return None
+    return want
+
+
+def can_final_lock(name: Any) -> bool:
+    """Shared bots and pattern specialists vote. Only Satoshi / Vitalik lock."""
+    return str(name or "").strip().lower() in CHAIR_LOCKERS
+
+
+def filter_pattern_signals_for_asset(signals: Any, asset: Any) -> list:
+    """Satoshi never hears candle_eth. Vitalik never hears candle_btc."""
+    book = normalize_book_asset(asset)
+    rows = list(signals or [])
+    if not book:
+        return rows
+    keep = []
+    for sig in rows:
+        if isinstance(sig, dict):
+            name = str(sig.get("agent_name") or "")
+        else:
+            name = str(getattr(sig, "agent_name", None) or "")
+        mapped = canonicalize_pattern_vote_name(name, book)
+        if mapped is None:
+            continue
+        keep.append(sig)
+    return keep
+
+
+def close_time_from_kalshi_ticker(ticker: Any) -> Optional[datetime]:
+    """
+    KXBTCD-26AUG1415-T62999.99 → 15:00 America/New_York on 2026-08-14.
+    KXBTC15M-26AUG161200-00 → 12:00 America/New_York on 2026-08-16.
+    """
+    import re
+    from zoneinfo import ZoneInfo
+
+    try:
+        from backend.learning.btc15m import close_time_from_15m_ticker, is_btc_15m_ticker
+        if is_btc_15m_ticker(ticker):
+            return close_time_from_15m_ticker(ticker)
+    except Exception:
+        pass
+
+    m = re.search(r"-(\d{2})([A-Z]{3})(\d{2})(\d{2})(?:-|$)", str(ticker or ""), re.I)
+    if not m:
+        return None
+    yy, mon, dd, hh = m.group(1), m.group(2).upper(), m.group(3), m.group(4)
+    month = _KALSHI_MONTHS.get(mon)
+    if month is None:
+        return None
+    try:
+        day = int(dd)
+        hour = int(hh)
+        if hour > 23 or day < 1 or day > 31:
+            return None
+        local = datetime(2000 + int(yy), month, day, hour, 0, 0, tzinfo=ZoneInfo("America/New_York"))
+        return local.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def strike_from_kalshi_ticker(ticker: Any) -> Optional[float]:
+    """KXBTCD-26AUG1415-T62999.99 → 62999.99 (locked strike baked into the contract)."""
+    import re
+
+    m = re.search(r"-T(\d+(?:\.\d+)?)$", str(ticker or ""), re.I)
+    if not m:
+        return None
+    try:
+        px = float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+    return px if px > 0 else None
+
+
+def lock_time_strike(
+    ticker: Any = None,
+    floor_strike: Any = None,
+    cap_strike: Any = None,
+    strike_price: Any = None,
+    kalshi_result: Any = None,
+) -> Optional[float]:
+    """
+    Strike to persist on a paper row at lock time.
+
+    Prefer Kalshi floor / cap / strike_price, else the -T value baked
+    into the ticker. 1062/1063 stayed null because only live floor_strike
+    was stored. This is identity, not an outcome — never a later-hour spot.
+    """
+    cands: list[Any] = [floor_strike, cap_strike, strike_price]
+    inner = None
+    if isinstance(kalshi_result, dict):
+        inner = kalshi_result.get("market") if isinstance(kalshi_result.get("market"), dict) else kalshi_result
+        if isinstance(inner, dict):
+            cands.extend([
+                inner.get("floor_strike"),
+                inner.get("cap_strike"),
+                inner.get("strike_price"),
+            ])
+            if not ticker:
+                ticker = inner.get("ticker")
+    for raw in cands:
+        try:
+            if raw is None or raw == "":
+                continue
+            px = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return strike_from_kalshi_ticker(ticker)
+
+
+def kalshi_result_to_side(raw: Any) -> Optional[str]:
+    """Official Kalshi market result → UP (yes) / DOWN (no)."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        inner = raw.get("market") if isinstance(raw.get("market"), dict) else raw
+        raw = (
+            inner.get("result")
+            or inner.get("settlement_result")
+            or inner.get("outcome")
+            or inner.get("y_finish")
+        )
+    text = str(raw or "").strip().lower()
+    if text in ("yes", "y", "up"):
+        return "UP"
+    if text in ("no", "n", "down"):
+        return "DOWN"
+    return None
+
+
+_FINAL_STATUS = frozenset({"finalized", "determined", "settled", "final", "closed"})
+_LIVE_STATUS = frozenset({"active", "initialized", "open", "unopened"})
+
+# Public API snapshots (not a model). Used to unstick 1062/1063 if fetch flaps.
+KNOWN_OFFICIAL_FINISH: Dict[str, Dict[str, Any]] = {
+    "KXBTCD-26AUG1415-T62999.99": {
+        "ticker": "KXBTCD-26AUG1415-T62999.99",
+        "status": "finalized",
+        "result": "no",
+        "y_finish": "DOWN",
+        "expiration_value": 62857.17,
+        "settlement_ts": "2026-08-14T19:02:44Z",
+        "ids": (1062,),
+    },
+    "KXETHD-26AUG1415-T1874.99": {
+        "ticker": "KXETHD-26AUG1415-T1874.99",
+        "status": "finalized",
+        "result": "no",
+        "y_finish": "DOWN",
+        "expiration_value": 1873.96,
+        "settlement_ts": "2026-08-14T19:02:34Z",
+        "ids": (1063,),
+    },
+}
+KNOWN_OFFICIAL_BY_ID: Dict[int, str] = {
+    1062: "KXBTCD-26AUG1415-T62999.99",
+    1063: "KXETHD-26AUG1415-T1874.99",
+}
+
+
+def known_official_market(ticker: Any = None, call_id: Any = None) -> Optional[Dict[str, Any]]:
+    """Return a documented official Kalshi finish, or None. Never invents a side."""
+    t = str(ticker or "").strip()
+    rec = KNOWN_OFFICIAL_FINISH.get(t)
+    if rec:
+        return dict(rec)
+    try:
+        cid = int(call_id)
+    except (TypeError, ValueError):
+        return None
+    mapped = KNOWN_OFFICIAL_BY_ID.get(cid)
+    if not mapped:
+        return None
+    rec = KNOWN_OFFICIAL_FINISH.get(mapped)
+    if not rec:
+        return None
+    if t and t != mapped:
+        return None
+    return dict(rec)
+
+
+def event_ticker_from_kalshi_ticker(ticker: Any) -> Optional[str]:
+    """KXBTCD-26AUG1415-T62999.99 → KXBTCD-26AUG1415. Event, not a guessed side."""
+    import re
+
+    text = str(ticker or "").strip()
+    if not text:
+        return None
+    try:
+        from backend.learning.btc15m import event_ticker_from_15m, is_btc_15m_ticker
+        if is_btc_15m_ticker(text):
+            return event_ticker_from_15m(text)
+    except Exception:
+        pass
+    m = re.match(r"^(KX(?:BTC|ETH)D-\d{2}[A-Z]{3}\d{4})", text, re.I)
+    if m:
+        return m.group(1).upper()
+    if "-T" in text:
+        return text.rsplit("-T", 1)[0]
+    return None
+
+
+def kalshi_market_finalized(raw: Any) -> bool:
+    """True when Kalshi marks the market or event finalized/determined/settled."""
+    if not isinstance(raw, dict):
+        return False
+    inner = raw.get("market") if isinstance(raw.get("market"), dict) else raw
+    status = str(inner.get("status") or "").strip().lower()
+    if status in _LIVE_STATUS:
+        return False
+    if status in _FINAL_STATUS:
+        return True
+    event = inner.get("event") if isinstance(inner.get("event"), dict) else raw.get("event")
+    if isinstance(event, dict):
+        es = str(event.get("status") or "").strip().lower()
+        if es in _LIVE_STATUS:
+            return False
+        if es in _FINAL_STATUS:
+            return True
+    return bool(official_y_finish(inner) and status not in _LIVE_STATUS)
+
+
+def is_known_official_snapshot(raw: Any) -> bool:
+    """Documented 1062/1063 snapshot — not a live Kalshi fetch."""
+    if not isinstance(raw, dict):
+        return False
+    t = str(raw.get("ticker") or "").strip()
+    return bool(t in KNOWN_OFFICIAL_FINISH and raw.get("ids"))
+
+
+def collect_official_results(payload: Any) -> Dict[str, Any]:
+    """
+    Pull finalized markets out of a get_market or get_event body.
+    yes→UP / no→DOWN only. No model. No spot.
+    """
+    out: Dict[str, Any] = {}
+    if not isinstance(payload, dict):
+        return out
+    markets: list = []
+    inner = payload.get("market") if isinstance(payload.get("market"), dict) else payload
+    if isinstance(payload.get("markets"), list):
+        markets.extend(payload["markets"])
+    if isinstance(inner.get("markets"), list):
+        markets.extend(inner["markets"])
+    event = payload.get("event") if isinstance(payload.get("event"), dict) else None
+    if event is None and isinstance(inner.get("event"), dict):
+        event = inner["event"]
+    if isinstance(event, dict) and isinstance(event.get("markets"), list):
+        markets.extend(event["markets"])
+    if inner.get("ticker") and (inner.get("result") is not None or inner.get("status")):
+        markets.append(inner)
+    for m in markets:
+        if not isinstance(m, dict):
+            continue
+        t = m.get("ticker")
+        if not t:
+            continue
+        if official_y_finish(m):
+            out[str(t)] = m
+    return out
+
+
+def tape_backfill_stats(open_rows: Any, results: Any = None) -> Dict[str, int]:
+    """OPEN paper rows vs unique tickers vs tickers with an official yes/no."""
+    rows = list(open_rows or [])
+    tickers: list[str] = []
+    for row in rows:
+        if isinstance(row, dict):
+            t = row.get("ticker")
+        else:
+            t = getattr(row, "ticker", None)
+        if t:
+            tickers.append(str(t).strip())
+    unique = sorted({t for t in tickers if t})
+    finalized = 0
+    recs = results if isinstance(results, dict) else {}
+    for t in unique:
+        rec = recs.get(t) or recs.get(t.upper())
+        if official_y_finish(rec):
+            finalized += 1
+    return {
+        "open_n": len(rows),
+        "unique_tickers": len(unique),
+        "finalized_tickers": finalized,
+    }
+
+
+def official_y_finish(raw: Any) -> Optional[str]:
+    """
+    y_finish from an official Kalshi result only.
+    yes → UP, no → DOWN. No later-hour spot. No model.
+    Writes only when the market is finalized / determined / settled
+    or the public result field is already yes/no.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return kalshi_result_to_side(raw)
+    inner = raw.get("market") if isinstance(raw.get("market"), dict) else raw
+    status = str(inner.get("status") or "").strip().lower()
+    side = kalshi_result_to_side(inner)
+    if not side:
+        return None
+    if status in _LIVE_STATUS:
+        return None
+    if status in _FINAL_STATUS or status == "" or inner.get("result"):
+        return side
+    return None
+
+
+def resolve_close_time(close_time: Any, ticker: Any = None) -> Optional[datetime]:
+    ct = parse_iso_utc(close_time)
+    if ct is not None:
+        if ct.tzinfo is None:
+            ct = ct.replace(tzinfo=timezone.utc)
+        return ct
+    return close_time_from_kalshi_ticker(ticker)
+
+
+def resolve_finish_side(
+    *,
+    spot: Any = None,
+    locked_strike: Any = None,
+    ticker: Any = None,
+    kalshi_result: Any = None,
+) -> Optional[str]:
+    """Closer: official Kalshi result only. Spot is ignored (later-hour prints lie)."""
+    y = official_y_finish(kalshi_result)
+    if y:
+        return y
+    known = known_official_market(ticker)
+    return official_y_finish(known)
+
+
+def decide_open_lock_grade(
+    *,
+    ticker: Any = None,
+    call_id: Any = None,
+    close_time: Any = None,
+    direction: Any = None,
+    kalshi_result: Any = None,
+    now: datetime | None = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Grade an OPEN paper lock after the official Kalshi hour close.
+
+    y_finish comes from the official yes/no result (or a documented
+    known finish). Later-hour spot is never used. A live Kalshi
+    finalized/determined/settled result grades the whole tape, not
+    just 1062/1063. Returns None if the hour is still open or Kalshi
+    has not finalized.
+    """
+    side = normalize_side(direction)
+    if side not in ("UP", "DOWN"):
+        return None
+    live = kalshi_result if official_y_finish(kalshi_result) else None
+    live_final = bool(
+        live
+        and kalshi_market_finalized(kalshi_result)
+        and not is_known_official_snapshot(kalshi_result)
+    )
+    # Live Kalshi finalized/determined/settled + yes/no is enough.
+    # Documented 1062/1063 snapshots still wait for the official hour clock.
+    if not live_final and not official_window_due(close_time, now=now, ticker=ticker):
+        return None
+    official = live
+    if official is None:
+        official = known_official_market(ticker, call_id)
+    y_finish = official_y_finish(official)
+    if y_finish is None:
+        return None
+    ct = resolve_close_time(close_time, ticker)
+    matched = y_finish == side
+    return {
+        "y_finish": y_finish,
+        "correct": matched,
+        "settle_reason": "finish_match" if matched else "finish_miss",
+        "asset": ticker_asset(ticker),
+        "floor_strike": strike_from_kalshi_ticker(ticker),
+        "close_iso": ct.isoformat() if ct is not None else None,
+    }
+
+
+WAIT_REASON_CODES = (
+    "stale_quote",
+    "first_10m",
+    "first_3m",
+    "dead_book",
+    "no_depth",
+    "odds_outside_20_80",
+    "top_3_conflict",
+    "low_confluence",
+    "late_undecisive",
+    "eth_fade",
+    "spread",
+    "no_ev",
+    "near_certain",
+    "law_lockdown",
+    "empty_book",
+    "unknown_book",
+    "forecast_flip",
+    "no_official_high",
+    "paper_rate",
+    "other",
+)
+
+
+def punch_chair_why(summary: Any, direction: Any = None) -> str:
+    """
+    One short CRT Chair line. Collapse stacked dead_book + GOAL + confluence
+    + Kalshi + mid-window into a single punch. Does not change lock gates.
+    """
+    text = str(summary or "").strip()
+    low = text.lower()
+    raw = str(direction or "").upper()
+    if raw in ("UP", "UP_HOLD", "LONG_UP"):
+        side = "UP"
+    elif raw in ("DOWN", "DOWN_HOLD", "LONG_DOWN"):
+        side = "DOWN"
+    else:
+        side = "WAIT"
+    if "dead book" in low or "dead_book" in low:
+        return "WAIT · dead book"
+    if "chalk" in low or "99¢" in low or "99c" in low:
+        return "WAIT · chalk sit"
+    if "no attractive" in low or ("leftover" in low and "no " in low):
+        return "WAIT · no leftover"
+    if "insufficient confluence" in low or "low confluence" in low or "thin confluence" in low:
+        return "WAIT · thin confluence"
+    if "fresh quote" in low or "stale kalshi" in low or "stale quote" in low:
+        return "WAIT · Kalshi stale"
+    if "mid-window" in low and side == "WAIT":
+        return "WAIT · mid-window sit"
+    if side in ("UP", "DOWN"):
+        if "leftover" in low:
+            return f"{side} · leftover live"
+        if "path" in low:
+            return f"{side} · path live"
+        return f"{side} · council lean"
+    bits = [b.strip() for b in text.replace("–", "·").split("·") if b.strip()]
+    if not bits:
+        return "WAIT"
+    if len(bits) <= 2 and len(text) <= 42:
+        return text
+    return " · ".join(bits[:2])[:48]
+
+
+def classify_wait_reason(
+    summary: Any = None,
+    decision: Any = None,
+    market: Any = None,
+) -> str:
+    """Map a Chair WAIT line to a stable why-code. Does not change lock gates."""
+    dec = decision if isinstance(decision, dict) else {}
+    mkt = market if isinstance(market, dict) else {}
+    preset = str(dec.get("wait_reason") or "").strip().lower().replace(" ", "_")
+    if preset in WAIT_REASON_CODES:
+        return preset
+    text = " ".join(
+        str(x or "")
+        for x in (summary, dec.get("summary"), mkt.get("skip"), mkt.get("skip_reason"))
+    ).lower()
+    top_agree = bool(dec.get("top_agree"))
+    if bool(mkt.get("stale")) or "fresh quote" in text or "stale quote" in text or "stale kalshi" in text:
+        return "stale_quote"
+    if "first " in text and ("m of the hour" in text or "10m" in text or "first 10" in text):
+        return "first_10m"
+    if "first " in text and ("3m" in text or "15m" in text):
+        return "first_3m"
+    if "unknown book" in text:
+        return "unknown_book"
+    if "paper lock rate" in text or "paper-lock rate" in text or "locks today" in text:
+        return "paper_rate"
+    if "dead book" in text or "one-sided" in text or "empty book" in text:
+        if "empty book" in text and "dead book" not in text:
+            return "empty_book"
+        return "dead_book"
+    if "thin book" in text or "no depth" in text or "need ≥" in text or "need >=" in text or "sample too thin" in text:
+        return "no_depth"
+    if (
+        "outside 20" in text
+        or "outside 20–80" in text
+        or "outside 20-80" in text
+        or "outside 10" in text
+        or "outside 10–90" in text
+        or "outside 10-90" in text
+    ):
+        return "odds_outside_20_80"
+    if "insufficient confluence" in text or "need stronger confluence" in text or "low confluence" in text:
+        return "low_confluence"
+    if "last 15" in text or "not decisive" in text:
+        return "late_undecisive"
+    if "eth fade" in text or "btc impulse" in text:
+        return "eth_fade"
+    if (
+        "cannot price ev" in text
+        or "no chosen-side" in text
+        or "p(finish)" in text
+        or "p_finish" in text
+        or (
+            ("ev " in text or text.startswith("ev"))
+            and ("¢" in text or "cents" in text)
+            and ("no lock" in text or "<" in text)
+        )
+    ):
+        return "no_ev"
+    if "spread" in text and "half-spread" not in text and ("no lock" in text or "junk" in text or ">" in text):
+        return "spread"
+    if "near certain" in text or "≥99" in text or ">=99" in text or "99¢ wall" in text:
+        return "near_certain"
+    if "lockdown" in text or "law " in text:
+        return "law_lockdown"
+    if "forecast" in text and "flip" in text:
+        return "forecast_flip"
+    if "no official" in text:
+        return "no_official_high"
+    # Honesty: never paint top_3_conflict when top_agree, or when EV/spread/dead_book already won.
+    if not top_agree:
+        mentions_top = (
+            "top-3" in text
+            or "top 3" in text
+            or "top_conflict" in text
+            or "top conflict" in text
+        )
+        if mentions_top or bool(dec.get("top_conflict")):
+            return "top_3_conflict"
+    if "confluence" in text:
+        return "low_confluence"
+    return "other"
+
+
+def decide_open_wait_grade(
+    *,
+    ticker: Any = None,
+    call_id: Any = None,
+    close_time: Any = None,
+    kalshi_result: Any = None,
+    now: datetime | None = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Grade a WAIT sample from the official Kalshi yes/no only.
+
+    Does not invent y_finish. Paper P&L stays 0. correct stays None
+    so lock hit-rate never counts a WAIT as a hit or miss.
+    """
+    live = kalshi_result if official_y_finish(kalshi_result) else None
+    live_final = bool(
+        live
+        and kalshi_market_finalized(kalshi_result)
+        and not is_known_official_snapshot(kalshi_result)
+    )
+    if not live_final and not official_window_due(close_time, now=now, ticker=ticker):
+        return None
+    official = live
+    if official is None:
+        official = known_official_market(ticker, call_id)
+    y_finish = official_y_finish(official)
+    if y_finish is None:
+        return None
+    ct = resolve_close_time(close_time, ticker)
+    return {
+        "y_finish": y_finish,
+        "correct": None,
+        "settle_reason": "wait_finish",
+        "asset": ticker_asset(ticker),
+        "floor_strike": strike_from_kalshi_ticker(ticker),
+        "close_iso": ct.isoformat() if ct is not None else None,
+        "paper_pnl": 0.0,
+    }
+
+
+def window_minutes_from_times(open_time: Any, close_time: Any) -> Optional[float]:
+    start = parse_iso_utc(open_time)
+    end = parse_iso_utc(close_time)
+    if start is None or end is None:
+        return None
+    mins = (end - start).total_seconds() / 60.0
+    if mins < 1.0 or mins > 24.0 * 60.0:
+        return None
+    return mins
+
+
+def time_ev_hurdles(
+    mins_left: float | None,
+    window_minutes: float | None = None,
+    min_p: float = 0.55,
+    min_ev: float = 3.0,
+    early_window_mins: float = 20.0,
+    late_window_mins: float = 15.0,
+    early_ev_mult: float = 1.5,
+    late_min_p: float = 0.70,
+    late_min_ev: float = 8.0,
+) -> Dict[str, Any]:
+    """
+    First ~20 min of the official window: patient (higher EV hurdle).
+    Middle: selective (base knobs).
+    Last ~15 min: only a strong misprice.
+    Last-15 wins when both could apply (short windows).
+    """
+    phase = "middle"
+    out_p = float(min_p)
+    out_ev = float(min_ev)
+    duration = float(window_minutes) if window_minutes else 60.0
+    try:
+        ml = float(mins_left) if mins_left is not None else None
+    except (TypeError, ValueError):
+        ml = None
+
+    if ml is not None:
+        if ml <= float(late_window_mins):
+            phase = "late"
+            out_p = max(out_p, float(late_min_p))
+            out_ev = max(out_ev, float(late_min_ev))
+        else:
+            elapsed = duration - ml
+            if elapsed < float(early_window_mins):
+                phase = "early"
+                out_ev = float(min_ev) * float(early_ev_mult)
+    return {
+        "phase": phase,
+        "min_p": out_p,
+        "min_ev": out_ev,
+    }
+
+
+def _level_price_size(level: Any) -> tuple[Optional[float], Optional[float]]:
+    if isinstance(level, (list, tuple)) and len(level) >= 2:
+        try:
+            return float(level[0]), float(level[1])
+        except (TypeError, ValueError):
+            return None, None
+    if isinstance(level, dict):
+        px = level.get("price") or level.get("px") or level.get("yes") or level.get("no")
+        sz = level.get("size") or level.get("quantity") or level.get("qty") or level.get("delta")
+        try:
+            return float(px), float(sz)
+        except (TypeError, ValueError):
+            return None, None
+    return None, None
+
+
+def _levels_from_side(raw: Any) -> list[tuple[float, float]]:
+    levels: list[tuple[float, float]] = []
+    if raw is None:
+        return levels
+    if isinstance(raw, dict) and not any(k in raw for k in ("price", "px", "size", "quantity")):
+        for px, sz in raw.items():
+            try:
+                levels.append((float(px), float(sz)))
+            except (TypeError, ValueError):
+                continue
+        return levels
+    if isinstance(raw, list):
+        for level in raw:
+            px, sz = _level_price_size(level)
+            if px is None or sz is None:
+                continue
+            levels.append((px, sz))
+    return levels
+
+
+def _unwrap_kalshi_book(orderbook: Any) -> Optional[Dict[str, Any]]:
+    """Prefer Kalshi orderbook_fp (yes_dollars / no_dollars). Keep legacy yes/no."""
+    if not isinstance(orderbook, dict):
+        return None
+    if isinstance(orderbook.get("orderbook_fp"), dict):
+        return orderbook["orderbook_fp"]
+    inner = orderbook.get("orderbook")
+    if isinstance(inner, dict):
+        if isinstance(inner.get("orderbook_fp"), dict):
+            return inner["orderbook_fp"]
+        return inner
+    return orderbook
+
+
+def _side_raw(book: Dict[str, Any], *keys: str) -> Any:
+    """First key with parseable levels; else first present key (may be empty)."""
+    for k in keys:
+        raw = book.get(k)
+        if raw is None:
+            continue
+        if _levels_from_side(raw):
+            return raw
+    for k in keys:
+        if k in book:
+            return book.get(k)
+    return None
+
+
+def parse_book_depth(orderbook: Any) -> Dict[str, Any]:
+    """
+    Top-of-book + shallow depth from a Kalshi orderbook payload.
+
+    Accepts orderbook_fp {yes_dollars, no_dollars}, {orderbook: {yes, no}},
+    or a bare {yes, no} / yes_dollars map. Prices may be cents or dollars.
+    Size is contracts.
+
+    book_state:
+      unknown — no payload / parse drop / both depths 0·null and not measured
+      ok — we saw size on at least one side
+      dead — we saw the book and it is empty (both sides present, no size)
+    """
+    unknown = {
+        "yes_bid_px": None,
+        "yes_bid_sz": None,
+        "no_bid_px": None,
+        "no_bid_sz": None,
+        "yes_depth": 0.0,
+        "no_depth": 0.0,
+        "has_size": False,
+        "book_state": "unknown",
+        "measured": False,
+    }
+    if not orderbook:
+        return dict(unknown)
+    book = _unwrap_kalshi_book(orderbook)
+    if not isinstance(book, dict):
+        return dict(unknown)
+
+    yes_raw = _side_raw(book, "yes_dollars", "yes")
+    no_raw = _side_raw(book, "no_dollars", "no")
+    yes_levels = _levels_from_side(yes_raw)
+    no_levels = _levels_from_side(no_raw)
+    saw_sides = any(k in book for k in ("yes", "no", "yes_dollars", "no_dollars"))
+    if not yes_levels and not no_levels:
+        if saw_sides:
+            out = dict(unknown)
+            out["book_state"] = "dead"
+            out["measured"] = True
+            return out
+        return dict(unknown)
+
+    def _top_and_depth(levels: list[tuple[float, float]]) -> tuple[Optional[float], Optional[float], float]:
+        if not levels:
+            return None, None, 0.0
+        # Best bid = highest price on that side
+        ordered = sorted(levels, key=lambda x: x[0], reverse=True)
+        top_px, top_sz = ordered[0]
+        depth = sum(sz for _, sz in ordered[:3])
+        return top_px, top_sz, depth
+
+    yes_px, yes_sz, yes_depth = _top_and_depth(yes_levels)
+    no_px, no_sz, no_depth = _top_and_depth(no_levels)
+    has_size = any(sz is not None and sz > 0 for sz in (yes_sz, no_sz))
+    return {
+        "yes_bid_px": yes_px,
+        "yes_bid_sz": yes_sz,
+        "no_bid_px": no_px,
+        "no_bid_sz": no_sz,
+        "yes_depth": yes_depth,
+        "no_depth": no_depth,
+        "has_size": has_size,
+        "book_state": "ok" if has_size else "dead",
+        "measured": True,
+    }
+
+
+def book_is_unknown(depth: Dict[str, Any] | None) -> bool:
+    """
+    Null / missing / unparsed depth is UNKNOWN, not DEAD.
+    Both yes_depth and no_depth 0·null·missing with has_size false → unknown
+    unless we explicitly measured an empty book.
+    """
+    if not depth:
+        return True
+    state = str(depth.get("book_state") or "").strip().lower()
+    if state == "unknown":
+        return True
+    if state in ("ok", "dead", "one_sided"):
+        return False
+    if depth.get("measured") is True:
+        return False
+    if depth.get("measured") is False:
+        return True
+    if depth.get("has_size"):
+        return False
+    try:
+        yd = depth.get("yes_depth")
+        nd = depth.get("no_depth")
+        y0 = yd is None or float(yd) <= 0
+        n0 = nd is None or float(nd) <= 0
+    except (TypeError, ValueError):
+        return True
+    return bool(y0 and n0)
+
+
+def playable_band_cents(
+    asset: Any = None,
+    ticker: Any = None,
+    window_minutes: Any = None,
+    series: Any = None,
+) -> tuple[float, float]:
+    """Paper Chair YES-mid band. 15m BTC is 20–80; ETH 1H stays 10–90."""
+    try:
+        from backend.learning.btc15m import playable_band_cents_for
+        return playable_band_cents_for(
+            asset=asset, ticker=ticker, series=series, window_minutes=window_minutes,
+        )
+    except Exception:
+        pass
+    try:
+        from backend.config import settings
+        lo = float(getattr(settings, "PLAYABLE_MID_MIN", 10.0))
+        hi = float(getattr(settings, "PLAYABLE_MID_MAX", 90.0))
+    except Exception:
+        lo, hi = 10.0, 90.0
+    return lo, hi
+
+
+def playable_band_label(lo: float | None = None, hi: float | None = None) -> str:
+    blo, bhi = playable_band_cents()
+    if lo is None:
+        lo = blo
+    if hi is None:
+        hi = bhi
+    return f"{float(lo):.0f}–{float(hi):.0f}¢"
+
+
+def playable_yes_mid(
+    yes_mid: Any,
+    lo: float | None = None,
+    hi: float | None = None,
+    asset: Any = None,
+    ticker: Any = None,
+    window_minutes: Any = None,
+) -> bool:
+    """Only play books where YES mid is inside the Chair band (20–80 on 15m BTC)."""
+    mid = odds_to_cents(yes_mid)
+    if mid is None:
+        return False
+    blo, bhi = playable_band_cents(asset=asset, ticker=ticker, window_minutes=window_minutes)
+    if lo is None:
+        lo = blo
+    if hi is None:
+        hi = bhi
+    return float(lo) <= mid <= float(hi)
+
+
+def early_lock_blocked(
+    mins_left: Any,
+    window_minutes: Any = 60.0,
+    no_lock_mins: float = 10.0,
+) -> bool:
+    """No lock in the first `no_lock_mins` of the official window."""
+    try:
+        ml = float(mins_left)
+        dur = float(window_minutes) if window_minutes else 60.0
+    except (TypeError, ValueError):
+        return False
+    elapsed = dur - ml
+    return elapsed < float(no_lock_mins)
+
+
+def late_spot_decisive(
+    spot: Any,
+    strike: Any,
+    mins_left: Any,
+    hourly_vol_pct: float = 0.40,
+    k: float = 1.0,
+    window_minutes: Any = 60.0,
+) -> bool:
+    """
+    Late-window lock only if the 60s CFB (or ranked 60s) average vs strike
+    already beats remaining vol. Pass the 60s average, not a last-tick wick.
+    Missing spot/strike → not decisive (WAIT).
+    Scale remaining time by the official window (15m BTC vs 1H ETH).
+    """
+    try:
+        px = float(spot)
+        k0 = float(strike)
+        ml = float(mins_left)
+        dur = float(window_minutes) if window_minutes else 60.0
+    except (TypeError, ValueError):
+        return False
+    if px <= 0 or k0 <= 0 or ml < 0 or dur <= 0:
+        return False
+    remaining = max(1.0 / 60.0, min(1.0, ml / dur))
+    expected = float(hourly_vol_pct) / 100.0 * (remaining ** 0.5)
+    gap = abs(px - k0) / k0
+    return gap >= float(k) * expected
+
+
+def dead_book_reason(
+    depth: Dict[str, Any] | None,
+    side: str | None,
+    yes_mid: Any = None,
+    max_side: float | None = None,
+    ticker: Any = None,
+    asset: Any = None,
+    window_minutes: Any = None,
+) -> Optional[str]:
+    """
+    Skip dead hours: chosen side ≥ playable cap, mid outside the Chair band,
+    or a book we actually measured that is empty / one-sided (99¢ / 1¢ wall).
+    15m BTC uses 20–80. ETH 1H stays 10–90.
+
+    Null depth (both sides 0 / null / missing, not measured) is UNKNOWN.
+    Do not auto-WAIT on unknown — that is not a dead book.
+    """
+    lo, hi = playable_band_cents(asset=asset, ticker=ticker, window_minutes=window_minutes)
+    if max_side is None:
+        max_side = hi
+    mid = odds_to_cents(yes_mid)
+    if mid is not None and not playable_yes_mid(
+        mid, lo=lo, hi=hi, asset=asset, ticker=ticker, window_minutes=window_minutes,
+    ):
+        return f"YES mid {mid:.0f}¢ outside {playable_band_label(lo, hi)}"
+    if side not in ("UP", "DOWN"):
+        return None
+    if mid is not None:
+        side_mid = mid if side == "UP" else (100.0 - mid)
+        if side_mid >= float(max_side):
+            return f"{side} already {side_mid:.0f}¢"
+    if book_is_unknown(depth):
+        return None
+    if not depth:
+        return None
+    try:
+        yes_depth = float(depth.get("yes_depth") or 0.0)
+    except (TypeError, ValueError):
+        yes_depth = 0.0
+    try:
+        no_depth = float(depth.get("no_depth") or 0.0)
+    except (TypeError, ValueError):
+        no_depth = 0.0
+    yes_bid = odds_to_cents(depth.get("yes_bid_px"))
+    no_bid = odds_to_cents(depth.get("no_bid_px"))
+    measured = bool(depth.get("measured") or depth.get("has_size") or depth.get("book_state") == "dead")
+    if measured and yes_depth <= 0 and no_depth <= 0:
+        return "empty book we measured"
+    if side == "UP" and yes_depth <= 0 and no_depth > 0:
+        return "one-sided book · yes_depth 0"
+    if side == "DOWN" and no_depth <= 0 and yes_depth > 0:
+        return "one-sided book · no_depth 0"
+    if side == "UP" and no_bid is not None and no_bid >= 99.0:
+        return "one-sided book · NO at 99¢"
+    if side == "DOWN" and yes_bid is not None and yes_bid >= 99.0:
+        return "one-sided book · YES at 99¢"
+    if side == "UP" and yes_bid is not None and yes_bid <= 1.0:
+        return "one-sided book · YES ≤1¢"
+    return None
+
+
+def never_lock_near_certain(
+    yes_ask: Any = None,
+    no_ask: Any = None,
+    side_odds: Any = None,
+) -> Optional[str]:
+    """
+    Hard stop: never lock ≥99¢ or a one-sided 100¢ book.
+    Stays in force even if the playable cap is later raised.
+    """
+    ya = odds_to_cents(yes_ask)
+    na = odds_to_cents(no_ask)
+    so = odds_to_cents(side_odds)
+    if so is not None and so >= 99.0:
+        return "never lock ≥99¢"
+    if ya is not None and ya >= 99.0:
+        return "never lock ≥99¢"
+    if na is not None and na >= 99.0:
+        return "never lock ≥99¢"
+    if ya is not None and ya >= 100.0:
+        return "never lock one-sided 100¢"
+    if na is not None and na >= 100.0:
+        return "never lock one-sided 100¢"
+    if (ya is None and na is not None and na >= 99.0) or (
+        na is None and ya is not None and ya >= 99.0
+    ):
+        return "never lock one-sided 100¢"
+    return None
+
+
+def zach_band_skips_preferred(yes_mid: Any, leftover: Any, min_leftover: float = 0.0) -> bool:
+    """
+    10–90¢ two-sided with leftover after vig is playable.
+    Do not WAIT solely for sitting outside 40–65 / 45–55.
+    """
+    try:
+        left = float(leftover)
+    except (TypeError, ValueError):
+        return False
+    return playable_yes_mid(yes_mid) and left > float(min_leftover)
+
+
+def zach_bar_reason(
+    yes_ask: Any,
+    no_ask: Any = None,
+    p_finish: Any = None,
+    spread_cents: float | None = None,
+    fee_cents: float | None = None,
+    min_leftover: float | None = None,
+    yes_mid: Any = None,
+    side_ask: Any = None,
+) -> Optional[str]:
+    """
+    Zach’s bar: 10–90¢ two-sided + leftover at the ask after fee.
+    Never a 45–55-only band. ≥99¢ / one-sided 100¢ never lock.
+    """
+    near = never_lock_near_certain(yes_ask, no_ask, side_odds=side_ask)
+    if near:
+        return near
+    mid = yes_mid if yes_mid is not None else yes_ask
+    mid_c = odds_to_cents(mid)
+    if mid_c is not None and not playable_yes_mid(mid_c):
+        return f"YES mid {mid_c:.0f}¢ outside {playable_band_label()}"
+    ask = odds_to_cents(side_ask if side_ask is not None else yes_ask)
+    if ask is None or p_finish is None:
+        return "no leftover at the ask after vig"
+    if min_leftover is None:
+        try:
+            from backend.config import settings
+            min_leftover = float(getattr(settings, "MIN_EV_CENTS", 3.0))
+        except Exception:
+            min_leftover = 3.0
+    leftover = leftover_after_vig(float(p_finish), float(ask), spread_cents, fee_cents)
+    if leftover < float(min_leftover):
+        return "no leftover at the ask after vig"
+    return None
+
+
+def _open_row_id_ticker(row: Any) -> tuple:
+    if isinstance(row, dict):
+        return row.get("id"), row.get("ticker")
+    return getattr(row, "id", None), getattr(row, "ticker", None)
+
+
+def stuck_hours_open(open_rows: Any) -> bool:
+    """True while 1062/1063 (or their official tickers) are still OPEN."""
+    for row in open_rows or []:
+        rid, ticker = _open_row_id_ticker(row)
+        try:
+            if int(rid) in KNOWN_OFFICIAL_BY_ID:
+                return True
+        except (TypeError, ValueError):
+            pass
+        if str(ticker or "").strip() in KNOWN_OFFICIAL_FINISH:
+            return True
+    return False
+
+
+def lifetime_n_for_zach(settled_n: Any, open_rows: Any = None) -> int:
+    """n=0 until 1062/1063 settle. Do not treat Chair conf as a lifetime."""
+    if stuck_hours_open(open_rows or []):
+        return 0
+    try:
+        return max(0, int(settled_n or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def eth_hour_still_open(open_rows: Any) -> bool:
+    """True while the stuck ETH official hour (1063) is still OPEN."""
+    for row in open_rows or []:
+        rid, ticker = _open_row_id_ticker(row)
+        try:
+            if int(rid) == 1063:
+                return True
+        except (TypeError, ValueError):
+            pass
+        t = str(ticker or "").strip()
+        if t == "KXETHD-26AUG1415-T1874.99":
+            return True
+        if t in KNOWN_OFFICIAL_FINISH and t.startswith("KXETHD"):
+            return True
+    return False
+
+
+def eth_settled_n_for_zach(eth_settled_n: Any, open_rows: Any = None) -> int:
+    """ETH reliability n is 0 while 1063 is OPEN."""
+    if eth_hour_still_open(open_rows or []):
+        return 0
+    try:
+        return max(0, int(eth_settled_n or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def eth_reliability_ready(eth_settled_n: Any, min_n: int | None = None) -> bool:
+    """ETH paper lock needs a finish-graded reliability bin."""
+    if min_n is None:
+        try:
+            from backend.config import settings
+            min_n = int(
+                getattr(
+                    settings,
+                    "ETH_RELIABILITY_MIN_N",
+                    getattr(settings, "CALIB_BAND_MIN_N", 8),
+                )
+            )
+        except Exception:
+            min_n = 8
+    try:
+        n = int(eth_settled_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n >= int(min_n)
+
+
+def eth_paper_lock_blocked(
+    asset: Any,
+    eth_settled_n: Any,
+    min_n: int | None = None,
+) -> Optional[str]:
+    """
+    BTC-only paper locks until ETH has a settled reliability bin.
+    ETH specialists may still vote / Chair may WAIT. ETH veto stays elsewhere.
+    """
+    a = str(asset or "").strip().upper()
+    if a not in ("ETH", "ETHEREUM"):
+        return None
+    if eth_reliability_ready(eth_settled_n, min_n):
+        return None
+    return "ETH paper lock waits for a settled reliability bin"
+
+
+def _row_get(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+
+def _row_kind(row: Any) -> str:
+    return str(_row_get(row, "kind") or "").strip().lower()
+
+
+def _row_asset(row: Any) -> str:
+    a = str(_row_get(row, "asset") or "").strip().lower()
+    if a in ("eth", "ethereum"):
+        return "eth"
+    if a in ("btc", "bitcoin"):
+        return "btc"
+    inferred = ticker_asset(_row_get(row, "ticker"))
+    return inferred or ""
+
+
+def _row_shadow_flag(row: Any) -> bool:
+    return _row_get(row, "shadow") in (1, True, "1")
+
+
+def is_eth_shadow_row(row: Any) -> bool:
+    """True for an ETH shadow pick — grades the bin, does not size or go live.
+
+    Legacy rows are `shadow=True` with no kind (ETH-only when this helper
+    was written). BTC shadows must not match.
+    """
+    if row is None:
+        return False
+    kind = _row_kind(row)
+    if kind == "btc_shadow":
+        return False
+    if kind == "eth_shadow":
+        return True
+    if not _row_shadow_flag(row):
+        return False
+    return _row_asset(row) != "btc"
+
+
+def is_btc_shadow_row(row: Any) -> bool:
+    """True for a BTC shadow pick — grades the bin, does not size or go live."""
+    if row is None:
+        return False
+    kind = _row_kind(row)
+    if kind == "eth_shadow":
+        return False
+    if kind == "btc_shadow":
+        return True
+    if not _row_shadow_flag(row):
+        return False
+    return _row_asset(row) == "btc"
+
+
+def is_shadow_row(row: Any) -> bool:
+    """ETH or BTC shadow pick. Never a sized Chair lock."""
+    return is_eth_shadow_row(row) or is_btc_shadow_row(row)
+
+
+def shadow_row_kind(row: Any) -> Optional[str]:
+    """`eth_shadow` / `btc_shadow` / None. BTC checked first so it never looks like ETH."""
+    if is_btc_shadow_row(row):
+        return "btc_shadow"
+    if is_eth_shadow_row(row):
+        return "eth_shadow"
+    return None
+
+
+def _shadow_pick(
+    *,
+    kind: str,
+    asset_key: str,
+    allowed: tuple[str, ...],
+    asset: Any,
+    side: Any,
+    conf: Any = 0,
+    ask: Any = None,
+    strike: Any = None,
+    vetoed: bool = False,
+    ticker: Any = None,
+) -> Optional[Dict[str, Any]]:
+    a = str(asset or "").strip().upper()
+    if a not in allowed:
+        return None
+    s = normalize_side(side)
+    if s not in ("UP", "DOWN"):
+        return None
+    try:
+        confidence = int(conf or 0)
+    except (TypeError, ValueError):
+        confidence = 0
+    return {
+        "kind": kind,
+        "asset": asset_key,
+        "side": s,
+        "direction": s,
+        "confidence": confidence,
+        "ask": odds_to_cents(ask),
+        "strike": lock_time_strike(ticker=ticker, floor_strike=strike),
+        "ticker": ticker,
+        "vetoed": bool(vetoed),
+        "paper_stake": 0.0,
+        "counts_as_lock": False,
+        "shadow": True,
+    }
+
+
+def eth_shadow_pick(
+    asset: Any,
+    side: Any,
+    conf: Any = 0,
+    ask: Any = None,
+    strike: Any = None,
+    vetoed: bool = False,
+    ticker: Any = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    One ETH hour pick for the reliability bin.
+    Does not size, does not go live, does not override BTC-only Chair locks.
+    A BTC-impulse veto still records the pick so we can grade whether the veto was right.
+    """
+    return _shadow_pick(
+        kind="eth_shadow",
+        asset_key="eth",
+        allowed=("ETH", "ETHEREUM"),
+        asset=asset,
+        side=side,
+        conf=conf,
+        ask=ask,
+        strike=strike,
+        vetoed=vetoed,
+        ticker=ticker,
+    )
+
+
+def btc_shadow_pick(
+    asset: Any,
+    side: Any,
+    conf: Any = 0,
+    ask: Any = None,
+    strike: Any = None,
+    vetoed: bool = False,
+    ticker: Any = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    One BTC WAIT-hour pick for a parallel paper bin.
+    Does not size, does not go live, does not become a Chair lock.
+    """
+    return _shadow_pick(
+        kind="btc_shadow",
+        asset_key="btc",
+        allowed=("BTC", "BITCOIN"),
+        asset=asset,
+        side=side,
+        conf=conf,
+        ask=ask,
+        strike=strike,
+        vetoed=vetoed,
+        ticker=ticker,
+    )
+
+
+def _score_pair(correct: Any, wrong: Any) -> Dict[str, int]:
+    try:
+        c = max(0, int(correct or 0))
+    except (TypeError, ValueError):
+        c = 0
+    try:
+        w = max(0, int(wrong or 0))
+    except (TypeError, ValueError):
+        w = 0
+    return {"correct": c, "wrong": w}
+
+
+def _shadow_score_pair(bin_row: Any) -> Dict[str, int]:
+    """Shadow bin for the shadow path only — never painted as Chair."""
+    row = bin_row if isinstance(bin_row, dict) else {}
+    try:
+        n = max(0, int(row.get("n") or 0))
+    except (TypeError, ValueError):
+        n = 0
+    try:
+        hits = max(0, int(row.get("hits") or 0))
+    except (TypeError, ValueError):
+        hits = 0
+    if row.get("wrong") is not None:
+        return _score_pair(hits, row.get("wrong"))
+    return _score_pair(hits, max(0, n - hits))
+
+
+def floor_scorecard(btc_acc: Any = None, eth_acc: Any = None) -> Dict[str, Any]:
+    """
+    Floor book match. Paper only.
+
+    Not leader vs leader. Not Satoshi vs Vitalik. Not Chair vs seats.
+    BTC score = sized Chair locks, finish-only from Kalshi market.result.
+    ETH score = sized Chair locks, finish-only from Kalshi market.result.
+    Shadow bins stay on the payload for the shadow path — they are not Chair.
+    Head-to-head is a game score of the two books — settled correct vs wrong.
+    """
+    btc_acc = btc_acc if isinstance(btc_acc, dict) else {}
+    eth_acc = eth_acc if isinstance(eth_acc, dict) else {}
+    btc = _score_pair(btc_acc.get("correct"), btc_acc.get("wrong"))
+    eth = _score_pair(eth_acc.get("correct"), eth_acc.get("wrong"))
+    eth_shadow = _shadow_score_pair(eth_acc.get("eth_shadow"))
+    btc_shadow = _shadow_score_pair(btc_acc.get("btc_shadow"))
+    btc_c, eth_c = btc["correct"], eth["correct"]
+    btc_w, eth_w = btc["wrong"], eth["wrong"]
+    played = btc_c + btc_w + eth_c + eth_w
+    match = f"BTC {btc_c} · ETH {eth_c}"
+    if btc_c > eth_c:
+        ahead = "btc"
+        lead = btc_c - eth_c
+        line = "BTC book ahead on finishes."
+    elif eth_c > btc_c:
+        ahead = "eth"
+        lead = eth_c - btc_c
+        line = "ETH book ahead on finishes."
+    else:
+        ahead = "tied"
+        lead = 0
+        if played and btc_w < eth_w:
+            line = "Even finishes. BTC book has fewer misses."
+        elif played and eth_w < btc_w:
+            line = "Even finishes. ETH book has fewer misses."
+        else:
+            line = "Even books. Waiting on the next finish."
+    return {
+        "paper": True,
+        "kind": "books",
+        "btc": {**btc, "label": f"{btc_c}–{btc_w}"},
+        "eth": {**eth, "label": f"{eth_c}–{eth_w}"},
+        "ahead": ahead,
+        "lead": lead,
+        "match": match,
+        "line": line,
+        "btc_text": f"BTC {btc_c}–{btc_w}",
+        "eth_text": f"{eth_c}–{eth_w} ETH",
+        "btc_shadow": {**btc_shadow, "label": f"{btc_shadow['correct']}–{btc_shadow['wrong']}"},
+        "eth_shadow": {**eth_shadow, "label": f"{eth_shadow['correct']}–{eth_shadow['wrong']}"},
+    }
+
+
+def paper_stake_for_lock(
+    direction: Any,
+    lifetime_n: Any = 0,
+    chair_conf: Any = None,
+) -> float:
+    """
+    Flat paper stake. Chair conf is not P(finish) and must not size the ticket.
+    Empty lifetime never sizes up.
+    """
+    _ = chair_conf
+    try:
+        n = int(lifetime_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    d = str(direction or "").upper()
+    hold = d in ("UP_HOLD", "DOWN_HOLD", "HOLD")
+    try:
+        from backend.config import settings
+        hold_amt = float(getattr(settings, "PAPER_STAKE_HOLD", 10.0))
+        full_amt = float(getattr(settings, "PAPER_STAKE_DEFAULT", 25.0))
+    except Exception:
+        hold_amt, full_amt = 10.0, 25.0
+    if hold:
+        return hold_amt
+    if n <= 0:
+        return full_amt
+    return full_amt
+
+
+def explore_paper_lock_open(
+    learning_phase: Any = None,
+    reliability_n: Any = None,
+    explore_until: int | None = None,
+) -> bool:
+    """
+    PAPER-only explore path: learning_phase is explore OR reliability_n < 20.
+    Does not loosen live / Follower gates.
+    """
+    if explore_until is None:
+        try:
+            from backend.config import settings
+            explore_until = int(getattr(settings, "EXPLORE_RELIABILITY_N", 20))
+        except Exception:
+            explore_until = 20
+    phase = str(learning_phase or "").strip().lower()
+    if phase == "explore":
+        return True
+    try:
+        n = int(reliability_n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n < int(explore_until)
+
+
+def explore_paper_lock_ok(
+    p_finish: Any,
+    ev_cents: Any,
+    yes_mid: Any,
+    min_p: float | None = None,
+    min_ev: float | None = None,
+) -> bool:
+    """P(finish) ≥ 0.55, EV ≥ 0 after half-spread, 10–90 band.
+
+    The wider band does not drop the EV gate. 82¢ / 88¢ still FAIL when EV < 0.
+    """
+    if min_p is None:
+        try:
+            from backend.config import settings
+            min_p = float(getattr(settings, "EXPLORE_PAPER_MIN_P", 0.55))
+        except Exception:
+            min_p = 0.55
+    if min_ev is None:
+        try:
+            from backend.config import settings
+            min_ev = float(getattr(settings, "EXPLORE_PAPER_MIN_EV", 0.0))
+        except Exception:
+            min_ev = 0.0
+    try:
+        p = float(p_finish)
+        ev = float(ev_cents)
+    except (TypeError, ValueError):
+        return False
+    if p < float(min_p) or ev < float(min_ev):
+        return False
+    return playable_yes_mid(yes_mid)
+
+
+def count_paper_locks_today(
+    rows: Any,
+    now: datetime | None = None,
+    asset: Any = None,
+) -> int:
+    """Count Chair paper locks (not WAIT, not ETH shadow) on the CT day."""
+    try:
+        from zoneinfo import ZoneInfo
+        ct = ZoneInfo("America/Chicago")
+    except Exception:
+        ct = timezone.utc
+    when = now or datetime.now(ct)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    day = when.astimezone(ct).date()
+    want = str(asset or "").strip().lower()
+    n = 0
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("shadow") or row.get("kind") in ("eth_shadow", "btc_shadow", "wait"):
+            continue
+        d = str(row.get("direction") or "").upper()
+        if d not in ("UP", "DOWN", "UP_HOLD", "DOWN_HOLD"):
+            continue
+        if want:
+            a = str(row.get("asset") or ticker_asset(row.get("ticker")) or "").lower()
+            if a and a != want and not (want == "btc" and a in ("btc", "bitcoin", "")):
+                continue
+        raw = row.get("called_at") or row.get("locked_at") or row.get("timestamp")
+        if not raw:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts.astimezone(ct).date() == day:
+                n += 1
+        except (TypeError, ValueError):
+            continue
+    return n
+
+
+def paper_lock_day_ok(locks_today: Any, max_n: int | None = None) -> bool:
+    """A few paper locks per day on 1H BTC — not 20, not 1 per 48h."""
+    if max_n is None:
+        try:
+            from backend.config import settings
+            max_n = int(getattr(settings, "PAPER_LOCKS_PER_DAY", 5))
+        except Exception:
+            max_n = 5
+    try:
+        n = int(locks_today or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n < int(max_n)
+
+
+def book_too_thin(
+    depth: Dict[str, Any] | None,
+    side: str | None,
+    min_size: float,
+) -> bool:
+    """True when we know size and the chosen side is thinner than min_size."""
+    if book_is_unknown(depth):
+        return False
+    if not depth or not depth.get("has_size"):
+        return False
+    if side not in ("UP", "DOWN"):
+        return False
+    top = depth.get("yes_bid_sz") if side == "UP" else depth.get("no_bid_sz")
+    shallow = depth.get("yes_depth") if side == "UP" else depth.get("no_depth")
+    try:
+        top_v = float(top) if top is not None else 0.0
+        depth_v = float(shallow) if shallow is not None else top_v
+    except (TypeError, ValueError):
+        return False
+    return top_v < float(min_size) or depth_v < float(min_size)
+
+
+def odds_band_key(side_odds: float | None) -> Optional[str]:
+    if side_odds is None:
+        return None
+    try:
+        x = float(side_odds)
+    except (TypeError, ValueError):
+        return None
+    if x < 40:
+        return "0-40"
+    if x < 50:
+        return "40-50"
+    if x < 60:
+        return "50-60"
+    if x < 70:
+        return "60-70"
+    if x < 80:
+        return "70-80"
+    return "80-100"
+
+
+def band_tighten(
+    stats: Dict[str, Any] | None,
+    min_n: int = 8,
+    miss_gap: float = 0.08,
+    p_add: float = 0.05,
+    ev_add: float = 2.0,
+) -> Dict[str, Any]:
+    """
+    Predicted P vs realized finish rate for one odds band.
+    Tighten only when the band loses money or is over-confident.
+    """
+    out = {
+        "p_add": 0.0,
+        "ev_add": 0.0,
+        "losing": False,
+        "predicted": None,
+        "realized": None,
+        "tries": 0,
+        "pnl_sum": 0.0,
+    }
+    if not stats:
+        return out
+    try:
+        tries = int(stats.get("tries") or 0)
+        hits = int(stats.get("hits") or 0)
+        p_sum = float(stats.get("p_sum") or 0.0)
+        pnl_sum = float(stats.get("pnl_sum") or 0.0)
+    except (TypeError, ValueError):
+        return out
+    out["tries"] = tries
+    out["pnl_sum"] = pnl_sum
+    if tries < int(min_n):
+        return out
+    realized = hits / tries
+    predicted = (p_sum / tries) if tries else None
+    out["realized"] = round(realized, 4)
+    out["predicted"] = round(predicted, 4) if predicted is not None else None
+    overconfident = predicted is not None and realized < (predicted - float(miss_gap))
+    losing_money = pnl_sum < 0.0
+    if overconfident or losing_money:
+        out["losing"] = True
+        out["p_add"] = float(p_add)
+        out["ev_add"] = float(ev_add)
+    return out
+
+
+def normalize_side(direction: Any) -> str:
+    d = str(direction or "WAIT").upper()
+    if d in ("UP", "UP_HOLD"):
+        return "UP"
+    if d in ("DOWN", "DOWN_HOLD"):
+        return "DOWN"
+    return "WAIT"
+
+
+def hour_spot_delta_pct(
+    candles: Any,
+    price: Any,
+    now: datetime | None = None,
+) -> Optional[float]:
+    """Hour-open → now, in percent. Missing open/price → None."""
+    try:
+        px = float(price)
+    except (TypeError, ValueError):
+        return None
+    if px <= 0:
+        return None
+    stamp = now or datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    hour_ms = int(stamp.replace(minute=0, second=0, microsecond=0).timestamp() * 1000)
+    open_px = None
+    for c in candles or []:
+        if not isinstance(c, dict):
+            continue
+        t = c.get("t") if c.get("t") is not None else c.get("open_time")
+        o = c.get("o") if c.get("o") is not None else c.get("open")
+        try:
+            t_ms = int(t)
+            o_px = float(o)
+        except (TypeError, ValueError):
+            continue
+        if t_ms >= hour_ms and o_px > 0:
+            open_px = o_px
+            break
+    if open_px is None or open_px <= 0:
+        return None
+    return (px - open_px) / open_px * 100.0
+
+
+def build_btc_lead(
+    direction: Any,
+    locked: bool = False,
+    candles: Any = None,
+    price: Any = None,
+    impulse_pct: float = 0.15,
+    strong_pct: float = 0.25,
+    now: datetime | None = None,
+) -> Dict[str, Any]:
+    """Satoshi snapshot for Vitalik: side, lock, hour spot delta, impulse."""
+    side = normalize_side(direction)
+    delta = hour_spot_delta_pct(candles, price, now=now)
+    try:
+        impulse_thr = float(impulse_pct)
+        strong_thr = float(strong_pct)
+    except (TypeError, ValueError):
+        impulse_thr, strong_thr = 0.15, 0.25
+    if side not in ("UP", "DOWN") and delta is not None:
+        if delta >= impulse_thr:
+            side = "UP"
+        elif delta <= -impulse_thr:
+            side = "DOWN"
+    impulse = bool(
+        side in ("UP", "DOWN")
+        and (locked or (delta is not None and abs(delta) >= impulse_thr))
+    )
+    strong = bool(
+        side in ("UP", "DOWN")
+        and (locked or (delta is not None and abs(delta) >= strong_thr))
+    )
+    return {
+        "direction": side,
+        "locked": bool(locked),
+        "spot_delta_pct": None if delta is None else round(float(delta), 4),
+        "impulse": impulse,
+        "strong": strong,
+    }
+
+
+def eth_fades_btc_impulse(lean: Any, btc_lead: Any) -> bool:
+    """True when ETH would lock opposite a same-hour BTC impulse."""
+    if not isinstance(btc_lead, dict) or not btc_lead.get("impulse"):
+        return False
+    bd = normalize_side(btc_lead.get("direction"))
+    side = normalize_side(lean)
+    if side not in ("UP", "DOWN") or bd not in ("UP", "DOWN"):
+        return False
+    return side != bd
+
+
+def official_window_due(close_time: Any, now: datetime | None = None, ticker: Any = None) -> bool:
+    """
+    Grade only after the official Kalshi close.
+    If close_time is missing, infer it from the contract ticker (never invent a clock).
+    """
+    ct = resolve_close_time(close_time, ticker)
+    if ct is None:
+        return False
+    stamp = now or datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp >= ct
+
+
+def pick_settle_spot(current: Any, last: Any = None) -> Optional[float]:
+    """Prefer this cycle's spot; fall back to the last good print. Never use 0."""
+    for cand in (current, last):
+        try:
+            px = float(cand)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return None
+
+
+COINGLASS_QUORUM_SEATS = ("funding", "oi_pressure", "liq")
+FAR_OTM_BTC_PCT = 0.02
+FAR_OTM_ETH_PCT = 0.04
+
+
+def _signal_name(sig: Any) -> str:
+    if isinstance(sig, dict):
+        return str(sig.get("agent_name") or "")
+    return str(getattr(sig, "agent_name", None) or "")
+
+
+def _signal_flag(sig: Any, *names: str) -> bool:
+    for name in names:
+        if isinstance(sig, dict):
+            if bool(sig.get(name)):
+                return True
+        elif bool(getattr(sig, name, False)):
+            return True
+    return False
+
+
+def _set_signal_flag(sig: Any, name: str, value: bool) -> None:
+    if isinstance(sig, dict):
+        sig[name] = bool(value)
+    elif hasattr(sig, name):
+        setattr(sig, name, bool(value))
+
+
+def signal_excluded_from_quorum(sig: Any) -> bool:
+    """Muted / hard_mute / faded / invert seats do not lean QUORUM or color_counts."""
+    return _signal_flag(sig, "muted", "hard_mute", "faded", "invert")
+
+
+def chair_top_dir_eligible(sig: Any) -> bool:
+    """Muted or faded/invert seats must not create a top-3 conflict."""
+    if sig is None:
+        return False
+    return not signal_excluded_from_quorum(sig)
+
+
+def apply_hard_mute_to_signals(signals: Any, learner: Any = None) -> List[Any]:
+    """
+    Copy hierarchy fade onto the live wire. hard_mute → muted so Chair + quorum drop it.
+    Fade-without-hard-mute keeps invert-vote in Chair but is excluded from quorum/color_counts.
+    """
+    rows: List[Any] = list(signals or [])
+    ranks: Dict[str, Any] = {}
+    if learner is not None and hasattr(learner, "hierarchy_ranks"):
+        try:
+            ranks = {r.get("agent"): r for r in (learner.hierarchy_ranks() or []) if isinstance(r, dict)}
+        except Exception:
+            ranks = {}
+    for sig in rows:
+        name = _signal_name(sig)
+        row = ranks.get(name) or {}
+        hard = bool(row.get("hard_mute"))
+        faded = bool(row.get("faded"))
+        invert = bool(row.get("invert"))
+        _set_signal_flag(sig, "hard_mute", hard)
+        _set_signal_flag(sig, "faded", faded)
+        _set_signal_flag(sig, "invert", invert)
+        if hard:
+            _set_signal_flag(sig, "muted", True)
+    return rows
+
+
+def coinglass_hist_n(market_data: Any = None) -> int:
+    md = market_data if isinstance(market_data, dict) else {}
+    cg = md.get("coinglass") if isinstance(md.get("coinglass"), dict) else {}
+    n = 0
+    for key in ("funding_history", "oi_history", "liq_history"):
+        hist = cg.get(key) if cg.get(key) is not None else md.get(key)
+        if isinstance(hist, list):
+            n += len(hist)
+    return n
+
+
+def coinglass_quorum_ready(market_data: Any = None) -> bool:
+    """
+    CoinGlass seats may lean quorum only with a real 30m/1h hist (n>0).
+    Fail-soft / advisory / n=0 / 4h / plan wall stay out. Does not change the reason string.
+    """
+    md = market_data if isinstance(market_data, dict) else {}
+    try:
+        from backend.learning.btc15m import coinglass_allowed_on_book
+        if not coinglass_allowed_on_book(
+            ticker=md.get("ticker") or md.get("kalshi_ticker") or md.get("market_ticker"),
+            series=md.get("series_ticker"),
+            window_minutes=md.get("window_minutes"),
+            asset=md.get("asset"),
+        ):
+            return False
+    except Exception:
+        pass
+    health = md.get("health") if isinstance(md.get("health"), dict) else {}
+    if not bool(health.get("coinglass")):
+        return False
+    cg = md.get("coinglass") if isinstance(md.get("coinglass"), dict) else {}
+    if cg.get("plan_wall") or cg.get("daily_heatmap"):
+        return False
+    iv = str(cg.get("interval") or md.get("cg_interval") or "").strip().lower()
+    if iv and iv not in ("30m", "1h", "60m"):
+        return False
+    return coinglass_hist_n(md) > 0
+
+
+def quorum_peer_dirs(signals: Any, market_data: Any = None) -> Dict[str, str]:
+    """Live QUORUM lean: skip faded/invert/hard_mute and CoinGlass seats while n=0."""
+    ready = coinglass_quorum_ready(market_data)
+    skip = {"quorum", "guardian", "law", "leader", "chair"}
+    out: Dict[str, str] = {}
+    for sig in signals or []:
+        name = _signal_name(sig)
+        if not name or name in skip:
+            continue
+        if signal_excluded_from_quorum(sig):
+            continue
+        if name in COINGLASS_QUORUM_SEATS and not ready:
+            continue
+        if isinstance(sig, dict):
+            direction = str(sig.get("direction") or "WAIT")
+        else:
+            direction = str(getattr(sig, "direction", None) or "WAIT")
+        try:
+            from backend.agents.base import lean_side
+            side = lean_side(direction)
+            out[name] = side or "WAIT"
+        except Exception:
+            out[name] = direction
+    return out
+
+
+# Tally-only remap. LONG_UP/LONG_DOWN count as a door. REDUCE_*/FLAT_* do not.
+# Chair path-P&L actions stay untouched — this is color_counts / majority only.
+_TALLY_UP = frozenset({"UP", "UP_HOLD", "LONG_UP"})
+_TALLY_DOWN = frozenset({"DOWN", "DOWN_HOLD", "LONG_DOWN"})
+
+
+def tally_dir(direction: Any) -> str:
+    """Map a seat lean onto the HUD tally. LONG_* only. Not REDUCE/FLAT."""
+    d = str(direction or "WAIT").upper().strip()
+    if d in _TALLY_UP:
+        return "UP"
+    if d in _TALLY_DOWN:
+        return "DOWN"
+    return "WAIT"
+
+
+def color_counts_from_signals(signals: Any) -> Dict[str, int]:
+    counted = [s for s in (signals or []) if not signal_excluded_from_quorum(s)]
+    def _dir(sig: Any) -> str:
+        if isinstance(sig, dict):
+            raw = str(sig.get("direction") or "WAIT").upper()
+        else:
+            raw = str(getattr(sig, "direction", None) or "WAIT").upper()
+        return tally_dir(raw)
+    return {
+        "UP": sum(1 for s in counted if _dir(s) == "UP"),
+        "DOWN": sum(1 for s in counted if _dir(s) == "DOWN"),
+        "WAIT": sum(1 for s in counted if _dir(s) == "WAIT"),
+        "total": len(counted),
+    }
+
+
+def far_otm_companion(strike: Any, spot: Any, asset: Any = None) -> bool:
+    """Far-OTM ladder companions are wait/shadow only — never Chair."""
+    try:
+        k = float(strike)
+        p = float(spot)
+    except (TypeError, ValueError):
+        return False
+    if p <= 0:
+        return False
+    pct = abs(k - p) / p
+    a = str(asset or "").strip().lower()
+    band = FAR_OTM_ETH_PCT if a in ("eth", "ethereum") else FAR_OTM_BTC_PCT
+    return pct > band
+
+
+def chair_ticker_blocked(
+    strike: Any = None,
+    spot: Any = None,
+    asset: Any = None,
+    ticker: Any = None,
+) -> Optional[str]:
+    k = strike
+    if k is None:
+        k = strike_from_kalshi_ticker(ticker)
+    if far_otm_companion(k, spot, asset):
+        return "far-OTM companion — wait/shadow only"
+    return None
+
+
+def seat_settle_key(agent_name: Any, ticker: Any = None, close_time: Any = None) -> str:
+    """Per-seat settle identity. CASCADE / WIRE / VEL / EXHAUST are not one bucket."""
+    a = str(agent_name or "").strip().lower() or "-"
+    t = str(ticker or "").strip() or "-"
+    c = str(close_time or "").strip() or "-"
+    return f"{a}|{t}|{c}"
+
+
+def stamp_signal_settle_keys(signals: Any, ticker: Any = None, close_time: Any = None) -> List[Any]:
+    rows: List[Any] = list(signals or [])
+    for sig in rows:
+        name = _signal_name(sig)
+        key = seat_settle_key(name, ticker, close_time)
+        if isinstance(sig, dict):
+            sig["settle_key"] = key
+            if not sig.get("agent_name"):
+                sig["agent_name"] = name
+        else:
+            if hasattr(sig, "settle_key"):
+                sig.settle_key = key
+    return rows
+
+
+def unique_agent_votes(agent_votes: Any) -> Dict[str, Any]:
+    """
+    Drop cloned payloads that reuse another seat's name or settle key.
+    Historical votes without settle_key grade by dict key.
+    """
+    out: Dict[str, Any] = {}
+    seen_keys: set[str] = set()
+    for name, vote in (agent_votes or {}).items():
+        key_name = str(name or "").strip()
+        if not key_name or not isinstance(vote, dict):
+            continue
+        inner = str(vote.get("agent_name") or "").strip()
+        if inner and inner != key_name:
+            continue
+        settle = str(vote.get("settle_key") or "").strip()
+        if settle:
+            settle_agent = settle.split("|", 1)[0]
+            if settle_agent and settle_agent != key_name:
+                continue
+            if settle in seen_keys:
+                continue
+            seen_keys.add(settle)
+        out[key_name] = vote
+    return out
+
+
+def finish_outcome(spot: Any, strike: Any) -> Optional[str]:
+    """UP if spot > exact strike, DOWN if spot < strike. Tie is unresolved."""
+    try:
+        px = float(spot)
+        k = float(strike)
+    except (TypeError, ValueError):
+        return None
+    if px > k:
+        return "UP"
+    if px < k:
+        return "DOWN"
+    return None
+
+
+# ── Seat families (one fact = one family) ─────────────────────────────
+# The Chair counts FAMILIES, not seats. Six fade bots leaning the same way is
+# one fade fact, not six independent confirmations.
+SEAT_FAMILY: Dict[str, str] = {
+    # structure
+    "candle": "structure", "candle_btc": "structure", "candle_eth": "structure",
+    "momentum": "structure", "streak": "structure",
+    # flow
+    "volume": "flow", "orderflow": "flow", "spotlag": "flow",
+    # positioning
+    "funding": "position", "oi_pressure": "position", "liq": "position", "whale": "position",
+    # fade / sentiment
+    "panic": "fade", "exhaust": "fade", "cheap": "fade", "news": "fade",
+    # time-of-day
+    "session_tod": "time",
+}
+
+
+def seat_family(agent_name: Any) -> Optional[str]:
+    return SEAT_FAMILY.get(str(agent_name or "").strip().lower())
+
+
+def family_lean_counts(votes: Any) -> Dict[str, Any]:
+    """
+    Count FAMILIES leaning each way from a list of signals or detail dicts.
+    A family leans a side when a majority of its directional seats agree.
+    Returns {"family_up": [...], "family_down": [...], "families_aligned": int}.
+    """
+    from backend.agents.base import lean_side
+    fam_votes: Dict[str, Dict[str, int]] = {}
+    for v in votes or []:
+        if isinstance(v, dict):
+            name = v.get("agent") or v.get("agent_name")
+            d = v.get("effective_direction") or v.get("direction")
+        else:
+            name = getattr(v, "agent_name", None)
+            d = getattr(v, "direction", None)
+        fam = seat_family(name)
+        if not fam:
+            continue
+        side = lean_side(d)
+        if side not in ("UP", "DOWN"):
+            continue
+        fam_votes.setdefault(fam, {"UP": 0, "DOWN": 0})[side] += 1
+    fam_up = [f for f, c in fam_votes.items() if c["UP"] > c["DOWN"]]
+    fam_down = [f for f, c in fam_votes.items() if c["DOWN"] > c["UP"]]
+    return {
+        "family_up": sorted(fam_up),
+        "family_down": sorted(fam_down),
+        "families_aligned": max(len(fam_up), len(fam_down)),
+    }
+
+
+def feeds_from_signals(signals: Any) -> Dict[str, bool]:
+    """WARDEN's read: spot/kalshi health off the guardian signal's features."""
+    spot_ok = True
+    kalshi_ok = True
+    for s in signals or []:
+        if getattr(s, "agent_name", None) != "guardian":
+            continue
+        f = getattr(s, "features", None) or {}
+        spot_ok = bool(f.get("binance", True))
+        kalshi_ok = bool(f.get("kalshi", True))
+        break
+    return {"spot_ok": spot_ok, "kalshi_ok": kalshi_ok}
+
+
+def pre_lock_checklist(
+    *,
+    spot_ok: bool,
+    kalshi_ok: bool,
+    law_locked: bool,
+    chalk: bool,
+    leftover_cents: Any,
+    is_15m: bool,
+    quiet: bool,
+    hard_trigger: bool,
+    families_aligned: int,
+) -> Tuple[bool, str]:
+    """
+    Hard pre-lock checklist. Every item must pass or the Chair WAITs — no
+    debate, no LLM judgement. Order = cheapest refusal first.
+    """
+    if not spot_ok and not kalshi_ok:
+        return False, "feeds dead"
+    if law_locked:
+        return False, "LAW locked"
+    if chalk:
+        return False, "chalk book"
+    if is_15m:
+        try:
+            if leftover_cents is not None and float(leftover_cents) <= 0:
+                return False, "no leftover after vig"
+        except (TypeError, ValueError):
+            pass
+    if quiet and not hard_trigger:
+        return False, "quiet tape, no hard trigger"
+    if families_aligned < 2:
+        return False, "one-family lean"
+    return True, ""
