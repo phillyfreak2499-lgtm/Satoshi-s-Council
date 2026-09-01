@@ -262,8 +262,7 @@ class _WriteRateLimiter:
 
 _write_limiter = _WriteRateLimiter()
 _WRITE_LIMIT_PREFIXES = (
-    "/api/public/", "/api/paper", "/api/billing/checkout",
-    "/api/billing/claim", "/api/feedback",
+    "/api/public/", "/api/feedback",
 )
 
 
@@ -293,8 +292,7 @@ async def require_desk_session(request: Request, call_next):
         or request.url.path == "/api/feedback"
         or request.url.path.startswith("/api/public/")
         or request.url.path in {
-            "/api/billing/webhook", "/api/billing/status",
-            "/api/billing/checkout", "/api/billing/claim",
+            "/api/billing/status",
         }
     ):
         return await call_next(request)
@@ -542,189 +540,59 @@ async def public_proof():
 
 @app.get("/api/public/membership")
 async def public_membership():
-    """Tier contract for the free→member funnel. Bitcoin-only, paper research."""
-    from backend.services import stripe_billing
     return {
-        "free": ["Public proof ledger", "First Desk School path",
-                 f"{getattr(settings, 'FREE_JOURNAL_LIMIT', 10)} personal journal records", "Weekly process review"],
-        "member": ["Full council reasoning & history", "Expanded personal workspace",
-                   "Advanced lessons and Council-Method templates"],
-        "price": "$24/month",
-        "checkout_ready": bool(stripe_billing.configured()),
-        "note": "Membership funds the research desk. Paper research only — no auto-trading, no performance promises.",
+        "free": ["Public proof ledger", "Dual 15m research desk"],
+        "member": [],
+        "price": None,
+        "checkout_ready": False,
+        "note": "No paid plan and no paper desk. Research display only.",
     }
 
 
-async def _workspace_account_from_request(request: Request) -> dict | None:
-    account_id = _workspace_id(request)
-    return await council.store.workspace_account(account_id) if account_id else None
+def _workspace_removed():
+    return ORJSONResponse({"ok": False, "error": "paper desk removed"}, status_code=410)
 
 
-@app.post("/api/public/workspace/ensure")
-async def workspace_ensure(request: Request):
-    """Create an anonymous, browser-bound free workspace when one does not exist."""
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    body = body if isinstance(body, dict) else {}
-    account_id = _workspace_id(request) or str(uuid.uuid4())
-    try:
-        account = await council.store.get_or_create_workspace_account(account_id, body.get("display_name"))
-    except ValueError as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-    response = ORJSONResponse({"ok": True, "account": account,
-                              "notice": "This free workspace is tied to this browser until account sign-in is added."})
-    _issue_workspace_cookie(response, account_id)
-    return response
+@app.api_route("/api/public/workspace", methods=["GET", "POST"])
+@app.api_route("/api/public/workspace/ensure", methods=["GET", "POST"])
+@app.api_route("/api/public/workspace/review", methods=["GET", "POST"])
+async def workspace_removed():
+    return _workspace_removed()
 
 
-@app.get("/api/public/workspace")
-async def workspace_snapshot(request: Request):
-    account = await _workspace_account_from_request(request)
-    if account is None:
-        return ORJSONResponse({"ok": False, "error": "create a free workspace first"}, status_code=401)
-    snapshot = await council.store.workspace_snapshot(account["id"])
-    return {"ok": True, **(snapshot or {})}
+@app.api_route("/api/public/workspace/journal", methods=["GET", "POST", "PATCH"])
+@app.api_route("/api/public/workspace/journal/{entry_id}", methods=["GET", "POST", "PATCH"])
+async def workspace_journal_removed(entry_id: int | None = None):
+    return _workspace_removed()
 
 
-@app.post("/api/public/workspace/journal")
-async def workspace_journal_add(request: Request):
-    account = await _workspace_account_from_request(request)
-    if account is None:
-        return ORJSONResponse({"ok": False, "error": "create a free workspace first"}, status_code=401)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    try:
-        entry = await council.store.add_workspace_journal_entry(account["id"], body if isinstance(body, dict) else {})
-        return {"ok": True, "entry": entry, "workspace": await council.store.workspace_snapshot(account["id"])}
-    except ValueError as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-
-
-@app.patch("/api/public/workspace/journal/{entry_id}")
-async def workspace_journal_reflect(entry_id: int, request: Request):
-    account = await _workspace_account_from_request(request)
-    if account is None:
-        return ORJSONResponse({"ok": False, "error": "create a free workspace first"}, status_code=401)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    try:
-        entry = await council.store.complete_workspace_journal_entry(account["id"], entry_id, (body or {}).get("reflection"))
-        return {"ok": True, "entry": entry, "workspace": await council.store.workspace_snapshot(account["id"])}
-    except ValueError as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-
-
-@app.post("/api/public/workspace/review")
-async def workspace_review(request: Request):
-    account = await _workspace_account_from_request(request)
-    if account is None:
-        return ORJSONResponse({"ok": False, "error": "create a free workspace first"}, status_code=401)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    try:
-        review = await council.store.save_weekly_process_review(account["id"], body if isinstance(body, dict) else {})
-        return {"ok": True, "review": review, "workspace": await council.store.workspace_snapshot(account["id"])}
-    except ValueError as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-
-
-# ── Membership billing (Stripe). Entitlements are server-side on WorkspaceAccount.
 @app.get("/api/billing/status")
 async def billing_status():
-    from backend.services import stripe_billing
-    link = (os.environ.get("STRIPE_PAYMENT_LINK") or "").strip()
-    return {"configured": bool(stripe_billing.configured()), "payment_link": link or None}
+    return {"configured": False, "payment_link": None, "note": "paid membership removed"}
 
 
-@app.post("/api/billing/checkout")
-async def billing_checkout(request: Request):
-    from backend.services import stripe_billing
-    if not stripe_billing.configured():
-        return ORJSONResponse({"ok": False, "error": "billing not configured"}, status_code=503)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    email = (body or {}).get("email") if isinstance(body, dict) else None
-    account_id = _workspace_id(request) or str(uuid.uuid4())
-    try:
-        await council.store.get_or_create_workspace_account(account_id)
-        # Stripe's SDK is blocking (timeouts up to ~80s). On the single-worker
-        # event loop that freezes /health and the analysis loop — off-thread it.
-        session = await asyncio.to_thread(
-            stripe_billing.create_checkout_session, account_id, email
-        )
-    except Exception as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=503)
-    resp = ORJSONResponse({"ok": True, "url": session.get("url"), "id": session.get("id")})
-    _issue_workspace_cookie(resp, account_id)
-    return resp
+def _billing_removed():
+    return ORJSONResponse({"ok": False, "error": "paid membership removed"}, status_code=410)
 
 
-@app.post("/api/billing/webhook")
-async def billing_webhook(request: Request):
-    from backend.services import stripe_billing
-    payload = await request.body()
-    sig = request.headers.get("stripe-signature") or ""
-    try:
-        ok, msg = await stripe_billing.handle_webhook(payload, sig, council.store)
-    except Exception as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-    return ORJSONResponse({"ok": bool(ok), "result": msg}, status_code=200 if ok else 400)
+@app.api_route("/api/billing/checkout", methods=["GET", "POST"])
+async def billing_checkout_removed():
+    return _billing_removed()
 
 
-@app.post("/api/billing/claim")
-async def billing_claim(request: Request):
-    """After checkout, the browser posts {session_id}; verify ownership then grant."""
-    from backend.services import stripe_billing
-    if not stripe_billing.configured():
-        return ORJSONResponse({"ok": False, "error": "billing not configured"}, status_code=503)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    session_id = str((body or {}).get("session_id") or "").strip()
-    account_id = _workspace_id(request)
-    if not session_id or not account_id:
-        return ORJSONResponse({"ok": False, "error": "need a session and a workspace"}, status_code=400)
-    try:
-        # Blocking SDK call — keep it off the event loop (see billing_checkout).
-        info = await asyncio.to_thread(stripe_billing.retrieve_checkout_session, session_id)
-    except Exception as exc:
-        return ORJSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-    # Grant only if the session was paid AND references THIS workspace account.
-    if info.get("payment_status") != "paid" or str(info.get("account_id") or "") != account_id:
-        return ORJSONResponse({"ok": False, "error": "session not verified for this workspace"}, status_code=403)
-    if info.get("customer"):
-        await council.store.link_stripe_customer(
-            account_id, str(info["customer"]),
-            str(info.get("subscription")) if info.get("subscription") else None)
-    return {"ok": True, "account": await council.store.workspace_account(account_id)}
+@app.api_route("/api/billing/webhook", methods=["GET", "POST"])
+async def billing_webhook_removed():
+    return _billing_removed()
 
 
-@app.post("/api/billing/grant")
-async def billing_grant(request: Request):
-    """Admin-only manual comp (stays behind BOTH the desk gate and admin auth)."""
-    if not _admin_ok(request):
-        return ORJSONResponse({"ok": False, "error": "admin required"}, status_code=401)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    account_id = str((body or {}).get("account_id") or "").strip()
-    if not account_id:
-        return ORJSONResponse({"ok": False, "error": "account_id required"}, status_code=400)
-    await council.store.get_or_create_workspace_account(account_id)
-    await council.store.set_membership(account_id, "member", "active")
-    return {"ok": True, "account": await council.store.workspace_account(account_id)}
+@app.api_route("/api/billing/claim", methods=["GET", "POST"])
+async def billing_claim_removed():
+    return _billing_removed()
+
+
+@app.api_route("/api/billing/grant", methods=["GET", "POST"])
+async def billing_grant_removed():
+    return _billing_removed()
 
 
 @app.get("/api/process/log")
@@ -966,8 +834,34 @@ async def kalshi_15m():
 
 @app.get("/api/council/ranks")
 async def council_ranks():
-    """Leader standings. Satoshi is rank 0, fixed, and never listed as movable."""
-    return leader_ranks.standings()
+    """Movable-leader seats plus specialist ranks earned from settled votes."""
+    body = leader_ranks.standings()
+    btc_rows = []
+    eth_rows = []
+    try:
+        btc_rows = list(council.learner.hierarchy_ranks() or [])
+        for r in btc_rows:
+            r["table"] = "btc"
+            r.setdefault("agent", r.get("agent") or r.get("name"))
+    except Exception:
+        btc_rows = []
+    try:
+        eth = getattr(council, "eth", None)
+        if eth is not None and getattr(eth, "learner", None) is not None:
+            eth_rows = list(eth.learner.hierarchy_ranks() or [])
+            for r in eth_rows:
+                r["table"] = "eth"
+                r.setdefault("agent", r.get("agent") or r.get("name"))
+    except Exception:
+        eth_rows = []
+    rows = list(btc_rows) + list(eth_rows)
+    # Aliases the Seats UI already probes (rows / standings / ranks).
+    body["rows"] = rows
+    body["standings"] = body.get("ranked") or []
+    body["ranks"] = rows
+    body["btc"] = btc_rows
+    body["eth"] = eth_rows
+    return body
 
 
 @app.post("/api/council/ranks/reset")
@@ -1011,71 +905,18 @@ async def huddle_status():
 
 
 
-@app.get("/api/paper")
-async def paper_journal(request: Request):
-    """Manual user paper tracker — daily/weekly/monthly/yearly (America/Chicago).
-
-    Scoped per visitor by the workspace cookie: the journal used to be one
-    global log any oath visitor could read and delete from.
-    """
-    owner = _workspace_id(request)
-    journal = await council.store.get_manual_journal(owner=owner)
-    if owner:
-        return journal
-    # First visit without a workspace id: mint one so future entries are theirs.
-    owner = str(uuid.uuid4())
-    resp = ORJSONResponse(journal)
-    _issue_workspace_cookie(resp, owner)
-    return resp
+def _paper_removed():
+    return ORJSONResponse({"ok": False, "error": "paper desk removed"}, status_code=410)
 
 
-@app.post("/api/paper")
-async def paper_add(request: Request):
-    """
-    Add a manual paper trade.
-    JSON: { "side": "UP"|"DOWN", "stake": 25, "returned": 40, "note": "optional", "traded_at": optional ISO }
-    PnL = returned - stake.
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        return {"ok": False, "error": "invalid JSON"}
-    owner = _workspace_id(request)
-    minted = None
-    if not owner:
-        owner = minted = str(uuid.uuid4())
-    try:
-        trade = await council.store.add_manual_trade(
-            side=body.get("side") or "",
-            stake=float(body.get("stake") or 0),
-            returned=float(body.get("returned") if body.get("returned") is not None else body.get("got_back") or 0),
-            note=body.get("note"),
-            traded_at=body.get("traded_at"),
-            owner=owner,
-        )
-        payload = {"ok": True, "trade": trade,
-                   "journal": await council.store.get_manual_journal(owner=owner)}
-        if minted:
-            resp = ORJSONResponse(payload)
-            _issue_workspace_cookie(resp, minted)
-            return resp
-        return payload
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+@app.api_route("/api/paper", methods=["GET", "POST"])
+async def paper_removed():
+    return _paper_removed()
 
 
-
-@app.get("/api/paper/auto")
-async def paper_auto(asset: str | None = None):
-    """Finish-only auto paper journal, filtered by asset=btc|eth."""
-    a = (asset or "").lower() or None
-    if a not in (None, "btc", "eth", "bitcoin", "ethereum"):
-        a = None
-    if a == "bitcoin":
-        a = "btc"
-    if a == "ethereum":
-        a = "eth"
-    return await council.store.paper_summary_by_asset(asset=a)
+@app.api_route("/api/paper/auto", methods=["GET", "POST"])
+async def paper_auto_removed():
+    return _paper_removed()
 
 
 @app.get("/api/tape")
@@ -1163,10 +1004,8 @@ async def desk_school():
 
 
 @app.delete("/api/paper/{trade_id}")
-async def paper_delete(trade_id: int, request: Request):
-    owner = _workspace_id(request)
-    ok = await council.store.delete_manual_trade(trade_id, owner=owner)
-    return {"ok": ok, "journal": await council.store.get_manual_journal(owner=owner) if ok else None}
+async def paper_delete_removed(trade_id: int):
+    return _paper_removed()
 
 
 
@@ -1303,7 +1142,7 @@ async def brain_export(request: Request):
     calls = await council.store.export_brain_rows(limit=5000)
     payload = {
         "format": "satoshi-council-brain",
-        "version": 1,
+        "version": 2,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "learning": council.learner.export_dict(),
         "accuracy": accuracy,
@@ -1311,6 +1150,13 @@ async def brain_export(request: Request):
         "leader_weights": dict(council.leader.weights),
         "law": council.law.status(),
     }
+    try:
+        eth = getattr(council, "eth", None)
+        if eth is not None and getattr(eth, "learner", None) is not None:
+            payload["learning_eth"] = eth.learner.export_dict()
+            payload["leader_weights_eth"] = dict(getattr(eth.leader, "weights", {}) or {})
+    except Exception:
+        pass
     body = json.dumps(payload, indent=2, default=str)
     fname = f"satoshi-council-brain-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
     return Response(
@@ -1609,13 +1455,24 @@ def _chair_lock(asset: str) -> dict | None:
 def _admin_ok(request: Request) -> bool:
     """Admin session cookie, or X-Council-Admin header for curl.
 
-    The old ?admin= query form is gone — query strings land in access logs,
-    proxy logs, and Referer headers. Unset secret fails closed.
+    Header guesses share the same attempt limiter as POST /api/admin/verify.
     """
     if _admin_session_ok(request):
         return True
+    submitted = request.headers.get("X-Council-Admin") or ""
+    if not submitted:
+        return False
     try:
-        return verify_admin(request.headers.get("X-Council-Admin") or "")
+        from backend.services.admin_auth import verify_limiter
+        ip = _client_ip(request)
+        if verify_limiter.limited(ip):
+            return False
+        ok = verify_admin(submitted)
+        if ok:
+            verify_limiter.note_success(ip)
+        else:
+            verify_limiter.note_fail(ip)
+        return bool(ok)
     except Exception:
         return False
 
@@ -2100,8 +1957,7 @@ if STATIC_DIR.is_dir():
 
     @app.get("/workspace")
     async def workspace_page():
-        return FileResponse(STATIC_DIR / "workspace.html",
-                            headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+        return ORJSONResponse({"ok": False, "error": "paper desk removed"}, status_code=410)
 
     # JS paints Ares / Raijin from /static/*.webp (png kept as fallback).
     @app.get("/static/ares-wait.png")

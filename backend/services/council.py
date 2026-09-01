@@ -638,7 +638,7 @@ class Council:
         except Exception as e:
             logger.debug(f"Settle skip: {e}")
         try:
-            await self._learn_from_new_settlements()
+            await self._learn_from_new_settlements(limit=80, max_learn=40)
         except Exception as e:
             logger.debug(f"Adaptive learn skip: {e}")
         return settled_n
@@ -1822,7 +1822,7 @@ class Council:
         except Exception as e:
             logger.debug(f"leader rank update skip: {e}")
 
-    async def _learn_from_new_settlements(self, *, limit: int = 40, max_learn: int = 5) -> int:
+    async def _learn_from_new_settlements(self, *, limit: int = 80, max_learn: int = 40) -> int:
         """
         Grade agent votes on any settled windows we haven't learned from yet.
         Drives continuous weight drift + pair affinity.
