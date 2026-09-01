@@ -2399,12 +2399,13 @@ class PerformanceStore:
             for r in rows
         ]
 
-    async def prune_old_signals(self, days: int = 7, keep_max: int = 150_000) -> int:
+    async def prune_old_signals(self, days: int = 7, keep_max: int = 25_000) -> int:
         """
-        Bound the signals table. It gains a multi-KB row every ~2s per council
-        and nothing else ever deletes from it — on the 2 GB Render disk that is
-        a slow-motion outage. Keep `days` of history, and never more than
-        `keep_max` rows regardless of age.
+        Bound the signals table. Each row carries a ~33 KB agent-vote blob, so
+        on the 2 GB Render disk the row cap is what actually protects the disk:
+        25k rows ≈ 825 MB, leaving room for window_calls and the WAL. The old
+        150k cap was ~5 GB — larger than the whole disk, so it never fired.
+        Keep `days` of history, and never more than `keep_max` rows by age.
         """
         from datetime import datetime, timedelta, timezone
         removed = 0

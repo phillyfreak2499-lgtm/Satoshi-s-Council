@@ -531,6 +531,19 @@ class DualOrchestrator:
                     await self.btc.store.checkpoint_wal()
             except Exception as e:
                 logger.debug(f"periodic wal checkpoint skip: {e}")
+            # Prune the signals table in-loop, not just at boot + nightly huddle:
+            # the disk can fill between those, and once it is full the prune's own
+            # DELETE cannot write either. Every ~30 min keeps it self-healing.
+            try:
+                now = asyncio.get_event_loop().time()
+                if now - getattr(self, "_last_signal_prune", 0.0) > 1800:
+                    self._last_signal_prune = now
+                    pruned = await asyncio.wait_for(self.btc.store.prune_old_signals(), timeout=20)
+                    if pruned:
+                        logger.info(f"Periodic prune: removed {pruned} old signal rows")
+                        await self.btc.store.checkpoint_wal()
+            except Exception as e:
+                logger.debug(f"periodic signal prune skip: {e}")
             elapsed = asyncio.get_event_loop().time() - t0
             try:
                 prof = runtime_settings.profile()

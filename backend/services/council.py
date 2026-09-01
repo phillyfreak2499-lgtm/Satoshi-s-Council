@@ -1422,22 +1422,40 @@ class Council:
             pass
 
 
-        signal_id = await self.store.log_signal(
-            decision,
-            signals,
-            market_ticker=ticker,
-            entry_price=entry_price,
-            close_time=close_time,
-            kalshi_target=lock_time_strike(
-                ticker=ticker,
-                floor_strike=market_data.get("kalshi_floor_strike"),
-                cap_strike=market_data.get("kalshi_cap_strike"),
-            ),
-            up_pct=up_pct,
-            down_pct=down_pct,
-            asset=self.asset,
-            spot=market_data.get("current_price") or market_data.get("price"),
+        # Dedup persistent signal writes. Each row carries the full ~33 KB
+        # agent-vote blob; logging an unchanged WAIT every ~2.5s per council
+        # adds no learning value and fills the 2 GB disk in under a day (that
+        # is the disk-I/O outage that freezes the whole desk). Write only when
+        # the decision materially changes (ticker / direction / lock) or 60s
+        # have elapsed, so settlement still reads a fresh agent_votes row per
+        # window and a lock is always captured the cycle it flips.
+        _locked = bool(
+            decision.get("window_locked") or (decision.get("locked_call") or {}).get("locked")
         )
+        _sig = (ticker, str(decision.get("direction") or "WAIT").upper(), _locked)
+        _now = time.time()
+        if _sig == getattr(self, "_last_sig_state", None) and (_now - getattr(self, "_last_sig_at", 0.0)) < 60.0:
+            signal_id = getattr(self, "_last_sig_id", None)
+        else:
+            signal_id = await self.store.log_signal(
+                decision,
+                signals,
+                market_ticker=ticker,
+                entry_price=entry_price,
+                close_time=close_time,
+                kalshi_target=lock_time_strike(
+                    ticker=ticker,
+                    floor_strike=market_data.get("kalshi_floor_strike"),
+                    cap_strike=market_data.get("kalshi_cap_strike"),
+                ),
+                up_pct=up_pct,
+                down_pct=down_pct,
+                asset=self.asset,
+                spot=market_data.get("current_price") or market_data.get("price"),
+            )
+            self._last_sig_state = _sig
+            self._last_sig_at = _now
+            self._last_sig_id = signal_id
         await self._maybe_record_wait_sample(
             decision, signals, ticker, close_time, market_data, up_pct, down_pct
         )
