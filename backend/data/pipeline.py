@@ -30,6 +30,11 @@ KALSHI = "https://api.elections.kalshi.com/trade-api/v2"
 _SYMBOL = {"btc": "BTCUSDT", "eth": "ETHUSDT"}
 _SERIES = {"btc": "KXBTC15M", "eth": "KXETH15M"}  # both on the real 15m Kalshi books (ETH moved off hourly KXETHD)
 _FETCH_TIMEOUT = httpx.Timeout(3.5, connect=2.0)
+# CoinGlass fires 3 sequential HTTP calls after the parallel gather; without an
+# aggregate cap a degraded CoinGlass can run ~10-16s and blow the 15s analyze
+# budget every cycle. Bound the whole call so a slow derivs feed can never
+# starve the live decision — the except below already falls back to perp derivs.
+_CG_BUDGET_S = 4.0
 _HEADERS = {"User-Agent": "SatoshiCouncil/1.0 paper-desk", "Accept": "application/json"}
 
 # Render Oregon is a restricted Binance location. Five 451s every cycle
@@ -338,7 +343,9 @@ class DataPipeline:
             key = (os.environ.get("COINGLASS_API_KEY") or "").strip()
             if key:
                 client = CoinGlassClient(symbol=self.symbol, api_key=key)
-                cg_snap = await client.get_historical_derivatives()
+                cg_snap = await asyncio.wait_for(
+                    client.get_historical_derivatives(), timeout=_CG_BUDGET_S
+                )
                 feeds = (cg_snap or {}).get("funding") or (cg_snap or {}).get("oi") or (cg_snap or {}).get("liq")
                 cg_ok = bool(feeds)
                 if not cg_ok:

@@ -29,6 +29,12 @@ from backend.agents.chair_gates import (
 )
 from loguru import logger
 
+# Cap the per-cycle settle scan. Newest unsettled calls (highest ids) are the
+# live windows; anything past this is old, ungradeable backlog that must not be
+# re-hydrated every analyze cycle. Generous enough to cover a real multi-hour
+# settle lag on both assets, small enough to stay well under the analyze budget.
+SETTLE_SCAN_LIMIT = 1000
+
 # Displayed-slate reset for ETH chair + eth_shadow only. Fixed epoch so
 # restarts do not keep wiping new Vitalik hits. Bot memory stays on disk.
 ETH_DISPLAY_RESET_ID = "2026-08-31-eth-15m-display-reset"
@@ -1391,9 +1397,20 @@ class PerformanceStore:
         want = (asset or "").strip().lower() or None
 
         async with self.Session() as session:
-            result = await session.execute(
-                select(WindowCall).where(WindowCall.actual_outcome.is_(None))
-            )
+            # Bound the scan to the newest unsettled calls. A disk-full outage
+            # leaves a pile of past-due windows that can never grade (no official
+            # Kalshi result was ever written); unbounded, that pile is re-loaded
+            # and Python-looped every cycle — up to twice per dual pass — and
+            # eventually blows the 15s analyze budget. Highest ids are the live
+            # windows, so newest-first + a cap always covers the current windows
+            # while the old sludge falls outside the batch and stops re-scanning.
+            stmt = select(WindowCall).where(WindowCall.actual_outcome.is_(None))
+            if want:
+                stmt = stmt.where(
+                    or_(WindowCall.asset == want, WindowCall.asset.is_(None))
+                )
+            stmt = stmt.order_by(WindowCall.id.desc()).limit(SETTLE_SCAN_LIMIT)
+            result = await session.execute(stmt)
             rows = result.scalars().all()
             for row in rows:
                 inferred = ticker_asset(row.ticker)
