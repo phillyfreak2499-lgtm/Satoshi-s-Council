@@ -1,10 +1,10 @@
 # Satoshi’s Council
 
-Live paper desk: **[satoshiscouncil.com](https://satoshiscouncil.com)**
+Live research desk: **[satoshiscouncil.com](https://satoshiscouncil.com)**
 
-A dual Round Table. **Satoshi** chairs Bitcoin 15-minute paper. **Vitalik** chairs Ethereum hourly paper. Twenty-two BTC seats plus eighteen ETH seats vote. The Chair speaks. You still own the click.
+A dual Round Table. **Satoshi** chairs Bitcoin 15-minute. **Vitalik** chairs Ethereum 15-minute. Twenty-two BTC seats plus eighteen ETH seats vote. The Chair speaks. You still own the click.
 
-Paper only. Not Kalshi. Not financial advice. A well-formed WAIT is a call.
+Research display. Not Kalshi. Not financial advice. A well-formed WAIT is a call. No paper tracker.
 
 ---
 
@@ -12,14 +12,14 @@ Paper only. Not Kalshi. Not financial advice. A well-formed WAIT is a call.
 
 - **Dual orchestrator** in one process (`--workers 1` on Render Oregon).
 - **BTC** — Kalshi `KXBTC15M`, Satoshi in the centre, 22 seats.
-- **ETH** — Kalshi hourly ETH, Vitalik in the centre, 18 seats.
-- **Public paper Stream** — the gate is an oath, not a visitor password. Checking it mints an HttpOnly `council_desk` cookie. `GET /api/state` is session-gated and thinned (decision, clock, seat directions, health; no accuracy/weights/hierarchy/learning/huddle).
+- **ETH** — Kalshi `KXETH15M`, Vitalik in the centre, 18 seats.
+- **Public Stream** — the gate is an oath, not a visitor password. Checking it mints an HttpOnly `council_desk` cookie. `GET /api/state` is session-gated and thinned (decision, clock, seat directions, health; no accuracy/weights/hierarchy/learning/huddle). There is no paper tracker.
 - **Admin** — `POST /api/admin/verify` against `COUNCIL_ADMIN_PASSWORD`. Nothing in JS.
 - **Spot** — Binance public data API (`data-api.binance.vision`) from Oregon. `api.binance.com` returns 451 in the US. Coinbase / Binance.US are fallbacks. `/health.spot_ok` is allowed to be false.
 - **Perps** — CoinGlass if keyed; otherwise OKX public swaps for funding + OI. The desk does not claim a perp feed it does not have.
 - **Proof** — `/proof` is a cached public ledger, rebuilt on settle. Counts are not an edge claim.
 
-The Stream is a TV. Membership and the Follower stay separate. Live routing is off unless you arm it.
+The Stream is a TV. There is no paid membership. Live routing is off unless you arm it.
 
 ---
 
@@ -27,7 +27,7 @@ The Stream is a TV. Membership and the Follower stay separate. Live routing is o
 
 ```
 backend/            FastAPI + DualOrchestrator + agents
-frontend/static/    assembler index.html + gzip desk-N.b64 + roundtable.js
+frontend/static/    index.html + seat.js + wire.js + roundtable.js + room.js + desk-fx.js
 data/               Render disk: council.db, learning brain, proof_summary.json
 ```
 

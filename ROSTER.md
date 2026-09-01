@@ -1,6 +1,6 @@
 # Council Roster
 
-The desk is **Bitcoin only**: one fixed centre seat and four ranked advisors. Each advisor is a *leader* over a group of specialist agents; the advisor's stance is the synthesis of its group. SATOSHI is the sole decision-maker.
+The desk is dual 15-minute paper: **Satoshi** chairs Bitcoin (`KXBTC15M`) and **Vitalik** chairs Ethereum (`KXETH15M`). Each chair has specialist seats. SATOSHI / VITALIK speak last at their own table.
 
 Source of truth: `backend/services/round_table.py` (`LEADER_DOMAINS`).
 
@@ -20,7 +20,7 @@ Notes:
 
 - **SATOSHI is rank 0** and cannot be ranked, moved, or demoted. The centre seat is the gavel, not a competitor.
 - The four advisors are **ranked by recent record** (recency-weighted). Rank #1 sits closest and is heard hardest; a wrong streak mutes an advisor until it earns the seat back.
-- **VITALIK reads Ethereum as a signal** — ETH is not its own market, it is an input to relative-strength context for the Bitcoin call.
+- **VITALIK chairs the ETH 15m table.** ETH is its own market (`KXETH15M`), not a Bitcoin-only input.
 - **RAIJIN and ORACLE hold a veto.** A veto forces *Stand down* regardless of the vote — a protective brake, surfaced with its reason in the Provenance panel.
 
 ---

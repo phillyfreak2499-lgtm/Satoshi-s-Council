@@ -56,16 +56,8 @@ services:
         sync: false
       - key: COINGLASS_API_KEY
         sync: false
-      - key: STRIPE_SECRET_KEY
+      - key: KALSHI_API_KEY
         sync: false
-      - key: STRIPE_PRICE_ID
+      - key: KALSHI_PRIVATE_KEY_PATH
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: STRIPE_PAYMENT_LINK
-        sync: false
-      - key: STRIPE_SUCCESS_URL
-        value: "https://satoshiscouncil.com/?joined=1&session_id={CHECKOUT_SESSION_ID}"
-      - key: STRIPE_CANCEL_URL
-        value: "https://satoshiscouncil.com/?join=1"
 

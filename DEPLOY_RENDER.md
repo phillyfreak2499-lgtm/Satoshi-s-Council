@@ -98,23 +98,11 @@ it in memory for the page session only.
 desk origin (e.g. `https://YOUR-SERVICE.onrender.com`) if you need cookies to
 work across origins.
 
-## D) Cron jobs (if not via Blueprint)
+## D) Cron jobs
 
-**Huddle** — schedule `5 8 * * *` (08:05 UTC ≈ 3:05 AM CDT):
-
-```
-python deploy/cron_huddle.py
-```
-
-Env: `COUNCIL_URL=https://YOUR-SERVICE.onrender.com`
-
-**Keepalive** — schedule `*/10 * * * *`:
-
-```
-python deploy/cron_keepalive.py
-```
-
-Same `COUNCIL_URL`.
+This repo does not ship `deploy/cron_huddle.py` or `deploy/cron_keepalive.py`.
+The Blueprint is one web service. Do not add cron resources unless those
+scripts exist in the tree.
 
 ## E) After deploy
 
