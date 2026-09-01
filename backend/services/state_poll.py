@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-# Fields the 2s poll is allowed to carry. Everything else is a leak or ballast.
 _AGENT_KEYS = (
     "agent_name",
     "display_name",
@@ -51,6 +50,7 @@ _MARKET_KEYS = (
     "no_ask",
     "leftover_cents",
     "combined_ask_cents",
+    "candles",
 )
 _HEALTH_KEYS = (
     "kalshi",
@@ -71,9 +71,8 @@ _HEALTH_KEYS = (
     "cycle",
     "analysis_ok_at",
 )
-_LOCKED_KEYS = ("direction", "confidence", "side", "asset")
+_LOCKED_KEYS = ("direction", "confidence", "side", "asset", "locked")
 
-# Must never ride the poll. SECURITY.md names these.
 POLL_STRIP = frozenset({
     "accuracy",
     "weights",
@@ -121,7 +120,6 @@ def _pick(src: Any, keys: tuple) -> Dict[str, Any]:
 
 
 def _punch_decision(src: Any) -> Dict[str, Any]:
-    """One-line Chair thesis for the TV. Does not change lock gates."""
     row = _pick(src or {}, _DECISION_KEYS)
     try:
         from backend.agents.chair_gates import punch_chair_why
@@ -175,7 +173,6 @@ def thin_table(table: Any) -> Optional[Dict[str, Any]]:
 
 
 def thin_poll_state(state: Any) -> Dict[str, Any]:
-    """Return the 2s poll body. Never include POLL_STRIP keys."""
     if not isinstance(state, dict):
         return {"dual": False, "agents": [], "decision": {"direction": "WAIT"}, "health": {}}
     tables_in = state.get("tables") if isinstance(state.get("tables"), dict) else {}
@@ -212,7 +209,6 @@ def thin_poll_state(state: Any) -> Dict[str, Any]:
     return out
 
 
-# Paint missing room stills + stitch self-hosted fonts once at import.
 try:
     from backend.services.room_plates import ensure_room_stills
     ensure_room_stills()
