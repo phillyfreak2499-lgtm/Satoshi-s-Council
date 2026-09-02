@@ -1,6 +1,6 @@
 import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
-import { readScalp, scalpAvg } from "@/lib/desk/scalp";
+import { readScalp, scalpAvg, askCents } from "@/lib/desk/scalp";
 import { useDesk } from "@/lib/desk/store";
 import { HealthDot, LeanChip, Field } from "./bits";
 import { Eyes } from "./Eyes";
@@ -21,6 +21,7 @@ export function BotCard({
   const meta = SEAT_BY_ID[seat];
   const st = readScalp(useDesk().learner, seat);
   const avg = scalpAvg(st.legs);
+  const ask = askCents(snap, vote.lean);
   return (
     <article
       id={`seat-${seat}`}
@@ -48,8 +49,8 @@ export function BotCard({
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 p-3">
         <div className="flex items-center gap-2">
-          <LeanChip lean={vote.lean} />
-          <span className="font-mono text-data tabular text-fg">{vote.confidence}</span>
+          <LeanChip lean={vote.lean} cents={ask} />
+          <span className="font-mono text-micro tabular text-muted">{vote.confidence} conf</span>
           <Tip k="field.avg ¢">
             <span
               className={cn(
@@ -81,7 +82,10 @@ export function BotCard({
           }
         />
         <Field k="counter" v={vote.counter} />
-        <Field k="decision" v={`${vote.lean} · confidence ${vote.confidence} · ${vote.reasoning}`} />
+        <Field
+          k="decision"
+          v={`${vote.lean}${ask != null ? ` ${ask.toFixed(0)}¢` : ""} · ${vote.confidence} conf · ${vote.reasoning}`}
+        />
         <Field k="invalidate if" v={vote.invalidate_if} />
         <Field
           k="skill used"
@@ -108,11 +112,11 @@ export function BotCard({
               ? vote.paper
                   .map(
                     (p) =>
-                      `${p.status === "SHADOW" ? "shadow" : p.status.toLowerCase()} ${p.id} ${p.lean} ${p.confidence}`,
+                      `${p.status === "SHADOW" ? "shadow" : p.status.toLowerCase()} ${p.id} ${p.lean}${askCents(snap, p.lean) != null ? ` ${askCents(snap, p.lean)!.toFixed(0)}¢` : ""}`,
                   )
                   .join(" · ")
               : vote.shadow
-                ? `shadow ${vote.shadow.id} would have said ${vote.shadow.lean} ${vote.shadow.confidence}`
+                ? `shadow ${vote.shadow.id} would have said ${vote.shadow.lean}${askCents(snap, vote.shadow.lean) != null ? ` ${askCents(snap, vote.shadow.lean)!.toFixed(0)}¢` : ""}`
                 : "none"
           }
         />

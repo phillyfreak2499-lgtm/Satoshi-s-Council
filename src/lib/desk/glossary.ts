@@ -131,11 +131,11 @@ export const GLOSS: Record<string, Gloss> = {
 
   "lean.UP": {
     title: "UP",
-    body: "Paper lean that Bitcoin finishes this 15-minute window above the strike.",
+    body: "Buy YES at the ask, shown in cents. Not a percent. Paper lean that Bitcoin finishes this window above the strike.",
   },
   "lean.DOWN": {
     title: "DOWN",
-    body: "Paper lean that Bitcoin finishes this 15-minute window below the strike.",
+    body: "Buy NO at the ask, shown in cents. Not a percent. Paper lean that Bitcoin finishes this window below the strike.",
   },
   "lean.WAIT": {
     title: "WAIT",
@@ -288,7 +288,10 @@ export const GLOSS: Record<string, Gloss> = {
     body: "Synthetic window. Skills grade into the demo book only — they do not touch the live book.",
   },
 
-  "col.rank": { title: "Rank", body: "Highest rolling avg ¢ first — cents captured between calls, last 20 prints. Not hit rate." },
+  "col.rank": {
+    title: "Rank",
+    body: "Who is pulling the chair hardest this window. W# is Wilson when it disagrees. Avg ¢ still moves how loud SATOSHI hears them.",
+  },
   "col.scalp": {
     title: "Avg ¢",
     body: "Rolling average of cents made or lost between calls. Bought UP at 55¢, sold at 70¢ = +15. Held to the end right at 70¢ = +30. Wrong to 0 = −70. Last 20 prints.",
@@ -312,7 +315,7 @@ export const GLOSS: Record<string, Gloss> = {
 
   "field.avg ¢": {
     title: "avg ¢",
-    body: "This seat’s rolling average of cents between calls. Rank on SATOSHI follows this number, highest first.",
+    body: "This seat’s rolling average of cents between calls. A factor in how loud SATOSHI hears them — not the rank itself.",
   },
   "field.phase": { title: "phase", body: "ENTRY / MID / FINAL of this 15-minute window." },
   "field.hypothesis": { title: "hypothesis", body: "What this seat (or the chair) believes will happen, in one line." },
@@ -344,7 +347,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.board": {
     title: "Chair call",
-    body: "The paper call this window. UP buys YES at the ask. DOWN buys NO at the ask. WAIT is not a fill. Score must clear the bar.",
+    body: "The paper call this window, at the ask in cents. UP 55¢ means YES was 55 cents. WAIT is not a fill. Score must clear the bar.",
   },
   "pane.spot-chart": {
     title: "BTC 15m",

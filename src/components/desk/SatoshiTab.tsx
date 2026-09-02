@@ -44,15 +44,16 @@ function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; t
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.board">Chair call</Tip>
           </div>
-          <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)}>{lean}</div>
+          <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)}>
+            {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
+          </div>
           <div className="mt-2 font-mono text-ui text-muted">
             {lean === "WAIT" ? (
               "no paper fill"
             ) : (
               <>
-                {lean} at {ask.toFixed(1)}¢ ask
-                {lean === "UP" ? ` · YES` : ` · NO`}
-                {edge ? ` · edge ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
+                {lean === "UP" ? "YES" : "NO"} ask {ask.toFixed(1)}¢
+                {edge ? ` · leftover ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
               </>
             )}
           </div>
@@ -62,7 +63,10 @@ function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; t
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">
               <Tip k="strip.conf">conf</Tip>
             </div>
-            <div className="font-mono text-call tabular leading-none">{chair.confidence}</div>
+            <div className="font-mono text-call tabular leading-none">
+              {chair.confidence}
+              <span className="text-ui text-subtle"> conf</span>
+            </div>
           </div>
           <div>
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">
@@ -167,7 +171,7 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
                       {r.flipped ? <span className="ml-1 text-wait">flip</span> : null}
                     </td>
                     <td className="px-3 py-1.5">
-                      <LeanChip lean={r.lean} />
+                      <LeanChip lean={r.lean} cents={r.cents} />
                     </td>
                     <td
                       className={cn(
@@ -261,6 +265,9 @@ export function SatoshiTab({
                 >
                   <td className="px-2 py-1 font-mono text-data tabular text-muted">
                     {r.rank}
+                    {r.wilson_rank !== r.contrib_rank && r.wilson_rank < 90 ? (
+                      <span className="text-subtle"> · W{r.wilson_rank}</span>
+                    ) : null}
                   </td>
                   <td
                     className={cn(
@@ -278,7 +285,7 @@ export function SatoshiTab({
                   </td>
                   <td className="px-2 py-1 font-mono text-data text-muted">{r.callsign}</td>
                   <td className="px-2 py-1">
-                    <LeanChip lean={r.lean} />
+                    <LeanChip lean={r.lean} cents={sideAsk(snap, r.lean)} />
                   </td>
                   <td className="px-2 py-1 font-mono text-data tabular">{r.conf}</td>
                   <td className="px-2 py-1 font-mono text-micro text-muted">{r.skill_used}</td>
@@ -327,7 +334,11 @@ export function SatoshiTab({
                   </td>
                   {settings.show_shadow && (
                     <td className="px-2 py-1">
-                      {r.shadow_lean ? <LeanChip lean={r.shadow_lean} /> : <span className="text-subtle">—</span>}
+                      {r.shadow_lean ? (
+                        <LeanChip lean={r.shadow_lean} cents={sideAsk(snap, r.shadow_lean)} />
+                      ) : (
+                        <span className="text-subtle">—</span>
+                      )}
                     </td>
                   )}
                   <td className="max-w-xs truncate px-2 py-1 font-sans text-ui text-muted" title={r.why}>
@@ -373,7 +384,8 @@ export function SatoshiTab({
             </div>
             <div>
               full-call conf min(92, round(50+|score|×55)) = {chair.full_conf_raw}
-              {chair.lean === "WAIT" ? " · WAIT uses gate conf" : ""} → {chair.confidence}
+              {chair.lean === "WAIT" ? " · WAIT uses gate conf" : ""} → {chair.confidence} conf
+              {chair.lean !== "WAIT" ? ` · call ${sideAsk(snap, chair.lean).toFixed(0)}¢` : ""}
             </div>
           </div>
         </Pane>

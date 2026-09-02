@@ -24,6 +24,12 @@ export function markSide(snap: Snapshot, lean: "UP" | "DOWN"): number {
   return snap.no_ask || (snap.yes_mid ? 100 - snap.yes_mid : 0);
 }
 
+export function askCents(snap: Snapshot, lean: Lean): number | undefined {
+  if (lean !== "UP" && lean !== "DOWN") return undefined;
+  const n = markSide(snap, lean);
+  return n > 0 && n < 100 ? n : undefined;
+}
+
 export function scalpAvg(legs: number[]): number | null {
   if (!legs.length) return null;
   return legs.reduce((s, x) => s + x, 0) / legs.length;

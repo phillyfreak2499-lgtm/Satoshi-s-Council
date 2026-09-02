@@ -4,12 +4,21 @@ import type { FeedHealth, Lean, SeatStatus } from "@/lib/desk/types";
 import { fmtLocal, type MarketRead } from "@/lib/desk/market-hours";
 import { Tip } from "./Tip";
 
-export function LeanChip({ lean, className }: { lean: Lean; className?: string }) {
+export function LeanChip({
+  lean,
+  cents,
+  className,
+}: {
+  lean: Lean;
+  cents?: number | null;
+  className?: string;
+}) {
   const map = {
     UP: "bg-up/15 text-up border-up/40",
     DOWN: "bg-down/15 text-down border-down/40",
     WAIT: "bg-wait/15 text-wait border-wait/40",
   } as const;
+  const px = lean !== "WAIT" && cents != null && Number.isFinite(cents) ? ` ${cents.toFixed(0)}¢` : "";
   return (
     <Tip k={`lean.${lean}`} mark={false}>
       <span
@@ -20,6 +29,7 @@ export function LeanChip({ lean, className }: { lean: Lean; className?: string }
         )}
       >
         {lean}
+        {px}
       </span>
     </Tip>
   );

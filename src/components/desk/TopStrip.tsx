@@ -3,8 +3,9 @@ import { clockMs, fmtAge, fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
 import type { ChairResult, Snapshot } from "@/lib/desk/types";
 import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
 import { Tip } from "./Tip";
-import { cn } from "@/lib/utils";
 import { readMarket } from "@/lib/desk/market-hours";
+import { askCents } from "@/lib/desk/scalp";
+import { cn } from "@/lib/utils";
 
 function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; sub?: ReactNode }) {
   return (
@@ -64,7 +65,7 @@ export function TopStrip({
               </span>
             </Tip>
           )}
-          <LeanChip lean={lean} className="px-2 py-0.5 text-ui" />
+          <LeanChip lean={lean} cents={askCents(snap, lean)} className="px-2 py-0.5 text-ui" />
           <Tip k="strip.conf" mark={false}>
             <Mono className="text-title">
               {conf}
