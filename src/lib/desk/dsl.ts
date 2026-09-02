@@ -1,5 +1,6 @@
 import { clamp, engulf, last, patternOf, round } from "./math";
 import { readClock } from "./clock";
+import { readMarket } from "./market-hours";
 import { lastMark, readWick } from "./patterns";
 import { readDrift, readExhaust, readStreak } from "./structure";
 import { readCarry, readCascade, readChain, readVolt } from "./derivs";
@@ -48,6 +49,7 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
   const wick5 = readWick(snap.candles_5m);
   const wick = readWick(c1, wick5.structure.trend);
   const clk = readClock(snap);
+  const mkt = readMarket(snap.as_of, snap.close_time);
   const amdLean = wick.amd?.lean === "UP" ? 1 : wick.amd?.lean === "DOWN" ? -1 : 0;
   const sweepMk = lastMark(wick, ["sweep-up", "sweep-dn"]);
   const tweezerMk = lastMark(wick, ["tweezer-top", "tweezer-bot"]);
@@ -155,6 +157,11 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
     clock_z: clk.z,
     strike_owns: clk.owns ? 1 : 0,
     clock_itm: clk.itm === "UP" ? 1 : clk.itm === "DOWN" ? -1 : 0,
+    market_tier: mkt.tier,
+    market_micro: mkt.micro ? 1 : 0,
+    market_turn: mkt.turn ? 1 : 0,
+    fomc: mkt.id === "fomc" ? 1 : 0,
+    data_print: mkt.event ? 1 : 0,
     funding: lastF,
     abs_funding: Math.abs(lastF),
     basis_bps: snap.basis_bps,

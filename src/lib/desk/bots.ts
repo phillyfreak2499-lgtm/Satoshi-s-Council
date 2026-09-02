@@ -5,6 +5,7 @@ import { patternTrust, rememberPatterns } from "./ledger";
 import { liveSkills, skillScore } from "./skills";
 import { clockPrior, detectQuiet, detectTrendDay, readOrbit, readWarden, readWire, wireHealth } from "./context";
 import { readClock } from "./clock";
+import { ET, fmtLocal, readMarket } from "./market-hours";
 import { readDrift, readExhaust, readStreak } from "./structure";
 import { readCarry, readCascade, readChain, readVolt } from "./derivs";
 import { readPulse, readTape, readVel, readWhale } from "./tape";
@@ -948,15 +949,24 @@ function clockBot(ctx: BotCtx): Vote {
   const pocket = card?.pocket[key];
   const n = pocket?.n ?? 0;
   const hits = pocket?.hits ?? 0;
+  const m = readMarket(s.as_of, s.close_time);
+  const marketLine = `${m.emoji} ${m.label} to ${fmtLocal(m.until, ET)}${m.event ? ` · ${m.event}` : ""}${m.micro ? " · ⏱ turn" : ""}`;
+  const marketFeats = {
+    market_id: m.id,
+    market_tier: m.tier,
+    market_event: m.event,
+    market_micro: m.micro,
+    market_turn: m.turn,
+  };
   if (s.phase === "FINAL" || s.mins_left < 4) {
     return emptyVote("CLOCK", s, {
       eyes: "session clock",
       hypothesis: `FINAL ${round(s.mins_left, 1)}m — strike owns the clock`,
-      evidence: [`session ${s.session}`, `${round(s.mins_left, 1)}m left`, `prior n=${n}`],
+      evidence: [`session ${s.session}`, `${round(s.mins_left, 1)}m left`, `prior n=${n}`, marketLine],
       reasoning: "late window — CLOCK sits; STRIKE owns z",
       skill_used: "CLOCK.final_sit",
       skill_status: "LIVE",
-      features: { uncalibrated: n < 8, pocket: key, n, final: true },
+      features: { uncalibrated: n < 8, pocket: key, n, final: true, ...marketFeats },
       invalidate_if: "back into MID with > 4m left",
       confidence: 74,
     });
@@ -965,11 +975,11 @@ function clockBot(ctx: BotCtx): Vote {
     return emptyVote("CLOCK", s, {
       eyes: "session clock",
       hypothesis: `no Wilson prior for ${key}`,
-      evidence: [`session ${s.session}`, `mins ${round(s.mins_left, 2)}`, `n=${n} need 8`],
+      evidence: [`session ${s.session}`, `mins ${round(s.mins_left, 2)}`, `n=${n} need 8`, marketLine],
       reasoning: "UNCALIBRATED — WAIT until hour/weekday n ≥ 8",
       skill_used: "CLOCK.session_prior",
       skill_status: "LIVE",
-      features: { uncalibrated: true, pocket: key, n },
+      features: { uncalibrated: true, pocket: key, n, ...marketFeats },
       invalidate_if: "CLOCK does not flip alone",
       confidence: 72,
     });
@@ -980,10 +990,16 @@ function clockBot(ctx: BotCtx): Vote {
     lean: prior.lean,
     confidence: prior.lean === "WAIT" ? 70 : Math.min(58, Math.round(50 + Math.abs(prior.hit - 0.5) * 80)),
     hypothesis: `soft Wilson prior ${key} hit ${round(prior.hit * 100, 0)}% n=${n} W ${round(prior.wilson * 100, 0)}%`,
-    evidence: [`session ${s.session}`, `clock ${key}`, `UP ${hits}/${n} Wilson ${round(prior.wilson * 100, 0)}%`],
+    evidence: [
+      `session ${s.session}`,
+      `clock ${key}`,
+      `UP ${hits}/${n} Wilson ${round(prior.wilson * 100, 0)}%`,
+      marketLine,
+    ],
     reasoning: "soft prior only — will not flip a mid-window call alone",
     skill_used: "CLOCK.session_prior",
     skill_status: "LIVE",
+    features: { pocket: key, n, ...marketFeats },
     invalidate_if: "nothing mid-window; CLOCK does not flip alone",
   });
 }

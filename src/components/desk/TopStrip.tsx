@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import { clockMs, fmtAge, fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
 import type { ChairResult, Snapshot } from "@/lib/desk/types";
-import { HealthDot, LeanChip, Mono } from "./bits";
+import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
 import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
+import { readMarket } from "@/lib/desk/market-hours";
 
 function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; sub?: ReactNode }) {
   return (
@@ -25,6 +26,7 @@ export function TopStrip({
   graded,
   evAvg,
   evN,
+  tz,
 }: {
   snap: Snapshot | null;
   chair: ChairResult | null;
@@ -33,6 +35,7 @@ export function TopStrip({
   graded: number;
   evAvg?: number;
   evN?: number;
+  tz: string;
 }) {
   if (!snap) {
     return (
@@ -48,6 +51,7 @@ export function TopStrip({
   const score = chair?.score ?? 0;
   const bar = chair?.bar ?? 0.3;
   const fill = Math.min(1, Math.abs(score) / Math.max(bar, 0.01));
+  const market = readMarket(snap.as_of, snap.close_time);
 
   return (
     <div data-tour="tour-strip" className="border-b border-border bg-surface px-3 py-2">
@@ -121,6 +125,9 @@ export function TopStrip({
             ) : null}
           </span>
         </div>
+      </div>
+      <div className="mt-1.5">
+        <MarketChip m={market} tz={tz} />
       </div>
       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 xl:grid-cols-8">
         <Cell

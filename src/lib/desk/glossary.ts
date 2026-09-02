@@ -102,7 +102,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.CLOCK": {
     title: "CLOCK (TOD)",
-    body: "Hour/weekday Wilson prior from official settles, n ≥ 8. Soft only — cannot flip the chair alone. Last 4 minutes it sits; STRIKE owns the clock then.",
+    body: "Hour/weekday Wilson prior from official settles, n ≥ 8. Soft only — cannot flip the chair alone. Last 4 minutes it sits; STRIKE owns the clock then. Also names the US-session window (NY morning, FOMC, London…) in Eastern time.",
   },
   "seat.WIRE": {
     title: "WIRE (FNG)",
@@ -314,6 +314,10 @@ export const GLOSS: Record<string, Gloss> = {
   "field.calc": { title: "calc", body: "The chair's arithmetic this window, in one string." },
   "field.skill / huddle": { title: "skill / huddle", body: "Last settle grade, and when the next huddle runs." },
 
+  "pane.market": {
+    title: "Market window",
+    body: "Where you are in the Bitcoin day, in your timezone. 🥇 NY morning and macro prints (CPI/NFP/claims, FOMC) are the best vol. 🥈 lunch and the equity close. 🥉 London and Tokyo. 💤 late US, pre-London, and weekends. ⏱ turn is the minute a 15-minute candle/Kalshi window opens or closes. Windows are defined in Eastern time so they stay put through daylight saving.",
+  },
   "pane.board": {
     title: "Chair call",
     body: "The paper call this window. UP buys YES at the ask. DOWN buys NO at the ask. WAIT is not a fill. Score must clear the bar.",

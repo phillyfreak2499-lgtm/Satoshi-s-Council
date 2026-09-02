@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { FeedHealth, Lean, SeatStatus } from "@/lib/desk/types";
+import { fmtLocal, type MarketRead } from "@/lib/desk/market-hours";
 import { Tip } from "./Tip";
 
 export function LeanChip({ lean, className }: { lean: Lean; className?: string }) {
@@ -54,6 +55,36 @@ export function StatusChip({ s }: { s: SeatStatus }) {
 
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn("font-mono tabular text-data", className)}>{children}</span>;
+}
+
+export function MarketChip({
+  m,
+  tz,
+  compact,
+}: {
+  m: MarketRead;
+  tz: string;
+  compact?: boolean;
+}) {
+  return (
+    <Tip k="pane.market" mark={false}>
+      <span className="inline-flex flex-wrap items-baseline gap-x-2 font-mono text-micro text-fg">
+        <span>
+          {m.emoji} {m.label}
+        </span>
+        {!compact && (
+          <span className="text-muted">
+            to {fmtLocal(m.until, tz)}
+          </span>
+        )}
+        <span className="text-subtle">
+          next {m.next_emoji} {m.next_label} {fmtLocal(m.next_at, tz)}
+        </span>
+        {m.event ? <span className="text-wait">{m.event}</span> : null}
+        {m.micro ? <span className="text-wait">⏱ turn</span> : null}
+      </span>
+    </Tip>
+  );
 }
 
 export function Pane({

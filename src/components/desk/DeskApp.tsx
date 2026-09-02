@@ -131,6 +131,7 @@ export function DeskApp() {
             : 0
         }
         evN={frame.learner.chair_ev_n}
+        tz={frame.settings.tz}
       />
 
       {frame.lastError && (

@@ -1,9 +1,10 @@
 import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "@/lib/desk/types";
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
-import { Field, LeanChip, Mono, Pane, StatusChip } from "./bits";
+import { Field, LeanChip, MarketChip, Mono, Pane, StatusChip } from "./bits";
 import { ChairEyes } from "./Eyes";
 import { Tip } from "./Tip";
+import { readMarket } from "@/lib/desk/market-hours";
 
 function sideAsk(snap: Snapshot, lean: Lean) {
   if (lean === "UP") return snap.yes_ask || snap.yes_mid;
@@ -25,13 +26,14 @@ function fmtClock(t: number, tz: string) {
   }
 }
 
-function ChairBoard({ snap, chair }: { snap: Snapshot; chair: ChairResult }) {
+function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; tz: string }) {
   const lean = chair.lean;
   const fill = Math.min(1, Math.abs(chair.score) / Math.max(chair.bar, 0.01));
   const ask = sideAsk(snap, lean);
   const tone = lean === "UP" ? "text-up" : lean === "DOWN" ? "text-down" : "text-wait";
   const barTone = lean === "UP" ? "bg-up" : lean === "DOWN" ? "bg-down" : "bg-wait";
   const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 0;
+  const market = readMarket(snap.as_of, snap.close_time);
   return (
     <section
       data-tour="tour-satoshi"
@@ -103,6 +105,9 @@ function ChairBoard({ snap, chair }: { snap: Snapshot; chair: ChairResult }) {
         <span>spot {snap.spot.toFixed(0)}</span>
         <span>K {snap.strike.toFixed(0)}</span>
         <span className="truncate">{snap.ticker}</span>
+      </div>
+      <div className="mt-2 border-t border-border pt-2">
+        <MarketChip m={market} tz={tz} />
       </div>
     </section>
   );
@@ -209,7 +214,7 @@ export function SatoshiTab({
 }) {
   return (
     <div className="flex flex-col gap-3 p-3">
-      <ChairBoard snap={snap} chair={chair} />
+      <ChairBoard snap={snap} chair={chair} tz={settings.tz} />
       <ChairEyes snap={snap} />
       <CallTape rows={callLog} tz={settings.tz} />
 
