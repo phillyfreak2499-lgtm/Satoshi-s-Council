@@ -37,6 +37,13 @@
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+
+  --motion-micro: 80ms;
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --motion-scale-tooltip: 0.98;
+  --motion-y-micro: 4px;
 }
 
 @layer base {
@@ -81,5 +88,20 @@
   * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+}
+
+.tip-pop {
+  animation: tip-in var(--motion-quick) var(--ease-out);
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--motion-scale-tooltip)) translateY(var(--motion-y-micro));
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }

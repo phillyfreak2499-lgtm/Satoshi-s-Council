@@ -15,10 +15,11 @@ import {
 } from "@/lib/desk/engine";
 import type { Learner, Settings as SettingsT } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
+import { Tip } from "./Tip";
 
 export function SettingsTab({ settings, learner }: { settings: SettingsT; learner: Learner }) {
   return (
-    <div className="grid gap-3 p-3 lg:grid-cols-2">
+    <div data-tour="tour-settings" className="grid gap-3 p-3 lg:grid-cols-2">
       <section className="rounded-md border border-border bg-surface p-3">
         <h3 className="mb-3 font-mono text-micro uppercase tracking-widest text-subtle">Council</h3>
         <label className="mb-2 block font-mono text-ui text-muted">
@@ -106,6 +107,13 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
           >
             Run huddle now
           </button>
+          <button
+            type="button"
+            className="rounded-sm border border-border bg-surface-2 px-3 py-1.5 font-mono text-ui text-fg"
+            onClick={() => window.dispatchEvent(new Event("satoshi-tour"))}
+          >
+            Replay 60s tour
+          </button>
         </div>
       </section>
 
@@ -117,7 +125,11 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
             return (
               <label key={s.id} className="flex items-center gap-2 font-mono text-ui">
                 <input type="checkbox" checked={on} onChange={() => setMuted(s.id, !on)} />
-                <span className={on ? "text-muted line-through" : "text-fg"}>{s.id}</span>
+                <span className={on ? "text-muted line-through" : "text-fg"}>
+                  <Tip k={`seat.${s.id}`} mark={false}>
+                    {s.id}
+                  </Tip>
+                </span>
               </label>
             );
           })}
@@ -134,7 +146,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
               <tr>
                 {["seat", "prior", "live w", "n", "wilson", "rec"].map((h) => (
                   <th key={h} className="px-2 py-1 font-medium">
-                    {h}
+                    {h === "wilson" ? <Tip k="set.wilson">wilson</Tip> : h}
                   </th>
                 ))}
               </tr>

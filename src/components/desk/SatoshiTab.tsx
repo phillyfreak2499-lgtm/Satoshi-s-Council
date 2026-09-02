@@ -1,6 +1,7 @@
 import type { ChairResult, SeatId, Settings, Snapshot } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, Mono, Pane, StatusChip } from "./bits";
+import { Tip } from "./Tip";
 
 export function SatoshiTab({
   snap,
@@ -15,30 +16,32 @@ export function SatoshiTab({
 }) {
   return (
     <div className="flex flex-col gap-3 p-3">
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div data-tour="tour-satoshi" className="overflow-x-auto rounded-md border border-border">
         <table className="w-full min-w-[72rem] text-left">
           <thead className="bg-surface-2 font-mono text-micro uppercase tracking-wider text-subtle">
             <tr>
-              {[
-                "Rank",
-                "Seat",
-                "Callsign",
-                "Lean",
-                "Conf",
-                "Skill used",
-                "Base w",
-                "Listen",
-                "Health",
-                "Signed",
-                "Contribution",
-                settings.show_shadow ? "Shadow" : null,
-                "Why",
-                "Status",
-              ]
+              {(
+                [
+                  ["Rank", "col.rank"],
+                  ["Seat", "col.seat"],
+                  ["Callsign", "col.callsign"],
+                  ["Lean", "col.lean"],
+                  ["Conf", "col.conf"],
+                  ["Skill used", "col.skill"],
+                  ["Base w", "col.base"],
+                  ["Listen", "col.listen"],
+                  ["Health", "col.health"],
+                  ["Signed", "col.signed"],
+                  ["Contribution", "col.contrib"],
+                  settings.show_shadow ? ["Shadow", "col.shadow"] : null,
+                  ["Why", "col.why"],
+                  ["Status", "col.status"],
+                ] as ([string, string] | null)[]
+              )
                 .filter(Boolean)
                 .map((h) => (
-                  <th key={h as string} className="whitespace-nowrap px-2 py-1.5 font-medium">
-                    {h}
+                  <th key={h![0]} className="whitespace-nowrap px-2 py-1.5 font-medium">
+                    <Tip k={h![1]}>{h![0]}</Tip>
                   </th>
                 ))}
             </tr>
@@ -59,7 +62,11 @@ export function SatoshiTab({
                       <span className="text-subtle"> · W{r.wilson_rank}</span>
                     ) : null}
                   </td>
-                  <td className="px-2 py-1 font-mono text-data text-fg">{r.seat}</td>
+                  <td className="px-2 py-1 font-mono text-data text-fg">
+                    <Tip k={`seat.${r.seat}`} mark={false}>
+                      {r.seat}
+                    </Tip>
+                  </td>
                   <td className="px-2 py-1 font-mono text-data text-muted">{r.callsign}</td>
                   <td className="px-2 py-1">
                     <LeanChip lean={r.lean} />
@@ -128,7 +135,7 @@ export function SatoshiTab({
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <Pane title="Score math">
+        <Pane title={<Tip k="pane.score">Score math</Tip>}>
           <div className="space-y-1 font-mono text-data">
             <div>
               score = Σ(signed × w) / Σw_dir ={" "}
@@ -161,7 +168,7 @@ export function SatoshiTab({
             </div>
           </div>
         </Pane>
-        <Pane title="Gate checklist">
+        <Pane title={<Tip k="pane.gates">Gate checklist</Tip>}>
           <ul className="space-y-1">
             {chair.gates.map((g) => (
               <li key={g.id} className="flex items-start justify-between gap-2 font-mono text-data">
@@ -176,7 +183,7 @@ export function SatoshiTab({
             ))}
           </ul>
         </Pane>
-        <Pane title="Chair thinking">
+        <Pane title={<Tip k="pane.thinking">Chair thinking</Tip>}>
           <div className="space-y-1.5">
             <Field k="phase" v={snap.phase} />
             <Field k="hypothesis" v={chair.hypothesis} />
@@ -219,7 +226,9 @@ export function MetaFooter({
     <div className="border-t border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 font-mono text-data">
         <div>
-          <span className="text-micro uppercase text-subtle">Quorum </span>
+          <span className="text-micro uppercase text-subtle">
+            <Tip k="footer.quorum">Quorum </Tip>
+          </span>
           <span className="text-up">UP {q.up}</span>
           <span className="text-subtle"> · </span>
           <span className="text-down">DOWN {q.down}</span>
@@ -227,7 +236,9 @@ export function MetaFooter({
           <span className="text-wait">WAIT {q.wait}</span>
         </div>
         <div>
-          <span className="text-micro uppercase text-subtle">Law </span>
+          <span className="text-micro uppercase text-subtle">
+            <Tip k="footer.law">Law </Tip>
+          </span>
           <span className={lockdown ? "text-down" : "text-muted"}>
             {law_wrongs} consecutive wrongs · lock {lockdown ? "ON" : "off"}
             {lockdown && left > 0 ? ` ${left}s` : ""}
@@ -236,7 +247,10 @@ export function MetaFooter({
       </div>
       {tape[0] && (
         <div className="border-t border-border px-3 py-1 font-mono text-micro text-muted">
-          <span className="text-subtle">SETTLE TAPE · </span>
+          <span className="text-subtle">
+            <Tip k="footer.tape">SETTLE TAPE</Tip>
+            {" · "}
+          </span>
           {tape[0]}
         </div>
       )}

@@ -6,6 +6,7 @@ import { ledgerRows } from "@/lib/desk/ledger";
 import { readDrift, readExhaust, readStreak } from "@/lib/desk/structure";
 import { useDesk } from "@/lib/desk/store";
 import { HealthDot } from "./bits";
+import { Tip } from "./Tip";
 
 const UP = "#3dcf8a";
 const DOWN = "#ef6b73";
@@ -487,9 +488,11 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
         <div className="flex flex-wrap items-center gap-1 border-t border-border px-2 py-1">
           <span className="font-mono text-micro uppercase tracking-wider text-subtle">seeing</span>
           {read.amd && (
-            <span className="rounded-sm border border-chip/40 px-1 font-mono text-micro text-chip">
-              AMD {read.amd.phase.slice(0, 5)}
-            </span>
+            <Tip k="chip.AMD" mark={false}>
+              <span className="rounded-sm border border-chip/40 px-1 font-mono text-micro text-chip">
+                AMD {read.amd.phase.slice(0, 5)}
+              </span>
+            </Tip>
           )}
           {(Object.keys(counts) as MarkKind[]).map((k) => {
             const n = counts[k] ?? 0;
@@ -498,7 +501,12 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
             const tag = m?.pending ? "PEND" : m?.confirmed && m.contextOk ? "CFM" : "CTX";
             return (
               <span key={k} className={`rounded-sm border px-1 font-mono text-micro ${chipTone(k)}`}>
-                {MARK_LABEL[k]} {n} {tag}
+                <Tip k={`mark.${MARK_LABEL[k]}`} mark={false}>
+                  {MARK_LABEL[k]} {n}
+                </Tip>{" "}
+                <Tip k={`chip.${tag}`} mark={false}>
+                  {tag}
+                </Tip>
               </span>
             );
           })}
@@ -517,9 +525,17 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
             <table className="w-full text-left">
               <thead className="font-mono text-micro uppercase tracking-wider text-subtle">
                 <tr>
-                  {["kind", "n", "hit", "W%", "EV¢", "trust"].map((h) => (
+                  {(["kind", "n", "hit", "W%", "EV¢", "trust"] as const).map((h) => (
                     <th key={h} className="px-2 py-0.5 font-medium">
-                      {h}
+                      {h === "W%" ? (
+                        <Tip k="set.wilson">W%</Tip>
+                      ) : h === "EV¢" ? (
+                        <Tip k="set.ev">EV¢</Tip>
+                      ) : h === "trust" ? (
+                        <Tip k="set.trust">trust</Tip>
+                      ) : (
+                        h
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -574,18 +590,19 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
           <span className="font-mono text-micro uppercase tracking-wider text-subtle">seeing</span>
           {chips.map(([k, on, tone]) =>
             on ? (
-              <span
-                key={k}
-                className={`rounded-sm border px-1 font-mono text-micro ${
-                  tone === "up"
-                    ? "text-up border-up/40"
-                    : tone === "down"
-                      ? "text-down border-down/40"
-                      : "text-wait border-wait/40"
-                }`}
-              >
-                {k}
-              </span>
+              <Tip key={k} k={`chip.${k}`} mark={false}>
+                <span
+                  className={`rounded-sm border px-1 font-mono text-micro ${
+                    tone === "up"
+                      ? "text-up border-up/40"
+                      : tone === "down"
+                        ? "text-down border-down/40"
+                        : "text-wait border-wait/40"
+                  }`}
+                >
+                  {k}
+                </span>
+              </Tip>
             ) : null,
           )}
           <span className="ml-auto font-mono text-micro text-muted">
@@ -617,9 +634,11 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
           <span className="font-mono text-micro uppercase tracking-wider text-subtle">seeing</span>
           {chips.map(([k, on]) =>
             on ? (
-              <span key={k} className="rounded-sm border border-wait/40 px-1 font-mono text-micro text-wait">
-                {k}
-              </span>
+              <Tip key={k} k={`chip.${k}`} mark={false}>
+                <span className="rounded-sm border border-wait/40 px-1 font-mono text-micro text-wait">
+                  {k}
+                </span>
+              </Tip>
             ) : null,
           )}
         </div>

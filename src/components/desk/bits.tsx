@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { FeedHealth, Lean, SeatStatus } from "@/lib/desk/types";
+import { Tip } from "./Tip";
 
 export function LeanChip({ lean, className }: { lean: Lean; className?: string }) {
   const map = {
@@ -9,25 +10,29 @@ export function LeanChip({ lean, className }: { lean: Lean; className?: string }
     WAIT: "bg-wait/15 text-wait border-wait/40",
   } as const;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-micro font-medium tracking-wide",
-        map[lean],
-        className,
-      )}
-    >
-      {lean}
-    </span>
+    <Tip k={`lean.${lean}`} mark={false}>
+      <span
+        className={cn(
+          "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-micro font-medium tracking-wide",
+          map[lean],
+          className,
+        )}
+      >
+        {lean}
+      </span>
+    </Tip>
   );
 }
 
 export function HealthDot({ h }: { h: FeedHealth }) {
   const c = h === "LIVE" ? "bg-up" : h === "STALE" ? "bg-wait" : "bg-down";
   return (
-    <span className="inline-flex items-center gap-1 font-mono text-micro text-muted">
-      <span className={cn("inline-block size-1.5 rounded-full", c)} />
-      {h}
-    </span>
+    <Tip k={`feed.${h}`} mark={false}>
+      <span className="inline-flex items-center gap-1 font-mono text-micro text-muted">
+        <span className={cn("inline-block size-1.5 rounded-full", c)} />
+        {h}
+      </span>
+    </Tip>
   );
 }
 
@@ -41,7 +46,9 @@ export function StatusChip({ s }: { s: SeatStatus }) {
           ? "text-down border-down/40"
           : "text-muted border-border-strong";
   return (
-    <span className={cn("rounded-sm border px-1 font-mono text-micro", tone)}>{s}</span>
+    <Tip k={`status.${s}`} mark={false}>
+      <span className={cn("rounded-sm border px-1 font-mono text-micro", tone)}>{s}</span>
+    </Tip>
   );
 }
 
@@ -53,13 +60,18 @@ export function Pane({
   title,
   children,
   className,
+  tour,
 }: {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   className?: string;
+  tour?: string;
 }) {
   return (
-    <section className={cn("min-w-0 rounded-md border border-border bg-surface p-3", className)}>
+    <section
+      data-tour={tour}
+      className={cn("min-w-0 rounded-md border border-border bg-surface p-3", className)}
+    >
       <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{title}</h3>
       {children}
     </section>
@@ -69,7 +81,9 @@ export function Pane({
 export function Field({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div className="grid grid-cols-[7.5rem_1fr] gap-x-2 text-ui leading-snug">
-      <div className="font-mono text-micro uppercase tracking-wider text-subtle">{k}</div>
+      <div className="font-mono text-micro uppercase tracking-wider text-subtle">
+        <Tip k={`field.${k}`}>{k}</Tip>
+      </div>
       <div className="min-w-0 text-fg">{v}</div>
     </div>
   );

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { TAB_SEATS } from "@/lib/desk/seats";
 import { useDesk } from "@/lib/desk/store";
+import { tourSeen } from "@/lib/desk/glossary";
 import type { SeatId, TabId } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
 import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
+import { Tip } from "./Tip";
+import { Tour } from "./Tour";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
@@ -22,12 +25,34 @@ export function DeskApp() {
   const frame = useDesk();
   const [tab, setTab] = useState<TabId>("satoshi");
   const [focus, setFocus] = useState<SeatId | null>(null);
+  const [tourOn, setTourOn] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
 
   useEffect(() => {
     if (!focus) return;
     const el = document.getElementById(`seat-${focus}`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [tab, focus]);
+
+  const hasSnap = Boolean(frame.snap);
+  useEffect(() => {
+    if (!hasSnap) return;
+    if (tourSeen()) return;
+    const t = window.setTimeout(() => {
+      setTourStep(0);
+      setTourOn(true);
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [hasSnap]);
+
+  useEffect(() => {
+    const go = () => {
+      setTourStep(0);
+      setTourOn(true);
+    };
+    window.addEventListener("satoshi-tour", go);
+    return () => window.removeEventListener("satoshi-tour", go);
+  }, []);
 
   const voteMap = useMemo(() => {
     const m = new Map(frame.votes.map((v) => [v.seat, v]));
@@ -43,34 +68,55 @@ export function DeskApp() {
     setTab(dest);
   };
 
+  const startTour = () => {
+    setTourStep(0);
+    setTourOn(true);
+  };
+
   const seats = tab !== "satoshi" && tab !== "settings" ? TAB_SEATS[tab] : [];
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2">
+      <header
+        data-tour="tour-header"
+        className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2"
+      >
         <div className="flex items-baseline gap-2">
           <h1 className="font-sans text-title font-medium tracking-tight">Satoshi's Council</h1>
           <span className="font-mono text-micro uppercase tracking-widest text-subtle">
             BTC 15m paper
           </span>
         </div>
-        <nav className="flex flex-wrap gap-1" aria-label="Council tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "rounded-sm px-2 py-1 font-mono text-micro tracking-wide",
-                tab === t.id
-                  ? "bg-surface-3 text-fg"
-                  : "text-muted hover:bg-surface-2 hover:text-fg",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            aria-label="Replay 60-second tour"
+            title="Replay 60-second tour"
+            onClick={startTour}
+            className="rounded-sm px-2 py-1 font-mono text-micro text-muted hover:bg-surface-2 hover:text-fg"
+          >
+            ?
+          </button>
+          <nav className="flex flex-wrap gap-1" aria-label="Council tabs">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "rounded-sm px-2 py-1 font-mono text-micro tracking-wide",
+                  tab === t.id
+                    ? "bg-surface-3 text-fg"
+                    : "text-muted hover:bg-surface-2 hover:text-fg",
+                )}
+              >
+                <Tip k={`tab.${t.id}`} hoverOnly>
+                  {t.label}
+                </Tip>
+              </button>
+            ))}
+          </nav>
+        </div>
       </header>
 
       <TopStrip
@@ -135,9 +181,20 @@ export function DeskApp() {
         lockdown_until={frame.learner.lockdown_until}
         tape={frame.learner.settle_tape}
       />
-      <footer className="border-t border-border px-3 py-1.5 font-mono text-micro text-subtle">
+      <footer
+        data-tour="tour-footer"
+        className="border-t border-border px-3 py-1.5 font-mono text-micro text-subtle"
+      >
         Paper research council. Not financial advice. Not Kalshi. No real money.
       </footer>
+      <Tour
+        open={tourOn}
+        step={tourStep}
+        tab={tab}
+        onTab={setTab}
+        onStep={setTourStep}
+        onClose={() => setTourOn(false)}
+      />
     </div>
   );
 }

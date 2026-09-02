@@ -2,6 +2,7 @@ import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
 import { HealthDot, LeanChip, Field } from "./bits";
 import { Eyes } from "./Eyes";
+import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
 
 export function BotCard({
@@ -19,6 +20,7 @@ export function BotCard({
   return (
     <article
       id={`seat-${seat}`}
+      data-tour={seat === "WICK" ? "tour-wick" : undefined}
       className={cn(
         "grid min-w-0 overflow-hidden rounded-md border bg-surface md:grid-cols-2",
         focused ? "border-wait" : "border-border",
@@ -28,7 +30,8 @@ export function BotCard({
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
           <div>
             <div className="font-mono text-ui text-fg">
-              {seat} <span className="text-subtle">{meta.callsign}</span>
+              <Tip k={`seat.${seat}`}>{seat}</Tip>{" "}
+              <span className="text-subtle">{meta.callsign}</span>
             </div>
             <div className="font-mono text-micro text-subtle">{meta.eyes}</div>
           </div>
@@ -44,7 +47,10 @@ export function BotCard({
           <LeanChip lean={vote.lean} />
           <span className="font-mono text-data tabular text-fg">{vote.confidence}</span>
           <span className="font-mono text-micro text-wait">
-            {vote.skill_used} · {vote.skill_status}
+            {vote.skill_used} ·{" "}
+            <Tip k={vote.skill_used === "SIT" ? "skill.SIT" : `skill.${vote.skill_status}`} mark={false}>
+              {vote.skill_status}
+            </Tip>
           </span>
         </div>
         <Field k="phase" v={`${vote.phase.toLowerCase()} · ${snap.mins_left.toFixed(1)}m left`} />
