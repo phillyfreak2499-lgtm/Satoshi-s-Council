@@ -227,18 +227,53 @@ body.mode-calls #mainTable,
 body.mode-tape #mainTable,
 body.mode-book #mainTable,
 body.mode-brain #mainTable,
+body.mode-night #mainTable,
 body.mode-news #mainTable,
 body.mode-wire #mainTable,
 body.mode-school #mainTable,
 body.mode-charts #mainTable,
 body.mode-side #mainTable,
 body.mode-front #mainTable,
+body.mode-room #mainTable,
 body.mode-settings #streamChrome,
 body.mode-seats #streamChrome,
 body.mode-paper #streamChrome,
 body.mode-school #streamChrome,
-body.mode-charts #streamChrome {
+body.mode-charts #streamChrome,
+body.mode-room #streamChrome {
   display: none !important;
+}
+
+/* Mode class wins over a leftover hidden attribute so tabs are not blank. */
+body.mode-settings #settingsView,
+body.mode-seats #seatsView,
+body.mode-paper #paperView,
+body.mode-calls #callsView,
+body.mode-tape #tapeView,
+body.mode-book #bookView,
+body.mode-brain #brainView,
+body.mode-night #brainView,
+body.mode-news #newsView,
+body.mode-wire #wireView,
+body.mode-school #schoolView,
+body.mode-charts #chartsView,
+body.mode-side #sideView,
+body.mode-front #frontView,
+body.mode-room #roomView {
+  display: block !important;
+  position: relative;
+  z-index: 26;
+}
+
+.tab-empty {
+  margin: 18px 16px;
+  padding: 14px 16px;
+  color: #c9d6e2;
+  background: rgba(10, 16, 28, 0.72);
+  border: 1px solid rgba(127, 214, 232, 0.22);
+  border-radius: 10px;
+  font-size: 14px;
+  letter-spacing: 0.02em;
 }
 
 .info-view:not(.hidden) { position: relative; z-index: 26; }
