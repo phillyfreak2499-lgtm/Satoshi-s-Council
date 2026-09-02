@@ -9,7 +9,11 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "beta.disclaimer": {
     title: "Paper only — not advice",
-    body: "No live orders. SATOSHI and the 20 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice.",
+    body: "No live orders. SATOSHI and the 20 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use Feedback in the header to send a note.",
+  },
+  "beta.feedback": {
+    title: "Feedback",
+    body: "Send a note about this window. Copy it into the group chat, or open a GitHub issue. The current call, ticker, and clock are attached so we know what you saw.",
   },
   "tab.satoshi": {
     title: "SATOSHI — the chair",

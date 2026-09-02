@@ -10,6 +10,7 @@ import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
 import { Tip } from "./Tip";
 import { Tour } from "./Tour";
+import { Feedback } from "./Feedback";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
@@ -93,6 +94,7 @@ export function DeskApp() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
+          <Feedback frame={frame} />
           <button
             type="button"
             aria-label="Replay 60-second tour"
