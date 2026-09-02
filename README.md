@@ -29,6 +29,19 @@ npm run dev
 
 Auth and database are off. Paper only.
 
+## Live on Render (same repo)
+
+This tree is Node now, not Python. On the existing web service:
+
+1. Settings → **Node**, version **22**
+2. Build command: `npm ci && npm run build`
+3. Start command: `npm start`
+4. Env: `NITRO_PRESET=node-server`, `HOST=0.0.0.0`, `VITE_AUTH_ENABLED=false`, `NODE_VERSION=22`
+5. Remove old Python/Stripe start commands. Keep `DATABASE_URL` only if that Postgres is still up (BOARD). Delete the rest of the old secrets.
+6. Manual Deploy → wait for green
+
+`satoshiscouncil.com` will become this paper desk. The old RAIJIN/ARES Council goes offline on that URL.
+
 ## Layout
 
 | Path | What |
