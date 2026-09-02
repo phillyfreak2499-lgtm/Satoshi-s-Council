@@ -1,0 +1,23 @@
+node_modules/
+.tanstack/
+.output/
+.vinxi/
+dist/
+.vercel/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.node_modules.lock
+
+# sandbox / local only
+.grok/
+artifacts/
+screenshots/
+attachments/*.zip
+public/__grok/
+
+# generated
+*.pid
+.cache/
