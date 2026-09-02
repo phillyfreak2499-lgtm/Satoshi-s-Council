@@ -11,6 +11,23 @@ export const round = (n: number, d = 0) => {
 export const mean = (xs: number[]) =>
   xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 
+/** Graded UP/DOWN settles before the UNCALIBRATED chip comes off. */
+export const WARM_N = 20;
+/** Graded UP/DOWN settles before listen/weight are 100% live. ~1 week of 15m windows. */
+export const FULL_N = 700;
+
+/** 0 at <20, 1 at 700. WAIT does not count. */
+export function seatCalib(n: number): number {
+  if (n >= FULL_N) return 1;
+  if (n < WARM_N) return 0;
+  return (n - WARM_N) / (FULL_N - WARM_N);
+}
+
+/** SATOSHI hearing: 35% until warm, then ramp to 100% at 700. */
+export function listenCalib(n: number): number {
+  return 0.35 + 0.65 * seatCalib(n);
+}
+
 export const median = (xs: number[]) => {
   if (!xs.length) return 0;
   const s = [...xs].sort((a, b) => a - b);

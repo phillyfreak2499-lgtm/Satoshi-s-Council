@@ -1,7 +1,7 @@
 import { cloneResidualRule, formatRule, SKILL_RULES } from "./dsl";
 import { centsOf } from "./clock";
 import { creditPattern } from "./ledger";
-import { binKey, clamp, mean, round, wilsonLower } from "./math";
+import { binKey, clamp, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { SEATS } from "./seats";
 import {
   benchThreshold,
@@ -299,14 +299,15 @@ export function rebuildSeatWeights(learner: Learner): string[] {
   for (const id of Object.keys(prior)) {
     const p = prior[id]!;
     const n = learner.seat_n[id] ?? 0;
-    if (n < 8) {
+    if (n < WARM_N) {
       frozen[id] = p;
       continue;
     }
     const wilson = wilsonLower(learner.seat_hits[id] ?? 0, n);
     const recArr = learner.seat_recent[id] ?? [];
     const recency = recArr.length >= 4 ? mean(recArr) : (learner.seat_hits[id] ?? 0) / n;
-    let mult = 1 + 1.6 * (wilson - 0.42) + 0.8 * (recency - 0.5);
+    const c = seatCalib(n);
+    let mult = 1 + c * (1.6 * (wilson - 0.42) + 0.8 * (recency - 0.5));
     mult = clamp(mult, 0.4, 2.2);
     flex[id] = p * mult;
   }

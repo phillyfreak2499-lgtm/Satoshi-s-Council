@@ -5,6 +5,7 @@ import { Field, LeanChip, MarketChip, Mono, Pane, StatusChip } from "./bits";
 import { ChairEyes } from "./Eyes";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
+import { FULL_N } from "@/lib/desk/math";
 
 function sideAsk(snap: Snapshot, lean: Lean) {
   if (lean === "UP") return snap.yes_ask || snap.yes_mid;
@@ -230,6 +231,7 @@ export function SatoshiTab({
                 [
                   ["Rank", "col.rank"],
                   ["Avg ¢", "col.scalp"],
+                  ["Cal", "col.calib"],
                   ["Seat", "col.seat"],
                   ["Callsign", "col.callsign"],
                   ["Lean", "col.lean"],
@@ -277,6 +279,13 @@ export function SatoshiTab({
                   >
                     {r.scalp_avg == null ? "—" : `${r.scalp_avg >= 0 ? "+" : ""}${r.scalp_avg.toFixed(1)}`}
                     {r.scalp_n ? <span className="text-subtle"> · {r.scalp_n}</span> : null}
+                  </td>
+                  <td className="px-2 py-1 font-mono text-data tabular text-muted">
+                    {Math.round(r.calib * 100)}%
+                    <span className="text-subtle">
+                      {" "}
+                      {r.calib_n}/{FULL_N}
+                    </span>
                   </td>
                   <td className="px-2 py-1 font-mono text-data text-fg">
                     <Tip k={`seat.${r.seat}`} mark={false}>

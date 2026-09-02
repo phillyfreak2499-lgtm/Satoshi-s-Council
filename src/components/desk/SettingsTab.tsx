@@ -2,7 +2,7 @@ import { SEATS } from "@/lib/desk/seats";
 import { formatRule } from "@/lib/desk/dsl";
 import { recencyRate, skillCounts } from "@/lib/desk/skills";
 import { ledgerRows } from "@/lib/desk/ledger";
-import { wilsonLower } from "@/lib/desk/math";
+import { FULL_N, WARM_N, seatCalib, wilsonLower } from "@/lib/desk/math";
 import { THRESH_SPECS } from "@/lib/desk/thresholds";
 import {
   acceptCandidateNow,
@@ -175,7 +175,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
                     </td>
                     <td className="px-2 py-1 font-mono text-micro tabular text-muted">
                       {n}
-                      {n < 8 ? " · frozen" : ""}
+                      {n < WARM_N ? " · frozen" : n < FULL_N ? ` · ${Math.round(seatCalib(n) * 100)}%` : " · full"}
                     </td>
                     <td className="px-2 py-1 font-mono text-micro tabular text-muted">
                       {n ? `${(wilsonLower(hits, n) * 100).toFixed(0)}%` : "—"}

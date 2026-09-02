@@ -1,6 +1,7 @@
 import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
 import { readScalp, scalpAvg, askCents } from "@/lib/desk/scalp";
+import { FULL_N, seatCalib } from "@/lib/desk/math";
 import { useDesk } from "@/lib/desk/store";
 import { HealthDot, LeanChip, Field } from "./bits";
 import { Eyes } from "./Eyes";
@@ -19,9 +20,12 @@ export function BotCard({
   focused?: boolean;
 }) {
   const meta = SEAT_BY_ID[seat];
-  const st = readScalp(useDesk().learner, seat);
+  const learner = useDesk().learner;
+  const st = readScalp(learner, seat);
   const avg = scalpAvg(st.legs);
   const ask = askCents(snap, vote.lean);
+  const calibN = learner.seat_n[seat] ?? 0;
+  const calib = seatCalib(calibN);
   return (
     <article
       id={`seat-${seat}`}
@@ -60,6 +64,11 @@ export function BotCard({
             >
               {avg == null ? "avg —" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`}
               {st.legs.length ? ` · ${st.legs.length}` : ""}
+            </span>
+          </Tip>
+          <Tip k="col.calib">
+            <span className="font-mono text-micro tabular text-muted">
+              {Math.round(calib * 100)}% · {calibN}/{FULL_N}
             </span>
           </Tip>
           <span className="font-mono text-micro text-wait">

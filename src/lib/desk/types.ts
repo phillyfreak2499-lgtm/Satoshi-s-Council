@@ -338,6 +338,8 @@ export type SeatRow = {
   contrib_rank: number;
   scalp_avg: number | null;
   scalp_n: number;
+  calib_n: number;
+  calib: number;
   seat: SeatId;
   callsign: string;
   lean: Lean;

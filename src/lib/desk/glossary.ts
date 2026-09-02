@@ -155,7 +155,11 @@ export const GLOSS: Record<string, Gloss> = {
   "status.DOWN": { title: "DOWN", body: "Seat has no feed. Silent." },
   "status.UNCALIBRATED": {
     title: "UNCALIBRATED",
-    body: "Too few graded samples. Can speak, but size is capped until the book fills in.",
+    body: "Fewer than 20 graded UP/DOWN calls. Can speak at 35% volume. Weight stays on the prior. WAIT does not count.",
+  },
+  "col.calib": {
+    title: "Cal",
+    body: "Graded directional calls toward 700 (~a week of 15-minute windows if they called every one). 20 takes the chip off. 700 is 100% listen and weight. WAIT does not count.",
   },
 
   "skill.LIVE": { title: "LIVE skill", body: "Graded enough times. Allowed to vote for real." },
