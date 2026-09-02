@@ -10,7 +10,7 @@ import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
 import { Tip } from "./Tip";
 import { Tour } from "./Tour";
-import { Feedback } from "./Feedback";
+import { Feedback, BoardTab } from "./Feedback";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
@@ -19,6 +19,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "derivs", label: "DERIVS" },
   { id: "book", label: "BOOK" },
   { id: "context", label: "CONTEXT" },
+  { id: "board", label: "BOARD" },
   { id: "settings", label: "SETTINGS" },
 ];
 
@@ -62,7 +63,7 @@ export function DeskApp() {
 
   const jump = (seat: SeatId) => {
     const dest =
-      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "settings">, SeatId[]][]).find(
+      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "settings" | "board">, SeatId[]][]).find(
         ([, ids]) => ids.includes(seat),
       )?.[0] ?? "structure";
     setFocus(seat);
@@ -74,7 +75,7 @@ export function DeskApp() {
     setTourOn(true);
   };
 
-  const seats = tab !== "satoshi" && tab !== "settings" ? TAB_SEATS[tab] : [];
+  const seats = tab !== "satoshi" && tab !== "settings" && tab !== "board" ? TAB_SEATS[tab] : [];
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
@@ -94,7 +95,7 @@ export function DeskApp() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
-          <Feedback frame={frame} />
+          <Feedback active={tab === "board"} onOpen={() => setTab("board")} />
           <button
             type="button"
             aria-label="Replay 60-second tour"
@@ -186,6 +187,7 @@ export function DeskApp() {
             })}
           </div>
         )}
+        {tab === "board" && <BoardTab frame={frame} />}
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
       </main>
 

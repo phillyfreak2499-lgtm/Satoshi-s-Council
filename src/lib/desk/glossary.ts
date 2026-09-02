@@ -9,11 +9,11 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "beta.disclaimer": {
     title: "Paper only — not advice",
-    body: "No live orders. SATOSHI and the 20 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use Board in the header to talk on the tape.",
+    body: "No live orders. SATOSHI and the 20 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use BOARD to post ideas and leave feedback.",
   },
   "beta.feedback": {
-    title: "Live board",
-    body: "Shared notes from everyone on this desk. Posts attach the call they were looking at. Paper talk only — not a trade, not advice.",
+    title: "Board",
+    body: "Shared ideas and feedback. Post an idea, reply on it, or leave tape notes. The call you were looking at rides along.",
   },
   "tab.satoshi": {
     title: "SATOSHI — the chair",
@@ -42,6 +42,10 @@ export const GLOSS: Record<string, Gloss> = {
   "tab.settings": {
     title: "SETTINGS",
     body: "Mute seats, demo vs live, skill ledger, huddle. Demo never grades the live book.",
+  },
+  "tab.board": {
+    title: "BOARD — ideas & feedback",
+    body: "One live board for the group. Ideas on the left, open feedback on the right. Reply on an idea to talk about it. Paper only.",
   },
 
   "seat.WICK": {

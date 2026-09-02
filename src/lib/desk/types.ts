@@ -54,6 +54,7 @@ export type TabId =
   | "derivs"
   | "book"
   | "context"
+  | "board"
   | "settings";
 
 export type SeatId =

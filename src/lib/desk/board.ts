@@ -1,9 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 
+export type BoardKind = "idea" | "feedback";
+
 export type BoardPost = {
   id: number;
   who: string;
   body: string;
+  kind: BoardKind;
+  parent_id: number | null;
   lean: string;
   ticker: string;
   conf: number;
@@ -22,6 +26,8 @@ function asPost(row: {
   id: number;
   who: string;
   body: string;
+  kind?: string | null;
+  parent_id?: number | null;
   lean: string;
   ticker: string;
   conf: number;
@@ -31,10 +37,13 @@ function asPost(row: {
     typeof row.created_at === "number"
       ? row.created_at
       : new Date(row.created_at).getTime();
+  const parent = row.parent_id == null ? null : Number(row.parent_id);
   return {
     id: Number(row.id),
     who: row.who,
     body: row.body,
+    kind: row.kind === "feedback" || parent != null ? "feedback" : "idea",
+    parent_id: Number.isFinite(parent as number) ? parent : null,
     lean: row.lean,
     ticker: row.ticker,
     conf: Number(row.conf) || 0,
@@ -49,20 +58,34 @@ export const listBoard = createServerFn({ method: "GET" }).handler(async () => {
     id: number;
     who: string;
     body: string;
+    kind: string;
+    parent_id: number | null;
     lean: string;
     ticker: string;
     conf: number;
     created_at: string | Date;
-  }>`select id, who, body, lean, ticker, conf, created_at from board order by id desc limit 60`;
+  }>`select id, who, body, kind, parent_id, lean, ticker, conf, created_at from board order by id desc limit 120`;
   return rows.map(asPost).reverse();
 });
 
 export const postBoard = createServerFn({ method: "POST" })
-  .validator((data: { who: string; body: string; lean?: string; ticker?: string; conf?: number }) => data)
+  .validator(
+    (data: {
+      who: string;
+      body: string;
+      kind?: BoardKind;
+      parent_id?: number | null;
+      lean?: string;
+      ticker?: string;
+      conf?: number;
+    }) => data,
+  )
   .handler(async ({ data }) => {
     const who = clean(data.who, 24) || "anon";
     const body = clean(data.body, 400);
     if (!body) throw new Error("Write a note first.");
+    const parent = data.parent_id && data.parent_id > 0 ? Math.round(data.parent_id) : null;
+    const kind: BoardKind = parent || data.kind === "feedback" ? "feedback" : "idea";
     const lean = clean(data.lean, 8);
     const ticker = clean(data.ticker, 48);
     const conf = Math.max(0, Math.min(100, Math.round(Number(data.conf) || 0)));
@@ -75,18 +98,24 @@ export const postBoard = createServerFn({ method: "POST" })
       const last = new Date(recent[0].created_at).getTime();
       if (Date.now() - last < 8000) throw new Error("Wait a few seconds.");
     }
+    if (parent) {
+      const found = await sql<{ id: number }>`select id from board where id = ${parent} limit 1`;
+      if (!found[0]) throw new Error("That idea is gone.");
+    }
     const rows = await sql<{
       id: number;
       who: string;
       body: string;
+      kind: string;
+      parent_id: number | null;
       lean: string;
       ticker: string;
       conf: number;
       created_at: string | Date;
     }>`
-      insert into board (who, body, lean, ticker, conf)
-      values (${who}, ${body}, ${lean}, ${ticker}, ${conf})
-      returning id, who, body, lean, ticker, conf, created_at
+      insert into board (who, body, kind, parent_id, lean, ticker, conf)
+      values (${who}, ${body}, ${kind}, ${parent}, ${lean}, ${ticker}, ${conf})
+      returning id, who, body, kind, parent_id, lean, ticker, conf, created_at
     `;
     return asPost(rows[0]!);
   });
