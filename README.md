@@ -44,6 +44,6 @@ Auth and database are off. Paper only.
 
 - Paper only. No live-trading arm.
 - Bitcoin only. No ETH.
-- One source tree. Do not drop `backend/`, `agents/`, `services/`, or `storage/` next to `src/`.
+- One source tree. Do not drop `backend/`, `agents/`, `services/`, or `storage/` next to `src/`. `npm run check:tree` (also wired into build and typecheck) fails if those reappear.
 - Candle must be **closed** before a pattern fires.
 - Learner grades cents of EV, not just hit-rate.
