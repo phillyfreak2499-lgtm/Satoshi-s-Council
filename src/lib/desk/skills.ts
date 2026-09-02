@@ -928,6 +928,7 @@ export function freshLearner(): Learner {
     seat_hits,
     seat_recent,
     seat_w,
+    seat_scalp: {},
     fade_strength,
     conf_bins: {
       "50-60": { n: 0, hits: 0 },

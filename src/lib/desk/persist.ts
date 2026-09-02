@@ -50,6 +50,7 @@ function mergeLearner(saved?: Partial<Learner> | null): Learner {
   learner.seat_n = { ...base.seat_n, ...(saved.seat_n ?? {}) };
   learner.seat_hits = { ...base.seat_hits, ...(saved.seat_hits ?? {}) };
   learner.seat_w = { ...base.seat_w, ...(saved.seat_w ?? {}) };
+  learner.seat_scalp = saved.seat_scalp ?? {};
   if (learner.lockdown_windows_left == null) learner.lockdown_windows_left = 0;
   learner.thresholds = mergeThresholds(saved.thresholds);
   learner.last_feats = saved.last_feats ?? {};

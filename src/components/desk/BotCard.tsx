@@ -1,5 +1,7 @@
 import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
+import { readScalp, scalpAvg } from "@/lib/desk/scalp";
+import { useDesk } from "@/lib/desk/store";
 import { HealthDot, LeanChip, Field } from "./bits";
 import { Eyes } from "./Eyes";
 import { Tip } from "./Tip";
@@ -17,6 +19,8 @@ export function BotCard({
   focused?: boolean;
 }) {
   const meta = SEAT_BY_ID[seat];
+  const st = readScalp(useDesk().learner, seat);
+  const avg = scalpAvg(st.legs);
   return (
     <article
       id={`seat-${seat}`}
@@ -46,6 +50,17 @@ export function BotCard({
         <div className="flex items-center gap-2">
           <LeanChip lean={vote.lean} />
           <span className="font-mono text-data tabular text-fg">{vote.confidence}</span>
+          <Tip k="field.avg ¢">
+            <span
+              className={cn(
+                "font-mono text-data tabular",
+                avg == null ? "text-subtle" : avg >= 0 ? "text-up" : "text-down",
+              )}
+            >
+              {avg == null ? "avg —" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`}
+              {st.legs.length ? ` · ${st.legs.length}` : ""}
+            </span>
+          </Tip>
           <span className="font-mono text-micro text-wait">
             {vote.skill_used} ·{" "}
             <Tip k={vote.skill_used === "SIT" ? "skill.SIT" : `skill.${vote.skill_status}`} mark={false}>

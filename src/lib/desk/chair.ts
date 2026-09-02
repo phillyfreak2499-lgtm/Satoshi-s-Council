@@ -1,6 +1,7 @@
 import { DERIVS_FAMILY, KALSHI_SEQ_SEATS, SEAT_BY_ID, SEATS } from "./seats";
 import { detectQuiet, evidenceOf, isWeekend, readWarden } from "./context";
 import { recencyRate } from "./skills";
+import { readScalp, scalpAvg } from "./scalp";
 import { binKey, clamp, mean, round, wilsonLower } from "./math";
 import type {
   ChairResult,
@@ -80,11 +81,17 @@ export function runChair(
 
   const rankedSeats = SEATS.filter((s) => s.id !== "WARDEN")
     .map((s) => {
-      const sw = seatWilson(learner, s.id);
-      return { id: s.id, n: sw.n, wilson: sw.w, base: learnedBase(learner, s.id) };
+      const legs = readScalp(learner, s.id).legs;
+      const avg = scalpAvg(legs);
+      return { id: s.id, n: legs.length, avg, base: learnedBase(learner, s.id) };
     })
     .sort((a, b) => {
-      if (a.n >= 8 && b.n >= 8) return b.wilson - a.wilson;
+      if (a.avg != null && b.avg != null) {
+        if (b.avg !== a.avg) return b.avg - a.avg;
+        return b.n - a.n;
+      }
+      if (a.avg != null) return -1;
+      if (b.avg != null) return 1;
       return b.base - a.base;
     });
   const rankOf: Record<string, number> = {};
@@ -111,14 +118,14 @@ export function runChair(
     const isMuted = muted.has(vote.seat);
     const sw = seatWilson(learner, vote.seat);
     let listen = listenOf(rankOf[vote.seat] ?? 10);
-    if (sw.n >= 8 && sw.w < 0.42) listen *= 0.35;
+    const legsN = readScalp(learner, vote.seat).legs.length;
+    if (legsN < 3) listen *= 0.4;
     const card = learner.skills[vote.skill_used];
     if (card && card.last20.length >= 8) {
       const rec = recencyRate(card);
       if (rec < 0.42) listen *= 0.5;
       else if (rec > 0.62) listen = Math.min(1, listen * 1.12);
     }
-    if (sw.n < 8) listen *= 0.35;
     const seqMute = silent.has(vote.seat);
     const hf = isMuted || seqMute ? 0 : healthFactor(vote);
     const lic = licensed(learner, vote, snap);
@@ -126,7 +133,7 @@ export function runChair(
     if (isMuted) status = "MUTED";
     else if (seqMute) status = "VETO";
     else if (vote.health === "DOWN") status = "DOWN";
-    else if (sw.n < 8) status = "UNCALIBRATED";
+    else if (legsN < 3) status = "UNCALIBRATED";
     else if (bothDown) status = "VETO";
 
     const conf_w = (vote.confidence / 100) ** 1.4;
@@ -480,10 +487,13 @@ export function runChair(
     .map((a) => {
       const wilsonRank = rankOf[a.vote.seat] ?? 99;
       const contribRank = contribRankOf[a.vote.seat] ?? 99;
+      const st = readScalp(learner, a.vote.seat);
       return {
-        rank: contribRank,
+        rank: wilsonRank,
         wilson_rank: wilsonRank,
         contrib_rank: contribRank,
+        scalp_avg: scalpAvg(st.legs),
+        scalp_n: st.legs.length,
         seat: a.vote.seat,
         callsign: SEAT_BY_ID[a.vote.seat].callsign,
         lean: a.vote.lean,
@@ -505,7 +515,8 @@ export function runChair(
         s === "MUTED" || s === "VETO" || s === "DOWN" || s === "UNCALIBRATED" ? 1 : 0;
       const dp = pin(a.status) - pin(b.status);
       if (dp) return dp;
-      return Math.abs(b.contribution) - Math.abs(a.contribution);
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return (b.scalp_avg ?? -999) - (a.scalp_avg ?? -999);
     });
 
   const directional = votes.filter(

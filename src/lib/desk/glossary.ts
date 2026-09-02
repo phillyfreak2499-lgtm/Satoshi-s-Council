@@ -254,7 +254,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "strip.ev": {
     title: "desk EV",
-    body: "Average cents of paper edge on graded chair calls. Positive = the desk has been getting paid on paper.",
+    body: "SATOSHI’s rolling avg ¢ — last 20 closed scalps. Buy at the ask, sell at the next price or 100/0 at the window end. Not hit rate.",
   },
   "strip.huddle": {
     title: "huddle",
@@ -288,7 +288,11 @@ export const GLOSS: Record<string, Gloss> = {
     body: "Synthetic window. Skills grade into the demo book only — they do not touch the live book.",
   },
 
-  "col.rank": { title: "Rank", body: "Who is pulling the chair hardest this window. W# is Wilson rank when it disagrees." },
+  "col.rank": { title: "Rank", body: "Highest rolling avg ¢ first — cents captured between calls, last 20 prints. Not hit rate." },
+  "col.scalp": {
+    title: "Avg ¢",
+    body: "Rolling average of cents made or lost between calls. Bought UP at 55¢, sold at 70¢ = +15. Held to the end right at 70¢ = +30. Wrong to 0 = −70. Last 20 prints.",
+  },
   "col.seat": { title: "Seat", body: "The specialist. Click the row to open its card." },
   "col.callsign": { title: "Callsign", body: "Short handle for the seat. Floor shorthand, not a second bot." },
   "col.lean": { title: "Lean", body: "This seat's paper call: UP, DOWN, or WAIT." },
@@ -306,6 +310,10 @@ export const GLOSS: Record<string, Gloss> = {
   "col.why": { title: "Why", body: "One-line reason from the seat." },
   "col.status": { title: "Status", body: "LIVE, MUTED, FOLDED, UNCALIBRATED, and the rest. Hover the chip." },
 
+  "field.avg ¢": {
+    title: "avg ¢",
+    body: "This seat’s rolling average of cents between calls. Rank on SATOSHI follows this number, highest first.",
+  },
   "field.phase": { title: "phase", body: "ENTRY / MID / FINAL of this 15-minute window." },
   "field.hypothesis": { title: "hypothesis", body: "What this seat (or the chair) believes will happen, in one line." },
   "field.evidence": { title: "evidence", body: "The facts it used. Not the conclusion — the inputs." },
@@ -348,7 +356,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.call-log": {
     title: "Call log",
-    body: "Every time SATOSHI goes UP or DOWN, we stamp that side’s ask. A flip logs the new side. At the 15-minute end the winner is 100¢ and the loser is 0¢. Avg in is mean ask. Avg vs 100 is mean paper P&L. Clear wipes this tape only — stays on this PC.",
+    body: "Each UP/DOWN is a buy at that side’s ask. A flip sells the last buy at that side’s current cents, then buys the new side. Window end is 100 if that side won, 0 if it lost. Avg ¢ is mean of those prints. WAIT does not buy.",
   },
   "pane.score": {
     title: "Score math",

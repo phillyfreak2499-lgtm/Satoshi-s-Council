@@ -336,6 +336,8 @@ export type SeatRow = {
   rank: number;
   wilson_rank: number;
   contrib_rank: number;
+  scalp_avg: number | null;
+  scalp_n: number;
   seat: SeatId;
   callsign: string;
   lean: Lean;
@@ -408,6 +410,7 @@ export type Learner = {
   seat_hits: Record<string, number>;
   seat_recent: Record<string, number[]>;
   seat_w: Record<string, number>;
+  seat_scalp: Record<string, { open: { lean: "UP" | "DOWN"; cents: number; ticker: string; close_time: number } | null; legs: number[] }>;
   fade_strength: Record<string, number>;
   conf_bins: Record<string, ConfBin>;
   graded_windows: number;

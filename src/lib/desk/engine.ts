@@ -5,6 +5,7 @@ import { chicagoHuddleDue, gradeWindow, runHuddle, acceptCandidate, windowsHuddl
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
+import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
@@ -66,17 +67,31 @@ function persist() {
 }
 
 function noteCall(snap: Snapshot, chair: ChairResult) {
-  if (chair.lean !== "UP" && chair.lean !== "DOWN") return;
-  const cents = chair.lean === "UP" ? snap.yes_ask || snap.yes_mid : snap.no_ask || 100 - (snap.yes_mid || 50);
-  if (!(cents > 0) || !(cents < 100)) return;
   if (
     lastCall &&
     lastCall.ticker === snap.ticker &&
-    lastCall.close_time === snap.close_time &&
-    lastCall.lean === chair.lean
+    lastCall.close_time === snap.close_time
   ) {
+    if (lastCall.lean === chair.lean) {
+      if (chair.lean === "UP" || chair.lean === "DOWN") return;
+    }
+    if (lastCall.lean === "UP" || lastCall.lean === "DOWN") {
+      const exit = markSide(snap, lastCall.lean);
+      callLog = callLog.map((r) => {
+        if (r.settle != null) return r;
+        if (r.ticker !== snap.ticker || r.close_time !== snap.close_time) return r;
+        if (r.lean !== lastCall!.lean) return r;
+        return { ...r, settle: Math.round(exit * 10) / 10 };
+      });
+    }
+  }
+  if (chair.lean !== "UP" && chair.lean !== "DOWN") {
+    lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
+    saveCallLog(callLog);
     return;
   }
+  const cents = markSide(snap, chair.lean);
+  if (!(cents > 0) || !(cents < 100)) return;
   const flipped = Boolean(
     lastCall && lastCall.ticker === snap.ticker && lastCall.close_time === snap.close_time && lastCall.lean !== chair.lean,
   );
@@ -169,6 +184,7 @@ function applyGrade(
   learner.settle_tape = learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
   const g = gradeWindow(learner, snap, votes, chair, finish);
   learner = g.learner;
+  settleAll(learner, finish);
   if (learner.settle_tape[0]) {
     learner.settle_tape[0] = `${learner.settle_tape[0]} · ${source}`;
   }
@@ -260,8 +276,14 @@ async function tick() {
     ].slice(-120);
 
     const votes = runBots(snap, learner);
+    for (const v of votes) {
+      if (v.seat === "WARDEN") continue;
+      onLean(learner, v.seat, v.lean, snap);
+    }
     const chair = runChair(votes, snap, learner, settings);
+    onLean(learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(snap, chair);
+    persist();
     if (!learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       learner.window_memory.entry_lean = chair.lean;
     }
@@ -300,8 +322,14 @@ function runDemoOnce() {
   const snap = demoTick(demo!, learner.window_memory);
   if (!learner.window_memory.entry_spot) learner.window_memory.entry_spot = snap.spot;
   const votes = runBots(snap, learner);
+  for (const v of votes) {
+    if (v.seat === "WARDEN") continue;
+    onLean(learner, v.seat, v.lean, snap);
+  }
   const chair = runChair(votes, snap, learner, settings);
+  onLean(learner, CHAIR_SCALP, chair.lean, snap);
   noteCall(snap, chair);
+  persist();
   if (!learner.window_memory.entry_lean && chair.lean !== "WAIT") {
     learner.window_memory.entry_lean = chair.lean;
   }

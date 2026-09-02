@@ -118,7 +118,7 @@ export function TopStrip({
               <>
                 {" · "}
                 <Tip k="strip.ev">
-                  desk EV {evAvg! >= 0 ? "+" : ""}
+                  avg {evAvg! >= 0 ? "+" : ""}
                   {evAvg!.toFixed(1)}¢
                 </Tip>
               </>

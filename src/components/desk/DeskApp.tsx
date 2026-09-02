@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TAB_SEATS } from "@/lib/desk/seats";
 import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
+import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
 import type { SeatId, TabId } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
@@ -139,12 +140,8 @@ export function DeskApp() {
         demo={frame.settings.source === "demo"}
         learn={frame.learner.learn_phase}
         graded={frame.learner.graded_windows}
-        evAvg={
-          frame.learner.chair_ev_n
-            ? frame.learner.chair_ev_sum / frame.learner.chair_ev_n
-            : 0
-        }
-        evN={frame.learner.chair_ev_n}
+        evAvg={scalpAvg(readScalp(frame.learner, CHAIR_SCALP).legs) ?? 0}
+        evN={readScalp(frame.learner, CHAIR_SCALP).legs.length}
         tz={frame.settings.tz}
       />
 

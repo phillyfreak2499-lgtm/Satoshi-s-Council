@@ -129,7 +129,7 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
             avg in {avgIn == null ? "—" : `${avgIn.toFixed(1)}¢`}
           </span>
           <span className={avgPnl == null ? "text-muted" : avgPnl >= 0 ? "text-up" : "text-down"}>
-            avg vs 100 {avgPnl == null ? "—" : `${avgPnl >= 0 ? "+" : ""}${avgPnl.toFixed(1)}¢`}
+            avg ¢ {avgPnl == null ? "—" : `${avgPnl >= 0 ? "+" : ""}${avgPnl.toFixed(1)}¢`}
           </span>
           <span className="text-subtle">{rows.length} prints</span>
           <button
@@ -143,7 +143,7 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
       </div>
       {!rows.length ? (
         <div className="px-3 py-4 font-mono text-ui text-muted">
-          No directional call yet. WAIT does not print. A flip logs the new side’s ask. Window end grades 100 or 0.
+          No directional call yet. WAIT does not buy. A flip sells the last buy at that side’s current cents. Window end is 100 or 0 vs the last buy.
         </div>
       ) : (
         <div className="max-h-56 overflow-auto">
@@ -154,7 +154,7 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
                 <th className="px-3 py-1.5 font-medium">call</th>
                 <th className="px-3 py-1.5 font-medium">ask</th>
                 <th className="px-3 py-1.5 font-medium">end</th>
-                <th className="px-3 py-1.5 font-medium">vs 100</th>
+                <th className="px-3 py-1.5 font-medium">¢</th>
               </tr>
             </thead>
             <tbody>
@@ -225,6 +225,7 @@ export function SatoshiTab({
               {(
                 [
                   ["Rank", "col.rank"],
+                  ["Avg ¢", "col.scalp"],
                   ["Seat", "col.seat"],
                   ["Callsign", "col.callsign"],
                   ["Lean", "col.lean"],
@@ -260,9 +261,15 @@ export function SatoshiTab({
                 >
                   <td className="px-2 py-1 font-mono text-data tabular text-muted">
                     {r.rank}
-                    {r.wilson_rank !== r.contrib_rank && r.wilson_rank < 90 ? (
-                      <span className="text-subtle"> · W{r.wilson_rank}</span>
-                    ) : null}
+                  </td>
+                  <td
+                    className={cn(
+                      "px-2 py-1 font-mono text-data tabular",
+                      r.scalp_avg == null ? "text-subtle" : r.scalp_avg >= 0 ? "text-up" : "text-down",
+                    )}
+                  >
+                    {r.scalp_avg == null ? "—" : `${r.scalp_avg >= 0 ? "+" : ""}${r.scalp_avg.toFixed(1)}`}
+                    {r.scalp_n ? <span className="text-subtle"> · {r.scalp_n}</span> : null}
                   </td>
                   <td className="px-2 py-1 font-mono text-data text-fg">
                     <Tip k={`seat.${r.seat}`} mark={false}>
