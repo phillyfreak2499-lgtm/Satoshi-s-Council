@@ -15,7 +15,9 @@ dist/
 .grok/
 artifacts/
 screenshots/
-attachments/*.zip
+attachments/
+AGENTS.md
+AGENTS.project.md
 public/__grok/
 
 # generated
