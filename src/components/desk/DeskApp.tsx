@@ -148,6 +148,7 @@ export function DeskApp() {
             snap={frame.snap}
             chair={frame.chair}
             settings={frame.settings}
+            callLog={frame.call_log}
             onJump={jump}
           />
         )}

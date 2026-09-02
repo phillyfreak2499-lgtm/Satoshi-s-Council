@@ -36,6 +36,17 @@ export type SeatStatus =
 export type DataSource = "demo" | "live";
 export type LearnPhase = "EXPLORE" | "CALIBRATE" | "EXPLOIT";
 export type SessionName = "ASIA" | "EUROPE" | "US_AM" | "US_PM";
+
+export type CallLogRow = {
+  id: string;
+  t: number;
+  ticker: string;
+  close_time: number;
+  lean: "UP" | "DOWN";
+  cents: number;
+  settle: number | null;
+  flipped: boolean;
+};
 export type TabId =
   | "satoshi"
   | "structure"

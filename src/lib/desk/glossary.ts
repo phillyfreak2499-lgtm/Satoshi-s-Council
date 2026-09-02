@@ -5,7 +5,7 @@ export type Gloss = { title: string; body: string };
 export const GLOSS: Record<string, Gloss> = {
   "tab.satoshi": {
     title: "SATOSHI — the chair",
-    body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles (one candle stream, one Kalshi book, one derivs book) count as one voice, not five. Click a row to jump to that bot.",
+    body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
   },
   "tab.structure": {
     title: "STRUCTURE — candles",
@@ -314,6 +314,22 @@ export const GLOSS: Record<string, Gloss> = {
   "field.calc": { title: "calc", body: "The chair's arithmetic this window, in one string." },
   "field.skill / huddle": { title: "skill / huddle", body: "Last settle grade, and when the next huddle runs." },
 
+  "pane.board": {
+    title: "Chair call",
+    body: "The paper call this window. UP buys YES at the ask. DOWN buys NO at the ask. WAIT is not a fill. Score must clear the bar.",
+  },
+  "pane.spot-chart": {
+    title: "BTC 15m",
+    body: "Last forty 1-minute candles of Bitcoin, strike marked gold. Same window the contract settles.",
+  },
+  "pane.yes-chart": {
+    title: "YES path",
+    body: "YES midpoint this window. The call log uses the ask you would actually pay, not this midpoint.",
+  },
+  "pane.call-log": {
+    title: "Call log",
+    body: "Every time SATOSHI goes UP or DOWN, we stamp that side’s ask. A flip logs the new side. At the 15-minute end the winner is 100¢ and the loser is 0¢. Avg in is mean ask. Avg vs 100 is mean paper P&L. Clear wipes this tape only — stays on this PC.",
+  },
   "pane.score": {
     title: "Score math",
     body: "How SATOSHI turned 20 leans into one number. Score must clear the bar. Sit-mass and disagreement raise it.",

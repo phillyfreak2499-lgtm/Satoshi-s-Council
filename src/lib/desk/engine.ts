@@ -4,8 +4,8 @@ import { demoFinish, demoTick, newDemoWindow, type DemoState } from "./demo";
 import { chicagoHuddleDue, gradeWindow, runHuddle, acceptCandidate, windowsHuddleDue } from "./learner";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
-import { DEFAULT_SETTINGS, loadLearner, loadPersisted, savePersisted } from "./persist";
-import type { ChairResult, Learner, Settings, Snapshot, Vote } from "./types";
+import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
+import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
   snap: Snapshot | null;
@@ -16,6 +16,7 @@ export type DeskFrame = {
   ticking: boolean;
   lastError: string | null;
   settling: boolean;
+  call_log: CallLogRow[];
 };
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -34,6 +35,8 @@ let pending: {
   chair: ChairResult;
   since: number;
 } | null = null;
+let callLog: CallLogRow[] = loadCallLog();
+let lastCall: { ticker: string; close_time: number; lean: Lean } | null = null;
 
 const listeners = new Set<(f: DeskFrame) => void>();
 
@@ -47,6 +50,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
     ticking: timer != null,
     lastError: lastError,
     settling: false,
+    call_log: callLog,
     ...partial,
   };
   for (const l of listeners) l(frame);
@@ -58,6 +62,59 @@ let lastError: string | null = null;
 
 function persist() {
   savePersisted({ settings, learner });
+  saveCallLog(callLog);
+}
+
+function noteCall(snap: Snapshot, chair: ChairResult) {
+  if (chair.lean !== "UP" && chair.lean !== "DOWN") return;
+  const cents = chair.lean === "UP" ? snap.yes_ask || snap.yes_mid : snap.no_ask || 100 - (snap.yes_mid || 50);
+  if (!(cents > 0) || !(cents < 100)) return;
+  if (
+    lastCall &&
+    lastCall.ticker === snap.ticker &&
+    lastCall.close_time === snap.close_time &&
+    lastCall.lean === chair.lean
+  ) {
+    return;
+  }
+  const flipped = Boolean(
+    lastCall && lastCall.ticker === snap.ticker && lastCall.close_time === snap.close_time && lastCall.lean !== chair.lean,
+  );
+  callLog = [
+    {
+      id: `${snap.close_time}-${chair.lean}-${snap.as_of}`,
+      t: snap.as_of,
+      ticker: snap.ticker,
+      close_time: snap.close_time,
+      lean: chair.lean,
+      cents: Math.round(cents * 10) / 10,
+      settle: null,
+      flipped,
+    },
+    ...callLog,
+  ].slice(0, 80);
+  lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
+  saveCallLog(callLog);
+}
+
+function settleCallLog(ticker: string, close_time: number, winner: "UP" | "DOWN") {
+  let n = 0;
+  callLog = callLog.map((r) => {
+    if (r.settle != null) return r;
+    const sameTicker = ticker && r.ticker === ticker;
+    const sameClose = close_time > 0 && Math.abs(r.close_time - close_time) < 90_000;
+    if (!sameTicker && !sameClose) return r;
+    n += 1;
+    return { ...r, settle: r.lean === winner ? 100 : 0 };
+  });
+  if (n) saveCallLog(callLog);
+}
+
+export function clearCallLog() {
+  callLog = [];
+  lastCall = null;
+  saveCallLog(callLog);
+  emit();
 }
 
 function ensureDemo(remainingMs?: number) {
@@ -115,6 +172,7 @@ function applyGrade(
   if (learner.settle_tape[0]) {
     learner.settle_tape[0] = `${learner.settle_tape[0]} · ${source}`;
   }
+  settleCallLog(snap.ticker, snap.close_time, finish);
   if (windowsHuddleDue(learner) || chicagoHuddleDue(learner.last_huddle)) {
     learner = runHuddle(learner).learner;
   }
@@ -203,6 +261,7 @@ async function tick() {
 
     const votes = runBots(snap, learner);
     const chair = runChair(votes, snap, learner, settings);
+    noteCall(snap, chair);
     if (!learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       learner.window_memory.entry_lean = chair.lean;
     }
@@ -231,6 +290,7 @@ export function subscribe(fn: (f: DeskFrame) => void) {
     ticking: timer != null,
     lastError,
     settling: false,
+    call_log: callLog,
   });
   return () => listeners.delete(fn);
 }
@@ -241,6 +301,7 @@ function runDemoOnce() {
   if (!learner.window_memory.entry_spot) learner.window_memory.entry_spot = snap.spot;
   const votes = runBots(snap, learner);
   const chair = runChair(votes, snap, learner, settings);
+  noteCall(snap, chair);
   if (!learner.window_memory.entry_lean && chair.lean !== "WAIT") {
     learner.window_memory.entry_lean = chair.lean;
   }
@@ -256,6 +317,7 @@ export function startEngine() {
   const persisted = loadPersisted();
   settings = persisted.settings;
   learner = persisted.learner;
+  callLog = loadCallLog();
   if (settings.source === "demo") {
     runDemoOnce();
   } else {
@@ -362,6 +424,7 @@ export function getFrame(): DeskFrame {
     ticking: timer != null,
     lastError,
     settling: false,
+    call_log: callLog,
   };
 }
 

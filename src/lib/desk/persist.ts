@@ -1,7 +1,7 @@
 import { SKILL_RULES } from "./dsl";
 import { freshLearner } from "./skills";
 import { mergeThresholds } from "./thresholds";
-import type { DataSource, Learner, SeatId, Settings } from "./types";
+import type { CallLogRow, DataSource, Learner, SeatId, Settings } from "./types";
 
 const KEY = "satoshi-desk-v1";
 const LIVE_KEY = "satoshi-desk-v1-live";
@@ -123,6 +123,29 @@ export function savePersisted(p: Persisted) {
     } else {
       localStorage.setItem(KEY, JSON.stringify({ settings: p.settings, learner: sliced }));
     }
+  } catch {
+    /* quota */
+  }
+}
+
+const CALL_KEY = "satoshi-desk-v1-calls";
+
+export function loadCallLog(): CallLogRow[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CALL_KEY);
+    if (!raw) return [];
+    const rows = JSON.parse(raw) as CallLogRow[];
+    return Array.isArray(rows) ? rows.filter((r) => r && (r.lean === "UP" || r.lean === "DOWN") && r.cents > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCallLog(rows: CallLogRow[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CALL_KEY, JSON.stringify(rows.slice(0, 80)));
   } catch {
     /* quota */
   }

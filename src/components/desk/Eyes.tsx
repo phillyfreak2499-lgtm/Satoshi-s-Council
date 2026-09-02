@@ -7,6 +7,7 @@ import { readDrift, readExhaust, readStreak } from "@/lib/desk/structure";
 import { useDesk } from "@/lib/desk/store";
 import { HealthDot } from "./bits";
 import { Tip } from "./Tip";
+import { cn } from "@/lib/utils";
 
 const UP = "#3dcf8a";
 const DOWN = "#ef6b73";
@@ -1029,6 +1030,47 @@ function Empty({ text }: { text: string }) {
   return (
     <div className="flex h-40 items-center justify-center border border-dashed border-border bg-surface-2 font-mono text-ui text-muted">
       {text}
+    </div>
+  );
+}
+
+export function ChairEyes({ snap }: { snap: Snapshot }) {
+  const dep = `${snap.as_of}-${snap.spot}-${snap.yes_mid}`;
+  const spotRef = useDraw((ctx, w, h) => {
+    candles(ctx, w, h, snap.candles_1m.slice(-40), snap.strike);
+  }, dep);
+  const yesRef = useDraw((ctx, w, h) => {
+    const path = snap.yes_mid_path.length >= 2 ? snap.yes_mid_path : [snap.yes_mid, snap.yes_mid];
+    spark(ctx, w, h, path, WAIT, 50);
+  }, dep);
+  const last = snap.candles_1m[snap.candles_1m.length - 1];
+  const ret1 =
+    last && last.open ? (((last.close - last.open) / last.open) * 100).toFixed(2) : null;
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface-2">
+        <div className="flex items-baseline justify-between gap-2 px-2 py-1.5">
+          <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
+            <Tip k="pane.spot-chart">BTC 15m</Tip>
+          </h3>
+          <span className="font-mono text-micro tabular text-muted">
+            {ret1 != null ? `${Number(ret1) >= 0 ? "+" : ""}${ret1}% 1m` : "—"}
+            {" · "}K {snap.strike.toFixed(0)}
+          </span>
+        </div>
+        <canvas ref={spotRef} className="block h-40 w-full" />
+      </section>
+      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface-2">
+        <div className="flex items-baseline justify-between gap-2 px-2 py-1.5">
+          <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
+            <Tip k="pane.yes-chart">YES path</Tip>
+          </h3>
+          <span className={cn("font-mono text-micro tabular", snap.yes_mid >= 50 ? "text-up" : "text-down")}>
+            {snap.yes_mid.toFixed(1)}¢ mid · ask {snap.yes_ask.toFixed(1)}¢
+          </span>
+        </div>
+        <canvas ref={yesRef} className="block h-40 w-full" />
+      </section>
     </div>
   );
 }

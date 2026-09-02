@@ -1,22 +1,219 @@
-import type { ChairResult, SeatId, Settings, Snapshot } from "@/lib/desk/types";
+import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "@/lib/desk/types";
+import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, Mono, Pane, StatusChip } from "./bits";
+import { ChairEyes } from "./Eyes";
 import { Tip } from "./Tip";
+
+function sideAsk(snap: Snapshot, lean: Lean) {
+  if (lean === "UP") return snap.yes_ask || snap.yes_mid;
+  if (lean === "DOWN") return snap.no_ask || 100 - (snap.yes_mid || 50);
+  return snap.yes_mid;
+}
+
+function fmtClock(t: number, tz: string) {
+  try {
+    return new Date(t).toLocaleTimeString("en-US", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return new Date(t).toISOString().slice(11, 19);
+  }
+}
+
+function ChairBoard({ snap, chair }: { snap: Snapshot; chair: ChairResult }) {
+  const lean = chair.lean;
+  const fill = Math.min(1, Math.abs(chair.score) / Math.max(chair.bar, 0.01));
+  const ask = sideAsk(snap, lean);
+  const tone = lean === "UP" ? "text-up" : lean === "DOWN" ? "text-down" : "text-wait";
+  const barTone = lean === "UP" ? "bg-up" : lean === "DOWN" ? "bg-down" : "bg-wait";
+  const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 0;
+  return (
+    <section
+      data-tour="tour-satoshi"
+      className="rounded-md border border-border bg-surface p-3 sm:p-4"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+            <Tip k="pane.board">Chair call</Tip>
+          </div>
+          <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)}>{lean}</div>
+          <div className="mt-2 font-mono text-ui text-muted">
+            {lean === "WAIT" ? (
+              "no paper fill"
+            ) : (
+              <>
+                {lean} at {ask.toFixed(1)}¢ ask
+                {lean === "UP" ? ` · YES` : ` · NO`}
+                {edge ? ` · edge ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-6">
+          <div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+              <Tip k="strip.conf">conf</Tip>
+            </div>
+            <div className="font-mono text-call tabular leading-none">{chair.confidence}</div>
+          </div>
+          <div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+              <Tip k="strip.size">size</Tip>
+            </div>
+            <div className="font-mono text-call tabular leading-none">{chair.size}</div>
+          </div>
+          <div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">clock</div>
+            <div className="font-mono text-call tabular leading-none">
+              {Math.max(0, snap.mins_left).toFixed(1)}
+              <span className="text-ui text-subtle">m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4">
+        <div className="mb-1 flex items-center justify-between font-mono text-micro text-subtle">
+          <Tip k="strip.score">score vs bar</Tip>
+          <span className="tabular">
+            {chair.score >= 0 ? "+" : ""}
+            {chair.score.toFixed(3)} / {chair.bar.toFixed(2)}
+          </span>
+        </div>
+        <div className="relative h-3 w-full overflow-hidden rounded-sm bg-surface-3">
+          <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
+          <div
+            className={cn("absolute inset-y-0", barTone)}
+            style={
+              chair.score >= 0
+                ? { left: "50%", width: `${fill * 50}%` }
+                : { right: "50%", width: `${fill * 50}%` }
+            }
+          />
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-micro text-muted">
+        <span>YES {snap.yes_ask.toFixed(1)}¢ ask</span>
+        <span>NO {snap.no_ask.toFixed(1)}¢ ask</span>
+        <span>spot {snap.spot.toFixed(0)}</span>
+        <span>K {snap.strike.toFixed(0)}</span>
+        <span className="truncate">{snap.ticker}</span>
+      </div>
+    </section>
+  );
+}
+
+function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
+  const entries = rows.map((r) => r.cents);
+  const pnls = rows.filter((r) => r.settle != null).map((r) => (r.settle as number) - r.cents);
+  const avgIn = entries.length ? entries.reduce((s, x) => s + x, 0) / entries.length : null;
+  const avgPnl = pnls.length ? pnls.reduce((s, x) => s + x, 0) / pnls.length : null;
+  return (
+    <section className="rounded-md border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
+          <Tip k="pane.call-log">Call log</Tip>
+        </h3>
+        <div className="flex flex-wrap items-center gap-3 font-mono text-micro">
+          <span className="text-muted">
+            avg in {avgIn == null ? "—" : `${avgIn.toFixed(1)}¢`}
+          </span>
+          <span className={avgPnl == null ? "text-muted" : avgPnl >= 0 ? "text-up" : "text-down"}>
+            avg vs 100 {avgPnl == null ? "—" : `${avgPnl >= 0 ? "+" : ""}${avgPnl.toFixed(1)}¢`}
+          </span>
+          <span className="text-subtle">{rows.length} prints</span>
+          <button
+            type="button"
+            onClick={() => clearCallLog()}
+            className="min-h-11 rounded-sm border border-border px-3 py-1.5 text-muted hover:bg-surface-2 hover:text-fg sm:min-h-0"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+      {!rows.length ? (
+        <div className="px-3 py-4 font-mono text-ui text-muted">
+          No directional call yet. WAIT does not print. A flip logs the new side’s ask. Window end grades 100 or 0.
+        </div>
+      ) : (
+        <div className="max-h-56 overflow-auto">
+          <table className="w-full text-left">
+            <thead className="sticky top-0 bg-surface-2 font-mono text-micro uppercase tracking-wider text-subtle">
+              <tr>
+                <th className="px-3 py-1.5 font-medium">time</th>
+                <th className="px-3 py-1.5 font-medium">call</th>
+                <th className="px-3 py-1.5 font-medium">ask</th>
+                <th className="px-3 py-1.5 font-medium">end</th>
+                <th className="px-3 py-1.5 font-medium">vs 100</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const pnl = r.settle != null ? r.settle - r.cents : null;
+                return (
+                  <tr key={r.id} className="border-t border-border">
+                    <td className="whitespace-nowrap px-3 py-1.5 font-mono text-micro tabular text-muted">
+                      {fmtClock(r.t, tz)}
+                      {r.flipped ? <span className="ml-1 text-wait">flip</span> : null}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <LeanChip lean={r.lean} />
+                    </td>
+                    <td
+                      className={cn(
+                        "px-3 py-1.5 font-mono text-data tabular",
+                        r.lean === "UP" ? "text-up" : "text-down",
+                      )}
+                    >
+                      {r.cents.toFixed(1)}¢
+                    </td>
+                    <td className="px-3 py-1.5 font-mono text-data tabular text-muted">
+                      {r.settle == null ? "open" : `${r.settle}¢`}
+                    </td>
+                    <td
+                      className={cn(
+                        "px-3 py-1.5 font-mono text-data tabular",
+                        pnl == null ? "text-subtle" : pnl >= 0 ? "text-up" : "text-down",
+                      )}
+                    >
+                      {pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}¢`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function SatoshiTab({
   snap,
   chair,
   settings,
+  callLog,
   onJump,
 }: {
   snap: Snapshot;
   chair: ChairResult;
   settings: Settings;
+  callLog: CallLogRow[];
   onJump: (seat: SeatId) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 p-3">
-      <div data-tour="tour-satoshi" className="overflow-x-auto rounded-md border border-border">
+      <ChairBoard snap={snap} chair={chair} />
+      <ChairEyes snap={snap} />
+      <CallTape rows={callLog} tz={settings.tz} />
+
+      <div className="overflow-x-auto rounded-md border border-border">
         <table className="w-full min-w-[72rem] text-left">
           <thead className="bg-surface-2 font-mono text-micro uppercase tracking-wider text-subtle">
             <tr>
@@ -261,4 +458,3 @@ export function MetaFooter({
     </div>
   );
 }
-
