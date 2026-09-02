@@ -3,6 +3,14 @@ import type { TabId } from "./types";
 export type Gloss = { title: string; body: string };
 
 export const GLOSS: Record<string, Gloss> = {
+  "beta.badge": {
+    title: "Beta",
+    body: "This desk is unfinished. The bots are still learning. Treat every call as practice.",
+  },
+  "beta.disclaimer": {
+    title: "Paper only — not advice",
+    body: "No live orders. SATOSHI and the 20 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice.",
+  },
   "tab.satoshi": {
     title: "SATOSHI — the chair",
     body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
@@ -397,8 +405,8 @@ export const TOUR_STEPS: TourStep[] = [
     id: "header",
     target: "tour-header",
     tab: "satoshi",
-    title: "Paper desk, 15-minute Bitcoin",
-    body: "This council only papers Kalshi-style 15-minute up/down on Bitcoin. No live orders. Hover or tap a dotted label anytime for a one-line definition.",
+    title: "Paper desk, still learning",
+    body: "Beta. SATOSHI and the seats are still learning this tape. Calls are practice, not trades, not advice. Hover or tap a dotted label anytime for a one-line definition.",
   },
   {
     id: "strip",

@@ -83,6 +83,11 @@ export function DeskApp() {
       >
         <div className="flex items-baseline gap-2">
           <h1 className="font-sans text-title font-medium tracking-tight">Satoshi's Council</h1>
+          <Tip k="beta.badge" mark={false}>
+            <span className="rounded-sm border border-wait/50 bg-wait/15 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-wait">
+              Beta
+            </span>
+          </Tip>
           <span className="font-mono text-micro uppercase tracking-widest text-subtle">
             BTC 15m paper
           </span>
@@ -118,6 +123,12 @@ export function DeskApp() {
           </nav>
         </div>
       </header>
+
+      <p className="border-b border-wait/30 bg-wait/10 px-3 py-1.5 font-mono text-micro leading-snug text-wait">
+        <Tip k="beta.disclaimer">
+          BETA · paper desk. SATOSHI and the seats are still learning this tape. Every UP / DOWN / WAIT is practice — not a trade, not financial advice.
+        </Tip>
+      </p>
 
       <TopStrip
         snap={frame.snap}
