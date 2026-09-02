@@ -1,7 +1,0 @@
-ow.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js").catch(function () {});
-      });
-    }
-  </script>
-</body>
-</html>

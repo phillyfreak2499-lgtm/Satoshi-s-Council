@@ -1,9 +1,0 @@
-/* CSS-only room plates. Loaded after style.css via /style.css stitch.
-   Satoshi shrine keeps its WebP. These four chairs had no still. */
-
-html {
-  --room-vitalik: radial-gradient(120% 80% at 50% 20%, #0a3a44 0%, #031418 55%, #02080c 100%);
-  --room-ares: radial-gradient(120% 80% at 50% 80%, #1a2a4a 0%, #02060e 70%);
-  --room-raijin: radial-gradient(120% 70% at 50% 0%, #2a1444 0%, #08040e 70%);
-  --room-oracle: radial-gradient(90% 80% at 50% 40%, #063018 0%, #020805 75%);
-}
