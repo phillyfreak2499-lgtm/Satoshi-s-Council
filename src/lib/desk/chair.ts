@@ -1,5 +1,5 @@
-import { CATEGORY_OF, DERIVS_FAMILY, FADE_FAMILY, STRUCTURE_FAMILY, TAPE_FAMILY, SEAT_BY_ID, SEATS } from "./seats";
-import { detectQuiet } from "./bots";
+import { DERIVS_FAMILY, KALSHI_SEQ_SEATS, SEAT_BY_ID, SEATS } from "./seats";
+import { detectQuiet, evidenceOf, isWeekend, readWarden } from "./context";
 import { recencyRate } from "./skills";
 import { binKey, clamp, mean, round, wilsonLower } from "./math";
 import type {
@@ -70,8 +70,13 @@ export function runChair(
     now < learner.lockdown_until ||
     (learner.lockdown_windows_left ?? 0) > 0;
   const quiet = detectQuiet(snap);
-  const bothDown = snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN";
-  const oneDown = snap.health.spot === "DOWN" || snap.health.kalshi === "DOWN";
+  const weekend = isWeekend(snap.as_of);
+  const warden = readWarden(snap);
+  const bothDown = warden.bothDown;
+  const oneDown = warden.oneDown;
+  const seqLost = warden.seqLost;
+  const derivsDown = warden.derivsDown;
+  const silent = new Set(warden.silent);
 
   const rankedSeats = SEATS.filter((s) => s.id !== "WARDEN")
     .map((s) => {
@@ -114,10 +119,12 @@ export function runChair(
       else if (rec > 0.62) listen = Math.min(1, listen * 1.12);
     }
     if (sw.n < 8) listen *= 0.35;
-    const hf = isMuted ? 0 : healthFactor(vote);
+    const seqMute = silent.has(vote.seat);
+    const hf = isMuted || seqMute ? 0 : healthFactor(vote);
     const lic = licensed(learner, vote, snap);
     let status: SeatStatus = "LIVE";
     if (isMuted) status = "MUTED";
+    else if (seqMute) status = "VETO";
     else if (vote.health === "DOWN") status = "DOWN";
     else if (sw.n < 8) status = "UNCALIBRATED";
     else if (bothDown) status = "VETO";
@@ -150,7 +157,12 @@ export function runChair(
   const foldNotes: string[] = [];
   const foldSameSide = (ids: SeatId[], label: string) => {
     const fam = accs.filter(
-      (a) => ids.includes(a.vote.seat) && a.vote.lean !== "WAIT" && a.status !== "MUTED",
+      (a) =>
+        ids.includes(a.vote.seat) &&
+        a.vote.lean !== "WAIT" &&
+        a.status !== "MUTED" &&
+        a.status !== "VETO" &&
+        a.status !== "DOWN",
     );
     if (fam.length < 2) return;
     const side = fam[0]!.vote.lean;
@@ -167,10 +179,36 @@ export function runChair(
     }
     foldNotes.push(`${label} FOLDED`);
   };
-  foldSameSide(FADE_FAMILY, "fade");
-  foldSameSide(STRUCTURE_FAMILY, "structure");
-  foldSameSide(TAPE_FAMILY, "tape");
-  foldSameSide(DERIVS_FAMILY, "derivs");
+  foldSameSide(
+    accs.filter((a) => evidenceOf(a.vote.seat, snap) === "candle").map((a) => a.vote.seat),
+    "candle",
+  );
+  foldSameSide(
+    accs.filter((a) => evidenceOf(a.vote.seat, snap) === "book").map((a) => a.vote.seat),
+    "book",
+  );
+  foldSameSide(
+    accs.filter((a) => evidenceOf(a.vote.seat, snap) === "derivs").map((a) => a.vote.seat),
+    "derivs",
+  );
+
+  const clockA = accs.find((a) => a.vote.seat === "CLOCK");
+  if (clockA && clockA.vote.lean !== "WAIT" && clockA.status !== "MUTED" && clockA.status !== "VETO") {
+    const allies = accs.filter(
+      (a) =>
+        a.vote.seat !== "CLOCK" &&
+        a.vote.lean === clockA.vote.lean &&
+        a.status !== "MUTED" &&
+        a.status !== "VETO" &&
+        a.status !== "DOWN",
+    );
+    if (!allies.length) {
+      clockA.signed = 0;
+      clockA.contribution = 0;
+      clockA.status = "FOLDED";
+      foldNotes.push("CLOCK cannot flip alone");
+    }
+  }
 
   const liveAccs = accs.filter((a) => a.status !== "MUTED");
   let sumW = liveAccs.reduce((s, a) => s + a.w, 0);
@@ -195,8 +233,9 @@ export function runChair(
 
   const catSides = new Map<string, Lean>();
   for (const a of accs) {
-    if (a.status === "MUTED" || a.vote.lean === "WAIT") continue;
-    const cat = CATEGORY_OF[a.vote.seat];
+    if (a.status === "MUTED" || a.status === "VETO" || a.vote.lean === "WAIT") continue;
+    const cat = evidenceOf(a.vote.seat, snap);
+    if (cat === "context") continue;
     const prev = catSides.get(cat);
     if (!prev) catSides.set(cat, a.vote.lean);
     else if (prev !== a.vote.lean) catSides.set(cat, "WAIT");
@@ -231,6 +270,7 @@ export function runChair(
   let bar = settings.adaptive_bar ? 0.3 : (settings.bar_override ?? 0.3);
   if (settings.bar_override != null && !settings.adaptive_bar) bar = settings.bar_override;
   if (quiet) bar += 0.08;
+  if (weekend) bar += 0.04;
   if (learner.learn_phase === "EXPLORE") bar -= 0.04;
   if (learner.learn_phase === "EXPLOIT") bar += 0.04;
 
@@ -266,7 +306,32 @@ export function runChair(
       label: "WARDEN: both spot and Kalshi healthy",
       pass: !bothDown,
       hard: true,
-      value: `SPOT ${snap.health.spot} · KALSHI ${snap.health.kalshi}`,
+      value: `SPOT ${snap.health.spot} · KALSHI ${snap.health.kalshi} · seq ${snap.obs.gap}${
+        warden.fails.length ? ` · ${warden.fails.map((f) => f.why).join("; ")}` : ""
+      }`,
+    },
+    {
+      id: "semantic",
+      label: "WARDEN: prints make sense (strike, book, bars, OI)",
+      pass: !warden.fails.length,
+      hard: false,
+      value: warden.fails.length ? warden.fails.map((f) => f.why).join("; ") : "ok",
+    },
+    {
+      id: "seq",
+      label: "Kalshi sequence continuous (book/tape seats live)",
+      pass: !seqLost,
+      hard: false,
+      value: seqLost
+        ? `${snap.obs.gap} · silent ${KALSHI_SEQ_SEATS.join("+")}`
+        : "ok",
+    },
+    {
+      id: "derivs",
+      label: "Derivs live (CARRY/CHAIN/CASCADE)",
+      pass: !derivsDown,
+      hard: false,
+      value: derivsDown ? `DOWN · silent ${DERIVS_FAMILY.join("+")}` : snap.health.derivs_source || "ok",
     },
     {
       id: "law",
@@ -286,17 +351,17 @@ export function runChair(
     },
     {
       id: "leftover",
-      label: "Leftover > 0",
-      pass: snap.leftover_cents > 0,
+      label: "No phantom leftover (combined ask ≥ 98¢)",
+      pass: snap.leftover_cents <= 2,
       hard: true,
-      value: `${round(snap.leftover_cents, 1)}¢`,
+      value: `${round(snap.leftover_cents, 1)}¢ · comb ${round(snap.combined_ask_cents, 1)}`,
     },
     {
       id: "quote",
-      label: "Quote age ≤ 25s",
-      pass: snap.quote_age_s <= 25,
+      label: "Quote last update ≤ 25s",
+      pass: snap.quote_age_s <= 25 && snap.obs.gap !== "gap" && snap.obs.gap !== "held",
       hard: snap.phase === "ENTRY" && !alreadyIn,
-      value: `${snap.quote_age_s.toFixed(1)}s`,
+      value: `${snap.quote_age_s.toFixed(1)}s · print ${snap.print_age_s.toFixed(1)}s · ok ${snap.obs.last_ok_ts ? ((snap.as_of - snap.obs.last_ok_ts) / 1000).toFixed(1) : "—"}s · seq ${snap.quote_seq || "—"} · ${snap.obs.gap}`,
     },
     {
       id: "early",
@@ -366,14 +431,25 @@ export function runChair(
   gates.find((g) => g.id === "bar")!.value =
     `|${rawScore.toFixed(3)}| × ${agg.toFixed(2)} = ${vsBar.toFixed(3)} vs bar ${bar.toFixed(2)} (sit ${sitMass.toFixed(2)})`;
 
-  const hardFail = gates.some((g) => g.hard && !g.pass);
-  const failed = gates.filter((g) => !g.pass);
+  let hardFail = gates.some((g) => g.hard && !g.pass);
 
   let lean: Lean = "WAIT";
   if (!hardFail && vsBar >= bar && !conflict) {
     lean = rawScore > 0 ? "UP" : rawScore < 0 ? "DOWN" : "WAIT";
   }
   if (bothDown || lockdown) lean = "WAIT";
+
+  const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 1;
+  gates.push({
+    id: "edge",
+    label: "Fair vs ask after taker fee > 0",
+    pass: lean === "WAIT" || edge > 0,
+    hard: true,
+    value: `fair ${round(snap.fair_yes, 1)}¢ · UP ${round(snap.edge_up, 1)} · DN ${round(snap.edge_down, 1)} · fee ${snap.fee_yes}/${snap.fee_no}`,
+  });
+  if (lean !== "WAIT" && edge <= 0) lean = "WAIT";
+  hardFail = gates.some((g) => g.hard && !g.pass);
+  const failed = gates.filter((g) => !g.pass);
 
   let full = prelimConf;
   if (taxApplied) {
@@ -491,9 +567,9 @@ export function runChair(
     if (learner.graded_windows < 8) {
       size = 1;
       size_note = "uncalibrated cap · size 1";
-    } else if (snap.leftover_cents < 5) {
+    } else if (edge < 2) {
       size = 1;
-      size_note = "thin leftover · size 1";
+      size_note = "thin edge vs ask · size 1";
     } else if (snap.spread_cents > 4) {
       size = 1;
       size_note = "wide spread · size 1";
@@ -548,7 +624,8 @@ function invalidatePrint(
   conflict: boolean,
   alreadyIn: boolean,
 ): string {
-  if (snap.leftover_cents <= 2) return "if leftover ≤ 0";
+  if (snap.leftover_cents > 2) return "if combined ask prints below 98¢ (stale leftover)";
+  if (snap.edge_up <= 0 && snap.edge_down <= 0) return "if both sides have no edge vs ask after fee";
   if (snap.chalk || snap.yes_ask >= 96 || snap.no_ask >= 96) {
     return "if book goes chalk (YES or NO ≥ 99¢)";
   }

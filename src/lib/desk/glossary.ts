@@ -5,7 +5,7 @@ export type Gloss = { title: string; body: string };
 export const GLOSS: Record<string, Gloss> = {
   "tab.satoshi": {
     title: "SATOSHI — the chair",
-    body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Click a row to jump to that bot.",
+    body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles (one candle stream, one Kalshi book, one derivs book) count as one voice, not five. Click a row to jump to that bot.",
   },
   "tab.structure": {
     title: "STRUCTURE — candles",
@@ -17,7 +17,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.derivs": {
     title: "DERIVS — funding and OI",
-    body: "CARRY, CHAIN, CASCADE, VOLT. Funding, open interest, liquidation proxies, volatility regime.",
+    body: "CARRY, CHAIN, CASCADE, VOLT. Funding, open interest, real liquidations, volatility regime.",
   },
   "tab.book": {
     title: "BOOK — the contract",
@@ -42,7 +42,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.STREAK": {
     title: "STREAK (RUN)",
-    body: "Watches settled window chips. A hot streak can ride. A break ends it.",
+    body: "Watches Kalshi’s official YES/NO results, not our spot vs strike. Live agreement is the YES book, not Bitcoin vs the strike. A hot streak can ride. A break ends it.",
   },
   "seat.EXHAUST": {
     title: "EXHAUST (XH)",
@@ -50,7 +50,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.PULSE": {
     title: "PULSE (VOL)",
-    body: "1-minute volume. Expansion means the tape is awake. Dead volume means sit.",
+    body: "1-minute volume in USD notional (quote dollars, not coins). Expansion means the tape is awake. Dead volume means sit.",
   },
   "seat.TAPE": {
     title: "TAPE (FLW)",
@@ -66,15 +66,15 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.CARRY": {
     title: "CARRY (FR)",
-    body: "Perp funding plus open interest. Crowded carry often fades when it stretches.",
+    body: "Perp funding on an 8-hour footing (a 1-hour venue is scaled ×8 so it is comparable). APR is that 8-hour rate × 3 × 365, display only. Basis is perpetual minus spot in bps — a premium with positive funding is crowded longs. History is one print per venue period.",
   },
   "seat.CHAIN": {
     title: "CHAIN (OI)",
-    body: "Open interest vs price. OI up with price = fuel. OI down with a spike = unwind.",
+    body: "Open interest in both BTC and USD notional, over wall-clock minutes (3m / 10m / 1h). A dump has to show in coin and in dollars — price marking OI up is not new fuel. Timestamped 5-minute prints, not last-N polls.",
   },
   "seat.CASCADE": {
     title: "CASCADE (LQ)",
-    body: "Liquidation / cascade proxy from volume + return + OI. A flush can overshoot, then snap.",
+    body: "Each venue is converted with its contract type and multiplier first (OKX linear 0.01 BTC × 1, Binance/Bybit linear 1 × 1). Then USD notional in the same 15-minute window. Primary = richest book. Backup in the source line is confirmation, not extra dollars. Empty feeds fall back to a volume+OI PROXY.",
   },
   "seat.VOLT": {
     title: "VOLT (ATR)",
@@ -82,7 +82,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.ODDS": {
     title: "ODDS (YES)",
-    body: "YES¢ path this window. A smooth grind is information. A 20¢ rip in 60s is often a fade.",
+    body: "YES path this window, graded on the ask you would actually pay — not the midpoint. A smooth grind is information. A 20¢ rip in 60s is often a fade.",
   },
   "seat.STRIKE": {
     title: "STRIKE (K)",
@@ -90,27 +90,27 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.CHEAP": {
     title: "CHEAP (VAL)",
-    body: "42 / 58¢ bands. YES too cheap vs spot lean is a buy. Too rich is a fade.",
+    body: "42¢ bands on the *ask* — the price you can buy. Midpoint cheap is not a fill. Fat spread = hole, sit.",
   },
   "seat.FADE": {
     title: "FADE (RIP)",
-    body: "60-second YES rip detector. Fast, emotional prints get faded — after they close, not while they print.",
+    body: "60-second YES rip. Needs a real trade in the last 20s and a tight spread. A quote that vanishes is not a rip.",
   },
   "seat.ORBIT": {
     title: "ORBIT (REG)",
-    body: "Regime tiles: trend / chop / high-vol. Other seats get licensed by this.",
+    body: "Names the regime: QUIET, CHOP, TREND, EXPAND. Weekend UTC is thinner. Never votes a side — it licenses the others (raise the bar in quiet/weekend, sit fade-traps on a trend-day).",
   },
   "seat.CLOCK": {
     title: "CLOCK (TOD)",
-    body: "Session + minutes left. Owns the strike when time is short and distance is large.",
+    body: "Hour/weekday Wilson prior from official settles, n ≥ 8. Soft only — cannot flip the chair alone. Last 4 minutes it sits; STRIKE owns the clock then.",
   },
   "seat.WIRE": {
     title: "WIRE (FNG)",
-    body: "Fear & Greed. Extreme greed fades. Extreme fear can bounce. Weak on its own.",
+    body: "Fear & Greed is a daily index, not a 15-minute timer. Only a hot extreme (7-day path still going that way) gets a soft contrary, cap 55¢.",
   },
   "seat.WARDEN": {
     title: "WARDEN (GATE)",
-    body: "Feed health. If spot or Kalshi is down, WARDEN vetoes the desk. Not a vote, a gate.",
+    body: "Feed health plus whether the print makes sense. Down feeds, sequence gaps, zero strike, a crossed book, a missing 1-minute bar, or frozen OI all silence the family that is garbage. Never votes a side. Basis WIDE is a warning, not a veto.",
   },
 
   "lean.UP": {
@@ -244,11 +244,14 @@ export const GLOSS: Record<string, Gloss> = {
     title: "huddle",
     body: "Recalibrate skills and seat weights from recent settles. Not a new vote — a bookkeeping pass.",
   },
-  "strip.spot": { title: "BTC spot", body: "Last Bitcoin price the desk is using, and which feed it came from." },
+  "strip.spot": {
+    title: "BTC spot",
+    body: "Cash Bitcoin (Binance/Coinbase). Perp is a different price — the subline is perp minus spot in bps. Kalshi 15m settles vs spot/index, not the perpetual.",
+  },
   "strip.ticker": { title: "ticker", body: "This Kalshi 15-minute contract id." },
   "strip.strike": {
     title: "floor strike",
-    body: "The Bitcoin price this window settles against. Close above = YES wins. Close below = NO wins.",
+    body: "The Bitcoin price this window settles against. Close above = YES wins. Close below = NO wins. Paper grades wait for Kalshi’s official result, not this number.",
   },
   "strip.dist": {
     title: "dist to strike",
@@ -262,7 +265,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "strip.feeds": {
     title: "feeds",
-    body: "SPOT (Binance/Coinbase), KALSHI (the book), DERIVS (funding/OI). Green live, amber stale, red down.",
+    body: "SPOT (Binance/Coinbase cash), PERP (OKX/Binance perpetual), KALSHI (the book), DERIVS (funding/OI). Spot and perp are never mixed — basis is perp minus spot in bps. Kalshi 15m is vs spot/index, not the perp. Green live, amber stale, red down.",
   },
   "source.demo": {
     title: "DEMO",
@@ -334,7 +337,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "footer.tape": {
     title: "Settle tape",
-    body: "What happened last window and how the chair was graded. Newest line only.",
+    body: "Official Kalshi YES/NO when it posts. PENDING = waiting on that result — bots are not taught from our spot vs strike.",
   },
 
   "set.wilson": {
@@ -410,7 +413,7 @@ export const TOUR_STEPS: TourStep[] = [
     target: "tour-footer",
     tab: "satoshi",
     title: "Paper only",
-    body: "Not financial advice. Not Kalshi. No real money. The settle tape at the bottom is how the last window was graded.",
+    body: "Not financial advice. Not Kalshi. No real money. The settle tape is official Kalshi result — PENDING until they post it.",
   },
 ];
 

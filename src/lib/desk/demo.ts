@@ -1,5 +1,7 @@
 import { enrichSnapshot } from "./features";
+import { appendPeriod, deltaOver, FUNDING_PERIOD_MS, OI_PERIOD_MS, spaced, valuesOf, type HistPoint } from "./hist";
 import { clamp, last, round, seeded } from "./math";
+import { basisBps, fundingApr } from "./units";
 import type { Candle, Snapshot, WindowMemory } from "./types";
 
 function candle(
@@ -23,6 +25,8 @@ function candle(
     low: bodyLo - dnW,
     volume: vol,
     closed,
+    receipt_ts: t,
+    source: "demo",
   };
 }
 
@@ -38,11 +42,13 @@ export type DemoState = {
   fng: number;
   yes_path: number[];
   imbalance_hist: number[];
-  oi_hist: number[];
-  funding_hist: number[];
+  oi_series: HistPoint[];
+  oi_usd_series: HistPoint[];
+  funding_series: HistPoint[];
   fng_hist: number[];
   scenario: "grind" | "rip" | "quiet";
   vol_med: number;
+  seq: number;
 };
 
 function pickScenario(rng: () => number): DemoState["scenario"] {
@@ -64,7 +70,7 @@ export function newDemoWindow(memory: WindowMemory, remainingMs?: number): DemoS
   const open_spot = 108_000 + Math.round(rng() * 800);
   const strike = Math.round(open_spot / 25) * 25 - 25 + Math.round(rng() * 2) * 25;
   const scenario = pickScenario(rng);
-  const vol_med = scenario === "quiet" ? 18 : 42;
+  const vol_med = (scenario === "quiet" ? 18 : 42) * open_spot;
   const candles: Candle[] = [];
   let px = open_spot - (rng() - 0.5) * 180;
   const drift =
@@ -109,7 +115,7 @@ export function newDemoWindow(memory: WindowMemory, remainingMs?: number): DemoS
       : scenario === "rip"
         ? 0.00026 + rng() * 0.00006
         : (rng() - 0.5) * 0.00008;
-  const oi = 4_800_000_000 + rng() * 400_000_000;
+  const oi = 28_400 + rng() * 1_800;
   const oiTrend = scenario === "grind" ? 1 : scenario === "rip" ? -1 : 0.2;
   return {
     seed,
@@ -123,16 +129,31 @@ export function newDemoWindow(memory: WindowMemory, remainingMs?: number): DemoS
     fng: 28 + Math.round(rng() * 50),
     yes_path,
     imbalance_hist: Array.from({ length: 6 }, () => (rng() - 0.4) * 0.5),
-    oi_hist: Array.from({ length: 12 }, (_, i) => oi * (1 + oiTrend * i * 0.004)),
-    funding_hist: Array.from({ length: 12 }, () => funding + (rng() - 0.5) * 0.00002),
+    oi_series: spaced(
+      Array.from({ length: 16 }, (_, i) => oi * (1 + oiTrend * i * 0.004)),
+      now,
+      5 * 60_000,
+    ),
+    oi_usd_series: spaced(
+      Array.from({ length: 16 }, (_, i) => oi * (1 + oiTrend * i * 0.004) * open_spot),
+      now,
+      5 * 60_000,
+    ),
+    funding_series: spaced(
+      Array.from({ length: 12 }, () => funding + (rng() - 0.5) * 0.00002),
+      now,
+      8 * 3600_000,
+    ),
     fng_hist: Array.from({ length: 7 }, () => 30 + Math.round(rng() * 40)),
     scenario,
     vol_med,
+    seq: 1,
   };
 }
 
 export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
   const now = Date.now();
+  state.seq += 1;
   const rng = seeded((state.seed + Math.floor(now / 1000)) >>> 0);
   const lastC = last(state.candles)!;
   const forming = !lastC.closed;
@@ -163,15 +184,13 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
   const p = 1 / (1 + Math.exp(-(dist / Math.max(40, 80 * Math.sqrt(tfrac)))));
   let yesAsk = Math.round(clamp(p * 100 + 1.2, 8, 88));
   let yesBid = clamp(yesAsk - 2, 1, 96);
-  let leftover = 2 + Math.round(rng() * 4);
-  let noAsk = clamp(100 - leftover - yesAsk, 2, 90);
-  let noBid = clamp(noAsk - 2, 1, 96);
+  let noBid = clamp(100 - yesAsk, 1, 96);
+  let noAsk = clamp(100 - yesBid, 2, 99);
   if (rng() > 0.94) {
     yesAsk = 99;
     yesBid = 98;
     noAsk = 2;
     noBid = 1;
-    leftover = 100 - yesAsk - noAsk;
   }
   const yesMid = (yesBid + yesAsk) / 2;
   state.yes_path.push(round(yesMid, 1));
@@ -189,19 +208,29 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     state.scenario === "quiet" ? (rng() - 0.5) * 0.000008 : (rng() - 0.48) * 0.000006;
   const oiStep =
     state.scenario === "grind"
-      ? 1_800_000 + rng() * 800_000
+      ? 18 + rng() * 10
       : state.scenario === "rip"
-        ? -2_200_000 - rng() * 900_000
-        : (rng() - 0.5) * 400_000;
+        ? -22 - rng() * 12
+        : (rng() - 0.5) * 6;
   state.oi += oiStep;
-  state.funding_hist.push(state.funding);
-  state.oi_hist.push(state.oi);
-  if (state.funding_hist.length > 16) state.funding_hist.shift();
-  if (state.oi_hist.length > 16) state.oi_hist.shift();
+  state.oi_series = appendPeriod(state.oi_series, now, state.oi, OI_PERIOD_MS);
+  state.oi_usd_series = appendPeriod(state.oi_usd_series, now, state.oi * spot, OI_PERIOD_MS);
+  state.funding_series = appendPeriod(
+    state.funding_series,
+    now,
+    state.funding,
+    FUNDING_PERIOD_MS,
+  );
 
   const yesSize = 120 + imb * 80 + rng() * 20;
   const noSize = 120 - imb * 80 + rng() * 20;
-  const oiHist = state.oi_hist;
+  const oi_series = state.oi_series;
+  const oi_usd_series = state.oi_usd_series;
+  const funding_series = state.funding_series;
+
+  const liqLong = state.scenario === "rip" && dist < 0 ? 140_000 : Math.round(rng() * 8_000);
+  const liqShort = state.scenario === "rip" && dist > 0 ? 140_000 : Math.round(rng() * 8_000);
+  const liqN = state.scenario === "rip" ? 5 : state.scenario === "grind" ? 1 : 0;
 
   const snap: Snapshot = {
     as_of: now,
@@ -210,9 +239,30 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     secs_left: 0,
     close_time: state.close_time,
     ticker: `KXBTC15M-DEMO-${new Date(state.close_time).toISOString().slice(11, 16).replace(":", "")}`,
+    kalshi_host: "demo",
+    kalshi_trade_n: 12,
+    kalshi_taker_yes: imb > 0 ? 0.62 : 0.38,
+    official_settles: memory.prior_settles
+      .filter((x): x is "UP" | "DOWN" => x === "UP" || x === "DOWN")
+      .slice(-8)
+      .map((lean, i) => ({
+        ticker: `DEMO-${i}`,
+        close_time: state.close_time - (i + 1) * 15 * 60_000,
+        lean,
+        provider_ts: state.close_time - (i + 1) * 15 * 60_000,
+        receipt_ts: now,
+        source: "demo",
+      })),
     spot: round(spot, 1),
     spot_source: "demo",
     spot_age_s: 0.4,
+    spot_backup: round(spot * (1 + (rng() - 0.5) * 0.0004), 1),
+    spot_backup_source: "demo-2",
+    spot_div_bps: 2,
+    perp: round(spot * 1.0002, 1),
+    perp_source: "demo perpetual",
+    index_px: round(spot, 1),
+    basis_bps: basisBps(spot * 1.0002, spot),
     candles_1m: state.candles.map((c) => ({ ...c })),
     candles_5m: [],
     candles_15m: [],
@@ -227,18 +277,40 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     combined_ask_cents: 0,
     spread_cents: 0,
     quote_age_s: 0.8,
+    quote_ts: now - 800,
+    quote_seq: state.seq,
+    print_age_s: 0.8,
+    last_trade_id: `demo-${state.close_time}`,
+    obs: {
+      provider_ts: now - 800,
+      receipt_ts: now,
+      last_ok_ts: now,
+      seq: state.seq,
+      gap: "ok",
+      source: "demo",
+      ticker: "KXBTC15M-DEMO",
+    },
     yes_mid: yesMid,
     yes_mid_path: [...state.yes_path],
     funding_rate: state.funding,
-    funding_history: [...state.funding_hist],
+    funding_apr: fundingApr(state.funding) || 0,
+    funding_time: state.funding_series.at(-1)?.t ?? now,
+    funding_history: valuesOf(funding_series),
+    funding_series,
     open_interest: state.oi,
-    oi_history: [...oiHist],
-    oi_delta_3m: (last(oiHist) ?? 0) - (oiHist[oiHist.length - 3] ?? last(oiHist) ?? 0),
-    oi_delta_10m: (last(oiHist) ?? 0) - (oiHist[0] ?? 0),
-    oi_delta_1h: (last(oiHist) ?? 0) - (oiHist[0] ?? 0),
-    liq_long_usd: 0,
-    liq_short_usd: 0,
-    force_n: 0,
+    oi_usd: state.oi * spot,
+    oi_history: valuesOf(oi_series),
+    oi_series,
+    oi_usd_series,
+    oi_delta_3m: deltaOver(oi_series, 3 * 60_000, now),
+    oi_delta_10m: deltaOver(oi_series, 10 * 60_000, now),
+    oi_delta_1h: deltaOver(oi_series, 60 * 60_000, now),
+    oi_usd_delta_10m: deltaOver(oi_usd_series, 10 * 60_000, now),
+    liq_long_usd: liqLong,
+    liq_short_usd: liqShort,
+    liq_n: liqN,
+    liq_source: "demo",
+    force_n: liqN,
     cascade_proxy: false,
     fear_greed: state.fng,
     fear_greed_label: state.fng < 25 ? "Extreme Fear" : state.fng > 75 ? "Extreme Greed" : "Neutral",
@@ -251,6 +323,8 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
       spot: "LIVE",
       kalshi: "LIVE",
       derivs: "LIVE",
+      spot_divergent: false,
+      basis_wide: false,
     },
     window_memory: memory,
     regime_key: "",
@@ -274,6 +348,11 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     no_bid_size: noSize,
     spot_lead_bps: 0,
     chalk: false,
+    fair_yes: 50,
+    edge_up: 0,
+    edge_down: 0,
+    fee_yes: 2,
+    fee_no: 2,
   };
   return enrichSnapshot(snap);
 }

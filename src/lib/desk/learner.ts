@@ -129,7 +129,7 @@ function gradePaper(
   if (!card) return;
   if (paper.lean === "UP" || paper.lean === "DOWN") {
     const hit = paper.lean === finish ? 1 : 0;
-    const cents = centsOf(paper.lean, snap.yes_mid, finish, snap.spread_cents);
+    const cents = centsOf(paper.lean, snap, finish);
     creditDirectional(card, hit, paper.confidence, pocketKey, cents);
     tuneFromCard(learner, card, hit, snap);
     bits.push(`${paper.id} ${paper.status[0]} ${hit ? "hit" : "miss"} ${cents >= 0 ? "+" : ""}${cents.toFixed(0)}¢`);
@@ -151,11 +151,11 @@ export function gradeWindow(
     learner.lockdown ||
     snap.as_of < learner.lockdown_until ||
     (learner.lockdown_windows_left ?? 0) > 0;
-  const chalk = snap.chalk || snap.leftover_cents <= 0;
+  const chalk = snap.chalk || snap.leftover_cents > 2;
   const dualDown = snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN";
   if (chalk || dualDown) {
     if (wasLocked) consumeLock(learner);
-    const line = `SETTLE ${new Date(snap.close_time).toISOString().slice(11, 16)} ${finish} · skipped credit (chalk/leftover/feeds)`;
+    const line = `SETTLE ${new Date(snap.close_time).toISOString().slice(11, 16)} ${finish} · skipped credit (chalk/phantom leftover/feeds)`;
     learner.settle_tape = [line, ...learner.settle_tape].slice(0, 40);
     learner.window_memory.prior_settles = [...learner.window_memory.prior_settles, finish].slice(-24);
     updateStreak(learner, finish);
@@ -180,7 +180,7 @@ export function gradeWindow(
     const card = skillId !== "SIT" ? learner.skills[skillId] : null;
     if (v.lean === "UP" || v.lean === "DOWN") {
       const hit = v.lean === finish ? 1 : 0;
-      const cents = centsOf(v.lean, snap.yes_mid, finish, snap.spread_cents);
+      const cents = centsOf(v.lean, snap, finish);
       learner.seat_n[v.seat] = (learner.seat_n[v.seat] ?? 0) + 1;
       learner.seat_hits[v.seat] = (learner.seat_hits[v.seat] ?? 0) + hit;
       updateFade(learner, v.seat, hit);
@@ -205,7 +205,7 @@ export function gradeWindow(
   if (!learner.pattern_book) learner.pattern_book = {};
   for (const p of learner.window_patterns ?? []) {
     if (p.lean !== "UP" && p.lean !== "DOWN") continue;
-    const cents = centsOf(p.lean, snap.yes_mid, finish, snap.spread_cents);
+    const cents = centsOf(p.lean, snap, finish);
     creditPattern(learner.pattern_book, p.kind, p.lean, finish, cents);
     bits.push(
       `${p.kind} ${p.lean === finish ? "hit" : "miss"} ${cents >= 0 ? "+" : ""}${cents.toFixed(0)}¢`,
@@ -215,7 +215,7 @@ export function gradeWindow(
 
   if (chair.lean === "UP" || chair.lean === "DOWN") {
     const hit = chair.lean === finish ? 1 : 0;
-    const cents = centsOf(chair.lean, snap.yes_mid, finish, snap.spread_cents);
+    const cents = centsOf(chair.lean, snap, finish);
     learner.chair_recent = push20(learner.chair_recent, hit);
     learner.chair_ev_sum = (learner.chair_ev_sum ?? 0) + cents;
     learner.chair_ev_n = (learner.chair_ev_n ?? 0) + 1;
@@ -253,11 +253,19 @@ export function gradeWindow(
 
   const line = `SETTLE ${new Date(snap.close_time).toISOString().slice(11, 16)} finish ${finish} · Chair ${chair.lean}${chair.confidence}${
     chair.lean === "UP" || chair.lean === "DOWN"
-      ? ` ${centsOf(chair.lean, snap.yes_mid, finish, snap.spread_cents) >= 0 ? "+" : ""}${centsOf(chair.lean, snap.yes_mid, finish, snap.spread_cents).toFixed(0)}¢`
+      ? ` ${centsOf(chair.lean, snap, finish) >= 0 ? "+" : ""}${centsOf(chair.lean, snap, finish).toFixed(0)}¢`
       : ""
   } · ${bits.slice(0, 10).join(" · ")}`;
   learner.settle_tape = [line, ...learner.settle_tape].slice(0, 48);
   return { learner, line };
+}
+
+export function skipUngraded(learner: Learner, snap: Snapshot, reason: string): Learner {
+  const line = `SETTLE ${new Date(snap.close_time).toISOString().slice(11, 16)} · skipped (${reason})`;
+  learner.settle_tape = [line, ...learner.settle_tape].slice(0, 48);
+  learner.window_memory.path_since_entry = [];
+  learner.window_memory.entry_lean = null;
+  return learner;
 }
 
 function updateStreak(learner: Learner, finish: Lean) {

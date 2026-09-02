@@ -105,26 +105,36 @@ export function readDrift(snap: Snapshot): DriftRead {
 }
 
 export function readStreak(snap: Snapshot): StreakRead {
-  const mem = snap.window_memory;
-  const chips = mem.prior_settles.slice(-8);
-  const live: Lean = snap.spot >= (mem.entry_spot || snap.spot) ? "UP" : "DOWN";
-  const side = mem.streak_side;
-  const n = mem.streak_n;
-  const directional = side != null && side !== "WAIT";
+  const official = snap.official_settles
+    .map((s) => s.lean)
+    .filter((c): c is "UP" | "DOWN" => c === "UP" || c === "DOWN");
+  const chips = (
+    official.length ? official : snap.demo ? snap.window_memory.prior_settles : []
+  )
+    .filter((c): c is "UP" | "DOWN" => c === "UP" || c === "DOWN")
+    .slice(-8);
+  let side: Lean | null = chips.at(-1) ?? null;
+  let n = 0;
+  if (side === "UP" || side === "DOWN") {
+    for (let i = chips.length - 1; i >= 0; i--) {
+      if (chips[i] !== side) break;
+      n += 1;
+    }
+  } else {
+    side = null;
+  }
+  const yes = snap.yes_mid;
+  const live: Lean = yes >= 55 ? "UP" : yes <= 45 ? "DOWN" : "WAIT";
+  const directional = side === "UP" || side === "DOWN";
   const liveAgree = Boolean(directional && live === side);
   const young = n > 0 && n <= 3 && directional;
   const mid = n === 4 && directional;
   const extended = n >= 5 && directional;
-  const last4 = chips.filter((c) => c !== "WAIT").slice(-4);
+  const last4 = chips.slice(-4);
   const alternating =
     last4.length >= 4 && last4.every((c, i) => i === 0 || c !== last4[i - 1]);
-  const yes = snap.yes_mid;
-  const yesAgrees = Boolean(
-    directional && ((side === "UP" && yes >= 55) || (side === "DOWN" && yes <= 45)),
-  );
-  const yesFights = Boolean(
-    directional && ((side === "UP" && yes <= 45) || (side === "DOWN" && yes >= 55)),
-  );
+  const yesAgrees = liveAgree;
+  const yesFights = Boolean(directional && live !== "WAIT" && live !== side);
   return {
     n,
     side,
@@ -133,7 +143,7 @@ export function readStreak(snap: Snapshot): StreakRead {
     mid,
     extended,
     liveAgree,
-    liveBreak: young && !liveAgree,
+    liveBreak: young && yesFights,
     alternating,
     yesAgrees,
     yesFights,

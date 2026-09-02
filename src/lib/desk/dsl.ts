@@ -40,8 +40,8 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
         : 0
       : 0;
   const mem = snap.window_memory;
-  const livePath = snap.spot >= (mem.entry_spot || snap.spot) ? 1 : -1;
   const yes = snap.yes_mid;
+  const livePath = yes >= 55 ? 1 : yes <= 45 ? -1 : 0;
   const no = 100 - yes;
   const fng7 = snap.fng_history;
   const fngDelta = fng7.length >= 2 ? fng7[fng7.length - 1]! - fng7[0]! : 0;
@@ -131,8 +131,13 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
     atr_pct: snap.atr_pct,
     yes_mid: yes,
     no_mid: no,
+    yes_ask: snap.yes_ask,
+    no_ask: snap.no_ask,
     spread: snap.spread_cents,
     leftover: snap.leftover_cents,
+    print_age: snap.print_age_s,
+    quote_hole: snap.spread_cents > 6 ? 1 : 0,
+    print_stale: snap.print_age_s > 20 ? 1 : 0,
     yes_rip30: d30,
     yes_rip60: d60,
     yes_rip120: d120,
@@ -152,13 +157,20 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
     clock_itm: clk.itm === "UP" ? 1 : clk.itm === "DOWN" ? -1 : 0,
     funding: lastF,
     abs_funding: Math.abs(lastF),
+    basis_bps: snap.basis_bps,
+    abs_basis: Math.abs(snap.basis_bps),
     oi_delta_10m: snap.oi_delta_10m,
-    oi_with_px: Math.sign(snap.oi_delta_10m) === Math.sign(snap.ret15) && snap.oi_delta_10m !== 0 ? 1 : 0,
-    oi_flush: snap.oi_delta_10m < 0 ? 1 : 0,
-    funding_extreme: snap.funding_history.filter((x) => Math.abs(x) > 0.0002).length >= 3 ? 1 : 0,
+    oi_usd_delta_10m: snap.oi_usd_delta_10m,
+    oi_with_px: Math.sign(snap.oi_delta_10m) === Math.sign(snap.ret15) && Math.sign(snap.oi_usd_delta_10m) === Math.sign(snap.ret15) && snap.oi_delta_10m !== 0 && snap.oi_usd_delta_10m !== 0 ? 1 : 0,
+    oi_flush: snap.oi_delta_10m < 0 && snap.oi_usd_delta_10m < 0 ? 1 : 0,
+    funding_extreme:
+      snap.funding_series.filter((p) => Math.abs(p.v) > 0.0002).length >= 3 ? 1 : 0,
     fng: snap.fear_greed,
     fng_side: snap.fear_greed >= 80 ? 1 : snap.fear_greed <= 20 ? -1 : 0,
     fng_delta: fngDelta,
+    fng_hot:
+      (snap.fear_greed >= 80 && fngDelta >= 0) || (snap.fear_greed <= 20 && fngDelta <= 0) ? 1 : 0,
+    weekend: snap.as_of && new Date(snap.as_of).getUTCDay() % 6 === 0 ? 1 : 0,
     spot_lead_bps: snap.spot_lead_bps,
     abs_lead: Math.abs(snap.spot_lead_bps),
     px_dir: pxDir,
@@ -239,6 +251,10 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
   out.streak_live_break = st.liveBreak ? 1 : 0;
   out.streak_alt = st.alternating ? 1 : 0;
   out.streak_yes = st.yesAgrees ? 1 : 0;
+  out.streak_n = st.n;
+  out.streak_side = st.side === "UP" ? 1 : st.side === "DOWN" ? -1 : 0;
+  out.live_path = st.live === "UP" ? 1 : st.live === "DOWN" ? -1 : 0;
+  out.streak_agree = st.liveAgree ? 1 : 0;
   out.exhaust_climax = xh.climax ? 1 : 0;
   out.exhaust_inside = xh.inside ? 1 : 0;
   out.exhaust_rsi_div = xh.rsiDiv ? 1 : 0;
@@ -328,7 +344,7 @@ function resolveLean(spec: string, feats: FeatMap): Lean {
     if (x < 0) return "UP";
     return "WAIT";
   }
-  if (spec === "cheap") return num(feats, "yes_mid") <= 50 ? "UP" : "DOWN";
+  if (spec === "cheap") return num(feats, "yes_ask") <= num(feats, "no_ask") ? "UP" : "DOWN";
   if (spec === "itm") return num(feats, "dist") > 0 ? "UP" : "DOWN";
   return "WAIT";
 }
@@ -776,12 +792,13 @@ export const SKILL_RULES: Record<string, SkillRule> = {
   },
   "ODDS.cheap_yes": {
     all: [
-      { feat: "yes_mid", op: "lte", thresh: "cheap.cents" },
+      { feat: "yes_ask", op: "lte", thresh: "cheap.cents" },
       { feat: "trend_day", op: "eq", value: 0 },
     ],
     none: [
       { feat: "yes_rip60", op: "lt", value: -6 },
       { feat: "strike_owns", op: "eq", value: 1 },
+      { feat: "quote_hole", op: "eq", value: 1 },
     ],
     lean: "UP",
     edge: "fixed:0.6",
@@ -802,10 +819,13 @@ export const SKILL_RULES: Record<string, SkillRule> = {
   "CHEAP.value": {
     all: [{ feat: "trend_day", op: "eq", value: 0 }],
     any: [
-      { feat: "yes_mid", op: "lte", thresh: "cheap.cents" },
-      { feat: "no_mid", op: "lte", thresh: "cheap.cents" },
+      { feat: "yes_ask", op: "lte", thresh: "cheap.cents" },
+      { feat: "no_ask", op: "lte", thresh: "cheap.cents" },
     ],
-    none: [{ feat: "strike_owns", op: "eq", value: 1 }],
+    none: [
+      { feat: "strike_owns", op: "eq", value: 1 },
+      { feat: "quote_hole", op: "eq", value: 1 },
+    ],
     lean: "cheap",
     edge: "fixed:0.6",
   },
@@ -814,7 +834,11 @@ export const SKILL_RULES: Record<string, SkillRule> = {
       { feat: "abs_rip60", op: "gte", thresh: "fade.rip" },
       { feat: "trend_day", op: "eq", value: 0 },
     ],
-    none: [{ feat: "strike_owns", op: "eq", value: 1 }],
+    none: [
+      { feat: "strike_owns", op: "eq", value: 1 },
+      { feat: "quote_hole", op: "eq", value: 1 },
+      { feat: "print_stale", op: "eq", value: 1 },
+    ],
     lean: "fade:yes_rip60",
     edge: "fixed:0.5",
   },
@@ -824,10 +848,7 @@ export const SKILL_RULES: Record<string, SkillRule> = {
     edge: "fixed:0.7",
   },
   "WIRE.extreme_fng": {
-    any: [
-      { feat: "fng", op: "lte", thresh: "fng.lo" },
-      { feat: "fng", op: "gte", thresh: "fng.hi" },
-    ],
+    all: [{ feat: "fng_hot", op: "eq", value: 1 }],
     lean: "fade:fng_side",
     edge: "fixed:0.4",
     cap: 55,

@@ -2,6 +2,7 @@ import { runBots } from "./bots";
 import { runChair } from "./chair";
 import { demoFinish, demoTick, newDemoWindow, type DemoState } from "./demo";
 import { chicagoHuddleDue, gradeWindow, runHuddle, acceptCandidate, windowsHuddleDue } from "./learner";
+import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadLearner, loadPersisted, savePersisted } from "./persist";
 import type { ChairResult, Learner, Settings, Snapshot, Vote } from "./types";
@@ -24,7 +25,15 @@ let prevSnap: Snapshot | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
 let lastClose = 0;
-let liveHist = { funding: [] as number[], oi: [] as number[] };
+let liveHist = { funding: [] as HistPoint[], oi: [] as HistPoint[], oiUsd: [] as HistPoint[] };
+let pending: {
+  ticker: string;
+  close_time: number;
+  snap: Snapshot;
+  votes: Vote[];
+  chair: ChairResult;
+  since: number;
+} | null = null;
 
 const listeners = new Set<(f: DeskFrame) => void>();
 
@@ -58,13 +67,30 @@ function ensureDemo(remainingMs?: number) {
 async function liveSnap(): Promise<Snapshot> {
   const { fetchLiveBundle } = await import("./server-feeds");
   const bundle = await fetchLiveBundle();
-  if (bundle.funding_rate != null) {
-    liveHist.funding = [...liveHist.funding, bundle.funding_rate].slice(-16);
-    bundle.funding_history = liveHist.funding;
+  if (bundle.funding_series.length >= 2) {
+    liveHist.funding = bundle.funding_series;
+  } else if (bundle.funding_rate != null && bundle.funding_time) {
+    liveHist.funding = appendPeriod(
+      liveHist.funding,
+      bundle.funding_time,
+      bundle.funding_rate,
+      nativePeriodMs(liveHist.funding, FUNDING_PERIOD_MS),
+    );
+    bundle.funding_series = liveHist.funding;
+    bundle.funding_history = liveHist.funding.map((p) => p.v);
   }
-  if (bundle.open_interest != null) {
-    liveHist.oi = [...liveHist.oi, bundle.open_interest].slice(-16);
-    bundle.oi_history = liveHist.oi;
+  if (bundle.oi_series.length >= 2) {
+    liveHist.oi = bundle.oi_series;
+  } else if (bundle.open_interest != null) {
+    liveHist.oi = appendPeriod(liveHist.oi, bundle.as_of, bundle.open_interest, OI_PERIOD_MS);
+    bundle.oi_series = liveHist.oi;
+    bundle.oi_history = liveHist.oi.map((p) => p.v);
+  }
+  if (bundle.oi_usd_series.length >= 2) {
+    liveHist.oiUsd = bundle.oi_usd_series;
+  } else if (bundle.oi_usd != null) {
+    liveHist.oiUsd = appendPeriod(liveHist.oiUsd, bundle.as_of, bundle.oi_usd, OI_PERIOD_MS);
+    bundle.oi_usd_series = liveHist.oiUsd;
   }
   return bundleToSnapshot(bundle, learner.window_memory, prevSnap);
 }
@@ -76,26 +102,83 @@ function maybeHuddle() {
   }
 }
 
-function settleIfNeeded(snap: Snapshot, votes: Vote[], chair: ChairResult) {
-  if (snap.secs_left > 0.4) return;
-  if (lastClose === snap.close_time) return;
-  lastClose = snap.close_time;
-  const finish =
-    settings.source === "demo" && demo
-      ? demoFinish(demo)
-      : snap.spot > snap.strike
-        ? "UP"
-        : "DOWN";
+function applyGrade(
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+  finish: "UP" | "DOWN",
+  source: string,
+) {
+  learner.settle_tape = learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
   const g = gradeWindow(learner, snap, votes, chair, finish);
   learner = g.learner;
+  if (learner.settle_tape[0]) {
+    learner.settle_tape[0] = `${learner.settle_tape[0]} · ${source}`;
+  }
   if (windowsHuddleDue(learner) || chicagoHuddleDue(learner.last_huddle)) {
     learner = runHuddle(learner).learner;
   }
   learner.window_memory.entry_spot = 0;
-  if (settings.source === "demo") {
-    demo = newDemoWindow(learner.window_memory, 15 * 60_000);
-  }
   persist();
+}
+
+function officialHit(snap: Snapshot, ticker: string, close_time: number) {
+  return (
+    snap.official_settles.find(
+      (s) => s.ticker && s.ticker === ticker && (s.lean === "UP" || s.lean === "DOWN"),
+    ) ??
+    snap.official_settles.find(
+      (s) =>
+        close_time > 0 &&
+        Math.abs(s.close_time - close_time) < 90_000 &&
+        (s.lean === "UP" || s.lean === "DOWN"),
+    )
+  );
+}
+
+function markPending(snap: Snapshot) {
+  const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);
+  const line = `PENDING ${hhmm} ${snap.ticker} · awaiting Kalshi result — bots not taught`;
+  learner.settle_tape = [line, ...learner.settle_tape.filter((l) => !l.startsWith("PENDING "))].slice(0, 48);
+  persist();
+}
+
+function resolvePending(snap: Snapshot) {
+  if (!pending) return;
+  const hit = officialHit(snap, pending.ticker, pending.close_time);
+  if (!hit) return;
+  applyGrade(pending.snap, pending.votes, pending.chair, hit.lean, "kalshi-result");
+  pending = null;
+}
+
+function settleIfNeeded(snap: Snapshot, votes: Vote[], chair: ChairResult) {
+  if (settings.source === "demo") {
+    if (snap.secs_left > 0.4) return;
+    if (lastClose === snap.close_time) return;
+    lastClose = snap.close_time;
+    applyGrade(snap, votes, chair, demoFinish(demo!), "demo");
+    demo = newDemoWindow(learner.window_memory, 15 * 60_000);
+    return;
+  }
+  resolvePending(snap);
+  if (snap.secs_left > 0.4) return;
+  if (lastClose === snap.close_time) return;
+  lastClose = snap.close_time;
+  const hit = officialHit(snap, snap.ticker, snap.close_time);
+  if (hit) {
+    applyGrade(snap, votes, chair, hit.lean, "kalshi-result");
+    pending = null;
+    return;
+  }
+  pending = {
+    ticker: snap.ticker,
+    close_time: snap.close_time,
+    snap,
+    votes,
+    chair,
+    since: Date.now(),
+  };
+  markPending(snap);
 }
 
 async function tick() {
@@ -128,7 +211,7 @@ async function tick() {
     lastChair = chair;
     lastError = null;
     settleIfNeeded(snap, votes, chair);
-    emit();
+    emit({ settling: pending != null });
   } catch (e) {
     lastError = e instanceof Error ? e.message : String(e);
     emit();
@@ -166,7 +249,7 @@ function runDemoOnce() {
   lastChair = chair;
   lastError = null;
   settleIfNeeded(snap, votes, chair);
-  emit();
+  emit({ settling: pending != null });
 }
 
 export function startEngine() {
@@ -201,6 +284,7 @@ export function patchSettings(p: Partial<Settings>) {
     prevSnap = null;
     demo = null;
     lastClose = 0;
+    pending = null;
     lastVotes = [];
     lastChair = null;
     persist();
@@ -220,12 +304,14 @@ export function patchSettings(p: Partial<Settings>) {
 export function resetDemoWindow() {
   demo = newDemoWindow(learner.window_memory, 15 * 60_000);
   lastClose = 0;
+  pending = null;
   void tick();
 }
 
 export function jumpDemo(ms: number) {
   demo = newDemoWindow(learner.window_memory, ms);
   lastClose = 0;
+  pending = null;
   void tick();
 }
 

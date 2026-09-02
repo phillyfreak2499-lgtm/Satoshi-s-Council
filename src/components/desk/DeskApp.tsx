@@ -180,6 +180,7 @@ export function DeskApp() {
         lockdown={frame.learner.lockdown}
         lockdown_until={frame.learner.lockdown_until}
         tape={frame.learner.settle_tape}
+        settling={frame.settling}
       />
       <footer
         data-tour="tour-footer"

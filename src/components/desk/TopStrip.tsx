@@ -127,7 +127,11 @@ export function TopStrip({
           k="BTC spot"
           gloss="strip.spot"
           v={fmtPx(snap.spot)}
-          sub={`${snap.spot_source} ${fmtAge(snap.spot_age_s)}`}
+          sub={`${snap.spot_source} ${fmtAge(snap.spot_age_s)}${
+            snap.perp
+              ? ` · perp ${snap.basis_bps >= 0 ? "+" : ""}${snap.basis_bps.toFixed(1)}bp`
+              : ""
+          }`}
         />
         <Cell k="ticker" gloss="strip.ticker" v={snap.ticker} />
         <Cell k="floor strike" gloss="strip.strike" v={fmtPx(snap.strike)} sub={snap.strike_source} />
@@ -144,9 +148,10 @@ export function TopStrip({
         <Cell k="YES bid / ask" gloss="strip.yes" v={`${fmtC(snap.yes_bid)} / ${fmtC(snap.yes_ask)}`} />
         <Cell k="NO bid / ask" gloss="strip.no" v={`${fmtC(snap.no_bid)} / ${fmtC(snap.no_ask)}`} />
         <Cell
-          k="leftover / comb / spr"
-          gloss="strip.leftover"
-          v={`${fmtC(snap.leftover_cents)} · ${fmtC(snap.combined_ask_cents)} · ${fmtC(snap.spread_cents)}`}
+          k="fair / edge / fee"
+          gloss="strip.fair"
+          v={`fair ${fmtC(snap.fair_yes)}`}
+          sub={`${snap.edge_up >= 0 ? "+" : ""}${snap.edge_up.toFixed(1)} UP · ${snap.edge_down >= 0 ? "+" : ""}${snap.edge_down.toFixed(1)} DN · fee ${snap.fee_yes}/${snap.fee_no} · comb ${fmtC(snap.combined_ask_cents)}`}
         />
         <Cell
           k="feeds"

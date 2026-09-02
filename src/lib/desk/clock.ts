@@ -31,10 +31,40 @@ export function readClock(snap: Snapshot): ClockRead {
   };
 }
 
-export function centsOf(lean: Lean, yesMid: number, finish: "UP" | "DOWN", spread = 0): number {
+/** Abramowitz–Stegun Φ(x). */
+export function normCdf(x: number): number {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const z = Math.abs(x) / Math.SQRT2;
+  const t = 1 / (1 + p * z);
+  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
+  return 0.5 * (1 + sign * y);
+}
+
+/** Kalshi taker fee in cents: ceil(0.07 · P · (1−P) · 100) for 1 contract. */
+export function takerFeeCents(priceCents: number): number {
+  const p = clamp(priceCents, 1, 99) / 100;
+  return Math.ceil(7 * p * (1 - p));
+}
+
+export function fairYesCents(snap: Snapshot): number {
+  const c = readClock(snap);
+  const signed = c.sigma > 0 ? c.dist / c.sigma : 0;
+  return clamp(normCdf(signed) * 100, 1, 99);
+}
+
+export function centsOf(lean: Lean, snap: Snapshot, finish: "UP" | "DOWN"): number {
   if (lean !== "UP" && lean !== "DOWN") return 0;
-  const mid = clamp(yesMid, 1, 99);
-  const cost = Math.max(0, spread) / 2;
-  if (lean === "UP") return (finish === "UP" ? 100 : 0) - mid - cost;
-  return (finish === "DOWN" ? 100 : 0) - (100 - mid) - cost;
+  const px =
+    lean === "UP"
+      ? snap.yes_ask || snap.yes_mid || 50
+      : snap.no_ask || 100 - (snap.yes_mid || 50);
+  const fee = takerFeeCents(px);
+  const pay = lean === finish ? 100 : 0;
+  return pay - px - fee;
 }

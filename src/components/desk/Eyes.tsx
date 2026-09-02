@@ -14,24 +14,261 @@ const WAIT = "#d4a017";
 const GRID = "#232833";
 const FG = "#8b90a0";
 const LINE = "#c8ccd4";
+const BG = "#161a22";
+const INK = "#08090b";
+const FONT = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
+const FONT_SM = "500 9px 'IBM Plex Mono', ui-monospace, monospace";
 
 function useDraw(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, dep: unknown) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = c.clientWidth || 320;
-    const h = c.clientHeight || 140;
-    c.width = Math.floor(w * dpr);
-    c.height = Math.floor(h * dpr);
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    draw(ctx, w, h);
-  }, [dep, draw]);
+    const paint = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = c.clientWidth || 320;
+      const h = c.clientHeight || 140;
+      c.width = Math.floor(w * dpr);
+      c.height = Math.floor(h * dpr);
+      const ctx = c.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawRef.current(ctx, w, h);
+    };
+    paint();
+    const ro = new ResizeObserver(paint);
+    ro.observe(c);
+    return () => ro.disconnect();
+  }, [dep]);
   return ref;
+}
+
+function fmtPx(p: number) {
+  const a = Math.abs(p);
+  if (a >= 1000) return p.toFixed(0);
+  if (a >= 100) return p.toFixed(1);
+  if (a >= 1) return p.toFixed(2);
+  return p.toFixed(4);
+}
+
+function fillRound(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 2) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fill();
+}
+
+function lastPill(ctx: CanvasRenderingContext2D, w: number, y: number, text: string, color: string) {
+  ctx.save();
+  ctx.font = FONT_SM;
+  const tw = ctx.measureText(text).width + 8;
+  const x = w - tw - 3;
+  const top = Math.max(2, Math.min(y - 7, ctx.canvas.clientHeight - 16));
+  ctx.fillStyle = color;
+  fillRound(ctx, x, top, tw, 14, 2);
+  ctx.fillStyle = INK;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x + tw / 2, top + 8);
+  ctx.restore();
+}
+
+type Pane = {
+  padL: number;
+  padR: number;
+  plotT: number;
+  plotB: number;
+  volT: number;
+  volB: number;
+  hi: number;
+  lo: number;
+  bw: number;
+  y: (p: number) => number;
+  xAt: (i: number) => number;
+  w: number;
+  h: number;
+  withVol: boolean;
+};
+
+function layoutOhlc(
+  w: number,
+  h: number,
+  bars: Candle[],
+  extra: number[] = [],
+  withVol = false,
+  head = 0.06,
+): Pane {
+  const padL = 8;
+  const padR = 50;
+  const padT = 18;
+  const padB = 6;
+  const volH = withVol ? Math.round(h * 0.2) : 0;
+  const gap = withVol ? 7 : 0;
+  const plotB = h - padB - volH - gap;
+  const plotT = padT;
+  const rawHi = Math.max(...bars.map((b) => b.high), ...extra);
+  const rawLo = Math.min(...bars.map((b) => b.low), ...extra);
+  const pad = Math.max(1e-9, rawHi - rawLo) * head;
+  const hi = rawHi + pad;
+  const lo = rawLo - pad * 0.45;
+  const span = Math.max(1e-9, hi - lo);
+  const bw = (w - padL - padR) / Math.max(1, bars.length);
+  const y = (p: number) => plotT + ((hi - p) / span) * (plotB - plotT);
+  const xAt = (i: number) => padL + i * bw + bw * 0.5;
+  return {
+    padL,
+    padR,
+    plotT,
+    plotB,
+    volT: plotB + gap,
+    volB: h - padB,
+    hi,
+    lo,
+    bw,
+    y,
+    xAt,
+    w,
+    h,
+    withVol,
+  };
+}
+
+function paintPane(ctx: CanvasRenderingContext2D, pane: Pane, nGrid = 4) {
+  const { w, h, plotT, plotB, padL, padR, hi, lo } = pane;
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = GRID;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < nGrid; i++) {
+    const yy = plotT + ((plotB - plotT) * i) / nGrid;
+    ctx.moveTo(padL, yy);
+    ctx.lineTo(w - padR, yy);
+  }
+  ctx.stroke();
+  ctx.font = FONT_SM;
+  ctx.fillStyle = FG;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= nGrid; i++) {
+    const t = i / nGrid;
+    const p = hi - (hi - lo) * t;
+    const yy = plotT + (plotB - plotT) * t;
+    ctx.fillText(fmtPx(p), w - 4, yy);
+  }
+  if (pane.withVol) {
+    ctx.strokeStyle = GRID;
+    ctx.beginPath();
+    ctx.moveTo(padL, pane.volT - 3);
+    ctx.lineTo(w - padR, pane.volT - 3);
+    ctx.stroke();
+  }
+}
+
+function emaOf(xs: number[], n: number) {
+  if (!xs.length) return [];
+  const k = 2 / (n + 1);
+  let e = xs[0]!;
+  return xs.map((x) => (e = x * k + e * (1 - k)));
+}
+
+function drawVolume(ctx: CanvasRenderingContext2D, pane: Pane, bars: Candle[]) {
+  if (!pane.withVol) return;
+  const max = Math.max(...bars.map((b) => b.volume), 1e-9);
+  const { padL, bw, volT, volB } = pane;
+  const h = volB - volT;
+  bars.forEach((b, i) => {
+    const x = padL + i * bw;
+    const bh = (b.volume / max) * h;
+    ctx.fillStyle = b.close >= b.open ? `${UP}99` : `${DOWN}99`;
+    ctx.fillRect(x + bw * 0.18, volB - bh, Math.max(1, bw * 0.64), Math.max(1, bh));
+  });
+}
+
+function drawEma(ctx: CanvasRenderingContext2D, pane: Pane, bars: Candle[]) {
+  const xs = emaOf(
+    bars.map((b) => b.close),
+    9,
+  );
+  if (xs.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = LINE;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1.15;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  xs.forEach((v, i) => {
+    const x = pane.xAt(i);
+    const y = pane.y(v);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLastLine(ctx: CanvasRenderingContext2D, pane: Pane, px: number, color: string, tag?: string) {
+  const y = pane.y(px);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(pane.padL, y);
+  ctx.lineTo(pane.w - pane.padR, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  lastPill(ctx, pane.w, y, tag ?? fmtPx(px), color);
+  ctx.restore();
+}
+
+function drawCandleBodies(
+  ctx: CanvasRenderingContext2D,
+  pane: Pane,
+  bars: Candle[],
+  styleAt?: (b: Candle, i: number) => { reject?: boolean; doji?: boolean; maru?: boolean },
+) {
+  const { y, xAt, bw } = pane;
+  bars.forEach((b, i) => {
+    const x = xAt(i);
+    const up = b.close >= b.open;
+    const st = styleAt?.(b, i);
+    ctx.save();
+    ctx.globalAlpha = b.closed ? 1 : 0.45;
+    const col = st?.reject ? WAIT : up ? UP : DOWN;
+    ctx.strokeStyle = col;
+    ctx.fillStyle = up ? UP : DOWN;
+    ctx.lineWidth = st?.reject ? 1.8 : 1;
+    ctx.lineCap = "butt";
+    ctx.beginPath();
+    ctx.moveTo(x, y(b.high));
+    ctx.lineTo(x, y(b.low));
+    ctx.stroke();
+    const top = y(Math.max(b.open, b.close));
+    const bot = y(Math.min(b.open, b.close));
+    const bh = Math.max(1, bot - top);
+    const bodyW = Math.max(2, bw * 0.62);
+    if (st?.doji || bh <= 1.2) {
+      ctx.strokeStyle = st?.doji ? WAIT : col;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x - bodyW / 2, (top + bot) / 2);
+      ctx.lineTo(x + bodyW / 2, (top + bot) / 2);
+      ctx.stroke();
+    } else {
+      ctx.fillRect(x - bodyW / 2, top, bodyW, bh);
+      if (st?.maru) {
+        ctx.strokeStyle = LINE;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - bodyW / 2, top, bodyW, bh);
+      }
+    }
+    ctx.restore();
+  });
 }
 
 function candles(
@@ -42,46 +279,25 @@ function candles(
   strike?: number,
   mark?: number,
 ) {
-  if (!bars.length) return;
-  const pad = 8;
-  const slice = bars.slice(-60);
-  const hi = Math.max(...slice.map((b) => b.high), strike ?? -Infinity);
-  const lo = Math.min(...slice.map((b) => b.low), strike ?? Infinity);
-  const span = Math.max(1, hi - lo);
-  const bw = (w - pad * 2) / slice.length;
-  const y = (p: number) => pad + ((hi - p) / span) * (h - pad * 2);
-  ctx.strokeStyle = GRID;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, y((hi + lo) / 2));
-  ctx.lineTo(w, y((hi + lo) / 2));
-  ctx.stroke();
-  if (strike) {
-    ctx.strokeStyle = WAIT;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    ctx.moveTo(0, y(strike));
-    ctx.lineTo(w, y(strike));
-    ctx.stroke();
-    ctx.setLineDash([]);
+  if (!bars.length) {
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, w, h);
+    return;
   }
-  slice.forEach((b, i) => {
-    const x = pad + i * bw + bw * 0.5;
-    const up = b.close >= b.open;
-    ctx.strokeStyle = up ? UP : DOWN;
-    ctx.fillStyle = up ? UP : DOWN;
-    ctx.beginPath();
-    ctx.moveTo(x, y(b.high));
-    ctx.lineTo(x, y(b.low));
-    ctx.stroke();
-    const top = y(Math.max(b.open, b.close));
-    const bot = y(Math.min(b.open, b.close));
-    ctx.fillRect(x - bw * 0.3, top, Math.max(1, bw * 0.6), Math.max(1, bot - top));
-    if (mark === i) {
-      ctx.strokeStyle = WAIT;
-      ctx.strokeRect(x - bw * 0.45, y(b.high) - 2, bw * 0.9, y(b.low) - y(b.high) + 4);
-    }
-  });
+  const extra = strike != null ? [strike] : [];
+  const pane = layoutOhlc(w, h, bars, extra, true, 0.05);
+  paintPane(ctx, pane);
+  drawVolume(ctx, pane, bars);
+  if (mark != null && bars[mark]) {
+    const x = pane.xAt(mark);
+    ctx.fillStyle = `${WAIT}22`;
+    ctx.fillRect(x - pane.bw * 0.5, pane.plotT, pane.bw, pane.plotB - pane.plotT);
+  }
+  drawCandleBodies(ctx, pane, bars);
+  drawEma(ctx, pane, bars);
+  const last = bars[bars.length - 1]!;
+  drawLastLine(ctx, pane, last.close, last.close >= last.open ? UP : DOWN);
+  if (strike != null) drawLastLine(ctx, pane, strike, WAIT, `K ${fmtPx(strike)}`);
 }
 
 function spark(
@@ -92,30 +308,71 @@ function spark(
   color: string,
   mid?: number,
 ) {
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, w, h);
   if (xs.length < 2) return;
-  const pad = 8;
+  const padL = 8;
+  const padR = 50;
+  const padT = 14;
+  const padB = 10;
   const hi = Math.max(...xs, mid ?? -Infinity);
   const lo = Math.min(...xs, mid ?? Infinity);
   const span = Math.max(1e-9, hi - lo);
-  const y = (p: number) => pad + ((hi - p) / span) * (h - pad * 2);
+  const head = span * 0.08;
+  const y = (p: number) => padT + ((hi + head - p) / (span + head * 2)) * (h - padT - padB);
+  ctx.strokeStyle = GRID;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < 4; i++) {
+    const yy = padT + ((h - padT - padB) * i) / 4;
+    ctx.moveTo(padL, yy);
+    ctx.lineTo(w - padR, yy);
+  }
+  ctx.stroke();
+  ctx.font = FONT_SM;
+  ctx.fillStyle = FG;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ctx.fillText(fmtPx(hi), w - 4, y(hi));
+  ctx.fillText(fmtPx(lo), w - 4, y(lo));
   if (mid != null) {
     ctx.strokeStyle = GRID;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(0, y(mid));
-    ctx.lineTo(w, y(mid));
+    ctx.moveTo(padL, y(mid));
+    ctx.lineTo(w - padR, y(mid));
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.fillStyle = FG;
+    ctx.fillText(fmtPx(mid), w - 4, y(mid));
   }
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.4;
+  const pts = xs.map((v, i) => ({
+    x: padL + (i / (xs.length - 1)) * (w - padL - padR),
+    y: y(v),
+  }));
+  const last = pts[pts.length - 1]!;
   ctx.beginPath();
-  xs.forEach((v, i) => {
-    const x = pad + (i / (xs.length - 1)) * (w - pad * 2);
-    if (i === 0) ctx.moveTo(x, y(v));
-    else ctx.lineTo(x, y(v));
-  });
+  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.lineTo(last.x, h - padB);
+  ctx.lineTo(pts[0]!.x, h - padB);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(0, padT, 0, h - padB);
+  g.addColorStop(0, `${color}3d`);
+  g.addColorStop(1, `${color}00`);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.beginPath();
+  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.7;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
   ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 2.6, 0, Math.PI * 2);
+  ctx.fill();
+  lastPill(ctx, w, last.y, fmtPx(xs[xs.length - 1]!), color);
 }
 
 function hist(
@@ -124,27 +381,69 @@ function hist(
   h: number,
   xs: number[],
   colorFor: (v: number, i: number) => string,
+  opts?: { from?: "mid" | "bottom"; labels?: string[] },
 ) {
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, w, h);
   if (!xs.length) return;
-  const pad = 8;
+  const pad = 10;
+  const padT = 16;
+  const from = opts?.from ?? "mid";
   const max = Math.max(...xs.map(Math.abs), 1e-9);
   const bw = (w - pad * 2) / xs.length;
-  const mid = h / 2;
+  const barW = Math.max(2, bw * 0.72);
+  const mid = (h + padT - pad) / 2;
+  if (from === "mid") {
+    ctx.strokeStyle = GRID;
+    ctx.beginPath();
+    ctx.moveTo(pad, mid);
+    ctx.lineTo(w - pad, mid);
+    ctx.stroke();
+  }
   xs.forEach((v, i) => {
+    const x = pad + i * bw + (bw - barW) / 2;
+    ctx.globalAlpha = 0.4 + 0.6 * (Math.abs(v) / max);
     ctx.fillStyle = colorFor(v, i);
-    const bh = (Math.abs(v) / max) * (h / 2 - pad);
-    const x = pad + i * bw;
-    if (v >= 0) ctx.fillRect(x, mid - bh, Math.max(1, bw - 1), bh);
-    else ctx.fillRect(x, mid, Math.max(1, bw - 1), bh);
+    if (from === "bottom") {
+      const bh = (Math.abs(v) / max) * (h - padT - pad);
+      ctx.fillRect(x, h - pad - bh, barW, Math.max(1, bh));
+    } else if (v >= 0) {
+      const bh = (v / max) * (mid - padT);
+      ctx.fillRect(x, mid - bh, barW, Math.max(1, bh));
+    } else {
+      const bh = (-v / max) * (h - pad - mid);
+      ctx.fillRect(x, mid, barW, Math.max(1, bh));
+    }
+    ctx.globalAlpha = 1;
+    if (opts?.labels?.[i]) {
+      ctx.font = FONT_SM;
+      ctx.fillStyle = FG;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(opts.labels[i]!, x + barW / 2, 3);
+    }
   });
 }
 
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex h-36 items-center justify-center border border-dashed border-border bg-surface-2 font-mono text-ui text-muted">
-      {text}
-    </div>
-  );
+function ribbon(ctx: CanvasRenderingContext2D, w: number, h: number, chips: ("UP" | "DOWN" | "WAIT")[]) {
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, w, h);
+  if (!chips.length) return;
+  const pad = 10;
+  const bw = (w - pad * 2) / chips.length;
+  const top = 18;
+  const bh = h - top - pad;
+  chips.forEach((c, i) => {
+    ctx.fillStyle = c === "UP" ? UP : c === "DOWN" ? DOWN : GRID;
+    ctx.globalAlpha = c === "WAIT" ? 0.35 : 0.88;
+    ctx.fillRect(pad + i * bw + 1, top, Math.max(2, bw - 2), bh);
+  });
+  ctx.globalAlpha = 1;
+  ctx.font = FONT_SM;
+  ctx.fillStyle = FG;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(`${chips.length} bars`, pad, 4);
 }
 
 function markColor(kind: MarkKind, lean: WickMark["lean"]): string {
@@ -153,19 +452,39 @@ function markColor(kind: MarkKind, lean: WickMark["lean"]): string {
   return WAIT;
 }
 
-function labelWick(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string) {
+function labelWick(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  stemY?: number,
+) {
   ctx.save();
-  ctx.font = "9px ui-monospace, 'IBM Plex Mono', monospace";
+  ctx.font = FONT_SM;
   ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
-  const tw = ctx.measureText(text).width + 6;
-  ctx.fillStyle = "#101217";
-  ctx.fillRect(x - tw / 2, y - 10, tw, 10);
+  ctx.textBaseline = "middle";
+  const tw = ctx.measureText(text).width + 8;
+  const th = 12;
+  const lx = x;
+  const top = y - th;
+  if (stemY != null) {
+    ctx.strokeStyle = `${color}99`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, stemY);
+    ctx.lineTo(x, y - (stemY < y ? th : 0));
+    ctx.stroke();
+  }
+  ctx.fillStyle = INK;
+  fillRound(ctx, lx - tw / 2, top, tw, th, 2);
   ctx.strokeStyle = color;
   ctx.lineWidth = 1;
-  ctx.strokeRect(x - tw / 2, y - 10, tw, 10);
+  ctx.beginPath();
+  ctx.roundRect(lx - tw / 2, top, tw, th, 2);
+  ctx.stroke();
   ctx.fillStyle = color;
-  ctx.fillText(text, x, y - 1);
+  ctx.fillText(text, lx, top + th / 2 + 0.5);
   ctx.restore();
 }
 
@@ -180,33 +499,31 @@ function drawWick(
   const read = readWick(bars);
   const slice = read.slice;
   const marks = read.marks;
-  if (!slice.length) return;
-  const padX = 8;
-  const padT = 14;
-  const padB = 10;
+  if (!slice.length) {
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
   const locSlice = slice.slice(-20);
   const locHi = Math.max(...locSlice.map((b) => b.high));
   const locLo = Math.min(...locSlice.map((b) => b.low));
-  const hi = Math.max(...slice.map((b) => b.high), locHi);
-  const lo = Math.min(...slice.map((b) => b.low), locLo);
-  const span = Math.max(1, hi - lo);
-  const bw = (w - padX * 2) / slice.length;
-  const y = (p: number) => padT + ((hi - p) / span) * (h - padT - padB);
-  const xAt = (i: number) => padX + i * bw + bw * 0.5;
+  const pane = layoutOhlc(w, h, slice, [locHi, locLo], true, 0.14);
+  const { y, xAt, bw } = pane;
+  paintPane(ctx, pane);
 
   const yHigh = y(locLo + 0.8 * (locHi - locLo));
   const yLow = y(locLo + 0.2 * (locHi - locLo));
-  ctx.fillStyle = "rgba(61, 207, 138, 0.06)";
-  ctx.fillRect(0, padT, w, Math.max(0, yHigh - padT));
-  ctx.fillStyle = "rgba(239, 107, 115, 0.06)";
-  ctx.fillRect(0, yLow, w, Math.max(0, h - padB - yLow));
+  ctx.fillStyle = `${UP}0f`;
+  ctx.fillRect(pane.padL, pane.plotT, w - pane.padL - pane.padR, Math.max(0, yHigh - pane.plotT));
+  ctx.fillStyle = `${DOWN}0f`;
+  ctx.fillRect(pane.padL, yLow, w - pane.padL - pane.padR, Math.max(0, pane.plotB - yLow));
   ctx.strokeStyle = GRID;
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
-  ctx.moveTo(0, yHigh);
-  ctx.lineTo(w, yHigh);
-  ctx.moveTo(0, yLow);
-  ctx.lineTo(w, yLow);
+  ctx.moveTo(pane.padL, yHigh);
+  ctx.lineTo(w - pane.padR, yHigh);
+  ctx.moveTo(pane.padL, yLow);
+  ctx.lineTo(w - pane.padR, yLow);
   ctx.stroke();
   ctx.setLineDash([]);
 
@@ -214,20 +531,21 @@ function drawWick(
     const { acc, manipI, distI, phase, lean } = read.amd;
     const x0 = xAt(acc.i0) - bw * 0.45;
     const x1 = xAt(acc.i1) + bw * 0.45;
-    ctx.fillStyle = "rgba(200, 204, 212, 0.06)";
+    ctx.fillStyle = `${LINE}0f`;
     ctx.fillRect(x0, y(acc.hi), Math.max(2, x1 - x0), Math.max(2, y(acc.lo) - y(acc.hi)));
     ctx.strokeStyle = LINE;
+    ctx.globalAlpha = 0.45;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 3]);
     ctx.strokeRect(x0, y(acc.hi), Math.max(2, x1 - x0), Math.max(2, y(acc.lo) - y(acc.hi)));
     ctx.setLineDash([]);
-    const tag =
-      phase === "DISTRIBUTION" ? `AMD ${lean}` : phase === "MANIPULATION" ? "AMD MANIP" : "AMD ACC";
-    labelWick(ctx, tag, (x0 + x1) / 2, y(acc.hi) - 1, phase === "DISTRIBUTION" ? markColor("amd", lean) : WAIT);
+    ctx.globalAlpha = 1;
+    const tag = phase === "DISTRIBUTION" ? `AMD ${lean}` : phase === "MANIPULATION" ? "AMD MANIP" : "AMD ACC";
+    labelWick(ctx, tag, x0 + 28, Math.max(16, y(acc.hi) - 2), phase === "DISTRIBUTION" ? markColor("amd", lean) : WAIT);
     if (manipI != null) {
       const b = slice[manipI]!;
       ctx.strokeStyle = WAIT;
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(xAt(manipI), y(b.high));
       ctx.lineTo(xAt(manipI), y(b.low));
@@ -235,8 +553,10 @@ function drawWick(
     }
     if (distI != null) {
       const b = slice[distI]!;
+      ctx.fillStyle = `${lean === "UP" ? UP : DOWN}22`;
+      ctx.fillRect(xAt(distI) - bw * 0.48, pane.plotT, bw * 0.96, pane.plotB - pane.plotT);
       ctx.strokeStyle = lean === "UP" ? UP : DOWN;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.2;
       ctx.strokeRect(xAt(distI) - bw * 0.48, y(b.high) - 3, bw * 0.96, y(b.low) - y(b.high) + 6);
     }
   }
@@ -245,55 +565,41 @@ function drawWick(
     const isHi = read.structure.highs.includes(s);
     ctx.fillStyle = isHi ? DOWN : UP;
     ctx.beginPath();
-    ctx.arc(xAt(s.i), y(s.px), 2.2, 0, Math.PI * 2);
+    const sx = xAt(s.i);
+    const sy = y(s.px);
+    ctx.moveTo(sx, sy + (isHi ? -4 : 4));
+    ctx.lineTo(sx - 3.2, sy);
+    ctx.lineTo(sx + 3.2, sy);
+    ctx.closePath();
     ctx.fill();
   }
 
   const lastClosed = [...slice].reverse().find((b) => b.closed) ?? slice[slice.length - 1]!;
   const fireI = slice.lastIndexOf(lastClosed);
+  if (fireI >= 0) {
+    ctx.fillStyle = `${WAIT}18`;
+    ctx.fillRect(xAt(fireI) - bw * 0.5, pane.plotT, bw, pane.plotB - pane.plotT);
+  }
 
-  slice.forEach((b, i) => {
-    const x = xAt(i);
-    const up = b.close >= b.open;
+  drawVolume(ctx, pane, slice);
+  drawCandleBodies(ctx, pane, slice, (b, i) => {
     const kinds = marks.filter((m) => m.i === i).map((m) => m.kind);
-    const reject = kinds.some((k) =>
-      ["pin", "hammer", "hanging", "inv_ham", "shoot", "dragonfly", "gravestone", "sweep-up", "sweep-dn"].includes(
-        k,
+    return {
+      reject: kinds.some((k) =>
+        ["pin", "hammer", "hanging", "inv_ham", "shoot", "dragonfly", "gravestone", "sweep-up", "sweep-dn"].includes(
+          k,
+        ),
       ),
-    );
-    const isDoji = kinds.some((k) => ["doji", "long_leg", "dragonfly", "gravestone"].includes(k));
-    const isMaru = kinds.includes("marubozu");
-    ctx.globalAlpha = b.closed ? 1 : 0.5;
-    ctx.strokeStyle = reject ? WAIT : up ? UP : DOWN;
-    ctx.fillStyle = up ? UP : DOWN;
-    ctx.lineWidth = reject ? 2 : 1;
-    ctx.beginPath();
-    ctx.moveTo(x, y(b.high));
-    ctx.lineTo(x, y(b.low));
-    ctx.stroke();
-    const top = y(Math.max(b.open, b.close));
-    const bot = y(Math.min(b.open, b.close));
-    const bh = Math.max(1, bot - top);
-    if (isDoji) {
-      ctx.strokeStyle = WAIT;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(x - bw * 0.35, (top + bot) / 2);
-      ctx.lineTo(x + bw * 0.35, (top + bot) / 2);
-      ctx.stroke();
-    } else {
-      ctx.fillRect(x - bw * 0.28, top, Math.max(1, bw * 0.56), bh);
-      if (isMaru) {
-        ctx.strokeStyle = LINE;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x - bw * 0.3, top, Math.max(1, bw * 0.6), bh);
-      }
-    }
-    ctx.globalAlpha = 1;
+      doji: kinds.some((k) => ["doji", "long_leg", "dragonfly", "gravestone"].includes(k)),
+      maru: kinds.includes("marubozu"),
+    };
   });
+  drawEma(ctx, pane, slice);
 
   for (const m of marks) {
     if ((m.span ?? 1) < 2) continue;
+    // only the latest multi-bar box — earlier ones just clutter
+    if (m !== [...marks].reverse().find((x) => (x.span ?? 1) >= 2 && x.kind === m.kind)) continue;
     const i0 = Math.max(0, m.i - (m.span - 1));
     const prev = slice[i0]!;
     const bar = slice[m.i]!;
@@ -302,84 +608,121 @@ function drawWick(
     const top = Math.min(y(prev.high), y(bar.high)) - 3;
     const bot = Math.max(y(prev.low), y(bar.low)) + 3;
     ctx.strokeStyle = markColor(m.kind, m.lean);
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash(m.pending ? [2, 3] : [3, 2]);
-    ctx.globalAlpha = m.pending ? 0.55 : 1;
+    ctx.lineWidth = 1;
+    ctx.setLineDash(m.pending ? [2, 3] : [4, 2]);
+    ctx.globalAlpha = m.pending ? 0.45 : 0.7;
     ctx.strokeRect(x0, top, x1 - x0, bot - top);
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
 
-  if (fireI >= 0) {
-    const b = slice[fireI]!;
-    const x = xAt(fireI);
-    ctx.strokeStyle = WAIT;
-    ctx.lineWidth = 1.4;
-    ctx.strokeRect(x - bw * 0.48, y(b.high) - 3, bw * 0.96, y(b.low) - y(b.high) + 6);
-  }
+  const last = slice[slice.length - 1]!;
+  drawLastLine(ctx, pane, last.close, last.close >= last.open ? UP : DOWN);
 
+  type Lab = { x: number; y: number; text: string; color: string; stem: number; tw: number };
+  const labs: Lab[] = [];
+  ctx.font = FONT_SM;
+  const recent = marks.filter((m) => m.i >= slice.length - 12 && m.kind !== "amd");
   const labeled = new Set<number>();
-  const recent = marks.filter((m) => m.i >= slice.length - 10 && m.kind !== "amd");
+  const toLabel = [...recent].reverse().slice(0, 3);
   for (const m of recent) {
-    if (labeled.has(m.i) && (m.span ?? 1) < 2) continue;
     const b = slice[m.i]!;
+    const col = m.pending ? WAIT : m.confirmed && m.contextOk ? markColor(m.kind, m.lean) : FG;
     const above = m.lean !== "UP";
-    let ly = above ? y(b.high) - 2 : Math.min(h - 2, y(b.low) + 12);
-    if (ly < 16) ly = Math.min(h - 2, y(b.low) + 12);
-    const x = Math.min(w - 18, Math.max(18, xAt(m.i)));
+    const sx = xAt(m.i);
+    const stem = above ? y(b.high) : y(b.low);
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(sx, stem + (above ? -1 : 1));
+    ctx.lineTo(sx - 2.6, stem + (above ? -6 : 6));
+    ctx.lineTo(sx + 2.6, stem + (above ? -6 : 6));
+    ctx.closePath();
+    ctx.fill();
+  }
+  for (const m of toLabel) {
+    if (labeled.has(m.i)) continue;
+    labeled.add(m.i);
+    const b = slice[m.i]!;
     const tag = m.pending
       ? `?${MARK_LABEL[m.kind]}`
       : m.confirmed && m.contextOk
         ? MARK_LABEL[m.kind]
         : `·${MARK_LABEL[m.kind]}`;
     const col = m.pending ? WAIT : m.confirmed && m.contextOk ? markColor(m.kind, m.lean) : FG;
-    ctx.globalAlpha = m.pending ? 0.7 : m.contextOk ? 1 : 0.55;
-    labelWick(ctx, tag, x, ly, col);
+    const above = m.lean !== "UP";
+    const stem = above ? y(b.high) : y(b.low);
+    const ly = above ? Math.max(28, stem - 8) : Math.min(pane.plotB - 4, stem + 18);
+    const x = Math.min(w - pane.padR - 10, Math.max(pane.padL + 10, xAt(m.i)));
+    labs.push({ x, y: ly, text: tag, color: col, stem, tw: ctx.measureText(tag).width + 10 });
+  }
+  labs.sort((a, b) => a.x - b.x);
+  for (let i = 1; i < labs.length; i++) {
+    const prev = labs[i - 1]!;
+    const cur = labs[i]!;
+    const overlap = (prev.tw + cur.tw) / 2 + 4;
+    if (Math.abs(cur.x - prev.x) < overlap && Math.abs(cur.y - prev.y) < 14) {
+      cur.y = Math.min(pane.plotB - 4, prev.y + 13);
+    }
+  }
+  for (const lab of labs) {
+    ctx.globalAlpha = lab.text.startsWith("?") ? 0.75 : lab.text.startsWith("·") ? 0.55 : 1;
+    labelWick(ctx, lab.text, lab.x, lab.y, lab.color, lab.stem);
     ctx.globalAlpha = 1;
-    labeled.add(m.i);
   }
 
-  ctx.font = "9px ui-monospace, 'IBM Plex Mono', monospace";
+  ctx.font = FONT_SM;
   ctx.fillStyle = FG;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   const fire = skill === "SIT" ? "SIT" : `FIRE ${skill.replace("WICK.", "")}`;
   const amd = read.amd ? ` · ${read.amd.phase.slice(0, 5)}` : "";
-  ctx.fillText(`loc ${location} · ${read.structure.trend}${amd} · ${fire}`, padX, 2);
+  const cap = `loc ${location} · ${read.structure.trend}${amd} · ${fire}`;
+  const capW = ctx.measureText(cap).width + 8;
+  ctx.fillStyle = `${BG}e6`;
+  fillRound(ctx, pane.padL - 2, 2, capW, 13, 2);
+  ctx.fillStyle = FG;
+  ctx.fillText(cap, pane.padL + 2, 4);
 }
 
 function drawDrift(ctx: CanvasRenderingContext2D, w: number, h: number, snap: Snapshot) {
   const d = readDrift(snap);
-  hist(ctx, w, h, [snap.ret5, snap.ret15, snap.ret30], (v) => (v >= 0 ? UP : DOWN));
-  ctx.font = "9px ui-monospace, 'IBM Plex Mono', monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  const labels = ["5m", "15m", "30m"];
-  const vals = [snap.ret5, snap.ret15, snap.ret30];
-  labels.forEach((lb, i) => {
-    const x = 8 + ((i + 0.5) / 3) * (w - 16);
-    ctx.fillStyle = FG;
-    ctx.fillText(lb, x, 2);
-    ctx.fillStyle = vals[i]! >= 0 ? UP : DOWN;
-    ctx.fillText(`${(vals[i]! * 100).toFixed(2)}%`, x, 12);
-  });
+  const closes = snap.candles_1m.slice(-40).map((c) => c.close);
+  spark(ctx, w, Math.round(h * 0.55), closes, d.trend === "DOWN" ? DOWN : UP);
+  ctx.save();
+  ctx.translate(0, Math.round(h * 0.55));
+  hist(
+    ctx,
+    w,
+    h - Math.round(h * 0.55),
+    [snap.ret5, snap.ret15, snap.ret30],
+    (v) => (v >= 0 ? UP : DOWN),
+    { labels: ["5m", "15m", "30m"] },
+  );
+  ctx.restore();
+  ctx.font = FONT_SM;
   ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
   ctx.fillStyle = WAIT;
   const tag = d.aligned ? "ALIGNED" : d.pullback ? "PULLBACK" : d.accel ? "ACCEL" : d.decay ? "DECAY" : "CHOP";
-  ctx.fillText(`${tag} · ${d.trend} · RSI ${Math.round(d.rsi)}`, 8, h - 12);
+  ctx.fillText(`${tag} · ${d.trend} · RSI ${Math.round(d.rsi)}`, 8, h - 3);
 }
 
 function drawExhaust(ctx: CanvasRenderingContext2D, w: number, h: number, snap: Snapshot) {
   const xh = readExhaust(snap);
   const bars = snap.candles_5m.slice(-24);
   candles(ctx, w, h, bars, undefined, xh.flipped ? bars.length - 1 : undefined);
-  ctx.font = "9px ui-monospace, 'IBM Plex Mono', monospace";
+  ctx.font = FONT_SM;
   ctx.fillStyle = FG;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   const side = xh.ret1h >= 0 ? "1h UP" : "1h DN";
   const tag = xh.climax ? "CLIMAX" : xh.failedPush ? "FAIL PUSH" : xh.flipped ? "FLIP" : xh.inside ? "INSIDE" : "WATCH";
-  ctx.fillText(`${side} ${xh.ret1h >= 0 ? "+" : ""}${(xh.ret1h * 100).toFixed(2)}% · ${tag} · 5m ${xh.last5Name}`, 8, 2);
+  const cap = `${side} ${xh.ret1h >= 0 ? "+" : ""}${(xh.ret1h * 100).toFixed(2)}% · ${tag} · 5m ${xh.last5Name}`;
+  const capW = ctx.measureText(cap).width + 8;
+  ctx.fillStyle = `${BG}e6`;
+  fillRound(ctx, 6, 2, capW, 13, 2);
+  ctx.fillStyle = FG;
+  ctx.fillText(cap, 10, 4);
 }
 
 function FeatGrid({ feat }: { feat: [string, unknown][] }) {
@@ -420,20 +763,39 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
     } else if (seat === "DRIFT") {
       drawDrift(ctx, w, h, snap);
     } else if (seat === "PULSE") {
-      const vols = snap.candles_1m.slice(-30).map((c) => c.volume);
-      hist(ctx, w, h, vols, () => LINE);
+      const bars = snap.candles_1m.slice(-30);
+      hist(
+        ctx,
+        w,
+        h,
+        bars.map((c) => c.volume),
+        (_v, i) => (bars[i]!.close >= bars[i]!.open ? UP : DOWN),
+        { from: "bottom" },
+      );
     } else if (seat === "TAPE") {
       hist(ctx, w, h, snap.imbalance_hist, (v) => (v >= 0 ? UP : DOWN));
     } else if (seat === "ODDS" || seat === "FADE" || seat === "CHEAP") {
       spark(ctx, w, h, snap.yes_mid_path, WAIT, 50);
     } else if (seat === "VEL") {
-      spark(ctx, w, h, snap.candles_1m.slice(-20).map((c) => c.close), LINE);
+      spark(
+        ctx,
+        w,
+        h,
+        snap.candles_1m.slice(-30).map((c) => c.close),
+        LINE,
+      );
     } else if (seat === "CARRY") {
       spark(ctx, w, h, snap.funding_history, WAIT);
     } else if (seat === "CHAIN") {
       spark(ctx, w, h, snap.oi_history, LINE);
     } else if (seat === "VOLT") {
-      spark(ctx, w, h, snap.candles_1m.slice(-30).map((c) => c.high - c.low), WAIT);
+      spark(
+        ctx,
+        w,
+        h,
+        snap.candles_1m.slice(-30).map((c) => c.high - c.low),
+        WAIT,
+      );
     } else if (seat === "WHALE") {
       hist(
         ctx,
@@ -443,18 +805,22 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
         (v) => (v >= 0 ? UP : DOWN),
       );
     } else if (seat === "CASCADE") {
-      hist(ctx, w, h, [snap.oi_delta_10m, snap.ret5 * 1e6, snap.vol_last], (v) => (v >= 0 ? UP : DOWN));
-    } else if (seat === "WIRE") {
-      spark(ctx, w, h, snap.fng_history.length ? snap.fng_history : [snap.fear_greed], WAIT, 50);
-    } else if (seat === "STREAK") {
-      const st = readStreak(snap);
       hist(
         ctx,
         w,
         h,
-        st.chips.map((c) => (c === "UP" ? 1 : c === "DOWN" ? -1 : 0)),
+        [snap.oi_delta_10m, snap.ret5 * 1e6, snap.vol_last],
         (v) => (v >= 0 ? UP : DOWN),
+        { labels: ["OI 10m", "ret5", "vol"] },
       );
+    } else if (seat === "WIRE") {
+      spark(ctx, w, h, snap.fng_history.length ? snap.fng_history : [snap.fear_greed], WAIT, 50);
+    } else if (seat === "STREAK") {
+      const st = readStreak(snap);
+      const chips = st.chips.length
+        ? st.chips
+        : snap.candles_1m.slice(-24).map((c) => (c.close >= c.open ? "UP" : "DOWN"));
+      ribbon(ctx, w, h, chips);
     }
   }, dep);
 
@@ -484,7 +850,7 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
     const rows = ledgerRows(book, seeing);
     return (
       <div className="flex min-h-36 flex-col bg-surface-2">
-        <canvas ref={ref} className="h-40 w-full" />
+        <canvas ref={ref} className="block h-48 w-full" />
         <div className="flex flex-wrap items-center gap-1 border-t border-border px-2 py-1">
           <span className="font-mono text-micro uppercase tracking-wider text-subtle">seeing</span>
           {read.amd && (
@@ -585,7 +951,7 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
     ];
     return (
       <div className="flex min-h-36 flex-col bg-surface-2">
-        <canvas ref={ref} className="h-36 w-full" />
+        <canvas ref={ref} className="block h-44 w-full" />
         <div className="flex flex-wrap items-center gap-1 border-t border-border px-2 py-1">
           <span className="font-mono text-micro uppercase tracking-wider text-subtle">seeing</span>
           {chips.map(([k, on, tone]) =>
@@ -629,7 +995,7 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
     ];
     return (
       <div className="flex min-h-36 flex-col bg-surface-2">
-        <canvas ref={ref} className="h-36 w-full" />
+        <canvas ref={ref} className="block h-44 w-full" />
         <div className="flex flex-wrap items-center gap-1 border-t border-border px-2 py-1">
           <span className="font-mono text-micro uppercase tracking-wider text-subtle">seeing</span>
           {chips.map(([k, on]) =>
@@ -649,12 +1015,20 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
 
   return (
     <div className="flex min-h-36 flex-col bg-surface-2">
-      <canvas ref={ref} className="h-36 w-full" />
+      <canvas ref={ref} className="block h-40 w-full" />
       <div className="flex items-center gap-2 border-t border-border px-2 py-1 font-mono text-micro text-muted">
         <HealthDot h={vote.health} />
         <span>{vote.eyes || seat}</span>
       </div>
       <FeatGrid feat={feat} />
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="flex h-40 items-center justify-center border border-dashed border-border bg-surface-2 font-mono text-ui text-muted">
+      {text}
     </div>
   );
 }

@@ -105,7 +105,7 @@ export function readWhale(snap: Snapshot): WhaleRead {
   const bars = snap.candles_1m.filter((c) => c.closed).slice(-6);
   const lastC = last(bars) ?? last(snap.candles_1m);
   const ratio = snap.vol_median > 0 ? snap.vol_last / snap.vol_median : 1;
-  const usd = lastC ? lastC.volume * lastC.close : 0;
+  const usd = lastC ? lastC.volume : 0;
   const proxy = ratio > 2.5 && Boolean(lastC);
   const big = bars.filter((c) => snap.vol_median > 0 && c.volume / snap.vol_median >= 1.8);
   const cluster =

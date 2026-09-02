@@ -213,12 +213,14 @@ export function MetaFooter({
   lockdown,
   lockdown_until,
   tape,
+  settling,
 }: {
   chair: ChairResult | null;
   law_wrongs: number;
   lockdown: boolean;
   lockdown_until: number;
   tape: string[];
+  settling?: boolean;
 }) {
   const q = chair?.quorum ?? { up: 0, down: 0, wait: 0 };
   const left = Math.max(0, Math.round((lockdown_until - Date.now()) / 1000));
@@ -251,7 +253,9 @@ export function MetaFooter({
             <Tip k="footer.tape">SETTLE TAPE</Tip>
             {" · "}
           </span>
-          {tape[0]}
+          <span className={settling || tape[0].startsWith("PENDING") ? "text-wait" : undefined}>
+            {tape[0]}
+          </span>
         </div>
       )}
     </div>

@@ -1,5 +1,7 @@
 import { enrichSnapshot } from "./features";
-import type { FeedHealth, LiveBundle, Snapshot, WindowMemory } from "./types";
+import { appendPeriod, deltaOver, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, valuesOf, type HistPoint } from "./hist";
+import { basisBps, fundingApr } from "./units";
+import type { FeedHealth, GapStatus, LiveBundle, Snapshot, WindowMemory } from "./types";
 
 function ageHealth(age: number, liveMax: number): FeedHealth {
   if (!Number.isFinite(age) || age > liveMax * 20) return "DOWN";
@@ -19,40 +21,116 @@ export function bundleToSnapshot(
       ? kalshi.close_time
       : Math.ceil(now / (15 * 60_000)) * 15 * 60_000;
   const spot = b.spot ?? prev?.spot ?? 0;
+  const backup = b.spot_backup ?? prev?.spot_backup ?? 0;
+  const perp = b.perp ?? prev?.perp ?? 0;
+  const index_px = b.index_px ?? prev?.index_px ?? 0;
+  const midPx = spot && backup ? (spot + backup) / 2 : spot;
+  const divBps = midPx > 0 && backup > 0 ? (Math.abs(spot - backup) / midPx) * 10_000 : 0;
+  const basis = basisBps(perp, spot);
   const strike =
     kalshi && kalshi.strike > 1000
       ? kalshi.strike
-      : (prev?.strike && prev.close_time === close ? prev.strike : Math.round(spot / 25) * 25);
+      : prev?.strike && prev.close_time === close
+        ? prev.strike
+        : Math.round(spot / 25) * 25;
 
-  const yes_bid = kalshi?.yes_bid ?? 0;
-  const yes_ask = kalshi?.yes_ask ?? 0;
-  const no_bid = kalshi?.no_bid ?? 0;
-  const no_ask = kalshi?.no_ask ?? 0;
-  const yes_mid = yes_bid && yes_ask ? (yes_bid + yes_ask) / 2 : prev?.yes_mid ?? 50;
-  const yes_mid_path = [...(prev?.yes_mid_path ?? []), yes_mid].slice(-80);
-  const imbDen = (kalshi?.yes_bid_size ?? 0) + (kalshi?.no_bid_size ?? 0);
-  const imbalance = imbDen > 0 ? ((kalshi!.yes_bid_size - kalshi!.no_bid_size) / imbDen) : 0;
+  let yes_bid = kalshi?.yes_bid ?? 0;
+  let yes_ask = kalshi?.yes_ask ?? 0;
+  let no_bid = kalshi?.no_bid ?? 0;
+  let no_ask = kalshi?.no_ask ?? 0;
+  let yes_bid_size = kalshi?.yes_bid_size ?? 0;
+  let no_bid_size = kalshi?.no_bid_size ?? 0;
+  let quote_ts = kalshi?.quote_ts ?? 0;
+  let quote_seq = kalshi?.quote_seq ?? 0;
+  let quote_age_s = kalshi?.quote_age_s ?? 999;
+  let print_age_s = kalshi?.trade_ts ? Math.max(0, (now - kalshi.trade_ts) / 1000) : 999;
+  const last_trade_id = kalshi?.last_trade_id ?? "";
+  const held = Boolean(
+    prev &&
+      kalshi &&
+      prev.ticker === kalshi.ticker &&
+      prev.quote_seq > 0 &&
+      quote_seq > 0 &&
+      quote_seq < prev.quote_seq,
+  );
+  if (held && prev) {
+    yes_bid = prev.yes_bid;
+    yes_ask = prev.yes_ask;
+    no_bid = prev.no_bid;
+    no_ask = prev.no_ask;
+    yes_bid_size = prev.yes_bid_size;
+    no_bid_size = prev.no_bid_size;
+    quote_ts = prev.quote_ts;
+    quote_seq = prev.quote_seq;
+  }
+  quote_age_s = quote_ts > 0 ? Math.max(0, (now - quote_ts) / 1000) : 999;
+  if (held && prev) {
+    print_age_s = prev.print_age_s + Math.max(0, (now - prev.as_of) / 1000);
+  } else {
+    print_age_s = kalshi?.trade_ts ? Math.max(0, (now - kalshi.trade_ts) / 1000) : 999;
+  }
+
+  const last_ok_ts =
+    kalshi?.ok && !held ? kalshi.receipt_ts || now : (prev?.obs.last_ok_ts ?? 0);
+  const last_ok_age_s = last_ok_ts > 0 ? Math.max(0, (now - last_ok_ts) / 1000) : 999;
+
+  let gap: GapStatus = "ok";
+  if (held) {
+    gap = "held";
+  } else if (prev && kalshi?.ok && quote_seq > 0 && prev.quote_seq > 0 && quote_seq > prev.quote_seq + 1) {
+    gap = "gap";
+  } else if (prev && kalshi?.ok && prev.health.kalshi === "DOWN") {
+    gap = "reconnect";
+  } else if (prev?.obs.last_ok_ts && kalshi?.ok && last_ok_ts - prev.obs.last_ok_ts > 15_000) {
+    gap = "reconnect";
+  }
+
+  const yes_mid = yes_bid && yes_ask ? (yes_bid + yes_ask) / 2 : (prev?.yes_mid ?? 50);
+  const candlePath = kalshi?.yes_path?.length ? kalshi.yes_path : [];
+  const yes_mid_path = candlePath.length >= 4 ? candlePath.slice(-80) : [...(prev?.yes_mid_path ?? []), yes_mid].slice(-80);
+  const imbDen = yes_bid_size + no_bid_size;
+  const imbalance = imbDen > 0 ? (yes_bid_size - no_bid_size) / imbDen : 0;
   const imbalance_hist = [...(prev?.imbalance_hist ?? []), imbalance].slice(-20);
 
-  const funding_history = [
-    ...(prev?.funding_history ?? []),
-    ...(b.funding_rate != null ? [b.funding_rate] : []),
-  ].slice(-16);
-  const oi_history = [
-    ...(prev?.oi_history ?? []),
-    ...(b.open_interest != null ? [b.open_interest] : []),
-  ].slice(-16);
+  const funding_series: HistPoint[] = b.funding_series?.length
+    ? b.funding_series
+    : appendPeriod(
+        prev?.funding_series ?? [],
+        b.funding_time || 0,
+        b.funding_rate ?? prev?.funding_rate ?? 0,
+        nativePeriodMs(prev?.funding_series ?? [], FUNDING_PERIOD_MS),
+      );
+  const oi_series: HistPoint[] = b.oi_series?.length
+    ? b.oi_series
+    : appendPeriod(
+        prev?.oi_series ?? [],
+        now,
+        b.open_interest ?? prev?.open_interest ?? 0,
+        OI_PERIOD_MS,
+      );
+  const oi_usd_series: HistPoint[] = b.oi_usd_series?.length
+    ? b.oi_usd_series
+    : appendPeriod(
+        prev?.oi_usd_series ?? [],
+        now,
+        b.oi_usd ?? prev?.oi_usd ?? 0,
+        OI_PERIOD_MS,
+      );
+  const funding_history = valuesOf(funding_series);
+  const oi_history = valuesOf(oi_series);
 
   const spotHealth: FeedHealth =
-    b.spot == null ? "DOWN" : ageHealth(b.spot_age_s, 8);
-  const kalshiHealth: FeedHealth = !kalshi?.ok
-    ? "DOWN"
-    : ageHealth(kalshi.quote_age_s, 25);
+    b.spot == null ? "DOWN" : divBps >= 80 ? "STALE" : ageHealth(b.spot_age_s, 8);
+  const kalshiHealth: FeedHealth =
+    gap === "gap" || gap === "held"
+      ? "STALE"
+      : !kalshi?.ok && last_ok_age_s > 25
+        ? "DOWN"
+        : ageHealth(last_ok_age_s, 25);
   const derivsHealth: FeedHealth =
     b.funding_rate == null && b.open_interest == null ? "DOWN" : "LIVE";
 
-  const strikeSource =
-    kalshi && kalshi.strike > 1000 ? "kalshi" : "PROXY round(spot)";
+  const strikeSource = kalshi && kalshi.strike > 1000 ? "kalshi" : "PROXY round(spot)";
 
   const snap: Snapshot = {
     as_of: now,
@@ -60,11 +138,22 @@ export function bundleToSnapshot(
     mins_left: 0,
     secs_left: 0,
     close_time: close,
-    ticker: kalshi?.ticker ?? "KXBTC15M-—",
+    ticker: kalshi?.ticker ?? prev?.ticker ?? "KXBTC15M-—",
+    kalshi_host: kalshi?.host ?? prev?.kalshi_host ?? "",
+    kalshi_trade_n: kalshi?.trade_n ?? prev?.kalshi_trade_n ?? 0,
+    kalshi_taker_yes: kalshi?.taker_yes ?? prev?.kalshi_taker_yes ?? 0.5,
+    official_settles: kalshi?.settles?.length ? kalshi.settles : (prev?.official_settles ?? []),
     spot,
     spot_source: b.spot_source,
     spot_age_s: b.spot_age_s,
-    candles_1m: b.klines_1m,
+    spot_backup: backup,
+    spot_backup_source: b.spot_backup_source,
+    spot_div_bps: divBps,
+    perp,
+    perp_source: b.perp_source || prev?.perp_source || "",
+    index_px,
+    basis_bps: basis,
+    candles_1m: b.klines_1m.length ? b.klines_1m : (prev?.candles_1m ?? []),
     candles_5m: b.klines_5m,
     candles_15m: b.klines_15m,
     candles_1h: b.klines_1h,
@@ -77,19 +166,41 @@ export function bundleToSnapshot(
     leftover_cents: 0,
     combined_ask_cents: 0,
     spread_cents: 0,
-    quote_age_s: kalshi?.quote_age_s ?? 999,
+    quote_age_s,
+    quote_ts,
+    quote_seq,
+    print_age_s,
+    last_trade_id,
+    obs: {
+      provider_ts: quote_ts,
+      receipt_ts: kalshi?.receipt_ts || b.receipt_ts || now,
+      last_ok_ts,
+      seq: quote_seq,
+      gap,
+      source: kalshi?.host || b.spot_source || "none",
+      ticker: kalshi?.ticker ?? prev?.ticker ?? "KXBTC15M-—",
+    },
     yes_mid,
     yes_mid_path,
     funding_rate: b.funding_rate ?? prev?.funding_rate ?? 0,
+    funding_apr: fundingApr(b.funding_rate ?? prev?.funding_rate ?? 0) || 0,
+    funding_time: b.funding_time ?? prev?.funding_time ?? 0,
     funding_history,
+    funding_series,
     open_interest: b.open_interest ?? prev?.open_interest ?? 0,
+    oi_usd: b.oi_usd ?? prev?.oi_usd ?? 0,
     oi_history,
-    oi_delta_3m: (oi_history.at(-1) ?? 0) - (oi_history.at(-3) ?? oi_history.at(-1) ?? 0),
-    oi_delta_10m: (oi_history.at(-1) ?? 0) - (oi_history[0] ?? 0),
-    oi_delta_1h: (oi_history.at(-1) ?? 0) - (oi_history[0] ?? 0),
-    liq_long_usd: 0,
-    liq_short_usd: 0,
-    force_n: 0,
+    oi_series,
+    oi_usd_series,
+    oi_delta_3m: deltaOver(oi_series, 3 * 60_000, now),
+    oi_delta_10m: deltaOver(oi_series, 10 * 60_000, now),
+    oi_delta_1h: deltaOver(oi_series, 60 * 60_000, now),
+    oi_usd_delta_10m: deltaOver(oi_usd_series, 10 * 60_000, now),
+    liq_long_usd: b.liq_n > 0 ? b.liq_long_usd : (prev?.liq_long_usd ?? 0),
+    liq_short_usd: b.liq_n > 0 ? b.liq_short_usd : (prev?.liq_short_usd ?? 0),
+    liq_n: b.liq_n > 0 ? b.liq_n : (prev?.liq_n ?? 0),
+    liq_source: b.liq_source && b.liq_source !== "DOWN" ? b.liq_source : (prev?.liq_source && prev.liq_n > 0 ? prev.liq_source : "DOWN"),
+    force_n: b.liq_n > 0 ? b.liq_n : (prev?.force_n ?? 0),
     cascade_proxy: false,
     fear_greed: b.fear_greed ?? prev?.fear_greed ?? 50,
     fear_greed_label: b.fear_greed_label || prev?.fear_greed_label || "",
@@ -102,6 +213,8 @@ export function bundleToSnapshot(
       spot: spotHealth,
       kalshi: kalshiHealth,
       derivs: derivsHealth,
+      spot_divergent: divBps >= 25,
+      basis_wide: Math.abs(basis) >= 25,
     },
     window_memory: memory,
     regime_key: "",
@@ -121,10 +234,15 @@ export function bundleToSnapshot(
     range_pos: 0.5,
     imbalance,
     imbalance_hist,
-    yes_bid_size: kalshi?.yes_bid_size ?? 0,
-    no_bid_size: kalshi?.no_bid_size ?? 0,
+    yes_bid_size,
+    no_bid_size,
     spot_lead_bps: 0,
     chalk: false,
+    fair_yes: 50,
+    edge_up: 0,
+    edge_down: 0,
+    fee_yes: 2,
+    fee_no: 2,
   };
   return enrichSnapshot(snap);
 }

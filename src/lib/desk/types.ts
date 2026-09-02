@@ -1,3 +1,5 @@
+import type { HistPoint } from "./hist";
+
 export type Lean = "UP" | "DOWN" | "WAIT";
 export type Phase = "ENTRY" | "MID" | "FINAL";
 export type FeedHealth = "LIVE" | "STALE" | "DOWN";
@@ -96,8 +98,33 @@ export type Candle = {
   high: number;
   low: number;
   close: number;
+  /** USD notional traded in the bar (quote volume). */
   volume: number;
   closed: boolean;
+  receipt_ts: number;
+  source: string;
+};
+
+export type GapStatus = "ok" | "gap" | "reconnect" | "held";
+
+/** Every live observation carries these. No timestamp, no row. */
+export type ObsStamp = {
+  provider_ts: number;
+  receipt_ts: number;
+  last_ok_ts: number;
+  seq: number;
+  gap: GapStatus;
+  source: string;
+  ticker: string;
+};
+
+export type OfficialSettle = {
+  ticker: string;
+  close_time: number;
+  lean: "UP" | "DOWN";
+  provider_ts: number;
+  receipt_ts: number;
+  source: string;
 };
 
 export type HealthMap = {
@@ -108,6 +135,8 @@ export type HealthMap = {
   spot: FeedHealth;
   kalshi: FeedHealth;
   derivs: FeedHealth;
+  spot_divergent: boolean;
+  basis_wide: boolean;
 };
 
 export type WindowMemory = {
@@ -126,9 +155,20 @@ export type Snapshot = {
   secs_left: number;
   close_time: number;
   ticker: string;
+  kalshi_host: string;
+  kalshi_trade_n: number;
+  kalshi_taker_yes: number;
+  official_settles: OfficialSettle[];
   spot: number;
   spot_source: string;
   spot_age_s: number;
+  spot_backup: number;
+  spot_backup_source: string;
+  spot_div_bps: number;
+  perp: number;
+  perp_source: string;
+  index_px: number;
+  basis_bps: number;
   candles_1m: Candle[];
   candles_5m: Candle[];
   candles_15m: Candle[];
@@ -143,17 +183,31 @@ export type Snapshot = {
   combined_ask_cents: number;
   spread_cents: number;
   quote_age_s: number;
+  quote_ts: number;
+  quote_seq: number;
+  print_age_s: number;
+  last_trade_id: string;
+  obs: ObsStamp;
   yes_mid: number;
   yes_mid_path: number[];
   funding_rate: number;
+  funding_apr: number;
+  funding_time: number;
   funding_history: number[];
+  funding_series: HistPoint[];
   open_interest: number;
+  oi_usd: number;
   oi_history: number[];
+  oi_series: HistPoint[];
+  oi_usd_series: HistPoint[];
   oi_delta_3m: number;
   oi_delta_10m: number;
   oi_delta_1h: number;
+  oi_usd_delta_10m: number;
   liq_long_usd: number;
   liq_short_usd: number;
+  liq_n: number;
+  liq_source: string;
   force_n: number;
   cascade_proxy: boolean;
   fear_greed: number;
@@ -182,6 +236,11 @@ export type Snapshot = {
   no_bid_size: number;
   spot_lead_bps: number;
   chalk: boolean;
+  fair_yes: number;
+  edge_up: number;
+  edge_down: number;
+  fee_yes: number;
+  fee_no: number;
 };
 
 export type ShadowLean = {
@@ -375,15 +434,22 @@ export type Settings = {
 
 export type LiveBundle = {
   as_of: number;
+  receipt_ts: number;
   spot: number | null;
   spot_source: string;
   spot_age_s: number;
+  spot_backup: number | null;
+  spot_backup_source: string;
+  perp: number | null;
+  perp_source: string;
+  index_px: number | null;
   klines_1m: Candle[];
   klines_5m: Candle[];
   klines_15m: Candle[];
   klines_1h: Candle[];
   kalshi: {
     ticker: string;
+    host: string;
     strike: number;
     close_time: number;
     yes_bid: number;
@@ -393,12 +459,30 @@ export type LiveBundle = {
     yes_bid_size: number;
     no_bid_size: number;
     quote_age_s: number;
+    quote_ts: number;
+    quote_seq: number;
+    trade_ts: number;
+    last_trade_id: string;
+    receipt_ts: number;
     ok: boolean;
+    trade_n: number;
+    taker_yes: number;
+    yes_path: number[];
+    settles: OfficialSettle[];
   } | null;
   funding_rate: number | null;
+  funding_time: number | null;
   funding_history: number[];
+  funding_series: HistPoint[];
   open_interest: number | null;
+  oi_usd: number | null;
   oi_history: number[];
+  oi_series: HistPoint[];
+  oi_usd_series: HistPoint[];
+  liq_long_usd: number;
+  liq_short_usd: number;
+  liq_n: number;
+  liq_source: string;
   fear_greed: number | null;
   fear_greed_label: string;
   fng_history: number[];

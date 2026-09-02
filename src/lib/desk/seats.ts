@@ -49,6 +49,41 @@ export const STRUCTURE_FAMILY: SeatId[] = ["WICK", "DRIFT", "STREAK"];
 export const TAPE_FAMILY: SeatId[] = ["PULSE", "TAPE", "WHALE", "VEL"];
 export const DERIVS_FAMILY: SeatId[] = ["CARRY", "CHAIN", "CASCADE"];
 
+/** Same 1m candle stream — not independent votes. */
+export const CANDLE_FAMILY: SeatId[] = ["WICK", "DRIFT", "EXHAUST", "PULSE", "WHALE", "VOLT"];
+/** Kalshi quotes / contract — not independent votes. */
+export const BOOK_FAMILY: SeatId[] = ["TAPE", "VEL", "ODDS", "STRIKE", "CHEAP", "FADE"];
+
+export type EvidenceFamily = "candle" | "book" | "derivs" | "history" | "context";
+
+export const EVIDENCE_OF: Record<SeatId, EvidenceFamily> = {
+  WICK: "candle",
+  DRIFT: "candle",
+  STREAK: "history",
+  EXHAUST: "candle",
+  PULSE: "candle",
+  TAPE: "book",
+  WHALE: "candle",
+  VEL: "book",
+  CARRY: "derivs",
+  CHAIN: "derivs",
+  CASCADE: "derivs",
+  VOLT: "candle",
+  ODDS: "book",
+  STRIKE: "book",
+  CHEAP: "book",
+  FADE: "book",
+  ORBIT: "context",
+  CLOCK: "context",
+  WIRE: "context",
+  WARDEN: "context",
+};
+
+/** Seats that read the Kalshi book or mix it with spot. WARDEN silences these on a seq gap. */
+export const KALSHI_SEQ_SEATS: SeatId[] = SEATS.filter(
+  (s) => s.feed === "kalshi" || s.feed === "mixed",
+).map((s) => s.id);
+
 export const CATEGORY_OF: Record<SeatId, SeatTab> = Object.fromEntries(
   SEATS.map((s) => [s.id, s.tab]),
 ) as Record<SeatId, SeatTab>;

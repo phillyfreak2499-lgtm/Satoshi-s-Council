@@ -1,3 +1,4 @@
+import { fairYesCents, takerFeeCents } from "./clock";
 import type { Snapshot } from "./types";
 import {
   aggregate,
@@ -52,9 +53,21 @@ export function enrichSnapshot(s: Snapshot): Snapshot {
   s.spot_lead_bps = spotLeadRet * 10_000 - yesDelta * 2;
 
   const volRatio = s.vol_median > 0 ? s.vol_last / s.vol_median : 1;
-  s.cascade_proxy = volRatio > 2.2 && Math.abs(s.ret5) > 0.002 && s.oi_delta_10m < 0;
-  const closed1m = c1.filter((c) => c.closed).slice(-6);
-  s.force_n = closed1m.filter((c) => s.vol_median > 0 && c.volume / s.vol_median >= 1.8).length;
+  const liqUsd = s.liq_long_usd + s.liq_short_usd;
+  const realLiq = s.liq_source !== "DOWN" && s.liq_n >= 1 && liqUsd > 10_000;
+  const volProxy = volRatio > 2.2 && Math.abs(s.ret5) > 0.002 && s.oi_delta_10m < 0;
+  s.cascade_proxy = realLiq || volProxy;
+  if (realLiq) s.force_n = s.liq_n;
+  else if (volProxy) {
+    const closed1m = c1.filter((c) => c.closed).slice(-6);
+    s.force_n = closed1m.filter((c) => s.vol_median > 0 && c.volume / s.vol_median >= 1.8).length;
+  } else s.force_n = s.liq_n;
+
+  s.fee_yes = takerFeeCents(s.yes_ask || s.yes_mid || 50);
+  s.fee_no = takerFeeCents(s.no_ask || 100 - (s.yes_mid || 50));
+  s.fair_yes = fairYesCents(s);
+  s.edge_up = s.fair_yes - (s.yes_ask || s.yes_mid) - s.fee_yes;
+  s.edge_down = 100 - s.fair_yes - (s.no_ask || 100 - s.yes_mid) - s.fee_no;
 
   return s;
 }
