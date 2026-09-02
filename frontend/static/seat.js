@@ -92,6 +92,7 @@
     tape: "tapeView",
     book: "bookView",
     brain: "brainView",
+    night: "brainView",
     news: "newsView",
     wire: "wireView",
     school: "schoolView",
@@ -103,11 +104,12 @@
 
   function fallbackSetMode(mode) {
     if (!mode) return;
+    if (mode === "night") mode = "brain";
     var body = document.body;
     if (!body) return;
     body.className = String(body.className || "").replace(/\bmode-[a-z0-9_-]+/g, "").trim();
     body.classList.add("mode-" + mode);
-    document.querySelectorAll(".info-view").forEach(function (v) {
+    document.querySelectorAll(".info-view, .charts-view").forEach(function (v) {
       v.classList.add("hidden");
       v.setAttribute("hidden", "");
     });
@@ -120,7 +122,7 @@
       }
     }
     document.querySelectorAll(".mode-tab[data-mode]").forEach(function (b) {
-      var on = b.getAttribute("data-mode") === mode;
+      var on = b.getAttribute("data-mode") === mode || (mode === "brain" && b.getAttribute("data-mode") === "night");
       b.classList.toggle("active", on);
       b.setAttribute("aria-selected", on ? "true" : "false");
     });
@@ -129,6 +131,7 @@
       var overflow = "floor night tape book brain news wire school charts";
       moreBtn.classList.toggle("active", overflow.indexOf(mode) >= 0);
     }
+    try { if (typeof w.hydrateDeskTab === "function") w.hydrateDeskTab(mode); } catch (e) {}
   }
   w.__deskSetModeFallback = fallbackSetMode;
   if (typeof w.setMode !== "function") w.setMode = fallbackSetMode;
@@ -271,6 +274,23 @@
     wireSummon();
   }
 
+  function promoteDeskTabs() {
+    var tabs = document.getElementById("modeTabs");
+    var more = document.getElementById("modeMore");
+    if (!tabs || tabs.__promotedTabs) return;
+    tabs.__promotedTabs = true;
+    ["tape", "book", "brain", "news", "charts"].forEach(function (mode) {
+      if (tabs.querySelector('.mode-tab[data-mode="' + mode + '"]:not(.more-item)')) return;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "mode-tab";
+      b.setAttribute("data-mode", mode);
+      b.id = "tab" + mode.charAt(0).toUpperCase() + mode.slice(1) + "Main";
+      b.textContent = mode === "brain" ? "Brain" : mode.charAt(0).toUpperCase() + mode.slice(1);
+      tabs.insertBefore(b, more || document.getElementById("tabSettings") || null);
+    });
+  }
+
   function wireMoreMenu() {
     if (document.__seatMoreWired) return;
     var moreBtn = document.getElementById("moreBtn");
@@ -327,11 +347,13 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       if (isLocked()) paintUnlocked();
+      promoteDeskTabs();
       wireDeskClicks();
       wireMoreMenu();
     });
   } else {
     if (isLocked()) paintUnlocked();
+    promoteDeskTabs();
     wireDeskClicks();
     wireMoreMenu();
   }
@@ -353,7 +375,7 @@
     var lc = document.createElement("link");
     lc.id = "layoutCleanupCss";
     lc.rel = "stylesheet";
-    lc.href = "/static/layout-cleanup.css?v=20260830s";
+    lc.href = "/static/layout-cleanup.css?v=20260901c";
     (document.head || document.documentElement).appendChild(lc);
   }
 
@@ -367,4 +389,5 @@
   }
   loadScript("__focusTableScript", "/static/focus-table.js?v=20260830q");
   loadScript("__watchLoopScript", "/static/watch-loop.js?v=20260830q");
+  loadScript("__tabHydrateScript", "/static/tab-hydrate.js?v=20260901c");
 })(window);
