@@ -19,6 +19,8 @@ export const FULL_N = 700;
 export const REVIEW_EVERY = 500;
 /** Scalp avg ¢ that a calibrated seat must hold or it gets sent back. */
 export const EDGE_FLOOR = 15;
+/** Directional vote needs at least this conf. Below it, sit. */
+export const SPEAK_CONF = 52;
 
 /** 0 at <20, 1 at 700. WAIT does not count. Debt can send them back. */
 export function calibNOf(n: number, debt = 0): number {

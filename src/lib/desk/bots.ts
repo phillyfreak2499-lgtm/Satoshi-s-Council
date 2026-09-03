@@ -1,5 +1,5 @@
 import { evalRule, featOf, SKILL_RULES } from "./dsl";
-import { directionalConf, last, round } from "./math";
+import { directionalConf, last, round, SPEAK_CONF } from "./math";
 import { lastMark, MARK_LABEL, readWick, type WickMark } from "./patterns";
 import { patternTrust, rememberPatterns } from "./ledger";
 import { liveSkills, shadowSkills, skillScore } from "./skills";
@@ -208,7 +208,18 @@ function pickLiveAndPaper(
   const sh =
     papers.find((p) => p.status === "SHADOW") ?? papers.find((p) => p.status === "BENCH");
   if (sh) chosen.shadow = { id: sh.id, lean: sh.lean, confidence: sh.confidence };
-  return brierScale(chosen, ctx);
+  return sitUnlessSure(brierScale(chosen, ctx));
+}
+
+function sitUnlessSure(v: Vote): Vote {
+  if (v.seat === "WARDEN" || v.lean === "WAIT") return v;
+  if (v.confidence >= SPEAK_CONF) return v;
+  return {
+    ...v,
+    lean: "WAIT",
+    confidence: Math.max(70, v.confidence),
+    reasoning: `${v.reasoning} · sit (${v.confidence} < ${SPEAK_CONF} conf)`,
+  };
 }
 
 function applyHealth(v: Vote, h: { health: FeedHealth; age: number; mult: number }): Vote {
@@ -225,7 +236,7 @@ function applyHealth(v: Vote, h: { health: FeedHealth; age: number; mult: number
     v.confidence = Math.round(v.confidence * 0.6);
     v.evidence = [`STALE ${h.age.toFixed(0)}s`, ...v.evidence];
   }
-  return v;
+  return sitUnlessSure(v);
 }
 
 function fire(

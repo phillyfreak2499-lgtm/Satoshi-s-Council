@@ -314,7 +314,7 @@ export const GLOSS: Record<string, Gloss> = {
   "col.seat": { title: "Seat", body: "The specialist. Click the row to open its card." },
   "col.callsign": { title: "Callsign", body: "Short handle for the seat. Floor shorthand, not a second bot." },
   "col.lean": { title: "Lean", body: "This seat's paper call: UP, DOWN, or WAIT." },
-  "col.conf": { title: "Conf", body: "This seat's confidence in its own lean." },
+  "col.conf": { title: "Conf", body: "This seat's confidence in its own lean. Under 52 it sits (WAIT) instead of printing UP/DOWN. WAIT is shown at 70+ because sitting is the call." },
   "col.skill": { title: "Skill used", body: "Which playbook line fired, or SIT if it has nothing." },
   "col.base": { title: "Base w", body: "Prior weight before the learner moves it. Frozen until n ≥ 8." },
   "col.listen": {
