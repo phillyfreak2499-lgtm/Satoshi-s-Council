@@ -340,6 +340,7 @@ export type SeatRow = {
   scalp_n: number;
   calib_n: number;
   calib: number;
+  calls: number;
   seat: SeatId;
   callsign: string;
   lean: Lean;
@@ -410,6 +411,7 @@ export type Learner = {
   skills: Record<string, SkillCard>;
   seat_n: Record<string, number>;
   seat_hits: Record<string, number>;
+  seat_calls: Record<string, number>;
   seat_recent: Record<string, number[]>;
   seat_w: Record<string, number>;
   seat_scalp: Record<string, { open: { lean: "UP" | "DOWN"; cents: number; ticker: string; close_time: number } | null; legs: number[] }>;

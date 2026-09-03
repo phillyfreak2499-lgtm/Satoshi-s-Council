@@ -232,6 +232,7 @@ export function SatoshiTab({
                   ["Rank", "col.rank"],
                   ["Avg ¢", "col.scalp"],
                   ["Cal", "col.calib"],
+                  ["Calls", "field.calls"],
                   ["Seat", "col.seat"],
                   ["Callsign", "col.callsign"],
                   ["Lean", "col.lean"],
@@ -287,6 +288,7 @@ export function SatoshiTab({
                       {r.calib_n}/{FULL_N}
                     </span>
                   </td>
+                  <td className="px-2 py-1 font-mono text-data tabular text-fg">{r.calls}</td>
                   <td className="px-2 py-1 font-mono text-data text-fg">
                     <Tip k={`seat.${r.seat}`} mark={false}>
                       {r.seat}

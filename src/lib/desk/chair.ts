@@ -494,6 +494,7 @@ export function runChair(
         scalp_n: st.legs.length,
         calib_n: calibN,
         calib: seatCalib(calibN),
+        calls: learner.seat_calls?.[a.vote.seat] ?? 0,
         seat: a.vote.seat,
         callsign: SEAT_BY_ID[a.vote.seat].callsign,
         lean: a.vote.lean,

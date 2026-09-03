@@ -86,6 +86,8 @@ export function onLean(learner: Learner, id: string, lean: Lean, snap: Snapshot)
   }
 
   st.open = { lean, cents: Math.round(entry * 10) / 10, ticker: snap.ticker, close_time: snap.close_time };
+  if (!learner.seat_calls) learner.seat_calls = {};
+  learner.seat_calls[id] = (learner.seat_calls[id] ?? 0) + 1;
   return pnl;
 }
 

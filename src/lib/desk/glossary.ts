@@ -161,6 +161,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Cal",
     body: "Graded directional calls toward 700 (~a week of 15-minute windows if they called every one). 20 takes the chip off. 700 is 100% listen and weight. WAIT does not count.",
   },
+  "field.calls": {
+    title: "Calls",
+    body: "Lifetime UP or DOWN prints from this bot. A flip counts as another call. WAIT does not. Lives on this machine.",
+  },
 
   "skill.LIVE": { title: "LIVE skill", body: "Graded enough times. Allowed to vote for real." },
   "skill.SHADOW": { title: "SHADOW skill", body: "Paper-traded in the background. Not yet trusted to vote." },

@@ -912,12 +912,14 @@ export function freshLearner(): Learner {
   for (const s of SKILL_SEEDS) skills[s.id] = blankCard(s);
   const seat_n = {} as Record<string, number>;
   const seat_hits = {} as Record<string, number>;
+  const seat_calls = {} as Record<string, number>;
   const fade_strength = {} as Record<string, number>;
   const seat_recent = {} as Record<string, number[]>;
   const seat_w = {} as Record<string, number>;
   for (const id of SEAT_IDS) {
     seat_n[id] = 0;
     seat_hits[id] = 0;
+    seat_calls[id] = 0;
     fade_strength[id] = 0;
     seat_recent[id] = [];
     seat_w[id] = SEAT_BY_ID[id].base;
@@ -926,6 +928,7 @@ export function freshLearner(): Learner {
     skills,
     seat_n,
     seat_hits,
+    seat_calls,
     seat_recent,
     seat_w,
     seat_scalp: {},

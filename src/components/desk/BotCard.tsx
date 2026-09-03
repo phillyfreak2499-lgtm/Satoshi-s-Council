@@ -26,6 +26,7 @@ export function BotCard({
   const ask = askCents(snap, vote.lean);
   const calibN = learner.seat_n[seat] ?? 0;
   const calib = seatCalib(calibN);
+  const calls = learner.seat_calls?.[seat] ?? 0;
   return (
     <article
       id={`seat-${seat}`}
@@ -65,6 +66,9 @@ export function BotCard({
               {avg == null ? "avg —" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`}
               {st.legs.length ? ` · ${st.legs.length}` : ""}
             </span>
+          </Tip>
+          <Tip k="field.calls">
+            <span className="font-mono text-data tabular text-fg">{calls} calls</span>
           </Tip>
           <Tip k="col.calib">
             <span className="font-mono text-micro tabular text-muted">
