@@ -196,7 +196,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
 
   useEffect(() => {
     void pull();
-    const t = window.setInterval(() => void pull(), 3000);
+    const t = window.setInterval(() => void pull(), 8000);
     return () => window.clearInterval(t);
   }, []);
 

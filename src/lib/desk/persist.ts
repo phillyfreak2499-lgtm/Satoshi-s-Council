@@ -7,7 +7,7 @@ const KEY = "satoshi-desk-v1";
 const LIVE_KEY = "satoshi-desk-v1-live";
 
 export const DEFAULT_SETTINGS: Settings = {
-  poll_ms: 2000,
+  poll_ms: 4000,
   source: import.meta.env.PROD ? "live" : "demo",
   bar_override: null,
   adaptive_bar: true,

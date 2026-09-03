@@ -624,6 +624,10 @@ async function binancePerp(): Promise<{ mark: number; index: number; source: str
 }
 
 export const fetchLiveBundle = createServerFn({ method: "GET" }).handler(async () => {
+  return loadBundle();
+});
+
+async function scrapeBundle(): Promise<LiveBundle> {
   const errors: Record<string, string> = {};
   const [k1, k5, k15, k1h, ks, deriv, liq, sent, cbEx, prem] = await Promise.all([
     binanceKlines("1m", 90).catch((e) => {
@@ -725,4 +729,22 @@ export const fetchLiveBundle = createServerFn({ method: "GET" }).handler(async (
     errors,
   };
   return bundle;
-});
+}
+
+let bundleCache: { at: number; bundle: LiveBundle } | null = null;
+let bundleInflight: Promise<LiveBundle> | null = null;
+const BUNDLE_TTL_MS = 3_000;
+
+async function loadBundle(): Promise<LiveBundle> {
+  if (bundleCache && Date.now() - bundleCache.at < BUNDLE_TTL_MS) return bundleCache.bundle;
+  if (bundleInflight) return bundleInflight;
+  bundleInflight = scrapeBundle()
+    .then((bundle) => {
+      bundleCache = { at: Date.now(), bundle };
+      return bundle;
+    })
+    .finally(() => {
+      bundleInflight = null;
+    });
+  return bundleInflight;
+}

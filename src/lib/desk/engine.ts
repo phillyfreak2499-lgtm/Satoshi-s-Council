@@ -60,8 +60,15 @@ function emit(partial: Partial<DeskFrame> = {}) {
 let lastVotes: Vote[] = [];
 let lastChair: ChairResult | null = null;
 let lastError: string | null = null;
+let lastPersistAt = 0;
+let persistDirty = false;
+let visBound = false;
 
-function persist() {
+function persist(force = false) {
+  persistDirty = true;
+  if (!force && Date.now() - lastPersistAt < 8_000) return;
+  lastPersistAt = Date.now();
+  persistDirty = false;
   savePersisted({ settings, learner });
   saveCallLog(callLog);
 }
@@ -194,7 +201,7 @@ function applyGrade(
     learner = runHuddle(learner).learner;
   }
   learner.window_memory.entry_spot = 0;
-  persist();
+  persist(true);
 }
 
 function officialHit(snap: Snapshot, ticker: string, close_time: number) {
@@ -342,6 +349,26 @@ function runDemoOnce() {
   emit({ settling: pending != null });
 }
 
+function pollMs() {
+  if (settings.beast) return 2500;
+  if (settings.source === "live") return Math.max(settings.poll_ms, 4000);
+  return Math.max(settings.poll_ms, 3000);
+}
+
+function onVis() {
+  if (typeof document === "undefined") return;
+  if (document.hidden) {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    if (persistDirty) persist(true);
+    return;
+  }
+  restartTimer();
+  void tick();
+}
+
 export function startEngine() {
   const persisted = loadPersisted();
   settings = persisted.settings;
@@ -353,6 +380,11 @@ export function startEngine() {
     void tick();
   }
   restartTimer();
+  if (!visBound && typeof document !== "undefined") {
+    visBound = true;
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", () => persist(true));
+  }
 }
 
 export function stopEngine() {
@@ -362,13 +394,13 @@ export function stopEngine() {
 
 function restartTimer() {
   if (timer) clearInterval(timer);
-  const ms = settings.beast ? 1500 : settings.poll_ms;
-  timer = setInterval(() => void tick(), ms);
+  if (typeof document !== "undefined" && document.hidden) return;
+  timer = setInterval(() => void tick(), pollMs());
 }
 
 export function patchSettings(p: Partial<Settings>) {
   const switching = p.source != null && p.source !== settings.source;
-  if (switching) persist();
+  if (switching) persist(true);
   settings = { ...settings, ...p };
   if (switching && p.source) {
     learner = loadLearner(p.source);
@@ -378,13 +410,13 @@ export function patchSettings(p: Partial<Settings>) {
     pending = null;
     lastVotes = [];
     lastChair = null;
-    persist();
+    persist(true);
     emit();
     restartTimer();
     void tick();
     return;
   }
-  persist();
+  persist(true);
   if (prevSnap && lastVotes.length) {
     lastChair = runChair(lastVotes, prevSnap, learner, settings);
   }
