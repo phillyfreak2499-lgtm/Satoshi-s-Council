@@ -4,6 +4,7 @@ import { recencyRate } from "./skills";
 import { knnRead, walkForward } from "./memory";
 import { readScalp, scalpAvg } from "./scalp";
 import { binKey, calibNOf, clamp, listenCalib, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
+import { holdScore } from "./stick";
 import type {
   ChairResult,
   FeedHealth,
@@ -64,6 +65,7 @@ export function runChair(
   snap: Snapshot,
   learner: Learner,
   settings: Settings,
+  lastLean: Lean = "WAIT",
 ): ChairResult {
   const muted = new Set(settings.mutes);
   const now = snap.as_of;
@@ -451,6 +453,10 @@ export function runChair(
   let lean: Lean = "WAIT";
   if (!hardFail && vsBar >= bar && !conflict) {
     lean = rawScore > 0 ? "UP" : rawScore < 0 ? "DOWN" : "WAIT";
+  }
+  if (!bothDown && !lockdown && lastLean !== "WAIT") {
+    const signed = (rawScore >= 0 ? 1 : -1) * vsBar;
+    lean = holdScore(lastLean, signed, bar);
   }
   if (bothDown || lockdown) lean = "WAIT";
   if (lean !== "WAIT" && knn.n >= 8 && knn.against(lean) >= 0.65) {

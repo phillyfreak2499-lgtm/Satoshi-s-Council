@@ -6,6 +6,7 @@ import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type His
 import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
+import { stickLean, type Stick } from "./stick";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
@@ -38,8 +39,45 @@ let pending: {
 } | null = null;
 let callLog: CallLogRow[] = loadCallLog();
 let lastCall: { ticker: string; close_time: number; lean: Lean } | null = null;
+let sticks: Partial<Record<string, Stick>> = {};
+let stickWindow = "";
 
 const listeners = new Set<(f: DeskFrame) => void>();
+
+function windowKey(snap: Snapshot) {
+  return `${snap.ticker}:${snap.close_time}`;
+}
+
+function stickyVotes(votes: Vote[], snap: Snapshot): Vote[] {
+  const k = windowKey(snap);
+  if (stickWindow !== k) {
+    sticks = {};
+    stickWindow = k;
+  }
+  return votes.map((v) => {
+    if (v.seat === "WARDEN") return v;
+    const { lean, st } = stickLean(sticks[v.seat], v.lean, snap.as_of);
+    sticks[v.seat] = st;
+    if (lean === v.lean) return v;
+    return {
+      ...v,
+      lean,
+      reasoning: `${v.reasoning} · hold ${st.shown} (${st.pendingN}/2 ${st.pending ?? "—"})`,
+    };
+  });
+}
+
+function lastSide(snap: Snapshot): Lean {
+  if (lastChair && prevSnap && windowKey(prevSnap) === windowKey(snap)) return lastChair.lean;
+  return "WAIT";
+}
+
+function stickyChair(chair: ChairResult, snap: Snapshot): ChairResult {
+  const { lean, st } = stickLean(sticks[CHAIR_SCALP], chair.lean, snap.as_of);
+  sticks[CHAIR_SCALP] = st;
+  if (lean === chair.lean) return chair;
+  return { ...chair, lean };
+}
 
 function emit(partial: Partial<DeskFrame> = {}) {
   const frame: DeskFrame = {
@@ -283,12 +321,12 @@ async function tick() {
       snap.spot - learner.window_memory.entry_spot,
     ].slice(-120);
 
-    const votes = runBots(snap, learner);
+    const votes = stickyVotes(runBots(snap, learner), snap);
     for (const v of votes) {
       if (v.seat === "WARDEN") continue;
       onLean(learner, v.seat, v.lean, snap);
     }
-    const chair = runChair(votes, snap, learner, settings);
+    const chair = stickyChair(runChair(votes, snap, learner, settings, lastSide(snap)), snap);
     onLean(learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(snap, chair);
     persist();
@@ -329,12 +367,12 @@ function runDemoOnce() {
   ensureDemo();
   const snap = demoTick(demo!, learner.window_memory);
   if (!learner.window_memory.entry_spot) learner.window_memory.entry_spot = snap.spot;
-  const votes = runBots(snap, learner);
+  const votes = stickyVotes(runBots(snap, learner), snap);
   for (const v of votes) {
     if (v.seat === "WARDEN") continue;
     onLean(learner, v.seat, v.lean, snap);
   }
-  const chair = runChair(votes, snap, learner, settings);
+  const chair = stickyChair(runChair(votes, snap, learner, settings, lastSide(snap)), snap);
   onLean(learner, CHAIR_SCALP, chair.lean, snap);
   noteCall(snap, chair);
   persist();
@@ -418,7 +456,7 @@ export function patchSettings(p: Partial<Settings>) {
   }
   persist(true);
   if (prevSnap && lastVotes.length) {
-    lastChair = runChair(lastVotes, prevSnap, learner, settings);
+    lastChair = stickyChair(runChair(lastVotes, prevSnap, learner, settings, lastChair?.lean ?? "WAIT"), prevSnap);
   }
   emit();
   restartTimer();
@@ -443,7 +481,7 @@ export function huddleNow() {
   learner = r.learner;
   persist();
   if (prevSnap && lastVotes.length) {
-    lastChair = runChair(lastVotes, prevSnap, learner, settings);
+    lastChair = stickyChair(runChair(lastVotes, prevSnap, learner, settings, lastChair?.lean ?? "WAIT"), prevSnap);
   }
   emit();
 }
