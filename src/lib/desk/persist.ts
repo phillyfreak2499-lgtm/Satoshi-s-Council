@@ -8,7 +8,7 @@ const LIVE_KEY = "satoshi-desk-v1-live";
 
 export const DEFAULT_SETTINGS: Settings = {
   poll_ms: 2000,
-  source: "demo",
+  source: import.meta.env.PROD ? "live" : "demo",
   bar_override: null,
   adaptive_bar: true,
   mutes: [],
@@ -111,6 +111,12 @@ export function loadLearner(source: DataSource): Learner {
 
 export function loadPersisted(): Persisted {
   const main = readMain();
+  const unused =
+    (main.learner.graded_windows ?? 0) === 0 &&
+    Object.values(main.learner.seat_n ?? {}).every((n) => !n);
+  if (import.meta.env.PROD && main.settings.source === "demo" && unused) {
+    main.settings = { ...main.settings, source: "live" };
+  }
   if (main.settings.source === "live") {
     return { settings: main.settings, learner: loadLearner("live") };
   }

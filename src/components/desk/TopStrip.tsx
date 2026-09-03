@@ -5,6 +5,7 @@ import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { askCents } from "@/lib/desk/scalp";
+import { patchSettings } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
 
 function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; sub?: ReactNode }) {
@@ -58,10 +59,20 @@ export function TopStrip({
     <div data-tour="tour-strip" className="border-b border-border bg-surface px-3 py-2">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          {demo && (
+          {demo ? (
             <Tip k="source.demo" mark={false}>
-              <span className="rounded-sm border border-wait/50 bg-wait/15 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-wait">
-                DEMO
+              <button
+                type="button"
+                onClick={() => patchSettings({ source: "live" })}
+                className="rounded-sm border border-wait/50 bg-wait/15 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-wait"
+              >
+                DEMO · tap for live tape
+              </button>
+            </Tip>
+          ) : (
+            <Tip k="source.live" mark={false}>
+              <span className="rounded-sm border border-up/40 bg-up/10 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-up">
+                LIVE
               </span>
             </Tip>
           )}

@@ -67,7 +67,7 @@ export function newDemoWindow(memory: WindowMemory, remainingMs?: number): DemoS
     (memory.prior_settles.length === 0 ? 7 * 60_000 + 20_000 : 15 * 60_000);
   const close_time = now + remain;
   const start_time = close_time - 15 * 60_000;
-  const open_spot = 108_000 + Math.round(rng() * 800);
+  const open_spot = 77_000 + Math.round(rng() * 800);
   const strike = Math.round(open_spot / 25) * 25 - 25 + Math.round(rng() * 2) * 25;
   const scenario = pickScenario(rng);
   const vol_med = (scenario === "quiet" ? 18 : 42) * open_spot;

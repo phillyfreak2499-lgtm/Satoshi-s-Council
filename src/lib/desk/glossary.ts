@@ -296,7 +296,11 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "source.demo": {
     title: "DEMO",
-    body: "Synthetic window. Skills grade into the demo book only — they do not touch the live book.",
+    body: "Fake tape, fake $109k-era Bitcoin. Skills grade into the demo book only. Tap it to switch this PC to the live Kalshi/spot feed.",
+  },
+  "source.live": {
+    title: "LIVE",
+    body: "Real Coinbase/Binance spot, Kalshi 15-minute book, funding and liquidations. Paper still — no orders.",
   },
 
   "col.rank": {
