@@ -1,7 +1,7 @@
 import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
 import { readScalp, scalpAvg, askCents } from "@/lib/desk/scalp";
-import { FULL_N, seatCalib } from "@/lib/desk/math";
+import { FULL_N, calibNOf, seatCalib } from "@/lib/desk/math";
 import { useDesk } from "@/lib/desk/store";
 import { HealthDot, LeanChip, Field } from "./bits";
 import { Eyes } from "./Eyes";
@@ -24,7 +24,7 @@ export function BotCard({
   const st = readScalp(learner, seat);
   const avg = scalpAvg(st.legs);
   const ask = askCents(snap, vote.lean);
-  const calibN = learner.seat_n[seat] ?? 0;
+  const calibN = calibNOf(learner.seat_n[seat] ?? 0, learner.seat_calib_debt?.[seat] ?? 0);
   const calib = seatCalib(calibN);
   const calls = learner.seat_calls?.[seat] ?? 0;
   return (

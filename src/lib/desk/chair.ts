@@ -2,7 +2,7 @@ import { DERIVS_FAMILY, KALSHI_SEQ_SEATS, SEAT_BY_ID, SEATS } from "./seats";
 import { detectQuiet, evidenceOf, isWeekend, readWarden } from "./context";
 import { recencyRate } from "./skills";
 import { readScalp, scalpAvg } from "./scalp";
-import { binKey, clamp, listenCalib, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
+import { binKey, calibNOf, clamp, listenCalib, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import type {
   ChairResult,
   FeedHealth,
@@ -111,6 +111,7 @@ export function runChair(
     if (vote.seat === "WARDEN") continue;
     const isMuted = muted.has(vote.seat);
     const sw = seatWilson(learner, vote.seat);
+    const cn = calibNOf(sw.n, learner.seat_calib_debt?.[vote.seat] ?? 0);
     let listen = listenOf(rankOf[vote.seat] ?? 10);
     if (sw.n >= WARM_N && sw.w < 0.42) listen *= 0.35;
     const card = learner.skills[vote.skill_used];
@@ -119,7 +120,7 @@ export function runChair(
       if (rec < 0.42) listen *= 0.5;
       else if (rec > 0.62) listen = Math.min(1, listen * 1.12);
     }
-    listen *= listenCalib(sw.n);
+    listen *= listenCalib(cn);
     const avg = scalpAvg(readScalp(learner, vote.seat).legs);
     const legsN = readScalp(learner, vote.seat).legs.length;
     if (avg != null && legsN >= 3) listen *= clamp(1 + avg / 40, 0.55, 1.45);
@@ -130,7 +131,7 @@ export function runChair(
     if (isMuted) status = "MUTED";
     else if (seqMute) status = "VETO";
     else if (vote.health === "DOWN") status = "DOWN";
-    else if (sw.n < WARM_N) status = "UNCALIBRATED";
+    else if (cn < WARM_N) status = "UNCALIBRATED";
     else if (bothDown) status = "VETO";
 
     const conf_w = (vote.confidence / 100) ** 1.4;
@@ -485,7 +486,10 @@ export function runChair(
       const wilsonRank = rankOf[a.vote.seat] ?? 99;
       const contribRank = contribRankOf[a.vote.seat] ?? 99;
       const st = readScalp(learner, a.vote.seat);
-      const calibN = learner.seat_n[a.vote.seat] ?? 0;
+      const calibN = calibNOf(
+        learner.seat_n[a.vote.seat] ?? 0,
+        learner.seat_calib_debt?.[a.vote.seat] ?? 0,
+      );
       return {
         rank: contribRank,
         wilson_rank: wilsonRank,

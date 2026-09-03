@@ -1,7 +1,8 @@
 import { cloneResidualRule, formatRule, SKILL_RULES } from "./dsl";
 import { centsOf } from "./clock";
 import { creditPattern } from "./ledger";
-import { binKey, clamp, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
+import { binKey, calibNOf, clamp, EDGE_FLOOR, FULL_N, mean, REVIEW_EVERY, round, seatCalib, WARM_N, wilsonLower } from "./math";
+import { readScalp, scalpAvg } from "./scalp";
 import { SEATS } from "./seats";
 import {
   benchThreshold,
@@ -13,6 +14,7 @@ import {
   refreshDerived,
   skillCounts,
   SKILL_SEEDS,
+  skillScore,
 } from "./skills";
 import { nudgeThresh, recordThresh, retuneThresholds } from "./thresholds";
 import type {
@@ -299,14 +301,15 @@ export function rebuildSeatWeights(learner: Learner): string[] {
   for (const id of Object.keys(prior)) {
     const p = prior[id]!;
     const n = learner.seat_n[id] ?? 0;
-    if (n < WARM_N) {
+    const cn = calibNOf(n, learner.seat_calib_debt?.[id] ?? 0);
+    if (cn < WARM_N) {
       frozen[id] = p;
       continue;
     }
     const wilson = wilsonLower(learner.seat_hits[id] ?? 0, n);
     const recArr = learner.seat_recent[id] ?? [];
     const recency = recArr.length >= 4 ? mean(recArr) : (learner.seat_hits[id] ?? 0) / n;
-    const c = seatCalib(n);
+    const c = seatCalib(cn);
     let mult = 1 + c * (1.6 * (wilson - 0.42) + 0.8 * (recency - 0.5));
     mult = clamp(mult, 0.4, 2.2);
     flex[id] = p * mult;
@@ -325,6 +328,99 @@ export function rebuildSeatWeights(learner: Learner): string[] {
     learner.seat_w[id] = next;
   }
   return notes.slice(0, 6);
+}
+
+function spawnRethink(learner: Learner, owner: SeatId, avg: number): string | null {
+  const mine = Object.values(learner.skills).filter((s) => s.owner === owner);
+  if (mine.filter((s) => s.id.includes(".rethink_")).length >= 2) return null;
+  const parent = [...mine].sort((a, b) => skillScore(b) - skillScore(a))[0];
+  if (!parent) return null;
+  const rule = cloneResidualRule(parent, learner.last_feats ?? {}, learner, learner.last_regime);
+  const id = `${owner}.rethink_${Date.now().toString(36).slice(-4)}`;
+  learner.skills[id] = {
+    id,
+    owner,
+    question: `rethink after ${avg.toFixed(1)}¢ avg — new eyes on ${parent.id}`,
+    eyes: parent.eyes,
+    fire_when: formatRule(rule),
+    vote: parent.vote,
+    conf_formula: "residual",
+    invalidate_if: "fails next review",
+    status: "SHADOW",
+    n: 0,
+    hits: 0,
+    wait_good: 0,
+    wait_miss: 0,
+    wilson: 0,
+    brier_sum: 0,
+    brier_n: 0,
+    brier: 0,
+    ev_sum: 0,
+    ev_n: 0,
+    ev: 0,
+    streak_wrong: 0,
+    last20: [],
+    pocket: {},
+    rule,
+  };
+  return id;
+}
+
+function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
+  const notes: string[] = [];
+  const mine = Object.values(learner.skills).filter((s) => s.owner === owner);
+  const live = mine.filter((s) => s.status === "LIVE").sort((a, b) => a.ev - b.ev);
+  if (live[0]) {
+    live[0].status = "BENCH";
+    notes.push(`bench ${live[0].id}`);
+  }
+  const shadow = mine
+    .filter((s) => s.status === "SHADOW")
+    .sort((a, b) => skillScore(b) - skillScore(a));
+  const promote = shadow.find((s) => s.n >= 8 || s.ev_n >= 8);
+  if (promote) {
+    promote.status = "LIVE";
+    notes.push(`live ${promote.id}`);
+  } else {
+    const spawned = spawnRethink(learner, owner, avg);
+    if (spawned) notes.push(`shadow ${spawned}`);
+  }
+  return notes;
+}
+
+/** Every 500 calls after 700: keep 15¢ avg or lose calibration and swap the play. */
+export function reviewSeats(learner: Learner): string[] {
+  if (!learner.seat_calib_debt) learner.seat_calib_debt = {};
+  if (!learner.seat_review_at) learner.seat_review_at = {};
+  const lines: string[] = [];
+  for (const s of SEATS) {
+    if (s.id === "WARDEN") continue;
+    const calls = learner.seat_calls?.[s.id] ?? 0;
+    let due = learner.seat_review_at[s.id] ?? FULL_N;
+    if (calls < FULL_N || calls < due) continue;
+    while (due <= calls) due += REVIEW_EVERY;
+    learner.seat_review_at[s.id] = due;
+    const st = readScalp(learner, s.id);
+    const avg = scalpAvg(st.legs);
+    if (avg == null || st.legs.length < 8) {
+      lines.push(`${s.id} n=${st.legs.length} hold (thin book)`);
+      continue;
+    }
+    if (avg >= EDGE_FLOOR) {
+      const debt = learner.seat_calib_debt[s.id] ?? 0;
+      if (debt > 0) learner.seat_calib_debt[s.id] = Math.max(0, debt - 100);
+      lines.push(`${s.id} ${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢ hold`);
+      continue;
+    }
+    learner.seat_calib_debt[s.id] = learner.seat_n[s.id] ?? 0;
+    const swap = rethinkSeat(learner, s.id, avg);
+    lines.push(`${s.id} ${avg.toFixed(1)}¢ < ${EDGE_FLOOR}¢ demote · ${swap.join(" · ") || "no swap"}`);
+  }
+  if (lines.length) {
+    const line = `REVIEW ${new Date().toISOString().slice(11, 16)} · ${lines.slice(0, 4).join(" · ")}`;
+    learner.huddle_log = [line, ...learner.huddle_log].slice(0, 20);
+  }
+  return lines;
 }
 
 export function windowsHuddleDue(learner: Learner): boolean {

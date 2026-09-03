@@ -50,6 +50,8 @@ function mergeLearner(saved?: Partial<Learner> | null): Learner {
   learner.seat_n = { ...base.seat_n, ...(saved.seat_n ?? {}) };
   learner.seat_hits = { ...base.seat_hits, ...(saved.seat_hits ?? {}) };
   learner.seat_calls = { ...base.seat_calls, ...(saved.seat_calls ?? {}) };
+  learner.seat_calib_debt = { ...(saved.seat_calib_debt ?? {}) };
+  learner.seat_review_at = { ...(saved.seat_review_at ?? {}) };
   learner.seat_w = { ...base.seat_w, ...(saved.seat_w ?? {}) };
   learner.seat_scalp = saved.seat_scalp ?? {};
   if (learner.lockdown_windows_left == null) learner.lockdown_windows_left = 0;

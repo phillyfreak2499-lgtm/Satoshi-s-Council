@@ -15,6 +15,15 @@ export const mean = (xs: number[]) =>
 export const WARM_N = 20;
 /** Graded UP/DOWN settles before listen/weight are 100% live. ~1 week of 15m windows. */
 export const FULL_N = 700;
+/** After full, review every this many lifetime calls. */
+export const REVIEW_EVERY = 500;
+/** Scalp avg ¢ that a calibrated seat must hold or it gets sent back. */
+export const EDGE_FLOOR = 15;
+
+/** 0 at <20, 1 at 700. WAIT does not count. Debt can send them back. */
+export function calibNOf(n: number, debt = 0): number {
+  return Math.max(0, n - Math.max(0, debt));
+}
 
 /** 0 at <20, 1 at 700. WAIT does not count. */
 export function seatCalib(n: number): number {

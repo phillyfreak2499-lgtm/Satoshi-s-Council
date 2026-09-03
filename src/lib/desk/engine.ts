@@ -1,7 +1,7 @@
 import { runBots } from "./bots";
 import { runChair } from "./chair";
 import { demoFinish, demoTick, newDemoWindow, type DemoState } from "./demo";
-import { chicagoHuddleDue, gradeWindow, runHuddle, acceptCandidate, windowsHuddleDue } from "./learner";
+import { chicagoHuddleDue, gradeWindow, reviewSeats, runHuddle, acceptCandidate, windowsHuddleDue } from "./learner";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
@@ -185,6 +185,7 @@ function applyGrade(
   const g = gradeWindow(learner, snap, votes, chair, finish);
   learner = g.learner;
   settleAll(learner, finish);
+  reviewSeats(learner);
   if (learner.settle_tape[0]) {
     learner.settle_tape[0] = `${learner.settle_tape[0]} · ${source}`;
   }

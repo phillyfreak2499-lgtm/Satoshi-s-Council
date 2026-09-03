@@ -412,6 +412,8 @@ export type Learner = {
   seat_n: Record<string, number>;
   seat_hits: Record<string, number>;
   seat_calls: Record<string, number>;
+  seat_calib_debt: Record<string, number>;
+  seat_review_at: Record<string, number>;
   seat_recent: Record<string, number[]>;
   seat_w: Record<string, number>;
   seat_scalp: Record<string, { open: { lean: "UP" | "DOWN"; cents: number; ticker: string; close_time: number } | null; legs: number[] }>;

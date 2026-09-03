@@ -929,6 +929,8 @@ export function freshLearner(): Learner {
     seat_n,
     seat_hits,
     seat_calls,
+    seat_calib_debt: {},
+    seat_review_at: {},
     seat_recent,
     seat_w,
     seat_scalp: {},

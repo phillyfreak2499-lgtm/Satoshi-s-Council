@@ -155,11 +155,11 @@ export const GLOSS: Record<string, Gloss> = {
   "status.DOWN": { title: "DOWN", body: "Seat has no feed. Silent." },
   "status.UNCALIBRATED": {
     title: "UNCALIBRATED",
-    body: "Fewer than 20 graded UP/DOWN calls. Can speak at 35% volume. Weight stays on the prior. WAIT does not count.",
+    body: "Fewer than 20 graded UP/DOWN calls — or sent back after a review. Speaks at 35%. Weight stays on the prior. WAIT does not count.",
   },
   "col.calib": {
     title: "Cal",
-    body: "Graded directional calls toward 700 (~a week of 15-minute windows if they called every one). 20 takes the chip off. 700 is 100% listen and weight. WAIT does not count.",
+    body: "Graded directional calls toward 700. 20 takes the chip off. 700 is 100% listen. Every 500 calls after that, avg ¢ must hold 15 or they get sent back and swap the play. WAIT does not count.",
   },
   "field.calls": {
     title: "Calls",
