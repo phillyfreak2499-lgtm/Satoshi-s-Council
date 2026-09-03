@@ -228,11 +228,24 @@ export function ensureDbReady(): Promise<void> {
 // Node. Client bundles never hit this path (`getSql` throws in the browser).
 const globalBoot = globalThis as typeof globalThis & {
   __pgBootstrapPromise__?: Promise<void>;
+  __unhandledRejectionGuard__?: boolean;
 };
 if (typeof window === "undefined" && dbSource === "pglite") {
   globalBoot.__pgBootstrapPromise__ ??= ensureDbReady().catch((err) => {
     globalBoot.__pgBootstrapPromise__ = undefined;
     console.error("[db] PGLite bootstrap failed:", err);
-    throw err;
+    // Board degrades. Do not rethrow — that became an unhandledRejection every ~60s.
+  });
+}
+
+if (
+  typeof window === "undefined" &&
+  typeof process !== "undefined" &&
+  typeof process.on === "function" &&
+  !globalBoot.__unhandledRejectionGuard__
+) {
+  globalBoot.__unhandledRejectionGuard__ = true;
+  process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection]", reason);
   });
 }
