@@ -7,7 +7,7 @@ services:
     plan: starter
     buildCommand: npm ci && npm run build
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
         value: "22"
@@ -15,5 +15,7 @@ services:
         value: node-server
       - key: HOST
         value: "0.0.0.0"
+      - key: WEB_CONCURRENCY
+        value: "1"
       - key: VITE_AUTH_ENABLED
         value: "false"
