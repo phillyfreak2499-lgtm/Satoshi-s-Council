@@ -151,6 +151,13 @@ export type HealthMap = {
   basis_wide: boolean;
 };
 
+export type TapeRow = {
+  v: number[];
+  finish: "UP" | "DOWN";
+  t: number;
+};
+export type WfRow = { hit: number; cents: number };
+
 export type WindowMemory = {
   prior_settles: Lean[];
   path_since_entry: number[];
@@ -158,6 +165,7 @@ export type WindowMemory = {
   streak_side: Lean | null;
   entry_spot: number;
   entry_lean: Lean | null;
+  tapes: TapeRow[];
 };
 
 export type Snapshot = {
@@ -325,6 +333,17 @@ export type ChairResult = {
   invalidate_if: string;
   huddle_line: string;
   last_settle: string;
+  knn_note: string;
+  wait_note: string;
+  walk: {
+    n: number;
+    train_n: number;
+    test_n: number;
+    train_hit: number;
+    train_ev: number;
+    test_hit: number;
+    test_ev: number;
+  } | null;
   quorum: { up: number; down: number; wait: number };
   rows: SeatRow[];
   categories_agree: number;
@@ -434,6 +453,9 @@ export type Learner = {
   chair_recent: number[];
   chair_ev_sum: number;
   chair_ev_n: number;
+  chair_wait_n: number;
+  chair_wait_good: number;
+  wf_chair: WfRow[];
   thresholds: ThreshBook;
   last_feats: FeatMap;
   last_regime: string;

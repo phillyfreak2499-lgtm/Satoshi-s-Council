@@ -305,7 +305,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "col.scalp": {
     title: "Avg ¢",
-    body: "Rolling average of cents made or lost between calls. Bought UP at 55¢, sold at 70¢ = +15. Held to the end right at 70¢ = +30. Wrong to 0 = −70. Last 20 prints.",
+    body: "Rolling average of cents between calls after the Kalshi taker fee. Bought UP at 55¢, sold at 70¢ is 15 minus two fees. Held to the end right at 70¢ is 30 minus the entry fee. Last 20 prints.",
   },
   "col.seat": { title: "Seat", body: "The specialist. Click the row to open its card." },
   "col.callsign": { title: "Callsign", body: "Short handle for the seat. Floor shorthand, not a second bot." },
@@ -374,7 +374,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.score": {
     title: "Score math",
-    body: "How SATOSHI turned 20 leans into one number. Score must clear the bar. Sit-mass and disagreement raise it.",
+    body: "How SATOSHI turned 20 leans into one number. Score must clear the bar. Sit-mass, disagreement, and cousin windows raise it. Walk-forward is train vs later — if later is worse, the book is memorizing.",
   },
   "pane.gates": {
     title: "Gate checklist",

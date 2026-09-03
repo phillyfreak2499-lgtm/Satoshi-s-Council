@@ -393,6 +393,19 @@ export function SatoshiTab({
             <div className={chair.tax_applied ? "text-wait" : "text-muted"}>
               calibration tax: {chair.tax}
             </div>
+            <div>cousins {chair.knn_note}</div>
+            <div>{chair.wait_note}</div>
+            {chair.walk ? (
+              <div>
+                walk-forward n={chair.walk.n} · train {Math.round(chair.walk.train_hit * 100)}%{" "}
+                {chair.walk.train_ev >= 0 ? "+" : ""}
+                {chair.walk.train_ev.toFixed(1)}¢ · later {Math.round(chair.walk.test_hit * 100)}%{" "}
+                {chair.walk.test_ev >= 0 ? "+" : ""}
+                {chair.walk.test_ev.toFixed(1)}¢
+              </div>
+            ) : (
+              <div>walk-forward needs 16 graded chair calls</div>
+            )}
             <div>
               full-call conf min(92, round(50+|score|×55)) = {chair.full_conf_raw}
               {chair.lean === "WAIT" ? " · WAIT uses gate conf" : ""} → {chair.confidence} conf

@@ -1,6 +1,7 @@
 import { DERIVS_FAMILY, KALSHI_SEQ_SEATS, SEAT_BY_ID, SEATS } from "./seats";
 import { detectQuiet, evidenceOf, isWeekend, readWarden } from "./context";
 import { recencyRate } from "./skills";
+import { knnRead, walkForward } from "./memory";
 import { readScalp, scalpAvg } from "./scalp";
 import { binKey, calibNOf, clamp, listenCalib, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import type {
@@ -301,6 +302,15 @@ export function runChair(
   }
 
   bar += 0.2 * sitMass;
+  const knn = knnRead(learner.window_memory.tapes, snap);
+  const proposed: Lean = rawScore > 0 ? "UP" : rawScore < 0 ? "DOWN" : "WAIT";
+  const against = knn.against(proposed);
+  let knnNote = knn.note;
+  if (knn.n >= 6) {
+    const bump = 0.16 * Math.max(0, against - 0.5) * 2;
+    bar += bump;
+    if (bump > 0.02) knnNote = `${knn.note} · cousins fade this side +${bump.toFixed(2)} bar`;
+  }
   bar = clamp(bar, 0.24, 0.72);
 
   const alreadyIn = learner.window_memory.entry_lean && learner.window_memory.entry_lean !== "WAIT";
@@ -443,6 +453,10 @@ export function runChair(
     lean = rawScore > 0 ? "UP" : rawScore < 0 ? "DOWN" : "WAIT";
   }
   if (bothDown || lockdown) lean = "WAIT";
+  if (lean !== "WAIT" && knn.n >= 8 && knn.against(lean) >= 0.65) {
+    lean = "WAIT";
+    knnNote = `${knn.note} · abstain (cousins ${Math.round(against * 100)}% against)`;
+  }
 
   const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 1;
   gates.push({
@@ -453,6 +467,13 @@ export function runChair(
     value: `fair ${round(snap.fair_yes, 1)}¢ · UP ${round(snap.edge_up, 1)} · DN ${round(snap.edge_down, 1)} · fee ${snap.fee_yes}/${snap.fee_no}`,
   });
   if (lean !== "WAIT" && edge <= 0) lean = "WAIT";
+  gates.push({
+    id: "memory",
+    label: "Cousin windows do not fade this side",
+    pass: lean === "WAIT" || knn.n < 8 || knn.against(lean) < 0.65,
+    hard: false,
+    value: knnNote,
+  });
   hardFail = gates.some((g) => g.hard && !g.pass);
   const failed = gates.filter((g) => !g.pass);
 
@@ -624,6 +645,12 @@ export function runChair(
     invalidate_if: invalidate,
     huddle_line: learner.huddle_log[0] ?? "no huddle yet",
     last_settle: learner.settle_tape[0] ?? "no settle yet",
+    knn_note: knnNote,
+    wait_note:
+      (learner.chair_wait_n ?? 0) > 0
+        ? `WAIT saved ${learner.chair_wait_good}/${learner.chair_wait_n} (both sides ≤ 0¢ after fee)`
+        : "WAIT not graded yet",
+    walk: walkForward(learner.wf_chair),
     quorum,
     rows,
     categories_agree: catAgree,

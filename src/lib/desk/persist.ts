@@ -70,6 +70,10 @@ function mergeLearner(saved?: Partial<Learner> | null): Learner {
   if (!learner.last_huddle_n) learner.last_huddle_n = 0;
   if (learner.chair_ev_sum == null) learner.chair_ev_sum = 0;
   if (learner.chair_ev_n == null) learner.chair_ev_n = 0;
+  if (learner.chair_wait_n == null) learner.chair_wait_n = 0;
+  if (learner.chair_wait_good == null) learner.chair_wait_good = 0;
+  if (!learner.wf_chair) learner.wf_chair = [];
+  if (!learner.window_memory.tapes) learner.window_memory.tapes = [];
   for (const card of Object.values(learner.skills)) {
     if (card.ev_sum == null) card.ev_sum = 0;
     if (card.ev_n == null) card.ev_n = 0;

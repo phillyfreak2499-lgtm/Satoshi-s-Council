@@ -2,6 +2,7 @@ import { cloneResidualRule, formatRule, SKILL_RULES } from "./dsl";
 import { centsOf } from "./clock";
 import { creditPattern } from "./ledger";
 import { binKey, calibNOf, clamp, EDGE_FLOOR, FULL_N, mean, REVIEW_EVERY, round, seatCalib, WARM_N, wilsonLower } from "./math";
+import { rememberTape } from "./memory";
 import { readScalp, scalpAvg } from "./scalp";
 import { SEATS } from "./seats";
 import {
@@ -239,12 +240,22 @@ export function gradeWindow(
         learner.lockdown_until = snap.close_time + 15 * 60_000;
       }
     }
+    if (!learner.wf_chair) learner.wf_chair = [];
+    learner.wf_chair = [...learner.wf_chair, { hit, cents }].slice(-80);
+  } else {
+    const upC = centsOf("UP", snap, finish);
+    const dnC = centsOf("DOWN", snap, finish);
+    const saved = upC <= 0 && dnC <= 0;
+    learner.chair_wait_n = (learner.chair_wait_n ?? 0) + 1;
+    if (saved) learner.chair_wait_good = (learner.chair_wait_good ?? 0) + 1;
+    bits.push(`WAIT ${saved ? "saved" : "missed"} UP ${upC.toFixed(0)}¢ DN ${dnC.toFixed(0)}¢`);
   }
   if (wasLocked) consumeLock(learner);
 
   learner.graded_windows += 1;
   learner.learn_phase = phaseOfWindows(learner.graded_windows);
 
+  learner.window_memory.tapes = rememberTape(learner.window_memory.tapes, snap, finish);
   learner.window_memory.prior_settles = [
     ...learner.window_memory.prior_settles,
     finish,

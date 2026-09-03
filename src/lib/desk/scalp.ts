@@ -1,4 +1,5 @@
 import type { Lean, Learner, Snapshot } from "./types";
+import { takerFeeCents } from "./clock";
 
 export const CHAIR_SCALP = "SATOSHI";
 const ROLL = 20;
@@ -53,9 +54,15 @@ function pushLeg(st: SeatScalp, pnl: number) {
   st.legs = [...st.legs, Math.round(pnl * 10) / 10].slice(-ROLL);
 }
 
+function netClose(entry: number, exit: number): number {
+  const entryFee = takerFeeCents(entry);
+  const exitFee = exit > 0 && exit < 100 ? takerFeeCents(exit) : 0;
+  return exit - entry - entryFee - exitFee;
+}
+
 function closeOpen(st: SeatScalp, exit: number): number | null {
   if (!st.open) return null;
-  const pnl = exit - st.open.cents;
+  const pnl = netClose(st.open.cents, exit);
   st.open = null;
   pushLeg(st, pnl);
   return pnl;
