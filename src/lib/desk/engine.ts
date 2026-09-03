@@ -27,6 +27,7 @@ let demo: DemoState | null = null;
 let prevSnap: Snapshot | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
+let flightAt = 0;
 let lastClose = 0;
 let liveHist = { funding: [] as HistPoint[], oi: [] as HistPoint[], oiUsd: [] as HistPoint[] };
 let pending: {
@@ -181,9 +182,23 @@ function ensureDemo(remainingMs?: number) {
   if (!demo) demo = newDemoWindow(learner.window_memory, remainingMs);
 }
 
+async function pullBundle() {
+  const r = await fetch("/bundle", {
+    signal: AbortSignal.timeout(12_000),
+    headers: { accept: "application/json" },
+  });
+  if (!r.ok) throw new Error(`live tape ${r.status}`);
+  return r.json();
+}
+
 async function liveSnap(): Promise<Snapshot> {
-  const { fetchLiveBundle } = await import("./server-feeds");
-  const bundle = await fetchLiveBundle();
+  let bundle: Awaited<ReturnType<typeof pullBundle>>;
+  try {
+    bundle = await pullBundle();
+  } catch {
+    const { fetchLiveBundle } = await import("./server-feeds");
+    bundle = await fetchLiveBundle();
+  }
   if (bundle.funding_series.length >= 2) {
     liveHist.funding = bundle.funding_series;
   } else if (bundle.funding_rate != null && bundle.funding_time) {
@@ -302,8 +317,9 @@ function settleIfNeeded(snap: Snapshot, votes: Vote[], chair: ChairResult) {
 }
 
 async function tick() {
-  if (inFlight) return;
+  if (inFlight && Date.now() - flightAt < 15_000) return;
   inFlight = true;
+  flightAt = Date.now();
   try {
     maybeHuddle();
     let snap: Snapshot;

@@ -735,7 +735,7 @@ let bundleCache: { at: number; bundle: LiveBundle } | null = null;
 let bundleInflight: Promise<LiveBundle> | null = null;
 const BUNDLE_TTL_MS = 3_000;
 
-async function loadBundle(): Promise<LiveBundle> {
+export async function loadBundle(): Promise<LiveBundle> {
   if (bundleCache && Date.now() - bundleCache.at < BUNDLE_TTL_MS) return bundleCache.bundle;
   if (bundleInflight) return bundleInflight;
   bundleInflight = scrapeBundle()
