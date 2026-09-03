@@ -167,7 +167,10 @@ export const GLOSS: Record<string, Gloss> = {
   },
 
   "skill.LIVE": { title: "LIVE skill", body: "Graded enough times. Allowed to vote for real." },
-  "skill.SHADOW": { title: "SHADOW skill", body: "Paper-traded in the background. Not yet trusted to vote." },
+  "skill.SHADOW": {
+    title: "SHADOW skill",
+    body: "Paper-traded in the background — and can take the wheel when UCB says it is hotter than the LIVE play. That is how a new idea gets a real call.",
+  },
   "skill.BENCH": { title: "BENCH skill", body: "Folded. The learner stopped using it until it earns a way back." },
   "skill.CANDIDATE": { title: "CANDIDATE skill", body: "A proposed new play. Accept to start it in SHADOW, or dismiss it." },
   "skill.SIT": { title: "SIT", body: "This seat has no fire this window. It votes WAIT." },

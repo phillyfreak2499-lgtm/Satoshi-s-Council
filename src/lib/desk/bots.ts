@@ -2,7 +2,7 @@ import { evalRule, featOf, SKILL_RULES } from "./dsl";
 import { directionalConf, last, round } from "./math";
 import { lastMark, MARK_LABEL, readWick, type WickMark } from "./patterns";
 import { patternTrust, rememberPatterns } from "./ledger";
-import { liveSkills, skillScore } from "./skills";
+import { liveSkills, shadowSkills, skillScore } from "./skills";
 import { clockPrior, detectQuiet, detectTrendDay, readOrbit, readWarden, readWire, wireHealth } from "./context";
 import { readClock } from "./clock";
 import { ET, fmtLocal, readMarket } from "./market-hours";
@@ -163,6 +163,12 @@ function brierScale(v: Vote, ctx: BotCtx): Vote {
   return v;
 }
 
+function ucbScore(card: { n: number; status: string }, score: number, parentN: number): number {
+  const n = Math.max(1, card.n);
+  const bonus = card.status === "SHADOW" ? 0.3 : 0.16;
+  return score + bonus * Math.sqrt(Math.log(parentN + 2) / n);
+}
+
 function pickLiveAndPaper(
   ctx: BotCtx,
   seat: SeatId,
@@ -170,12 +176,13 @@ function pickLiveAndPaper(
   wait: Vote,
 ): Vote {
   const learner = ctx.learner;
-  const live = liveSkills(learner, seat);
+  const pool = [...liveSkills(learner, seat), ...shadowSkills(learner, seat)];
+  const parentN = learner.seat_n[seat] ?? 0;
   const fired: { id: string; score: number; got: Fired }[] = [];
-  for (const s of live) {
-    if (learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42) continue;
+  for (const s of pool) {
+    if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42) continue;
     const got = tryEval(ctx, evalId, s.id);
-    if (got) fired.push({ id: s.id, score: skillScore(s), got });
+    if (got) fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
   }
   fired.sort((a, b) => b.score - a.score);
   const keepWait =
