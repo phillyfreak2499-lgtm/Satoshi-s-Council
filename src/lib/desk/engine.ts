@@ -192,14 +192,8 @@ async function pullBundle() {
 }
 
 async function liveSnap(): Promise<Snapshot> {
-  let bundle: Awaited<ReturnType<typeof pullBundle>>;
-  try {
-    bundle = await pullBundle();
-  } catch {
-    const { fetchLiveBundle } = await import("./server-feeds");
-    bundle = await fetchLiveBundle();
-  }
-  if (bundle.funding_series.length >= 2) {
+  const bundle = await pullBundle();
+  if ((bundle.funding_series?.length ?? 0) >= 2) {
     liveHist.funding = bundle.funding_series;
   } else if (bundle.funding_rate != null && bundle.funding_time) {
     liveHist.funding = appendPeriod(
@@ -211,14 +205,14 @@ async function liveSnap(): Promise<Snapshot> {
     bundle.funding_series = liveHist.funding;
     bundle.funding_history = liveHist.funding.map((p) => p.v);
   }
-  if (bundle.oi_series.length >= 2) {
+  if ((bundle.oi_series?.length ?? 0) >= 2) {
     liveHist.oi = bundle.oi_series;
   } else if (bundle.open_interest != null) {
     liveHist.oi = appendPeriod(liveHist.oi, bundle.as_of, bundle.open_interest, OI_PERIOD_MS);
     bundle.oi_series = liveHist.oi;
     bundle.oi_history = liveHist.oi.map((p) => p.v);
   }
-  if (bundle.oi_usd_series.length >= 2) {
+  if ((bundle.oi_usd_series?.length ?? 0) >= 2) {
     liveHist.oiUsd = bundle.oi_usd_series;
   } else if (bundle.oi_usd != null) {
     liveHist.oiUsd = appendPeriod(liveHist.oiUsd, bundle.as_of, bundle.oi_usd, OI_PERIOD_MS);
@@ -357,7 +351,21 @@ async function tick() {
     emit({ settling: pending != null });
   } catch (e) {
     lastError = e instanceof Error ? e.message : String(e);
-    emit();
+    if (settings.source === "live" && !prevSnap) {
+      settings = { ...settings, source: "demo" };
+      learner = loadLearner("demo");
+      persist(true);
+      restartTimer();
+      try {
+        runDemoOnce();
+        lastError = `${lastError} · live tape down, Demo so the floor ticks`;
+        emit();
+      } catch {
+        emit();
+      }
+    } else {
+      emit();
+    }
   } finally {
     inFlight = false;
   }
