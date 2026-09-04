@@ -119,8 +119,13 @@ export function bundleToSnapshot(
   const funding_history = valuesOf(funding_series);
   const oi_history = valuesOf(oi_series);
 
+  const last1m = b.klines_1m.length ? b.klines_1m[b.klines_1m.length - 1] : null;
+  const printTs = last1m?.receipt_ts || b.receipt_ts || now;
+  const printAge = Math.max(0, (now - printTs) / 1000);
+  const spotAge = Number.isFinite(b.spot_age_s) ? Math.min(b.spot_age_s, printAge) : printAge;
+
   const spotHealth: FeedHealth =
-    b.spot == null ? "DOWN" : divBps >= 80 ? "STALE" : ageHealth(b.spot_age_s, 8);
+    b.spot == null ? "DOWN" : divBps >= 80 ? "STALE" : ageHealth(spotAge, 8);
   const kalshiHealth: FeedHealth =
     gap === "gap" || gap === "held"
       ? "STALE"
@@ -145,7 +150,7 @@ export function bundleToSnapshot(
     official_settles: kalshi?.settles?.length ? kalshi.settles : (prev?.official_settles ?? []),
     spot,
     spot_source: b.spot_source,
-    spot_age_s: b.spot_age_s,
+    spot_age_s: spotAge,
     spot_backup: backup,
     spot_backup_source: b.spot_backup_source,
     spot_div_bps: divBps,
