@@ -5,6 +5,8 @@ import type { CallLogRow, DataSource, Learner, SeatId, Settings } from "./types"
 
 const KEY = "satoshi-desk-v1";
 const LIVE_KEY = "satoshi-desk-v1-live";
+const CALL_KEY = "satoshi-desk-v1-calls";
+const LIVE_CALL_KEY = "satoshi-desk-v1-live-calls";
 
 export const DEFAULT_SETTINGS: Settings = {
   poll_ms: 4000,
@@ -142,12 +144,14 @@ export function savePersisted(p: Persisted) {
   }
 }
 
-const CALL_KEY = "satoshi-desk-v1-calls";
+function callKey(source: DataSource) {
+  return source === "live" ? LIVE_CALL_KEY : CALL_KEY;
+}
 
-export function loadCallLog(): CallLogRow[] {
+export function loadCallLog(source: DataSource = "demo"): CallLogRow[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(CALL_KEY);
+    const raw = localStorage.getItem(callKey(source));
     if (!raw) return [];
     const rows = JSON.parse(raw) as CallLogRow[];
     return Array.isArray(rows) ? rows.filter((r) => r && (r.lean === "UP" || r.lean === "DOWN") && r.cents > 0) : [];
@@ -156,10 +160,10 @@ export function loadCallLog(): CallLogRow[] {
   }
 }
 
-export function saveCallLog(rows: CallLogRow[]) {
+export function saveCallLog(rows: CallLogRow[], source: DataSource = "demo") {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(CALL_KEY, JSON.stringify(rows.slice(0, 80)));
+    localStorage.setItem(callKey(source), JSON.stringify(rows.slice(0, 80)));
   } catch {
     /* quota */
   }
