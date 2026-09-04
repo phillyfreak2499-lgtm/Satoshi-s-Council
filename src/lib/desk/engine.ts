@@ -38,7 +38,7 @@ let pending: {
   chair: ChairResult;
   since: number;
 } | null = null;
-let callLog: CallLogRow[] = loadCallLog();
+let callLog: CallLogRow[] = loadCallLog(settings.source);
 let lastCall: { ticker: string; close_time: number; lean: Lean } | null = null;
 let sticks: Partial<Record<string, Stick>> = {};
 let stickWindow = "";
@@ -109,7 +109,7 @@ function persist(force = false) {
   lastPersistAt = Date.now();
   persistDirty = false;
   savePersisted({ settings, learner });
-  saveCallLog(callLog);
+  saveCallLog(callLog, settings.source);
 }
 
 function noteCall(snap: Snapshot, chair: ChairResult) {
@@ -133,7 +133,7 @@ function noteCall(snap: Snapshot, chair: ChairResult) {
   }
   if (chair.lean !== "UP" && chair.lean !== "DOWN") {
     lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
-    saveCallLog(callLog);
+    saveCallLog(callLog, settings.source);
     return;
   }
   const cents = markSide(snap, chair.lean);
@@ -155,7 +155,7 @@ function noteCall(snap: Snapshot, chair: ChairResult) {
     ...callLog,
   ].slice(0, 80);
   lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
-  saveCallLog(callLog);
+  saveCallLog(callLog, settings.source);
 }
 
 function settleCallLog(ticker: string, close_time: number, winner: "UP" | "DOWN") {
@@ -168,13 +168,13 @@ function settleCallLog(ticker: string, close_time: number, winner: "UP" | "DOWN"
     n += 1;
     return { ...r, settle: r.lean === winner ? 100 : 0 };
   });
-  if (n) saveCallLog(callLog);
+  if (n) saveCallLog(callLog, settings.source);
 }
 
 export function clearCallLog() {
   callLog = [];
   lastCall = null;
-  saveCallLog(callLog);
+  saveCallLog(callLog, settings.source);
   emit();
 }
 
@@ -354,6 +354,8 @@ async function tick() {
     if (settings.source === "live" && !prevSnap) {
       settings = { ...settings, source: "demo" };
       learner = loadLearner("demo");
+      callLog = loadCallLog("demo");
+      lastCall = null;
       persist(true);
       restartTimer();
       try {
@@ -435,7 +437,8 @@ export function startEngine() {
   const persisted = loadPersisted();
   settings = persisted.settings;
   learner = persisted.learner;
-  callLog = loadCallLog();
+  callLog = loadCallLog(settings.source);
+  lastCall = null;
   if (settings.source === "demo") {
     runDemoOnce();
   } else {
@@ -466,6 +469,8 @@ export function patchSettings(p: Partial<Settings>) {
   settings = { ...settings, ...p };
   if (switching && p.source) {
     learner = loadLearner(p.source);
+    callLog = loadCallLog(p.source);
+    lastCall = null;
     prevSnap = null;
     demo = null;
     lastClose = 0;
