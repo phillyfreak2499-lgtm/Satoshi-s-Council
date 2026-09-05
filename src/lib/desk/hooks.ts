@@ -14,11 +14,20 @@ import { pulseSkewMs } from "./pulse";
 const TICK_MS = 250;
 const tickSubs = new Set<() => void>();
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+// Time is sampled once per tick so every getSnapshot between two ticks
+// returns the identical string — the useSyncExternalStore contract.
+let tickNowMs = 0;
+
+function tickNow(): number {
+  return tickNowMs || Date.now();
+}
 
 function ensureTicker() {
   if (tickTimer || typeof window === "undefined") return;
+  tickNowMs = Date.now();
   tickTimer = setInterval(() => {
     if (document.hidden) return;
+    tickNowMs = Date.now();
     for (const f of tickSubs) f();
   }, TICK_MS);
 }
@@ -36,7 +45,7 @@ function tickSubscribe(fn: () => void) {
 }
 
 function approxServerNow(): number {
-  return Date.now() + pulseSkewMs();
+  return tickNow() + pulseSkewMs();
 }
 
 /** Ticking text driven by the shared 250ms clock; re-renders only when the
@@ -63,7 +72,7 @@ export function useCountdownText(closeTimeMs: number, fmt: "clock" | "mins" = "c
  *  visibly gets older instead of freezing at its last printed age. */
 export function useTickingAge(baseAgeS: number, sinceLocalMs: number): string {
   return useTickText(() => {
-    const s = Math.max(0, baseAgeS + (sinceLocalMs > 0 ? (Date.now() - sinceLocalMs) / 1000 : 0));
+    const s = Math.max(0, baseAgeS + (sinceLocalMs > 0 ? (tickNow() - sinceLocalMs) / 1000 : 0));
     return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`;
   });
 }

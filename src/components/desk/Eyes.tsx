@@ -1094,7 +1094,7 @@ export function ChairEyes({ snap }: { snap: Snapshot }) {
             <Tip k="pane.yes-chart">YES path</Tip>
           </h3>
           <span className={cn("font-mono text-micro tabular", yesMidTarget >= 50 ? "text-up" : "text-down")}>
-            {ym.toFixed(1)}¢ mid · ask {(live ? live.yes_ask : snap.yes_ask).toFixed(1)}¢
+            {ym.toFixed(1)}¢ mid · ask {(live && live.yes_ask > 0 ? live.yes_ask : snap.yes_ask).toFixed(1)}¢
           </span>
         </div>
         <canvas ref={yesRef} className="block h-40 w-full" />

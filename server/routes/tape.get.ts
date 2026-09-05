@@ -2,14 +2,27 @@
  *  Micro-cached so outside pollers can't burn the Coinbase per-IP budget
  *  (3 req/s) that the brain and the fast lane share. */
 let tapeCache: { at: number; body: string } | null = null;
+let tapeInflight: Promise<string> | null = null;
+
+function respond(body: string) {
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
 
 export default async function tape() {
-  if (tapeCache && Date.now() - tapeCache.at < 2_000) {
-    return new Response(tapeCache.body, {
-      status: 200,
-      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  if (tapeCache && Date.now() - tapeCache.at < 2_000) return respond(tapeCache.body);
+  // Single-flight: concurrent misses share one upstream fan-out.
+  if (!tapeInflight) {
+    tapeInflight = build().finally(() => {
+      tapeInflight = null;
     });
   }
+  return respond(await tapeInflight);
+}
+
+async function build(): Promise<string> {
   const ac = AbortSignal.timeout(4500);
   const headers = { "user-agent": "SatoshiCouncil/1.0 (paper research)" };
   const grab = async (url: string) => {
@@ -54,11 +67,5 @@ export default async function tape() {
   };
   const json = JSON.stringify(body);
   tapeCache = { at: Date.now(), body: json };
-  return new Response(json, {
-    status: 200,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
+  return json;
 }
