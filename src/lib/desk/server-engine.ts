@@ -8,6 +8,7 @@
  */
 import { runBots } from "./bots";
 import { runChair } from "./chair";
+import { takerFeeCents } from "./clock";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -63,6 +64,7 @@ type Eng = {
   timer: ReturnType<typeof setInterval> | null;
   inFlight: boolean;
   lastPersistAt: number;
+  lastDigestCheckAt: number;
 };
 
 // Survive dev HMR double-imports: one engine per process, on globalThis.
@@ -90,6 +92,7 @@ function freshEng(): Eng {
     timer: null,
     inFlight: false,
     lastPersistAt: 0,
+    lastDigestCheckAt: 0,
   };
 }
 
@@ -256,6 +259,122 @@ function officialHit(snap: Snapshot, ticker: string, close_time: number) {
   );
 }
 
+/** Permanent research record: one row per graded window, idempotent. */
+async function recordLedger(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+  finish: "UP" | "DOWN",
+  source: string,
+) {
+  try {
+    const db = await sql();
+    const rows = e.callLog.filter(
+      (r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000,
+    );
+    const first = rows[rows.length - 1] ?? null; // call log is newest-first
+    let ev: number | null = null;
+    if (rows.length) {
+      ev = 0;
+      for (const r of rows) {
+        if (r.settle == null) continue;
+        ev += r.settle - r.cents - takerFeeCents(r.cents);
+      }
+      ev = Math.round(ev * 10) / 10;
+    }
+    const seats: Record<string, { lean: string; conf: number; hit: boolean | null }> = {};
+    for (const v of votes) {
+      if (v.seat === "WARDEN") continue;
+      seats[v.seat] = {
+        lean: v.lean,
+        conf: v.confidence,
+        hit: v.lean === "UP" || v.lean === "DOWN" ? v.lean === finish : null,
+      };
+    }
+    await db`
+      insert into desk_ledger
+        (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass,
+         entry_cents, settle_cents, ev_cents, calls, seats)
+      values
+        (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${source}, ${finish},
+         ${chair.lean}, ${chair.confidence}, ${chair.score}, ${chair.bar}, ${chair.sit_mass},
+         ${first?.cents ?? null}, ${first?.settle ?? null}, ${ev}, ${rows.length},
+         ${JSON.stringify(seats)}::jsonb)
+      on conflict (ticker, close_time) do nothing
+    `;
+  } catch (err) {
+    e.lastError = `ledger: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+const DIGEST_CHECK_MS = 15 * 60_000;
+
+/** Yesterday (Chicago) on the floor, posted to the board once, old digests pruned. */
+async function maybeDigest(e: Eng) {
+  if (Date.now() - e.lastDigestCheckAt < DIGEST_CHECK_MS) return;
+  e.lastDigestCheckAt = Date.now();
+  try {
+    const db = await sql();
+    const agg = await db<{ day: string; windows: number; calls: number; wins: number; net_ev: number | null }>`
+      select
+        to_char((now() at time zone 'America/Chicago')::date - 1, 'YYYY-MM-DD') as day,
+        count(*)::int as windows,
+        (count(*) filter (where entry_cents is not null))::int as calls,
+        (count(*) filter (where entry_cents is not null and chair_lean = winner))::int as wins,
+        coalesce(sum(ev_cents), 0) as net_ev
+      from desk_ledger
+      where (close_time at time zone 'America/Chicago')::date
+          = (now() at time zone 'America/Chicago')::date - 1
+    `;
+    const a = agg[0];
+    if (!a || !a.windows) return;
+    const dayRows = await db<{ seats: Record<string, { hit?: boolean | null }> }>`
+      select seats from desk_ledger
+      where (close_time at time zone 'America/Chicago')::date
+          = (now() at time zone 'America/Chicago')::date - 1
+    `;
+    const tally: Record<string, { n: number; hits: number }> = {};
+    for (const row of dayRows) {
+      if (!row.seats || typeof row.seats !== "object") continue;
+      for (const [seat, s] of Object.entries(row.seats)) {
+        if (s?.hit == null) continue;
+        const t = (tally[seat] ??= { n: 0, hits: 0 });
+        t.n += 1;
+        t.hits += s.hit ? 1 : 0;
+      }
+    }
+    const ranked = Object.entries(tally)
+      .filter(([, t]) => t.n >= 3)
+      .sort((x, y) => y[1].hits / y[1].n - x[1].hits / x[1].n);
+    const best = ranked[0];
+    const worst = ranked[ranked.length - 1];
+    const net = Number(a.net_ev) || 0;
+    const bits = [
+      `${a.day} on the floor: ${a.windows} windows graded`,
+      a.calls
+        ? `${a.calls} call${a.calls === 1 ? "" : "s"} (${a.wins}W/${a.calls - a.wins}L), net ${net >= 0 ? "+" : ""}${net.toFixed(1)}¢ after fees`
+        : "no fills — the council sat",
+    ];
+    if (best && worst && best[0] !== worst[0]) {
+      bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
+    }
+    const body = bits.join(" · ").slice(0, 400);
+    await db`
+      insert into board (who, body, kind, lean, ticker, conf, slug)
+      values ('DESK', ${body}, 'update', '', '', 0, ${`digest-${a.day}`})
+      on conflict (slug) do nothing
+    `;
+    await db`
+      delete from board
+      where kind = 'update' and slug like 'digest-%'
+        and created_at < now() - interval '14 days'
+    `;
+  } catch (err) {
+    e.lastError = `digest: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
 function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string) {
   e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
   const gr = gradeWindow(e.learner, snap, votes, chair, finish);
@@ -264,6 +383,7 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   reviewSeats(e.learner);
   if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
   settleCallLog(e, snap.ticker, snap.close_time, finish);
+  void recordLedger(e, snap, votes, chair, finish, source);
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
     e.learner = runHuddle(e.learner).learner;
   }
@@ -350,6 +470,7 @@ async function tick(e: Eng) {
   if (e.inFlight) return;
   e.inFlight = true;
   try {
+    void maybeDigest(e);
     if (chicagoHuddleDue(e.learner.last_huddle)) {
       e.learner = runHuddle(e.learner).learner;
     }

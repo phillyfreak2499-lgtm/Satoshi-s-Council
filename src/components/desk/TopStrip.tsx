@@ -20,6 +20,32 @@ function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; su
   );
 }
 
+function BrainPulse({ age }: { age: number }) {
+  const stalled = age > 30;
+  const slow = age > 10;
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-micro",
+        stalled
+          ? "border-down/50 bg-down/10 text-down"
+          : slow
+            ? "border-wait/50 bg-wait/10 text-wait"
+            : "border-border text-subtle",
+      )}
+      title="Seconds since the shared brain's last tick on the server"
+    >
+      <span
+        className={cn(
+          "inline-block size-1.5 rounded-full",
+          stalled ? "bg-down" : slow ? "bg-wait" : "bg-up/80",
+        )}
+      />
+      brain {stalled ? `stalled ${Math.round(age)}s` : `${age.toFixed(1)}s`}
+    </span>
+  );
+}
+
 export function TopStrip({
   snap,
   chair,
@@ -29,6 +55,7 @@ export function TopStrip({
   evAvg,
   evN,
   tz,
+  brainAge,
 }: {
   snap: Snapshot | null;
   chair: ChairResult | null;
@@ -38,6 +65,7 @@ export function TopStrip({
   evAvg?: number;
   evN?: number;
   tz: string;
+  brainAge?: number | null;
 }) {
   if (!snap) {
     return (
@@ -76,6 +104,7 @@ export function TopStrip({
               </span>
             </Tip>
           )}
+          {!demo && brainAge != null ? <BrainPulse age={brainAge} /> : null}
           <LeanChip lean={lean} cents={askCents(snap, lean)} className="px-2 py-0.5 text-ui" />
           <Tip k="strip.conf" mark={false}>
             <Mono className="text-title">

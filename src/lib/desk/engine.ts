@@ -21,6 +21,8 @@ export type DeskFrame = {
   lastError: string | null;
   settling: boolean;
   call_log: CallLogRow[];
+  /** Seconds since the shared brain's last server tick (live viewer mode only). */
+  brain_age_s: number | null;
 };
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -114,6 +116,7 @@ async function pullFrame(): Promise<void> {
   callLog = f.call_log ?? [];
   settings = { ...settings, ...f.settings, source: "live" };
   lastError = f.lastError;
+  brainAge = typeof f.tick_age_s === "number" && f.tick_age_s >= 0 ? f.tick_age_s : null;
   emit({ settling: f.settling });
 }
 
@@ -167,6 +170,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
     lastError: lastError,
     settling: false,
     call_log: callLog,
+    brain_age_s: settings.source === "live" ? brainAge : null,
     ...partial,
   };
   for (const l of listeners) l(frame);
@@ -175,6 +179,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
 let lastVotes: Vote[] = [];
 let lastChair: ChairResult | null = null;
 let lastError: string | null = null;
+let brainAge: number | null = null;
 let lastPersistAt = 0;
 let persistDirty = false;
 let visBound = false;
@@ -491,6 +496,7 @@ export function subscribe(fn: (f: DeskFrame) => void) {
     lastError,
     settling: false,
     call_log: callLog,
+    brain_age_s: settings.source === "live" ? brainAge : null,
   });
   return () => listeners.delete(fn);
 }
@@ -694,6 +700,7 @@ export function getFrame(): DeskFrame {
     lastError,
     settling: false,
     call_log: callLog,
+    brain_age_s: settings.source === "live" ? brainAge : null,
   };
 }
 
