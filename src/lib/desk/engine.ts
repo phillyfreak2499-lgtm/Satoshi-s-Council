@@ -39,6 +39,7 @@ let pending: {
   chair: ChairResult;
   since: number;
 } | null = null;
+let gradeCand: { snap: Snapshot; votes: Vote[]; chair: ChairResult } | null = null;
 let callLog: CallLogRow[] = loadCallLog(settings.source);
 let lastCall: { ticker: string; close_time: number; lean: Lean } | null = null;
 let sticks: Partial<Record<string, Stick>> = {};
@@ -285,12 +286,32 @@ function resolvePending(snap: Snapshot) {
   pending = null;
 }
 
+/** A window that ends chalk must still teach. Keep the last tick with a live
+ *  book so gradeWindow is fed real asks instead of the 99¢ death print. */
+function gradeableBook(snap: Snapshot): boolean {
+  if (snap.chalk || snap.leftover_cents > 2) return false;
+  return !(snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN");
+}
+
+function noteGradeCand(snap: Snapshot, votes: Vote[], chair: ChairResult) {
+  if (gradeCand && gradeCand.snap.close_time !== snap.close_time) gradeCand = null;
+  if (gradeableBook(snap)) gradeCand = { snap, votes, chair };
+}
+
+function gradeSource(snap: Snapshot, votes: Vote[], chair: ChairResult) {
+  if (!gradeableBook(snap) && gradeCand && gradeCand.snap.close_time === snap.close_time) {
+    return gradeCand;
+  }
+  return { snap, votes, chair };
+}
+
 function settleIfNeeded(snap: Snapshot, votes: Vote[], chair: ChairResult) {
   if (settings.source === "demo") {
     if (snap.secs_left > 0.4) return;
     if (lastClose === snap.close_time) return;
     lastClose = snap.close_time;
-    applyGrade(snap, votes, chair, demoFinish(demo!), "demo");
+    const g = gradeSource(snap, votes, chair);
+    applyGrade(g.snap, g.votes, g.chair, demoFinish(demo!), "demo");
     demo = newDemoWindow(learner.window_memory, 15 * 60_000);
     return;
   }
@@ -298,18 +319,19 @@ function settleIfNeeded(snap: Snapshot, votes: Vote[], chair: ChairResult) {
   if (snap.secs_left > 0.4) return;
   if (lastClose === snap.close_time) return;
   lastClose = snap.close_time;
+  const g = gradeSource(snap, votes, chair);
   const hit = officialHit(snap, snap.ticker, snap.close_time);
   if (hit) {
-    applyGrade(snap, votes, chair, hit.lean, "kalshi-result");
+    applyGrade(g.snap, g.votes, g.chair, hit.lean, "kalshi-result");
     pending = null;
     return;
   }
   pending = {
     ticker: snap.ticker,
     close_time: snap.close_time,
-    snap,
-    votes,
-    chair,
+    snap: g.snap,
+    votes: g.votes,
+    chair: g.chair,
     since: Date.now(),
   };
   markPending(snap);
@@ -344,6 +366,7 @@ async function tick() {
     const chair = decideChair(votes, snap, lastSide(snap));
     onLean(learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(snap, chair);
+    noteGradeCand(snap, votes, chair);
     persist();
     if (!learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       learner.window_memory.entry_lean = chair.lean;
@@ -406,6 +429,7 @@ function runDemoOnce() {
   const chair = decideChair(votes, snap, lastSide(snap));
   onLean(learner, CHAIR_SCALP, chair.lean, snap);
   noteCall(snap, chair);
+  noteGradeCand(snap, votes, chair);
   persist();
   if (!learner.window_memory.entry_lean && chair.lean !== "WAIT") {
     learner.window_memory.entry_lean = chair.lean;
@@ -480,6 +504,7 @@ export function patchSettings(p: Partial<Settings>) {
     demo = null;
     lastClose = 0;
     pending = null;
+    gradeCand = null;
     lastVotes = [];
     lastChair = null;
     persist(true);
