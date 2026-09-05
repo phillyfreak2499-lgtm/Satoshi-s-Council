@@ -298,6 +298,8 @@ export type Vote = {
   feed_age_s: number;
   eyes: string;
   phase: Phase;
+  /** WAIT printed by the sub-52-conf filter, not by the seat's own read. */
+  forced_sit?: boolean;
 };
 
 export type Gate = {

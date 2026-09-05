@@ -217,6 +217,7 @@ function sitUnlessSure(v: Vote): Vote {
   return {
     ...v,
     lean: "WAIT",
+    forced_sit: true,
     confidence: Math.max(70, v.confidence),
     reasoning: `${v.reasoning} · sit (${v.confidence} < ${SPEAK_CONF} conf)`,
   };

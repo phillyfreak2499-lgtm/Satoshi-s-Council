@@ -236,7 +236,9 @@ export function runChair(
 
   const dirAccs = liveAccs.filter((a) => a.vote.lean !== "WAIT");
   const sumWDir = dirAccs.reduce((s, a) => s + a.w, 0);
-  const sitMass = sumW > 0 ? clamp((sumW - sumWDir) / sumW, 0, 1) : 0;
+  const sitAccs = liveAccs.filter((a) => !a.vote.forced_sit);
+  const sumWSit = sitAccs.reduce((s, a) => s + a.w, 0);
+  const sitMass = sumWSit > 0 ? clamp((sumWSit - sumWDir) / sumWSit, 0, 1) : 0;
   let rawScore = sumWDir > 0 ? dirAccs.reduce((s, a) => s + a.signed * a.w, 0) / sumWDir : 0;
 
   const catSides = new Map<string, Lean>();
