@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { FeedHealth, Lean, SeatStatus } from "@/lib/desk/types";
 import { fmtLocal, type MarketRead } from "@/lib/desk/market-hours";
+import { useCountdownText } from "@/lib/desk/hooks";
 import { Tip } from "./Tip";
 
 export function LeanChip({
@@ -128,4 +129,9 @@ export function Field({ k, v }: { k: string; v: ReactNode }) {
       <div className="min-w-0 text-fg">{v}</div>
     </div>
   );
+}
+
+/** Live minutes-left, ticking between data frames on the shared 250ms clock. */
+export function MinsLeft({ closeTime }: { closeTime: number }) {
+  return <>{useCountdownText(closeTime, "mins")}</>;
 }

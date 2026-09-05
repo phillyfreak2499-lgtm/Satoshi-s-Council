@@ -1,5 +1,15 @@
-/** Public pulse: what the box can actually see right now. */
+/** Public pulse: what the box can actually see right now.
+ *  Micro-cached so outside pollers can't burn the Coinbase per-IP budget
+ *  (3 req/s) that the brain and the fast lane share. */
+let tapeCache: { at: number; body: string } | null = null;
+
 export default async function tape() {
+  if (tapeCache && Date.now() - tapeCache.at < 2_000) {
+    return new Response(tapeCache.body, {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   const ac = AbortSignal.timeout(4500);
   const headers = { "user-agent": "SatoshiCouncil/1.0 (paper research)" };
   const grab = async (url: string) => {
@@ -42,7 +52,9 @@ export default async function tape() {
     },
     as_of: Date.now(),
   };
-  return new Response(JSON.stringify(body), {
+  const json = JSON.stringify(body);
+  tapeCache = { at: Date.now(), body: json };
+  return new Response(json, {
     status: 200,
     headers: {
       "content-type": "application/json; charset=utf-8",

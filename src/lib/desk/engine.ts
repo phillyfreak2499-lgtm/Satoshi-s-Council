@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog,
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
+import { startPulse, stopPulse } from "./pulse";
 import type { ServerFrame } from "./server-engine";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
@@ -23,6 +24,8 @@ export type DeskFrame = {
   call_log: CallLogRow[];
   /** Seconds since the shared brain's last server tick (live viewer mode only). */
   brain_age_s: number | null;
+  /** Local wall-clock ms when this frame's data was received. */
+  frame_at: number;
 };
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -117,6 +120,7 @@ async function pullFrame(): Promise<void> {
   settings = { ...settings, ...f.settings, source: "live" };
   lastError = f.lastError;
   brainAge = typeof f.tick_age_s === "number" && f.tick_age_s >= 0 ? f.tick_age_s : null;
+  frameAt = Date.now();
   emit({ settling: f.settling });
 }
 
@@ -171,6 +175,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
     settling: false,
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
+    frame_at: frameAt,
     ...partial,
   };
   for (const l of listeners) l(frame);
@@ -180,6 +185,7 @@ let lastVotes: Vote[] = [];
 let lastChair: ChairResult | null = null;
 let lastError: string | null = null;
 let brainAge: number | null = null;
+let frameAt = 0;
 let lastPersistAt = 0;
 let persistDirty = false;
 let visBound = false;
@@ -458,6 +464,7 @@ async function tick() {
     lastVotes = votes;
     lastChair = chair;
     lastError = null;
+    frameAt = Date.now();
     settleIfNeeded(snap, votes, chair);
     emit({ settling: pending != null });
   } catch (e) {
@@ -497,6 +504,7 @@ export function subscribe(fn: (f: DeskFrame) => void) {
     settling: false,
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
+    frame_at: frameAt,
   });
   return () => listeners.delete(fn);
 }
@@ -522,6 +530,7 @@ function runDemoOnce() {
   lastVotes = votes;
   lastChair = chair;
   lastError = null;
+  frameAt = Date.now();
   settleIfNeeded(snap, votes, chair);
   emit({ settling: pending != null });
 }
@@ -539,6 +548,7 @@ function onVis() {
       clearInterval(timer);
       timer = null;
     }
+    stopPulse();
     if (persistDirty) persist(true);
     return;
   }
@@ -568,12 +578,18 @@ export function startEngine() {
 export function stopEngine() {
   if (timer) clearInterval(timer);
   timer = null;
+  stopPulse();
 }
 
 function restartTimer() {
   if (timer) clearInterval(timer);
-  if (typeof document !== "undefined" && document.hidden) return;
+  if (typeof document !== "undefined" && document.hidden) {
+    stopPulse();
+    return;
+  }
   timer = setInterval(() => void tick(), pollMs());
+  if (liveMode()) startPulse();
+  else stopPulse();
 }
 
 const DESK_KEYS = new Set<keyof Settings>(["bar_override", "adaptive_bar", "beast", "mutes"]);
@@ -701,6 +717,7 @@ export function getFrame(): DeskFrame {
     settling: false,
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
+    frame_at: frameAt,
   };
 }
 

@@ -1,7 +1,7 @@
 import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "@/lib/desk/types";
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
-import { Field, LeanChip, MarketChip, Mono, Pane, StatusChip } from "./bits";
+import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from "./bits";
 import { ChairEyes } from "./Eyes";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
@@ -78,8 +78,7 @@ function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; t
           <div>
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">clock</div>
             <div className="font-mono text-call tabular leading-none">
-              {Math.max(0, snap.mins_left).toFixed(1)}
-              <span className="text-ui text-subtle">m</span>
+              <MinsLeft closeTime={snap.close_time} />
             </div>
           </div>
         </div>
@@ -95,7 +94,7 @@ function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; t
         <div className="relative h-3 w-full overflow-hidden rounded-sm bg-surface-3">
           <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
           <div
-            className={cn("absolute inset-y-0", barTone)}
+            className={cn("absolute inset-y-0 transition-all duration-500 ease-out", barTone)}
             style={
               chair.score >= 0
                 ? { left: "50%", width: `${fill * 50}%` }
@@ -322,7 +321,7 @@ export function SatoshiTab({
                         <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
                         <div
                           className={cn(
-                            "absolute inset-y-0",
+                            "absolute inset-y-0 transition-all duration-500 ease-out",
                             r.contribution >= 0 ? "bg-up" : "bg-down",
                           )}
                           style={

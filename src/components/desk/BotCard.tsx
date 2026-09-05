@@ -3,7 +3,7 @@ import { SEAT_BY_ID } from "@/lib/desk/seats";
 import { readScalp, scalpAvg, askCents } from "@/lib/desk/scalp";
 import { FULL_N, calibNOf, seatCalib } from "@/lib/desk/math";
 import { useDesk } from "@/lib/desk/store";
-import { HealthDot, LeanChip, Field } from "./bits";
+import { HealthDot, LeanChip, Field, MinsLeft } from "./bits";
 import { Eyes } from "./Eyes";
 import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
@@ -82,7 +82,14 @@ export function BotCard({
             </Tip>
           </span>
         </div>
-        <Field k="phase" v={`${vote.phase.toLowerCase()} · ${snap.mins_left.toFixed(1)}m left`} />
+        <Field
+          k="phase"
+          v={
+            <>
+              {vote.phase.toLowerCase()} · <MinsLeft closeTime={snap.close_time} /> left
+            </>
+          }
+        />
         <Field k="hypothesis" v={vote.hypothesis || vote.reasoning} />
         <Field
           k="evidence"
