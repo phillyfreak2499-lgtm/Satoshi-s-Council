@@ -154,7 +154,10 @@ export function gradeWindow(
     learner.lockdown ||
     snap.as_of < learner.lockdown_until ||
     (learner.lockdown_windows_left ?? 0) > 0;
-  const chalk = snap.chalk || snap.leftover_cents > 2;
+  // Grading tolerates a thin-but-real book (weekend combined asks sit in the
+  // low 90s); only a chalk or truly phantom one-sided book skips credit.
+  // Entries stay gated at leftover ≤ 2 — this is grading tolerance only.
+  const chalk = snap.chalk || snap.leftover_cents > 12;
   const dualDown = snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN";
   if (chalk || dualDown) {
     if (wasLocked) consumeLock(learner);

@@ -406,7 +406,7 @@ function resolvePending(e: Eng, snap: Snapshot) {
 }
 
 function gradeableBook(snap: Snapshot): boolean {
-  if (snap.chalk || snap.leftover_cents > 2) return false;
+  if (snap.chalk || snap.leftover_cents > 12) return false;
   return !(snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN");
 }
 
