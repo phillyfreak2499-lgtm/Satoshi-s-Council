@@ -420,20 +420,48 @@ function gradeSource(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) 
   return { snap, votes, chair };
 }
 
-function settleIfNeeded(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
+/** A window settles on a death tick (≤0.4s left) or — the common case with a
+ *  4s poll against a 3s bundle cache — on ROLLOVER: the first tick whose
+ *  close_time moved past the previous window. Without the rollover path,
+ *  grading depends on a tick landing inside the final 400ms, which is luck. */
+function settleIfNeeded(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+  prev: { snap: Snapshot | null; votes: Vote[]; chair: ChairResult | null },
+) {
   resolvePending(e, snap);
-  if (snap.secs_left > 0.4) return;
-  if (e.lastClose === snap.close_time) return;
-  e.lastClose = snap.close_time;
-  const s = gradeSource(e, snap, votes, chair);
-  const hit = officialHit(snap, snap.ticker, snap.close_time);
+  const rolled = Boolean(
+    prev.snap &&
+      prev.chair &&
+      snap.close_time !== prev.snap.close_time &&
+      prev.snap.close_time <= snap.as_of + 60_000,
+  );
+  const deathTick = snap.secs_left <= 0.4;
+  if (!deathTick && !rolled) return;
+  const w = rolled
+    ? { ticker: prev.snap!.ticker, close_time: prev.snap!.close_time }
+    : { ticker: snap.ticker, close_time: snap.close_time };
+  if (e.lastClose === w.close_time) return;
+  e.lastClose = w.close_time;
+  let s: { snap: Snapshot; votes: Vote[]; chair: ChairResult };
+  if (rolled) {
+    s =
+      e.gradeCand && e.gradeCand.snap.close_time === w.close_time
+        ? e.gradeCand
+        : { snap: prev.snap!, votes: prev.votes, chair: prev.chair! };
+  } else {
+    s = gradeSource(e, snap, votes, chair);
+  }
+  const hit = officialHit(snap, w.ticker, w.close_time);
   if (hit) {
     applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
     e.pending = null;
     return;
   }
-  e.pending = { ticker: snap.ticker, close_time: snap.close_time, snap: s.snap, votes: s.votes, chair: s.chair };
-  markPending(e, snap);
+  e.pending = { ticker: w.ticker, close_time: w.close_time, snap: s.snap, votes: s.votes, chair: s.chair };
+  markPending(e, s.snap);
 }
 
 async function liveSnap(e: Eng): Promise<Snapshot> {
@@ -488,6 +516,10 @@ async function tick(e: Eng) {
     const chair = decideChair(e, votes, snap, lastSide(e, snap));
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
+    // Settle BEFORE rolling the grade candidate and prev pointers: on a window
+    // rollover the OLD window grades from its own last live-book tick.
+    const prev = { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
+    settleIfNeeded(e, snap, votes, chair, prev);
     noteGradeCand(e, snap, votes, chair);
     if (!e.learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       e.learner.window_memory.entry_lean = chair.lean;
@@ -497,7 +529,6 @@ async function tick(e: Eng) {
     e.lastChair = chair;
     e.lastError = null;
     e.lastTickAt = Date.now();
-    settleIfNeeded(e, snap, votes, chair);
     await persistState(e);
   } catch (err) {
     e.lastError = err instanceof Error ? err.message : String(err);
@@ -566,6 +597,9 @@ export async function getServerFrame(): Promise<ServerFrame> {
     settling: e.pending != null,
   };
 }
+
+/** Internals exposed for the settle-logic harness only. */
+export const __test = { freshEng, settleIfNeeded };
 
 export type DeskOp =
   | { op: "settings"; patch: Partial<Pick<Settings, "bar_override" | "adaptive_bar" | "mutes" | "beast">> }
