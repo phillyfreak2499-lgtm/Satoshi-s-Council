@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-export type BoardKind = "idea" | "feedback";
+export type BoardKind = "idea" | "feedback" | "update";
 
 export type BoardPost = {
   id: number;
@@ -42,7 +42,8 @@ function asPost(row: {
     id: Number(row.id),
     who: row.who,
     body: row.body,
-    kind: row.kind === "feedback" || parent != null ? "feedback" : "idea",
+    kind:
+      parent != null ? "feedback" : row.kind === "update" ? "update" : row.kind === "feedback" ? "feedback" : "idea",
     parent_id: Number.isFinite(parent as number) ? parent : null,
     lean: row.lean,
     ticker: row.ticker,
@@ -78,6 +79,7 @@ export const postBoard = createServerFn({ method: "POST" })
       lean?: string;
       ticker?: string;
       conf?: number;
+      admin_key?: string;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -85,7 +87,12 @@ export const postBoard = createServerFn({ method: "POST" })
     const body = clean(data.body, 400);
     if (!body) throw new Error("Write a note first.");
     const parent = data.parent_id && data.parent_id > 0 ? Math.round(data.parent_id) : null;
-    const kind: BoardKind = parent || data.kind === "feedback" ? "feedback" : "idea";
+    let kind: BoardKind = parent || data.kind === "feedback" ? "feedback" : "idea";
+    if (!parent && data.kind === "update") {
+      const { adminKeyOk } = await import("./admin.server");
+      if (!adminKeyOk(data.admin_key)) throw new Error("Updates are desk-admin only.");
+      kind = "update";
+    }
     const lean = clean(data.lean, 8);
     const ticker = clean(data.ticker, 48);
     const conf = Math.max(0, Math.min(100, Math.round(Number(data.conf) || 0)));

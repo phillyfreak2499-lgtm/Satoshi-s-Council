@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog,
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
+import type { ServerFrame } from "./server-engine";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
@@ -46,6 +47,75 @@ let sticks: Partial<Record<string, Stick>> = {};
 let stickWindow = "";
 
 const listeners = new Set<(f: DeskFrame) => void>();
+
+/** Live is the shared brain on the server; the browser is a viewer there.
+ *  Demo stays a fully local sandbox. */
+function liveMode() {
+  return settings.source === "live";
+}
+
+const ADMIN_KEY_LS = "satoshi-desk-admin-key";
+
+export function getAdminKey(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(ADMIN_KEY_LS) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setAdminKey(key: string) {
+  try {
+    if (key) localStorage.setItem(ADMIN_KEY_LS, key);
+    else localStorage.removeItem(ADMIN_KEY_LS);
+  } catch {
+    /* quota */
+  }
+  emit();
+}
+
+async function postDesk(op: Record<string, unknown>) {
+  try {
+    const r = await fetch("/desk", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: getAdminKey(), ...op }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (!r.ok || !j?.ok) {
+      lastError =
+        r.status === 401
+          ? "Admin key rejected — desk controls need the key (Settings)."
+          : j?.error || `desk op ${r.status}`;
+      emit();
+      return;
+    }
+    void tick();
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : String(e);
+    emit();
+  }
+}
+
+async function pullFrame(): Promise<void> {
+  const r = await fetch("/frame", {
+    signal: AbortSignal.timeout(12_000),
+    headers: { accept: "application/json" },
+  });
+  if (!r.ok) throw new Error(`desk frame ${r.status}`);
+  const f = (await r.json()) as (ServerFrame & { ok?: boolean; error?: string }) | null;
+  if (!f || f.ok === false) throw new Error(f?.error || "desk frame bad");
+  prevSnap = f.snap;
+  lastVotes = f.votes ?? [];
+  lastChair = f.chair;
+  learner = f.learner;
+  callLog = f.call_log ?? [];
+  settings = { ...settings, ...f.settings, source: "live" };
+  lastError = f.lastError;
+  emit({ settling: f.settling });
+}
 
 function windowKey(snap: Snapshot) {
   return `${snap.ticker}:${snap.close_time}`;
@@ -178,6 +248,10 @@ function settleCallLog(ticker: string, close_time: number, winner: "UP" | "DOWN"
 }
 
 export function clearCallLog() {
+  if (liveMode()) {
+    void postDesk({ op: "clear_calls" });
+    return;
+  }
   callLog = [];
   lastCall = null;
   saveCallLog(callLog, settings.source);
@@ -342,6 +416,10 @@ async function tick() {
   inFlight = true;
   flightAt = Date.now();
   try {
+    if (liveMode()) {
+      await pullFrame();
+      return;
+    }
     maybeHuddle();
     let snap: Snapshot;
     if (settings.source === "demo") {
@@ -492,6 +570,8 @@ function restartTimer() {
   timer = setInterval(() => void tick(), pollMs());
 }
 
+const DESK_KEYS = new Set<keyof Settings>(["bar_override", "adaptive_bar", "beast", "mutes"]);
+
 export function patchSettings(p: Partial<Settings>) {
   const switching = p.source != null && p.source !== settings.source;
   if (switching) persist(true);
@@ -513,6 +593,19 @@ export function patchSettings(p: Partial<Settings>) {
     void tick();
     return;
   }
+  if (liveMode()) {
+    // Shared brain: bar/mutes/beast steer the server desk (admin key);
+    // everything else is a viewer preference and stays local.
+    const desk: Record<string, unknown> = {};
+    for (const k of Object.keys(p) as (keyof Settings)[]) {
+      if (DESK_KEYS.has(k)) desk[k] = p[k];
+    }
+    if (Object.keys(desk).length) void postDesk({ op: "settings", patch: desk });
+    persist(true);
+    emit();
+    restartTimer();
+    return;
+  }
   persist(true);
   if (prevSnap && lastVotes.length) {
     lastChair = decideChair(lastVotes, prevSnap, lastChair?.lean ?? "WAIT");
@@ -522,6 +615,7 @@ export function patchSettings(p: Partial<Settings>) {
 }
 
 export function resetDemoWindow() {
+  if (liveMode()) return;
   demo = newDemoWindow(learner.window_memory, 15 * 60_000);
   lastClose = 0;
   pending = null;
@@ -529,6 +623,7 @@ export function resetDemoWindow() {
 }
 
 export function jumpDemo(ms: number) {
+  if (liveMode()) return;
   demo = newDemoWindow(learner.window_memory, ms);
   lastClose = 0;
   pending = null;
@@ -536,6 +631,10 @@ export function jumpDemo(ms: number) {
 }
 
 export function huddleNow() {
+  if (liveMode()) {
+    void postDesk({ op: "huddle" });
+    return;
+  }
   const r = runHuddle(learner);
   learner = r.learner;
   persist();
@@ -553,12 +652,20 @@ export function setMuted(seat: import("./types").SeatId, on: boolean) {
 }
 
 export function acceptCandidateNow() {
+  if (liveMode()) {
+    void postDesk({ op: "accept_candidate" });
+    return;
+  }
   learner = acceptCandidate(learner);
   persist();
   emit();
 }
 
 export function dismissCandidate() {
+  if (liveMode()) {
+    void postDesk({ op: "dismiss_candidate" });
+    return;
+  }
   if (learner.candidate) learner.candidate = { ...learner.candidate, dismissed: true };
   learner.candidate = null;
   persist();
@@ -566,6 +673,10 @@ export function dismissCandidate() {
 }
 
 export function forceBench(id: string) {
+  if (liveMode()) {
+    void postDesk({ op: "force_bench", id });
+    return;
+  }
   const c = learner.skills[id];
   if (c) c.status = "BENCH";
   persist();
