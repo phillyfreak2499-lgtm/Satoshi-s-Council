@@ -143,6 +143,7 @@ export function DeskApp() {
         evAvg={scalpAvg(readScalp(frame.learner, CHAIR_SCALP).legs) ?? 0}
         evN={readScalp(frame.learner, CHAIR_SCALP).legs.length}
         tz={frame.settings.tz}
+        brainAge={frame.brain_age_s}
       />
 
       {frame.lastError && (
