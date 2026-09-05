@@ -68,7 +68,16 @@ export default async function grokPwaMiddleware(
   if (method !== "GET") return next();
 
   const path = event.url.pathname;
-  if (path === "/healthz" || path === "/health" || path === "/tape" || path === "/bundle") return next();
+  if (
+    path === "/healthz" ||
+    path === "/health" ||
+    path === "/tape" ||
+    path === "/bundle" ||
+    path === "/pulse" ||
+    path === "/frame" ||
+    path === "/desk"
+  )
+    return next();
   const urlWithQuery = path + event.url.search;
 
   if (path === "/__grok/manifest.webmanifest" || path === "/__grok/manifest.json") {

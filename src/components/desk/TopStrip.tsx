@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
-import { clockMs, fmtAge, fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
+import { fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
 import type { ChairResult, Snapshot } from "@/lib/desk/types";
 import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { askCents } from "@/lib/desk/scalp";
 import { patchSettings } from "@/lib/desk/engine";
+import { useCountdownText, useSmooth, useTickingAge } from "@/lib/desk/hooks";
+import { pulseReceivedAt, usePulse } from "@/lib/desk/pulse";
 import { cn } from "@/lib/utils";
 
 function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; sub?: ReactNode }) {
@@ -20,9 +22,11 @@ function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; su
   );
 }
 
-function BrainPulse({ age }: { age: number }) {
-  const stalled = age > 30;
-  const slow = age > 10;
+function BrainPulse({ age, since }: { age: number; since: number }) {
+  const text = useTickingAge(age, since);
+  const effective = age + (since > 0 ? (Date.now() - since) / 1000 : 0);
+  const stalled = effective > 30;
+  const slow = effective > 10;
   return (
     <span
       className={cn(
@@ -41,8 +45,68 @@ function BrainPulse({ age }: { age: number }) {
           stalled ? "bg-down" : slow ? "bg-wait" : "bg-up/80",
         )}
       />
-      brain {stalled ? `stalled ${Math.round(age)}s` : `${age.toFixed(1)}s`}
+      brain {stalled ? "stalled " : ""}
+      {text}
     </span>
+  );
+}
+
+/** The window clock, counting down locally between data frames. */
+function CloseClock({ closeTime }: { closeTime: number }) {
+  return <Mono className="text-title text-fg">{useCountdownText(closeTime)}</Mono>;
+}
+
+/** BTC spot: pulse-fed and tweened, with an age that keeps counting. */
+function SpotCell({ snap, frameAt }: { snap: Snapshot; frameAt: number }) {
+  const pulse = usePulse();
+  const live = pulse && pulse.spot != null && pulse.ticker === snap.ticker ? pulse : null;
+  const s = useSmooth(live?.spot ?? snap.spot);
+  const age = useTickingAge(live ? 0 : snap.spot_age_s, live ? pulseReceivedAt() : frameAt);
+  return (
+    <Cell
+      k="BTC spot"
+      gloss="strip.spot"
+      v={fmtPx(s)}
+      sub={`${snap.spot_source} ${age}${
+        snap.perp ? ` · perp ${snap.basis_bps >= 0 ? "+" : ""}${snap.basis_bps.toFixed(1)}bp` : ""
+      }`}
+    />
+  );
+}
+
+function DistCell({ snap }: { snap: Snapshot }) {
+  const pulse = usePulse();
+  const live = pulse && pulse.spot != null && pulse.ticker === snap.ticker ? pulse : null;
+  const target = (live?.spot ?? snap.spot) - snap.strike;
+  const s = useSmooth(live?.spot ?? snap.spot);
+  const dist = s - snap.strike;
+  const distPct = s ? dist / s : 0;
+  return (
+    <Cell
+      k="dist to strike"
+      gloss="strip.dist"
+      v={
+        <span className={target >= 0 ? "text-up" : "text-down"}>
+          {dist >= 0 ? "+" : ""}
+          {dist.toFixed(1)} {fmtPct(distPct, 3)}
+        </span>
+      }
+    />
+  );
+}
+
+function BookCells({ snap }: { snap: Snapshot }) {
+  const pulse = usePulse();
+  const live = pulse && pulse.ticker === snap.ticker && pulse.yes_ask > 0 ? pulse : null;
+  const yb = live ? live.yes_bid : snap.yes_bid;
+  const ya = live ? live.yes_ask : snap.yes_ask;
+  const nb = live ? live.no_bid : snap.no_bid;
+  const na = live ? live.no_ask : snap.no_ask;
+  return (
+    <>
+      <Cell k="YES bid / ask" gloss="strip.yes" v={`${fmtC(yb)} / ${fmtC(ya)}`} />
+      <Cell k="NO bid / ask" gloss="strip.no" v={`${fmtC(nb)} / ${fmtC(na)}`} />
+    </>
   );
 }
 
@@ -56,6 +120,7 @@ export function TopStrip({
   evN,
   tz,
   brainAge,
+  frameAt = 0,
 }: {
   snap: Snapshot | null;
   chair: ChairResult | null;
@@ -66,6 +131,7 @@ export function TopStrip({
   evN?: number;
   tz: string;
   brainAge?: number | null;
+  frameAt?: number;
 }) {
   if (!snap) {
     return (
@@ -74,8 +140,6 @@ export function TopStrip({
       </div>
     );
   }
-  const dist = snap.spot - snap.strike;
-  const distPct = snap.spot ? dist / snap.spot : 0;
   const lean = chair?.lean ?? "WAIT";
   const conf = chair?.confidence ?? 0;
   const score = chair?.score ?? 0;
@@ -104,7 +168,7 @@ export function TopStrip({
               </span>
             </Tip>
           )}
-          {!demo && brainAge != null ? <BrainPulse age={brainAge} /> : null}
+          {!demo && brainAge != null ? <BrainPulse age={brainAge} since={frameAt} /> : null}
           <LeanChip lean={lean} cents={askCents(snap, lean)} className="px-2 py-0.5 text-ui" />
           <Tip k="strip.conf" mark={false}>
             <Mono className="text-title">
@@ -124,7 +188,7 @@ export function TopStrip({
                 <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
                 <div
                   className={cn(
-                    "absolute inset-y-0",
+                    "absolute inset-y-0 transition-all duration-500 ease-out",
                     lean === "DOWN" ? "bg-down" : lean === "UP" ? "bg-up" : "bg-wait",
                   )}
                   style={
@@ -142,7 +206,7 @@ export function TopStrip({
         </div>
         <div className="flex items-center gap-3">
           <Tip k="strip.clock" mark={false}>
-            <Mono className="text-title text-fg">{clockMs(snap.secs_left * 1000)}</Mono>
+            <CloseClock closeTime={snap.close_time} />
           </Tip>
           <Tip k="strip.phase" mark={false}>
             <span className="rounded-sm border border-border px-1.5 py-px font-mono text-micro text-muted">
@@ -171,30 +235,11 @@ export function TopStrip({
         <MarketChip m={market} tz={tz} />
       </div>
       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 xl:grid-cols-8">
-        <Cell
-          k="BTC spot"
-          gloss="strip.spot"
-          v={fmtPx(snap.spot)}
-          sub={`${snap.spot_source} ${fmtAge(snap.spot_age_s)}${
-            snap.perp
-              ? ` · perp ${snap.basis_bps >= 0 ? "+" : ""}${snap.basis_bps.toFixed(1)}bp`
-              : ""
-          }`}
-        />
+        <SpotCell snap={snap} frameAt={frameAt} />
         <Cell k="ticker" gloss="strip.ticker" v={snap.ticker} />
         <Cell k="floor strike" gloss="strip.strike" v={fmtPx(snap.strike)} sub={snap.strike_source} />
-        <Cell
-          k="dist to strike"
-          gloss="strip.dist"
-          v={
-            <span className={dist >= 0 ? "text-up" : "text-down"}>
-              {dist >= 0 ? "+" : ""}
-              {dist.toFixed(1)} {fmtPct(distPct, 3)}
-            </span>
-          }
-        />
-        <Cell k="YES bid / ask" gloss="strip.yes" v={`${fmtC(snap.yes_bid)} / ${fmtC(snap.yes_ask)}`} />
-        <Cell k="NO bid / ask" gloss="strip.no" v={`${fmtC(snap.no_bid)} / ${fmtC(snap.no_ask)}`} />
+        <DistCell snap={snap} />
+        <BookCells snap={snap} />
         <Cell
           k="fair / edge / fee"
           gloss="strip.fair"

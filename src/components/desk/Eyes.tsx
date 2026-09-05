@@ -5,6 +5,8 @@ import { MARK_LABEL, readWick, type MarkKind, type WickMark } from "@/lib/desk/p
 import { ledgerRows } from "@/lib/desk/ledger";
 import { readDrift, readExhaust, readStreak } from "@/lib/desk/structure";
 import { useDesk } from "@/lib/desk/store";
+import { useSmooth } from "@/lib/desk/hooks";
+import { usePulse } from "@/lib/desk/pulse";
 import { HealthDot } from "./bits";
 import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
@@ -1035,17 +1037,43 @@ function Empty({ text }: { text: string }) {
 }
 
 export function ChairEyes({ snap }: { snap: Snapshot }) {
-  const dep = `${snap.as_of}-${snap.spot}-${snap.yes_mid}`;
+  // Fast lane: between 4s frames, the headline charts track the 1.5s pulse
+  // with a short tween. The tweened spot may only EXTEND the unclosed bar's
+  // range, never contradict frame OHLC, and everything falls back to the
+  // frame the moment the pulse is stale or belongs to another window.
+  const pulse = usePulse();
+  const live = pulse && pulse.spot != null && pulse.ticker === snap.ticker ? pulse : null;
+  const s = useSmooth(live?.spot ?? snap.spot);
+  const yesMidTarget =
+    live && live.yes_bid > 0 && live.yes_ask > 0 ? (live.yes_bid + live.yes_ask) / 2 : snap.yes_mid;
+  const ym = useSmooth(yesMidTarget);
+  // Quantized dep: repaint on visible steps, not on every tween frame.
+  const dep = `${snap.as_of}-${(Math.round(s * 2) / 2).toFixed(1)}-${ym.toFixed(1)}`;
   const spotRef = useDraw((ctx, w, h) => {
-    candles(ctx, w, h, snap.candles_1m.slice(-40), snap.strike);
+    const bars = snap.candles_1m.slice(-40);
+    const lastBar = bars[bars.length - 1];
+    if (lastBar && !lastBar.closed && Number.isFinite(s) && s > 0) {
+      bars[bars.length - 1] = {
+        ...lastBar,
+        close: s,
+        high: Math.max(lastBar.high, s),
+        low: Math.min(lastBar.low, s),
+      };
+    }
+    candles(ctx, w, h, bars, snap.strike);
   }, dep);
   const yesRef = useDraw((ctx, w, h) => {
-    const path = snap.yes_mid_path.length >= 2 ? snap.yes_mid_path : [snap.yes_mid, snap.yes_mid];
+    const base = snap.yes_mid_path.length >= 2 ? snap.yes_mid_path : [snap.yes_mid, snap.yes_mid];
+    const path =
+      Number.isFinite(ym) && ym > 0 ? [...base.slice(0, -1), ym] : base;
     spark(ctx, w, h, path, WAIT, 50);
   }, dep);
   const last = snap.candles_1m[snap.candles_1m.length - 1];
+  const liveClose = last && !last.closed && Number.isFinite(s) && s > 0 ? s : last?.close;
   const ret1 =
-    last && last.open ? (((last.close - last.open) / last.open) * 100).toFixed(2) : null;
+    last && last.open && liveClose != null
+      ? (((liveClose - last.open) / last.open) * 100).toFixed(2)
+      : null;
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface-2">
@@ -1065,8 +1093,8 @@ export function ChairEyes({ snap }: { snap: Snapshot }) {
           <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.yes-chart">YES path</Tip>
           </h3>
-          <span className={cn("font-mono text-micro tabular", snap.yes_mid >= 50 ? "text-up" : "text-down")}>
-            {snap.yes_mid.toFixed(1)}¢ mid · ask {snap.yes_ask.toFixed(1)}¢
+          <span className={cn("font-mono text-micro tabular", yesMidTarget >= 50 ? "text-up" : "text-down")}>
+            {ym.toFixed(1)}¢ mid · ask {(live ? live.yes_ask : snap.yes_ask).toFixed(1)}¢
           </span>
         </div>
         <canvas ref={yesRef} className="block h-40 w-full" />

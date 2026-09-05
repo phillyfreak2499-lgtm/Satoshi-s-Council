@@ -65,6 +65,31 @@ type Eng = {
   inFlight: boolean;
   lastPersistAt: number;
   lastDigestCheckAt: number;
+  pulse: DeskPulse | null;
+  pulseTimer: ReturnType<typeof setInterval> | null;
+  pulseInFlight: boolean;
+  pulseFails: number;
+  pulseBackoffUntil: number;
+  lastPulseReqAt: number;
+};
+
+/** The fast lane: a ~1.5s quote pulse for the viewers' eyes only. The brain
+ *  never reads it — everything the seats decide on stays frame-cadenced.
+ *  as_of is the timestamp OF THE DATA; on upstream failure the last good
+ *  pulse is kept with its original as_of and stale flips true — a dead feed
+ *  must look dead, never fresh. */
+export type DeskPulse = {
+  as_of: number;
+  fetched_at: number;
+  ticker: string;
+  spot: number | null;
+  yes_bid: number;
+  yes_ask: number;
+  no_bid: number;
+  no_ask: number;
+  close_time: number;
+  strike: number;
+  stale: boolean;
 };
 
 // Survive dev HMR double-imports: one engine per process, on globalThis.
@@ -93,6 +118,12 @@ function freshEng(): Eng {
     inFlight: false,
     lastPersistAt: 0,
     lastDigestCheckAt: 0,
+    pulse: null,
+    pulseTimer: null,
+    pulseInFlight: false,
+    pulseFails: 0,
+    pulseBackoffUntil: 0,
+    lastPulseReqAt: 0,
   };
 }
 
@@ -538,6 +569,81 @@ async function tick(e: Eng) {
   }
 }
 
+const PULSE_MS = 1_500;
+const PULSE_DEMAND_MS = 60_000;
+const KALSHI_PULSE_HOST = "https://api.elections.kalshi.com/trade-api/v2";
+
+function pulseCents(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  if (n <= 1.5) return Math.round(n * 100);
+  return Math.round(n);
+}
+
+async function pulseGet(url: string): Promise<unknown> {
+  const r = await fetch(url, {
+    signal: AbortSignal.timeout(3_000),
+    headers: { accept: "application/json", "user-agent": "SatoshiCouncil/1.0 (paper research)" },
+  });
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json();
+}
+
+async function pulseTick(e: Eng) {
+  if (e.pulseInFlight) return;
+  const now = Date.now();
+  if (now - e.lastPulseReqAt > PULSE_DEMAND_MS) return; // nobody watching — don't burn the feeds
+  if (now < e.pulseBackoffUntil) return;
+  e.pulseInFlight = true;
+  try {
+    const host = e.prevSnap?.kalshi_host || KALSHI_PULSE_HOST;
+    const [cb, mk] = await Promise.allSettled([
+      pulseGet("https://api.exchange.coinbase.com/products/BTC-USD/ticker"),
+      pulseGet(`${host}/markets?status=open&series_ticker=KXBTC15M&limit=1`),
+    ]);
+    const spot =
+      cb.status === "fulfilled" ? Number((cb.value as { price?: string }).price) : NaN;
+    const row =
+      mk.status === "fulfilled"
+        ? ((mk.value as { markets?: Record<string, unknown>[] }).markets ?? [])[0]
+        : undefined;
+    if (Number.isFinite(spot) && row?.ticker) {
+      e.pulse = {
+        as_of: Date.now(),
+        fetched_at: Date.now(),
+        ticker: String(row.ticker),
+        spot,
+        yes_bid: pulseCents(row.yes_bid_dollars ?? row.yes_bid),
+        yes_ask: pulseCents(row.yes_ask_dollars ?? row.yes_ask),
+        no_bid: pulseCents(row.no_bid_dollars ?? row.no_bid),
+        no_ask: pulseCents(row.no_ask_dollars ?? row.no_ask),
+        close_time: Date.parse(String(row.close_time ?? row.expiration_time ?? "")) || 0,
+        strike: Number(row.floor_strike ?? 0) || 0,
+        stale: false,
+      };
+      e.pulseFails = 0;
+      e.pulseBackoffUntil = 0;
+    } else {
+      throw new Error(
+        cb.status === "rejected" ? `coinbase ${cb.reason}` : mk.status === "rejected" ? `kalshi ${mk.reason}` : "empty",
+      );
+    }
+  } catch {
+    e.pulseFails += 1;
+    if (e.pulse) e.pulse = { ...e.pulse, fetched_at: Date.now(), stale: true };
+    e.pulseBackoffUntil = Date.now() + Math.min(10_000, PULSE_MS * 2 ** Math.min(3, e.pulseFails));
+  } finally {
+    e.pulseInFlight = false;
+  }
+}
+
+export function getPulse(): DeskPulse | null {
+  const e = eng();
+  ensureServerEngine();
+  e.lastPulseReqAt = Date.now();
+  return e.pulse;
+}
+
 function pollMs(e: Eng) {
   return e.settings.beast ? 2_500 : 4_000;
 }
@@ -556,6 +662,9 @@ export function ensureServerEngine(): void {
     await loadState(e);
     await syncUpdates(e);
     restartTimer(e);
+    // The pulse loop's lifecycle lives here and only here — restartTimer
+    // (beast toggles) must never double-start it.
+    if (!e.pulseTimer) e.pulseTimer = setInterval(() => void pulseTick(e), PULSE_MS);
     void tick(e);
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
