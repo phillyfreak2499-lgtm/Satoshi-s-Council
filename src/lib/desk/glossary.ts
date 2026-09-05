@@ -19,6 +19,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "SATOSHI — the chair",
     body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
   },
+  "tab.atelier": {
+    title: "ATELIER — the painting",
+    body: "A living color field of SATOSHI's paper call. Down sits high in red, Wait in gold, Up in the green. The ring is the 15-minute window. The chair is the only brush.",
+  },
   "tab.structure": {
     title: "STRUCTURE — candles",
     body: "WICK, DRIFT, STREAK, EXHAUST. Patterns, drift, settle streaks, and exhaustion.",

@@ -49,6 +49,7 @@ export type CallLogRow = {
 };
 export type TabId =
   | "satoshi"
+  | "atelier"
   | "structure"
   | "tape"
   | "derivs"

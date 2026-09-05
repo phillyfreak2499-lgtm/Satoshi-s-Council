@@ -12,9 +12,11 @@ import { TopStrip } from "./TopStrip";
 import { Tip } from "./Tip";
 import { Tour } from "./Tour";
 import { Feedback, BoardTab } from "./Feedback";
+import { AtelierTab } from "./AtelierTab";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
+  { id: "atelier", label: "ATELIER" },
   { id: "structure", label: "STRUCTURE" },
   { id: "tape", label: "TAPE" },
   { id: "derivs", label: "DERIVS" },
@@ -64,7 +66,7 @@ export function DeskApp() {
 
   const jump = (seat: SeatId) => {
     const dest =
-      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "settings" | "board">, SeatId[]][]).find(
+      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "atelier" | "settings" | "board">, SeatId[]][]).find(
         ([, ids]) => ids.includes(seat),
       )?.[0] ?? "structure";
     setFocus(seat);
@@ -76,7 +78,10 @@ export function DeskApp() {
     setTourOn(true);
   };
 
-  const seats = tab !== "satoshi" && tab !== "settings" && tab !== "board" ? TAB_SEATS[tab] : [];
+  const seats =
+    tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board"
+      ? TAB_SEATS[tab]
+      : [];
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
@@ -152,7 +157,7 @@ export function DeskApp() {
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-auto">
+      <main className={cn("min-h-0 flex-1", tab === "atelier" ? "overflow-hidden" : "overflow-auto")}>
         {!frame.snap && (
           <div className="p-6 font-mono text-ui text-muted">Opening the window…</div>
         )}
@@ -185,6 +190,7 @@ export function DeskApp() {
             })}
           </div>
         )}
+        {tab === "atelier" && <AtelierTab />}
         {tab === "board" && <BoardTab frame={frame} />}
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
       </main>
