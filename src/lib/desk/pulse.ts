@@ -15,6 +15,7 @@ const MAX_FAILS = 3;
 
 let data: DeskPulse | null = null;
 let receivedAt = 0;
+let skew = 0;
 let fails = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 let inflight = false;
@@ -34,18 +35,21 @@ async function poll() {
     });
     if (!r.ok) throw new Error(String(r.status));
     const p = (await r.json()) as DeskPulse;
-    if (p && p.as_of > 0 && p.as_of >= (data?.as_of ?? 0)) {
+    // Accept only genuinely fresh data. A stale re-serve keeps the last good
+    // as_of, so it must never re-stamp receivedAt or the skew — that is how
+    // an outage would silently walk every countdown backwards. The 5s slack
+    // tolerates two server instances with slightly different clocks during
+    // a deploy overlap.
+    if (p && p.as_of > 0 && !p.stale && p.as_of >= (data?.as_of ?? 0) - 5_000) {
       data = p;
       receivedAt = Date.now();
+      skew = p.as_of - receivedAt;
       fails = 0;
       notify();
       return;
     }
-    if (p?.stale) {
-      fails += 1;
-      notify();
-      return;
-    }
+    fails += 1;
+    notify();
   } catch {
     fails += 1;
     notify();
@@ -66,6 +70,12 @@ export function startPulse() {
 export function stopPulse() {
   if (timer) clearInterval(timer);
   timer = null;
+  // Demo mode and closed tabs must not inherit live data or live clock skew.
+  data = null;
+  receivedAt = 0;
+  skew = 0;
+  fails = 0;
+  notify();
 }
 
 /** Fresh pulse or null. Null means: use the frame snapshot and stop moving. */
@@ -76,10 +86,12 @@ export function freshPulse(): DeskPulse | null {
   return data;
 }
 
-/** Server-clock minus local-clock, for skew-corrected countdowns. 0 until known. */
+/** Server-clock minus local-clock, for skew-corrected countdowns. Captured
+ *  only on fresh accepts and only while the pulse is provably fresh — demo
+ *  mode and outages fall back to the plain local clock. */
 export function pulseSkewMs(): number {
-  if (!data || !receivedAt) return 0;
-  return data.as_of - receivedAt;
+  if (!data || !receivedAt || Date.now() - receivedAt > FRESH_MS) return 0;
+  return skew;
 }
 
 /** Local wall-clock ms when the current pulse was received (0 if none). */

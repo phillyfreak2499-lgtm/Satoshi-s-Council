@@ -637,10 +637,18 @@ async function pulseTick(e: Eng) {
   }
 }
 
+const PULSE_FRESH_MS = 5_000;
+
 export function getPulse(): DeskPulse | null {
   const e = eng();
   ensureServerEngine();
   e.lastPulseReqAt = Date.now();
+  if (!e.pulse) return null;
+  // A pulse parked by the demand gate (nobody was watching) or an outage is
+  // old data: say so, even though the loop will refresh it within a tick.
+  if (!e.pulse.stale && Date.now() - e.pulse.as_of > PULSE_FRESH_MS) {
+    return { ...e.pulse, stale: true };
+  }
   return e.pulse;
 }
 
