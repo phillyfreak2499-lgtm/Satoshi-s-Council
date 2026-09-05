@@ -4,18 +4,45 @@ import { recencyRate, skillCounts } from "@/lib/desk/skills";
 import { ledgerRows } from "@/lib/desk/ledger";
 import { FULL_N, WARM_N, calibNOf, seatCalib, wilsonLower } from "@/lib/desk/math";
 import { THRESH_SPECS } from "@/lib/desk/thresholds";
+import { useState } from "react";
 import {
   acceptCandidateNow,
   dismissCandidate,
   forceBench,
+  getAdminKey,
   huddleNow,
   patchSettings,
   resetDemoWindow,
+  setAdminKey,
   setMuted,
 } from "@/lib/desk/engine";
 import type { Learner, Settings as SettingsT } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { Tip } from "./Tip";
+
+function AdminKeyField() {
+  const [key, setKey] = useState(getAdminKey);
+  return (
+    <label className="mb-2 block font-mono text-ui text-muted">
+      Admin key
+      <input
+        type="password"
+        value={key}
+        onChange={(e) => {
+          setKey(e.target.value);
+          setAdminKey(e.target.value.trim());
+        }}
+        placeholder="desk controls stay read-only without it"
+        autoComplete="off"
+        className="mt-1 w-full rounded-sm border border-border bg-bg px-2 py-1.5 font-mono text-data text-fg"
+      />
+      <div className="mt-1 font-mono text-micro text-subtle">
+        Live is one shared desk for every visitor. Bar, mutes, beast, huddle, candidates and
+        Clear write to it — only with this key. Demo is your own sandbox and needs no key.
+      </div>
+    </label>
+  );
+}
 
 export function SettingsTab({ settings, learner }: { settings: SettingsT; learner: Learner }) {
   return (
@@ -50,9 +77,11 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
             <option value="live">Live</option>
           </select>
           <div className="mt-1 font-mono text-micro text-subtle">
-            Demo and live keep separate skill books — paper demo does not grade the live book.
+            Live is the shared brain — it runs on the server around the clock and every visitor
+            sees the same desk. Demo is your own private sandbox in this browser.
           </div>
         </label>
+        <AdminKeyField />
         <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
           Adaptive confluence bar
           <input
@@ -93,13 +122,15 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
         </label>
         <div className="mb-2 font-mono text-ui text-muted">Timezone {settings.tz}</div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="rounded-sm border border-border bg-surface-2 px-3 py-1.5 font-mono text-ui text-fg"
-            onClick={() => resetDemoWindow()}
-          >
-            Reset demo window
-          </button>
+          {settings.source === "demo" ? (
+            <button
+              type="button"
+              className="rounded-sm border border-border bg-surface-2 px-3 py-1.5 font-mono text-ui text-fg"
+              onClick={() => resetDemoWindow()}
+            >
+              Reset demo window
+            </button>
+          ) : null}
           <button
             type="button"
             className="rounded-sm border border-border bg-surface-2 px-3 py-1.5 font-mono text-ui text-fg"

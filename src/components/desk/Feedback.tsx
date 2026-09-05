@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listBoard, postBoard, type BoardKind, type BoardPost } from "@/lib/desk/board";
-import type { DeskFrame } from "@/lib/desk/engine";
+import { getAdminKey, type DeskFrame } from "@/lib/desk/engine";
 import { fmtLocal } from "@/lib/desk/market-hours";
 import { cn } from "@/lib/utils";
 import { LeanChip } from "./bits";
@@ -111,7 +111,16 @@ function Composer({
     setStatus("");
     try {
       localStorage.setItem(WHO_KEY, who.trim().slice(0, 24));
-      await postBoard({ data: { who, body, kind, parent_id: parentId, ...tape(frame) } });
+      await postBoard({
+        data: {
+          who: kind === "update" && !who.trim() ? "DESK" : who,
+          body,
+          kind,
+          parent_id: parentId,
+          ...tape(frame),
+          ...(kind === "update" ? { admin_key: getAdminKey() } : {}),
+        },
+      });
       setNote("");
       onPosted();
     } catch (e) {
@@ -150,7 +159,13 @@ function Composer({
         maxLength={400}
         className="w-full resize-y rounded-sm border border-border bg-bg px-2 py-1.5 font-sans text-ui text-fg"
         placeholder={
-          parentId ? "Feedback on this idea" : kind === "idea" ? "An idea for the desk or a bot" : "Feedback on the tape"
+          parentId
+            ? "Feedback on this idea"
+            : kind === "idea"
+              ? "An idea for the desk or a bot"
+              : kind === "update"
+                ? "What changed on the desk, in plain words"
+                : "Feedback on the tape"
         }
       />
       <div className="flex flex-wrap items-center gap-2">
@@ -159,7 +174,7 @@ function Composer({
           disabled={busy || !note.trim()}
           className="min-h-11 rounded-sm border border-border px-3 py-1.5 font-mono text-micro text-fg hover:bg-surface-2 disabled:opacity-40 sm:min-h-0"
         >
-          {kind === "idea" ? "Post idea" : "Post feedback"}
+          {kind === "idea" ? "Post idea" : kind === "update" ? "Post update" : "Post feedback"}
         </button>
         {onCancel ? (
           <button
@@ -200,8 +215,10 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
     return () => window.clearInterval(t);
   }, []);
 
+  const updates = useMemo(() => posts.filter((p) => p.kind === "update" && !p.parent_id), [posts]);
   const ideas = useMemo(() => posts.filter((p) => p.kind === "idea" && !p.parent_id), [posts]);
   const notes = useMemo(() => posts.filter((p) => p.kind === "feedback" && !p.parent_id), [posts]);
+  const admin = Boolean(getAdminKey());
   const kids = useMemo(() => {
     const m = new Map<number, BoardPost[]>();
     for (const p of posts) {
@@ -218,7 +235,8 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       <div>
         <h2 className="font-sans text-title font-medium tracking-tight">Ideas & feedback</h2>
         <p className="mt-1 max-w-xl font-mono text-micro text-muted">
-          One shared board. Post an idea. Reply with feedback. The call you were looking at rides along. Paper talk only.
+          One shared board. Post an idea. Reply with feedback. The call you were looking at rides
+          along. DESK posts an update here whenever the floor changes. Paper talk only.
         </p>
       </div>
 
@@ -228,7 +246,8 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
             [
               ["idea", "Idea"],
               ["feedback", "Feedback"],
-            ] as const
+              ...(admin ? ([["update", "Update"]] as const) : []),
+            ] as readonly (readonly [BoardKind, string])[]
           ).map(([id, label]) => (
             <button
               key={id}
@@ -247,6 +266,38 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       </section>
 
       {err ? <p className="font-mono text-micro text-wait">{err}</p> : null}
+
+      {updates.length > 0 ? (
+        <section>
+          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">
+            Desk updates
+          </h3>
+          <div className="space-y-3">
+            {updates
+              .slice()
+              .reverse()
+              .map((p) => (
+                <div key={p.id}>
+                  <PostCard p={p} tz={tz} replies={kids.get(p.id)} onReply={(id) => setReplyTo(id)} />
+                  {replyTo === p.id ? (
+                    <div className="p-3 pt-0">
+                      <Composer
+                        frame={frame}
+                        kind="feedback"
+                        parentId={p.id}
+                        onPosted={() => {
+                          setReplyTo(null);
+                          void pull();
+                        }}
+                        onCancel={() => setReplyTo(null)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <section>

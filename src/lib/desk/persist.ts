@@ -25,7 +25,7 @@ export type Persisted = {
   learner: Learner;
 };
 
-function sliceLearner(learner: Learner): Learner {
+export function sliceLearner(learner: Learner): Learner {
   return {
     ...learner,
     settle_tape: learner.settle_tape.slice(0, 40),
@@ -33,7 +33,7 @@ function sliceLearner(learner: Learner): Learner {
   };
 }
 
-function mergeLearner(saved?: Partial<Learner> | null): Learner {
+export function mergeLearner(saved?: Partial<Learner> | null): Learner {
   const base = freshLearner();
   if (!saved) return base;
   const learner: Learner = { ...base, ...saved };
