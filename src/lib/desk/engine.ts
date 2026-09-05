@@ -82,7 +82,7 @@ function stickyChair(chair: ChairResult, snap: Snapshot): ChairResult {
 }
 
 function decideChair(votes: Vote[], snap: Snapshot, lastLean: Lean): ChairResult {
-  return stickyChair(softenTimeGates(runChair(votes, snap, learner, settings, lastLean)), snap);
+  return stickyChair(softenTimeGates(runChair(votes, snap, learner, settings, lastLean), snap), snap);
 }
 
 function emit(partial: Partial<DeskFrame> = {}) {

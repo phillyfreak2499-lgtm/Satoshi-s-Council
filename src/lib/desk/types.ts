@@ -314,6 +314,7 @@ export type ChairResult = {
   score: number;
   bar: number;
   aggressiveness: number;
+  time_factor: number;
   diversity: number;
   sit_mass: number;
   conflict_frac: number;

@@ -263,13 +263,13 @@ export function runChair(
   const conflictFrac = sideMass > 0 ? Math.min(upMass, dnMass) / sideMass : 0;
   rawScore *= 1 - 0.7 * conflictFrac;
 
-  let agg = 1;
   const m = snap.mins_left;
-  if (m >= 12) agg *= 0.55;
-  else if (m >= 10) agg *= 0.78;
-  else if (m >= 4) agg *= 1.15;
-  else if (m > 2.2) agg *= 0.72;
-  else agg *= 0.55;
+  let timeFactor = 0.55;
+  if (m >= 12) timeFactor = 0.55;
+  else if (m >= 10) timeFactor = 0.78;
+  else if (m >= 4) timeFactor = 1.15;
+  else if (m > 2.2) timeFactor = 0.72;
+  let agg = timeFactor;
   if (snap.spread_cents > 6) agg *= 0.85;
   const orbit = votes.find((v) => v.seat === "ORBIT");
   const orbitAgg = Number(orbit?.features.aggressiveness ?? 1);
@@ -626,6 +626,7 @@ export function runChair(
     score: rawScore,
     bar,
     aggressiveness: agg,
+    time_factor: timeFactor,
     diversity,
     sit_mass: sitMass,
     conflict_frac: conflictFrac,
