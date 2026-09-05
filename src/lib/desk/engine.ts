@@ -7,6 +7,7 @@ import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { stickLean, type Stick } from "./stick";
+import { softenTimeGates } from "./time-gates";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
@@ -78,6 +79,10 @@ function stickyChair(chair: ChairResult, snap: Snapshot): ChairResult {
   sticks[CHAIR_SCALP] = st;
   if (lean === chair.lean) return chair;
   return { ...chair, lean };
+}
+
+function decideChair(votes: Vote[], snap: Snapshot, lastLean: Lean): ChairResult {
+  return stickyChair(softenTimeGates(runChair(votes, snap, learner, settings, lastLean)), snap);
 }
 
 function emit(partial: Partial<DeskFrame> = {}) {
@@ -336,7 +341,7 @@ async function tick() {
       if (v.seat === "WARDEN") continue;
       onLean(learner, v.seat, v.lean, snap);
     }
-    const chair = stickyChair(runChair(votes, snap, learner, settings, lastSide(snap)), snap);
+    const chair = decideChair(votes, snap, lastSide(snap));
     onLean(learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(snap, chair);
     persist();
@@ -398,7 +403,7 @@ function runDemoOnce() {
     if (v.seat === "WARDEN") continue;
     onLean(learner, v.seat, v.lean, snap);
   }
-  const chair = stickyChair(runChair(votes, snap, learner, settings, lastSide(snap)), snap);
+  const chair = decideChair(votes, snap, lastSide(snap));
   onLean(learner, CHAIR_SCALP, chair.lean, snap);
   noteCall(snap, chair);
   persist();
@@ -485,7 +490,7 @@ export function patchSettings(p: Partial<Settings>) {
   }
   persist(true);
   if (prevSnap && lastVotes.length) {
-    lastChair = stickyChair(runChair(lastVotes, prevSnap, learner, settings, lastChair?.lean ?? "WAIT"), prevSnap);
+    lastChair = decideChair(lastVotes, prevSnap, lastChair?.lean ?? "WAIT");
   }
   emit();
   restartTimer();
@@ -510,7 +515,7 @@ export function huddleNow() {
   learner = r.learner;
   persist();
   if (prevSnap && lastVotes.length) {
-    lastChair = stickyChair(runChair(lastVotes, prevSnap, learner, settings, lastChair?.lean ?? "WAIT"), prevSnap);
+    lastChair = decideChair(lastVotes, prevSnap, lastChair?.lean ?? "WAIT");
   }
   emit();
 }
