@@ -7,7 +7,7 @@
  * per window so the rule itself is checked against every official result.
  * Nothing here trades. The council is not consulted.
  */
-import { kalshiConfigured } from "./kalshi-auth.server";
+import { kalshiConfigured, kalshiKeyInfo } from "./kalshi-auth.server";
 import { KalshiWs } from "./kalshi-ws.server";
 import { Recorder } from "./lab-recorder.server";
 import {
@@ -156,7 +156,7 @@ export function startLab(getSnap: () => Snapshot | null): void {
   L.getSnap = getSnap;
   L.rec = new Recorder();
   if (!kalshiConfigured()) {
-    console.log("[lab] KALSHI_API_KEY_ID / KALSHI_PRIVATE_KEY not set — trying an unsigned connection (Kalshi may refuse it)");
+    console.log("[lab] no Kalshi API key found — trying an unsigned connection (Kalshi may refuse it)");
   }
   L.ws = new KalshiWs((type, msg, raw, t) => {
     try {
@@ -586,6 +586,7 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
   return {
     started: L.started,
     signed: kalshiConfigured(),
+    key: kalshiKeyInfo(),
     ws: L.ws?.summary() ?? null,
     recorder: L.rec?.summary() ?? null,
     brti: {
