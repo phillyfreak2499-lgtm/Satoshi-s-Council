@@ -4,37 +4,127 @@
  * millisecond timestamp, and an RSA-PSS/SHA-256 signature over
  * `${timestamp}${METHOD}${path}` (path without the query string).
  *
- * Fail closed: without KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY nothing is
- * signed and callers decide whether an unauthenticated attempt makes sense.
- * The private key may be pasted as a PEM (real newlines or literal "\n")
- * or as base64 of the PEM.
+ * Fail closed: with no usable key nothing is signed and callers decide
+ * whether an unauthenticated attempt makes sense. The key id and private
+ * key are looked up under the documented names first and then the common
+ * variants people use, including a file path or a Render secret file
+ * (/etc/secrets/*). The private key may be a PEM with real newlines or
+ * literal "\n", or base64 of the PEM. Only variable NAMES are ever logged.
  */
 import { constants, createPrivateKey, sign, type KeyObject } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 
-type Loaded = { id: string; key: KeyObject } | null;
+const ID_NAMES = ["KALSHI_API_KEY_ID", "KALSHI_KEY_ID", "KALSHI_ACCESS_KEY", "KALSHI_API_KEY", "KALSHI_KEY"];
+const PEM_NAMES = [
+  "KALSHI_PRIVATE_KEY",
+  "KALSHI_PRIVATE_KEY_PEM",
+  "KALSHI_PEM",
+  "KALSHI_RSA_PRIVATE_KEY",
+  "KALSHI_SECRET_KEY",
+  "KALSHI_API_SECRET",
+];
+const PATH_NAMES = ["KALSHI_PRIVATE_KEY_PATH", "KALSHI_PRIVATE_KEY_FILE", "KALSHI_KEY_PATH", "KALSHI_KEY_FILE"];
+const SECRET_DIRS = ["/etc/secrets"];
+
+type Loaded = { id: string; key: KeyObject; id_from: string; key_from: string } | null;
 let cached: Loaded | undefined;
+let lastNote = "";
 
-function loadKey(): Loaded {
-  if (cached !== undefined) return cached;
-  const id = (process.env.KALSHI_API_KEY_ID ?? "").trim();
-  let pem = (process.env.KALSHI_PRIVATE_KEY ?? "").trim();
-  if (!id || !pem) {
-    cached = null;
-    return cached;
-  }
-  if (!pem.includes("-----BEGIN")) {
+function looksLikePem(s: string): boolean {
+  return s.includes("-----BEGIN");
+}
+
+function normalizePem(raw: string): string {
+  let pem = raw.trim();
+  if (!looksLikePem(pem)) {
     try {
       const decoded = Buffer.from(pem, "base64").toString("utf8").trim();
-      if (decoded.includes("-----BEGIN")) pem = decoded;
+      if (looksLikePem(decoded)) pem = decoded;
     } catch {
       /* keep as-is */
     }
   }
-  pem = pem.replace(/\\n/g, "\n");
+  return pem.replace(/\\n/g, "\n");
+}
+
+function readPemFile(path: string): string | null {
   try {
-    cached = { id, key: createPrivateKey(pem) };
+    if (!existsSync(path) || !statSync(path).isFile()) return null;
+    const text = readFileSync(path, "utf8");
+    return looksLikePem(text) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+function findPem(): { pem: string; from: string } | null {
+  for (const name of PEM_NAMES) {
+    const v = process.env[name]?.trim();
+    if (!v) continue;
+    // A file path pasted into the PEM slot still works.
+    if (!looksLikePem(v) && v.length < 300 && v.startsWith("/")) {
+      const t = readPemFile(v);
+      if (t) return { pem: t, from: `${name} (path)` };
+    }
+    return { pem: v, from: name };
+  }
+  for (const name of PATH_NAMES) {
+    const p = process.env[name]?.trim();
+    if (!p) continue;
+    const t = readPemFile(p);
+    if (t) return { pem: t, from: `${name} → ${p}` };
+  }
+  for (const dir of SECRET_DIRS) {
+    try {
+      for (const f of readdirSync(dir)) {
+        const t = readPemFile(join(dir, f));
+        if (t) return { pem: t, from: `${dir}/${f}` };
+      }
+    } catch {
+      /* no secret dir */
+    }
+  }
+  return null;
+}
+
+function findId(): { id: string; from: string } | null {
+  for (const name of ID_NAMES) {
+    const v = process.env[name]?.trim();
+    if (v && !looksLikePem(v)) return { id: v, from: name };
+  }
+  return null;
+}
+
+function kalshiEnvNames(): string[] {
+  return Object.keys(process.env)
+    .filter((k) => k.toUpperCase().includes("KALSHI"))
+    .sort();
+}
+
+function note(s: string): void {
+  if (s === lastNote) return;
+  lastNote = s;
+  console.log(`[kalshi] ${s}`);
+}
+
+function loadKey(): Loaded {
+  if (cached !== undefined) return cached;
+  const id = findId();
+  const pem = findPem();
+  if (!id || !pem) {
+    const names = kalshiEnvNames();
+    note(
+      `no usable API key — key id ${id ? `from ${id.from}` : "missing"}, private key ${pem ? `from ${pem.from}` : "missing"}; env names containing KALSHI: [${names.join(", ") || "none"}]`,
+    );
+    cached = null;
+    return cached;
+  }
+  try {
+    cached = { id: id.id, key: createPrivateKey(normalizePem(pem.pem)), id_from: id.from, key_from: pem.from };
+    note(`API key loaded — key id from ${id.from}, private key from ${pem.from}`);
   } catch (err) {
-    console.error(`[kalshi] private key unreadable: ${err instanceof Error ? err.message : String(err)}`);
+    note(`private key unreadable (from ${pem.from}): ${err instanceof Error ? err.message : String(err)}`);
     cached = null;
   }
   return cached;
@@ -46,6 +136,12 @@ export function kalshiConfigured(): boolean {
 
 export function kalshiKeyId(): string {
   return loadKey()?.id ?? "";
+}
+
+/** Where the key came from (variable names only) and what else is in the env with KALSHI in the name. */
+export function kalshiKeyInfo(): { configured: boolean; id_from: string | null; key_from: string | null; env_names: string[] } {
+  const k = loadKey();
+  return { configured: k !== null, id_from: k?.id_from ?? null, key_from: k?.key_from ?? null, env_names: kalshiEnvNames() };
 }
 
 /** Signed headers for one request, or null when no key is configured. */
