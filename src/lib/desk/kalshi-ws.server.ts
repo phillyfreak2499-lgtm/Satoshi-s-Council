@@ -45,6 +45,7 @@ export class KalshiWs {
   private readonly pending = new Map<number, { channel: string; variant: number; kind: "sub" | "update" }>();
   private readonly subs = new Map<string, Sub>();
   private readonly failed = new Set<string>();
+  private lastUpdateAt = 0;
   private tickers: string[] = [];
   private readonly handler: WsHandler;
   private backoff = 1_000;
@@ -167,9 +168,10 @@ export class KalshiWs {
   private updateSub(channel: string, sub: Sub, action: "add_markets" | "delete_markets", tickers: string[]): void {
     const id = this.cmdId++;
     this.pending.set(id, { channel, variant: sub.variant, kind: "update" });
-    // The stream re-anchors after a subscription change (a benign 2-step
-    // jump was seen on every window roll); don't call that a gap.
+    // A subscription change consumes sequence numbers on the stream (a 2-step
+    // jump follows every add/delete); re-anchor and don't call that a gap.
     sub.seq = 0;
+    this.lastUpdateAt = Date.now();
     this.send({ id, cmd: "update_subscription", params: { sids: [sub.sid], market_tickers: tickers, action } });
   }
 
@@ -242,20 +244,25 @@ export class KalshiWs {
       }
       return;
     }
-    if (type === "unsubscribed" || type === "ok") return;
     const sid = Number(raw.sid);
     const seq = Number(raw.seq);
     if (Number.isFinite(sid) && Number.isFinite(seq)) {
       for (const [channel, sub] of this.subs) {
         if (sub.sid !== sid) continue;
-        if (sub.seq && seq !== sub.seq + 1) {
-          this.gaps += 1;
-          this.note(`seq gap ${channel} sid ${sid}: ${sub.seq} -> ${seq}`);
-          this.handler("__gap", { channel, sid, prev: sub.seq, seq }, raw, t);
+        const ack = type === "unsubscribed" || type === "ok";
+        if (!ack && sub.seq && seq !== sub.seq + 1) {
+          // Small jumps right after a subscription change are the change itself.
+          const benign = seq - sub.seq <= 3 && t - this.lastUpdateAt < 5_000;
+          if (!benign) {
+            this.gaps += 1;
+            this.note(`seq gap ${channel} sid ${sid}: ${sub.seq} -> ${seq}`);
+            this.handler("__gap", { channel, sid, prev: sub.seq, seq }, raw, t);
+          }
         }
         sub.seq = seq;
       }
     }
+    if (type === "unsubscribed" || type === "ok") return;
     this.handler(type || "unknown", msg, raw, t);
   }
 
