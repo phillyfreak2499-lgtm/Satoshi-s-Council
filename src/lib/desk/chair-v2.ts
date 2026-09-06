@@ -22,6 +22,29 @@ export const V2_MARGIN_CENTS = 3;
 /** One sample per window, at the first tick at or under this many minutes left. */
 export const V2_SAMPLE_MINS = 7.5;
 
+/** Shadow scoreboard for v2 against the chair and the market on identical windows. */
+export type V2Stats = {
+  n_samples: number;
+  n_graded: number;
+  brier_v2: number | null;
+  brier_market: number | null;
+  ev_v2: number;
+  ev_v1: number;
+  calls_v2: number;
+  calls_v1: number;
+};
+
+/** The promotion rule, written down: v2 replaces the chair only when all
+ *  three hold on a serious sample. Nobody moves these goalposts later. */
+export const V2_GATE_SAMPLES = 300;
+export const V2_GATE_CALLS = 40;
+export function v2Gates(st: V2Stats): { samplesOk: boolean; callsOk: boolean; brierOk: boolean; met: number } {
+  const samplesOk = st.n_graded >= V2_GATE_SAMPLES;
+  const callsOk = st.calls_v2 >= V2_GATE_CALLS && st.ev_v2 > 0;
+  const brierOk = st.brier_v2 != null && st.brier_market != null && st.brier_v2 < st.brier_market;
+  return { samplesOk, callsOk, brierOk, met: Number(samplesOk) + Number(callsOk) + Number(brierOk) };
+}
+
 export type V2Features = Record<string, number>;
 export type V2Weights = { w: Record<string, number>; b: number; n: number; fitted_at: number; loss: number };
 export type V2Decision = {

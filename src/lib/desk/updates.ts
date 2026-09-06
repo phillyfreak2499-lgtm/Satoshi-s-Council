@@ -43,4 +43,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "A second chair is on the floor, in shadow. Chair v2 turns every seat's honest read — before the whisper filter — plus the market price into one probability learned from the desk's own ledger, and only calls where it beats the ask by more than the fee. It trades on paper beside the chair you know, on identical windows, and the nightly recap keeps score in cents. It earns promotion by winning, not by decree. WICK's uncalibrated cap now matches the speaking bar, so a strong pin can finally be heard.",
   },
+  {
+    slug: "2026-09-06-honest-ledger",
+    body:
+      "Four honesty fixes. One paper position per window, held to settlement: the flip autopsy showed 40 of the last 42 calls were flips, sold low and bought high for -83¢. Late fair value now carries settlement-basis noise, so no chair claims edge inside the band where the index can land, and the ledger logs spot at every close so that band gets measured. Unproven seats' sits stop raising the bar. Chair v2's promotion gate is written down: 300 graded samples, 40 calls net positive, a better Brier than the market.",
+  },
 ];

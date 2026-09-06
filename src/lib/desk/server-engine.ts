@@ -37,6 +37,10 @@ import {
   type V2Decision,
   type V2Features,
   type V2Weights,
+  V2_GATE_CALLS,
+  V2_GATE_SAMPLES,
+  v2Gates,
+  type V2Stats,
 } from "./chair-v2";
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, Settings, Snapshot, Vote } from "./types";
 
@@ -91,16 +95,7 @@ type Eng = {
   v2LastFitAt: number;
 };
 
-export type V2Stats = {
-  n_samples: number;
-  n_graded: number;
-  brier_v2: number | null;
-  brier_market: number | null;
-  ev_v2: number;
-  ev_v1: number;
-  calls_v2: number;
-  calls_v1: number;
-};
+export type { V2Stats } from "./chair-v2";
 
 export type V2Frame = {
   live: V2Decision | null;
@@ -281,18 +276,14 @@ function decideChair(e: Eng, votes: Vote[], snap: Snapshot, lastLean: Lean): Cha
   return lean === chair.lean ? chair : { ...chair, lean };
 }
 
+/** One paper position per window, held to settlement. The chair may change
+ *  its mind on screen; the ledger does not sell low and buy high for it.
+ *  Autopsy of the flip era: 40 of the last 42 logged calls were flips,
+ *  41 of 42 positions were sold on a flip, net -83¢ — the left tail was
+ *  the churn, not the calls. */
 function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   if (e.lastCall && e.lastCall.ticker === snap.ticker && e.lastCall.close_time === snap.close_time) {
-    if (e.lastCall.lean === chair.lean && (chair.lean === "UP" || chair.lean === "DOWN")) return;
-    if (e.lastCall.lean === "UP" || e.lastCall.lean === "DOWN") {
-      const exit = markSide(snap, e.lastCall.lean);
-      e.callLog = e.callLog.map((r) => {
-        if (r.settle != null) return r;
-        if (r.ticker !== snap.ticker || r.close_time !== snap.close_time) return r;
-        if (r.lean !== e.lastCall!.lean) return r;
-        return { ...r, settle: Math.round(exit * 10) / 10 };
-      });
-    }
+    if (e.lastCall.lean === "UP" || e.lastCall.lean === "DOWN") return; // already positioned: hold
   }
   if (chair.lean !== "UP" && chair.lean !== "DOWN") {
     e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
@@ -300,12 +291,7 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   }
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
-  const flipped = Boolean(
-    e.lastCall &&
-      e.lastCall.ticker === snap.ticker &&
-      e.lastCall.close_time === snap.close_time &&
-      e.lastCall.lean !== chair.lean,
-  );
+  const flipped = false;
   e.callLog = [
     {
       id: `${snap.close_time}-${chair.lean}-${snap.as_of}`,
@@ -382,12 +368,14 @@ async function recordLedger(
     await db`
       insert into desk_ledger
         (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass,
-         entry_cents, settle_cents, ev_cents, calls, seats)
+         entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs)
       values
         (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${source}, ${finish},
          ${chair.lean}, ${chair.confidence}, ${chair.score}, ${chair.bar}, ${chair.sit_mass},
          ${first?.cents ?? null}, ${first?.settle ?? null}, ${ev}, ${rows.length},
-         ${JSON.stringify(seats)}::jsonb)
+         ${JSON.stringify(seats)}::jsonb,
+         ${snap.spot > 0 && snap.strike > 0 ? snap.spot - snap.strike : null},
+         ${snap.atr > 0 ? snap.atr : null}, ${snap.secs_left})
       on conflict (ticker, close_time) do nothing
     `;
   } catch (err) {
@@ -812,6 +800,11 @@ async function digestV2Bits(bits: string[]) {
       .sort((x, y) => x[1] - y[1]);
     if (ranked.length) {
       bits.push(`sharpest seats by Brier: ${ranked.slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", ")}`);
+    }
+    const st = eng().v2Stats;
+    if (st) {
+      const g = v2Gates(st);
+      bits.push(`v2 promotion gate ${g.met}/3: samples ${st.n_graded}/${V2_GATE_SAMPLES} · calls ${st.calls_v2}/${V2_GATE_CALLS} · Brier ${g.brierOk ? "beats" : "trails"} market · net ${st.ev_v2 >= 0 ? "+" : ""}${st.ev_v2.toFixed(0)}¢`);
     }
   } catch {
     /* digest is best-effort */

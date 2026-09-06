@@ -204,24 +204,11 @@ function persist(force = false) {
   saveCallLog(callLog, settings.source);
 }
 
+/** One paper position per window, held to settlement (same rule as the
+ *  shared brain — the demo sandbox should not teach a habit live forbids). */
 function noteCall(snap: Snapshot, chair: ChairResult) {
-  if (
-    lastCall &&
-    lastCall.ticker === snap.ticker &&
-    lastCall.close_time === snap.close_time
-  ) {
-    if (lastCall.lean === chair.lean) {
-      if (chair.lean === "UP" || chair.lean === "DOWN") return;
-    }
-    if (lastCall.lean === "UP" || lastCall.lean === "DOWN") {
-      const exit = markSide(snap, lastCall.lean);
-      callLog = callLog.map((r) => {
-        if (r.settle != null) return r;
-        if (r.ticker !== snap.ticker || r.close_time !== snap.close_time) return r;
-        if (r.lean !== lastCall!.lean) return r;
-        return { ...r, settle: Math.round(exit * 10) / 10 };
-      });
-    }
+  if (lastCall && lastCall.ticker === snap.ticker && lastCall.close_time === snap.close_time) {
+    if (lastCall.lean === "UP" || lastCall.lean === "DOWN") return; // already positioned: hold
   }
   if (chair.lean !== "UP" && chair.lean !== "DOWN") {
     lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
@@ -230,9 +217,7 @@ function noteCall(snap: Snapshot, chair: ChairResult) {
   }
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
-  const flipped = Boolean(
-    lastCall && lastCall.ticker === snap.ticker && lastCall.close_time === snap.close_time && lastCall.lean !== chair.lean,
-  );
+  const flipped = false;
   callLog = [
     {
       id: `${snap.close_time}-${chair.lean}-${snap.as_of}`,
