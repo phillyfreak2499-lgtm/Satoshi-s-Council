@@ -12,7 +12,9 @@ import { KalshiWs } from "./kalshi-ws.server";
 import { Recorder } from "./lab-recorder.server";
 import {
   freshBrti,
+  noteSettleFeed,
   pushBrti,
+  quarterClose,
   settleFair,
   settlePrints,
   sigma1,
@@ -83,7 +85,7 @@ type Lab = {
   restTickers: { ticker: string; close: number }[];
   basis: BasisAcc | null;
   basisSnapAt: number;
-  receipts: { n: number; avg_ok: number; last_ok: number; partial: number };
+  receipts: { n: number; avg_ok: number; last_ok: number; partial: number; exact: number };
   survival: Map<number, Survival>;
   shocksDone: number;
   lastShocks: Shock[];
@@ -113,7 +115,7 @@ function lab(): Lab {
     restTickers: [],
     basis: null,
     basisSnapAt: 0,
-    receipts: { n: 0, avg_ok: 0, last_ok: 0, partial: 0 },
+    receipts: { n: 0, avg_ok: 0, last_ok: 0, partial: 0, exact: 0 },
     survival: new Map(FILL_LATENCIES.map((L) => [L, { alive: 0, total: 0, edge_alive: 0, edge_total: 0, edge_net_sum: 0 }])),
     shocksDone: 0,
     lastShocks: [],
@@ -223,7 +225,8 @@ async function refreshTickers(L: Lab): Promise<void> {
 function book(L: Lab, ticker: string): LabBook {
   let b = L.books.get(ticker);
   if (!b) {
-    b = freshBook(ticker);
+    // Shape 0 of the orderbook subscription is use_yes_price: true.
+    b = freshBook(ticker, L.ws?.variantOf("orderbook_delta") !== 1);
     L.books.set(ticker, b);
   }
   return b;
@@ -254,6 +257,8 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       const tk = String(msg.market_ticker ?? "");
       if (!tk) return;
       const b = book(L, tk);
+      // A snapshot always follows a (re)subscribe: refresh the wire convention.
+      b.yesLeg = L.ws?.variantOf("orderbook_delta") !== 1;
       applySnapshot(b, msg, t);
       afterBook(L, tk, b, t);
       return;
@@ -283,21 +288,42 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       return;
     }
     default:
-      if (type.startsWith("cfbenchmarks")) onBrti(L, msg, t);
+      if (type === "cfbenchmarks_value" || type === "cfbenchmarks_value_5hz") onBrti(L, type, msg, t);
   }
 }
 
-function onBrti(L: Lab, msg: Record<string, unknown>, t: number): void {
-  const id = String(msg.id ?? msg.index ?? msg.symbol ?? msg.name ?? "").toUpperCase();
-  if (id && !id.includes("BRTI")) return;
-  const v = num(msg.value ?? msg.value_usd ?? msg.price ?? msg.index_value ?? msg.val);
+/** Per the docs: the per-second channel carries the vendor frame as a JSON
+ *  string in `data` ({id, time, value}) plus `avg_60s_data` and, in the final
+ *  minute before a quarter-hour close, `last_60s_windowed_average_15min`
+ *  ({value, window_size}); the 5 Hz channel carries `value_usd` and
+ *  `source_ts_ms` and no averages. `received_at` is Kalshi's receipt time. */
+function onBrti(L: Lab, type: string, msg: Record<string, unknown>, t: number): void {
+  const id = String(msg.index_id ?? msg.id ?? "").toUpperCase();
+  if (id && id !== "BRTI") return;
+  let v = num(msg.value_usd ?? msg.value);
+  let src = tsMs(msg.source_ts_ms ?? msg.time);
+  if (typeof msg.data === "string") {
+    try {
+      const d = JSON.parse(msg.data) as Record<string, unknown>;
+      if (!Number.isFinite(v)) v = num(d.value);
+      if (!src) src = tsMs(d.time);
+    } catch {
+      /* raw frame unreadable — the top-level fields still count */
+    }
+  }
   if (!Number.isFinite(v)) return;
-  const src = tsMs(msg.source_ts_ms ?? msg.source_ts ?? msg.time ?? msg.ts ?? msg.timestamp);
-  pushBrti(L.brti, v, t, src);
-  const a60 = num(msg.avg_60s ?? msg.avg_60s_data ?? msg.average_60s);
-  if (Number.isFinite(a60)) L.brti.avg60_feed = a60;
-  const sf = num(msg.last_60s_windowed_average_15min ?? msg.settlement_average ?? msg.windowed_average);
-  if (Number.isFinite(sf)) L.brti.settle_feed = sf;
+  const isPrint = type === "cfbenchmarks_value";
+  pushBrti(L.brti, v, t, src, isPrint, tsMs(msg.received_at));
+  if (isPrint) {
+    const a60 = msg.avg_60s_data as Record<string, unknown> | undefined;
+    if (a60 && typeof a60 === "object") {
+      const av = num(a60.value);
+      if (Number.isFinite(av)) L.brti.avg60_feed = av;
+    }
+    const sw = msg.last_60s_windowed_average_15min as Record<string, unknown> | undefined;
+    if (sw && typeof sw === "object") noteSettleFeed(L.brti, num(sw.value), Number(sw.window_size), src || t, t);
+    else if (L.brti.settle_live && t - L.brti.settle_live.t > 5_000) L.brti.settle_live = null;
+  }
   recomputeFair(L, t);
 }
 
@@ -459,13 +485,24 @@ export type SettleReceipt = {
   fair_pre: number | null;
   rule_avg_ok: boolean | null;
   rule_last_ok: boolean | null;
+  settle_feed: number | null;
+  settle_feed_n: number | null;
+  official_value: number | null;
 };
 
 /** Called by the ledger at grade time: what the settlement index did in the
- *  window's final minute, and whether the 60s-average rule (and the naive
- *  last-tick rule) agree with Kalshi's official result. Synchronous. */
-export function labSettleReceipt(ticker: string, closeMs: number, strike: number, winner: "UP" | "DOWN"): SettleReceipt {
+ *  window's final minute — our own 1-Hz average, Kalshi's streamed
+ *  accumulating average, the last print — against Kalshi's official
+ *  expiration value and result. Synchronous. */
+export function labSettleReceipt(
+  ticker: string,
+  closeMs: number,
+  strike: number,
+  winner: "UP" | "DOWN",
+  official: number | null = null,
+): SettleReceipt {
   const L = lab();
+  const feed = L.brti.settle.get(quarterClose(closeMs)) ?? null;
   const empty: SettleReceipt = {
     settle_avg: null,
     settle_last: null,
@@ -474,8 +511,23 @@ export function labSettleReceipt(ticker: string, closeMs: number, strike: number
     fair_pre: L.fairPre.get(ticker) ?? null,
     rule_avg_ok: null,
     rule_last_ok: null,
+    settle_feed: feed?.value ?? null,
+    settle_feed_n: feed?.n ?? null,
+    official_value: official,
   };
-  const { sum, k, last } = settlePrints(L.brti, closeMs);
+  void settleShocks(L, ticker, winner);
+  L.fairPre.delete(ticker);
+  const c = Math.floor(closeMs / 1000);
+  let sum = 0;
+  let k = 0;
+  let last = 0;
+  for (const p of L.brti.prints) {
+    if (p.s > c - 60 && p.s <= c) {
+      sum += p.v;
+      k += 1;
+      last = p.v;
+    }
+  }
   if (!k || !(strike > 0)) return empty;
   const avg = sum / k;
   const up = winner === "UP";
@@ -485,11 +537,10 @@ export function labSettleReceipt(ticker: string, closeMs: number, strike: number
     L.receipts.n += 1;
     if (avgOk) L.receipts.avg_ok += 1;
     if (lastOk) L.receipts.last_ok += 1;
+    if (official != null && Math.abs(avg - official) <= 0.05) L.receipts.exact += 1;
   } else {
     L.receipts.partial += 1;
   }
-  void settleShocks(L, ticker, winner);
-  L.fairPre.delete(ticker);
   return {
     ...empty,
     settle_avg: avg,
@@ -543,10 +594,16 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
       source_lag_ms: L.brti.last_src_t ? L.brti.last_t - L.brti.last_src_t : null,
       ticks: L.brti.n,
       sigma1_usd: L.brti.var_n >= 30 ? Math.round(Math.sqrt(L.brti.var1) * 100) / 100 : null,
+      prints: L.brti.n_prints,
+      lag_vendor_to_us_ms: L.brti.lag_us == null ? null : Math.round(L.brti.lag_us),
+      lag_vendor_to_kalshi_ms: L.brti.lag_kalshi == null ? null : Math.round(L.brti.lag_kalshi),
       avg60: t60.n ? Math.round(t60.avg * 100) / 100 : null,
       avg60_n: t60.n,
       feed_avg60: L.brti.avg60_feed,
-      feed_settle: L.brti.settle_feed,
+      feed_settle: L.brti.settle_live
+        ? { close: new Date(L.brti.settle_live.close).toISOString(), value: L.brti.settle_live.value, n: L.brti.settle_live.n }
+        : null,
+      known_now: snap ? settlePrints(L.brti, snap.close_time) : null,
     },
     window: snap
       ? {
@@ -560,6 +617,7 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
                 sd: Math.round(L.fair.sd * 100) / 100,
                 prints_known: L.fair.k,
                 prints_left: L.fair.m,
+                known_from: L.fair.source,
                 age_s: Math.round((now - L.fairT) / 100) / 10,
               }
             : null,
@@ -638,17 +696,32 @@ export async function labDigestBits(bits: string[]): Promise<void> {
         }`,
       );
     }
-    const [rc] = await db<{ n: number; avg_ok: number; last_ok: number; partial: number }>`
+    const [rc] = await db<{
+      n: number;
+      avg_ok: number;
+      last_ok: number;
+      partial: number;
+      official: number;
+      exact: number;
+      feed_exact: number;
+      err_cents: number | null;
+    }>`
       select count(*) filter (where brti_prints >= 55)::int as n,
              count(*) filter (where brti_prints >= 55 and rule_avg_ok)::int as avg_ok,
              count(*) filter (where brti_prints >= 55 and rule_last_ok)::int as last_ok,
-             count(*) filter (where brti_prints > 0 and brti_prints < 55)::int as partial
+             count(*) filter (where brti_prints > 0 and brti_prints < 55)::int as partial,
+             count(*) filter (where official_value is not null and brti_prints >= 55)::int as official,
+             count(*) filter (where official_value is not null and brti_prints >= 55 and abs(settle_avg - official_value) <= 0.05)::int as exact,
+             count(*) filter (where official_value is not null and settle_feed is not null and abs(settle_feed - official_value) <= 0.05)::int as feed_exact,
+             avg(abs(settle_avg - official_value) * 100) filter (where official_value is not null and brti_prints >= 55) as err_cents
         from desk_ledger
        where close_time > now() - interval '24 hours'
     `;
     if (rc && rc.n > 0) {
       bits.push(
-        `settlement rule check: 60s-average rule agreed ${rc.avg_ok}/${rc.n} windows, last-tick rule ${rc.last_ok}/${rc.n}${rc.partial ? ` (${rc.partial} windows had partial index data)` : ""}`,
+        `settlement rule check: 60s-average rule agreed with Kalshi's result on ${rc.avg_ok}/${rc.n} windows, last-tick rule ${rc.last_ok}/${rc.n}${
+          rc.official ? `; our average matched Kalshi's official value within 5¢ on ${rc.exact}/${rc.official} (mean gap ${Number(rc.err_cents ?? 0).toFixed(1)}¢), Kalshi's streamed average on ${rc.feed_exact}` : ""
+        }${rc.partial ? ` (${rc.partial} windows had partial index data)` : ""}`,
       );
     }
     const [bs] = await db<{

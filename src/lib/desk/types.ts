@@ -138,6 +138,8 @@ export type OfficialSettle = {
   provider_ts: number;
   receipt_ts: number;
   source: string;
+  /** Kalshi's expiration_value: the settled 60s BRTI average, when present. */
+  value?: number;
 };
 
 export type HealthMap = {
