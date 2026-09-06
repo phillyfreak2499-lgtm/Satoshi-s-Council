@@ -34,6 +34,7 @@ import {
   type LabBook,
 } from "./lab-book";
 import {
+  FAST_JUMP_MS,
   FILL_LATENCIES,
   fills,
   freshStudy,
@@ -447,13 +448,13 @@ async function persistShock(L: Lab, s: Shock, f: ReturnType<typeof fills>): Prom
         (ticker, t, session, secs_left, final_minute, side, fair_before, fair_after, ask_before, ask_size,
          misprice, fee, net_edge, gone_ms, gone_how,
          markout_100, markout_250, markout_500, markout_1000,
-         fill_50, fill_100, fill_150, fill_200, fill_300, fill_500)
+         fill_50, fill_100, fill_150, fill_200, fill_300, fill_500, jump_ms, book_age_ms)
       values
         (${s.ticker}, ${new Date(s.t0).toISOString()}, ${s.session}, ${s.secs_left}, ${s.final_minute}, ${s.side},
          ${s.fair_before}, ${s.fair_after}, ${s.ask_before}, ${s.ask_size},
          ${s.misprice}, ${s.fee}, ${s.net_edge}, ${s.gone_ms}, ${s.gone_how},
          ${s.markouts[100] ?? null}, ${s.markouts[250] ?? null}, ${s.markouts[500] ?? null}, ${s.markouts[1000] ?? null},
-         ${f[50]}, ${f[100]}, ${f[150]}, ${f[200]}, ${f[300]}, ${f[500]})
+         ${f[50]}, ${f[100]}, ${f[150]}, ${f[200]}, ${f[300]}, ${f[500]}, ${s.jump_ms}, ${s.book_age_ms})
     `;
   } catch (err) {
     L.persistErrors += 1;
@@ -688,6 +689,8 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
         how: s.gone_how,
         mo500: s.markouts[500] == null ? null : Math.round(s.markouts[500] * 10) / 10,
         secs_left: s.secs_left,
+        kind: s.jump_ms <= FAST_JUMP_MS ? "jump" : "drift",
+        jump_ms: s.jump_ms,
       })),
     },
     receipts: { ...L.receipts, official_backfilled: L.backfilled },
@@ -718,6 +721,13 @@ export async function labDigestBits(bits: string[]): Promise<void> {
       net150: number | null;
       mo500: number | null;
       taken: number;
+      fast: number;
+      fast_edge: number;
+      fast_hit150: number;
+      fast_real: number | null;
+      fast_settled: number;
+      drift_real: number | null;
+      drift_settled: number;
     }>`
       select count(*)::int as n,
              count(*) filter (where net_edge > 0)::int as edge,
@@ -725,7 +735,14 @@ export async function labDigestBits(bits: string[]): Promise<void> {
              count(*) filter (where net_edge > 0 and fill_500)::int as hit500,
              avg(net_edge) filter (where net_edge > 0 and fill_150) as net150,
              avg(markout_500) filter (where net_edge > 0 and fill_150) as mo500,
-             count(*) filter (where net_edge > 0 and gone_how = 'taken')::int as taken
+             count(*) filter (where net_edge > 0 and gone_how = 'taken')::int as taken,
+             count(*) filter (where jump_ms <= ${FAST_JUMP_MS})::int as fast,
+             count(*) filter (where jump_ms <= ${FAST_JUMP_MS} and net_edge > 0)::int as fast_edge,
+             count(*) filter (where jump_ms <= ${FAST_JUMP_MS} and net_edge > 0 and fill_150)::int as fast_hit150,
+             avg(realized) filter (where jump_ms <= ${FAST_JUMP_MS} and net_edge > 0 and fill_150 and winner is not null) as fast_real,
+             count(*) filter (where jump_ms <= ${FAST_JUMP_MS} and net_edge > 0 and fill_150 and winner is not null)::int as fast_settled,
+             avg(realized) filter (where jump_ms > ${FAST_JUMP_MS} and net_edge > 0 and winner is not null) as drift_real,
+             count(*) filter (where jump_ms > ${FAST_JUMP_MS} and net_edge > 0 and winner is not null)::int as drift_settled
         from desk_lag_events
        where t > now() - interval '24 hours'
     `;
@@ -735,10 +752,15 @@ export async function labDigestBits(bits: string[]): Promise<void> {
     );
     if (lag && lag.n > 0) {
       const pct = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "n/a");
+      const money = (v: number | null, n: number) =>
+        v == null || !n ? "no settled sample yet" : `${Number(v) >= 0 ? "+" : ""}${Number(v).toFixed(1)}¢ per contract over ${n} settled`;
       bits.push(
-        `stale quotes: ${lag.n} fair-value shocks ≥${SHOCK_CENTS}¢, ${lag.edge} with edge after fee; still hittable at 150ms ${pct(lag.hit150, lag.edge)}, at 500ms ${pct(lag.hit500, lag.edge)}; ${lag.taken} were taken by someone else${
+        `stale quotes: ${lag.n} fair-value shocks ≥${SHOCK_CENTS}¢ (${lag.fast} true jumps within 1s, the rest drift), ${lag.edge} with edge after fee; still hittable at 150ms ${pct(lag.hit150, lag.edge)}, at 500ms ${pct(lag.hit500, lag.edge)}; ${lag.taken} were taken by someone else${
           lag.net150 != null ? `; mean net edge if hit at 150ms ${Number(lag.net150).toFixed(1)}¢, fair 500ms later ${Number(lag.mo500 ?? 0) >= 0 ? "+" : ""}${Number(lag.mo500 ?? 0).toFixed(1)}¢ vs price paid` : ""
         }`,
+      );
+      bits.push(
+        `what those would have made at settlement: jumps hit at 150ms ${money(lag.fast_real, lag.fast_settled)}; drift (model vs book) ${money(lag.drift_real, lag.drift_settled)}`,
       );
     }
     const [rc] = await db<{
