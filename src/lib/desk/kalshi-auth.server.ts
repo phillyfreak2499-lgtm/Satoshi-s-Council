@@ -78,6 +78,7 @@ function findPem(): { pem: string; from: string } | null {
   for (const dir of SECRET_DIRS) {
     try {
       for (const f of readdirSync(dir)) {
+        if (!KALSHI_FILE.test(f)) continue;
         const t = readPemFile(join(dir, f));
         if (t) return { pem: t, from: `${dir}/${f}` };
       }
@@ -88,7 +89,10 @@ function findPem(): { pem: string; from: string } | null {
   return null;
 }
 
-const ID_FILE_NAMES = /(key_?id|api_?key|access_?key|kalshi_?id)/i;
+/** Secret files must say KALSHI in the name: the box also holds other
+ *  services' keys (a CoinGlass key was picked up as the Kalshi id once). */
+const KALSHI_FILE = /kalshi/i;
+const ID_FILE_NAMES = /(key_?id|api_?key|access_?key|_id\b|id$)/i;
 const ID_SHAPE = /^[A-Za-z0-9._:-]{8,128}$/;
 
 function readIdFile(path: string): string | null {
@@ -111,7 +115,7 @@ function findId(): { id: string; from: string } | null {
   for (const dir of SECRET_DIRS) {
     try {
       for (const f of readdirSync(dir)) {
-        if (!ID_FILE_NAMES.test(f)) continue;
+        if (!KALSHI_FILE.test(f) || !ID_FILE_NAMES.test(f)) continue;
         const id = readIdFile(join(dir, f));
         if (id) return { id, from: `${dir}/${f}` };
       }
