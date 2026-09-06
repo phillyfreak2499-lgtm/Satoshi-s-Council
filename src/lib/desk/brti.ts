@@ -44,6 +44,9 @@ export type BrtiState = {
   prints: BrtiPrint[];
   var1: number;
   var_n: number;
+  /** Slow (≈15 min) EWMA of the same per-second variance: a lull must not
+   *  convince the model the tape is dead. */
+  var_slow: number;
   avg60_feed: number | null;
   /** Kalshi's accumulating final-minute average, by quarter-close ms. */
   settle: Map<number, SettleFeed>;
@@ -63,6 +66,7 @@ export function freshBrti(): BrtiState {
     prints: [],
     var1: 0,
     var_n: 0,
+    var_slow: 0,
     avg60_feed: null,
     settle: new Map(),
     settle_live: null,
@@ -109,7 +113,9 @@ export function pushBrti(
     const d = v - tail.v;
     const perSec = (d * d) / dt;
     const a = 1 / 60;
+    const b = 1 / 900;
     st.var1 = st.var_n === 0 ? perSec : (1 - a) * st.var1 + a * perSec;
+    st.var_slow = st.var_n === 0 ? perSec : (1 - b) * st.var_slow + b * perSec;
     st.var_n += 1;
   }
   arr.push({ s, v, t });
@@ -132,9 +138,12 @@ export function noteSettleFeed(st: BrtiState, value: number, n: number, tickMs: 
   for (const k of st.settle) if (k[0] < t - SETTLE_KEEP_MS) st.settle.delete(k[0]);
 }
 
-/** Per-second $ volatility from the prints; `fallback` until it has warmed. */
+/** Per-second $ volatility: the larger of the fast and slow estimates from
+ *  the prints, never below half the ATR-based `fallback`; the fallback alone
+ *  until the prints have warmed. */
 export function sigma1(st: BrtiState, fallback: number): number {
-  if (st.var_n >= 30 && st.var1 > 0) return Math.sqrt(st.var1);
+  const floor = Math.max(fallback, 0) * 0.5;
+  if (st.var_n >= 30 && st.var1 > 0) return Math.max(Math.sqrt(Math.max(st.var1, st.var_slow)), floor);
   return Math.max(fallback, 0);
 }
 

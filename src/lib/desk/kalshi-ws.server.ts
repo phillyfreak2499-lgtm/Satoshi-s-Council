@@ -167,6 +167,9 @@ export class KalshiWs {
   private updateSub(channel: string, sub: Sub, action: "add_markets" | "delete_markets", tickers: string[]): void {
     const id = this.cmdId++;
     this.pending.set(id, { channel, variant: sub.variant, kind: "update" });
+    // The stream re-anchors after a subscription change (a benign 2-step
+    // jump was seen on every window roll); don't call that a gap.
+    sub.seq = 0;
     this.send({ id, cmd: "update_subscription", params: { sids: [sub.sid], market_tickers: tickers, action } });
   }
 
