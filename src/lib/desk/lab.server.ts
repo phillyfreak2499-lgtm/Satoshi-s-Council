@@ -11,6 +11,7 @@ import { kalshiConfigured, kalshiKeyInfo } from "./kalshi-auth.server";
 import { KalshiWs } from "./kalshi-ws.server";
 import { Recorder } from "./lab-recorder.server";
 import {
+  FEED_TRUST_PRINTS,
   freshBrti,
   noteSettleFeed,
   pushBrti,
@@ -556,8 +557,8 @@ export function labSettleReceipt(
     fair_pre: L.fairPre.get(ticker) ?? null,
     rule_avg_ok: null,
     rule_last_ok: null,
-    settle_feed: feed?.value ?? null,
-    settle_feed_n: feed?.n ?? null,
+    settle_feed: null,
+    settle_feed_n: null,
     official_value: official,
   };
   void settleShocks(L, ticker, winner);
@@ -578,7 +579,7 @@ export function labSettleReceipt(
   const up = winner === "UP";
   const avgOk = avg >= strike === up;
   const lastOk = last >= strike === up;
-  if (k >= 55) {
+  if (k >= FEED_TRUST_PRINTS) {
     L.receipts.n += 1;
     if (avgOk) L.receipts.avg_ok += 1;
     if (lastOk) L.receipts.last_ok += 1;
@@ -592,8 +593,12 @@ export function labSettleReceipt(
     settle_last: last,
     brti_prints: k,
     settle_gap: avg - strike,
-    rule_avg_ok: k >= 55 ? avgOk : null,
-    rule_last_ok: k >= 55 ? lastOk : null,
+    rule_avg_ok: k >= FEED_TRUST_PRINTS ? avgOk : null,
+    rule_last_ok: k >= FEED_TRUST_PRINTS ? lastOk : null,
+    // The streamed average only means "Kalshi's arithmetic" when we saw the
+    // whole minute; after a mid-minute connect it averages a partial set.
+    settle_feed: k >= FEED_TRUST_PRINTS ? (feed?.value ?? null) : null,
+    settle_feed_n: k >= FEED_TRUST_PRINTS ? (feed?.n ?? null) : null,
   };
 }
 
@@ -779,7 +784,7 @@ export async function labDigestBits(bits: string[]): Promise<void> {
              count(*) filter (where brti_prints > 0 and brti_prints < 55)::int as partial,
              count(*) filter (where official_value is not null and brti_prints >= 55)::int as official,
              count(*) filter (where official_value is not null and brti_prints >= 55 and abs(settle_avg - official_value) <= 0.05)::int as exact,
-             count(*) filter (where official_value is not null and settle_feed is not null and abs(settle_feed - official_value) <= 0.05)::int as feed_exact,
+             count(*) filter (where official_value is not null and settle_feed is not null and brti_prints >= 55 and abs(settle_feed - official_value) <= 0.05)::int as feed_exact,
              avg(abs(settle_avg - official_value) * 100) filter (where official_value is not null and brti_prints >= 55) as err_cents
         from desk_ledger
        where close_time > now() - interval '24 hours'

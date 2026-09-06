@@ -162,9 +162,17 @@ export function trailingAvg(st: BrtiState, nowMs: number, secs = SETTLE_WINDOW_S
 
 export type SettleKnown = { sum: number; k: number; last: number; source: "feed" | "prints" | "none" };
 
+/** Our own prints must cover this much of the minute before Kalshi's
+ *  streamed accumulating average is trusted: that average is computed over
+ *  the ticks delivered on OUR subscription while its count is the second
+ *  index, so after a mid-minute (re)connect it reports 60 prints but
+ *  averages only the ones we received (seen live: 79,838.33 streamed vs
+ *  79,826.69 official). */
+export const FEED_TRUST_PRINTS = 55;
+
 /** What is known of the settlement average for a close: Kalshi's own
- *  accumulating average when it streamed, else our 1-Hz prints in the
- *  window (close − 60s, close]. */
+ *  accumulating average when we were connected for the whole minute, else
+ *  our 1-Hz prints in the window (close − 60s, close]. */
 export function settlePrints(st: BrtiState, closeMs: number): SettleKnown {
   const c = Math.floor(closeMs / 1000);
   let sum = 0;
@@ -178,7 +186,9 @@ export function settlePrints(st: BrtiState, closeMs: number): SettleKnown {
     }
   }
   const feed = st.settle.get(quarterClose(closeMs));
-  if (feed && feed.n >= k) return { sum: feed.value * feed.n, k: feed.n, last: last || feed.value, source: "feed" };
+  if (feed && k >= FEED_TRUST_PRINTS && feed.n >= k) {
+    return { sum: feed.value * feed.n, k: feed.n, last: last || feed.value, source: "feed" };
+  }
   return { sum, k, last, source: k ? "prints" : "none" };
 }
 
