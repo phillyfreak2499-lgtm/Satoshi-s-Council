@@ -75,7 +75,8 @@ export default async function grokPwaMiddleware(
     path === "/bundle" ||
     path === "/pulse" ||
     path === "/frame" ||
-    path === "/desk"
+    path === "/desk" ||
+    path === "/lab"
   )
     return next();
   const urlWithQuery = path + event.url.search;

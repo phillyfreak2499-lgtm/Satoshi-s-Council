@@ -23,3 +23,6 @@ public/__grok/
 # generated
 *.pid
 .cache/
+
+# lab recorder files (persistent disk in prod)
+/data/

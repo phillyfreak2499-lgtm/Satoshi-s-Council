@@ -48,4 +48,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Four honesty fixes. One paper position per window, held to settlement: the flip autopsy showed 40 of the last 42 calls were flips, sold low and bought high for -83¢. Late fair value now carries settlement-basis noise, so no chair claims edge inside the band where the index can land, and the ledger logs spot at every close so that band gets measured. Unproven seats' sits stop raising the bar. Chair v2's promotion gate is written down: 300 graded samples, 40 calls net positive, a better Brier than the market.",
   },
+  {
+    slug: "2026-09-06-lab",
+    body:
+      "The lab is open. The desk now listens to Kalshi's own settlement index (BRTI) and order book over a live feed, records every tick and book change for replay, and prices each window on the actual rule: the 60-second index average in the final minute. It checks that rule against every official result, measures the gap between our price feeds and the index, and tests whether a stale quote can really be hit at our speed. Nothing trades on it yet. This week the desk measures instead of guessing.",
+  },
 ];

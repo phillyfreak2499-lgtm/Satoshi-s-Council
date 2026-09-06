@@ -26,6 +26,7 @@ import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
+import { labDigestBits, labSettleReceipt, startLab } from "./lab.server";
 import {
   V2_SAMPLE_MINS,
   decideV2,
@@ -336,6 +337,7 @@ async function recordLedger(
   finish: "UP" | "DOWN",
   source: string,
 ) {
+  const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish);
   try {
     const db = await sql();
     const rows = e.callLog.filter(
@@ -368,14 +370,17 @@ async function recordLedger(
     await db`
       insert into desk_ledger
         (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass,
-         entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs)
+         entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs,
+         settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok)
       values
         (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${source}, ${finish},
          ${chair.lean}, ${chair.confidence}, ${chair.score}, ${chair.bar}, ${chair.sit_mass},
          ${first?.cents ?? null}, ${first?.settle ?? null}, ${ev}, ${rows.length},
          ${JSON.stringify(seats)}::jsonb,
          ${snap.spot > 0 && snap.strike > 0 ? snap.spot - snap.strike : null},
-         ${snap.atr > 0 ? snap.atr : null}, ${snap.secs_left})
+         ${snap.atr > 0 ? snap.atr : null}, ${snap.secs_left},
+         ${rc.settle_avg}, ${rc.settle_last}, ${rc.brti_prints || null}, ${rc.settle_gap},
+         ${rc.fair_pre}, ${rc.rule_avg_ok}, ${rc.rule_last_ok})
       on conflict (ticker, close_time) do nothing
     `;
   } catch (err) {
@@ -435,6 +440,7 @@ async function maybeDigest(e: Eng) {
       bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
     }
     await digestV2Bits(bits);
+    await labDigestBits(bits);
     const body = bits.join(" · ").slice(0, 400);
     await db`
       insert into board (who, body, kind, lean, ticker, conf, slug)
@@ -917,6 +923,11 @@ export function ensureServerEngine(): void {
     if (!e.pulseTimer) e.pulseTimer = setInterval(() => void pulseTick(e), PULSE_MS);
     void refitV2(e);
     void tick(e);
+    try {
+      startLab(() => e.prevSnap);
+    } catch (err) {
+      e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
+    }
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
   });
