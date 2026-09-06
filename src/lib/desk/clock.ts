@@ -12,11 +12,24 @@ export type ClockRead = {
   magnet: boolean;
 };
 
+/** Settlement-basis noise as a fraction of spot (1σ), added to σ in quadrature. */
+export const SETTLE_BASIS = 0.0002;
+
 export function readClock(snap: Snapshot): ClockRead {
   const dist = snap.spot - snap.strike;
   const atr = Math.max(snap.atr, 1);
   const mins = Math.max(snap.mins_left, 0.35);
-  const sigma = atr * Math.sqrt(mins);
+  // Settlement prints on a reference index, not on our spot feed. The basis
+  // between the two (USDT-quoted spot vs a USD index, venue spread, a few
+  // seconds of poll lag) is noise the diffusion term cannot see, and it is
+  // the whole game at the close: σ used to collapse toward zero in the last
+  // minute, so a small lead read as a near-certainty. ~2 bps in quadrature
+  // is what the book itself implies late in a window; it leaves the
+  // mid-window read (which beats the market on the ledger) essentially
+  // intact and stops any chair claiming edge inside the settlement band.
+  // The ledger now records close_dist per window so this gets measured.
+  const basis = SETTLE_BASIS * Math.max(snap.spot, 1);
+  const sigma = Math.sqrt((atr * Math.sqrt(mins)) ** 2 + basis ** 2);
   const z = sigma > 0 ? Math.abs(dist) / sigma : 0;
   const itm: Lean = dist > 0 ? "UP" : dist < 0 ? "DOWN" : "WAIT";
   return {

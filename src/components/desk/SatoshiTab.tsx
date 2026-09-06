@@ -2,7 +2,7 @@ import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from "./bits";
-import { V2_MIN_SAMPLES } from "@/lib/desk/chair-v2";
+import { V2_GATE_CALLS, V2_GATE_SAMPLES, V2_MIN_SAMPLES, v2Gates } from "@/lib/desk/chair-v2";
 import type { V2Frame } from "@/lib/desk/server-engine";
 import { ChairEyes } from "./Eyes";
 import { Tip } from "./Tip";
@@ -263,6 +263,12 @@ function ShadowChair({ v2 }: { v2: V2Frame }) {
           </div>
         ) : null}
       </div>
+      {st ? (
+        <div className="mt-2 font-mono text-micro text-muted">
+          promotion gate {v2Gates(st).met}/3 · samples {st.n_graded}/{V2_GATE_SAMPLES} · calls{" "}
+          {st.calls_v2}/{V2_GATE_CALLS} with net &gt; 0 · Brier {v2Gates(st).brierOk ? "beats" : "trails"} market
+        </div>
+      ) : null}
       {v2.top.length ? (
         <div className="mt-2 truncate font-mono text-micro text-subtle">
           weights · {v2.top.map(([k, w]) => `${k} ${w >= 0 ? "+" : ""}${w.toFixed(2)}`).join(" · ")}

@@ -107,6 +107,8 @@ export function runChair(
     status: SeatStatus;
     folded: boolean;
     fadeScale: number;
+    /** 0 while UNCALIBRATED (n < 20), 1 at full calibration. */
+    calib: number;
   };
   const accs: Acc[] = [];
 
@@ -159,6 +161,7 @@ export function runChair(
       status,
       folded: false,
       fadeScale,
+      calib: seatCalib(cn),
     });
   }
 
@@ -236,8 +239,13 @@ export function runChair(
 
   const dirAccs = liveAccs.filter((a) => a.vote.lean !== "WAIT");
   const sumWDir = dirAccs.reduce((s, a) => s + a.w, 0);
+  // Sit-mass is a ratio, so the chair's listen discount cancels out of it —
+  // an uncalibrated seat's "I see nothing" used to raise the bar as much as
+  // a proven seat's. Sits now count at 25% until a seat calibrates, ramping
+  // to 100%; leans are unchanged. Dead seats stop making the chair quieter.
   const sitAccs = liveAccs.filter((a) => !a.vote.forced_sit);
-  const sumWSit = sitAccs.reduce((s, a) => s + a.w, 0);
+  const sitW = (a: Acc) => (a.vote.lean === "WAIT" ? a.w * (0.25 + 0.75 * a.calib) : a.w);
+  const sumWSit = sitAccs.reduce((s, a) => s + sitW(a), 0);
   const sitMass = sumWSit > 0 ? clamp((sumWSit - sumWDir) / sumWSit, 0, 1) : 0;
   let rawScore = sumWDir > 0 ? dirAccs.reduce((s, a) => s + a.signed * a.w, 0) / sumWDir : 0;
 

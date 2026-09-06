@@ -362,7 +362,7 @@ export const GLOSS: Record<string, Gloss> = {
 
   "pane.market": {
     title: "Market window",
-    body: "Where you are in the Bitcoin day, in your timezone. 🥇 NY morning and macro prints (CPI/NFP/claims, FOMC) are the best vol. 🥈 lunch and the equity close. 🥉 London and Tokyo. 💤 late US, pre-London, and weekends. ⏱ turn is the minute a 15-minute candle/Kalshi window opens or closes. Windows are defined in Eastern time so they stay put through daylight saving.",
+    body: "Where you are in the Bitcoin day, in your timezone. 🥇 NY morning and macro prints (CPI/NFP/claims, FOMC) are the best vol. 🥈 lunch and the equity close. 🥉 London and Tokyo. 💤 late US, pre-London, and weekends. Weekend rule: the desk never pauses — every 15-minute window ticks, calls, and grades around the clock; the confluence bar rises +0.04 and thin books are tolerated in grading. 💤 is a quality label, not a schedule. ⏱ turn is the minute a 15-minute candle/Kalshi window opens or closes. Windows are defined in Eastern time so they stay put through daylight saving.",
   },
   "pane.board": {
     title: "Chair call",
