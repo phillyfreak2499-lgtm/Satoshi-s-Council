@@ -9,9 +9,10 @@
 import { WebSocket } from "ws";
 import { kalshiConfigured, kalshiHeaders } from "./kalshi-auth.server";
 
+/** Kalshi's dedicated Trade API websocket host first; the shared host stays supported. */
 export const KALSHI_WS_HOSTS = [
-  "wss://api.elections.kalshi.com/trade-api/ws/v2",
   "wss://external-api-ws.kalshi.com/trade-api/ws/v2",
+  "wss://api.elections.kalshi.com/trade-api/ws/v2",
 ];
 const WS_PATH = "/trade-api/ws/v2";
 const IDLE_MS = 45_000;
@@ -23,21 +24,16 @@ export type WsHandler = (type: string, msg: Record<string, unknown>, raw: Record
 type Variant = Record<string, unknown> & { __tickers?: boolean };
 type ChannelSpec = { channel: string; perMarket: boolean; variants: Variant[] };
 
-/** Subscribe parameter shapes to try, in order, per channel. */
+/** Subscribe parameter shapes per channel, documented shape first, in order.
+ *  orderbook: use_yes_price is the documented forward-compatible convention
+ *  (the book converts NO levels back internally); the bare shape is the
+ *  fallback. CF Benchmarks channels take index_ids, never market tickers. */
 export const CHANNELS: ChannelSpec[] = [
-  { channel: "orderbook_delta", perMarket: true, variants: [{}] },
+  { channel: "orderbook_delta", perMarket: true, variants: [{ use_yes_price: true }, {}] },
   { channel: "ticker", perMarket: true, variants: [{}] },
   { channel: "trade", perMarket: true, variants: [{}] },
-  {
-    channel: "cfbenchmarks_value",
-    perMarket: false,
-    variants: [{}, { __tickers: true }, { ids: ["BRTI"] }, { cfbenchmarks_ids: ["BRTI"] }, { index_ids: ["BRTI"] }],
-  },
-  {
-    channel: "cfbenchmarks_value_5hz",
-    perMarket: false,
-    variants: [{}, { __tickers: true }, { ids: ["BRTI"] }, { cfbenchmarks_ids: ["BRTI"] }, { index_ids: ["BRTI"] }],
-  },
+  { channel: "cfbenchmarks_value", perMarket: false, variants: [{ index_ids: ["BRTI"] }, {}] },
+  { channel: "cfbenchmarks_value_5hz", perMarket: false, variants: [{ index_ids: ["BRTI"] }, {}] },
 ];
 
 type Sub = { sid: number; seq: number; variant: number; tickers: string[] };
@@ -258,6 +254,11 @@ export class KalshiWs {
       }
     }
     this.handler(type || "unknown", msg, raw, t);
+  }
+
+  /** Which subscribe shape a channel is on (0 = documented), or -1 if not subscribed. */
+  variantOf(channel: string): number {
+    return this.subs.get(channel)?.variant ?? -1;
   }
 
   summary(): Record<string, unknown> {

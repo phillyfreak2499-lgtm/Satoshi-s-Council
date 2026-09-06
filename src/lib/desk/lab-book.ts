@@ -1,17 +1,27 @@
 /**
  * A local Kalshi order book rebuilt from the websocket snapshot + deltas.
- * Kalshi books are resting BIDS on each side in cents: a YES bid at p and a
- * NO bid at q. The YES ask is 100 − best NO bid; the NO ask is 100 − best
- * YES bid. Prices may arrive as cents (45) or dollars ("0.45"); sizes as
- * numbers or fixed-point strings. Pure module.
+ * Kalshi books are resting BIDS on each side: a YES bid at p and a NO bid
+ * at q (cents). The YES ask is 100 − best NO bid; the NO ask is 100 − best
+ * YES bid. Wire formats: `yes_dollars_fp` / `no_dollars_fp` rows of
+ * [price_dollars, count_fp] strings (older `yes` / `no` cents rows are still
+ * accepted); deltas carry `price_dollars`, `delta_fp`, `side`.
+ *
+ * With `use_yes_price: true` on the subscription, NO-side levels arrive in
+ * YES-leg pricing (a NO bid at 30¢ is reported as 0.70). The book converts
+ * them back to NO-leg internally so every consumer sees one convention, and
+ * a crossed-book sanity check flips the interpretation if the flag was not
+ * honoured. Pure module.
  */
 export type LabBook = {
   ticker: string;
   yes: Map<number, number>;
   no: Map<number, number>;
+  /** NO-side wire prices are YES-leg (use_yes_price) — converted on entry. */
+  yesLeg: boolean;
   snap_t: number;
   upd_t: number;
   ok: boolean;
+  flips: number;
 };
 
 export type Bests = {
@@ -37,24 +47,46 @@ export function qtyOf(v: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-export function freshBook(ticker: string): LabBook {
-  return { ticker, yes: new Map(), no: new Map(), snap_t: 0, upd_t: 0, ok: false };
+export function freshBook(ticker: string, yesLeg = true): LabBook {
+  return { ticker, yes: new Map(), no: new Map(), yesLeg, snap_t: 0, upd_t: 0, ok: false, flips: 0 };
 }
 
-function loadSide(map: Map<number, number>, rows: unknown): void {
+function loadSide(map: Map<number, number>, rows: unknown, convert: boolean): void {
   map.clear();
   if (!Array.isArray(rows)) return;
   for (const row of rows) {
     if (!Array.isArray(row) || row.length < 2) continue;
-    const px = priceCents(row[0]);
+    let px = priceCents(row[0]);
     const sz = qtyOf(row[1]);
-    if (px && sz) map.set(px, sz);
+    if (!px || !sz) continue;
+    if (convert) px = 100 - px;
+    map.set(px, sz);
   }
 }
 
+function crossed(b: LabBook): boolean {
+  const [yb] = top(b.yes);
+  const [nb] = top(b.no);
+  return yb > 0 && nb > 0 && yb + nb > 100;
+}
+
 export function applySnapshot(b: LabBook, msg: Record<string, unknown>, t: number): void {
-  loadSide(b.yes, msg.yes ?? msg.yes_dollars);
-  loadSide(b.no, msg.no ?? msg.no_dollars);
+  const yesRows = msg.yes_dollars_fp ?? msg.yes_dollars ?? msg.yes;
+  const noRows = msg.no_dollars_fp ?? msg.no_dollars ?? msg.no;
+  loadSide(b.yes, yesRows, false);
+  loadSide(b.no, noRows, b.yesLeg);
+  if (crossed(b)) {
+    // The other interpretation must be the right one if it uncrosses the book.
+    const alt = new Map<number, number>();
+    loadSide(alt, noRows, !b.yesLeg);
+    const [yb] = top(b.yes);
+    const [nbAlt] = top(alt);
+    if (!(yb > 0 && nbAlt > 0 && yb + nbAlt > 100)) {
+      b.no = alt;
+      b.yesLeg = !b.yesLeg;
+      b.flips += 1;
+    }
+  }
   b.snap_t = t;
   b.upd_t = t;
   b.ok = true;
@@ -64,9 +96,10 @@ export type DeltaOut = { side: "yes" | "no"; price: number; size: number; delta:
 
 export function applyDelta(b: LabBook, msg: Record<string, unknown>, t: number): DeltaOut | null {
   const side = String(msg.side ?? "").toLowerCase();
-  const price = priceCents(msg.price ?? msg.price_dollars);
-  const delta = Number(msg.delta ?? msg.delta_fp);
+  let price = priceCents(msg.price_dollars ?? msg.price);
+  const delta = Number(msg.delta_fp ?? msg.delta);
   if ((side !== "yes" && side !== "no") || !price || !Number.isFinite(delta)) return null;
+  if (side === "no" && b.yesLeg) price = 100 - price;
   const map = side === "yes" ? b.yes : b.no;
   const size = Math.max(0, (map.get(price) ?? 0) + delta);
   if (size > 0) map.set(price, size);

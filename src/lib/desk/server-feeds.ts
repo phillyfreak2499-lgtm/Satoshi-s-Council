@@ -119,6 +119,7 @@ type KalshiMarketRow = {
   settlement_ts?: string;
   close_time?: string;
   expiration_time?: string;
+  expiration_value?: string | number;
 };
 
 function parseKalshiResult(row: KalshiMarketRow): "UP" | "DOWN" | null {
@@ -147,6 +148,7 @@ function collectSettles(
     seen.add(ticker);
     const closeTs = Date.parse(String(row.close_time ?? row.expiration_time ?? "")) || 0;
     const settledAt = Date.parse(String(row.settlement_ts ?? "")) || closeTs;
+    const value = Number(row.expiration_value);
     into.push({
       ticker,
       close_time: closeTs,
@@ -154,6 +156,7 @@ function collectSettles(
       provider_ts: settledAt,
       receipt_ts,
       source: host,
+      ...(Number.isFinite(value) && value > 0 ? { value } : {}),
     });
   }
 }

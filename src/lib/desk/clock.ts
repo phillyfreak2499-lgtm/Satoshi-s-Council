@@ -65,6 +65,14 @@ export function takerFeeCents(priceCents: number): number {
   return Math.ceil(7 * p * (1 - p));
 }
 
+/** Kalshi's schedule to the letter: round up(0.07 × P × (1−P)) to the
+ *  centicent (0.01¢), per contract — the desk's whole-cent version above is
+ *  the conservative paper bookkeeping; the lab measures edge with this. */
+export function takerFeeCentsExact(priceCents: number): number {
+  const p = clamp(priceCents, 1, 99) / 100;
+  return Math.ceil(7 * p * (1 - p) * 100) / 100;
+}
+
 export function fairYesCents(snap: Snapshot): number {
   const c = readClock(snap);
   const signed = c.sigma > 0 ? c.dist / c.sigma : 0;

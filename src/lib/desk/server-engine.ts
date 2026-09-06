@@ -337,7 +337,8 @@ async function recordLedger(
   finish: "UP" | "DOWN",
   source: string,
 ) {
-  const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish);
+  const official = snap.official_settles.find((o) => o.ticker === snap.ticker && o.value != null)?.value ?? null;
+  const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish, official);
   try {
     const db = await sql();
     const rows = e.callLog.filter(
@@ -371,7 +372,8 @@ async function recordLedger(
       insert into desk_ledger
         (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass,
          entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs,
-         settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok)
+         settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok,
+         settle_feed, settle_feed_n, official_value)
       values
         (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${source}, ${finish},
          ${chair.lean}, ${chair.confidence}, ${chair.score}, ${chair.bar}, ${chair.sit_mass},
@@ -380,7 +382,8 @@ async function recordLedger(
          ${snap.spot > 0 && snap.strike > 0 ? snap.spot - snap.strike : null},
          ${snap.atr > 0 ? snap.atr : null}, ${snap.secs_left},
          ${rc.settle_avg}, ${rc.settle_last}, ${rc.brti_prints || null}, ${rc.settle_gap},
-         ${rc.fair_pre}, ${rc.rule_avg_ok}, ${rc.rule_last_ok})
+         ${rc.fair_pre}, ${rc.rule_avg_ok}, ${rc.rule_last_ok},
+         ${rc.settle_feed}, ${rc.settle_feed_n}, ${rc.official_value})
       on conflict (ticker, close_time) do nothing
     `;
   } catch (err) {

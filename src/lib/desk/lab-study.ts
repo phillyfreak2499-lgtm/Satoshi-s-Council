@@ -8,7 +8,7 @@
  * 1000 ms later minus the price paid) say whether the fill captured
  * information or chased noise. Pure module; the server drives it.
  */
-import { takerFeeCents } from "./clock";
+import { takerFeeCentsExact } from "./clock";
 import type { Bests } from "./lab-book";
 
 export const SHOCK_CENTS = 2;
@@ -94,8 +94,8 @@ export function onFair(st: StudyState, fairYes: number, t: number, b: Bests, met
     return null;
   }
   const fairSide = side === "UP" ? fairYes : 100 - fairYes;
-  const fee = takerFeeCents(ask);
-  const misprice = fairSide - ask;
+  const fee = takerFeeCentsExact(ask);
+  const misprice = Math.round((fairSide - ask) * 1000) / 1000;
   const shock: Shock = {
     ...meta,
     id: st.nextId++,
@@ -109,7 +109,7 @@ export function onFair(st: StudyState, fairYes: number, t: number, b: Bests, met
     level_px: 100 - ask,
     misprice,
     fee,
-    net_edge: misprice - fee,
+    net_edge: Math.round((misprice - fee) * 1000) / 1000,
     gone_ms: null,
     gone_how: null,
     markouts: {},

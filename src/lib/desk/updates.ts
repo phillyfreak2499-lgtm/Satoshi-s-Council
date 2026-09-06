@@ -53,4 +53,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The lab is open. The desk now listens to Kalshi's own settlement index (BRTI) and order book over a live feed, records every tick and book change for replay, and prices each window on the actual rule: the 60-second index average in the final minute. It checks that rule against every official result, measures the gap between our price feeds and the index, and tests whether a stale quote can really be hit at our speed. Nothing trades on it yet. This week the desk measures instead of guessing.",
   },
+  {
+    slug: "2026-09-06-lab-rule",
+    body:
+      "Confirmed from Kalshi's own rules: a window settles on the average of the 60 index prints in its final minute, and the strike is the previous window's average. The lab now reads that running average straight from Kalshi's feed as it accumulates, and checks its own arithmetic against Kalshi's official settlement value on every window. Fees are now booked to the hundredth of a cent, as Kalshi charges them.",
+  },
 ];
