@@ -93,6 +93,13 @@ export function onFair(st: StudyState, fairYes: number, t: number, b: Bests, met
     st.n_nobook += 1;
     return null;
   }
+  // The same resting ask is one opportunity, however many ticks fair value
+  // keeps drifting while it sits there: refresh the open shock, don't stack.
+  const dup = st.open.find((o) => o.gone_ms == null && o.side === side && o.ask_before === ask);
+  if (dup) {
+    dup.fair_after = fairYes;
+    return null;
+  }
   const fairSide = side === "UP" ? fairYes : 100 - fairYes;
   const fee = takerFeeCentsExact(ask);
   const misprice = Math.round((fairSide - ask) * 1000) / 1000;

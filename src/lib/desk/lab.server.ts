@@ -81,6 +81,8 @@ type Lab = {
   fairPre: Map<string, number>;
   tickerTimer: ReturnType<typeof setInterval> | null;
   secTimer: ReturnType<typeof setInterval> | null;
+  backfillTimer: ReturnType<typeof setInterval> | null;
+  backfilled: number;
   restAt: number;
   restTickers: { ticker: string; close: number }[];
   basis: BasisAcc | null;
@@ -111,6 +113,8 @@ function lab(): Lab {
     fairPre: new Map(),
     tickerTimer: null,
     secTimer: null,
+    backfillTimer: null,
+    backfilled: 0,
     restAt: 0,
     restTickers: [],
     basis: null,
@@ -176,7 +180,47 @@ export function startLab(getSnap: () => Snapshot | null): void {
     }
   }, 1_000);
   L.secTimer.unref?.();
+  L.backfillTimer = setInterval(() => void backfillOfficial(L), BACKFILL_MS);
+  L.backfillTimer.unref?.();
   void refreshTickers(L);
+  setTimeout(() => void backfillOfficial(L), 20_000).unref?.();
+}
+
+const BACKFILL_MS = 5 * 60_000;
+
+/** Kalshi publishes the official settled average (`expiration_value`) on
+ *  each finished market. Windows graded before it was available get it
+ *  filled in here, so every ledger row can be checked against Kalshi's
+ *  own number. Public endpoint, a few tickers per pass. */
+async function backfillOfficial(L: Lab): Promise<void> {
+  try {
+    const db = await sql();
+    const rows = await db<{ ticker: string }>`
+      select ticker from desk_ledger
+       where official_value is null and close_time < now() - interval '3 minutes'
+       order by close_time desc limit 4
+    `;
+    if (!rows.length) return;
+    const host = L.getSnap()?.kalshi_host || REST_HOST;
+    for (const { ticker } of rows) {
+      try {
+        const r = await fetch(`${host}/markets/${encodeURIComponent(ticker)}`, {
+          signal: AbortSignal.timeout(4_000),
+          headers: { accept: "application/json", "user-agent": "SatoshiCouncil/1.0 (paper research)" },
+        });
+        if (!r.ok) continue;
+        const j = (await r.json()) as { market?: Record<string, unknown> };
+        const v = Number(j.market?.expiration_value);
+        if (!Number.isFinite(v) || v <= 0) continue;
+        await db`update desk_ledger set official_value = ${v} where ticker = ${ticker} and official_value is null`;
+        L.backfilled += 1;
+      } catch {
+        /* next ticker; the timer comes back */
+      }
+    }
+  } catch (err) {
+    L.lastError = `backfill: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }
 
 function currentTicker(L: Lab): string {
@@ -646,7 +690,7 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
         secs_left: s.secs_left,
       })),
     },
-    receipts: L.receipts,
+    receipts: { ...L.receipts, official_backfilled: L.backfilled },
     basis: L.basis
       ? {
           minute: new Date(L.basis.minute).toISOString(),
