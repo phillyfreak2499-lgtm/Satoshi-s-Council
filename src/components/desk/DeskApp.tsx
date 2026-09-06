@@ -169,6 +169,7 @@ export function DeskApp() {
             settings={frame.settings}
             callLog={frame.call_log}
             onJump={jump}
+            v2={frame.v2}
           />
         )}
         {frame.snap && seats.length > 0 && (

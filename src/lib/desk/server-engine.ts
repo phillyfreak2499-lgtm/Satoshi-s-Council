@@ -26,6 +26,18 @@ import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
+import {
+  V2_SAMPLE_MINS,
+  decideV2,
+  extractFeatures,
+  fitLogistic,
+  predictV2,
+  seatProb,
+  settleV2,
+  type V2Decision,
+  type V2Features,
+  type V2Weights,
+} from "./chair-v2";
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, Settings, Snapshot, Vote } from "./types";
 
 const STATE_ID = "live";
@@ -71,6 +83,31 @@ type Eng = {
   pulseFails: number;
   pulseBackoffUntil: number;
   lastPulseReqAt: number;
+  v2: V2Weights | null;
+  v2Sampled: string;
+  v2Live: V2Decision | null;
+  v2Stats: V2Stats | null;
+  v2Fitting: boolean;
+  v2LastFitAt: number;
+};
+
+export type V2Stats = {
+  n_samples: number;
+  n_graded: number;
+  brier_v2: number | null;
+  brier_market: number | null;
+  ev_v2: number;
+  ev_v1: number;
+  calls_v2: number;
+  calls_v1: number;
+};
+
+export type V2Frame = {
+  live: V2Decision | null;
+  weights_n: number;
+  fitted_at: number;
+  stats: V2Stats | null;
+  top: [string, number][];
 };
 
 /** The fast lane: a ~1.5s quote pulse for the viewers' eyes only. The brain
@@ -124,6 +161,12 @@ function freshEng(): Eng {
     pulseFails: 0,
     pulseBackoffUntil: 0,
     lastPulseReqAt: 0,
+    v2: null,
+    v2Sampled: "",
+    v2Live: null,
+    v2Stats: null,
+    v2Fitting: false,
+    v2LastFitAt: 0,
   };
 }
 
@@ -142,7 +185,13 @@ async function loadState(e: Eng) {
     const db = await sql();
     const rows = await db<{ state: unknown }>`select state from desk_state where id = ${STATE_ID} limit 1`;
     const raw = rows[0]?.state as
-      | { learner?: Partial<Learner>; call_log?: CallLogRow[]; settings?: Partial<Settings>; last_call?: Eng["lastCall"] }
+      | {
+          learner?: Partial<Learner>;
+          call_log?: CallLogRow[];
+          settings?: Partial<Settings>;
+          last_call?: Eng["lastCall"];
+          v2?: V2Weights | null;
+        }
       | undefined;
     if (!raw) return;
     e.learner = mergeLearner(raw.learner ?? null);
@@ -152,6 +201,7 @@ async function loadState(e: Eng) {
     e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
     e.lastCall = raw.last_call ?? null;
+    if (raw.v2 && raw.v2.w && typeof raw.v2.b === "number") e.v2 = raw.v2;
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -172,6 +222,7 @@ async function persistState(e: Eng, force = false) {
         beast: e.settings.beast,
       },
       last_call: e.lastCall,
+      v2: e.v2,
     });
     await db`
       insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
@@ -314,13 +365,18 @@ async function recordLedger(
       }
       ev = Math.round(ev * 10) / 10;
     }
-    const seats: Record<string, { lean: string; conf: number; hit: boolean | null }> = {};
+    const seats: Record<
+      string,
+      { lean: string; conf: number; hit: boolean | null; raw_lean: string; raw_conf: number }
+    > = {};
     for (const v of votes) {
       if (v.seat === "WARDEN") continue;
       seats[v.seat] = {
         lean: v.lean,
         conf: v.confidence,
         hit: v.lean === "UP" || v.lean === "DOWN" ? v.lean === finish : null,
+        raw_lean: v.raw_lean ?? v.lean,
+        raw_conf: v.raw_conf ?? v.confidence,
       };
     }
     await db`
@@ -390,6 +446,7 @@ async function maybeDigest(e: Eng) {
     if (best && worst && best[0] !== worst[0]) {
       bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
     }
+    await digestV2Bits(bits);
     const body = bits.join(" · ").slice(0, 400);
     await db`
       insert into board (who, body, kind, lean, ticker, conf, slug)
@@ -415,6 +472,7 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   void recordLedger(e, snap, votes, chair, finish, source);
+  void gradeV2(e, snap, finish);
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
     e.learner = runHuddle(e.learner).learner;
   }
@@ -547,6 +605,7 @@ async function tick(e: Eng) {
     const chair = decideChair(e, votes, snap, lastSide(e, snap));
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
+    noteV2(e, snap, votes, chair);
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window
     // rollover the OLD window grades from its own last live-book tick.
     const prev = { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
@@ -566,6 +625,196 @@ async function tick(e: Eng) {
     e.lastTickAt = Date.now();
   } finally {
     e.inFlight = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chair v2 (shadow): one sample per window at the mid-window decision point,
+// graded at settle, refit on the ledger, scored against the live chair.
+// ---------------------------------------------------------------------------
+
+function noteV2(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
+  try {
+    const f = extractFeatures(votes, snap);
+    const p = predictV2(e.v2, f, snap);
+    const d = decideV2(p, snap);
+    e.v2Live = d;
+    const key = windowKey(snap);
+    if (
+      e.v2Sampled !== key &&
+      snap.mins_left <= V2_SAMPLE_MINS &&
+      snap.mins_left > 2.2 &&
+      snap.yes_ask > 0 &&
+      gradeableBook(snap)
+    ) {
+      e.v2Sampled = key;
+      void recordV2Sample(e, snap, chair, f, d);
+    }
+  } catch (err) {
+    e.lastError = `v2: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function recordV2Sample(e: Eng, snap: Snapshot, chair: ChairResult, f: V2Features, d: V2Decision) {
+  try {
+    const db = await sql();
+    const market = JSON.stringify({
+      yes_mid: snap.yes_mid,
+      yes_ask: snap.yes_ask,
+      no_ask: snap.no_ask,
+      fair_yes: snap.fair_yes,
+      spot: snap.spot,
+      strike: snap.strike,
+    });
+    await db`
+      insert into desk_samples (ticker, close_time, mins_left, features, market, v1_lean, v2_p, v2_lean, v2_entry)
+      values (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${snap.mins_left},
+              ${JSON.stringify(f)}::jsonb, ${market}::jsonb, ${chair.lean}, ${d.p_up}, ${d.lean}, ${d.entry_cents})
+      on conflict (ticker, close_time) do nothing
+    `;
+  } catch (err) {
+    e.lastError = `v2 sample: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function gradeV2(e: Eng, snap: Snapshot, finish: "UP" | "DOWN") {
+  try {
+    const db = await sql();
+    const rows = await db<{ id: number; v2_lean: string; v2_entry: number | null }>`
+      select id, v2_lean, v2_entry from desk_samples
+      where ticker = ${snap.ticker} and winner is null
+        and abs(extract(epoch from (close_time - ${new Date(snap.close_time).toISOString()}::timestamptz))) < 90
+      limit 1
+    `;
+    const row = rows[0];
+    if (!row) return;
+    const ev = settleV2(row.v2_lean as Lean, row.v2_entry, finish);
+    await db`
+      update desk_samples set winner = ${finish}, v2_ev = ${ev}, graded_at = now() where id = ${row.id}
+    `;
+    void refitV2(e);
+  } catch (err) {
+    e.lastError = `v2 grade: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function refitV2(e: Eng) {
+  if (e.v2Fitting) return;
+  if (Date.now() - e.v2LastFitAt < 60_000) return;
+  e.v2Fitting = true;
+  e.v2LastFitAt = Date.now();
+  try {
+    const db = await sql();
+    const rows = await db<{ features: V2Features; winner: string }>`
+      select features, winner from desk_samples
+      where winner is not null order by close_time desc limit 3000
+    `;
+    const fitted = fitLogistic(rows.map((r) => ({ x: r.features, y: r.winner === "UP" ? 1 : 0 })));
+    if (fitted) {
+      e.v2 = fitted;
+      await persistState(e, true);
+    }
+    await refreshV2Stats(e);
+  } catch (err) {
+    e.lastError = `v2 fit: ${err instanceof Error ? err.message : String(err)}`;
+  } finally {
+    e.v2Fitting = false;
+  }
+}
+
+async function refreshV2Stats(e: Eng) {
+  try {
+    const db = await sql();
+    const a = await db<{
+      n_samples: number;
+      n_graded: number;
+      brier_v2: number | null;
+      brier_market: number | null;
+      ev_v2: number;
+      calls_v2: number;
+    }>`
+      select
+        count(*)::int as n_samples,
+        count(winner)::int as n_graded,
+        avg(case when winner is not null and v2_p is not null
+            then power(v2_p - (case when winner = 'UP' then 1 else 0 end), 2) end) as brier_v2,
+        avg(case when winner is not null
+            then power((market->>'yes_mid')::float / 100 - (case when winner = 'UP' then 1 else 0 end), 2) end) as brier_market,
+        coalesce(sum(v2_ev), 0) as ev_v2,
+        (count(*) filter (where v2_lean in ('UP','DOWN') and winner is not null))::int as calls_v2
+      from desk_samples
+    `;
+    const b = await db<{ ev_v1: number; calls_v1: number }>`
+      select coalesce(sum(l.ev_cents), 0) as ev_v1,
+             (count(*) filter (where l.calls > 0))::int as calls_v1
+      from desk_samples s
+      join desk_ledger l on l.ticker = s.ticker and l.close_time = s.close_time
+      where s.winner is not null
+    `;
+    const x = a[0];
+    if (!x) return;
+    e.v2Stats = {
+      n_samples: Number(x.n_samples) || 0,
+      n_graded: Number(x.n_graded) || 0,
+      brier_v2: x.brier_v2 == null ? null : Number(x.brier_v2),
+      brier_market: x.brier_market == null ? null : Number(x.brier_market),
+      ev_v2: Number(x.ev_v2) || 0,
+      ev_v1: Number(b[0]?.ev_v1) || 0,
+      calls_v2: Number(x.calls_v2) || 0,
+      calls_v1: Number(b[0]?.calls_v1) || 0,
+    };
+  } catch (err) {
+    e.lastError = `v2 stats: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+function v2Frame(e: Eng): V2Frame {
+  const top = e.v2
+    ? Object.entries(e.v2.w)
+        .sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]))
+        .slice(0, 5)
+        .map(([k, v]) => [k, Math.round(v * 100) / 100] as [string, number])
+    : [];
+  return { live: e.v2Live, weights_n: e.v2?.n ?? 0, fitted_at: e.v2?.fitted_at ?? 0, stats: e.v2Stats, top };
+}
+
+/** Yesterday's shadow-chair scoreboard and sharpest seats, for the digest. */
+async function digestV2Bits(bits: string[]) {
+  try {
+    const db = await sql();
+    const rows = await db<{ features: V2Features; winner: string; v2_ev: number | null; v2_lean: string; ev_v1: number | null }>`
+      select s.features, s.winner, s.v2_ev, s.v2_lean, l.ev_cents as ev_v1
+      from desk_samples s
+      left join desk_ledger l on l.ticker = s.ticker and l.close_time = s.close_time
+      where s.winner is not null
+        and (s.close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date - 1
+    `;
+    if (!rows.length) return;
+    const ev2 = rows.reduce((t, r) => t + (Number(r.v2_ev) || 0), 0);
+    const ev1 = rows.reduce((t, r) => t + (Number(r.ev_v1) || 0), 0);
+    const calls2 = rows.filter((r) => r.v2_lean === "UP" || r.v2_lean === "DOWN").length;
+    bits.push(
+      `shadow chair v2: ${calls2} call${calls2 === 1 ? "" : "s"}, net ${ev2 >= 0 ? "+" : ""}${ev2.toFixed(1)}¢ vs chair ${ev1 >= 0 ? "+" : ""}${ev1.toFixed(1)}¢`,
+    );
+    const tally: Record<string, { n: number; sum: number }> = {};
+    for (const r of rows) {
+      const y = r.winner === "UP" ? 1 : 0;
+      for (const [k, ev] of Object.entries(r.features)) {
+        if (k === "market" || k === "fair" || !ev) continue;
+        const t = (tally[k] ??= { n: 0, sum: 0 });
+        t.n += 1;
+        t.sum += (seatProb(Number(ev)) - y) ** 2;
+      }
+    }
+    const ranked = Object.entries(tally)
+      .filter(([, t]) => t.n >= 5)
+      .map(([k, t]) => [k, t.sum / t.n] as [string, number])
+      .sort((x, y) => x[1] - y[1]);
+    if (ranked.length) {
+      bits.push(`sharpest seats by Brier: ${ranked.slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", ")}`);
+    }
+  } catch {
+    /* digest is best-effort */
   }
 }
 
@@ -673,6 +922,7 @@ export function ensureServerEngine(): void {
     // The pulse loop's lifecycle lives here and only here — restartTimer
     // (beast toggles) must never double-start it.
     if (!e.pulseTimer) e.pulseTimer = setInterval(() => void pulseTick(e), PULSE_MS);
+    void refitV2(e);
     void tick(e);
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
@@ -690,6 +940,7 @@ export type ServerFrame = {
   call_log: CallLogRow[];
   lastError: string | null;
   settling: boolean;
+  v2: V2Frame;
 };
 
 export async function getServerFrame(): Promise<ServerFrame> {
@@ -712,6 +963,7 @@ export async function getServerFrame(): Promise<ServerFrame> {
     call_log: e.callLog,
     lastError: e.lastError,
     settling: e.pending != null,
+    v2: v2Frame(e),
   };
 }
 

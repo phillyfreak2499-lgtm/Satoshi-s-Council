@@ -301,6 +301,9 @@ export type Vote = {
   phase: Phase;
   /** WAIT printed by the sub-52-conf filter, not by the seat's own read. */
   forced_sit?: boolean;
+  /** The seat's own read before the whisper filter — what Chair v2 scores. */
+  raw_lean?: Lean;
+  raw_conf?: number;
 };
 
 export type Gate = {
