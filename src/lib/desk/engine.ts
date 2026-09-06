@@ -9,7 +9,7 @@ import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { startPulse, stopPulse } from "./pulse";
-import type { ServerFrame } from "./server-engine";
+import type { ServerFrame, V2Frame } from "./server-engine";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
@@ -26,6 +26,8 @@ export type DeskFrame = {
   brain_age_s: number | null;
   /** Local wall-clock ms when this frame's data was received. */
   frame_at: number;
+  /** Shadow chair v2 (live viewer mode only). */
+  v2: V2Frame | null;
 };
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -120,6 +122,7 @@ async function pullFrame(): Promise<void> {
   settings = { ...settings, ...f.settings, source: "live" };
   lastError = f.lastError;
   brainAge = typeof f.tick_age_s === "number" && f.tick_age_s >= 0 ? f.tick_age_s : null;
+  v2Frame = f.v2 ?? null;
   frameAt = Date.now();
   emit({ settling: f.settling });
 }
@@ -176,6 +179,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
     frame_at: frameAt,
+    v2: settings.source === "live" ? v2Frame : null,
     ...partial,
   };
   for (const l of listeners) l(frame);
@@ -186,6 +190,7 @@ let lastChair: ChairResult | null = null;
 let lastError: string | null = null;
 let brainAge: number | null = null;
 let frameAt = 0;
+let v2Frame: V2Frame | null = null;
 let lastPersistAt = 0;
 let persistDirty = false;
 let visBound = false;
@@ -505,6 +510,7 @@ export function subscribe(fn: (f: DeskFrame) => void) {
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
     frame_at: frameAt,
+    v2: settings.source === "live" ? v2Frame : null,
   });
   return () => listeners.delete(fn);
 }
@@ -718,6 +724,7 @@ export function getFrame(): DeskFrame {
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
     frame_at: frameAt,
+    v2: settings.source === "live" ? v2Frame : null,
   };
 }
 

@@ -38,4 +38,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The floor moves in real time now. Spot, the book, dist-to-strike, the window clock, and the two headline charts ride a 1.5-second pulse with smooth motion between prints — no more freeze, wait, jump. Honesty is built in: if the feed actually stalls, the motion stops and the ages count up, so a dead tape can never look alive.",
   },
+  {
+    slug: "2026-09-05-chair-v2",
+    body:
+      "A second chair is on the floor, in shadow. Chair v2 turns every seat's honest read — before the whisper filter — plus the market price into one probability learned from the desk's own ledger, and only calls where it beats the ask by more than the fee. It trades on paper beside the chair you know, on identical windows, and the nightly recap keeps score in cents. It earns promotion by winning, not by decree. WICK's uncalibrated cap now matches the speaking bar, so a strong pin can finally be heard.",
+  },
 ];

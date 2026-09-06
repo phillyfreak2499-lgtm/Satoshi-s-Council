@@ -52,7 +52,7 @@ export function patternTrust(st?: PatternStat): PatternTrust {
     uncalibrated,
     fold,
     mul,
-    cap: uncalibrated ? 40 : undefined,
+    cap: uncalibrated ? 52 : undefined,
     label: fold ? "FOLD" : uncalibrated ? "n<8" : "LIVE",
   };
 }

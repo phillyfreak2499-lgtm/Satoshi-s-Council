@@ -212,7 +212,12 @@ function pickLiveAndPaper(
 }
 
 function sitUnlessSure(v: Vote): Vote {
-  if (v.seat === "WARDEN" || v.lean === "WAIT") return v;
+  if (v.seat === "WARDEN") return v;
+  if (v.raw_lean == null) {
+    v.raw_lean = v.lean;
+    v.raw_conf = v.confidence;
+  }
+  if (v.lean === "WAIT") return v;
   if (v.confidence >= SPEAK_CONF) return v;
   return {
     ...v,

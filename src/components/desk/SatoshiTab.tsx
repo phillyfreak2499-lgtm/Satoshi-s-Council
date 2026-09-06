@@ -2,6 +2,8 @@ import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from "./bits";
+import { V2_MIN_SAMPLES } from "@/lib/desk/chair-v2";
+import type { V2Frame } from "@/lib/desk/server-engine";
 import { ChairEyes } from "./Eyes";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
@@ -203,22 +205,97 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
   );
 }
 
+function fmtCents(n: number) {
+  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}¢`;
+}
+
+/** Chair v2 — the probability chair, running in shadow beside the live chair. */
+function ShadowChair({ v2 }: { v2: V2Frame }) {
+  const live = v2.live;
+  const st = v2.stats;
+  const learning = v2.weights_n < V2_MIN_SAMPLES;
+  const tone =
+    live?.lean === "UP" ? "text-up" : live?.lean === "DOWN" ? "text-down" : "text-wait";
+  return (
+    <section className="rounded-md border border-dashed border-border bg-surface p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+          Chair v2 · shadow
+        </div>
+        <div className="font-mono text-micro text-subtle">
+          {learning
+            ? `learning the ledger · ${st?.n_graded ?? 0}/${V2_MIN_SAMPLES} windows before it calls`
+            : `fit on ${v2.weights_n} windows`}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-end gap-x-6 gap-y-2">
+        <div>
+          <div className="font-mono text-micro text-subtle">P(UP)</div>
+          <div className={cn("font-mono text-title tabular leading-none", tone)}>
+            {live ? `${Math.round(live.p_up * 100)}%` : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="font-mono text-micro text-subtle">shadow call</div>
+          <div className={cn("font-mono text-title tabular leading-none", tone)}>
+            {!live
+              ? "—"
+              : live.lean === "WAIT"
+                ? "WAIT"
+                : `${live.lean} ${(live.entry_cents ?? 0).toFixed(0)}¢`}
+          </div>
+          {live ? (
+            <div className="mt-1 font-mono text-micro text-muted">
+              edge {live.edge_cents == null ? "— (no book)" : `${fmtCents(live.edge_cents)} after fee`}
+            </div>
+          ) : null}
+        </div>
+        {st ? (
+          <div className="font-mono text-micro text-muted">
+            <div>
+              v2 {st.calls_v2} calls · net {fmtCents(st.ev_v2)} &nbsp;|&nbsp; chair {st.calls_v1} calls · net{" "}
+              {fmtCents(st.ev_v1)}
+            </div>
+            <div>
+              Brier v2 {st.brier_v2 == null ? "—" : st.brier_v2.toFixed(3)} · market{" "}
+              {st.brier_market == null ? "—" : st.brier_market.toFixed(3)} · {st.n_graded} graded windows
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {v2.top.length ? (
+        <div className="mt-2 truncate font-mono text-micro text-subtle">
+          weights · {v2.top.map(([k, w]) => `${k} ${w >= 0 ? "+" : ""}${w.toFixed(2)}`).join(" · ")}
+        </div>
+      ) : null}
+      <p className="mt-2 font-mono text-micro text-subtle">
+        Paper only. One probability learned from the ledger — every seat&apos;s honest read plus the
+        market — trading only where it beats the ask by more than the fee. It competes with the chair on
+        identical windows and is promoted only if it wins.
+      </p>
+    </section>
+  );
+}
+
 export function SatoshiTab({
   snap,
   chair,
   settings,
   callLog,
   onJump,
+  v2,
 }: {
   snap: Snapshot;
   chair: ChairResult;
   settings: Settings;
   callLog: CallLogRow[];
   onJump: (seat: SeatId) => void;
+  v2?: V2Frame | null;
 }) {
   return (
     <div className="flex flex-col gap-3 p-3">
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} />
+      {v2 ? <ShadowChair v2={v2} /> : null}
       <ChairEyes snap={snap} />
       <CallTape rows={callLog} tz={settings.tz} />
 
