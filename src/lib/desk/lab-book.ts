@@ -1,8 +1,8 @@
 /**
  * A local Kalshi order book rebuilt from the websocket snapshot + deltas.
  * Kalshi books are resting BIDS on each side: a YES bid at p and a NO bid
- * at q (cents). The YES ask is 100 − best NO bid; the NO ask is 100 − best
- * YES bid. Wire formats: `yes_dollars_fp` / `no_dollars_fp` rows of
+ * at q, in cents at 0.1¢ resolution (the 15-minute crypto books tick in
+ * tenths). The YES ask is 100 − best NO bid; the NO ask is 100 − best YES bid. Wire formats: `yes_dollars_fp` / `no_dollars_fp` rows of
  * [price_dollars, count_fp] strings (older `yes` / `no` cents rows are still
  * accepted); deltas carry `price_dollars`, `delta_fp`, `side`.
  *
@@ -35,11 +35,18 @@ export type Bests = {
   no_ask_sz: number;
 };
 
+/** Normalize a cents value to Kalshi's 0.1¢ tick so equal prices compare
+ *  equal after arithmetic (100 − 92.8 must be the same 7.2 the wire sent). */
+export function tenths(cents: number): number {
+  return Math.round(cents * 10) / 10;
+}
+
+/** Price in cents at 0.1¢ resolution from dollars ("0.0760" → 7.6) or cents (45 → 45). */
 export function priceCents(v: unknown): number {
   const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
   if (!Number.isFinite(n) || n <= 0) return 0;
-  const c = n <= 1.5 ? Math.round(n * 100) : Math.round(n);
-  return c >= 1 && c <= 99 ? c : 0;
+  const c = tenths(n <= 1.5 ? n * 100 : n);
+  return c > 0 && c < 100 ? c : 0;
 }
 
 export function qtyOf(v: unknown): number {
@@ -59,7 +66,7 @@ function loadSide(map: Map<number, number>, rows: unknown, convert: boolean): vo
     let px = priceCents(row[0]);
     const sz = qtyOf(row[1]);
     if (!px || !sz) continue;
-    if (convert) px = 100 - px;
+    if (convert) px = tenths(100 - px);
     map.set(px, sz);
   }
 }
@@ -99,7 +106,7 @@ export function applyDelta(b: LabBook, msg: Record<string, unknown>, t: number):
   let price = priceCents(msg.price_dollars ?? msg.price);
   const delta = Number(msg.delta_fp ?? msg.delta);
   if ((side !== "yes" && side !== "no") || !price || !Number.isFinite(delta)) return null;
-  if (side === "no" && b.yesLeg) price = 100 - price;
+  if (side === "no" && b.yesLeg) price = tenths(100 - price);
   const map = side === "yes" ? b.yes : b.no;
   const size = Math.max(0, (map.get(price) ?? 0) + delta);
   if (size > 0) map.set(price, size);
@@ -128,9 +135,9 @@ export function bests(b: LabBook): Bests {
     yes_bid_sz: ybs,
     no_bid: nb,
     no_bid_sz: nbs,
-    yes_ask: nb ? 100 - nb : 0,
+    yes_ask: nb ? tenths(100 - nb) : 0,
     yes_ask_sz: nbs,
-    no_ask: yb ? 100 - yb : 0,
+    no_ask: yb ? tenths(100 - yb) : 0,
     no_ask_sz: ybs,
   };
 }

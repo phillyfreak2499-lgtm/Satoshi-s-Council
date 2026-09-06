@@ -9,7 +9,7 @@
  * information or chased noise. Pure module; the server drives it.
  */
 import { takerFeeCentsExact } from "./clock";
-import type { Bests } from "./lab-book";
+import { tenths, type Bests } from "./lab-book";
 
 export const SHOCK_CENTS = 2;
 export const SHOCK_CAP_MS = 10_000;
@@ -106,7 +106,7 @@ export function onFair(st: StudyState, fairYes: number, t: number, b: Bests, met
     ask_before: ask,
     ask_size: askSz,
     level_side: side === "UP" ? "no" : "yes",
-    level_px: 100 - ask,
+    level_px: tenths(100 - ask),
     misprice,
     fee,
     net_edge: Math.round((misprice - fee) * 1000) / 1000,
