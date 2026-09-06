@@ -88,12 +88,50 @@ function findPem(): { pem: string; from: string } | null {
   return null;
 }
 
+const ID_FILE_NAMES = /(key_?id|api_?key|access_?key|kalshi_?id)/i;
+const ID_SHAPE = /^[A-Za-z0-9._:-]{8,128}$/;
+
+function readIdFile(path: string): string | null {
+  try {
+    if (!existsSync(path) || !statSync(path).isFile()) return null;
+    const text = readFileSync(path, "utf8").trim();
+    if (!text || looksLikePem(text) || text.includes("\n")) return null;
+    return ID_SHAPE.test(text) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 function findId(): { id: string; from: string } | null {
   for (const name of ID_NAMES) {
     const v = process.env[name]?.trim();
     if (v && !looksLikePem(v)) return { id: v, from: name };
   }
+  // A secret file holding just the id (Render "Secret Files" mount here).
+  for (const dir of SECRET_DIRS) {
+    try {
+      for (const f of readdirSync(dir)) {
+        if (!ID_FILE_NAMES.test(f)) continue;
+        const id = readIdFile(join(dir, f));
+        if (id) return { id, from: `${dir}/${f}` };
+      }
+    } catch {
+      /* no secret dir */
+    }
+  }
   return null;
+}
+
+function secretFileNames(): string[] {
+  const out: string[] = [];
+  for (const dir of SECRET_DIRS) {
+    try {
+      for (const f of readdirSync(dir)) out.push(`${dir}/${f}`);
+    } catch {
+      /* no secret dir */
+    }
+  }
+  return out;
 }
 
 function kalshiEnvNames(): string[] {
@@ -115,7 +153,7 @@ function loadKey(): Loaded {
   if (!id || !pem) {
     const names = kalshiEnvNames();
     note(
-      `no usable API key — key id ${id ? `from ${id.from}` : "missing"}, private key ${pem ? `from ${pem.from}` : "missing"}; env names containing KALSHI: [${names.join(", ") || "none"}]`,
+      `no usable API key — key id ${id ? `from ${id.from}` : "missing"}, private key ${pem ? `from ${pem.from}` : "missing"}; env names containing KALSHI: [${names.join(", ") || "none"}]; secret files: [${secretFileNames().join(", ") || "none"}]`,
     );
     cached = null;
     return cached;
@@ -139,9 +177,21 @@ export function kalshiKeyId(): string {
 }
 
 /** Where the key came from (variable names only) and what else is in the env with KALSHI in the name. */
-export function kalshiKeyInfo(): { configured: boolean; id_from: string | null; key_from: string | null; env_names: string[] } {
+export function kalshiKeyInfo(): {
+  configured: boolean;
+  id_from: string | null;
+  key_from: string | null;
+  env_names: string[];
+  secret_files: string[];
+} {
   const k = loadKey();
-  return { configured: k !== null, id_from: k?.id_from ?? null, key_from: k?.key_from ?? null, env_names: kalshiEnvNames() };
+  return {
+    configured: k !== null,
+    id_from: k?.id_from ?? null,
+    key_from: k?.key_from ?? null,
+    env_names: kalshiEnvNames(),
+    secret_files: secretFileNames(),
+  };
 }
 
 /** Signed headers for one request, or null when no key is configured. */
