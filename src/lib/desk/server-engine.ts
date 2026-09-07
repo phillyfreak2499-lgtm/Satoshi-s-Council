@@ -404,7 +404,7 @@ async function maybeDigest(e: Eng) {
         to_char((now() at time zone 'America/Chicago')::date - 1, 'YYYY-MM-DD') as day,
         count(*)::int as windows,
         (count(*) filter (where entry_cents is not null))::int as calls,
-        (count(*) filter (where entry_cents is not null and chair_lean = winner))::int as wins,
+        (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins,
         coalesce(sum(ev_cents), 0) as net_ev
       from desk_ledger
       where (close_time at time zone 'America/Chicago')::date
@@ -443,16 +443,26 @@ async function maybeDigest(e: Eng) {
       bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
     }
     await digestV2Bits(bits);
-    await labDigestBits(bits);
     const body = bits.join(" · ").slice(0, 400);
     await db`
       insert into board (who, body, kind, lean, ticker, conf, slug)
       values ('DESK', ${body}, 'update', '', '', 0, ${`digest-${a.day}`})
       on conflict (slug) do nothing
     `;
+    // The lab's recap is its own post so neither one truncates the other.
+    const labBits: string[] = [];
+    await labDigestBits(labBits);
+    if (labBits.length) {
+      const labBody = `${a.day} in the lab: ${labBits.join(" · ")}`.slice(0, 900);
+      await db`
+        insert into board (who, body, kind, lean, ticker, conf, slug)
+        values ('DESK', ${labBody}, 'update', '', '', 0, ${`lab-${a.day}`})
+        on conflict (slug) do nothing
+      `;
+    }
     await db`
       delete from board
-      where kind = 'update' and slug like 'digest-%'
+      where kind = 'update' and (slug like 'digest-%' or slug like 'lab-%')
         and created_at < now() - interval '14 days'
     `;
   } catch (err) {

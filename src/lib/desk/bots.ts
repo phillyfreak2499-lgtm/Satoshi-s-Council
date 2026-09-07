@@ -254,6 +254,7 @@ function fire(
   reasoning: string,
   extra: Partial<Vote>,
   cap?: number,
+  opts?: { formed?: boolean },
 ): Vote {
   const card = ctx.learner.skills[id];
   const status = card?.status ?? "LIVE";
@@ -261,8 +262,12 @@ function fire(
     ? { health: extra.health, age: extra.feed_age_s ?? 0, mult: 1 }
     : healthOf(ctx.snap, "spot");
   const last1 = last(ctx.snap.candles_1m);
+  // WICK's open-candle cap (40) guards a half-formed bar. A pattern the
+  // gate has already confirmed on closed candles is fully formed, so the
+  // cap no longer applies to it — it used to fire on every tick, since the
+  // newest 1m candle is always open, and sat WICK under the bar for good.
   const conf = directionalConf(edge, ctx.snap.phase, h.mult, {
-    unclosed: seat === "WICK" && last1 ? !last1.closed : false,
+    unclosed: seat === "WICK" && !opts?.formed && last1 ? !last1.closed : false,
     midRange: ctx.snap.location === "MID" && seat === "WICK",
     cap,
   });
@@ -347,6 +352,7 @@ function wickFire(
       evidence,
     },
     cap,
+    { formed: m.confirmed && !m.pending },
   );
   return { lean: v.lean, confidence: v.confidence, v };
 }

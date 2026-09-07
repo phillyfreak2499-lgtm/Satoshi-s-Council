@@ -7,12 +7,14 @@
  * unknown schemas can be read off the /lab endpoint and the logs.
  */
 import { existsSync, createReadStream, createWriteStream } from "node:fs";
-import { appendFile, mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { appendFile, mkdir, readdir, stat, statfs, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 
-const KEEP_DAYS = 60;
+const KEEP_DAYS = 30;
+/** Below this much free disk the recorder drops book deltas (keeps index, trades, snapshots). */
+const LOW_DISK_BYTES = 1.5e9;
 
 export function labDataDir(): string {
   const env = process.env.DESK_DATA_DIR?.trim();
@@ -33,8 +35,12 @@ export class Recorder {
   private readonly stats = new Map<string, TypeStat>();
   bytes = 0;
   lines = 0;
+  skipped = 0;
   writeErrors = 0;
   lastError: string | null = null;
+  freeBytes: number | null = null;
+  lowDisk = false;
+  private diskChecks = 0;
   ready: Promise<void>;
 
   constructor(dir = labDataDir()) {
@@ -44,8 +50,23 @@ export class Recorder {
       .catch((err) => {
         this.lastError = `mkdir: ${err instanceof Error ? err.message : String(err)}`;
       });
-    this.timer = setInterval(() => void this.flush(), 1_000);
+    this.timer = setInterval(() => {
+      void this.flush();
+      if (this.diskChecks++ % 60 === 0) void this.checkDisk();
+    }, 1_000);
     this.timer.unref?.();
+  }
+
+  private async checkDisk(): Promise<void> {
+    try {
+      const st = await statfs(this.dir);
+      this.freeBytes = Number(st.bavail) * Number(st.bsize);
+      const low = this.freeBytes < LOW_DISK_BYTES;
+      if (low !== this.lowDisk) console.log(`[lab] disk ${low ? "LOW" : "ok"}: ${Math.round(this.freeBytes / 1e6)} MB free`);
+      this.lowDisk = low;
+    } catch {
+      /* unknown disk: keep recording */
+    }
   }
 
   write(type: string, msg: unknown, t: number, extra?: Record<string, unknown>): void {
@@ -128,7 +149,10 @@ export class Recorder {
       dir: this.dir,
       day: this.day,
       lines: this.lines,
+      skipped_deltas: this.skipped,
       bytes: this.bytes,
+      free_mb: this.freeBytes == null ? null : Math.round(this.freeBytes / 1e6),
+      low_disk: this.lowDisk,
       queued: this.queue.length,
       write_errors: this.writeErrors,
       last_error: this.lastError,

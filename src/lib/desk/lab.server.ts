@@ -86,6 +86,7 @@ type Lab = {
   backfillTimer: ReturnType<typeof setInterval> | null;
   backfilled: number;
   restAt: number;
+  snapshotAt: number;
   restTickers: { ticker: string; close: number }[];
   basis: BasisAcc | null;
   basisSnapAt: number;
@@ -118,6 +119,7 @@ function lab(): Lab {
     backfillTimer: null,
     backfilled: 0,
     restAt: 0,
+    snapshotAt: 0,
     restTickers: [],
     basis: null,
     basisSnapAt: 0,
@@ -255,6 +257,10 @@ async function refreshTickers(L: Lab): Promise<void> {
       /* the engine's own ticker still drives subscriptions */
     }
   }
+  if (now - L.snapshotAt > 60_000) {
+    L.snapshotAt = now;
+    L.ws?.requestSnapshot();
+  }
   L.restTickers = L.restTickers.filter((m) => !m.close || m.close > now - KEEP_CLOSED_MS);
   const list = new Set<string>(L.restTickers.map((m) => m.ticker));
   if (snap?.ticker) list.add(snap.ticker);
@@ -294,10 +300,16 @@ function tsMs(v: unknown): number {
   return 0;
 }
 
+/** Book deltas within this many cents of the same side's best are recorded;
+ *  deeper churn (the 0.1¢ bids of a bot farm, hundreds a second) is counted
+ *  and dropped. A minute-by-minute snapshot re-anchors any replay. */
+const RECORD_BAND_CENTS = 15;
+
 function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Record<string, unknown>, t: number): void {
   const sid = raw.sid;
   const seq = raw.seq;
-  L.rec?.write(type, msg, t, sid != null || seq != null ? { sid, seq } : undefined);
+  const meta = sid != null || seq != null ? { sid, seq } : undefined;
+  if (type !== "orderbook_delta") L.rec?.write(type, msg, t, meta);
   switch (type) {
     case "orderbook_snapshot": {
       const tk = String(msg.market_ticker ?? "");
@@ -313,9 +325,17 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       const tk = String(msg.market_ticker ?? "");
       if (!tk) return;
       const b = book(L, tk);
+      const before = L.lastBests.get(tk);
       const d = applyDelta(b, msg, t);
       if (d && tk === currentTicker(L)) onDelta(L.study, d.side, d.price, d.size, t);
       afterBook(L, tk, b, t);
+      const after = L.lastBests.get(tk);
+      const bestSame = before ? (d?.side === "yes" ? before.yes_bid : before.no_bid) : 0;
+      const nearTop = !d || !bestSame || Math.abs(d.price - bestSame) <= RECORD_BAND_CENTS || after !== before;
+      if (L.rec) {
+        if (nearTop && !L.rec.lowDisk) L.rec.write(type, msg, t, meta);
+        else L.rec.skipped += 1;
+      }
       return;
     }
     case "trade": {
@@ -752,9 +772,7 @@ export async function labDigestBits(bits: string[]): Promise<void> {
        where t > now() - interval '24 hours'
     `;
     const ws = L.ws?.summary() as { state?: string; msgs?: number } | undefined;
-    bits.push(
-      `lab: feed ${ws?.state ?? "off"}, ${ws?.msgs ?? 0} messages, BRTI ${L.brti.n} ticks since boot, ${L.rec?.lines ?? 0} events recorded`,
-    );
+    bits.push(`feed ${ws?.state ?? "off"}, BRTI ${L.brti.n} ticks and ${L.rec?.lines ?? 0} events recorded since the last restart`);
     if (lag && lag.n > 0) {
       const pct = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "n/a");
       const money = (v: number | null, n: number) =>

@@ -58,4 +58,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Confirmed from Kalshi's own rules: a window settles on the average of the 60 index prints in its final minute, and the strike is the previous window's average. The lab now reads that running average straight from Kalshi's feed as it accumulates, and checks its own arithmetic against Kalshi's official settlement value on every window. Fees are now booked to the hundredth of a cent, as Kalshi charges them.",
   },
+  {
+    slug: "2026-09-06-floor-unmuted",
+    body:
+      "The floor was mostly mute by accident. The rulebook writes a seat's confidence as an edge like 0.55, but a formula turned 0.55 into 50, under the 52 needed to speak, so most seats could only be heard in the last minutes. Confidence now means what the rulebook says. WICK's confirmed patterns no longer get capped as if the candle were still forming. And every seat now earns its record from what it saw, gagged or not, so a quiet seat can calibrate its way to a voice instead of waiting forever.",
+  },
 ];
