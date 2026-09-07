@@ -71,6 +71,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Hours",
     body: "Net cents by weekday and hour of the window's close, on Chicago time. Green cells made money, red cells lost it, dark cells had no booked call. Hover a cell for the count.",
   },
+  "books.replay": {
+    title: "Replay",
+    body: "Scrub back through a past window: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band, and every seat's lean as a lane (solid when it spoke, faint when it whispered under the gag). Windows graded since the recorder went in have a replay; older ones do not.",
+  },
   "tab.crew": {
     title: "PIT CREW",
     body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",

@@ -26,9 +26,10 @@ import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
-import { labDigestBits, labSettleReceipt, startLab } from "./lab.server";
+import { labDigestBits, labSettleReceipt, startLab, labFairNow } from "./lab.server";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
+import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
 import {
   V2_SAMPLE_MINS,
   decideV2,
@@ -471,6 +472,7 @@ async function maybeDigest(e: Eng) {
       where kind = 'update' and (slug like 'digest-%' or slug like 'lab-%')
         and created_at < now() - interval '14 days'
     `;
+    await pruneReplays();
     // COACH's one decision per seat per day, after the day is scored.
     const coached = await coachRun(e.learner);
     if (coached.length) void persistState(e, true);
@@ -490,6 +492,9 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   void recordLedger(e, snap, votes, chair, finish, source);
   void gradeV2(e, snap, finish);
   void settleHumanCalls(snap.ticker, finish);
+  void recordReplay(snap.ticker, finish).catch((err) => {
+    e.lastError = `replay: ${err instanceof Error ? err.message : String(err)}`;
+  });
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
     e.learner = runHuddle(e.learner).learner;
   }
@@ -622,6 +627,7 @@ async function tick(e: Eng) {
     const chair = decideChair(e, votes, snap, lastSide(e, snap));
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
+    noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     noteV2(e, snap, votes, chair);
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window
     // rollover the OLD window grades from its own last live-book tick.

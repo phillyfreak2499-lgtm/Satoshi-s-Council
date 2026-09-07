@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { LeanChip, Pane } from "./bits";
 import { Tip } from "./Tip";
+import { ReplayPane } from "./ReplayPane";
 import { BG, DOWN, FG, FONT, FONT_SM, GRID, INK, LINE, UP, fillRound, useDraw } from "./canvas";
 
 function fmtC(n: number | null | undefined, d = 1): string {
@@ -356,10 +357,21 @@ function CallCell({ c }: { c: BooksWindow["call"] }) {
   );
 }
 
-function LastWindow({ wnd, tz }: { wnd: BooksWindow; tz: string }) {
+function LastWindow({ wnd, tz, onReplay }: { wnd: BooksWindow; tz: string; onReplay: (ticker: string) => void }) {
   const c = wnd.call;
   return (
-    <Pane title={<Tip k="books.last">LAST WINDOW</Tip>}>
+    <Pane
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Tip k="books.last">LAST WINDOW</Tip>
+          {wnd.replay ? (
+            <button type="button" className="rounded-sm border border-border px-1.5 py-px font-mono text-micro font-normal text-subtle hover:text-fg" onClick={() => onReplay(wnd.ticker)}>
+              ▶ replay
+            </button>
+          ) : null}
+        </span>
+      }
+    >
       <div className="grid gap-2 font-mono text-data sm:grid-cols-2">
         <div className="min-w-0">
           <div className="text-subtle text-micro">{fmtWhen(wnd.close_time, tz)} close · {wnd.ticker}</div>
@@ -395,6 +407,7 @@ function LastWindow({ wnd, tz }: { wnd: BooksWindow; tz: string }) {
 export function BooksTab({ tz }: { tz: string }) {
   const [books, setBooks] = useState<Books | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -430,7 +443,7 @@ export function BooksTab({ tz }: { tz: string }) {
     <div className="grid gap-3">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {books.last ? (
-          <LastWindow wnd={books.last} tz={tz} />
+          <LastWindow wnd={books.last} tz={tz} onReplay={setSel} />
         ) : (
           <Pane title={<Tip k="books.last">LAST WINDOW</Tip>}>
             <div className="font-mono text-micro text-muted">no graded windows yet</div>
@@ -459,7 +472,9 @@ export function BooksTab({ tz }: { tz: string }) {
         </Pane>
       </div>
 
-      <Pane title="LAST 40 WINDOWS">
+      {sel ? <ReplayPane ticker={sel} tz={tz} onClose={() => setSel(null)} /> : null}
+
+      <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· click a window with ▶ to replay it</span></span>}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] font-mono text-micro">
             <thead className="text-subtle">
@@ -476,8 +491,15 @@ export function BooksTab({ tz }: { tz: string }) {
             </thead>
             <tbody>
               {books.windows.map((w) => (
-                <tr key={w.ticker} className="border-t border-border/50">
-                  <td className="py-1 pr-2 whitespace-nowrap text-muted">{fmtWhen(w.close_time, tz)}</td>
+                <tr
+                  key={w.ticker}
+                  className={cn("border-t border-border/50", w.replay && "cursor-pointer hover:bg-surface-2/40", sel === w.ticker && "bg-surface-2/60")}
+                  onClick={() => (w.replay ? setSel(sel === w.ticker ? null : w.ticker) : undefined)}
+                >
+                  <td className="py-1 pr-2 whitespace-nowrap text-muted">
+                    <span className={cn("mr-1", w.replay ? "text-fg" : "text-subtle/40")}>{w.replay ? "▶" : "·"}</span>
+                    {fmtWhen(w.close_time, tz)}
+                  </td>
                   <td className="py-1 pr-2">
                     <LeanChip lean={w.winner} />
                   </td>

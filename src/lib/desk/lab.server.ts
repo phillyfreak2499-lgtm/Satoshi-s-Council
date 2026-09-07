@@ -393,6 +393,14 @@ function onBrti(L: Lab, type: string, msg: Record<string, unknown>, t: number): 
   recomputeFair(L, t);
 }
 
+/** The lab's current settlement fair for a ticker in yes-cents, or null
+ *  when the lab has none fresh enough (30 s). Read by the window replay. */
+export function labFairNow(ticker: string): number | null {
+  const L = lab();
+  if (!L.fair || L.fairTicker !== ticker || Date.now() - L.fairT > 30_000) return null;
+  return Math.round(L.fair.p_up * 1000) / 10;
+}
+
 function fairYesCents(L: Lab): number {
   return L.fair ? L.fair.p_up * 100 : 50;
 }

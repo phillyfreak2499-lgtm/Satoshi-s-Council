@@ -32,6 +32,8 @@ export type BooksWindow = {
   raw: { n: number; right: number };
   /** Human calls on this window from the Arena. */
   arena: { n: number; net: number } | null;
+  /** A replay row exists for this window. */
+  replay: boolean;
 };
 
 export type BooksTotals = { n: number; calls: number; wins: number; net: number; ups: number };
@@ -64,6 +66,7 @@ type LedgerRow = {
   settle_cents: number | null;
   ev_cents: number | null;
   seats: Record<string, { lean?: string; hit?: boolean | null; raw_lean?: string }> | null;
+  replay?: boolean;
 };
 
 function iso(v: Date | string): string {
@@ -104,6 +107,7 @@ function toWindow(r: LedgerRow, arena: Map<string, { n: number; net: number }>):
     seats: { n: sn, right: sr },
     raw: { n: rn, right: rr },
     arena: arena.get(r.ticker) ?? null,
+    replay: r.replay === true,
   };
 }
 
@@ -226,10 +230,11 @@ async function build(): Promise<Books> {
   `;
 
   const rows = await db<LedgerRow>`
-    select ticker, close_time, winner, official_value, settle_avg, brti_prints,
-      entry_cents, settle_cents, ev_cents, seats
-    from desk_ledger
-    order by close_time desc
+    select l.ticker, l.close_time, l.winner, l.official_value, l.settle_avg, l.brti_prints,
+      l.entry_cents, l.settle_cents, l.ev_cents, l.seats,
+      exists (select 1 from desk_replay r where r.ticker = l.ticker) as replay
+    from desk_ledger l
+    order by l.close_time desc
     limit 40
   `;
   const arena = new Map<string, { n: number; net: number }>();
