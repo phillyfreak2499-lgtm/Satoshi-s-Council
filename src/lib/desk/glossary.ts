@@ -43,6 +43,14 @@ export const GLOSS: Record<string, Gloss> = {
     title: "CONTEXT — background",
     body: "ORBIT, CLOCK, WIRE, WARDEN. Regime, session clock, Fear & Greed, feed health.",
   },
+  "tab.arena": {
+    title: "ARENA — your calls vs the council",
+    body: "Make your own paper call on the live window: UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one call per window, held to settlement. No login — pick a callsign once. The leaderboard scores humans against SATOSHI and Chair v2 in cents after fees, this week and all-time.",
+  },
+  "arena.call": {
+    title: "Your call",
+    body: "Buy the side you believe at its current ask. A win pays 100¢ minus the ask minus the fee; a loss costs the ask plus the fee. Calls close 30 seconds before the window ends. The confidence slider is for you: the site will show how your stated confidence compares with your real hit rate.",
+  },
   "tab.crew": {
     title: "PIT CREW",
     body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",

@@ -14,9 +14,11 @@ import { Tour } from "./Tour";
 import { Feedback, BoardTab } from "./Feedback";
 import { AtelierTab } from "./AtelierTab";
 import { CrewTab } from "./CrewTab";
+import { ArenaTab } from "./ArenaTab";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
+  { id: "arena", label: "ARENA" },
   { id: "atelier", label: "ATELIER" },
   { id: "structure", label: "STRUCTURE" },
   { id: "tape", label: "TAPE" },
@@ -68,7 +70,7 @@ export function DeskApp() {
 
   const jump = (seat: SeatId) => {
     const dest =
-      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "atelier" | "settings" | "board" | "crew">, SeatId[]][]).find(
+      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "atelier" | "settings" | "board" | "crew" | "arena">, SeatId[]][]).find(
         ([, ids]) => ids.includes(seat),
       )?.[0] ?? "structure";
     setFocus(seat);
@@ -81,7 +83,7 @@ export function DeskApp() {
   };
 
   const seats =
-    tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board" && tab !== "crew"
+    tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board" && tab !== "crew" && tab !== "arena"
       ? TAB_SEATS[tab]
       : [];
 
@@ -172,6 +174,7 @@ export function DeskApp() {
             callLog={frame.call_log}
             onJump={jump}
             v2={frame.v2}
+            onOpenArena={() => setTab("arena")}
           />
         )}
         {frame.snap && seats.length > 0 && (
@@ -197,6 +200,7 @@ export function DeskApp() {
         {tab === "atelier" && <AtelierTab />}
         {tab === "board" && <BoardTab frame={frame} />}
         {tab === "crew" && <CrewTab />}
+        {tab === "arena" && <ArenaTab tz={frame.settings.tz} onCall={() => setTab("satoshi")} />}
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
       </main>
 

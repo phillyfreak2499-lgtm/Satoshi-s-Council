@@ -28,6 +28,7 @@ import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
 import { labDigestBits, labSettleReceipt, startLab } from "./lab.server";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
+import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import {
   V2_SAMPLE_MINS,
   decideV2,
@@ -444,6 +445,8 @@ async function maybeDigest(e: Eng) {
       bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
     }
     await digestV2Bits(bits);
+    const arenaLine = await arenaDigestLine();
+    if (arenaLine) bits.push(arenaLine);
     const sweepLine = await sweepRun(e.learner);
     if (sweepLine) bits.push(sweepLine);
     const body = bits.join(" · ").slice(0, 400);
@@ -486,6 +489,7 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   void recordLedger(e, snap, votes, chair, finish, source);
   void gradeV2(e, snap, finish);
+  void settleHumanCalls(snap.ticker, finish);
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
     e.learner = runHuddle(e.learner).learner;
   }
@@ -951,6 +955,11 @@ export function ensureServerEngine(): void {
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
   });
+}
+
+/** The shared brain's latest snapshot (the Arena books calls against it). */
+export function getServerSnap(): Snapshot | null {
+  return eng().prevSnap;
 }
 
 /** Read-only view of COACH's knobs for the Pit Crew panel. */
