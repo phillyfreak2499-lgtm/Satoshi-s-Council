@@ -67,7 +67,7 @@ export function setArenaName(name: string): void {
 }
 
 export async function fetchArena(): Promise<Arena> {
-  const r = await fetch(`/arena?token=${encodeURIComponent(arenaToken())}`, {
+  const r = await fetch(`/arena/summary?token=${encodeURIComponent(arenaToken())}`, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(12_000),
   });

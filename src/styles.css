@@ -789,3 +789,20 @@ html[data-motion="reduce"] * {
 .nav-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* --- THE PIT: one short tick when the count moves --- */
+@keyframes pit-tick {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.pit-tick {
+  display: inline-block;
+  animation: pit-tick 240ms var(--ease-out);
+}

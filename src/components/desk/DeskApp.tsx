@@ -23,10 +23,10 @@ import { CrewTab } from "./CrewTab";
 import { ArenaTab } from "./ArenaTab";
 import { BooksTab } from "./BooksTab";
 
-const PRIMARY: { id: TabId; label: string }[] = [
+const PRIMARY: { id: TabId; label: string; href?: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
   { id: "structure", label: "FLOOR" },
-  { id: "arena", label: "ARENA" },
+  { id: "arena", label: "ARENA", href: "/arena" },
   { id: "books", label: "BOOKS" },
   { id: "board", label: "BOARD" },
 ];
@@ -242,6 +242,19 @@ export function DeskApp() {
           <nav ref={navRef} className="nav-scroll flex max-w-full items-center gap-1 overflow-x-auto" aria-label="Council tabs">
             {PRIMARY.map((t) => {
               const active = t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id;
+              if (t.href) {
+                return (
+                  <a
+                    key={t.id}
+                    href={t.href}
+                    className="flex min-h-11 shrink-0 items-center rounded-sm px-2.5 font-mono text-micro tracking-wide text-muted hover:bg-surface-2 hover:text-fg"
+                  >
+                    <Tip k={`tab.${t.id}`} hoverOnly>
+                      {t.label}
+                    </Tip>
+                  </a>
+                );
+              }
               return (
                 <button
                   key={t.id}

@@ -44,8 +44,8 @@ export const GLOSS: Record<string, Gloss> = {
     body: "ORBIT, CLOCK, WIRE, WARDEN. Regime, session clock, Fear & Greed, feed health.",
   },
   "tab.arena": {
-    title: "ARENA — your calls vs the council",
-    body: "Make your own paper call on the live window: UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one call per window, held to settlement. No login — pick a callsign once. The leaderboard scores humans against SATOSHI and Chair v2 in cents after fees, this week and all-time.",
+    title: "ARENA — THE PIT",
+    body: "A one-page room for your own paper call on the live window: UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one lock per window, held to settlement. No login — pick a callsign once. The room shows how many have locked; the split appears after you lock. The week board scores humans against SATOSHI and Chair v2 in cents after fees.",
   },
   "arena.call": {
     title: "Your call",

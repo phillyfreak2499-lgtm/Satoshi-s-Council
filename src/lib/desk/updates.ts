@@ -93,4 +93,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The floor learned to introduce itself. A first visit now opens with one card that says what this is (a paper-only Bitcoin 15-minute research desk, twenty seats, SATOSHI chairs) and what it is not, with one button to start the 60-second tour. The tabs are grouped (SATOSHI, FLOOR for the five seat desks, ARENA, BOOKS, BOARD, and MORE), every button is thumb-sized on a phone, ⌘K opens a search for any tab, seat or word on the floor, the chair's call explains itself, the seat list can be filtered to the seats that are speaking, the wait for the first frame shows what is coming and offers the demo tape, and there are three reading pages: How it works, FAQ and Paper only.",
   },
+  {
+    slug: "2026-09-07-the-pit",
+    body:
+      "THE PIT is open at /arena: a one-page room for the Arena that works on a phone without opening the desk. See the live window and its clock, pick a callsign, lock UP or DOWN once at the ask, and see YOU LOCKED on a ticket. Everyone sees how many have locked; the split and the average paper lock show only after you have locked the window yourself. Your record and the week board sit underneath. Paper calls only, not advice, not Kalshi orders.",
+  },
 ];
