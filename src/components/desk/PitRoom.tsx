@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import { fetchRack, lockCall, type Rack } from "@/lib/desk/pit";
+import { beacon } from "@/lib/desk/beacon";
+import { currentPrefs, enablePush, needsHomeScreen, pushSupported, type PushPrefs } from "@/lib/desk/push";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 4_000;
@@ -29,6 +31,41 @@ function fmtAsk(v: number): string {
 
 type BoardRow = ArenaRow & { desk: boolean };
 
+function fmtWhen(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+  } catch {
+    return iso.slice(11, 16);
+  }
+}
+
+function fmtDayTime(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+  } catch {
+    return iso.slice(5, 16);
+  }
+}
+
+function centsStr(v: number): string {
+  return `${v.toFixed(v % 1 ? 1 : 0)}¢`;
+}
+
+/** Hands a line to the phone's share sheet, or copies it. Plain text, no images. */
+async function shareText(text: string): Promise<"shared" | "copied" | "failed"> {
+  try {
+    const nav = navigator as Navigator & { share?: (d: { text: string }) => Promise<void> };
+    if (typeof nav.share === "function") {
+      await nav.share({ text });
+      return "shared";
+    }
+    await navigator.clipboard.writeText(text);
+    return "copied";
+  } catch {
+    return "failed";
+  }
+}
+
 /** THE PIT: one page, one lock per window, paper only. */
 export function PitRoom() {
   const [name, setName] = useState("");
@@ -41,8 +78,49 @@ export function PitRoom() {
   const [now, setNow] = useState(() => Date.now());
   const [tick, setTick] = useState(0);
   const prevN = useRef<number | null>(null);
+  const [alert, setAlert] = useState<"off" | "on" | "busy" | "none">("none");
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
+  const prefsRef = useRef<PushPrefs | null>(null);
+  const [shared, setShared] = useState<string | null>(null);
 
-  useEffect(() => setName(arenaName()), []);
+  useEffect(() => {
+    setName(arenaName());
+    beacon("room_view", true);
+    if (!pushSupported()) return;
+    let alive = true;
+    currentPrefs()
+      .then((p) => {
+        if (!alive) return;
+        prefsRef.current = p;
+        setAlert(p?.on_settle ? "on" : "off");
+      })
+      .catch(() => alive && setAlert("off"));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const turnOnSettleAlert = async () => {
+    setAlert("busy");
+    setAlertMsg(null);
+    try {
+      const p = await enablePush({ on_call: prefsRef.current?.on_call ?? false, on_settle: true });
+      prefsRef.current = p;
+      setAlert("on");
+      setAlertMsg(needsHomeScreen() ? "on for this browser — on iPhone, alerts only arrive once the site is on your Home Screen" : "on for this browser");
+      beacon("settle_alert");
+    } catch (e) {
+      setAlert("off");
+      setAlertMsg(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const share = async (text: string) => {
+    const r = await shareText(text);
+    setShared(r === "shared" ? "shared" : r === "copied" ? "copied to the clipboard" : "could not share");
+    if (r !== "failed") beacon("share");
+    window.setTimeout(() => setShared(null), 3_000);
+  };
 
   // The clock is client-side: one repaint a second from close_time, no network.
   useEffect(() => {
@@ -87,8 +165,9 @@ export function PitRoom() {
     };
   }, [applyRack]);
 
-  // The week board: once a minute, and again when a lock of ours settles.
+  // The week board: once a minute, after our own lock, and again when a lock of ours settles.
   const settledKey = rack?.last?.winner ?? "";
+  const [boardKey, setBoardKey] = useState(0);
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -105,7 +184,7 @@ export function PitRoom() {
       alive = false;
       window.clearInterval(id);
     };
-  }, [settledKey]);
+  }, [settledKey, boardKey]);
 
   const w = rack?.window ?? null;
   const closeMs = w ? Date.parse(w.close_time) : 0;
@@ -122,6 +201,7 @@ export function PitRoom() {
       const { rack: r } = await lockCall(lean);
       if (r) applyRack(r);
       else applyRack(await fetchRack());
+      setBoardKey((k) => k + 1);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -131,7 +211,7 @@ export function PitRoom() {
 
   const humans = board?.week ?? [];
   const rows: BoardRow[] = [...humans.map((r) => ({ ...r, desk: false })), ...(board?.desk_week ?? []).map((r) => ({ ...r, desk: true }))].sort(
-    (a, b) => b.net - a.net,
+    (a, b) => Number(Boolean(a.warming)) - Number(Boolean(b.warming)) || b.net - a.net,
   );
   const me = rack?.me ?? null;
 
@@ -218,6 +298,31 @@ export function PitRoom() {
               {fmtClock(secsLeft)}
             </div>
             <div className="mt-1 text-micro text-muted">paper · one lock per window · settles at the close on Kalshi&apos;s official value</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {alert !== "none" ? (
+                alert === "on" ? (
+                  <span className="min-h-11 inline-flex items-center rounded-sm border border-border px-3 text-micro text-muted">✓ you&apos;ll be told when it settles</span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={alert === "busy"}
+                    onClick={() => void turnOnSettleAlert()}
+                    className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    {alert === "busy" ? "asking the browser…" : "Tell me when it settles"}
+                  </button>
+                )
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void share(`I locked ${mine.lean} at ${centsStr(mine.entry_cents)} on the ${w ? fmtWhen(w.close_time) : ""} Bitcoin window (paper) · satoshiscouncil.com/arena`)}
+                className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2"
+              >
+                share
+              </button>
+              {shared ? <span className="text-micro text-subtle">{shared}</span> : null}
+            </div>
+            {alertMsg ? <div className="mt-1 text-micro text-subtle">{alertMsg}</div> : null}
           </div>
         ) : name ? (
           <div className="grid gap-2">
@@ -269,6 +374,28 @@ export function PitRoom() {
                 </>
               )}
             </div>
+            {last.winner != null && rack?.last_settle?.value != null ? (
+              <div className="mt-0.5 text-micro tabular text-muted">
+                {fmtPx(rack.last_settle.value)}
+                {rack.last_settle.strike != null ? ` vs strike ${fmtPx(rack.last_settle.strike)}` : ""} · Kalshi&apos;s official value
+              </div>
+            ) : null}
+            {last.winner != null ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void share(
+                      `I called ${last.lean} at ${centsStr(last.entry_cents)} on the ${fmtWhen(last.close_time)} Bitcoin window · settled ${fmtC(last.cents)} (paper) · satoshiscouncil.com/arena`,
+                    )
+                  }
+                  className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2"
+                >
+                  share
+                </button>
+                {shared ? <span className="text-micro text-subtle">{shared}</span> : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -315,12 +442,27 @@ export function PitRoom() {
             )}
           </div>
         ) : null}
+        {name && board?.me?.calls?.length ? (
+          <section className="rounded-md border border-border bg-surface px-3 py-2">
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">your last {Math.min(10, board.me.calls.length)} locks</div>
+            <ul className="mt-1 grid gap-1 font-mono text-micro tabular">
+              {board.me.calls.slice(0, 10).map((c) => (
+                <li key={c.ticker} className="flex items-center justify-between gap-2">
+                  <span className="text-subtle">{fmtDayTime(c.close_time)}</span>
+                  <span className={c.lean === "UP" ? "text-up" : "text-down"}>{c.lean}</span>
+                  <span className="text-muted">{centsStr(c.entry_cents)}</span>
+                  <span className={c.winner == null ? "text-wait" : (c.cents ?? 0) > 0 ? "text-up" : "text-down"}>{c.winner == null ? "open" : fmtC(c.cents)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         {/* week board */}
         <section className="rounded-md border border-border bg-surface px-3 py-2">
           <div className="flex items-baseline justify-between font-mono">
             <span className="text-micro uppercase tracking-widest text-subtle">this week</span>
-            <span className="text-micro text-subtle">net ¢ after fees · paper</span>
+            <span className="text-micro text-subtle">net ¢ after fees · paper · ranked after 3 settled</span>
           </div>
           {!humans.length ? <div className="mt-2 font-mono text-micro text-muted">Take the first stool.</div> : null}
           <table className="mt-2 w-full font-mono text-micro">
@@ -337,10 +479,11 @@ export function PitRoom() {
               {rows.length ? (
                 rows.map((r, i) => (
                   <tr key={`${r.desk ? "d" : "h"}:${r.name}`} className={cn("border-t border-border/60", r.me && "bg-surface-2", r.desk && "text-muted")}>
-                    <td className="py-1.5 pr-2 tabular">{i + 1}</td>
+                    <td className="py-1.5 pr-2 tabular">{r.warming ? "—" : i + 1}</td>
                     <td className="py-1.5 pr-2">
                       {r.name}
                       {r.me ? <span className="text-subtle"> (you)</span> : null}
+                      {r.warming ? <span className="text-subtle"> warming up</span> : null}
                     </td>
                     <td className="py-1.5 pr-2 text-right tabular">{r.n}</td>
                     <td className="py-1.5 pr-2 text-right tabular">

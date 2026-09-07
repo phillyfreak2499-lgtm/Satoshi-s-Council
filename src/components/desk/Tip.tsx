@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { beacon } from "@/lib/desk/beacon";
 import { createPortal } from "react-dom";
 import { glossOf } from "@/lib/desk/glossary";
 import { cn } from "@/lib/utils";
@@ -122,7 +123,10 @@ export function Tip({
           e.stopPropagation();
           e.preventDefault();
           if (open && !byHover.current) close();
-          else show(false);
+          else {
+            show(false);
+            beacon("gloss_open");
+          }
         }}
         onKeyDown={(e) => {
           if (hoverOnly) return;
@@ -130,7 +134,10 @@ export function Tip({
             e.preventDefault();
             e.stopPropagation();
             if (open) close();
-            else show(false);
+            else {
+              show(false);
+              beacon("gloss_open");
+            }
           }
         }}
       >
