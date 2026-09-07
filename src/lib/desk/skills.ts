@@ -2,7 +2,7 @@ import { clamp, wilsonLower } from "./math";
 import { SKILL_RULES } from "./dsl";
 import { SEAT_BY_ID } from "./seats";
 import { freshThresholds } from "./thresholds";
-import type { Learner, LearnPhase, SeatId, SkillCard, SkillStatus } from "./types";
+import type { Learner, LearnPhase, SeatId, SeatKnobs, SkillCard, SkillStatus } from "./types";
 import { SEAT_IDS } from "./types";
 
 export type SkillSeed = {
@@ -916,7 +916,9 @@ export function freshLearner(): Learner {
   const fade_strength = {} as Record<string, number>;
   const seat_recent = {} as Record<string, number[]>;
   const seat_w = {} as Record<string, number>;
+  const knobs = {} as Record<string, SeatKnobs>;
   for (const id of SEAT_IDS) {
+    knobs[id] = { edge_mult: 1, speak_offset: 0, prev_offset: null, benched_until: 0, updated_at: 0, reason: "" };
     seat_n[id] = 0;
     seat_hits[id] = 0;
     seat_calls[id] = 0;
@@ -926,6 +928,7 @@ export function freshLearner(): Learner {
   }
   return {
     skills,
+    knobs,
     seat_n,
     seat_hits,
     seat_calls,

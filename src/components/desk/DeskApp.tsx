@@ -13,6 +13,7 @@ import { Tip } from "./Tip";
 import { Tour } from "./Tour";
 import { Feedback, BoardTab } from "./Feedback";
 import { AtelierTab } from "./AtelierTab";
+import { CrewTab } from "./CrewTab";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "satoshi", label: "SATOSHI" },
@@ -23,6 +24,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "book", label: "BOOK" },
   { id: "context", label: "CONTEXT" },
   { id: "board", label: "BOARD" },
+  { id: "crew", label: "PIT CREW" },
   { id: "settings", label: "SETTINGS" },
 ];
 
@@ -66,7 +68,7 @@ export function DeskApp() {
 
   const jump = (seat: SeatId) => {
     const dest =
-      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "atelier" | "settings" | "board">, SeatId[]][]).find(
+      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "atelier" | "settings" | "board" | "crew">, SeatId[]][]).find(
         ([, ids]) => ids.includes(seat),
       )?.[0] ?? "structure";
     setFocus(seat);
@@ -79,7 +81,7 @@ export function DeskApp() {
   };
 
   const seats =
-    tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board"
+    tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board" && tab !== "crew"
       ? TAB_SEATS[tab]
       : [];
 
@@ -194,6 +196,7 @@ export function DeskApp() {
         )}
         {tab === "atelier" && <AtelierTab />}
         {tab === "board" && <BoardTab frame={frame} />}
+        {tab === "crew" && <CrewTab />}
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
       </main>
 

@@ -208,27 +208,40 @@ function pickLiveAndPaper(
   const sh =
     papers.find((p) => p.status === "SHADOW") ?? papers.find((p) => p.status === "BENCH");
   if (sh) chosen.shadow = { id: sh.id, lean: sh.lean, confidence: sh.confidence };
-  return sitUnlessSure(brierScale(chosen, ctx));
+  return sitUnlessSure(brierScale(chosen, ctx), ctx);
 }
 
-function sitUnlessSure(v: Vote): Vote {
+/** The whisper filter, with COACH's knobs: a per-seat bar (52 + offset) and
+ *  a bench. A gagged or benched read keeps its raw lean so it is still graded. */
+function sitUnlessSure(v: Vote, ctx: BotCtx): Vote {
   if (v.seat === "WARDEN") return v;
   if (v.raw_lean == null) {
     v.raw_lean = v.lean;
     v.raw_conf = v.confidence;
   }
   if (v.lean === "WAIT") return v;
-  if (v.confidence >= SPEAK_CONF) return v;
+  const k = ctx.learner.knobs?.[v.seat];
+  if (k && k.benched_until > ctx.snap.as_of) {
+    return {
+      ...v,
+      lean: "WAIT",
+      forced_sit: true,
+      confidence: Math.max(70, v.confidence),
+      reasoning: `${v.reasoning} · benched by COACH`,
+    };
+  }
+  const bar = SPEAK_CONF + (k?.speak_offset ?? 0);
+  if (v.confidence >= bar) return v;
   return {
     ...v,
     lean: "WAIT",
     forced_sit: true,
     confidence: Math.max(70, v.confidence),
-    reasoning: `${v.reasoning} · sit (${v.confidence} < ${SPEAK_CONF} conf)`,
+    reasoning: `${v.reasoning} · sit (${v.confidence} < ${bar} conf)`,
   };
 }
 
-function applyHealth(v: Vote, h: { health: FeedHealth; age: number; mult: number }): Vote {
+function applyHealth(v: Vote, h: { health: FeedHealth; age: number; mult: number }, ctx: BotCtx): Vote {
   v.health = h.health;
   v.feed_age_s = h.age;
   if (h.health === "DOWN") {
@@ -242,7 +255,7 @@ function applyHealth(v: Vote, h: { health: FeedHealth; age: number; mult: number
     v.confidence = Math.round(v.confidence * 0.6);
     v.evidence = [`STALE ${h.age.toFixed(0)}s`, ...v.evidence];
   }
-  return sitUnlessSure(v);
+  return sitUnlessSure(v, ctx);
 }
 
 function fire(
@@ -262,11 +275,13 @@ function fire(
     ? { health: extra.health, age: extra.feed_age_s ?? 0, mult: 1 }
     : healthOf(ctx.snap, "spot");
   const last1 = last(ctx.snap.candles_1m);
+  // COACH's knob: the rulebook's edge, scaled for this seat on evidence.
+  const edgeK = clamp01(edge * (ctx.learner.knobs?.[seat]?.edge_mult ?? 1));
   // WICK's open-candle cap (40) guards a half-formed bar. A pattern the
   // gate has already confirmed on closed candles is fully formed, so the
   // cap no longer applies to it — it used to fire on every tick, since the
   // newest 1m candle is always open, and sat WICK under the bar for good.
-  const conf = directionalConf(edge, ctx.snap.phase, h.mult, {
+  const conf = directionalConf(edgeK, ctx.snap.phase, h.mult, {
     unclosed: seat === "WICK" && !opts?.formed && last1 ? !last1.closed : false,
     midRange: ctx.snap.location === "MID" && seat === "WICK",
     cap,
@@ -363,7 +378,7 @@ function wickBot(ctx: BotCtx): Vote {
   const c1 = snap.candles_1m.filter((c) => c.closed);
   const lastC = last(c1);
   if (!lastC || h.health === "DOWN") {
-    return applyHealth(emptyVote("WICK", snap, { eyes: "1m/5m candles" }), h);
+    return applyHealth(emptyVote("WICK", snap, { eyes: "1m/5m candles" }), h, ctx);
   }
   const loc = snap.location;
   const read5 = readWick(snap.candles_5m);
@@ -616,7 +631,7 @@ function wickBot(ctx: BotCtx): Vote {
       confluence: pending ? round(pending.confluence, 2) : 0,
     },
   });
-  return applyHealth(pickLiveAndPaper(ctx, "WICK", evalId, wait), h);
+  return applyHealth(pickLiveAndPaper(ctx, "WICK", evalId, wait), h, ctx);
 }
 
 function dslSeat(
@@ -631,13 +646,14 @@ function dslSeat(
     return applyHealth(
       emptyVote(seat, ctx.snap, { eyes: wait.eyes, reasoning: "NO PRINT — bot is silent" }),
       h,
+      ctx,
     );
   }
   const owned = clockOwnedWait(seat, ctx.snap);
   const use = owned && (seat === "STRIKE" || seat === "CHEAP" || seat === "ODDS" || seat === "FADE")
     ? owned
     : wait;
-  return applyHealth(pickLiveAndPaper(ctx, seat, evalId, use), h);
+  return applyHealth(pickLiveAndPaper(ctx, seat, evalId, use), h, ctx);
 }
 
 function driftBot(ctx: BotCtx): Vote {
@@ -877,6 +893,7 @@ function cheapBot(ctx: BotCtx): Vote {
         evidence: [`YES ask ${round(yes, 1)}¢`, `NO ask ${round(no, 1)}¢`, `trend-day yes`],
       }),
       healthOf(s, "kalshi"),
+      ctx,
     );
   }
   return dslSeat(
@@ -909,6 +926,7 @@ function fadeBot(ctx: BotCtx): Vote {
         evidence: [`Δ60s ${round(d60, 1)}¢`, `trend-day yes`],
       }),
       healthOf(s, "kalshi"),
+      ctx,
     );
   }
   if ((hole || noPrint) && Math.abs(d60) >= 8) {
@@ -921,6 +939,7 @@ function fadeBot(ctx: BotCtx): Vote {
         invalidate_if: "a trade prints inside 20s with spread ≤ 6¢",
       }),
       healthOf(s, "kalshi"),
+      ctx,
     );
   }
   return dslSeat(
@@ -1047,6 +1066,7 @@ function wireBot(ctx: BotCtx): Vote {
         reasoning: "NO PRINT — bot is silent",
       }),
       { health: "DOWN", age: 0, mult: 0 },
+      ctx,
     );
   }
   return dslSeat(
