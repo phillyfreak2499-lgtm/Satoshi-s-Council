@@ -47,6 +47,7 @@ export function mergeLearner(saved?: Partial<Learner> | null): Learner {
       rule: card.rule ?? seed?.rule ?? SKILL_RULES[id],
     };
   }
+  learner.knobs = { ...base.knobs, ...(saved.knobs ?? {}) };
   learner.seat_recent = { ...base.seat_recent, ...(saved.seat_recent ?? {}) };
   learner.fade_strength = { ...base.fade_strength, ...(saved.fade_strength ?? {}) };
   learner.seat_n = { ...base.seat_n, ...(saved.seat_n ?? {}) };

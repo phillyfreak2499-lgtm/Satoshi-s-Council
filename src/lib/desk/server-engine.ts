@@ -27,6 +27,7 @@ import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
 import { labDigestBits, labSettleReceipt, startLab } from "./lab.server";
+import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import {
   V2_SAMPLE_MINS,
   decideV2,
@@ -43,7 +44,7 @@ import {
   v2Gates,
   type V2Stats,
 } from "./chair-v2";
-import type { CallLogRow, ChairResult, Learner, Lean, SeatId, Settings, Snapshot, Vote } from "./types";
+import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
 
 const STATE_ID = "live";
 const PERSIST_EVERY_MS = 8_000;
@@ -443,6 +444,8 @@ async function maybeDigest(e: Eng) {
       bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
     }
     await digestV2Bits(bits);
+    const sweepLine = await sweepRun(e.learner);
+    if (sweepLine) bits.push(sweepLine);
     const body = bits.join(" · ").slice(0, 400);
     await db`
       insert into board (who, body, kind, lean, ticker, conf, slug)
@@ -465,6 +468,9 @@ async function maybeDigest(e: Eng) {
       where kind = 'update' and (slug like 'digest-%' or slug like 'lab-%')
         and created_at < now() - interval '14 days'
     `;
+    // COACH's one decision per seat per day, after the day is scored.
+    const coached = await coachRun(e.learner);
+    if (coached.length) void persistState(e, true);
   } catch (err) {
     e.lastError = `digest: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -941,9 +947,15 @@ export function ensureServerEngine(): void {
     } catch (err) {
       e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
     }
+    void ensureCrewBoot(e.learner);
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
   });
+}
+
+/** Read-only view of COACH's knobs for the Pit Crew panel. */
+export function getLearnerKnobs(): Record<string, SeatKnobs> {
+  return eng().learner.knobs ?? {};
 }
 
 export type ServerFrame = {

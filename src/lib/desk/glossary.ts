@@ -43,6 +43,22 @@ export const GLOSS: Record<string, Gloss> = {
     title: "CONTEXT — background",
     body: "ORBIT, CLOCK, WIRE, WARDEN. Regime, session clock, Fear & Greed, feed health.",
   },
+  "tab.crew": {
+    title: "PIT CREW",
+    body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",
+  },
+  "crew.sweep": {
+    title: "SWEEP — the janitor",
+    body: "Once a day, for every seat: how often it had a read, how often it was allowed to speak, its best confidence against the bar, and how right and how profitable its mid-window reads were at the ask. Flags: DEAD (no reads in a week), MUTE (reads but never heard), DEADLOCK (reads but never graded), ANTI (right 35% or less), GOLD (right 65%+ and paying).",
+  },
+  "crew.coach": {
+    title: "COACH — the trainer",
+    body: "Owns each seat's knobs: the speaking bar (52 plus an offset), an edge multiplier, and a bench. It judges a change on the week it did not tune on, moves the bar at most two points a week, benches anti-signals for a week, and reverts a move that proves worse. Every action is logged with its evidence. No human control writes these knobs.",
+  },
+  "crew.wrench": {
+    title: "WRENCH — the mechanic",
+    body: "A scheduled session that audits the ledger, the samples and SWEEP's flags for real bugs: caps that can never clear the bar, deadlocks, mis-scaled formulas, rules that never fire. It opens a pull request with the evidence and logs it here. It never merges and never touches knobs.",
+  },
   "tab.settings": {
     title: "SETTINGS",
     body: "Mute seats, demo vs live, skill ledger, huddle. Demo never grades the live book.",

@@ -63,4 +63,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The floor was mostly mute by accident. The rulebook writes a seat's confidence as an edge like 0.55, but a formula turned 0.55 into 50, under the 52 needed to speak, so most seats could only be heard in the last minutes. Confidence now means what the rulebook says. WICK's confirmed patterns no longer get capped as if the candle were still forming. And every seat now earns its record from what it saw, gagged or not, so a quiet seat can calibrate its way to a voice instead of waiting forever.",
   },
+  {
+    slug: "2026-09-07-pit-crew",
+    body:
+      "Meet the Pit Crew, a new tab. Three helpers work on the seats, never on the market. SWEEP grades every seat from receipts once a day and raises flags: dead, mute, deadlocked, anti-signal, gold. COACH owns each seat's knobs, the speaking bar, an edge multiplier and a bench, and turns them only on evidence from windows it did not tune on, one small step a week, reverting what proves worse. WRENCH is a scheduled mechanic that opens pull requests for real bugs. No human control writes the knobs.",
+  },
 ];

@@ -49,6 +49,7 @@ export type CallLogRow = {
 };
 export type TabId =
   | "satoshi"
+  | "crew"
   | "atelier"
   | "structure"
   | "tape"
@@ -435,8 +436,23 @@ export type CandidateCard = {
   rule?: SkillRule;
 };
 
+/** A seat's tunables. COACH is the only writer; nothing in the admin UI touches them. */
+export type SeatKnobs = {
+  /** Multiplies the rulebook's edge before it becomes confidence (0.8–1.2). */
+  edge_mult: number;
+  /** Added to the 52 speaking bar for this seat (−6…+6). */
+  speak_offset: number;
+  /** The offset before the last move, so a bad move can be reverted. */
+  prev_offset: number | null;
+  /** While in the future, the seat is force-sat (graded, never heard). */
+  benched_until: number;
+  updated_at: number;
+  reason: string;
+};
+
 export type Learner = {
   skills: Record<string, SkillCard>;
+  knobs: Record<string, SeatKnobs>;
   seat_n: Record<string, number>;
   seat_hits: Record<string, number>;
   seat_calls: Record<string, number>;
