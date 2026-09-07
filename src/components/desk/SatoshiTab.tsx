@@ -5,6 +5,7 @@ import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from ".
 import { V2_GATE_CALLS, V2_GATE_SAMPLES, V2_MIN_SAMPLES, v2Gates } from "@/lib/desk/chair-v2";
 import type { V2Frame } from "@/lib/desk/server-engine";
 import { ChairEyes } from "./Eyes";
+import { ArenaPanel } from "./ArenaPanel";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
@@ -290,6 +291,7 @@ export function SatoshiTab({
   callLog,
   onJump,
   v2,
+  onOpenArena,
 }: {
   snap: Snapshot;
   chair: ChairResult;
@@ -297,10 +299,12 @@ export function SatoshiTab({
   callLog: CallLogRow[];
   onJump: (seat: SeatId) => void;
   v2?: V2Frame | null;
+  onOpenArena?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3 p-3">
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} />
+      <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
       {v2 ? <ShadowChair v2={v2} /> : null}
       <ChairEyes snap={snap} />
       <CallTape rows={callLog} tz={settings.tz} />

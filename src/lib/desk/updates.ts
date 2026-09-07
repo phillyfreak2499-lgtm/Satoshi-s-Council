@@ -68,4 +68,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Meet the Pit Crew, a new tab. Three helpers work on the seats, never on the market. SWEEP grades every seat from receipts once a day and raises flags: dead, mute, deadlocked, anti-signal, gold. COACH owns each seat's knobs, the speaking bar, an edge multiplier and a bench, and turns them only on evidence from windows it did not tune on, one small step a week, reverting what proves worse. WRENCH is a scheduled mechanic that opens pull requests for real bugs. No human control writes the knobs.",
   },
+  {
+    slug: "2026-09-07-arena",
+    body:
+      "Step onto the floor. The new ARENA tab lets you make your own paper call on the live window, UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one call per window, held to settlement. No login, just a callsign. The leaderboard scores humans against SATOSHI and Chair v2 in cents after fees, this week and all-time, and shows you how your confidence compares with your record.",
+  },
 ];
