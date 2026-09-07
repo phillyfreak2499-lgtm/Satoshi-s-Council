@@ -3,6 +3,7 @@ import { fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
 import type { ChairResult, Snapshot } from "@/lib/desk/types";
 import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
 import { Tip } from "./Tip";
+import { StripSkeleton } from "./Skeleton";
 import { readMarket } from "@/lib/desk/market-hours";
 import { askCents } from "@/lib/desk/scalp";
 import { patchSettings } from "@/lib/desk/engine";
@@ -133,13 +134,7 @@ export function TopStrip({
   brainAge?: number | null;
   frameAt?: number;
 }) {
-  if (!snap) {
-    return (
-      <div className="border-b border-border bg-surface px-3 py-2 font-mono text-ui text-muted">
-        waiting on first snapshot…
-      </div>
-    );
-  }
+  if (!snap) return <StripSkeleton />;
   const lean = chair?.lean ?? "WAIT";
   const conf = chair?.confidence ?? 0;
   const score = chair?.score ?? 0;
