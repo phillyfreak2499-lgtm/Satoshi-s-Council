@@ -24,7 +24,11 @@ export default async function call(event: unknown) {
     const { placeCall } = await import("../../src/lib/desk/arena.server");
     const r = await placeCall({ token: raw.token, name: raw.name, lean: raw.lean, conf: raw.conf });
     if (!r.ok) return json(r.status, { ok: false, error: r.error });
-    return json(200, { ok: true, call: r.call });
+    // The room renders YOU LOCKED and the new N from this reply, no re-GET.
+    const { noteLock, rackFor } = await import("../../src/lib/desk/pit.server");
+    noteLock(r.call);
+    const rack = await rackFor(raw.token).catch(() => null);
+    return json(200, { ok: true, call: r.call, rack });
   } catch (err) {
     return json(500, { ok: false, error: err instanceof Error ? err.message : String(err) });
   }

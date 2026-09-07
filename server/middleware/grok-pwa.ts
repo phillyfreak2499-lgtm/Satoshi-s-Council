@@ -78,7 +78,7 @@ export default async function grokPwaMiddleware(
     path === "/desk" ||
     path === "/lab" ||
     path === "/crew" ||
-    path === "/arena" ||
+    path.startsWith("/arena/") ||
     path === "/books" ||
     path === "/replay" ||
     path === "/push" ||

@@ -19,7 +19,6 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
   { id: "derivs", label: "DERIVS", hint: "funding, open interest, liquidations · CARRY CHAIN CASCADE VOLT" },
   { id: "book", label: "BOOK", hint: "the odds themselves · ODDS STRIKE CHEAP FADE" },
   { id: "context", label: "CONTEXT", hint: "clock and regime · ORBIT CLOCK WIRE WARDEN" },
-  { id: "arena", label: "ARENA", hint: "your own paper calls and the leaderboard" },
   { id: "books", label: "BOOKS", hint: "the chair's money, window by window, and replays" },
   { id: "board", label: "BOARD", hint: "ideas, feedback and the desk's updates" },
   { id: "atelier", label: "ATELIER", hint: "the gallery" },
@@ -28,6 +27,7 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
 ];
 
 const PAGES: { href: string; label: string; hint: string }[] = [
+  { href: "/arena", label: "ARENA · THE PIT", hint: "lock one paper call on the live window, see how the room leans" },
   { href: "/about", label: "How it works", hint: "read, vote, grade — in three steps" },
   { href: "/faq", label: "FAQ", hint: "what a seat is, why WAIT, what paper means" },
   { href: "/legal", label: "Paper only", hint: "no orders, no accounts, no advice" },
