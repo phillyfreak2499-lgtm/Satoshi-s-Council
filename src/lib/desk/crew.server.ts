@@ -22,6 +22,7 @@ import { WRENCH_LOG } from "./wrench-log";
 type Crew = {
   synced: boolean;
   lastSweepDay: string;
+  lastSweepLine: string;
   lastCoachDay: string;
   cache: { at: number; body: unknown } | null;
   lastError: string | null;
@@ -29,7 +30,7 @@ type Crew = {
 
 const g = globalThis as typeof globalThis & { __desk_crew__?: Crew };
 function crew(): Crew {
-  g.__desk_crew__ ??= { synced: false, lastSweepDay: "", lastCoachDay: "", cache: null, lastError: null };
+  g.__desk_crew__ ??= { synced: false, lastSweepDay: "", lastSweepLine: "", lastCoachDay: "", cache: null, lastError: null };
   return g.__desk_crew__;
 }
 
@@ -153,6 +154,8 @@ async function log(
 export async function sweepRun(learner: Learner, now = Date.now()): Promise<string> {
   const C = crew();
   const day = chicagoDay(now);
+  // The recap check runs every few minutes all day; the scorecard is daily.
+  if (C.lastSweepDay === day) return C.lastSweepLine;
   try {
     const db = await sql();
     const mid = await midReads(SWEEP_DAYS);
@@ -195,8 +198,9 @@ export async function sweepRun(learner: Learner, now = Date.now()): Promise<stri
       if (flags.length) flagged.push(`${s.seat} ${flags.map((f) => f.toLowerCase()).join("+")}`);
     }
     C.lastSweepDay = day;
+    C.lastSweepLine = flagged.length ? `SWEEP flags: ${flagged.join(", ")}` : "SWEEP: no flags";
     C.cache = null;
-    return flagged.length ? `SWEEP flags: ${flagged.join(", ")}` : "SWEEP: no flags";
+    return C.lastSweepLine;
   } catch (err) {
     C.lastError = `sweep: ${err instanceof Error ? err.message : String(err)}`;
     return "";
@@ -209,10 +213,14 @@ export async function coachRun(learner: Learner, now = Date.now()): Promise<stri
   const C = crew();
   const day = chicagoDay(now);
   const lines: string[] = [];
+  if (C.lastCoachDay === day) return lines;
   try {
     const db = await sql();
     const done = await db<{ n: number }>`select count(*)::int as n from desk_crew_log where slug = ${`coach-${day}`}`;
-    if (done[0]?.n) return lines;
+    if (done[0]?.n) {
+      C.lastCoachDay = day;
+      return lines;
+    }
     const mid = await midReads(28);
     learner.knobs ??= {};
     for (const seat of VOTERS) {
