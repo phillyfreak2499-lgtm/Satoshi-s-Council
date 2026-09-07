@@ -50,6 +50,7 @@ export type CallLogRow = {
 export type TabId =
   | "satoshi"
   | "arena"
+  | "books"
   | "crew"
   | "atelier"
   | "structure"

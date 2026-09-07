@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import type { Candle, SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { round } from "@/lib/desk/math";
 import { MARK_LABEL, readWick, type MarkKind, type WickMark } from "@/lib/desk/patterns";
@@ -10,44 +9,7 @@ import { usePulse } from "@/lib/desk/pulse";
 import { HealthDot } from "./bits";
 import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
-
-const UP = "#3dcf8a";
-const DOWN = "#ef6b73";
-const WAIT = "#d4a017";
-const GRID = "#232833";
-const FG = "#8b90a0";
-const LINE = "#c8ccd4";
-const BG = "#161a22";
-const INK = "#08090b";
-const FONT = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
-const FONT_SM = "500 9px 'IBM Plex Mono', ui-monospace, monospace";
-
-function useDraw(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, dep: unknown) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const drawRef = useRef(draw);
-  drawRef.current = draw;
-  useEffect(() => {
-    const c = ref.current;
-    if (!c) return;
-    const paint = () => {
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const w = c.clientWidth || 320;
-      const h = c.clientHeight || 140;
-      c.width = Math.floor(w * dpr);
-      c.height = Math.floor(h * dpr);
-      const ctx = c.getContext("2d");
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      drawRef.current(ctx, w, h);
-    };
-    paint();
-    const ro = new ResizeObserver(paint);
-    ro.observe(c);
-    return () => ro.disconnect();
-  }, [dep]);
-  return ref;
-}
+import { BG, DOWN, FG, FONT_SM, GRID, INK, LINE, UP, WAIT, fillRound, useDraw } from "./canvas";
 
 function fmtPx(p: number) {
   const a = Math.abs(p);
@@ -55,12 +17,6 @@ function fmtPx(p: number) {
   if (a >= 100) return p.toFixed(1);
   if (a >= 1) return p.toFixed(2);
   return p.toFixed(4);
-}
-
-function fillRound(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 2) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-  ctx.fill();
 }
 
 function lastPill(ctx: CanvasRenderingContext2D, w: number, y: number, text: string, color: string) {

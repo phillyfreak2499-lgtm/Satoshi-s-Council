@@ -51,6 +51,26 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Your call",
     body: "Buy the side you believe at its current ask. A win pays 100¢ minus the ask minus the fee; a loss costs the ask plus the fee. Calls close 30 seconds before the window ends. The confidence slider is for you: the site will show how your stated confidence compares with your real hit rate.",
   },
+  "tab.books": {
+    title: "BOOKS — the desk's money, window by window",
+    body: "Everything the chair has booked, straight from the ledger and after Kalshi's fee: today, this week and all-time, the cents curve, whether the price the chair paid told the truth, the hours it wins and loses, and the last forty windows with the official settlement value beside each result.",
+  },
+  "books.last": {
+    title: "Last window",
+    body: "The most recent graded window: what the market settled at (Kalshi's official value, the average of the final minute's sixty BRTI prints), which way it went, what the chair booked and what it made, how many seats were right, and what the Arena did.",
+  },
+  "books.curve": {
+    title: "The curve",
+    body: "Running total of the chair's cents over the last fourteen days, one point per booked window, after fees. The bars underneath are each day's net. Flat stretches are windows the chair sat out.",
+  },
+  "books.calib": {
+    title: "Did the price tell the truth?",
+    body: "Booked calls grouped by the price the chair paid. A 70¢ contract should win about 70% of the time if the market is right. The grey bar is the price, the coloured bar is how often the chair actually won at that price. Green means the chair beat the price; red means it paid too much.",
+  },
+  "books.heat": {
+    title: "Hours",
+    body: "Net cents by weekday and hour of the window's close, on Chicago time. Green cells made money, red cells lost it, dark cells had no booked call. Hover a cell for the count.",
+  },
   "tab.crew": {
     title: "PIT CREW",
     body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",
