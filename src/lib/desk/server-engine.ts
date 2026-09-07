@@ -30,6 +30,7 @@ import { labDigestBits, labSettleReceipt, startLab, labFairNow } from "./lab.ser
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
+import { notifyCall, notifySettle } from "./push.server";
 import {
   V2_SAMPLE_MINS,
   decideV2,
@@ -310,6 +311,7 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
     ...e.callLog,
   ].slice(0, 80);
   e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
+  notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
 }
 
 function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" | "DOWN") {
@@ -491,7 +493,14 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   void recordLedger(e, snap, votes, chair, finish, source);
   void gradeV2(e, snap, finish);
-  void settleHumanCalls(snap.ticker, finish);
+  const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
+  const chairBits =
+    booked && booked.settle != null
+      ? { entry: booked.cents, settle: booked.settle, ev: Math.round((booked.settle - booked.cents - takerFeeCents(booked.cents)) * 10) / 10 }
+      : null;
+  void settleHumanCalls(snap.ticker, finish).then((rows) =>
+    notifySettle(snap.ticker, finish, chairBits, new Map(rows.map((r) => [r.token, r.cents]))),
+  );
   void recordReplay(snap.ticker, finish).catch((err) => {
     e.lastError = `replay: ${err instanceof Error ? err.message : String(err)}`;
   });

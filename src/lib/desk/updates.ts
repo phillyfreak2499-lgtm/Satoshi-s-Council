@@ -83,4 +83,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Rewind a window. Click any window in the BOOKS tab that has a play mark and scrub back through it: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band with the moment it booked, and every seat's lean as a lane, solid when it spoke and faint when it whispered under the gag. The desk records a sample every four seconds and writes the window once it grades; windows before today have no replay.",
   },
+  {
+    slug: "2026-09-07-alerts",
+    body:
+      "Get a tap on the shoulder. SETTINGS now has Alerts: a push notification to your phone or browser when the chair books a call, and if you want, when the window settles, with your own Arena result on the line. Per browser, opt in only, and the browser asks permission once. On iPhone and iPad, add the site to your Home Screen first. Press send a test to see one land.",
+  },
 ];

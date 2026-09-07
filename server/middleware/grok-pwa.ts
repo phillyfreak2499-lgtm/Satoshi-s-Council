@@ -81,6 +81,7 @@ export default async function grokPwaMiddleware(
     path === "/arena" ||
     path === "/books" ||
     path === "/replay" ||
+    path === "/push" ||
     path === "/call"
   )
     return next();

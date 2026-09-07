@@ -86,17 +86,19 @@ export async function placeCall(input: CallInput): Promise<CallResult> {
 }
 
 /** Called by the engine at grade time for every settled window. */
-export async function settleHumanCalls(ticker: string, winner: "UP" | "DOWN"): Promise<void> {
+export async function settleHumanCalls(ticker: string, winner: "UP" | "DOWN"): Promise<{ token: string; cents: number }[]> {
   try {
     const db = await sql();
-    await db`
+    return await db<{ token: string; cents: number }>`
       update desk_human_calls
          set winner = ${winner},
              cents = case when lean = ${winner} then 100 - entry_cents - fee else -entry_cents - fee end
        where ticker = ${ticker} and winner is null
+       returning token, cents
     `;
   } catch {
     /* the next grade retries nothing; a missed settle shows as an open call */
+    return [];
   }
 }
 
