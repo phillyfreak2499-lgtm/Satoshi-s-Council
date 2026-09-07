@@ -121,14 +121,21 @@ function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
     ctx.fillStyle = WAIT;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(`strike ${fmtPx(strike, 0)}`, w - PAD_R + 4, y(strike));
+    ctx.fillText(fmtPx(strike, 0), w - PAD_R + 4, y(strike));
   }
   ctx.strokeStyle = LINE;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   c.spot.forEach((v, i) => (i ? ctx.lineTo(xs[i], y(v)) : ctx.moveTo(xs[i], y(v))));
   ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = LINE;
+  ctx.fillText("btc", PAD_L + 4, 1);
+  ctx.fillStyle = WAIT;
+  ctx.fillText("strike", PAD_L + 26, 1);
   ctx.fillStyle = FG;
+  ctx.fillText("final minute", x(WINDOW_S - 60) + 3, 1);
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   if (Math.abs(y(hi0) - (strike > 0 ? y(strike) : -99)) > 9) ctx.fillText(fmtPx(hi0, 0), w - PAD_R + 4, y(hi0));
