@@ -78,4 +78,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Open the books. The new BOOKS tab reads the ledger and shows the chair's money after fees: today, this week and all-time, a running cents curve with each day's bars, a calibration chart that asks whether the price the chair paid told the truth, an hour-by-weekday heat map of where the cents come from, and the last forty windows with Kalshi's official settlement value, the chair's call, how many seats were right and what the Arena did.",
   },
+  {
+    slug: "2026-09-07-replay",
+    body:
+      "Rewind a window. Click any window in the BOOKS tab that has a play mark and scrub back through it: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band with the moment it booked, and every seat's lean as a lane, solid when it spoke and faint when it whispered under the gag. The desk records a sample every four seconds and writes the window once it grades; windows before today have no replay.",
+  },
 ];

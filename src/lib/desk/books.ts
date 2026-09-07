@@ -12,6 +12,7 @@ export type BooksWindow = {
   seats: { n: number; right: number };
   raw: { n: number; right: number };
   arena: { n: number; net: number } | null;
+  replay: boolean;
 };
 
 export type BooksTotals = { n: number; calls: number; wins: number; net: number; ups: number };
