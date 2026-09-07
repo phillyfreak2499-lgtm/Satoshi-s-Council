@@ -79,6 +79,18 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Alerts",
     body: "A push notification to this browser when the chair books a call, and if you want, when the window settles, with your own Arena result on the line. Turn it on here; the browser will ask permission once. On iPhone and iPad the site has to be on your Home Screen first. Nothing is ever sent to a browser that did not opt in.",
   },
+  "tab.floor": {
+    title: "FLOOR — the five desks",
+    body: "The twenty seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
+  },
+  "pane.seats": {
+    title: "The twenty seats",
+    body: "One row per seat, ranked by how much SATOSHI is hearing them right now. Speaking means the seat called UP or DOWN; sitting means it said WAIT or was not sure enough to clear the bar. Click a row to read that seat's why.",
+  },
+  "settings.display": {
+    title: "Display",
+    body: "Preferences for this browser only. Reduce motion turns off the desk's non-essential animation; the system setting of the same name is respected automatically.",
+  },
   "tab.crew": {
     title: "PIT CREW",
     body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",

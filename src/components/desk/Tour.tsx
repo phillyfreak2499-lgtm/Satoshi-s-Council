@@ -11,6 +11,7 @@ export function Tour({
   onTab,
   onStep,
   onClose,
+  onDone,
 }: {
   open: boolean;
   step: number;
@@ -18,6 +19,7 @@ export function Tour({
   onTab: (t: TabId) => void;
   onStep: (n: number) => void;
   onClose: () => void;
+  onDone?: () => void;
 }) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [narrow, setNarrow] = useState(false);
@@ -58,6 +60,7 @@ export function Tour({
         e.preventDefault();
         if (step >= TOUR_STEPS.length - 1) {
           markTourSeen();
+          onDone?.();
           onClose();
         } else onStep(step + 1);
       }
@@ -68,7 +71,7 @@ export function Tour({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, step, onClose, onStep]);
+  }, [open, step, onClose, onStep, onDone]);
 
   if (!open || !s || typeof document === "undefined") return null;
 
@@ -78,8 +81,11 @@ export function Tour({
   };
 
   const next = () => {
-    if (step >= TOUR_STEPS.length - 1) finish();
-    else onStep(step + 1);
+    if (step >= TOUR_STEPS.length - 1) {
+      markTourSeen();
+      onDone?.();
+      onClose();
+    } else onStep(step + 1);
   };
 
   const pad = 6;
@@ -124,15 +130,22 @@ export function Tour({
         style={cardStyle}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-          {step + 1} / {TOUR_STEPS.length}
+        <div className="flex items-center justify-between font-mono text-micro uppercase tracking-widest text-subtle">
+          <span>
+            {step + 1} / {TOUR_STEPS.length}
+          </span>
+          <span className="flex gap-1" aria-hidden="true">
+            {TOUR_STEPS.map((t, i) => (
+              <span key={t.id} className={i <= step ? "size-1.5 rounded-full bg-fg" : "size-1.5 rounded-full bg-border-strong"} />
+            ))}
+          </span>
         </div>
         <div className="mt-1 font-sans text-title font-medium text-fg">{s.title}</div>
         <p className="mt-1.5 font-sans text-ui leading-snug text-muted">{s.body}</p>
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
             type="button"
-            className="rounded-sm px-2 py-1.5 font-mono text-ui text-muted hover:text-fg"
+            className="min-h-11 rounded-sm px-2 py-1.5 font-mono text-ui text-muted hover:text-fg"
             onClick={finish}
           >
             Skip
@@ -141,7 +154,7 @@ export function Tour({
             {step > 0 && (
               <button
                 type="button"
-                className="rounded-sm border border-border px-3 py-1.5 font-mono text-ui text-fg hover:bg-surface-2"
+                className="min-h-11 rounded-sm border border-border px-3 py-1.5 font-mono text-ui text-fg hover:bg-surface-2"
                 onClick={() => onStep(step - 1)}
               >
                 Back
@@ -149,7 +162,7 @@ export function Tour({
             )}
             <button
               type="button"
-              className="rounded-sm bg-surface-3 px-3 py-1.5 font-mono text-ui text-fg hover:bg-border-strong"
+              className="min-h-11 rounded-sm bg-fg px-4 py-1.5 font-mono text-ui font-medium text-bg hover:bg-chip"
               onClick={next}
             >
               {step >= TOUR_STEPS.length - 1 ? "Done" : "Next"}

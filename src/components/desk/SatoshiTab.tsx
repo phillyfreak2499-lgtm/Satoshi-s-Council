@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "@/lib/desk/types";
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
@@ -41,16 +42,24 @@ function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; t
   return (
     <section
       data-tour="tour-satoshi"
-      className="rounded-md border border-border bg-surface p-3 sm:p-4"
+      className={cn(
+        "rounded-md border bg-surface p-3 sm:p-4",
+        lean === "UP" ? "border-up/40 shadow-[0_0_0_1px_rgba(61,207,138,0.12)]" : lean === "DOWN" ? "border-down/40 shadow-[0_0_0_1px_rgba(239,107,115,0.12)]" : "border-border",
+      )}
     >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.board">Chair call</Tip>
           </div>
-          <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)}>
+          <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
             {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
           </div>
+          <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-muted">
+            {lean === "WAIT"
+              ? "The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk's most common call, on purpose."
+              : `Paper only: booked at the ${lean === "UP" ? "YES" : "NO"} ask if it fills, graded on Kalshi's official settlement value.`}
+          </p>
           <div className="mt-2 font-mono text-ui text-muted">
             {lean === "WAIT" ? (
               "no paper fill"
@@ -301,6 +310,9 @@ export function SatoshiTab({
   v2?: V2Frame | null;
   onOpenArena?: () => void;
 }) {
+  const [view, setView] = useState<"all" | "speaking" | "live">("all");
+  const speaking = chair.rows.filter((r) => r.lean === "UP" || r.lean === "DOWN").length;
+  const rows = chair.rows.filter((r) => (view === "all" ? true : view === "speaking" ? r.lean === "UP" || r.lean === "DOWN" : r.status === "LIVE"));
   return (
     <div className="flex flex-col gap-3 p-3">
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} />
@@ -309,6 +321,27 @@ export function SatoshiTab({
       <ChairEyes snap={snap} />
       <CallTape rows={callLog} tz={settings.tz} />
 
+      <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
+        <span className="text-subtle">
+          <Tip k="pane.seats">the twenty seats</Tip> · {speaking} speaking · {chair.rows.length - speaking} sitting
+        </span>
+        <div role="group" aria-label="Which seats to show" className="ml-auto flex gap-1">
+          {(["all", "speaking", "live"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={view === v}
+              onClick={() => setView(v)}
+              className={cn(
+                "min-h-8 rounded-sm border px-2",
+                view === v ? "border-border-strong bg-surface-3 text-fg" : "border-border text-muted hover:text-fg",
+              )}
+            >
+              {v === "all" ? "all 20" : v === "speaking" ? "speaking" : "LIVE skills"}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="overflow-x-auto rounded-md border border-border">
         <table className="w-full min-w-[72rem] text-left">
           <thead className="bg-surface-2 font-mono text-micro uppercase tracking-wider text-subtle">
@@ -343,7 +376,7 @@ export function SatoshiTab({
             </tr>
           </thead>
           <tbody>
-            {chair.rows.map((r) => {
+            {rows.map((r) => {
               const maxC = Math.max(...chair.rows.map((x) => Math.abs(x.contribution)), 0.001);
               const pct = (Math.abs(r.contribution) / maxC) * 50;
               return (

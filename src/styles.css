@@ -755,3 +755,37 @@
     transition: none;
   }
 }
+
+/* --- floor polish: focus, skip link, motion preference --- */
+:focus-visible {
+  outline: 2px solid var(--color-chip);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 8px;
+  z-index: 70;
+  border-radius: var(--radius-sm);
+  background: var(--color-fg);
+  color: var(--color-bg);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-ui);
+}
+.skip-link:focus {
+  left: 12px;
+}
+
+html[data-motion="reduce"] * {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}
+
+.nav-scroll {
+  scrollbar-width: none;
+}
+.nav-scroll::-webkit-scrollbar {
+  display: none;
+}

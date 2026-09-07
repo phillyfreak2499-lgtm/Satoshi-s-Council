@@ -88,4 +88,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Get a tap on the shoulder. SETTINGS now has Alerts: a push notification to your phone or browser when the chair books a call, and if you want, when the window settles, with your own Arena result on the line. Per browser, opt in only, and the browser asks permission once. On iPhone and iPad, add the site to your Home Screen first. Press send a test to see one land.",
   },
+  {
+    slug: "2026-09-07-floor-polish",
+    body:
+      "The floor learned to introduce itself. A first visit now opens with one card that says what this is (a paper-only Bitcoin 15-minute research desk, twenty seats, SATOSHI chairs) and what it is not, with one button to start the 60-second tour. The tabs are grouped (SATOSHI, FLOOR for the five seat desks, ARENA, BOOKS, BOARD, and MORE), every button is thumb-sized on a phone, ⌘K opens a search for any tab, seat or word on the floor, the chair's call explains itself, the seat list can be filtered to the seats that are speaking, the wait for the first frame shows what is coming and offers the demo tape, and there are three reading pages: How it works, FAQ and Paper only.",
+  },
 ];
