@@ -159,7 +159,12 @@ export function directionalConf(
   opts?: { unclosed?: boolean; midRange?: boolean; cap?: number },
 ): number {
   const raw = clamp(edge, 0, 1);
-  let conf = 100 * raw ** 1.15 * phaseMult(phase) * health;
+  // Confidence IS the rulebook's edge: a rule written "fixed 0.55" votes 55.
+  // The old 1.15 exponent turned 0.55 into 50, two under the 52 speaking
+  // bar, so most live rules could only be heard in the FINAL phase (×1.1) —
+  // exactly where a call is chalk. Measured over 72h: CASCADE right 69% of
+  // the time mid-window and gagged 62 of 63 times.
+  let conf = 100 * raw * phaseMult(phase) * health;
   if (opts?.unclosed) conf = Math.min(conf, 40);
   if (opts?.midRange) conf = Math.min(conf, 25);
   if (opts?.cap != null) conf = Math.min(conf, opts.cap);

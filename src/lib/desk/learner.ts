@@ -184,17 +184,28 @@ export function gradeWindow(
     if (v.seat === "WARDEN") continue;
     const skillId = v.skill_used;
     const card = skillId !== "SIT" ? learner.skills[skillId] : null;
-    if (v.lean === "UP" || v.lean === "DOWN") {
-      const hit = v.lean === finish ? 1 : 0;
-      const cents = centsOf(v.lean, snap, finish);
+    // A seat earns its record from what it SAW. A read the whisper filter
+    // gagged (forced_sit) is still graded for calibration — it is not a
+    // call, opens no paper position, and the chair never heard it — so a
+    // seat can calibrate its way out of the gag instead of waiting forever
+    // for a permission it cannot earn without calibration.
+    const spoke = v.lean === "UP" || v.lean === "DOWN";
+    const gagged =
+      !spoke && v.forced_sit && (v.raw_lean === "UP" || v.raw_lean === "DOWN") ? v.raw_lean : null;
+    const lean = spoke ? v.lean : gagged;
+    if (lean === "UP" || lean === "DOWN") {
+      const hit = lean === finish ? 1 : 0;
+      const cents = centsOf(lean, snap, finish);
       learner.seat_n[v.seat] = (learner.seat_n[v.seat] ?? 0) + 1;
       learner.seat_hits[v.seat] = (learner.seat_hits[v.seat] ?? 0) + hit;
       updateFade(learner, v.seat, hit);
       if (card) {
-        creditDirectional(card, hit, v.confidence, pocketKey, cents);
+        creditDirectional(card, hit, gagged ? (v.raw_conf ?? v.confidence) : v.confidence, pocketKey, cents);
         tuneFromCard(learner, card, hit, snap, v.thresh_used);
       }
-      bits.push(`${v.seat} ${v.lean}${hit ? " hit" : " miss"} ${cents >= 0 ? "+" : ""}${cents.toFixed(0)}¢`);
+      bits.push(
+        `${v.seat} ${lean}${gagged ? " (gagged)" : ""}${hit ? " hit" : " miss"} ${cents >= 0 ? "+" : ""}${cents.toFixed(0)}¢`,
+      );
     } else if (card) {
       const good = waitWasGood(v.seat, v, chair, finish);
       creditWait(card, good);

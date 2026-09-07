@@ -42,7 +42,7 @@ export class KalshiWs {
   private ws: WebSocket | null = null;
   private hostIdx = 0;
   private cmdId = 1;
-  private readonly pending = new Map<number, { channel: string; variant: number; kind: "sub" | "update" }>();
+  private readonly pending = new Map<number, { channel: string; variant: number; kind: "sub" | "update" | "snapshot" }>();
   private readonly subs = new Map<string, Sub>();
   private readonly failed = new Set<string>();
   private lastUpdateAt = 0;
@@ -179,6 +179,18 @@ export class KalshiWs {
     for (const spec of CHANNELS) this.subscribeChannel(spec, 0);
   }
 
+  /** Ask for a fresh orderbook_snapshot of the followed markets without
+   *  changing the subscription (documented `get_snapshot` action). The
+   *  recorder keeps only top-of-book deltas, so a minute-by-minute
+   *  snapshot is what lets a replay re-anchor the full book. */
+  requestSnapshot(): void {
+    const sub = this.subs.get("orderbook_delta");
+    if (!sub || this.state !== "open" || !this.tickers.length) return;
+    const id = this.cmdId++;
+    this.pending.set(id, { channel: "orderbook_delta", variant: sub.variant, kind: "snapshot" });
+    this.send({ id, cmd: "update_subscription", params: { sids: [sub.sid], market_tickers: this.tickers, action: "get_snapshot" } });
+  }
+
   /** Re-request a channel (fresh snapshot after a sequence gap). */
   resubscribe(channel: string): void {
     const spec = CHANNELS.find((s) => s.channel === channel);
@@ -242,6 +254,7 @@ export class KalshiWs {
       } else if (p?.kind === "update") {
         this.resubscribe(p.channel);
       }
+      // kind "snapshot": a refused get_snapshot is only a note; the book is fine.
       return;
     }
     const sid = Number(raw.sid);
