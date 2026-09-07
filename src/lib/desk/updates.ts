@@ -73,4 +73,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Step onto the floor. The new ARENA tab lets you make your own paper call on the live window, UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one call per window, held to settlement. No login, just a callsign. The leaderboard scores humans against SATOSHI and Chair v2 in cents after fees, this week and all-time, and shows you how your confidence compares with your record.",
   },
+  {
+    slug: "2026-09-07-books",
+    body:
+      "Open the books. The new BOOKS tab reads the ledger and shows the chair's money after fees: today, this week and all-time, a running cents curve with each day's bars, a calibration chart that asks whether the price the chair paid told the truth, an hour-by-weekday heat map of where the cents come from, and the last forty windows with Kalshi's official settlement value, the chair's call, how many seats were right and what the Arena did.",
+  },
 ];
