@@ -24,6 +24,7 @@ export type Rack = {
   split: RackSplit | null;
   mine: HumanCall | null;
   last: HumanCall | null;
+  last_settle: { value: number | null; strike: number | null } | null;
   chair: string | null;
   me: RackMe | null;
   at: number;

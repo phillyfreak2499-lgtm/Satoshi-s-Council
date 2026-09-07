@@ -91,6 +91,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Display",
     body: "Preferences for this browser only. Reduce motion turns off the desk's non-essential animation; the system setting of the same name is respected automatically.",
   },
+  "crew.traffic": {
+    title: "Traffic",
+    body: "How many people are in the room and on the desk, counted first-party: page views, paper locks, tours started and finished, glossary opens, searches, shares and settle alerts. No analytics scripts, no cookies, nothing about who. One row per Chicago day.",
+  },
   "tab.crew": {
     title: "PIT CREW",
     body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",

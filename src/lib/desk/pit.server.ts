@@ -6,7 +6,7 @@
  * GET. The split and average are only sent to a token that has locked this
  * window. Paper only.
  */
-import type { HumanCall } from "./arena.server";
+import { RANK_MIN_N, type HumanCall } from "./arena.server";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -53,6 +53,8 @@ export type Rack = {
   mine: HumanCall | null;
   /** This token's most recent lock when it is not on the current window: settling, or settled. */
   last: HumanCall | null;
+  /** How the last lock's window settled: Kalshi's official value (our own average until it lands) and the strike. */
+  last_settle: { value: number | null; strike: number | null } | null;
   chair: string | null;
   me: RackMe | null;
   at: number;
@@ -130,7 +132,7 @@ async function weekRanks(): Promise<string[]> {
           from desk_human_calls
          where winner is not null and close_time > now() - interval '7 days'
          group by token
-        having count(*) > 0
+        having count(*) >= ${RANK_MIN_N}
          order by sum(cents) desc, count(*) desc
          limit 25
       `;
@@ -195,6 +197,7 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
   const [agg, chair] = await Promise.all([window ? aggFor(window.ticker) : Promise.resolve(null), chairLine()]);
   let mine: HumanCall | null = null;
   let last: HumanCall | null = null;
+  let last_settle: Rack["last_settle"] = null;
   let me: RackMe | null = null;
   if (token) {
     const db = await sql();
@@ -221,6 +224,15 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
     const r = recent[0] ?? null;
     if (r && window && r.ticker === window.ticker) mine = r;
     else if (r) last = r;
+    if (last && last.winner != null) {
+      const [st] = await db<{ value: number | null; settle_avg: number | null; strike: number | null }>`
+        select l.official_value as value, l.settle_avg, r.strike
+          from desk_ledger l left join desk_replay r on r.ticker = l.ticker
+         where l.ticker = ${last.ticker}
+         limit 1
+      `;
+      last_settle = st ? { value: st.value ?? st.settle_avg, strike: st.strike } : null;
+    }
     const t = tot[0];
     if (t) {
       const rank = ranks.indexOf(token) + 1;
@@ -233,6 +245,7 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
     split: mine && agg ? splitOf(agg) : null,
     mine,
     last,
+    last_settle,
     chair,
     me,
     at: Date.now(),

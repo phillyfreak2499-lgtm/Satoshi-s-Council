@@ -282,7 +282,10 @@ export async function crewSummary(): Promise<unknown> {
   const logRows = await db`select t::text as t, who, seat, action, detail, evidence from desk_crew_log order by t desc limit 60`;
   const { getLearnerKnobs } = await import("./server-engine");
   const knobs = getLearnerKnobs();
+  const { hitsSummary } = await import("./hits.server");
+  const hits = await hitsSummary(7).catch(() => null);
   const body = {
+    hits,
     day: latest?.day ?? null,
     bar: SPEAK_CONF,
     reports,

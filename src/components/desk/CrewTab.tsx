@@ -19,7 +19,9 @@ type Report = {
 };
 type Knobs = { edge_mult: number; speak_offset: number; benched_until: number; updated_at: number; reason: string };
 type LogRow = { t: string; who: string; seat: string | null; action: string; detail: string };
+type Hits = { days: { day: string; events: Record<string, number> }[]; totals: Record<string, number>; last_error: string | null };
 type Crew = {
+  hits?: Hits | null;
   day: string | null;
   bar: number;
   reports: Report[];
@@ -27,6 +29,18 @@ type Crew = {
   log: LogRow[];
   last_error: string | null;
 };
+
+const HIT_COLS: { k: string; label: string }[] = [
+  { k: "room_view", label: "pit views" },
+  { k: "desk_view", label: "desk views" },
+  { k: "lock", label: "locks" },
+  { k: "tour_start", label: "tours" },
+  { k: "tour_done", label: "finished" },
+  { k: "gloss_open", label: "glossary" },
+  { k: "palette_open", label: "search" },
+  { k: "share", label: "shares" },
+  { k: "settle_alert", label: "alerts" },
+];
 
 const FLAG_TONE: Record<string, string> = {
   GOLD: "text-up",
@@ -218,6 +232,49 @@ export function CrewTab() {
           ) : (
             <div className="font-mono text-micro text-muted">No entries yet.</div>
           )}
+        </Section>
+
+        <Section k="crew.traffic" title="TRAFFIC · last 7 days">
+          <div className="mb-2 font-mono text-micro text-subtle">First-party counts only: no scripts, no cookies, no people. Chicago days.</div>
+          {crew.hits && crew.hits.days.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[34rem] font-mono text-micro">
+                <thead className="text-subtle">
+                  <tr className="text-left">
+                    <th className="py-1 pr-2 font-medium">day</th>
+                    {HIT_COLS.map((c) => (
+                      <th key={c.k} className="py-1 pr-2 text-right font-medium">
+                        {c.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {crew.hits.days.map((d) => (
+                    <tr key={d.day} className="border-t border-border/60 text-muted">
+                      <td className="py-1 pr-2 text-fg">{d.day.slice(5)}</td>
+                      {HIT_COLS.map((c) => (
+                        <td key={c.k} className="py-1 pr-2 text-right tabular">
+                          {d.events[c.k] ?? 0}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr className="border-t border-border text-fg">
+                    <td className="py-1 pr-2">total</td>
+                    {HIT_COLS.map((c) => (
+                      <td key={c.k} className="py-1 pr-2 text-right tabular">
+                        {crew.hits!.totals[c.k] ?? 0}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="font-mono text-micro text-muted">Nothing counted yet.</div>
+          )}
+          {crew.hits?.last_error ? <div className="mt-1 font-mono text-micro text-down">counter: {crew.hits.last_error}</div> : null}
         </Section>
       </div>
       {crew.last_error && <div className="font-mono text-micro text-down">crew error: {crew.last_error}</div>}

@@ -98,4 +98,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "THE PIT is open at /arena: a one-page room for the Arena that works on a phone without opening the desk. See the live window and its clock, pick a callsign, lock UP or DOWN once at the ask, and see YOU LOCKED on a ticket. Everyone sees how many have locked; the split and the average paper lock show only after you have locked the window yourself. Your record and the week board sit underneath. Paper calls only, not advice, not Kalshi orders.",
   },
+  {
+    slug: "2026-09-07-pit-followups",
+    body:
+      "THE PIT learned to follow through. A locked ticket now has Tell me when it settles, one tap that turns on the push alert for that browser with your result on the line, and a share button that hands your lock to the phone's share sheet as plain text, paper and all. A settled ticket shows Kalshi's official value beside the strike. Your last ten locks sit under your line. The week board ranks a callsign only after three settled locks; before that it says warming up, so one lucky lock cannot top it. And PIT CREW gained a TRAFFIC table: first-party counts of views, locks, tours, glossary opens, searches, shares and alerts, with no scripts, no cookies and nothing about who.",
+  },
 ];

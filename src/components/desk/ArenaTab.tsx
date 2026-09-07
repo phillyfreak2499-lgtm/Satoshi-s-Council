@@ -11,7 +11,7 @@ function fmtC(n: number): string {
 
 function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: ArenaRow[] }) {
   const merged = [...rows.map((r) => ({ ...r, kind: "human" as const })), ...desk.map((r) => ({ ...r, kind: "desk" as const }))].sort(
-    (a, b) => b.net - a.net,
+    (a, b) => Number(Boolean(a.warming)) - Number(Boolean(b.warming)) || b.net - a.net,
   );
   return (
     <Pane title={title}>
@@ -30,10 +30,11 @@ function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: A
           <tbody>
             {merged.map((r, i) => (
               <tr key={`${r.kind}-${r.name}`} className={cn("border-t border-border/60", r.me ? "bg-surface-2 text-fg" : r.kind === "desk" ? "text-muted" : "text-fg")}>
-                <td className="py-1 pr-2">{i + 1}</td>
+                <td className="py-1 pr-2">{r.warming ? "—" : i + 1}</td>
                 <td className="py-1 pr-2 font-semibold">
                   {r.name}
                   {r.me ? <span className="ml-1 text-subtle">(you)</span> : null}
+                  {r.warming ? <span className="ml-1 font-normal text-subtle">warming up</span> : null}
                 </td>
                 <td className="py-1 pr-2">{r.n}</td>
                 <td className="py-1 pr-2">{r.hit_pct == null ? "—" : `${r.hit_pct}%`}</td>

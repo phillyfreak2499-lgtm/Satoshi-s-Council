@@ -27,6 +27,8 @@ export default async function call(event: unknown) {
     // The room renders YOU LOCKED and the new N from this reply, no re-GET.
     const { noteLock, rackFor } = await import("../../src/lib/desk/pit.server");
     noteLock(r.call);
+    const { hit } = await import("../../src/lib/desk/hits.server");
+    hit("lock");
     const rack = await rackFor(raw.token).catch(() => null);
     return json(200, { ok: true, call: r.call, rack });
   } catch (err) {

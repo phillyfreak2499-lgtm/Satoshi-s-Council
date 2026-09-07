@@ -15,6 +15,7 @@ import { Toaster, toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrustStrip, Welcome } from "./Welcome";
 import { applyDisplayPrefs, markWelcomeSeen, welcomeSeen } from "./prefs";
+import { beacon } from "@/lib/desk/beacon";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
 import { Feedback, BoardTab } from "./Feedback";
@@ -124,7 +125,11 @@ export function DeskApp() {
   useEffect(() => {
     applyDisplayPrefs();
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
+    beacon("desk_view", true);
   }, []);
+  useEffect(() => {
+    if (paletteOn) beacon("palette_open");
+  }, [paletteOn]);
   useEffect(() => {
     if (!hasSnap) return;
     if (tourSeen() || welcomeSeen()) return;
@@ -170,6 +175,7 @@ export function DeskApp() {
     setNudge(false);
     setTourStep(0);
     setTourOn(true);
+    beacon("tour_start");
   };
   const desk = DESKS.find((d) => d.id === tab) ?? null;
   const navRef = useRef<HTMLElement>(null);
@@ -426,16 +432,21 @@ export function DeskApp() {
         onTab={setTab}
         onStep={setTourStep}
         onClose={() => setTourOn(false)}
-        onDone={() => toast("You're on the floor.", { description: "The chair's call is up top. Hover or tap any dotted label for a definition." })}
+        onDone={() => {
+          beacon("tour_done");
+          toast("You're on the floor.", { description: "The chair's call is up top. Hover or tap any dotted label for a definition." });
+        }}
       />
       <Welcome
         open={welcomeOn}
         onTour={() => {
           markWelcomeSeen();
+          beacon("welcome_tour");
           startTour();
         }}
         onFloor={() => {
           markWelcomeSeen();
+          beacon("welcome_floor");
           setWelcomeOn(false);
           setNudge(!tourSeen() && !nudgeOff());
         }}

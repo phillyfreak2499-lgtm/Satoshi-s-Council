@@ -15,6 +15,8 @@ async function sql() {
 const NAME_RE = /^[A-Za-z0-9 _\-.]{2,16}$/;
 const TOKEN_RE = /^[A-Za-z0-9\-_]{16,64}$/;
 const MIN_MINS_LEFT = 0.5;
+/** Settled locks before a callsign is ranked on a board; fewer shows as warming up. */
+export const RANK_MIN_N = 3;
 
 export type CallInput = { token: unknown; name?: unknown; lean: unknown; conf?: unknown };
 export type CallResult =
@@ -102,7 +104,7 @@ export async function settleHumanCalls(ticker: string, winner: "UP" | "DOWN"): P
   }
 }
 
-export type ArenaRow = { name: string; n: number; wins: number; net: number; avg_conf: number | null; hit_pct: number | null; me?: boolean };
+export type ArenaRow = { name: string; n: number; wins: number; net: number; avg_conf: number | null; hit_pct: number | null; me?: boolean; warming?: boolean };
 
 async function humanRows(days: number | null, token: string | null): Promise<ArenaRow[]> {
   const db = await sql();
@@ -121,7 +123,7 @@ async function humanRows(days: number | null, token: string | null): Promise<Are
      order by net desc, n desc
      limit 25
   `;
-  return rows.map((r) => ({
+  const mapped = rows.map((r) => ({
     name: r.name,
     n: r.n,
     wins: r.wins,
@@ -129,7 +131,10 @@ async function humanRows(days: number | null, token: string | null): Promise<Are
     avg_conf: r.avg_conf == null ? null : Math.round(Number(r.avg_conf)),
     hit_pct: r.n ? Math.round((100 * r.hits) / r.n) : null,
     me: token != null && r.token === token,
+    warming: r.n < RANK_MIN_N,
   }));
+  // Ranked callsigns first (by net), then the ones still warming up.
+  return [...mapped.filter((r) => !r.warming), ...mapped.filter((r) => r.warming)];
 }
 
 async function deskRows(days: number | null): Promise<ArenaRow[]> {
@@ -180,7 +185,7 @@ export async function arenaSummary(tokenRaw: unknown): Promise<unknown> {
                count(*) filter (where winner is null)::int as open
           from desk_human_calls where token = ${token}
       `;
-      const rank7 = week.findIndex((r) => r.me) + 1;
+      const rank7 = week.findIndex((r) => r.me && !r.warming) + 1;
       me = {
         name: player[0]!.name,
         calls,
@@ -191,7 +196,7 @@ export async function arenaSummary(tokenRaw: unknown): Promise<unknown> {
         hit_pct: tot?.n ? Math.round((100 * tot.hits) / tot.n) : null,
         open: tot?.open ?? 0,
         rank_week: rank7 || null,
-        players_week: week.length,
+        players_week: week.filter((r) => !r.warming).length,
       };
     }
   }
