@@ -128,7 +128,7 @@ export function PitTour({
               </button>
             ) : null}
             <button type="button" className="min-h-11 rounded-sm bg-fg px-4 py-1.5 font-mono text-ui font-medium text-bg hover:bg-chip" onClick={next}>
-              {step >= PIT_STEPS.length - 1 ? "Take a stool" : "Next"}
+              {step >= PIT_STEPS.length - 1 ? "Got it" : "Next"}
             </button>
           </div>
         </div>
