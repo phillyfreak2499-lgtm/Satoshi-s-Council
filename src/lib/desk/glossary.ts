@@ -9,7 +9,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "beta.disclaimer": {
     title: "Paper only — not advice",
-    body: "No live orders. SATOSHI and the 20 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use BOARD to post ideas and leave feedback.",
+    body: "No live orders. SATOSHI and the 21 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use BOARD to post ideas and leave feedback.",
   },
   "beta.feedback": {
     title: "Board",
@@ -17,7 +17,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.satoshi": {
     title: "SATOSHI — the chair",
-    body: "Weighs all 20 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
+    body: "Weighs all 21 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
   },
   "tab.atelier": {
     title: "ATELIER — the painting",
@@ -37,7 +37,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.book": {
     title: "BOOK — the contract",
-    body: "ODDS, STRIKE, CHEAP, FADE. YES path, spot vs strike, cheap/rich bands, fast YES rips.",
+    body: "ODDS, STRIKE, CHEAP, FADE, INDEX. YES path, spot vs strike, cheap/rich bands, fast YES rips, the settlement index fair.",
   },
   "tab.context": {
     title: "CONTEXT — background",
@@ -81,10 +81,10 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.floor": {
     title: "FLOOR — the five desks",
-    body: "The twenty seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
+    body: "The twenty-one seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
   },
   "pane.seats": {
-    title: "The twenty seats",
+    title: "The twenty-one seats",
     body: "One row per seat, ranked by how much SATOSHI is hearing them right now. Speaking means the seat called UP or DOWN; sitting means it said WAIT or was not sure enough to clear the bar. Click a row to read that seat's why.",
   },
   "settings.display": {
@@ -195,6 +195,10 @@ export const GLOSS: Record<string, Gloss> = {
   "seat.CLOCK": {
     title: "CLOCK (TOD)",
     body: "Hour/weekday Wilson prior from official settles, n ≥ 8. Soft only — cannot flip the chair alone. Last 4 minutes it sits; STRIKE owns the clock then. Also names the US-session window (NY morning, FOMC, London…) in Eastern time.",
+  },
+  "seat.INDEX": {
+    title: "INDEX (BRTI)",
+    body: "The lab's seat. Prices the window on the settlement rule itself, from Kalshi's own BRTI index: the average of the final minute's sixty prints against the strike, with the prints already locked counted as known. Votes the side whose ask sits under that fair value by more than the fee, and speaks loudest in the final minute. Started in shadow; graded like every seat.",
   },
   "seat.WIRE": {
     title: "WIRE (FNG)",
@@ -458,7 +462,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.score": {
     title: "Score math",
-    body: "How SATOSHI turned 20 leans into one number. Score must clear the bar. Sit-mass, disagreement, and cousin windows raise it. Walk-forward is train vs later — if later is worse, the book is memorizing.",
+    body: "How SATOSHI turned 21 leans into one number. Score must clear the bar. Sit-mass, disagreement, and cousin windows raise it. Walk-forward is train vs later — if later is worse, the book is memorizing.",
   },
   "pane.gates": {
     title: "Gate checklist",
@@ -533,7 +537,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: "satoshi",
     target: "tour-satoshi",
     tab: "satoshi",
-    title: "Twenty specialists vote",
+    title: "Twenty-one specialists vote",
     body: "Each row is a seat. Listen is how much SATOSHI is actually hearing them. Click a row to jump to that bot and read the why.",
   },
   {

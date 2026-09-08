@@ -1,6 +1,6 @@
 /**
  * The shared brain. One engine loop on the server: pulls the live tape,
- * runs the 20 seats and the chair, prints calls, grades every finished
+ * runs the 21 seats and the chair, prints calls, grades every finished
  * window, and persists the learner to Postgres — around the clock, whether
  * or not any browser is open. Browsers in Live mode are viewers (GET /frame);
  * desk controls arrive through POST /desk with the admin key.
@@ -27,7 +27,7 @@ import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
-import { labDigestBits, labSettleReceipt, startLab, labFairNow } from "./lab.server";
+import { labDigestBits, labFairState, labSettleReceipt, startLab, labFairNow } from "./lab.server";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
@@ -620,7 +620,16 @@ async function liveSnap(e: Eng): Promise<Snapshot> {
     e.liveHist.oiUsd = appendPeriod(e.liveHist.oiUsd, bundle.as_of, bundle.oi_usd, OI_PERIOD_MS);
     bundle.oi_usd_series = e.liveHist.oiUsd;
   }
-  return bundleToSnapshot(bundle, e.learner.window_memory, e.prevSnap);
+  return attachLab(bundleToSnapshot(bundle, e.learner.window_memory, e.prevSnap));
+}
+
+/** The lab's settlement-rule fair value rides on the snapshot so INDEX reads it like any seat reads a feed. */
+function attachLab(snap: Snapshot): Snapshot {
+  const f = labFairState(snap.ticker);
+  snap.lab_fair_yes = f ? f.yes_cents : null;
+  snap.lab_locked = f ? f.locked : 0;
+  snap.lab_age_s = f ? f.age_s : 999;
+  return snap;
 }
 
 async function tick(e: Eng) {

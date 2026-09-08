@@ -5,7 +5,7 @@ export const Route = createFileRoute("/about")({
   head: () => ({
     meta: [
       { title: "How the desk works · Satoshi's Council" },
-      { name: "description", content: "Twenty specialist seats read Bitcoin every 15 minutes; SATOSHI chairs the vote; every window is graded on paper. Nothing here places a live trade." },
+      { name: "description", content: "Twenty-one specialist seats read Bitcoin every 15 minutes; SATOSHI chairs the vote; every window is graded on paper. Nothing here places a live trade." },
     ],
   }),
   component: About,
@@ -15,7 +15,7 @@ const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "1",
     title: "Read",
-    body: "Twenty seats sit at five desks. STRUCTURE reads candles and swings. TAPE reads order flow and the Kalshi book. DERIVS reads funding, open interest and liquidations. BOOK reads the odds themselves. CONTEXT reads the clock and the regime. Each seat looks at one thing and says what it sees.",
+    body: "Twenty-one seats sit at five desks. STRUCTURE reads candles and swings. TAPE reads order flow and the Kalshi book. DERIVS reads funding, open interest and liquidations. BOOK reads the odds themselves. CONTEXT reads the clock and the regime. Each seat looks at one thing and says what it sees.",
   },
   {
     n: "2",
@@ -31,7 +31,7 @@ const STEPS: { n: string; title: string; body: string }[] = [
 
 function About() {
   return (
-    <Page title="How the desk works" lede="A paper-only Bitcoin research desk. Every 15 minutes, twenty specialist seats read the market, SATOSHI chairs the vote, and the result is graded in public.">
+    <Page title="How the desk works" lede="A paper-only Bitcoin research desk. Every 15 minutes, twenty-one specialist seats read the market, SATOSHI chairs the vote, and the result is graded in public.">
       <ol className="grid gap-3">
         {STEPS.map((s) => (
           <li key={s.n} className="rounded-md border border-border bg-surface p-4">

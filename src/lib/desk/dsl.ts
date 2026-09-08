@@ -69,6 +69,15 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
     (liveMk.lean === "UP" && wick5.structure.trend === "UP") ||
     (liveMk.lean === "DOWN" && wick5.structure.trend === "DOWN");
 
+  // The lab's settlement-rule fair value (BRTI-anchored), read like any other feature.
+  const labLive = snap.lab_fair_yes != null && Number.isFinite(snap.lab_fair_yes) && snap.lab_age_s <= 30;
+  const labFair = labLive ? (snap.lab_fair_yes as number) : 50;
+  const labUpEdge = labFair - (snap.yes_ask || snap.yes_mid || 50) - snap.fee_yes;
+  const labDnEdge = 100 - labFair - (snap.no_ask || 100 - (snap.yes_mid || 50)) - snap.fee_no;
+  const labLean = !labLive ? 0 : labFair > 50.5 ? 1 : labFair < 49.5 ? -1 : 0;
+  const labEdge = labLean > 0 ? labUpEdge : labLean < 0 ? labDnEdge : 0;
+  const labConf = labLive ? clamp(0.4 + 0.6 * (Math.abs(labFair - 50) / 50), 0, 1) : 0;
+
   const out: FeatMap = {
     location_high: snap.location === "HIGH" ? 1 : 0,
     location_low: snap.location === "LOW" ? 1 : 0,
@@ -234,6 +243,12 @@ export function featOf(snap: Snapshot, trendDay: boolean, quiet: boolean): FeatM
     volt_coil: 0,
     volt_hot: 0,
     force_n: snap.force_n,
+    lab_live: labLive ? 1 : 0,
+    lab_fair: labFair,
+    lab_lean: labLean,
+    lab_edge: labEdge,
+    lab_conf: labConf,
+    lab_locked: snap.lab_locked,
   };
 
   const d = readDrift(snap);
@@ -868,6 +883,28 @@ export const SKILL_RULES: Record<string, SkillRule> = {
     all: [{ feat: "quiet", op: "eq", value: 1 }],
     lean: "WAIT",
     edge: "fixed:0.7",
+  },
+  "INDEX.settle_fair": {
+    all: [
+      { feat: "lab_live", op: "eq", value: 1 },
+      { feat: "lab_edge", op: "gte", thresh: "index.edge" },
+    ],
+    none: [
+      { feat: "chalk", op: "eq", value: 1 },
+      { feat: "quote_hole", op: "eq", value: 1 },
+    ],
+    lean: "sign:lab_lean",
+    edge: "lab_conf",
+  },
+  "INDEX.locked_avg": {
+    all: [
+      { feat: "lab_live", op: "eq", value: 1 },
+      { feat: "lab_locked", op: "gte", thresh: "index.locked" },
+      { feat: "lab_edge", op: "gte", thresh: "index.edge" },
+    ],
+    none: [{ feat: "chalk", op: "eq", value: 1 }],
+    lean: "sign:lab_lean",
+    edge: "lab_conf",
   },
   "WIRE.extreme_fng": {
     all: [{ feat: "fng_hot", op: "eq", value: 1 }],

@@ -3,14 +3,31 @@ import { directionalConf, last, round, SPEAK_CONF } from "./math";
 import { lastMark, MARK_LABEL, readWick, type WickMark } from "./patterns";
 import { patternTrust, rememberPatterns } from "./ledger";
 import { liveSkills, shadowSkills, skillScore } from "./skills";
-import { clockPrior, detectQuiet, detectTrendDay, readOrbit, readWarden, readWire, wireHealth } from "./context";
+import {
+  clockPrior,
+  detectQuiet,
+  detectTrendDay,
+  readOrbit,
+  readWarden,
+  readWire,
+  wireHealth,
+} from "./context";
 import { readClock } from "./clock";
 import { ET, fmtLocal, readMarket } from "./market-hours";
 import { readDrift, readExhaust, readStreak } from "./structure";
 import { readCarry, readCascade, readChain, readVolt } from "./derivs";
 import { readPulse, readTape, readVel, readWhale } from "./tape";
 import { threshOf } from "./thresholds";
-import type { FeatMap, FeedHealth, Lean, Learner, PaperLean, SeatId, Snapshot, Vote } from "./types";
+import type {
+  FeatMap,
+  FeedHealth,
+  Lean,
+  Learner,
+  PaperLean,
+  SeatId,
+  Snapshot,
+  Vote,
+} from "./types";
 import { RETIRED_SEATS } from "./crew";
 
 export type BotCtx = {
@@ -181,14 +198,15 @@ function pickLiveAndPaper(
   const parentN = learner.seat_n[seat] ?? 0;
   const fired: { id: string; score: number; got: Fired }[] = [];
   for (const s of pool) {
-    if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42) continue;
+    if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42)
+      continue;
     const got = tryEval(ctx, evalId, s.id);
     if (got) fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
   }
   fired.sort((a, b) => b.score - a.score);
   const keepWait =
     wait.hypothesis === "in-window path revision" || wait.hypothesis === "clock-owned window";
-  let chosen = keepWait ? wait : fired[0]?.got.v ?? wait;
+  let chosen = keepWait ? wait : (fired[0]?.got.v ?? wait);
   chosen = stampSkill(chosen, ctx);
 
   const papers: PaperLean[] = [];
@@ -206,8 +224,7 @@ function pickLiveAndPaper(
     });
   }
   chosen.paper = papers;
-  const sh =
-    papers.find((p) => p.status === "SHADOW") ?? papers.find((p) => p.status === "BENCH");
+  const sh = papers.find((p) => p.status === "SHADOW") ?? papers.find((p) => p.status === "BENCH");
   if (sh) chosen.shadow = { id: sh.id, lean: sh.lean, confidence: sh.confidence };
   return sitUnlessSure(brierScale(chosen, ctx), ctx);
 }
@@ -252,7 +269,11 @@ function sitUnlessSure(v: Vote, ctx: BotCtx): Vote {
   };
 }
 
-function applyHealth(v: Vote, h: { health: FeedHealth; age: number; mult: number }, ctx: BotCtx): Vote {
+function applyHealth(
+  v: Vote,
+  h: { health: FeedHealth; age: number; mult: number },
+  ctx: BotCtx,
+): Vote {
   v.health = h.health;
   v.feed_age_s = h.age;
   if (h.health === "DOWN") {
@@ -335,7 +356,8 @@ function wickGate(
   if (m.lean === "WAIT" && waitOk) return { ok: true, why: "", mul: 1 };
   if (m.pending) return { ok: false, why: `${MARK_LABEL[m.kind]} waiting confirm bar`, mul: 0 };
   if (!m.confirmed) return { ok: false, why: `${MARK_LABEL[m.kind]} confirm failed`, mul: 0 };
-  if (!m.contextOk) return { ok: false, why: `${MARK_LABEL[m.kind]} at ${m.loc} — no location context`, mul: 0 };
+  if (!m.contextOk)
+    return { ok: false, why: `${MARK_LABEL[m.kind]} at ${m.loc} — no location context`, mul: 0 };
   const trust = patternTrust(learner.pattern_book[MARK_LABEL[m.kind]]);
   if (trust.fold)
     return {
@@ -499,7 +521,10 @@ function wickBot(ctx: BotCtx): Vote {
         `${read.lastName} after |ret15| ${round(snap.ret15 * 100, 2)}% → sit`,
         {
           features: { pattern: read.lastName, ret15: snap.ret15 },
-          evidence: [`${read.lastName} body ${round((body / range) * 100, 0)}%`, `|ret15| ${round(Math.abs(snap.ret15) * 100, 2)}%`],
+          evidence: [
+            `${read.lastName} body ${round((body / range) * 100, 0)}%`,
+            `|ret15| ${round(Math.abs(snap.ret15) * 100, 2)}%`,
+          ],
           invalidate_if: "next bar is a full body",
           eyes: "1m doji",
         },
@@ -542,7 +567,10 @@ function wickBot(ctx: BotCtx): Vote {
         clamp01(0.6 * volBoost * got.g.mul),
         `liquidity sweep ${got.m.kind} confirmed → ${got.m.lean}`,
         [`${got.m.kind} CFM closed back through swing`, trendNote, rsiNote, mtfNote],
-        { invalidate_if: "next close continues through the swept swing", eyes: "1m sweep of swing" },
+        {
+          invalidate_if: "next close continues through the swept swing",
+          eyes: "1m sweep of swing",
+        },
         got.g.cap,
       );
     }
@@ -661,9 +689,10 @@ function dslSeat(
     );
   }
   const owned = clockOwnedWait(seat, ctx.snap);
-  const use = owned && (seat === "STRIKE" || seat === "CHEAP" || seat === "ODDS" || seat === "FADE")
-    ? owned
-    : wait;
+  const use =
+    owned && (seat === "STRIKE" || seat === "CHEAP" || seat === "ODDS" || seat === "FADE")
+      ? owned
+      : wait;
   return applyHealth(pickLiveAndPaper(ctx, seat, evalId, use), h, ctx);
 }
 
@@ -827,7 +856,10 @@ function cascadeBot(ctx: BotCtx): Vote {
     "CASCADE",
     "derivs",
     emptyVote("CASCADE", ctx.snap, {
-      eyes: snap.liq_source && snap.liq_source !== "DOWN" ? `liq ${snap.liq_source} 15m` : "liq PROXY fallback",
+      eyes:
+        snap.liq_source && snap.liq_source !== "DOWN"
+          ? `liq ${snap.liq_source} 15m`
+          : "liq PROXY fallback",
       hypothesis: c.proxy
         ? `${snap.liq_n >= 1 && snap.liq_source !== "DOWN" ? "REAL" : "PROXY"} flush ${c.lean}`
         : "no cascade",
@@ -891,6 +923,42 @@ function strikeBot(ctx: BotCtx): Vote {
   );
 }
 
+function indexBot(ctx: BotCtx): Vote {
+  const s = ctx.snap;
+  const live = ctx.feats.lab_live === 1;
+  const fair = ctx.feats.lab_fair ?? 50;
+  const yes = s.yes_ask || s.yes_mid;
+  const no = s.no_ask || 100 - (s.yes_mid || 50);
+  const read = emptyVote("INDEX", s, {
+    eyes: "settlement index vs strike",
+    hypothesis: live
+      ? `index fair ${round(fair, 1)}¢ · ${s.lab_locked}/60 prints locked`
+      : "lab dark — no settlement index print",
+    evidence: live
+      ? [
+          `fair YES ${round(fair, 1)}¢ vs ask ${round(yes, 1)}¢`,
+          `fair NO ${round(100 - fair, 1)}¢ vs ask ${round(no, 1)}¢`,
+          `locked ${s.lab_locked}/60 · age ${round(s.lab_age_s, 1)}s`,
+        ]
+      : ["no BRTI print in 30s", `YES ask ${round(yes, 1)}¢`, `NO ask ${round(no, 1)}¢`],
+    reasoning: live ? "edge after fee under the bar → WAIT" : "lab dark → WAIT",
+    invalidate_if: "index fair crosses back through the ask",
+    features: {
+      lab_fair: round(fair, 1),
+      lab_edge: round(ctx.feats.lab_edge ?? 0, 1),
+      locked: s.lab_locked,
+    },
+  });
+  const v = dslSeat(ctx, "INDEX", "kalshi", read);
+  // When a rule fires, keep the seat's own read on the card: the fair, the
+  // asks and the locked prints say more than the rule's predicate line.
+  if (live && v.skill_used !== "SIT") {
+    v.hypothesis = read.hypothesis;
+    v.evidence = [...read.evidence, ...v.evidence].slice(0, 6);
+  }
+  return v;
+}
+
 function cheapBot(ctx: BotCtx): Vote {
   const s = ctx.snap;
   const yes = s.yes_ask || s.yes_mid;
@@ -944,8 +1012,14 @@ function fadeBot(ctx: BotCtx): Vote {
     return applyHealth(
       emptyVote("FADE", s, {
         eyes: "YES rip (need a print)",
-        hypothesis: hole ? "spread hole — quote vanished, not a rip" : "no trade behind the mid jump",
-        evidence: [`Δ60s ${round(d60, 1)}¢`, `spr ${s.spread_cents}¢`, `print ${s.print_age_s.toFixed(0)}s`],
+        hypothesis: hole
+          ? "spread hole — quote vanished, not a rip"
+          : "no trade behind the mid jump",
+        evidence: [
+          `Δ60s ${round(d60, 1)}¢`,
+          `spr ${s.spread_cents}¢`,
+          `print ${s.print_age_s.toFixed(0)}s`,
+        ],
         reasoning: "FADE needs a print, not a disappearing quote → WAIT",
         invalidate_if: "a trade prints inside 20s with spread ≤ 6¢",
       }),
@@ -960,7 +1034,11 @@ function fadeBot(ctx: BotCtx): Vote {
     emptyVote("FADE", s, {
       eyes: "YES mid rip + last print",
       hypothesis: `Δ60s ${round(d60, 1)}¢ — need 8–12¢ with a print`,
-      evidence: [`Δ30 ${round(d30, 1)}¢`, `Δ60 ${round(d60, 1)}¢`, `print ${s.print_age_s.toFixed(0)}s spr ${s.spread_cents}¢`],
+      evidence: [
+        `Δ30 ${round(d30, 1)}¢`,
+        `Δ60 ${round(d60, 1)}¢`,
+        `print ${s.print_age_s.toFixed(0)}s spr ${s.spread_cents}¢`,
+      ],
       reasoning: "no 60s rip with a print → WAIT",
       invalidate_if: "YES mid rip ≥ 8¢ in 60s AND a trade inside 20s",
     }),
@@ -970,8 +1048,13 @@ function fadeBot(ctx: BotCtx): Vote {
 function orbitBot(ctx: BotCtx): Vote {
   const s = ctx.snap;
   const o = readOrbit(s);
-  const skill =
-    o.quiet ? "ORBIT.quiet_raise_bar" : o.weekend ? "ORBIT.weekend_thin" : o.trend ? "ORBIT.trend_day" : "SIT";
+  const skill = o.quiet
+    ? "ORBIT.quiet_raise_bar"
+    : o.weekend
+      ? "ORBIT.weekend_thin"
+      : o.trend
+        ? "ORBIT.trend_day"
+        : "SIT";
   return emptyVote("ORBIT", s, {
     eyes: "regime tiles",
     hypothesis: `${o.regime}${o.weekend ? " · weekend" : ""} — no side`,
@@ -1022,7 +1105,12 @@ function clockBot(ctx: BotCtx): Vote {
     return emptyVote("CLOCK", s, {
       eyes: "session clock",
       hypothesis: `FINAL ${round(s.mins_left, 1)}m — strike owns the clock`,
-      evidence: [`session ${s.session}`, `${round(s.mins_left, 1)}m left`, `prior n=${n}`, marketLine],
+      evidence: [
+        `session ${s.session}`,
+        `${round(s.mins_left, 1)}m left`,
+        `prior n=${n}`,
+        marketLine,
+      ],
       reasoning: "late window — CLOCK sits; STRIKE owns z",
       skill_used: "CLOCK.final_sit",
       skill_status: "LIVE",
@@ -1035,7 +1123,12 @@ function clockBot(ctx: BotCtx): Vote {
     return emptyVote("CLOCK", s, {
       eyes: "session clock",
       hypothesis: `no Wilson prior for ${key}`,
-      evidence: [`session ${s.session}`, `mins ${round(s.mins_left, 2)}`, `n=${n} need 8`, marketLine],
+      evidence: [
+        `session ${s.session}`,
+        `mins ${round(s.mins_left, 2)}`,
+        `n=${n} need 8`,
+        marketLine,
+      ],
       reasoning: "UNCALIBRATED — WAIT until hour/weekday n ≥ 8",
       skill_used: "CLOCK.session_prior",
       skill_status: "LIVE",
@@ -1048,7 +1141,8 @@ function clockBot(ctx: BotCtx): Vote {
   return emptyVote("CLOCK", s, {
     eyes: "session clock",
     lean: prior.lean,
-    confidence: prior.lean === "WAIT" ? 70 : Math.min(58, Math.round(50 + Math.abs(prior.hit - 0.5) * 80)),
+    confidence:
+      prior.lean === "WAIT" ? 70 : Math.min(58, Math.round(50 + Math.abs(prior.hit - 0.5) * 80)),
     hypothesis: `soft Wilson prior ${key} hit ${round(prior.hit * 100, 0)}% n=${n} W ${round(prior.wilson * 100, 0)}%`,
     evidence: [
       `session ${s.session}`,
@@ -1089,7 +1183,11 @@ function wireBot(ctx: BotCtx): Vote {
       hypothesis: w.hot
         ? `F&G ${w.fng} ${w.label} 7d ${w.delta7 >= 0 ? "+" : ""}${round(w.delta7, 0)} — tagged`
         : `F&G ${w.fng} ${w.label} — not a hot extreme`,
-      evidence: [`F&G ${w.fng} ${w.label}`, `7d Δ ${w.delta7 >= 0 ? "+" : ""}${round(w.delta7, 0)}`, "daily index"],
+      evidence: [
+        `F&G ${w.fng} ${w.label}`,
+        `7d Δ ${w.delta7 >= 0 ? "+" : ""}${round(w.delta7, 0)}`,
+        "daily index",
+      ],
       reasoning: "tags a hot extreme (path agrees); WIRE does not vote a side → WAIT",
       invalidate_if: `index leaves ≤${T(ctx, "fng.lo").toFixed(0)} / ≥${T(ctx, "fng.hi").toFixed(0)} or 7d path cools`,
     }),
@@ -1176,6 +1274,7 @@ const FNS: Record<SeatId, (ctx: BotCtx) => Vote> = {
   STRIKE: strikeBot,
   CHEAP: cheapBot,
   FADE: fadeBot,
+  INDEX: indexBot,
   ORBIT: orbitBot,
   CLOCK: clockBot,
   WIRE: wireBot,

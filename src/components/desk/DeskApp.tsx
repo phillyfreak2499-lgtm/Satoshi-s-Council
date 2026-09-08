@@ -35,7 +35,7 @@ const DESKS: { id: TabId; label: string; intro: string }[] = [
   { id: "structure", label: "STRUCTURE", intro: "candles and swings · WICK, DRIFT, STREAK, EXHAUST" },
   { id: "tape", label: "TAPE", intro: "order flow and the Kalshi book · PULSE, TAPE, WHALE, VEL" },
   { id: "derivs", label: "DERIVS", intro: "funding, open interest, liquidations · CARRY, CHAIN, CASCADE, VOLT" },
-  { id: "book", label: "BOOK", intro: "the odds themselves · ODDS, STRIKE, CHEAP, FADE" },
+  { id: "book", label: "BOOK", intro: "the odds themselves · ODDS, STRIKE, CHEAP, FADE, INDEX" },
   { id: "context", label: "CONTEXT", intro: "clock and regime · ORBIT, CLOCK, WIRE, WARDEN" },
 ];
 const DESK_IDS = new Set<TabId>(DESKS.map((d) => d.id));
@@ -218,7 +218,7 @@ export function DeskApp() {
             </Tip>
           </div>
           <p className="hidden font-mono text-micro text-subtle sm:block">
-            paper-only BTC 15-minute research desk · 20 seats read the tape · SATOSHI chairs the vote
+            paper-only BTC 15-minute research desk · 21 seats read the tape · SATOSHI chairs the vote
           </p>
         </div>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">

@@ -17,7 +17,7 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
   { id: "structure", label: "STRUCTURE", hint: "candles and swings · WICK DRIFT STREAK EXHAUST" },
   { id: "tape", label: "TAPE", hint: "order flow and the book · PULSE TAPE WHALE VEL" },
   { id: "derivs", label: "DERIVS", hint: "funding, open interest, liquidations · CARRY CHAIN CASCADE VOLT" },
-  { id: "book", label: "BOOK", hint: "the odds themselves · ODDS STRIKE CHEAP FADE" },
+  { id: "book", label: "BOOK", hint: "the odds themselves · ODDS STRIKE CHEAP FADE INDEX" },
   { id: "context", label: "CONTEXT", hint: "clock and regime · ORBIT CLOCK WIRE WARDEN" },
   { id: "books", label: "BOOKS", hint: "the chair's money, window by window, and replays" },
   { id: "board", label: "BOARD", hint: "ideas, feedback and the desk's updates" },

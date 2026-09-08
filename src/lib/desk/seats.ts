@@ -26,6 +26,7 @@ export const SEATS: SeatMeta[] = [
   { id: "STRIKE", callsign: "K", tab: "book", base: 0.11, eyes: "spot vs strike", feed: "mixed" },
   { id: "CHEAP", callsign: "VAL", tab: "book", base: 0.1, eyes: "42/58¢ bands", feed: "kalshi" },
   { id: "FADE", callsign: "RIP", tab: "book", base: 0.12, eyes: "60s YES rip", feed: "kalshi" },
+  { id: "INDEX", callsign: "BRTI", tab: "book", base: 0.06, eyes: "settlement index fair", feed: "kalshi" },
   { id: "ORBIT", callsign: "REG", tab: "context", base: 0.05, eyes: "regime tiles", feed: "meta" },
   { id: "CLOCK", callsign: "TOD", tab: "context", base: 0.07, eyes: "session clock", feed: "meta" },
   { id: "WIRE", callsign: "FNG", tab: "context", base: 0.04, eyes: "Fear & Greed", feed: "meta" },
@@ -40,7 +41,7 @@ export const TAB_SEATS: Record<SeatTab, SeatId[]> = {
   structure: ["WICK", "DRIFT", "STREAK", "EXHAUST"],
   tape: ["PULSE", "TAPE", "WHALE", "VEL"],
   derivs: ["CARRY", "CHAIN", "CASCADE", "VOLT"],
-  book: ["ODDS", "STRIKE", "CHEAP", "FADE"],
+  book: ["ODDS", "STRIKE", "CHEAP", "FADE", "INDEX"],
   context: ["ORBIT", "CLOCK", "WIRE", "WARDEN"],
 };
 
@@ -52,7 +53,7 @@ export const DERIVS_FAMILY: SeatId[] = ["CARRY", "CHAIN", "CASCADE"];
 /** Same 1m candle stream — not independent votes. */
 export const CANDLE_FAMILY: SeatId[] = ["WICK", "DRIFT", "EXHAUST", "PULSE", "WHALE", "VOLT"];
 /** Kalshi quotes / contract — not independent votes. */
-export const BOOK_FAMILY: SeatId[] = ["TAPE", "VEL", "ODDS", "STRIKE", "CHEAP", "FADE"];
+export const BOOK_FAMILY: SeatId[] = ["TAPE", "VEL", "ODDS", "STRIKE", "CHEAP", "FADE", "INDEX"];
 
 export type EvidenceFamily = "candle" | "book" | "derivs" | "history" | "context";
 
@@ -73,6 +74,7 @@ export const EVIDENCE_OF: Record<SeatId, EvidenceFamily> = {
   STRIKE: "book",
   CHEAP: "book",
   FADE: "book",
+  INDEX: "book",
   ORBIT: "context",
   CLOCK: "context",
   WIRE: "context",
