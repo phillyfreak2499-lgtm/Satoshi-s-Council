@@ -128,4 +128,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The chair's paper book now has a price floor: it only fills at 70¢ or better. The record made the case — of 52 graded calls, the 20 booked under 70¢ won 4 and lost 280¢; the 32 at 70¢ or better won 28 and made +202¢ after fees. Under the floor the chair still shows its read and the seats still grade on it; the book just waits. Old calls stay in the ledger as they were.",
   },
+  {
+    slug: "2026-09-08-index-seat",
+    body:
+      "A twenty-first seat, from the lab. INDEX (BRTI) prices each window on the settlement rule itself: the average of the final minute's sixty index prints against the strike, with the prints already locked counted as known. It votes the side whose ask sits under that fair by more than the fee, loudest in the final minute. It starts in shadow with a small voice and earns rank like every seat.",
+  },
 ];

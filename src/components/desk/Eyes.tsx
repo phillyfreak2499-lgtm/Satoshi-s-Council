@@ -733,6 +733,8 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
       );
     } else if (seat === "TAPE") {
       hist(ctx, w, h, snap.imbalance_hist, (v) => (v >= 0 ? UP : DOWN));
+    } else if (seat === "INDEX") {
+      spark(ctx, w, h, snap.yes_mid_path, WAIT, snap.lab_fair_yes ?? 50);
     } else if (seat === "ODDS" || seat === "FADE" || seat === "CHEAP") {
       spark(ctx, w, h, snap.yes_mid_path, WAIT, 50);
     } else if (seat === "VEL") {

@@ -401,6 +401,23 @@ export function labFairNow(ticker: string): number | null {
   return Math.round(L.fair.p_up * 1000) / 10;
 }
 
+export type LabFairState = { yes_cents: number; locked: number; age_s: number; mean: number; sd: number };
+
+/** The settlement-rule fair value as the INDEX seat reads it: YES cents, locked final-minute prints, and its age. */
+export function labFairState(ticker: string): LabFairState | null {
+  const L = lab();
+  if (!L.fair || L.fairTicker !== ticker) return null;
+  const age = (Date.now() - L.fairT) / 1000;
+  if (age > 30) return null;
+  return {
+    yes_cents: Math.round(L.fair.p_up * 1000) / 10,
+    locked: Math.max(0, Math.min(60, Math.round(L.fair.k))),
+    age_s: Math.round(age * 10) / 10,
+    mean: L.fair.mean,
+    sd: L.fair.sd,
+  };
+}
+
 function fairYesCents(L: Lab): number {
   return L.fair ? L.fair.p_up * 100 : 50;
 }

@@ -353,6 +353,9 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     edge_down: 0,
     fee_yes: 2,
     fee_no: 2,
+    lab_fair_yes: null,
+    lab_locked: 0,
+    lab_age_s: 999,
   };
   return enrichSnapshot(snap);
 }

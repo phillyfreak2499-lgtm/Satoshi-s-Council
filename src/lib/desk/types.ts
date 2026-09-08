@@ -78,6 +78,7 @@ export type SeatId =
   | "STRIKE"
   | "CHEAP"
   | "FADE"
+  | "INDEX"
   | "ORBIT"
   | "CLOCK"
   | "WIRE"
@@ -100,6 +101,7 @@ export const SEAT_IDS: SeatId[] = [
   "STRIKE",
   "CHEAP",
   "FADE",
+  "INDEX",
   "ORBIT",
   "CLOCK",
   "WIRE",
@@ -267,6 +269,12 @@ export type Snapshot = {
   edge_down: number;
   fee_yes: number;
   fee_no: number;
+  /** The lab's settlement-rule fair value for YES, in cents (BRTI-anchored); null when the lab is dark. Server only. */
+  lab_fair_yes: number | null;
+  /** Final-minute settlement prints already locked into the average, 0–60. */
+  lab_locked: number;
+  /** Age of that fair value in seconds (999 when the lab is dark). */
+  lab_age_s: number;
 };
 
 export type ShadowLean = {

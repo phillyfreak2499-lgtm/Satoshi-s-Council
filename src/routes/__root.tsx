@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "A paper-only Bitcoin 15-minute research desk. Twenty specialist seats read the tape; SATOSHI chairs the vote. Nothing here places a live trade. Not financial advice.",
+          "A paper-only Bitcoin 15-minute research desk. Twenty-one specialist seats read the tape; SATOSHI chairs the vote. Nothing here places a live trade. Not financial advice.",
       },
       { name: "theme-color", content: "#08090b" },
     ],

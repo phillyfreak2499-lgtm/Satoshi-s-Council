@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CallLogRow, ChairResult, Lean, SeatId, Settings, Snapshot } from "@/lib/desk/types";
+import { SEAT_IDS, type CallLogRow, type ChairResult, type Lean, type SeatId, type Settings, type Snapshot } from "@/lib/desk/types";
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from "./bits";
@@ -341,7 +341,7 @@ export function SatoshiTab({
 
       <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
         <span className="text-subtle">
-          <Tip k="pane.seats">the twenty seats</Tip> · {speaking} speaking · {chair.rows.length - speaking} sitting
+          <Tip k="pane.seats">the twenty-one seats</Tip> · {speaking} speaking · {chair.rows.length - speaking} sitting
         </span>
         <div role="group" aria-label="Which seats to show" className="ml-auto flex gap-1">
           {(["all", "speaking", "live"] as const).map((v) => (
@@ -355,7 +355,7 @@ export function SatoshiTab({
                 view === v ? "border-border-strong bg-surface-3 text-fg" : "border-border text-muted hover:text-fg",
               )}
             >
-              {v === "all" ? "all 20" : v === "speaking" ? "speaking" : "LIVE skills"}
+              {v === "all" ? `all ${SEAT_IDS.length}` : v === "speaking" ? "speaking" : "LIVE skills"}
             </button>
           ))}
         </div>
