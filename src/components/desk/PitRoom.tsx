@@ -358,7 +358,7 @@ export function PitRoom() {
                 type="submit"
                 className="min-h-12 rounded-sm bg-fg px-4 font-mono text-ui font-medium text-bg hover:bg-chip"
               >
-                Take a stool
+                Join the pit
               </button>
               <span className="font-mono text-micro text-subtle">
                 no login — the callsign lives in this browser
@@ -602,7 +602,7 @@ export function PitRoom() {
               </span>
             </div>
             {!humans.length ? (
-              <div className="mt-2 font-mono text-micro text-muted">Take the first stool.</div>
+              <div className="mt-2 font-mono text-micro text-muted">Nobody has locked this week. Be first.</div>
             ) : null}
             <table className="mt-2 w-full font-mono text-micro">
               <thead className="text-subtle">
