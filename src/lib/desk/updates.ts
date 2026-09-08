@@ -123,4 +123,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "A seat review, with numbers. EXHAUST had every pattern behind a hard 1% hourly run and this week never saw one; all six patterns now use one tunable run threshold that starts at 0.7% and the learner can move. CHEAP is retired to shadow: a side only gets cheap when the price has run away from the strike, which is when STRIKE already owns the window, and its record was 0 for 8; its reads are still graded. WIRE now tags a Fear & Greed extreme instead of pretending to vote with a confidence that could never clear the bar. Chair v2 buys no more longshots: it was 2 for 43 under 30¢. It now needs six cents of edge, never buys under 35¢, and may only disagree with the market as far as its calibration record has earned, which today is not at all. It leaves the public boards until it does.",
   },
+  {
+    slug: "2026-09-08-price-floor",
+    body:
+      "The chair's paper book now has a price floor: it only fills at 70¢ or better. The record made the case — of 52 graded calls, the 20 booked under 70¢ won 4 and lost 280¢; the 32 at 70¢ or better won 28 and made +202¢ after fees. Under the floor the chair still shows its read and the seats still grade on it; the book just waits. Old calls stay in the ledger as they were.",
+  },
 ];

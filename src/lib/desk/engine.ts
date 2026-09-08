@@ -6,6 +6,7 @@ import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type His
 import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
+import { bookable } from "./book-floor";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { startPulse, stopPulse } from "./pulse";
@@ -217,6 +218,7 @@ function noteCall(snap: Snapshot, chair: ChairResult) {
   }
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
+  if (!bookable(cents)) return; // the book's price floor, same as the shared brain
   const flipped = false;
   callLog = [
     {

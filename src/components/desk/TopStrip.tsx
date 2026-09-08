@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
-import type { ChairResult, Snapshot } from "@/lib/desk/types";
+import type { CallLogRow, ChairResult, Snapshot } from "@/lib/desk/types";
+import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
 import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
 import { Tip } from "./Tip";
 import { StripSkeleton } from "./Skeleton";
@@ -122,9 +123,11 @@ export function TopStrip({
   tz,
   brainAge,
   frameAt = 0,
+  callLog,
 }: {
   snap: Snapshot | null;
   chair: ChairResult | null;
+  callLog?: CallLogRow[];
   demo: boolean;
   learn: string;
   graded: number;
@@ -141,6 +144,7 @@ export function TopStrip({
   const bar = chair?.bar ?? 0.3;
   const fill = Math.min(1, Math.abs(score) / Math.max(bar, 0.01));
   const market = readMarket(snap.as_of, snap.close_time);
+  const book = bookState(snap, lean, callLog ?? []);
 
   return (
     <div data-tour="tour-strip" className="border-b border-border bg-surface px-3 py-2">
@@ -165,6 +169,19 @@ export function TopStrip({
           )}
           {!demo && brainAge != null ? <BrainPulse age={brainAge} since={frameAt} /> : null}
           <LeanChip lean={lean} cents={askCents(snap, lean)} className="px-2 py-0.5 text-ui" />
+          {book.kind === "floor" ? (
+            <Tip k="book.floor" mark={false}>
+              <span className="rounded-sm border border-wait/40 bg-wait/10 px-1.5 py-px font-mono text-micro text-wait">
+                no fill · {CHAIR_MIN_ASK_CENTS}¢ floor
+              </span>
+            </Tip>
+          ) : book.kind === "booked" ? (
+            <Tip k="pane.call-log" mark={false}>
+              <span className="rounded-sm border border-border px-1.5 py-px font-mono text-micro text-muted">
+                booked {book.lean} {book.cents.toFixed(0)}¢
+              </span>
+            </Tip>
+          ) : null}
           <Tip k="strip.conf" mark={false}>
             <Mono className="text-title">
               {conf}

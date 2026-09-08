@@ -22,6 +22,10 @@ const QA: { q: string; a: string }[] = [
     a: "Because a 15-minute Bitcoin window is close to a coin flip most of the time, and the price already knows it. The chair only calls a side when the seats agree hard enough to be worth the ask plus the fee. WAIT is the honest answer more often than not, and the books show what happens when it speaks.",
   },
   {
+    q: "The chair shows UP or DOWN but the log has no fill. Why?",
+    a: "The price floor. The chair's read and the paper book are two different things. The book only fills at 70¢ or better, because on the record the chair's calls under 70¢ lost money and its calls at 70¢ or better made it. A read under the floor still shows on the strip and still grades the seats; it is booked only if the ask reaches 70¢ before the window closes.",
+  },
+  {
     q: "What does paper mean?",
     a: "Every call is booked at the real ask, charged the real Kalshi fee, held to the real settlement, and graded in cents. No order is ever sent. The ledger, the seats' records and the chair's books are all paper.",
   },
