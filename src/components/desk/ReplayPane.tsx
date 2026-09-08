@@ -303,7 +303,9 @@ function Lanes({ r, cursor }: { r: Replay; cursor: number }) {
   return <canvas ref={ref} className="block w-full rounded-sm" style={{ height: `${rows * 9 + 4}px` }} />;
 }
 
-export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string; onClose: () => void }) {
+/** onClose is the in-desk close button; without it the pane stands alone on its own page. */
+export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string; onClose?: () => void }) {
+  const pageHref = `/window/${encodeURIComponent(ticker)}`;
   const [r, setR] = useState<Replay | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
@@ -353,9 +355,11 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
       <Pane title={title}>
         <div className="flex items-center justify-between font-mono text-micro text-muted">
           <span>{err ? `no replay: ${err}` : "rewinding…"}</span>
-          <button type="button" className="rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg" onClick={onClose}>
-            close
-          </button>
+          {onClose ? (
+            <button type="button" className="rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg" onClick={onClose}>
+              close
+            </button>
+          ) : null}
         </div>
       </Pane>
     );
@@ -388,9 +392,16 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
           <span className="text-subtle">chair sat out</span>
         )}
         {r.partial ? <span className="text-wait">partial: the recorder joined this window late</span> : null}
-        <button type="button" className="ml-auto rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg" onClick={onClose}>
-          close
-        </button>
+        {onClose ? (
+          <>
+            <a href={pageHref} target="_blank" rel="noopener" className="ml-auto rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg">
+              open as a page ↗
+            </a>
+            <button type="button" className="rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg" onClick={onClose}>
+              close
+            </button>
+          </>
+        ) : null}
       </div>
       <PriceChart r={r} cursor={i} />
       <div className="mt-1">
