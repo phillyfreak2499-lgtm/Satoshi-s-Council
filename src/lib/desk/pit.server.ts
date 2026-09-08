@@ -117,6 +117,12 @@ async function aggFor(ticker: string): Promise<Agg> {
   return S.aggInflight;
 }
 
+/** Forget the cached aggregate and week ranks (after an admin reset). */
+export function resetPitCaches(): void {
+  S.agg = null;
+  S.week = null;
+}
+
 /** Bump the cached aggregate the moment a lock lands, so the locker's own rack is exact. */
 export function noteLock(call: Pick<HumanCall, "ticker" | "lean" | "entry_cents">): void {
   if (S.agg && S.agg.ticker === call.ticker) S.agg = applyLock(S.agg, call);

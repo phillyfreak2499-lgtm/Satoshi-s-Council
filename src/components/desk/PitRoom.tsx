@@ -61,6 +61,14 @@ function fmtDayTime(iso: string): string {
   }
 }
 
+function fmtSince(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+  } catch {
+    return iso.slice(5, 10);
+  }
+}
+
 function centsStr(v: number): string {
   return `${v.toFixed(v % 1 ? 1 : 0)}¢`;
 }
@@ -630,6 +638,7 @@ export function PitRoom() {
                         {r.name}
                         {r.me ? <span className="text-subtle"> (you)</span> : null}
                         {r.warming ? <span className="text-subtle"> warming up</span> : null}
+                        {r.since ? <div className="text-[10px] text-subtle">since {fmtSince(r.since)}</div> : null}
                       </td>
                       <td className="py-1.5 pr-2 text-right tabular">{r.n}</td>
                       <td className="py-1.5 pr-2 text-right tabular">

@@ -5,6 +5,14 @@ import { cn } from "@/lib/utils";
 import { Pane } from "./bits";
 import { Tip } from "./Tip";
 
+function fmtSince(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+  } catch {
+    return iso.slice(5, 10);
+  }
+}
+
 function fmtC(n: number): string {
   return `${n > 0 ? "+" : ""}${n.toFixed(1)}¢`;
 }
@@ -35,6 +43,7 @@ function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: A
                   {r.name}
                   {r.me ? <span className="ml-1 text-subtle">(you)</span> : null}
                   {r.warming ? <span className="ml-1 font-normal text-subtle">warming up</span> : null}
+                  {r.since ? <span className="ml-1 font-normal text-subtle">since {fmtSince(r.since)}</span> : null}
                 </td>
                 <td className="py-1 pr-2">{r.n}</td>
                 <td className="py-1 pr-2">{r.hit_pct == null ? "—" : `${r.hit_pct}%`}</td>

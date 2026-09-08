@@ -13,7 +13,7 @@ export type HumanCall = {
   cents: number | null;
 };
 
-export type ArenaRow = { name: string; n: number; wins: number; net: number; avg_conf: number | null; hit_pct: number | null; me?: boolean; warming?: boolean };
+export type ArenaRow = { name: string; n: number; wins: number; net: number; avg_conf: number | null; hit_pct: number | null; me?: boolean; warming?: boolean; since?: string | null };
 
 export type ArenaMe = {
   name: string;

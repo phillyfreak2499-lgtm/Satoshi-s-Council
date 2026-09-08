@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { Tip } from "./Tip";
 import { AlertsPanel } from "./AlertsPanel";
 import { DisplayPanel } from "./DisplayPanel";
+import { ArenaAdminPanel } from "./ArenaAdminPanel";
 
 function AdminKeyField() {
   const [key, setKey] = useState(getAdminKey);
@@ -51,6 +52,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
     <div data-tour="tour-settings" className="grid gap-3 p-3 lg:grid-cols-2">
       <AlertsPanel />
       <DisplayPanel />
+      <ArenaAdminPanel />
       <section className="rounded-md border border-border bg-surface p-3">
         <h3 className="mb-3 font-mono text-micro uppercase tracking-widest text-subtle">Council</h3>
         <label className="mb-2 block font-mono text-ui text-muted">

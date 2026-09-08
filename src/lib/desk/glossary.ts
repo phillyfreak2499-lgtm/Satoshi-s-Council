@@ -95,6 +95,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Traffic",
     body: "How many people are in the room and on the desk, counted first-party: page views, paper locks, tours started and finished, glossary opens, searches, shares and settle alerts. No analytics scripts, no cookies, nothing about who. One row per Chicago day.",
   },
+  "settings.arena": {
+    title: "Arena",
+    body: "The room's house rules and its one admin control. A callsign belongs to the first browser that takes it; a network can create three new callsigns a day; a name is ranked only after three settled locks and shows the day it joined. Clear the Arena wipes every callsign and paper lock so the boards start over.",
+  },
   "tab.crew": {
     title: "PIT CREW",
     body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",

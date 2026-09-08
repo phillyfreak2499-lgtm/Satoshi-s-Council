@@ -21,8 +21,10 @@ export default async function call(event: unknown) {
     if (!raw || typeof raw !== "object") return json(400, { ok: false, error: "bad body" });
     const eng = await import("../../src/lib/desk/server-engine");
     eng.ensureServerEngine();
-    const { placeCall } = await import("../../src/lib/desk/arena.server");
-    const r = await placeCall({ token: raw.token, name: raw.name, lean: raw.lean, conf: raw.conf });
+    const { placeCall, netHash } = await import("../../src/lib/desk/arena.server");
+    const headers = (event as { req?: { headers?: Headers } }).req?.headers;
+    const ip = headers?.get("x-forwarded-for") ?? headers?.get("x-real-ip") ?? null;
+    const r = await placeCall({ token: raw.token, name: raw.name, lean: raw.lean, conf: raw.conf, net: netHash(ip) });
     if (!r.ok) return json(r.status, { ok: false, error: r.error });
     // The room renders YOU LOCKED and the new N from this reply, no re-GET.
     const { noteLock, rackFor } = await import("../../src/lib/desk/pit.server");

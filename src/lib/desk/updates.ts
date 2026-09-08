@@ -108,4 +108,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "THE PIT explains itself on a first visit: four short stops over the window, the lock, the room and the settle, skippable, and replayable any time from how it works in the room's header. It says the same things the room's copy says, in order: one window at a time, lock once at the ask plus fee on paper, the room shows itself after you lock, come back when it settles.",
   },
+  {
+    slug: "2026-09-08-pit-house-rules",
+    body:
+      "House rules for THE PIT. The test locks from the build are cleared. A callsign now belongs to the first browser that takes it, so nobody can wear someone else's name; a network can create three new callsigns a day, so a bad week cannot be shrugged off with a fresh name every hour; a name is ranked only after three settled locks; and every board row shows the day the callsign joined, so a fresh name looks fresh. No accounts, no addresses stored. SETTINGS gained a Clear the Arena control for the desk's owner.",
+  },
 ];

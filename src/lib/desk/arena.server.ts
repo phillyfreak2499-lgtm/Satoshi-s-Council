@@ -5,6 +5,7 @@
  * at the current ask plus the exact Kalshi taker fee, never inside the last
  * thirty seconds, held to settlement.
  */
+import { createHash } from "node:crypto";
 import { takerFeeCentsExact } from "./clock";
 
 async function sql() {
@@ -17,8 +18,18 @@ const TOKEN_RE = /^[A-Za-z0-9\-_]{16,64}$/;
 const MIN_MINS_LEFT = 0.5;
 /** Settled locks before a callsign is ranked on a board; fewer shows as warming up. */
 export const RANK_MIN_N = 3;
+/** New callsigns one network may create in a day. Enough for a household, not for hopping. */
+export const NEW_NAMES_PER_DAY = 3;
 
-export type CallInput = { token: unknown; name?: unknown; lean: unknown; conf?: unknown };
+/** A one-way id for a network: hash of a server secret and the address. The address itself is never stored. */
+export function netHash(ip: unknown): string | null {
+  const s = typeof ip === "string" ? ip.split(",")[0]!.trim() : "";
+  if (!s) return null;
+  const salt = process.env.DESK_ADMIN_KEY || "satoshi-pit";
+  return createHash("sha256").update(`${salt}|${s}`).digest("hex").slice(0, 32);
+}
+
+export type CallInput = { token: unknown; name?: unknown; lean: unknown; conf?: unknown; net?: string | null };
 export type CallResult =
   | { ok: true; call: HumanCall }
   | { ok: false; error: string; status: number };
@@ -68,11 +79,35 @@ export async function placeCall(input: CallInput): Promise<CallResult> {
   const db = await sql();
   const name = cleanName(input.name);
   const existing = await db<{ name: string }>`select name from desk_players where token = ${token}`;
+  const taken = async (n: string) => {
+    const holder = await db<{ token: string }>`select token from desk_players where lower(name) = lower(${n}) limit 1`;
+    return holder.length > 0 && holder[0]!.token !== token;
+  };
+  const TAKEN = { ok: false as const, error: "that callsign is taken — pick another", status: 409 };
   if (!existing.length) {
     if (!name) return { ok: false, error: "pick a callsign first (2–16 letters or digits)", status: 400 };
-    await db`insert into desk_players (token, name) values (${token}, ${name}) on conflict (token) do nothing`;
+    if (await taken(name)) return TAKEN;
+    const net = input.net ?? null;
+    if (net) {
+      const [c] = await db<{ n: number }>`
+        select count(*)::int as n from desk_players where net_hash = ${net} and created_at > now() - interval '24 hours'
+      `;
+      if ((c?.n ?? 0) >= NEW_NAMES_PER_DAY) {
+        return { ok: false, error: `${NEW_NAMES_PER_DAY} new callsigns from one network in a day is the limit — use the one you have`, status: 429 };
+      }
+    }
+    try {
+      await db`insert into desk_players (token, name, net_hash) values (${token}, ${name}, ${net}) on conflict (token) do nothing`;
+    } catch {
+      return TAKEN;
+    }
   } else if (name && name !== existing[0]!.name) {
-    await db`update desk_players set name = ${name}, last_seen = now() where token = ${token}`;
+    if (await taken(name)) return TAKEN;
+    try {
+      await db`update desk_players set name = ${name}, last_seen = now() where token = ${token}`;
+    } catch {
+      return TAKEN;
+    }
   } else {
     await db`update desk_players set last_seen = now() where token = ${token}`;
   }
@@ -104,12 +139,12 @@ export async function settleHumanCalls(ticker: string, winner: "UP" | "DOWN"): P
   }
 }
 
-export type ArenaRow = { name: string; n: number; wins: number; net: number; avg_conf: number | null; hit_pct: number | null; me?: boolean; warming?: boolean };
+export type ArenaRow = { name: string; n: number; wins: number; net: number; avg_conf: number | null; hit_pct: number | null; me?: boolean; warming?: boolean; since?: string | null };
 
 async function humanRows(days: number | null, token: string | null): Promise<ArenaRow[]> {
   const db = await sql();
-  const rows = await db<{ token: string; name: string; n: number; wins: number; net: number; avg_conf: number | null; hits: number }>`
-    select p.token, p.name,
+  const rows = await db<{ token: string; name: string; since: Date | string; n: number; wins: number; net: number; avg_conf: number | null; hits: number }>`
+    select p.token, p.name, p.created_at as since,
            count(*) filter (where c.winner is not null)::int as n,
            count(*) filter (where c.cents > 0)::int as wins,
            coalesce(sum(c.cents), 0) as net,
@@ -118,7 +153,7 @@ async function humanRows(days: number | null, token: string | null): Promise<Are
       from desk_human_calls c join desk_players p using (token)
      where c.winner is not null
        and (${days == null} or c.close_time > now() - (${days ?? 0} || ' days')::interval)
-     group by p.token, p.name
+     group by p.token, p.name, p.created_at
     having count(*) filter (where c.winner is not null) > 0
      order by net desc, n desc
      limit 25
@@ -132,6 +167,7 @@ async function humanRows(days: number | null, token: string | null): Promise<Are
     hit_pct: r.n ? Math.round((100 * r.hits) / r.n) : null,
     me: token != null && r.token === token,
     warming: r.n < RANK_MIN_N,
+    since: r.since instanceof Date ? r.since.toISOString() : r.since ? new Date(r.since).toISOString() : null,
   }));
   // Ranked callsigns first (by net), then the ones still warming up.
   return [...mapped.filter((r) => !r.warming), ...mapped.filter((r) => r.warming)];
@@ -201,6 +237,16 @@ export async function arenaSummary(tokenRaw: unknown): Promise<unknown> {
     }
   }
   return { me, week, all, desk_week: desk7, desk_all: deskAll, at: Date.now() };
+}
+
+/** Clear every callsign and paper lock. Admin only; the route checks the key. */
+export async function resetArena(): Promise<{ locks: number; players: number }> {
+  const db = await sql();
+  const [c] = await db<{ n: number }>`select count(*)::int as n from desk_human_calls`;
+  const [p] = await db<{ n: number }>`select count(*)::int as n from desk_players`;
+  await db`delete from desk_human_calls`;
+  await db`delete from desk_players`;
+  return { locks: c?.n ?? 0, players: p?.n ?? 0 };
 }
 
 /** One recap line for the nightly digest. */
