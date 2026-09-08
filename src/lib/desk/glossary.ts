@@ -77,7 +77,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "settings.alerts": {
     title: "Alerts",
-    body: "A push notification to this browser when the chair books a call, and if you want, when the window settles, with your own Arena result on the line. Turn it on here; the browser will ask permission once. On iPhone and iPad the site has to be on your Home Screen first. Nothing is ever sent to a browser that did not opt in.",
+    body: "A push notification to this browser when the chair books a call, and if you want, when a window that mattered settles: one you locked in the Arena, with your result on the line, or one the chair called. Quiet windows send nothing. Turn it on here; the browser will ask permission once. On iPhone and iPad the site has to be on your Home Screen first. Nothing is ever sent to a browser that did not opt in.",
   },
   "tab.floor": {
     title: "FLOOR — the five desks",

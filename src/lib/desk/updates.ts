@@ -113,4 +113,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "House rules for THE PIT. The test locks from the build are cleared. A callsign now belongs to the first browser that takes it, so nobody can wear someone else's name; a network can create three new callsigns a day, so a bad week cannot be shrugged off with a fresh name every hour; a name is ranked only after three settled locks; and every board row shows the day the callsign joined, so a fresh name looks fresh. No accounts, no addresses stored. SETTINGS gained a Clear the Arena control for the desk's owner.",
   },
+  {
+    slug: "2026-09-08-quiet-alerts",
+    body:
+      "Alerts learned when to keep quiet. A settle push now arrives only for a window that mattered to you: one you locked in the Arena, with your result on the line, or one the chair called. Windows where the chair sat out send nothing. The site also has a proper Home Screen and notification icon at last, and the previous Council's old API addresses answer with a calm gone instead of an error, for any old tab still polling them.",
+  },
 ];
