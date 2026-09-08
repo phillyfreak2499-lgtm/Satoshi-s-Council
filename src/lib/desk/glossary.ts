@@ -77,7 +77,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "books.replay": {
     title: "Replay",
-    body: "Scrub back through a past window: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band, and every seat's lean as a lane (solid when it spoke, faint when it whispered under the gag). Windows graded since the recorder went in have a replay; older ones do not.",
+    body: "Scrub back through a past window: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band, and every seat's lean as a lane (solid when it spoke, faint when it whispered under the gag). Windows graded since the recorder went in have a replay; older ones do not. Every replay also has its own page to share: open as a page.",
   },
   "settings.watchdog": {
     title: "Desk watchdog",

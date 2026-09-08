@@ -138,4 +138,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk now watches itself. If no window grades for twenty minutes, the owner gets a push naming the quiet spell, the last error the brain logged and the state of the feeds, a reminder each hour it lasts, and a note when grading resumes. It is turned on from SETTINGS → Alerts with the admin key; nobody else can receive it. A public desk that has stopped grading should not be quiet about it.",
   },
+  {
+    slug: "2026-09-08-window-page",
+    body:
+      "Every graded window now has its own page you can share. satoshiscouncil.com/window/ followed by the window's ticker replays what the seats saw and said, the chair's read and Kalshi's official settlement value. From BOOKS, pick a window marked ▶ and use \"open as a page\". Paper only, as always; nothing on a replay was a live order.",
+  },
 ];
