@@ -21,6 +21,19 @@ export type BooksPoint = { t: string; ev: number; cum: number };
 export type BooksBucket = { lo: number; hi: number; n: number; wins: number; avg_entry: number; net: number };
 export type BooksHeatCell = { dow: number; hour: number; n: number; calls: number; wins: number; net: number };
 
+/** The lab's stale-quote study, counted one trade per window so correlated shocks cannot inflate it. */
+export type BooksLabLine = { n: number; avg: number; sum: number; pos: number };
+export type BooksLab = {
+  windows: number;
+  shocks: number;
+  since: string | null;
+  stale_ms: number | null;
+  /** First fillable shock per window: bought at the stale ask, held to settlement, after the fee. */
+  first: BooksLabLine;
+  /** Same, for the first fillable shock inside the final minute; ask and claimed edge are averages. */
+  final: BooksLabLine & { ask: number; claimed: number };
+};
+
 export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
@@ -31,6 +44,7 @@ export type Books = {
   buckets: BooksBucket[];
   heat: BooksHeatCell[];
   windows: BooksWindow[];
+  lab: BooksLab | null;
   at: number;
 };
 
