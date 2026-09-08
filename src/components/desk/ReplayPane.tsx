@@ -409,6 +409,21 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
       </div>
       <div className="mt-1">
         <Lanes r={r} cursor={i} />
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-micro text-subtle" aria-label="Lane legend">
+          <span>
+            <span aria-hidden="true" className="mr-1 inline-block size-2 rounded-sm bg-up align-middle" />
+            spoke UP
+          </span>
+          <span>
+            <span aria-hidden="true" className="mr-1 inline-block size-2 rounded-sm bg-down align-middle" />
+            spoke DOWN
+          </span>
+          <span>
+            <span aria-hidden="true" className="mr-1 inline-block size-2 rounded-sm bg-up/30 align-middle" />
+            whispered under the gag
+          </span>
+          <span>blank sat</span>
+        </div>
       </div>
       <div className="mt-2 flex items-center gap-2">
         <button

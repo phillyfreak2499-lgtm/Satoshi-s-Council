@@ -153,4 +153,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk now has a sitemap and a feed. /sitemap.xml lists the pages and every window replay; /feed.xml carries the board's updates for a feed reader. And on Sunday mornings DESK posts the week's recap here: windows graded, the chair's calls and cents, reads held under the floor, the sharpest and roughest seats, the Arena's week and the lab's one-trade-per-window count.",
   },
+  {
+    slug: "2026-09-08-phone-diet",
+    body:
+      "The floor got lighter on a phone: one quiet line of what this is and is not, no banner, a shorter strip, and seats that are sitting fold into one row each until you tap them (or expand all). Under the chair's call, one plain sentence now says why: who leans which way, whether the ask clears the 70¢ floor, and what is booked. Prices read the same everywhere, and the replay lanes have a legend.",
+  },
 ];

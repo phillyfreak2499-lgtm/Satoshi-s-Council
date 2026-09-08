@@ -188,6 +188,12 @@ export function fmtPx(n: number): string {
   return n.toFixed(1);
 }
 
+/** A price for text: en-US separators, d decimals. Canvas labels keep fmtPx, which stays compact. */
+export function fmtPrice(n: number | null | undefined, d = 1): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
 export function fmtC(n: number): string {
   if (!Number.isFinite(n)) return "—";
   return `${Math.round(n)}¢`;

@@ -14,7 +14,7 @@ import { Tour } from "./Tour";
 import { Toaster, toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrustStrip, Welcome } from "./Welcome";
-import { applyDisplayPrefs, markWelcomeSeen, welcomeSeen } from "./prefs";
+import { applyDisplayPrefs, markWelcomeSeen, readSeatView, setSeatView as saveSeatView, TRUST_CHIPS, welcomeSeen, type SeatView } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
@@ -114,6 +114,11 @@ export function DeskApp() {
   const [welcomeOn, setWelcomeOn] = useState(false);
   const [paletteOn, setPaletteOn] = useState(false);
   const [nudge, setNudge] = useState(false);
+  const [seatView, setSeatViewState] = useState<SeatView>("auto");
+  const setSeatView = (v: SeatView) => {
+    setSeatViewState(v);
+    saveSeatView(v);
+  };
 
   useEffect(() => {
     if (!focus) return;
@@ -124,6 +129,7 @@ export function DeskApp() {
   const hasSnap = Boolean(frame.snap);
   useEffect(() => {
     applyDisplayPrefs();
+    setSeatViewState(readSeatView());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
     beacon("desk_view", true);
   }, []);
@@ -285,12 +291,13 @@ export function DeskApp() {
       </header>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">
-        <TrustStrip />
+        <TrustStrip className="hidden sm:flex" />
+        <p className="min-w-0 truncate font-mono text-micro text-subtle sm:hidden">{TRUST_CHIPS.join(" · ")}</p>
         <Tip k="beta.disclaimer" className="hidden sm:inline">
           <span className="font-mono text-micro text-muted">Every UP / DOWN / WAIT is practice. Nothing here places a live trade, and none of it is advice.</span>
         </Tip>
         {nudge && !tourOn ? (
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto hidden items-center gap-1 sm:flex">
             <button type="button" onClick={startTour} className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-fg hover:bg-surface-2">
               New here? Take the 60-second tour
             </button>
@@ -371,9 +378,19 @@ export function DeskApp() {
         )}
         {frame.snap && seats.length > 0 && (
           <div className="grid gap-3 p-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 font-mono text-micro text-subtle">
-              <span>{desk ? `${desk.label} · ${desk.intro}` : ""}</span>
-              <span>snapshot {new Date(frame.snap.as_of).toISOString()} · shared across this tab</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-micro text-subtle">
+              <span className="min-w-0">{desk ? `${desk.label} · ${desk.intro}` : ""}</span>
+              <span className="flex items-center gap-2">
+                <span className="hidden lg:inline">snapshot {new Date(frame.snap.as_of).toISOString()} · shared across this tab</span>
+                <button
+                  type="button"
+                  aria-pressed={seatView === "all"}
+                  onClick={() => setSeatView(seatView === "all" ? "auto" : "all")}
+                  className="min-h-8 rounded-sm border border-border px-2 text-muted hover:text-fg"
+                >
+                  {seatView === "all" ? "fold sitting seats" : "expand all seats"}
+                </button>
+              </span>
             </div>
             {seats.map((id) => {
               const vote = voteMap.get(id);
@@ -385,6 +402,7 @@ export function DeskApp() {
                   snap={frame.snap!}
                   vote={vote}
                   focused={focus === id}
+                  compact={seatView === "auto" && vote.lean === "WAIT" && focus !== id}
                 />
               );
             })}
