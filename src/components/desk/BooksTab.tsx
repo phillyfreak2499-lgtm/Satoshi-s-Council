@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   fetchBooks,
+  type BooksLab,
   type Books,
   type BooksBucket,
   type BooksDay,
@@ -325,6 +326,50 @@ function Heat({ cells }: { cells: BooksHeatCell[] }) {
 
 /* ---------- panes ---------- */
 
+/** The lab's stale-quote study, one trade per window. A measurement of the market, not a strategy the chair can run. */
+function LabPane({ lab, tz }: { lab: BooksLab | null; tz: string }) {
+  return (
+    <Pane title={<Tip k="books.lab">THE LAB · STALE QUOTES</Tip>}>
+      {!lab ? (
+        <div className="font-mono text-micro text-muted">the lab has no settled shocks yet</div>
+      ) : (
+        <>
+          <div className="grid gap-3 font-mono text-micro sm:grid-cols-3">
+            <div>
+              <div className="text-subtle">windows studied</div>
+              <div className="font-mono text-data tabular text-fg">{lab.windows}</div>
+              <div className="text-subtle">
+                {lab.shocks} fillable shocks{lab.since ? ` · since ${fmtDay(lab.since, tz)}` : ""}
+                {lab.stale_ms != null ? ` · a stale ask lasts ${(lab.stale_ms / 1000).toFixed(1)}s` : ""}
+              </div>
+            </div>
+            <div>
+              <div className="text-subtle">first shock per window</div>
+              <div className={cn("font-mono text-data tabular", tone(lab.first.avg))}>{fmtC(lab.first.avg)} avg</div>
+              <div className="text-subtle">
+                {pct(lab.first.pos, lab.first.n)} positive · {fmtC(lab.first.sum, 0)} over {lab.first.n} windows
+              </div>
+            </div>
+            <div>
+              <div className="text-subtle">final minute, first shock</div>
+              <div className={cn("font-mono text-data tabular", tone(lab.final.avg))}>{fmtC(lab.final.avg)} avg</div>
+              <div className="text-subtle">
+                {pct(lab.final.pos, lab.final.n)} positive over {lab.final.n} · at a {lab.final.ask.toFixed(0)}¢ ask · claimed {fmtC(lab.final.claimed)}
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+            A shock is the settlement index jumping while an ask stayed put; fillable means the stale ask was still there 200 ms later. One paper trade per
+            window, bought at that ask and held to settlement after the fee, so a burst of correlated shocks cannot inflate it. This edge lives at 200 ms
+            on the cheap side; the chair ticks every four seconds and books at 70¢ or better, so it is not chasing it. INDEX brings the read to the council
+            instead. Nothing trades on it.
+          </p>
+        </>
+      )}
+    </Pane>
+  );
+}
+
 function Totals({ label, t }: { label: string; t: BooksTotals }) {
   return (
     <div className="min-w-0 rounded-sm border border-border/60 p-2">
@@ -471,6 +516,8 @@ export function BooksTab({ tz }: { tz: string }) {
           <Heat cells={books.heat} />
         </Pane>
       </div>
+
+      <LabPane lab={books.lab} tz={tz} />
 
       {sel ? <ReplayPane ticker={sel} tz={tz} onClose={() => setSel(null)} /> : null}
 

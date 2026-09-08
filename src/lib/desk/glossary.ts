@@ -71,6 +71,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Hours",
     body: "Net cents by weekday and hour of the window's close, on Chicago time. Green cells made money, red cells lost it, dark cells had no booked call. Hover a cell for the count.",
   },
+  "books.lab": {
+    title: "The lab's stale quotes",
+    body: "Since Sep 6 the lab has watched Kalshi's book while the settlement index moved. A shock is the index jumping while an ask stayed put; fillable means the stale ask was still there 200 milliseconds later. The numbers count one paper trade per window, bought at that ask and held to settlement after the fee, so a burst of correlated shocks cannot inflate them. A measurement of the market, not a strategy: the chair ticks every four seconds and cannot reach a 200-millisecond edge.",
+  },
   "books.replay": {
     title: "Replay",
     body: "Scrub back through a past window: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band, and every seat's lean as a lane (solid when it spoke, faint when it whispered under the gag). Windows graded since the recorder went in have a replay; older ones do not.",

@@ -42,6 +42,19 @@ export type BooksPoint = { t: string; ev: number; cum: number };
 export type BooksBucket = { lo: number; hi: number; n: number; wins: number; avg_entry: number; net: number };
 export type BooksHeatCell = { dow: number; hour: number; n: number; calls: number; wins: number; net: number };
 
+/** The lab's stale-quote study, counted one trade per window so correlated shocks cannot inflate it. */
+export type BooksLabLine = { n: number; avg: number; sum: number; pos: number };
+export type BooksLab = {
+  windows: number;
+  shocks: number;
+  since: string | null;
+  stale_ms: number | null;
+  /** First fillable shock per window: bought at the stale ask, held to settlement, after the fee. */
+  first: BooksLabLine;
+  /** Same, for the first fillable shock inside the final minute; ask and claimed edge are averages. */
+  final: BooksLabLine & { ask: number; claimed: number };
+};
+
 export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
@@ -52,6 +65,7 @@ export type Books = {
   buckets: BooksBucket[];
   heat: BooksHeatCell[];
   windows: BooksWindow[];
+  lab: BooksLab | null;
   at: number;
 };
 
@@ -253,6 +267,7 @@ async function build(): Promise<Books> {
     }
   }
   const windows = rows.map((r) => toWindow(r, arena));
+  const lab = await labStudy(db);
 
   return {
     last: windows[0] ?? null,
@@ -264,6 +279,60 @@ async function build(): Promise<Books> {
     buckets,
     heat: heat.map((h) => ({ ...h, net: Math.round(h.net * 10) / 10 })),
     windows,
+    lab,
     at: Date.now(),
   };
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/** One trade per window from desk_lag_events: the first fillable shock (still there 200 ms later) that settled. */
+async function labStudy(db: Awaited<ReturnType<typeof sql>>): Promise<BooksLab | null> {
+  try {
+    const [r] = await db<Record<string, number | string | null>>`
+      with ev as (
+        select ticker, t, final_minute, ask_before, net_edge, realized, gone_ms,
+               row_number() over (partition by ticker order by t) as rn_all,
+               row_number() over (partition by ticker, final_minute order by t) as rn_fm
+        from desk_lag_events
+        where winner is not null and fill_200
+      ),
+      fa as (select * from ev where rn_all = 1),
+      ff as (select * from ev where final_minute and rn_fm = 1)
+      select
+        (select count(*)::int from ev) as shocks,
+        (select count(distinct ticker)::int from ev) as windows,
+        (select min(t) from ev) as since,
+        (select round(avg(gone_ms))::int from ev) as stale_ms,
+        (select count(*)::int from fa) as fa_n,
+        (select coalesce(avg(realized), 0)::float from fa) as fa_avg,
+        (select coalesce(sum(realized), 0)::float from fa) as fa_sum,
+        (select (count(*) filter (where realized > 0))::int from fa) as fa_pos,
+        (select count(*)::int from ff) as ff_n,
+        (select coalesce(avg(realized), 0)::float from ff) as ff_avg,
+        (select coalesce(sum(realized), 0)::float from ff) as ff_sum,
+        (select (count(*) filter (where realized > 0))::int from ff) as ff_pos,
+        (select coalesce(avg(ask_before), 0)::float from ff) as ff_ask,
+        (select coalesce(avg(net_edge), 0)::float from ff) as ff_claimed
+    `;
+    if (!r || !Number(r.windows)) return null;
+    const line = (p: string): BooksLabLine => ({
+      n: Number(r[`${p}_n`]) || 0,
+      avg: round1(Number(r[`${p}_avg`]) || 0),
+      sum: Math.round(Number(r[`${p}_sum`]) || 0),
+      pos: Number(r[`${p}_pos`]) || 0,
+    });
+    return {
+      windows: Number(r.windows) || 0,
+      shocks: Number(r.shocks) || 0,
+      since: r.since ? iso(r.since as Date | string) : null,
+      stale_ms: r.stale_ms == null ? null : Number(r.stale_ms),
+      first: line("fa"),
+      final: { ...line("ff"), ask: round1(Number(r.ff_ask) || 0), claimed: round1(Number(r.ff_claimed) || 0) },
+    };
+  } catch {
+    return null;
+  }
 }
