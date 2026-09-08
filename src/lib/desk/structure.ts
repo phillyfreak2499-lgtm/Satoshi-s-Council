@@ -151,7 +151,7 @@ export function readStreak(snap: Snapshot): StreakRead {
   };
 }
 
-export function readExhaust(snap: Snapshot): ExhaustRead {
+export function readExhaust(snap: Snapshot, runMin = 0.005): ExhaustRead {
   const c5 = snap.candles_5m.filter((c) => c.closed);
   const last5 = last(c5);
   const prev5 = c5.at(-2);
@@ -160,7 +160,7 @@ export function readExhaust(snap: Snapshot): ExhaustRead {
     last5 && prev5 && ret1h !== 0 && Math.sign(last5.close - last5.open) !== Math.sign(ret1h),
   );
   const extreme = snap.range_pos >= 0.8 || snap.range_pos <= 0.2;
-  const run = Math.abs(ret1h) >= 0.01;
+  const run = Math.abs(ret1h) >= runMin;
   const wick5 = readWick(c5);
   const f = last5 ? candleFeat(last5) : null;
   const againstWick =

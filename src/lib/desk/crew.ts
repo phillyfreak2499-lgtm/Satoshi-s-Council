@@ -17,7 +17,11 @@ import type { SeatKnobs } from "./types";
 
 export const CREW = ["SWEEP", "COACH", "WRENCH"] as const;
 /** Seats that never vote a side by design — SWEEP does not flag them DEAD. */
-export const NON_VOTERS: readonly string[] = ["ORBIT", "WARDEN"];
+export const NON_VOTERS: readonly string[] = ["ORBIT", "WARDEN", "WIRE"];
+/** Seats retired to shadow: their reads are still graded, they never vote. The value is the reason on the card. */
+export const RETIRED_SEATS: Readonly<Record<string, string>> = {
+  CHEAP: "retired to shadow — 0 for 8, and a cheap side is a runaway window STRIKE already owns",
+};
 export const SWEEP_DAYS = 7;
 export const COACH_DAYS = 28;
 

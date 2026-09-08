@@ -21,7 +21,7 @@ export const THRESH_SPECS: Record<string, ThreshSpec> = {
   "atr.dead": { base: 0.12, lo: 0.06, hi: 0.22, dir: "lte", label: "dead ATR%" },
   "vol.dead_pct": { base: 25, lo: 12, hi: 40, dir: "lte", label: "dead vol pct" },
   "streak.ext": { base: 5, lo: 4, hi: 8, dir: "gte", label: "streak fade n" },
-  "run.1h": { base: 0.01, lo: 0.006, hi: 0.02, dir: "gte", label: "|1h ret|" },
+  "run.1h": { base: 0.007, lo: 0.005, hi: 0.02, dir: "gte", label: "|1h ret|" },
   "magnet.mins": { base: 2.2, lo: 1.4, hi: 3.5, dir: "lte", label: "magnet minutes" },
   "fng.lo": { base: 20, lo: 12, hi: 28, dir: "lte", label: "F&G fear" },
   "fng.hi": { base: 80, lo: 72, hi: 88, dir: "gte", label: "F&G greed" },

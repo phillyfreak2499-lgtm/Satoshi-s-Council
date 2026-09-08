@@ -118,4 +118,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Alerts learned when to keep quiet. A settle push now arrives only for a window that mattered to you: one you locked in the Arena, with your result on the line, or one the chair called. Windows where the chair sat out send nothing. The site also has a proper Home Screen and notification icon at last, and the previous Council's old API addresses answer with a calm gone instead of an error, for any old tab still polling them.",
   },
+  {
+    slug: "2026-09-08-seat-review",
+    body:
+      "A seat review, with numbers. EXHAUST had every pattern behind a hard 1% hourly run and this week never saw one; all six patterns now use one tunable run threshold that starts at 0.7% and the learner can move. CHEAP is retired to shadow: a side only gets cheap when the price has run away from the strike, which is when STRIKE already owns the window, and its record was 0 for 8; its reads are still graded. WIRE now tags a Fear & Greed extreme instead of pretending to vote with a confidence that could never clear the bar. Chair v2 buys no more longshots: it was 2 for 43 under 30¢. It now needs six cents of edge, never buys under 35¢, and may only disagree with the market as far as its calibration record has earned, which today is not at all. It leaves the public boards until it does.",
+  },
 ];

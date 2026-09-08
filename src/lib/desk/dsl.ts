@@ -572,27 +572,42 @@ export const SKILL_RULES: Record<string, SkillRule> = {
     edge: "ret1h_edge",
   },
   "EXHAUST.climax_wick": {
-    all: [{ feat: "exhaust_climax", op: "eq", value: 1 }],
+    all: [
+      { feat: "abs_ret1h", op: "gte", thresh: "run.1h" },
+      { feat: "exhaust_climax", op: "eq", value: 1 },
+    ],
     lean: "fade:ret1h",
     edge: "ret1h_edge",
   },
   "EXHAUST.rsi_div": {
-    all: [{ feat: "exhaust_rsi_div", op: "eq", value: 1 }],
+    all: [
+      { feat: "abs_ret1h", op: "gte", thresh: "run.1h" },
+      { feat: "exhaust_rsi_div", op: "eq", value: 1 },
+    ],
     lean: "fade:ret1h",
     edge: "fixed:0.58",
   },
   "EXHAUST.failed_push": {
-    all: [{ feat: "exhaust_failed", op: "eq", value: 1 }],
+    all: [
+      { feat: "abs_ret1h", op: "gte", thresh: "run.1h" },
+      { feat: "exhaust_failed", op: "eq", value: 1 },
+    ],
     lean: "fade:ret1h",
     edge: "fixed:0.6",
   },
   "EXHAUST.ema_cross_against": {
-    all: [{ feat: "exhaust_ema_against", op: "eq", value: 1 }],
+    all: [
+      { feat: "abs_ret1h", op: "gte", thresh: "run.1h" },
+      { feat: "exhaust_ema_against", op: "eq", value: 1 },
+    ],
     lean: "fade:ret1h",
     edge: "fixed:0.57",
   },
   "EXHAUST.inside_after_run": {
-    all: [{ feat: "exhaust_inside", op: "eq", value: 1 }],
+    all: [
+      { feat: "abs_ret1h", op: "gte", thresh: "run.1h" },
+      { feat: "exhaust_inside", op: "eq", value: 1 },
+    ],
     lean: "WAIT",
     edge: "fixed:0.55",
   },
@@ -856,9 +871,8 @@ export const SKILL_RULES: Record<string, SkillRule> = {
   },
   "WIRE.extreme_fng": {
     all: [{ feat: "fng_hot", op: "eq", value: 1 }],
-    lean: "fade:fng_side",
-    edge: "fixed:0.4",
-    cap: 55,
+    lean: "WAIT",
+    edge: "fixed:0.7",
   },
   "CLOCK.session_prior": {
     all: [{ feat: "mins_left", op: "gte", value: 0 }],

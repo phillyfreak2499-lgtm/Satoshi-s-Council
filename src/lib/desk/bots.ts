@@ -11,6 +11,7 @@ import { readCarry, readCascade, readChain, readVolt } from "./derivs";
 import { readPulse, readTape, readVel, readWhale } from "./tape";
 import { threshOf } from "./thresholds";
 import type { FeatMap, FeedHealth, Lean, Learner, PaperLean, SeatId, Snapshot, Vote } from "./types";
+import { RETIRED_SEATS } from "./crew";
 
 export type BotCtx = {
   snap: Snapshot;
@@ -220,6 +221,16 @@ function sitUnlessSure(v: Vote, ctx: BotCtx): Vote {
     v.raw_conf = v.confidence;
   }
   if (v.lean === "WAIT") return v;
+  const retired = RETIRED_SEATS[v.seat];
+  if (retired) {
+    return {
+      ...v,
+      lean: "WAIT",
+      forced_sit: true,
+      confidence: Math.max(70, v.confidence),
+      reasoning: `${v.reasoning} · ${retired}`,
+    };
+  }
   const k = ctx.learner.knobs?.[v.seat];
   if (k && k.benched_until > ctx.snap.as_of) {
     return {
@@ -1076,10 +1087,10 @@ function wireBot(ctx: BotCtx): Vote {
     emptyVote("WIRE", s, {
       eyes: "Fear & Greed (daily, not 15m)",
       hypothesis: w.hot
-        ? `F&G ${w.fng} ${w.label} 7d ${w.delta7 >= 0 ? "+" : ""}${round(w.delta7, 0)} — contrary`
+        ? `F&G ${w.fng} ${w.label} 7d ${w.delta7 >= 0 ? "+" : ""}${round(w.delta7, 0)} — tagged`
         : `F&G ${w.fng} ${w.label} — not a hot extreme`,
       evidence: [`F&G ${w.fng} ${w.label}`, `7d Δ ${w.delta7 >= 0 ? "+" : ""}${round(w.delta7, 0)}`, "daily index"],
-      reasoning: "only lean at a hot extreme (path agrees) → WAIT",
+      reasoning: "tags a hot extreme (path agrees); WIRE does not vote a side → WAIT",
       invalidate_if: `index leaves ≤${T(ctx, "fng.lo").toFixed(0)} / ≥${T(ctx, "fng.hi").toFixed(0)} or 7d path cools`,
     }),
   );
