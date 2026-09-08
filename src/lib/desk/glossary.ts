@@ -138,7 +138,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.EXHAUST": {
     title: "EXHAUST (XH)",
-    body: "Looks for a move that has run too far: climax volume, RSI divergence, failed push. Fade, don't chase.",
+    body: "Looks for a move that has run too far in the last hour: climax volume, RSI divergence, failed push, an inside bar. Every pattern waits for a run past a tunable threshold (0.7% to start). Fade, don't chase.",
   },
   "seat.PULSE": {
     title: "PULSE (VOL)",
@@ -182,7 +182,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.CHEAP": {
     title: "CHEAP (VAL)",
-    body: "42¢ bands on the *ask* — the price you can buy. Midpoint cheap is not a fill. Fat spread = hole, sit.",
+    body: "Retired to shadow. Its idea was a side under 42¢ on the ask; a side only gets that cheap when the price has run away from the strike, which is exactly when STRIKE owns the window, and its record was 0 for 8. Its reads are still graded; it never votes.",
   },
   "seat.FADE": {
     title: "FADE (RIP)",
@@ -198,7 +198,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.WIRE": {
     title: "WIRE (FNG)",
-    body: "Fear & Greed is a daily index, not a 15-minute timer. Only a hot extreme (7-day path still going that way) gets a soft contrary, cap 55¢.",
+    body: "Fear & Greed is a daily index, not a 15-minute timer. WIRE tags a hot extreme (under 20 or over 80 with the 7-day path still going that way) for the record; it does not vote a side.",
   },
   "seat.WARDEN": {
     title: "WARDEN (GATE)",

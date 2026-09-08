@@ -182,13 +182,6 @@ async function deskRows(days: number | null): Promise<ArenaRow[]> {
       from desk_ledger
      where (${days == null} or close_time > now() - (${days ?? 0} || ' days')::interval)
   `;
-  const [v2] = await db<{ n: number; wins: number; net: number }>`
-    select count(*) filter (where v2_lean in ('UP','DOWN') and winner is not null)::int as n,
-           count(*) filter (where v2_lean in ('UP','DOWN') and winner is not null and v2_ev > 0)::int as wins,
-           coalesce(sum(v2_ev) filter (where v2_lean in ('UP','DOWN') and winner is not null), 0) as net
-      from desk_samples
-     where (${days == null} or close_time > now() - (${days ?? 0} || ' days')::interval)
-  `;
   const mk = (name: string, r: { n: number; wins: number; net: number } | undefined): ArenaRow => ({
     name,
     n: r?.n ?? 0,
@@ -197,7 +190,8 @@ async function deskRows(days: number | null): Promise<ArenaRow[]> {
     avg_conf: null,
     hit_pct: r?.n ? Math.round((100 * r.wins) / r.n) : null,
   });
-  return [mk("SATOSHI (the chair)", chair), mk("Chair v2 (shadow)", v2)];
+  // Chair v2 stays on the desk (SATOSHI tab) while it earns its voice; the public boards compare people with the chair.
+  return [mk("SATOSHI (the chair)", chair)];
 }
 
 export async function arenaSummary(tokenRaw: unknown): Promise<unknown> {

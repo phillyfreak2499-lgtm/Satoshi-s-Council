@@ -286,7 +286,8 @@ function ShadowChair({ v2 }: { v2: V2Frame }) {
       ) : null}
       <p className="mt-2 font-mono text-micro text-subtle">
         Paper only. One probability learned from the ledger — every seat&apos;s honest read plus the
-        market — trading only where it beats the ask by more than the fee. It competes with the chair on
+        market — trading only where it beats the ask by more than the fee, only as far from the market as its
+        calibration record has earned, and never under 35¢. It competes with the chair on
         identical windows and is promoted only if it wins.
       </p>
     </section>

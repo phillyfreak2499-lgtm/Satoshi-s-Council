@@ -18,7 +18,9 @@ export const V2_FEATURES: readonly string[] = [...V2_SEATS, "market", "fair"];
 /** Below this many graded samples the chair is the (shrunk) market. */
 export const V2_MIN_SAMPLES = 30;
 /** Cents of edge after fees required before a shadow fill. */
-export const V2_MARGIN_CENTS = 3;
+export const V2_MARGIN_CENTS = 6;
+/** No shadow fills under this ask: the tails are where a young model's calibration is worst. */
+export const V2_MIN_ENTRY_CENTS = 35;
 /** One sample per window, at the first tick at or under this many minutes left. */
 export const V2_SAMPLE_MINS = 7.5;
 
@@ -43,6 +45,14 @@ export function v2Gates(st: V2Stats): { samplesOk: boolean; callsOk: boolean; br
   const callsOk = st.calls_v2 >= V2_GATE_CALLS && st.ev_v2 > 0;
   const brierOk = st.brier_v2 != null && st.brier_market != null && st.brier_v2 < st.brier_market;
   return { samplesOk, callsOk, brierOk, met: Number(samplesOk) + Number(callsOk) + Number(brierOk) };
+}
+
+/** How far v2 may disagree with the market, earned by calibration: full voice
+ *  at a Brier 25% better than the market's, none while the market is better.
+ *  With no record yet it keeps full voice; the fill floor and margin still guard. */
+export function v2Voice(st: V2Stats | null): number {
+  if (!st || st.brier_v2 == null || st.brier_market == null || !(st.brier_market > 0)) return 1;
+  return Math.max(0, Math.min(1, 4 * (1 - st.brier_v2 / st.brier_market)));
 }
 
 export type V2Features = Record<string, number>;
@@ -85,14 +95,14 @@ export function extractFeatures(votes: Vote[], snap: Snapshot): V2Features {
 }
 
 /** P(UP). Before enough samples exist, the honest prior is the market, lightly shrunk. */
-export function predictV2(weights: V2Weights | null, f: V2Features, snap: Snapshot): number {
-  if (!weights || weights.n < V2_MIN_SAMPLES) {
-    const mid = snap.yes_mid > 0 ? snap.yes_mid / 100 : 0.5;
-    return 0.5 + (mid - 0.5) * 0.9;
-  }
+export function predictV2(weights: V2Weights | null, f: V2Features, snap: Snapshot, voice = 1): number {
+  const mkt = snap.yes_mid > 0 ? snap.yes_mid / 100 : 0.5;
+  if (!weights || weights.n < V2_MIN_SAMPLES) return 0.5 + (mkt - 0.5) * 0.9;
   let z = weights.b;
   for (const k of V2_FEATURES) z += (weights.w[k] ?? 0) * (f[k] ?? 0);
-  return sigmoid(z);
+  const p = sigmoid(z);
+  // The model may pull away from the market only as far as its record has earned.
+  return mkt + Math.max(0, Math.min(1, voice)) * (p - mkt);
 }
 
 /** Ridge logistic regression by full-batch gradient descent. Features are
@@ -146,10 +156,12 @@ export function decideV2(p: number, snap: Snapshot): V2Decision {
   const noAsk = snap.no_ask || (snap.yes_mid ? 100 - snap.yes_mid : 0);
   const edgeUp = yesAsk > 0 && yesAsk < 100 ? p * 100 - yesAsk - takerFeeCents(yesAsk) : null;
   const edgeDn = noAsk > 0 && noAsk < 100 ? (1 - p) * 100 - noAsk - takerFeeCents(noAsk) : null;
-  if (edgeUp != null && edgeUp >= V2_MARGIN_CENTS && edgeUp >= (edgeDn ?? -Infinity)) {
+  const upOk = edgeUp != null && yesAsk >= V2_MIN_ENTRY_CENTS && edgeUp >= V2_MARGIN_CENTS;
+  const dnOk = edgeDn != null && noAsk >= V2_MIN_ENTRY_CENTS && edgeDn >= V2_MARGIN_CENTS;
+  if (upOk && edgeUp! >= (dnOk ? edgeDn! : -Infinity)) {
     return { p_up: p, lean: "UP", edge_cents: edgeUp, entry_cents: yesAsk };
   }
-  if (edgeDn != null && edgeDn >= V2_MARGIN_CENTS) {
+  if (dnOk) {
     return { p_up: p, lean: "DOWN", edge_cents: edgeDn, entry_cents: noAsk };
   }
   const best = edgeUp == null && edgeDn == null ? null : Math.max(edgeUp ?? -Infinity, edgeDn ?? -Infinity);

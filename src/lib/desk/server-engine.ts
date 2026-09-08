@@ -46,6 +46,7 @@ import {
   V2_GATE_SAMPLES,
   v2Gates,
   type V2Stats,
+  v2Voice,
 } from "./chair-v2";
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
 
@@ -668,7 +669,7 @@ async function tick(e: Eng) {
 function noteV2(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
   try {
     const f = extractFeatures(votes, snap);
-    const p = predictV2(e.v2, f, snap);
+    const p = predictV2(e.v2, f, snap, v2Voice(e.v2Stats));
     const d = decideV2(p, snap);
     e.v2Live = d;
     const key = windowKey(snap);
