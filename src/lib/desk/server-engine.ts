@@ -32,6 +32,7 @@ import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
+import { weeklyRecap } from "./recap.server";
 import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
 import {
   V2_SAMPLE_MINS,
@@ -486,6 +487,10 @@ async function maybeDigest(e: Eng) {
         on conflict (slug) do nothing
       `;
     }
+    // Sunday morning: the week that ended Saturday, once.
+    await weeklyRecap(db, a.day).catch((err: unknown) => {
+      e.lastError = `recap: ${err instanceof Error ? err.message : String(err)}`;
+    });
     await db`
       delete from board
       where kind = 'update' and (slug like 'digest-%' or slug like 'lab-%')

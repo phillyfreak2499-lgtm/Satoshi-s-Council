@@ -22,6 +22,7 @@ export const Route = createRootRoute({
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
+      { rel: "alternate", type: "application/atom+xml", title: "Satoshi's Council — board updates", href: "/feed.xml" },
       { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
       {
         rel: "preconnect",

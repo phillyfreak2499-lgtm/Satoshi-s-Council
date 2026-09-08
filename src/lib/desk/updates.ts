@@ -143,4 +143,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Every graded window now has its own page you can share. satoshiscouncil.com/window/ followed by the window's ticker replays what the seats saw and said, the chair's read and Kalshi's official settlement value. From BOOKS, pick a window marked ▶ and use \"open as a page\". Paper only, as always; nothing on a replay was a live order.",
   },
+  {
+    slug: "2026-09-08-site-edges",
+    body:
+      "The desk now has a sitemap and a feed. /sitemap.xml lists the pages and every window replay; /feed.xml carries the board's updates for a feed reader. And on Sunday mornings DESK posts the week's recap here: windows graded, the chair's calls and cents, reads held under the floor, the sharpest and roughest seats, the Arena's week and the lab's one-trade-per-window count.",
+  },
 ];
