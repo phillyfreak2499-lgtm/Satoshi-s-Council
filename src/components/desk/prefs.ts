@@ -2,6 +2,7 @@
  *  display choices. localStorage only; nothing here reaches the desk. */
 const WELCOME_KEY = "satoshi-desk-welcome-v1";
 const MOTION_KEY = "ui.motion";
+const PIT_TOUR_KEY = "satoshi-pit-tour-v1";
 
 export const TRUST_CHIPS = ["Paper only", "Bitcoin only", "15-minute windows", "No live trades", "Not financial advice"];
 
@@ -43,4 +44,13 @@ export function setMotion(reduce: boolean): void {
 export function applyDisplayPrefs(): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.motion = readMotion() ? "reduce" : "";
+}
+
+export function pitTourSeen(): boolean {
+  if (typeof window === "undefined") return true;
+  return get(PIT_TOUR_KEY) === "done";
+}
+
+export function markPitTourSeen(): void {
+  set(PIT_TOUR_KEY, "done");
 }

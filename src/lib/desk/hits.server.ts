@@ -21,6 +21,8 @@ export const HIT_EVENTS = [
   "palette_open",
   "share",
   "settle_alert",
+  "pit_tour_start",
+  "pit_tour_done",
 ] as const;
 export type HitEvent = (typeof HIT_EVENTS)[number];
 const EVENTS = new Set<string>(HIT_EVENTS);
