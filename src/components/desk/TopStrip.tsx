@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { fmtC, fmtPct, fmtPx } from "@/lib/desk/math";
+import { fmtC, fmtPct, fmtPrice } from "@/lib/desk/math";
 import type { CallLogRow, ChairResult, Snapshot } from "@/lib/desk/types";
 import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
 import { HealthDot, LeanChip, MarketChip, Mono } from "./bits";
@@ -12,9 +12,9 @@ import { useCountdownText, useSmooth, useTickingAge } from "@/lib/desk/hooks";
 import { pulseReceivedAt, usePulse } from "@/lib/desk/pulse";
 import { cn } from "@/lib/utils";
 
-function Cell({ k, gloss, v, sub }: { k: string; gloss: string; v: ReactNode; sub?: ReactNode }) {
+function Cell({ k, gloss, v, sub, className }: { k: string; gloss: string; v: ReactNode; sub?: ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <div className="font-mono text-micro uppercase tracking-wider text-subtle">
         <Tip k={gloss}>{k}</Tip>
       </div>
@@ -68,7 +68,7 @@ function SpotCell({ snap, frameAt }: { snap: Snapshot; frameAt: number }) {
     <Cell
       k="BTC spot"
       gloss="strip.spot"
-      v={fmtPx(s)}
+      v={fmtPrice(s)}
       sub={`${snap.spot_source} ${age}${
         snap.perp ? ` · perp ${snap.basis_bps >= 0 ? "+" : ""}${snap.basis_bps.toFixed(1)}bp` : ""
       }`}
@@ -188,12 +188,15 @@ export function TopStrip({
               <span className="text-subtle"> conf</span>
             </Mono>
           </Tip>
-          <Tip k="strip.size" mark={false}>
-            <Mono className="text-title">
-              {chair?.size ?? 1}
-              <span className="text-subtle"> size</span>
-            </Mono>
-          </Tip>
+          <span className="hidden sm:inline-flex">
+            <Tip k="strip.size" mark={false}>
+              <Mono className="text-title">
+                {chair?.size ?? 1}
+                <span className="text-subtle"> size</span>
+              </Mono>
+            </Tip>
+          </span>
+          <span className="hidden sm:flex">
           <Tip k="strip.score" mark={false}>
             <div className="flex items-center gap-1">
               <div className="relative h-2 w-28 overflow-hidden rounded-sm bg-surface-3">
@@ -215,6 +218,7 @@ export function TopStrip({
               </Mono>
             </div>
           </Tip>
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <Tip k="strip.clock" mark={false}>
@@ -225,7 +229,7 @@ export function TopStrip({
               {snap.phase}
             </span>
           </Tip>
-          <span className="font-mono text-micro text-subtle">
+          <span className="hidden font-mono text-micro text-subtle sm:inline">
             <Tip k="strip.learn">{learn}</Tip>
             {" · "}
             {graded} graded
@@ -248,19 +252,21 @@ export function TopStrip({
       </div>
       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 xl:grid-cols-8">
         <SpotCell snap={snap} frameAt={frameAt} />
-        <Cell k="ticker" gloss="strip.ticker" v={snap.ticker} />
-        <Cell k="floor strike" gloss="strip.strike" v={fmtPx(snap.strike)} sub={snap.strike_source} />
+        <Cell k="ticker" gloss="strip.ticker" v={snap.ticker} className="hidden sm:block" />
+        <Cell k="floor strike" gloss="strip.strike" v={fmtPrice(snap.strike)} sub={snap.strike_source} className="hidden sm:block" />
         <DistCell snap={snap} />
         <BookCells snap={snap} />
         <Cell
           k="fair / edge / fee"
           gloss="strip.fair"
+          className="hidden sm:block"
           v={`fair ${fmtC(snap.fair_yes)}`}
           sub={`${snap.edge_up >= 0 ? "+" : ""}${snap.edge_up.toFixed(1)} UP · ${snap.edge_down >= 0 ? "+" : ""}${snap.edge_down.toFixed(1)} DN · fee ${snap.fee_yes}/${snap.fee_no} · comb ${fmtC(snap.combined_ask_cents)}`}
         />
         <Cell
           k="feeds"
           gloss="strip.feeds"
+          className="hidden sm:block"
           v={
             <span className="flex flex-wrap gap-2">
               <span className="text-subtle">SPOT</span>

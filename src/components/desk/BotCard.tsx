@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
 import { readScalp, scalpAvg, askCents } from "@/lib/desk/scalp";
@@ -13,14 +14,42 @@ export function BotCard({
   snap,
   vote,
   focused,
+  compact = false,
 }: {
   seat: SeatId;
   snap: Snapshot;
   vote: Vote;
   focused?: boolean;
+  /** A sitting seat folds to one row until tapped; speaking seats always show the full card. */
+  compact?: boolean;
 }) {
   const meta = SEAT_BY_ID[seat];
   const learner = useDesk().learner;
+  const [open, setOpen] = useState(false);
+  const whisper = vote.forced_sit && vote.raw_lean && vote.raw_lean !== "WAIT" ? `${vote.raw_lean} ${vote.raw_conf ?? ""}`.trim() : null;
+  if (compact && !open && !focused) {
+    return (
+      <article id={`seat-${seat}`} data-tour={seat === "WICK" ? "tour-wick" : undefined} className="min-w-0 rounded-md border border-border bg-surface">
+        <button
+          type="button"
+          aria-expanded="false"
+          onClick={() => setOpen(true)}
+          className="flex min-h-11 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2/60"
+        >
+          <span className="shrink-0 font-mono text-ui text-fg">
+            {seat} <span className="text-subtle">{meta.callsign}</span>
+          </span>
+          <LeanChip lean={vote.lean} />
+          {whisper ? <span className="shrink-0 font-mono text-micro text-subtle">whispered {whisper}</span> : null}
+          <span className="min-w-0 flex-1 truncate font-mono text-micro text-muted">{vote.hypothesis || vote.reasoning}</span>
+          <HealthDot h={vote.health} />
+          <span aria-hidden="true" className="font-mono text-micro text-subtle">
+            ▸
+          </span>
+        </button>
+      </article>
+    );
+  }
   const st = readScalp(learner, seat);
   const avg = scalpAvg(st.legs);
   const ask = askCents(snap, vote.lean);
@@ -48,6 +77,16 @@ export function BotCard({
           <div className="flex items-center gap-2">
             <HealthDot h={vote.health} />
             <span className="font-mono text-micro text-muted">{vote.feed_age_s.toFixed(1)}s</span>
+            {compact && !focused ? (
+              <button
+                type="button"
+                aria-expanded="true"
+                onClick={() => setOpen(false)}
+                className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-subtle hover:text-fg"
+              >
+                fold
+              </button>
+            ) : null}
           </div>
         </div>
         <Eyes seat={seat} snap={snap} vote={vote} />

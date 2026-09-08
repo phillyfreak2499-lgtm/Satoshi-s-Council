@@ -3,6 +3,7 @@
 const WELCOME_KEY = "satoshi-desk-welcome-v1";
 const MOTION_KEY = "ui.motion";
 const PIT_TOUR_KEY = "satoshi-pit-tour-v1";
+const SEATS_KEY = "ui.seats";
 
 export const TRUST_CHIPS = ["Paper only", "Bitcoin only", "15-minute windows", "No live trades", "Not financial advice"];
 
@@ -44,6 +45,15 @@ export function setMotion(reduce: boolean): void {
 export function applyDisplayPrefs(): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.motion = readMotion() ? "reduce" : "";
+}
+
+/** "auto" folds sitting seats into one row each; "all" keeps every card open. */
+export type SeatView = "auto" | "all";
+export function readSeatView(): SeatView {
+  return get(SEATS_KEY) === "all" ? "all" : "auto";
+}
+export function setSeatView(v: SeatView): void {
+  set(SEATS_KEY, v === "all" ? "all" : "");
 }
 
 export function pitTourSeen(): boolean {

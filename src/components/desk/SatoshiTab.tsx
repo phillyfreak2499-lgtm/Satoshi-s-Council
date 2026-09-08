@@ -11,6 +11,7 @@ import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
 import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
+import { plainLine } from "@/lib/desk/chair-words";
 
 function sideAsk(snap: Snapshot, lean: Lean) {
   if (lean === "UP") return snap.yes_ask || snap.yes_mid;
@@ -59,7 +60,10 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
           <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
             {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
           </div>
-          <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-muted">
+          <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-fg" data-plain-line>
+            {plainLine(chair, snap, book)}
+          </p>
+          <p className="mt-1 max-w-[52ch] font-sans text-ui leading-snug text-muted">
             {book.kind === "booked"
               ? `Paper only: booked ${book.lean} at ${book.cents.toFixed(0)}¢ on the ${bookSide} ask, held to settlement and graded on Kalshi's official value.${
                   lean !== book.lean ? " The read has moved since; one position per window means the book does not sell low to buy high." : ""
