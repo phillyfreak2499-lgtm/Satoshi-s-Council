@@ -2,8 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import { fetchRack, lockCall, type Rack } from "@/lib/desk/pit";
 import { beacon } from "@/lib/desk/beacon";
-import { currentPrefs, enablePush, needsHomeScreen, pushSupported, type PushPrefs } from "@/lib/desk/push";
+import {
+  currentPrefs,
+  enablePush,
+  needsHomeScreen,
+  pushSupported,
+  type PushPrefs,
+} from "@/lib/desk/push";
 import { cn } from "@/lib/utils";
+import { PitTour } from "./PitTour";
+import { pitTourSeen } from "./prefs";
 
 const POLL_MS = 4_000;
 const JITTER_MS = 300;
@@ -33,7 +41,9 @@ type BoardRow = ArenaRow & { desk: boolean };
 
 function fmtWhen(iso: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+    return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(
+      new Date(iso),
+    );
   } catch {
     return iso.slice(11, 16);
   }
@@ -41,7 +51,11 @@ function fmtWhen(iso: string): string {
 
 function fmtDayTime(iso: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(iso));
   } catch {
     return iso.slice(5, 16);
   }
@@ -82,6 +96,20 @@ export function PitRoom() {
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const prefsRef = useRef<PushPrefs | null>(null);
   const [shared, setShared] = useState<string | null>(null);
+  const [tourOn, setTourOn] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+
+  const startTour = () => {
+    setTourStep(0);
+    setTourOn(true);
+    beacon("pit_tour_start");
+  };
+
+  useEffect(() => {
+    if (pitTourSeen()) return;
+    const t = window.setTimeout(startTour, 500);
+    return () => window.clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     setName(arenaName());
@@ -107,7 +135,11 @@ export function PitRoom() {
       const p = await enablePush({ on_call: prefsRef.current?.on_call ?? false, on_settle: true });
       prefsRef.current = p;
       setAlert("on");
-      setAlertMsg(needsHomeScreen() ? "on for this browser — on iPhone, alerts only arrive once the site is on your Home Screen" : "on for this browser");
+      setAlertMsg(
+        needsHomeScreen()
+          ? "on for this browser — on iPhone, alerts only arrive once the site is on your Home Screen"
+          : "on for this browser",
+      );
       beacon("settle_alert");
     } catch (e) {
       setAlert("off");
@@ -117,7 +149,9 @@ export function PitRoom() {
 
   const share = async (text: string) => {
     const r = await shareText(text);
-    setShared(r === "shared" ? "shared" : r === "copied" ? "copied to the clipboard" : "could not share");
+    setShared(
+      r === "shared" ? "shared" : r === "copied" ? "copied to the clipboard" : "could not share",
+    );
     if (r !== "failed") beacon("share");
     window.setTimeout(() => setShared(null), 3_000);
   };
@@ -210,9 +244,10 @@ export function PitRoom() {
   };
 
   const humans = board?.week ?? [];
-  const rows: BoardRow[] = [...humans.map((r) => ({ ...r, desk: false })), ...(board?.desk_week ?? []).map((r) => ({ ...r, desk: true }))].sort(
-    (a, b) => Number(Boolean(a.warming)) - Number(Boolean(b.warming)) || b.net - a.net,
-  );
+  const rows: BoardRow[] = [
+    ...humans.map((r) => ({ ...r, desk: false })),
+    ...(board?.desk_week ?? []).map((r) => ({ ...r, desk: true })),
+  ].sort((a, b) => Number(Boolean(a.warming)) - Number(Boolean(b.warming)) || b.net - a.net);
   const me = rack?.me ?? null;
 
   return (
@@ -222,22 +257,47 @@ export function PitRoom() {
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
             Satoshi&apos;s Council · <span className="text-fg">THE PIT</span>
           </div>
-          <a href="/" className="flex min-h-11 items-center font-mono text-micro text-muted hover:text-fg">
-            open the desk →
-          </a>
+          <span className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={startTour}
+              className="flex min-h-11 items-center font-mono text-micro text-muted hover:text-fg"
+            >
+              how it works
+            </button>
+            <a
+              href="/"
+              className="flex min-h-11 items-center font-mono text-micro text-muted hover:text-fg"
+            >
+              open the desk →
+            </a>
+          </span>
         </header>
-        <p className="font-mono text-micro text-muted">Paper calls only. Not advice. Not Kalshi orders.</p>
+        <p className="font-mono text-micro text-muted">
+          Paper calls only. Not advice. Not Kalshi orders.
+        </p>
 
         {/* window strip */}
-        <section className="rounded-md border border-border bg-surface px-3 py-2" aria-live="off">
+        <section
+          data-pit="window"
+          className="rounded-md border border-border bg-surface px-3 py-2"
+          aria-live="off"
+        >
           {w ? (
             <>
               <div className="flex items-baseline justify-between gap-2 font-mono">
                 <span className="truncate text-ui text-fg">{w.ticker}</span>
                 <span className="text-ui tabular text-muted">
-                  mid <span className="text-fg">{w.mid == null ? "—" : `${w.mid.toFixed(1)}¢`}</span>
+                  mid{" "}
+                  <span className="text-fg">{w.mid == null ? "—" : `${w.mid.toFixed(1)}¢`}</span>
                 </span>
-                <span className={cn("text-title tabular", secsLeft < LAST_SECS ? "text-down" : "text-fg")} aria-label={`${fmtClock(secsLeft)} left in the window`}>
+                <span
+                  className={cn(
+                    "text-title tabular",
+                    secsLeft < LAST_SECS ? "text-down" : "text-fg",
+                  )}
+                  aria-label={`${fmtClock(secsLeft)} left in the window`}
+                >
                   {fmtClock(secsLeft)}
                 </span>
               </div>
@@ -254,130 +314,181 @@ export function PitRoom() {
               </div>
             </>
           ) : (
-            <div className="font-mono text-micro text-muted">{rackErr ? `the rack is not answering: ${rackErr}` : rack ? "The desk has no live window right now. Kalshi's 15-minute Bitcoin market runs on a schedule." : "finding the window…"}</div>
+            <div className="font-mono text-micro text-muted">
+              {rackErr
+                ? `the rack is not answering: ${rackErr}`
+                : rack
+                  ? "The desk has no live window right now. Kalshi's 15-minute Bitcoin market runs on a schedule."
+                  : "finding the window…"}
+            </div>
           )}
         </section>
 
-        {/* callsign gate */}
-        {!name ? (
-          <form
-            className="grid gap-2 rounded-md border border-border bg-surface p-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const v = draft.trim().replace(/\s+/g, " ");
-              if (/^[A-Za-z0-9 _\-.]{2,16}$/.test(v)) {
-                setArenaName(v);
-                setName(v);
-              } else setErr("a callsign is 2–16 letters, digits, spaces, dots, dashes or underscores");
-            }}
-          >
-            <label className="font-mono text-micro uppercase tracking-widest text-subtle" htmlFor="pit-callsign">
-              pick a callsign
-            </label>
-            <input
-              id="pit-callsign"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              maxLength={16}
-              autoComplete="off"
-              placeholder="2–16 letters or digits"
-              className="min-h-12 rounded-sm border border-border bg-bg px-3 font-mono text-ui text-fg"
-            />
-            <button type="submit" className="min-h-12 rounded-sm bg-fg px-4 font-mono text-ui font-medium text-bg hover:bg-chip">
-              Take a stool
-            </button>
-            <span className="font-mono text-micro text-subtle">no login — the callsign lives in this browser</span>
-          </form>
-        ) : null}
+        <div data-pit="lock" className="grid gap-3">
+          {/* callsign gate */}
+          {!name ? (
+            <form
+              className="grid gap-2 rounded-md border border-border bg-surface p-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const v = draft.trim().replace(/\s+/g, " ");
+                if (/^[A-Za-z0-9 _\-.]{2,16}$/.test(v)) {
+                  setArenaName(v);
+                  setName(v);
+                } else
+                  setErr("a callsign is 2–16 letters, digits, spaces, dots, dashes or underscores");
+              }}
+            >
+              <label
+                className="font-mono text-micro uppercase tracking-widest text-subtle"
+                htmlFor="pit-callsign"
+              >
+                pick a callsign
+              </label>
+              <input
+                id="pit-callsign"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={16}
+                autoComplete="off"
+                placeholder="2–16 letters or digits"
+                className="min-h-12 rounded-sm border border-border bg-bg px-3 font-mono text-ui text-fg"
+              />
+              <button
+                type="submit"
+                className="min-h-12 rounded-sm bg-fg px-4 font-mono text-ui font-medium text-bg hover:bg-chip"
+              >
+                Take a stool
+              </button>
+              <span className="font-mono text-micro text-subtle">
+                no login — the callsign lives in this browser
+              </span>
+            </form>
+          ) : null}
 
-        {/* ticket or buttons */}
-        {name && mine ? (
-          <div className="rounded-md border-2 border-wait bg-wait/10 px-3 py-3 font-mono transition-colors duration-300" role="status">
-            <div className="text-title font-medium tabular text-fg">
-              YOU LOCKED <span className={mine.lean === "UP" ? "text-up" : "text-down"}>{mine.lean}</span> · {mine.entry_cents.toFixed(mine.entry_cents % 1 ? 1 : 0)}¢ ·{" "}
-              {fmtClock(secsLeft)}
+          {/* ticket or buttons */}
+          {name && mine ? (
+            <div
+              className="rounded-md border-2 border-wait bg-wait/10 px-3 py-3 font-mono transition-colors duration-300"
+              role="status"
+            >
+              <div className="text-title font-medium tabular text-fg">
+                YOU LOCKED{" "}
+                <span className={mine.lean === "UP" ? "text-up" : "text-down"}>{mine.lean}</span> ·{" "}
+                {mine.entry_cents.toFixed(mine.entry_cents % 1 ? 1 : 0)}¢ · {fmtClock(secsLeft)}
+              </div>
+              <div className="mt-1 text-micro text-muted">
+                paper · one lock per window · settles at the close on Kalshi&apos;s official value
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {alert !== "none" ? (
+                  alert === "on" ? (
+                    <span className="min-h-11 inline-flex items-center rounded-sm border border-border px-3 text-micro text-muted">
+                      ✓ you&apos;ll be told when it settles
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={alert === "busy"}
+                      onClick={() => void turnOnSettleAlert()}
+                      className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2 disabled:opacity-50"
+                    >
+                      {alert === "busy" ? "asking the browser…" : "Tell me when it settles"}
+                    </button>
+                  )
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() =>
+                    void share(
+                      `I locked ${mine.lean} at ${centsStr(mine.entry_cents)} on the ${w ? fmtWhen(w.close_time) : ""} Bitcoin window (paper) · satoshiscouncil.com/arena`,
+                    )
+                  }
+                  className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2"
+                >
+                  share
+                </button>
+                {shared ? <span className="text-micro text-subtle">{shared}</span> : null}
+              </div>
+              {alertMsg ? <div className="mt-1 text-micro text-subtle">{alertMsg}</div> : null}
             </div>
-            <div className="mt-1 text-micro text-muted">paper · one lock per window · settles at the close on Kalshi&apos;s official value</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {alert !== "none" ? (
-                alert === "on" ? (
-                  <span className="min-h-11 inline-flex items-center rounded-sm border border-border px-3 text-micro text-muted">✓ you&apos;ll be told when it settles</span>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={alert === "busy"}
-                    onClick={() => void turnOnSettleAlert()}
-                    className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2 disabled:opacity-50"
-                  >
-                    {alert === "busy" ? "asking the browser…" : "Tell me when it settles"}
-                  </button>
-                )
-              ) : null}
+          ) : name ? (
+            <div className="grid gap-2">
               <button
                 type="button"
-                onClick={() => void share(`I locked ${mine.lean} at ${centsStr(mine.entry_cents)} on the ${w ? fmtWhen(w.close_time) : ""} Bitcoin window (paper) · satoshiscouncil.com/arena`)}
-                className="min-h-11 rounded-sm border border-border bg-surface px-3 text-micro text-fg hover:bg-surface-2"
+                disabled={!canLock || !(w && w.yes_ask > 0)}
+                onClick={() => void lock("UP")}
+                className={cn(
+                  "min-h-12 rounded-sm border px-4 font-mono text-ui font-medium tabular",
+                  canLock && w && w.yes_ask > 0
+                    ? "border-up/50 bg-up/15 text-up hover:bg-up/25"
+                    : "border-border bg-surface-2 text-subtle",
+                )}
               >
-                share
+                UP @ {w ? fmtAsk(w.yes_ask) : "—"}
               </button>
-              {shared ? <span className="text-micro text-subtle">{shared}</span> : null}
+              <button
+                type="button"
+                disabled={!canLock || !(w && w.no_ask > 0)}
+                onClick={() => void lock("DOWN")}
+                className={cn(
+                  "min-h-12 rounded-sm border px-4 font-mono text-ui font-medium tabular",
+                  canLock && w && w.no_ask > 0
+                    ? "border-down/50 bg-down/15 text-down hover:bg-down/25"
+                    : "border-border bg-surface-2 text-subtle",
+                )}
+              >
+                DOWN @ {w ? fmtAsk(w.no_ask) : "—"}
+              </button>
+              <div className="font-mono text-micro text-subtle">
+                {!w
+                  ? "no window to lock on"
+                  : tooLate
+                    ? "closed — inside the last 30 seconds"
+                    : w.stale
+                      ? "quote stale — hold on"
+                      : "one paper lock per window · booked at the ask plus Kalshi's fee · paper"}
+              </div>
             </div>
-            {alertMsg ? <div className="mt-1 text-micro text-subtle">{alertMsg}</div> : null}
-          </div>
-        ) : name ? (
-          <div className="grid gap-2">
-            <button
-              type="button"
-              disabled={!canLock || !(w && w.yes_ask > 0)}
-              onClick={() => void lock("UP")}
-              className={cn(
-                "min-h-12 rounded-sm border px-4 font-mono text-ui font-medium tabular",
-                canLock && w && w.yes_ask > 0 ? "border-up/50 bg-up/15 text-up hover:bg-up/25" : "border-border bg-surface-2 text-subtle",
-              )}
-            >
-              UP @ {w ? fmtAsk(w.yes_ask) : "—"}
-            </button>
-            <button
-              type="button"
-              disabled={!canLock || !(w && w.no_ask > 0)}
-              onClick={() => void lock("DOWN")}
-              className={cn(
-                "min-h-12 rounded-sm border px-4 font-mono text-ui font-medium tabular",
-                canLock && w && w.no_ask > 0 ? "border-down/50 bg-down/15 text-down hover:bg-down/25" : "border-border bg-surface-2 text-subtle",
-              )}
-            >
-              DOWN @ {w ? fmtAsk(w.no_ask) : "—"}
-            </button>
-            <div className="font-mono text-micro text-subtle">
-              {!w ? "no window to lock on" : tooLate ? "closed — inside the last 30 seconds" : w.stale ? "quote stale — hold on" : "one paper lock per window · booked at the ask plus Kalshi's fee · paper"}
-            </div>
-          </div>
-        ) : null}
-        {err ? <div className="font-mono text-micro text-down">{err}</div> : null}
+          ) : null}
+          {err ? <div className="font-mono text-micro text-down">{err}</div> : null}
+        </div>
 
         {/* last lock, once the window has rolled */}
         {name && !mine && last ? (
           <div
             className={cn(
               "rounded-md border px-3 py-2 font-mono transition-colors duration-300",
-              last.winner == null ? "border-wait/70 bg-wait/5" : (last.cents ?? 0) > 0 ? "border-up/70 bg-up/10" : "border-down/70 bg-down/10",
+              last.winner == null
+                ? "border-wait/70 bg-wait/5"
+                : (last.cents ?? 0) > 0
+                  ? "border-up/70 bg-up/10"
+                  : "border-down/70 bg-down/10",
             )}
           >
             <div className="text-micro uppercase tracking-widest text-subtle">your last lock</div>
             <div className="text-ui tabular text-fg">
-              <span className={last.lean === "UP" ? "text-up" : "text-down"}>{last.lean}</span> · {last.entry_cents.toFixed(last.entry_cents % 1 ? 1 : 0)}¢ ·{" "}
+              <span className={last.lean === "UP" ? "text-up" : "text-down"}>{last.lean}</span> ·{" "}
+              {last.entry_cents.toFixed(last.entry_cents % 1 ? 1 : 0)}¢ ·{" "}
               {last.winner == null ? (
                 <span className="text-wait">settling…</span>
               ) : (
                 <>
-                  settled {last.winner} · <span className={(last.cents ?? 0) > 0 ? "text-up" : "text-down"}>{fmtC(last.cents)}</span> paper
+                  settled {last.winner} ·{" "}
+                  <span className={(last.cents ?? 0) > 0 ? "text-up" : "text-down"}>
+                    {fmtC(last.cents)}
+                  </span>{" "}
+                  paper
                 </>
               )}
             </div>
             {last.winner != null && rack?.last_settle?.value != null ? (
               <div className="mt-0.5 text-micro tabular text-muted">
                 {fmtPx(rack.last_settle.value)}
-                {rack.last_settle.strike != null ? ` vs strike ${fmtPx(rack.last_settle.strike)}` : ""} · Kalshi&apos;s official value
+                {rack.last_settle.strike != null
+                  ? ` vs strike ${fmtPx(rack.last_settle.strike)}`
+                  : ""}{" "}
+                · Kalshi&apos;s official value
               </div>
             ) : null}
             {last.winner != null ? (
@@ -400,7 +511,7 @@ export function PitRoom() {
         ) : null}
 
         {/* pit bar */}
-        <section className="rounded-md border border-border bg-surface px-3 py-2">
+        <section data-pit="pit" className="rounded-md border border-border bg-surface px-3 py-2">
           <div className="flex items-baseline justify-between font-mono">
             <span className="text-micro uppercase tracking-widest text-subtle">pit</span>
             <span key={tick} className="pit-tick text-ui tabular text-fg">
@@ -409,8 +520,14 @@ export function PitRoom() {
           </div>
           {rack?.split ? (
             <>
-              <div className="mt-2 flex h-3 overflow-hidden rounded-sm bg-surface-3" aria-hidden="true">
-                <div className="bg-up transition-[width] duration-300" style={{ width: `${rack.split.up_pct}%` }} />
+              <div
+                className="mt-2 flex h-3 overflow-hidden rounded-sm bg-surface-3"
+                aria-hidden="true"
+              >
+                <div
+                  className="bg-up transition-[width] duration-300"
+                  style={{ width: `${rack.split.up_pct}%` }}
+                />
                 <div className="flex-1 bg-down" />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 font-mono text-micro tabular text-muted">
@@ -423,86 +540,128 @@ export function PitRoom() {
           ) : (
             <>
               <div className="mt-2 h-3 rounded-sm border border-border" aria-hidden="true" />
-              <div className="mt-1 font-mono text-micro text-subtle">Lock your call to reveal the room.</div>
+              <div className="mt-1 font-mono text-micro text-subtle">
+                Lock your call to reveal the room.
+              </div>
             </>
           )}
         </section>
 
         {/* my line */}
-        {name ? (
-          <div className="font-mono text-micro tabular text-muted">
-            <span className="text-fg">{me?.name ?? name}</span>
-            {me && me.n > 0 ? (
-              <>
-                {" "}· {me.wins}–{me.losses} · <span className={me.net >= 0 ? "text-up" : "text-down"}>{fmtC(me.net)}</span> net after fees
-                {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} this week` : ""}
-              </>
-            ) : (
-              " · no settled locks yet"
-            )}
-          </div>
-        ) : null}
-        {name && board?.me?.calls?.length ? (
-          <section className="rounded-md border border-border bg-surface px-3 py-2">
-            <div className="font-mono text-micro uppercase tracking-widest text-subtle">your last {Math.min(10, board.me.calls.length)} locks</div>
-            <ul className="mt-1 grid gap-1 font-mono text-micro tabular">
-              {board.me.calls.slice(0, 10).map((c) => (
-                <li key={c.ticker} className="flex items-center justify-between gap-2">
-                  <span className="text-subtle">{fmtDayTime(c.close_time)}</span>
-                  <span className={c.lean === "UP" ? "text-up" : "text-down"}>{c.lean}</span>
-                  <span className="text-muted">{centsStr(c.entry_cents)}</span>
-                  <span className={c.winner == null ? "text-wait" : (c.cents ?? 0) > 0 ? "text-up" : "text-down"}>{c.winner == null ? "open" : fmtC(c.cents)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {/* week board */}
-        <section className="rounded-md border border-border bg-surface px-3 py-2">
-          <div className="flex items-baseline justify-between font-mono">
-            <span className="text-micro uppercase tracking-widest text-subtle">this week</span>
-            <span className="text-micro text-subtle">net ¢ after fees · paper · ranked after 3 settled</span>
-          </div>
-          {!humans.length ? <div className="mt-2 font-mono text-micro text-muted">Take the first stool.</div> : null}
-          <table className="mt-2 w-full font-mono text-micro">
-            <thead className="text-subtle">
-              <tr className="text-left">
-                <th className="py-1 pr-2 font-medium">#</th>
-                <th className="py-1 pr-2 font-medium">callsign</th>
-                <th className="py-1 pr-2 text-right font-medium">n</th>
-                <th className="py-1 pr-2 text-right font-medium">W–L</th>
-                <th className="py-1 text-right font-medium">net ¢</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length ? (
-                rows.map((r, i) => (
-                  <tr key={`${r.desk ? "d" : "h"}:${r.name}`} className={cn("border-t border-border/60", r.me && "bg-surface-2", r.desk && "text-muted")}>
-                    <td className="py-1.5 pr-2 tabular">{r.warming ? "—" : i + 1}</td>
-                    <td className="py-1.5 pr-2">
-                      {r.name}
-                      {r.me ? <span className="text-subtle"> (you)</span> : null}
-                      {r.warming ? <span className="text-subtle"> warming up</span> : null}
-                    </td>
-                    <td className="py-1.5 pr-2 text-right tabular">{r.n}</td>
-                    <td className="py-1.5 pr-2 text-right tabular">
-                      {r.wins}–{r.n - r.wins}
-                    </td>
-                    <td className={cn("py-1.5 text-right tabular", r.desk ? "text-muted" : r.net > 0 ? "text-up" : r.net < 0 ? "text-down" : "text-muted")}>{fmtC(r.net)}</td>
-                  </tr>
-                ))
+        <div data-pit="record" className="grid gap-3">
+          {name ? (
+            <div className="font-mono text-micro tabular text-muted">
+              <span className="text-fg">{me?.name ?? name}</span>
+              {me && me.n > 0 ? (
+                <>
+                  {" "}
+                  · {me.wins}–{me.losses} ·{" "}
+                  <span className={me.net >= 0 ? "text-up" : "text-down"}>{fmtC(me.net)}</span> net
+                  after fees
+                  {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} this week` : ""}
+                </>
               ) : (
-                <tr>
-                  <td colSpan={5} className="py-2 text-subtle">
-                    {board ? "no graded windows this week yet" : "loading the board…"}
-                  </td>
-                </tr>
+                " · no settled locks yet"
               )}
-            </tbody>
-          </table>
-        </section>
+            </div>
+          ) : null}
+          {name && board?.me?.calls?.length ? (
+            <section className="rounded-md border border-border bg-surface px-3 py-2">
+              <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+                your last {Math.min(10, board.me.calls.length)} locks
+              </div>
+              <ul className="mt-1 grid gap-1 font-mono text-micro tabular">
+                {board.me.calls.slice(0, 10).map((c) => (
+                  <li key={c.ticker} className="flex items-center justify-between gap-2">
+                    <span className="text-subtle">{fmtDayTime(c.close_time)}</span>
+                    <span className={c.lean === "UP" ? "text-up" : "text-down"}>{c.lean}</span>
+                    <span className="text-muted">{centsStr(c.entry_cents)}</span>
+                    <span
+                      className={
+                        c.winner == null
+                          ? "text-wait"
+                          : (c.cents ?? 0) > 0
+                            ? "text-up"
+                            : "text-down"
+                      }
+                    >
+                      {c.winner == null ? "open" : fmtC(c.cents)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
+          {/* week board */}
+          <section className="rounded-md border border-border bg-surface px-3 py-2">
+            <div className="flex items-baseline justify-between font-mono">
+              <span className="text-micro uppercase tracking-widest text-subtle">this week</span>
+              <span className="text-micro text-subtle">
+                net ¢ after fees · paper · ranked after 3 settled
+              </span>
+            </div>
+            {!humans.length ? (
+              <div className="mt-2 font-mono text-micro text-muted">Take the first stool.</div>
+            ) : null}
+            <table className="mt-2 w-full font-mono text-micro">
+              <thead className="text-subtle">
+                <tr className="text-left">
+                  <th className="py-1 pr-2 font-medium">#</th>
+                  <th className="py-1 pr-2 font-medium">callsign</th>
+                  <th className="py-1 pr-2 text-right font-medium">n</th>
+                  <th className="py-1 pr-2 text-right font-medium">W–L</th>
+                  <th className="py-1 text-right font-medium">net ¢</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length ? (
+                  rows.map((r, i) => (
+                    <tr
+                      key={`${r.desk ? "d" : "h"}:${r.name}`}
+                      className={cn(
+                        "border-t border-border/60",
+                        r.me && "bg-surface-2",
+                        r.desk && "text-muted",
+                      )}
+                    >
+                      <td className="py-1.5 pr-2 tabular">{r.warming ? "—" : i + 1}</td>
+                      <td className="py-1.5 pr-2">
+                        {r.name}
+                        {r.me ? <span className="text-subtle"> (you)</span> : null}
+                        {r.warming ? <span className="text-subtle"> warming up</span> : null}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right tabular">{r.n}</td>
+                      <td className="py-1.5 pr-2 text-right tabular">
+                        {r.wins}–{r.n - r.wins}
+                      </td>
+                      <td
+                        className={cn(
+                          "py-1.5 text-right tabular",
+                          r.desk
+                            ? "text-muted"
+                            : r.net > 0
+                              ? "text-up"
+                              : r.net < 0
+                                ? "text-down"
+                                : "text-muted",
+                        )}
+                      >
+                        {fmtC(r.net)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-2 text-subtle">
+                      {board ? "no graded windows this week yet" : "loading the board…"}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+        </div>
         <footer className="font-mono text-micro text-subtle">
           Paper calls only · net ¢ after fees · not affiliated with Kalshi ·{" "}
           <a href="/legal" className="hover:text-fg">
@@ -510,6 +669,13 @@ export function PitRoom() {
           </a>
         </footer>
       </div>
+      <PitTour
+        open={tourOn}
+        step={tourStep}
+        onStep={setTourStep}
+        onClose={() => setTourOn(false)}
+        onDone={() => beacon("pit_tour_done")}
+      />
     </div>
   );
 }

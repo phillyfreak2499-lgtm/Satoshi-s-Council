@@ -103,4 +103,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "THE PIT learned to follow through. A locked ticket now has Tell me when it settles, one tap that turns on the push alert for that browser with your result on the line, and a share button that hands your lock to the phone's share sheet as plain text, paper and all. A settled ticket shows Kalshi's official value beside the strike. Your last ten locks sit under your line. The week board ranks a callsign only after three settled locks; before that it says warming up, so one lucky lock cannot top it. And PIT CREW gained a TRAFFIC table: first-party counts of views, locks, tours, glossary opens, searches, shares and alerts, with no scripts, no cookies and nothing about who.",
   },
+  {
+    slug: "2026-09-08-pit-walkthrough",
+    body:
+      "THE PIT explains itself on a first visit: four short stops over the window, the lock, the room and the settle, skippable, and replayable any time from how it works in the room's header. It says the same things the room's copy says, in order: one window at a time, lock once at the ask plus fee on paper, the room shows itself after you lock, come back when it settles.",
+  },
 ];

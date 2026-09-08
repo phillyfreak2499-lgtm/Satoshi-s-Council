@@ -10,7 +10,9 @@ export type BeaconEvent =
   | "welcome_floor"
   | "palette_open"
   | "share"
-  | "settle_alert";
+  | "settle_alert"
+  | "pit_tour_start"
+  | "pit_tour_done";
 
 export function beacon(event: BeaconEvent, oncePerSession = false): void {
   try {
