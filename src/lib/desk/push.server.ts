@@ -7,6 +7,7 @@
  * once a window and a window grades once.
  */
 import webpush from "web-push";
+import { settleWanted } from "./push-rules";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -229,7 +230,8 @@ export function notifySettle(
     try {
       const subs = await subsFor("settle");
       if (!subs.length) return;
-      const r = await fanout(subs, (sub) => settlePayload(winner, chair, sub.token ? humans.get(sub.token) : null, ticker));
+      // Only windows that mattered to this browser: its own lock, or a chair call. Quiet windows stay quiet.
+      const r = await fanout(subs, (sub) => (settleWanted(sub, chair != null, humans) ? settlePayload(winner, chair, sub.token ? humans.get(sub.token) : null, ticker) : null));
       lastLog = `settle ${ticker}: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
     } catch (err) {
       lastLog = `settle push failed: ${err instanceof Error ? err.message : String(err)}`;

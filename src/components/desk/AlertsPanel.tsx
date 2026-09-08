@@ -78,7 +78,7 @@ export function AlertsPanel() {
             />
           </label>
           <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
-            When a window settles (with your Arena result)
+            When a window you locked, or the chair called, settles
             <input
               type="checkbox"
               checked={onSettle}
@@ -113,7 +113,7 @@ export function AlertsPanel() {
           ) : null}
           {msg ? <div className="mt-2 font-mono text-micro text-muted">{msg}</div> : null}
           <div className="mt-2 font-mono text-micro text-subtle">
-            One alert when the chair books, one when the window settles, nothing else. Alerts are per browser — turn them on wherever you want them.
+            One alert when the chair books, one when a window that mattered settles, nothing for quiet windows. Alerts are per browser — turn them on wherever you want them.
           </div>
         </>
       )}
