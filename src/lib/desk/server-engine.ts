@@ -31,7 +31,8 @@ import { labDigestBits, labFairState, labSettleReceipt, startLab, labFairNow } f
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
-import { notifyCall, notifySettle } from "./push.server";
+import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
+import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
 import {
   V2_SAMPLE_MINS,
   decideV2,
@@ -100,6 +101,10 @@ type Eng = {
   v2Stats: V2Stats | null;
   v2Fitting: boolean;
   v2LastFitAt: number;
+  /** When a window last graded (boot counts, so a fresh deploy gets its twenty minutes). */
+  lastGradeAt: number;
+  watchdog: WatchdogState;
+  watchdogTimer: ReturnType<typeof setInterval> | null;
 };
 
 export type { V2Stats } from "./chair-v2";
@@ -169,6 +174,9 @@ function freshEng(): Eng {
     v2Stats: null,
     v2Fitting: false,
     v2LastFitAt: 0,
+    lastGradeAt: Date.now(),
+    watchdog: freshWatchdog(),
+    watchdogTimer: null,
   };
 }
 
@@ -493,6 +501,7 @@ async function maybeDigest(e: Eng) {
 }
 
 function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string) {
+  e.lastGradeAt = Date.now();
   e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
   const gr = gradeWindow(e.learner, snap, votes, chair, finish);
   e.learner = gr.learner;
@@ -977,6 +986,7 @@ export function ensureServerEngine(): void {
     // The pulse loop's lifecycle lives here and only here — restartTimer
     // (beast toggles) must never double-start it.
     if (!e.pulseTimer) e.pulseTimer = setInterval(() => void pulseTick(e), PULSE_MS);
+    if (!e.watchdogTimer) e.watchdogTimer = setInterval(() => watchdogTick(e), WATCHDOG_CHECK_MS);
     void refitV2(e);
     void tick(e);
     try {
@@ -988,6 +998,30 @@ export function ensureServerEngine(): void {
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
   });
+}
+
+const WATCHDOG_CHECK_MS = 60_000;
+
+/** Its own timer, on purpose: a tick loop that is stuck or throwing every
+ *  pass is exactly what this has to notice, so it must not live inside it. */
+function watchdogTick(e: Eng) {
+  try {
+    const now = Date.now();
+    const d = watchdogDecision({ now, lastGradeAt: e.lastGradeAt, state: e.watchdog });
+    if (d.kind === "quiet") return;
+    e.watchdog = applyWatchdog(e.watchdog, d, now, e.lastGradeAt);
+    const s = e.prevSnap;
+    notifyWatchdog(
+      watchdogPayload(d, {
+        lastGradeAt: e.lastGradeAt,
+        lastError: e.lastError,
+        feeds: s ? `spot ${s.health.spot} · kalshi ${s.health.kalshi}` : "no snapshot yet",
+        tickAgeS: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
+      }),
+    );
+  } catch (err) {
+    e.lastError = `watchdog: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }
 
 /** The shared brain's latest snapshot (the Arena books calls against it). */

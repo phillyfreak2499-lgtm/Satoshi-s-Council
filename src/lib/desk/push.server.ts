@@ -7,7 +7,7 @@
  * once a window and a window grades once.
  */
 import webpush from "web-push";
-import { settleWanted } from "./push-rules";
+import { settleWanted, type WatchdogPayload } from "./push-rules";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -54,7 +54,7 @@ export async function pushKeys(): Promise<Keys> {
   return keysInflight;
 }
 
-export type PushPrefs = { on_call: boolean; on_settle: boolean };
+export type PushPrefs = { on_call: boolean; on_settle: boolean; owner: boolean };
 export type SubInput = {
   subscription?: { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
   endpoint?: unknown;
@@ -90,15 +90,16 @@ export async function subscribePush(input: SubInput): Promise<PushResult> {
   const on_settle = input.on_settle === true;
   const ua = typeof input.ua === "string" ? input.ua.slice(0, 200) : null;
   const db = await sql();
-  await db`
+  const rows = await db<{ owner: boolean }>`
     insert into desk_push_subs (endpoint, p256dh, auth, token, on_call, on_settle, ua)
     values (${endpoint}, ${p256dh}, ${auth}, ${token}, ${on_call}, ${on_settle}, ${ua})
     on conflict (endpoint) do update set
       p256dh = excluded.p256dh, auth = excluded.auth, token = coalesce(excluded.token, desk_push_subs.token),
       on_call = excluded.on_call, on_settle = excluded.on_settle, ua = excluded.ua,
       last_seen = now(), fails = 0
+    returning owner
   `;
-  return { ok: true, prefs: { on_call, on_settle } };
+  return { ok: true, prefs: { on_call, on_settle, owner: rows[0]?.owner === true } };
 }
 
 export async function unsubscribePush(endpointRaw: unknown): Promise<PushResult> {
@@ -106,14 +107,27 @@ export async function unsubscribePush(endpointRaw: unknown): Promise<PushResult>
   if (!endpoint) return { ok: false, error: "no endpoint", status: 400 };
   const db = await sql();
   await db`delete from desk_push_subs where endpoint = ${endpoint}`;
-  return { ok: true, prefs: { on_call: false, on_settle: false } };
+  return { ok: true, prefs: { on_call: false, on_settle: false, owner: false } };
+}
+
+/** The owner flag: only the route that checked the admin key calls this. */
+export async function setOwnerPush(endpointRaw: unknown, on: boolean): Promise<PushResult> {
+  const endpoint = cleanEndpoint(endpointRaw);
+  if (!endpoint) return { ok: false, error: "no endpoint", status: 400 };
+  const db = await sql();
+  const rows = await db<PushPrefs>`
+    update desk_push_subs set owner = ${on}, last_seen = now() where endpoint = ${endpoint}
+    returning on_call, on_settle, owner
+  `;
+  if (!rows[0]) return { ok: false, error: "turn alerts on in this browser first", status: 404 };
+  return { ok: true, prefs: rows[0] };
 }
 
 export async function pushPrefsFor(endpointRaw: unknown): Promise<PushPrefs | null> {
   const endpoint = cleanEndpoint(endpointRaw);
   if (!endpoint) return null;
   const db = await sql();
-  const rows = await db<PushPrefs>`select on_call, on_settle from desk_push_subs where endpoint = ${endpoint}`;
+  const rows = await db<PushPrefs>`select on_call, on_settle, owner from desk_push_subs where endpoint = ${endpoint}`;
   return rows[0] ?? null;
 }
 
@@ -162,8 +176,9 @@ async function fanout(subs: SubRow[], pick: (sub: SubRow) => PushPayload | null)
   return out;
 }
 
-async function subsFor(kind: "call" | "settle"): Promise<SubRow[]> {
+async function subsFor(kind: "call" | "settle" | "owner"): Promise<SubRow[]> {
   const db = await sql();
+  if (kind === "owner") return db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where owner and fails < ${MAX_FAILS}`;
   return kind === "call"
     ? db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_call and fails < ${MAX_FAILS}`
     : db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_settle and fails < ${MAX_FAILS}`;
@@ -239,13 +254,27 @@ export function notifySettle(
   })();
 }
 
+/** The desk stopped grading, or started again. Owner browsers only. Fire and forget. */
+export function notifyWatchdog(payload: WatchdogPayload): void {
+  void (async () => {
+    try {
+      const subs = await subsFor("owner");
+      if (!subs.length) return;
+      const r = await fanout(subs, () => payload);
+      lastLog = `watchdog: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
+    } catch (err) {
+      lastLog = `watchdog push failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  })();
+}
+
 /** One test push to a single subscription, so a visitor can see it land. */
 export async function testPush(endpointRaw: unknown): Promise<PushResult> {
   const endpoint = cleanEndpoint(endpointRaw);
   if (!endpoint) return { ok: false, error: "no endpoint", status: 400 };
   const db = await sql();
-  const rows = await db<SubRow & { on_call: boolean; on_settle: boolean }>`
-    select id, endpoint, p256dh, auth, token, on_call, on_settle from desk_push_subs where endpoint = ${endpoint}
+  const rows = await db<SubRow & PushPrefs>`
+    select id, endpoint, p256dh, auth, token, on_call, on_settle, owner from desk_push_subs where endpoint = ${endpoint}
   `;
   const sub = rows[0];
   if (!sub) return { ok: false, error: "this browser is not subscribed", status: 404 };
@@ -255,7 +284,7 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
     return { ok: false, error: "the push service says this subscription is gone — turn alerts off and on again", status: 410 };
   }
   if (r === "failed") return { ok: false, error: "the push service refused the test", status: 502 };
-  return { ok: true, prefs: { on_call: sub.on_call, on_settle: sub.on_settle } };
+  return { ok: true, prefs: { on_call: sub.on_call, on_settle: sub.on_settle, owner: sub.owner } };
 }
 
 export const __test = { fanout, cleanEndpoint, cleanKey };
