@@ -438,7 +438,11 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.board": {
     title: "Chair call",
-    body: "The paper call this window, at the ask in cents. UP 55¢ means YES was 55 cents. WAIT is not a fill. Score must clear the bar.",
+    body: "The chair's read this window, at the ask in cents. UP 55¢ means YES was 55 cents. WAIT is not a fill, and neither is a read under the 70¢ floor. Score must clear the bar.",
+  },
+  "book.floor": {
+    title: "70¢ floor",
+    body: "The chair's paper book only fills at 70¢ or better. The read still shows and still grades the seats; under the floor nothing is booked, and the ledger keeps the read with no entry. Set on the record: the chair's calls under 70¢ lost money, its calls at 70¢ or better made it. A window is nearly decided by the time one side prints 70¢.",
   },
   "pane.spot-chart": {
     title: "BTC 15m",
@@ -450,7 +454,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.call-log": {
     title: "Call log",
-    body: "Each UP/DOWN is a buy at that side’s ask. A flip sells the last buy at that side’s current cents, then buys the new side. Window end is 100 if that side won, 0 if it lost. Avg ¢ is mean of those prints. WAIT does not buy.",
+    body: "Each row is a paper buy at that side’s ask, one position per window, held to settlement: 100 if that side won, 0 if it lost, before fees. Fills only at 70¢ or better. Avg ¢ is the mean of those prints. WAIT does not buy.",
   },
   "pane.score": {
     title: "Score math",

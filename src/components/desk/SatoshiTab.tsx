@@ -10,6 +10,7 @@ import { ArenaPanel } from "./ArenaPanel";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
+import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
 
 function sideAsk(snap: Snapshot, lean: Lean) {
   if (lean === "UP") return snap.yes_ask || snap.yes_mid;
@@ -31,10 +32,13 @@ function fmtClock(t: number, tz: string) {
   }
 }
 
-function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; tz: string }) {
+function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[] }) {
   const lean = chair.lean;
   const fill = Math.min(1, Math.abs(chair.score) / Math.max(chair.bar, 0.01));
   const ask = sideAsk(snap, lean);
+  const side = lean === "UP" ? "YES" : "NO";
+  const book = bookState(snap, lean, callLog);
+  const bookSide = book.kind === "booked" ? (book.lean === "UP" ? "YES" : "NO") : side;
   const tone = lean === "UP" ? "text-up" : lean === "DOWN" ? "text-down" : "text-wait";
   const barTone = lean === "UP" ? "bg-up" : lean === "DOWN" ? "bg-down" : "bg-wait";
   const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 0;
@@ -56,16 +60,29 @@ function ChairBoard({ snap, chair, tz }: { snap: Snapshot; chair: ChairResult; t
             {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
           </div>
           <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-muted">
-            {lean === "WAIT"
-              ? "The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk's most common call, on purpose."
-              : `Paper only: booked at the ${lean === "UP" ? "YES" : "NO"} ask if it fills, graded on Kalshi's official settlement value.`}
+            {book.kind === "booked"
+              ? `Paper only: booked ${book.lean} at ${book.cents.toFixed(0)}¢ on the ${bookSide} ask, held to settlement and graded on Kalshi's official value.${
+                  lean !== book.lean ? " The read has moved since; one position per window means the book does not sell low to buy high." : ""
+                }`
+              : lean === "WAIT"
+                ? "The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk's most common call, on purpose."
+                : book.kind === "floor"
+                  ? `Paper only: the book fills at ${CHAIR_MIN_ASK_CENTS}¢ or better. ${side} is ${book.ask.toFixed(0)}¢, so this read stays unbooked unless the ask reaches the floor before the window closes.`
+                  : `Paper only: booked at the ${side} ask if it fills, graded on Kalshi's official settlement value.`}
           </p>
           <div className="mt-2 font-mono text-ui text-muted">
-            {lean === "WAIT" ? (
+            {book.kind === "booked" ? (
+              <>
+                {book.lean} booked {book.cents.toFixed(1)}¢ · {bookSide} ask now {book.ask.toFixed(1)}¢
+              </>
+            ) : lean === "WAIT" ? (
               "no paper fill"
             ) : (
               <>
-                {lean === "UP" ? "YES" : "NO"} ask {ask.toFixed(1)}¢
+                {side} ask {ask.toFixed(1)}¢
+                {book.kind === "floor" ? (
+                  <span className="text-wait"> · under the {CHAIR_MIN_ASK_CENTS}¢ floor · no paper fill</span>
+                ) : null}
                 {edge ? ` · leftover ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
               </>
             )}
@@ -159,7 +176,7 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
       </div>
       {!rows.length ? (
         <div className="px-3 py-4 font-mono text-ui text-muted">
-          No directional call yet. WAIT does not buy. A flip sells the last buy at that side’s current cents. Window end is 100 or 0 vs the last buy.
+          No paper fill yet. WAIT does not buy, and a read under the {CHAIR_MIN_ASK_CENTS}¢ floor does not either. One position per window, held to settlement: 100¢ if that side won, 0¢ if it lost.
         </div>
       ) : (
         <div className="max-h-56 overflow-auto">
@@ -316,7 +333,7 @@ export function SatoshiTab({
   const rows = chair.rows.filter((r) => (view === "all" ? true : view === "speaking" ? r.lean === "UP" || r.lean === "DOWN" : r.status === "LIVE"));
   return (
     <div className="flex flex-col gap-3 p-3">
-      <ChairBoard snap={snap} chair={chair} tz={settings.tz} />
+      <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
       <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
       {v2 ? <ShadowChair v2={v2} /> : null}
       <ChairEyes snap={snap} />

@@ -21,6 +21,7 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
+import { bookable, CHAIR_MIN_ASK_CENTS } from "./book-floor";
 import { freshLearner } from "./skills";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
@@ -297,6 +298,9 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   }
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
+  // The book's price floor: the read stands on screen, the fill waits. Nothing
+  // is positioned, so a later tick at the floor can still fill this window.
+  if (!bookable(cents)) return;
   const flipped = false;
   e.callLog = [
     {
@@ -405,13 +409,14 @@ async function maybeDigest(e: Eng) {
   e.lastDigestCheckAt = Date.now();
   try {
     const db = await sql();
-    const agg = await db<{ day: string; windows: number; calls: number; wins: number; net_ev: number | null }>`
+    const agg = await db<{ day: string; windows: number; calls: number; wins: number; net_ev: number | null; floored: number }>`
       select
         to_char((now() at time zone 'America/Chicago')::date - 1, 'YYYY-MM-DD') as day,
         count(*)::int as windows,
         (count(*) filter (where entry_cents is not null))::int as calls,
         (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins,
-        coalesce(sum(ev_cents), 0) as net_ev
+        coalesce(sum(ev_cents), 0) as net_ev,
+        (count(*) filter (where chair_lean in ('UP','DOWN') and entry_cents is null))::int as floored
       from desk_ledger
       where (close_time at time zone 'America/Chicago')::date
           = (now() at time zone 'America/Chicago')::date - 1
@@ -445,6 +450,9 @@ async function maybeDigest(e: Eng) {
         ? `${a.calls} call${a.calls === 1 ? "" : "s"} (${a.wins}W/${a.calls - a.wins}L), net ${net >= 0 ? "+" : ""}${net.toFixed(1)}¢ after fees`
         : "no fills — the council sat",
     ];
+    if (a.floored) {
+      bits.push(`${a.floored} read${a.floored === 1 ? "" : "s"} held under the ${CHAIR_MIN_ASK_CENTS}¢ floor`);
+    }
     if (best && worst && best[0] !== worst[0]) {
       bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
     }
@@ -1022,7 +1030,7 @@ export async function getServerFrame(): Promise<ServerFrame> {
 }
 
 /** Internals exposed for the settle-logic harness only. */
-export const __test = { freshEng, settleIfNeeded };
+export const __test = { freshEng, settleIfNeeded, noteCall };
 
 export type DeskOp =
   | { op: "settings"; patch: Partial<Pick<Settings, "bar_override" | "adaptive_bar" | "mutes" | "beast">> }
