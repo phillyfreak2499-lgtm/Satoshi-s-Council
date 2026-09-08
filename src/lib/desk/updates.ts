@@ -139,6 +139,11 @@ export const DESK_UPDATES: DeskUpdate[] = [
       "The desk now watches itself. If no window grades for twenty minutes, the owner gets a push naming the quiet spell, the last error the brain logged and the state of the feeds, a reminder each hour it lasts, and a note when grading resumes. It is turned on from SETTINGS → Alerts with the admin key; nobody else can receive it. A public desk that has stopped grading should not be quiet about it.",
   },
   {
+    slug: "2026-09-08-lab-pane",
+    body:
+      "BOOKS now shows the lab's stale-quote study, counted honestly: one paper trade per window at the first stale ask the settlement index left behind, held to settlement after the fee, and the same for the final minute. A measurement of the market, not a strategy the chair can run: that edge lives at 200 milliseconds on the cheap side; the chair ticks every four seconds and books at 70¢ or better.",
+  },
+  {
     slug: "2026-09-08-window-page",
     body:
       "Every graded window now has its own page you can share. satoshiscouncil.com/window/ followed by the window's ticker replays what the seats saw and said, the chair's read and Kalshi's official settlement value. From BOOKS, pick a window marked ▶ and use \"open as a page\". Paper only, as always; nothing on a replay was a live order.",
