@@ -6,9 +6,12 @@ import {
   needsHomeScreen,
   pushPermission,
   pushSupported,
+  setOwnerAlerts,
   testPush,
+  type PushChoice,
   type PushPrefs,
 } from "@/lib/desk/push";
+import { getAdminKey } from "@/lib/desk/engine";
 import { Tip } from "./Tip";
 
 /** SETTINGS → Alerts: opt in to a push when the chair books a call and,
@@ -35,7 +38,7 @@ export function AlertsPanel() {
     };
   }, []);
 
-  const apply = async (next: PushPrefs) => {
+  const apply = async (next: PushChoice) => {
     setBusy(true);
     setMsg(null);
     try {
@@ -55,8 +58,28 @@ export function AlertsPanel() {
     }
   };
 
+  const applyOwner = async (on: boolean) => {
+    const key = getAdminKey();
+    if (!key) {
+      setMsg("enter the admin key above first");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const p = await setOwnerAlerts(on, key);
+      setPrefs(p);
+      setMsg(on ? "watchdog on — a push here if no window grades for twenty minutes" : "watchdog off in this browser");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onCall = prefs?.on_call ?? false;
   const onSettle = prefs?.on_settle ?? false;
+  const owner = prefs?.owner ?? false;
   const blocked = pushPermission() === "denied";
 
   return (
@@ -84,6 +107,17 @@ export function AlertsPanel() {
               checked={onSettle}
               disabled={busy || !ready || blocked}
               onChange={(e) => void apply({ on_call: onCall, on_settle: e.target.checked })}
+            />
+          </label>
+          <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
+            <span>
+              <Tip k="settings.watchdog">Desk watchdog</Tip> <span className="text-subtle">· owner, needs the admin key</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={owner}
+              disabled={busy || !ready || blocked || !prefs}
+              onChange={(e) => void applyOwner(e.target.checked)}
             />
           </label>
           <div className="mt-1 flex flex-wrap items-center gap-2">

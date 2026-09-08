@@ -2,7 +2,9 @@
  *  subscription, and the three calls the SETTINGS panel makes. */
 import { arenaToken } from "./arena";
 
-export type PushPrefs = { on_call: boolean; on_settle: boolean };
+export type PushPrefs = { on_call: boolean; on_settle: boolean; owner: boolean };
+/** What a visitor chooses; the owner flag is set separately, with the admin key. */
+export type PushChoice = { on_call: boolean; on_settle: boolean };
 
 export function pushSupported(): boolean {
   return (
@@ -59,7 +61,7 @@ async function post(body: Record<string, unknown>): Promise<PushPrefs> {
   });
   const j = (await r.json()) as { ok?: boolean; prefs?: PushPrefs; error?: string };
   if (!r.ok || !j.ok) throw new Error(j.error || `push ${r.status}`);
-  return j.prefs ?? { on_call: false, on_settle: false };
+  return j.prefs ?? { on_call: false, on_settle: false, owner: false };
 }
 
 export async function currentSubscription(): Promise<PushSubscription | null> {
@@ -84,7 +86,7 @@ export async function currentPrefs(): Promise<PushPrefs | null> {
 }
 
 /** Turn alerts on (or change what to hear about). Asks for permission if needed. */
-export async function enablePush(prefs: PushPrefs): Promise<PushPrefs> {
+export async function enablePush(prefs: PushChoice): Promise<PushPrefs> {
   if (!pushSupported()) throw new Error("this browser cannot receive push alerts");
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error("notifications are blocked for this site — allow them in the browser's site settings");
@@ -122,6 +124,13 @@ export async function disablePush(): Promise<void> {
     /* the server row goes regardless */
   }
   await post({ action: "unsubscribe", endpoint });
+}
+
+/** Owner only: flag this browser for the desk watchdog. The server checks the admin key. */
+export async function setOwnerAlerts(on: boolean, key: string): Promise<PushPrefs> {
+  const sub = await currentSubscription();
+  if (!sub) throw new Error("turn alerts on in this browser first");
+  return post({ action: "owner", endpoint: sub.endpoint, key, on });
 }
 
 export async function testPush(): Promise<void> {

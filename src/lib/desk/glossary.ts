@@ -75,6 +75,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Replay",
     body: "Scrub back through a past window: BTC against the strike, the yes ask against the lab's fair value, the chair's lean as a coloured band, and every seat's lean as a lane (solid when it spoke, faint when it whispered under the gag). Windows graded since the recorder went in have a replay; older ones do not.",
   },
+  "settings.watchdog": {
+    title: "Desk watchdog",
+    body: "Owner only. The desk grades a window every fifteen minutes around the clock, so quiet means trouble. If no window grades for twenty minutes, the owner's phone gets a push naming the quiet spell, the last error the brain logged and the state of the feeds, a reminder each hour it lasts, and a note when grading resumes. Turned on with the admin key.",
+  },
   "settings.alerts": {
     title: "Alerts",
     body: "A push notification to this browser when the chair books a call, and if you want, when a window that mattered settles: one you locked in the Arena, with your result on the line, or one the chair called. Quiet windows send nothing. Turn it on here; the browser will ask permission once. On iPhone and iPad the site has to be on your Home Screen first. Nothing is ever sent to a browser that did not opt in.",
