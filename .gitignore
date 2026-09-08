@@ -18,7 +18,10 @@ screenshots/
 attachments/
 AGENTS.md
 AGENTS.project.md
-public/__grok/
+# Platform output stays out of git, but the Home Screen and notification icons are real files now.
+public/__grok/*
+!public/__grok/icon-180.png
+!public/__grok/icon-512.png
 
 # generated
 *.pid
