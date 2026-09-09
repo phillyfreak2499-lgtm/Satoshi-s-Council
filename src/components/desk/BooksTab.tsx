@@ -524,15 +524,15 @@ export function BooksTab({ tz }: { tz: string }) {
       <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· click a window with ▶ to replay it</span></span>}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] font-mono text-micro">
-            <thead className="text-subtle">
+            <thead>
               <tr className="text-left">
-                <th className="py-1 pr-2">close</th>
-                <th className="py-1 pr-2">result</th>
-                <th className="py-1 pr-2">settled</th>
-                <th className="py-1 pr-2">chair</th>
-                <th className="py-1 pr-2 text-right">cents</th>
-                <th className="py-1 pr-2 text-right">seats</th>
-                <th className="py-1 pr-2 text-right">reads</th>
+                <th >close</th>
+                <th >result</th>
+                <th >settled</th>
+                <th >chair</th>
+                <th className="text-right">cents</th>
+                <th className="text-right">seats</th>
+                <th className="text-right">reads</th>
                 <th className="py-1 text-right">arena</th>
               </tr>
             </thead>
@@ -543,20 +543,20 @@ export function BooksTab({ tz }: { tz: string }) {
                   className={cn("border-t border-border/50", w.replay && "cursor-pointer hover:bg-surface-2/40", sel === w.ticker && "bg-surface-2/60")}
                   onClick={() => (w.replay ? setSel(sel === w.ticker ? null : w.ticker) : undefined)}
                 >
-                  <td className="py-1 pr-2 whitespace-nowrap text-muted">
+                  <td className="whitespace-nowrap text-muted">
                     <span className={cn("mr-1", w.replay ? "text-fg" : "text-subtle/40")}>{w.replay ? "▶" : "·"}</span>
                     {fmtWhen(w.close_time, tz)}
                   </td>
-                  <td className="py-1 pr-2">
+                  <td >
                     <LeanChip lean={w.winner} />
                   </td>
-                  <td className="py-1 pr-2 tabular text-muted">{fmtPx(w.official ?? w.settle_avg)}</td>
-                  <td className="py-1 pr-2">
+                  <td className="tabular text-muted">{fmtPx(w.official ?? w.settle_avg)}</td>
+                  <td >
                     <CallCell c={w.call} />
                   </td>
-                  <td className={cn("py-1 pr-2 text-right tabular", tone(w.call?.ev))}>{w.call ? fmtC(w.call.ev) : ""}</td>
-                  <td className="py-1 pr-2 text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
-                  <td className="py-1 pr-2 text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
+                  <td className={cn("text-right tabular", tone(w.call?.ev))}>{w.call ? fmtC(w.call.ev) : ""}</td>
+                  <td className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
+                  <td className="text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
                   <td className={cn("py-1 text-right tabular", w.arena ? tone(w.arena.net) : "text-subtle")}>
                     {w.arena ? `${w.arena.n} · ${fmtC(w.arena.net)}` : "—"}
                   </td>

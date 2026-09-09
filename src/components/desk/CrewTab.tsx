@@ -111,38 +111,38 @@ export function CrewTab() {
           Last 7 days per seat. Reads = had a side; spoke = cleared its bar; mid-window = right and paid at the ask, 7.5 minutes out. Bar {crew.bar}.
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full font-mono text-micro">
-            <thead className="text-subtle">
+          <table className="table-research">
+            <thead>
               <tr className="text-left">
-                <th className="py-1 pr-2">seat</th>
-                <th className="py-1 pr-2">reads</th>
-                <th className="py-1 pr-2">spoke</th>
-                <th className="py-1 pr-2">gagged</th>
-                <th className="py-1 pr-2">best conf</th>
-                <th className="py-1 pr-2">mid n</th>
-                <th className="py-1 pr-2">mid right</th>
-                <th className="py-1 pr-2">¢/contract</th>
-                <th className="py-1 pr-2">graded</th>
-                <th className="py-1 pr-2">flags</th>
+                <th >seat</th>
+                <th >reads</th>
+                <th >spoke</th>
+                <th >gagged</th>
+                <th >best conf</th>
+                <th >mid n</th>
+                <th >mid right</th>
+                <th >¢/contract</th>
+                <th >graded</th>
+                <th >flags</th>
               </tr>
             </thead>
             <tbody>
               {crew.reports.map((r) => (
                 <tr key={r.seat} className="border-t border-border/60 text-fg" title={r.note ?? undefined}>
-                  <td className="py-1 pr-2 font-semibold">{r.seat}</td>
-                  <td className="py-1 pr-2">{r.reads}</td>
-                  <td className="py-1 pr-2">{r.spoke}</td>
-                  <td className="py-1 pr-2">{r.gagged}</td>
-                  <td className={cn("py-1 pr-2", r.max_conf != null && r.max_conf < crew.bar && r.reads >= 10 ? "text-warn" : "")}>
+                  <td className="font-semibold">{r.seat}</td>
+                  <td >{r.reads}</td>
+                  <td >{r.spoke}</td>
+                  <td >{r.gagged}</td>
+                  <td className={cn(r.max_conf != null && r.max_conf < crew.bar && r.reads >= 10 ? "text-warn" : "")}>
                     {fmt(r.max_conf)}
                   </td>
-                  <td className="py-1 pr-2">{r.mid_n}</td>
-                  <td className="py-1 pr-2">{r.mid_hit_pct == null ? "—" : `${r.mid_hit_pct}%`}</td>
-                  <td className={cn("py-1 pr-2", (r.mid_cents ?? 0) > 0 ? "text-up" : (r.mid_cents ?? 0) < 0 ? "text-down" : "")}>
+                  <td >{r.mid_n}</td>
+                  <td >{r.mid_hit_pct == null ? "—" : `${r.mid_hit_pct}%`}</td>
+                  <td className={cn((r.mid_cents ?? 0) > 0 ? "text-up" : (r.mid_cents ?? 0) < 0 ? "text-down" : "")}>
                     {r.mid_cents == null ? "—" : `${r.mid_cents > 0 ? "+" : ""}${fmt(r.mid_cents, 1)}`}
                   </td>
-                  <td className="py-1 pr-2">{r.grade_n}</td>
-                  <td className="py-1 pr-2">
+                  <td >{r.grade_n}</td>
+                  <td >
                     {r.flags.length
                       ? r.flags.map((f) => (
                           <span key={f} className={cn("mr-1", FLAG_TONE[f] ?? "")}>
@@ -180,27 +180,27 @@ export function CrewTab() {
             Only COACH writes these. Bar = {crew.bar} + offset. A move is judged a week later on windows it did not see; a bad one is reverted.
           </div>
           {knobRows.length ? (
-            <table className="w-full font-mono text-micro">
-              <thead className="text-subtle">
+            <table className="table-research">
+              <thead>
                 <tr className="text-left">
-                  <th className="py-1 pr-2">seat</th>
-                  <th className="py-1 pr-2">bar</th>
-                  <th className="py-1 pr-2">edge ×</th>
-                  <th className="py-1 pr-2">bench</th>
-                  <th className="py-1 pr-2">why</th>
+                  <th >seat</th>
+                  <th >bar</th>
+                  <th >edge ×</th>
+                  <th >bench</th>
+                  <th >why</th>
                 </tr>
               </thead>
               <tbody>
                 {knobRows.map(([seat, k]) => (
                   <tr key={seat} className="border-t border-border/60 text-fg">
-                    <td className="py-1 pr-2 font-semibold">{seat}</td>
-                    <td className="py-1 pr-2">
+                    <td className="font-semibold">{seat}</td>
+                    <td >
                       {crew.bar + k.speak_offset}
                       {k.speak_offset ? <span className="text-subtle"> ({k.speak_offset > 0 ? "+" : ""}{k.speak_offset})</span> : null}
                     </td>
-                    <td className="py-1 pr-2">{k.edge_mult.toFixed(2)}</td>
-                    <td className="py-1 pr-2">{k.benched_until > Date.now() ? `until ${new Date(k.benched_until).toISOString().slice(0, 10)}` : "—"}</td>
-                    <td className="py-1 pr-2 text-muted">{k.reason || "—"}</td>
+                    <td >{k.edge_mult.toFixed(2)}</td>
+                    <td >{k.benched_until > Date.now() ? `until ${new Date(k.benched_until).toISOString().slice(0, 10)}` : "—"}</td>
+                    <td className="text-muted">{k.reason || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -241,11 +241,11 @@ export function CrewTab() {
           {crew.hits && crew.hits.days.length ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[34rem] font-mono text-micro">
-                <thead className="text-subtle">
+                <thead>
                   <tr className="text-left">
-                    <th className="py-1 pr-2 font-medium">day</th>
+                    <th className="font-medium">day</th>
                     {HIT_COLS.map((c) => (
-                      <th key={c.k} className="py-1 pr-2 text-right font-medium">
+                      <th key={c.k} className="text-right font-medium">
                         {c.label}
                       </th>
                     ))}
@@ -254,18 +254,18 @@ export function CrewTab() {
                 <tbody>
                   {crew.hits.days.map((d) => (
                     <tr key={d.day} className="border-t border-border/60 text-muted">
-                      <td className="py-1 pr-2 text-fg">{d.day.slice(5)}</td>
+                      <td className="text-fg">{d.day.slice(5)}</td>
                       {HIT_COLS.map((c) => (
-                        <td key={c.k} className="py-1 pr-2 text-right tabular">
+                        <td key={c.k} className="text-right tabular">
                           {d.events[c.k] ?? 0}
                         </td>
                       ))}
                     </tr>
                   ))}
                   <tr className="border-t border-border text-fg">
-                    <td className="py-1 pr-2">total</td>
+                    <td >total</td>
                     {HIT_COLS.map((c) => (
-                      <td key={c.k} className="py-1 pr-2 text-right tabular">
+                      <td key={c.k} className="text-right tabular">
                         {crew.hits!.totals[c.k] ?? 0}
                       </td>
                     ))}
