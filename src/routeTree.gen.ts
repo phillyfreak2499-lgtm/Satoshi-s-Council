@@ -14,6 +14,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as LegalRouteImport } from './routes/legal'
+import { Route as SeatIdRouteImport } from './routes/seat.$id'
 import { Route as WindowTickerRouteImport } from './routes/window.$ticker'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,11 @@ const LegalRoute = LegalRouteImport.update({
   path: '/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SeatIdRoute = SeatIdRouteImport.update({
+  id: '/seat/$id',
+  path: '/seat/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WindowTickerRoute = WindowTickerRouteImport.update({
   id: '/window/$ticker',
   path: '/window/$ticker',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/arena': typeof ArenaRoute
   '/faq': typeof FaqRoute
   '/legal': typeof LegalRoute
+  '/seat/$id': typeof SeatIdRoute
   '/window/$ticker': typeof WindowTickerRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/arena': typeof ArenaRoute
   '/faq': typeof FaqRoute
   '/legal': typeof LegalRoute
+  '/seat/$id': typeof SeatIdRoute
   '/window/$ticker': typeof WindowTickerRoute
 }
 export interface FileRoutesById {
@@ -70,13 +78,28 @@ export interface FileRoutesById {
   '/arena': typeof ArenaRoute
   '/faq': typeof FaqRoute
   '/legal': typeof LegalRoute
+  '/seat/$id': typeof SeatIdRoute
   '/window/$ticker': typeof WindowTickerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/arena' | '/faq' | '/legal' | '/window/$ticker'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/arena'
+    | '/faq'
+    | '/legal'
+    | '/seat/$id'
+    | '/window/$ticker'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/arena' | '/faq' | '/legal' | '/window/$ticker'
+  to:
+    | '/'
+    | '/about'
+    | '/arena'
+    | '/faq'
+    | '/legal'
+    | '/seat/$id'
+    | '/window/$ticker'
   id:
     | '__root__'
     | '/'
@@ -84,6 +107,7 @@ export interface FileRouteTypes {
     | '/arena'
     | '/faq'
     | '/legal'
+    | '/seat/$id'
     | '/window/$ticker'
   fileRoutesById: FileRoutesById
 }
@@ -93,6 +117,7 @@ export interface RootRouteChildren {
   ArenaRoute: typeof ArenaRoute
   FaqRoute: typeof FaqRoute
   LegalRoute: typeof LegalRoute
+  SeatIdRoute: typeof SeatIdRoute
   WindowTickerRoute: typeof WindowTickerRoute
 }
 
@@ -133,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LegalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/seat/$id': {
+      id: '/seat/$id'
+      path: '/seat/$id'
+      fullPath: '/seat/$id'
+      preLoaderRoute: typeof SeatIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/window/$ticker': {
       id: '/window/$ticker'
       path: '/window/$ticker'
@@ -149,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArenaRoute: ArenaRoute,
   FaqRoute: FaqRoute,
   LegalRoute: LegalRoute,
+  SeatIdRoute: SeatIdRoute,
   WindowTickerRoute: WindowTickerRoute,
 }
 export const routeTree = rootRouteImport

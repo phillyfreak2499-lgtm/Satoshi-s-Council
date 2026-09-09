@@ -3,6 +3,8 @@
  * reading pages, the rooms and every window that has a replay, and an Atom
  * feed of the board's update posts. Pure builders, so both can be tested.
  */
+import { SEAT_IDS } from "./types";
+
 async function getDb() {
   const { getSql } = await import("@/lib/db");
   return getSql();
@@ -31,6 +33,9 @@ export function buildSitemap(origin: string, windows: { ticker: string; close_ti
   const urls = STATIC_PAGES.map(
     (p) => `  <url><loc>${xmlEscape(origin + p.path)}</loc><lastmod>${today}</lastmod><changefreq>${p.changefreq}</changefreq><priority>${p.priority}</priority></url>`,
   );
+  for (const id of SEAT_IDS) {
+    urls.push(`  <url><loc>${xmlEscape(`${origin}/seat/${id}`)}</loc><lastmod>${today}</lastmod><changefreq>hourly</changefreq><priority>0.5</priority></url>`);
+  }
   for (const w of windows) {
     urls.push(
       `  <url><loc>${xmlEscape(`${origin}/window/${encodeURIComponent(w.ticker)}`)}</loc><lastmod>${w.close_time.slice(0, 10)}</lastmod><changefreq>never</changefreq><priority>0.4</priority></url>`,

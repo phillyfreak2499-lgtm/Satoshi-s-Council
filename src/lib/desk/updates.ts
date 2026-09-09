@@ -158,4 +158,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The floor got lighter on a phone: one quiet line of what this is and is not, no banner, a shorter strip, and seats that are sitting fold into one row each until you tap them (or expand all). Under the chair's call, one plain sentence now says why: who leans which way, whether the ask clears the 70¢ floor, and what is booked. Prices read the same everywhere, and the replay lanes have a legend.",
   },
+  {
+    slug: "2026-09-09-share",
+    body:
+      "Every tab and desk now has an address you can share or bookmark, such as /?tab=books or /?seat=INDEX, and every seat has its own page at /seat/ followed by its name, with its live card, graded record and skills. Links to window and seat pages carry their own preview: a small pixel-drawn card of the window's price against the strike, or the seat's record, drawn on the server itself.",
+  },
 ];

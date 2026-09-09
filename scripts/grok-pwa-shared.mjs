@@ -339,14 +339,18 @@ export function grokOgHeadTags({
   site = {},
   documentTitle = "",
   cwd = process.cwd(),
+  pageImage = "",
+  pageDescription = "",
 } = {}) {
-  const title = resolveOgTitle(site, appName, host, documentTitle);
+  // A page that sets its own <title> is describing itself; the site title is the fallback.
+  const docTitle = String(documentTitle ?? "").trim();
+  const title = docTitle || resolveOgTitle(site, appName, host, "");
   const publicHost = resolvePublicHost(host);
   const tags = [
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta property="og:title" content="${escapeHtml(title)}">`,
   ];
-  const description = String(site.description ?? "").trim();
+  const description = String(pageDescription || site.description || "").trim();
   if (description) {
     tags.push(`<meta property="og:description" content="${escapeHtml(description)}">`);
   }
@@ -356,10 +360,13 @@ export function grokOgHeadTags({
   if (publicHost) {
     const asset = resolveOgCardAsset(site, cwd);
     const custom = Boolean(asset);
-    let image = custom
-      ? `https://${publicHost}${asset.startsWith("/") ? asset : `/${asset}`}`
-      : `${ogServiceUrl()}/v1/card.png?host=${encodeURIComponent(publicHost)}&title=${encodeURIComponent(title)}`;
-    const color = !custom ? placeholderCardColor(site) : "";
+    const own = /^https?:\/\//i.test(String(pageImage ?? "")) ? String(pageImage).trim() : "";
+    let image = own
+      ? own
+      : custom
+        ? `https://${publicHost}${asset.startsWith("/") ? asset : `/${asset}`}`
+        : `${ogServiceUrl()}/v1/card.png?host=${encodeURIComponent(publicHost)}&title=${encodeURIComponent(title)}`;
+    const color = !custom && !own ? placeholderCardColor(site) : "";
     if (color) image += `&color=${encodeURIComponent(color)}`;
     tags.push(`<meta property="og:image" content="${escapeHtml(image)}">`);
     tags.push(`<meta property="og:image:width" content="1200">`);
@@ -373,6 +380,23 @@ export function grokOgHeadTags({
     }
   }
   return tags;
+}
+
+/** The content of a page's own <meta property="…"> (or name="…"), unescaped, or "". */
+export function pageMetaContent(html, key) {
+  const want = String(key).toLowerCase();
+  for (const tag of String(html ?? "").matchAll(/<meta\b[^>]*>/gi)) {
+    const attrs = [...tag[0].matchAll(/\b(property|name|content)\s*=\s*["']([^"']*)["']/gi)];
+    let hit = false;
+    let content = "";
+    for (const a of attrs) {
+      const k = a[1].toLowerCase();
+      if ((k === "property" || k === "name") && a[2].toLowerCase() === want) hit = true;
+      if (k === "content") content = a[2];
+    }
+    if (hit) return unescapeHtml(content).trim();
+  }
+  return "";
 }
 
 export function stripShareMetaTags(html) {
@@ -432,6 +456,9 @@ export function injectGrokPwaHead(html, ctx = {}) {
     host,
     documentTitle,
   );
+  // A page may bring its own card and description; keep them through the rewrite.
+  const pageImage = pageMetaContent(html, "og:image");
+  const pageDescription = pageMetaContent(html, "og:description");
   let next = stripShareMetaTags(html);
 
   const missing = grokPwaHeadTags(appName)
@@ -444,7 +471,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
 
   next = insertAfterHeadOpen(
     next,
-    grokOgHeadTags({ host, appName, site, documentTitle, cwd }).join(""),
+    grokOgHeadTags({ host, appName, site, documentTitle, cwd, pageImage, pageDescription }).join(""),
   );
 
   if (!next.includes("/grok-app-builder/extensions.js")) {
