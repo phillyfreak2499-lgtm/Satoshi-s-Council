@@ -47,11 +47,11 @@ function WindowPage() {
         <button
           type="button"
           onClick={() => void share()}
-          className="min-h-11 rounded-sm border border-border px-3 text-fg hover:border-border-strong"
+          className="btn btn-secondary"
         >
           share this window
         </button>
-        <a href="/" className="inline-flex min-h-11 items-center rounded-sm border border-border px-3 hover:text-fg">
+        <a href="/" className="btn btn-secondary">
           open the floor
         </a>
         {msg ? <span aria-live="polite">{msg}</span> : null}

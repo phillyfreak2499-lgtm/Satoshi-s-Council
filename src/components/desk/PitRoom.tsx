@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import { fetchRack, lockCall, type Rack } from "@/lib/desk/pit";
+import { SiteHeader } from "./SiteHeader";
 import { beacon } from "@/lib/desk/beacon";
 import {
   currentPrefs,
@@ -260,27 +261,26 @@ export function PitRoom() {
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
-      <div className="mx-auto flex max-w-md flex-col gap-3 px-3 pb-10 pt-3 sm:max-w-lg">
-        <header className="flex items-center justify-between gap-2">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            Satoshi&apos;s Council · <span className="text-fg">THE PIT</span>
-          </div>
-          <span className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={startTour}
-              className="flex min-h-11 items-center font-mono text-micro text-muted hover:text-fg"
-            >
+      <SiteHeader
+        nav={
+          <>
+            <span className="font-mono text-micro uppercase tracking-widest text-subtle">THE PIT</span>
+            <button type="button" onClick={startTour} className="btn btn-sm text-muted hover:text-fg">
               how it works
             </button>
-            <a
-              href="/"
-              className="flex min-h-11 items-center font-mono text-micro text-muted hover:text-fg"
-            >
-              open the desk →
+            <a href="/" className="btn btn-primary btn-sm">
+              Open the floor
             </a>
-          </span>
-        </header>
+          </>
+        }
+        menu={[
+          { label: "How it works", hint: "the pit tour", onSelect: startTour },
+          { label: "Open the floor", href: "/" },
+          { label: "How the desk works", href: "/about", hint: "page" },
+          { label: "Paper only", href: "/legal", hint: "page" },
+        ]}
+      />
+      <div className="gutter mx-auto flex max-w-md flex-col gap-3 pb-10 pt-3 sm:max-w-lg">
         <p className="font-mono text-micro text-muted">
           Paper calls only. Not advice. Not Kalshi orders.
         </p>
@@ -638,7 +638,7 @@ export function PitRoom() {
                         {r.name}
                         {r.me ? <span className="text-subtle"> (you)</span> : null}
                         {r.warming ? <span className="text-subtle"> warming up</span> : null}
-                        {r.since ? <div className="text-[10px] text-subtle">since {fmtSince(r.since)}</div> : null}
+                        {r.since ? <div className="text-micro text-subtle">since {fmtSince(r.since)}</div> : null}
                       </td>
                       <td className="py-1.5 pr-2 text-right tabular">{r.n}</td>
                       <td className="py-1.5 pr-2 text-right tabular">

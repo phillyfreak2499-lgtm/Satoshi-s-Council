@@ -124,7 +124,7 @@ export function AlertsPanel() {
             <button
               type="button"
               disabled={busy || !prefs}
-              className="rounded-sm border border-border px-2 py-0.5 font-mono text-micro text-fg hover:border-border-strong disabled:opacity-40"
+              className="btn btn-secondary btn-sm"
               onClick={() => {
                 setBusy(true);
                 setMsg(null);

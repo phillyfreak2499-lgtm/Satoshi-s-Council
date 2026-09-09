@@ -172,7 +172,7 @@ function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
           <button
             type="button"
             onClick={() => clearCallLog()}
-            className="min-h-11 rounded-sm border border-border px-3 py-1.5 text-muted hover:bg-surface-2 hover:text-fg sm:min-h-0"
+            className="btn btn-secondary btn-sm"
           >
             Clear
           </button>

@@ -56,7 +56,7 @@ export function FloorSkeleton({ demo }: { demo: boolean }) {
               <button
                 type="button"
                 onClick={() => patchSettings({ source: "demo" })}
-                className="mt-2 min-h-11 rounded-sm border border-border px-3 py-2 font-mono text-ui text-fg hover:bg-surface-2"
+                className="btn btn-secondary mt-2"
               >
                 Open the demo tape
               </button>

@@ -16,10 +16,12 @@ export const Route = createRootRoute({
         content:
           "A paper-only Bitcoin 15-minute research desk. Twenty-one specialist seats read the tape; SATOSHI chairs the vote. Nothing here places a live trade. Not financial advice.",
       },
-      { name: "theme-color", content: "#08090b" },
+      { name: "theme-color", content: "#0b0c10" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "icon", type: "image/png", sizes: "32x32", href: "/icon-32.png" },
+      { rel: "icon", type: "image/png", sizes: "16x16", href: "/icon-16.png" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
       { rel: "alternate", type: "application/atom+xml", title: "Satoshi's Council — board updates", href: "/feed.xml" },
@@ -35,7 +37,7 @@ export const Route = createRootRoute({
       },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap",
       },
     ],
   }),

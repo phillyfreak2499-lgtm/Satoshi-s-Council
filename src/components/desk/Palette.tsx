@@ -13,7 +13,7 @@ type Item =
   | { kind: "gloss"; id: string; label: string; hint: string; body: string };
 
 const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
-  { id: "satoshi", label: "SATOSHI", hint: "the chair's call and the vote" },
+  { id: "satoshi", label: "FLOOR", hint: "the chair's call and the vote" },
   { id: "structure", label: "STRUCTURE", hint: "candles and swings · WICK DRIFT STREAK EXHAUST" },
   { id: "tape", label: "TAPE", hint: "order flow and the book · PULSE TAPE WHALE VEL" },
   { id: "derivs", label: "DERIVS", hint: "funding, open interest, liquidations · CARRY CHAIN CASCADE VOLT" },

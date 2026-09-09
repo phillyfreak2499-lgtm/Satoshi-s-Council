@@ -2,15 +2,15 @@
  *  device-pixel-aware draw hook that repaints on resize, and a rounded fill. */
 import { useEffect, useRef } from "react";
 
-export const UP = "#3dcf8a";
-export const DOWN = "#ef6b73";
-export const WAIT = "#d4a017";
-export const GRID = "#232833";
-export const FG = "#8b90a0";
-export const LINE = "#c8ccd4";
-export const BG = "#161a22";
-export const INK = "#08090b";
-export const FONT = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
+export const UP = "#3fae7a";
+export const DOWN = "#d15b4a";
+export const WAIT = "#c4a574";
+export const GRID = "#1f2128";
+export const FG = "#9a958b";
+export const LINE = "#c4a574";
+export const BG = "#12141a";
+export const INK = "#0b0c10";
+export const FONT = "500 11px 'IBM Plex Mono', ui-monospace, monospace";
 export const FONT_SM = "500 9px 'IBM Plex Mono', ui-monospace, monospace";
 
 export function useDraw(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, dep: unknown) {

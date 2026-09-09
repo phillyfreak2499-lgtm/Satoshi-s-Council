@@ -82,7 +82,7 @@ export function BotCard({
                 type="button"
                 aria-expanded="true"
                 onClick={() => setOpen(false)}
-                className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-subtle hover:text-fg"
+                className="btn btn-secondary btn-sm"
               >
                 fold
               </button>

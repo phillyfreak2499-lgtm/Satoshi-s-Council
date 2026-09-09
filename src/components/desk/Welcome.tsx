@@ -33,7 +33,7 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-bg/85 p-3 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
       <div className="w-full max-w-md rounded-md border border-border bg-surface p-4 shadow-[0_24px_80px_rgba(0,0,0,0.6)] sm:p-5">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">Satoshi&apos;s Council · paper desk</div>
-        <h2 id="welcome-title" className="mt-1 font-sans text-[1.375rem] font-medium leading-tight text-fg">
+        <h2 id="welcome-title" className="mt-1 font-sans text-call font-medium text-fg">
           A Bitcoin research desk that argues out loud.
         </h2>
         <p className="mt-2 font-sans text-body leading-relaxed text-muted">
@@ -47,11 +47,11 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
             ref={primary}
             type="button"
             onClick={onTour}
-            className="min-h-11 flex-1 rounded-sm bg-fg px-4 py-2.5 font-mono text-ui font-medium text-bg hover:bg-chip"
+            className="btn btn-primary flex-1"
           >
             Start the 60-second tour
           </button>
-          <button type="button" onClick={onFloor} className="min-h-11 rounded-sm border border-border px-4 py-2.5 font-mono text-ui text-muted hover:text-fg">
+          <button type="button" onClick={onFloor} className="btn btn-secondary">
             Watch the floor
           </button>
         </div>

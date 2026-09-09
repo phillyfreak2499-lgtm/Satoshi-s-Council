@@ -75,9 +75,9 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
             onChange={(e) => setDraft(e.target.value)}
             maxLength={16}
             placeholder="pick a callsign"
-            className="rounded-sm border border-border bg-bg px-2 py-1 font-mono text-data text-fg"
+            className="input input-sm font-mono"
           />
-          <button type="submit" className="rounded-sm bg-surface-3 px-3 py-1 font-mono text-micro text-fg hover:bg-surface-2">
+          <button type="submit" className="btn btn-primary btn-sm">
             join the floor
           </button>
           <span className="font-mono text-micro text-subtle">no login — the callsign lives in this browser</span>
@@ -120,7 +120,7 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
                 disabled={!canCall || !(yesAsk > 0)}
                 onClick={() => void call("UP")}
                 className={cn(
-                  "rounded-sm px-3 py-1.5 font-mono text-ui",
+                  "btn btn-sm font-mono",
                   canCall && yesAsk > 0 ? "bg-up/15 text-up hover:bg-up/25" : "bg-surface-2 text-subtle",
                 )}
               >
@@ -131,7 +131,7 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
                 disabled={!canCall || !(noAsk > 0)}
                 onClick={() => void call("DOWN")}
                 className={cn(
-                  "rounded-sm px-3 py-1.5 font-mono text-ui",
+                  "btn btn-sm font-mono",
                   canCall && noAsk > 0 ? "bg-down/15 text-down hover:bg-down/25" : "bg-surface-2 text-subtle",
                 )}
               >

@@ -163,4 +163,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Every tab and desk now has an address you can share or bookmark, such as /?tab=books or /?seat=INDEX, and every seat has its own page at /seat/ followed by its name, with its live card, graded record and skills. Links to window and seat pages carry their own preview: a small pixel-drawn card of the window's price against the strike, or the seat's record, drawn on the server itself.",
   },
+  {
+    slug: "2026-09-09-one-system",
+    body:
+      "One visual system, from the favicon to a phone. The desk now has one palette (ink, ivory, a single gold), two typefaces (Geist for words, IBM Plex Mono for numbers), one corner radius, one sticky header on every page with the new crest, and one family of buttons and inputs. Nothing about the research, grading or calls changed — only how the same information looks.",
+  },
 ];

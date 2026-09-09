@@ -16,7 +16,7 @@ export const GLOSS: Record<string, Gloss> = {
     body: "Shared ideas and feedback. Post an idea, reply on it, or leave tape notes. The call you were looking at rides along.",
   },
   "tab.satoshi": {
-    title: "SATOSHI — the chair",
+    title: "FLOOR — the chair's call",
     body: "Weighs all 21 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
   },
   "tab.atelier": {
@@ -88,7 +88,7 @@ export const GLOSS: Record<string, Gloss> = {
     body: "A push notification to this browser when the chair books a call, and if you want, when a window that mattered settles: one you locked in the Arena, with your result on the line, or one the chair called. Quiet windows send nothing. Turn it on here; the browser will ask permission once. On iPhone and iPad the site has to be on your Home Screen first. Nothing is ever sent to a browser that did not opt in.",
   },
   "tab.floor": {
-    title: "FLOOR — the five desks",
+    title: "DESKS — the five desks",
     body: "The twenty-one seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
   },
   "pane.seats": {

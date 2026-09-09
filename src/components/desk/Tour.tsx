@@ -145,7 +145,7 @@ export function Tour({
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
             type="button"
-            className="min-h-11 rounded-sm px-2 py-1.5 font-mono text-ui text-muted hover:text-fg"
+            className="btn btn-sm text-muted hover:text-fg"
             onClick={finish}
           >
             Skip
@@ -154,7 +154,7 @@ export function Tour({
             {step > 0 && (
               <button
                 type="button"
-                className="min-h-11 rounded-sm border border-border px-3 py-1.5 font-mono text-ui text-fg hover:bg-surface-2"
+                className="btn btn-secondary btn-sm"
                 onClick={() => onStep(step - 1)}
               >
                 Back

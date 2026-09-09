@@ -28,7 +28,7 @@ function SeatPage() {
   if (!isSeat(id)) {
     return (
       <Page title="No such seat" lede="The desk has twenty-one seats; that is not one of them.">
-        <a href="/" className="inline-flex min-h-11 items-center rounded-sm border border-border px-3 font-mono text-micro text-muted hover:text-fg">
+        <a href="/" className="btn btn-secondary">
           open the floor
         </a>
       </Page>
@@ -112,10 +112,10 @@ function SeatPage() {
         </div>
       </section>
       <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-micro text-muted">
-        <button type="button" onClick={() => void share()} className="min-h-11 rounded-sm border border-border px-3 text-fg hover:border-border-strong">
+        <button type="button" onClick={() => void share()} className="btn btn-secondary">
           share this seat
         </button>
-        <a href={`/?seat=${id}`} className="inline-flex min-h-11 items-center rounded-sm border border-border px-3 hover:text-fg">
+        <a href={`/?seat=${id}`} className="btn btn-secondary">
           see it on the {deskOf(id).toUpperCase()} desk
         </a>
         {msg ? <span aria-live="polite">{msg}</span> : null}
