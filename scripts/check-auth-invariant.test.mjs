@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,7 +12,15 @@ import {
   compareAuthInvariant,
   probeDevAuthEnabled,
 } from "./check-auth-invariant.mjs";
-import { projectRoot } from "./with-app-env.mjs";
+import { APP_ENV_REL_PATH, projectRoot } from "./with-app-env.mjs";
+
+// `.grok/app-env.json` is a per-workspace, gitignored deploy-flag file. A clean
+// checkout has none, so the build side resolves auth-on (the wrapper's documented
+// default). This case pins the auth-off value the file carries, so it only means
+// something where the file exists — skip it, rather than fail, when it does not.
+const APP_ENV_SKIP = existsSync(join(projectRoot(), APP_ENV_REL_PATH))
+  ? false
+  : "requires .grok/app-env.json (gitignored per-workspace deploy flag)";
 
 /**
  * The JSON body `/__app-env` would serve. Do not start a real Vite server —
@@ -90,7 +98,7 @@ test("only a divergence warns the smoke verdict", () => {
   }
 });
 
-test("the build side resolves the template's shipped app-env", () => {
+test("the build side resolves the template's shipped app-env", { skip: APP_ENV_SKIP }, () => {
   assert.equal(buildAuthEnabled(projectRoot(), {}), false);
   assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: "true" }), true);
 });
