@@ -313,6 +313,30 @@ function consumeLock(learner: Learner) {
   }
 }
 
+export const LOCK_HUDDLES = 3;
+
+/**
+ * LOCK — the weight governor. When the regime breaks (ORBIT's regime key changes
+ * from the one the weights were built under), hold the roster steady for a few
+ * huddles instead of reweighting, so one regime's rough patch cannot rewrite the
+ * weights the previous regime earned. It never changes a weight itself; it only
+ * defers the reweight, then lets it resume once the new regime has settled.
+ */
+export function lockDecision(
+  prevRegime: string,
+  curRegime: string,
+  lockLeft: number,
+): { reweight: boolean; lockLeft: number; regime: string; note: string } {
+  if (lockLeft > 0) {
+    const left = lockLeft - 1;
+    return { reweight: false, lockLeft: left, regime: curRegime || prevRegime, note: `weights locked · ${left} huddle${left === 1 ? "" : "s"} left` };
+  }
+  if (prevRegime && curRegime && curRegime !== prevRegime) {
+    return { reweight: false, lockLeft: LOCK_HUDDLES - 1, regime: curRegime, note: `weights locked · regime ${prevRegime}→${curRegime}` };
+  }
+  return { reweight: true, lockLeft: 0, regime: curRegime || prevRegime, note: "" };
+}
+
 export function rebuildSeatWeights(learner: Learner): string[] {
   const notes: string[] = [];
   const prior: Record<string, number> = {};
@@ -570,8 +594,12 @@ export function runHuddle(learner: Learner): { learner: Learner; line: string } 
   learner.last_huddle = Date.now();
   learner.last_huddle_n = learner.graded_windows;
   const tuned = retuneThresholds(learner);
-  const weights = rebuildSeatWeights(learner);
-  const line = `HUDDLE ${new Date().toISOString().slice(11, 16)} · ${learner.learn_phase} n=${learner.graded_windows} · promo ${promo[0] ?? "none"} · bench ${bench[0] ?? "none"} · unbench ${unbench[0] ?? "none"} · candidate ${learner.candidate?.id ?? "none"} · thresh ${tuned[0] ?? "hold"} · w ${weights[0] ?? "hold"}`;
+  const lock = lockDecision(learner.weight_regime ?? "", learner.last_regime ?? "", learner.weight_lock_left ?? 0);
+  learner.weight_lock_left = lock.lockLeft;
+  learner.weight_regime = lock.regime;
+  const weights = lock.reweight ? rebuildSeatWeights(learner) : [];
+  const wNote = lock.reweight ? (weights[0] ?? "hold") : lock.note;
+  const line = `HUDDLE ${new Date().toISOString().slice(11, 16)} · ${learner.learn_phase} n=${learner.graded_windows} · promo ${promo[0] ?? "none"} · bench ${bench[0] ?? "none"} · unbench ${unbench[0] ?? "none"} · candidate ${learner.candidate?.id ?? "none"} · thresh ${tuned[0] ?? "hold"} · w ${wNote}`;
   learner.huddle_log = [line, ...learner.huddle_log].slice(0, 20);
   return { learner, line };
 }

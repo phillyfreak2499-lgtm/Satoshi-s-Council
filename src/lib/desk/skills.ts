@@ -995,6 +995,8 @@ export function freshLearner(): Learner {
     thresholds: freshThresholds(),
     last_feats: {},
     last_regime: "",
+    weight_regime: "",
+    weight_lock_left: 0,
     pattern_book: {},
     window_patterns: [],
   };

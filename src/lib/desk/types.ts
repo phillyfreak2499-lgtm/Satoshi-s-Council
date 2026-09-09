@@ -509,6 +509,10 @@ export type Learner = {
   thresholds: ThreshBook;
   last_feats: FeatMap;
   last_regime: string;
+  /** LOCK — the regime the seat weights were last actually rebuilt under. */
+  weight_regime: string;
+  /** LOCK — huddles left holding the roster steady after a regime break; 0 when free to reweight. */
+  weight_lock_left: number;
   pattern_book: Record<string, PatternStat>;
   window_patterns: { kind: string; lean: Lean }[];
 };

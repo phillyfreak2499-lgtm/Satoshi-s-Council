@@ -270,7 +270,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "seat.WARDEN": {
     title: "WARDEN (GATE)",
-    body: "Feed health plus whether the print makes sense. Down feeds, sequence gaps, zero strike, a crossed book, a missing 1-minute bar, or frozen OI all silence the family that is garbage. Never votes a side. Basis WIDE is a warning, not a veto.",
+    body: "Feed health plus whether the print makes sense. Down feeds, sequence gaps, zero strike, a crossed book, a missing 1-minute bar, a frozen spot, or frozen OI all silence the family that is garbage. Never votes a side. Basis WIDE is a warning, not a veto.",
   },
 
   "lean.UP": {
