@@ -53,6 +53,21 @@ import {
   v2Voice,
 } from "./chair-v2";
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
+import type { Sql } from "@/lib/db";
+import {
+  afterPersist,
+  alertHealth,
+  enqueueLedger,
+  type ErrLog,
+  healthVerdict,
+  type LedgerJob,
+  type LedgerRow,
+  ledgerGaps,
+  oldestQueueAgeMs,
+  persistOnce,
+  type PersistIO,
+  pushErr,
+} from "./reliability";
 
 const STATE_ID = "live";
 const PERSIST_EVERY_MS = 8_000;
@@ -103,8 +118,24 @@ type Eng = {
   v2Stats: V2Stats | null;
   v2Fitting: boolean;
   v2LastFitAt: number;
-  /** When a window last graded (boot counts, so a fresh deploy gets its twenty minutes). */
+  /** When a window's grade was last CALCULATED in memory (boot counts). */
   lastGradeAt: number;
+  /** When a window was last durably recorded AND verified in the ledger — the
+   *  health clock. A grade that is calculated but not persisted never advances
+   *  this, so a failed write can't look like a completed grade. Restored on boot. */
+  lastLedgerOkAt: number;
+  /** Graded windows awaiting a durable, verified ledger write (retry with backoff). */
+  ledgerQueue: LedgerJob[];
+  ledgerFlushing: boolean;
+  /** Interior holes found in the recent ledger by the last gap scan (lost windows). */
+  ledgerGapCount: number;
+  lastGapScanAt: number;
+  /** Owner push subscriptions the watchdog could reach, from the last probe. */
+  alertOwnerSubs: number;
+  /** Recent failures with scope + text, bounded — which window/feed/write, and why. */
+  errors: ErrLog[];
+  /** When this process booted (for the health boot-grace). */
+  startedAt: number;
   watchdog: WatchdogState;
   watchdogTimer: ReturnType<typeof setInterval> | null;
 };
@@ -177,9 +208,25 @@ function freshEng(): Eng {
     v2Fitting: false,
     v2LastFitAt: 0,
     lastGradeAt: Date.now(),
+    lastLedgerOkAt: Date.now(),
+    ledgerQueue: [],
+    ledgerFlushing: false,
+    ledgerGapCount: 0,
+    lastGapScanAt: 0,
+    alertOwnerSubs: 0,
+    errors: [],
+    startedAt: Date.now(),
     watchdog: freshWatchdog(),
     watchdogTimer: null,
   };
+}
+
+/** Record a failure with its scope and text: sets the single lastError (kept for
+ *  the UI/watchdog) and appends to the bounded ring so recent failures keep
+ *  their detail — which window, feed, or write, and why. */
+function noteErr(e: Eng, scope: string, msg: string) {
+  e.lastError = `${scope}: ${msg}`.slice(0, 200);
+  e.errors = pushErr(e.errors, scope, msg, Date.now());
 }
 
 function eng(): Eng {
@@ -203,6 +250,7 @@ async function loadState(e: Eng) {
           settings?: Partial<Settings>;
           last_call?: Eng["lastCall"];
           v2?: V2Weights | null;
+          last_ledger_ok_at?: number;
         }
       | undefined;
     if (!raw) return;
@@ -214,6 +262,11 @@ async function loadState(e: Eng) {
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
     e.lastCall = raw.last_call ?? null;
     if (raw.v2 && raw.v2.w && typeof raw.v2.b === "number") e.v2 = raw.v2;
+    // Restore the recorded-window clock so a restart (or a crash loop) keeps its
+    // real age instead of resetting the watchdog's grace to now.
+    if (typeof raw.last_ledger_ok_at === "number" && raw.last_ledger_ok_at > 0) {
+      e.lastLedgerOkAt = raw.last_ledger_ok_at;
+    }
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -235,6 +288,7 @@ async function persistState(e: Eng, force = false) {
       },
       last_call: e.lastCall,
       v2: e.v2,
+      last_ledger_ok_at: e.lastLedgerOkAt,
     });
     await db`
       insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
@@ -351,66 +405,122 @@ function officialHit(snap: Snapshot, ticker: string, close_time: number) {
   );
 }
 
-/** Permanent research record: one row per graded window, idempotent. */
-async function recordLedger(
-  e: Eng,
-  snap: Snapshot,
-  votes: Vote[],
-  chair: ChairResult,
-  finish: "UP" | "DOWN",
-  source: string,
-) {
+// Permanent research record: one row per graded window. The columns and their
+// values are unchanged from before; only the WRITE became durable — built once
+// at grade time, then persisted + verified with idempotent retry off the tick.
+const LEDGER_COLUMNS =
+  "(ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass, " +
+  "entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs, " +
+  "settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok, " +
+  "settle_feed, settle_feed_n, official_value)";
+const LEDGER_INSERT =
+  `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
+  "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) " +
+  "on conflict (ticker, close_time) do nothing";
+
+/** Build one graded window's ledger row synchronously, at grade time, from the
+ *  state as it is right now — so a later retry records exactly what was decided,
+ *  never a recomputation against drifted state. No DB, cannot fail. */
+function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string): LedgerRow {
   const official = snap.official_settles.find((o) => o.ticker === snap.ticker && o.value != null)?.value ?? null;
   const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish, official);
+  const rows = e.callLog.filter((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
+  const first = rows[rows.length - 1] ?? null; // call log is newest-first
+  let ev: number | null = null;
+  if (rows.length) {
+    ev = 0;
+    for (const r of rows) {
+      if (r.settle == null) continue;
+      ev += r.settle - r.cents - takerFeeCents(r.cents);
+    }
+    ev = Math.round(ev * 10) / 10;
+  }
+  const seats: Record<string, { lean: string; conf: number; hit: boolean | null; raw_lean: string; raw_conf: number }> = {};
+  for (const v of votes) {
+    if (v.seat === "WARDEN") continue;
+    seats[v.seat] = {
+      lean: v.lean,
+      conf: v.confidence,
+      hit: v.lean === "UP" || v.lean === "DOWN" ? v.lean === finish : null,
+      raw_lean: v.raw_lean ?? v.lean,
+      raw_conf: v.raw_conf ?? v.confidence,
+    };
+  }
+  const values: unknown[] = [
+    snap.ticker,
+    new Date(snap.close_time).toISOString(),
+    source,
+    finish,
+    chair.lean,
+    chair.confidence,
+    chair.score,
+    chair.bar,
+    chair.sit_mass,
+    first?.cents ?? null,
+    first?.settle ?? null,
+    ev,
+    rows.length,
+    JSON.stringify(seats),
+    snap.spot > 0 && snap.strike > 0 ? snap.spot - snap.strike : null,
+    snap.atr > 0 ? snap.atr : null,
+    snap.secs_left,
+    rc.settle_avg,
+    rc.settle_last,
+    rc.brti_prints || null,
+    rc.settle_gap,
+    rc.fair_pre,
+    rc.rule_avg_ok,
+    rc.rule_last_ok,
+    rc.settle_feed,
+    rc.settle_feed_n,
+    rc.official_value,
+  ];
+  return { ticker: snap.ticker, close_time: snap.close_time, values };
+}
+
+/** The idempotent upsert + read-back verify a durable write needs. */
+function ledgerIO(db: Sql): PersistIO {
+  return {
+    write: async (r) => {
+      await db.query(LEDGER_INSERT, r.values);
+    },
+    verify: async (r) => {
+      const rows = await db.query<{ n: number }>(
+        "select 1 as n from desk_ledger where ticker = $1 and close_time = $2 limit 1",
+        [r.ticker, new Date(r.close_time).toISOString()],
+      );
+      return rows.length > 0;
+    },
+  };
+}
+
+const LEDGER_DRAIN_MAX = 20;
+
+/** Drain the persist queue: for each due window, write + verify with backoff.
+ *  A verified write advances the recorded-window clock and clears the job; a
+ *  failure keeps the window queued (so it recovers when the DB returns) and
+ *  keeps its error detail. Never throws, never blocks a window from being
+ *  re-attempted, and off the decision path entirely. */
+async function flushLedger(e: Eng): Promise<void> {
+  if (e.ledgerFlushing || !e.ledgerQueue.length) return;
+  e.ledgerFlushing = true;
   try {
     const db = await sql();
-    const rows = e.callLog.filter(
-      (r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000,
-    );
-    const first = rows[rows.length - 1] ?? null; // call log is newest-first
-    let ev: number | null = null;
-    if (rows.length) {
-      ev = 0;
-      for (const r of rows) {
-        if (r.settle == null) continue;
-        ev += r.settle - r.cents - takerFeeCents(r.cents);
-      }
-      ev = Math.round(ev * 10) / 10;
+    const io = ledgerIO(db);
+    const start = Date.now();
+    const due = e.ledgerQueue.filter((j) => j.nextAt <= Date.now()).slice(0, LEDGER_DRAIN_MAX);
+    for (const j of due) {
+      if (Date.now() - start > 20_000) break; // bound one drain even if the DB is timing out every op
+      const out = await persistOnce(j, io, Date.now());
+      const res = afterPersist(e.ledgerQueue, out);
+      e.ledgerQueue = res.queue;
+      if (res.verified) e.lastLedgerOkAt = Date.now();
+      else noteErr(e, "ledger", `${j.key} · ${out.job.lastErr ?? "retry"} (attempt ${out.job.attempts})`);
     }
-    const seats: Record<
-      string,
-      { lean: string; conf: number; hit: boolean | null; raw_lean: string; raw_conf: number }
-    > = {};
-    for (const v of votes) {
-      if (v.seat === "WARDEN") continue;
-      seats[v.seat] = {
-        lean: v.lean,
-        conf: v.confidence,
-        hit: v.lean === "UP" || v.lean === "DOWN" ? v.lean === finish : null,
-        raw_lean: v.raw_lean ?? v.lean,
-        raw_conf: v.raw_conf ?? v.confidence,
-      };
-    }
-    await db`
-      insert into desk_ledger
-        (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass,
-         entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs,
-         settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok,
-         settle_feed, settle_feed_n, official_value)
-      values
-        (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${source}, ${finish},
-         ${chair.lean}, ${chair.confidence}, ${chair.score}, ${chair.bar}, ${chair.sit_mass},
-         ${first?.cents ?? null}, ${first?.settle ?? null}, ${ev}, ${rows.length},
-         ${JSON.stringify(seats)}::jsonb,
-         ${snap.spot > 0 && snap.strike > 0 ? snap.spot - snap.strike : null},
-         ${snap.atr > 0 ? snap.atr : null}, ${snap.secs_left},
-         ${rc.settle_avg}, ${rc.settle_last}, ${rc.brti_prints || null}, ${rc.settle_gap},
-         ${rc.fair_pre}, ${rc.rule_avg_ok}, ${rc.rule_last_ok},
-         ${rc.settle_feed}, ${rc.settle_feed_n}, ${rc.official_value})
-      on conflict (ticker, close_time) do nothing
-    `;
   } catch (err) {
-    e.lastError = `ledger: ${err instanceof Error ? err.message : String(err)}`;
+    noteErr(e, "ledger flush", err instanceof Error ? err.message : String(err));
+  } finally {
+    e.ledgerFlushing = false;
   }
 }
 
@@ -520,7 +630,9 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   reviewSeats(e.learner);
   if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
   settleCallLog(e, snap.ticker, snap.close_time, finish);
-  void recordLedger(e, snap, votes, chair, finish, source);
+  // Enqueue the ledger row (built now, from this window's state) for a durable,
+  // verified write off the tick. lastLedgerOkAt only advances once it lands.
+  e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source), Date.now());
   void gradeV2(e, snap, finish);
   const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
   const chairBits =
@@ -690,6 +802,7 @@ async function tick(e: Eng) {
     e.lastError = null;
     e.lastTickAt = Date.now();
     await persistState(e);
+    void flushLedger(e); // off the tick's critical path — a slow DB must never wedge grading
   } catch (err) {
     e.lastError = err instanceof Error ? err.message : String(err);
     e.lastTickAt = Date.now();
@@ -990,9 +1103,11 @@ export function ensureServerEngine(): void {
   const e = eng();
   if (e.started) return;
   e.started = true;
+  e.startedAt = Date.now();
   e.ready = (async () => {
     await loadState(e);
     await syncUpdates(e);
+    void scanLedgerGaps(e); // name any window lost before this boot
     restartTimer(e);
     // The pulse loop's lifecycle lives here and only here — restartTimer
     // (beast toggles) must never double-start it.
@@ -1014,19 +1129,52 @@ export function ensureServerEngine(): void {
 
 const WATCHDOG_CHECK_MS = 60_000;
 
+const GAP_SCAN_MS = 5 * 60_000;
+
+/** Scan the recent ledger for interior holes — a window graded then lost — and
+ *  refresh the owner-alert-channel probe. Throttled, best-effort, never throws.
+ *  Runs at boot and off the watchdog timer, so it works even if the tick wedges. */
+async function scanLedgerGaps(e: Eng): Promise<void> {
+  if (Date.now() - e.lastGapScanAt < GAP_SCAN_MS) return;
+  e.lastGapScanAt = Date.now();
+  try {
+    const db = await sql();
+    const rows = await db<{ ms: number }>`
+      select (extract(epoch from close_time) * 1000)::bigint as ms
+      from desk_ledger where close_time > now() - interval '6 hours' order by close_time
+    `;
+    e.ledgerGapCount = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n))).length;
+  } catch (err) {
+    noteErr(e, "gap scan", err instanceof Error ? err.message : String(err));
+  }
+  try {
+    const { ownerSubCount } = await import("./push.server");
+    e.alertOwnerSubs = await ownerSubCount();
+  } catch {
+    /* alert-channel probe is best-effort */
+  }
+}
+
 /** Its own timer, on purpose: a tick loop that is stuck or throwing every
- *  pass is exactly what this has to notice, so it must not live inside it. */
+ *  pass is exactly what this has to notice, so it must not live inside it. It
+ *  also drains the ledger queue and scans for holes, so persistence keeps
+ *  recovering and losses keep being named even while the tick is wedged. The
+ *  clock it watches is lastLedgerOkAt — a window durably RECORDED, not merely
+ *  calculated — so a silent write failure trips it. */
 function watchdogTick(e: Eng) {
+  void flushLedger(e);
+  void scanLedgerGaps(e);
   try {
     const now = Date.now();
-    const d = watchdogDecision({ now, lastGradeAt: e.lastGradeAt, state: e.watchdog });
+    const d = watchdogDecision({ now, lastGradeAt: e.lastLedgerOkAt, state: e.watchdog });
     if (d.kind === "quiet") return;
-    e.watchdog = applyWatchdog(e.watchdog, d, now, e.lastGradeAt);
+    e.watchdog = applyWatchdog(e.watchdog, d, now, e.lastLedgerOkAt);
     const s = e.prevSnap;
+    const undeliverable = e.alertOwnerSubs <= 0 ? " · NO OWNER SUBSCRIBER (see /status)" : "";
     notifyWatchdog(
       watchdogPayload(d, {
-        lastGradeAt: e.lastGradeAt,
-        lastError: e.lastError,
+        lastGradeAt: e.lastLedgerOkAt,
+        lastError: `${e.lastError ?? "no error logged"}${undeliverable}`,
         feeds: s ? `spot ${s.health.spot} · kalshi ${s.health.kalshi}` : "no snapshot yet",
         tickAgeS: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
       }),
@@ -1034,6 +1182,49 @@ function watchdogTick(e: Eng) {
   } catch (err) {
     e.lastError = `watchdog: ${err instanceof Error ? err.message : String(err)}`;
   }
+}
+
+/** The honest deep-health verdict, for the external monitor at GET /status.
+ *  Data/engine health flips the 200/503; alert-channel health rides along as a
+ *  separate section that never flips the status. */
+export async function getHealth(): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const e = eng();
+  ensureServerEngine();
+  const now = Date.now();
+  const v = healthVerdict({
+    now,
+    started: e.started,
+    startedAt: e.startedAt,
+    lastTickAt: e.lastTickAt,
+    lastLedgerOkAt: e.lastLedgerOkAt,
+    queueOldestAgeMs: oldestQueueAgeMs(e.ledgerQueue, now),
+    gaps: e.ledgerGapCount,
+  });
+  let lastSend: string | null = null;
+  try {
+    const { pushLastLog } = await import("./push.server");
+    lastSend = pushLastLog() || null;
+  } catch {
+    /* best-effort */
+  }
+  const alerts = alertHealth({ ownerSubs: e.alertOwnerSubs, lastSend });
+  const s = e.prevSnap;
+  return {
+    ok: v.ok,
+    status: v.ok ? 200 : 503,
+    body: {
+      ok: v.ok,
+      reasons: v.reasons,
+      tick_age_s: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
+      last_recorded_age_s: Math.round((now - e.lastLedgerOkAt) / 1000),
+      ledger_queue: e.ledgerQueue.length,
+      ledger_queue_oldest_s: Math.round(oldestQueueAgeMs(e.ledgerQueue, now) / 1000),
+      ledger_gaps: e.ledgerGapCount,
+      feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
+      alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
+      recent_errors: e.errors.slice(-5),
+    },
+  };
 }
 
 /** The shared brain's latest snapshot (the Arena books calls against it). */
