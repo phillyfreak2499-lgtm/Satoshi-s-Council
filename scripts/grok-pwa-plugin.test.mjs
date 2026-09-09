@@ -504,3 +504,33 @@ test("vite plugin bakes og identity as a virtual module", () => {
   assert.match(plugin, /snapshotOgIdentity/);
 });
 
+
+test("a page's own og:image and og:description survive the platform chrome, and its title leads", () => {
+  const html =
+    '<html><head><title>Window replay · KX-1 · Wild Race</title><meta property="og:description" content="One window, replayed."><meta property="og:image" content="https://wild-race.grok.me/og/window?ticker=KX-1"><meta name="twitter:card" content="summary"></head></html>';
+  const out = injectGrokPwaHead(html, {
+    host: "wild-race.grok.me",
+    cwd: mkdtempSync(join(tmpdir(), "grok-og-page-")),
+    site: { title: "Wild Race", description: "Site copy", card: "custom", image: "/og.jpg" },
+  });
+  assert.match(out, /property="og:title" content="Window replay · KX-1 · Wild Race"/);
+  assert.match(out, /property="og:description" content="One window, replayed\."/);
+  assert.match(out, /property="og:image" content="https:\/\/wild-race\.grok\.me\/og\/window\?ticker=KX-1"/);
+  assert.doesNotMatch(out, /og\.jpg/);
+  assert.doesNotMatch(out, /content="summary"/);
+  assert.equal(out.split('property="og:image"').length - 1, 1);
+  assert.equal(out.split('property="og:description"').length - 1, 1);
+  assert.equal(out.split('property="og:title"').length - 1, 1);
+});
+
+test("a page og:image that is not an absolute URL falls back to the site card", () => {
+  const html = '<html><head><meta property="og:image" content="/relative.png"></head></html>';
+  const out = injectGrokPwaHead(html, {
+    host: "wild-race.grok.me",
+    cwd: mkdtempSync(join(tmpdir(), "grok-og-rel-")),
+    site: { title: "Wild Race", card: "custom", image: "/og.jpg" },
+  });
+  assert.match(out, /property="og:image" content="https:\/\/wild-race\.grok\.me\/og\.jpg"/);
+  assert.doesNotMatch(out, /relative\.png/);
+  assert.match(out, /property="og:title" content="Wild Race"/);
+});

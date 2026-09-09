@@ -3,7 +3,7 @@ import { TAB_SEATS } from "@/lib/desk/seats";
 import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
 import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
-import type { SeatId, TabId } from "@/lib/desk/types";
+import { SEAT_IDS, type SeatId, type TabId } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
@@ -45,6 +45,7 @@ const MORE: { id: TabId; label: string; hint: string }[] = [
   { id: "settings", label: "SETTINGS", hint: "demo, alerts, display" },
 ];
 const NUDGE_KEY = "satoshi-desk-nudge-v1";
+const LINKABLE_TABS = new Set<TabId>(["satoshi", "structure", "tape", "derivs", "book", "context", "books", "board", "crew", "atelier", "settings"]);
 
 function nudgeOff(): boolean {
   try {
@@ -175,6 +176,35 @@ export function DeskApp() {
     setFocus(seat);
     setTab(dest);
   };
+
+  // Deep links: /?tab=books opens a tab, /?seat=INDEX jumps to a seat; the address follows the tab.
+  const urlReady = useRef(false);
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t && t !== "arena" && LINKABLE_TABS.has(t as TabId)) setTab(t as TabId);
+      const s = sp.get("seat")?.toUpperCase();
+      if (s && (SEAT_IDS as readonly string[]).includes(s)) jump(s as SeatId);
+    } catch {
+      /* no window */
+    }
+    urlReady.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!urlReady.current) return;
+    try {
+      const u = new URL(window.location.href);
+      if (tab === "satoshi") u.searchParams.delete("tab");
+      else u.searchParams.set("tab", tab);
+      u.searchParams.delete("seat");
+      const next = `${u.pathname}${u.search}${u.hash}`;
+      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(null, "", next);
+    } catch {
+      /* no window */
+    }
+  }, [tab]);
 
   const startTour = () => {
     setWelcomeOn(false);
