@@ -55,6 +55,7 @@ import {
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
 import type { Sql } from "@/lib/db";
 import {
+  addKeyed,
   afterPersist,
   alertHealth,
   enqueueLedger,
@@ -64,9 +65,14 @@ import {
   type LedgerRow,
   ledgerGaps,
   oldestQueueAgeMs,
+  OUTBOX_CAP,
+  partitionResolved,
+  PENDING_CAP,
   persistOnce,
   type PersistIO,
   pushErr,
+  removeKeyed,
+  sanitizeQueue,
 } from "./reliability";
 
 const STATE_ID = "live";
@@ -99,7 +105,7 @@ type Eng = {
   sticks: Partial<Record<string, Stick>>;
   stickWindow: string;
   liveHist: { funding: HistPoint[]; oi: HistPoint[]; oiUsd: HistPoint[] };
-  pending: { ticker: string; close_time: number; snap: Snapshot; votes: Vote[]; chair: ChairResult } | null;
+  pending: PendingWindow[];
   gradeCand: { snap: Snapshot; votes: Vote[]; chair: ChairResult } | null;
   lastClose: number;
   timer: ReturnType<typeof setInterval> | null;
@@ -136,9 +142,20 @@ type Eng = {
   errors: ErrLog[];
   /** When this process booted (for the health boot-grace). */
   startedAt: number;
+  /** Long-lookback reconciliation: total interior holes over the recon window,
+   *  the most recent few missing windows, and the accepted baseline (a hole
+   *  count beyond it is a NEW loss that alerts). Baseline is persisted. */
+  reconAt: number;
+  reconHoles: number;
+  reconMissing: number[];
+  reconBaseline: number | null;
   watchdog: WatchdogState;
   watchdogTimer: ReturnType<typeof setInterval> | null;
 };
+
+/** A window graded once its official Kalshi result arrives; held in a bounded
+ *  collection so a second pending window can never overwrite the first (G5). */
+type PendingWindow = { ticker: string; close_time: number; snap: Snapshot; votes: Vote[]; chair: ChairResult };
 
 export type { V2Stats } from "./chair-v2";
 
@@ -188,7 +205,7 @@ function freshEng(): Eng {
     sticks: {},
     stickWindow: "",
     liveHist: { funding: [], oi: [], oiUsd: [] },
-    pending: null,
+    pending: [],
     gradeCand: null,
     lastClose: 0,
     timer: null,
@@ -216,6 +233,10 @@ function freshEng(): Eng {
     alertOwnerSubs: 0,
     errors: [],
     startedAt: Date.now(),
+    reconAt: 0,
+    reconHoles: 0,
+    reconMissing: [],
+    reconBaseline: null,
     watchdog: freshWatchdog(),
     watchdogTimer: null,
   };
@@ -251,6 +272,8 @@ async function loadState(e: Eng) {
           last_call?: Eng["lastCall"];
           v2?: V2Weights | null;
           last_ledger_ok_at?: number;
+          ledger_queue?: unknown;
+          ledger_recon_baseline?: number | null;
         }
       | undefined;
     if (!raw) return;
@@ -267,6 +290,10 @@ async function loadState(e: Eng) {
     if (typeof raw.last_ledger_ok_at === "number" && raw.last_ledger_ok_at > 0) {
       e.lastLedgerOkAt = raw.last_ledger_ok_at;
     }
+    // Durable outbox: any grade calculated + force-persisted before the last
+    // process death comes back here and drains to the ledger on this boot.
+    e.ledgerQueue = sanitizeQueue(raw.ledger_queue, Date.now());
+    if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -289,6 +316,8 @@ async function persistState(e: Eng, force = false) {
       last_call: e.lastCall,
       v2: e.v2,
       last_ledger_ok_at: e.lastLedgerOkAt,
+      ledger_queue: e.ledgerQueue.slice(-OUTBOX_CAP),
+      ledger_recon_baseline: e.reconBaseline,
     });
     await db`
       insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
@@ -659,11 +688,16 @@ function markPending(e: Eng, snap: Snapshot) {
 }
 
 function resolvePending(e: Eng, snap: Snapshot) {
-  if (!e.pending) return;
-  const hit = officialHit(snap, e.pending.ticker, e.pending.close_time);
-  if (!hit) return;
-  applyGrade(e, e.pending.snap, e.pending.votes, e.pending.chair, hit.lean, "kalshi-result");
-  e.pending = null;
+  if (!e.pending.length) return;
+  // Every pending window whose official result has arrived grades now; the rest
+  // stay pending. Resolving one can no longer drop the others (the G5 fix).
+  const { resolved, remaining } = partitionResolved(e.pending, (p) => Boolean(officialHit(snap, p.ticker, p.close_time)));
+  if (!resolved.length) return;
+  e.pending = remaining;
+  for (const p of resolved) {
+    const hit = officialHit(snap, p.ticker, p.close_time);
+    if (hit) applyGrade(e, p.snap, p.votes, p.chair, hit.lean, "kalshi-result");
+  }
 }
 
 function gradeableBook(snap: Snapshot): boolean {
@@ -718,10 +752,14 @@ function settleIfNeeded(
   const hit = officialHit(snap, w.ticker, w.close_time);
   if (hit) {
     applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
-    e.pending = null;
+    e.pending = removeKeyed(e.pending, w.ticker, w.close_time); // clear only this window, not others
     return;
   }
-  e.pending = { ticker: w.ticker, close_time: w.close_time, snap: s.snap, votes: s.votes, chair: s.chair };
+  e.pending = addKeyed(
+    e.pending,
+    { ticker: w.ticker, close_time: w.close_time, snap: s.snap, votes: s.votes, chair: s.chair },
+    PENDING_CAP,
+  );
   markPending(e, s.snap);
 }
 
@@ -1153,6 +1191,52 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
   } catch {
     /* alert-channel probe is best-effort */
   }
+  await reconcile(e);
+}
+
+const RECON_MS = 60 * 60_000;
+
+/** Lightweight periodic reconciliation over a long window, so a silent hole can
+ *  never age out of the 6-hour scan undetected. Counts interior holes across 90
+ *  days; the first run absorbs any pre-existing history as the baseline, and
+ *  only a NEW hole beyond that baseline alerts (once, via a distinct push) — a
+ *  graded window cannot vanish unnoticed even hours later. Informational on
+ *  /status; it does not flip the status, since old gaps can be legitimate
+ *  downtime. Throttled, bounded, best-effort. */
+async function reconcile(e: Eng): Promise<void> {
+  if (Date.now() - e.reconAt < RECON_MS) return;
+  e.reconAt = Date.now();
+  try {
+    const db = await sql();
+    const rows = await db<{ ms: number }>`
+      select (extract(epoch from close_time) * 1000)::bigint as ms
+      from desk_ledger where close_time > now() - interval '90 days' order by close_time
+    `;
+    const holes = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)));
+    e.reconHoles = holes.length;
+    e.reconMissing = holes.slice(-8);
+    if (e.reconBaseline == null) {
+      e.reconBaseline = holes.length; // first run absorbs existing history silently
+    } else if (holes.length > e.reconBaseline) {
+      const delta = holes.length - e.reconBaseline;
+      e.reconBaseline = holes.length;
+      noteErr(e, "reconcile", `${delta} newly-missing ledger window(s); ${holes.length} total over 90d`);
+      try {
+        const { notifyWatchdog } = await import("./push.server");
+        notifyWatchdog({
+          title: "Ledger reconciliation",
+          body: `${delta} newly-missing window(s) · ${holes.length} total over 90d · see /status`,
+          tag: "reconcile",
+          url: "/",
+        });
+      } catch {
+        /* push is best-effort */
+      }
+    }
+    void persistState(e, true); // persist the updated baseline
+  } catch (err) {
+    noteErr(e, "reconcile", err instanceof Error ? err.message : String(err));
+  }
 }
 
 /** Its own timer, on purpose: a tick loop that is stuck or throwing every
@@ -1220,6 +1304,7 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       ledger_queue: e.ledgerQueue.length,
       ledger_queue_oldest_s: Math.round(oldestQueueAgeMs(e.ledgerQueue, now) / 1000),
       ledger_gaps: e.ledgerGapCount,
+      reconcile: { window_days: 90, holes: e.reconHoles, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
       feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
       alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
       recent_errors: e.errors.slice(-5),
@@ -1270,7 +1355,7 @@ export async function getServerFrame(): Promise<ServerFrame> {
     learner: sliceLearner(e.learner),
     call_log: e.callLog,
     lastError: e.lastError,
-    settling: e.pending != null,
+    settling: e.pending.length > 0,
     v2: v2Frame(e),
   };
 }

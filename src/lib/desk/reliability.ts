@@ -56,6 +56,64 @@ export function enqueueLedger(queue: LedgerJob[], row: LedgerRow, now: number): 
   return next.length > MAX_QUEUE ? next.slice(next.length - MAX_QUEUE) : next;
 }
 
+// How many graded windows to carry in the durable outbox (desk_state) and how
+// many un-resolved pending windows to hold. Both far above the normal 0–2, so
+// only a real outage reaches the cap; anything shed is still named by the scan.
+export const OUTBOX_CAP = 120;
+export const PENDING_CAP = 32;
+
+/**
+ * Rebuild the persisted outbox (the ledger queue restored from desk_state on
+ * boot) into well-formed jobs, dropping anything malformed. This is what closes
+ * the mid-write process-death gap: a grade enqueued and force-persisted before
+ * the process died comes back here and drains to the ledger on the next boot.
+ */
+export function sanitizeQueue(raw: unknown, now: number): LedgerJob[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LedgerJob[] = [];
+  for (const j of raw) {
+    if (!j || typeof j !== "object") continue;
+    const row = (j as { row?: unknown }).row as { ticker?: unknown; close_time?: unknown; values?: unknown } | undefined;
+    if (!row || typeof row.ticker !== "string" || typeof row.close_time !== "number" || !Array.isArray(row.values)) continue;
+    const rec = j as { attempts?: unknown; firstAt?: unknown; nextAt?: unknown; lastErr?: unknown };
+    out.push({
+      key: jobKey(row.ticker, row.close_time),
+      row: { ticker: row.ticker, close_time: row.close_time, values: row.values },
+      attempts: Number(rec.attempts) || 0,
+      firstAt: Number(rec.firstAt) || now,
+      nextAt: Number(rec.nextAt) || now,
+      lastErr: typeof rec.lastErr === "string" ? rec.lastErr : null,
+    });
+  }
+  return out.slice(0, MAX_QUEUE);
+}
+
+export type Keyed = { ticker: string; close_time: number };
+
+/** Add a window to a keyed list, replacing any entry for the same window
+ *  (idempotent) and bounding the list (oldest dropped past the cap). */
+export function addKeyed<T extends Keyed>(list: T[], item: T, cap: number): T[] {
+  const key = jobKey(item.ticker, item.close_time);
+  const next = list.filter((p) => jobKey(p.ticker, p.close_time) !== key).concat(item);
+  return next.length > cap ? next.slice(next.length - cap) : next;
+}
+
+/** Drop one window from a keyed list. */
+export function removeKeyed<T extends Keyed>(list: T[], ticker: string, closeTime: number): T[] {
+  const key = jobKey(ticker, closeTime);
+  return list.filter((p) => jobKey(p.ticker, p.close_time) !== key);
+}
+
+/** Split a keyed list into the entries that now resolve and those that remain —
+ *  so one pending window resolving can never drop the others (the G5 fix). */
+export function partitionResolved<T extends Keyed>(list: T[], isResolved: (p: T) => boolean): { resolved: T[]; remaining: T[] } {
+  const resolved: T[] = [];
+  const remaining: T[] = [];
+  for (const p of list) (isResolved(p) ? resolved : remaining).push(p);
+  resolved.sort((a, b) => a.close_time - b.close_time); // grade oldest-first
+  return { resolved, remaining };
+}
+
 export type PersistIO = {
   /** Idempotent upsert (ON CONFLICT (ticker, close_time) DO NOTHING). */
   write: (row: LedgerRow) => Promise<void>;
