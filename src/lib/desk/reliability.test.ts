@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  addKeyed,
   afterPersist,
   alertHealth,
   BOOT_GRACE_MS,
   enqueueLedger,
+  type Keyed,
+  partitionResolved,
+  PENDING_CAP,
+  removeKeyed,
+  sanitizeQueue,
   healthVerdict,
   JOB_RETRY_MS,
   jobKey,
@@ -171,6 +177,75 @@ test("oldestQueueAgeMs measures the longest-unrecorded window", () => {
   const q: LedgerJob[] = [job(row("KX", 1), 1000), job(row("KX", 2), 5000)];
   assert.equal(oldestQueueAgeMs(q, 9000), 8000);
   assert.equal(oldestQueueAgeMs([], 9000), 0);
+});
+
+// --- durable outbox: a grade survives process death and drains on the next boot ---
+
+test("a queued grade round-trips through the persisted outbox and still drains", async () => {
+  // Grade enqueued, force-persisted to desk_state, THEN the process dies.
+  const q = enqueueLedger([], row("KX", 1000), 111);
+  const persisted = JSON.parse(JSON.stringify(q.slice(-120))); // what desk_state holds
+  // ...restart: the in-memory queue is gone; rebuild it from desk_state.
+  const restored = sanitizeQueue(persisted, 999);
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].key, "KX:1000");
+  assert.deepEqual(restored[0].row.values, ["KX", 1000]);
+  // and it drains normally against a working DB — the evidence is recovered, not lost.
+  const io = fakeLedger();
+  const out = await persistOnce(restored[0], io, 1000);
+  assert.equal(out.status, "verified");
+  assert.equal(io.rows.size, 1);
+});
+
+test("a malformed persisted outbox is dropped, never crashes boot", () => {
+  assert.deepEqual(sanitizeQueue(null, 0), []);
+  assert.deepEqual(sanitizeQueue("nope", 0), []);
+  assert.deepEqual(sanitizeQueue([{ row: { ticker: "KX" } }, 7, null], 0), []); // missing close_time/values
+  const ok = sanitizeQueue([{ row: { ticker: "KX", close_time: 1, values: [] } }], 5);
+  assert.equal(ok.length, 1);
+  assert.equal(ok[0].firstAt, 5); // defaulted from `now`
+});
+
+// --- G5: overlapping pending windows never overwrite one another ---
+
+type P = Keyed & { tag: string };
+const pw = (closeTime: number, tag: string): P => ({ ticker: "KX", close_time: closeTime, tag });
+
+test("two windows can be pending at once — neither drops the other", () => {
+  let list: P[] = [];
+  list = addKeyed(list, pw(1000, "A"), PENDING_CAP);
+  list = addKeyed(list, pw(2000, "B"), PENDING_CAP); // B does NOT evict A
+  assert.equal(list.length, 2);
+  assert.deepEqual(list.map((p) => p.tag), ["A", "B"]);
+});
+
+test("re-pending the same window replaces it in place (idempotent)", () => {
+  let list: P[] = [addKeyed([], pw(1000, "A"), PENDING_CAP)[0]];
+  list = addKeyed(list, pw(1000, "A2"), PENDING_CAP);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].tag, "A2");
+});
+
+test("resolving one pending window keeps the rest — the G5 fix", () => {
+  const list = [pw(1000, "A"), pw(2000, "B"), pw(3000, "C")];
+  // only B's official result has arrived
+  const { resolved, remaining } = partitionResolved(list, (p) => p.close_time === 2000);
+  assert.deepEqual(resolved.map((p) => p.tag), ["B"]);
+  assert.deepEqual(remaining.map((p) => p.tag), ["A", "C"]); // A and C are NOT dropped
+});
+
+test("resolved windows come back oldest-first, and removeKeyed drops just one", () => {
+  const list = [pw(3000, "C"), pw(1000, "A"), pw(2000, "B")];
+  const { resolved } = partitionResolved(list, () => true);
+  assert.deepEqual(resolved.map((p) => p.close_time), [1000, 2000, 3000]); // chronological grading order
+  assert.deepEqual(removeKeyed(list, "KX", 2000).map((p) => p.tag), ["C", "A"]);
+});
+
+test("the pending list is bounded — a long result outage drops the oldest, not the newest", () => {
+  let list: P[] = [];
+  for (let i = 0; i < PENDING_CAP + 5; i += 1) list = addKeyed(list, pw(i, `w${i}`), PENDING_CAP);
+  assert.equal(list.length, PENDING_CAP);
+  assert.equal(list[list.length - 1].tag, `w${PENDING_CAP + 4}`); // newest kept
 });
 
 // --- ledgerGaps: detect a lost window (e.g. crash between grade and persist) ---
