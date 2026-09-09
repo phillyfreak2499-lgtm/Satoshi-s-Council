@@ -61,6 +61,8 @@ export function mergeLearner(saved?: Partial<Learner> | null): Learner {
   learner.thresholds = mergeThresholds(saved.thresholds);
   learner.last_feats = saved.last_feats ?? {};
   learner.last_regime = saved.last_regime ?? "";
+  learner.weight_regime = saved.weight_regime ?? "";
+  learner.weight_lock_left = saved.weight_lock_left ?? 0;
   learner.pattern_book = saved.pattern_book ?? {};
   learner.window_patterns = saved.window_patterns ?? [];
   for (const st of Object.values(learner.pattern_book)) {

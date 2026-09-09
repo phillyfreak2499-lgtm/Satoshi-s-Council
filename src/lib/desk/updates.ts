@@ -183,4 +183,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "A scorecard for how the desk plays, not just whether it won. BOOKS now shows the process: how often the chair sits, how hard the calls that filled cleared the bar, whether they kept the 70¢ floor, and the worst drawdown the paper book has run — the risk number a win rate hides. All from the ledger, after fees, all-time and this week.",
   },
+  {
+    slug: "2026-09-09-guards",
+    body:
+      "Two quiet guardrails. STALE: if the spot feed prints the same price for four minutes it is stuck, not calm — the warden now silences the candle seats instead of letting them read a frozen tape, the way it already does for frozen open interest. LOCK: when the regime breaks, the desk holds its seat weights steady for a few windows so one rough patch cannot rewrite what the last regime earned.",
+  },
 ];

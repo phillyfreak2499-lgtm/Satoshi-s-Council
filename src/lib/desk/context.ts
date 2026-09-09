@@ -112,6 +112,20 @@ function frozenOi(snap: Snapshot): boolean {
   return s[s.length - 1]!.t - s[0]!.t >= 8 * 60_000;
 }
 
+/**
+ * STALE — the spot feed returning fresh timestamps but a frozen value. Four or
+ * more consecutive closed 1-minute bars with an identical close, spanning at
+ * least four minutes, is a stuck feed, not a quiet market: BTC does not print
+ * the same price to the cent for four minutes. Mirrors frozenOi for the tape.
+ */
+function frozenSpot(snap: Snapshot): boolean {
+  const bars = snap.candles_1m.filter((c) => c.closed).slice(-5);
+  if (bars.length < 4) return false;
+  const c0 = bars[0]!.close;
+  if (!(c0 > 0) || bars.some((b) => b.close !== c0)) return false;
+  return bars[bars.length - 1]!.t - bars[0]!.t >= 4 * 60_000;
+}
+
 export function semanticFails(snap: Snapshot): SemanticFail[] {
   const out: SemanticFail[] = [];
   if (!(snap.spot > 1000) || snap.spot > 500_000) out.push({ id: "px", family: "spot", why: "impossible spot" });
@@ -128,6 +142,9 @@ export function semanticFails(snap: Snapshot): SemanticFail[] {
   }
   if (frozenOi(snap) && snap.health.derivs === "LIVE") {
     out.push({ id: "oi_frozen", family: "derivs", why: "OI frozen ≥ 8m" });
+  }
+  if (frozenSpot(snap) && snap.health.spot !== "DOWN") {
+    out.push({ id: "spot_frozen", family: "spot", why: "spot frozen ≥ 4m" });
   }
   return out;
 }
