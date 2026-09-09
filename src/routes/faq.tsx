@@ -15,7 +15,7 @@ export const Route = createFileRoute("/faq")({
 const QA: { q: string; a: string }[] = [
   {
     q: "What is a seat?",
-    a: "One specialist with one job. WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Twenty-one of them sit at five desks. Each says UP, DOWN or WAIT with a confidence and shows its hypothesis, evidence and counter.",
+    a: "One specialist with one job. WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Twenty-one of them sit at five desks; eighteen vote UP, DOWN or WAIT with a confidence, while three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew that inform the chair. Each shows its hypothesis, evidence and counter.",
   },
   {
     q: "Why does the desk say WAIT so often?",
