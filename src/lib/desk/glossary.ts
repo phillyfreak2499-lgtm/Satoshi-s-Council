@@ -609,8 +609,8 @@ export const TOUR_STEPS: TourStep[] = [
     id: "satoshi",
     target: "tour-chamber",
     tab: "satoshi",
-    title: "Twenty-one specialists vote",
-    body: "Each cell is a seat: its vote in words, a pip in the vote's colour, and how sure. Hover or tap a seat to read its thesis; open the seat for its full record.",
+    title: "Eighteen specialists vote",
+    body: "Each cell is a voting seat: its vote in words, a pip in the vote's colour, and how sure. Hover or tap a seat to read its thesis; open the seat for its full record. Three more — WARDEN, ORBIT, WIRE — sit as non-voting pit crew.",
   },
   {
     id: "wick",

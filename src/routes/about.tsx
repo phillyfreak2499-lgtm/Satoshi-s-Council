@@ -20,7 +20,7 @@ const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "2",
     title: "Vote",
-    body: "Every seat calls UP, DOWN or WAIT with a confidence. A seat that is not sure enough sits; you still see what it whispered. SATOSHI weighs the seats by their graded record and how much they agree. The score has to clear a bar or the desk waits. WAIT is the most common call, on purpose.",
+    body: "Eighteen of the seats vote UP, DOWN or WAIT with a confidence; three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew whose reads inform the chair but never count as a vote. A voting seat that is not sure enough sits; you still see what it whispered. SATOSHI weighs the seats by their graded record and how much they agree. The score has to clear a bar or the desk waits. WAIT is the most common call, on purpose.",
   },
   {
     n: "3",

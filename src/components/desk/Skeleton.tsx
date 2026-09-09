@@ -46,7 +46,7 @@ export function FloorSkeleton({ demo }: { demo: boolean }) {
         </div>
         <p className="mt-1 font-sans text-body text-muted">
           The desk polls the tape every few seconds; the first frame usually lands within ten seconds. What appears here: the chair&apos;s
-          call, the clock, and twenty-one seats voting.
+          call, the clock, and the voting seats.
         </p>
         {long ? (
           <div className="mt-3 rounded-sm border border-wait/40 bg-wait/10 p-3">
