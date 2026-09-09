@@ -54,6 +54,7 @@ import {
 } from "./chair-v2";
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
 import type { Sql } from "@/lib/db";
+import { takerEvCents, takerSignal } from "./taker";
 import {
   addKeyed,
   afterPersist,
@@ -120,6 +121,8 @@ type Eng = {
   lastPulseReqAt: number;
   v2: V2Weights | null;
   v2Sampled: string;
+  /** Windows already sampled for the TAKER shadow seat (windowKey), once each. */
+  takerSampled: string;
   v2Live: V2Decision | null;
   v2Stats: V2Stats | null;
   v2Fitting: boolean;
@@ -220,6 +223,7 @@ function freshEng(): Eng {
     lastPulseReqAt: 0,
     v2: null,
     v2Sampled: "",
+    takerSampled: "",
     v2Live: null,
     v2Stats: null,
     v2Fitting: false,
@@ -663,6 +667,7 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   // verified write off the tick. lastLedgerOkAt only advances once it lands.
   e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source), Date.now());
   void gradeV2(e, snap, finish);
+  void gradeTaker(e, snap, finish); // shadow seat, recorded only — no chair/learner effect
   const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
   const chairBits =
     booked && booked.settle != null
@@ -826,6 +831,7 @@ async function tick(e: Eng) {
     noteCall(e, snap, chair);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     noteV2(e, snap, votes, chair);
+    noteTaker(e, snap, chair);
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window
     // rollover the OLD window grades from its own last live-book tick.
     const prev = { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
@@ -873,6 +879,62 @@ function noteV2(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
     }
   } catch (err) {
     e.lastError = `v2: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TAKER (shadow, non-voting): one frozen Kalshi-taker-flow reading per window,
+// sampled at the same mid-window point as v2 and graded at settle. Recorded
+// ONLY — it never votes and never touches the chair, learner, COACH, thresholds
+// or any seat. The ledger judges it prospectively; see src/lib/desk/taker.ts.
+// ---------------------------------------------------------------------------
+
+function noteTaker(e: Eng, snap: Snapshot, chair: ChairResult) {
+  try {
+    const key = windowKey(snap);
+    if (e.takerSampled !== key && snap.mins_left <= V2_SAMPLE_MINS && snap.mins_left > 2.2 && snap.yes_ask > 0 && gradeableBook(snap)) {
+      e.takerSampled = key;
+      void recordTaker(e, snap, chair);
+    }
+  } catch (err) {
+    e.lastError = `taker: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function recordTaker(e: Eng, snap: Snapshot, chair: ChairResult) {
+  try {
+    const call = takerSignal(snap.kalshi_taker_yes, snap.kalshi_trade_n);
+    const entry = call.lean === "UP" ? snap.yes_ask : call.lean === "DOWN" ? snap.no_ask : null;
+    const db = await sql();
+    await db`
+      insert into desk_taker
+        (ticker, close_time, mins_left, taker_yes, trade_n, eligible, lean, conf, imbalance, chair_lean, regime, entry_cents)
+      values
+        (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${snap.mins_left},
+         ${snap.kalshi_taker_yes}, ${snap.kalshi_trade_n}, ${call.eligible}, ${call.lean}, ${call.conf},
+         ${call.imbalance}, ${chair.lean}, ${snap.regime_key ?? ""}, ${entry ?? null})
+      on conflict (ticker, close_time) do nothing
+    `;
+  } catch (err) {
+    e.lastError = `taker sample: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function gradeTaker(e: Eng, snap: Snapshot, finish: "UP" | "DOWN") {
+  try {
+    const db = await sql();
+    const rows = await db<{ id: number; lean: string; entry_cents: number | null }>`
+      select id, lean, entry_cents from desk_taker
+      where ticker = ${snap.ticker} and winner is null
+        and abs(extract(epoch from (close_time - ${new Date(snap.close_time).toISOString()}::timestamptz))) < 90
+      limit 1
+    `;
+    const row = rows[0];
+    if (!row) return;
+    const ev = takerEvCents(row.lean as Lean, row.entry_cents, finish, takerFeeCents);
+    await db`update desk_taker set winner = ${finish}, ev_cents = ${ev}, graded_at = now() where id = ${row.id}`;
+  } catch (err) {
+    e.lastError = `taker grade: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
