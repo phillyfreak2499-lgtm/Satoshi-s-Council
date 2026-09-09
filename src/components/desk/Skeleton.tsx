@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { patchSettings } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
+import { Crest } from "./Crest";
 
 export function Bone({ className }: { className?: string }) {
   return <div aria-hidden="true" className={cn("animate-pulse rounded-sm bg-surface-3", className)} />;
@@ -40,7 +41,9 @@ export function FloorSkeleton({ demo }: { demo: boolean }) {
   return (
     <div className="grid gap-3 p-3" aria-busy="true" aria-live="polite">
       <section className="rounded-md border border-border bg-surface p-4">
-        <div className="font-mono text-micro uppercase tracking-widest text-subtle">Opening the window</div>
+        <div className="flex items-center gap-2 font-mono text-micro uppercase tracking-widest text-subtle">
+          <Crest size={16} className="opacity-80" /> Opening the window
+        </div>
         <p className="mt-1 font-sans text-body text-muted">
           The desk polls the tape every few seconds; the first frame usually lands within ten seconds. What appears here: the chair&apos;s
           call, the clock, and twenty-one seats voting.

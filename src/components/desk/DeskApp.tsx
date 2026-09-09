@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAB_SEATS } from "@/lib/desk/seats";
 import { SiteHeader } from "./SiteHeader";
+import { Crest } from "./Crest";
 import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
 import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
@@ -493,6 +494,7 @@ export function DeskApp() {
         data-tour="tour-footer"
         className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3 py-1.5 font-mono text-micro text-subtle"
       >
+        <Crest size={16} className="shrink-0 opacity-80" />
         <span>Paper research desk · Bitcoin only · Not financial advice · Not affiliated with Kalshi · No real money.</span>
         <span className="ml-auto flex flex-wrap gap-x-3">
           <a href="/about" className="min-h-8 leading-8 hover:text-fg">

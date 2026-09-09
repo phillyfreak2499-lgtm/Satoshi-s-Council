@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { SiteHeader } from "./SiteHeader";
+import { Crest } from "./Crest";
 import { cn } from "@/lib/utils";
 
 const NAV: { to: "/about" | "/faq" | "/legal"; label: string }[] = [
@@ -48,7 +49,8 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
         </div>
       </main>
       <footer className="border-t border-border px-4 py-3 font-mono text-micro text-subtle">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto flex max-w-4xl items-center gap-2">
+          <Crest size={16} className="shrink-0 opacity-80" />
           Paper research desk · Bitcoin only · Not financial advice · Not affiliated with Kalshi ·{" "}
           <Link to="/legal" className="underline-offset-2 hover:text-fg hover:underline">
             what paper means
