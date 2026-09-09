@@ -188,4 +188,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Two quiet guardrails. STALE: if the spot feed prints the same price for four minutes it is stuck, not calm — the warden now silences the candle seats instead of letting them read a frozen tape, the way it already does for frozen open interest. LOCK: when the regime breaks, the desk holds its seat weights steady for a few windows so one rough patch cannot rewrite what the last regime earned.",
   },
+  {
+    slug: "2026-09-09-gavel",
+    body:
+      "Two lists, never mixed. GAVEL is the chair's decisions — every window, WAIT included; a WAIT settles as a dash, since the chair held no position. SEATS is each specialist's own paper scalps, collapsed, never a chair call. A new overnight ribbon shows the chair's last 12 hours and where BTC went. WARDEN, ORBIT and WIRE moved to the pit crew: they inform, they no longer vote.",
+  },
 ];

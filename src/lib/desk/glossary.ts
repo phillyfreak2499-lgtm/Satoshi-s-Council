@@ -9,7 +9,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "beta.disclaimer": {
     title: "Paper only — not advice",
-    body: "No live orders. SATOSHI and the 21 seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use BOARD to post ideas and leave feedback.",
+    body: "No live orders. SATOSHI and the seats grade themselves after each 15-minute window. Friends can watch; nobody should size a real bet off this tape. Not financial advice. Use BOARD to post ideas and leave feedback.",
   },
   "beta.feedback": {
     title: "Board",
@@ -17,7 +17,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.satoshi": {
     title: "FLOOR — the chair's call",
-    body: "Weighs all 21 seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
+    body: "Weighs the voting seats into one paper call: UP, DOWN, or WAIT. Same-evidence piles count as one voice. The board is the call. The charts are the eyes. The log is every directional fill vs 100¢ at the window end.",
   },
   "tab.atelier": {
     title: "ATELIER — the painting",
@@ -62,6 +62,14 @@ export const GLOSS: Record<string, Gloss> = {
   "books.curve": {
     title: "The curve",
     body: "Running total of the chair's cents over the last fourteen days, one point per booked window, after fees. The bars underneath are each day's net. Flat stretches are windows the chair sat out.",
+  },
+  "gavel.list": {
+    title: "GAVEL — Chair decisions",
+    body: "Every graded 15-minute window the Chair decided, newest first, WAIT included. WAIT is a real decision and prints as a row; it is not a trade, so its settlement shows a dash. UP and DOWN rows show the price paid and what the position settled at. This is the Chair only — never a specialist seat's fill.",
+  },
+  "seats.list": {
+    title: "SEATS — specialist paper fills",
+    body: "Each specialist seat's own paper scalps in cents — practice for that seat, not the Chair's book. A seat making +2¢ is not the Chair making +2¢: seats do not settle windows and are never Council calls. Collapsed by default; open it to see who has been active.",
   },
   "keeper.pane": {
     title: "Process scorecard",
@@ -117,10 +125,10 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.floor": {
     title: "DESKS — the five desks",
-    body: "The twenty-one seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
+    body: "The specialist seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
   },
   "pane.seats": {
-    title: "The twenty-one seats",
+    title: "The specialist seats",
     body: "One row per seat, ranked by how much SATOSHI is hearing them right now. Speaking means the seat called UP or DOWN; sitting means it said WAIT or was not sure enough to clear the bar. Click a row to read that seat's why.",
   },
   "settings.display": {

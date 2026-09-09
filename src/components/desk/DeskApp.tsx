@@ -375,8 +375,6 @@ export function DeskApp() {
 
       {tab === "satoshi" ? (
         <IntroBand
-          snap={frame.snap}
-          chair={frame.chair}
           demo={frame.settings.source === "demo"}
           nudge={nudge && !tourOn}
           onTour={startTour}
