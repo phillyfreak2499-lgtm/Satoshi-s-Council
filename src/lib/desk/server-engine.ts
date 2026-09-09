@@ -152,6 +152,8 @@ type Eng = {
   reconHoles: number;
   reconMissing: number[];
   reconBaseline: number | null;
+  /** Owner readiness latch: the "enough data to evaluate" push fires ONCE. Persisted. */
+  readinessAlerted: boolean;
   watchdog: WatchdogState;
   watchdogTimer: ReturnType<typeof setInterval> | null;
 };
@@ -241,6 +243,7 @@ function freshEng(): Eng {
     reconHoles: 0,
     reconMissing: [],
     reconBaseline: null,
+    readinessAlerted: false,
     watchdog: freshWatchdog(),
     watchdogTimer: null,
   };
@@ -278,6 +281,7 @@ async function loadState(e: Eng) {
           last_ledger_ok_at?: number;
           ledger_queue?: unknown;
           ledger_recon_baseline?: number | null;
+          readiness_alerted?: boolean;
         }
       | undefined;
     if (!raw) return;
@@ -298,6 +302,7 @@ async function loadState(e: Eng) {
     // process death comes back here and drains to the ledger on this boot.
     e.ledgerQueue = sanitizeQueue(raw.ledger_queue, Date.now());
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
+    e.readinessAlerted = raw.readiness_alerted === true;
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -322,6 +327,7 @@ async function persistState(e: Eng, force = false) {
       last_ledger_ok_at: e.lastLedgerOkAt,
       ledger_queue: e.ledgerQueue.slice(-OUTBOX_CAP),
       ledger_recon_baseline: e.reconBaseline,
+      readiness_alerted: e.readinessAlerted,
     });
     await db`
       insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
@@ -1295,7 +1301,27 @@ async function reconcile(e: Eng): Promise<void> {
         /* push is best-effort */
       }
     }
-    void persistState(e, true); // persist the updated baseline
+    // Owner readiness latch: once enough out-of-sample data has accumulated to
+    // run the first serious evaluation, ping the owner ONCE (a distinct push).
+    // Read-only — it decides nothing; the owner reads the gate in SETTINGS and
+    // chooses whether to kick off the eval. Latch is persisted below.
+    if (!e.readinessAlerted) {
+      try {
+        const { readinessReady } = await import("./readiness.server");
+        if (await readinessReady()) {
+          e.readinessAlerted = true;
+          notifyWatchdog({
+            title: "Enough data to evaluate",
+            body: "The readiness gate passed — open SETTINGS for the copy-paste eval prompt.",
+            tag: "readiness",
+            url: "/",
+          });
+        }
+      } catch {
+        /* readiness probe is best-effort; it never blocks reconciliation */
+      }
+    }
+    void persistState(e, true); // persist the updated baseline + readiness latch
   } catch (err) {
     noteErr(e, "reconcile", err instanceof Error ? err.message : String(err));
   }
@@ -1377,6 +1403,25 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
 /** The shared brain's latest snapshot (the Arena books calls against it). */
 export function getServerSnap(): Snapshot | null {
   return eng().prevSnap;
+}
+
+/** Live ledger integrity for the readiness gate: recent-scan holes, the 90-day
+ *  reconciliation count, and how many holes are NEW beyond the accepted baseline
+ *  (the only ones that mean a real loss). Read-only. */
+export function getReadinessIntegrity(): { gaps: number; recon_holes: number; recon_baseline: number | null; recon_new_holes: number } {
+  const e = eng();
+  const base = e.reconBaseline;
+  return {
+    gaps: e.ledgerGapCount,
+    recon_holes: e.reconHoles,
+    recon_baseline: base,
+    recon_new_holes: base == null ? 0 : Math.max(0, e.reconHoles - base),
+  };
+}
+
+/** Whether the one-time "enough data to evaluate" owner push has already fired. */
+export function readinessAlerted(): boolean {
+  return eng().readinessAlerted;
 }
 
 /** Read-only view of COACH's knobs for the Pit Crew panel. */

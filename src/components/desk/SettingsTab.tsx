@@ -22,6 +22,7 @@ import { Tip } from "./Tip";
 import { AlertsPanel } from "./AlertsPanel";
 import { DisplayPanel } from "./DisplayPanel";
 import { ArenaAdminPanel } from "./ArenaAdminPanel";
+import { ReadinessPanel } from "./ReadinessPanel";
 
 function AdminKeyField() {
   const [key, setKey] = useState(getAdminKey);
@@ -50,6 +51,7 @@ function AdminKeyField() {
 export function SettingsTab({ settings, learner }: { settings: SettingsT; learner: Learner }) {
   return (
     <div data-tour="tour-settings" className="grid gap-3 p-3 lg:grid-cols-2">
+      <ReadinessPanel />
       <AlertsPanel />
       <DisplayPanel />
       <ArenaAdminPanel />

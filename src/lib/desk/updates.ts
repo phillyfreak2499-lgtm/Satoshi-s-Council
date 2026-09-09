@@ -198,4 +198,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "One Board, one row. The header had two ways in — a stray Board button on the left and the BOARD tab — so the duplicate is gone; the count of new posts now rides on the tab itself. FLOOR, DESKS, ARENA, BOOKS and BOARD all sit at one size in one row. Housekeeping at the top of the page — nothing about the desk or its calls changed.",
   },
+  {
+    slug: "2026-09-09-readiness",
+    body:
+      "The desk knows when it is ready to be judged. A new owner-only gate in SETTINGS counts what has built up since the TAKER shadow seat was frozen — graded windows, TAKER's own calls, the chair's WAIT windows, regime breadth, a clean ledger — and says so only when there is enough to grade the experiment fairly. It decides nothing and changes no call; TAKER and the chair stay exactly as frozen.",
+  },
 ];

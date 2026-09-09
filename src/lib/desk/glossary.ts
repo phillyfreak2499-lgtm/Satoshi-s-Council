@@ -123,6 +123,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Alerts",
     body: "A push notification to this browser when the chair books a call, and if you want, when a window that mattered settles: one you locked in the Arena, with your result on the line, or one the chair called. Quiet windows send nothing. Turn it on here; the browser will ask permission once. On iPhone and iPad the site has to be on your Home Screen first. Nothing is ever sent to a browser that did not opt in.",
   },
+  "settings.readiness": {
+    title: "Evaluation readiness",
+    body: "Owner only, read-only. A gate that counts how much out-of-sample data has piled up since the TAKER v1 freeze — graded windows, TAKER directional calls, chair WAIT windows, regime breadth, ledger integrity — and says whether there is enough to run the first serious evaluation (does TAKER add information the Council lacked, and did the chair's bar pass up calibrated edges). It decides nothing; when it flips it hands over an exact prompt to paste back to Claude, and, if the watchdog is on, sends a one-time push.",
+  },
   "tab.floor": {
     title: "DESKS — the five desks",
     body: "The specialist seats sit at five desks: STRUCTURE (candles and swings), TAPE (order flow and the Kalshi book), DERIVS (funding, open interest, liquidations), BOOK (the odds themselves) and CONTEXT (clock and regime). Each seat shows its hypothesis, evidence, counter and what would prove it wrong.",
