@@ -173,4 +173,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Every table on the desk now reads the same way — the leaderboard, the crew scorecards, the books' recent windows and lab — mono figures, hairline rows, headers in small caps, and the amber caution flag finally shows. One slider accent, one gold focus ring you can see, and the vote colours always carry the word UP, DOWN or WAIT beside them. Presentation only; the numbers are the same.",
   },
+  {
+    slug: "2026-09-09-ledger-clerk",
+    body:
+      "Meet LEDGER, a fourth PIT CREW clerk — a reader, never a voter. It mines the ledger's vote matrix for coalitions and pairs of seats that call better together than alone, with a hit rate, sample and Wilson floor. A card is cited only once its edge holds on windows after the ones it was found on; one that resolves against its members is inverted, not deleted. The chair may cite it, never obey it.",
+  },
 ];

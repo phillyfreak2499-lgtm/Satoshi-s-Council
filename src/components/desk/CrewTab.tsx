@@ -52,6 +52,40 @@ const FLAG_TONE: Record<string, string> = {
   DEADLOCK: "text-warn",
 };
 
+type Pattern = {
+  slug: string;
+  kind: "pair" | "coalition";
+  members: string[];
+  agree_side: "UP" | "DOWN";
+  cited_side: "UP" | "DOWN";
+  status: "cited" | "inverted" | "candidate" | "stale";
+  train_n: number;
+  train_hits: number;
+  train_wilson: number;
+  test_n: number;
+  test_hits: number;
+  test_wilson: number;
+  member_solo: number;
+  net_cents: number;
+  booked_n: number;
+  cited_wilson: number;
+  note: string;
+};
+type Ledger = {
+  meta: { windows: number; train_n: number; test_n: number } | null;
+  counts: { cited: number; inverted: number; candidate: number };
+  patterns: Pattern[];
+  last_run_day: string | null;
+  last_error: string | null;
+};
+
+const STATUS_TONE: Record<string, string> = {
+  cited: "text-up",
+  inverted: "text-warn",
+  candidate: "text-subtle",
+  stale: "text-muted",
+};
+
 function Section({ k, title, children }: { k: string; title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-md border border-border bg-surface p-3">
@@ -72,6 +106,7 @@ function fmt(n: number | null | undefined, d = 0): string {
 export function CrewTab() {
   const [crew, setCrew] = useState<Crew | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [ledger, setLedger] = useState<Ledger | null>(null);
   useEffect(() => {
     let alive = true;
     const pull = async () => {
@@ -88,8 +123,21 @@ export function CrewTab() {
         if (alive) setErr(e instanceof Error ? e.message : String(e));
       }
     };
+    const pullLedger = async () => {
+      try {
+        const r = await fetch("/ledger", { headers: { accept: "application/json" } });
+        const j = (await r.json()) as Ledger & { error?: string };
+        if (alive && !j.error) setLedger(j);
+      } catch {
+        /* the ledger pane is optional — leave it empty if the fetch fails */
+      }
+    };
     void pull();
-    const t = window.setInterval(() => void pull(), 60_000);
+    void pullLedger();
+    const t = window.setInterval(() => {
+      void pull();
+      void pullLedger();
+    }, 60_000);
     return () => {
       alive = false;
       window.clearInterval(t);
@@ -172,6 +220,83 @@ export function CrewTab() {
             ))}
           </ul>
         )}
+      </Section>
+
+      <Section
+        k="crew.ledger"
+        title={`LEDGER · pattern cards${
+          ledger?.meta ? ` · ${ledger.meta.train_n}/${ledger.meta.test_n} split` : ""
+        }`}
+      >
+        <div className="mb-2 font-mono text-micro text-subtle">
+          Cross-seat vote <Tip k="ledger.coalition">coalitions</Tip> and <Tip k="ledger.pair">pairs</Tip> mined from the ledger. A
+          card is <Tip k="ledger.cited">cited</Tip> only when its edge holds on windows AFTER the range it was found on (
+          <Tip k="ledger.walkforward">walk-forward</Tip>), and <Tip k="ledger.inverted">inverted</Tip> rather than deleted when
+          it resolves against its members. LEDGER never votes.
+        </div>
+        {ledger && ledger.patterns.length ? (
+          <div className="overflow-x-auto">
+            <table className="table-research">
+              <thead>
+                <tr className="text-left">
+                  <th>seats</th>
+                  <th>reads</th>
+                  <th>status</th>
+                  <th>out of sample</th>
+                  <th>
+                    <Tip k="ledger.wilson">W</Tip> vs best seat
+                  </th>
+                  <th>training</th>
+                  <th>net ¢</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.patterns.map((p) => (
+                  <tr key={p.slug} className="border-t border-border/60 text-fg" title={p.note || undefined}>
+                    <td className="font-semibold">
+                      {p.members.join("+")}
+                      <span className="ml-1 text-subtle">{p.kind === "coalition" ? "coalition" : "pair"}</span>
+                    </td>
+                    <td>
+                      <span className={p.agree_side === "UP" ? "text-up" : "text-down"}>{p.agree_side}</span>
+                      <span className="text-subtle"> → </span>
+                      <span className={p.cited_side === "UP" ? "text-up" : "text-down"}>{p.cited_side}</span>
+                    </td>
+                    <td className={cn("uppercase", STATUS_TONE[p.status] ?? "")}>{p.status}</td>
+                    <td>
+                      {p.test_n ? (
+                        <>
+                          {p.status === "inverted" ? p.test_n - p.test_hits : p.test_hits}/{p.test_n}
+                          <span className="text-subtle"> · W{Math.round(p.cited_wilson * 100)}</span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>
+                      W{Math.round(p.cited_wilson * 100)}
+                      <span className="text-subtle"> vs {Math.round(p.member_solo * 100)}</span>
+                    </td>
+                    <td className="text-muted">
+                      {p.train_hits}/{p.train_n}
+                    </td>
+                    <td className={cn(p.net_cents > 0 ? "text-up" : p.net_cents < 0 ? "text-down" : "text-subtle")}>
+                      {p.booked_n ? `${p.net_cents > 0 ? "+" : ""}${fmt(p.net_cents, 1)}` : "—"}
+                      {p.booked_n ? <span className="text-subtle"> ({p.booked_n})</span> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="font-mono text-micro text-muted">
+            {ledger?.meta
+              ? `No pattern clears the walk-forward test yet — ${ledger.meta.windows} windows mined.`
+              : "LEDGER runs once a day after the recap. It needs about forty graded windows before its first mine."}
+          </div>
+        )}
+        {ledger?.last_error ? <div className="mt-1 font-mono text-micro text-down">ledger: {ledger.last_error}</div> : null}
       </Section>
 
       <div className="grid gap-3 lg:grid-cols-2">

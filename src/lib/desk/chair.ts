@@ -9,6 +9,7 @@ import type {
   ChairResult,
   FeedHealth,
   Gate,
+  LedgerCite,
   Lean,
   Learner,
   SeatId,
@@ -18,6 +19,17 @@ import type {
   Snapshot,
   Vote,
 } from "./types";
+
+/** One promoted LEDGER pattern, in the chair's evidence house style. It is a
+ *  labelled note only — it decides nothing about the side, the size or the
+ *  fill. */
+function ledgerCiteLine(c: LedgerCite): string {
+  const who = c.members.join("+");
+  const w = Math.round(c.wilson * 100);
+  return c.status === "inverted"
+    ? `LEDGER — ${who} agree ${c.agree_side} but resolve ${c.cited_side} · W${w} n=${c.n} · cited, non-binding`
+    : `LEDGER — ${who} together → ${c.cited_side} · W${w} n=${c.n} · cited, non-binding`;
+}
 
 function listenOf(rank: number): number {
   return Math.max(0.12, 0.82 ** (rank - 1));
@@ -66,6 +78,9 @@ export function runChair(
   learner: Learner,
   settings: Settings,
   lastLean: Lean = "WAIT",
+  /** Promoted LEDGER patterns firing on this window. Appended to the read as
+   *  labelled evidence only — never touches the gates, side, size or floor. */
+  cites: readonly LedgerCite[] = [],
 ): ChairResult {
   const muted = new Set(settings.mutes);
   const now = snap.as_of;
@@ -650,9 +665,10 @@ export function runChair(
     gates,
     hard_fail: hardFail,
     hypothesis,
-    evidence: topSigned.map(
-      (r) => `${r.seat} ${r.lean} conf ${r.conf} contrib ${r.contribution.toFixed(3)} · ${r.skill_used}`,
-    ),
+    evidence: [
+      ...topSigned.map((r) => `${r.seat} ${r.lean} conf ${r.conf} contrib ${r.contribution.toFixed(3)} · ${r.skill_used}`),
+      ...cites.map(ledgerCiteLine),
+    ],
     counter: loudestDissent
       ? `${loudestDissent.seat} ${loudestDissent.lean} ${loudestDissent.conf} — ${loudestDissent.why}`
       : failGate

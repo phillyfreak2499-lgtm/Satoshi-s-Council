@@ -109,7 +109,35 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.crew": {
     title: "PIT CREW",
-    body: "Three helpers that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. Nothing here trades.",
+    body: "Staff that work on the seats, not the market. SWEEP grades every seat from receipts once a day and raises flags. COACH turns a seat's knobs, only on evidence from windows it did not tune on, one small step a week. WRENCH is a scheduled mechanic that opens pull requests for real bugs. LEDGER mines cross-seat vote patterns from the ledger and promotes the ones that hold out of sample. Nothing here votes or trades.",
+  },
+  "crew.ledger": {
+    title: "LEDGER — the pattern clerk",
+    body: "Reads the ledger's per-window vote matrix and mines patterns across seats: coalitions (a group that, when it agrees, the window resolves its way more often than any member alone) and pairs (two seats that reinforce or cancel). Each card carries a hit rate, a sample and a Wilson lower bound. A card is cited only when its edge holds on windows AFTER the range it was found on — never in-sample. One that resolves against its members is inverted, not deleted. LEDGER never votes; the chair may cite a promoted card as one more labelled, non-binding piece of evidence.",
+  },
+  "ledger.coalition": {
+    title: "Coalition card",
+    body: "A group of three or four seats that, on the windows where they all read the same side, resolved that way at a rate and sample whose Wilson lower bound beats every member on its own. Drawn from the seats with the best solo record.",
+  },
+  "ledger.pair": {
+    title: "Pair card",
+    body: "Two seats read together. Reinforce: when they agree, the window resolves their way more often than either alone. Cancel/inverted: their agreement tends to resolve the other way, so the card is cited inverted.",
+  },
+  "ledger.wilson": {
+    title: "Wilson lower bound",
+    body: "The conservative floor on a card's hit rate given its sample — a small sample pulls it down, so a card needs both a high rate and enough windows to clear the bar. LEDGER promotes on the lower bound, not the raw rate, and compares it to the best member seat's own bound.",
+  },
+  "ledger.cited": {
+    title: "Cited",
+    body: "Promoted. A card is cited only after its edge holds on the out-of-sample windows — the ones after the range it was found on — with a Wilson lower bound above the bar and enough test windows. Cited cards are the only ones the chair may reference.",
+  },
+  "ledger.walkforward": {
+    title: "Walk-forward",
+    body: "Patterns are found on a training range of windows and judged on the windows that came after — never on the same windows they were found on. A pattern that only looks good in-sample is kept as a candidate, not cited.",
+  },
+  "ledger.inverted": {
+    title: "Inverted",
+    body: "A pattern that reliably resolves AGAINST its members — when they agree on a side, it tends to land the other way. Rather than delete it, LEDGER flips it to shadow: the citation points to the opposite side, the same idea a seat's shadow read uses.",
   },
   "crew.sweep": {
     title: "SWEEP — the janitor",
