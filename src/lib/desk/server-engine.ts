@@ -1084,6 +1084,11 @@ export async function getServerFrame(): Promise<ServerFrame> {
   };
 }
 
+/** The engine's current snapshot, read-only, for cached side panels (the brief). */
+export function currentSnap(): Snapshot | null {
+  return eng().prevSnap;
+}
+
 /** Internals exposed for the settle-logic harness only. */
 export const __test = { freshEng, settleIfNeeded, noteCall };
 

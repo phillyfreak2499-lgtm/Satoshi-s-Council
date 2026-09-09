@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { SEAT_IDS, type CallLogRow, type ChairResult, type Lean, type SeatId, type Settings, type Snapshot } from "@/lib/desk/types";
-import { clearCallLog } from "@/lib/desk/engine";
+import { useEffect, useState, type ReactNode } from "react";
+import { type CallLogRow, type ChairResult, type Lean, type SeatId, type SeatRow, type Settings, type Snapshot } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from "./bits";
 import { V2_GATE_CALLS, V2_GATE_SAMPLES, V2_MIN_SAMPLES, v2Gates } from "@/lib/desk/chair-v2";
@@ -11,6 +10,9 @@ import { ArenaPanel } from "./ArenaPanel";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
+import { readScalp, scalpAvg } from "@/lib/desk/scalp";
+import { useDesk } from "@/lib/desk/store";
+import { fetchBrief, type Brief, type GavelRow } from "@/lib/desk/brief";
 import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 
@@ -34,7 +36,43 @@ function fmtClock(t: number, tz: string) {
   }
 }
 
+/** A failing hard gate as a short, honest chip. Only gates that exist in live state reach here. */
+const GATE_CHIP: Record<string, string> = {
+  warden: "FEED",
+  semantic: "BAD PRINT",
+  seq: "SEQ GAP",
+  derivs: "DERIVS",
+  law: "LOCK",
+  chalk: "CHALK",
+  leftover: "NO EDGE",
+  early: "EARLY",
+  late: "LATE",
+  spread: "WIDE SPREAD",
+  quiet: "QUIET",
+  top3: "SPLIT",
+  bar: "UNDER BAR",
+  edge: "THIN EDGE",
+};
+
+/** A pit-crew tag as a chip. FEED_DOWN / DERIVS_DOWN / LOCKDOWN reflect a real hard block, so they read as danger; the rest are context. */
+function PitChip({ tag }: { tag: string }) {
+  const blocking = tag === "FEED_DOWN" || tag === "DERIVS_DOWN" || tag === "LOCKDOWN";
+  const warn = tag === "FEED_STALE" || tag === "BASIS_WIDE";
+  const label = tag.replace(/_/g, " ").toLowerCase();
+  return (
+    <span
+      className={cn(
+        "rounded-sm border px-1.5 py-px font-mono text-micro uppercase tracking-wide",
+        blocking ? "border-down/50 bg-down/10 text-down" : warn ? "border-wait/40 bg-wait/10 text-wait" : "border-border text-subtle",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[] }) {
+  const [mathOpen, setMathOpen] = useState(false);
   const lean = chair.lean;
   const fill = Math.min(1, Math.abs(chair.score) / Math.max(chair.bar, 0.01));
   const ask = sideAsk(snap, lean);
@@ -45,6 +83,10 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
   const barTone = lean === "UP" ? "bg-up" : lean === "DOWN" ? "bg-down" : "bg-wait";
   const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 0;
   const market = readMarket(snap.as_of, snap.close_time);
+  const gap = Math.abs(chair.score) - chair.bar;
+  const gapClear = gap >= 0;
+  const failedGates = chair.gates.filter((g) => g.hard && !g.pass);
+  const filled = book.kind === "booked";
   return (
     <section
       id="chair-stage"
@@ -117,6 +159,10 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
               <MinsLeft closeTime={snap.close_time} />
             </div>
           </div>
+          <div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">paper</div>
+            <div className={cn("font-mono text-call leading-none", filled ? "text-fg" : "text-subtle")}>{filled ? "FILL" : "NO FILL"}</div>
+          </div>
         </div>
       </div>
       <div className="mt-4">
@@ -139,6 +185,36 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
           />
         </div>
       </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span
+          className={cn(
+            "rounded-sm border px-1.5 py-px font-mono text-micro uppercase tracking-wide tabular",
+            gapClear ? "border-up/40 bg-up/10 text-up" : "border-wait/40 bg-wait/10 text-wait",
+          )}
+          title="How far the score is from the bar it must clear"
+        >
+          {gapClear ? "CLEAR" : "SHORT"} {Math.abs(gap).toFixed(2)}
+        </span>
+        {failedGates.map((g) => (
+          <span key={g.id} className="rounded-sm border border-down/40 bg-down/10 px-1.5 py-px font-mono text-micro uppercase tracking-wide text-down" title={`${g.label}: ${g.value}`}>
+            {GATE_CHIP[g.id] ?? g.id.toUpperCase()}
+          </span>
+        ))}
+        {chair.pit_tags.map((t) => (
+          <PitChip key={t} tag={t} />
+        ))}
+        <button type="button" onClick={() => setMathOpen((v) => !v)} className="btn btn-secondary btn-sm ml-auto" aria-expanded={mathOpen}>
+          math
+        </button>
+      </div>
+      {mathOpen ? (
+        <div className="mt-1.5 space-y-0.5 border-t border-border pt-1.5 font-mono text-micro text-subtle">
+          <div>
+            sit-mass {chair.sit_mass.toFixed(2)} · agg ×{chair.aggressiveness.toFixed(2)} · diversity ×{chair.diversity.toFixed(2)} · split {chair.conflict_frac.toFixed(2)}
+          </div>
+          <div className="text-muted">{chair.calc}</div>
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-micro text-muted">
         <span>YES {snap.yes_ask.toFixed(1)}¢ ask</span>
         <span>NO {snap.no_ask.toFixed(1)}¢ ask</span>
@@ -149,92 +225,6 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
       <div className="mt-2 border-t border-border pt-2">
         <MarketChip m={market} tz={tz} />
       </div>
-    </section>
-  );
-}
-
-function CallTape({ rows, tz }: { rows: CallLogRow[]; tz: string }) {
-  const entries = rows.map((r) => r.cents);
-  const pnls = rows.filter((r) => r.settle != null).map((r) => (r.settle as number) - r.cents);
-  const avgIn = entries.length ? entries.reduce((s, x) => s + x, 0) / entries.length : null;
-  const avgPnl = pnls.length ? pnls.reduce((s, x) => s + x, 0) / pnls.length : null;
-  return (
-    <section className="rounded-md border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
-          <Tip k="pane.call-log">Call log</Tip>
-        </h3>
-        <div className="flex flex-wrap items-center gap-3 font-mono text-micro">
-          <span className="text-muted">
-            avg in {avgIn == null ? "—" : `${avgIn.toFixed(1)}¢`}
-          </span>
-          <span className={avgPnl == null ? "text-muted" : avgPnl >= 0 ? "text-up" : "text-down"}>
-            avg ¢ {avgPnl == null ? "—" : `${avgPnl >= 0 ? "+" : ""}${avgPnl.toFixed(1)}¢`}
-          </span>
-          <span className="text-subtle">{rows.length} prints</span>
-          <button
-            type="button"
-            onClick={() => clearCallLog()}
-            className="btn btn-secondary btn-sm"
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-      {!rows.length ? (
-        <div className="px-3 py-4 font-mono text-ui text-muted">
-          No paper fill yet. WAIT does not buy, and a read under the {CHAIR_MIN_ASK_CENTS}¢ floor does not either. One position per window, held to settlement: 100¢ if that side won, 0¢ if it lost.
-        </div>
-      ) : (
-        <div className="max-h-56 overflow-auto">
-          <table className="w-full text-left">
-            <thead className="sticky top-0 bg-surface-2 font-mono text-micro uppercase tracking-wider text-subtle">
-              <tr>
-                <th className="px-3 py-1.5 font-medium">time</th>
-                <th className="px-3 py-1.5 font-medium">call</th>
-                <th className="px-3 py-1.5 font-medium">ask</th>
-                <th className="px-3 py-1.5 font-medium">end</th>
-                <th className="px-3 py-1.5 font-medium">¢</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const pnl = r.settle != null ? r.settle - r.cents : null;
-                return (
-                  <tr key={r.id} className="border-t border-border">
-                    <td className="whitespace-nowrap px-3 py-1.5 font-mono text-micro tabular text-muted">
-                      {fmtClock(r.t, tz)}
-                      {r.flipped ? <span className="ml-1 text-wait">flip</span> : null}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <LeanChip lean={r.lean} cents={r.cents} />
-                    </td>
-                    <td
-                      className={cn(
-                        "px-3 py-1.5 font-mono text-data tabular",
-                        r.lean === "UP" ? "text-up" : "text-down",
-                      )}
-                    >
-                      {r.cents.toFixed(1)}¢
-                    </td>
-                    <td className="px-3 py-1.5 font-mono text-data tabular text-muted">
-                      {r.settle == null ? "open" : `${r.settle}¢`}
-                    </td>
-                    <td
-                      className={cn(
-                        "px-3 py-1.5 font-mono text-data tabular",
-                        pnl == null ? "text-subtle" : pnl >= 0 ? "text-up" : "text-down",
-                      )}
-                    >
-                      {pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}¢`}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </section>
   );
 }
@@ -318,6 +308,208 @@ function ShadowChair({ v2 }: { v2: V2Frame }) {
   );
 }
 
+function fmtBtc(n: number | null): string {
+  return n == null || !Number.isFinite(n) ? "—" : Math.round(n).toLocaleString("en-US");
+}
+
+function hhmm(t: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(t));
+  } catch {
+    return t.slice(11, 16);
+  }
+}
+
+/** The overnight ribbon: what the Chair did in the last 12 hours while you were away, and where BTC went. */
+function OvernightRibbon({ brief, tz }: { brief: Brief | null; tz: string }) {
+  const [copied, setCopied] = useState(false);
+  const o = brief?.overnight;
+  const open = o ? fmtBtc(o.btc_open) : "—";
+  const now = o ? fmtBtc(o.btc_now) : "—";
+  const copyLine = (() => {
+    if (!o) return "";
+    const btc = o.btc_open != null && o.btc_now != null ? `BTC ${open}→${now}` : "BTC —";
+    const line = o.up + o.down === 0 ? `Overnight: Chair WAIT x${o.wait}. ${btc}. No chase.` : `Overnight: Chair ${o.up}U/${o.down}D/${o.wait}W. ${btc}.`;
+    return line.length <= 100 ? line : line.slice(0, 100);
+  })();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyLine);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked; the line is still shown in the title */
+    }
+  };
+  return (
+    <section aria-label="Overnight" className="rounded-md border border-border bg-surface px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-mono text-micro uppercase tracking-widest text-subtle">Overnight · 12h</span>
+        {o ? (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-data tabular">
+            <span className="text-fg">Chair</span>
+            <span className="text-up">{o.up} UP</span>
+            <span className="text-subtle">·</span>
+            <span className="text-down">{o.down} DOWN</span>
+            <span className="text-subtle">·</span>
+            <span className="text-wait">{o.wait} WAIT</span>
+            <span className="text-subtle">·</span>
+            <span className="text-muted">
+              BTC {open} <span aria-hidden="true">→</span> {now}
+            </span>
+            {o.last ? (
+              <>
+                <span className="text-subtle">·</span>
+                <span className="text-muted">
+                  last {hhmm(o.last.t, tz)} {o.last.settle == null ? "" : `${o.last.settle.toFixed(0)}¢ `}Chair {o.last.lean}
+                </span>
+              </>
+            ) : null}
+          </span>
+        ) : (
+          <span className="font-mono text-micro text-subtle">reading the overnight tape…</span>
+        )}
+        {o ? (
+          <button type="button" onClick={() => void copy()} className="btn btn-secondary btn-sm ml-auto" title={copyLine}>
+            {copied ? "copied" : "copy post"}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/** Chair-only performance, straight from Chair v2's graded sample. WAIT decisions are not calls. */
+function ChairScoreboard({ v2 }: { v2?: V2Frame | null }) {
+  const st = v2?.stats ?? null;
+  const cents = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(0)}¢`);
+  const brier = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : n.toFixed(3));
+  const bothBrier = st && st.brier_v2 != null && st.brier_market != null;
+  return (
+    <section aria-label="Chair record" className="rounded-md border border-border bg-surface px-3 py-2 font-mono text-micro">
+      <span className="uppercase tracking-widest text-subtle">Chair record</span>{" "}
+      <span className="text-muted">
+        <span className="text-fg tabular">{st ? st.calls_v1 : "—"}</span> calls · net{" "}
+        <span className={cn("tabular", st && st.ev_v1 >= 0 ? "text-up" : st ? "text-down" : "text-subtle")}>{cents(st?.ev_v1)}</span> · Brier{" "}
+        <span className="tabular text-fg">{bothBrier ? brier(st!.brier_v2) : "—"}</span> vs market{" "}
+        <span className="tabular text-fg">{bothBrier ? brier(st!.brier_market) : "—"}</span> · gate{" "}
+        <span className="tabular text-fg">{st ? `${st.calls_v1}/${st.n_graded}` : "—/—"}</span>
+      </span>
+      <span className="ml-2 text-subtle">· UP/DOWN calls only; WAIT is a decision, not a fill.</span>
+    </section>
+  );
+}
+
+/** GAVEL — Chair decisions only, WAIT included. Never seat fills. */
+function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
+  return (
+    <section className="rounded-md border border-border bg-surface">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
+          <Tip k="gavel.list">GAVEL — Chair decisions</Tip>
+        </h3>
+        <span className="font-mono text-micro text-subtle">{gavel.length ? `last ${gavel.length}` : ""}</span>
+      </div>
+      {!gavel.length ? (
+        <div className="px-3 py-4 font-mono text-ui text-muted">No graded Chair decisions yet.</div>
+      ) : (
+        <div className="max-h-64 overflow-auto">
+          <table className="table-research px-3">
+            <thead>
+              <tr>
+                <th className="pl-3">time</th>
+                <th>call</th>
+                <th className="num">conf</th>
+                <th className="num">score / bar</th>
+                <th className="num pr-3">settled</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gavel.map((g, i) => (
+                <tr key={`${g.t}-${i}`}>
+                  <td className="whitespace-nowrap pl-3 text-muted">{hhmm(g.t, tz)}</td>
+                  <td>
+                    <span className={cn("font-medium", g.lean === "UP" ? "text-up" : g.lean === "DOWN" ? "text-down" : "text-wait")}>{g.lean}</span>
+                  </td>
+                  <td className="num tabular text-muted">{g.conf}%</td>
+                  <td className="num tabular text-muted">
+                    {g.score >= 0 ? "+" : ""}
+                    {g.score.toFixed(2)} / {g.bar.toFixed(2)}
+                  </td>
+                  <td className={cn("num tabular pr-3", g.settle == null ? "text-subtle" : g.ev != null && g.ev >= 0 ? "text-up" : "text-down")}>
+                    {g.settle == null ? "—" : `${g.settle.toFixed(0)}¢`}
+                    {g.settle != null && g.ev != null ? ` · ${g.ev >= 0 ? "+" : ""}${g.ev.toFixed(1)}` : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** SEATS — specialist paper fills only, collapsed. A seat +2¢ is never a Chair +2¢. */
+function SeatsList({ rows, learner }: { rows: SeatRow[]; learner: import("@/lib/desk/types").Learner }) {
+  const withFills = rows
+    .map((r) => ({ r, st: readScalp(learner, r.seat) }))
+    .filter((x) => x.st.legs.length > 0)
+    .sort((a, b) => b.st.legs.length - a.st.legs.length);
+  return (
+    <details className="group rounded-md border border-border bg-surface">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 font-mono text-micro uppercase tracking-widest text-subtle marker:content-none hover:text-fg">
+        <span>
+          <Tip k="seats.list">SEATS — specialist paper fills</Tip> · {withFills.length} with fills
+        </span>
+        <span aria-hidden="true" className="transition-transform duration-200 ease-out group-open:rotate-90">▸</span>
+      </summary>
+      <div className="border-t border-border px-3 py-2">
+        <p className="mb-2 font-mono text-micro text-subtle">Each seat&apos;s own paper scalps in cents — specialist practice, not the Chair&apos;s book. These do not settle windows and are never Chair calls.</p>
+        {!withFills.length ? (
+          <div className="font-mono text-ui text-muted">No specialist fills yet.</div>
+        ) : (
+          <table className="table-research">
+            <thead>
+              <tr>
+                <th>seat</th>
+                <th className="num">fills</th>
+                <th className="num">avg ¢</th>
+                <th>recent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withFills.map(({ r, st }) => {
+                const avg = scalpAvg(st.legs);
+                return (
+                  <tr key={r.seat}>
+                    <td className="text-fg">
+                      {r.seat} <span className="text-subtle">{r.callsign}</span>
+                    </td>
+                    <td className="num tabular text-muted">{st.legs.length}</td>
+                    <td className={cn("num tabular", avg == null ? "text-subtle" : avg >= 0 ? "text-up" : "text-down")}>
+                      {avg == null ? "—" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}`}
+                    </td>
+                    <td className="font-mono text-micro tabular text-subtle">
+                      {st.legs.slice(-8).map((c, i) => (
+                        <span key={i} className={c >= 0 ? "text-up" : "text-down"}>
+                          {c >= 0 ? "+" : ""}
+                          {c.toFixed(0)}
+                          {i < Math.min(8, st.legs.length) - 1 ? " " : ""}
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export function SatoshiTab({
   snap,
   chair,
@@ -339,15 +531,38 @@ export function SatoshiTab({
   strip?: ReactNode;
 }) {
   const [view, setView] = useState<"all" | "speaking" | "live">("all");
+  const learner = useDesk().learner;
+  const [brief, setBrief] = useState<Brief | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      fetchBrief()
+        .then((b) => alive && setBrief(b))
+        .catch(() => {
+          /* the ribbon and GAVEL show their empty state; the rest of the floor is unaffected */
+        });
+    };
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
   const speaking = chair.rows.filter((r) => r.lean === "UP" || r.lean === "DOWN").length;
   const rows = chair.rows.filter((r) => (view === "all" ? true : view === "speaking" ? r.lean === "UP" || r.lean === "DOWN" : r.status === "LIVE"));
   return (
     <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
+      <OvernightRibbon brief={brief} tz={settings.tz} />
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
+      <ChairScoreboard v2={v2} />
       {strip ? <div>{strip}</div> : null}
       <Chamber rows={chair.rows} onJump={onJump} />
       <ChairEyes snap={snap} />
-      <CallTape rows={callLog} tz={settings.tz} />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <GavelList gavel={brief?.gavel ?? []} tz={settings.tz} />
+        <SeatsList rows={chair.rows} learner={learner} />
+      </div>
       <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
 
       <details className="group rounded-md border border-border bg-surface">
@@ -360,7 +575,7 @@ export function SatoshiTab({
 
       <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
         <span className="text-subtle">
-          <Tip k="pane.seats">the twenty-one seats</Tip> · {speaking} speaking · {chair.rows.length - speaking} sitting
+          <Tip k="pane.seats">the voting seats</Tip> · {speaking} speaking · {chair.rows.length - speaking} sitting
         </span>
         <div role="group" aria-label="Which seats to show" className="ml-auto flex gap-1">
           {(["all", "speaking", "live"] as const).map((v) => (
@@ -374,7 +589,7 @@ export function SatoshiTab({
                 view === v ? "btn-secondary text-fg" : "text-muted hover:text-fg",
               )}
             >
-              {v === "all" ? `all ${SEAT_IDS.length}` : v === "speaking" ? "speaking" : "LIVE skills"}
+              {v === "all" ? `all ${chair.rows.length}` : v === "speaking" ? "speaking" : "LIVE skills"}
             </button>
           ))}
         </div>

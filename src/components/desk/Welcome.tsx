@@ -71,7 +71,7 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
           A Bitcoin research desk that argues out loud.
         </h2>
         <p className="mt-2 font-sans text-body leading-relaxed text-muted">
-          Every 15 minutes, twenty-one specialist seats read the tape, the candles, the book and the derivatives. SATOSHI chairs the
+          Every 15 minutes, specialist seats read the tape, the candles, the book and the derivatives. SATOSHI chairs the
           vote: <span className="text-up">UP</span>, <span className="text-down">DOWN</span> or <span className="text-wait">WAIT</span>. Every
           call is paper. Nothing here places a live trade.
         </p>

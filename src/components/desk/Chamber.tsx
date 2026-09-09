@@ -65,7 +65,7 @@ function Cell({
 }
 
 /**
- * The chamber: twenty-one seats in one grid, in desk order so a seat is always
+ * The chamber: the voting seats in one grid, in desk order so a seat is always
  * in the same place. A cell is the seat's name, its vote in words with a pip,
  * how sure, and a thin confidence bar; hover or tap a seat and its thesis reads
  * out in the line below the grid. The pip beats once, 250ms, when a vote changes.
@@ -76,6 +76,7 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
   const [pinned, setPinned] = useState<SeatId | null>(null);
   const [hover, setHover] = useState<SeatId | null>(null);
   const [flash, setFlash] = useState<ReadonlySet<SeatId>>(() => new Set());
+  const [sitOpen, setSitOpen] = useState(false);
   const prev = useRef<Map<SeatId, Lean>>(new Map());
   const root = useRef<HTMLElement>(null);
 
@@ -110,8 +111,25 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
 
   const shownId = pinned ?? hover;
   const shown = shownId ? byId.get(shownId) : undefined;
-  const speaking = rows.filter((r) => r.lean !== "WAIT").length;
+  const order = SEAT_IDS.filter((id) => byId.has(id));
+  const speakingIds = order.filter((id) => byId.get(id)!.lean !== "WAIT");
+  const sittingIds = order.filter((id) => byId.get(id)!.lean === "WAIT");
   const meta = shown ? SEAT_BY_ID[shown.seat] : null;
+  const gridCls = "grid grid-cols-2 gap-2 min-[380px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
+  const cell = (id: (typeof order)[number]) => {
+    const r = byId.get(id)!;
+    return (
+      <Cell
+        key={id}
+        r={r}
+        flash={flash.has(id)}
+        active={shownId === id}
+        onHover={() => setHover(id)}
+        onLeave={() => setHover((h) => (h === id ? null : h))}
+        onToggle={() => setPinned((p) => (p === id ? null : id))}
+      />
+    );
+  };
 
   return (
     <section ref={root} aria-labelledby="chamber-title" data-tour="tour-chamber" className="min-w-0">
@@ -120,26 +138,34 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
           <Tip k="pane.seats">The chamber</Tip> · {rows.length} seats
         </h2>
         <span className="font-mono text-micro text-subtle">
-          {speaking} speaking · {rows.length - speaking} sitting
+          {speakingIds.length} speaking · {sittingIds.length} sitting
         </span>
       </div>
-      <div role="list" aria-label="The twenty-one seats" className="grid grid-cols-2 gap-2 min-[380px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        {SEAT_IDS.map((id) => {
-          const r = byId.get(id);
-          if (!r) return null;
-          return (
-            <Cell
-              key={id}
-              r={r}
-              flash={flash.has(id)}
-              active={shownId === id}
-              onHover={() => setHover(id)}
-              onLeave={() => setHover((h) => (h === id ? null : h))}
-              onToggle={() => setPinned((p) => (p === id ? null : id))}
-            />
-          );
-        })}
-      </div>
+      {speakingIds.length ? (
+        <div role="list" aria-label="Seats speaking a direction" className={gridCls}>
+          {speakingIds.map(cell)}
+        </div>
+      ) : (
+        <p className="rounded-md border border-border bg-surface px-3 py-2 font-mono text-micro text-subtle">
+          The desk is sitting — no seat is speaking a direction this window. That is a call, not a fault.
+        </p>
+      )}
+      {sittingIds.length ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setSitOpen((v) => !v)}
+            aria-expanded={sitOpen}
+            className="mt-2 flex min-h-11 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 font-mono text-micro uppercase tracking-widest text-subtle hover:text-fg lg:hidden"
+          >
+            <span>{sittingIds.length} sitting</span>
+            <span aria-hidden="true">{sitOpen ? "collapse" : "expand"}</span>
+          </button>
+          <div role="list" aria-label="Sitting seats" className={cn(gridCls, "mt-2", sitOpen ? "" : "hidden lg:grid")}>
+            {sittingIds.map(cell)}
+          </div>
+        </>
+      ) : null}
       <div id="chamber-thesis" aria-live="polite" className="mt-2 min-h-[3.5rem] rounded-md border border-border bg-surface px-3 py-2">
         {shown && meta ? (
           <>

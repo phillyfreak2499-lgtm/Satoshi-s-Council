@@ -35,6 +35,16 @@ function listenOf(rank: number): number {
   return Math.max(0.12, 0.82 ** (rank - 1));
 }
 
+/**
+ * The three non-voting seats. WARDEN was already excluded from the tally; ORBIT
+ * and WIRE now join it, so none of the three contributes a voting-seat UP/DOWN/
+ * WAIT value, appears in the chamber, or feeds sit-mass or quorum. ORBIT's
+ * aggressiveness feature and WARDEN's feed veto still apply — they are read
+ * directly below, not through the vote — so this removes the vote, not the
+ * gate authority they already held.
+ */
+const CHAIR_NON_VOTERS = new Set<SeatId>(["WARDEN", "ORBIT", "WIRE"]);
+
 function seatWilson(learner: Learner, seat: SeatId): { n: number; w: number } {
   const n = learner.seat_n[seat] ?? 0;
   const h = learner.seat_hits[seat] ?? 0;
@@ -97,7 +107,7 @@ export function runChair(
   const derivsDown = warden.derivsDown;
   const silent = new Set(warden.silent);
 
-  const rankedSeats = SEATS.filter((s) => s.id !== "WARDEN")
+  const rankedSeats = SEATS.filter((s) => !CHAIR_NON_VOTERS.has(s.id))
     .map((s) => {
       const sw = seatWilson(learner, s.id);
       return { id: s.id, n: sw.n, wilson: sw.w, base: learnedBase(learner, s.id) };
@@ -128,7 +138,7 @@ export function runChair(
   const accs: Acc[] = [];
 
   for (const vote of votes) {
-    if (vote.seat === "WARDEN") continue;
+    if (CHAIR_NON_VOTERS.has(vote.seat)) continue;
     const isMuted = muted.has(vote.seat);
     const sw = seatWilson(learner, vote.seat);
     const cn = calibNOf(sw.n, learner.seat_calib_debt?.[vote.seat] ?? 0);
@@ -576,12 +586,12 @@ export function runChair(
     });
 
   const directional = votes.filter(
-    (v) => v.seat !== "WARDEN" && !muted.has(v.seat) && v.lean !== "WAIT",
+    (v) => !CHAIR_NON_VOTERS.has(v.seat) && !muted.has(v.seat) && v.lean !== "WAIT",
   );
   const quorum = {
     up: directional.filter((v) => v.lean === "UP").length,
     down: directional.filter((v) => v.lean === "DOWN").length,
-    wait: votes.filter((v) => v.seat !== "WARDEN" && !muted.has(v.seat) && v.lean === "WAIT")
+    wait: votes.filter((v) => !CHAIR_NON_VOTERS.has(v.seat) && !muted.has(v.seat) && v.lean === "WAIT")
       .length,
   };
 
@@ -645,12 +655,28 @@ export function runChair(
     size_note = "WAIT";
   }
 
+  // Pit-crew tags: the operational and context read from the three non-voting
+  // seats, straight from real signals. FEED_DOWN and LOCKDOWN are the only
+  // ones that reflect an existing hard block (the warden veto and the law
+  // lockdown); the rest are context, never a new trading rule.
+  const pit_tags: string[] = [];
+  if (warden.bothDown) pit_tags.push("FEED_DOWN");
+  else if (snap.health.spot === "STALE" || snap.health.kalshi === "STALE" || warden.seqLost) pit_tags.push("FEED_STALE");
+  else pit_tags.push("FEED_OK");
+  if (warden.derivsDown) pit_tags.push("DERIVS_DOWN");
+  if (warden.basisWide) pit_tags.push("BASIS_WIDE");
+  if (snap.regime_key) pit_tags.push(`REGIME_${snap.regime_key.toUpperCase()}`);
+  if (snap.fear_greed <= 20) pit_tags.push("FNG_FEAR");
+  else if (snap.fear_greed >= 80) pit_tags.push("FNG_GREED");
+  if (lockdown) pit_tags.push("LOCKDOWN");
+
   return {
     lean,
     confidence: Math.round(conf),
     score: rawScore,
     bar,
     aggressiveness: agg,
+    pit_tags,
     time_factor: timeFactor,
     diversity,
     sit_mass: sitMass,

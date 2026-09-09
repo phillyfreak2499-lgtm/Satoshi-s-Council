@@ -384,6 +384,8 @@ export type ChairResult = {
   categories_agree: number;
   size: 1 | 2 | 3;
   size_note: string;
+  /** Operational/context tags from the non-voting pit-crew seats (WARDEN feed health, ORBIT regime, WIRE fear/greed, lockdown). Presentation only; FEED_DOWN and LOCKDOWN reflect existing hard blocks, the rest are context. */
+  pit_tags: string[];
 };
 
 export type SeatRow = {
