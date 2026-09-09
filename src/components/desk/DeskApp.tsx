@@ -8,6 +8,7 @@ import { SEAT_IDS, type SeatId, type TabId } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
+import { IntroBand } from "./IntroBand";
 import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
 import { Tip } from "./Tip";
@@ -324,7 +325,7 @@ export function DeskApp() {
         <Tip k="beta.disclaimer" className="hidden sm:inline">
           <span className="font-mono text-micro text-muted">Every UP / DOWN / WAIT is practice. Nothing here places a live trade, and none of it is advice.</span>
         </Tip>
-        {nudge && !tourOn ? (
+        {nudge && !tourOn && tab !== "satoshi" ? (
           <span className="ml-auto hidden items-center gap-1 sm:flex">
             <button type="button" onClick={startTour} className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-fg hover:bg-surface-2">
               New here? Take the 60-second tour
@@ -371,19 +372,39 @@ export function DeskApp() {
         </div>
       ) : null}
 
-      <TopStrip
-        snap={frame.snap}
-        chair={frame.chair}
-        demo={frame.settings.source === "demo"}
-        learn={frame.learner.learn_phase}
-        graded={frame.learner.graded_windows}
-        evAvg={scalpAvg(readScalp(frame.learner, CHAIR_SCALP).legs) ?? 0}
-        evN={readScalp(frame.learner, CHAIR_SCALP).legs.length}
-        tz={frame.settings.tz}
-        brainAge={frame.brain_age_s}
-        frameAt={frame.frame_at}
-        callLog={frame.call_log}
-      />
+      {tab === "satoshi" ? (
+        <IntroBand
+          snap={frame.snap}
+          chair={frame.chair}
+          demo={frame.settings.source === "demo"}
+          nudge={nudge && !tourOn}
+          onTour={startTour}
+          onDismissNudge={() => {
+            setNudge(false);
+            try {
+              localStorage.setItem(NUDGE_KEY, "off");
+            } catch {
+              /* private mode */
+            }
+          }}
+        />
+      ) : null}
+
+      {tab !== "satoshi" ? (
+        <TopStrip
+          snap={frame.snap}
+          chair={frame.chair}
+          demo={frame.settings.source === "demo"}
+          learn={frame.learner.learn_phase}
+          graded={frame.learner.graded_windows}
+          evAvg={scalpAvg(readScalp(frame.learner, CHAIR_SCALP).legs) ?? 0}
+          evN={readScalp(frame.learner, CHAIR_SCALP).legs.length}
+          tz={frame.settings.tz}
+          brainAge={frame.brain_age_s}
+          frameAt={frame.frame_at}
+          callLog={frame.call_log}
+        />
+      ) : null}
 
       {frame.lastError && (
         <div className="border-b border-down/40 bg-down/10 px-3 py-1 font-mono text-ui text-down">
@@ -402,6 +423,22 @@ export function DeskApp() {
             onJump={jump}
             v2={frame.v2}
             onOpenArena={() => setTab("arena")}
+            strip={
+              <TopStrip
+                floor
+                snap={frame.snap}
+                chair={frame.chair}
+                demo={frame.settings.source === "demo"}
+                learn={frame.learner.learn_phase}
+                graded={frame.learner.graded_windows}
+                evAvg={scalpAvg(readScalp(frame.learner, CHAIR_SCALP).legs) ?? 0}
+                evN={readScalp(frame.learner, CHAIR_SCALP).legs.length}
+                tz={frame.settings.tz}
+                brainAge={frame.brain_age_s}
+                frameAt={frame.frame_at}
+                callLog={frame.call_log}
+              />
+            }
           />
         )}
         {frame.snap && seats.length > 0 && (

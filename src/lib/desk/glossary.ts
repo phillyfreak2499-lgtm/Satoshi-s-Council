@@ -536,17 +536,17 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     id: "strip",
-    target: "tour-strip",
+    target: "tour-satoshi",
     tab: "satoshi",
     title: "The chair's call",
     body: "UP / DOWN / WAIT is the paper decision. Conf is how sure. Size is how big a paper bet. The clock is time left in this window. Score must clear the bar or the desk sits.",
   },
   {
     id: "satoshi",
-    target: "tour-satoshi",
+    target: "tour-chamber",
     tab: "satoshi",
     title: "Twenty-one specialists vote",
-    body: "Each row is a seat. Listen is how much SATOSHI is actually hearing them. Click a row to jump to that bot and read the why.",
+    body: "Each cell is a seat: its vote in words, a pip in the vote's colour, and how sure. Hover or tap a seat to read its thesis; open the seat for its full record.",
   },
   {
     id: "wick",

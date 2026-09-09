@@ -3,14 +3,14 @@ import { takerFeeCentsExact } from "@/lib/desk/clock";
 import { arenaName, fetchArena, placeCall, setArenaName, type Arena, type HumanCall } from "@/lib/desk/arena";
 import type { Snapshot } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
-import { MinsLeft, Pane } from "./bits";
+import { MinsLeft } from "./bits";
 import { Tip } from "./Tip";
 
 function fmtC(n: number): string {
   return `${n > 0 ? "+" : ""}${n.toFixed(1)}¢`;
 }
 
-/** The visitor's own paper call on the live window, beside the chair's. */
+/** The visitor's own paper call on the live window: one raised command bar under the tape. Same POST, same one-call lock. */
 export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: boolean; onOpenArena: () => void }) {
   const [name, setName] = useState(arenaName);
   const [draft, setDraft] = useState("");
@@ -55,7 +55,11 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
 
   const me = arena?.me;
   return (
-    <Pane title={<Tip k="arena.call">YOUR CALL</Tip>} tour="tour-arena">
+    <section data-tour="tour-arena" aria-labelledby="your-call-title" className="rounded-md border border-border-strong bg-surface-2 px-3 py-2.5 sm:px-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h3 id="your-call-title" className="font-mono text-micro uppercase tracking-widest text-subtle">
+          <Tip k="arena.call">Your call</Tip>
+        </h3>
       {!live ? (
         <div className="font-mono text-micro text-muted">Switch to Live in Settings to call the shared window. Demo is your private sandbox.</div>
       ) : !name ? (
@@ -83,7 +87,7 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
           <span className="font-mono text-micro text-subtle">no login — the callsign lives in this browser</span>
         </form>
       ) : (
-        <div className="grid gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-micro text-muted">
             <span>
               <span className="text-fg">{name}</span>
@@ -149,6 +153,7 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
           {err && <div className="font-mono text-micro text-down">{err}</div>}
         </div>
       )}
-    </Pane>
+      </div>
+    </section>
   );
 }

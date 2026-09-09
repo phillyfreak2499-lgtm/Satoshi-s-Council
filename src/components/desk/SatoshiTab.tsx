@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { SEAT_IDS, type CallLogRow, type ChairResult, type Lean, type SeatId, type Settings, type Snapshot } from "@/lib/desk/types";
 import { clearCallLog } from "@/lib/desk/engine";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from ".
 import { V2_GATE_CALLS, V2_GATE_SAMPLES, V2_MIN_SAMPLES, v2Gates } from "@/lib/desk/chair-v2";
 import type { V2Frame } from "@/lib/desk/server-engine";
 import { ChairEyes } from "./Eyes";
+import { Chamber } from "./Chamber";
 import { ArenaPanel } from "./ArenaPanel";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
@@ -46,9 +47,11 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
   const market = readMarket(snap.as_of, snap.close_time);
   return (
     <section
+      id="chair-stage"
+      tabIndex={-1}
       data-tour="tour-satoshi"
       className={cn(
-        "rounded-md border bg-surface p-3 sm:p-4",
+        "stage-anchor rounded-md border bg-surface p-4 outline-none sm:p-6",
         lean === "UP" ? "border-up/40 shadow-[0_0_0_1px_rgba(61,207,138,0.12)]" : lean === "DOWN" ? "border-down/40 shadow-[0_0_0_1px_rgba(239,107,115,0.12)]" : "border-border",
       )}
     >
@@ -323,6 +326,7 @@ export function SatoshiTab({
   onJump,
   v2,
   onOpenArena,
+  strip,
 }: {
   snap: Snapshot;
   chair: ChairResult;
@@ -331,17 +335,28 @@ export function SatoshiTab({
   onJump: (seat: SeatId) => void;
   v2?: V2Frame | null;
   onOpenArena?: () => void;
+  /** The decision-metrics strip, shown right under the chair stage. */
+  strip?: ReactNode;
 }) {
   const [view, setView] = useState<"all" | "speaking" | "live">("all");
   const speaking = chair.rows.filter((r) => r.lean === "UP" || r.lean === "DOWN").length;
   const rows = chair.rows.filter((r) => (view === "all" ? true : view === "speaking" ? r.lean === "UP" || r.lean === "DOWN" : r.status === "LIVE"));
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
-      <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
-      {v2 ? <ShadowChair v2={v2} /> : null}
+      {strip ? <div>{strip}</div> : null}
+      <Chamber rows={chair.rows} onJump={onJump} />
       <ChairEyes snap={snap} />
       <CallTape rows={callLog} tz={settings.tz} />
+      <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
+
+      <details className="group rounded-md border border-border bg-surface">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 font-mono text-micro uppercase tracking-widest text-subtle marker:content-none hover:text-fg">
+          <span>Diagnostics · chair v2, the score math, and the full seat table</span>
+          <span aria-hidden="true" className="transition-transform duration-200 ease-out group-open:rotate-90">▸</span>
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-border p-3">
+      {v2 ? <ShadowChair v2={v2} /> : null}
 
       <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
         <span className="text-subtle">
@@ -355,8 +370,8 @@ export function SatoshiTab({
               aria-pressed={view === v}
               onClick={() => setView(v)}
               className={cn(
-                "min-h-8 rounded-sm border px-2",
-                view === v ? "border-border-strong bg-surface-3 text-fg" : "border-border text-muted hover:text-fg",
+                "btn btn-sm",
+                view === v ? "btn-secondary text-fg" : "text-muted hover:text-fg",
               )}
             >
               {v === "all" ? `all ${SEAT_IDS.length}` : v === "speaking" ? "speaking" : "LIVE skills"}
@@ -589,6 +604,8 @@ export function SatoshiTab({
           </div>
         </Pane>
       </div>
+        </div>
+      </details>
     </div>
   );
 }

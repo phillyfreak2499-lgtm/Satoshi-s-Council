@@ -1034,7 +1034,7 @@ export function ChairEyes({ snap }: { snap: Snapshot }) {
       : null;
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface-2">
+      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface">
         <div className="flex items-baseline justify-between gap-2 px-2 py-1.5">
           <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.spot-chart">BTC 15m</Tip>
@@ -1046,7 +1046,7 @@ export function ChairEyes({ snap }: { snap: Snapshot }) {
         </div>
         <canvas ref={spotRef} className="block h-40 w-full" />
       </section>
-      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface-2">
+      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-surface">
         <div className="flex items-baseline justify-between gap-2 px-2 py-1.5">
           <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.yes-chart">YES path</Tip>
