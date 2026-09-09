@@ -42,7 +42,7 @@ const DESKS: { id: TabId; label: string; intro: string }[] = [
 ];
 const DESK_IDS = new Set<TabId>(DESKS.map((d) => d.id));
 const MORE: { id: TabId; label: string; hint: string }[] = [
-  { id: "crew", label: "PIT CREW", hint: "SWEEP · COACH · WRENCH" },
+  { id: "crew", label: "PIT CREW", hint: "SWEEP · COACH · WRENCH · LEDGER" },
   { id: "atelier", label: "ATELIER", hint: "the gallery" },
   { id: "settings", label: "SETTINGS", hint: "demo, alerts, display" },
 ];

@@ -327,6 +327,21 @@ export type Gate = {
   value: string;
 };
 
+/** A promoted LEDGER pattern the chair may cite as one more piece of evidence.
+ *  Labelled and non-binding: it is appended to the chair's read only, and never
+ *  touches the gates, the side, the size, or the price floor. */
+export type LedgerCite = {
+  members: string[];
+  /** The side the members lean when the pattern fires. */
+  agree_side: "UP" | "DOWN";
+  /** What the pattern points to: agree_side when cited, the opposite when inverted. */
+  cited_side: "UP" | "DOWN";
+  status: "cited" | "inverted";
+  /** Out-of-sample Wilson lower bound and sample the citation carries. */
+  wilson: number;
+  n: number;
+};
+
 export type ChairResult = {
   lean: Lean;
   confidence: number;

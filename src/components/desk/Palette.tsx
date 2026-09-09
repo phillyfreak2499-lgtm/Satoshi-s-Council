@@ -22,7 +22,7 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
   { id: "books", label: "BOOKS", hint: "the chair's money, window by window, and replays" },
   { id: "board", label: "BOARD", hint: "ideas, feedback and the desk's updates" },
   { id: "atelier", label: "ATELIER", hint: "the gallery" },
-  { id: "crew", label: "PIT CREW", hint: "SWEEP, COACH and WRENCH" },
+  { id: "crew", label: "PIT CREW", hint: "SWEEP, COACH, WRENCH and LEDGER" },
   { id: "settings", label: "SETTINGS", hint: "demo or live, alerts, display" },
 ];
 

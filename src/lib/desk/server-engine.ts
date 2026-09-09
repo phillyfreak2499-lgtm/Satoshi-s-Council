@@ -29,6 +29,7 @@ import { loadBundle } from "./server-feeds";
 import { DESK_UPDATES } from "./updates";
 import { labDigestBits, labFairState, labSettleReceipt, startLab, labFairNow } from "./lab.server";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
+import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
@@ -286,7 +287,10 @@ function lastSide(e: Eng, snap: Snapshot): Lean {
 }
 
 function decideChair(e: Eng, votes: Vote[], snap: Snapshot, lastLean: Lean): ChairResult {
-  const chair = softenTimeGates(runChair(votes, snap, e.learner, e.settings, lastLean), snap);
+  // LEDGER's promoted patterns that fire on this window — appended to the
+  // chair's read as labelled evidence only; they change no gate, side or size.
+  const cites = ledgerCitesFor(votes);
+  const chair = softenTimeGates(runChair(votes, snap, e.learner, e.settings, lastLean, cites), snap);
   const { lean, st } = stickLean(e.sticks[CHAIR_SCALP], chair.lean, snap.as_of);
   e.sticks[CHAIR_SCALP] = st;
   return lean === chair.lean ? chair : { ...chair, lean };
@@ -470,6 +474,8 @@ async function maybeDigest(e: Eng) {
     if (arenaLine) bits.push(arenaLine);
     const sweepLine = await sweepRun(e.learner);
     if (sweepLine) bits.push(sweepLine);
+    const ledgerLine = await ledgerRun();
+    if (ledgerLine) bits.push(ledgerLine);
     const body = bits.join(" · ").slice(0, 400);
     await db`
       insert into board (who, body, kind, lean, ticker, conf, slug)
@@ -1000,6 +1006,7 @@ export function ensureServerEngine(): void {
       e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
     }
     void ensureCrewBoot(e.learner);
+    void ensureLedgerBoot();
   })().catch((err) => {
     e.lastError = `boot: ${err instanceof Error ? err.message : String(err)}`;
   });
