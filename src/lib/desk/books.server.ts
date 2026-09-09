@@ -55,11 +55,41 @@ export type BooksLab = {
   final: BooksLabLine & { ask: number; claimed: number };
 };
 
+/**
+ * KEEPER — the process scorecard. Not "did it win" (that is Totals) but "did it
+ * play the way it says it does": how often it sits, how hard the calls that
+ * filled cleared the bar, whether the fills honoured the 70¢ floor, and the
+ * worst peak-to-trough the paper book has run (BLOT's drawdown). Straight from
+ * the ledger, all after fees. Every call is graded at its own 15-minute close.
+ */
+export type KeeperStats = {
+  /** Graded windows in the scope. */
+  n: number;
+  /** Share of windows the chair sat WAIT, 0–100. */
+  wait_pct: number;
+  /** Paper fills (a booked side at the ask). */
+  booked: number;
+  /** Win rate of the fills, 0–100; null with no fills. */
+  hit_pct: number | null;
+  /** Net cents after fees across the fills. */
+  net: number;
+  /** Worst peak-to-trough of the cumulative net, in cents (≤ 0). BLOT's drawdown. */
+  max_dd: number;
+  /** Average price paid on a fill, in cents; null with no fills. */
+  avg_entry: number | null;
+  /** Share of fills at or above the 70¢ floor, 0–100; null with no fills. */
+  floor_pct: number | null;
+  /** Average |score| / bar on the fills — how hard they cleared the confluence bar; null with no fills. */
+  conf_ratio: number | null;
+};
+export type Keeper = { all: KeeperStats; week: KeeperStats };
+
 export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
   week: BooksTotals;
   all: BooksTotals;
+  keeper: Keeper;
   days: BooksDay[];
   curve: BooksPoint[];
   buckets: BooksBucket[];
@@ -267,6 +297,7 @@ async function build(): Promise<Books> {
     }
   }
   const windows = rows.map((r) => toWindow(r, arena));
+  const keeper = await keeperCard(db);
   const lab = await labStudy(db);
 
   return {
@@ -274,6 +305,7 @@ async function build(): Promise<Books> {
     today: pick("today"),
     week: pick("week"),
     all: pick("all"),
+    keeper,
     days: days.map((d) => ({ ...d, net: Math.round(d.net * 10) / 10 })),
     curve,
     buckets,
@@ -286,6 +318,70 @@ async function build(): Promise<Books> {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+const EMPTY_KEEPER: KeeperStats = { n: 0, wait_pct: 0, booked: 0, hit_pct: null, net: 0, max_dd: 0, avg_entry: null, floor_pct: null, conf_ratio: null };
+
+/** The process scorecard plus BLOT's drawdown, both scopes, straight from the ledger. */
+async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> {
+  try {
+    const [k] = await db<Record<string, number | null>>`
+      with base as (select *, close_time > now() - interval '7 days' as week from desk_ledger)
+      select
+        count(*)::int as n_all,
+        (count(*) filter (where chair_lean = 'WAIT'))::int as wait_all,
+        (count(*) filter (where entry_cents is not null))::int as booked_all,
+        (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins_all,
+        coalesce(sum(ev_cents), 0)::float as net_all,
+        (avg(entry_cents) filter (where entry_cents is not null))::float as entry_all,
+        (count(*) filter (where entry_cents is not null and entry_cents >= 70))::int as floor_all,
+        (avg(abs(score) / nullif(bar, 0)) filter (where entry_cents is not null))::float as conf_all,
+        (count(*) filter (where week))::int as n_week,
+        (count(*) filter (where week and chair_lean = 'WAIT'))::int as wait_week,
+        (count(*) filter (where week and entry_cents is not null))::int as booked_week,
+        (count(*) filter (where week and entry_cents is not null and ev_cents > 0))::int as wins_week,
+        coalesce(sum(ev_cents) filter (where week), 0)::float as net_week,
+        (avg(entry_cents) filter (where week and entry_cents is not null))::float as entry_week,
+        (count(*) filter (where week and entry_cents is not null and entry_cents >= 70))::int as floor_week,
+        (avg(abs(score) / nullif(bar, 0)) filter (where week and entry_cents is not null))::float as conf_week
+      from base
+    `;
+    const [ddAll] = await db<{ max_dd: number }>`
+      with c as (select close_time, id, sum(ev_cents) over (order by close_time, id) as cum
+                 from desk_ledger where ev_cents is not null)
+      select coalesce(min(cum - peak), 0)::float as max_dd
+      from (select cum, max(cum) over (order by close_time, id) as peak from c) x
+    `;
+    const [ddWeek] = await db<{ max_dd: number }>`
+      with c as (select close_time, id, sum(ev_cents) over (order by close_time, id) as cum
+                 from desk_ledger where ev_cents is not null and close_time > now() - interval '7 days')
+      select coalesce(min(cum - peak), 0)::float as max_dd
+      from (select cum, max(cum) over (order by close_time, id) as peak from c) x
+    `;
+    if (!k) return { all: EMPTY_KEEPER, week: EMPTY_KEEPER };
+    const stat = (s: "all" | "week", dd: number): KeeperStats => {
+      const n = Number(k[`n_${s}`]) || 0;
+      const booked = Number(k[`booked_${s}`]) || 0;
+      const wins = Number(k[`wins_${s}`]) || 0;
+      const floor = Number(k[`floor_${s}`]) || 0;
+      const entry = k[`entry_${s}`];
+      const conf = k[`conf_${s}`];
+      return {
+        n,
+        wait_pct: n ? Math.round((100 * (Number(k[`wait_${s}`]) || 0)) / n) : 0,
+        booked,
+        hit_pct: booked ? Math.round((100 * wins) / booked) : null,
+        net: round1(Number(k[`net_${s}`]) || 0),
+        max_dd: round1(dd || 0),
+        avg_entry: booked && entry != null ? round1(Number(entry)) : null,
+        floor_pct: booked ? Math.round((100 * floor) / booked) : null,
+        conf_ratio: booked && conf != null ? Math.round(Number(conf) * 100) / 100 : null,
+      };
+    };
+    return { all: stat("all", Number(ddAll?.max_dd) || 0), week: stat("week", Number(ddWeek?.max_dd) || 0) };
+  } catch {
+    return { all: EMPTY_KEEPER, week: EMPTY_KEEPER };
+  }
 }
 
 /** One trade per window from desk_lag_events: the first fillable shock (still there 200 ms later) that settled. */
