@@ -44,8 +44,8 @@ export function SiteHeader({
   }, [open]);
   const brand = (
     <>
-      <Crest size={24} />
-      <span className="whitespace-nowrap font-sans text-ui font-medium tracking-tight text-fg sm:text-body">Satoshi&apos;s Council</span>
+      <Crest size={28} title="" />
+      <img src="/wordmark.png" alt="" className="h-[26px] w-auto sm:h-7" draggable={false} />
       <span className="font-mono text-micro uppercase tracking-widest text-subtle">Beta</span>
     </>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { Crest } from "./Crest";
 import { TRUST_CHIPS } from "./prefs";
 
 export function TrustStrip({ className = "" }: { className?: string }) {
@@ -58,7 +59,10 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
       >
         <div className="drawer-handle" aria-hidden="true" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
         <div className="flex items-start justify-between gap-3">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Satoshi&apos;s Council · paper desk</div>
+          <div className="flex items-center gap-2">
+            <Crest size={22} className="shrink-0" />
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">Satoshi&apos;s Council · paper desk</div>
+          </div>
           <button type="button" onClick={onFloor} aria-label="Close" className="btn btn-icon btn-sm -mr-2 -mt-1 text-subtle hover:text-fg">
             ×
           </button>
