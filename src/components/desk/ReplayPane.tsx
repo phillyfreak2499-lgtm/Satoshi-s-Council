@@ -356,7 +356,7 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
         <div className="flex items-center justify-between font-mono text-micro text-muted">
           <span>{err ? `no replay: ${err}` : "rewinding…"}</span>
           {onClose ? (
-            <button type="button" className="rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg" onClick={onClose}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
               close
             </button>
           ) : null}
@@ -394,10 +394,10 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
         {r.partial ? <span className="text-wait">partial: the recorder joined this window late</span> : null}
         {onClose ? (
           <>
-            <a href={pageHref} target="_blank" rel="noopener" className="ml-auto rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg">
+            <a href={pageHref} target="_blank" rel="noopener" className="btn btn-secondary btn-sm ml-auto">
               open as a page ↗
             </a>
-            <button type="button" className="rounded-sm border border-border px-2 py-0.5 text-subtle hover:text-fg" onClick={onClose}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
               close
             </button>
           </>
@@ -428,7 +428,7 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
       <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
-          className="rounded-sm border border-border px-2 py-0.5 font-mono text-micro text-fg hover:border-border-strong"
+          className="btn btn-secondary btn-sm"
           onClick={() => {
             if (!playing && i >= n - 1) setCursor(0);
             setPlaying((p) => !p);

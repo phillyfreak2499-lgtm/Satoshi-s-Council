@@ -141,7 +141,7 @@ function Composer({
       <input
         value={who}
         onChange={(e) => setWho(e.target.value)}
-        className="w-full rounded-sm border border-border bg-bg px-2 py-1.5 font-mono text-data text-fg"
+        className="input input-sm w-full font-mono"
         placeholder="your name"
         maxLength={24}
         autoComplete="nickname"
@@ -157,7 +157,7 @@ function Composer({
         }}
         rows={parentId ? 2 : 4}
         maxLength={400}
-        className="w-full resize-y rounded-sm border border-border bg-bg px-2 py-1.5 font-sans text-ui text-fg"
+        className="input w-full resize-y font-sans"
         placeholder={
           parentId
             ? "Feedback on this idea"
@@ -172,7 +172,7 @@ function Composer({
         <button
           type="submit"
           disabled={busy || !note.trim()}
-          className="min-h-11 rounded-sm border border-border px-3 py-1.5 font-mono text-micro text-fg hover:bg-surface-2 disabled:opacity-40 sm:min-h-0"
+          className="btn btn-secondary btn-sm"
         >
           {kind === "idea" ? "Post idea" : kind === "update" ? "Post update" : "Post feedback"}
         </button>

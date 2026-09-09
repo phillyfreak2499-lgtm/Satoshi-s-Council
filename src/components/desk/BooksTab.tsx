@@ -374,7 +374,7 @@ function Totals({ label, t }: { label: string; t: BooksTotals }) {
   return (
     <div className="min-w-0 rounded-sm border border-border/60 p-2">
       <div className="text-subtle text-micro">{label}</div>
-      <div className={cn("font-mono text-lg tabular", tone(t.net))}>{fmtC(t.net)}</div>
+      <div className={cn("font-mono text-call tabular", tone(t.net))}>{fmtC(t.net)}</div>
       <div className="font-mono text-micro text-muted">
         {t.calls} calls · {t.wins} won ({pct(t.wins, t.calls)})
       </div>

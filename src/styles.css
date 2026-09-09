@@ -1,43 +1,94 @@
 @import "tailwindcss";
 
+/* Brand tokens (the owner's visual spec). Every colour, radius and size below reads these;
+   components never carry a hex value of their own. */
+:root {
+  --page: #0b0c10;
+  --panel: #12141a;
+  --raised: #1a1d26;
+  --text: #f3efe6;
+  --text-2: #9a958b;
+  --text-3: #6b675f;
+  --gold: #c4a574;
+  --gold-dim: #8a7349;
+  --up: #3fae7a;
+  --down: #d15b4a;
+  --wait: #c4a574;
+  --live: #5ba8b5;
+  --danger: #d15b4a;
+  --hairline: rgba(255, 255, 255, 0.06);
+  --hairline-strong: rgba(255, 255, 255, 0.1);
+  --radius: 8px;
+  --pad: 24px;
+  --gap: 16px;
+  --max: 1440px;
+  --gutter: 32px;
+  --header-h: 64px;
+}
+@media (max-width: 1023px) {
+  :root {
+    --gutter: 24px;
+  }
+}
+@media (max-width: 639px) {
+  :root {
+    --gutter: 16px;
+    --header-h: 56px;
+  }
+}
+
 @theme {
-  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Geist", "Inter Tight", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 
-  --color-bg: #08090b;
-  --color-surface: #101217;
-  --color-surface-2: #161a22;
-  --color-surface-3: #1c212c;
-  --color-fg: #e8eadf;
-  --color-muted: #8b90a0;
-  --color-subtle: #5c6270;
-  --color-border: #232833;
-  --color-border-strong: #343b4a;
-  --color-up: #3dcf8a;
-  --color-down: #ef6b73;
-  --color-wait: #d4a017;
-  --color-demo: #d4a017;
-  --color-live: #7ae0a8;
-  --color-chip: #c8ccd4;
+  --color-bg: var(--page);
+  --color-surface: var(--panel);
+  --color-surface-2: var(--raised);
+  --color-surface-3: var(--raised);
+  --color-fg: var(--text);
+  --color-muted: var(--text-2);
+  --color-subtle: var(--text-3);
+  --color-border: var(--hairline);
+  --color-border-strong: var(--hairline-strong);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-wait: var(--wait);
+  --color-demo: var(--gold);
+  --color-live: var(--live);
+  --color-gold: var(--gold);
+  --color-gold-dim: var(--gold-dim);
+  --color-danger: var(--danger);
+  --color-chip: #e6e1d6;
   --color-paper: #d8d1c2;
   --color-paper-deep: #cfc8b8;
   --color-ink: #1a1a1a;
-  --color-mute: #8b90a0;
-  --color-cream: #e8eadf;
-  --color-dim: #5c6270;
+  --color-mute: var(--text-2);
+  --color-cream: var(--text);
+  --color-dim: var(--text-3);
 
-  --text-micro: 0.625rem;
-  --text-data: 0.6875rem;
-  --text-ui: 0.75rem;
-  --text-body: 0.8125rem;
-  --text-title: 0.9375rem;
-  --text-call: 1.375rem;
-  --text-hero: 2.5rem;
+  /* The type scale: 11 / 13 / 16 / 22 / 40 / 72, nothing in between. */
+  --text-micro: 11px;
+  --text-micro--line-height: 16px;
+  --text-data: 13px;
+  --text-data--line-height: 20px;
+  --text-ui: 13px;
+  --text-ui--line-height: 20px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-title: 16px;
+  --text-title--line-height: 24px;
+  --text-call: 22px;
+  --text-call--line-height: 28px;
+  --text-display: 40px;
+  --text-display--line-height: 48px;
+  --text-hero: clamp(48px, 6vw, 72px);
+  --text-hero--line-height: 1.1;
 
-  --radius-xs: 2px;
-  --radius-sm: 4px;
+  /* One radius. */
+  --radius-xs: 8px;
+  --radius-sm: 8px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 8px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -83,6 +134,157 @@
 
   table {
     border-collapse: collapse;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  ::placeholder {
+    color: var(--text-3);
+    opacity: 1;
+  }
+}
+
+/* The button, input and table system. Same height within a group, one radius, tokens only. */
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    color: var(--text);
+    background: transparent;
+    transition:
+      background-color 200ms ease-out,
+      border-color 200ms ease-out,
+      color 200ms ease-out,
+      opacity 200ms ease-out;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--text);
+    color: var(--page);
+  }
+  .btn-primary:hover {
+    background: #e6e1d6;
+  }
+  .btn-secondary {
+    border-color: var(--hairline-strong);
+  }
+  .btn-secondary:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: var(--raised);
+  }
+  .btn-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .btn-danger:hover {
+    background: rgba(209, 91, 74, 0.1);
+  }
+  .btn-sm {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .btn-icon {
+    padding: 12px;
+    min-width: 44px;
+  }
+  .btn-icon.btn-sm {
+    padding: 6px;
+    min-width: 32px;
+  }
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .btn-loading {
+    color: transparent !important;
+    position: relative;
+    pointer-events: none;
+  }
+  .btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    border: 2px solid var(--text-2);
+    border-top-color: transparent;
+    animation: btn-spin 700ms linear infinite;
+  }
+  @keyframes btn-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .input {
+    background: var(--panel);
+    border: 1px solid var(--hairline-strong);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 20px;
+    font-family: inherit;
+    min-height: 44px;
+  }
+  .input:focus {
+    border-color: var(--gold);
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--gold);
+  }
+  .input-sm {
+    min-height: 32px;
+    padding: 5px 10px;
+  }
+  .table-research {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+  .table-research th {
+    font-weight: 500;
+    color: var(--text-3);
+    text-align: left;
+    padding: 8px 8px 8px 0;
+    border-bottom: 1px solid var(--hairline-strong);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .table-research td {
+    padding: 8px 8px 8px 0;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--text-2);
+    vertical-align: baseline;
+  }
+  .table-research .num,
+  .table-research th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .gutter {
+    padding-left: var(--gutter);
+    padding-right: var(--gutter);
+  }
+  .safe-bottom {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAB_SEATS } from "@/lib/desk/seats";
+import { SiteHeader } from "./SiteHeader";
 import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
 import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
@@ -25,8 +26,8 @@ import { ArenaTab } from "./ArenaTab";
 import { BooksTab } from "./BooksTab";
 
 const PRIMARY: { id: TabId; label: string; href?: string }[] = [
-  { id: "satoshi", label: "SATOSHI" },
-  { id: "structure", label: "FLOOR" },
+  { id: "satoshi", label: "FLOOR" },
+  { id: "structure", label: "DESKS" },
   { id: "arena", label: "ARENA", href: "/arena" },
   { id: "books", label: "BOOKS" },
   { id: "board", label: "BOARD" },
@@ -190,7 +191,6 @@ export function DeskApp() {
       /* no window */
     }
     urlReady.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (!urlReady.current) return;
@@ -240,85 +240,83 @@ export function DeskApp() {
       <a href="#floor-main" className="skip-link">
         Skip to the floor
       </a>
-      <header
-        data-tour="tour-header"
-        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-surface px-3 py-1.5"
-      >
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <h1 className="font-sans text-title font-medium tracking-tight">Satoshi&apos;s Council</h1>
-            <Tip k="beta.badge" mark={false}>
-              <span className="rounded-sm border border-wait/50 bg-wait/15 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-wait">
-                Beta
-              </span>
-            </Tip>
-          </div>
-          <p className="hidden font-mono text-micro text-subtle sm:block">
-            paper-only BTC 15-minute research desk · 21 seats read the tape · SATOSHI chairs the vote
-          </p>
-        </div>
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
-          <Feedback active={tab === "board"} onOpen={() => setTab("board")} />
-          <button
-            type="button"
-            aria-label="Search the desk (Command or Control K)"
-            title="Search the desk · ⌘K"
-            onClick={() => setPaletteOn(true)}
-            className="flex min-h-11 items-center gap-1 rounded-sm px-2 font-mono text-micro text-muted hover:bg-surface-2 hover:text-fg"
-          >
-            <span aria-hidden="true">⌘K</span>
-            <span className="sr-only sm:not-sr-only">search</span>
-          </button>
-          <button
-            type="button"
-            aria-label="Replay the 60-second tour"
-            title="Replay the 60-second tour"
-            onClick={startTour}
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-sm px-2 font-mono text-micro text-muted hover:bg-surface-2 hover:text-fg"
-          >
-            ?
-          </button>
-          <div className="relative min-w-0 max-w-full">
-            {navMore ? <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-r from-transparent to-surface" /> : null}
-            {navMore ? <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 font-mono text-micro text-subtle">›</span> : null}
-          <nav ref={navRef} className="nav-scroll flex max-w-full items-center gap-1 overflow-x-auto" aria-label="Council tabs">
-            {PRIMARY.map((t) => {
-              const active = t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id;
-              if (t.href) {
-                return (
-                  <a
-                    key={t.id}
-                    href={t.href}
-                    className="flex min-h-11 shrink-0 items-center rounded-sm px-2.5 font-mono text-micro tracking-wide text-muted hover:bg-surface-2 hover:text-fg"
-                  >
-                    <Tip k={`tab.${t.id}`} hoverOnly>
-                      {t.label}
-                    </Tip>
-                  </a>
-                );
-              }
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTab(t.id)}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex min-h-11 shrink-0 items-center rounded-sm px-2.5 font-mono text-micro tracking-wide",
-                    active ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
-                  )}
-                >
-                  <Tip k={t.id === "structure" ? "tab.floor" : `tab.${t.id}`} hoverOnly>
-                    {t.label}
-                  </Tip>
-                </button>
-              );
-            })}
-            <MoreMenu tab={tab} onTab={setTab} onTour={startTour} onSearch={() => setPaletteOn(true)} />
-          </nav>
-          </div>
-        </div>
-      </header>
+      <SiteHeader
+        fold="lg"
+        tour="tour-header"
+        onBrand={() => setTab("satoshi")}
+        nav={
+          <>
+            <Feedback active={tab === "board"} onOpen={() => setTab("board")} />
+            <button
+              type="button"
+              aria-label="Search the desk (Command or Control K)"
+              title="Search the desk · ⌘K"
+              onClick={() => setPaletteOn(true)}
+              className="btn btn-sm text-muted hover:text-fg"
+            >
+              <span aria-hidden="true">⌘K</span>
+              <span className="sr-only lg:not-sr-only">search</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Replay the 60-second tour"
+              title="Replay the 60-second tour"
+              onClick={startTour}
+              className="btn btn-icon btn-sm text-muted hover:text-fg"
+            >
+              ?
+            </button>
+            <div className="relative min-w-0 max-w-full">
+              {navMore ? <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-r from-transparent to-bg" /> : null}
+              {navMore ? <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 font-mono text-micro text-subtle">›</span> : null}
+              <nav ref={navRef} className="nav-scroll flex max-w-full items-center gap-1 overflow-x-auto" aria-label="Council tabs">
+                {PRIMARY.map((t) => {
+                  const active = t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id;
+                  if (t.href) {
+                    return (
+                      <a key={t.id} href={t.href} className="flex min-h-11 shrink-0 items-center rounded-md px-2.5 font-mono text-micro tracking-wide text-muted hover:bg-surface-2 hover:text-fg">
+                        <Tip k={`tab.${t.id}`} hoverOnly>
+                          {t.label}
+                        </Tip>
+                      </a>
+                    );
+                  }
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTab(t.id)}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex min-h-11 shrink-0 items-center rounded-md border px-2.5 font-mono text-micro tracking-wide",
+                        active ? "border-border-strong bg-surface-2 text-fg" : "border-transparent text-muted hover:bg-surface-2 hover:text-fg",
+                      )}
+                    >
+                      <Tip k={t.id === "structure" ? "tab.floor" : `tab.${t.id}`} hoverOnly>
+                        {t.label}
+                      </Tip>
+                    </button>
+                  );
+                })}
+                <MoreMenu tab={tab} onTab={setTab} onTour={startTour} onSearch={() => setPaletteOn(true)} />
+              </nav>
+            </div>
+          </>
+        }
+        menu={[
+          ...PRIMARY.map((t) =>
+            t.href
+              ? { label: t.label, href: t.href, hint: "room" }
+              : { label: t.label, onSelect: () => setTab(t.id), active: t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id },
+          ),
+          ...MORE.map((m) => ({ label: m.label, hint: m.hint, onSelect: () => setTab(m.id), active: tab === m.id })),
+          { label: "Search the desk", hint: "⌘K", onSelect: () => setPaletteOn(true) },
+          { label: "Replay the 60-second tour", hint: "?", onSelect: startTour },
+          { label: "How it works", href: "/about", hint: "page" },
+          { label: "FAQ", href: "/faq", hint: "page" },
+          { label: "Paper only", href: "/legal", hint: "page" },
+        ]}
+      />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">
         <TrustStrip className="hidden sm:flex" />
@@ -352,7 +350,7 @@ export function DeskApp() {
 
       {desk ? (
         <div className="nav-scroll flex items-center gap-1 overflow-x-auto border-b border-border bg-surface px-3" aria-label="Seat desks">
-          <span className="mr-1 shrink-0 font-mono text-micro uppercase tracking-widest text-subtle">floor</span>
+          <span className="mr-1 shrink-0 font-mono text-micro uppercase tracking-widest text-subtle">desks</span>
           {DESKS.map((d) => (
             <button
               key={d.id}
@@ -360,8 +358,8 @@ export function DeskApp() {
               onClick={() => setTab(d.id)}
               aria-current={tab === d.id ? "page" : undefined}
               className={cn(
-                "flex min-h-11 shrink-0 items-center rounded-sm px-2.5 font-mono text-micro tracking-wide",
-                tab === d.id ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
+                "flex min-h-11 shrink-0 items-center rounded-md border px-2.5 font-mono text-micro tracking-wide",
+                tab === d.id ? "border-border-strong bg-surface-2 text-fg" : "border-transparent text-muted hover:bg-surface-2 hover:text-fg",
               )}
             >
               <Tip k={`tab.${d.id}`} hoverOnly>
@@ -416,7 +414,7 @@ export function DeskApp() {
                   type="button"
                   aria-pressed={seatView === "all"}
                   onClick={() => setSeatView(seatView === "all" ? "auto" : "all")}
-                  className="min-h-8 rounded-sm border border-border px-2 text-muted hover:text-fg"
+                  className="btn btn-secondary btn-sm"
                 >
                   {seatView === "all" ? "fold sitting seats" : "expand all seats"}
                 </button>

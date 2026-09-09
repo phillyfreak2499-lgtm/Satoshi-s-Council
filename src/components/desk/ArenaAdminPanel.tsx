@@ -43,7 +43,7 @@ export function ArenaAdminPanel() {
         type="button"
         disabled={busy}
         onClick={() => void clear()}
-        className="min-h-11 rounded-sm border border-down/50 bg-down/10 px-3 font-mono text-ui text-down hover:bg-down/20 disabled:opacity-50"
+        className="btn btn-danger"
       >
         {busy ? "clearing…" : "Clear the Arena"}
       </button>
