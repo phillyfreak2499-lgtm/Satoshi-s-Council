@@ -193,4 +193,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Two lists, never mixed. GAVEL is the chair's decisions — every window, WAIT included; a WAIT settles as a dash, since the chair held no position. SEATS is each specialist's own paper scalps, collapsed, never a chair call. A new overnight ribbon shows the chair's last 12 hours and where BTC went. WARDEN, ORBIT and WIRE moved to the pit crew: they inform, they no longer vote.",
   },
+  {
+    slug: "2026-09-09-one-board",
+    body:
+      "One Board, one row. The header had two ways in — a stray Board button on the left and the BOARD tab — so the duplicate is gone; the count of new posts now rides on the tab itself. FLOOR, DESKS, ARENA, BOOKS and BOARD all sit at one size in one row. Housekeeping at the top of the page — nothing about the desk or its calls changed.",
+  },
 ];
