@@ -31,14 +31,7 @@ function BrainPulse({ age, since }: { age: number; since: number }) {
   const slow = effective > 10;
   return (
     <span
-      className={cn(
-        "flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-micro",
-        stalled
-          ? "border-down/50 bg-down/10 text-down"
-          : slow
-            ? "border-wait/50 bg-wait/10 text-wait"
-            : "border-border text-subtle",
-      )}
+      className={cn("inline-flex items-center gap-1 font-mono text-micro", stalled ? "text-down" : slow ? "text-wait" : "text-subtle")}
       title="Seconds since the shared brain's last tick on the server"
     >
       <span
@@ -124,6 +117,7 @@ export function TopStrip({
   brainAge,
   frameAt = 0,
   callLog,
+  floor = false,
 }: {
   snap: Snapshot | null;
   chair: ChairResult | null;
@@ -136,6 +130,8 @@ export function TopStrip({
   tz: string;
   brainAge?: number | null;
   frameAt?: number;
+  /** On the Floor the strip is the decision metrics under the chair stage: a panel, and the call itself is not repeated. */
+  floor?: boolean;
 }) {
   if (!snap) return <StripSkeleton />;
   const lean = chair?.lean ?? "WAIT";
@@ -147,7 +143,7 @@ export function TopStrip({
   const book = bookState(snap, lean, callLog ?? []);
 
   return (
-    <div data-tour="tour-strip" className="border-b border-border bg-surface px-3 py-2">
+    <div data-tour="tour-strip" className={cn("bg-surface px-3 py-2", floor ? "rounded-md border border-border" : "border-b border-border")}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {demo ? (
@@ -155,29 +151,29 @@ export function TopStrip({
               <button
                 type="button"
                 onClick={() => patchSettings({ source: "live" })}
-                className="rounded-sm border border-wait/50 bg-wait/15 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-wait"
+                className="inline-flex min-h-8 items-center gap-1.5 font-mono text-micro uppercase tracking-widest text-wait underline-offset-2 hover:underline"
               >
-                DEMO · tap for live tape
+                <span aria-hidden="true" className="inline-block size-1.5 rounded-full bg-wait" />
+                demo · tap for live tape
               </button>
             </Tip>
           ) : (
             <Tip k="source.live" mark={false}>
-              <span className="rounded-sm border border-up/40 bg-up/10 px-1.5 py-px font-mono text-micro uppercase tracking-widest text-up">
-                LIVE
+              <span className="inline-flex items-center gap-1.5 font-mono text-micro uppercase tracking-widest text-up">
+                <span aria-hidden="true" className="inline-block size-1.5 rounded-full bg-up" />
+                live
               </span>
             </Tip>
           )}
           {!demo && brainAge != null ? <BrainPulse age={brainAge} since={frameAt} /> : null}
-          <LeanChip lean={lean} cents={askCents(snap, lean)} className="px-2 py-0.5 text-ui" />
+          {!floor ? <LeanChip lean={lean} cents={askCents(snap, lean)} className="px-2 py-0.5 text-ui" /> : null}
           {book.kind === "floor" ? (
             <Tip k="book.floor" mark={false}>
-              <span className="rounded-sm border border-wait/40 bg-wait/10 px-1.5 py-px font-mono text-micro text-wait">
-                no fill · {CHAIR_MIN_ASK_CENTS}¢ floor
-              </span>
+              <span className="font-mono text-micro text-wait">no fill · {CHAIR_MIN_ASK_CENTS}¢ floor</span>
             </Tip>
           ) : book.kind === "booked" ? (
             <Tip k="pane.call-log" mark={false}>
-              <span className="rounded-sm border border-border px-1.5 py-px font-mono text-micro text-muted">
+              <span className="font-mono text-micro text-muted">
                 booked {book.lean} {book.cents.toFixed(0)}¢
               </span>
             </Tip>
@@ -203,7 +199,7 @@ export function TopStrip({
                 <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
                 <div
                   className={cn(
-                    "absolute inset-y-0 transition-all duration-500 ease-out",
+                    "absolute inset-y-0 transition-[width] duration-[250ms] ease-out",
                     lean === "DOWN" ? "bg-down" : lean === "UP" ? "bg-up" : "bg-wait",
                   )}
                   style={
@@ -225,9 +221,7 @@ export function TopStrip({
             <CloseClock closeTime={snap.close_time} />
           </Tip>
           <Tip k="strip.phase" mark={false}>
-            <span className="rounded-sm border border-border px-1.5 py-px font-mono text-micro text-muted">
-              {snap.phase}
-            </span>
+            <span className="font-mono text-micro uppercase tracking-widest text-muted">{snap.phase}</span>
           </Tip>
           <span className="hidden font-mono text-micro text-subtle sm:inline">
             <Tip k="strip.learn">{learn}</Tip>

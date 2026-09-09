@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { SiteHeader } from "./SiteHeader";
+import { cn } from "@/lib/utils";
 
 const NAV: { to: "/about" | "/faq" | "/legal"; label: string }[] = [
   { to: "/about", label: "How it works" },
@@ -9,7 +10,7 @@ const NAV: { to: "/about" | "/faq" | "/legal"; label: string }[] = [
 ];
 
 /** Chrome for the reading pages: brand, three quiet links, one way onto the floor. */
-export function Page({ title, lede, children }: { title: string; lede: string; children: ReactNode }) {
+export function Page({ title, lede, children, wide = false }: { title: string; lede: string; children: ReactNode; wide?: boolean }) {
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
       <a href="#page-main" className="skip-link">
@@ -35,7 +36,7 @@ export function Page({ title, lede, children }: { title: string; lede: string; c
         }
         menu={[...NAV.map((n) => ({ label: n.label, href: n.to, hint: "page" })), { label: "Open the floor", href: "/" }, { label: "THE PIT", href: "/arena", hint: "room" }]}
       />
-      <main id="page-main" className="gutter mx-auto w-full max-w-[72ch] flex-1 py-8">
+      <main id="page-main" className={cn("gutter mx-auto w-full flex-1 py-8", wide ? "max-w-5xl" : "max-w-[72ch]")}>
         <h1 className="font-sans text-display font-medium tracking-tight text-fg">{title}</h1>
         <p className="mt-2 font-sans text-body text-muted">{lede}</p>
         <div className="prose-desk mt-8">{children}</div>
