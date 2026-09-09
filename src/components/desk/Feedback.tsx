@@ -4,10 +4,9 @@ import { getAdminKey, type DeskFrame } from "@/lib/desk/engine";
 import { fmtLocal } from "@/lib/desk/market-hours";
 import { cn } from "@/lib/utils";
 import { LeanChip } from "./bits";
-import { Tip } from "./Tip";
+import { SEEN_KEY } from "./use-board-unread";
 
 const WHO_KEY = "satoshi-desk-v1-board-who";
-const SEEN_KEY = "satoshi-desk-v1-board-seen";
 
 function loadWho() {
   if (typeof window === "undefined") return "";
@@ -15,15 +14,6 @@ function loadWho() {
     return localStorage.getItem(WHO_KEY) ?? "";
   } catch {
     return "";
-  }
-}
-
-function loadSeen() {
-  if (typeof window === "undefined") return 0;
-  try {
-    return Number(localStorage.getItem(SEEN_KEY) || 0) || 0;
-  } catch {
-    return 0;
   }
 }
 
@@ -348,64 +338,5 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
         </section>
       </div>
     </div>
-  );
-}
-
-export function Feedback({
-  onOpen,
-  active,
-}: {
-  onOpen: () => void;
-  active?: boolean;
-}) {
-  const [n, setN] = useState(0);
-  const [seen, setSeen] = useState(loadSeen);
-
-  useEffect(() => {
-    const tick = async () => {
-      try {
-        const rows = await listBoard();
-        setN(rows.length);
-      } catch {
-        /* board down */
-      }
-    };
-    void tick();
-    const t = window.setInterval(() => void tick(), active ? 4000 : 10000);
-    return () => window.clearInterval(t);
-  }, [active]);
-
-  useEffect(() => {
-    if (active) {
-      setSeen(n);
-      try {
-        localStorage.setItem(SEEN_KEY, String(n));
-      } catch {
-        /* quota */
-      }
-    }
-  }, [active, n]);
-
-  const unread = !active && n > seen ? n - seen : 0;
-
-  return (
-    <Tip k="beta.feedback" mark={false}>
-      <button
-        type="button"
-        aria-label="Ideas and feedback board"
-        onClick={onOpen}
-        className={cn(
-          "relative min-h-11 rounded-sm px-2 py-1 font-mono text-micro sm:min-h-0",
-          active ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
-        )}
-      >
-        Board
-        {unread > 0 ? (
-          <span className="ml-1 rounded-sm bg-wait/20 px-1 font-mono text-micro text-wait">{unread}</span>
-        ) : (
-          <span className="ml-1 inline-block size-1.5 rounded-full bg-up/80" title="live" />
-        )}
-      </button>
-    </Tip>
   );
 }

@@ -21,7 +21,8 @@ import { applyDisplayPrefs, markWelcomeSeen, readSeatView, setSeatView as saveSe
 import { beacon } from "@/lib/desk/beacon";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
-import { Feedback, BoardTab } from "./Feedback";
+import { BoardTab } from "./Feedback";
+import { useBoardUnread } from "./use-board-unread";
 import { AtelierTab } from "./AtelierTab";
 import { CrewTab } from "./CrewTab";
 import { ArenaTab } from "./ArenaTab";
@@ -34,6 +35,12 @@ const PRIMARY: { id: TabId; label: string; href?: string }[] = [
   { id: "books", label: "BOOKS" },
   { id: "board", label: "BOARD" },
 ];
+// One shape for every primary nav item — the tab buttons (FLOOR, DESKS, BOOKS,
+// BOARD) and the ARENA room link alike — so every word sits at the same size in
+// the same box, whether it is a <button> or an <a>.
+const NAV_TAB = "flex min-h-11 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-micro tracking-wide";
+const NAV_TAB_IDLE = "border-transparent text-muted hover:bg-surface-2 hover:text-fg";
+const NAV_TAB_ON = "border-border-strong bg-surface-2 text-fg";
 const DESKS: { id: TabId; label: string; intro: string }[] = [
   { id: "structure", label: "STRUCTURE", intro: "candles and swings · WICK, DRIFT, STREAK, EXHAUST" },
   { id: "tape", label: "TAPE", intro: "order flow and the Kalshi book · PULSE, TAPE, WHALE, VEL" },
@@ -112,6 +119,7 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
 export function DeskApp() {
   const frame = useDesk();
   const [tab, setTab] = useState<TabId>("satoshi");
+  const boardUnread = useBoardUnread(tab === "board");
   const [focus, setFocus] = useState<SeatId | null>(null);
   const [tourOn, setTourOn] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -248,7 +256,6 @@ export function DeskApp() {
         onBrand={() => setTab("satoshi")}
         nav={
           <>
-            <Feedback active={tab === "board"} onOpen={() => setTab("board")} />
             <button
               type="button"
               aria-label="Search the desk (Command or Control K)"
@@ -276,7 +283,7 @@ export function DeskApp() {
                   const active = t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id;
                   if (t.href) {
                     return (
-                      <a key={t.id} href={t.href} className="flex min-h-11 shrink-0 items-center rounded-md px-2.5 font-mono text-micro tracking-wide text-muted hover:bg-surface-2 hover:text-fg">
+                      <a key={t.id} href={t.href} className={cn(NAV_TAB, NAV_TAB_IDLE)}>
                         <Tip k={`tab.${t.id}`} hoverOnly>
                           {t.label}
                         </Tip>
@@ -289,14 +296,19 @@ export function DeskApp() {
                       type="button"
                       onClick={() => setTab(t.id)}
                       aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex min-h-11 shrink-0 items-center rounded-md border px-2.5 font-mono text-micro tracking-wide",
-                        active ? "border-border-strong bg-surface-2 text-fg" : "border-transparent text-muted hover:bg-surface-2 hover:text-fg",
-                      )}
+                      className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}
                     >
                       <Tip k={t.id === "structure" ? "tab.floor" : `tab.${t.id}`} hoverOnly>
                         {t.label}
                       </Tip>
+                      {t.id === "board" && boardUnread > 0 ? (
+                        <span
+                          aria-label={`${boardUnread} new`}
+                          className="rounded-sm bg-wait/20 px-1 font-mono text-micro tabular text-wait"
+                        >
+                          {boardUnread}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
