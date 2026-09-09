@@ -176,6 +176,15 @@ async function fanout(subs: SubRow[], pick: (sub: SubRow) => PushPayload | null)
   return out;
 }
 
+/** How many owner subscriptions the watchdog could actually reach right now.
+ *  Zero means the internal alert has no recipient — surfaced separately on
+ *  /status so a dead alert channel is visible without faking a data problem. */
+export async function ownerSubCount(): Promise<number> {
+  const db = await sql();
+  const rows = await db<{ n: number }>`select count(*)::int as n from desk_push_subs where owner and fails < ${MAX_FAILS}`;
+  return rows[0]?.n ?? 0;
+}
+
 async function subsFor(kind: "call" | "settle" | "owner"): Promise<SubRow[]> {
   const db = await sql();
   if (kind === "owner") return db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where owner and fails < ${MAX_FAILS}`;
