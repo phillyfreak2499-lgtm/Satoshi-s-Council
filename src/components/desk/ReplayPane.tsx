@@ -445,7 +445,7 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
             setPlaying(false);
             setCursor(Number(e.target.value));
           }}
-          className="w-full accent-[#c8ccd4]"
+          className="w-full accent-gold"
           aria-label="scrub the window"
         />
       </div>

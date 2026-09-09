@@ -168,4 +168,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "One visual system, from the favicon to a phone. The desk now has one palette (ink, ivory, a single gold), two typefaces (Geist for words, IBM Plex Mono for numbers), one corner radius, one sticky header on every page with the new crest, and one family of buttons and inputs. Nothing about the research, grading or calls changed — only how the same information looks.",
   },
+  {
+    slug: "2026-09-09-one-system-tables",
+    body:
+      "Every table on the desk now reads the same way — the leaderboard, the crew scorecards, the books' recent windows and lab — mono figures, hairline rows, headers in small caps, and the amber caution flag finally shows. One slider accent, one gold focus ring you can see, and the vote colours always carry the word UP, DOWN or WAIT beside them. Presentation only; the numbers are the same.",
+  },
 ];

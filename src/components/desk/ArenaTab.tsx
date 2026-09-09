@@ -24,31 +24,31 @@ function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: A
   return (
     <Pane title={title}>
       {merged.length ? (
-        <table className="w-full font-mono text-micro">
-          <thead className="text-subtle">
+        <table className="table-research">
+          <thead>
             <tr className="text-left">
-              <th className="py-1 pr-2">#</th>
-              <th className="py-1 pr-2">callsign</th>
-              <th className="py-1 pr-2">calls</th>
-              <th className="py-1 pr-2">right</th>
-              <th className="py-1 pr-2">net after fees</th>
-              <th className="py-1 pr-2">said</th>
+              <th >#</th>
+              <th >callsign</th>
+              <th >calls</th>
+              <th >right</th>
+              <th >net after fees</th>
+              <th >said</th>
             </tr>
           </thead>
           <tbody>
             {merged.map((r, i) => (
               <tr key={`${r.kind}-${r.name}`} className={cn("border-t border-border/60", r.me ? "bg-surface-2 text-fg" : r.kind === "desk" ? "text-muted" : "text-fg")}>
-                <td className="py-1 pr-2">{r.warming ? "—" : i + 1}</td>
-                <td className="py-1 pr-2 font-semibold">
+                <td >{r.warming ? "—" : i + 1}</td>
+                <td className="font-semibold">
                   {r.name}
                   {r.me ? <span className="ml-1 text-subtle">(you)</span> : null}
                   {r.warming ? <span className="ml-1 font-normal text-subtle">warming up</span> : null}
                   {r.since ? <span className="ml-1 font-normal text-subtle">since {fmtSince(r.since)}</span> : null}
                 </td>
-                <td className="py-1 pr-2">{r.n}</td>
-                <td className="py-1 pr-2">{r.hit_pct == null ? "—" : `${r.hit_pct}%`}</td>
-                <td className={cn("py-1 pr-2", r.net > 0 ? "text-up" : r.net < 0 ? "text-down" : "")}>{fmtC(r.net)}</td>
-                <td className="py-1 pr-2 text-subtle">{r.avg_conf == null ? "—" : `${r.avg_conf}%`}</td>
+                <td >{r.n}</td>
+                <td >{r.hit_pct == null ? "—" : `${r.hit_pct}%`}</td>
+                <td className={cn(r.net > 0 ? "text-up" : r.net < 0 ? "text-down" : "")}>{fmtC(r.net)}</td>
+                <td className="text-subtle">{r.avg_conf == null ? "—" : `${r.avg_conf}%`}</td>
               </tr>
             ))}
           </tbody>
@@ -128,28 +128,28 @@ export function ArenaTab({ tz, onCall }: { tz: string; onCall: () => void }) {
             )}
             {me.calls.length > 0 && (
               <div className="mt-1 overflow-x-auto">
-                <table className="w-full font-mono text-micro">
-                  <thead className="text-subtle">
+                <table className="table-research">
+                  <thead>
                     <tr className="text-left">
-                      <th className="py-1 pr-2">window</th>
-                      <th className="py-1 pr-2">call</th>
-                      <th className="py-1 pr-2">ask</th>
-                      <th className="py-1 pr-2">sure</th>
-                      <th className="py-1 pr-2">with</th>
-                      <th className="py-1 pr-2">result</th>
-                      <th className="py-1 pr-2">cents</th>
+                      <th >window</th>
+                      <th >call</th>
+                      <th >ask</th>
+                      <th >sure</th>
+                      <th >with</th>
+                      <th >result</th>
+                      <th >cents</th>
                     </tr>
                   </thead>
                   <tbody>
                     {me.calls.map((c) => (
                       <tr key={c.ticker} className="border-t border-border/60">
-                        <td className="py-1 pr-2 text-muted">{fmtLocal(Date.parse(c.close_time), tz)}</td>
-                        <td className={cn("py-1 pr-2 font-semibold", c.lean === "UP" ? "text-up" : "text-down")}>{c.lean}</td>
-                        <td className="py-1 pr-2">{c.entry_cents.toFixed(1)}¢</td>
-                        <td className="py-1 pr-2 text-subtle">{c.conf == null ? "—" : `${c.conf}%`}</td>
-                        <td className="py-1 pr-2 text-subtle">{c.mins_left.toFixed(1)}m left</td>
-                        <td className="py-1 pr-2">{c.winner ?? <span className="text-subtle">open</span>}</td>
-                        <td className={cn("py-1 pr-2", (c.cents ?? 0) > 0 ? "text-up" : (c.cents ?? 0) < 0 ? "text-down" : "")}>
+                        <td className="text-muted">{fmtLocal(Date.parse(c.close_time), tz)}</td>
+                        <td className={cn("font-semibold", c.lean === "UP" ? "text-up" : "text-down")}>{c.lean}</td>
+                        <td >{c.entry_cents.toFixed(1)}¢</td>
+                        <td className="text-subtle">{c.conf == null ? "—" : `${c.conf}%`}</td>
+                        <td className="text-subtle">{c.mins_left.toFixed(1)}m left</td>
+                        <td >{c.winner ?? <span className="text-subtle">open</span>}</td>
+                        <td className={cn((c.cents ?? 0) > 0 ? "text-up" : (c.cents ?? 0) < 0 ? "text-down" : "")}>
                           {c.cents == null ? "—" : fmtC(c.cents)}
                         </td>
                       </tr>

@@ -58,6 +58,7 @@
   --color-gold: var(--gold);
   --color-gold-dim: var(--gold-dim);
   --color-danger: var(--danger);
+  --color-warn: var(--wait);
   --color-chip: #e6e1d6;
   --color-paper: #d8d1c2;
   --color-paper-deep: #cfc8b8;
