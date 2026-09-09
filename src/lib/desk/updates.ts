@@ -178,4 +178,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Meet LEDGER, a fourth PIT CREW clerk — a reader, never a voter. It mines the ledger's vote matrix for coalitions and pairs of seats that call better together than alone, with a hit rate, sample and Wilson floor. A card is cited only once its edge holds on windows after the ones it was found on; one that resolves against its members is inverted, not deleted. The chair may cite it, never obey it.",
   },
+  {
+    slug: "2026-09-09-keeper",
+    body:
+      "A scorecard for how the desk plays, not just whether it won. BOOKS now shows the process: how often the chair sits, how hard the calls that filled cleared the bar, whether they kept the 70¢ floor, and the worst drawdown the paper book has run — the risk number a win rate hides. All from the ledger, after fees, all-time and this week.",
+  },
 ];

@@ -39,6 +39,7 @@ export type Books = {
   today: BooksTotals;
   week: BooksTotals;
   all: BooksTotals;
+  keeper: Keeper;
   days: BooksDay[];
   curve: BooksPoint[];
   buckets: BooksBucket[];
@@ -47,6 +48,20 @@ export type Books = {
   lab: BooksLab | null;
   at: number;
 };
+
+/** KEEPER — the process scorecard, with BLOT's drawdown. Mirrors books.server.ts. */
+export type KeeperStats = {
+  n: number;
+  wait_pct: number;
+  booked: number;
+  hit_pct: number | null;
+  net: number;
+  max_dd: number;
+  avg_entry: number | null;
+  floor_pct: number | null;
+  conf_ratio: number | null;
+};
+export type Keeper = { all: KeeperStats; week: KeeperStats };
 
 export async function fetchBooks(): Promise<Books> {
   const r = await fetch("/books", { headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });

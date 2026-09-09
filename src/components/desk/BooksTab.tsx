@@ -9,6 +9,8 @@ import {
   type BooksPoint,
   type BooksTotals,
   type BooksWindow,
+  type Keeper,
+  type KeeperStats,
 } from "@/lib/desk/books";
 import { cn } from "@/lib/utils";
 import { LeanChip, Pane } from "./bits";
@@ -385,6 +387,50 @@ function Totals({ label, t }: { label: string; t: BooksTotals }) {
   );
 }
 
+function KeeperMetric({ k, gloss, v, sub, t }: { k: string; gloss: string; v: string; sub?: string; t?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="font-mono text-micro uppercase tracking-wider text-subtle">
+        <Tip k={gloss}>{k}</Tip>
+      </div>
+      <div className={cn("font-mono text-data tabular", t ?? "text-fg")}>{v}</div>
+      {sub ? <div className="truncate font-mono text-micro text-subtle">{sub}</div> : null}
+    </div>
+  );
+}
+
+function KeeperCol({ label, s }: { label: string; s: KeeperStats }) {
+  return (
+    <div className="min-w-0 rounded-sm border border-border/60 p-2">
+      <div className="mb-1.5 font-mono text-micro uppercase tracking-widest text-subtle">{label}</div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 min-[380px]:grid-cols-3">
+        <KeeperMetric k="sits" gloss="keeper.wait" v={`${s.wait_pct}%`} sub={`${s.n} windows`} />
+        <KeeperMetric k="fills" gloss="keeper.booked" v={String(s.booked)} sub={s.avg_entry == null ? "no fills" : `avg ${s.avg_entry.toFixed(0)}¢`} />
+        <KeeperMetric k="win rate" gloss="keeper.hit" v={s.hit_pct == null ? "—" : `${s.hit_pct}%`} t={s.hit_pct == null ? "text-subtle" : s.hit_pct >= 50 ? "text-up" : "text-down"} />
+        <KeeperMetric k="net" gloss="keeper.net" v={fmtC(s.net)} t={tone(s.net)} />
+        <KeeperMetric k="max drawdown" gloss="keeper.dd" v={s.max_dd ? fmtC(s.max_dd) : "—"} t={s.max_dd ? "text-down" : "text-subtle"} />
+        <KeeperMetric k="confluence" gloss="keeper.conf" v={s.conf_ratio == null ? "—" : `${s.conf_ratio.toFixed(2)}×`} sub={s.floor_pct == null ? undefined : `floor kept ${s.floor_pct}%`} />
+      </div>
+    </div>
+  );
+}
+
+/** KEEPER — not "did it win" but "did it play the way it says." */
+function KeeperPane({ keeper }: { keeper: Keeper }) {
+  return (
+    <Pane title={<Tip k="keeper.pane">PROCESS SCORECARD</Tip>}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <KeeperCol label="all-time" s={keeper.all} />
+        <KeeperCol label="this week" s={keeper.week} />
+      </div>
+      <p className="mt-2 font-mono text-micro text-subtle">
+        Sits is how often the chair passed. Confluence is how hard the fills cleared the bar; floor kept is the share booked at the 70¢ floor
+        or better. Max drawdown is the worst peak-to-trough on paper. Every call is graded at its own 15-minute close.
+      </p>
+    </Pane>
+  );
+}
+
 function CallCell({ c }: { c: BooksWindow["call"] }) {
   if (!c) return <span className="text-subtle">sat out</span>;
   if (c.lean) {
@@ -503,6 +549,8 @@ export function BooksTab({ tz }: { tz: string }) {
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
         </Pane>
       </div>
+
+      <KeeperPane keeper={books.keeper} />
 
       <Pane title={<Tip k="books.curve">THE CURVE · 14 DAYS</Tip>}>
         <CurveChart pts={books.curve} days={books.days} tz={tz} at={books.at} />

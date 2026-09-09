@@ -63,6 +63,34 @@ export const GLOSS: Record<string, Gloss> = {
     title: "The curve",
     body: "Running total of the chair's cents over the last fourteen days, one point per booked window, after fees. The bars underneath are each day's net. Flat stretches are windows the chair sat out.",
   },
+  "keeper.pane": {
+    title: "Process scorecard",
+    body: "Not whether the chair won, but whether it played the way it says it does: how often it sits, how hard the calls that filled cleared the confluence bar, whether the fills honoured the 70¢ floor, and the worst run of losses on paper. All from the ledger, after fees, all-time and over the last seven days. Every call is graded at its own 15-minute close, never against a later price.",
+  },
+  "keeper.wait": {
+    title: "Sits",
+    body: "Share of graded windows the chair passed on. WAIT is the desk's most common call on purpose — it acts only when the seats agree hard enough to pay the ask. A high sits number is discipline, not idleness.",
+  },
+  "keeper.booked": {
+    title: "Fills",
+    body: "Windows where the paper book actually took a side at the ask. The average is the price it paid; the chair buys favourites at or above the 70¢ floor, so entries are usually rich.",
+  },
+  "keeper.hit": {
+    title: "Win rate",
+    body: "Share of the fills that settled in the money. On its own it flatters an expensive-favourite book, so read it next to net and max drawdown.",
+  },
+  "keeper.net": {
+    title: "Net",
+    body: "Cents made or lost across the fills, after Kalshi's fee. Paper only.",
+  },
+  "keeper.dd": {
+    title: "Max drawdown",
+    body: "The worst peak-to-trough the cumulative paper cents has run in the scope. This is the risk number a win rate hides: a book can win most windows and still bleed if the losses are larger than the wins.",
+  },
+  "keeper.conf": {
+    title: "Confluence",
+    body: "Average of the chair's score divided by its bar on the windows that filled — how far past the threshold the call was, not just that it cleared it. Floor kept is the share of fills booked at 70¢ or better.",
+  },
   "books.calib": {
     title: "Did the price tell the truth?",
     body: "Booked calls grouped by the price the chair paid. A 70¢ contract should win about 70% of the time if the market is right. The grey bar is the price, the coloured bar is how often the chair actually won at that price. Green means the chair beat the price; red means it paid too much.",
