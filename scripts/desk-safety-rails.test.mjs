@@ -125,3 +125,17 @@ test("trade direction reads the canonical field first in every parser", () => {
     );
   }
 });
+
+test("a bad run cannot invert a seat: the chair flips no signs", () => {
+  const chair = read("src/lib/desk/chair.ts");
+  // No sign flip, and no status that claims one.
+  assert.ok(!/signed = -signed/.test(chair), "the chair must not negate a seat's signed contribution");
+  assert.ok(!/status = "INVERT"/.test(chair), "no seat may be marked INVERT");
+  // Authority is reduced through the pure verdict instead.
+  assert.match(chair, /fadeVerdict\(learner\.seat_recent\[vote\.seat\] \?\? \[\], learner\.fade_strength\[vote\.seat\] \?\? 0\)/);
+  assert.match(chair, /fadeScale = verdict\.scale;/);
+  // And the verdict can only ever quiet a seat.
+  const fade = read("src/lib/desk/fade.ts");
+  assert.match(fade, /Always in \[0, 1\] — a sign is never flipped/);
+  assert.ok(!/scale: -/.test(fade), "a fade scale must never be negative");
+});
