@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   fetchBooks,
   type BooksLab,
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { LeanChip, Pane } from "./bits";
 import { Tip } from "./Tip";
 import { ReplayPane } from "./ReplayPane";
-import { BG, DOWN, FG, FONT, FONT_SM, GRID, INK, LINE, UP, fillRound, useDraw } from "./canvas";
+import { BG, DOWN, FG, FONT_SM, GRID, INK, LINE, UP, WAIT, fillRound, useDraw } from "./canvas";
 
 function fmtC(n: number | null | undefined, d = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -55,7 +55,7 @@ function pct(a: number, b: number): string {
 
 /* ---------- charts ---------- */
 
-function drawCurve(ctx: CanvasRenderingContext2D, w: number, h: number, pts: BooksPoint[], days: BooksDay[], tz: string) {
+function drawCurve(ctx: CanvasRenderingContext2D, w: number, h: number, pts: BooksPoint[], days: BooksDay[], tz: string, since: string) {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, w, h);
   const padL = 8;
@@ -165,6 +165,24 @@ function drawCurve(ctx: CanvasRenderingContext2D, w: number, h: number, pts: Boo
     ctx.fillText(d, xx, plotB + 2);
   });
 
+  // the 70¢ floor: where the paper book stopped filling under 70¢, while it is in view
+  const fi = pts.findIndex((p) => p.t >= since);
+  if (fi > 0) {
+    const xx = (x(fi - 1) + x(fi)) / 2;
+    ctx.strokeStyle = WAIT;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xx, plotT);
+    ctx.lineTo(xx, plotB);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = WAIT;
+    ctx.font = FONT_SM;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("70¢ floor", xx + 3, plotT);
+  }
+
   // last pill
   const last = pts[pts.length - 1];
   const text = fmtC(last.cum);
@@ -227,8 +245,8 @@ function drawBuckets(ctx: CanvasRenderingContext2D, w: number, h: number, bucket
   }
   const padL = 34;
   const padR = 8;
-  const padT = 18;
-  const padB = 18;
+  const padT = 8;
+  const padB = 38; // three lines under the axis: the shelf, how often it won, what it needed
   const plotT = padT;
   const plotB = h - padB;
   const y = (v: number) => plotB - (Math.max(0, Math.min(100, v)) / 100) * (plotB - plotT);
@@ -250,28 +268,34 @@ function drawBuckets(ctx: CanvasRenderingContext2D, w: number, h: number, bucket
     const cx = padL + gw * i + gw / 2;
     const won = b.n ? (100 * b.wins) / b.n : 0;
     const price = b.avg_entry;
+    const need = b.breakeven;
+    const cleared = b.net >= 0; // the verdict is the cents; needs is the rate they imply
     ctx.fillStyle = FG;
     fillRound(ctx, cx - bw - 1.5, y(price), bw, Math.max(1, plotB - y(price)), 1);
-    ctx.fillStyle = won >= price ? UP : DOWN;
+    ctx.fillStyle = cleared ? UP : DOWN;
     fillRound(ctx, cx + 1.5, y(won), bw, Math.max(1, plotB - y(won)), 1);
-    ctx.fillStyle = LINE;
+    // breakeven after the fee: the mark the coloured bar has to reach
+    ctx.strokeStyle = WAIT;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - bw - 4, y(need));
+    ctx.lineTo(cx + bw + 4, y(need));
+    ctx.stroke();
+    ctx.lineWidth = 1;
     ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.font = FONT_SM;
-    ctx.fillText(`${Math.round(won)}% of ${b.n}`, cx, Math.min(y(price), y(won)) - 2);
-    ctx.fillStyle = FG;
     ctx.textBaseline = "top";
+    ctx.font = FONT_SM;
+    ctx.fillStyle = FG;
     ctx.fillText(bucketLabel(b), cx, plotB + 3);
+    ctx.fillStyle = cleared ? UP : DOWN;
+    ctx.fillText(`${Math.round(won)}% of ${b.n}`, cx, plotB + 14);
+    ctx.fillStyle = WAIT;
+    ctx.fillText(`needs ${Math.round(need)}%`, cx, plotB + 25);
   });
-  ctx.font = FONT;
-  ctx.fillStyle = FG;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText("grey = price paid · colour = how often it won", padL, 2);
 }
 
-function CurveChart({ pts, days, tz, at }: { pts: BooksPoint[]; days: BooksDay[]; tz: string; at: number }) {
-  const ref = useDraw((ctx, w, h) => drawCurve(ctx, w, h, pts, days, tz), `${at}:${tz}`);
+function CurveChart({ pts, days, tz, since, at }: { pts: BooksPoint[]; days: BooksDay[]; tz: string; since: string; at: number }) {
+  const ref = useDraw((ctx, w, h) => drawCurve(ctx, w, h, pts, days, tz, since), `${at}:${tz}`);
   return <canvas ref={ref} className="block h-48 w-full rounded-sm" />;
 }
 
@@ -372,13 +396,20 @@ function LabPane({ lab, tz }: { lab: BooksLab | null; tz: string }) {
   );
 }
 
-function Totals({ label, t }: { label: string; t: BooksTotals }) {
+function Totals({ label, t }: { label: ReactNode; t: BooksTotals }) {
+  const won = t.calls ? (100 * t.wins) / t.calls : null;
+  const need = t.breakeven;
+  const cleared = t.calls ? t.net >= 0 : null; // the verdict is the cents; needs is the rate they imply
   return (
     <div className="min-w-0 rounded-sm border border-border/60 p-2">
       <div className="text-subtle text-micro">{label}</div>
       <div className={cn("font-mono text-call tabular", tone(t.net))}>{fmtC(t.net)}</div>
       <div className="font-mono text-micro text-muted">
-        {t.calls} calls · {t.wins} won ({pct(t.wins, t.calls)})
+        {t.calls} calls · {t.wins} won
+      </div>
+      <div className="font-mono text-micro text-muted">
+        <span className={cleared == null ? "text-subtle" : cleared ? "text-up" : "text-down"}>{won == null ? "—" : `${won.toFixed(1)}%`}</span> won ·{" "}
+        <Tip k="books.needs">needs {need == null ? "—" : `${need.toFixed(1)}%`}</Tip>
       </div>
       <div className="font-mono text-micro text-subtle">
         {t.n} windows · UP won {pct(t.ups, t.n)}
@@ -541,9 +572,10 @@ export function BooksTab({ tz }: { tz: string }) {
           </Pane>
         )}
         <Pane title={<Tip k="tab.books">THE BOOKS</Tip>}>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Totals label="today" t={books.today} />
             <Totals label="this week" t={books.week} />
+            <Totals label={<Tip k="books.floor">since the 70¢ floor</Tip>} t={books.floor} />
             <Totals label="all-time" t={books.all} />
           </div>
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
@@ -553,12 +585,13 @@ export function BooksTab({ tz }: { tz: string }) {
       <KeeperPane keeper={books.keeper} />
 
       <Pane title={<Tip k="books.curve">THE CURVE · 14 DAYS</Tip>}>
-        <CurveChart pts={books.curve} days={books.days} tz={tz} at={books.at} />
+        <CurveChart pts={books.curve} days={books.days} tz={tz} since={books.floor_since} at={books.at} />
       </Pane>
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Pane title={<Tip k="books.calib">DID THE PRICE TELL THE TRUTH?</Tip>}>
           <BucketChart buckets={books.buckets} at={books.at} />
+          <p className="mt-1 font-mono text-micro text-subtle">grey = price paid · gold = breakeven after the fee · green or red = the shelf cleared it or fell short</p>
         </Pane>
         <Pane title={<Tip k="books.heat">HOURS</Tip>}>
           <Heat cells={books.heat} />

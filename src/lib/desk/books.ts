@@ -15,10 +15,18 @@ export type BooksWindow = {
   replay: boolean;
 };
 
-export type BooksTotals = { n: number; calls: number; wins: number; net: number; ups: number };
+export type BooksTotals = {
+  n: number;
+  calls: number;
+  wins: number;
+  net: number;
+  ups: number;
+  /** Win rate the calls needed to break even, 0–100 — for calls held to settlement, entry plus fee. Null with no calls. */
+  breakeven: number | null;
+};
 export type BooksDay = { day: string; n: number; calls: number; wins: number; net: number };
 export type BooksPoint = { t: string; ev: number; cum: number };
-export type BooksBucket = { lo: number; hi: number; n: number; wins: number; avg_entry: number; net: number };
+export type BooksBucket = { lo: number; hi: number; n: number; wins: number; avg_entry: number; breakeven: number; net: number };
 export type BooksHeatCell = { dow: number; hour: number; n: number; calls: number; wins: number; net: number };
 
 /** The lab's stale-quote study, counted one trade per window so correlated shocks cannot inflate it. */
@@ -38,6 +46,9 @@ export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
   week: BooksTotals;
+  /** The book as it plays now: windows closing since the 70¢ floor went live. */
+  floor: BooksTotals;
+  floor_since: string;
   all: BooksTotals;
   keeper: Keeper;
   days: BooksDay[];

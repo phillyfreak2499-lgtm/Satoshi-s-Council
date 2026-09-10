@@ -223,4 +223,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The replay stopped looking broken on a near-the-line finish. BTC's last tick can sit above the strike while the window still settles DOWN — it grades on the average of the final minute, not the last print. The chart now marks where the window actually settled, in the result's colour, so a DOWN window visibly settles below the line even when spot ended above. Same mark on the shareable window card. Display only; grading is unchanged.",
   },
+  {
+    slug: "2026-09-10-breakeven-lens",
+    body:
+      "BOOKS now shows the number a win rate has to beat. Each card carries needs — the win rate those calls had to reach to break even after Kalshi's fee (for a call held to settlement, the price paid plus the fee) — and colours the real win rate by the net, so 80¢ favourites winning 80% read red, as the net already said. The calibration chart marks breakeven on every price shelf, and a new card splits the record at the 70¢ floor, marked on the curve. Display only; no call changed.",
+  },
 ];
