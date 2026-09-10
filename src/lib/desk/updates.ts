@@ -203,4 +203,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk knows when it is ready to be judged. A new owner-only gate in SETTINGS counts what has built up since the TAKER shadow seat was frozen — graded windows, TAKER's own calls, the chair's WAIT windows, regime breadth, a clean ledger — and says so only when there is enough to grade the experiment fairly. It decides nothing and changes no call; TAKER and the chair stay exactly as frozen.",
   },
+  {
+    slug: "2026-09-10-replay-side",
+    body:
+      "The window replay now says which side the chair booked. It always recorded the entry, the settle and the cents after fees, but not the side — so a losing UP call, drawn in red beside the window's DOWN result, could read as if the desk had bet DOWN. The replay now marks the booked side, UP or DOWN, in the header and on the chart, so a held call reads correctly even when it lost. Display only; nothing about the calls or grading changed.",
+  },
 ];

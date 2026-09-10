@@ -30,6 +30,21 @@ function fmtC(n: number | null | undefined, d = 1): string {
   return `${n > 0 ? "+" : ""}${n.toFixed(d)}¢`;
 }
 
+/** Which side the chair actually booked, read from the held-position band. The
+ *  desk holds one side per window (no flipping), so the first non-zero chair
+ *  lean within the booked span is the entry side. This is the SIDE we bought —
+ *  distinct from the grade-frame lean (which can decay to WAIT) and from the
+ *  window's winner. Null when the chair sat out. */
+function bookedSide(c: Replay["cols"]): "UP" | "DOWN" | null {
+  const start = c.booked.findIndex((v) => v === 1);
+  if (start < 0) return null;
+  for (let i = start; i < c.lean.length; i++) {
+    if (c.booked[i] === 1 && c.lean[i] !== 0) return c.lean[i] > 0 ? "UP" : "DOWN";
+  }
+  const any = c.lean.find((v) => v !== 0);
+  return any == null ? null : any > 0 ? "UP" : "DOWN";
+}
+
 function fmtWhen(iso: string, tz: string): string {
   try {
     return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
@@ -248,7 +263,8 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
     ctx.fill();
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
-    ctx.fillText("booked", xs[b] + 6, bandT - 1);
+    const bs = bookedSide(c);
+    ctx.fillText(bs ? `booked ${bs}` : "booked", xs[b] + 6, bandT - 1);
   }
   cursorLine(ctx, xs[cursor] ?? xs[xs.length - 1], plotT, bandT + bandH);
 }
@@ -373,6 +389,7 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
   const spot = c.spot[i];
   const dist = r.strike ? spot - r.strike : null;
   const lean = c.lean[i] > 0 ? "UP" : c.lean[i] < 0 ? "DOWN" : "WAIT";
+  const side = bookedSide(c);
   const speaking = Object.entries(c.seats)
     .filter(([, lane]) => Math.abs(lane[i] ?? 0) >= 2)
     .map(([id, lane]) => ({ id, up: (lane[i] ?? 0) > 0 }));
@@ -385,8 +402,11 @@ export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string
         <span>strike {fmtPx(r.strike)}</span>
         <span>settled {fmtPx(r.official)}</span>
         {r.call ? (
-          <span className={cn("tabular", r.call.ev == null ? "text-muted" : r.call.ev > 0 ? "text-up" : r.call.ev < 0 ? "text-down" : "text-muted")}>
-            chair booked {r.call.entry.toFixed(0)}¢ → {r.call.settle == null ? "open" : `${r.call.settle.toFixed(0)}¢`} · {fmtC(r.call.ev)}
+          <span className="flex items-center gap-1 tabular text-muted">
+            chair booked {side ? <LeanChip lean={side} /> : null}
+            <span className={cn(r.call.ev == null ? "text-muted" : r.call.ev > 0 ? "text-up" : r.call.ev < 0 ? "text-down" : "text-muted")}>
+              {r.call.entry.toFixed(0)}¢ → {r.call.settle == null ? "open" : `${r.call.settle.toFixed(0)}¢`} · {fmtC(r.call.ev)}
+            </span>
           </span>
         ) : (
           <span className="text-subtle">chair sat out</span>
