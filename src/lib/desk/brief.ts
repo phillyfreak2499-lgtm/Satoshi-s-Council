@@ -5,6 +5,8 @@ export type GavelRow = {
   conf: number;
   score: number;
   bar: number;
+  /** Price paid, cents; null on a WAIT window. */
+  entry: number | null;
   settle: number | null;
   ev: number | null;
   winner: "UP" | "DOWN" | null;
