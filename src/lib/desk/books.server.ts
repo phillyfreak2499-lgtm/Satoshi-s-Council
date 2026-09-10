@@ -376,7 +376,7 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
       with base as (select *, close_time > now() - interval '7 days' as week from desk_ledger)
       select
         count(*)::int as n_all,
-        (count(*) filter (where chair_lean = 'WAIT'))::int as wait_all,
+        (count(*) filter (where entry_cents is null))::int as wait_all,
         (count(*) filter (where entry_cents is not null))::int as booked_all,
         (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins_all,
         coalesce(sum(ev_cents), 0)::float as net_all,
@@ -384,7 +384,7 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
         (count(*) filter (where entry_cents is not null and entry_cents >= 70))::int as floor_all,
         (avg(abs(score) / nullif(bar, 0)) filter (where entry_cents is not null))::float as conf_all,
         (count(*) filter (where week))::int as n_week,
-        (count(*) filter (where week and chair_lean = 'WAIT'))::int as wait_week,
+        (count(*) filter (where week and entry_cents is null))::int as wait_week,
         (count(*) filter (where week and entry_cents is not null))::int as booked_week,
         (count(*) filter (where week and entry_cents is not null and ev_cents > 0))::int as wins_week,
         coalesce(sum(ev_cents) filter (where week), 0)::float as net_week,

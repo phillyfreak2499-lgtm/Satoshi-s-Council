@@ -6,6 +6,7 @@
  * on the live window — a labelled, non-binding line, never a gate. See
  * ledger-clerk.ts for the rules. LEDGER never votes.
  */
+import { chairDecisionOf } from "./booked-side";
 import { chicagoDay } from "./crew.server";
 import {
   citedWilson,
@@ -70,12 +71,14 @@ async function loadWindows(): Promise<LedgerWindow[]> {
     close_time: Date | string;
     winner: string;
     chair_lean: string | null;
+    entry_cents: number | null;
+    settle_cents: number | null;
     ev_cents: number | null;
     seats: Record<string, { lean?: string; raw_lean?: string }> | null;
   }>`
-    select close_time, winner, chair_lean, ev_cents, seats
+    select close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents, seats
       from (
-        select close_time, winner, chair_lean, ev_cents, seats
+        select close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents, seats
           from desk_ledger
          where winner in ('UP','DOWN')
          order by close_time desc
@@ -91,7 +94,10 @@ async function loadWindows(): Promise<LedgerWindow[]> {
       const honest = cell.raw_lean === "UP" || cell.raw_lean === "DOWN" ? cell.raw_lean : cell.lean;
       if (honest === "UP" || honest === "DOWN") stance[seat] = honest;
     }
-    const chair: Lean = r.chair_lean === "UP" || r.chair_lean === "DOWN" ? r.chair_lean : "WAIT";
+    // The side the chair actually booked — LedgerWindow.chair_lean is documented
+    // as the booked side, and reading the decayed column made the book
+    // attribution on every pattern card read as if the chair had sat.
+    const chair: Lean = chairDecisionOf(r.chair_lean, r.settle_cents, r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null);
     out.push({
       t: r.close_time instanceof Date ? r.close_time.getTime() : Date.parse(String(r.close_time)),
       winner: r.winner === "UP" ? "UP" : "DOWN",

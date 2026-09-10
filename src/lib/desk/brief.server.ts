@@ -10,7 +10,7 @@
  * floor's clock.
  */
 import { currentSnap } from "./server-engine";
-import { bookedSideOf } from "./booked-side";
+import { chairDecisionOf } from "./booked-side";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -67,10 +67,6 @@ function iso(v: Date | string): string {
   return v instanceof Date ? v.toISOString() : new Date(v).toISOString();
 }
 
-function lean(v: string): "UP" | "DOWN" | "WAIT" {
-  return v === "UP" ? "UP" : v === "DOWN" ? "DOWN" : "WAIT";
-}
-
 function toGavel(r: LedgerRow): GavelRow {
   const winner = r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null;
   return {
@@ -78,7 +74,7 @@ function toGavel(r: LedgerRow): GavelRow {
     // The side the chair actually booked and held to settlement — not the
     // grade-frame lean, which can decay to WAIT while a position was live.
     // A genuine WAIT window (nothing booked) still shows WAIT.
-    lean: bookedSideOf(r.settle_cents, winner) ?? lean(r.chair_lean),
+    lean: chairDecisionOf(r.chair_lean, r.settle_cents, winner),
     conf: Math.round(Number(r.chair_conf ?? 0)),
     score: Number(r.score ?? 0),
     bar: Number(r.bar ?? 0),
@@ -137,19 +133,22 @@ async function build(): Promise<Brief> {
   `;
   const gavel = rows.map(toGavel);
 
-  const overnightRows = await db<{ lean: string; n: number }>`
-    select chair_lean as lean, count(*)::int as n
+  // What the chair DID over the last 12 hours, not its grade-frame lean: a
+  // held position whose lean decayed would otherwise be tallied as a sit.
+  const overnightRows = await db<{ chair_lean: string | null; settle_cents: number | null; winner: string | null }>`
+    select chair_lean, settle_cents, winner
     from desk_ledger
     where close_time > now() - interval '12 hours'
-    group by chair_lean
   `;
   let up = 0;
   let down = 0;
   let wait = 0;
   for (const r of overnightRows) {
-    if (r.lean === "UP") up = r.n;
-    else if (r.lean === "DOWN") down = r.n;
-    else wait += r.n;
+    const w = r.winner === "UP" || r.winner === "DOWN" ? r.winner : null;
+    const did = chairDecisionOf(r.chair_lean, r.settle_cents, w);
+    if (did === "UP") up += 1;
+    else if (did === "DOWN") down += 1;
+    else wait += 1;
   }
   // Most-recent consecutive WAIT streak, read off the newest-first rows.
   let waitStreak = 0;

@@ -81,7 +81,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "keeper.wait": {
     title: "Sits",
-    body: "Share of graded windows the chair passed on. WAIT is the desk's most common call on purpose — it acts only when the seats agree hard enough to pay the ask. A high sits number is discipline, not idleness.",
+    body: "Share of graded windows the chair took no position on — both the windows it called WAIT and the ones where it had a read but the ask sat under the 70¢ floor. Sitting is the desk's most common outcome on purpose: it acts only when the seats agree hard enough to pay the ask. Sits and fills cover every graded window between them, so the two add up. A high sits number is discipline, not idleness.",
   },
   "keeper.booked": {
     title: "Fills",

@@ -22,3 +22,27 @@ export function bookedSideOf(
   if (settleCents == null || (winner !== "UP" && winner !== "DOWN")) return null;
   return settleCents >= 50 ? winner : winner === "UP" ? "DOWN" : "UP";
 }
+
+/**
+ * What the chair DID on a window: the side it booked and held, or WAIT.
+ *
+ * The companion to the above, and for the same reason. Any count that reads
+ * `chair_lean` alone treats a held position as a sit whenever the lean decayed
+ * before the grade frame — which is most of them, because a window that is
+ * decided enough to fill is usually quiet again by the close. So every count
+ * of what the chair did reads it here: the booked side when there was a fill,
+ * the grade-frame lean when there was not (a read the floor declined is still
+ * a directional read), and WAIT only when the chair genuinely sat.
+ *
+ * On a window that is booked but not yet graded the booked side cannot be
+ * recovered, so the lean stands in; that resolves itself at the close.
+ */
+export function chairDecisionOf(
+  chairLean: string | null | undefined,
+  settleCents: number | null | undefined,
+  winner: "UP" | "DOWN" | null | undefined,
+): "UP" | "DOWN" | "WAIT" {
+  const booked = bookedSideOf(settleCents, winner);
+  if (booked) return booked;
+  return chairLean === "UP" || chairLean === "DOWN" ? chairLean : "WAIT";
+}

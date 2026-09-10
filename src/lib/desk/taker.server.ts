@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { chairDecisionOf } from "./booked-side";
 import { takerReport, type TakerReport, type TakerRow } from "./taker";
 import type { Lean } from "./types";
 
@@ -24,9 +25,13 @@ export async function takerExperiment(): Promise<TakerReport> {
     winner: string | null;
     ev_cents: number | null;
     chair_lean: string | null;
+    chair_settle: number | null;
+    chair_winner: string | null;
   }>`
     select t.eligible, t.lean, t.conf, t.regime, t.winner, t.ev_cents,
-           coalesce(l.chair_lean, t.chair_lean) as chair_lean
+           coalesce(l.chair_lean, t.chair_lean) as chair_lean,
+           l.settle_cents as chair_settle,
+           l.winner as chair_winner
     from desk_taker t
     left join desk_ledger l on l.ticker = t.ticker and l.close_time = t.close_time
     order by t.close_time
@@ -38,7 +43,9 @@ export async function takerExperiment(): Promise<TakerReport> {
     regime: r.regime || "",
     winner: r.winner === "UP" || r.winner === "DOWN" ? r.winner : null,
     ev_cents: r.ev_cents == null ? null : Number(r.ev_cents),
-    chair_lean: asLean(r.chair_lean),
+    // What the Council DID on the window, so the "when the chair said WAIT"
+    // cut cannot be polluted by held positions whose lean decayed to WAIT.
+    chair_lean: chairDecisionOf(r.chair_lean, r.chair_settle, r.chair_winner === "UP" || r.chair_winner === "DOWN" ? r.chair_winner : null),
   }));
   const report = takerReport(mapped);
   cache = { at: Date.now(), report };

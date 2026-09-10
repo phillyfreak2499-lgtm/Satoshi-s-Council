@@ -124,7 +124,7 @@ export function readinessReport(input: ReadinessInput, frozenAt = TAKER_FROZEN_A
     },
     {
       key: "chair_wait",
-      label: "Chair WAIT windows to test the bar against",
+      label: "Chair WAIT windows (no fill) to test the bar against",
       have: input.chair_wait_since_freeze,
       need: READY_MIN_CHAIR_WAIT,
       met: input.chair_wait_since_freeze >= READY_MIN_CHAIR_WAIT,
