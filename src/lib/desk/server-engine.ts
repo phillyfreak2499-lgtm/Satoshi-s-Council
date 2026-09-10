@@ -26,7 +26,7 @@ import { freshLearner } from "./skills";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
-import { DESK_UPDATES } from "./updates";
+import { BOARD_UPDATE_MAX, DESK_UPDATES } from "./updates";
 import { labDigestBits, labFairState, labSettleReceipt, startLab, labFairNow } from "./lab.server";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
@@ -338,16 +338,22 @@ async function persistState(e: Eng, force = false) {
   }
 }
 
-/** Checked-in changelog → pinned Board posts, once per slug. */
+/** Checked-in changelog → pinned Board posts, one per slug. A posted note is
+ *  never rewritten — the Board is a record — with one exception: a note that
+ *  was clipped on the way in (the stored body is a strict prefix of the full
+ *  one) is completed in place. The post itself (its id and time) is never
+ *  recreated, so nothing reads as new. */
 async function syncUpdates(e: Eng) {
   try {
     const db = await sql();
     for (const u of DESK_UPDATES) {
-      const body = u.body.replace(/\s+/g, " ").trim().slice(0, 400);
+      const body = u.body.replace(/\s+/g, " ").trim().slice(0, BOARD_UPDATE_MAX);
       await db`
         insert into board (who, body, kind, lean, ticker, conf, slug)
         values ('DESK', ${body}, 'update', '', '', 0, ${u.slug})
-        on conflict (slug) do nothing
+        on conflict (slug) do update set body = excluded.body
+        where length(excluded.body) > length(board.body)
+          and left(excluded.body, length(board.body)) = board.body
       `;
     }
   } catch (err) {
