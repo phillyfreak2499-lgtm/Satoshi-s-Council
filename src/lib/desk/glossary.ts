@@ -189,7 +189,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "crew.wrench": {
     title: "WRENCH — the mechanic",
-    body: "A scheduled session that audits the ledger, the samples and SWEEP's flags for real bugs: caps that can never clear the bar, deadlocks, mis-scaled formulas, rules that never fire. It opens a pull request with the evidence and logs it here. It never merges and never touches knobs.",
+    body: "A scheduled session that audits the ledger, the samples and SWEEP's flags for real bugs: caps that can never clear the bar, deadlocks, mis-scaled formulas, rules that never fire — and display truth, that every screen matches the record behind it (a booked call shows the side it was actually booked on, not a lean that has since decayed to WAIT, and never the window's result). It opens a pull request with the evidence and logs it here. It never merges and never touches knobs.",
   },
   "tab.settings": {
     title: "SETTINGS",

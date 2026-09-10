@@ -8,8 +8,11 @@
  * validation (the last week); a bar moves only when the training winner is
  * also not worse on validation, at most one small step a week, and a move
  * that proves worse a week later is reverted. Anti-signals get benched for a
- * week. WRENCH (mechanic) is a scheduled session that opens pull requests;
- * its log is synced from the repo.
+ * week. WRENCH (mechanic) is a scheduled session that opens pull requests for
+ * real bugs — in the desk's logic and data, and in display truth (every screen
+ * must match the record behind it: a booked call shows the side it was booked
+ * on, never a decayed lean or the window's result); its log is synced from the
+ * repo.
  */
 import { takerFeeCentsExact } from "./clock";
 import { SPEAK_CONF } from "./math";

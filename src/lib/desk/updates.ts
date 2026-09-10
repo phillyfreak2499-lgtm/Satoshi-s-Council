@@ -208,4 +208,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The window replay now says which side the chair booked. It always recorded the entry, the settle and the cents after fees, but not the side — so a losing UP call, drawn in red beside the window's DOWN result, could read as if the desk had bet DOWN. The replay now marks the booked side, UP or DOWN, in the header and on the chart, so a held call reads correctly even when it lost. Display only; nothing about the calls or grading changed.",
   },
+  {
+    slug: "2026-09-10-display-truth",
+    body:
+      "The pit crew's mechanic got a new beat. WRENCH now also hunts display bugs — checking that every screen matches the record behind it — so a held call always shows the side it was booked on, not a lean that later went quiet. In the same pass, GAVEL and the shareable window card were aligned to name that side, matching the books and the replay; one helper decides it everywhere so they can't drift apart. Display only, nothing about the calls changed.",
+  },
 ];
