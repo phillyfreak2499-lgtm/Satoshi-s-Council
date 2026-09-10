@@ -10,6 +10,7 @@
  * floor's clock.
  */
 import { currentSnap } from "./server-engine";
+import { bookedSideOf } from "./booked-side";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -68,16 +69,19 @@ function lean(v: string): "UP" | "DOWN" | "WAIT" {
 }
 
 function toGavel(r: LedgerRow): GavelRow {
-  const booked = r.settle_cents != null;
+  const winner = r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null;
   return {
     t: iso(r.close_time),
-    lean: lean(r.chair_lean),
+    // The side the chair actually booked and held to settlement — not the
+    // grade-frame lean, which can decay to WAIT while a position was live.
+    // A genuine WAIT window (nothing booked) still shows WAIT.
+    lean: bookedSideOf(r.settle_cents, winner) ?? lean(r.chair_lean),
     conf: Math.round(Number(r.chair_conf ?? 0)),
     score: Number(r.score ?? 0),
     bar: Number(r.bar ?? 0),
-    settle: booked ? Number(r.settle_cents) : null,
+    settle: r.settle_cents != null ? Number(r.settle_cents) : null,
     ev: r.ev_cents == null ? null : Math.round(Number(r.ev_cents) * 10) / 10,
-    winner: r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null,
+    winner,
   };
 }
 

@@ -5,6 +5,8 @@
  * settle minus entry minus the taker fee, so every number here is after
  * fees. Times are grouped in Chicago, the floor's clock.
  */
+import { bookedSideOf } from "./booked-side";
+
 async function sql() {
   const { getSql } = await import("@/lib/db");
   return getSql();
@@ -121,8 +123,7 @@ function toWindow(r: LedgerRow, arena: Map<string, { n: number; net: number }>):
   const winner: "UP" | "DOWN" = r.winner === "UP" ? "UP" : "DOWN";
   let call: BooksCall | null = null;
   if (r.entry_cents != null) {
-    const lean = r.settle_cents === 100 ? winner : r.settle_cents === 0 ? (winner === "UP" ? "DOWN" : "UP") : null;
-    call = { lean, entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents };
+    call = { lean: bookedSideOf(r.settle_cents, winner), entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents };
   }
   let sn = 0;
   let sr = 0;

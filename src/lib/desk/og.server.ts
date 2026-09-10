@@ -5,6 +5,7 @@
  * so the harness can check the bytes.
  */
 import { deflateSync } from "node:zlib";
+import { bookedSideOf } from "./booked-side";
 
 export type RGB = readonly [number, number, number];
 export type Raster = { w: number; h: number; px: Uint8Array };
@@ -321,8 +322,9 @@ export function windowCard(w: WindowCardInput): Buffer {
     text(r, cx0 + 24, cy0 + 130, "NO REPLAY FOR THIS WINDOW", INK.subtle, 5);
   }
 
+  const side = w.call ? bookedSideOf(w.call.settle, w.winner) : null;
   const footer = w.call
-    ? `CHAIR BOOKED ${cents(w.call.entry)} → ${w.call.settle == null ? "OPEN" : cents(w.call.settle)} · ${w.call.ev == null ? "" : cents(w.call.ev, true)} AFTER FEES`
+    ? `CHAIR BOOKED ${side ? `${side} ` : ""}${cents(w.call.entry)} → ${w.call.settle == null ? "OPEN" : cents(w.call.settle)} · ${w.call.ev == null ? "" : cents(w.call.ev, true)} AFTER FEES`
     : "CHAIR SAT OUT · NOTHING BOOKED";
   frame(r, footer);
   return encodePng(r);
