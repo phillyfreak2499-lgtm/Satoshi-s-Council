@@ -65,7 +65,11 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "gavel.list": {
     title: "GAVEL — Chair decisions",
-    body: "Every graded 15-minute window the Chair decided, newest first, WAIT included. WAIT is a real decision and prints as a row; it is not a trade, so its settlement shows a dash. UP and DOWN rows show the price paid and what the position settled at. This is the Chair only — never a specialist seat's fill.",
+    body: "Every graded 15-minute window the Chair decided, newest first, WAIT included. WAIT is a real decision and prints as a row; it is not a trade, so its settlement shows a dash. UP and DOWN rows show what the position settled at and what it made after the fee. This is the Chair only — never a specialist seat's fill. View at reads the same decisions at 10 to 1,000 contracts.",
+  },
+  "gavel.size": {
+    title: "View at size",
+    body: "The desk books one contract on paper. Pick a size to read the same decisions as if each fill had been 10, 25, 50, 100 or more contracts: nothing about the call changes, cents become dollars, and Kalshi's fee is worked at size the way the exchange does it — 7% of price × (1 − price) × contracts, rounded up once per order — so 100 contracts at 70¢ pay 147¢, not a hundred times 2¢. One thing it cannot know is whether the ask had that size; a large order walks the book, so real fills at size would run a little worse than shown. Paper only; nothing is ever ordered.",
   },
   "seats.list": {
     title: "SEATS — specialist paper fills",

@@ -241,4 +241,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The Board stopped clipping the desk's own notes. Update posts were cut at 400 characters on the way in, so eighteen notes since Sep 5 ended early, several mid-word. The Board now takes a note whole, completes each clipped one in place at boot, and a test refuses any note too long to post. Display only; nothing about the desk or its calls changed.",
   },
+  {
+    slug: "2026-09-10-gavel-size",
+    body:
+      "GAVEL can be read at size. A view-at picker on the Chair's decisions shows the same fills as if each had been 10, 25, 50, 100 or up to 1,000 contracts: cents become dollars and Kalshi's fee is worked at size the way the exchange rounds it, so 100 contracts at 70¢ pay 147¢, not 200¢. The ask is assumed to hold, which real size would not always get. Display only; the desk still books one paper contract.",
+  },
 ];

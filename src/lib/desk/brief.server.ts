@@ -24,6 +24,8 @@ export type GavelRow = {
   conf: number;
   score: number;
   bar: number;
+  /** Price paid, cents; null on a WAIT window. */
+  entry: number | null;
   settle: number | null;
   ev: number | null;
   /** The market result for the window (real), shown as faint context, never as a Chair settlement. */
@@ -55,6 +57,7 @@ type LedgerRow = {
   chair_conf: number | null;
   score: number | null;
   bar: number | null;
+  entry_cents: number | null;
   settle_cents: number | null;
   ev_cents: number | null;
   winner: string | null;
@@ -79,6 +82,7 @@ function toGavel(r: LedgerRow): GavelRow {
     conf: Math.round(Number(r.chair_conf ?? 0)),
     score: Number(r.score ?? 0),
     bar: Number(r.bar ?? 0),
+    entry: r.entry_cents != null ? Number(r.entry_cents) : null,
     settle: r.settle_cents != null ? Number(r.settle_cents) : null,
     ev: r.ev_cents == null ? null : Math.round(Number(r.ev_cents) * 10) / 10,
     winner,
@@ -126,7 +130,7 @@ export async function deskBrief(): Promise<Brief> {
 async function build(): Promise<Brief> {
   const db = await sql();
   const rows = await db<LedgerRow>`
-    select close_time, chair_lean, chair_conf, score, bar, settle_cents, ev_cents, winner
+    select close_time, chair_lean, chair_conf, score, bar, entry_cents, settle_cents, ev_cents, winner
     from desk_ledger
     order by close_time desc
     limit 40

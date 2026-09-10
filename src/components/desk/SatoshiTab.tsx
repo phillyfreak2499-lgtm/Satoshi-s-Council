@@ -13,6 +13,7 @@ import { FULL_N } from "@/lib/desk/math";
 import { readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { useDesk } from "@/lib/desk/store";
 import { fetchBrief, type Brief, type GavelRow } from "@/lib/desk/brief";
+import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from "@/lib/desk/size-view";
 import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 
@@ -400,15 +401,64 @@ function ChairScoreboard({ v2 }: { v2?: V2Frame | null }) {
   );
 }
 
-/** GAVEL — Chair decisions only, WAIT included. Never seat fills. */
+const GAVEL_SIZE_LS = "desk.gavel.size";
+function readGavelSize(): GavelSize {
+  try {
+    const n = Number(localStorage.getItem(GAVEL_SIZE_LS));
+    return isGavelSize(n) ? n : 1;
+  } catch {
+    return 1;
+  }
+}
+function writeGavelSize(n: GavelSize) {
+  try {
+    localStorage.setItem(GAVEL_SIZE_LS, String(n));
+  } catch {
+    /* private mode: the choice just doesn't stick */
+  }
+}
+
+/** GAVEL — Chair decisions only, WAIT included. Never seat fills. Read at one
+ *  contract (the ledger's own unit) or at size, with the fee worked at size. */
 function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
+  const [size, setSize] = useState<GavelSize>(1);
+  useEffect(() => {
+    setSize(readGavelSize());
+  }, []);
+  const at = (g: GavelRow): number | null => {
+    if (g.settle == null || g.ev == null) return null;
+    if (size <= 1 || g.entry == null) return g.ev;
+    return evCentsAt(g.entry, g.settle, size);
+  };
   return (
     <section className="rounded-md border border-border bg-surface">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h3 className="font-mono text-micro uppercase tracking-widest text-subtle">
           <Tip k="gavel.list">GAVEL — Chair decisions</Tip>
         </h3>
-        <span className="font-mono text-micro text-subtle">{gavel.length ? `last ${gavel.length}` : ""}</span>
+        <div className="flex items-center gap-2 font-mono text-micro text-subtle">
+          <label className="flex items-center gap-1">
+            <Tip k="gavel.size">view at</Tip>
+            <select
+              className="rounded-sm border border-border bg-bg px-1 py-0.5 font-mono text-micro text-fg"
+              value={size}
+              aria-label="Contracts per decision"
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!isGavelSize(n)) return;
+                setSize(n);
+                writeGavelSize(n);
+              }}
+            >
+              {GAVEL_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? "1 contract" : `${n.toLocaleString("en-US")} contracts`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span>{gavel.length ? `last ${gavel.length}` : ""}</span>
+        </div>
       </div>
       {!gavel.length ? (
         <div className="px-3 py-4 font-mono text-ui text-muted">No graded Chair decisions yet.</div>
@@ -425,27 +475,36 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
               </tr>
             </thead>
             <tbody>
-              {gavel.map((g, i) => (
-                <tr key={`${g.t}-${i}`}>
-                  <td className="whitespace-nowrap pl-3 text-muted">{hhmm(g.t, tz)}</td>
-                  <td>
-                    <span className={cn("font-medium", g.lean === "UP" ? "text-up" : g.lean === "DOWN" ? "text-down" : "text-wait")}>{g.lean}</span>
-                  </td>
-                  <td className="num tabular text-muted">{g.conf}%</td>
-                  <td className="num tabular text-muted">
-                    {g.score >= 0 ? "+" : ""}
-                    {g.score.toFixed(2)} / {g.bar.toFixed(2)}
-                  </td>
-                  <td className={cn("num tabular pr-3", g.settle == null ? "text-subtle" : g.ev != null && g.ev >= 0 ? "text-up" : "text-down")}>
-                    {g.settle == null ? "—" : `${g.settle.toFixed(0)}¢`}
-                    {g.settle != null && g.ev != null ? ` · ${g.ev >= 0 ? "+" : ""}${g.ev.toFixed(1)}` : ""}
-                  </td>
-                </tr>
-              ))}
+              {gavel.map((g, i) => {
+                const v = at(g);
+                return (
+                  <tr key={`${g.t}-${i}`}>
+                    <td className="whitespace-nowrap pl-3 text-muted">{hhmm(g.t, tz)}</td>
+                    <td>
+                      <span className={cn("font-medium", g.lean === "UP" ? "text-up" : g.lean === "DOWN" ? "text-down" : "text-wait")}>{g.lean}</span>
+                    </td>
+                    <td className="num tabular text-muted">{g.conf}%</td>
+                    <td className="num tabular text-muted">
+                      {g.score >= 0 ? "+" : ""}
+                      {g.score.toFixed(2)} / {g.bar.toFixed(2)}
+                    </td>
+                    <td className={cn("num tabular pr-3", g.settle == null ? "text-subtle" : v != null && v >= 0 ? "text-up" : "text-down")}>
+                      {g.settle == null ? "—" : `${g.settle.toFixed(0)}¢`}
+                      {g.settle != null && v != null ? ` · ${fmtCentsAt(v, size)}` : ""}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+      {size > 1 ? (
+        <p className="border-t border-border px-3 py-1.5 font-mono text-micro text-subtle">
+          The same fills at {size.toLocaleString("en-US")} contracts: fee at size, rounded once per order, and the ask assumed to hold — real size
+          would walk the book. Paper only.
+        </p>
+      ) : null}
     </section>
   );
 }
