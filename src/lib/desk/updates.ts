@@ -1,11 +1,19 @@
 /**
  * Desk changelog, written for the floor — not commit messages.
  * Each entry becomes a pinned "update" post on the Board (upserted by slug
- * at server boot, so editing a body here edits nothing already posted —
- * add a NEW slug for a new update). Keep bodies under 400 chars, one thought
- * per entry, plain language. Newest last; the board shows newest first.
+ * at server boot). A posted note is never rewritten — editing a body here
+ * changes nothing already on the Board, so add a NEW slug for a new update;
+ * the one exception is a note that was clipped on the way in, which is
+ * completed in place. Keep bodies short, one thought per entry, plain
+ * language, at most BOARD_UPDATE_MAX characters (a test holds the line).
+ * Newest last; the board shows newest first.
  */
 export type DeskUpdate = { slug: string; body: string };
+
+/** Most characters the Board takes for one note. The digest and the lab recap
+ *  post at the same size; a test refuses any note longer than this, so a note
+ *  can never be clipped mid-word on the way in. */
+export const BOARD_UPDATE_MAX = 900;
 
 export const DESK_UPDATES: DeskUpdate[] = [
   {
@@ -227,5 +235,10 @@ export const DESK_UPDATES: DeskUpdate[] = [
     slug: "2026-09-10-breakeven-lens",
     body:
       "BOOKS now shows the number a win rate has to beat. Each card carries needs — the win rate those calls had to reach to break even after Kalshi's fee (for a call held to settlement, the price paid plus the fee) — and colours the real win rate by the net, so 80¢ favourites winning 80% read red, as the net already said. The calibration chart marks breakeven on every price shelf, and a new card splits the record at the 70¢ floor, marked on the curve. Display only; no call changed.",
+  },
+  {
+    slug: "2026-09-10-board-whole",
+    body:
+      "The Board stopped clipping the desk's own notes. Update posts were cut at 400 characters on the way in, so eighteen notes since Sep 5 ended early, several mid-word. The Board now takes a note whole, completes each clipped one in place at boot, and a test refuses any note too long to post. Display only; nothing about the desk or its calls changed.",
   },
 ];
