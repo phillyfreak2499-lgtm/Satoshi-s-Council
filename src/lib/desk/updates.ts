@@ -213,4 +213,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The pit crew's mechanic got a new beat. WRENCH now also hunts display bugs — checking that every screen matches the record behind it — so a held call always shows the side it was booked on, not a lean that later went quiet. In the same pass, GAVEL and the shareable window card were aligned to name that side, matching the books and the replay; one helper decides it everywhere so they can't drift apart. Display only, nothing about the calls changed.",
   },
+  {
+    slug: "2026-09-10-digest-fits",
+    body:
+      "The desk's nightly recap stopped cutting itself off. The daily digest was capped at 400 characters and clipped its last line mid-word — usually LEDGER's read on the day's vote patterns. The cap now leaves room for the whole recap, the way the lab's post already does. Display only; the numbers were always right, they just weren't all showing.",
+  },
 ];

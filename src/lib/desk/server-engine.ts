@@ -625,7 +625,9 @@ async function maybeDigest(e: Eng) {
     if (sweepLine) bits.push(sweepLine);
     const ledgerLine = await ledgerRun();
     if (ledgerLine) bits.push(ledgerLine);
-    const body = bits.join(" · ").slice(0, 400);
+    // Leave room for the whole recap. At 400 the last bit (usually LEDGER's
+    // read) was clipped mid-word; the lab recap below already uses 900.
+    const body = bits.join(" · ").slice(0, 900);
     await db`
       insert into board (who, body, kind, lean, ticker, conf, slug)
       values ('DESK', ${body}, 'update', '', '', 0, ${`digest-${a.day}`})
