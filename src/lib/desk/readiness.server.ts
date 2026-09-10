@@ -47,8 +47,14 @@ export async function readinessSnapshot(alerted = false): Promise<ReadinessSnaps
   }>`
     select
       count(*) filter (where close_time >= ${FREEZE_ISO})                              as windows_since_freeze,
-      count(*) filter (where close_time >= ${FREEZE_ISO} and chair_lean = 'WAIT')      as chair_wait,
-      count(*) filter (where close_time >= ${FREEZE_ISO} and chair_lean in ('UP','DOWN')) as chair_dir,
+      -- A held position whose lean decayed to WAIT by the grade frame is NOT a
+      -- sit: requiring no fill is what keeps the bar-calibration arm honest.
+      count(*) filter (
+        where close_time >= ${FREEZE_ISO} and entry_cents is null and chair_lean = 'WAIT'
+      ) as chair_wait,
+      count(*) filter (
+        where close_time >= ${FREEZE_ISO} and (entry_cents is not null or chair_lean in ('UP','DOWN'))
+      ) as chair_dir,
       count(*)                                                                          as windows_all
     from desk_ledger
   `;

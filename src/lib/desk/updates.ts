@@ -246,4 +246,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "GAVEL can be read at size. A view-at picker on the Chair's decisions shows the same fills as if each had been 10, 25, 50, 100 or up to 1,000 contracts: cents become dollars and Kalshi's fee is worked at size the way the exchange rounds it, so 100 contracts at 70¢ pay 147¢, not 200¢. The ask is assumed to hold, which real size would not always get. Display only; the desk still books one paper contract.",
   },
+  {
+    slug: "2026-09-10-sits-truth",
+    body:
+      "The desk stopped counting its own trades as sits. A held position's lean usually goes quiet again before the window closes, and five places read that quiet lean as the decision — so a window the chair traded was tallied as one it passed on. The process scorecard said it sat 99% of windows while also reporting fills, which could not both be true; it now reads 82%, and sits plus fills cover every window. The same correction reaches the overnight ribbon, LEDGER's pattern cards, the TAKER read-out's when-the-chair-sat cut, and the owner's readiness gate, which was running 36 windows ahead of itself. One helper now answers what the chair did, so these cannot drift apart again. No call, bar, floor or grading rule changed.",
+  },
 ];
