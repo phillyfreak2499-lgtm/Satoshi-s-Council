@@ -93,6 +93,8 @@ Two arms, out-of-sample only (windows on/after the ${TAKER_FROZEN_AT} TAKER v1 f
 
 2) Chair bar calibration. On the same windows, test whether the chair passed up calibrated edges: compare its WAIT windows against realized outcomes and the market's implied edge, broken down by regime and confidence. Was WAIT correct, or was there a detectable edge the bar filtered out?
 
+3) The 70¢ floor's placement. The paper book fills only at 70¢ or better (CHAIR_MIN_ASK_CENTS in book-floor.ts, live since 2026-09-08 20:47 UTC). On the same out-of-sample windows, compare the fills by price shelf — 70–79¢ against 80¢ and up — on win rate against the breakeven each shelf needed (entry plus fee), net cents, and drawdown, broken down by regime. Is 70¢ the right line, or does the edge only begin higher (or reach lower)? Report the shelves with their counts; whether the floor moves is a separate sign-off.
+
 Rules (unchanged): read-only. Do NOT change TAKER rules, thresholds, sampling, or grading. Do NOT move the chair bar or any threshold. Do NOT promote TAKER. Keep the TAKER v1 experiment boundary clearly identifiable. If you find a real implementation bug, STOP and report the exact issue and the smallest fix before changing any code. Report findings only — acting on them (moving the bar, promoting a seat) is a separate, explicit sign-off from me.`;
 
 /**

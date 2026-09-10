@@ -131,6 +131,8 @@ test("prompt is self-contained and carries the guardrails", () => {
   assert.match(READINESS_PROMPT, /incremental/i);
   assert.match(READINESS_PROMPT, /calibrat/i);
   assert.match(READINESS_PROMPT, /separate.*sign-off/i);
+  assert.match(READINESS_PROMPT, /70¢ floor/, "asks where the floor belongs");
+  assert.match(READINESS_PROMPT, /70–79¢ against 80¢/, "compares the shelves out of sample");
 });
 
 test("frozen_at defaults to the freeze constant and honors an override", () => {
