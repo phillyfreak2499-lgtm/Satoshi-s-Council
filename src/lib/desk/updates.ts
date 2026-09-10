@@ -218,4 +218,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk's nightly recap stopped cutting itself off. The daily digest was capped at 400 characters and clipped its last line mid-word — usually LEDGER's read on the day's vote patterns. The cap now leaves room for the whole recap, the way the lab's post already does. Display only; the numbers were always right, they just weren't all showing.",
   },
+  {
+    slug: "2026-09-10-settled-mark",
+    body:
+      "The replay stopped looking broken on a near-the-line finish. BTC's last tick can sit above the strike while the window still settles DOWN — it grades on the average of the final minute, not the last print. The chart now marks where the window actually settled, in the result's colour, so a DOWN window visibly settles below the line even when spot ended above. Same mark on the shareable window card. Display only; grading is unchanged.",
+  },
 ];

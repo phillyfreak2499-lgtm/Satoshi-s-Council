@@ -78,10 +78,11 @@ function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
   const plotB = h - 16;
   const c = r.cols;
   const strike = r.strike ?? 0;
+  const settle = Number.isFinite(r.official as number) ? (r.official as number) : null;
   const vals = c.spot.filter((v) => Number.isFinite(v));
   if (!vals.length) return;
-  const hi0 = Math.max(...vals, strike || -Infinity);
-  const lo0 = Math.min(...vals, strike || Infinity);
+  const hi0 = Math.max(...vals, strike || -Infinity, settle ?? -Infinity);
+  const lo0 = Math.min(...vals, strike || Infinity, settle ?? Infinity);
   const pad = Math.max(2, (hi0 - lo0) * 0.12);
   const hi = hi0 + pad;
   const lo = lo0 - pad;
@@ -143,6 +144,31 @@ function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
   ctx.beginPath();
   c.spot.forEach((v, i) => (i ? ctx.lineTo(xs[i], y(v)) : ctx.moveTo(xs[i], y(v))));
   ctx.stroke();
+  // Settlement marker. The window grades on the final-minute index average, which
+  // can land the OTHER side of the strike from where spot's last tick shows — so
+  // without this a window that settled DOWN looks like it ended UP (or the reverse).
+  // Drawn in the result's colour at the value it actually settled on.
+  if (settle != null && strike > 0) {
+    const sy = y(settle);
+    const tone = r.winner === "UP" ? UP : r.winner === "DOWN" ? DOWN : WAIT;
+    const mx0 = x(WINDOW_S - 60);
+    const mx1 = x(WINDOW_S);
+    ctx.strokeStyle = tone;
+    ctx.setLineDash([2, 2]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mx0, sy);
+    ctx.lineTo(mx1, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = tone;
+    ctx.beginPath();
+    ctx.arc(mx1, sy, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.textAlign = "right";
+    ctx.textBaseline = settle >= strike ? "bottom" : "top";
+    ctx.fillText("settled", mx1 - 6, settle >= strike ? sy - 3 : sy + 3);
+  }
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillStyle = LINE;
