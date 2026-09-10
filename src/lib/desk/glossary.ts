@@ -101,7 +101,15 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "books.calib": {
     title: "Did the price tell the truth?",
-    body: "Booked calls grouped by the price the chair paid. A 70¢ contract should win about 70% of the time if the market is right. The grey bar is the price, the coloured bar is how often the chair actually won at that price. Green means the chair beat the price; red means it paid too much.",
+    body: "Booked calls grouped by the price the chair paid. The grey bar is the price; the gold mark just above it is the win rate that price needed once Kalshi's fee is in — a 70¢ contract needs about 72%, not 70%. The coloured bar is how often the chair actually won there: green cleared breakeven, red paid too much for what it won. Mind the count under each shelf; five calls is a hint, not a verdict.",
+  },
+  "books.floor": {
+    title: "Since the 70¢ floor",
+    body: "The record from the moment the paper book stopped filling under 70¢: 3:47 pm Chicago on Sep 8, 2026. All-time keeps every call before that as it was; this card is the book as it plays now, so it is the fairest read of the current rule, and the youngest, so give it windows before trusting it. The same moment is marked on the curve while it is in view.",
+  },
+  "books.needs": {
+    title: "Needs — the breakeven win rate",
+    body: "The win rate these calls needed to stand still, worked from what their wins paid and their losses cost after Kalshi's fee. For a contract held to settlement that is simply the price paid plus the fee: bought at 70¢ it pays 28¢ after its 2¢ fee when it wins and loses 72¢ when it doesn't, so that book is flat only at 72 wins in 100; at 80¢ about 82. Won is coloured by the verdict — green cleared it, red fell short — and the verdict is the net itself, so the colour and the cents can never disagree: a high win rate on rich contracts can still read red.",
   },
   "books.heat": {
     title: "Hours",

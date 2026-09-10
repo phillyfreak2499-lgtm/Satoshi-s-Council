@@ -3,9 +3,14 @@
  * or lost, window by window, straight from the ledger. Read-only. A call
  * is the chair's first booked side for a window at the ask it paid; ev is
  * settle minus entry minus the taker fee, so every number here is after
- * fees. Times are grouped in Chicago, the floor's clock.
+ * fees. Breakeven is the win rate a set of calls needed to stand still,
+ * worked from what its wins paid and its losses cost — for a call held to
+ * settlement, the price paid plus the fee, in percent — and the record
+ * splits at the 70¢ floor. Times are grouped in Chicago, the floor's clock.
  */
+import { CHAIR_FLOOR_SINCE_ISO } from "./book-floor";
 import { bookedSideOf } from "./booked-side";
+import { breakevenPct, mergeShelves, type Shelf, type ShelfRow } from "./books-math";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -38,10 +43,18 @@ export type BooksWindow = {
   replay: boolean;
 };
 
-export type BooksTotals = { n: number; calls: number; wins: number; net: number; ups: number };
+export type BooksTotals = {
+  n: number;
+  calls: number;
+  wins: number;
+  net: number;
+  ups: number;
+  /** Win rate the calls needed to break even, 0–100 — for calls held to settlement, entry plus fee. Null with no calls. */
+  breakeven: number | null;
+};
 export type BooksDay = { day: string; n: number; calls: number; wins: number; net: number };
 export type BooksPoint = { t: string; ev: number; cum: number };
-export type BooksBucket = { lo: number; hi: number; n: number; wins: number; avg_entry: number; net: number };
+export type BooksBucket = Shelf;
 export type BooksHeatCell = { dow: number; hour: number; n: number; calls: number; wins: number; net: number };
 
 /** The lab's stale-quote study, counted one trade per window so correlated shocks cannot inflate it. */
@@ -90,6 +103,9 @@ export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
   week: BooksTotals;
+  /** The book as it plays now: windows closing since the 70¢ floor went live. */
+  floor: BooksTotals;
+  floor_since: string;
   all: BooksTotals;
   keeper: Keeper;
   days: BooksDay[];
@@ -156,7 +172,7 @@ function toWindow(r: LedgerRow, arena: Map<string, { n: number; net: number }>):
   };
 }
 
-const EMPTY: BooksTotals = { n: 0, calls: 0, wins: 0, net: 0, ups: 0 };
+const EMPTY: BooksTotals = { n: 0, calls: 0, wins: 0, net: 0, ups: 0, breakeven: null };
 
 let cache: { at: number; body: Books } | null = null;
 let inflight: Promise<Books> | null = null;
@@ -179,41 +195,58 @@ export async function booksSummary(): Promise<Books> {
 
 async function build(): Promise<Books> {
   const db = await sql();
-  const [tot] = await db<Record<string, number>>`
+  type PeriodRow = {
+    period: string;
+    n: number;
+    calls: number;
+    wins: number;
+    net: number;
+    ups: number;
+    win_avg: number | null;
+    loss_avg: number | null;
+    cost_avg: number | null;
+  };
+  const periods = await db<PeriodRow>`
     with base as (
       select ev_cents, entry_cents, winner,
+        ceil(0.07 * entry_cents * (100 - entry_cents) / 100.0) as fee,
         (close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date as today,
-        close_time > now() - interval '7 days' as week
+        close_time > now() - interval '7 days' as week,
+        close_time >= ${CHAIR_FLOOR_SINCE_ISO}::timestamptz as floored
       from desk_ledger
     )
-    select
-      count(*)::int as n_all,
-      (count(*) filter (where entry_cents is not null))::int as calls_all,
-      (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins_all,
-      coalesce(sum(ev_cents), 0)::float as net_all,
-      (count(*) filter (where winner = 'UP'))::int as ups_all,
-      (count(*) filter (where week))::int as n_week,
-      (count(*) filter (where week and entry_cents is not null))::int as calls_week,
-      (count(*) filter (where week and entry_cents is not null and ev_cents > 0))::int as wins_week,
-      coalesce(sum(ev_cents) filter (where week), 0)::float as net_week,
-      (count(*) filter (where week and winner = 'UP'))::int as ups_week,
-      (count(*) filter (where today))::int as n_today,
-      (count(*) filter (where today and entry_cents is not null))::int as calls_today,
-      (count(*) filter (where today and entry_cents is not null and ev_cents > 0))::int as wins_today,
-      coalesce(sum(ev_cents) filter (where today), 0)::float as net_today,
-      (count(*) filter (where today and winner = 'UP'))::int as ups_today
+    select p.period,
+      count(*)::int as n,
+      (count(*) filter (where entry_cents is not null))::int as calls,
+      (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins,
+      coalesce(sum(ev_cents), 0)::float as net,
+      (count(*) filter (where winner = 'UP'))::int as ups,
+      (avg(ev_cents) filter (where entry_cents is not null and ev_cents > 0))::float as win_avg,
+      (avg(-ev_cents) filter (where entry_cents is not null and ev_cents < 0))::float as loss_avg,
+      (avg(entry_cents + fee) filter (where entry_cents is not null))::float as cost_avg
     from base
+    cross join (values ('all'), ('week'), ('floor'), ('today')) as p(period)
+    where p.period = 'all'
+      or (p.period = 'week' and week)
+      or (p.period = 'floor' and floored)
+      or (p.period = 'today' and today)
+    group by 1
   `;
-  const pick = (k: "all" | "week" | "today"): BooksTotals =>
-    tot
-      ? {
-          n: tot[`n_${k}`] ?? 0,
-          calls: tot[`calls_${k}`] ?? 0,
-          wins: tot[`wins_${k}`] ?? 0,
-          net: Math.round((tot[`net_${k}`] ?? 0) * 10) / 10,
-          ups: tot[`ups_${k}`] ?? 0,
-        }
-      : EMPTY;
+  const byPeriod = new Map(periods.map((r) => [r.period, r]));
+  const pick = (k: "all" | "week" | "floor" | "today"): BooksTotals => {
+    const r = byPeriod.get(k);
+    if (!r) return EMPTY;
+    const calls = Number(r.calls) || 0;
+    const be = calls ? breakevenPct(num(r.win_avg), num(r.loss_avg), num(r.cost_avg)) : null;
+    return {
+      n: Number(r.n) || 0,
+      calls,
+      wins: Number(r.wins) || 0,
+      net: round1(Number(r.net) || 0),
+      ups: Number(r.ups) || 0,
+      breakeven: be == null ? null : round1(be),
+    };
+  };
 
   const days = await db<BooksDay>`
     select to_char((close_time at time zone 'America/Chicago')::date, 'YYYY-MM-DD') as day,
@@ -238,30 +271,34 @@ async function build(): Promise<Books> {
     return { t: iso(r.t), ev: r.ev, cum };
   });
 
-  const bucketRows = await db<{ b: number; n: number; wins: number; avg_entry: number; net: number }>`
+  const bucketRows = await db<ShelfRow>`
     select least(9, greatest(0, floor(entry_cents / 10)))::int as b,
       count(*)::int as n,
       (count(*) filter (where ev_cents > 0))::int as wins,
+      (count(*) filter (where ev_cents < 0))::int as losses,
       avg(entry_cents)::float as avg_entry,
+      (avg(ev_cents) filter (where ev_cents > 0))::float as win_avg,
+      (avg(-ev_cents) filter (where ev_cents < 0))::float as loss_avg,
+      avg(entry_cents + ceil(0.07 * entry_cents * (100 - entry_cents) / 100.0))::float as cost_avg,
       coalesce(sum(ev_cents), 0)::float as net
     from desk_ledger
     where entry_cents is not null
     group by 1 order by 1
   `;
   // Under 50¢ is one shelf (the chair rarely buys the cheap side); 90¢ and up is another.
-  const shelf = (b: number) => (b < 5 ? 0 : b > 8 ? 9 : b);
-  const byShelf = new Map<number, BooksBucket>();
-  for (const r of bucketRows) {
-    const s = shelf(r.b);
-    const cur = byShelf.get(s) ?? { lo: s === 0 ? 0 : s * 10, hi: s === 0 ? 50 : s === 9 ? 100 : s * 10 + 10, n: 0, wins: 0, avg_entry: 0, net: 0 };
-    const n = cur.n + r.n;
-    cur.avg_entry = n ? (cur.avg_entry * cur.n + r.avg_entry * r.n) / n : 0;
-    cur.n = n;
-    cur.wins += r.wins;
-    cur.net = Math.round((cur.net + r.net) * 10) / 10;
-    byShelf.set(s, cur);
-  }
-  const buckets = [...byShelf.values()].sort((a, b) => a.lo - b.lo);
+  const buckets = mergeShelves(
+    bucketRows.map((r) => ({
+      b: Number(r.b) || 0,
+      n: Number(r.n) || 0,
+      wins: Number(r.wins) || 0,
+      losses: Number(r.losses) || 0,
+      avg_entry: Number(r.avg_entry) || 0,
+      win_avg: num(r.win_avg),
+      loss_avg: num(r.loss_avg),
+      cost_avg: Number(r.cost_avg) || 0,
+      net: Number(r.net) || 0,
+    })),
+  );
 
   const heat = await db<BooksHeatCell>`
     select extract(dow from close_time at time zone 'America/Chicago')::int as dow,
@@ -305,6 +342,8 @@ async function build(): Promise<Books> {
     last: windows[0] ?? null,
     today: pick("today"),
     week: pick("week"),
+    floor: pick("floor"),
+    floor_since: CHAIR_FLOOR_SINCE_ISO,
     all: pick("all"),
     keeper,
     days: days.map((d) => ({ ...d, net: Math.round(d.net * 10) / 10 })),
@@ -319,6 +358,13 @@ async function build(): Promise<Books> {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+/** A nullable numeric column as the driver hands it back (number, string or null). */
+function num(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 const EMPTY_KEEPER: KeeperStats = { n: 0, wait_pct: 0, booked: 0, hit_pct: null, net: 0, max_dd: 0, avg_entry: null, floor_pct: null, conf_ratio: null };
