@@ -320,8 +320,8 @@ export const GLOSS: Record<string, Gloss> = {
 
   "status.LIVE": { title: "LIVE", body: "Seat is in the chair's vote." },
   "status.MUTED": { title: "MUTED", body: "You silenced this seat in SETTINGS. It still paper-trades, it does not vote." },
-  "status.FADED": { title: "FADED", body: "Fade-family seat, discounted when the fade book is cold." },
-  "status.INVERT": { title: "INVERT", body: "Wrong often enough that its lean is flipped for a stretch." },
+  "status.FADED": { title: "FADED", body: "Cold lately, so the chair listens to it less. Eight graded calls under about 38% right and a seat is discounted; very wrong and cold for a while and it is benched to no weight at all. It keeps its own side the whole time — being wrong does not make a seat right in reverse — and it is still graded, so it can earn its voice back." },
+  "status.INVERT": { title: "INVERT", body: "Retired. The chair no longer flips a seat's side: a bad run makes a seat quieter, never opposite." },
   "status.FOLDED": { title: "FOLDED", body: "Learner parked this seat for poor EV. Watching, not voting." },
   "status.VETO": { title: "VETO", body: "Hard block — usually WARDEN or a failed gate. Desk sits." },
   "status.DOWN": { title: "DOWN", body: "Seat has no feed. Silent." },

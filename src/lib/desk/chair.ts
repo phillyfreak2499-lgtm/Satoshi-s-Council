@@ -3,7 +3,8 @@ import { detectQuiet, evidenceOf, isWeekend, readWarden } from "./context";
 import { recencyRate } from "./skills";
 import { knnRead, walkForward } from "./memory";
 import { readScalp, scalpAvg } from "./scalp";
-import { binKey, calibNOf, clamp, listenCalib, mean, round, seatCalib, WARM_N, wilsonLower } from "./math";
+import { fadeVerdict } from "./fade";
+import { binKey, calibNOf, clamp, listenCalib, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { holdScore } from "./stick";
 import type {
   ChairResult,
@@ -76,12 +77,6 @@ function learnedBase(learner: Learner, seat: SeatId): number {
   return learner.seat_w?.[seat] ?? priorOf(seat);
 }
 
-function last8Rate(learner: Learner, seat: SeatId): { n: number; rate: number } {
-  const rec = learner.seat_recent[seat] ?? [];
-  const slice = rec.slice(-8);
-  return { n: slice.length, rate: slice.length ? mean(slice) : 1 };
-}
-
 export function runChair(
   votes: Vote[],
   snap: Snapshot,
@@ -136,6 +131,8 @@ export function runChair(
     calib: number;
   };
   const accs: Acc[] = [];
+  /** Plain notes on seats whose authority a bad run has reduced. */
+  const fadeNotes: string[] = [];
 
   for (const vote of votes) {
     if (CHAIR_NON_VOTERS.has(vote.seat)) continue;
@@ -165,14 +162,20 @@ export function runChair(
     else if (bothDown) status = "VETO";
 
     const conf_w = (vote.confidence / 100) ** 1.4;
-    let signed = vote.lean === "UP" ? conf_w : vote.lean === "DOWN" ? -conf_w : 0;
-    const fade = learner.fade_strength[vote.seat] ?? 0;
-    const rec8 = last8Rate(learner, vote.seat);
+    const signed = vote.lean === "UP" ? conf_w : vote.lean === "DOWN" ? -conf_w : 0;
+    // A bad run takes authority away; it never hands a seat authority in the
+    // opposite direction. The seat keeps its own side and gets quieter, or is
+    // benched to zero weight — still graded, still shown, simply silent. This
+    // also removes a whole class of bug: the old flip changed the signed
+    // contribution but not the printed lean, so the conflict fraction, the
+    // diversity bonus, the quorum count and the family fold all went on
+    // booking the seat's weight on the side it was no longer pushing.
     let fadeScale = 1;
-    if (vote.lean !== "WAIT" && rec8.n >= 8 && rec8.rate < 0.38) {
-      signed = -signed;
-      fadeScale = 0.55 + 0.45 * clamp(fade, 0, 1);
-      status = "INVERT";
+    if (vote.lean !== "WAIT") {
+      const verdict = fadeVerdict(learner.seat_recent[vote.seat] ?? [], learner.fade_strength[vote.seat] ?? 0);
+      fadeScale = verdict.scale;
+      if (verdict.faded && status === "LIVE") status = "FADED";
+      if (verdict.why) fadeNotes.push(`${vote.seat} ${verdict.why}`);
     }
     const w = learnedBase(learner, vote.seat) * listen * hf * lic * fadeScale;
     accs.push({
@@ -247,20 +250,10 @@ export function runChair(
   }
 
   const liveAccs = accs.filter((a) => a.status !== "MUTED");
-  let sumW = liveAccs.reduce((s, a) => s + a.w, 0);
-  const invertW = accs.filter((a) => a.status === "INVERT").reduce((s, a) => s + a.w, 0);
-  let invertCap = "off";
-  if (sumW > 0 && invertW > 0.18 * sumW) {
-    const k = (0.18 * sumW) / invertW;
-    for (const a of accs) {
-      if (a.status === "INVERT") {
-        a.w *= k;
-        a.contribution = a.signed * a.w;
-      }
-    }
-    sumW = liveAccs.reduce((s, a) => s + a.w, 0);
-    invertCap = `invert pile scaled to 18% (×${k.toFixed(2)})`;
-  }
+  // The invert pile used to be capped at 18% of total weight, because a pile of
+  // reversed seats could otherwise carry a window. Nothing reverses any more,
+  // so there is no pile to cap; what a bad run does instead is reported here.
+  const invertCap = fadeNotes.length ? fadeNotes.join(" · ") : "off";
 
   const dirAccs = liveAccs.filter((a) => a.vote.lean !== "WAIT");
   const sumWDir = dirAccs.reduce((s, a) => s + a.w, 0);
