@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { takerOutcomeSide } from "./kalshi-wire";
 import { asMs, uniqueByT, valuesOf, type HistPoint } from "./hist";
 import { interpretKalshiBook, readSeq } from "./kalshi-book";
 import { applyInstrument, funding8h, notionalUsd, pickPrimaryVenue, specTag, volumeUsd } from "./units";
@@ -256,7 +257,8 @@ async function kalshi(): Promise<KalshiPack | null> {
         for (const tr of trades) {
           const c = num(tr.count_fp ?? tr.count);
           tot += c;
-          const side = String(tr.taker_side ?? tr.taker_outcome_side ?? "").toLowerCase();
+          // Canonical field first; the deprecated taker_side is a fallback only.
+          const side = takerOutcomeSide(tr);
           if (side === "yes") yesN += c;
         }
         if (tot > 0) taker_yes = yesN / tot;

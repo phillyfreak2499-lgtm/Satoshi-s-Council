@@ -14,7 +14,7 @@
  * entry — so the floor can be revisited on data, not on memory. Nothing is
  * positioned, so a later tick at the floor can still fill the same window.
  */
-import { markSide } from "./scalp";
+import { markSide } from "./scalp.ts";
 import type { CallLogRow, Lean, Snapshot } from "./types";
 
 export const CHAIR_MIN_ASK_CENTS = 70;

@@ -1,4 +1,4 @@
-import { clamp } from "./math";
+import { clamp } from "./math.ts";
 import type { Lean, Snapshot } from "./types";
 
 export type ClockRead = {

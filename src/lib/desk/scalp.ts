@@ -1,5 +1,5 @@
 import type { Lean, Learner, Snapshot } from "./types";
-import { takerFeeCents } from "./clock";
+import { takerFeeCents } from "./clock.ts";
 
 export const CHAIR_SCALP = "SATOSHI";
 const ROLL = 20;

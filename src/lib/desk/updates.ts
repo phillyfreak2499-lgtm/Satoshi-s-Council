@@ -251,4 +251,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk stopped counting its own trades as sits. A held position's lean usually goes quiet again before the window closes, and five places read that quiet lean as the decision — so a window the chair traded was tallied as one it passed on. The process scorecard said it sat 99% of windows while also reporting fills, which could not both be true; it now reads 82%, and sits plus fills cover every window. The same correction reaches the overnight ribbon, LEDGER's pattern cards, the TAKER read-out's when-the-chair-sat cut, and the owner's readiness gate, which was running 36 windows ahead of itself. One helper now answers what the chair did, so these cannot drift apart again. No call, bar, floor or grading rule changed.",
   },
+  {
+    slug: "2026-09-10-feed-integrity",
+    body:
+      "The desk reads Kalshi's trade tape by the current field, not the deprecated one. A public trade says which way it went in taker_outcome_side; the older taker_side is on its way out, and the lab was reading only that one while the REST path preferred it over the current field. Both now read the canonical field first, an unreadable trade counts as unknown rather than as a buyer, and the exchange's own clock is kept apart from ours so feed lag still reads as lag. The rebuilt order book also stops trusting itself after a dropped message: a gap in the sequence quarantines the book until a fresh snapshot re-anchors it, so no study prices off levels that may already be gone. Measurement only — no call, bar, floor or grading rule changed.",
+  },
 ];
