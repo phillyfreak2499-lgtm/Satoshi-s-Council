@@ -8,6 +8,7 @@ import {
   type BooksHeatCell,
   type BooksPoint,
   type BooksTotals,
+  type FloorTrial,
   type BooksWindow,
   type Keeper,
   type KeeperStats,
@@ -446,6 +447,55 @@ function KeeperCol({ label, s }: { label: string; s: KeeperStats }) {
   );
 }
 
+/** The 80¢ floor trial: the live book beside the old floor's shadow book, on
+ *  the same windows. The shadow side is research and is never the headline. */
+function TrialPane({ trial, tz }: { trial: FloorTrial; tz: string }) {
+  const thin = trial.live.calls < 25;
+  const col = (label: string, t: BooksTotals, cents: number, research: boolean) => {
+    const won = t.calls ? (100 * t.wins) / t.calls : null;
+    const cleared = t.calls ? t.net >= 0 : null;
+    return (
+      <div className="min-w-0 rounded-sm border border-border/60 p-2">
+        <div className="text-subtle text-micro">
+          {label} · {cents}¢{research ? " · research" : null}
+        </div>
+        <div className={cn("font-mono text-call tabular", research ? "text-muted" : tone(t.net))}>{fmtC(t.net)}</div>
+        <div className="font-mono text-micro text-muted">
+          {t.calls} fills · {t.wins} won
+        </div>
+        <div className="font-mono text-micro text-muted">
+          <span className={cleared == null ? "text-subtle" : cleared ? "text-up" : "text-down"}>
+            {won == null ? "—" : `${won.toFixed(1)}%`}
+          </span>{" "}
+          won · needs {t.breakeven == null ? "—" : `${t.breakeven.toFixed(1)}%`}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <Pane
+      title={
+        <span>
+          <Tip k="books.trial">THE {trial.live_cents}¢ FLOOR TRIAL</Tip>{" "}
+          <span className="font-normal text-subtle">· since {fmtDay(trial.since, tz)} · {trial.windows} windows</span>
+        </span>
+      }
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        {col("live book", trial.live, trial.live_cents, false)}
+        {col("shadow book", trial.shadow, trial.shadow_cents, true)}
+      </div>
+      <p className="mt-2 font-mono text-micro text-subtle">
+        Same windows, two floors. The live book pays {trial.live_cents}¢ or better; the shadow book counts what the old{" "}
+        {trial.shadow_cents}¢ floor would have taken, and books nothing. It declined {trial.declined} fill
+        {trial.declined === 1 ? "" : "s"} the old floor would have made. A higher floor wins more often for a smaller
+        prize, so its breakeven is higher too — read the net, not the win rate.
+        {thin ? ` Only ${trial.live.calls} live fills so far: too few to judge.` : ""}
+      </p>
+    </Pane>
+  );
+}
+
 /** KEEPER — not "did it win" but "did it play the way it says." */
 function KeeperPane({ keeper }: { keeper: Keeper }) {
   return (
@@ -581,6 +631,8 @@ export function BooksTab({ tz }: { tz: string }) {
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
         </Pane>
       </div>
+
+      {books.trial ? <TrialPane trial={books.trial} tz={tz} /> : null}
 
       <KeeperPane keeper={books.keeper} />
 

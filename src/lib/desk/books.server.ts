@@ -8,7 +8,7 @@
  * settlement, the price paid plus the fee, in percent — and the record
  * splits at the 70¢ floor. Times are grouped in Chicago, the floor's clock.
  */
-import { CHAIR_FLOOR_SINCE_ISO } from "./book-floor";
+import { CHAIR_FLOOR_SINCE_ISO, FLOOR_LIVE_CENTS, FLOOR_LIVE_SINCE, FLOOR_SHADOW_CENTS } from "./book-floor";
 import { bookedSideOf } from "./booked-side";
 import { breakevenPct, mergeShelves, type Shelf, type ShelfRow } from "./books-math";
 
@@ -99,6 +99,24 @@ export type KeeperStats = {
 };
 export type Keeper = { all: KeeperStats; week: KeeperStats };
 
+/**
+ * The 80¢ floor trial, both books on the same windows. `live` is the real paper
+ * book at the new floor; `shadow` is what the old 70¢ floor would have made on
+ * those same windows, from the ask captured live at decision time. Research
+ * only: the shadow numbers are never added to any headline total.
+ */
+export type FloorTrial = {
+  since: string;
+  live_cents: number;
+  shadow_cents: number;
+  /** Windows closed since the trial began. */
+  windows: number;
+  live: BooksTotals;
+  shadow: BooksTotals;
+  /** Fills the live floor declined that the old floor would have taken. */
+  declined: number;
+};
+
 export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
@@ -106,6 +124,8 @@ export type Books = {
   /** The book as it plays now: windows closing since the 70¢ floor went live. */
   floor: BooksTotals;
   floor_since: string;
+  /** The 80¢ floor trial: the live book and the shadow 70¢ book on the same windows. */
+  trial: FloorTrial | null;
   all: BooksTotals;
   keeper: Keeper;
   days: BooksDay[];
@@ -335,6 +355,7 @@ async function build(): Promise<Books> {
     }
   }
   const windows = rows.map((r) => toWindow(r, arena));
+  const trial = await floorTrial(db);
   const keeper = await keeperCard(db);
   const lab = await labStudy(db);
 
@@ -344,6 +365,7 @@ async function build(): Promise<Books> {
     week: pick("week"),
     floor: pick("floor"),
     floor_since: CHAIR_FLOOR_SINCE_ISO,
+    trial,
     all: pick("all"),
     keeper,
     days: days.map((d) => ({ ...d, net: Math.round(d.net * 10) / 10 })),
@@ -354,6 +376,59 @@ async function build(): Promise<Books> {
     lab,
     at: Date.now(),
   };
+}
+
+/**
+ * The 80¢ trial's two books. The live side reads the real fills; the shadow side
+ * reads shadow_entry_cents / shadow_ev_cents, which the engine captured live at
+ * decision time — the first ask each window at which the old floor would have
+ * filled. Both are restricted to windows closing since the trial began, so the
+ * comparison is on identical windows and nothing pre-trial leaks in.
+ */
+async function floorTrial(db: Awaited<ReturnType<typeof sql>>): Promise<FloorTrial | null> {
+  try {
+    const [r] = await db<Record<string, number | null>>`
+      with t as (select * from desk_ledger where close_time >= ${FLOOR_LIVE_SINCE}::timestamptz)
+      select
+        count(*)::int as windows,
+        (count(*) filter (where winner = 'UP'))::int as ups,
+        (count(*) filter (where entry_cents is not null))::int as live_calls,
+        (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as live_wins,
+        coalesce(sum(ev_cents) filter (where entry_cents is not null), 0)::float as live_net,
+        (avg(entry_cents + ceil(0.07 * entry_cents * (100 - entry_cents) / 100.0))
+          filter (where entry_cents is not null))::float as live_cost,
+        (count(*) filter (where shadow_entry_cents is not null))::int as sh_calls,
+        (count(*) filter (where shadow_entry_cents is not null and shadow_ev_cents > 0))::int as sh_wins,
+        coalesce(sum(shadow_ev_cents) filter (where shadow_entry_cents is not null), 0)::float as sh_net,
+        (avg(shadow_entry_cents + ceil(0.07 * shadow_entry_cents * (100 - shadow_entry_cents) / 100.0))
+          filter (where shadow_entry_cents is not null))::float as sh_cost,
+        (count(*) filter (where shadow_entry_cents is not null and entry_cents is null))::int as declined
+      from t
+    `;
+    if (!r) return null;
+    const windows = Number(r.windows) || 0;
+    const ups = Number(r.ups) || 0;
+    const side = (calls: number, wins: number, net: number, cost: number | null): BooksTotals => ({
+      n: windows,
+      calls,
+      wins,
+      net: round1(net),
+      ups,
+      breakeven: calls && cost != null ? round1(Number(cost)) : null,
+    });
+    return {
+      since: FLOOR_LIVE_SINCE,
+      live_cents: FLOOR_LIVE_CENTS,
+      shadow_cents: FLOOR_SHADOW_CENTS,
+      windows,
+      live: side(Number(r.live_calls) || 0, Number(r.live_wins) || 0, Number(r.live_net) || 0, num(r.live_cost)),
+      shadow: side(Number(r.sh_calls) || 0, Number(r.sh_wins) || 0, Number(r.sh_net) || 0, num(r.sh_cost)),
+      declined: Number(r.declined) || 0,
+    };
+  } catch {
+    /* the shadow columns are not migrated yet: the books still read */
+    return null;
+  }
 }
 
 function round1(n: number): number {
@@ -381,7 +456,10 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
         (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins_all,
         coalesce(sum(ev_cents), 0)::float as net_all,
         (avg(entry_cents) filter (where entry_cents is not null))::float as entry_all,
-        (count(*) filter (where entry_cents is not null and entry_cents >= 70))::int as floor_all,
+        (count(*) filter (
+          where entry_cents is not null
+            and entry_cents >= (case when close_time >= ${FLOOR_LIVE_SINCE}::timestamptz then ${FLOOR_LIVE_CENTS} else ${FLOOR_SHADOW_CENTS} end)
+        ))::int as floor_all,
         (avg(abs(score) / nullif(bar, 0)) filter (where entry_cents is not null))::float as conf_all,
         (count(*) filter (where week))::int as n_week,
         (count(*) filter (where week and entry_cents is null))::int as wait_week,
@@ -389,7 +467,10 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
         (count(*) filter (where week and entry_cents is not null and ev_cents > 0))::int as wins_week,
         coalesce(sum(ev_cents) filter (where week), 0)::float as net_week,
         (avg(entry_cents) filter (where week and entry_cents is not null))::float as entry_week,
-        (count(*) filter (where week and entry_cents is not null and entry_cents >= 70))::int as floor_week,
+        (count(*) filter (
+          where week and entry_cents is not null
+            and entry_cents >= (case when close_time >= ${FLOOR_LIVE_SINCE}::timestamptz then ${FLOOR_LIVE_CENTS} else ${FLOOR_SHADOW_CENTS} end)
+        ))::int as floor_week,
         (avg(abs(score) / nullif(bar, 0)) filter (where week and entry_cents is not null))::float as conf_week
       from base
     `;

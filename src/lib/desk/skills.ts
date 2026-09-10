@@ -1,4 +1,5 @@
 import { clamp, wilsonLower } from "./math";
+import { INDEX_MIN_REGIME_N, type SkillGate } from "./skill-gate";
 import { SKILL_RULES } from "./dsl";
 import { SEAT_BY_ID } from "./seats";
 import { freshThresholds } from "./thresholds";
@@ -15,6 +16,11 @@ export type SkillSeed = {
   conf_formula: string;
   invalidate_if: string;
   start: SkillStatus;
+  /** Optional research hold — see skill-gate.ts. Omit for an ordinary skill. */
+  manual_hold?: boolean;
+  min_walkforward_n?: number;
+  min_regime_n?: number;
+  held_why?: string;
 };
 
 export const SKILL_SEEDS: SkillSeed[] = [
@@ -831,6 +837,8 @@ export const SKILL_SEEDS: SkillSeed[] = [
     conf_formula: "0.4 + 0.6 × |fair − 50| / 50",
     invalidate_if: "the fair crosses back through the ask",
     start: "SHADOW",
+    min_regime_n: INDEX_MIN_REGIME_N,
+    held_why: "settlement-index reads are judged per regime; graded and recorded, not heard, until 24 in this one",
   },
   {
     id: "INDEX.locked_avg",
@@ -842,6 +850,8 @@ export const SKILL_SEEDS: SkillSeed[] = [
     conf_formula: "0.4 + 0.6 × |fair − 50| / 50",
     invalidate_if: "the running average crosses the strike",
     start: "SHADOW",
+    min_regime_n: INDEX_MIN_REGIME_N,
+    held_why: "settlement-index reads are judged per regime; graded and recorded, not heard, until 24 in this one",
   },
   {
     id: "WIRE.extreme_fng",
@@ -926,7 +936,18 @@ function blankCard(seed: SkillSeed): SkillCard {
     last20: [],
     pocket: {},
     rule: SKILL_RULES[seed.id],
+    ...seedGate(seed),
   };
+}
+
+/** The seed's research bars, omitting the keys it does not set. */
+export function seedGate(seed: SkillSeed): SkillGate {
+  const g: SkillGate = {};
+  if (seed.manual_hold) g.manual_hold = true;
+  if (seed.min_walkforward_n) g.min_walkforward_n = seed.min_walkforward_n;
+  if (seed.min_regime_n) g.min_regime_n = seed.min_regime_n;
+  if (seed.held_why) g.held_why = seed.held_why;
+  return g;
 }
 
 export function freshLearner(): Learner {

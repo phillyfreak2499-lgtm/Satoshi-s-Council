@@ -42,6 +42,17 @@ export type BooksLab = {
   final: BooksLabLine & { ask: number; claimed: number };
 };
 
+/** The 80¢ floor trial, both books on the same windows. Shadow is research only. */
+export type FloorTrial = {
+  since: string;
+  live_cents: number;
+  shadow_cents: number;
+  windows: number;
+  live: BooksTotals;
+  shadow: BooksTotals;
+  declined: number;
+};
+
 export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
@@ -49,6 +60,8 @@ export type Books = {
   /** The book as it plays now: windows closing since the 70¢ floor went live. */
   floor: BooksTotals;
   floor_since: string;
+  /** The 80¢ floor trial: the live book and the shadow 70¢ book on the same windows. */
+  trial: FloorTrial | null;
   all: BooksTotals;
   keeper: Keeper;
   days: BooksDay[];

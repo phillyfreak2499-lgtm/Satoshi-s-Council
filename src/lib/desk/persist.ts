@@ -1,5 +1,5 @@
 import { SKILL_RULES } from "./dsl";
-import { freshLearner } from "./skills";
+import { freshLearner, seedGate, SKILL_SEEDS } from "./skills";
 import { mergeThresholds } from "./thresholds";
 import type { CallLogRow, DataSource, Learner, SeatId, Settings } from "./types";
 
@@ -41,10 +41,15 @@ export function mergeLearner(saved?: Partial<Learner> | null): Learner {
   learner.skills = { ...base.skills };
   for (const [id, card] of Object.entries(savedSkills)) {
     const seed = base.skills[id];
+    const seedObj = SKILL_SEEDS.find((s) => s.id === id);
     learner.skills[id] = {
       ...(seed ?? card),
       ...card,
       rule: card.rule ?? seed?.rule ?? SKILL_RULES[id],
+      // A research bar is policy declared in code, never earned state, so the
+      // seed's gate always wins: a stale save cannot carry an old bar forward
+      // or quietly drop a new one.
+      ...(seedObj ? seedGate(seedObj) : {}),
     };
   }
   learner.knobs = { ...base.knobs, ...(saved.knobs ?? {}) };
