@@ -18,7 +18,7 @@
     "typecheck": "node scripts/check-tree.mjs && tsc --noEmit",
     "check:tree": "node scripts/check-tree.mjs",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/desk/reliability.test.ts src/lib/desk/taker.test.ts src/lib/desk/readiness.test.ts src/lib/desk/booked-side.test.ts src/lib/desk/books-math.test.ts src/lib/desk/updates.test.ts src/lib/desk/size-view.test.ts src/lib/desk/kalshi-wire.test.ts src/lib/desk/lab-book.test.ts src/lib/desk/frozen.test.ts",
+    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/desk/reliability.test.ts src/lib/desk/taker.test.ts src/lib/desk/readiness.test.ts src/lib/desk/booked-side.test.ts src/lib/desk/books-math.test.ts src/lib/desk/updates.test.ts src/lib/desk/size-view.test.ts src/lib/desk/kalshi-wire.test.ts src/lib/desk/lab-book.test.ts src/lib/desk/frozen.test.ts src/lib/desk/skill-gate.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

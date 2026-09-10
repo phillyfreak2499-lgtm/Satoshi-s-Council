@@ -256,4 +256,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk reads Kalshi's trade tape by the current field, not the deprecated one. A public trade says which way it went in taker_outcome_side; the older taker_side is on its way out, and the lab was reading only that one while the REST path preferred it over the current field. Both now read the canonical field first, an unreadable trade counts as unknown rather than as a buyer, and the exchange's own clock is kept apart from ours so feed lag still reads as lag. The rebuilt order book also stops trusting itself after a dropped message: a gap in the sequence quarantines the book until a fresh snapshot re-anchors it, so no study prices off levels that may already be gone. Measurement only — no call, bar, floor or grading rule changed.",
   },
+  {
+    slug: "2026-09-10-floor-trial-80",
+    body:
+      "The paper book is trying a higher price floor: it now fills only at 80¢ or better instead of 70¢. That is a price floor, not a confidence level — 80¢ is what the contract costs, not how sure the desk is. The books made the case: the 70–79¢ shelf won about 65% of 29 calls against the 74% it needed, while 80¢ and up was the only part of the book in profit. Thin evidence, so this is a trial, reviewed after three to seven days or 25 fills at the new floor and not touched before then. It wins more often for a smaller prize, which also lifts breakeven from about 72% to about 82% — read the net, not the win rate. Under 80¢ the chair still calls and every seat is still graded; the book just does not pay. The old floor runs beside it as a shadow book on the same windows, shown as research. Old fills are untouched, and going back is one number.",
+  },
 ];

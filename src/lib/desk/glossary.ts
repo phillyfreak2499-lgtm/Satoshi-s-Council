@@ -107,6 +107,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: "Did the price tell the truth?",
     body: "Booked calls grouped by the price the chair paid. The grey bar is the price; the gold mark just above it is the win rate that price needed once Kalshi's fee is in — a 70¢ contract needs about 72%, not 70%. The coloured bar is how often the chair actually won there: green cleared breakeven, red paid too much for what it won. Mind the count under each shelf; five calls is a hint, not a verdict.",
   },
+  "books.trial": {
+    title: "The 80¢ floor trial",
+    body: "A deliberate, time-boxed experiment, reviewed after three to seven days or 25 live fills at the new floor. The paper book now pays only 80¢ or better. This is a price floor, not a confidence level: 80¢ means the contract costs 80¢, not that the desk is 80% sure. The record that prompted it is that the 70–79¢ shelf won about 65% of 29 calls against the 74% it needed, while 80¢ and up was the only part of the book in profit — a hypothesis on thin evidence, not a proven number, which is why it is a trial with a shadow book beside it and a one-line revert. The trade it makes: win more often for a smaller prize, which also raises the rate needed to break even from about 72% to about 82%. Under 80¢ the chair still reads UP or DOWN and every seat is still graded on it; the book simply does not pay.",
+  },
   "books.floor": {
     title: "Since the 70¢ floor",
     body: "The record from the moment the paper book stopped filling under 70¢: 3:47 pm Chicago on Sep 8, 2026. All-time keeps every call before that as it was; this card is the book as it plays now, so it is the fairest read of the current rule, and the youngest, so give it windows before trusting it. The same moment is marked on the curve while it is in view.",
@@ -533,8 +537,8 @@ export const GLOSS: Record<string, Gloss> = {
     body: "The chair's read this window, at the ask in cents. UP 55¢ means YES was 55 cents. WAIT is not a fill, and neither is a read under the 70¢ floor. Score must clear the bar.",
   },
   "book.floor": {
-    title: "70¢ floor",
-    body: "The chair's paper book only fills at 70¢ or better. The read still shows and still grades the seats; under the floor nothing is booked, and the ledger keeps the read with no entry. Set on the record: the chair's calls under 70¢ lost money, its calls at 70¢ or better made it. A window is nearly decided by the time one side prints 70¢.",
+    title: "80¢ floor (on trial)",
+    body: "The chair's paper book only fills at 80¢ or better, a deliberate time-boxed trial of a higher floor reviewed after three to seven days or 25 fills at the new price. This is a price floor, not a confidence level: 80¢ is what the contract costs, not how sure the desk is. The read still shows and still grades every seat; under the floor nothing is booked and the ledger keeps the read with no entry. Why it moved: the old 70¢ floor still let through the 70–79¢ shelf, which won about 65% of 29 calls against the 74% it needed, while 80¢ and up was the only part of the book in profit. The old floor keeps running beside it as a shadow book so the trial can be judged on the same windows, and reverting is one constant.",
   },
   "pane.spot-chart": {
     title: "BTC 15m",

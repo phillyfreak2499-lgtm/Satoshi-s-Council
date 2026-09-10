@@ -14,7 +14,7 @@ import { readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { useDesk } from "@/lib/desk/store";
 import { fetchBrief, type Brief, type GavelRow } from "@/lib/desk/brief";
 import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from "@/lib/desk/size-view";
-import { bookState, CHAIR_MIN_ASK_CENTS } from "@/lib/desk/book-floor";
+import { bookState, bookableShadow, CHAIR_MIN_ASK_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 
 function sideAsk(snap: Snapshot, lean: Lean) {
@@ -117,7 +117,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
               : lean === "WAIT"
                 ? "The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk's most common call, on purpose."
                 : book.kind === "floor"
-                  ? `Paper only: the book fills at ${CHAIR_MIN_ASK_CENTS}¢ or better. ${side} is ${book.ask.toFixed(0)}¢, so this read stays unbooked unless the ask reaches the floor before the window closes.`
+                  ? `Paper only: the book fills at ${CHAIR_MIN_ASK_CENTS}¢ or better — a time-boxed trial of a higher floor. ${side} is ${book.ask.toFixed(0)}¢, so this read stays unbooked unless the ask reaches the floor before the window closes. The read still stands and every seat is still graded on it.`
                   : `Paper only: booked at the ${side} ask if it fills, graded on Kalshi's official settlement value.`}
           </p>
           <div className="mt-2 font-mono text-ui text-muted">
@@ -131,7 +131,13 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
               <>
                 {side} ask {ask.toFixed(1)}¢
                 {book.kind === "floor" ? (
-                  <span className="text-wait"> · under the {CHAIR_MIN_ASK_CENTS}¢ floor · no paper fill</span>
+                  <span className="text-wait">
+                    {" "}
+                    · under the {CHAIR_MIN_ASK_CENTS}¢ floor · no paper fill
+                    {bookableShadow(book.ask) ? (
+                      <span className="text-subtle"> · {FLOOR_SHADOW_CENTS}¢ shadow books it</span>
+                    ) : null}
+                  </span>
                 ) : null}
                 {edge ? ` · leftover ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
               </>

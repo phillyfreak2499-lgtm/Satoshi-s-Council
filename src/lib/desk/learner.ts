@@ -4,6 +4,7 @@ import { creditPattern } from "./ledger";
 import { binKey, calibNOf, clamp, EDGE_FLOOR, FULL_N, mean, REVIEW_EVERY, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { rememberTape } from "./memory";
 import { readScalp, scalpAvg } from "./scalp";
+import { promoteEligible } from "./skill-gate";
 import { SEATS } from "./seats";
 import {
   benchThreshold,
@@ -426,7 +427,10 @@ function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
   const shadow = mine
     .filter((s) => s.status === "SHADOW")
     .sort((a, b) => skillScore(b) - skillScore(a));
-  const promote = shadow.find((s) => s.n >= 8 || s.ev_n >= 8);
+  // n >= 8 alone is the weakest promotion in the desk, and it fires exactly when
+  // a seat has just failed its edge floor — the moment of least reliable
+  // information. A card on a research hold is never swapped in here.
+  const promote = shadow.find((s) => (s.n >= 8 || s.ev_n >= 8) && promoteEligible(s));
   if (promote) {
     promote.status = "LIVE";
     notes.push(`live ${promote.id}`);
@@ -530,6 +534,7 @@ export function runHuddle(learner: Learner): { learner: Learner; line: string } 
       pocketN >= promoNeed.n &&
       card.wilson >= promoNeed.wilson &&
       card.wilson >= parent &&
+      promoteEligible(card) &&
       (livePeer ? card.brier <= livePeer.brier + 0.02 : true) &&
       lastMe >= lastPeer &&
       (card.ev_n < 8 || card.ev >= -0.4)

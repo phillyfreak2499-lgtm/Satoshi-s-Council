@@ -21,7 +21,7 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
-import { bookable, CHAIR_MIN_ASK_CENTS } from "./book-floor";
+import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS } from "./book-floor";
 import { freshLearner } from "./skills";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
@@ -135,6 +135,9 @@ type Eng = {
   lastLedgerOkAt: number;
   /** Graded windows awaiting a durable, verified ledger write (retry with backoff). */
   ledgerQueue: LedgerJob[];
+  /** 80¢ trial: the first ask per window at which the OLD 70¢ floor would have
+   *  filled, keyed by windowKey. Research only — never gates a live fill. */
+  shadowFills: Record<string, { lean: "UP" | "DOWN"; cents: number }>;
   ledgerFlushing: boolean;
   /** Interior holes found in the recent ledger by the last gap scan (lost windows). */
   ledgerGapCount: number;
@@ -233,6 +236,7 @@ function freshEng(): Eng {
     lastGradeAt: Date.now(),
     lastLedgerOkAt: Date.now(),
     ledgerQueue: [],
+    shadowFills: {},
     ledgerFlushing: false,
     ledgerGapCount: 0,
     lastGapScanAt: 0,
@@ -280,6 +284,7 @@ async function loadState(e: Eng) {
           v2?: V2Weights | null;
           last_ledger_ok_at?: number;
           ledger_queue?: unknown;
+          shadow_fills?: unknown;
           ledger_recon_baseline?: number | null;
           readiness_alerted?: boolean;
         }
@@ -301,6 +306,7 @@ async function loadState(e: Eng) {
     // Durable outbox: any grade calculated + force-persisted before the last
     // process death comes back here and drains to the ledger on this boot.
     e.ledgerQueue = sanitizeQueue(raw.ledger_queue, Date.now());
+    e.shadowFills = sanitizeShadowFills(raw.shadow_fills);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
   } catch (err) {
@@ -326,6 +332,7 @@ async function persistState(e: Eng, force = false) {
       v2: e.v2,
       last_ledger_ok_at: e.lastLedgerOkAt,
       ledger_queue: e.ledgerQueue.slice(-OUTBOX_CAP),
+      shadow_fills: e.shadowFills,
       ledger_recon_baseline: e.reconBaseline,
       readiness_alerted: e.readinessAlerted,
     });
@@ -395,6 +402,33 @@ function decideChair(e: Eng, votes: Vote[], snap: Snapshot, lastLean: Lean): Cha
   return lean === chair.lean ? chair : { ...chair, lean };
 }
 
+/** Keep only well-formed shadow entries across a restart. */
+function sanitizeShadowFills(raw: unknown): Record<string, { lean: "UP" | "DOWN"; cents: number }> {
+  const out: Record<string, { lean: "UP" | "DOWN"; cents: number }> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== "object") continue;
+    const lean = (v as { lean?: unknown }).lean;
+    const cents = Number((v as { cents?: unknown }).cents);
+    if ((lean !== "UP" && lean !== "DOWN") || !(cents > 0) || !(cents < 100)) continue;
+    out[k] = { lean, cents };
+  }
+  return out;
+}
+
+/** The shadow book's entry for this window: the FIRST ask the old floor would
+ *  have taken, recorded once. A later, richer tick never overwrites it, because
+ *  the old book would already have been positioned by then. */
+function noteShadowFill(e: Eng, snap: Snapshot, lean: "UP" | "DOWN", cents: number): void {
+  const key = windowKey(snap);
+  if (e.shadowFills[key]) return;
+  if (!bookableShadow(cents)) return;
+  e.shadowFills[key] = { lean, cents: Math.round(cents * 10) / 10 };
+  // Bound the map: a handful of live windows, never an all-time ledger.
+  const keys = Object.keys(e.shadowFills);
+  if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.shadowFills[k];
+}
+
 /** One paper position per window, held to settlement. The chair may change
  *  its mind on screen; the ledger does not sell low and buy high for it.
  *  Autopsy of the flip era: 40 of the last 42 logged calls were flips,
@@ -410,6 +444,11 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   }
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
+  // The 80¢ trial's shadow book: note the first ask this window at which the
+  // OLD floor would have filled, before the live floor gets its say. Same
+  // decision, same tick, same price — one number recorded, no second engine,
+  // and nothing here can change what the live book does below.
+  noteShadowFill(e, snap, chair.lean, cents);
   // The book's price floor: the read stands on screen, the fill waits. Nothing
   // is positioned, so a later tick at the floor can still fill this window.
   if (!bookable(cents)) return;
@@ -457,18 +496,32 @@ const LEDGER_COLUMNS =
   "(ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass, " +
   "entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs, " +
   "settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok, " +
-  "settle_feed, settle_feed_n, official_value)";
+  "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
-  "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) " +
+  "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
  *  state as it is right now — so a later retry records exactly what was decided,
  *  never a recomputation against drifted state. No DB, cannot fail. */
+/** The 80¢ trial's shadow row: what the old 70¢ floor would have made on this
+ *  window. Entry was captured live during the window; the outcome is known now.
+ *  Research only — it is not added to any live total. */
+function shadowBits(e: Eng, snap: Snapshot, finish: "UP" | "DOWN"): { entry: number | null; ev: number | null } {
+  const key = windowKey(snap);
+  const sh = e.shadowFills[key];
+  delete e.shadowFills[key];
+  if (!sh) return { entry: null, ev: null };
+  const settle = sh.lean === finish ? 100 : 0;
+  const ev = Math.round((settle - sh.cents - takerFeeCents(sh.cents)) * 10) / 10;
+  return { entry: sh.cents, ev };
+}
+
 function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string): LedgerRow {
   const official = snap.official_settles.find((o) => o.ticker === snap.ticker && o.value != null)?.value ?? null;
   const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish, official);
+  const shadow = shadowBits(e, snap, finish);
   const rows = e.callLog.filter((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
   const first = rows[rows.length - 1] ?? null; // call log is newest-first
   let ev: number | null = null;
@@ -519,6 +572,8 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     rc.settle_feed,
     rc.settle_feed_n,
     rc.official_value,
+    shadow.entry,
+    shadow.ev,
   ];
   return { ticker: snap.ticker, close_time: snap.close_time, values };
 }

@@ -438,6 +438,18 @@ export type SkillCard = {
   last20: number[];
   pocket: Record<string, { n: number; hits: number }>;
   rule?: SkillRule;
+  // --- research hold (see skill-gate.ts). Absent on every existing card, so
+  // nothing already proven changes behaviour. A gated card is still evaluated
+  // and still graded through the seat's paper list; it just cannot be the read
+  // the chair hears until its own bar is met.
+  /** Never heard until a human clears it. Never released by a threshold. */
+  manual_hold?: boolean;
+  /** Graded directional observations required before the chair may hear it. */
+  min_walkforward_n?: number;
+  /** Graded observations required in the regime being traded before it is heard there. */
+  min_regime_n?: number;
+  /** Why the bar is there, for the card and the research report. */
+  held_why?: string;
 };
 
 export type ConfBin = { n: number; hits: number };
