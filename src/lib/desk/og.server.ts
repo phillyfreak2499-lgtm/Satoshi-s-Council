@@ -274,7 +274,8 @@ export function windowCard(w: WindowCardInput): Buffer {
   const spot = w.cols.spot.filter((v) => Number.isFinite(v));
   const n = w.cols.spot.length;
   if (n >= 2 && spot.length >= 2) {
-    const vals = w.strike ? [...spot, w.strike] : spot;
+    const settle = Number.isFinite(w.official as number) ? (w.official as number) : null;
+    const vals = [...spot, ...(w.strike ? [w.strike] : []), ...(settle != null ? [settle] : [])];
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
     const pad = Math.max((hi - lo) * 0.12, 1);
@@ -300,6 +301,14 @@ export function windowCard(w: WindowCardInput): Buffer {
       const b = w.cols.spot[i + 1]!;
       if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
       line(r, x(i), y(a), x(i + 1), y(b), INK.fg, 3);
+    }
+    // settlement marker — the value the window graded on (final-minute average),
+    // in the result's colour, so the picture agrees with the WINNER even when
+    // spot's last tick sits the other side of the strike. The header prints its value.
+    if (settle != null && w.strike) {
+      const soy = y(settle);
+      for (let xx = cx0 + Math.round((cx1 - cx0) * 0.62); xx < cx1; xx += 12) fillRect(r, xx, soy - 1, 7, 2, tone);
+      fillRect(r, cx1 - 7, soy - 4, 7, 8, tone);
     }
     // YES ask on its own 0–100¢ axis, drawn thin in gold
     const ya = (v: number) => cy1 - 10 - (Math.max(0, Math.min(100, v)) / 100) * (cy1 - cy0 - 20);
