@@ -23,12 +23,15 @@ import {
   type BrtiState,
   type SettleFair,
 } from "./brti";
+import { missingCanonicalSide, sourceLagMs, takerOutcomeSide, tradeSourceMs } from "./kalshi-wire";
 import {
   applyDelta,
   applySnapshot,
   bests,
+  bookTrusted,
   freshBook,
   levelCount,
+  markBookGap,
   priceCents,
   sameBests,
   type Bests,
@@ -96,7 +99,30 @@ type Lab = {
   lastShocks: Shock[];
   persistErrors: number;
   lastError: string | null;
+  /** Trade-direction provenance and feed lag, for WARDEN and research telemetry. */
+  tradeClock: TradeClock;
 };
+
+/** How trades are arriving: which direction field carried them, and how late. */
+type TradeClock = {
+  n: number;
+  /** Carried the canonical taker_outcome_side. */
+  canonical: number;
+  /** Canonical field absent; parsed from the deprecated taker_side. */
+  legacy: number;
+  /** Neither field readable — direction unknown, never guessed. */
+  unknown: number;
+  /** Receipt minus exchange event time, summed over trades that carried one. */
+  lag_sum_ms: number;
+  lag_n: number;
+  lag_max_ms: number;
+  /** Trades with no exchange event time at all, so no lag can be claimed. */
+  no_source_ts: number;
+};
+
+function freshTradeClock(): TradeClock {
+  return { n: 0, canonical: 0, legacy: 0, unknown: 0, lag_sum_ms: 0, lag_n: 0, lag_max_ms: 0, no_source_ts: 0 };
+}
 
 const g = globalThis as typeof globalThis & { __desk_lab__?: Lab };
 
@@ -129,6 +155,7 @@ function lab(): Lab {
     lastShocks: [],
     persistErrors: 0,
     lastError: null,
+    tradeClock: freshTradeClock(),
   };
   return g.__desk_lab__;
 }
@@ -327,7 +354,7 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       const b = book(L, tk);
       const before = L.lastBests.get(tk);
       const d = applyDelta(b, msg, t);
-      if (d && tk === currentTicker(L)) onDelta(L.study, d.side, d.price, d.size, t);
+      if (d && tk === currentTicker(L) && bookTrusted(b)) onDelta(L.study, d.side, d.price, d.size, t);
       afterBook(L, tk, b, t);
       const after = L.lastBests.get(tk);
       const bestSame = before ? (d?.side === "yes" ? before.yes_bid : before.no_bid) : 0;
@@ -341,16 +368,27 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
     case "trade": {
       const tk = String(msg.market_ticker ?? "");
       if (tk !== currentTicker(L)) return;
+      // Direction off the canonical field, with the deprecated name as a
+      // fallback only; an unreadable aggressor stays unknown rather than being
+      // counted as a YES buyer. The exchange's own event time is kept apart
+      // from our receipt time so feed lag stays visible as lag.
+      const side = takerOutcomeSide(msg);
+      noteTradeClock(L, msg, side, t);
       onTrade(L.study, {
         t,
         yes_price: priceCents(msg.yes_price ?? msg.yes_price_dollars),
         no_price: priceCents(msg.no_price ?? msg.no_price_dollars),
-        taker_side: String(msg.taker_side ?? "").toLowerCase(),
+        taker_side: side ?? "",
       });
       return;
     }
     case "__gap": {
-      if (String(msg.channel) === "orderbook_delta") L.ws?.resubscribe("orderbook_delta");
+      if (String(msg.channel) !== "orderbook_delta") return;
+      // At least one delta was missed, so every reconstructed book may hold
+      // levels that no longer exist. Quarantine them all until a fresh
+      // snapshot re-anchors, and ask for that snapshot now.
+      for (const b of L.books.values()) markBookGap(b, t);
+      L.ws?.resubscribe("orderbook_delta");
       return;
     }
     default:
@@ -438,7 +476,10 @@ function recomputeFair(L: Lab, t: number): void {
   L.fairT = t;
   if (secsLeft <= 61.5 && secsLeft > 55 && !L.fairPre.has(snap.ticker)) L.fairPre.set(snap.ticker, fair.p_up);
   const b = L.books.get(snap.ticker);
-  if (!b?.ok) return;
+  // A book that has missed a sequence number is not evidence. The fair value
+  // above still stands (it is BRTI-derived, not book-derived), but nothing
+  // priced off these levels enters the study until a snapshot re-anchors.
+  if (!bookTrusted(b)) return;
   const bs = L.lastBests.get(snap.ticker) ?? bests(b);
   const fy = fair.p_up * 100;
   onFair(L.study, fy, t, bs, {
@@ -450,13 +491,29 @@ function recomputeFair(L: Lab, t: number): void {
   finishShocks(L, onTick(L.study, fy, t));
 }
 
+/** Record how this trade's direction arrived and how late it was. Telemetry only. */
+function noteTradeClock(L: Lab, msg: Record<string, unknown>, side: "yes" | "no" | null, t: number): void {
+  const c = L.tradeClock;
+  c.n += 1;
+  if (side == null) c.unknown += 1;
+  else if (missingCanonicalSide(msg)) c.legacy += 1;
+  else c.canonical += 1;
+  const lag = sourceLagMs(tradeSourceMs(msg), t);
+  if (lag == null) c.no_source_ts += 1;
+  else {
+    c.lag_n += 1;
+    c.lag_sum_ms += lag;
+    if (lag > c.lag_max_ms) c.lag_max_ms = lag;
+  }
+}
+
 function afterBook(L: Lab, tk: string, b: LabBook, t: number): void {
   if (tk !== currentTicker(L)) return;
   const nb = bests(b);
   const prev = L.lastBests.get(tk);
   if (prev && sameBests(prev, nb)) return;
   L.lastBests.set(tk, nb);
-  if (L.fair && L.fairTicker === tk) onBookBests(L.study, nb, fairYesCents(L), t);
+  if (L.fair && L.fairTicker === tk && bookTrusted(b)) onBookBests(L.study, nb, fairYesCents(L), t);
 }
 
 function secondTick(L: Lab): void {
@@ -684,6 +741,26 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
     key: kalshiKeyInfo(),
     ws: L.ws?.summary() ?? null,
     recorder: L.rec?.summary() ?? null,
+    // Feed provenance for WARDEN: which direction field carried each trade, how
+    // late trades arrive off the exchange clock, and whether the reconstructed
+    // book is currently trusted or quarantined by a sequence gap.
+    trade_clock: {
+      n: L.tradeClock.n,
+      canonical: L.tradeClock.canonical,
+      legacy: L.tradeClock.legacy,
+      unknown_side: L.tradeClock.unknown,
+      no_source_ts: L.tradeClock.no_source_ts,
+      source_lag_avg_ms: L.tradeClock.lag_n ? Math.round(L.tradeClock.lag_sum_ms / L.tradeClock.lag_n) : null,
+      source_lag_max_ms: L.tradeClock.lag_n ? L.tradeClock.lag_max_ms : null,
+    },
+    book_integrity: {
+      books: L.books.size,
+      trusted: [...L.books.values()].filter((x) => bookTrusted(x)).length,
+      quarantined: [...L.books.values()].filter((x) => x.ok && x.stale).length,
+      gaps: [...L.books.values()].reduce((a, x) => a + x.gaps, 0),
+      current_trusted: bookTrusted(b),
+      stale_for_s: b?.stale && b.gap_t ? Math.round((now - b.gap_t) / 100) / 10 : null,
+    },
     brti: {
       last: L.brti.last || null,
       age_s: L.brti.last_t ? Math.round((now - L.brti.last_t) / 100) / 10 : null,
@@ -717,7 +794,9 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
                 age_s: Math.round((now - L.fairT) / 100) / 10,
               }
             : null,
-          book: b?.ok ? { ...bests(b), levels: levelCount(b), age_s: Math.round((now - b.upd_t) / 100) / 10 } : null,
+          book: b?.ok
+            ? { ...bests(b), levels: levelCount(b), age_s: Math.round((now - b.upd_t) / 100) / 10, trusted: bookTrusted(b) }
+            : null,
         }
       : null,
     study: {

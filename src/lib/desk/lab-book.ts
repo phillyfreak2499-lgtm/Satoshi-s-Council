@@ -10,7 +10,14 @@
  * YES-leg pricing (a NO bid at 30¢ is reported as 0.70). The book converts
  * them back to NO-leg internally so every consumer sees one convention, and
  * a crossed-book sanity check flips the interpretation if the flag was not
- * honoured. Pure module.
+ * honoured.
+ *
+ * SEQUENCE INTEGRITY. The deltas are an ordered stream, so a missed message
+ * leaves this book quietly wrong: levels that were cancelled still sit in the
+ * map, and best-of-book reads off them look perfectly plausible. A book that
+ * has missed a sequence number is therefore marked stale on the spot and stays
+ * stale until a fresh snapshot re-anchors it — `bookTrusted` is the one gate
+ * every book-derived consumer must pass before believing a level. Pure module.
  */
 export type LabBook = {
   ticker: string;
@@ -20,7 +27,14 @@ export type LabBook = {
   yesLeg: boolean;
   snap_t: number;
   upd_t: number;
+  /** A snapshot has loaded, so the maps describe a real book. */
   ok: boolean;
+  /** A sequence gap was seen and no snapshot has re-anchored since: do not trust levels. */
+  stale: boolean;
+  /** Sequence gaps seen on this book's lifetime. */
+  gaps: number;
+  /** When the current staleness began, 0 when not stale. */
+  gap_t: number;
   flips: number;
 };
 
@@ -55,7 +69,24 @@ export function qtyOf(v: unknown): number {
 }
 
 export function freshBook(ticker: string, yesLeg = true): LabBook {
-  return { ticker, yes: new Map(), no: new Map(), yesLeg, snap_t: 0, upd_t: 0, ok: false, flips: 0 };
+  return { ticker, yes: new Map(), no: new Map(), yesLeg, snap_t: 0, upd_t: 0, ok: false, stale: false, gaps: 0, gap_t: 0, flips: 0 };
+}
+
+/**
+ * A sequence gap reached this book: at least one delta was missed, so the maps
+ * may hold levels that no longer exist. Mark it stale rather than clearing it —
+ * the stale levels are still the best guess for a human reading a chart, but
+ * `bookTrusted` now refuses, so nothing downstream treats them as evidence.
+ */
+export function markBookGap(b: LabBook, t: number): void {
+  if (!b.stale) b.gap_t = t;
+  b.stale = true;
+  b.gaps += 1;
+}
+
+/** May a consumer believe this book's levels? A snapshot has loaded and no gap is outstanding. */
+export function bookTrusted(b: LabBook | null | undefined): b is LabBook {
+  return Boolean(b && b.ok && !b.stale);
 }
 
 function loadSide(map: Map<number, number>, rows: unknown, convert: boolean): void {
@@ -97,6 +128,9 @@ export function applySnapshot(b: LabBook, msg: Record<string, unknown>, t: numbe
   b.snap_t = t;
   b.upd_t = t;
   b.ok = true;
+  // A snapshot is a complete restatement of the book, so it re-anchors after a gap.
+  b.stale = false;
+  b.gap_t = 0;
 }
 
 export type DeltaOut = { side: "yes" | "no"; price: number; size: number; delta: number };
