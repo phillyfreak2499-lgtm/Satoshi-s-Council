@@ -271,4 +271,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The page now says 80¢ everywhere it means 80¢. When the floor moved, the constant moved but a dozen labels and tooltips still described the old 70¢ rule in the present tense — the scorecard, the fills and sits explanations, the call chip, the lab aside and the owner's evaluation prompt. Those now read the floor from the same constant the book fills at, so they cannot drift apart again, and a test fails the build if any of them claims a floor the book does not pay. The cumulative curve marks both boundaries instead of only the older one, and the old era's card is labelled as an era rather than as the current rule. Dated notes below are left exactly as written: they were true when posted. No call, floor, grading rule or past number changed.",
   },
+  {
+    slug: "2026-09-11-tape-2",
+    body:
+      "The desk started measuring the order book properly. TAPE has always read the size at the best bid and ask, but the lab already rebuilds Kalshi's whole book from its live feed, so far more was on the table. Thirty-odd measurements now run every second: how lopsided the book is three and five levels deep, where the size-weighted price sits against the midpoint, whether resting size is being posted or pulled, whether a drained level comes back, how long any of it holds, and how thick the book gets away from the touch. One rule governs all of it — a cancelled order is not a trade. A quote vanishing because someone pulled it means something different from one vanishing because someone bought it, so book pressure and real executions are counted separately. None of it votes: no seat reads it and no skill exists for it yet.",
+  },
 ];
