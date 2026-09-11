@@ -911,3 +911,151 @@ test("the persisted blob carries learner, graded set and pending together", () =
   assert.ok(i >= 0, "persistState must still upsert desk_state");
   assert.match(src.slice(i, i + 300), /on conflict \(id\) do update set state =/);
 });
+
+/**
+ * PAPER ONLY. The desk must have no way to place a real order.
+ *
+ * The Lab adds automatic promotion, which changes which paper policy generates the
+ * site's answer. That is the moment to make the boundary a test rather than an
+ * intention: a promotion engine is only safe while there is nothing downstream of
+ * it that could reach a venue.
+ *
+ * Checked on comment-stripped source so the prose explaining the ban does not trip
+ * the ban.
+ */
+test("PAPER ONLY: no order-submission or execution path exists", () => {
+  // The actual mechanisms, not words that also occur in English. An earlier version
+  // of this rail banned "deposit" and flagged the site's own disclaimer — "no
+  // account, no deposit and no live-trading arm" — which is the promise, not a
+  // breach of it. Request signing is also legitimate here: the Kalshi websocket is
+  // authenticated and read-only.
+  //
+  // Kalshi order entry is POST /trade-api/v2/portfolio/orders. That endpoint and the
+  // order verbs cannot appear in innocent prose, so they are the right things to ban.
+  const BANNED = [
+    /\bcreateOrder\b/i,
+    /\bplaceOrder\b/i,
+    /\bsubmitOrder\b/i,
+    /\bcancelOrder\b/i,
+    /\bportfolio\s*\/\s*orders\b/i,
+    /\/trade-api\/v2\/portfolio/i,
+    /\bexecuteTrade\b/i,
+    /\bsendOrder\b/i,
+  ];
+  const files = [];
+  const walk = (rel) => {
+    for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const next = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(next);
+      else if (/\.(ts|tsx|mjs)$/.test(e.name) && !e.name.includes(".test.")) files.push(next);
+    }
+  };
+  walk("src");
+  walk("server");
+  assert.ok(files.length > 50, `expected to scan the app, found ${files.length} files`);
+
+  for (const rel of files) {
+    const code = codeOf(rel);
+    for (const re of BANNED) {
+      assert.doesNotMatch(code, re, `${rel} contains a banned execution token (${re}). The desk is paper only.`);
+    }
+  }
+
+  // The Kalshi client may read markets and the public tape. It must never be given
+  // a writing verb against the portfolio surface.
+  const ws = codeOf("src/lib/desk/kalshi-ws.server.ts");
+  assert.doesNotMatch(ws, /method:\s*["'`]POST["'`]/i, "the Kalshi client must not POST");
+});
+
+/**
+ * The Lab observes; it never decides.
+ *
+ * Its writer runs at settle, from durable state, inside a void-ed async so it
+ * cannot throw into the tick or delay it. If a decision module ever imported it,
+ * a research measurement would have become an input to the live answer.
+ */
+test("the Lab is off the decision path", () => {
+  const LAB = ["policy-lab.server", "exit-arena", "promotion-gates"];
+  // Modules that decide what the desk does.
+  for (const rel of [
+    "src/lib/desk/chair.ts",
+    "src/lib/desk/bots.ts",
+    "src/lib/desk/book-floor.ts",
+    "src/lib/desk/scalp.ts",
+    "src/lib/desk/learner.ts",
+    "src/lib/desk/skills.ts",
+  ]) {
+    const code = codeOf(rel);
+    for (const m of LAB) {
+      assert.doesNotMatch(code, new RegExp(`from "\\./${m}`), `${rel} must not import ${m}`);
+    }
+  }
+
+  // In the engine the call must sit inside a void-ed async with a catch, like the
+  // other settle-time research writers.
+  const eng = read("src/lib/desk/server-engine.ts");
+  assert.match(eng, /recordExitArena\(/, "the engine must record the arena at settle");
+  const block = between(eng, "// THE LAB's exit competition", "if (windowsHuddleDue(");
+  assert.match(block, /void \(async \(\) => \{/, "must not be awaited on the tick");
+  assert.match(block, /\.catch\(/, "must not throw into the tick");
+  assert.match(block, /replayLive\(snap\.ticker\)/, "reads the window's own replay series");
+});
+
+/**
+ * Promotion thresholds are frozen constants, and the Lab cannot rewrite them.
+ *
+ * The seductive failure available to an automated desk is to notice a candidate
+ * just missing a bar and move the bar.
+ */
+test("promotion thresholds are frozen and nothing mutates them", () => {
+  const gates = codeOf("src/lib/desk/promotion-gates.ts");
+  for (const name of [
+    "COMPONENT_MIN",
+    "FULL_FLOOR_MIN",
+    "ECONOMIC",
+    "RISK",
+    "REGIME",
+    "STABILITY",
+    "COOLDOWN",
+    "PROBATION",
+    "ROLLBACK",
+  ]) {
+    assert.match(gates, new RegExp(`export const ${name} = Object\\.freeze\\(`), `${name} must be frozen`);
+  }
+  // No assignment into a threshold anywhere in the app.
+  for (const rel of ["src/lib/desk/promotion-gates.ts", "src/lib/desk/policy-lab.server.ts"]) {
+    const code = codeOf(rel);
+    assert.doesNotMatch(code, /(COMPONENT_MIN|FULL_FLOOR_MIN|ECONOMIC|RISK|REGIME|STABILITY|COOLDOWN|PROBATION|ROLLBACK)\.\w+\s*=[^=]/);
+  }
+});
+
+/**
+ * Candidate creation is a code change, not a runtime event.
+ *
+ * The registry is a hand-written frozen list. A system that can append to it could
+ * generate parameter variants until one looked profitable, which is the difference
+ * between research and data mining.
+ */
+test("the candidate registry cannot be extended at runtime", () => {
+  const reg = codeOf("src/lib/desk/floor-policy.ts");
+  assert.match(reg, /export const COMPONENTS: readonly Component\[\] = Object\.freeze\(/);
+  // No code anywhere may push into the registry or build candidates in a loop over
+  // parameter ranges.
+  for (const rel of ["src/lib/desk/floor-policy.ts", "src/lib/desk/policy-lab.server.ts", "src/lib/desk/promotion-gates.ts"]) {
+    const code = codeOf(rel);
+    assert.doesNotMatch(code, /COMPONENTS\.push|EXIT_CANDIDATES\.push/, `${rel} must not append candidates`);
+  }
+});
+
+/**
+ * The initial Champion is the unchanged desk, and the migration seeds exactly that.
+ */
+test("the Lab ships with the current desk as Champion and nothing promoted", () => {
+  const sql = read("migrations/0025_desk_policy_lab.sql");
+  assert.match(sql, /'FLOOR_V1', 1, 'CHAIR_V1', 'ENTRY_80_V1', 'HOLD_V1', 'RISK_NONE_V1', 'CHAMPION'/);
+  assert.match(sql, /on conflict \(policy_id\) do nothing/, "a re-run must not reset promotion history");
+  const policy = codeOf("src/lib/desk/floor-policy.ts");
+  assert.match(policy, /exit_policy: EXIT_HOLD_V1\.id/, "the incumbent exit is HOLD");
+  assert.match(policy, /status: "CHAMPION"/);
+});

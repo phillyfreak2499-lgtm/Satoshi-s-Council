@@ -341,4 +341,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Eight windows are out of the desk's research numbers, and the fault behind them is closed. On 2026-09-10 the Kalshi feed stopped advancing the market ticker, and the code matching a settlement to a window checked one half of its identity at a time: the ticker while ignoring the clock, then the clock while ignoring the ticker. So one market's result was handed to nine consecutive quarter-hours — 07:15 through 09:00 all carry the 07:00 market's settlement. A result must now agree on the ticker, on the close time, and on the close time the ticker itself encodes. This was bad research data rather than lost learning: those rows came in on the path that skips teaching credit, so no seat or threshold was trained on them. They stay exactly as recorded, but they no longer count in any hit rate, calibration or seat study. A pending window now also survives a restart.",
   },
+  {
+    slug: "2026-09-11-the-lab",
+    body:
+      "The desk's own answer now has a name and a challenger bench. Until today the Floor was an accidental combination: the Council picked a side, the 80¢ floor decided whether to pay, and the position was held to settlement because nothing else had ever been written. None of those three was a choice anything could argue with. They are now named as FLOOR_V1 — Council Chair, 80¢ floor, HOLD — and FLOOR_V1 is the Champion, which is to say nothing about the desk changed. Beside it four frozen alternatives start at zero: cut the position if it has not gained 10¢ within two, three or four minutes, or bank it if the bid ever reaches 90¢. Each is measured on the very same fill the Council actually took, priced only where the held side could genuinely have been sold, fees both ways. None of them can win anything yet, and the bar they must clear is written down before the evidence arrives.",
+  },
 ];

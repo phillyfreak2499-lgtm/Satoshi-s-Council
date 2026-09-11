@@ -38,6 +38,8 @@ import {
   whalePrintRecords,
 } from "./lab.server";
 import { recordPrints } from "./absorption.server";
+import { activeChampion, recordExitArena } from "./policy-lab.server";
+import { pointsFromReplay } from "./exit-arena";
 import {
   faultLine,
   type IdentityChecks,
@@ -48,7 +50,7 @@ import {
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
-import { noteReplay, pruneReplays, recordReplay } from "./replay.server";
+import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
 import { weeklyRecap } from "./recap.server";
 import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
@@ -975,6 +977,29 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
     forgetWhaleWindow(snap.ticker);
   })().catch((err) => {
     e.lastError = `absorption: ${err instanceof Error ? err.message : String(err)}`;
+  });
+  // THE LAB's exit competition. Every frozen exit policy is handed the one real
+  // paper fill — same entry by construction — and measured against the replay's
+  // executable bids. Research only: the rows go to their own table, vote nothing,
+  // and promote nothing. A window the chair sat out writes nothing, because there
+  // is no position to exit.
+  void (async () => {
+    if (!booked || !(booked.cents > 0)) return;
+    const series = replayLive(snap.ticker);
+    if (!series) return;
+    const champion = await activeChampion();
+    await recordExitArena(
+      {
+        ticker: snap.ticker,
+        closeMs: snap.close_time,
+        winner: finish,
+        entry: { side: booked.lean, cents: booked.cents, t: booked.t },
+        path: pointsFromReplay(series.cols),
+      },
+      champion,
+    );
+  })().catch((err) => {
+    e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
   });
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
     e.learner = runHuddle(e.learner).learner;
