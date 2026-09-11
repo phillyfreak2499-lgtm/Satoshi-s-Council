@@ -120,7 +120,12 @@ export type BookState =
   /** The chair leans a side at or above the floor and the book has not filled yet (next tick books). */
   | { kind: "filling"; lean: "UP" | "DOWN"; ask: number };
 
-function openRow(snap: Snapshot, callLog: CallLogRow[]): CallLogRow | null {
+/**
+ * The open paper position on this window, or null. Exported so the Floor can show
+ * WHEN the entry was locked, not just at what price — a locked entry without its
+ * timestamp cannot be told apart from a current quote. Pure lookup; decides nothing.
+ */
+export function openRow(snap: Snapshot, callLog: CallLogRow[]): CallLogRow | null {
   return (
     callLog.find(
       (r) => r.settle == null && r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000,
