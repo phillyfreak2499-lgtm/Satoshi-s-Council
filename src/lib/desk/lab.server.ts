@@ -51,6 +51,14 @@ import {
 import { readClock } from "./clock";
 import { vel2Features, type Vel2Features, type Vel2Sample } from "./vel2";
 import {
+  cluster as clusterPrints,
+  readPrint,
+  whaleReport,
+  type MidPoint,
+  type Print,
+  type WhaleReport,
+} from "./whale2";
+import {
   FAST_JUMP_MS,
   FILL_LATENCIES,
   fills,
@@ -125,6 +133,13 @@ type Lab = {
    *  sets the contract's sensitivity. Research only. */
   vel2: Vel2Sample[];
   vel2Last: Vel2Features | null;
+  /**
+   * WHALE 2.0's raw material: real executions and the midpoint path they landed
+   * in. Kept as prints rather than aggregates so impact can be measured at
+   * horizons AFTER each one — an aggregate cannot be asked what happened next.
+   */
+  whalePrints: Print[];
+  whaleMids: MidPoint[];
 };
 
 /** How trades are arriving: which direction field carried them, and how late. */
@@ -185,6 +200,8 @@ function lab(): Lab {
     tape2Last: null,
     vel2: [],
     vel2Last: null,
+    whalePrints: [],
+    whaleMids: [],
   };
   return g.__desk_lab__;
 }
@@ -412,7 +429,11 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       const side = takerOutcomeSide(msg);
       noteTradeClock(L, msg, side, t);
       // Executions are accounted separately from book flow, on purpose.
-      if (side) onTape2Trade(L.tape2, side, Number(msg.count_fp ?? msg.count) || 0, t);
+      const count = Number(msg.count_fp ?? msg.count) || 0;
+      if (side) onTape2Trade(L.tape2, side, count, t);
+      // WHALE 2.0 keeps the print itself. The aggressor's outcome side IS the
+      // direction they pushed: a taker who bought YES lifted the offer.
+      if (side && count > 0) noteWhalePrint(L, side === "yes" ? "UP" : "DOWN", count, t);
       onTrade(L.study, {
         t,
         yes_price: priceCents(msg.yes_price ?? msg.yes_price_dollars),
@@ -543,6 +564,8 @@ function sampleTape2Now(L: Lab, t: number): void {
     L.tape2 = freshTape2();
     L.tape2Ticker = tk;
     L.tape2Last = null;
+    L.whalePrints = [];
+    L.whaleMids = [];
     L.vel2 = [];
     L.vel2Last = null;
   }
@@ -552,6 +575,10 @@ function sampleTape2Now(L: Lab, t: number): void {
   sampleTape2(L.tape2, view, t);
   L.tape2Last = tape2Features(L.tape2, view, t);
   sampleVel2Now(L, view, t);
+  // The midpoint path WHALE 2.0 measures each print against. Sampled on the
+  // same trusted-book path as everything else, so a dark feed leaves a gap
+  // rather than a flat line that would read as absorption.
+  noteWhaleMid(L, t);
 }
 
 /**
@@ -582,6 +609,59 @@ function sampleVel2Now(L: Lab, view: ReturnType<typeof yesView>, t: number): voi
 export function vel2Now(ticker: string): Vel2Features | null {
   const L = lab();
   return L.tape2Ticker === ticker ? L.vel2Last : null;
+}
+
+/** How long a print and its midpoint path are kept. Long enough to outlive the follow horizon. */
+const WHALE_KEEP_MS = 120_000;
+/** At most one midpoint mark per this, so a busy book does not fill memory. */
+const WHALE_MID_MS = 500;
+const WHALE_MAX = 4_000;
+
+/**
+ * Record an execution with the midpoint it landed in. The midpoint is taken
+ * BEFORE the book has refilled, which is the price the aggressor actually
+ * moved away from; impact is then measured against the book a moment later.
+ */
+function noteWhalePrint(L: Lab, side: "UP" | "DOWN", size: number, t: number): void {
+  const mid = whaleMidNow(L);
+  if (mid == null) return;
+  L.whalePrints.push({ t, side, size, mid });
+  if (L.whalePrints.length > WHALE_MAX) L.whalePrints = L.whalePrints.slice(-WHALE_MAX);
+  L.whalePrints = L.whalePrints.filter((p) => t - p.t <= WHALE_KEEP_MS);
+}
+
+/** The YES midpoint from the local book right now, or null when it cannot be trusted. */
+function whaleMidNow(L: Lab): number | null {
+  const tk = currentTicker(L);
+  const b = tk ? L.books.get(tk) : null;
+  if (!b || !bookTrusted(b)) return null;
+  const bs = bests(b);
+  if (!(bs.yes_bid > 0) || !(bs.yes_ask > 0)) return null;
+  return Math.round(((bs.yes_bid + bs.yes_ask) / 2) * 10) / 10;
+}
+
+/** Sample the midpoint so every print has a path to be measured against. */
+function noteWhaleMid(L: Lab, t: number): void {
+  const last = L.whaleMids[L.whaleMids.length - 1];
+  if (last && t - last.t < WHALE_MID_MS) return;
+  const mid = whaleMidNow(L);
+  if (mid == null) return;
+  L.whaleMids.push({ t, mid });
+  if (L.whaleMids.length > WHALE_MAX) L.whaleMids = L.whaleMids.slice(-WHALE_MAX);
+  L.whaleMids = L.whaleMids.filter((m) => t - m.t <= WHALE_KEEP_MS);
+}
+
+/**
+ * WHALE 2.0's read of the prints held for this window. Each print is ranked
+ * against the sizes recorded BEFORE it — ranking against the whole window would
+ * let a later print decide whether an earlier one was large.
+ */
+export function whale2Now(ticker: string): WhaleReport | null {
+  const L = lab();
+  if (L.tape2Ticker !== ticker || !L.whalePrints.length) return null;
+  const clustered = clusterPrints(L.whalePrints);
+  const reads = clustered.map((c, i) => readPrint(c, L.whaleMids, clustered.slice(0, i).map((x) => x.size)));
+  return whaleReport(reads, L.whalePrints.length);
 }
 
 /** The current microstructure features, or null when none have been measured. Research only. */
@@ -861,6 +941,14 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
     // VEL 2.0: the part of the contract's move the underlying does not explain,
     // at four horizons, plus which market actually moved first. Research only.
     vel2: L.vel2Last ?? { note: "no samples yet" },
+    // WHALE 2.0: real executions, clustered, with what the midpoint did after
+    // each. Entirely separate from the incumbent volume-proxy WHALE seat, whose
+    // calibration record is its own and is never pooled with this. Research only.
+    whale2: whale2Now(tk) ?? {
+      note: "no prints recorded on this window yet",
+      prints_held: L.whalePrints.length,
+      mid_marks: L.whaleMids.length,
+    },
     book_integrity: {
       books: L.books.size,
       trusted: [...L.books.values()].filter((x) => bookTrusted(x)).length,

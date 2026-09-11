@@ -17,6 +17,19 @@ import { test } from "node:test";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 
+/**
+ * Source with comments removed.
+ *
+ * A guard that greps a whole file for a banned token finds it in the comment
+ * explaining why it is banned, and then fails on a file that is correct. Every
+ * "this must not appear" check runs on this; assertions about the prose itself
+ * run on the raw source.
+ */
+const codeOf = (rel) =>
+  read(rel)
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
 test("the live paper floor is decided by one constant, and reverting is one line", () => {
   const src = read("src/lib/desk/book-floor.ts");
   assert.match(src, /export const FLOOR_LIVE_CENTS = 80;/, "live floor constant missing");
@@ -181,7 +194,8 @@ test("no copy claims a live floor the book does not actually pay", () => {
 test("Phase 2 research has no path to the chair, a seat, or the learner", () => {
   // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
   // not a promise in a comment: nothing that decides anything may import them.
-  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server", "redundancy", "redundancy.server", "seat-signal", "seat-signal.server"];
+  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server", "redundancy", "redundancy.server", "seat-signal", "seat-signal.server",
+    "whale2", "research-status", "research-status.server"];
   const deciders = [
     "src/lib/desk/chair.ts",
     "src/lib/desk/bots.ts",
@@ -282,7 +296,7 @@ test("MAE/MFE is descriptive and says so where it could be misread", () => {
   // every call and inflate every MFE.
   assert.match(src, /side === "UP" \? m\.yes_bid : 100 - m\.yes_ask/);
   // The verdict must never read as a take-profit level.
-  assert.ok(!/take profit/i.test(src.replace(/^\s*\*.*$/gm, "")), "a take-profit rule leaked into the verdict");
+  assert.ok(!/take profit/i.test(codeOf("src/lib/desk/excursion.ts")), "a take-profit rule leaked into the verdict");
   assert.match(src, /hindsight/);
   assert.match(src, /tested on windows recorded afterwards/);
   // And it must put the winners' drawdown beside the losers' peak.
@@ -468,4 +482,65 @@ test("the local book cannot hold a level with no size behind it", () => {
   const tape = read("src/lib/desk/tape2.ts");
   assert.match(tape, /export const MIN_OFI_DEPTH = 1e-6;/);
   assert.match(tape, /if \(!\(depth >= MIN_OFI_DEPTH\)\) return 0;/);
+});
+
+test("WHALE 2.0 is a separate record from the incumbent volume proxy", () => {
+  // A proxy and a measurement that disagree are two pieces of evidence. Pooling
+  // their calibration histories would destroy both.
+  const w = read("src/lib/desk/whale2.ts");
+  assert.match(w, /THE TWO ARE/);
+  assert.match(w, /NEVER MERGED/);
+  // It knows nothing about candles: no volume-proxy input can reach it.
+  assert.ok(!/vol_median|vol_last|candle/i.test(codeOf("src/lib/desk/whale2.ts")), "the real-print lab is reading the volume proxy");
+  // Impact is measured from the MIDPOINT, never the traded side — a print
+  // consumes the touch, so measuring there reports the trade's own mechanics.
+  assert.match(w, /WHY IMPACT IS MEASURED FROM THE MIDPOINT/);
+  assert.ok(!/yes_ask|yes_bid/.test(codeOf("src/lib/desk/whale2.ts")), "impact is being read off a traded side");
+  // Continuation and reversal are one comparison, so a print cannot be both.
+  assert.match(w, /continued: moved && follow! > 0,/);
+  assert.match(w, /reversed: moved && follow! < 0,/);
+  // Absorption requires a large print AND a measured future: a missing horizon
+  // must never be read as "no response".
+  assert.match(w, /absorbed:\s*pctile != null && pctile >= LARGE_PCTILE && follow != null/);
+  // Nothing votes on it.
+  // Nothing votes on it, asserted the only way that cannot be argued with: the
+  // module is a pure leaf with no imports, so there is no path from it to
+  // anything that decides. (Matching words like "seat" would only find the
+  // sentence in its own verdict saying that no seat reads it.)
+  assert.ok(!/^\s*import\s/m.test(codeOf("src/lib/desk/whale2.ts")), "whale2 is no longer a pure leaf");
+
+  // Each print is ranked only against prints BEFORE it.
+  const lab = read("src/lib/desk/lab.server.ts");
+  assert.match(lab, /clustered\.slice\(0, i\)\.map\(\(x\) => x\.size\)/);
+});
+
+test("the research board counts prospective sample apart from total, and promotes nothing", () => {
+  const rs = read("src/lib/desk/research-status.ts");
+  // The ladder has no rung above measurable.
+  assert.ok(
+    !/"promote"|"adopt"|"trust"|"live"/.test(codeOf("src/lib/desk/research-status.ts")),
+    "a promotion rung appeared on the status ladder",
+  );
+  assert.match(rs, /\| "measurable"/);
+  // A result is withheld, not merely labelled, below the bar — a number beside a
+  // thin sample reads as a finding whatever the status column says.
+  assert.match(rs, /result: status === "measurable" \? r\.result : null/);
+
+  const srv = read("src/lib/desk/research-status.server.ts");
+  assert.match(srv, /promotes_nothing: true/);
+  for (const banned of [/\binsert into\b/i, /\bupdate \w+ set\b/i, /\bdelete from\b/i, /\bpromote\w*\(/]) {
+    assert.ok(!banned.test(srv), `research-status.server.ts contains ${banned} — it must be read-only`);
+  }
+  // The six watched seats are listed, and listed as watched rather than acted on.
+  for (const seat of ["DRIFT", "CASCADE", "CHAIN", "TAPE", "WICK", "FADE"]) {
+    assert.ok(srv.includes(seat), `${seat} is missing from the watchlist`);
+  }
+  assert.match(srv, /watching, not rewarded/);
+  assert.match(srv, /watching, not inverted/);
+  // The corrected measurement restarts its clock instead of pooling.
+  assert.match(srv, /restarted: true/);
+  assert.match(srv, /every earlier record is unusable and none is pooled/);
+
+  const route = read("server/routes/research.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
 });
