@@ -10,17 +10,22 @@ import { ArenaPanel } from "./ArenaPanel";
 import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
-import { readScalp, scalpAvg } from "@/lib/desk/scalp";
+import { markSide, readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { useDesk } from "@/lib/desk/store";
 import { fetchBrief, type Brief, type GavelRow } from "@/lib/desk/brief";
 import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from "@/lib/desk/size-view";
 import { bookState, bookableShadow, CHAIR_MIN_ASK_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
+import { economicsOf, type Economics } from "@/lib/desk/economics";
 
+/**
+ * The ask for a side, from the one function the book marks with. This used to be
+ * a local copy that differed from it in the WAIT case; a page about honesty does
+ * not get to keep a second answer for the price.
+ */
 function sideAsk(snap: Snapshot, lean: Lean) {
-  if (lean === "UP") return snap.yes_ask || snap.yes_mid;
-  if (lean === "DOWN") return snap.no_ask || 100 - (snap.yes_mid || 50);
-  return snap.yes_mid;
+  if (lean !== "UP" && lean !== "DOWN") return snap.yes_mid;
+  return markSide(snap, lean);
 }
 
 function fmtClock(t: number, tz: string) {
@@ -69,6 +74,48 @@ function PitChip({ tag }: { tag: string }) {
     >
       {label}
     </span>
+  );
+}
+
+/**
+ * The economics of the call: every number the book weighs before it pays, in one
+ * row. Display only — the values come from `economicsOf`, which carries them off
+ * the frame the engine already decided on rather than working any of them out
+ * again. The cells that can stop a fill are the ones that get colour.
+ */
+function EconomicsBox({ eco }: { eco: Economics }) {
+  const cell = (label: string, value: string, tone?: string) => (
+    <div key={label} className="min-w-0">
+      <div className="font-mono text-micro uppercase tracking-wider text-subtle">{label}</div>
+      <div className={cn("font-mono tabular text-ui", tone ?? "text-fg")}>{value}</div>
+    </div>
+  );
+  const c = (n: number) => `${n.toFixed(1)}¢`;
+  const signed = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}¢`;
+  return (
+    <div className="mt-3 rounded-md border border-border bg-bg/40 px-3 py-2.5">
+      <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+        <Tip k="chair.economics">what this call costs</Tip>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-x-4 gap-y-2.5 sm:grid-cols-4 lg:grid-cols-8">
+        {cell("side", eco.side ? (eco.side === "UP" ? "YES" : "NO") : "—", eco.side ? undefined : "text-wait")}
+        {cell("fair", c(eco.fair))}
+        {cell("ask", eco.side ? c(eco.ask) : "—", eco.side && !eco.bookable ? "text-wait" : undefined)}
+        {cell("fee", eco.side ? c(eco.fee) : "—")}
+        {cell("edge", eco.side ? signed(eco.edge) : "—", !eco.side ? undefined : eco.edge >= 0 ? "text-up" : "text-down")}
+        {cell("needs", eco.side ? `${eco.breakeven.toFixed(0)}%` : "—")}
+        {cell("leftover", signed(eco.leftover), eco.leftover < 0 ? "text-wait" : undefined)}
+        {cell("touch", eco.side ? String(eco.touch) : "—", eco.side && eco.touch <= 0 ? "text-wait" : undefined)}
+      </div>
+      <div className="mt-2 font-mono text-micro text-muted">
+        floor {eco.floor}¢ ·{" "}
+        {eco.why ? (
+          <span className="text-wait">{eco.why}</span>
+        ) : (
+          <span className="text-up">the book pays this</span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -139,10 +186,11 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
                     ) : null}
                   </span>
                 ) : null}
-                {edge ? ` · leftover ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
+                {edge ? ` · edge ${edge >= 0 ? "+" : ""}${edge.toFixed(1)}¢` : ""}
               </>
             )}
           </div>
+          <EconomicsBox eco={economicsOf(snap, lean)} />
         </div>
         <div className="flex flex-wrap items-end gap-6">
           <div>

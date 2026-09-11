@@ -126,6 +126,10 @@ export const GLOSS: Record<string, Gloss> = {
     title: `The ${SHADOW} era`,
     body: `The record from the moment the paper book stopped filling under ${SHADOW}: 3:47 pm Chicago on Sep 8, 2026. That was the rule until the ${LIVE} trial began — so this card is the ${SHADOW} era, not the book as it plays today. For the current rule read the floor trial card, which puts the live ${LIVE} book beside the ${SHADOW} book on the same windows. All-time keeps every call before either change exactly as it was booked.`,
   },
+  "chair.economics": {
+    title: "What this call actually costs",
+    body: `Every number the book weighs before it pays, in one row, and all of them carried from the same frame the engine decided on — nothing here is a second calculation. FAIR is the desk's own odds for this side in cents. ASK is what the side costs right now. FEE is Kalshi's taker fee at that price. EDGE is fair minus ask minus fee: the cents the desk claims, after the fee. NEEDS is ask plus fee, the win rate this price has to clear to stand still. LEFTOVER is 100 minus both legs' asks — what the two sides leave on the table. TOUCH is the resting size a fill would have to take. FLOOR is the ${LIVE} the book pays at. If something is in the way the row says which: under the floor, no real price, or an ask at the floor with an empty touch.`,
+  },
   "books.needs": {
     title: "Needs — the breakeven win rate",
     body: "The win rate these calls needed to stand still, worked from what their wins paid and their losses cost after Kalshi's fee. For a contract held to settlement that is simply the price paid plus the fee: bought at 70¢ it pays 28¢ after its 2¢ fee when it wins and loses 72¢ when it doesn't, so that book is flat only at 72 wins in 100; at 80¢ about 82. Won is coloured by the verdict — green cleared it, red fell short — and the verdict is the net itself, so the colour and the cents can never disagree: a high win rate on rich contracts can still read red.",
