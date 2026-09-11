@@ -637,3 +637,24 @@ test("the seat context a print carries records its own staleness", () => {
   // Evidence uses the desk's own converter, not a second scale.
   assert.match(read("src/lib/desk/server-engine.ts"), /drift: seatEvidence\(votes\.find/);
 });
+
+test("a window's prints survive the rollover that settles it", () => {
+  // Found in production: zero prints were written after the first window graded.
+  // A window settles AFTER the snapshot has rolled to the next one, so a single
+  // current-window buffer is wiped on the roll and the settle then finds
+  // nothing — the data is destroyed a moment before the only code that wants it
+  // runs. Replay already keeps a per-ticker map; whale now does too.
+  const lab = read("src/lib/desk/lab.server.ts");
+  assert.match(lab, /whale: Map<string, \{ prints: Print\[\]; mids: MidPoint\[\]; t: number \}>;/);
+  // Nothing may clear a window's buffer on the ticker roll.
+  const roll = lab.slice(lab.indexOf("if (L.tape2Ticker !== tk) {"), lab.indexOf("const b = L.books.get(tk);"));
+  assert.ok(!/whale/i.test(roll), "the ticker roll is clearing whale state again");
+  // And the settle-time reader must look up BY TICKER, never against the
+  // current one, which by then is already the next window.
+  assert.match(lab, /const w = L\.whale\.get\(ticker\);/);
+  const reader = lab.slice(lab.indexOf("export function whalePrintRecords"), lab.indexOf("function touchOn"));
+  assert.ok(!/tape2Ticker/.test(reader), "the reader is checking the current ticker again");
+  assert.ok(!/currentTicker/.test(reader), "the reader is checking the current ticker again");
+  // Buffers for windows that never settled are pruned rather than kept forever.
+  assert.match(lab, /if \(t - v\.t > WHALE_WINDOW_KEEP_MS\) L\.whale\.delete\(k\);/);
+});
