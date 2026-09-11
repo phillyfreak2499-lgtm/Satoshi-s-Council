@@ -351,4 +351,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "A number the desk calls one minute of movement is usually five. Four seats read the recent price path by counting back a fixed number of slots and call the results d30, d60 and d120 as if a slot were seconds. It is not: the path is normally built from Kalshi's one-minute candles, so the offset named d60 really spans five minutes and d30 three. On the tick-by-tick feed the same offsets span twenty and twelve seconds \u2014 one named quantity, fifteenfold apart, decided only by which feed arrived. Nothing changed today. Every point now carries the timestamp Kalshi gave it, and every reading is written down with three facts kept apart: the span it covered, how old its newest point was when the desk decided, and so whether it describes the last minute or a minute that ended a minute ago. Those are not the same thing, and an exact-looking span can still be the wrong interval.",
   },
+  {
+    slug: "2026-09-11-floor-clarity",
+    body:
+      "The floor now says which number is which. A locked paper entry and a live quote looked alike, so each price now carries its kind and the moment it belongs to, and an entry is never redrawn to match a later quote. The reason for the call moved up next to the call instead of sitting four panes down, and when the desk waits it says which kind of waiting \u2014 a gate that failed, a vote that fell short, or nothing worth paying for. Two public pages still said the book fills at 70\u00a2; it has been 80\u00a2 since the trial began. The decisions table showed confidence as a percentage, which read as a chance of winning; it is a margin over a gate and is now shown as one. Tests fail if either drifts back. Nothing about how the desk decides changed."
+  },
 ];

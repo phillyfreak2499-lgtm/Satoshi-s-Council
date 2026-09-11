@@ -23,7 +23,7 @@ const QA: { q: string; a: string }[] = [
   },
   {
     q: "The chair shows UP or DOWN but the log has no fill. Why?",
-    a: "The price floor. The chair's read and the paper book are two different things. The book only fills at 70¢ or better, because on the record the chair's calls under 70¢ lost money and its calls at 70¢ or better made it. A read under the floor still shows on the strip and still grades the seats; it is booked only if the ask reaches 70¢ before the window closes.",
+    a: "The price floor. The chair's read and the paper book are two different things. The book fills at 80¢ or better — a time-boxed trial of a higher floor, raised from 70¢ because on the record the chair's cheaper calls lost money. A read under the floor still shows on the strip and still grades the seats; it is booked only if the ask reaches the floor before the window closes. The old 70¢ floor is still counted alongside as a shadow book, so the trial can be judged against the thing it replaced on the same windows. The shadow is research and never gates a fill.",
   },
   {
     q: "What does paper mean?",

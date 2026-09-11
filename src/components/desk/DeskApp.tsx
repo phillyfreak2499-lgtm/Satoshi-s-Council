@@ -126,6 +126,9 @@ export function DeskApp() {
   const [welcomeOn, setWelcomeOn] = useState(false);
   const [paletteOn, setPaletteOn] = useState(false);
   const [nudge, setNudge] = useState(false);
+  // Read in the effect below, never during render: welcomeSeen() touches localStorage
+  // and would otherwise differ between the server and the first client paint.
+  const [returning, setReturning] = useState(false);
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
   const setSeatView = (v: SeatView) => {
     setSeatViewState(v);
@@ -143,6 +146,7 @@ export function DeskApp() {
     applyDisplayPrefs();
     setSeatViewState(readSeatView());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
+    setReturning(welcomeSeen());
     beacon("desk_view", true);
   }, []);
   useEffect(() => {
@@ -389,6 +393,7 @@ export function DeskApp() {
         <IntroBand
           demo={frame.settings.source === "demo"}
           nudge={nudge && !tourOn}
+          returning={returning}
           onTour={startTour}
           onDismissNudge={() => {
             setNudge(false);
@@ -434,6 +439,7 @@ export function DeskApp() {
             onJump={jump}
             v2={frame.v2}
             onOpenArena={() => setTab("arena")}
+            onOpenBooks={() => setTab("books")}
             strip={
               <TopStrip
                 floor

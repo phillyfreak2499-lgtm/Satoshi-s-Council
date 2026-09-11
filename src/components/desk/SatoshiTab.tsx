@@ -16,6 +16,9 @@ import { fetchBrief, type Brief, type GavelRow } from "@/lib/desk/brief";
 import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from "@/lib/desk/size-view";
 import { bookState, bookableShadow, CHAIR_MIN_ASK_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
+import { CallPrices, CompactRecord, EvidenceBlock, LastReplayCard, WhyBlock } from "./FloorClarity";
+import { recordCard, whyFacts } from "@/lib/desk/floor-clarity";
+import { FLOOR_LIVE_SINCE, openRow } from "@/lib/desk/book-floor";
 import { economicsOf, type Economics } from "@/lib/desk/economics";
 
 /**
@@ -523,7 +526,7 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
               <tr>
                 <th className="pl-3">time</th>
                 <th>call</th>
-                <th className="num">conf</th>
+                <th className="num"><Tip k="strip.conf">gate conf</Tip></th>
                 <th className="num">score / bar</th>
                 <th className="num pr-3">settled</th>
               </tr>
@@ -537,7 +540,16 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
                     <td>
                       <span className={cn("font-medium", g.lean === "UP" ? "text-up" : g.lean === "DOWN" ? "text-down" : "text-wait")}>{g.lean}</span>
                     </td>
-                    <td className="num tabular text-muted">{g.conf}%</td>
+                    {/*
+                      NOT a percentage. `chair_conf` is the Chair's GATE confidence:
+                      chair.ts:521-525 sets it from the weighted vote and, when gates
+                      fail, clamps it to 70-92 by a COUNT of failed gates. A calibrated
+                      probability is never clamped by a gate count, so the percent sign
+                      this column used to carry read "76% chance of winning" for a
+                      number that means nothing of the kind. Presentation only — the
+                      calculation is untouched.
+                    */}
+                    <td className="num tabular text-muted">{g.conf}</td>
                     <td className="num tabular text-muted">
                       {g.score >= 0 ? "+" : ""}
                       {g.score.toFixed(2)} / {g.bar.toFixed(2)}
@@ -631,6 +643,7 @@ export function SatoshiTab({
   onJump,
   v2,
   onOpenArena,
+  onOpenBooks,
   strip,
 }: {
   snap: Snapshot;
@@ -640,6 +653,8 @@ export function SatoshiTab({
   onJump: (seat: SeatId) => void;
   v2?: V2Frame | null;
   onOpenArena?: () => void;
+  /** Switch to the BOOKS tab. The record card links there rather than embedding it. */
+  onOpenBooks?: () => void;
   /** The decision-metrics strip, shown right under the chair stage. */
   strip?: ReactNode;
 }) {
@@ -663,20 +678,67 @@ export function SatoshiTab({
     };
   }, []);
   const speaking = chair.rows.filter((r) => r.lean === "UP" || r.lean === "DOWN").length;
+  // All presentation-only, all from data the Floor already has. No fetch, no timer.
+  const book = bookState(snap, chair.lean, callLog);
+  const openFill = openRow(snap, callLog);
+  const why = whyFacts(chair, plainLine(chair, snap, book));
+  // The record counts the CURRENT floor era only: the brief's 40 windows straddle the
+  // 70¢ → 80¢ change, and combining them would merge incompatible strategy eras.
+  const record = recordCard(brief?.gavel ?? [], FLOOR_LIVE_SINCE);
+  const lastSettled =
+    [...callLog].filter((r) => r.settle != null).sort((a, b) => b.close_time - a.close_time)[0] ?? null;
   const rows = chair.rows.filter((r) => (view === "all" ? true : view === "speaking" ? r.lean === "UP" || r.lean === "DOWN" : r.status === "LIVE"));
   return (
     <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
       <OvernightRibbon brief={brief} tz={settings.tz} />
+
+      {/* 1. CALL — the dominant element, with its concise reason and economics. */}
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
-      <ChairScoreboard v2={v2} />
       {strip ? <div>{strip}</div> : null}
-      <Chamber rows={chair.rows} onJump={onJump} />
+
+      {/* The four prices belong to the call area: each says which kind it is and
+          which moment it belongs to, so a fair value can never read as a quote. */}
+      <CallPrices
+        snap={snap}
+        chair={chair}
+        book={book}
+        openFill={openFill ? { t: openFill.t, cents: openFill.cents } : null}
+        tz={settings.tz}
+      />
+
+      {/* 2. WHY — next to the call, from recorded fields only. Previously this lived
+          in the Diagnostics disclosure, several panes down. */}
+      <WhyBlock why={why} chair={chair} />
+
+      {/* 3. BITCOIN VS STRIKE / WINDOW — moved up from below the 21-seat Chamber. */}
       <ChairEyes snap={snap} />
+
+      {/* 4. EVIDENCE + COUNTERARGUMENT, including what would END the read. */}
+      <EvidenceBlock why={why} />
+
+      {/* 5. YOUR CALL + LAST REPLAY. ArenaPanel moved up from the bottom; the replay
+          is a link to the page that already renders it, not a second fetching pane. */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
+        <LastReplayCard
+          ticker={lastSettled?.ticker ?? null}
+          at={lastSettled ? new Date(lastSettled.close_time).toISOString() : null}
+          lean={lastSettled?.lean ?? null}
+          settle={lastSettled?.settle ?? null}
+          tz={settings.tz}
+        />
+      </div>
+
+      {/* 6. COMPACT RECORD — one named population, bounded, linking to full BOOKS. */}
+      <CompactRecord card={record} onBooks={onOpenBooks ?? (() => {})} />
+
+      {/* Supporting research follows. Same instances as before, moved down. */}
+      <Chamber rows={chair.rows} onJump={onJump} />
+      <ChairScoreboard v2={v2} />
       <div className="grid gap-3 lg:grid-cols-2">
         <GavelList gavel={brief?.gavel ?? []} tz={settings.tz} />
         <SeatsList rows={chair.rows} learner={learner} />
       </div>
-      <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
 
       <details className="group rounded-md border border-border bg-surface">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 font-mono text-micro uppercase tracking-widest text-subtle marker:content-none hover:text-fg">

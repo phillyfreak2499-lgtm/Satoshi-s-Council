@@ -189,6 +189,10 @@ test("no copy claims a live floor the book does not actually pay", () => {
     new RegExp(`at or above the ${shadow}¢ floor`, "i"),
     new RegExp(`under the ${shadow}¢ floor`, "i"),
     new RegExp(`fills? only at ${shadow}¢`, "i"),
+    // window.$ticker.tsx phrased it with the fee clause in between — "books on paper
+    // at the ask plus Kalshi's fee, at 70¢ or better" — which slipped past every
+    // pattern above. An arithmetic example never says "or better", so this is safe.
+    new RegExp(`at ${shadow}¢ or better`, "i"),
   ];
   // updates.ts is the dated changelog: a past note describing the old rule is a
   // record of what was true then and must not be edited.
@@ -199,11 +203,29 @@ test("no copy claims a live floor the book does not actually pay", () => {
     "src/components/desk/SatoshiTab.tsx",
     "src/components/desk/TopStrip.tsx",
     "src/lib/desk/chair-words.ts",
+    // The PUBLIC routes were missing from this list, and both had drifted: faq.tsx
+    // said "only fills at 70¢ or better" and every /window/<ticker> page said "at 70¢
+    // or better" — a present-tense claim about a floor the book has not paid since
+    // FLOOR_LIVE_SINCE. The rail covered six internal files and none of the pages a
+    // visitor actually reads.
+    "src/routes/faq.tsx",
+    "src/routes/window.$ticker.tsx",
   ]) {
     const src = read(rel);
     for (const re of claims) {
       assert.ok(!re.test(src), `${rel} still claims the live floor is ${shadow}¢ (${re})`);
     }
+  }
+
+  // Banning the stale number is only half of it: the copy could also be deleted, and
+  // a visitor would then be told nothing about the gate that decides whether a read
+  // becomes a fill. Each public page must state the LIVE floor.
+  for (const rel of ["src/routes/faq.tsx", "src/routes/window.$ticker.tsx"]) {
+    const src = read(rel);
+    assert.ok(
+      src.includes(`${live}¢`),
+      `${rel} must state the live floor (${live}¢): a visitor cannot otherwise tell why a read did not fill`,
+    );
   }
 });
 
@@ -1441,5 +1463,49 @@ test("the path-parity insert cannot drift from its table", () => {
     src,
     /\$\{Math\.round\(s\./,
     "Math.round on a possibly-NaN input writes NaN to an integer column; use int()",
+  );
+});
+
+/**
+ * Gate confidence is never printed as a percentage.
+ *
+ * `chair_conf` is the Chair's GATE confidence: chair.ts sets it from the weighted vote
+ * and, when gates fail, CLAMPS it to 70-92 by a count of failed gates. A calibrated
+ * probability is never clamped by a gate count. A rendered capture of the live Floor
+ * showed the GAVEL table printing "76%", "79%", "82%" under CONF, which reads as a
+ * chance of winning for a number that means nothing of the kind.
+ *
+ * The ARENA's percentages are deliberately NOT covered: those are the visitor's OWN
+ * stated probability, which the desk scores for calibration against their hit rate, so
+ * a percent sign there is correct.
+ */
+test("the chair's gate confidence is never rendered as a percentage", () => {
+  for (const rel of ["src/components/desk/SatoshiTab.tsx", "src/components/desk/BooksTab.tsx"]) {
+    const code = codeOf(rel);
+    // `{x.conf}%`, `{conf}%`, `${conf}%` — any chair-side conf immediately followed by a
+    // percent sign. Chamber's `width: ${conf}%` is a CSS length, not a printed number,
+    // and lives in its own file.
+    assert.doesNotMatch(
+      code,
+      /\{\s*(?:[A-Za-z_$][\w$]*\.)?conf\s*\}\s*%/,
+      `${rel} prints the chair's gate confidence with a percent sign. chair.ts clamps ` +
+        `that number to 70-92 on a gate-failure count, so "76%" reads as a 76% chance ` +
+        `of winning for a quantity that is not a probability.`,
+    );
+    assert.doesNotMatch(
+      code,
+      /\$\{\s*(?:[A-Za-z_$][\w$]*\.)?conf\s*\}%/,
+      `${rel} interpolates the chair's gate confidence with a percent sign.`,
+    );
+  }
+
+  // And the helper that names these quantities must keep them apart.
+  const fc = codeOf("src/lib/desk/floor-clarity.ts");
+  assert.match(fc, /"gate-confidence"/);
+  assert.match(fc, /"calibrated-probability"/);
+  assert.doesNotMatch(
+    fc,
+    /value: v == null \? "—" : `\$\{v\}%`/,
+    "chairConfidenceLabel must not append a percent sign",
   );
 });

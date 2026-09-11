@@ -57,7 +57,7 @@ function WindowPage() {
         {msg ? <span aria-live="polite">{msg}</span> : null}
       </div>
       <p className="mt-3 max-w-[70ch] font-mono text-micro leading-relaxed text-subtle">
-        Nothing here was a live order. The chair books on paper at the ask plus Kalshi&apos;s fee, at 70¢ or better, and is graded on the official
+        Nothing here was a live order. The chair books on paper at the ask plus Kalshi&apos;s fee, at 80¢ or better, and is graded on the official
         settlement value: the average of the final minute&apos;s sixty BRTI prints. Not financial advice.
       </p>
     </Page>
