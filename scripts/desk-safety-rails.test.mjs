@@ -9,7 +9,7 @@
  * makes a hold, a gate, or a floor actually bite.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -730,4 +730,184 @@ test("a print carries the state of the world at the moment it landed", () => {
   // print, which is a fault worth seeing rather than hiding behind a zero.
   assert.match(stamp, /seat_age_ms: d\.t \? Math\.round\(t - d\.t\) : null,/);
   assert.ok(!/seat_age_ms: .*Math\.max\(0/.test(stamp), "staleness is being clamped to zero again");
+});
+
+/**
+ * Every research reader still excludes the known-invalid windows.
+ *
+ * The exclusion is only worth having if no aggregate can quietly bypass it. A
+ * new report that reads desk_ledger and forgets the predicate would silently
+ * re-admit the 2026-09-10 block, and the number would look fine.
+ *
+ * Listed explicitly rather than globbed: adding a research reader should be a
+ * decision that includes answering "does this count invalid windows?", and an
+ * unlisted file failing this test is that question being asked.
+ */
+test("research readers exclude the known-invalid windows", () => {
+  // Coverage is one question, not twenty-eight: does this query read the bare
+  // table? Research reads the desk_ledger_research view, which carries the
+  // exclusion once. A new aggregate that reads the view is correct by
+  // construction; one that reads desk_ledger must appear in the allowlist below
+  // with a reason, which is the point at which someone has to think about it.
+  const ALLOWED_BARE = {
+    "src/lib/desk/server-engine.ts": [
+      "the ledger INSERT itself",
+      "the durable-write read-back, which must see the row it just wrote",
+      "the 6h gap scan and the 90d reconciliation — these MUST see every row, or " +
+        "each quarantined window reads as a MISSING ledger row and alerts falsely",
+    ],
+    "src/lib/desk/lab.server.ts": ["the official_value backfill, which must reach every row"],
+    "src/lib/desk/replay.server.ts": ["the replay viewer: one named window, shown for forensics"],
+  };
+
+  const readers = readdirSync(join(ROOT, "src/lib/desk"))
+    .filter((f) => f.endsWith(".server.ts") || f === "server-engine.ts")
+    .map((f) => `src/lib/desk/${f}`);
+
+  for (const rel of readers) {
+    const src = codeOf(rel);
+    // Bare reads: desk_ledger not followed by _research or _patterns.
+    const bare = (src.match(/\bdesk_ledger\b(?!_)/g) ?? []).length;
+    if (bare === 0) continue;
+    assert.ok(
+      ALLOWED_BARE[rel],
+      `${rel} reads desk_ledger directly (${bare}x). Research must read ${"desk_ledger_research"}; ` +
+        `if this read genuinely needs every row, add it to ALLOWED_BARE with the reason.`,
+    );
+  }
+
+  // And the files that DO read research data must be reading the view.
+  for (const rel of [
+    "src/lib/desk/cube.server.ts",
+    "src/lib/desk/redundancy.server.ts",
+    "src/lib/desk/excursion.server.ts",
+    "src/lib/desk/crew.server.ts",
+    "src/lib/desk/ledger-clerk.server.ts",
+    "src/lib/desk/readiness.server.ts",
+    "src/lib/desk/recap.server.ts",
+    "src/lib/desk/books.server.ts",
+    "src/lib/desk/brief.server.ts",
+    "src/lib/desk/taker.server.ts",
+    "src/lib/desk/arena.server.ts",
+    "src/lib/desk/pit.server.ts",
+  ]) {
+    assert.match(codeOf(rel), /desk_ledger_research/, `${rel} must read the research view`);
+  }
+
+  // desk_samples and desk_replay carry no quality column, so those readers apply
+  // the registry in JS instead. Same rule, different mechanism.
+  for (const rel of ["src/lib/desk/seat-signal.server.ts", "src/lib/desk/research-status.server.ts"]) {
+    const src = read(rel);
+    assert.match(src, /from "\.\/research-quality/, `${rel} must import the registry`);
+    assert.match(src, /isCountable\(/, `${rel} must apply the registry`);
+  }
+});
+
+test("the 2026-09-10 exclusion is still registered", () => {
+  const src = read("src/lib/desk/research-quality.ts");
+  assert.match(src, /2026-09-10-ticker-reuse/);
+  assert.match(src, /2026-09-10T07:15:00\.000Z/);
+  assert.match(src, /2026-09-10T09:00:00\.000Z/);
+  assert.match(src, /windows: 8/);
+});
+
+/**
+ * The settlement identity invariant is still the thing that decides a grade.
+ *
+ * The matcher it replaced checked ticker while ignoring the clock, then the clock
+ * while ignoring the ticker. Either half-check returning a settle is how one
+ * market's result graded nine windows, so neither shape may come back.
+ */
+test("grading goes through the window-identity invariant", () => {
+  const src = read("src/lib/desk/server-engine.ts");
+  assert.match(src, /from "\.\/window-identity"/, "the engine must import the invariant");
+  const fn = between(src, "function officialHit(", "function noteIdentityFault(");
+  assert.match(fn, /matchSettle\(/, "officialHit must delegate to the invariant");
+  assert.doesNotMatch(fn, /official_settles\.find/, "no hand-rolled settle matching may return");
+  assert.doesNotMatch(fn, /90_000/, "the tolerance belongs to the invariant, not the engine");
+  assert.match(fn, /noteIdentityFault\(/, "a contradiction must be recorded");
+});
+
+/**
+ * A window decided but not yet settled has to survive a restart.
+ *
+ * Before this, `pending` lived only in process memory: a deploy between the
+ * close and Kalshi's result lost the snapshot, and the window was never graded.
+ */
+test("pending windows are persisted and restored", () => {
+  const src = read("src/lib/desk/server-engine.ts");
+  assert.match(src, /pending: e\.pending\.slice\(-PENDING_CAP\)/, "persistState must write pending");
+  assert.match(src, /sanitizePending<PendingWindow>\(raw\.pending/, "loadState must restore pending");
+  assert.match(src, /identity_faults: e\.identityFaults/, "the fault log must outlive the process");
+});
+
+/**
+ * A window teaches once, ever — including across a restart.
+ *
+ * Persisting `pending` created a new hazard: applyGrade force-persists at its end,
+ * so if the window were removed from pending AFTER grading, a crash in that gap
+ * would restore an already-graded window and teach from it a second time. The
+ * ledger dedupes its own row; the learner does not.
+ */
+test("grading is idempotent and pending is left before grading, not after", () => {
+  const src = read("src/lib/desk/server-engine.ts");
+  const grade = between(src, "function applyGrade(", "function liveSnap(");
+  assert.match(grade, /e\.gradedKeys\.includes\(key\)/, "applyGrade must refuse a second grade");
+  assert.match(src, /graded_keys: e\.gradedKeys/, "the graded set must be persisted");
+
+  // Ordering, asserted by position — on comment-stripped source, because the
+  // comment explaining this rule names applyGrade before the line it guards, and
+  // a positional check against raw text would read the prose as the code.
+  const block = between(
+    codeOf("src/lib/desk/server-engine.ts"),
+    "const hit = officialHit(e, snap, w.ticker, w.close_time);",
+    "e.pending = addKeyed(",
+  );
+  const iRemove = block.indexOf("removeKeyed");
+  const iGrade = block.indexOf("applyGrade");
+  assert.ok(iRemove >= 0 && iGrade >= 0, "both calls must still be here");
+  assert.ok(iRemove < iGrade, "pending must be cleared BEFORE applyGrade force-persists");
+});
+
+/**
+ * The claim must be recorded before the learner is touched, and persisted after.
+ *
+ * persistState writes the learner, the graded set and pending as ONE jsonb upsert,
+ * so whatever is in memory at persist time lands together or not at all. That only
+ * protects the learner if the key is claimed BEFORE the first mutation: claimed
+ * after, a persist could carry an advanced learner and no claim, and the next boot
+ * would teach the same window again.
+ */
+test("applyGrade claims the window before it mutates the learner", () => {
+  const fn = between(codeOf("src/lib/desk/server-engine.ts"), "function applyGrade(", "function liveSnap(");
+  const iClaim = fn.indexOf("e.gradedKeys = [");
+  const iMutate = fn.indexOf("gradeWindow(e.learner");
+  const iPersist = fn.indexOf("persistState(e, true)");
+  assert.ok(iClaim >= 0, "the claim must still be here");
+  assert.ok(iMutate >= 0, "gradeWindow must still be the first learner mutation");
+  assert.ok(iPersist >= 0, "applyGrade must still force-persist");
+  assert.ok(iClaim < iMutate, "the key must be claimed BEFORE the learner is mutated");
+  assert.ok(iMutate < iPersist, "the persist that makes both durable must come after");
+
+  // And the refusal must guard the mutation, not merely be present somewhere.
+  const iGuard = fn.indexOf("e.gradedKeys.includes(key)");
+  assert.ok(iGuard >= 0 && iGuard < iClaim, "the already-graded check must precede the claim");
+});
+
+/**
+ * The durable blob must carry all three together. A persist that wrote the learner
+ * without the graded set or pending would reintroduce the double-teach window.
+ */
+test("the persisted blob carries learner, graded set and pending together", () => {
+  const src = codeOf("src/lib/desk/server-engine.ts");
+  const body = between(src, "const state = JSON.stringify({", "await db`");
+  for (const field of ["learner:", "graded_keys:", "pending:"]) {
+    assert.ok(body.includes(field), `persistState must write ${field} in the same blob`);
+  }
+  // One statement, so it is atomic. Sliced forward from the insert rather than
+  // with between(): its end marker is searched from the start of the file, and a
+  // backtick-semicolon occurs in many earlier template literals.
+  const i = src.indexOf("insert into desk_state");
+  assert.ok(i >= 0, "persistState must still upsert desk_state");
+  assert.match(src.slice(i, i + 300), /on conflict \(id\) do update set state =/);
 });

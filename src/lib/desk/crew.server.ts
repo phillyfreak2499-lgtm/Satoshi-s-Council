@@ -84,7 +84,8 @@ async function midReads(days: number): Promise<Map<string, MidRead[]>> {
 async function seatStats(learner: Learner, mid: Map<string, MidRead[]>, now: number): Promise<SeatStats[]> {
   const db = await sql();
   const rows = await db<{ seats: Record<string, SeatCell> }>`
-    select seats from desk_ledger where close_time > now() - (${SWEEP_DAYS} || ' days')::interval
+    select seats from desk_ledger_research where close_time > now() - (${SWEEP_DAYS} || ' days')::interval
+     
   `;
   const weekAgo = now - SWEEP_DAYS * 86_400_000;
   const stats: SeatStats[] = [];

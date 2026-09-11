@@ -336,4 +336,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The site now loads Google Analytics on every page. That is worth stating plainly, because the desk has said the opposite until today. The TRAFFIC table in PIT CREW counts visits on the desk's own server, with no scripts and no cookies, and its caption said so as if it described the whole site. The table itself has not changed and still knows nothing about who, but the site around it is no longer script-free, so that caption and the glossary entry behind it were narrowed to describe the table rather than the site. The older board note that made the same claim stands as written: it was true on the day it was posted, and this desk does not edit its own record. The tag is the standard measurement snippet, one per page, no tag manager. No seat, vote, floor or grading rule changed, and nothing it collects reaches the ledger.",
   },
+  {
+    slug: "2026-09-11-window-identity",
+    body:
+      "Eight windows are out of the desk's research numbers, and the fault behind them is closed. On 2026-09-10 the Kalshi feed stopped advancing the market ticker, and the code matching a settlement to a window checked one half of its identity at a time: the ticker while ignoring the clock, then the clock while ignoring the ticker. So one market's result was handed to nine consecutive quarter-hours — 07:15 through 09:00 all carry the 07:00 market's settlement. A result must now agree on the ticker, on the close time, and on the close time the ticker itself encodes. This was bad research data rather than lost learning: those rows came in on the path that skips teaching credit, so no seat or threshold was trained on them. They stay exactly as recorded, but they no longer count in any hit rate, calibration or seat study. A pending window now also survives a restart.",
+  },
 ];

@@ -233,7 +233,7 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
     if (last && last.winner != null) {
       const [st] = await db<{ value: number | null; settle_avg: number | null; strike: number | null }>`
         select l.official_value as value, l.settle_avg, r.strike
-          from desk_ledger l left join desk_replay r on r.ticker = l.ticker
+          from desk_ledger_research l left join desk_replay r on r.ticker = l.ticker
          where l.ticker = ${last.ticker}
          limit 1
       `;

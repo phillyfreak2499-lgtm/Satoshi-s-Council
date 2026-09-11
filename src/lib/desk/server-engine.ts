@@ -38,6 +38,13 @@ import {
   whalePrintRecords,
 } from "./lab.server";
 import { recordPrints } from "./absorption.server";
+import {
+  faultLine,
+  type IdentityChecks,
+  type IdentityFault,
+  isInconsistent,
+  matchSettle,
+} from "./window-identity";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
@@ -84,6 +91,8 @@ import {
   type PersistIO,
   pushErr,
   removeKeyed,
+  jobKey,
+  sanitizePending,
   sanitizeQueue,
 } from "./reliability";
 
@@ -118,6 +127,10 @@ type Eng = {
   stickWindow: string;
   liveHist: { funding: HistPoint[]; oi: HistPoint[]; oiUsd: HistPoint[] };
   pending: PendingWindow[];
+  /** Windows refused by the identity invariant, kept for forensics. Persisted. */
+  identityFaults: IdentityFaultRecord[];
+  /** Windows already graded, so a restart cannot teach one of them twice. Persisted. */
+  gradedKeys: string[];
   gradeCand: { snap: Snapshot; votes: Vote[]; chair: ChairResult } | null;
   lastClose: number;
   timer: ReturnType<typeof setInterval> | null;
@@ -181,6 +194,45 @@ type Eng = {
  *  collection so a second pending window can never overwrite the first (G5). */
 type PendingWindow = { ticker: string; close_time: number; snap: Snapshot; votes: Vote[]; chair: ChairResult };
 
+/** A window whose identity did not hold, with the witnesses that caught it. */
+type IdentityFaultRecord = {
+  key: string;
+  ticker: string;
+  close_time: number;
+  fault: IdentityFault;
+  detail: string;
+  checks: IdentityChecks;
+  at: number;
+};
+
+/** How many identity faults to carry. Far above the zero a healthy desk produces. */
+const IDENTITY_FAULT_CAP = 40;
+
+/** How many graded windows to remember. ~2 days, far beyond any settlement delay. */
+const GRADED_KEY_CAP = 200;
+
+/** Restore the fault log across a restart, dropping anything malformed. */
+function sanitizeIdentityFaults(raw: unknown): IdentityFaultRecord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: IdentityFaultRecord[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const f = r as Partial<IdentityFaultRecord>;
+    if (typeof f.key !== "string" || typeof f.ticker !== "string" || typeof f.fault !== "string") continue;
+    if (typeof f.close_time !== "number") continue;
+    out.push({
+      key: f.key,
+      ticker: f.ticker,
+      close_time: f.close_time,
+      fault: f.fault as IdentityFault,
+      detail: typeof f.detail === "string" ? f.detail : "",
+      checks: (f.checks ?? { on_grid: false, ticker_time_ok: null, ticker_seen: false, close_ok: false }) as IdentityChecks,
+      at: Number(f.at) || 0,
+    });
+  }
+  return out.slice(-IDENTITY_FAULT_CAP);
+}
+
 export type { V2Stats } from "./chair-v2";
 
 export type V2Frame = {
@@ -230,6 +282,8 @@ function freshEng(): Eng {
     stickWindow: "",
     liveHist: { funding: [], oi: [], oiUsd: [] },
     pending: [],
+    identityFaults: [],
+    gradedKeys: [],
     gradeCand: null,
     lastClose: 0,
     timer: null,
@@ -305,6 +359,9 @@ async function loadState(e: Eng) {
           entry_state?: unknown;
           ledger_recon_baseline?: number | null;
           readiness_alerted?: boolean;
+          pending?: unknown;
+          identity_faults?: unknown;
+          graded_keys?: unknown;
         }
       | undefined;
     if (!raw) return;
@@ -326,6 +383,18 @@ async function loadState(e: Eng) {
     e.ledgerQueue = sanitizeQueue(raw.ledger_queue, Date.now());
     e.shadowFills = sanitizeShadowFills(raw.shadow_fills);
     e.entryState = sanitizeEntryState(raw.entry_state);
+    // Windows that closed before the last process death and were still waiting
+    // on Kalshi's official result. Restored as the decision they were, so the
+    // grade is the one the desk actually earned rather than one today's learner
+    // would produce. resolvePending picks them up on the next tick that carries
+    // their settle; settleIfNeeded will not re-add them because lastClose has
+    // moved on, and addKeyed is keyed per window so a double restore cannot
+    // double-grade.
+    e.pending = sanitizePending<PendingWindow>(raw.pending, PENDING_CAP);
+    e.identityFaults = sanitizeIdentityFaults(raw.identity_faults);
+    e.gradedKeys = Array.isArray(raw.graded_keys)
+      ? raw.graded_keys.filter((k): k is string => typeof k === "string").slice(-GRADED_KEY_CAP)
+      : [];
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
   } catch (err) {
@@ -355,6 +424,11 @@ async function persistState(e: Eng, force = false) {
       entry_state: e.entryState,
       ledger_recon_baseline: e.reconBaseline,
       readiness_alerted: e.readinessAlerted,
+      // The pre-settlement half of the grading race. Bounded by PENDING_CAP,
+      // which a healthy desk never approaches (0-2 entries).
+      pending: e.pending.slice(-PENDING_CAP),
+      identity_faults: e.identityFaults.slice(-IDENTITY_FAULT_CAP),
+      graded_keys: e.gradedKeys.slice(-GRADED_KEY_CAP),
     });
     await db`
       insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
@@ -562,13 +636,43 @@ function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" 
   });
 }
 
-function officialHit(snap: Snapshot, ticker: string, close_time: number) {
-  return (
-    snap.official_settles.find((s) => s.ticker && s.ticker === ticker && (s.lean === "UP" || s.lean === "DOWN")) ??
-    snap.official_settles.find(
-      (s) => close_time > 0 && Math.abs(s.close_time - close_time) < 90_000 && (s.lean === "UP" || s.lean === "DOWN"),
-    )
+/**
+ * The settlement that may grade this window, or nothing.
+ *
+ * Delegates the invariant to window-identity: ticker AND close time must agree,
+ * and the ticker's own embedded close must agree too when it parses. The matcher
+ * this replaced checked one field at a time — ticker while ignoring the clock,
+ * then the clock while ignoring the ticker — which is how one market's result
+ * graded nine consecutive windows on 2026-09-10.
+ *
+ * A contradiction is recorded and alerted; a result that has not arrived yet is
+ * the ordinary pending case and stays quiet.
+ */
+function officialHit(e: Eng, snap: Snapshot, ticker: string, close_time: number) {
+  const v = matchSettle(snap.official_settles, ticker, close_time);
+  if (v.ok) return v.settle;
+  if (isInconsistent(v.fault)) noteIdentityFault(e, ticker, close_time, v.fault, v.detail, v.checks);
+  return undefined;
+}
+
+/** Record a window whose identity did not hold. Bounded, persisted, alerted once. */
+function noteIdentityFault(
+  e: Eng,
+  ticker: string,
+  close_time: number,
+  fault: IdentityFault,
+  detail: string,
+  checks: IdentityChecks,
+) {
+  const key = `${ticker}|${close_time}|${fault}`;
+  if (e.identityFaults.some((f) => f.key === key)) return; // one record per window per fault
+  e.identityFaults = [...e.identityFaults, { key, ticker, close_time, fault, detail, checks, at: Date.now() }].slice(
+    -IDENTITY_FAULT_CAP,
   );
+  const line = faultLine(ticker, close_time, fault, detail);
+  e.learner.settle_tape = [line, ...e.learner.settle_tape].slice(0, 48);
+  noteErr(e, "identity", line);
+  void persistState(e, true); // forensic state must outlive the process that saw it
 }
 
 // Permanent research record: one row per graded window. The columns and their
@@ -738,14 +842,14 @@ async function maybeDigest(e: Eng) {
         (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins,
         coalesce(sum(ev_cents), 0) as net_ev,
         (count(*) filter (where chair_lean in ('UP','DOWN') and entry_cents is null))::int as floored
-      from desk_ledger
+      from desk_ledger_research
       where (close_time at time zone 'America/Chicago')::date
           = (now() at time zone 'America/Chicago')::date - 1
     `;
     const a = agg[0];
     if (!a || !a.windows) return;
     const dayRows = await db<{ seats: Record<string, { hit?: boolean | null }> }>`
-      select seats from desk_ledger
+      select seats from desk_ledger_research
       where (close_time at time zone 'America/Chicago')::date
           = (now() at time zone 'America/Chicago')::date - 1
     `;
@@ -822,6 +926,18 @@ async function maybeDigest(e: Eng) {
 }
 
 function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string) {
+  // A window teaches once, ever. The ledger dedupes its own row with ON CONFLICT,
+  // but the learner has no such protection: a second call would settle scalps and
+  // advance streak state a second time from one result. Ordering alone is not
+  // enough to rely on — any future path that resolves a window twice, or a
+  // restore that races a persist, would teach twice — so the decision is recorded
+  // rather than inferred, and it is persisted so it survives the process.
+  const key = jobKey(snap.ticker, snap.close_time);
+  if (e.gradedKeys.includes(key)) {
+    noteErr(e, "grade", `${key} already graded — second attempt ignored (${source})`);
+    return;
+  }
+  e.gradedKeys = [...e.gradedKeys, key].slice(-GRADED_KEY_CAP);
   e.lastGradeAt = Date.now();
   e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
   const gr = gradeWindow(e.learner, snap, votes, chair, finish);
@@ -877,11 +993,11 @@ function resolvePending(e: Eng, snap: Snapshot) {
   if (!e.pending.length) return;
   // Every pending window whose official result has arrived grades now; the rest
   // stay pending. Resolving one can no longer drop the others (the G5 fix).
-  const { resolved, remaining } = partitionResolved(e.pending, (p) => Boolean(officialHit(snap, p.ticker, p.close_time)));
+  const { resolved, remaining } = partitionResolved(e.pending, (p) => Boolean(officialHit(e, snap, p.ticker, p.close_time)));
   if (!resolved.length) return;
   e.pending = remaining;
   for (const p of resolved) {
-    const hit = officialHit(snap, p.ticker, p.close_time);
+    const hit = officialHit(e, snap, p.ticker, p.close_time);
     if (hit) applyGrade(e, p.snap, p.votes, p.chair, hit.lean, "kalshi-result");
   }
 }
@@ -935,10 +1051,13 @@ function settleIfNeeded(
   } else {
     s = gradeSource(e, snap, votes, chair);
   }
-  const hit = officialHit(snap, w.ticker, w.close_time);
+  const hit = officialHit(e, snap, w.ticker, w.close_time);
   if (hit) {
-    applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
+    // Leave pending BEFORE grading, never after: applyGrade force-persists at its
+    // end, so removing afterwards wrote a state where an already-graded window
+    // was still waiting. A crash in that gap re-graded it on the next boot.
     e.pending = removeKeyed(e.pending, w.ticker, w.close_time); // clear only this window, not others
+    applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
     return;
   }
   e.pending = addKeyed(
@@ -1226,7 +1345,7 @@ async function refreshV2Stats(e: Eng) {
       select coalesce(sum(l.ev_cents), 0) as ev_v1,
              (count(*) filter (where l.calls > 0))::int as calls_v1
       from desk_samples s
-      join desk_ledger l on l.ticker = s.ticker and l.close_time = s.close_time
+      join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
       where s.winner is not null
     `;
     const x = a[0];
@@ -1263,7 +1382,7 @@ async function digestV2Bits(bits: string[]) {
     const rows = await db<{ features: V2Features; winner: string; v2_ev: number | null; v2_lean: string; ev_v1: number | null }>`
       select s.features, s.winner, s.v2_ev, s.v2_lean, l.ev_cents as ev_v1
       from desk_samples s
-      left join desk_ledger l on l.ticker = s.ticker and l.close_time = s.close_time
+      left join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
       where s.winner is not null
         and (s.close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date - 1
     `;
@@ -1584,6 +1703,17 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       reconcile: { window_days: 90, holes: e.reconHoles, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
       feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
       alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
+      // The grading race, both halves: windows decided but not yet settled, and
+      // windows refused because their identity did not hold. A non-empty
+      // identity list is the 2026-09-10 failure mode recurring.
+      pending_windows: e.pending.map((p) => ({ ticker: p.ticker, close_time: p.close_time })),
+      identity_faults: e.identityFaults.slice(-5).map((f) => ({
+        ticker: f.ticker,
+        close_time: f.close_time,
+        fault: f.fault,
+        detail: f.detail,
+        checks: f.checks,
+      })),
       recent_errors: e.errors.slice(-5),
     },
   };

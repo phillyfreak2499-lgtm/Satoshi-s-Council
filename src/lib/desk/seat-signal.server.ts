@@ -16,6 +16,7 @@
  */
 import { getSql } from "@/lib/db";
 import { signalReport, type SignalReport, type SignalRow } from "./seat-signal.ts";
+import { isCountable } from "./research-quality.ts";
 
 const TTL_MS = 300_000;
 
@@ -59,6 +60,10 @@ export async function signalStudy(): Promise<SignalStudy> {
     const winner = r.winner === "UP" || r.winner === "DOWN" ? r.winner : null;
     const mid = Number(r.market?.yes_mid);
     if (!winner || !Number.isFinite(mid)) continue;
+    // desk_samples carries no quality column, so the registry is applied here on
+    // the window's close time. Without this the known-invalid block reaches every
+    // seat's objection record through the sample table instead of the ledger.
+    if (!isCountable(r.close_time)) continue;
     windows += 1;
     const m = Number(r.mins_left);
     if (Number.isFinite(m)) {

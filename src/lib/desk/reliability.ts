@@ -88,6 +88,42 @@ export function sanitizeQueue(raw: unknown, now: number): LedgerJob[] {
   return out.slice(0, MAX_QUEUE);
 }
 
+/**
+ * Rebuild the pending-settlement list restored from desk_state on boot.
+ *
+ * WHY THIS EXISTS. A window closes, the desk decides, and Kalshi's official
+ * result arrives some seconds or minutes later. Between those two moments the
+ * only copy of the decision lived in process memory, so a deploy or a crash in
+ * that gap lost the snapshot the grade had to be computed from — and the window
+ * was never graded at all. The outbox already covered the other half of the race
+ * (a grade computed but not yet written); this covers the half before it.
+ *
+ * The restored object is the ORIGINAL decision state, not a re-derivation: when
+ * it grades after a restart it must grade as the desk actually voted, never as
+ * today's learner would have voted. Nothing here recomputes anything.
+ *
+ * Malformed entries are dropped rather than repaired — a half-readable snapshot
+ * is not a decision, and guessing at one would put invented votes in the ledger.
+ */
+export function sanitizePending<T extends Keyed>(raw: unknown, cap: number = PENDING_CAP): T[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const p = r as { ticker?: unknown; close_time?: unknown; snap?: unknown; votes?: unknown; chair?: unknown };
+    if (typeof p.ticker !== "string" || !p.ticker) continue;
+    if (typeof p.close_time !== "number" || !(p.close_time > 0)) continue;
+    if (!p.snap || typeof p.snap !== "object" || !Array.isArray(p.votes) || !p.chair || typeof p.chair !== "object") continue;
+    const key = jobKey(p.ticker, p.close_time);
+    if (seen.has(key)) continue; // one entry per window: restoring twice would grade twice
+    seen.add(key);
+    out.push(r as T);
+  }
+  out.sort((a, b) => a.close_time - b.close_time); // oldest-first resolution survives the restart
+  return out.slice(-cap);
+}
+
 export type Keyed = { ticker: string; close_time: number };
 
 /** Add a window to a keyed list, replacing any entry for the same window

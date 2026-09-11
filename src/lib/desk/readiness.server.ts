@@ -56,7 +56,7 @@ export async function readinessSnapshot(alerted = false): Promise<ReadinessSnaps
         where close_time >= ${FREEZE_ISO} and (entry_cents is not null or chair_lean in ('UP','DOWN'))
       ) as chair_dir,
       count(*)                                                                          as windows_all
-    from desk_ledger
+    from desk_ledger_research
   `;
 
   const tak = await db<{ dir_graded: number; total: number }>`

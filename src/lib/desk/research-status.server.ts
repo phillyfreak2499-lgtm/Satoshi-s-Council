@@ -23,6 +23,7 @@ import {
 } from "./research-status.ts";
 import { QTY_FIX_AT } from "./research-era.ts";
 import { MIN_AGAINST, marketSide } from "./seat-signal.ts";
+import { isCountable } from "./research-quality.ts";
 
 const TTL_MS = 300_000;
 
@@ -125,6 +126,7 @@ export async function researchStudy(): Promise<ResearchStudy> {
     for (const r of replays) {
       const arr = r.cols?.[t.col];
       if (!Array.isArray(arr)) continue;
+      if (!isCountable(r.close_time)) continue; // a replay of an invalid window is not a trace
       n += 1;
       // A window counts as prospective when its replay was WRITTEN after the
       // clock started — the row is only as new as the code that produced it.
@@ -176,6 +178,7 @@ export async function researchStudy(): Promise<ResearchStudy> {
       const m = marketSide(Number(s.market?.yes_mid));
       const ev = Number(s.features?.[seat]);
       if (!winner || !m || !Number.isFinite(ev) || ev === 0) continue;
+      if (!isCountable(s.close_time)) continue; // the sample table carries no quality column
       spoke += 1;
       const side = ev > 0 ? "UP" : "DOWN";
       if (side === m.side) continue;

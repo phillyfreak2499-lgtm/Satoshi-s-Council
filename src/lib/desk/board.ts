@@ -16,6 +16,9 @@ export type BoardPost = {
 
 function clean(s: unknown, max: number) {
   return String(s ?? "")
+    // Control characters are exactly what this is for: board text arrives from
+    // posts and titles and must not carry them through to the page.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()

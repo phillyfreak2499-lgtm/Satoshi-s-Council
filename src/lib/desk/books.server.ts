@@ -245,8 +245,8 @@ async function build(): Promise<Books> {
         (close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date as today,
         close_time > now() - interval '7 days' as week,
         close_time >= ${CHAIR_FLOOR_SINCE_ISO}::timestamptz as floored
-      from desk_ledger
-    )
+      from desk_ledger_research
+          )
     select p.period,
       count(*)::int as n,
       (count(*) filter (where entry_cents is not null))::int as calls,
@@ -286,14 +286,14 @@ async function build(): Promise<Books> {
       (count(*) filter (where entry_cents is not null))::int as calls,
       (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins,
       coalesce(sum(ev_cents), 0)::float as net
-    from desk_ledger
+    from desk_ledger_research
     where close_time > now() - interval '14 days'
     group by 1 order by 1
   `;
 
   const curveRows = await db<{ t: Date | string; ev: number }>`
     select close_time as t, ev_cents::float as ev
-    from desk_ledger
+    from desk_ledger_research
     where ev_cents is not null and close_time > now() - interval '14 days'
     order by close_time
   `;
@@ -313,7 +313,7 @@ async function build(): Promise<Books> {
       (avg(-ev_cents) filter (where ev_cents < 0))::float as loss_avg,
       avg(entry_cents + ceil(0.07 * entry_cents * (100 - entry_cents) / 100.0))::float as cost_avg,
       coalesce(sum(ev_cents), 0)::float as net
-    from desk_ledger
+    from desk_ledger_research
     where entry_cents is not null
     group by 1 order by 1
   `;
@@ -339,7 +339,7 @@ async function build(): Promise<Books> {
       (count(*) filter (where entry_cents is not null))::int as calls,
       (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as wins,
       coalesce(sum(ev_cents), 0)::float as net
-    from desk_ledger
+    from desk_ledger_research
     group by 1, 2
   `;
 
@@ -347,7 +347,7 @@ async function build(): Promise<Books> {
     select l.ticker, l.close_time, l.winner, l.official_value, l.settle_avg, l.brti_prints,
       l.entry_cents, l.settle_cents, l.ev_cents, l.seats,
       exists (select 1 from desk_replay r where r.ticker = l.ticker) as replay
-    from desk_ledger l
+    from desk_ledger_research l
     order by l.close_time desc
     limit 40
   `;
@@ -401,7 +401,7 @@ async function build(): Promise<Books> {
 async function floorTrial(db: Awaited<ReturnType<typeof sql>>): Promise<FloorTrial | null> {
   try {
     const [r] = await db<Record<string, number | null>>`
-      with t as (select * from desk_ledger where close_time >= ${FLOOR_LIVE_SINCE}::timestamptz)
+      with t as (select * from desk_ledger_research where close_time >= ${FLOOR_LIVE_SINCE}::timestamptz)
       select
         count(*)::int as windows,
         (count(*) filter (where winner = 'UP'))::int as ups,
@@ -461,7 +461,7 @@ const EMPTY_KEEPER: KeeperStats = { n: 0, wait_pct: 0, booked: 0, hit_pct: null,
 async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper | null> {
   try {
     const [k] = await db<Record<string, number | null>>`
-      with base as (select *, close_time > now() - interval '7 days' as week from desk_ledger)
+      with base as (select *, close_time > now() - interval '7 days' as week from desk_ledger_research)
       select
         count(*)::int as n_all,
         (count(*) filter (where entry_cents is null))::int as wait_all,
@@ -495,13 +495,13 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper |
     `;
     const [ddAll] = await db<{ max_dd: number }>`
       with c as (select close_time, id, sum(ev_cents) over (order by close_time, id) as cum
-                 from desk_ledger where ev_cents is not null)
+                 from desk_ledger_research where ev_cents is not null)
       select coalesce(min(cum - peak), 0)::float as max_dd
       from (select cum, max(cum) over (order by close_time, id) as peak from c) x
     `;
     const [ddWeek] = await db<{ max_dd: number }>`
       with c as (select close_time, id, sum(ev_cents) over (order by close_time, id) as cum
-                 from desk_ledger where ev_cents is not null and close_time > now() - interval '7 days')
+                 from desk_ledger_research where ev_cents is not null and close_time > now() - interval '7 days')
       select coalesce(min(cum - peak), 0)::float as max_dd
       from (select cum, max(cum) over (order by close_time, id) as peak from c) x
     `;
