@@ -331,4 +331,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk is done adding instruments for now and has started collecting evidence on the ones it has. Absorption is the one worth watching: aggressive size crosses the spread and the price refuses to move, which means somebody is quietly taking the other side. Every real trade is now written down with what happened next — over five, fifteen, thirty and sixty seconds, what Bitcoin did in the same moments, how big the order was against the book, and where the price and the clock stood. Buying and selling are kept apart, one big order is kept apart from a burst of them, and nothing is labelled large or absorbed when it is recorded; those lines were fixed in advance and are applied only when reading. The question is not whether the desk would have won. It is whether the result came in more or less often than Kalshi's own price said it would. No answer before thirty clean cases.",
   },
+  {
+    slug: "2026-09-11-site-analytics",
+    body:
+      "The site now loads Google Analytics on every page. That is worth stating plainly, because the desk has said the opposite until today. The TRAFFIC table in PIT CREW counts visits on the desk's own server, with no scripts and no cookies, and its caption said so as if it described the whole site. The table itself has not changed and still knows nothing about who, but the site around it is no longer script-free, so that caption and the glossary entry behind it were narrowed to describe the table rather than the site. The older board note that made the same claim stands as written: it was true on the day it was posted, and this desk does not edit its own record. The tag is the standard measurement snippet, one per page, no tag manager. No seat, vote, floor or grading rule changed, and nothing it collects reaches the ledger.",
+  },
 ];
