@@ -286,4 +286,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk checked whether its own odds beat the market's, and the answer was no. STRIKE fires when the strike is more than 0.7 standard deviations away, which is a threshold, not a probability: it cannot say whether a setup is a 70% proposition or a 95% one, so it cannot be graded for calibration. A shadow study now turns the desk's fair value into a real probability, corrects it against what actually happened in each distance bucket, and scores the result against the price Kalshi was charging at the same moment. Over 468 settled windows the market scored 0.157, the desk's raw fair value 0.158, and the corrected version 0.158 — lower is better, and those gaps are noise. So the desk is about as well calibrated as the market and no better, which means the edge is not in guessing direction; it is in price and fees. Nothing votes on this, and a study cannot promote itself.",
   },
+  {
+    slug: "2026-09-11-call-costs",
+    body:
+      "The floor now shows what a call actually costs, in one row under the chair's read: side, fair value, ask, fee, edge after the fee, the win rate that price needs to stand still, the leftover on the two legs, the size resting at the touch, and the 80¢ floor — with a plain line saying whether the book pays and, if not, what is in the way. Every number is carried from the same frame the desk decided on rather than worked out a second time, and a test holds that line. It also fixed a mislabel: the chair line read \"leftover\" beside a number that was the edge, while the real leftover was not shown at all. Those are now two cells with their own names. And one case the page never admitted — an ask that clears the floor with nothing resting behind it — now says both things: the book would pay, and the touch is empty. No call, floor, grading rule or past number changed.",
+  },
 ];
