@@ -1059,3 +1059,76 @@ test("the Lab ships with the current desk as Champion and nothing promoted", () 
   assert.match(policy, /exit_policy: EXIT_HOLD_V1\.id/, "the incumbent exit is HOLD");
   assert.match(policy, /status: "CHAMPION"/);
 });
+
+/**
+ * Candidate definitions cannot read their own scorecards.
+ *
+ * The dependency direction must be one-way:
+ *
+ *   Floor / replay  ->  Lab observation        (an observation reads definitions)
+ *   Lab observation  -X-> candidate parameters (a definition never reads results)
+ *
+ * If a definition module could reach the observations, a later change could make a
+ * parameter depend on how that parameter has been scoring — which is self-tuning
+ * wearing the costume of a frozen candidate, and it would be invisible in a diff
+ * that only added an import.
+ *
+ * Enforced structurally: the definition modules are PURE. floor-policy.ts and
+ * promotion-gates.ts import nothing at all, and exit-arena.ts imports only fee math
+ * and the definitions themselves.
+ */
+test("candidate definitions are pure and cannot read observations", () => {
+  const imports = (rel) =>
+    (codeOf(rel).match(/^\s*import[\s\S]*?from\s*["']([^"']+)["']/gm) ?? []).map((m) =>
+      /from\s*["']([^"']+)["']/.exec(m)[1],
+    );
+
+  // The two definition modules carry no dependencies whatsoever.
+  for (const rel of ["src/lib/desk/floor-policy.ts", "src/lib/desk/promotion-gates.ts"]) {
+    assert.deepEqual(
+      imports(rel),
+      [],
+      `${rel} must stay a pure definition module: frozen configuration with no way to reach data`,
+    );
+  }
+
+  // The simulator may use fee math and the definitions. Nothing else.
+  assert.deepEqual(imports("src/lib/desk/exit-arena.ts").sort(), ["./clock.ts", "./floor-policy.ts"]);
+
+  // And none of the three may reach the database or any server module by any route.
+  for (const rel of [
+    "src/lib/desk/floor-policy.ts",
+    "src/lib/desk/promotion-gates.ts",
+    "src/lib/desk/exit-arena.ts",
+  ]) {
+    const code = codeOf(rel);
+    assert.doesNotMatch(code, /getSql|@\/lib\/db|\.server["']|labStanding|desk_policy_observations/, `${rel} must not reach observations`);
+  }
+
+  // The writer depends on the definitions, which is the permitted direction.
+  const writer = codeOf("src/lib/desk/policy-lab.server.ts");
+  assert.match(writer, /from "\.\/floor-policy"/, "the observation layer reads the definitions");
+  assert.match(writer, /from "\.\/exit-arena"/);
+});
+
+/**
+ * Observations are only ever written forward, from a window the desk just graded.
+ *
+ * A backfill would fill a candidate's prospective count with history it never
+ * predicted, and every promotion afterwards would rest on it. The writer takes ONE
+ * settled window and writes the candidates for it; there is no path that walks the
+ * ledger or the replay table to populate the past.
+ */
+test("there is no path that backfills candidate observations", () => {
+  const writer = codeOf("src/lib/desk/policy-lab.server.ts");
+  // No reads of historical windows to write from.
+  assert.doesNotMatch(writer, /from desk_ledger\b/, "the writer must not walk the ledger");
+  assert.doesNotMatch(writer, /from desk_replay\b/, "nor the replay table");
+  // Its only insert is the single-window one.
+  const inserts = writer.match(/insert into desk_policy_observations/g) ?? [];
+  assert.equal(inserts.length, 1, "exactly one write path");
+  // And the engine calls it with the window it just graded, not a range.
+  const eng = codeOf("src/lib/desk/server-engine.ts");
+  const block = between(eng, "void (async () => {", "if (windowsHuddleDue(");
+  assert.match(block, /closeMs: snap\.close_time/, "the window being graded, not a backfilled one");
+});

@@ -47,6 +47,31 @@ test("a DOWN holding is never priced off the YES bid", () => {
   assert.notEqual(sellableBid("UP", 82, 85), (82 + 85) / 2);
 });
 
+test("a DOWN holding is never priced off the NO ask", () => {
+  // The specific wrong turn a future tidy-up would take:
+  //   100 - yes_ask = the NO BID  <- what a NO holder can SELL into. Correct.
+  //   100 - yes_bid = the NO ASK  <- what a NO BUYER would pay. Wrong here.
+  // On a 82/85 book the NO bid is 15 and the NO ask is 18. Taking 18 would price
+  // every DOWN exit on the wrong side of the spread, in the flattering direction.
+  const yes_bid = 82;
+  const yes_ask = 85;
+  const noBid = 100 - yes_ask; // 15
+  const noAsk = 100 - yes_bid; // 18
+  assert.equal(sellableBid("DOWN", yes_bid, yes_ask), noBid);
+  assert.notEqual(sellableBid("DOWN", yes_bid, yes_ask), noAsk);
+  assert.ok(noBid < noAsk, "the bid is always the worse side for a seller, which is the point");
+
+  // And it must matter end to end, not just in the helper: a DOWN position whose
+  // target sits between the two prices must NOT be proven.
+  const entry = { side: "DOWN" as const, cents: 10, t: T0 };
+  // target = 20. NO bid is 15 (no proof); NO ask would be 18 (still no proof), so
+  // widen the book so the two verdicts differ: bid 12, ask 45 -> NO bid 55, NO ask 88.
+  const wide = [at(40, 12, 45)];
+  assert.equal(simulateExit(EXIT_PROVE180_V1, entry, wide, "DOWN").exit_cents, null, "proven, held");
+  assert.equal(sellableBid("DOWN", 12, 45), 55);
+  assert.notEqual(sellableBid("DOWN", 12, 45), 88);
+});
+
 test("an unusable book yields no price rather than a guess", () => {
   assert.equal(sellableBid("UP", 0, 85), null, "no bid");
   assert.equal(sellableBid("UP", 82, 0), null, "no ask");
