@@ -362,7 +362,7 @@ export function CrewTab() {
         </Section>
 
         <Section k="crew.traffic" title="TRAFFIC · last 7 days">
-          <div className="mb-2 font-mono text-micro text-subtle">First-party counts only: no scripts, no cookies, no people. Chicago days.</div>
+          <div className="mb-2 font-mono text-micro text-subtle">Counted on the server, not by the site's Google tag: no cookies, no people. Chicago days.</div>
           {crew.hits && crew.hits.days.length ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[34rem] font-mono text-micro">

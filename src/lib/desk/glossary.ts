@@ -172,7 +172,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "crew.traffic": {
     title: "Traffic",
-    body: "How many people are in the room and on the desk, counted first-party: page views, paper locks, tours started and finished, glossary opens, searches, shares and settle alerts. No analytics scripts, no cookies, nothing about who. One row per Chicago day.",
+    body: "How many people are in the room and on the desk, counted first-party: page views, paper locks, tours started and finished, glossary opens, searches, shares and settle alerts. These counts come from the desk's own server rather than the site's Google Analytics tag: no cookies, nothing about who. One row per Chicago day.",
   },
   "settings.arena": {
     title: "Arena",
