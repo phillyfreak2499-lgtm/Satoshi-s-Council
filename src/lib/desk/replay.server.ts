@@ -5,7 +5,25 @@
  * every seat's lean (spoken, or whispered under the gag). Samples live in
  * memory per window and are written once, at grade, so a visitor can scrub
  * back through any past window. Nothing here feeds a decision.
+ *
+ * SINCE 2026-09-11 it also records the shadow microstructure: how lopsided the
+ * book was, where the size-weighted price sat against the mid, order-flow
+ * imbalance, how much of the book churn was cancels rather than trades, net
+ * executed flow, the part of the last 30 seconds of price move the underlying
+ * does not explain, and which market moved first.
+ *
+ * Why in the replay rather than only in a live pane: a measurement nobody can
+ * look at after the fact cannot be argued with. Storing the series is what makes
+ * it possible to ask, on a window that went wrong, whether the book was already
+ * saying so — and to be told no. The reads are recorded, not acted on: no seat
+ * consumes them and the chair on these very windows never saw them.
+ *
+ * They are a SUBSET. TAPE 2.0 measures about thirty things a second and storing
+ * all of them every four seconds for every window would be a large table for a
+ * question nobody has asked yet. These seven are the ones that tell the story
+ * while scrubbing; the rest stay live-only until something needs them.
  */
+import { tape2Now, vel2Now } from "./lab.server";
 import type { ChairResult, Snapshot, Vote } from "./types";
 import { SEAT_IDS } from "./types";
 
@@ -39,6 +57,20 @@ export type ReplayCols = {
   booked: number[];
   /** Per seat: ±2 spoken, ±1 whispered under the gag, 0 quiet. */
   seats: Record<string, number[]>;
+  /** Depth imbalance five levels in, −1 all asks to +1 all bids. */
+  imb: (number | null)[];
+  /** Size-weighted price minus the midpoint, in cents: where the pressure sits. */
+  micro: (number | null)[];
+  /** Order-flow imbalance over 15s, normalised by the events behind it. */
+  ofi: (number | null)[];
+  /** Share of book churn that was cancels rather than adds, 0–1. */
+  cancel: (number | null)[];
+  /** Net executed size over 15s, buys minus sells. A cancel is not a trade. */
+  tflow: (number | null)[];
+  /** The 30s YES move the BTC move does not explain, in cents. */
+  resid: (number | null)[];
+  /** Who moved first over 30s: 1 spot, −1 Kalshi, 0 together, null neither. */
+  lead: (number | null)[];
 };
 
 type Series = { ticker: string; close_time: number; strike: number; cols: ReplayCols };
@@ -77,6 +109,13 @@ export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, bo
           downs: [],
           booked: [],
           seats: Object.fromEntries(LEAN_SEATS.map((x) => [x, [] as number[]])),
+          imb: [],
+          micro: [],
+          ofi: [],
+          cancel: [],
+          tflow: [],
+          resid: [],
+          lead: [],
         },
       };
       series.set(snap.ticker, s);
@@ -110,10 +149,44 @@ export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, bo
       const v = byId.get(id);
       c.seats[id].push(v ? leanCode(v) : 0);
     }
+    noteShadow(c, snap.ticker);
   } catch {
     /* a replay must never cost a tick */
   }
 }
+
+/**
+ * Push one shadow reading per sample, or a null for every series when the lab is
+ * dark. Every column is pushed exactly once per row so the arrays stay the same
+ * length as `t` — a shorter array would silently shift every later reading onto
+ * the wrong instant, which is the one way a replay can lie.
+ */
+function noteShadow(c: ReplayCols, ticker: string): void {
+  const t2 = tape2Now(ticker);
+  const v2 = vel2Now(ticker);
+  c.imb.push(r3(t2?.imb_l5));
+  c.micro.push(r2(t2?.micro_minus_mid));
+  c.ofi.push(r3(t2?.ofi_norm_15s));
+  c.cancel.push(r3(t2?.cancel_share));
+  c.tflow.push(r2(t2?.trade_imb_15s));
+  // The 30s horizon: long enough to have moved, short enough to still be about
+  // this instant. `ok` is false when the horizon had too few samples to measure,
+  // and a thin read is stored as nothing rather than as a zero.
+  c.resid.push(v2?.h30.ok ? r2(v2.h30.residual) : null);
+  c.lead.push(leaderCode(v2?.lead.leader));
+}
+
+function leaderCode(v: string | undefined): number | null {
+  if (v === "SPOT") return 1;
+  if (v === "KALSHI") return -1;
+  if (v === "SIMULTANEOUS") return 0;
+  return null;
+}
+
+const r2 = (n: number | null | undefined): number | null =>
+  n == null || !Number.isFinite(n) ? null : Math.round(n * 100) / 100;
+const r3 = (n: number | null | undefined): number | null =>
+  n == null || !Number.isFinite(n) ? null : Math.round(n * 1000) / 1000;
 
 /** The samples held for a window right now (tests and the live pane). */
 export function replayLive(ticker: string): Series | null {

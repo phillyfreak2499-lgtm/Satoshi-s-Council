@@ -296,4 +296,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The books were cut every way that might matter, and the biggest line in them is a rule the desk already retired. Until Sep 6 a call could add legs and be sold at a mid price; since then it is one contract held to settlement. Split there: the retired style booked 24 calls, won 37.5% against the 68.8% those prices needed, and lost 118¢. The current style has booked 80, won 80.0% against 79.7% needed, and is down 15¢ — about a fifth of a cent a call. Nearly all of the all-time loss belongs to a mechanism that no longer runs. The cut also refuses to guess: a position sold at 68¢ says nothing about which side won, so those calls keep their cents and lose their side. Every cell now shows the range around its win rate, the breakeven its own prices demanded, and how many cells that many cuts would make look good by luck alone. Reporting only — nothing changed.",
   },
+  {
+    slug: "2026-09-11-replay-microstructure",
+    body:
+      "Window replay now records what the order book was doing, not just what it was quoting. Scrub back through any window from here on and beside spot, the book and the chair's read you get seven more traces: how lopsided the book was five levels deep, where the size-weighted price sat against the midpoint, order-flow imbalance, how much of the churn was orders being pulled rather than filled, net executed size, the part of the last thirty seconds of price move Bitcoin does not explain, and which of the two markets moved first. The point is to be able to lose an argument: on a window that went wrong you can now ask whether the book was already saying so, and be told no. Where the feed was dark the trace is blank rather than zero — a zero would read as a calm book instead of a missing one. Windows recorded before today simply do not have these. Nothing votes on any of it.",
+  },
 ];
