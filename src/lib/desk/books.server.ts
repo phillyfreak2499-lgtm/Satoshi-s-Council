@@ -528,7 +528,8 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper |
     return { all: stat("all", Number(ddAll?.max_dd) || 0), week: stat("week", Number(ddWeek?.max_dd) || 0) };
   } catch (err) {
     // Absent, not zeroed: the page must not report discipline it cannot measure.
-    lastKeeperError = err instanceof Error ? err.message : String(err);
+    // /books is public, so the reason is a short hint, not a raw database dump.
+    lastKeeperError = (err instanceof Error ? err.message : String(err)).replace(/\s+/g, " ").trim().slice(0, 140);
     return null;
   }
 }
