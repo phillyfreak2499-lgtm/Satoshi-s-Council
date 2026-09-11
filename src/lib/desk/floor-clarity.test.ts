@@ -6,6 +6,7 @@ import {
   CONFIDENCE_GLOSS,
   DISPLAY_KINDS,
   displayedPriceFacts,
+  FEED_GATE_IDS,
   floorLine,
   freshness,
   invalidateLine,
@@ -127,14 +128,44 @@ test("the decision snapshot on a booked window belongs to the fill instant", () 
   assert.equal(sameEvent(decision, by(facts, "entry")), true);
 });
 
-test("an unbooked window says the read is being re-taken, not that it is a frozen snapshot", () => {
-  const facts = priceFacts(snap(), chair(), filling);
-  const decision = by(facts, "decision");
-  assert.equal(decision.at, T0, "evaluated now");
-  assert.match(decision.note, /re-taken each tick/);
-  // It equals the current market because it IS the current market — said, not hidden.
-  assert.equal(decision.cents, by(facts, "market").cents);
-  assert.equal(sameEvent(decision, by(facts, "market")), true);
+test("an unbooked window has NO decision snapshot, and says so rather than showing a quote", () => {
+  // The rule: if no frozen decision price exists for a state, show unavailable — never
+  // a current quote under a historical label. Nothing in the frame freezes a decision
+  // price for a window the book did not take (callLog holds fills only; every snap.*
+  // price is live), so all three unbooked states must be unavailable.
+  for (const book of [filling, floored, waiting]) {
+    const facts = priceFacts(snap(), chair(book === waiting ? { lean: "WAIT" } : {}), book);
+    const decision = by(facts, "decision");
+    const market = by(facts, "market");
+    assert.equal(decision.cents, null, `${book.kind}: no frozen price exists`);
+    assert.equal(decision.at, null, "and no frozen instant either");
+    assert.match(decision.unavailable_why, /nothing is frozen yet/);
+    // Critically: it must NOT have borrowed the live ask.
+    if (market.cents != null) {
+      assert.notEqual(decision.cents, market.cents, "a live quote must not stand in");
+    }
+    assert.equal(sameEvent(decision, market), false);
+  }
+});
+
+test("the only decision snapshot that exists comes from the recorded fill", () => {
+  // book.cents and openFill.cents are the SAME recorded row in production: bookState
+  // builds BookState.cents from openRow()'s row, and SatoshiTab passes both from that
+  // one lookup. The fixture mirrors that rather than inventing a mismatch.
+  const fill = { t: T0 - 300_000, cents: booked.kind === "booked" ? booked.cents : 0 };
+  const decision = by(priceFacts(snap(), chair(), booked, fill), "decision");
+  assert.equal(decision.cents, 82, "the fill's own recorded price");
+  assert.equal(decision.at, T0 - 300_000, "the fill's own instant, not now");
+  assert.notEqual(decision.at, T0, "never the current tick");
+  // And it is not the live ask, which has since moved to 88.
+  assert.notEqual(decision.cents, by(priceFacts(snap(), chair(), booked, fill), "market").cents);
+});
+
+test("a booked window with an unusable recorded price shows unavailable, not the ask", () => {
+  const odd = { kind: "booked", lean: "UP", cents: 0, ask: 88 } as typeof booked;
+  const decision = by(priceFacts(snap(), chair(), odd, { t: T0 - 1, cents: 0 }), "decision");
+  assert.equal(decision.cents, null);
+  assert.match(decision.unavailable_why, /no usable price/);
 });
 
 test("a booked window prices the HELD side even after the read moves", () => {
@@ -459,4 +490,58 @@ test("the full set is still available to a caller even though two are not drawn"
   const all = priceFacts(snap(), chair(), floored);
   assert.equal(all.length, 4);
   assert.ok(all.find((f) => f.kind === "fair")?.note.includes("DERIVED"));
+});
+
+// ---------------------------------------------------------------------------
+// Four WAIT categories, because they have four different remedies.
+// ---------------------------------------------------------------------------
+
+const feedGate: Gate = { id: "warden", label: "stale warden", pass: false, hard: true, value: "FROZEN" };
+const chalkGate: Gate = { id: "chalk", label: "phantom print", pass: false, hard: true, value: "CHALK" };
+const barGate: Gate = { id: "bar", label: "score vs bar", pass: false, hard: true, value: "1.2/2.0" };
+
+test("a data-trust gate is reported as a feed condition, not as a read on the market", () => {
+  const w = whyFacts(chair({ lean: "WAIT", gates: [feedGate], score: 3, bar: 2 }), "");
+  assert.equal(w.wait_reason, "feed-condition");
+  assert.deepEqual(w.feed_gates.map((g) => g.id), ["warden"]);
+});
+
+test("a feed condition outranks every other reason, because bad inputs void the vote", () => {
+  // Warden failing AND the score short AND another hard gate failing: the data problem
+  // is the answer, because nothing downstream of bad inputs means anything.
+  const w = whyFacts(chair({ lean: "WAIT", gates: [feedGate, barGate], score: 1, bar: 2 }), "");
+  assert.equal(w.wait_reason, "feed-condition");
+  assert.equal(w.failed_hard.length, 2, "both are still reported");
+});
+
+test("all four WAIT reasons are reachable and distinct", () => {
+  const reasons = [
+    whyFacts(chair({ lean: "WAIT", gates: [chalkGate], score: 3, bar: 2 }), "").wait_reason,
+    whyFacts(chair({ lean: "WAIT", gates: [barGate], score: 3, bar: 2 }), "").wait_reason,
+    whyFacts(chair({ lean: "WAIT", gates: [], score: 1, bar: 2 }), "").wait_reason,
+    whyFacts(chair({ lean: "WAIT", gates: [], score: 3, bar: 2 }), "").wait_reason,
+  ];
+  assert.deepEqual(reasons, ["feed-condition", "hard-gate", "under-bar", "no-edge"]);
+  assert.equal(new Set(reasons).size, 4, "four answers, four remedies");
+});
+
+test("a non-feed hard gate is not miscategorised as a feed condition", () => {
+  const w = whyFacts(chair({ lean: "WAIT", gates: [barGate], score: 3, bar: 2 }), "");
+  assert.equal(w.wait_reason, "hard-gate");
+  assert.deepEqual(w.feed_gates, []);
+});
+
+test("the feed-gate set is the data-trust gates only, from chair.ts's own ids", () => {
+  assert.deepEqual([...FEED_GATE_IDS], ["warden", "chalk", "quote"]);
+  // bar/edge/leftover/law/early/late are about the TRADE, not about the inputs.
+  for (const id of ["bar", "edge", "leftover", "law", "early", "late"]) {
+    assert.equal(FEED_GATE_IDS.includes(id), false, `${id} is not a data-trust gate`);
+  }
+});
+
+test("a calling chair has no wait reason and no feed gates", () => {
+  const w = whyFacts(chair({ lean: "UP", gates: [feedGate] }), "");
+  assert.equal(w.wait_reason, "", "not waiting");
+  // feed_gates still reports the failure for the disclosure, but it is not the reason.
+  assert.equal(w.feed_gates.length, 1);
 });

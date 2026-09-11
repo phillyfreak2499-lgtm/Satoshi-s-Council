@@ -151,32 +151,25 @@ export function priceFacts(
     {
       kind: "decision",
       label: "decision snapshot",
-      // An unbooked window is being re-read every tick, so the decision price IS the
-      // current one — stated as such rather than dressed up as a frozen historical
-      // snapshot. A booked window has a real frozen price, and it is the entry.
-      cents: booked
-        ? realCents(book.cents)
-          ? book.cents
-          : null
-        : realCents(marketCents)
-          ? marketCents
-          : null,
-      at: booked
-        ? (openFill && openFill.t > 0 ? openFill.t : null)
-        : snap.as_of > 0
-          ? snap.as_of
-          : null,
+      // ONLY EVER A FROZEN, RECORDED PRICE. A booked window has one: the fill row's
+      // own price and timestamp. An UNBOOKED window has none — nothing in the frame
+      // freezes a decision price for a window the book did not take, because
+      // `callLog` holds fills only and every `snap.*` price is live. An earlier
+      // version of this function put the CURRENT ask here with a note explaining that
+      // the read is re-taken each tick; that was wrong. A live quote under a label
+      // reading "snapshot" is exactly the substitution this module exists to prevent,
+      // however carefully the note is worded. So: unavailable, with the reason.
+      cents: booked && realCents(book.cents) ? book.cents : null,
+      at: booked && openFill && openFill.t > 0 ? openFill.t : null,
       note: booked
         ? "the price the read was taken at — the same instant the book filled"
-        : "evaluated now: this window is still open, so the read is re-taken each tick",
-      unavailable_why:
-        booked && !realCents(book.cents)
-          ? "the recorded fill carries no usable price"
-          : !booked && !realCents(marketCents)
-            ? lean === "WAIT"
-              ? "no side to price while the Chair is waiting"
-              : "no quotable price on the book"
-            : "",
+        : "the frozen price a decision was taken at, once the book takes one",
+      unavailable_why: booked
+        ? realCents(book.cents)
+          ? ""
+          : "the recorded fill carries no usable price"
+        : "nothing is frozen yet: this window is still open and the book has not filled, " +
+          "so there is no decision price to show. The live ask is in the economics box above.",
     },
     {
       kind: "market",
@@ -314,10 +307,22 @@ export type WhyFacts = {
   /** Every gate, for the disclosure. */
   gates: Gate[];
   /**
-   * Why the Chair is not calling, in the order the desk actually applies: a hard gate
-   * beats a thin score, and a thin score beats "nothing to say". Empty when calling.
+   * Why the Chair is not calling, in the order the desk actually applies. Empty when
+   * calling. Four distinct answers, because they have four different remedies:
+   *
+   *   "feed-condition"  the DATA cannot be trusted — a data-trust gate is failing
+   *                     (warden on a frozen tape, chalk/phantom, quote age). Listed
+   *                     first because if the inputs are bad nothing downstream means
+   *                     anything, whatever the vote said.
+   *   "hard-gate"       some other hard gate blocks: timing, economics, the law.
+   *   "under-bar"       no gate fails; the seats simply do not agree hard enough for
+   *                     the weighted vote to clear its own bar.
+   *   "no-edge"         gates pass AND the vote clears, and the desk still sees
+   *                     nothing worth paying the ask for. Legitimate abstention.
    */
-  wait_reason: "" | "hard-gate" | "under-bar" | "no-edge";
+  wait_reason: "" | "feed-condition" | "hard-gate" | "under-bar" | "no-edge";
+  /** The data-trust gates among the failures, when `wait_reason` is "feed-condition". */
+  feed_gates: Gate[];
   /**
    * True when at least one hard gate fails AND the score would otherwise clear. Used
    * only to AVOID the false claim that clearing that gate produces a call: other
@@ -326,17 +331,29 @@ export type WhyFacts = {
   more_than_one_thing_missing: boolean;
 };
 
+/**
+ * The gates that say the DATA is untrustworthy, as opposed to the ones that say the
+ * trade is not worth taking. Taken from chair.ts's own gate ids: `warden` silences
+ * seats on a frozen tape, `chalk` is a phantom/bad-print condition, `quote` is quote
+ * age. Everything else hard — bar, edge, leftover, law, early, late — is about the
+ * trade, not about whether the inputs can be believed.
+ */
+export const FEED_GATE_IDS: readonly string[] = Object.freeze(["warden", "chalk", "quote"]);
+
 export function whyFacts(chair: ChairResult, plain: string): WhyFacts {
   const failed_hard = chair.gates.filter((g) => g.hard && !g.pass);
+  const feed_gates = failed_hard.filter((g) => FEED_GATE_IDS.includes(g.id));
   const clears = Math.abs(chair.score) >= chair.bar;
   const waiting = chair.lean === "WAIT";
   const wait_reason: WhyFacts["wait_reason"] = !waiting
     ? ""
-    : failed_hard.length > 0
-      ? "hard-gate"
-      : clears
-        ? "no-edge"
-        : "under-bar";
+    : feed_gates.length > 0
+      ? "feed-condition"
+      : failed_hard.length > 0
+        ? "hard-gate"
+        : clears
+          ? "no-edge"
+          : "under-bar";
   return {
     plain,
     hypothesis: chair.hypothesis ?? "",
@@ -346,6 +363,7 @@ export function whyFacts(chair: ChairResult, plain: string): WhyFacts {
     wait_note: waiting ? (chair.wait_note ?? "") : "",
     quorum: chair.quorum ?? { up: 0, down: 0, wait: 0 },
     failed_hard,
+    feed_gates,
     gates: Array.isArray(chair.gates) ? chair.gates : [],
     wait_reason,
     // More than one thing is missing whenever a gate fails and the score is ALSO
