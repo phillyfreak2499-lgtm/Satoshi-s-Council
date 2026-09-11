@@ -177,3 +177,73 @@ test("no copy claims a live floor the book does not actually pay", () => {
     }
   }
 });
+
+test("Phase 2 research has no path to the chair, a seat, or the learner", () => {
+  // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
+  // not a promise in a comment: nothing that decides anything may import them.
+  const research = ["tape2", "vel2", "strike2", "strike2.server"];
+  const deciders = [
+    "src/lib/desk/chair.ts",
+    "src/lib/desk/bots.ts",
+    "src/lib/desk/dsl.ts",
+    "src/lib/desk/learner.ts",
+    "src/lib/desk/skills.ts",
+    "src/lib/desk/chair2.ts",
+    "src/lib/desk/coach.ts",
+    "src/lib/desk/book-floor.ts",
+    "src/lib/desk/features.ts",
+    "src/lib/desk/clock.ts",
+  ];
+  for (const rel of deciders) {
+    let src;
+    try {
+      src = read(rel);
+    } catch {
+      continue; // a file that does not exist cannot import anything
+    }
+    for (const mod of research) {
+      const re = new RegExp(`from "\\./${mod.replace(".", "\\.")}(\\.ts)?"`);
+      assert.ok(!re.test(src), `${rel} imports ${mod} — research must not reach a decision`);
+    }
+  }
+});
+
+test("STRIKE 2.0 states it is shadow and cannot promote itself", () => {
+  const srv = read("src/lib/desk/strike2.server.ts");
+  // The read-out carries its own constraints, so a reader of the raw JSON cannot
+  // mistake a good-looking Brier for permission.
+  assert.match(srv, /votes: false/);
+  assert.match(srv, /shadow: true/);
+  assert.match(srv, /index_min_regime_n: INDEX_MIN_REGIME_N/);
+  // It reads. It does not write, grade, or promote. Matched on code shapes, so the
+  // prose explaining that it cannot promote itself does not trip its own guard.
+  for (const banned of [/\binsert into\b/i, /\bupdate \w+ set\b/i, /\bdelete from\b/i, /\bpromote\w*\(/]) {
+    assert.ok(!banned.test(srv), `strike2.server.ts contains ${banned} — it must be read-only`);
+  }
+  // The incumbent skill is untouched: STRIKE's own constants are not imported here.
+  assert.ok(!/from "\.\/skills(\.ts)?"/.test(srv), "the study must not reach the skill table");
+});
+
+test("the research read-out is admin-gated and off the public boards", () => {
+  const route = read("server/routes/strike2.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
+  assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
+  // Not linked from any shipped page: a research endpoint nobody audits is worse
+  // than no endpoint, and one on the floor invites reading it as a signal.
+  for (const rel of ["src/components/desk/BooksTab.tsx", "src/components/desk/SatoshiTab.tsx"]) {
+    assert.ok(!/\/strike2/.test(read(rel)), `${rel} links the research endpoint onto the floor`);
+  }
+});
+
+test("the calibrator cannot learn from a window before that window closed", () => {
+  // The single property that makes the tape arm's 70k samples legitimate rather
+  // than 70k readings of 332 answers.
+  const src = read("src/lib/desk/strike2.ts");
+  // Evidence is buffered and released by time, not folded in at prediction time.
+  assert.match(src, /flush\(r\.t\);/);
+  assert.match(src, /pending\.push\(/);
+  // The learn call inside the loop is the deferred one, never a direct learn(r).
+  const loop = src.slice(src.indexOf("for (const r of sorted)"), src.indexOf("const buckets ="));
+  assert.ok(!/learn\(table, z, r\.up\)/.test(loop), "a row is folded in at prediction time");
+  assert.match(loop, /flush = |flush\(/);
+});

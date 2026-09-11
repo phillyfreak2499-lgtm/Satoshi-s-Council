@@ -281,4 +281,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "VEL stopped assuming one exchange rate between Bitcoin and cents. Its production read converts a BTC move into expected contract cents using a single fixed multiplier, the same one in every window — but a fifty-dollar move is nearly meaningless with ten minutes left and the strike four hundred away, and close to decisive with forty seconds left and the strike five away. A new shadow measurement works out what the move should have been worth from the contract's own sensitivity, which depends on distance to the strike, time remaining and volatility, with no fitted parameters. What is left over after subtracting that is the part of the move the underlying does not explain. It also stops assuming Bitcoin leads: it measures which market actually moved first at four horizons and reports honestly when neither did. Research only; the production read is unchanged and nothing votes on this.",
   },
+  {
+    slug: "2026-09-11-strike-2",
+    body:
+      "The desk checked whether its own odds beat the market's, and the answer was no. STRIKE fires when the strike is more than 0.7 standard deviations away, which is a threshold, not a probability: it cannot say whether a setup is a 70% proposition or a 95% one, so it cannot be graded for calibration. A shadow study now turns the desk's fair value into a real probability, corrects it against what actually happened in each distance bucket, and scores the result against the price Kalshi was charging at the same moment. Over 468 settled windows the market scored 0.157, the desk's raw fair value 0.158, and the corrected version 0.158 — lower is better, and those gaps are noise. So the desk is about as well calibrated as the market and no better, which means the edge is not in guessing direction; it is in price and fees. Nothing votes on this, and a study cannot promote itself.",
+  },
 ];
