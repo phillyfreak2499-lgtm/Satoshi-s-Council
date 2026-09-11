@@ -30,6 +30,31 @@
 export const QTY_FIX_AT = "2026-09-11T03:47:17.000Z";
 export const QTY_FIX_MS = Date.parse(QTY_FIX_AT);
 
+/**
+ * The moment absorption prints began carrying the state of the world AT THE
+ * PRINT rather than at settle. Set when the fix reaches production.
+ *
+ * The first window recorded before this wrote 501 rows in which the order-flow
+ * reading, the regime, the spread and the distance to the strike were IDENTICAL
+ * on every row — read once at settle — and the BTC and depth fields were empty,
+ * because the buffers they came from had already been cleared by the ticker
+ * roll. The prints themselves are real; the context around them is not, and the
+ * conditioning tests are the whole point of the study.
+ *
+ * Those rows are left exactly where they are. They are excluded here, not
+ * repaired and not deleted: production data is not edited by hand, and inventing
+ * the context nobody recorded would be worse than losing it.
+ *
+ * WHY THIS MOMENT. It is the first window close comfortably after the fix
+ * deployed, not the deploy itself. Two reasons. A boundary inside a window would
+ * split that window's prints into a counted half and an uncounted one, and half
+ * a window is not an observation. And erring late costs at most one window of
+ * good data, while erring early admits contaminated data forever — so the error
+ * is taken on the strict side deliberately.
+ */
+export const PRINT_CTX_FIX_AT = "2026-09-11T11:45:00.000Z";
+export const PRINT_CTX_FIX_MS = Date.parse(PRINT_CTX_FIX_AT);
+
 export type EraId = "pre-qty-fix" | "post-qty-fix";
 
 export type EraInfo = {
@@ -88,6 +113,18 @@ export function splitByEra<T>(rows: readonly T[], at: (row: T) => number | strin
       `Any measurement that reads an order-book SIZE is unusable in the earlier set and the two are never ` +
       `added together — see ERAS in research-era.ts for what was wrong and why it was not repaired.`,
   };
+}
+
+/**
+ * Is this absorption print's CONTEXT trustworthy?
+ *
+ * Separate from the quantity eras because it is a different fault with a
+ * different boundary: a print can sit in the clean quantity era and still carry
+ * context that was stamped at the wrong moment.
+ */
+export function printCtxUsable(t: number | string | Date): boolean {
+  const ms = t instanceof Date ? t.getTime() : typeof t === "number" ? t : Date.parse(t);
+  return Number.isFinite(ms) && ms >= PRINT_CTX_FIX_MS;
 }
 
 /**

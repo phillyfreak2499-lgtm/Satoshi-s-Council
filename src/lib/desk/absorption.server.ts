@@ -26,12 +26,16 @@ import {
   type AbsorptionReport,
   type AbsorptionRow,
 } from "./absorption.ts";
-import { eraAt, QTY_FIX_AT, splitByEra } from "./research-era.ts";
+import { eraAt, PRINT_CTX_FIX_AT, printCtxUsable, QTY_FIX_AT, splitByEra } from "./research-era.ts";
 
 const TTL_MS = 300_000;
 
 export type AbsorptionStudy = AbsorptionReport & {
   era_boundary: string;
+  /** Prints before this carried context stamped at settle rather than at the print. */
+  ctx_boundary: string;
+  /** How many otherwise-clean prints that boundary excluded. */
+  dropped_stale_context: number;
   at: string;
   authority: { votes: false; thresholds_in_production: false; note: string };
 };
@@ -167,7 +171,12 @@ export async function absorptionStudy(): Promise<AbsorptionStudy> {
   const raw = await db<DbRow>`select * from desk_absorption order by t`;
   const rows = raw.map(toRow);
   const split = splitByEra(rows, (r) => r.t);
-  const post = split.post;
+  // Two boundaries, both of which a row has to clear. The quantity fix decides
+  // whether its SIZES mean anything; the context fix decides whether the state
+  // around it was stamped at the print or at settle. A row can pass the first
+  // and fail the second, so both are applied and both counted.
+  const post = split.post.filter((r) => printCtxUsable(r.t));
+  const ctxDropped = split.post.length - post.length;
 
   // Every control the owner named. Each asks: is the effect still there inside
   // bands of this, or is the effect just this variable wearing a different hat?
@@ -202,8 +211,10 @@ export async function absorptionStudy(): Promise<AbsorptionStudy> {
   ];
 
   const study: AbsorptionStudy = {
-    ...absorptionReport(post, split.pre.length, controls),
+    ...absorptionReport(post, split.pre.length + ctxDropped, controls),
     era_boundary: QTY_FIX_AT,
+    ctx_boundary: PRINT_CTX_FIX_AT,
+    dropped_stale_context: ctxDropped,
     at: new Date().toISOString(),
     authority: {
       votes: false,
@@ -213,7 +224,9 @@ export async function absorptionStudy(): Promise<AbsorptionStudy> {
         "windows where aggressive size crossed and the price did not respond. It is not a hit rate and it is " +
         "not a signal. Bands are frozen and reported as a grid so no single setting is privileged; BUY and " +
         "SELL and single and clustered are never pooled; and the falsification block asks every way this " +
-        "could be nothing before it asks whether it is something.",
+        "could be nothing before it asks whether it is something. Two boundaries apply: a print's sizes are " +
+        "only meaningful after the quantity fix, and its surrounding state only after the context fix. Rows " +
+        "failing either are left in the table and left out of every number here.",
     },
   };
   cache = { at: Date.now(), study };

@@ -25,6 +25,22 @@ const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
  * "this must not appear" check runs on this; assertions about the prose itself
  * run on the raw source.
  */
+/**
+ * The slice of `src` between two markers, with both required to exist.
+ *
+ * `indexOf` returns -1 for a marker that has been renamed away, and
+ * `slice(start, -1)` then quietly widens to almost the whole file — so a guard
+ * scoped to one function silently starts matching the rest of the module and
+ * either passes or fails for the wrong reason. Failing loudly here is the point.
+ */
+function between(src, a, b) {
+  const i = src.indexOf(a);
+  const j = src.indexOf(b);
+  assert.ok(i >= 0, `slice marker not found: ${a}`);
+  assert.ok(j > i, `slice marker not found after the first: ${b}`);
+  return src.slice(i, j);
+}
+
 const codeOf = (rel) =>
   read(rel)
     .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -258,7 +274,7 @@ test("the calibrator cannot learn from a window before that window closed", () =
   assert.match(src, /flush\(r\.t\);/);
   assert.match(src, /pending\.push\(/);
   // The learn call inside the loop is the deferred one, never a direct learn(r).
-  const loop = src.slice(src.indexOf("for (const r of sorted)"), src.indexOf("const buckets ="));
+  const loop = between(src, "for (const r of sorted)", "const buckets =");
   assert.ok(!/learn\(table, z, r\.up\)/.test(loop), "a row is folded in at prediction time");
   assert.match(loop, /flush = |flush\(/);
 });
@@ -355,7 +371,7 @@ test("the seat-signal study judges against the price, not against a coin flip", 
   assert.match(src, /a\.market_said < a\.actual_lo/);
   // The verdict lines themselves must not mention 50 at all — `mid > 50`
   // elsewhere is legitimate, it picks which side the price favours.
-  const decide = src.slice(src.indexOf("const informative ="), src.indexOf("return {\n    seat,"));
+  const decide = between(src, "const informative =", "return {\n    seat,");
   assert.ok(!/\b50\b/.test(decide), `a 50% bar leaked into the verdict logic: ${decide}`);
   // And the seat's own win rate must play no part in the verdict: a seat can be
   // wrong about direction and still right that the price was too rich.
@@ -378,7 +394,7 @@ test("the seat-signal study judges against the price, not against a coin flip", 
   // The seat's read and the price must come from the same instant.
   // Checked on the query, not the prose: the doc comment explains why the ledger
   // is the wrong source, so a naive whole-file match trips on its own reasoning.
-  const query = srv.slice(srv.indexOf("await db<Row>`"), srv.indexOf("`;", srv.indexOf("await db<Row>`")));
+  const query = between(srv, "await db<Row>`", "order by close_time");
   assert.match(query, /from desk_samples/);
   assert.ok(!/desk_ledger/.test(query), "the ledger's grade-frame vote is a different moment from this price");
 
@@ -410,7 +426,7 @@ test("the lab records the new measurements without letting them into its fair va
 
 test("the incumbent STRIKE is compared honestly: a threshold gets no Brier score", () => {
   const srv = read("src/lib/desk/strike2.server.ts");
-  const arm = srv.slice(srv.indexOf("function incumbentArm"), srv.indexOf("function round1"));
+  const arm = between(srv, "function incumbentArm", "function round1");
   // It never produced a probability, so scoring one would be scoring a number
   // the desk invented on its behalf and then judged it by.
   // Checked as a CALL, not as a word: the note itself explains that it has no
@@ -433,7 +449,7 @@ test("the cube keeps the retired era out of every cut", () => {
   assert.match(srv, /const retired = all\.filter\(\(r\) => r\.entry != null && !r\.settled\);/);
   assert.match(srv, /const rows = all\.filter\(\(r\) => r\.entry == null \|\| r\.settled\);/);
   // Every dimension is built on `rows`, never on `all`.
-  const dimBlock = srv.slice(srv.indexOf("const dims: CubeDim[] = ["), srv.indexOf("// Decision-state cuts"));
+  const dimBlock = between(srv, "const dims: CubeDim[] = [", "// Decision-state cuts");
   assert.ok(!/cubeDim\([^,]+, all,/.test(dimBlock), "a dimension is cut over the pooled rows");
   // And the retired block is reported once, out of the dimension list.
   assert.match(srv, /buildCube\(rows, dims, notYet, retired\)/);
@@ -567,8 +583,18 @@ test("the quantity-fix era is a boundary in the data, not a note in a comment", 
   assert.match(mig, /era\s+text not null/);
   const srv = read("src/lib/desk/absorption.server.ts");
   assert.match(srv, /\$\{eraAt\(r\.t\)\}/);
-  assert.match(srv, /const post = split\.post;/);
+  // Both boundaries are applied, and the rows failing either are counted rather
+  // than vanishing: a study that silently narrows its sample is worse than one
+  // that reports a small one.
+  assert.match(srv, /const post = split\.post\.filter\(\(r\) => printCtxUsable\(r\.t\)\);/);
+  assert.match(srv, /const ctxDropped = split\.post\.length - post\.length;/);
+  assert.match(srv, /absorptionReport\(post, split\.pre\.length \+ ctxDropped, controls\)/);
   assert.ok(!/split\.pre\.concat|\.\.\.split\.pre/.test(srv), "pre-fix rows are being pooled in");
+
+  // The context boundary is its own moment, with its own reason.
+  assert.match(era, /export const PRINT_CTX_FIX_AT = "/);
+  assert.match(era, /export function printCtxUsable\(/);
+  assert.match(era, /production data is not edited by hand/);
 });
 
 test("absorption is judged against the price, never a hit rate, and cannot self-promote", () => {
@@ -632,7 +658,7 @@ test("the seat context a print carries records its own staleness", () => {
   // DRIFT and CASCADE are as of the last tick. A study that could not see the
   // age would read a four-minute-old value as a reading of that moment.
   const lab = read("src/lib/desk/lab.server.ts");
-  assert.match(lab, /seat_age_ms: L\.deskState\.t \? Math\.max\(0, Math\.round\(c\.t - L\.deskState\.t\)\) : null,/);
+  assert.match(lab, /seat_age_ms: d\.t \? Math\.round\(t - d\.t\) : null,/);
   assert.match(read("migrations/0023_desk_absorption.sql"), /seat_age_ms\s+integer/);
   // Evidence uses the desk's own converter, not a second scale.
   assert.match(read("src/lib/desk/server-engine.ts"), /drift: seatEvidence\(votes\.find/);
@@ -645,14 +671,14 @@ test("a window's prints survive the rollover that settles it", () => {
   // nothing — the data is destroyed a moment before the only code that wants it
   // runs. Replay already keeps a per-ticker map; whale now does too.
   const lab = read("src/lib/desk/lab.server.ts");
-  assert.match(lab, /whale: Map<string, \{ prints: Print\[\]; mids: MidPoint\[\]; t: number \}>;/);
+  assert.match(lab, /whale: Map<string, \{ prints: StampedPrint\[\]; marks: WhaleMark\[\]; t: number \}>;/);
   // Nothing may clear a window's buffer on the ticker roll.
-  const roll = lab.slice(lab.indexOf("if (L.tape2Ticker !== tk) {"), lab.indexOf("const b = L.books.get(tk);"));
+  const roll = between(lab, "if (L.tape2Ticker !== tk) {", "const b = L.books.get(tk);");
   assert.ok(!/whale/i.test(roll), "the ticker roll is clearing whale state again");
   // And the settle-time reader must look up BY TICKER, never against the
   // current one, which by then is already the next window.
   assert.match(lab, /const w = L\.whale\.get\(ticker\);/);
-  const reader = lab.slice(lab.indexOf("export function whalePrintRecords"), lab.indexOf("function touchOn"));
+  const reader = between(lab, "export function whalePrintRecords", "function clusterStamped");
   assert.ok(!/tape2Ticker/.test(reader), "the reader is checking the current ticker again");
   assert.ok(!/currentTicker/.test(reader), "the reader is checking the current ticker again");
   // Buffers for windows that never settled are pruned rather than kept forever.
@@ -660,9 +686,48 @@ test("a window's prints survive the rollover that settles it", () => {
   // A settled window is forgotten only AFTER the write returns — a read
   // followed by a failed write must not be what loses the data.
   const eng = read("src/lib/desk/server-engine.ts");
-  const block = eng.slice(eng.indexOf("const rows = whalePrintRecords("), eng.indexOf("e.lastError = `absorption"));
+  const block = between(eng, "const rows = whalePrintRecords(", "e.lastError = `absorption");
   assert.ok(
     block.indexOf("await recordPrints(") < block.indexOf("forgetWhaleWindow("),
     "the buffer is discarded before the write is known to have succeeded",
   );
+});
+
+test("a print carries the state of the world at the moment it landed", () => {
+  // Found in production: all 501 prints of the first recorded window carried one
+  // identical order-flow reading, one regime, one spread and one distance — the
+  // context was read at SETTLE, so every conditioning test, which is the point
+  // of the study, was reading a single constant. BTC and depth came back null
+  // entirely, because their buffers had already been cleared by the ticker roll.
+  const lab = read("src/lib/desk/lab.server.ts");
+  assert.match(lab, /type StampedPrint = Print & \{/);
+  // Stamped where the print arrives.
+  const FIELDS = ["ofi_norm", "spread", "depth", "touch", "dist", "sigma", "fair_yes", "vel_resid", "drift_ev", "cascade_ev", "seat_age_ms", "regime"];
+  const type = between(lab, "type StampedPrint = Print & {", "/** One instant of the window");
+  const stamp = between(lab, "function noteWhalePrint", "function whaleFor");
+  for (const f of FIELDS) {
+    assert.ok(new RegExp(`\\b${f}\\b`).test(type), `${f} is not on StampedPrint`);
+    // Property shorthand is legitimate, so the name is matched rather than "name:".
+    assert.ok(new RegExp(`\\b${f}\\b`).test(stamp), `${f} is not stamped at print time`);
+  }
+  // And read back from the print, never from live lab state.
+  const reader = between(lab, "export function whalePrintRecords", "function clusterStamped");
+  for (const f of ["ofi_norm: c.ofi_norm", "spread: c.spread", "dist: c.dist", "regime: c.regime", "fair_yes: c.fair_yes", "vel_resid: c.vel_resid", "drift_ev: c.drift_ev", "cascade_ev: c.cascade_ev", "seat_age_ms: c.seat_age_ms"]) {
+    assert.ok(reader.includes(f), `the reader is not using the print's own ${f.split(":")[0]}`);
+  }
+  assert.ok(!/L\.tape2Last|L\.vel2Last|L\.deskState/.test(reader), "the reader is reading live lab state again");
+
+  // BTC comes off the window's own marks, not the VEL buffer the roll clears.
+  assert.match(lab, /function btcMoveOver\(marks: readonly WhaleMark\[\]/);
+  assert.match(lab, /w\.marks\.push\(\{ t, mid, spot:/);
+
+  // A burst keeps the FIRST print's context: the decision was taken then, and
+  // averaging across the burst would invent a reading nobody saw.
+  assert.match(lab, /out\.push\(\{ \.\.\.p, prints: 1 \}\);/);
+  assert.match(lab, /carrying the FIRST print's context forward/);
+
+  // Staleness is not clamped: a negative age means the state arrived after the
+  // print, which is a fault worth seeing rather than hiding behind a zero.
+  assert.match(stamp, /seat_age_ms: d\.t \? Math\.round\(t - d\.t\) : null,/);
+  assert.ok(!/seat_age_ms: .*Math\.max\(0/.test(stamp), "staleness is being clamped to zero again");
 });
