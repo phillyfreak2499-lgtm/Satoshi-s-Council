@@ -311,4 +311,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk asked whether twenty seats are twenty pieces of evidence or the same few counted several times. For each seat: drop it from the tally, and on the windows where that changes the answer, is the room more right with it or without it? Over 534 graded windows, five seats change the answer often enough to read. Four earn it clearly — STREAK, CHAIN, CASCADE and STRIKE. One does not: TAPE speaks on 72 windows, is right 40% of the time, and on the 34 windows where it moves the room the room was right 16 times without it against 9 with it. That is not a verdict and TAPE has not been touched. Five seats were tested, so one looking that bad is close to what luck supplies, and the figure is measured on windows that already happened. If TAPE is to lose its voice it has to be run gagged in shadow first and be shown not to be missed. Nothing here changed a seat, a weight or a call.",
   },
+  {
+    slug: "2026-09-11-seat-signal",
+    body:
+      "A seat's hit rate turned out to measure almost nothing. Kalshi's own price is right about four times in five on these windows, so a seat that mostly nods along scores 75-90% without having contributed a thought. The real question is what happens when a seat objects: the price stated a probability, so did it come true? Across 467 graded windows, two seats pass. When DRIFT objects the price is worth about 9 points less than it claims; when CASCADE objects, about 8 points less. Both are worth something even though both lose most of those bets — on a desk that pays the ask, knowing a favourite is overpriced is the edge, and picking the upset is not required. Four seats run backwards: when CHAIN, TAPE, WICK or FADE object, the price turns out MORE right than it said. That is worse than silence. Nothing was reweighted, and these have to hold up on windows recorded from here on.",
+  },
 ];

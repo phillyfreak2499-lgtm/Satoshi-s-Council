@@ -181,7 +181,7 @@ test("no copy claims a live floor the book does not actually pay", () => {
 test("Phase 2 research has no path to the chair, a seat, or the learner", () => {
   // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
   // not a promise in a comment: nothing that decides anything may import them.
-  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server", "redundancy", "redundancy.server"];
+  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server", "redundancy", "redundancy.server", "seat-signal", "seat-signal.server"];
   const deciders = [
     "src/lib/desk/chair.ts",
     "src/lib/desk/bots.ts",
@@ -327,6 +327,47 @@ test("the redundancy study cannot mute, gag or reweight a seat", () => {
   assert.match(srv, /const TALLY = STUDIED\.filter\(\(s\) => !\(s in NOT_HEARD\)\);/);
 
   const route = read("server/routes/redundancy.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
+  assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
+});
+
+test("the seat-signal study judges against the price, not against a coin flip", () => {
+  const src = read("src/lib/desk/seat-signal.ts");
+  // The bar is the market's OWN claim on the objected windows, compared against
+  // the interval. Testing against 50% would call every seat useless, and testing
+  // against the point estimate would manufacture findings.
+  assert.match(src, /a\.market_said > a\.actual_hi/);
+  assert.match(src, /a\.market_said < a\.actual_lo/);
+  // The verdict lines themselves must not mention 50 at all — `mid > 50`
+  // elsewhere is legitimate, it picks which side the price favours.
+  const decide = src.slice(src.indexOf("const informative ="), src.indexOf("return {\n    seat,"));
+  assert.ok(!/\b50\b/.test(decide), `a 50% bar leaked into the verdict logic: ${decide}`);
+  // And the seat's own win rate must play no part in the verdict: a seat can be
+  // wrong about direction and still right that the price was too rich.
+  assert.ok(!/seat_right/.test(decide), "the verdict is reading the seat's own hit rate");
+  // And the point that a seat need not pick the winner to be worth something.
+  assert.match(src, /does NOT require the seat to pick the winner/);
+  // Split across a template-literal concatenation in the source, so matched in pieces.
+  assert.match(src, /led away from the truth, which is worse than a seat/);
+  assert.match(src, /that says nothing\./);
+
+  const srv = read("src/lib/desk/seat-signal.server.ts");
+  for (const banned of [/\binsert into\b/i, /\bupdate \w+ set\b/i, /\bdelete from\b/i, /\bsetKnob\b/, /\bpromote\w*\(/]) {
+    assert.ok(!banned.test(srv), `seat-signal.server.ts contains ${banned} — it must be read-only`);
+  }
+  assert.match(srv, /votes: false/);
+  assert.match(srv, /reweights_nothing: true/);
+  // Silence is not agreement: a zero evidence must not be folded in as a vote
+  // for the price, which would credit every quiet seat with the market's record.
+  assert.match(srv, /const lean = ev > 0 \? "UP" : ev < 0 \? "DOWN" : null;/);
+  // The seat's read and the price must come from the same instant.
+  // Checked on the query, not the prose: the doc comment explains why the ledger
+  // is the wrong source, so a naive whole-file match trips on its own reasoning.
+  const query = srv.slice(srv.indexOf("await db<Row>`"), srv.indexOf("`;", srv.indexOf("await db<Row>`")));
+  assert.match(query, /from desk_samples/);
+  assert.ok(!/desk_ledger/.test(query), "the ledger's grade-frame vote is a different moment from this price");
+
+  const route = read("server/routes/seat-signal.get.ts");
   assert.match(route, /adminKeyOk\(key\)/);
   assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
 });
