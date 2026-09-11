@@ -25,6 +25,42 @@
  * or touches the active policy; the actuator is deliberately a separate, later
  * change, so these gates can be read and argued with before they can act.
  *
+ * ------------------------------------------------------------------------------
+ * WHY THE ACTUATOR IS STILL MISSING, AND WHAT HAS TO BE TRUE BEFORE IT ARRIVES.
+ *
+ * The order of authority on this desk:
+ *
+ *   measurement trusted → CI enforceable → health externally watched →
+ *   governance introduced → authority last
+ *
+ * Each step is what makes the next one safe to take, and the only way this system
+ * can do real harm is by skipping to the end. Writing the actuator is not blocked
+ * because the code is hard — it could be written today — but because:
+ *
+ *   1. MEASUREMENT TRUSTED. A promotion engine reasoning over observations that
+ *      have never been produced in production is reasoning over nothing. The
+ *      measurement layer has to have recorded real fills, with the relational
+ *      guarantees actually exercised rather than merely installed.
+ *
+ *   2. CI ENFORCEABLE. While required checks are advisory, a red change can be
+ *      merged on a judgement call. Stage 1 cannot move the Floor, so that is
+ *      unpleasant; an actuator can change which paper policy the site presents as
+ *      Champion, so it is not.
+ *
+ *   3. HEALTH EXTERNALLY WATCHED. /status can already detect the conditions that
+ *      must block a promotion — a stalled ledger, an identity fault, a stuck
+ *      outbox. A clean-boundary check that consults a health endpoint nobody
+ *      outside the process is listening to can confirm the desk looks well to
+ *      itself, which is the weakest possible form of that assurance.
+ *
+ * Then governance may be introduced, and only after it has run report-only
+ * against production does it get the gavel.
+ *
+ * A rail asserts both this ladder and the continued absence of an actuator, so
+ * Stage 2 cannot be added without deliberately editing a guard that names these
+ * preconditions. That is the intended friction, not an oversight.
+ * ------------------------------------------------------------------------------
+ *
  * Pure module: no clock, no state, no database, no randomness that is not seeded.
  */
 

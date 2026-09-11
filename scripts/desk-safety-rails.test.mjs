@@ -1132,3 +1132,51 @@ test("there is no path that backfills candidate observations", () => {
   const block = between(eng, "void (async () => {", "if (windowsHuddleDue(");
   assert.match(block, /closeMs: snap\.close_time/, "the window being graded, not a backfilled one");
 });
+
+/**
+ * Promotion has no actuator, and the ladder explaining why is on the record.
+ *
+ * This rail is meant to be FAILED, once, deliberately, by whoever adds Stage 2 —
+ * at which point they have to read the preconditions they are about to satisfy or
+ * skip. Prose alone can be deleted without anyone noticing; a failing test cannot.
+ */
+test("the Floor cannot be promoted yet, and the order of authority is recorded", () => {
+  const gates = read("src/lib/desk/promotion-gates.ts");
+  // The ladder, in order. Each step is what makes the next one safe.
+  for (const step of [
+    "measurement trusted",
+    "CI enforceable",
+    "health externally watched",
+    "governance introduced",
+    "authority last",
+  ]) {
+    assert.ok(gates.includes(step), `the order of authority must name "${step}"`);
+  }
+
+  // No actuator: nothing in the app may write to the champion table. The only
+  // INSERT lives in migration 0025, which seeds the unchanged desk as FLOOR_V1.
+  const walk = (rel, out = []) => {
+    for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const next = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(next, out);
+      else if (/\.(ts|tsx|mjs)$/.test(e.name) && !e.name.includes(".test.")) out.push(next);
+    }
+    return out;
+  };
+  for (const rel of [...walk("src"), ...walk("server")]) {
+    const code = codeOf(rel);
+    if (!/desk_floor_policy/.test(code)) continue;
+    assert.doesNotMatch(
+      code,
+      /(update|insert\s+into|delete\s+from)\s+desk_floor_policy/i,
+      `${rel} writes to desk_floor_policy. Promotion is not implemented, and the actuator ` +
+        `requires the preconditions recorded in promotion-gates.ts.`,
+    );
+  }
+
+  // And the gate evaluator still only reports.
+  const gatesCode = codeOf("src/lib/desk/promotion-gates.ts");
+  assert.doesNotMatch(gatesCode, /getSql|@\/lib\/db|\.server["']/, "the evaluator must stay pure");
+  assert.match(gatesCode, /all_required_passed/, "it reports a precondition, not a decision");
+});
