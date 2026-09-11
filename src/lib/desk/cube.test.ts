@@ -240,3 +240,46 @@ test("the side cut names what it cannot place instead of guessing", () => {
   assert.equal(d.unknown, 4);
   assert.equal(d.cells.reduce((a, c) => a + c.calls, 0), 8);
 });
+
+test("the retired era is reported once and never pooled into a cut", () => {
+  // Nearly all of the real loss sits in the retired rows. Pooling them does not
+  // add noise — it drags every cut of the current book down by a fixed amount.
+  const current = book(20, 16);
+  const retired = Array.from({ length: 6 }, (_, i) =>
+    row({ close_time: i * 900_000, legs: 4, settled: false, side: null, entry: 65, ev: -20 }),
+  );
+  const c = buildCube(current, [cubeDim("side", current, (r) => r.side)], [], retired);
+  assert.equal(c.n, 20, "the retired rows must not be counted in n");
+  assert.equal(c.calls, 20);
+  const currentNet = current.reduce((a, r) => a + (r.ev ?? 0), 0);
+  assert.equal(c.overall.net, currentNet, "the current book carries only its own cents");
+  // The whole point: pooling would move this by the retired era's 120¢, which is
+  // three times the current book's own result. (16 of 20 at 80¢ is itself a
+  // small loss — 80% against the 82% that price needs — and that is the honest
+  // number, not the −160 a pooled cube would print.)
+  const pooled = buildCube([...current, ...retired], []);
+  assert.equal(pooled.overall.net, currentNet - 120);
+  assert.ok(Math.abs(c.overall.net) < Math.abs(pooled.overall.net), "separating the eras must change the answer");
+  // The retired rows are present, complete, and separate.
+  assert.ok(c.retired_era);
+  assert.equal(c.retired_era!.cell.calls, 6);
+  assert.equal(c.retired_era!.cell.net, -120);
+  assert.match(c.retired_era!.why, /different game/);
+  // And they appear in no dimension.
+  assert.equal(c.dims[0]!.cells.reduce((a, x) => a + x.calls, 0), 20);
+});
+
+test("with no retired rows the block is absent rather than an empty shell", () => {
+  const rows = book(12, 9);
+  const c = buildCube(rows, []);
+  assert.equal(c.retired_era, null);
+});
+
+test("an unfilled window belongs to the current book, not to the retired one", () => {
+  // The chair was reading it under today's rules and declined to pay. Counting
+  // it as retired would understate how often the current desk sits.
+  const rows = [...book(5, 4), ...Array.from({ length: 10 }, () => row({ side: null, entry: null, ev: null }))];
+  const c = buildCube(rows, []);
+  assert.equal(c.n, 15);
+  assert.equal(c.calls, 5);
+});

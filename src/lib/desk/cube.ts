@@ -263,26 +263,54 @@ export function lookElsewhere(dims: readonly CubeDim[]): LookElsewhere {
 }
 
 export type Cube = {
-  /** Graded windows behind the whole cube. */
+  /** Graded windows behind the cube — CURRENT ERA ONLY. See `retired_era`. */
   n: number;
   /** Of those, the ones the book actually filled. */
   calls: number;
-  /** The book as a whole, undivided — the number every cell should be read against. */
+  /** The current book undivided — the number every cell below should be read against. */
   overall: CubeCell;
   dims: CubeDim[];
   look_elsewhere: LookElsewhere;
   /** Dimensions that exist but cannot be cut yet, and why. */
   not_yet: { name: string; why: string }[];
+  /**
+   * The retired book, reported once and never mixed in.
+   *
+   * Until 2026-09-06 a call could add legs and be sold at a mid price. Since
+   * then it is one contract held to settlement. Those are different games, and
+   * the older one accounts for nearly all of the all-time loss — so pooling them
+   * makes the current desk look far worse than it is, and every cut of the
+   * pooled set inherits that distortion.
+   *
+   * Not a cell in a "book style" dimension either: a dimension invites reading
+   * the two against each other, and there is nothing to learn from comparing a
+   * rule to the rule that replaced it. It is here so the number is not lost,
+   * and nowhere else.
+   */
+  retired_era: { cell: CubeCell; why: string } | null;
 };
 
-export function buildCube(rows: readonly CubeRow[], dims: readonly CubeDim[], notYet: { name: string; why: string }[] = []): Cube {
+export function buildCube(
+  rows: readonly CubeRow[],
+  dims: readonly CubeDim[],
+  notYet: { name: string; why: string }[] = [],
+  retired: readonly CubeRow[] = [],
+): Cube {
   return {
     n: rows.length,
-    calls: rows.filter((r) => r.entry != null && r.side != null).length,
+    calls: rows.filter((r) => r.entry != null).length,
     overall: cellOf("all", [...rows]),
     dims: [...dims],
     look_elsewhere: lookElsewhere(dims),
     not_yet: notYet,
+    retired_era: retired.length
+      ? {
+          cell: cellOf("exited early (retired)", [...retired]),
+          why:
+            "Multi-leg positions exited at a mid price, the rule until 2026-09-06. Kept out of every cut above: " +
+            "it is a different game, and pooling it would make the current book look worse than it is.",
+        }
+      : null,
   };
 }
 

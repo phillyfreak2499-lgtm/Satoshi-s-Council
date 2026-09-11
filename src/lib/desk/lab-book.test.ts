@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyDelta, applySnapshot, bests, bookTrusted, freshBook, markBookGap, tenths, yesView } from "./lab-book.ts";
+import { QTY_EPS, applyDelta, applySnapshot, bests, bookTrusted, freshBook, hasSize, markBookGap, tenths, yesView } from "./lab-book.ts";
 
 /** A two-level book on each side, in the wire's YES-leg convention. */
 function snapMsg() {
@@ -137,4 +137,64 @@ test("yesView drops emptied levels and survives an empty book", () => {
   applyDelta(b, { price_dollars: "0.6400", delta_fp: "-1116.31", side: "yes" }, 2_000);
   const v = yesView(b);
   assert.deepEqual(v.bids.map((l) => l.price), [63], "the emptied level is gone");
+});
+
+test("a level cancelled to nothing is removed, not kept as a residue", () => {
+  // The bug this guards: decimal quantities do not sum exactly in binary
+  // floating point, so a level taken down to zero lands on ~1e-13. With a
+  // `size > 0` test it stays in the book as a phantom at a real price. In
+  // production 89.4% of recorded resting sizes were residue like this.
+  const b = freshBook("KXBTC15M-26SEP101430-30");
+  applySnapshot(b, { yes: [[60, 0.1], [59, 0.2]], no: [[39, 5]] }, 1000);
+  assert.equal(b.yes.get(60), 0.1);
+  // Three cancels that should sum to exactly −0.1 and will not.
+  for (let i = 0; i < 3; i++) {
+    applyDelta(b, { side: "yes", price: 60, delta: -0.1 / 3 }, 2000 + i);
+  }
+  const left = b.yes.get(60);
+  assert.equal(left, undefined, `a residue of ${left} was kept as a level`);
+  assert.ok(!b.yes.has(60));
+});
+
+test("a residue level can never be the best price", () => {
+  const b = freshBook("KXBTC15M-26SEP101430-30");
+  applySnapshot(b, { yes: [[70, 1], [65, 4]], no: [[25, 3]] }, 1000);
+  applyDelta(b, { side: "yes", price: 70, delta: -1 }, 2000);
+  // 70 is gone, so the best YES bid falls to 65 rather than sticking at 70 with
+  // a size of nothing behind it.
+  assert.equal(bests(b).yes_bid, 65);
+  assert.equal(bests(b).yes_bid_sz, 4);
+});
+
+test("a real fractional size survives: the cut is far below any true quantity", () => {
+  // Kalshi quantities are decimals. 0.01 is the smallest seen in production and
+  // must not be mistaken for residue.
+  const b = freshBook("KXBTC15M-26SEP101430-30");
+  applySnapshot(b, { yes: [[60, 0.01]], no: [[39, 0.05]] }, 1000);
+  assert.equal(b.yes.get(60), 0.01);
+  assert.equal(yesView(b).bids.length, 1);
+  assert.equal(yesView(b).bids[0]!.size, 0.01);
+});
+
+test("a residue level is absent from the YES view, so depth cannot sum dust", () => {
+  const b = freshBook("KXBTC15M-26SEP101430-30");
+  applySnapshot(b, { yes: [[60, 1]], no: [[30, 1]] }, 1000);
+  applyDelta(b, { side: "yes", price: 60, delta: -1 }, 2000);
+  applyDelta(b, { side: "no", price: 30, delta: -1 }, 2000);
+  const v = yesView(b);
+  assert.deepEqual(v.bids, []);
+  assert.deepEqual(v.asks, []);
+});
+
+test("the epsilon sits between the residue and the smallest real quantity", () => {
+  // Both bounds come from production: residue topped out at 1.9e-11, the
+  // smallest real quantity was 0.01.
+  assert.ok(QTY_EPS > 1.9e-11, "the cut is low enough to keep residue");
+  assert.ok(QTY_EPS < 0.01, "the cut would discard a real 0.01 level");
+  assert.equal(hasSize(0.01), true);
+  assert.equal(hasSize(1e-13), false);
+  assert.equal(hasSize(0), false);
+  assert.equal(hasSize(-1), false);
+  assert.equal(hasSize(NaN), false);
+  assert.equal(hasSize(undefined), false);
 });
