@@ -42,7 +42,10 @@ export async function excursionStudy(): Promise<ExcursionStudy> {
   const raw = await db<Row>`
     select l.ticker, l.winner, l.chair_lean, l.entry_cents, l.settle_cents, l.ev_cents, r.cols
     from desk_ledger_research l
-    join desk_replay r on r.ticker = l.ticker
+    -- BOTH halves: joined on the ticker alone, one replay series would multiply
+    -- across every ledger window sharing that ticker and each copy would contribute
+    -- a row to this study.
+    join desk_replay r on r.ticker = l.ticker and r.close_time = l.close_time
     where l.winner in ('UP','DOWN')
       and l.entry_cents is not null
       and l.settle_cents in (0, 100)

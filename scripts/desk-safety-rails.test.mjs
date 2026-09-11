@@ -792,6 +792,116 @@ test("a print carries the state of the world at the moment it landed", () => {
  * It is rail-guarded rather than left to review because a dropped window shows up as
  * absence and a blended one does not.
  */
+/**
+ * The PERSISTED replay identity is the window too, and every reader that ties a replay
+ * to a ledger row says which window it means.
+ *
+ * S2-2A keyed the in-memory buffer by (ticker, close_time). The table itself was still
+ * `ticker primary key`, so a second close sharing a ticker could not be stored at all:
+ * `on conflict (ticker) do nothing` discarded it with no error and no counter. And four
+ * readers associated a replay to a ledger row by ticker alone, which mis-attaches a
+ * series without needing any duplicate row to exist.
+ */
+test("the persisted replay identity is the window, and readers name it", () => {
+  // 1 · SCHEMA. The key is both halves, and cannot quietly go back.
+  const mig = read("migrations/0028_desk_replay_window_identity.sql");
+  assert.match(mig, /primary key \(ticker, close_time\)/, "the new key is the window");
+  const created = read("migrations/0014_desk_replay.sql");
+  assert.match(created, /ticker {6}text primary key/, "0014 is left as the record of what was");
+  // No migration may re-establish a ticker-only identity on this table.
+  for (const f of readdirSync(join(ROOT, "migrations")).filter((x) => x.endsWith(".sql"))) {
+    if (f === "0014_desk_replay.sql") continue;
+    const src = read(`migrations/${f}`);
+    assert.doesNotMatch(
+      src,
+      /desk_replay[\s\S]{0,200}?primary key \(ticker\)/,
+      `${f} must not key desk_replay on the ticker alone`,
+    );
+  }
+
+  // 2 · WRITER. The conflict target is the window.
+  const rep = codeOf("src/lib/desk/replay.server.ts");
+  assert.match(rep, /on conflict \(ticker, close_time\) do nothing/, "conflict on the window");
+  assert.doesNotMatch(rep, /on conflict \(ticker\)/, "never on the ticker alone");
+
+  // 3 · READERS. Every desk_replay <-> ledger association carries close_time. Checked
+  // per statement, not per file, so one fixed join cannot vouch for an unfixed one.
+  const readers = readdirSync(join(ROOT, "src/lib/desk"))
+    .filter((f) => f.endsWith(".server.ts"))
+    .map((f) => `src/lib/desk/${f}`);
+  let associations = 0;
+  for (const rel of readers) {
+    const src = codeOf(rel);
+    // Statements that name both tables are associations; ones that read only the
+    // replay table (sitemap, the research traces) are not and are left alone.
+    for (const m of src.matchAll(/desk_replay\s+r\b[^`]*/g)) {
+      const stmt = m[0];
+      if (!/desk_ledger/.test(stmt) && !/l\.ticker/.test(stmt)) continue;
+      associations += 1;
+      assert.match(
+        stmt,
+        /close_time\s*=\s*(r|l)\.close_time/,
+        `${rel}: a replay<->ledger association must match close_time, not the ticker alone`,
+      );
+    }
+  }
+  assert.ok(associations >= 3, `expected the known associations, found ${associations}`);
+  // And the one that reads the other way round (ledger r, replay l) — BOOKS' exists().
+  const books = codeOf("src/lib/desk/books.server.ts");
+  assert.match(
+    books,
+    /from desk_replay r\s*\n?\s*where r\.ticker = l\.ticker and r\.close_time = l\.close_time/,
+    "the BOOKS replay-exists flag must match the window",
+  );
+  assert.doesNotMatch(
+    books,
+    /from desk_replay r where r\.ticker = l\.ticker\)/,
+    "not the ticker alone",
+  );
+
+  // 4 · PUBLIC TICKER-ONLY LOOKUP fails closed on ambiguity and never guesses. The
+  // sequence lives in replay-lookup.ts so it can be tested; the rail pins both the
+  // rule there and the queries the server hands it.
+  const look = codeOf("src/lib/desk/replay-lookup.ts");
+  assert.match(look, /found\.length === 1 \? found\[0\]!\.close_time : null/, "exactly one, or null");
+  for (const guess of [/order by/, /\.sort\(/, /Math\.max/, /\.at\(-1\)/, /\[0\]!\.close_time : found/]) {
+    assert.doesNotMatch(look, guess, `ambiguity must not be resolved by ${guess}`);
+  }
+  assert.match(rep, /select close_time from desk_replay where ticker = \$\{t\} limit 2/, "an ambiguity probe");
+  assert.doesNotMatch(rep, /order by close_time desc\s*\n?\s*limit 1/, "never the newest");
+  assert.doesNotMatch(rep, /order by close_time asc\s*\n?\s*limit 1/, "never the oldest");
+  assert.doesNotMatch(rep, /where ticker = \$\{t\} limit 1/, "a bare limit 1 would be a guess");
+  // The payload query is addressed by BOTH halves, so its limit 1 names one row by
+  // construction rather than choosing among several.
+  assert.match(
+    rep,
+    /where r\.ticker = \$\{t\} and r\.close_time = \$\{closeIso\}/,
+    "the payload is fetched by the resolved window",
+  );
+
+  // 5 · CACHE. Composite-keyed, and the identity is probed before it is consulted.
+  assert.match(look, /return `\$\{ticker\}\|\$\{closeIso\}`/, "the cache key is both halves");
+  const fn = look.slice(look.indexOf("export async function lookupOneWindow"));
+  const probeAt = fn.indexOf("await probe(ticker)");
+  const getAt = fn.indexOf("cache.get(key)");
+  const refuseAt = fn.indexOf("if (closeIso == null) return null;");
+  assert.ok(probeAt >= 0 && refuseAt > probeAt, "the refusal follows the probe");
+  assert.ok(getAt > refuseAt, "the cache is consulted only once the window is resolved");
+  assert.doesNotMatch(fn, /cache\.get\(ticker\)/, "no ticker-only cache read");
+  assert.doesNotMatch(fn, /cache\.set\(ticker,/, "no ticker-only cache write");
+  // The key the cache is actually addressed by must be built from BOTH halves. Without
+  // this, `const key = ticker` defeats the composite identity while every
+  // cache.get(ticker)/cache.set(ticker) check above still passes — a gap a mutation
+  // found before this PR was committed.
+  assert.match(fn, /const key = payloadKey\(ticker, closeIso\);/, "the cache key is the composite one");
+  assert.match(fn, /cache\.get\(key\)/, "and the cache is addressed by it");
+  assert.match(fn, /cache\.set\(key,/, "on the way in too");
+  // And the server hands it the shared key, so the two cannot disagree.
+  assert.match(rep, /export \{ payloadKey as recentKey \};/, "one cache-key definition");
+  assert.doesNotMatch(rep, /recent\.get\(ticker\)/, "no ticker-only cache read in the server file");
+  assert.doesNotMatch(rep, /recent\.set\(ticker,/, "no ticker-only cache write in the server file");
+});
+
 test("the replay buffer is keyed by window, not by ticker", () => {
   const rep = codeOf("src/lib/desk/replay.server.ts");
   const win = codeOf("src/lib/desk/replay-window.ts");
@@ -887,8 +997,21 @@ test("the replay buffer is keyed by window, not by ticker", () => {
   }
   assert.match(win, /return `\$\{ticker\}\|\$\{closeMs\}`/, "the key is both halves");
   // A series' window is fixed at creation; nothing may rewrite it afterwards.
-  assert.doesNotMatch(win, /\.close_time\s*=/, "close_time must never be reassigned");
-  assert.doesNotMatch(rep, /\.close_time\s*=/, "nor in the server file");
+  //
+  // Narrowed in S2-2B: the original pattern was `/\.close_time\s*=/`, which also matched
+  // SQL equality predicates like `l.close_time = r.close_time` — exactly the both-halves
+  // joins S2-2B adds. The rule was only ever about a buffered SERIES being moved onto
+  // another window, so it now names the series receivers and excludes comparisons.
+  for (const [src, where] of [
+    [win, "the window store"],
+    [rep, "the server file"],
+  ]) {
+    assert.doesNotMatch(
+      src,
+      /\b(s|series|slot\.series)\.close_time\s*=[^=]/,
+      `a buffered series' window must never be reassigned (${where})`,
+    );
+  }
 });
 
 test("no write identifies a ledger row by ticker alone", () => {
