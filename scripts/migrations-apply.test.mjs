@@ -814,3 +814,230 @@ test("0027 keeps a shifted interval distinguishable from a fresh one at the DB l
 
   await db.close();
 });
+
+/**
+ * S2-2B: desk_replay's persisted identity is the WINDOW, and migrating to it loses
+ * nothing.
+ *
+ * A ticker is not a window -- the ledger has been unique on (ticker, close_time) since
+ * 0005, while desk_replay was keyed on the ticker alone. On 2026-09-10 nine closes
+ * carried one ticker, and under the old key only the first could ever be stored.
+ *
+ * These run against the real migration files on PGLite, which is the only place the
+ * DDL is actually executed before production.
+ */
+test("desk_replay's primary key is the window, not the ticker", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  const { rows } = await db.query(
+    `select pg_get_constraintdef(c.oid) as def
+       from pg_constraint c join pg_class t on t.oid = c.conrelid
+      where t.relname = 'desk_replay' and c.contype = 'p'`,
+  );
+  assert.equal(rows.length, 1, "exactly one primary key");
+  assert.equal(rows[0].def, "PRIMARY KEY (ticker, close_time)");
+  await db.close();
+});
+
+test("two closes sharing one ticker both persist; an exact duplicate does not", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  // The real 2026-09-10 reuse shape: one ticker, the first two closes it spanned.
+  const T = "KXBTC15M-26SEP100300-00";
+  const C1 = "2026-09-10T07:00:00Z";
+  const C2 = "2026-09-10T07:15:00Z";
+  const ins = async (close) =>
+    db.query(
+      `insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols)
+       values ($1, $2, 78100, 'UP', 3, 4000, false, '{"t0":1,"t":[0,4,8]}'::jsonb)
+       on conflict (ticker, close_time) do nothing`,
+      [T, close],
+    );
+
+  await ins(C1);
+  await ins(C2);
+  const both = await db.query(`select close_time from desk_replay where ticker = $1 order by close_time`, [T]);
+  assert.equal(both.rows.length, 2, "BOTH closes persist — neither displaced the other");
+
+  // The exact same window again is still a single immutable row.
+  await ins(C1);
+  const again = await db.query(`select count(*)::int as n from desk_replay where ticker = $1`, [T]);
+  assert.equal(again.rows[0].n, 2, "an exact duplicate adds nothing and overwrites nothing");
+  await db.close();
+});
+
+test("today's production rows migrate with no loss and no invented close_time", async () => {
+  // A fixture shaped like production as audited at 2026-09-11T22:05:25Z: every row has
+  // a non-null close_time, every (ticker, close_time) pair is distinct, and no row
+  // needs identity inferred. Seeded under the OLD key, then migrated.
+  const db = await freshDb();
+  const names = await files();
+  const before = names.filter((n) => n < "0028_");
+  assert.ok(before.length > 0 && before.length < names.length, "there is a pre-0028 prefix to seed on");
+  await applyAll(db, before);
+
+  const pre = await db.query(
+    `select pg_get_constraintdef(c.oid) as def
+       from pg_constraint c join pg_class t on t.oid = c.conrelid
+      where t.relname = 'desk_replay' and c.contype = 'p'`,
+  );
+  assert.equal(pre.rows[0].def, "PRIMARY KEY (ticker)", "seeded under the ticker-only key");
+
+  const seed = [
+    ["KXBTC15M-26SEP111800-00", "2026-09-11T22:00:00Z"],
+    ["KXBTC15M-26SEP111745-45", "2026-09-11T21:45:00Z"],
+    ["KXBTC15M-26SEP100245-45", "2026-09-10T06:45:00Z"],
+  ];
+  for (const [t, c] of seed) {
+    await db.query(
+      `insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols)
+       values ($1, $2, 78100, 'UP', 3, 4000, false, '{"t0":1,"t":[0,4,8]}'::jsonb)`,
+      [t, c],
+    );
+  }
+  const countBefore = (await db.query(`select count(*)::int as n from desk_replay`)).rows[0].n;
+  const digest = async () =>
+    (
+      await db.query(
+        `select ticker, close_time::text as close_time, strike, winner, n, step_ms, partial, cols::text
+           from desk_replay order by ticker`,
+      )
+    ).rows;
+  const rowsBefore = await digest();
+
+  await applyAll(db, names); // applies 0028 over the seeded data
+
+  const post = await db.query(
+    `select pg_get_constraintdef(c.oid) as def
+       from pg_constraint c join pg_class t on t.oid = c.conrelid
+      where t.relname = 'desk_replay' and c.contype = 'p'`,
+  );
+  assert.equal(post.rows[0].def, "PRIMARY KEY (ticker, close_time)", "identity is now the window");
+  assert.equal(
+    (await db.query(`select count(*)::int as n from desk_replay`)).rows[0].n,
+    countBefore,
+    "no row was lost",
+  );
+  assert.deepEqual(await digest(), rowsBefore, "and not one recorded value changed");
+  assert.equal(
+    (await db.query(`select count(*)::int as n from desk_replay where close_time is null`)).rows[0].n,
+    0,
+    "no close_time was invented or nulled",
+  );
+  // The close_time index survives, and the ticker-only lookup is still index-led.
+  const idx = await db.query(`select indexname from pg_indexes where tablename = 'desk_replay' order by 1`);
+  const names2 = idx.rows.map((r) => r.indexname);
+  assert.ok(names2.includes("desk_replay_close_idx"), "the close_time index is untouched");
+  await db.close();
+});
+
+/**
+ * The reader predicates, proved on the reuse shape at the database level.
+ *
+ * A rail pins each production query to matching on BOTH halves. These tests prove why
+ * that matters: on one ticker spanning two closes, the both-halves predicate gives the
+ * right answer and the ticker-only predicate gives a wrong one. Without this, the rail
+ * would only be asserting that some text is present.
+ */
+test("both-halves predicates resolve the reuse shape; ticker-only ones do not", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  // One ticker, two ledger windows -- the 2026-09-10 shape -- with a replay for the
+  // FIRST close only.
+  const T = "KXBTC15M-26SEP100300-00";
+  const C1 = "2026-09-10T07:00:00Z";
+  const C2 = "2026-09-10T07:15:00Z";
+  for (const [c, ev] of [[C1, 7], [C2, -3]]) {
+    await db.query(
+      `insert into desk_ledger (ticker, close_time, source, winner, chair_lean, entry_cents, settle_cents, ev_cents, calls)
+       values ($1, $2, 'kalshi-result', 'UP', 'UP', 80, 100, $3, 1)`,
+      [T, c, ev],
+    );
+  }
+  await db.query(
+    `insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols)
+     values ($1, $2, 78100, 'UP', 3, 4000, false, '{"t0":1,"t":[0,4,8]}'::jsonb)`,
+    [T, C1],
+  );
+
+  // 3 · VIEWER association: the replay joins ITS ledger row, never the other close's.
+  const viewer = await db.query(
+    `select r.close_time::text as rc, l.close_time::text as lc, l.ev_cents
+       from desk_replay r
+       left join desk_ledger l on l.ticker = r.ticker and l.close_time = r.close_time
+      where r.ticker = $1`,
+    [T],
+  );
+  assert.equal(viewer.rows.length, 1, "one replay, one joined row");
+  assert.equal(viewer.rows[0].rc, viewer.rows[0].lc, "joined to its own window");
+  assert.equal(Number(viewer.rows[0].ev_cents), 7, "c1's numbers, not c2's");
+  // Ticker-only would have produced two rows, one of them the wrong window.
+  const viewerBad = await db.query(
+    `select l.close_time::text as lc from desk_replay r
+       left join desk_ledger l on l.ticker = r.ticker where r.ticker = $1`,
+    [T],
+  );
+  assert.equal(viewerBad.rows.length, 2, "ticker-only multiplies — this is what was fixed");
+
+  // 4 · BOOKS flag: true for the exact window only.
+  const flags = await db.query(
+    `select l.close_time::text as lc,
+            exists (select 1 from desk_replay r
+                     where r.ticker = l.ticker and r.close_time = l.close_time) as replay
+       from desk_ledger l where l.ticker = $1 order by l.close_time`,
+    [T],
+  );
+  assert.deepEqual(
+    flags.rows.map((r) => r.replay),
+    [true, false],
+    "only the window that HAS a replay is flagged",
+  );
+  const flagsBad = await db.query(
+    `select exists (select 1 from desk_replay r where r.ticker = l.ticker) as replay
+       from desk_ledger l where l.ticker = $1 order by l.close_time`,
+    [T],
+  );
+  assert.deepEqual(flagsBad.rows.map((r) => r.replay), [true, true], "ticker-only lights both");
+
+  // 5 · EXCURSION: one replay cannot multiply across the ledger rows sharing a ticker.
+  const exc = await db.query(
+    `select count(*)::int as n from desk_ledger l
+       join desk_replay r on r.ticker = l.ticker and r.close_time = l.close_time
+      where l.ticker = $1`,
+    [T],
+  );
+  assert.equal(exc.rows[0].n, 1, "one study row per replay");
+  const excBad = await db.query(
+    `select count(*)::int as n from desk_ledger l
+       join desk_replay r on r.ticker = l.ticker where l.ticker = $1`,
+    [T],
+  );
+  assert.equal(excBad.rows[0].n, 2, "ticker-only doubles the sample");
+
+  // 6 · PIT: the strike comes from the intended close. Give c2 its own replay with a
+  // different strike, so picking the wrong window is visible rather than coincidental.
+  await db.query(
+    `insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols)
+     values ($1, $2, 79900, 'UP', 3, 4000, false, '{"t0":1,"t":[0,4,8]}'::jsonb)`,
+    [T, C2],
+  );
+  for (const [want, strike] of [[C1, 78100], [C2, 79900]]) {
+    const pit = await db.query(
+      `select r.strike from desk_ledger l
+         left join desk_replay r on r.ticker = l.ticker and r.close_time = l.close_time
+        where l.ticker = $1 and l.close_time = $2 limit 1`,
+      [T, want],
+    );
+    assert.equal(Number(pit.rows[0].strike), strike, `the strike of ${want}, not the other close`);
+  }
+
+  // 7 · PUBLIC ticker-only probe: two closes for one ticker must read as ambiguous.
+  const probe = await db.query(`select close_time from desk_replay where ticker = $1 limit 2`, [T]);
+  assert.equal(probe.rows.length, 2, "the probe sees two — replayFor's `!== 1` then refuses");
+  const lone = await db.query(`select close_time from desk_replay where ticker = $1 limit 2`, [
+    "KXBTC15M-26SEP100245-45",
+  ]);
+  assert.equal(lone.rows.length, 0, "a ticker with no replay reads as none");
+  await db.close();
+});

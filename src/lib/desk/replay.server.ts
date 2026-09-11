@@ -25,6 +25,7 @@
  */
 import { tape2Now, vel2Now } from "./lab.server";
 import { openSlot, REPLAY_STEP_MS, WindowStore, type WindowSeries } from "./replay-window";
+import { lookupOneWindow, payloadKey } from "./replay-lookup";
 import type { ChairResult, Snapshot, Vote } from "./types";
 import { SEAT_IDS } from "./types";
 
@@ -222,7 +223,7 @@ export async function recordReplay(ticker: string, closeMs: number, winner: "UP"
     insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols)
     values (${ticker}, ${new Date(s.close_time).toISOString()}, ${s.strike > 0 ? s.strike : null}, ${winner},
             ${s.cols.t.length}, ${REPLAY_STEP_MS}, ${partial}, ${JSON.stringify(s.cols)}::jsonb)
-    on conflict (ticker) do nothing
+    on conflict (ticker, close_time) do nothing
   `;
 }
 
@@ -245,51 +246,105 @@ export type Replay = {
 };
 
 const TICKER_RE = /^[A-Z0-9-]{6,40}$/;
+
+/**
+ * Finished replays, keyed by the WINDOW they belong to — never by ticker.
+ *
+ * A ticker-keyed cache would defeat the ambiguity check below: the first visitor to a
+ * ticker with one replay would cache that row, and once a second close sharing the
+ * ticker was written the ticker-only lookup would keep serving the cached first row
+ * instead of refusing. The ambiguity decision is therefore always made against live
+ * data (see `replayFor`), and only the payload of a window already resolved EXACTLY is
+ * cached. A row is immutable once written, so caching the payload is safe; caching the
+ * ticker-to-window mapping is not.
+ */
 const recent = new Map<string, Replay>();
 
-/** One graded window's replay, or null. Immutable once written, so cached. */
+// The cache key is the shared one from replay-lookup, so the store and the lookup
+// cannot disagree about what a cache entry is keyed on.
+export { payloadKey as recentKey };
+
+/**
+ * One graded window's replay for a ticker-only URL, or null.
+ *
+ * THE ROUTE SHAPE IS UNCHANGED: a visitor arrives with a ticker and nothing else. But
+ * a ticker is not a window — `desk_replay` can now hold two closes that share one, as
+ * 2026-09-10 showed a feed can produce. So:
+ *
+ *   0 rows for the ticker  -> null, exactly as before
+ *   1 row                  -> that window
+ *   2 or more              -> null. FAIL CLOSED.
+ *
+ * No heuristic picks one. Not the newest, not the oldest, not whichever the planner
+ * returned first. The URL does not say which window the visitor meant, so choosing
+ * would rebuild the identity defect at the API layer — and showing the wrong window's
+ * series under a shared ticker is worse than showing none.
+ *
+ * `limit 2` is an ambiguity PROBE, not a guess: with two rows in hand the answer is
+ * "refuse" regardless of which two they are, so the absence of an `order by` cannot
+ * influence the outcome. The payload query that follows is addressed by BOTH halves of
+ * the identity, where `limit 1` names a single row by construction rather than picking
+ * one of several.
+ */
 export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
   const ticker = typeof tickerRaw === "string" ? tickerRaw.trim().toUpperCase() : "";
   if (!TICKER_RE.test(ticker)) return null;
-  const hit = recent.get(ticker);
-  if (hit) return hit;
   const db = await sql();
-  const rows = await db<{
-    ticker: string;
-    close_time: Date | string;
-    strike: number | null;
-    winner: string | null;
-    n: number;
-    step_ms: number;
-    partial: boolean;
-    cols: ReplayCols;
-    official_value: number | null;
-    entry_cents: number | null;
-    settle_cents: number | null;
-    ev_cents: number | null;
-  }>`
-    select r.ticker, r.close_time, r.strike, r.winner, r.n, r.step_ms, r.partial, r.cols,
-           l.official_value, l.entry_cents, l.settle_cents, l.ev_cents
-    from desk_replay r
-    left join desk_ledger l on l.ticker = r.ticker
-    where r.ticker = ${ticker}
-    limit 1
-  `;
-  const r = rows[0];
-  if (!r) return null;
-  const out: Replay = {
-    ticker: r.ticker,
-    close_time: r.close_time instanceof Date ? r.close_time.toISOString() : new Date(r.close_time).toISOString(),
-    strike: r.strike,
-    winner: r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null,
-    n: r.n,
-    step_ms: r.step_ms,
-    partial: r.partial,
-    cols: r.cols,
-    official: r.official_value,
-    call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents } : null,
-  };
-  recent.set(ticker, out);
-  if (recent.size > 24) recent.delete(recent.keys().next().value as string);
-  return out;
+  return lookupOneWindow(
+    ticker,
+    recent,
+    // THE IDENTITY PROBE. Identity columns only, never cached, so a second close
+    // written for this ticker becomes visible at once. `limit 2` is an ambiguity
+    // PROBE, not a pick: with two rows in hand the answer is "refuse" whichever two
+    // they are, so the absence of an `order by` cannot influence the outcome.
+    async (t) => {
+      const found = await db<{ close_time: Date | string }>`
+        select close_time from desk_replay where ticker = ${t} limit 2
+      `;
+      return found.map((f) => ({ close_time: isoOf(f.close_time) }));
+    },
+    // THE PAYLOAD, addressed by BOTH halves — so its `limit 1` names a single row by
+    // construction rather than choosing among several.
+    async (t, closeIso) => {
+      const rows = await db<{
+        ticker: string;
+        close_time: Date | string;
+        strike: number | null;
+        winner: string | null;
+        n: number;
+        step_ms: number;
+        partial: boolean;
+        cols: ReplayCols;
+        official_value: number | null;
+        entry_cents: number | null;
+        settle_cents: number | null;
+        ev_cents: number | null;
+      }>`
+        select r.ticker, r.close_time, r.strike, r.winner, r.n, r.step_ms, r.partial, r.cols,
+               l.official_value, l.entry_cents, l.settle_cents, l.ev_cents
+        from desk_replay r
+        left join desk_ledger l on l.ticker = r.ticker and l.close_time = r.close_time
+        where r.ticker = ${t} and r.close_time = ${closeIso}
+        limit 1
+      `;
+      const r = rows[0];
+      if (!r) return null;
+      return {
+        ticker: r.ticker,
+        close_time: isoOf(r.close_time),
+        strike: r.strike,
+        winner: r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null,
+        n: r.n,
+        step_ms: r.step_ms,
+        partial: r.partial,
+        cols: r.cols,
+        official: r.official_value,
+        call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents } : null,
+      } satisfies Replay;
+    },
+  );
 }
+
+const isoOf = (v: Date | string): string =>
+  v instanceof Date ? v.toISOString() : new Date(v).toISOString();
+

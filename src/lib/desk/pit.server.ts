@@ -232,9 +232,13 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
     else if (r) last = r;
     if (last && last.winner != null) {
       const [st] = await db<{ value: number | null; settle_avg: number | null; strike: number | null }>`
+        -- BOTH halves, on both sides: the lock names the window it was taken on, so
+        -- the ledger row and the replay's strike come from THAT close -- never from
+        -- another window that happens to share the ticker.
         select l.official_value as value, l.settle_avg, r.strike
-          from desk_ledger_research l left join desk_replay r on r.ticker = l.ticker
-         where l.ticker = ${last.ticker}
+          from desk_ledger_research l
+          left join desk_replay r on r.ticker = l.ticker and r.close_time = l.close_time
+         where l.ticker = ${last.ticker} and l.close_time = ${last.close_time}
          limit 1
       `;
       last_settle = st ? { value: st.value ?? st.settle_avg, strike: st.strike } : null;

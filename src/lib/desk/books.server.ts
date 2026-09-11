@@ -346,7 +346,10 @@ async function build(): Promise<Books> {
   const rows = await db<LedgerRow>`
     select l.ticker, l.close_time, l.winner, l.official_value, l.settle_avg, l.brti_prints,
       l.entry_cents, l.settle_cents, l.ev_cents, l.seats,
-      exists (select 1 from desk_replay r where r.ticker = l.ticker) as replay
+      -- BOTH halves: a ticker is not a window, so a replay for one close must not
+      -- light the flag on another ledger row that happens to share the ticker.
+      exists (select 1 from desk_replay r
+               where r.ticker = l.ticker and r.close_time = l.close_time) as replay
     from desk_ledger_research l
     order by l.close_time desc
     limit 40
