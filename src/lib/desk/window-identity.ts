@@ -72,18 +72,24 @@ export type IdentityFault =
   | "close-time-mismatch"
   | "ticker-close-time-mismatch"
   | "window-off-grid"
-  | "unusable-window-key";
+  | "unusable-window-key"
+  /** The market payload fetched for a row describes a DIFFERENT market. */
+  | "market-ticker-mismatch";
 
 /**
- * Which faults mean the DATA disagrees with itself, as opposed to the result
- * simply not having arrived yet.
+ * Which faults mean the DATA disagrees with itself, as opposed to the evidence simply
+ * not being there.
  *
  * The distinction matters operationally: a window waiting on Kalshi is the
  * ordinary case dozens of times a day and must stay quiet, while an internal
  * contradiction is the 2026-09-10 signature and has to be loud.
+ *
+ * Two faults are absence of evidence rather than contradiction, and both stay quiet:
+ * a window with no settlement yet, and an official value withheld because no
+ * close-time witness could be established. Neither is a disagreement about a fact.
  */
-export function isInconsistent(fault: IdentityFault): boolean {
-  return fault !== "no-settle-for-window";
+export function isInconsistent(fault: OfficialFault): boolean {
+  return fault !== "no-settle-for-window" && fault !== "official-identity-unverifiable";
 }
 
 export type IdentityVerdict<S extends SettleLike> =
@@ -265,8 +271,194 @@ export function matchSettle<S extends SettleLike>(
   };
 }
 
-/** One line for the settle tape and the diagnostic log. */
-export function faultLine(ticker: string, closeMs: number, fault: IdentityFault, detail: string): string {
+/** What a fetched market payload claims about itself. Absent fields are "not carried". */
+export type OfficialMarketLike = {
+  /** The ticker the payload names, when it carries one. */
+  ticker?: string;
+  /** The close the payload names, in ms. 0 or absent means not carried. */
+  close_ms?: number;
+};
+
+/**
+ * Why an official value was withheld.
+ *
+ * The grading faults all apply here, plus one that grading can never produce: no
+ * close-time witness could be established at all. Kept as its own type rather than
+ * widened into `IdentityFault`, because a fault the grading path cannot emit does not
+ * belong in the union its fault log is typed on — and because the honest name for this
+ * case is "unverifiable", not any kind of "mismatch".
+ */
+export type OfficialFault = IdentityFault | "official-identity-unverifiable";
+
+export type OfficialVerdict =
+  | { ok: true; checks: IdentityChecks }
+  | { ok: false; fault: OfficialFault; detail: string; checks: IdentityChecks };
+
+/**
+ * May this market payload's official settled value be written onto THIS ledger row?
+ *
+ * WHY THIS EXISTS, AND WHY IT IS HERE. `desk_ledger`'s identity is
+ * `unique (ticker, close_time)` (migration 0005), so a ticker is NOT unique to a
+ * row — and on 2026-09-10 nine rows shared one. The official-value backfill asked
+ * Kalshi about a ticker and wrote the answer `where ticker = $1`, which is the same
+ * half-identity that caused that block: right by luck when a ticker happens to name
+ * one window, wrong silently when it does not. Grading has gone through
+ * `matchSettle` since #133; this was the one write left that did not, so the rule
+ * lives beside it rather than as a second opinion in another file.
+ *
+ * THE THREE WITNESSES, in the same order and with the same faults as `matchSettle`:
+ *
+ *   1. The window's own key must be usable and on the quarter-hour grid.
+ *   2. The TICKER's embedded close must agree with the row's close. This alone
+ *      rejects every one of the eight corrupted 2026-09-10 rows. Unparseable is
+ *      NOT a disagreement — see the note at the top of this file.
+ *   3. The payload must describe the market that was asked for: the same ticker
+ *      (when it carries one) and, when it carries a close, one that agrees within
+ *      the same tolerance a settle gets.
+ *
+ * ONLY `close_time` COUNTS AS THE PAYLOAD'S CLOSE. Kalshi distinguishes `close_time`
+ * (trading stops) from `expiration_time` (deprecated legacy expiry semantics); they
+ * are different measurements and may differ. Substituting one for the other would
+ * compare the row's close against a clock that does not mean the same thing and call
+ * the result an identity check. A caller that cannot read `close_time` must pass 0 —
+ * "not carried" — and let the row's ticker-encoded close stand as the witness. This
+ * function never reads a payload field itself, so that discipline belongs to the
+ * caller and is asserted by a rail.
+ *
+ * A silent payload is fine AS LONG AS the ticker itself is a witness: the request was
+ * addressed by ticker and a silent exchange is not evidence of a mismatch. But when the
+ * ticker does not parse either, there is no close-time witness left at all, and that
+ * fails CLOSED — see the guard at the end. An echoed ticker is not a witness, because
+ * the request supplied it.
+ *
+ * That is the deliberate limit of this check: it cannot prove a payload right, only
+ * refuse one that contradicts the row or one the row cannot be tied to.
+ *
+ * This decides nothing about settlement MEANING. It does not read, interpret or
+ * transform `expiration_value`, does not pick a winner, and cannot cause a write
+ * that would not otherwise have happened — it can only withhold one. Pure.
+ */
+export function mayWriteOfficial(
+  ticker: string,
+  closeMs: number,
+  market: OfficialMarketLike,
+): OfficialVerdict {
+  const tickerTimeOk = ticker ? tickerAgrees(ticker, closeMs) : null;
+  const grid = onGrid(closeMs);
+  const checks: IdentityChecks = {
+    on_grid: grid,
+    ticker_time_ok: tickerTimeOk,
+    ticker_seen: false,
+    close_ok: false,
+  };
+
+  if (!ticker || !(closeMs > 0)) {
+    return { ok: false, fault: "unusable-window-key", detail: `ticker=${ticker || "∅"} close=${closeMs}`, checks };
+  }
+  if (!grid) {
+    return {
+      ok: false,
+      fault: "window-off-grid",
+      detail: `close ${new Date(closeMs).toISOString()} is ${closeMs % WINDOW_GRID_MS}ms off the 15m grid`,
+      checks,
+    };
+  }
+  // The 2026-09-10 signature: a stale market carried onto later quarter-hours.
+  if (tickerTimeOk === false) {
+    const own = tickerCloseMs(ticker);
+    return {
+      ok: false,
+      fault: "ticker-close-time-mismatch",
+      detail:
+        `${ticker} encodes ${own == null ? "?" : new Date(own).toISOString()} ` +
+        `but the window closes ${new Date(closeMs).toISOString()}`,
+      checks,
+    };
+  }
+
+  const claimed = (market.ticker ?? "").trim();
+  if (claimed && claimed.toUpperCase() !== ticker.trim().toUpperCase()) {
+    return {
+      ok: false,
+      fault: "market-ticker-mismatch",
+      detail: `asked for ${ticker} and the payload names ${claimed}`,
+      checks,
+    };
+  }
+  checks.ticker_seen = claimed.length > 0;
+
+  const claimedClose = Number(market.close_ms ?? 0);
+  if (Number.isFinite(claimedClose) && claimedClose > 0) {
+    if (Math.abs(claimedClose - closeMs) > CLOSE_TOLERANCE_MS) {
+      return {
+        ok: false,
+        fault: "close-time-mismatch",
+        detail:
+          `payload closes ${new Date(claimedClose).toISOString()} ` +
+          `but the window closes ${new Date(closeMs).toISOString()}`,
+        checks,
+      };
+    }
+    checks.close_ok = true;
+  }
+
+  // FAIL CLOSED WITH NO CLOSE WITNESS. At least one of the two independent close-time
+  // witnesses has to succeed: the ticker's own encoded close agreeing with the row, or
+  // a close carried by the payload and agreeing with the row. One is enough; neither
+  // is not.
+  //
+  // The combination this refuses is an unparseable ticker AND a payload carrying no
+  // usable close. A matching payload ticker does not rescue it: the REST request was
+  // ADDRESSED by that ticker, so an echo of it is not evidence. If a future Kalshi
+  // format stops parsing and a stale ticker is carried across several closes,
+  // `/markets/{ticker}` can faithfully echo that stale ticker for every wrong row —
+  // and the narrowed UPDATE only stops one statement from touching them all at once,
+  // not the same wrong value being written to each in turn.
+  //
+  // This is absence of evidence, not a contradiction, and is named accordingly.
+  if (tickerTimeOk !== true && !checks.close_ok) {
+    return {
+      ok: false,
+      fault: "official-identity-unverifiable",
+      detail:
+        `no close-time witness: ticker ${tickerTimeOk === null ? "does not parse" : "disagrees"} ` +
+        `and the payload carried no usable close_time`,
+      checks,
+    };
+  }
+
+  return { ok: true, checks };
+}
+
+/** The shared prefix: which window, named the same way on every identity line. */
+function identityStamp(ticker: string, closeMs: number, fault: OfficialFault): string {
   const hhmm = closeMs > 0 ? new Date(closeMs).toISOString().slice(11, 16) : "??:??";
-  return `IDENTITY ${hhmm} ${ticker || "∅"} · ${fault} — not graded, not taught · ${detail}`;
+  return `IDENTITY ${hhmm} ${ticker || "∅"} · ${fault}`;
+}
+
+/**
+ * One line for the settle tape and the diagnostic log, for a refusal ON THE GRADING
+ * PATH. Its consequence clause is true only there: a window that cannot be matched to
+ * a settlement is not graded and teaches nothing.
+ */
+export function faultLine(ticker: string, closeMs: number, fault: IdentityFault, detail: string): string {
+  return `${identityStamp(ticker, closeMs, fault)} — not graded, not taught · ${detail}`;
+}
+
+/**
+ * The same line for a refusal on the OFFICIAL-VALUE path, which has a different
+ * consequence and must say so.
+ *
+ * `backfillOfficial` fills one column on a row that has ALREADY been graded and has
+ * already taught whatever it was going to teach. Borrowing the grading line's "not
+ * graded, not taught" would state two things that are false about that row. What is
+ * actually withheld is the official value, and nothing else.
+ */
+export function officialFaultLine(
+  ticker: string,
+  closeMs: number,
+  fault: OfficialFault,
+  detail: string,
+): string {
+  return `${identityStamp(ticker, closeMs, fault)} — official_value not written · ${detail}`;
 }

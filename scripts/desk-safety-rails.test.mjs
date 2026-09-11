@@ -765,12 +765,147 @@ test("a print carries the state of the world at the moment it landed", () => {
  * decision that includes answering "does this count invalid windows?", and an
  * unlisted file failing this test is that question being asked.
  */
+/**
+ * No write may identify a ledger row by ticker alone.
+ *
+ * `desk_ledger` is unique on (ticker, close_time) -- migration 0005 -- so a ticker
+ * is not a row. On 2026-09-10 nine rows shared one, and the official_value backfill
+ * wrote `where ticker = $1 and official_value is null`: correct by luck when a
+ * ticker happens to name one window, silently wrong when it does not. Grading has
+ * gone through the window-identity invariant since #133; this was the one write
+ * left that did not.
+ */
+test("no write identifies a ledger row by ticker alone", () => {
+  const writers = readdirSync(join(ROOT, "src/lib/desk"))
+    .filter((f) => f.endsWith(".server.ts") || f === "server-engine.ts")
+    .map((f) => `src/lib/desk/${f}`);
+
+  let seen = 0;
+  for (const rel of writers) {
+    const src = codeOf(rel);
+    // Every `update desk_ledger ... where ...` statement, to the closing backtick.
+    for (const m of src.matchAll(/update\s+desk_ledger\b[\s\S]*?`/g)) {
+      seen += 1;
+      const stmt = m[0];
+      assert.match(stmt, /\bticker\s*=/, `${rel}: a ledger write must match on ticker`);
+      assert.match(
+        stmt,
+        /\bclose_time\s*=/,
+        `${rel}: this write matches a ledger row by ticker alone. A ticker is not a row ` +
+          `(unique (ticker, close_time)); nine rows shared one on 2026-09-10. Match close_time too.`,
+      );
+    }
+  }
+  assert.ok(seen >= 1, "the official_value write must still exist to be checked");
+
+  // And that one write goes through the shared invariant before it fires, rather
+  // than trusting that asking Kalshi about a ticker returns that ticker's market.
+  const lab = codeOf("src/lib/desk/lab.server.ts");
+  // between() scans for its end marker from the START of the file, so the end marker
+  // has to be something that genuinely follows this function.
+  const fn = between(lab, "async function backfillOfficial", "function currentTicker");
+  const fnRefusal = fn.slice(fn.indexOf("if (!verdict.ok)"));
+  assert.match(lab, /from "\.\/window-identity"/, "the backfill must import the invariant");
+  assert.match(lab, /mayWriteOfficial\(/, "the backfill must consult it");
+  assert.match(
+    lab,
+    /if \(!verdict\.ok\) \{/,
+    "a refused verdict must short-circuit the write, not be logged and ignored",
+  );
+  assert.match(lab, /backfillRefused \+= 1/, "a refusal must leave a breadcrumb");
+
+  // The CLOSE WITNESS is `close_time` and nothing else. Kalshi's `expiration_time` is
+  // the deprecated legacy expiry clock — a different measurement — so substituting it
+  // would compare the row's close against something that does not mean the same thing
+  // and call the result an identity check. Absent is passed as 0, "not carried".
+  const vAt = lab.indexOf("const verdict = mayWriteOfficial(");
+  assert.ok(vAt >= 0, "the verdict call must exist");
+  const verdictCall = lab.slice(vAt, lab.indexOf("});", vAt) + 3);
+  assert.match(verdictCall, /close_ms: Date\.parse\(String\(m\.close_time \?\? ""\)\) \|\| 0/, "close_time only");
+  for (const wrong of [
+    "expiration_time",
+    "expected_expiration_time",
+    "latest_expiration_time",
+    "settlement_ts",
+    "receipt_ts",
+  ]) {
+    assert.doesNotMatch(
+      verdictCall,
+      new RegExp(wrong),
+      `the close witness must not fall back to ${wrong} — it is not close_time`,
+    );
+  }
+
+  // And the refusal must use the line written for THIS path. The grading line says
+  // "not graded, not taught", which is false of a row that has already graded and
+  // already taught — backfillOfficial only withholds one column.
+  assert.match(lab, /officialFaultLine\(/, "the official-value path has its own diagnostic");
+  assert.doesNotMatch(fnRefusal, /\bfaultLine\(/, "the grading line must not be borrowed here");
+  const wi = codeOf("src/lib/desk/window-identity.ts");
+  assert.match(wi, /official_value not written/, "the official line names what was withheld");
+  assert.match(wi, /not graded, not taught/, "the grading line keeps its own wording");
+  // FAIL CLOSED WITH NO CLOSE WITNESS. An allowed official verdict must never be
+  // reached with both close-time witnesses failing: an unparseable ticker AND a payload
+  // carrying no usable close leaves nothing tying the fetched market to THIS row, and
+  // an echoed ticker is not a witness because the request supplied it. The narrowed
+  // UPDATE stops one statement touching many rows, not the same wrong value reaching
+  // each of them in turn.
+  const mwAt = wi.indexOf("export function mayWriteOfficial");
+  assert.ok(mwAt >= 0, "mayWriteOfficial must exist");
+  const mwEnd = wi.indexOf("\n}", mwAt);
+  const mw = wi.slice(mwAt, mwEnd > mwAt ? mwEnd : undefined);
+  assert.match(
+    mw,
+    /if \(tickerTimeOk !== true && !checks\.close_ok\) \{/,
+    "the zero-witness guard must be present, and must require at least one witness",
+  );
+  // The guard has to sit BEFORE the success return, or it cannot withhold anything.
+  const guardAt = mw.indexOf("if (tickerTimeOk !== true && !checks.close_ok)");
+  const okAt = mw.indexOf("return { ok: true, checks };");
+  assert.ok(guardAt >= 0 && okAt > guardAt, "the guard must precede the ok:true return");
+  // One success return only, so there is no second path around the guard.
+  assert.equal(
+    (mw.match(/return \{ ok: true/g) ?? []).length,
+    1,
+    "exactly one allowed exit, so the guard cannot be bypassed",
+  );
+  // Absence of evidence is not labelled a mismatch.
+  const guardBlock = mw.slice(guardAt, okAt);
+  assert.match(guardBlock, /fault: "official-identity-unverifiable"/, "named for what it is");
+  assert.doesNotMatch(guardBlock, /mismatch/, "nothing disagreed, so it is not a mismatch");
+  // And it is not treated as a contradiction by the loud/quiet predicate.
+  assert.match(
+    wi,
+    /fault !== "no-settle-for-window" && fault !== "official-identity-unverifiable"/,
+    "absent evidence must not read as an inconsistency",
+  );
+
+  const ofAt = wi.indexOf("export function officialFaultLine");
+  assert.ok(ofAt >= 0, "the official-value line must exist");
+  const ofEnd = wi.indexOf("\n}", ofAt);
+  assert.doesNotMatch(
+    wi.slice(ofAt, ofEnd > ofAt ? ofEnd : undefined),
+    /not graded|not taught/,
+    "the official line must not claim the row was ungraded or untaught",
+  );
+  // The SELECT has to carry both halves, or the narrow write cannot be expressed.
+  assert.match(lab, /select ticker, \(extract\(epoch from close_time\)/, "select both halves of the identity");
+  // And nothing here may invent a value when identity disagrees.
+  assert.doesNotMatch(fn, /official_value = \$\{?v \|\|/, "no fallback value on refusal");
+});
+
 test("research readers exclude the known-invalid windows", () => {
   // Coverage is one question, not twenty-eight: does this query read the bare
   // table? Research reads the desk_ledger_research view, which carries the
   // exclusion once. A new aggregate that reads the view is correct by
   // construction; one that reads desk_ledger must appear in the allowlist below
   // with a reason, which is the point at which someone has to think about it.
+  // A READ exemption is not a WRITE exemption. The official_value backfill was
+  // allowlisted here with a read reason — "must reach every row" — and the file's
+  // one bare-table statement was an UPDATE that identified its row by ticker
+  // alone, which is the 2026-09-10 half-identity. One allowlist cannot sanction
+  // both, so reads and writes are listed separately and a write reason has to say
+  // which columns of the row's identity it matches on.
   const ALLOWED_BARE = {
     "src/lib/desk/server-engine.ts": [
       "the ledger INSERT itself",
@@ -778,8 +913,16 @@ test("research readers exclude the known-invalid windows", () => {
       "the 6h gap scan and the 90d reconciliation — these MUST see every row, or " +
         "each quarantined window reads as a MISSING ledger row and alerts falsely",
     ],
-    "src/lib/desk/lab.server.ts": ["the official_value backfill, which must reach every row"],
+    "src/lib/desk/lab.server.ts": [
+      "the official_value backfill's SELECT, which must reach every row that is " +
+        "still missing its official value",
+    ],
     "src/lib/desk/replay.server.ts": ["the replay viewer: one named window, shown for forensics"],
+  };
+
+  // Writes are listed on their own, and every entry names the identity it matches.
+  const ALLOWED_WRITE = {
+    "src/lib/desk/lab.server.ts": ["official_value, on (ticker, close_time), only when it is null"],
   };
 
   const readers = readdirSync(join(ROOT, "src/lib/desk"))
@@ -796,6 +939,26 @@ test("research readers exclude the known-invalid windows", () => {
       `${rel} reads desk_ledger directly (${bare}x). Research must read ${"desk_ledger_research"}; ` +
         `if this read genuinely needs every row, add it to ALLOWED_BARE with the reason.`,
     );
+  }
+
+  // A write needs its OWN entry. Being allowlisted to read every row has never been
+  // a reason to write to one, and for the official_value backfill that conflation
+  // is exactly how a ticker-only UPDATE sat behind a read justification.
+  for (const rel of readers) {
+    const src = codeOf(rel);
+    if (!/update\s+desk_ledger\b/.test(src)) continue;
+    assert.ok(
+      ALLOWED_WRITE[rel],
+      `${rel} WRITES to desk_ledger. A read entry in ALLOWED_BARE does not cover that; ` +
+        `add it to ALLOWED_WRITE with the identity the write matches on.`,
+    );
+    for (const reason of ALLOWED_WRITE[rel]) {
+      assert.match(
+        reason,
+        /close_time/,
+        `${rel}: a ledger-write reason must name close_time — a ticker is not a row.`,
+      );
+    }
   }
 
   // And the files that DO read research data must be reading the view.

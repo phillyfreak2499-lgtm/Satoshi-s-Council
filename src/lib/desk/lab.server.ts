@@ -24,6 +24,7 @@ import {
   type SettleFair,
 } from "./brti";
 import { missingCanonicalSide, sourceLagMs, takerOutcomeSide, tradeSourceMs } from "./kalshi-wire";
+import { mayWriteOfficial, officialFaultLine } from "./window-identity";
 import {
   applyDelta,
   applySnapshot,
@@ -110,6 +111,13 @@ type Lab = {
   secTimer: ReturnType<typeof setInterval> | null;
   backfillTimer: ReturnType<typeof setInterval> | null;
   backfilled: number;
+  /** Official-value writes REFUSED because the payload contradicted the row. */
+  backfillRefused: number;
+  /**
+   * The last refusal, as an identity fault line. Survives an unrelated error in this
+   * process, but not a restart — process-local, like the rest of this state.
+   */
+  backfillRefusedLine: string | null;
   restAt: number;
   snapshotAt: number;
   restTickers: { ticker: string; close: number }[];
@@ -210,6 +218,8 @@ function lab(): Lab {
     secTimer: null,
     backfillTimer: null,
     backfilled: 0,
+    backfillRefused: 0,
+    backfillRefusedLine: null,
     restAt: 0,
     snapshotAt: 0,
     restTickers: [],
@@ -299,14 +309,21 @@ const BACKFILL_MS = 5 * 60_000;
 async function backfillOfficial(L: Lab): Promise<void> {
   try {
     const db = await sql();
-    const rows = await db<{ ticker: string }>`
-      select ticker from desk_ledger
+    // BOTH halves of the row's identity. `desk_ledger` is unique on
+    // (ticker, close_time) — migration 0005 — so a ticker is NOT a row, and on
+    // 2026-09-10 nine rows shared one. Selecting the ticker alone made the narrow
+    // write below impossible to express.
+    const rows = await db<{ ticker: string; close_ms: string | number }>`
+      select ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms
+        from desk_ledger
        where official_value is null and close_time < now() - interval '3 minutes'
        order by close_time desc limit 4
     `;
     if (!rows.length) return;
     const host = L.getSnap()?.kalshi_host || REST_HOST;
-    for (const { ticker } of rows) {
+    for (const row of rows) {
+      const ticker = row.ticker;
+      const closeMs = Number(row.close_ms);
       try {
         const r = await fetch(`${host}/markets/${encodeURIComponent(ticker)}`, {
           signal: AbortSignal.timeout(4_000),
@@ -314,9 +331,39 @@ async function backfillOfficial(L: Lab): Promise<void> {
         });
         if (!r.ok) continue;
         const j = (await r.json()) as { market?: Record<string, unknown> };
-        const v = Number(j.market?.expiration_value);
+        const m = j.market ?? {};
+        const v = Number(m.expiration_value);
         if (!Number.isFinite(v) || v <= 0) continue;
-        await db`update desk_ledger set official_value = ${v} where ticker = ${ticker} and official_value is null`;
+        // The same invariant grading goes through since #133, now on the one write
+        // that did not. A payload that contradicts the row is refused and the row
+        // stays null — it is not guessed at, and the next pass will ask again.
+        //
+        // `close_time` ONLY. Kalshi's `expiration_time` is the deprecated legacy
+        // expiry clock and is a different measurement, so falling back to it would
+        // compare the row's close against something that does not mean the same
+        // thing. Absent or unparseable is passed as 0 — "not carried" — which the
+        // helper supports, leaving the ticker's own encoded close as the witness.
+        const verdict = mayWriteOfficial(ticker, closeMs, {
+          ticker: typeof m.ticker === "string" ? m.ticker : undefined,
+          close_ms: Date.parse(String(m.close_time ?? "")) || 0,
+        });
+        if (!verdict.ok) {
+          // Process-local: a counter and the last line, which survive unrelated
+          // errors in this process but NOT a restart. Enough to notice a refusal on
+          // the admin lab status; deliberately not a new table.
+          L.backfillRefused += 1;
+          L.backfillRefusedLine = officialFaultLine(ticker, closeMs, verdict.fault, verdict.detail);
+          L.lastError = `backfill refused: ${L.backfillRefusedLine}`;
+          continue;
+        }
+        // Exactly one row: both halves of the identity, and still only when the
+        // value is absent, so an already-recorded official is never overwritten.
+        await db`
+          update desk_ledger set official_value = ${v}
+           where ticker = ${ticker}
+             and close_time = ${new Date(closeMs).toISOString()}
+             and official_value is null
+        `;
         L.backfilled += 1;
       } catch {
         /* next ticker; the timer comes back */
@@ -1266,7 +1313,12 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
         jump_ms: s.jump_ms,
       })),
     },
-    receipts: { ...L.receipts, official_backfilled: L.backfilled },
+    receipts: {
+      ...L.receipts,
+      official_backfilled: L.backfilled,
+      official_refused: L.backfillRefused,
+      official_refused_last: L.backfillRefusedLine,
+    },
     basis: L.basis
       ? {
           minute: new Date(L.basis.minute).toISOString(),
