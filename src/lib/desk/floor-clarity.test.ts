@@ -9,6 +9,7 @@ import {
   FEED_GATE_IDS,
   floorLine,
   freshness,
+  invalidateCondition,
   invalidateLine,
   priceFacts,
   realAge,
@@ -613,4 +614,62 @@ test("a calling chair has no wait reason and no feed gates", () => {
   assert.equal(w.wait_reason, "", "not waiting");
   // feed_gates still reports the failure for the disclosure, but it is not the reason.
   assert.equal(w.feed_gates.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Both surfaces that prepend a word to `invalidate_if` use ONE rule.
+// ---------------------------------------------------------------------------
+
+test("neither the evidence line nor the diagnostics label can render a doubled 'if'", () => {
+  // Two surfaces put their own word before this value: the Floor's evidence line
+  // ("The read is off if ...") and the Diagnostics field whose LABEL is the words
+  // "invalidate if". Both had the same bug, so both use the same rule.
+  const real = [
+    "if combined ask prints below 98¢ (stale leftover)",
+    "if both sides have no edge vs ask after fee",
+    "if book goes chalk (YES or NO ≥ 99¢)",
+    "if quote age > 25s",
+    "if clock prints ≤ 2.2m left",
+    "if spot reprints through strike",
+    "if YES mid rips +8¢ in 60s",
+    "if Quiet-vol floor stays failed",
+    "if top-3 stay in conflict",
+    "if |score|×agg drops under the bar",
+  ];
+  for (const v of real) {
+    // Surface 1: the sentence.
+    const line = invalidateLine(whyFacts(chair({ invalidate_if: v }), ""));
+    assert.doesNotMatch(line, /\bif\s+if\b/i, `sentence doubled for: ${v}`);
+
+    // Surface 2: the diagnostics label + value, composed the way Field renders it.
+    const asField = `invalidate if ${invalidateCondition(v)}`;
+    assert.doesNotMatch(asField, /\bif\s+if\b/i, `diagnostics doubled for: ${v}`);
+    assert.equal(
+      asField.toLowerCase().split(/\bif\b/).length - 1,
+      1,
+      `diagnostics must read "if" exactly once for: ${v}`,
+    );
+    // And the condition itself is intact on both.
+    const cond = v.replace(/^if\s+/i, "");
+    assert.ok(line.endsWith(cond), `sentence altered the condition: ${v}`);
+    assert.ok(asField.endsWith(cond), `diagnostics altered the condition: ${v}`);
+  }
+});
+
+test("invalidateCondition strips only the joining word, and never mutates the input", () => {
+  assert.equal(invalidateCondition("if quote age > 25s"), "quote age > 25s");
+  assert.equal(invalidateCondition("If quote age > 25s"), "quote age > 25s");
+  assert.equal(invalidateCondition("  if   quote age > 25s  "), "quote age > 25s");
+  // Not the joining word: left exactly alone.
+  assert.equal(invalidateCondition("iffy volume holds"), "iffy volume holds");
+  assert.equal(invalidateCondition("spot loses the strike"), "spot loses the strike");
+  // An "if" later in the clause stays put.
+  assert.equal(
+    invalidateCondition("if spot stalls, even if volume lifts"),
+    "spot stalls, even if volume lifts",
+  );
+  // Nothing to state.
+  for (const empty of ["if", "IF", "  ", "", null, undefined]) {
+    assert.equal(invalidateCondition(empty), "", `${JSON.stringify(empty)} has no condition`);
+  }
 });

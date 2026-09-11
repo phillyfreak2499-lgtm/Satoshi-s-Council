@@ -17,7 +17,7 @@ import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from 
 import { bookState, bookableShadow, CHAIR_MIN_ASK_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 import { CallPrices, CompactRecord, EvidenceBlock, LastReplayCard, WhyBlock } from "./FloorClarity";
-import { recordCard, whyFacts } from "@/lib/desk/floor-clarity";
+import { invalidateCondition, recordCard, whyFacts } from "@/lib/desk/floor-clarity";
 import { FLOOR_LIVE_SINCE, openRow } from "@/lib/desk/book-floor";
 import { economicsOf, type Economics } from "@/lib/desk/economics";
 
@@ -991,7 +991,11 @@ export function SatoshiTab({
             />
             <Field k="counter" v={chair.counter} />
             <Field k="decision" v={chair.decision} />
-            <Field k="invalidate if" v={chair.invalidate_if} />
+            {/* The LABEL is already "invalidate if", and the stored value starts with
+                "if" — so the raw value rendered as "invalidate if → if quote age > 25s".
+                Same rule as the evidence line, not a second one. The stored value is
+                untouched; this is display only. */}
+            <Field k="invalidate if" v={invalidateCondition(chair.invalidate_if)} />
             <Field k="calc" v={<span className="font-mono text-data">{chair.calc}</span>} />
             <Field k="skill / huddle" v={`${chair.last_settle} / ${chair.huddle_line}`} />
           </div>

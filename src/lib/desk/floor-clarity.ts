@@ -396,14 +396,31 @@ export function whyFacts(chair: ChairResult, plain: string): WhyFacts {
  * never touched — only the word joining it to the sentence.
  */
 export function invalidateLine(w: WhyFacts): string {
-  const raw = (w.invalidate_if ?? "").trim();
-  if (!raw) return "";
-  // Leading "if" in any casing. `\b` rather than `\s+` so a BARE "if" with no condition
-  // after it is stripped too — `^if\s+` left it in place and produced "The read is off
-  // if if", the same doubling in the degenerate case. The word boundary also means
-  // "iffy volume" is not mistaken for the joining word.
-  const cond = raw.replace(/^if\b\s*/i, "").trim();
+  const cond = invalidateCondition(w.invalidate_if);
   return cond ? `The read is off if ${cond}` : "";
+}
+
+/**
+ * The bare CONDITION, with the joining "if" removed — the one rule every surface that
+ * puts its own word before this value must use.
+ *
+ * There are two such surfaces and they had the same bug twice over: the Floor's
+ * evidence line ("The read is off if …") and the Diagnostics field whose LABEL is
+ * already the word "invalidate if". Both prepended "if" to a value that starts with
+ * "if", so both read it doubled. One exported rule rather than two call-site fixes,
+ * because two rules drift.
+ *
+ * `\b` rather than `\s+`: a BARE "if" with no condition after it does not match `\s+`,
+ * survives the strip, and doubles again. The word boundary also leaves "iffy volume
+ * holds" intact.
+ *
+ * The STORED value is never modified — `chair.invalidate_if` is untouched, and this is
+ * a read-side transform for display only.
+ */
+export function invalidateCondition(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim();
+  if (!v) return "";
+  return v.replace(/^if\b\s*/i, "").trim();
 }
 
 // ---------------------------------------------------------------------------

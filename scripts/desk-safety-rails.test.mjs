@@ -1571,6 +1571,34 @@ test("the Floor's order puts WHY first after the call, with prices inside the ca
  * the frame records decision-time market state, so that label must stay unavailable
  * rather than borrow the entry's frozen numbers.
  */
+test("every surface that prepends a word to invalidate_if uses the one shared rule", () => {
+  // Two surfaces do: the Floor's evidence sentence and the Diagnostics field whose LABEL
+  // is already the words "invalidate if". Both shipped the value raw and read it doubled
+  // ("The read is off if if ...", "invalidate if -> if quote age > 25s"). A second
+  // call-site fix would drift from the first, so the rule is exported and reused.
+  const tab = codeOf("src/components/desk/SatoshiTab.tsx");
+  assert.match(
+    tab,
+    /<Field k="invalidate if" v=\{invalidateCondition\(chair\.invalidate_if\)\} \/>/,
+    'the Diagnostics field must strip the joining word: its label already says "invalidate if"',
+  );
+  assert.doesNotMatch(
+    tab,
+    /<Field k="invalidate if" v=\{chair\.invalidate_if\}/,
+    "the raw value under that label renders a doubled \"if\"",
+  );
+  // And the sentence must go through the same helper rather than inlining the regex.
+  const fc = codeOf("src/lib/desk/floor-clarity.ts");
+  assert.match(fc, /export function invalidateCondition/, "one exported rule");
+  assert.match(
+    fc,
+    /const cond = invalidateCondition\(w\.invalidate_if\);/,
+    "invalidateLine must reuse it, not carry its own copy",
+  );
+  // The stored value is never rewritten anywhere.
+  assert.doesNotMatch(fc, /invalidate_if\s*=/, "invalidate_if must never be assigned");
+});
+
 test("the decision snapshot never borrows the paper entry's price or instant", () => {
   const fc = codeOf("src/lib/desk/floor-clarity.ts");
   const block = fc.slice(fc.indexOf('kind: "decision"'), fc.indexOf('kind: "market"'));
