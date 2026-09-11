@@ -37,8 +37,8 @@ test("S2-3 live.ts holds liq_last_t with USD/n/source on empty poll", () => {
   assert.doesNotMatch(src, /liq_last_t: Date\.now\(\)/);
 });
 
-test("S2-3 frame derives liq_age_s; unknown is null; no clamp", () => {
-  const src = codeOf("src/lib/desk/server-engine.ts");
+test("S2-3 snapshot derives liq_age_s; unknown is null; no clamp", () => {
+  const src = codeOf("src/lib/desk/live.ts");
   assert.match(src, /liqAgeSeconds\(/);
   assert.match(src, /liq_age_s:/);
   assert.doesNotMatch(src, /liq_age_s = 999/);
