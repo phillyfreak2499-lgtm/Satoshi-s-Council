@@ -250,6 +250,39 @@ test("excursions are measured on the sellable bid over the held interval only", 
   assert.equal(o.mae_cents, -10, "the post-exit collapse is not this position's excursion");
 });
 
+test("an early exit's excursions are bounded to its own holding interval", () => {
+  // The window runs to 300s. A candidate that cut at 200s must not be credited or
+  // debited with anything after that, and HOLD — which held the whole way — must
+  // have an interval at least as wide. The 300s collapse to 10 belongs only to HOLD.
+  const path = [at(40, 88, 90), at(120, 70, 72), at(200, 75, 77), at(300, 10, 12)];
+  const cut = simulateExit(EXIT_PROVE180_V1, entryUp, path, "UP");
+  const held = simulateExit(EXIT_HOLD_V1, entryUp, path, "UP");
+
+  assert.equal(cut.exit_reason, "DEADLINE");
+  assert.equal(cut.exit_t, T0 + 200_000);
+  // [entry_t, exit_t]: best 88 (+8), worst 70 (-10).
+  assert.equal(cut.mfe_cents, 8);
+  assert.equal(cut.mae_cents, -10);
+
+  // HOLD saw the same start and then the collapse, so its adverse excursion is
+  // strictly worse while its favourable one matches.
+  assert.equal(held.mfe_cents, 8);
+  assert.equal(held.mae_cents, -70);
+  assert.ok(held.mae_cents! < cut.mae_cents!, "the holder's interval must be wider, never narrower");
+  assert.ok(held.mfe_cents! >= cut.mfe_cents!, "and at least as favourable");
+});
+
+test("a proven position that holds to settlement reports the full interval", () => {
+  // PROVEN_HELD keeps the position, so its excursions run to the end of the window
+  // exactly like HOLD's — the early target does not truncate the observation.
+  const path = [at(40, 92, 94), at(300, 20, 22)];
+  const proven = simulateExit(EXIT_PROVE180_V1, entryUp, path, "UP");
+  const held = simulateExit(EXIT_HOLD_V1, entryUp, path, "UP");
+  assert.equal(proven.exit_reason, "PROVEN_HELD");
+  assert.equal(proven.mae_cents, held.mae_cents, "a held position sees the whole window");
+  assert.equal(proven.mfe_cents, held.mfe_cents);
+});
+
 test("every candidate is handed the identical entry", () => {
   const path = [at(40, 84, 86), at(200, 70, 72)];
   const rows = runArena(EXIT_CANDIDATES, entryUp, path, "UP");

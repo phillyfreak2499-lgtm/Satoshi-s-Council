@@ -243,11 +243,18 @@ test("a second Champion is refused by the database", async () => {
 test("an observation is written once per candidate per window and never overwritten", async () => {
   const db = await freshDb();
   await applyAll(db, await files());
+  await db.query(
+    `insert into desk_policy_fills
+       (fill_key, ticker, close_time, entry_side, entry_t, entry_cents, entry_fee_cents,
+        signal_policy, entry_policy, risk_policy)
+     values ('F1','KXBTC15M-26SEP110900-00','2026-09-11T13:00:00Z','UP','2026-09-11T12:50:00Z',80,2,
+             'CHAIR_V1','ENTRY_80_V1','RISK_NONE_V1')`,
+  );
   const ins = `insert into desk_policy_observations
-      (ticker, close_time, candidate_id, candidate_kind, candidate_version,
+      (fill_key, ticker, close_time, candidate_id, candidate_kind, candidate_version,
        signal_policy, entry_policy, exit_policy, risk_policy,
        entry_side, entry_t, entry_cents, entry_fee_cents, exit_reason, net_cents)
-    values ('KXBTC15M-26SEP110900-00', '2026-09-11T13:00:00Z', $1, 'exit', 1,
+    values ('F1', 'KXBTC15M-26SEP110900-00', '2026-09-11T13:00:00Z', $1, 'exit', 1,
             'CHAIR_V1','ENTRY_80_V1','HOLD_V1','RISK_NONE_V1',
             'UP', '2026-09-11T12:50:00Z', 80, 2, $2, $3)
     on conflict (candidate_id, ticker, close_time) do nothing`;
@@ -273,20 +280,31 @@ test("the Lab research view excludes quarantined windows and DATA_INVALID rows",
   await applyAll(db, await files());
 
   const led = `insert into desk_ledger (ticker, close_time, winner, chair_lean) values ($1, $2, 'UP', 'WAIT')`;
+  const mkFill = (tk, close) =>
+    db.query(
+      `insert into desk_policy_fills
+         (fill_key, ticker, close_time, entry_side, entry_t, entry_cents, entry_fee_cents,
+          signal_policy, entry_policy, risk_policy)
+       values ($1, $1, $2, 'UP', $2, 80, 2, 'CHAIR_V1','ENTRY_80_V1','RISK_NONE_V1')`,
+      [tk, close],
+    );
   const obs = `insert into desk_policy_observations
-      (ticker, close_time, candidate_id, candidate_kind, candidate_version,
+      (fill_key, ticker, close_time, candidate_id, candidate_kind, candidate_version,
        signal_policy, entry_policy, exit_policy, risk_policy,
        entry_side, entry_t, entry_cents, entry_fee_cents, exit_reason, net_cents, data_invalid)
-    values ($1, $2, 'HOLD_V1', 'exit', 1,
+    values ($1, $1, $2, 'HOLD_V1', 'exit', 1,
             'CHAIR_V1','ENTRY_80_V1','HOLD_V1','RISK_NONE_V1',
             'UP', $2, 80, 2, $3, $4, $5)`;
 
   // A good window, a quarantined window, and a good window whose book was unusable.
   await db.query(led, ["GOOD-1", "2026-09-11T13:00:00Z"]);
+  await mkFill("GOOD-1", "2026-09-11T13:00:00Z");
   await db.query(obs, ["GOOD-1", "2026-09-11T13:00:00Z", "SETTLEMENT", 18, false]);
   await db.query(led, ["BAD-1", "2026-09-10T08:30:00Z"]);
+  await mkFill("BAD-1", "2026-09-10T08:30:00Z");
   await db.query(obs, ["BAD-1", "2026-09-10T08:30:00Z", "SETTLEMENT", 18, false]);
   await db.query(led, ["GOOD-2", "2026-09-11T13:15:00Z"]);
+  await mkFill("GOOD-2", "2026-09-11T13:15:00Z");
   await db.query(obs, ["GOOD-2", "2026-09-11T13:15:00Z", "DATA_INVALID", null, true]);
   // Re-apply the quality stamp, as the real deploy does.
   await db.exec(await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"));
@@ -297,5 +315,167 @@ test("the Lab research view excludes quarantined windows and DATA_INVALID rows",
   assert.equal(research.rows[0].n, 1, "only the good, priceable window counts");
   const kept = await db.query("select ticker from desk_policy_observations_research");
   assert.equal(kept.rows[0].ticker, "GOOD-1");
+  await db.close();
+});
+
+test("all candidates reference ONE source fill, and a dangling reference is refused", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  const TK = "KXBTC15M-26SEP110900-00";
+  const CLOSE = "2026-09-11T13:00:00Z";
+  const KEY = `${TK}|1789131600000|1789131000000`;
+
+  await db.query(
+    `insert into desk_policy_fills
+       (fill_key, ticker, close_time, entry_side, entry_t, entry_cents, entry_fee_cents,
+        signal_policy, entry_policy, risk_policy)
+     values ($1, $2, $3, 'UP', '2026-09-11T12:50:00Z', 80, 2, 'CHAIR_V1','ENTRY_80_V1','RISK_NONE_V1')`,
+    [KEY, TK, CLOSE],
+  );
+
+  const obs = (cand, reason, net) =>
+    db.query(
+      `insert into desk_policy_observations
+         (fill_key, ticker, close_time, candidate_id, candidate_kind, candidate_version,
+          signal_policy, entry_policy, exit_policy, risk_policy,
+          entry_side, entry_t, entry_cents, entry_fee_cents, exit_reason, net_cents)
+       values ($1,$2,$3,$4,'exit',1,'CHAIR_V1','ENTRY_80_V1',$4,'RISK_NONE_V1',
+               'UP','2026-09-11T12:50:00Z',80,2,$5,$6)`,
+      [KEY, TK, CLOSE, cand, reason, net],
+    );
+  await obs("HOLD_V1", "SETTLEMENT", -82);
+  await obs("PROVE120_V1", "DEADLINE", -6);
+  await obs("PROVE180_V1", "DEADLINE", -11);
+  await obs("PROVE240_V1", "DEADLINE", -25);
+  await obs("TAKE90_V1", "SETTLEMENT", -82);
+
+  // Exactly five, sharing exactly one source fill. Same-entry parity is a property
+  // of the schema here, not a coincidence between five copied tuples.
+  const agg = await db.query(
+    `select count(*)::int as n, count(distinct fill_key)::int as fills
+       from desk_policy_observations where ticker = $1 and close_time = $2`,
+    [TK, CLOSE],
+  );
+  assert.equal(agg.rows[0].n, 5, "five candidates");
+  assert.equal(agg.rows[0].fills, 1, "one source fill");
+
+  // And they agree on everything they are not allowed to choose.
+  const parity = await db.query(
+    `select count(distinct entry_side)::int  as sides,
+            count(distinct entry_t)::int     as times,
+            count(distinct entry_cents)::int as prices,
+            count(distinct entry_fee_cents)::int as fees,
+            count(distinct signal_policy)::int   as signals,
+            count(distinct entry_policy)::int    as entries,
+            count(distinct exit_policy)::int     as exits
+       from desk_policy_observations where fill_key = $1`,
+    [KEY],
+  );
+  const p = parity.rows[0];
+  for (const k of ["sides", "times", "prices", "fees", "signals", "entries"]) {
+    assert.equal(p[k], 1, `candidates must not differ on ${k}`);
+  }
+  assert.equal(p.exits, 5, "and must each carry their own exit policy");
+
+  // An observation cannot reference a fill that was never recorded.
+  await assert.rejects(
+    obs.call(null, "GHOST_V1", "SETTLEMENT", 0) && db.query(
+      `insert into desk_policy_observations
+         (fill_key, ticker, close_time, candidate_id, candidate_kind, candidate_version,
+          signal_policy, entry_policy, exit_policy, risk_policy,
+          entry_side, entry_t, entry_cents, entry_fee_cents, exit_reason)
+       values ('NO-SUCH-FILL',$1,$2,'ORPHAN_V1','exit',1,'CHAIR_V1','ENTRY_80_V1','ORPHAN_V1','RISK_NONE_V1',
+               'UP','2026-09-11T12:50:00Z',80,2,'SETTLEMENT')`,
+      [TK, CLOSE],
+    ),
+    "a dangling fill reference must be refused",
+  );
+  await db.close();
+});
+
+test("one fill per window: a second position in the same window is refused", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  const ins = (key) =>
+    db.query(
+      `insert into desk_policy_fills
+         (fill_key, ticker, close_time, entry_side, entry_t, entry_cents, entry_fee_cents,
+          signal_policy, entry_policy, risk_policy)
+       values ($1, 'TK-1', '2026-09-11T13:00:00Z', 'UP', '2026-09-11T12:50:00Z', 80, 2,
+               'CHAIR_V1','ENTRY_80_V1','RISK_NONE_V1')`,
+      [key],
+    );
+  await ins("A");
+  // The exit competition has no defined meaning for two positions in one window.
+  await assert.rejects(ins("B"));
+  await db.close();
+});
+
+test("0026 normalises observations that predate fill_key, inventing nothing", async () => {
+  // The race this guards: the code deployed with 0025 writes observations with no
+  // fill_key, so a Chair fill landing before 0026 deploys leaves rows behind — and
+  // `add column ... not null` on a non-empty table fails. Apply everything up to
+  // 0025, write a pre-0026 window, then apply 0026 and check it recovers.
+  const db = await freshDb();
+  const names = await files();
+  const upTo25 = names.filter((n) => n < "0026");
+  assert.ok(upTo25.length < names.length, "0026 must exist and be excluded here");
+  await applyAll(db, upTo25);
+
+  const TK = "KXBTC15M-26SEP110900-00";
+  const CLOSE = "2026-09-11T13:00:00Z";
+  const ENTRY = "2026-09-11T12:50:00Z";
+  await db.query(`insert into desk_ledger (ticker, close_time, winner, chair_lean) values ($1,$2,'UP','UP')`, [TK, CLOSE]);
+  for (const [cand, reason, net] of [
+    ["HOLD_V1", "SETTLEMENT", -82],
+    ["PROVE180_V1", "DEADLINE", -11],
+  ]) {
+    await db.query(
+      `insert into desk_policy_observations
+         (ticker, close_time, candidate_id, candidate_kind, candidate_version,
+          signal_policy, entry_policy, exit_policy, risk_policy,
+          entry_side, entry_t, entry_cents, entry_fee_cents, exit_reason, net_cents)
+       values ($1,$2,$3,'exit',1,'CHAIR_V1','ENTRY_80_V1',$3,'RISK_NONE_V1','UP',$4,82,2,$5,$6)`,
+      [TK, CLOSE, cand, ENTRY, reason, net],
+    );
+  }
+
+  // Now apply 0026 on a NON-empty table.
+  await db.exec(await readFile(join(MIGRATIONS, "0026_desk_policy_fills.sql"), "utf8"));
+
+  // One fill row, derived from what the observations already carried.
+  const fills = await db.query(
+    `select fill_key, ticker, entry_side, entry_cents, entry_fee_cents from desk_policy_fills`,
+  );
+  assert.equal(fills.rows.length, 1, "one source fill for the window");
+  const f = fills.rows[0];
+  assert.equal(f.ticker, TK);
+  assert.equal(f.entry_side, "UP");
+  assert.equal(Number(f.entry_cents), 82, "the price already on the rows, not a guess");
+  assert.equal(Number(f.entry_fee_cents), 2);
+  // And the key is exactly what the writer computes, so a replayed write matches.
+  assert.equal(f.fill_key, `${TK}|${Date.parse(CLOSE)}|${Date.parse(ENTRY)}`);
+
+  // Both observations now reference it, and the column is required.
+  const obs = await db.query(
+    `select count(*)::int as n, count(distinct fill_key)::int as fills,
+            count(*) filter (where fill_key is null)::int as orphans
+       from desk_policy_observations`,
+  );
+  assert.equal(obs.rows[0].n, 2, "no observation was added or removed");
+  assert.equal(obs.rows[0].fills, 1);
+  assert.equal(obs.rows[0].orphans, 0);
+
+  const col = await db.query(
+    `select is_nullable from information_schema.columns
+      where table_name = 'desk_policy_observations' and column_name = 'fill_key'`,
+  );
+  assert.equal(col.rows[0].is_nullable, "NO", "the constraint is applied after normalising");
+
+  // Re-applying is still safe.
+  await db.exec(await readFile(join(MIGRATIONS, "0026_desk_policy_fills.sql"), "utf8"));
+  const again = await db.query("select count(*)::int as n from desk_policy_fills");
+  assert.equal(again.rows[0].n, 1, "a re-run does not duplicate the fill");
   await db.close();
 });
