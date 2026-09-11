@@ -181,7 +181,7 @@ test("no copy claims a live floor the book does not actually pay", () => {
 test("Phase 2 research has no path to the chair, a seat, or the learner", () => {
   // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
   // not a promise in a comment: nothing that decides anything may import them.
-  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server"];
+  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server"];
   const deciders = [
     "src/lib/desk/chair.ts",
     "src/lib/desk/bots.ts",
@@ -274,4 +274,32 @@ test("a cell can never be called a finding on its point estimate alone", () => {
   // And the look-elsewhere accounting is not optional.
   assert.match(src, /expected_by_chance/);
   assert.match(src, /0\.025 \* tested/);
+});
+
+test("MAE/MFE is descriptive and says so where it could be misread", () => {
+  const src = read("src/lib/desk/excursion.ts");
+  // Marked at the BID. Marking at the ask would invent a spread of profit on
+  // every call and inflate every MFE.
+  assert.match(src, /side === "UP" \? m\.yes_bid : 100 - m\.yes_ask/);
+  // The verdict must never read as a take-profit level.
+  assert.ok(!/take profit/i.test(src.replace(/^\s*\*.*$/gm, "")), "a take-profit rule leaked into the verdict");
+  assert.match(src, /hindsight/);
+  assert.match(src, /tested on windows recorded afterwards/);
+  // And it must put the winners' drawdown beside the losers' peak.
+  assert.match(src, /-winners\.avg_mae >= losers\.avg_mfe/);
+
+  const srv = read("src/lib/desk/excursion.server.ts");
+  for (const banned of [/\binsert into\b/i, /\bupdate \w+ set\b/i, /\bdelete from\b/i, /\bpromote\w*\(/]) {
+    assert.ok(!banned.test(srv), `excursion.server.ts contains ${banned} — it must be read-only`);
+  }
+  assert.match(srv, /votes: false/);
+  // Only settled, single-leg calls: a scalp exited at a mark has no single answer.
+  assert.match(srv, /and l\.settle_cents in \(0, 100\)/);
+  assert.match(srv, /and coalesce\(l\.calls, 1\) = 1/);
+  // The entry is the recorded fill, never the first sample.
+  assert.match(srv, /findIndex\(\(v\) => Number\(v\) === 1\)/);
+
+  const route = read("server/routes/excursion.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
+  assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
 });
