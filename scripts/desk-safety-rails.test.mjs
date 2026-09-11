@@ -371,3 +371,24 @@ test("the seat-signal study judges against the price, not against a coin flip", 
   assert.match(route, /adminKeyOk\(key\)/);
   assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
 });
+
+test("the lab records the new measurements without letting them into its fair value", () => {
+  // lab.server is the one file that both imports TAPE 2.0 / VEL 2.0 and feeds a
+  // seat: the LAB seat votes off labFairNow. The import guard above cannot see
+  // that, because the leak would be inside this file rather than across an
+  // import. So the fair-value path is read directly and must be clean.
+  const lab = read("src/lib/desk/lab.server.ts");
+  const fnBody = (name) => {
+    const i = lab.indexOf(`export function ${name}`);
+    assert.ok(i > 0, `${name} not found in lab.server.ts`);
+    const j = lab.indexOf("\n}", i);
+    return lab.slice(i, j);
+  };
+  for (const fn of ["labFairNow", "labFairState"]) {
+    const body = fnBody(fn);
+    assert.ok(!/tape2|vel2/i.test(body), `${fn} reads the shadow microstructure — that is a path to a vote`);
+  }
+  // And the only readers of the measurements are the two accessors the replay uses.
+  assert.match(lab, /export function tape2Now\(ticker: string\): Tape2Features \| null/);
+  assert.match(lab, /export function vel2Now\(ticker: string\): Vel2Features \| null/);
+});
