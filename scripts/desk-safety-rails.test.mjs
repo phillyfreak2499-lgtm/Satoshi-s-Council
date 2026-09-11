@@ -195,7 +195,8 @@ test("Phase 2 research has no path to the chair, a seat, or the learner", () => 
   // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
   // not a promise in a comment: nothing that decides anything may import them.
   const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server", "redundancy", "redundancy.server", "seat-signal", "seat-signal.server",
-    "whale2", "research-status", "research-status.server"];
+    "whale2", "research-status", "research-status.server",
+    "absorption", "absorption.server"];
   const deciders = [
     "src/lib/desk/chair.ts",
     "src/lib/desk/bots.ts",
@@ -543,4 +544,93 @@ test("the research board counts prospective sample apart from total, and promote
 
   const route = read("server/routes/research.get.ts");
   assert.match(route, /adminKeyOk\(key\)/);
+});
+
+test("the quantity-fix era is a boundary in the data, not a note in a comment", () => {
+  const era = read("src/lib/desk/research-era.ts");
+  assert.match(era, /export const QTY_FIX_AT = "2026-09-11T03:47:17\.000Z";/);
+  // The split returns two named sets and nothing holding both, so pooling has
+  // to be written on purpose rather than being what happens by default.
+  assert.match(era, /export type EraSplit<T> = \{/);
+  assert.match(era, /pre: T\[\];/);
+  assert.match(era, /post: T\[\];/);
+  assert.ok(!/\ball: T\[\]/.test(era), "the split offers a pooled array");
+  // An unreadable timestamp must fall to the unusable era, never the clean one.
+  assert.match(era, /if \(!Number\.isFinite\(ms\)\) return "pre-qty-fix";/);
+
+  // The absorption row stores its era rather than deriving it on read, so a
+  // query cannot blend the two by forgetting a date filter.
+  const mig = read("migrations/0023_desk_absorption.sql");
+  assert.match(mig, /era\s+text not null/);
+  const srv = read("src/lib/desk/absorption.server.ts");
+  assert.match(srv, /\$\{eraAt\(r\.t\)\}/);
+  assert.match(srv, /const post = split\.post;/);
+  assert.ok(!/split\.pre\.concat|\.\.\.split\.pre/.test(srv), "pre-fix rows are being pooled in");
+});
+
+test("absorption is judged against the price, never a hit rate, and cannot self-promote", () => {
+  const a = read("src/lib/desk/absorption.ts");
+  // The measurement: realized versus what the market implied, against the interval.
+  assert.match(a, /const beyond = implied < lo \|\| implied > hi;/);
+  // Nothing is classified at write time; bands live here and are frozen.
+  assert.match(a, /export const PCTILE_BANDS = \[80, 90, 95\] as const;/);
+  assert.match(a, /export const RESPONSE_BANDS = \[0\.5, 1, 2\] as const;/);
+  assert.match(a, /FROZEN 2026-09-11, before any post-fix outcome existed/);
+  // A missing future is never absorption — otherwise every late print qualifies.
+  assert.match(a, /if \(r\.move_30s == null\) return false;/);
+  // The fee is imported, not a second copy of the formula.
+  assert.match(a, /export const feeAt = takerFeeCentsExact;/);
+  // Below the floor, every falsification line is withheld INCLUDING "no effect".
+  assert.match(a, /including "no effect"/);
+  assert.match(a, /export const MIN_PROSPECTIVE = 30;/);
+  // And a surviving effect still does not promote.
+  assert.match(a, /earns more sample and a conversation, not a promotion/);
+
+  const srv = read("src/lib/desk/absorption.server.ts");
+  assert.match(srv, /thresholds_in_production: false/);
+  assert.match(srv, /votes: false/);
+  // It writes only its own table.
+  const writes = [...codeOf("src/lib/desk/absorption.server.ts").matchAll(/insert into (\w+)|update (\w+) set|delete from (\w+)/gi)];
+  for (const m of writes) {
+    const table = m[1] ?? m[2] ?? m[3];
+    assert.equal(table, "desk_absorption", `absorption.server writes ${table}`);
+  }
+  const route = read("server/routes/absorption.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
+});
+
+test("BUY and SELL, and single and clustered, are never pooled", () => {
+  const a = read("src/lib/desk/absorption.ts");
+  // The grid walks both sides and both shapes explicitly.
+  assert.match(a, /for \(const side of \["UP", "DOWN"\] as const\)/);
+  assert.match(a, /for \(const shape of \["single", "clustered"\] as const\)/);
+  assert.match(a, /shape === "single" \? r\.cluster_n === 1 : r\.cluster_n > 1/);
+  // And the report surfaces all four separately.
+  for (const f of ["buy_single", "buy_clustered", "sell_single", "sell_clustered"]) {
+    assert.ok(a.includes(f), `${f} is missing from the report`);
+  }
+});
+
+test("every control the owner asked for is wired, including the other signals", () => {
+  const srv = read("src/lib/desk/absorption.server.ts");
+  for (const name of [
+    "market probability", "regime", "distance to strike", "seconds remaining",
+    "STRIKE 2.0 fair", "VEL 2.0 residual", "TAPE 2.0 OFI", "DRIFT", "CASCADE", "size against depth",
+  ]) {
+    assert.ok(srv.includes(`control("${name}"`), `the ${name} control is missing`);
+  }
+  // An effect living in one band of a control is that control in disguise.
+  const a = read("src/lib/desk/absorption.ts");
+  assert.match(a, /independent: survives >= 2/);
+});
+
+test("the seat context a print carries records its own staleness", () => {
+  // The lab runs on the websocket and the seats on the brain tick, so a print's
+  // DRIFT and CASCADE are as of the last tick. A study that could not see the
+  // age would read a four-minute-old value as a reading of that moment.
+  const lab = read("src/lib/desk/lab.server.ts");
+  assert.match(lab, /seat_age_ms: L\.deskState\.t \? Math\.max\(0, Math\.round\(c\.t - L\.deskState\.t\)\) : null,/);
+  assert.match(read("migrations/0023_desk_absorption.sql"), /seat_age_ms\s+integer/);
+  // Evidence uses the desk's own converter, not a second scale.
+  assert.match(read("src/lib/desk/server-engine.ts"), /drift: seatEvidence\(votes\.find/);
 });

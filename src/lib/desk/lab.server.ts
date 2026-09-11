@@ -50,6 +50,7 @@ import {
 } from "./tape2";
 import { readClock } from "./clock";
 import { vel2Features, type Vel2Features, type Vel2Sample } from "./vel2";
+import type { PrintRecord } from "./absorption.server";
 import {
   cluster as clusterPrints,
   readPrint,
@@ -140,6 +141,24 @@ type Lab = {
    */
   whalePrints: Print[];
   whaleMids: MidPoint[];
+  /**
+   * The last desk state the engine handed over, with when.
+   *
+   * The lab runs on the websocket; the seats, the regime and fair value are
+   * computed on the brain tick. So a print's context is as of the last tick and
+   * its AGE is recorded beside it — a read from four minutes ago is not a
+   * reading of this moment, and a study that could not see the staleness would
+   * treat it as one.
+   */
+  deskState: {
+    t: number;
+    drift: number | null;
+    cascade: number | null;
+    regime: string;
+    fair_yes: number | null;
+    dist: number | null;
+    sigma: number | null;
+  };
 };
 
 /** How trades are arriving: which direction field carried them, and how late. */
@@ -202,6 +221,7 @@ function lab(): Lab {
     vel2Last: null,
     whalePrints: [],
     whaleMids: [],
+    deskState: { t: 0, drift: null, cascade: null, regime: "", fair_yes: null, dist: null, sigma: null },
   };
   return g.__desk_lab__;
 }
@@ -611,6 +631,22 @@ export function vel2Now(ticker: string): Vel2Features | null {
   return L.tape2Ticker === ticker ? L.vel2Last : null;
 }
 
+/**
+ * The engine's latest window state, for the absorption study's conditioning
+ * tests. Called on the brain tick; never read back into a decision.
+ */
+export function noteDeskState(st: {
+  t: number;
+  drift: number | null;
+  cascade: number | null;
+  regime: string;
+  fair_yes: number | null;
+  dist: number | null;
+  sigma: number | null;
+}): void {
+  lab().deskState = st;
+}
+
 /** How long a print and its midpoint path are kept. Long enough to outlive the follow horizon. */
 const WHALE_KEEP_MS = 120_000;
 /** At most one midpoint mark per this, so a busy book does not fill memory. */
@@ -650,6 +686,98 @@ function noteWhaleMid(L: Lab, t: number): void {
   if (L.whaleMids.length > WHALE_MAX) L.whaleMids = L.whaleMids.slice(-WHALE_MAX);
   L.whaleMids = L.whaleMids.filter((m) => t - m.t <= WHALE_KEEP_MS);
 }
+
+/**
+ * Measure every print this window held, for the prospective absorption study.
+ *
+ * Called once at settle, when the whole midpoint path exists — a print cannot
+ * be measured at the moment it lands, because the thing being measured is what
+ * happened for the next sixty seconds. Each print is ranked only against the
+ * sizes recorded BEFORE it, so a later print never decides whether an earlier
+ * one was large.
+ *
+ * Nothing is classified here. No "large", no "absorbed": those are decided at
+ * read time from frozen bands, and a recorder that applied them would have to
+ * be re-run to change one.
+ */
+export function whalePrintRecords(ticker: string, closeMs: number): PrintRecord[] {
+  const L = lab();
+  if (L.tape2Ticker !== ticker || !L.whalePrints.length) return [];
+  const clustered = clusterPrints(L.whalePrints);
+  const b = L.books.get(ticker);
+  const view = b && bookTrusted(b) ? yesView(b) : null;
+  const depth5 = view ? [...view.bids.slice(0, 5), ...view.asks.slice(0, 5)].reduce((a, l) => a + l.size, 0) : null;
+  const out: PrintRecord[] = [];
+  for (let i = 0; i < clustered.length; i++) {
+    const c = clustered[i]!;
+    const before = clustered.slice(0, i).map((x) => x.size);
+    const r = readPrint(c, L.whaleMids, before);
+    const spot5 = btcMoveOver(L, c.t, 5_000);
+    out.push({
+      ticker,
+      close_time: closeMs,
+      t: c.t,
+      side: c.side,
+      cluster_n: c.prints,
+      size: c.size,
+      size_pctile: r.pctile,
+      // Against the touch it crossed and the visible depth: an order small
+      // against the book has a mechanical reason not to move it, and the study
+      // has to be able to tell that apart from absorption.
+      size_vs_touch: touchOn(view, c.side) ? round3(c.size / touchOn(view, c.side)!) : null,
+      size_vs_depth: depth5 && depth5 > 0 ? round3(c.size / depth5) : null,
+      impact_2s: r.impact,
+      impact_per_100: r.impact_per_100,
+      move_5s: midMoveOver(L, c, 5_000),
+      move_15s: midMoveOver(L, c, 15_000),
+      move_30s: midMoveOver(L, c, 30_000),
+      move_60s: midMoveOver(L, c, 60_000),
+      btc_5s: spot5,
+      btc_15s: btcMoveOver(L, c.t, 15_000),
+      btc_30s: btcMoveOver(L, c.t, 30_000),
+      btc_60s: btcMoveOver(L, c.t, 60_000),
+      ofi_norm: L.tape2Last?.ofi_norm_15s ?? null,
+      replenished: r.replenished,
+      spread: L.tape2Last?.spread ?? null,
+      depth: depth5,
+      dist: L.deskState.dist,
+      sigma: L.deskState.sigma,
+      secs_left: closeMs > c.t ? Math.round((closeMs - c.t) / 100) / 10 : 0,
+      market_prob_up: c.mid,
+      regime: L.deskState.regime || "",
+      fair_yes: L.deskState.fair_yes,
+      vel_resid: L.vel2Last?.h30.ok ? L.vel2Last.h30.residual : null,
+      drift_ev: L.deskState.drift,
+      cascade_ev: L.deskState.cascade,
+      seat_age_ms: L.deskState.t ? Math.max(0, Math.round(c.t - L.deskState.t)) : null,
+    });
+  }
+  return out;
+}
+
+/** The resting size on the side a print crossed, from the book as it stands. */
+function touchOn(view: ReturnType<typeof yesView> | null, side: "UP" | "DOWN"): number | null {
+  if (!view) return null;
+  const level = side === "UP" ? view.asks[0] : view.bids[0];
+  return level && level.size > 0 ? level.size : null;
+}
+
+/** Midpoint move over a horizon, signed the aggressor's way. Null when unmeasurable. */
+function midMoveOver(L: Lab, c: { t: number; side: "UP" | "DOWN"; mid: number }, ms: number): number | null {
+  const later = L.whaleMids.find((m) => m.t >= c.t + ms && m.t <= c.t + ms + 5_000);
+  if (!later) return null;
+  return Math.round((later.mid - c.mid) * (c.side === "UP" ? 1 : -1) * 100) / 100;
+}
+
+/** BTC move over the same horizon, in dollars, so a flat contract can be told from a flat market. */
+function btcMoveOver(L: Lab, t: number, ms: number): number | null {
+  const at = L.vel2.find((v) => v.t >= t && v.t <= t + 2_000);
+  const later = L.vel2.find((v) => v.t >= t + ms && v.t <= t + ms + 5_000);
+  if (!at || !later) return null;
+  return Math.round((later.spot - at.spot) * 100) / 100;
+}
+
+const round3 = (n: number) => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 : 0);
 
 /**
  * WHALE 2.0's read of the prints held for this window. Each print is ranked
