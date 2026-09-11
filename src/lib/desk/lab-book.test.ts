@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyDelta, applySnapshot, bests, bookTrusted, freshBook, markBookGap, tenths } from "./lab-book.ts";
+import { applyDelta, applySnapshot, bests, bookTrusted, freshBook, markBookGap, tenths, yesView } from "./lab-book.ts";
 
 /** A two-level book on each side, in the wire's YES-leg convention. */
 function snapMsg() {
@@ -99,4 +99,42 @@ test("a crossed snapshot flips the NO-leg interpretation instead of serving a cr
   assert.ok(q.yes_bid + q.no_bid <= 100, `book must not be crossed: ${q.yes_bid} + ${q.no_bid}`);
   assert.equal(b.flips, 1);
   assert.equal(bookTrusted(b), true);
+});
+
+test("yesView puts both sides on one YES price axis, best first", () => {
+  const b = freshBook("KXBTC15M-26SEP101430-30");
+  applySnapshot(b, snapMsg(), 1_000);
+  const v = yesView(b);
+  // YES bids as stored, best first.
+  assert.deepEqual(
+    v.bids.map((l) => [l.price, l.size]),
+    [
+      [64, 1116.31],
+      [63, 400],
+    ],
+  );
+  // NO bids at 35¢ and 34¢ become YES asks at 65¢ and 66¢, cheapest first.
+  assert.deepEqual(
+    v.asks.map((l) => [l.price, l.size]),
+    [
+      [65, 7247.11],
+      [66, 900],
+    ],
+  );
+  // The touch agrees with bests(), which is the older derivation.
+  const q = bests(b);
+  assert.equal(v.bids[0].price, q.yes_bid);
+  assert.equal(v.asks[0].price, q.yes_ask);
+  assert.equal(v.asks[0].size, q.yes_ask_sz);
+  // And the book is not crossed.
+  assert.ok(v.asks[0].price > v.bids[0].price);
+});
+
+test("yesView drops emptied levels and survives an empty book", () => {
+  const b = freshBook("T");
+  assert.deepEqual(yesView(b), { bids: [], asks: [] });
+  applySnapshot(b, snapMsg(), 1_000);
+  applyDelta(b, { price_dollars: "0.6400", delta_fp: "-1116.31", side: "yes" }, 2_000);
+  const v = yesView(b);
+  assert.deepEqual(v.bids.map((l) => l.price), [63], "the emptied level is gone");
 });

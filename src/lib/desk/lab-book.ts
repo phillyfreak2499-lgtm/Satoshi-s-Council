@@ -189,6 +189,36 @@ export function sizeAt(b: LabBook, side: "yes" | "no", price: number): number {
   return (side === "yes" ? b.yes : b.no).get(price) ?? 0;
 }
 
+/** One side of the book in YES space: price ascending for asks, descending for bids. */
+export type Level = { price: number; size: number };
+export type YesView = { bids: Level[]; asks: Level[] };
+
+/**
+ * The book in one frame: YES-space bids and asks.
+ *
+ * Kalshi books are resting bids on both sides, so "the YES ask" is not stored
+ * anywhere — a NO bid at q IS an offer to sell YES at 100 − q, for the same
+ * size. Every microstructure measure needs both sides on one price axis before
+ * it means anything, so the conversion happens once, here, rather than being
+ * re-derived (and re-mis-derived) by each consumer.
+ *
+ * Bids descend from the best bid, asks ascend from the best ask. Empty levels
+ * are dropped. This is a read: it never mutates the book.
+ */
+export function yesView(b: LabBook): YesView {
+  const bids: Level[] = [];
+  for (const [price, size] of b.yes) if (size > 0) bids.push({ price, size });
+  bids.sort((x, y) => y.price - x.price);
+  const asks: Level[] = [];
+  for (const [noPrice, size] of b.no) {
+    if (size <= 0) continue;
+    const price = tenths(100 - noPrice);
+    if (price > 0 && price < 100) asks.push({ price, size });
+  }
+  asks.sort((x, y) => x.price - y.price);
+  return { bids, asks };
+}
+
 export function levelCount(b: LabBook): number {
   return b.yes.size + b.no.size;
 }

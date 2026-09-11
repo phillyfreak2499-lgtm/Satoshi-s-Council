@@ -34,9 +34,20 @@ import {
   markBookGap,
   priceCents,
   sameBests,
+  tenths,
+  yesView,
   type Bests,
   type LabBook,
 } from "./lab-book";
+import {
+  freshTape2,
+  onBookDelta,
+  onTape2Trade,
+  sampleTape2,
+  tape2Features,
+  type Tape2Features,
+  type Tape2State,
+} from "./tape2";
 import {
   FAST_JUMP_MS,
   FILL_LATENCIES,
@@ -101,6 +112,13 @@ type Lab = {
   lastError: string | null;
   /** Trade-direction provenance and feed lag, for WARDEN and research telemetry. */
   tradeClock: TradeClock;
+  /** TAPE 2.0 microstructure state for the current window. Research only: no
+   *  seat reads it, no skill exists for it, and it cannot reach the chair. */
+  tape2: Tape2State;
+  /** The ticker tape2 is accumulating for, so a new window starts clean. */
+  tape2Ticker: string;
+  /** Last computed feature set, for the lab panel and the replay. */
+  tape2Last: Tape2Features | null;
 };
 
 /** How trades are arriving: which direction field carried them, and how late. */
@@ -156,6 +174,9 @@ function lab(): Lab {
     persistErrors: 0,
     lastError: null,
     tradeClock: freshTradeClock(),
+    tape2: freshTape2(),
+    tape2Ticker: "",
+    tape2Last: null,
   };
   return g.__desk_lab__;
 }
@@ -354,7 +375,15 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       const b = book(L, tk);
       const before = L.lastBests.get(tk);
       const d = applyDelta(b, msg, t);
-      if (d && tk === currentTicker(L) && bookTrusted(b)) onDelta(L.study, d.side, d.price, d.size, t);
+      if (d && tk === currentTicker(L) && bookTrusted(b)) {
+        onDelta(L.study, d.side, d.price, d.size, t);
+        // TAPE 2.0 sees the same delta in YES space: a NO-side level is an ASK
+        // here, so positive imbalance always means pressure toward UP. Only ADD
+        // and CANCEL are recorded — a vanished quote is never called a trade.
+        const yesSide = d.side === "yes" ? "bid" : "ask";
+        const yesPrice = d.side === "yes" ? d.price : tenths(100 - d.price);
+        onBookDelta(L.tape2, yesSide, yesPrice, d.delta, d.size, t);
+      }
       afterBook(L, tk, b, t);
       const after = L.lastBests.get(tk);
       const bestSame = before ? (d?.side === "yes" ? before.yes_bid : before.no_bid) : 0;
@@ -374,6 +403,8 @@ function onWsMessage(L: Lab, type: string, msg: Record<string, unknown>, raw: Re
       // from our receipt time so feed lag stays visible as lag.
       const side = takerOutcomeSide(msg);
       noteTradeClock(L, msg, side, t);
+      // Executions are accounted separately from book flow, on purpose.
+      if (side) onTape2Trade(L.tape2, side, Number(msg.count_fp ?? msg.count) || 0, t);
       onTrade(L.study, {
         t,
         yes_price: priceCents(msg.yes_price ?? msg.yes_price_dollars),
@@ -491,6 +522,33 @@ function recomputeFair(L: Lab, t: number): void {
   finishShocks(L, onTick(L.study, fy, t));
 }
 
+/**
+ * Sample the microstructure state once a second. A new window resets it, because
+ * depth, persistence and flow from the previous contract say nothing about this
+ * one. Skipped entirely while the book is quarantined: a book that has missed a
+ * delta would produce confident nonsense.
+ */
+function sampleTape2Now(L: Lab, t: number): void {
+  const tk = currentTicker(L);
+  if (!tk) return;
+  if (L.tape2Ticker !== tk) {
+    L.tape2 = freshTape2();
+    L.tape2Ticker = tk;
+    L.tape2Last = null;
+  }
+  const b = L.books.get(tk);
+  if (!bookTrusted(b)) return;
+  const view = yesView(b);
+  sampleTape2(L.tape2, view, t);
+  L.tape2Last = tape2Features(L.tape2, view, t);
+}
+
+/** The current microstructure features, or null when none have been measured. Research only. */
+export function tape2Now(ticker: string): Tape2Features | null {
+  const L = lab();
+  return L.tape2Ticker === ticker ? L.tape2Last : null;
+}
+
 /** Record how this trade's direction arrived and how late it was. Telemetry only. */
 function noteTradeClock(L: Lab, msg: Record<string, unknown>, side: "yes" | "no" | null, t: number): void {
   const c = L.tradeClock;
@@ -518,6 +576,7 @@ function afterBook(L: Lab, tk: string, b: LabBook, t: number): void {
 
 function secondTick(L: Lab): void {
   const t = Date.now();
+  sampleTape2Now(L, t);
   if (L.fair && t - L.brti.last_t < BRTI_FRESH_MS) finishShocks(L, onTick(L.study, fairYesCents(L), t));
   sampleBasis(L, t);
 }
@@ -753,6 +812,11 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
       source_lag_avg_ms: L.tradeClock.lag_n ? Math.round(L.tradeClock.lag_sum_ms / L.tradeClock.lag_n) : null,
       source_lag_max_ms: L.tradeClock.lag_n ? L.tradeClock.lag_max_ms : null,
     },
+    // TAPE 2.0: the microstructure measurements, so every value can be audited
+    // against the book it came from. Research only — nothing votes on these.
+    tape2: L.tape2Last
+      ? { ticker: L.tape2Ticker, ...L.tape2Last }
+      : { ticker: L.tape2Ticker, note: "no trusted book sampled yet" },
     book_integrity: {
       books: L.books.size,
       trusted: [...L.books.values()].filter((x) => bookTrusted(x)).length,
