@@ -33,6 +33,7 @@ import {
   labSettleReceipt,
   startLab,
   labFairNow,
+  forgetWhaleWindow,
   noteDeskState,
   whalePrintRecords,
 } from "./lab.server";
@@ -851,7 +852,11 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   // rather than half-filled and waiting.
   void (async () => {
     const rows = whalePrintRecords(snap.ticker, snap.close_time);
-    if (rows.length) await recordPrints(rows, finish);
+    if (!rows.length) return;
+    await recordPrints(rows, finish);
+    // Only once the write has come back: a read followed by a failed write must
+    // not be the thing that loses the data.
+    forgetWhaleWindow(snap.ticker);
   })().catch((err) => {
     e.lastError = `absorption: ${err instanceof Error ? err.message : String(err)}`;
   });

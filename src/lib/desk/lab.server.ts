@@ -808,6 +808,18 @@ function btcMoveOver(L: Lab, t: number, ms: number): number | null {
 const round3 = (n: number) => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 : 0);
 
 /**
+ * Discard a window's buffer once its prints are safely written.
+ *
+ * Kept separate from reading them: a read that is followed by a failed write
+ * must not lose the data, so only the caller that knows the write succeeded
+ * calls this. Without it a settled window lingers until the hourly prune and
+ * `whale2Now` keeps answering with a book that is finished.
+ */
+export function forgetWhaleWindow(ticker: string): void {
+  lab().whale.delete(ticker);
+}
+
+/**
  * WHALE 2.0's read of the prints held for this window. Each print is ranked
  * against the sizes recorded BEFORE it — ranking against the whole window would
  * let a later print decide whether an earlier one was large.

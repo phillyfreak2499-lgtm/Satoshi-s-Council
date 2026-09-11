@@ -657,4 +657,12 @@ test("a window's prints survive the rollover that settles it", () => {
   assert.ok(!/currentTicker/.test(reader), "the reader is checking the current ticker again");
   // Buffers for windows that never settled are pruned rather than kept forever.
   assert.match(lab, /if \(t - v\.t > WHALE_WINDOW_KEEP_MS\) L\.whale\.delete\(k\);/);
+  // A settled window is forgotten only AFTER the write returns — a read
+  // followed by a failed write must not be what loses the data.
+  const eng = read("src/lib/desk/server-engine.ts");
+  const block = eng.slice(eng.indexOf("const rows = whalePrintRecords("), eng.indexOf("e.lastError = `absorption"));
+  assert.ok(
+    block.indexOf("await recordPrints(") < block.indexOf("forgetWhaleWindow("),
+    "the buffer is discarded before the write is known to have succeeded",
+  );
 });
