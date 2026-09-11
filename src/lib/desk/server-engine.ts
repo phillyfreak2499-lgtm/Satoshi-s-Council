@@ -962,7 +962,10 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   void settleHumanCalls(snap.ticker, finish).then((rows) =>
     notifySettle(snap.ticker, finish, chairBits, new Map(rows.map((r) => [r.token, r.cents]))),
   );
-  void recordReplay(snap.ticker, finish).catch((err) => {
+  // The window this grade belongs to, by both halves: applyGrade has already put
+  // this close through the identity invariant, so it is the one the buffer is keyed
+  // on. A ticker alone could name another close during a frozen feed.
+  void recordReplay(snap.ticker, snap.close_time, finish).catch((err) => {
     e.lastError = `replay: ${err instanceof Error ? err.message : String(err)}`;
   });
   // WHALE 2.0's prospective absorption sample. Measured now, at settle, because
@@ -986,7 +989,7 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   // is no position to exit.
   void (async () => {
     if (!booked || !(booked.cents > 0)) return;
-    const series = replayLive(snap.ticker);
+    const series = replayLive(snap.ticker, snap.close_time);
     if (!series) return;
     const champion = await activeChampion();
     await recordExitArena(

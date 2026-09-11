@@ -24,6 +24,7 @@
  * while scrubbing; the rest stay live-only until something needs them.
  */
 import { tape2Now, vel2Now } from "./lab.server";
+import { openSlot, REPLAY_STEP_MS, WindowStore, type WindowSeries } from "./replay-window";
 import type { ChairResult, Snapshot, Vote } from "./types";
 import { SEAT_IDS } from "./types";
 
@@ -32,9 +33,9 @@ async function sql() {
   return getSql();
 }
 
-/** Samples are at least this far apart; the brain ticks every 2.5–4 s. */
-export const REPLAY_STEP_MS = 4_000;
-const MAX_SAMPLES = 320;
+// REPLAY_STEP_MS and MAX_SAMPLES live in replay-window.ts with the identity they
+// belong to; re-exported so existing importers are unaffected.
+export { REPLAY_STEP_MS };
 const KEEP_DAYS = 30;
 const WINDOW_MS = 15 * 60_000;
 export const LEAN_SEATS = SEAT_IDS.filter((s) => s !== "WARDEN");
@@ -73,9 +74,17 @@ export type ReplayCols = {
   lead: (number | null)[];
 };
 
-type Series = { ticker: string; close_time: number; strike: number; cols: ReplayCols };
+/** A buffered series. The shape replay-window.ts stores, with this file's columns. */
+type Series = WindowSeries<ReplayCols>;
 
-const series = new Map<string, Series>();
+/**
+ * The buffered series, one per WINDOW — see replay-window.ts for why identity is
+ * (ticker, close_time) and not the ticker alone, and for the 2026-09-10 ticker-reuse
+ * shape the old keying could not survive. (What that keying PERMITTED is proven from
+ * the code; whether it actually blended those windows is undetermined.) Every access
+ * below goes through the store, which has no method that takes a ticker by itself.
+ */
+const series = new WindowStore<ReplayCols>();
 
 function leanCode(v: Vote): number {
   if (v.lean === "UP") return 2;
@@ -89,15 +98,14 @@ function leanCode(v: Vote): number {
 export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, booked: boolean, fair: number | null): void {
   try {
     if (!snap.ticker || !(snap.close_time > 0) || snap.demo || !(snap.spot > 0)) return;
-    let s = series.get(snap.ticker);
-    if (!s) {
-      for (const [k, v] of series) if (snap.as_of - v.close_time > 3_600_000) series.delete(k);
-      s = {
-        ticker: snap.ticker,
-        close_time: snap.close_time,
-        strike: snap.strike > 0 ? snap.strike : 0,
-        cols: {
-          t0: snap.as_of,
+    const slot = openSlot(
+      series,
+      snap.ticker,
+      snap.close_time,
+      snap.as_of,
+      snap.strike,
+      (t0): ReplayCols => ({
+          t0,
           t: [],
           spot: [],
           yes_bid: [],
@@ -116,16 +124,12 @@ export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, bo
           tflow: [],
           resid: [],
           lead: [],
-        },
-      };
-      series.set(snap.ticker, s);
-    }
-    const c = s.cols;
-    const lastT = c.t.length ? c.t[c.t.length - 1] : null;
-    const off = (snap.as_of - c.t0) / 1000;
-    if (lastT != null && off - lastT < REPLAY_STEP_MS / 1000 - 0.25) return;
-    if (c.t.length >= MAX_SAMPLES) return;
-    if (!(s.strike > 0) && snap.strike > 0) s.strike = snap.strike;
+      }),
+    );
+    // Too soon after the last sample, or this window is already at its cap.
+    if (!slot) return;
+    const c = slot.series.cols;
+    const off = slot.offset;
     let ups = 0;
     let downs = 0;
     const byId = new Map<string, Vote>();
@@ -135,7 +139,7 @@ export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, bo
       if (v.lean === "UP") ups++;
       else if (v.lean === "DOWN") downs++;
     }
-    c.t.push(Math.round(off * 10) / 10);
+    c.t.push(off);
     c.spot.push(Math.round(snap.spot * 100) / 100);
     c.yes_bid.push(Math.round(snap.yes_bid * 10) / 10);
     c.yes_ask.push(Math.round(snap.yes_ask * 10) / 10);
@@ -188,16 +192,29 @@ const r2 = (n: number | null | undefined): number | null =>
 const r3 = (n: number | null | undefined): number | null =>
   n == null || !Number.isFinite(n) ? null : Math.round(n * 1000) / 1000;
 
-/** The samples held for a window right now (tests and the live pane). */
-export function replayLive(ticker: string): Series | null {
-  return series.get(ticker) ?? null;
+/**
+ * The samples held for ONE window right now (tests and the live pane).
+ *
+ * Exact identity: a wrong `closeMs` returns null rather than another window that
+ * happens to share the ticker.
+ */
+export function replayLive(ticker: string, closeMs: number): Series | null {
+  return series.get(ticker, closeMs);
 }
 
-/** Write the window's samples once it has graded, then forget them. */
-export async function recordReplay(ticker: string, winner: "UP" | "DOWN"): Promise<void> {
-  const s = series.get(ticker);
+/**
+ * Write ONE graded window's samples, then forget that window.
+ *
+ * `closeMs` is the close the caller has already identity-validated — the same
+ * `snap.close_time` `applyGrade` graded on. It consumes and deletes only that
+ * window's buffer: another close sharing the ticker is left exactly where it is,
+ * and an unknown window writes nothing and deletes nothing rather than falling
+ * back to whatever the ticker happens to point at.
+ */
+export async function recordReplay(ticker: string, closeMs: number, winner: "UP" | "DOWN"): Promise<void> {
+  // One operation: it cannot read one window and delete another.
+  const s = series.take(ticker, closeMs);
   if (!s) return;
-  series.delete(ticker);
   if (s.cols.t.length < 3) return;
   const partial = s.cols.t0 - (s.close_time - WINDOW_MS) > 60_000;
   const db = await sql();
