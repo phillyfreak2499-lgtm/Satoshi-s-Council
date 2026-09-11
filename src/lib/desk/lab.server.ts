@@ -24,7 +24,7 @@ import {
   type SettleFair,
 } from "./brti";
 import { missingCanonicalSide, sourceLagMs, takerOutcomeSide, tradeSourceMs } from "./kalshi-wire";
-import { faultLine, mayWriteOfficial } from "./window-identity";
+import { mayWriteOfficial, officialFaultLine } from "./window-identity";
 import {
   applyDelta,
   applySnapshot,
@@ -113,7 +113,10 @@ type Lab = {
   backfilled: number;
   /** Official-value writes REFUSED because the payload contradicted the row. */
   backfillRefused: number;
-  /** The last refusal, as an identity fault line. Survives the next unrelated error. */
+  /**
+   * The last refusal, as an identity fault line. Survives an unrelated error in this
+   * process, but not a restart — process-local, like the rest of this state.
+   */
   backfillRefusedLine: string | null;
   restAt: number;
   snapshotAt: number;
@@ -332,16 +335,24 @@ async function backfillOfficial(L: Lab): Promise<void> {
         const v = Number(m.expiration_value);
         if (!Number.isFinite(v) || v <= 0) continue;
         // The same invariant grading goes through since #133, now on the one write
-        // that did not. A payload that contradicts the row is refused, loudly and
-        // durably, and the row stays null — it is not guessed at, and the next pass
-        // will ask again.
+        // that did not. A payload that contradicts the row is refused and the row
+        // stays null — it is not guessed at, and the next pass will ask again.
+        //
+        // `close_time` ONLY. Kalshi's `expiration_time` is the deprecated legacy
+        // expiry clock and is a different measurement, so falling back to it would
+        // compare the row's close against something that does not mean the same
+        // thing. Absent or unparseable is passed as 0 — "not carried" — which the
+        // helper supports, leaving the ticker's own encoded close as the witness.
         const verdict = mayWriteOfficial(ticker, closeMs, {
           ticker: typeof m.ticker === "string" ? m.ticker : undefined,
-          close_ms: Date.parse(String(m.close_time ?? m.expiration_time ?? "")) || 0,
+          close_ms: Date.parse(String(m.close_time ?? "")) || 0,
         });
         if (!verdict.ok) {
+          // Process-local: a counter and the last line, which survive unrelated
+          // errors in this process but NOT a restart. Enough to notice a refusal on
+          // the admin lab status; deliberately not a new table.
           L.backfillRefused += 1;
-          L.backfillRefusedLine = faultLine(ticker, closeMs, verdict.fault, verdict.detail);
+          L.backfillRefusedLine = officialFaultLine(ticker, closeMs, verdict.fault, verdict.detail);
           L.lastError = `backfill refused: ${L.backfillRefusedLine}`;
           continue;
         }

@@ -301,6 +301,15 @@ export type OfficialVerdict =
  *      (when it carries one) and, when it carries a close, one that agrees within
  *      the same tolerance a settle gets.
  *
+ * ONLY `close_time` COUNTS AS THE PAYLOAD'S CLOSE. Kalshi distinguishes `close_time`
+ * (trading stops) from `expiration_time` (deprecated legacy expiry semantics); they
+ * are different measurements and may differ. Substituting one for the other would
+ * compare the row's close against a clock that does not mean the same thing and call
+ * the result an identity check. A caller that cannot read `close_time` must pass 0 —
+ * "not carried" — and let the row's ticker-encoded close stand as the witness. This
+ * function never reads a payload field itself, so that discipline belongs to the
+ * caller and is asserted by a rail.
+ *
  * A payload that carries NEITHER witness is accepted on the row's own identity,
  * because the request was addressed by ticker and a silent exchange is not
  * evidence of a mismatch. That is the deliberate limit of this check: it cannot
@@ -377,8 +386,35 @@ export function mayWriteOfficial(
   return { ok: true, checks };
 }
 
-/** One line for the settle tape and the diagnostic log. */
-export function faultLine(ticker: string, closeMs: number, fault: IdentityFault, detail: string): string {
+/** The shared prefix: which window, named the same way on every identity line. */
+function identityStamp(ticker: string, closeMs: number, fault: IdentityFault): string {
   const hhmm = closeMs > 0 ? new Date(closeMs).toISOString().slice(11, 16) : "??:??";
-  return `IDENTITY ${hhmm} ${ticker || "∅"} · ${fault} — not graded, not taught · ${detail}`;
+  return `IDENTITY ${hhmm} ${ticker || "∅"} · ${fault}`;
+}
+
+/**
+ * One line for the settle tape and the diagnostic log, for a refusal ON THE GRADING
+ * PATH. Its consequence clause is true only there: a window that cannot be matched to
+ * a settlement is not graded and teaches nothing.
+ */
+export function faultLine(ticker: string, closeMs: number, fault: IdentityFault, detail: string): string {
+  return `${identityStamp(ticker, closeMs, fault)} — not graded, not taught · ${detail}`;
+}
+
+/**
+ * The same line for a refusal on the OFFICIAL-VALUE path, which has a different
+ * consequence and must say so.
+ *
+ * `backfillOfficial` fills one column on a row that has ALREADY been graded and has
+ * already taught whatever it was going to teach. Borrowing the grading line's "not
+ * graded, not taught" would state two things that are false about that row. What is
+ * actually withheld is the official value, and nothing else.
+ */
+export function officialFaultLine(
+  ticker: string,
+  closeMs: number,
+  fault: IdentityFault,
+  detail: string,
+): string {
+  return `${identityStamp(ticker, closeMs, fault)} — official_value not written · ${detail}`;
 }

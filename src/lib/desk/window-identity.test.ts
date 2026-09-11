@@ -6,6 +6,7 @@ import {
   isInconsistent,
   matchSettle,
   mayWriteOfficial,
+  officialFaultLine,
   onGrid,
   tickerAgrees,
   tickerCloseMs,
@@ -278,6 +279,55 @@ test("every official refusal is an inconsistency, so none of them can stay quiet
   assert.equal(v.ok, false);
   if (v.ok === false) {
     assert.equal(isInconsistent(v.fault), true);
-    assert.match(faultLine(stale, ms("2026-09-10T08:45:00Z"), v.fault, v.detail), /^IDENTITY 08:45/);
+    assert.match(officialFaultLine(stale, ms("2026-09-10T08:45:00Z"), v.fault, v.detail), /^IDENTITY 08:45/);
   }
+});
+
+test("expiration_time is never a substitute for the payload's close_time", () => {
+  // Kalshi's `close_time` (trading stops) and `expiration_time` (deprecated legacy
+  // expiry) are different measurements and may differ. A payload that carries only
+  // the deprecated one carries NO close witness: the caller passes 0, and the row's
+  // ticker-encoded close is what the verdict rests on. The alternative — reading
+  // expiration_time as if it were the close — would compare two different clocks and
+  // call the answer an identity check.
+  const tk = "KXBTC15M-26SEP110800-00";
+  const close = ms("2026-09-11T12:00:00Z");
+
+  // The shape the backfill must produce for such a payload.
+  const v = mayWriteOfficial(tk, close, { ticker: tk, close_ms: 0 });
+  assert.equal(v.ok, true, "the remaining witnesses still allow the write");
+  assert.equal(v.checks.close_ok, false, "no close was carried, and the checks say so");
+  assert.equal(v.checks.ticker_seen, true, "the ticker WAS carried");
+  assert.equal(v.checks.ticker_time_ok, true, "the ticker's own encoded close agreed");
+
+  // And had the deprecated clock been substituted, it would have been far away and
+  // the write would have been refused for the wrong reason.
+  const farExpiry = close + 6 * 60 * 60_000;
+  const wrong = mayWriteOfficial(tk, close, { ticker: tk, close_ms: farExpiry });
+  assert.equal(wrong.ok === false && wrong.fault, "close-time-mismatch");
+
+  // An unparseable close_time is the same "not carried" case, not a mismatch.
+  assert.equal(mayWriteOfficial(tk, close, { ticker: tk, close_ms: Date.parse("") || 0 }).ok, true);
+});
+
+test("an official-value refusal says what was actually withheld", () => {
+  // `backfillOfficial` fills one column on a row that has ALREADY graded and already
+  // taught whatever it taught. The grading line's "not graded, not taught" would state
+  // two things that are false about that row.
+  const stale = "KXBTC15M-26SEP100300-00";
+  const close = ms("2026-09-10T08:45:00Z");
+  const line = officialFaultLine(stale, close, "ticker-close-time-mismatch", "x");
+  assert.match(line, /official_value not written/);
+  assert.doesNotMatch(line, /not graded/);
+  assert.doesNotMatch(line, /not taught/);
+  // Same window naming as every other identity line, so the two read as one family.
+  assert.match(line, /^IDENTITY 08:45 KXBTC15M-26SEP100300-00 · ticker-close-time-mismatch/);
+  assert.match(line, /· x$/);
+
+  // The grading line is UNCHANGED for its own callers.
+  const grading = faultLine(stale, close, "ticker-close-time-mismatch", "x");
+  assert.equal(grading, "IDENTITY 08:45 KXBTC15M-26SEP100300-00 · ticker-close-time-mismatch — not graded, not taught · x");
+  assert.notEqual(grading, line);
+  // A keyless window still stamps as ??:?? on both.
+  assert.match(officialFaultLine("", 0, "unusable-window-key", "d"), /^IDENTITY \?\?:\?\? ∅ /);
 });

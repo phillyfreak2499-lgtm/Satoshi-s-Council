@@ -801,6 +801,10 @@ test("no write identifies a ledger row by ticker alone", () => {
   // And that one write goes through the shared invariant before it fires, rather
   // than trusting that asking Kalshi about a ticker returns that ticker's market.
   const lab = codeOf("src/lib/desk/lab.server.ts");
+  // between() scans for its end marker from the START of the file, so the end marker
+  // has to be something that genuinely follows this function.
+  const fn = between(lab, "async function backfillOfficial", "function currentTicker");
+  const fnRefusal = fn.slice(fn.indexOf("if (!verdict.ok)"));
   assert.match(lab, /from "\.\/window-identity"/, "the backfill must import the invariant");
   assert.match(lab, /mayWriteOfficial\(/, "the backfill must consult it");
   assert.match(
@@ -808,13 +812,49 @@ test("no write identifies a ledger row by ticker alone", () => {
     /if \(!verdict\.ok\) \{/,
     "a refused verdict must short-circuit the write, not be logged and ignored",
   );
-  assert.match(lab, /backfillRefused \+= 1/, "a refusal must leave a durable breadcrumb");
+  assert.match(lab, /backfillRefused \+= 1/, "a refusal must leave a breadcrumb");
+
+  // The CLOSE WITNESS is `close_time` and nothing else. Kalshi's `expiration_time` is
+  // the deprecated legacy expiry clock — a different measurement — so substituting it
+  // would compare the row's close against something that does not mean the same thing
+  // and call the result an identity check. Absent is passed as 0, "not carried".
+  const vAt = lab.indexOf("const verdict = mayWriteOfficial(");
+  assert.ok(vAt >= 0, "the verdict call must exist");
+  const verdictCall = lab.slice(vAt, lab.indexOf("});", vAt) + 3);
+  assert.match(verdictCall, /close_ms: Date\.parse\(String\(m\.close_time \?\? ""\)\) \|\| 0/, "close_time only");
+  for (const wrong of [
+    "expiration_time",
+    "expected_expiration_time",
+    "latest_expiration_time",
+    "settlement_ts",
+    "receipt_ts",
+  ]) {
+    assert.doesNotMatch(
+      verdictCall,
+      new RegExp(wrong),
+      `the close witness must not fall back to ${wrong} — it is not close_time`,
+    );
+  }
+
+  // And the refusal must use the line written for THIS path. The grading line says
+  // "not graded, not taught", which is false of a row that has already graded and
+  // already taught — backfillOfficial only withholds one column.
+  assert.match(lab, /officialFaultLine\(/, "the official-value path has its own diagnostic");
+  assert.doesNotMatch(fnRefusal, /\bfaultLine\(/, "the grading line must not be borrowed here");
+  const wi = codeOf("src/lib/desk/window-identity.ts");
+  assert.match(wi, /official_value not written/, "the official line names what was withheld");
+  assert.match(wi, /not graded, not taught/, "the grading line keeps its own wording");
+  const ofAt = wi.indexOf("export function officialFaultLine");
+  assert.ok(ofAt >= 0, "the official-value line must exist");
+  const ofEnd = wi.indexOf("\n}", ofAt);
+  assert.doesNotMatch(
+    wi.slice(ofAt, ofEnd > ofAt ? ofEnd : undefined),
+    /not graded|not taught/,
+    "the official line must not claim the row was ungraded or untaught",
+  );
   // The SELECT has to carry both halves, or the narrow write cannot be expressed.
   assert.match(lab, /select ticker, \(extract\(epoch from close_time\)/, "select both halves of the identity");
   // And nothing here may invent a value when identity disagrees.
-  // between() scans for the end marker from the start of the file, so the end marker
-  // has to be something that genuinely follows this function.
-  const fn = between(lab, "async function backfillOfficial", "function currentTicker");
   assert.doesNotMatch(fn, /official_value = \$\{?v \|\|/, "no fallback value on refusal");
 });
 
