@@ -301,4 +301,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Window replay now records what the order book was doing, not just what it was quoting. Scrub back through any window from here on and beside spot, the book and the chair's read you get seven more traces: how lopsided the book was five levels deep, where the size-weighted price sat against the midpoint, order-flow imbalance, how much of the churn was orders being pulled rather than filled, net executed size, the part of the last thirty seconds of price move Bitcoin does not explain, and which of the two markets moved first. The point is to be able to lose an argument: on a window that went wrong you can now ask whether the book was already saying so, and be told no. Where the feed was dark the trace is blank rather than zero — a zero would read as a calm book instead of a missing one. Windows recorded before today simply do not have these. Nothing votes on any of it.",
   },
+  {
+    slug: "2026-09-11-mae-mfe",
+    body:
+      "The books now know what a call was worth while it was still open, not just what it cost and what it settled at. Walking the stored replay of 69 held calls: the 55 winners were up 18¢ at their best on average — and were down 17¢ at their worst. The 14 losers were up 11¢ at their best, and 64% of them were up at least 5¢ at some point. Read carelessly that says cut the losers early. Read properly it says the opposite is just as likely: a rule that cut a loser at its best mark would have cut most of the winners first, because the winners fell further than the losers ever rose. Both numbers are printed together for exactly that reason, and a peak found after the fact is not a level anything can trade at. Fourteen losers is a direction to look, not a finding. Nothing votes on this and no exit rule exists.",
+  },
 ];
