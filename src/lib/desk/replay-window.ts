@@ -2,17 +2,27 @@
  * The replay buffer's identity: one buffered series per WINDOW.
  *
  * WHY THIS IS ITS OWN MODULE. A ticker is not a window. `desk_ledger` is unique on
- * (ticker, close_time), and on 2026-09-10 nine consecutive closes carried one
- * ticker because the feed stopped advancing it. The buffer was keyed by ticker
- * alone, so during that episode a later window's samples were appended to the
- * FIRST window's series — stored under the first window's `close_time`, with `t`
- * offsets measured from the first window's `t0`. The resulting row would be partly
- * a different window, and the `partial` flag could not see it: that flag tests
- * where a series STARTS, and the start was legitimate.
+ * (ticker, close_time), and on 2026-09-10 nine consecutive closes carried one ticker
+ * because the feed stopped advancing it.
  *
- * A dropped window is detectable as absence. A blended one is not. So identity is
- * both halves, here, in one place, with tests — rather than spelled out at each of
- * the four call sites that touch the map.
+ * THE DEFECT, STATED AS WHAT THE CODE PERMITS. Keyed by ticker alone, under that
+ * ticker-reuse shape: IF a series for the reused ticker remained in memory, later
+ * closes would resolve to that same ticker-keyed series, so their samples and their
+ * `t` offsets would blend into the earlier window's — stored under the earlier
+ * window's `close_time`, timed from its `t0`. Such a row would be partly a different
+ * window, and the `partial` flag could not see it: that flag tests where a series
+ * STARTS, and the start would be legitimate.
+ *
+ * WHAT IS NOT CLAIMED. Whether that blending actually occurred on 2026-09-10 is
+ * UNDETERMINED. No `desk_replay` row exists for the reused ticker at all — not even
+ * for the one window it legitimately names — and a restart clearing the in-memory
+ * buffer, the short-series guard, or a failed write are each equally consistent with
+ * that absence. This is a proven property of the code, not a proven historical event.
+ *
+ * It is still worth fixing on the code alone: a dropped window is detectable as
+ * absence, and a blended one is not. So identity is both halves, here, in one place,
+ * with tests — rather than spelled out at each of the four call sites that touch the
+ * map.
  *
  * EXACT LOOKUP ONLY. Nothing here scans for the likeliest series, picks the newest
  * close for a ticker, infers a close, or falls back to a ticker match. A wrong
@@ -124,9 +134,9 @@ export function openSlot<C extends { t0: number; t: number[] }>(
   const maxSamples = opts.maxSamples ?? MAX_SAMPLES;
   let s = store.get(ticker, closeMs);
   if (!s) {
-    // A new window is the moment to forget old ones. Under ticker-only keying a
-    // frozen ticker never reached this branch, so nothing was ever pruned during
-    // the one episode where the map could grow wrong.
+    // A new window is the moment to forget old ones. Keyed by ticker alone, once a
+    // ticker-keyed series existed, subsequent closes sharing that ticker would not
+    // enter this new-key branch, so rollover itself could not trigger stale pruning.
     store.pruneStale(asOfMs, opts.staleMs ?? STALE_MS);
     s = { ticker, close_time: closeMs, strike: strike > 0 ? strike : 0, cols: makeCols(asOfMs) };
     store.set(ticker, closeMs, s);

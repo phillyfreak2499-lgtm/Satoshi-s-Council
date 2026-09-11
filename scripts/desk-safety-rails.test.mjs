@@ -779,13 +779,18 @@ test("a print carries the state of the world at the moment it landed", () => {
  * The in-memory replay buffer is keyed by WINDOW, never by ticker alone.
  *
  * A ticker is not a window. On 2026-09-10 nine consecutive closes carried one
- * ticker, and the buffer was keyed by ticker: later windows' samples were appended
- * to the FIRST window's series, under its close_time and measured from its t0. The
- * row that results is partly a different window, and `partial` cannot see it —
- * that flag tests where a series starts, and the start was legitimate.
+ * ticker. Keyed by ticker alone, under that shape: if a series for the reused ticker
+ * remained in memory, later closes would resolve to that same series, so their
+ * samples and timing could blend into the earlier window's — and `partial` could not
+ * see it, because that flag tests where a series starts and the start would be
+ * legitimate.
  *
- * A dropped window shows up as absence. A blended one does not, which is why this
- * is rail-guarded rather than left to review.
+ * Whether that blending occurred on 2026-09-10 is UNDETERMINED: no desk_replay row
+ * exists for that ticker at all. This rail guards a proven property of the code, not
+ * a proven historical event.
+ *
+ * It is rail-guarded rather than left to review because a dropped window shows up as
+ * absence and a blended one does not.
  */
 test("the replay buffer is keyed by window, not by ticker", () => {
   const rep = codeOf("src/lib/desk/replay.server.ts");
@@ -797,7 +802,7 @@ test("the replay buffer is keyed by window, not by ticker", () => {
   assert.match(rep, /new WindowStore<ReplayCols>\(\)/, "the buffer is a WindowStore");
   assert.doesNotMatch(rep, /new Map<string, Series>\(\)/, "no raw ticker-keyed map may return");
 
-  // The four accesses the 2026-09-10 shape went through, named exactly.
+  // The four ticker-only accesses the old keying used, named exactly.
   for (const bad of [
     /series\.get\(snap\.ticker\)/,
     /series\.set\(snap\.ticker\b/,

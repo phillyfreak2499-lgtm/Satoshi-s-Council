@@ -79,9 +79,10 @@ type Series = WindowSeries<ReplayCols>;
 
 /**
  * The buffered series, one per WINDOW — see replay-window.ts for why identity is
- * (ticker, close_time) and not the ticker alone, and for the 2026-09-10 episode
- * that makes the difference. Every access below goes through the store, which has
- * no method that takes a ticker by itself.
+ * (ticker, close_time) and not the ticker alone, and for the 2026-09-10 ticker-reuse
+ * shape the old keying could not survive. (What that keying PERMITTED is proven from
+ * the code; whether it actually blended those windows is undetermined.) Every access
+ * below goes through the store, which has no method that takes a ticker by itself.
  */
 const series = new WindowStore<ReplayCols>();
 

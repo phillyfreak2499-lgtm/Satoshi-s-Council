@@ -3,12 +3,20 @@ import test from "node:test";
 import { MAX_SAMPLES, openSlot, REPLAY_STEP_MS, seriesKey, STALE_MS, WindowStore } from "./replay-window.ts";
 
 // ---------------------------------------------------------------------------
-// The frozen-ticker condition, reproduced.
+// The ticker-reuse SHAPE, reproduced.
 //
 // On 2026-09-10 nine consecutive closes carried ONE ticker. Keyed by ticker alone,
-// the later windows' samples were appended to the first window's series, under its
-// close_time and measured from its t0. These are the real ticker and the first two
-// real closes from that episode.
+// under that shape: IF a series for the reused ticker remained in memory, later
+// closes would resolve to that same series, blending their samples and their timing
+// into the earlier window's.
+//
+// Whether that blending actually happened on 2026-09-10 is UNDETERMINED — no
+// desk_replay row exists for that ticker at all, and a restart, the short-series
+// guard or a failed write are each equally consistent with the absence. These tests
+// pin what the code does, not what the history was.
+//
+// The fixture is the real ticker and the first two real closes from that date,
+// because a regression test should be shaped like the condition it guards against.
 // ---------------------------------------------------------------------------
 
 const T = "KXBTC15M-26SEP100300-00";
@@ -137,9 +145,9 @@ test("5 · a later window's sample is never timed from the earlier window's t0",
 });
 
 test("6 · a capped first window does not stop the next close collecting its own", () => {
-  // Under ticker-only keying a frozen ticker filled ONE series to the cap and then
-  // silently dropped everything after it — so a later window could be recorded as
-  // nothing at all.
+  // Keyed by ticker alone, a reused ticker would fill ONE series to the cap and then
+  // silently drop everything after it — so a later window could be recorded as
+  // nothing at all. That is what the old keying permitted, here held shut.
   const st = store();
   const b1 = C1 - 2_000_000;
   let taken = 0;
@@ -180,9 +188,10 @@ test("8 · the live lookup is exact, and a wrong close is null rather than a nei
 });
 
 test("stale series are forgotten when a new window opens, and only then", () => {
-  // Unchanged retention: one hour past a close. The difference is that it can now
-  // actually run during a frozen ticker, because a new close makes a new key — under
-  // ticker-only keying that branch was never reached.
+  // Unchanged retention: one hour past a close. The difference is reachability —
+  // keyed by ticker alone, once a ticker-keyed series existed, subsequent closes
+  // sharing that ticker would not enter the new-key branch, so rollover itself could
+  // not trigger stale pruning. A composite key makes each close a new key.
   const st = store();
   sample(st, T, C1, C1 - 600_000);
   assert.equal(st.size, 1);
