@@ -100,6 +100,15 @@ export type KeeperStats = {
 export type Keeper = { all: KeeperStats; week: KeeperStats };
 
 /**
+ * Why the scorecard is nullable. It used to answer a failed query with a zeroed
+ * card, which reads on the page as "the chair sat 0% of 0 windows and booked
+ * nothing" — a confident, wrong statement sitting next to totals showing a
+ * hundred fills. A card that cannot be computed is now absent, so the page can
+ * say it does not know instead of inventing a perfect record. Zeros from here
+ * on mean an empty ledger and nothing else.
+ */
+
+/**
  * The 80¢ floor trial, both books on the same windows. `live` is the real paper
  * book at the new floor; `shadow` is what the old 70¢ floor would have made on
  * those same windows, from the ask captured live at decision time. Research
@@ -127,7 +136,10 @@ export type Books = {
   /** The 80¢ floor trial: the live book and the shadow 70¢ book on the same windows. */
   trial: FloorTrial | null;
   all: BooksTotals;
-  keeper: Keeper;
+  /** Null when the scorecard could not be computed — never a zeroed card. */
+  keeper: Keeper | null;
+  /** Why the scorecard is missing, when it is. */
+  keeper_error: string | null;
   days: BooksDay[];
   curve: BooksPoint[];
   buckets: BooksBucket[];
@@ -368,6 +380,7 @@ async function build(): Promise<Books> {
     trial,
     all: pick("all"),
     keeper,
+    keeper_error: keeper ? null : lastKeeperError,
     days: days.map((d) => ({ ...d, net: Math.round(d.net * 10) / 10 })),
     curve,
     buckets,
@@ -445,7 +458,7 @@ function num(v: unknown): number | null {
 const EMPTY_KEEPER: KeeperStats = { n: 0, wait_pct: 0, booked: 0, hit_pct: null, net: 0, max_dd: 0, avg_entry: null, floor_pct: null, conf_ratio: null };
 
 /** The process scorecard plus BLOT's drawdown, both scopes, straight from the ledger. */
-async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> {
+async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper | null> {
   try {
     const [k] = await db<Record<string, number | null>>`
       with base as (select *, close_time > now() - interval '7 days' as week from desk_ledger)
@@ -458,7 +471,10 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
         (avg(entry_cents) filter (where entry_cents is not null))::float as entry_all,
         (count(*) filter (
           where entry_cents is not null
-            and entry_cents >= (case when close_time >= ${FLOOR_LIVE_SINCE}::timestamptz then ${FLOOR_LIVE_CENTS} else ${FLOOR_SHADOW_CENTS} end)
+            and entry_cents >= (case
+              when close_time >= ${FLOOR_LIVE_SINCE}::timestamptz then ${FLOOR_LIVE_CENTS}::float
+              else ${FLOOR_SHADOW_CENTS}::float
+            end)
         ))::int as floor_all,
         (avg(abs(score) / nullif(bar, 0)) filter (where entry_cents is not null))::float as conf_all,
         (count(*) filter (where week))::int as n_week,
@@ -469,7 +485,10 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
         (avg(entry_cents) filter (where week and entry_cents is not null))::float as entry_week,
         (count(*) filter (
           where week and entry_cents is not null
-            and entry_cents >= (case when close_time >= ${FLOOR_LIVE_SINCE}::timestamptz then ${FLOOR_LIVE_CENTS} else ${FLOOR_SHADOW_CENTS} end)
+            and entry_cents >= (case
+              when close_time >= ${FLOOR_LIVE_SINCE}::timestamptz then ${FLOOR_LIVE_CENTS}::float
+              else ${FLOOR_SHADOW_CENTS}::float
+            end)
         ))::int as floor_week,
         (avg(abs(score) / nullif(bar, 0)) filter (where week and entry_cents is not null))::float as conf_week
       from base
@@ -507,10 +526,15 @@ async function keeperCard(db: Awaited<ReturnType<typeof sql>>): Promise<Keeper> 
       };
     };
     return { all: stat("all", Number(ddAll?.max_dd) || 0), week: stat("week", Number(ddWeek?.max_dd) || 0) };
-  } catch {
-    return { all: EMPTY_KEEPER, week: EMPTY_KEEPER };
+  } catch (err) {
+    // Absent, not zeroed: the page must not report discipline it cannot measure.
+    lastKeeperError = err instanceof Error ? err.message : String(err);
+    return null;
   }
 }
+
+/** The reason the scorecard is missing, surfaced so a silent break cannot hide again. */
+let lastKeeperError: string | null = null;
 
 /** One trade per window from desk_lag_events: the first fillable shock (still there 200 ms later) that settled. */
 async function labStudy(db: Awaited<ReturnType<typeof sql>>): Promise<BooksLab | null> {

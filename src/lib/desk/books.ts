@@ -63,7 +63,10 @@ export type Books = {
   /** The 80¢ floor trial: the live book and the shadow 70¢ book on the same windows. */
   trial: FloorTrial | null;
   all: BooksTotals;
-  keeper: Keeper;
+  /** Null when the scorecard could not be computed — never a zeroed card. */
+  keeper: Keeper | null;
+  /** Why the scorecard is missing, when it is. */
+  keeper_error: string | null;
   days: BooksDay[];
   curve: BooksPoint[];
   buckets: BooksBucket[];

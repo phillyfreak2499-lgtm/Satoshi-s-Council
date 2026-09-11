@@ -634,7 +634,19 @@ export function BooksTab({ tz }: { tz: string }) {
 
       {books.trial ? <TrialPane trial={books.trial} tz={tz} /> : null}
 
-      <KeeperPane keeper={books.keeper} />
+      {books.keeper ? (
+        <KeeperPane keeper={books.keeper} />
+      ) : (
+        <Pane title={<Tip k="keeper.pane">PROCESS SCORECARD</Tip>}>
+          <div className="font-mono text-micro text-wait">
+            The scorecard could not be read this refresh, so it is blank rather than showing zeros — the chair has not
+            stopped trading.
+          </div>
+          {books.keeper_error ? (
+            <div className="mt-1 truncate font-mono text-micro text-subtle">{books.keeper_error}</div>
+          ) : null}
+        </Pane>
+      )}
 
       <Pane title={<Tip k="books.curve">THE CURVE · 14 DAYS</Tip>}>
         <CurveChart pts={books.curve} days={books.days} tz={tz} since={books.floor_since} at={books.at} />
