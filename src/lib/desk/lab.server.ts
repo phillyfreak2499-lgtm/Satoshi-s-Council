@@ -139,8 +139,16 @@ type Lab = {
    * in. Kept as prints rather than aggregates so impact can be measured at
    * horizons AFTER each one — an aggregate cannot be asked what happened next.
    */
-  whalePrints: Print[];
-  whaleMids: MidPoint[];
+  /**
+   * Keyed by ticker, NOT a single current-window buffer.
+   *
+   * A window settles AFTER the snapshot has already rolled to the next one, so
+   * a single buffer is wiped on the roll and the settle then finds nothing —
+   * the prints are destroyed a moment before the only code that wanted them
+   * runs. Replay learned this already and keeps a map; so does this. Entries
+   * are deleted when written and pruned by age otherwise.
+   */
+  whale: Map<string, { prints: Print[]; mids: MidPoint[]; t: number }>;
   /**
    * The last desk state the engine handed over, with when.
    *
@@ -219,8 +227,7 @@ function lab(): Lab {
     tape2Last: null,
     vel2: [],
     vel2Last: null,
-    whalePrints: [],
-    whaleMids: [],
+    whale: new Map(),
     deskState: { t: 0, drift: null, cascade: null, regime: "", fair_yes: null, dist: null, sigma: null },
   };
   return g.__desk_lab__;
@@ -584,8 +591,6 @@ function sampleTape2Now(L: Lab, t: number): void {
     L.tape2 = freshTape2();
     L.tape2Ticker = tk;
     L.tape2Last = null;
-    L.whalePrints = [];
-    L.whaleMids = [];
     L.vel2 = [];
     L.vel2Last = null;
   }
@@ -649,6 +654,8 @@ export function noteDeskState(st: {
 
 /** How long a print and its midpoint path are kept. Long enough to outlive the follow horizon. */
 const WHALE_KEEP_MS = 120_000;
+/** A window's buffer is dropped this long after its last activity if it never settled. */
+const WHALE_WINDOW_KEEP_MS = 60 * 60_000;
 /** At most one midpoint mark per this, so a busy book does not fill memory. */
 const WHALE_MID_MS = 500;
 const WHALE_MAX = 4_000;
@@ -659,11 +666,26 @@ const WHALE_MAX = 4_000;
  * moved away from; impact is then measured against the book a moment later.
  */
 function noteWhalePrint(L: Lab, side: "UP" | "DOWN", size: number, t: number): void {
+  const tk = currentTicker(L);
   const mid = whaleMidNow(L);
-  if (mid == null) return;
-  L.whalePrints.push({ t, side, size, mid });
-  if (L.whalePrints.length > WHALE_MAX) L.whalePrints = L.whalePrints.slice(-WHALE_MAX);
-  L.whalePrints = L.whalePrints.filter((p) => t - p.t <= WHALE_KEEP_MS);
+  if (!tk || mid == null) return;
+  const w = whaleFor(L, tk, t);
+  w.prints.push({ t, side, size, mid });
+  if (w.prints.length > WHALE_MAX) w.prints = w.prints.slice(-WHALE_MAX);
+}
+
+/** This ticker's buffer, creating it and pruning stale windows on the way. */
+function whaleFor(L: Lab, tk: string, t: number): { prints: Print[]; mids: MidPoint[]; t: number } {
+  let w = L.whale.get(tk);
+  if (!w) {
+    // A window that never settled (a restart mid-window, a feed outage) would
+    // otherwise sit here forever.
+    for (const [k, v] of L.whale) if (t - v.t > WHALE_WINDOW_KEEP_MS) L.whale.delete(k);
+    w = { prints: [], mids: [], t };
+    L.whale.set(tk, w);
+  }
+  w.t = t;
+  return w;
 }
 
 /** The YES midpoint from the local book right now, or null when it cannot be trusted. */
@@ -678,13 +700,15 @@ function whaleMidNow(L: Lab): number | null {
 
 /** Sample the midpoint so every print has a path to be measured against. */
 function noteWhaleMid(L: Lab, t: number): void {
-  const last = L.whaleMids[L.whaleMids.length - 1];
+  const tk = currentTicker(L);
+  if (!tk) return;
+  const w = whaleFor(L, tk, t);
+  const last = w.mids[w.mids.length - 1];
   if (last && t - last.t < WHALE_MID_MS) return;
   const mid = whaleMidNow(L);
   if (mid == null) return;
-  L.whaleMids.push({ t, mid });
-  if (L.whaleMids.length > WHALE_MAX) L.whaleMids = L.whaleMids.slice(-WHALE_MAX);
-  L.whaleMids = L.whaleMids.filter((m) => t - m.t <= WHALE_KEEP_MS);
+  w.mids.push({ t, mid });
+  if (w.mids.length > WHALE_MAX) w.mids = w.mids.slice(-WHALE_MAX);
 }
 
 /**
@@ -702,8 +726,12 @@ function noteWhaleMid(L: Lab, t: number): void {
  */
 export function whalePrintRecords(ticker: string, closeMs: number): PrintRecord[] {
   const L = lab();
-  if (L.tape2Ticker !== ticker || !L.whalePrints.length) return [];
-  const clustered = clusterPrints(L.whalePrints);
+  // Looked up by ticker, never against the CURRENT one: by the time a window
+  // settles the desk has already moved to the next, and a currentness check
+  // here would reject every window exactly when it is ready to be written.
+  const w = L.whale.get(ticker);
+  if (!w || !w.prints.length) return [];
+  const clustered = clusterPrints(w.prints);
   const b = L.books.get(ticker);
   const view = b && bookTrusted(b) ? yesView(b) : null;
   const depth5 = view ? [...view.bids.slice(0, 5), ...view.asks.slice(0, 5)].reduce((a, l) => a + l.size, 0) : null;
@@ -711,7 +739,7 @@ export function whalePrintRecords(ticker: string, closeMs: number): PrintRecord[
   for (let i = 0; i < clustered.length; i++) {
     const c = clustered[i]!;
     const before = clustered.slice(0, i).map((x) => x.size);
-    const r = readPrint(c, L.whaleMids, before);
+    const r = readPrint(c, w.mids, before);
     const spot5 = btcMoveOver(L, c.t, 5_000);
     out.push({
       ticker,
@@ -728,10 +756,10 @@ export function whalePrintRecords(ticker: string, closeMs: number): PrintRecord[
       size_vs_depth: depth5 && depth5 > 0 ? round3(c.size / depth5) : null,
       impact_2s: r.impact,
       impact_per_100: r.impact_per_100,
-      move_5s: midMoveOver(L, c, 5_000),
-      move_15s: midMoveOver(L, c, 15_000),
-      move_30s: midMoveOver(L, c, 30_000),
-      move_60s: midMoveOver(L, c, 60_000),
+      move_5s: midMoveOver(w.mids, c, 5_000),
+      move_15s: midMoveOver(w.mids, c, 15_000),
+      move_30s: midMoveOver(w.mids, c, 30_000),
+      move_60s: midMoveOver(w.mids, c, 60_000),
       btc_5s: spot5,
       btc_15s: btcMoveOver(L, c.t, 15_000),
       btc_30s: btcMoveOver(L, c.t, 30_000),
@@ -763,8 +791,8 @@ function touchOn(view: ReturnType<typeof yesView> | null, side: "UP" | "DOWN"): 
 }
 
 /** Midpoint move over a horizon, signed the aggressor's way. Null when unmeasurable. */
-function midMoveOver(L: Lab, c: { t: number; side: "UP" | "DOWN"; mid: number }, ms: number): number | null {
-  const later = L.whaleMids.find((m) => m.t >= c.t + ms && m.t <= c.t + ms + 5_000);
+function midMoveOver(mids: readonly MidPoint[], c: { t: number; side: "UP" | "DOWN"; mid: number }, ms: number): number | null {
+  const later = mids.find((m) => m.t >= c.t + ms && m.t <= c.t + ms + 5_000);
   if (!later) return null;
   return Math.round((later.mid - c.mid) * (c.side === "UP" ? 1 : -1) * 100) / 100;
 }
@@ -786,10 +814,11 @@ const round3 = (n: number) => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 
  */
 export function whale2Now(ticker: string): WhaleReport | null {
   const L = lab();
-  if (L.tape2Ticker !== ticker || !L.whalePrints.length) return null;
-  const clustered = clusterPrints(L.whalePrints);
-  const reads = clustered.map((c, i) => readPrint(c, L.whaleMids, clustered.slice(0, i).map((x) => x.size)));
-  return whaleReport(reads, L.whalePrints.length);
+  const w = L.whale.get(ticker);
+  if (!w || !w.prints.length) return null;
+  const clustered = clusterPrints(w.prints);
+  const reads = clustered.map((c, i) => readPrint(c, w.mids, clustered.slice(0, i).map((x) => x.size)));
+  return whaleReport(reads, w.prints.length);
 }
 
 /** The current microstructure features, or null when none have been measured. Research only. */
@@ -1074,8 +1103,9 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
     // calibration record is its own and is never pooled with this. Research only.
     whale2: whale2Now(tk) ?? {
       note: "no prints recorded on this window yet",
-      prints_held: L.whalePrints.length,
-      mid_marks: L.whaleMids.length,
+      prints_held: L.whale.get(tk)?.prints.length ?? 0,
+      mid_marks: L.whale.get(tk)?.mids.length ?? 0,
+      windows_buffered: L.whale.size,
     },
     book_integrity: {
       books: L.books.size,
