@@ -181,7 +181,7 @@ test("no copy claims a live floor the book does not actually pay", () => {
 test("Phase 2 research has no path to the chair, a seat, or the learner", () => {
   // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
   // not a promise in a comment: nothing that decides anything may import them.
-  const research = ["tape2", "vel2", "strike2", "strike2.server"];
+  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server"];
   const deciders = [
     "src/lib/desk/chair.ts",
     "src/lib/desk/bots.ts",
@@ -246,4 +246,32 @@ test("the calibrator cannot learn from a window before that window closed", () =
   const loop = src.slice(src.indexOf("for (const r of sorted)"), src.indexOf("const buckets ="));
   assert.ok(!/learn\(table, z, r\.up\)/.test(loop), "a row is folded in at prediction time");
   assert.match(loop, /flush = |flush\(/);
+});
+
+test("the cube reports, and cannot reach back into anything it reports on", () => {
+  const srv = read("src/lib/desk/cube.server.ts");
+  for (const banned of [/\binsert into\b/i, /\bupdate \w+ set\b/i, /\bdelete from\b/i, /\bpromote\w*\(/, /\bsetKnob\b/]) {
+    assert.ok(!banned.test(srv), `cube.server.ts contains ${banned} — it must be read-only`);
+  }
+  assert.match(srv, /votes: false/);
+  assert.match(srv, /tunes_nothing: true/);
+  // Admin-gated and not linked from the floor: a slice-and-dice tool on a public
+  // page invites reading the best cell as a result.
+  const route = read("server/routes/cube.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
+  assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
+  for (const rel of ["src/components/desk/BooksTab.tsx", "src/components/desk/SatoshiTab.tsx"]) {
+    assert.ok(!/\/cube/.test(read(rel)), `${rel} links the cube onto the floor`);
+  }
+});
+
+test("a cell can never be called a finding on its point estimate alone", () => {
+  // The failure mode the cube exists to resist. `clears` must depend on the
+  // interval's lower bound, and a thin cell must never clear.
+  const src = read("src/lib/desk/cube.ts");
+  assert.match(src, /clears: !thin && w != null && needs != null && w\.lo \* 100 > needs/);
+  assert.ok(!/clears: .*hit > needs/.test(src), "clears is reading the point estimate");
+  // And the look-elsewhere accounting is not optional.
+  assert.match(src, /expected_by_chance/);
+  assert.match(src, /0\.025 \* tested/);
 });
