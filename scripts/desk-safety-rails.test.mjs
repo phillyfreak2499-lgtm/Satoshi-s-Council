@@ -775,6 +775,117 @@ test("a print carries the state of the world at the moment it landed", () => {
  * gone through the window-identity invariant since #133; this was the one write
  * left that did not.
  */
+/**
+ * The in-memory replay buffer is keyed by WINDOW, never by ticker alone.
+ *
+ * A ticker is not a window. On 2026-09-10 nine consecutive closes carried one
+ * ticker, and the buffer was keyed by ticker: later windows' samples were appended
+ * to the FIRST window's series, under its close_time and measured from its t0. The
+ * row that results is partly a different window, and `partial` cannot see it —
+ * that flag tests where a series starts, and the start was legitimate.
+ *
+ * A dropped window shows up as absence. A blended one does not, which is why this
+ * is rail-guarded rather than left to review.
+ */
+test("the replay buffer is keyed by window, not by ticker", () => {
+  const rep = codeOf("src/lib/desk/replay.server.ts");
+  const win = codeOf("src/lib/desk/replay-window.ts");
+
+  // Identity lives in the pure module, and the server file goes through it rather
+  // than holding a ticker-keyed Map of its own.
+  assert.match(rep, /from "\.\/replay-window"/, "replay.server must use the window store");
+  assert.match(rep, /new WindowStore<ReplayCols>\(\)/, "the buffer is a WindowStore");
+  assert.doesNotMatch(rep, /new Map<string, Series>\(\)/, "no raw ticker-keyed map may return");
+
+  // The four accesses the 2026-09-10 shape went through, named exactly.
+  for (const bad of [
+    /series\.get\(snap\.ticker\)/,
+    /series\.set\(snap\.ticker\b/,
+    /series\.get\(ticker\)/,
+    /series\.delete\(ticker\)/,
+    /series\.delete\(snap\.ticker\)/,
+  ]) {
+    assert.doesNotMatch(rep, bad, `ticker-only buffer access: ${bad}`);
+  }
+
+  // And the accesses that remain carry both halves.
+  assert.match(rep, /openSlot\(\s*series,\s*snap\.ticker,\s*snap\.close_time,/, "sampling opens a window slot");
+  assert.match(rep, /series\.get\(ticker, closeMs\)/, "the live lookup takes the window");
+  assert.match(rep, /series\.take\(ticker, closeMs\)/, "recording consumes one window");
+
+  // Both exported entry points take the close. A signature that drops it is how a
+  // caller would silently go back to naming a ticker.
+  assert.match(rep, /export function replayLive\(ticker: string, closeMs: number\)/, "replayLive takes the window");
+  assert.match(
+    rep,
+    /export async function recordReplay\(ticker: string, closeMs: number, winner:/,
+    "recordReplay takes the window it graded",
+  );
+
+  // 1 · THE GRADER PASSES THE CLOSE IT ALREADY VALIDATED. applyGrade is only reached
+  // when officialHit returns a settle, so snap.close_time has been through the
+  // window-identity invariant. Any OTHER clock here would be a second answer about
+  // which window graded.
+  const eng = codeOf("src/lib/desk/server-engine.ts");
+  assert.match(eng, /recordReplay\(snap\.ticker, snap\.close_time, finish\)/, "the grader names the window");
+  assert.doesNotMatch(eng, /recordReplay\(snap\.ticker, finish\)/, "never by ticker alone");
+  // Just the call's arguments, not the neighbouring code — a loose slice picks up
+  // other windows' clocks from nearby statements and fails for the wrong reason.
+  const recArgs = /recordReplay\(([^)]*)\)/.exec(eng)?.[1] ?? "";
+  assert.equal(recArgs.trim(), "snap.ticker, snap.close_time, finish", "exactly the graded window");
+  // Matched on a word boundary, not by substring: "p.close_time" is a substring of
+  // "snap.close_time", so a plain includes() check fails on the correct code.
+  for (const wrongClock of ["Date.now()", "snap.as_of", "w.close_time", "booked.close_time", "p.close_time"]) {
+    const boundary = new RegExp(`(^|[^A-Za-z0-9_.])${wrongClock.replace(/[.()]/g, "\\$&")}`);
+    assert.doesNotMatch(recArgs, boundary, `the replay write must use snap.close_time, not ${wrongClock}`);
+  }
+  // Same for the live read: the window being graded, not another clock.
+  assert.match(eng, /replayLive\(snap\.ticker, snap\.close_time\)/, "the live read names the window");
+  assert.doesNotMatch(eng, /replayLive\(snap\.ticker\)/, "never by ticker alone");
+
+  // 4 · WRONG CLOSE, PINNED AT THE SERVER BOUNDARY TOO. recordReplay must reach the
+  // buffer through exactly one exact take and bail before any database work when the
+  // window is not there — so an unknown close cannot consume a ticker's other window.
+  const recFn = rep.slice(rep.indexOf("export async function recordReplay"));
+  const recBody = recFn.slice(0, recFn.indexOf("\n}"));
+  assert.equal(
+    (recBody.match(/series\./g) ?? []).length,
+    1,
+    "exactly one buffer access in recordReplay, so it cannot read one window and drop another",
+  );
+  assert.match(recBody, /const s = series\.take\(ticker, closeMs\);\s*\n\s*if \(!s\) return;/, "take then bail");
+  assert.ok(
+    recBody.indexOf("if (!s) return;") < recBody.indexOf("await sql()"),
+    "an unknown window returns before any database work",
+  );
+
+  // 5 · THE STALE-PRUNE POLICY IS UNCHANGED: one hour, strict >, and only when a new
+  // window opens. The only difference this change makes is that a second close sharing
+  // a ticker now opens its own series — which is also what lets the prune run at all
+  // during a frozen ticker.
+  assert.match(win, /export const STALE_MS = 3_600_000;/, "same one-hour retention");
+  assert.match(win, /if \(nowMs - v\.close_time > maxAgeMs\)/, "same strict > comparison");
+  assert.match(win, /store\.pruneStale\(asOfMs, opts\.staleMs \?\? STALE_MS\)/, "pruned as a window opens");
+  const openFn = win.slice(win.indexOf("export function openSlot"));
+  const pruneAt = openFn.indexOf("pruneStale(");
+  const setAt = openFn.indexOf("store.set(");
+  assert.ok(pruneAt >= 0 && setAt > pruneAt, "the prune runs on the new-window branch, before the series is stored");
+  assert.equal((win.match(/pruneStale\(/g) ?? []).length, 2, "one definition, one call — no second policy");
+
+  // The store itself offers no ticker-only way in: every method takes both halves.
+  for (const m of ["get", "set", "take"]) {
+    assert.match(
+      win,
+      new RegExp(`${m}\\(ticker: string, closeMs: number`),
+      `WindowStore.${m} must require both halves`,
+    );
+  }
+  assert.match(win, /return `\$\{ticker\}\|\$\{closeMs\}`/, "the key is both halves");
+  // A series' window is fixed at creation; nothing may rewrite it afterwards.
+  assert.doesNotMatch(win, /\.close_time\s*=/, "close_time must never be reassigned");
+  assert.doesNotMatch(rep, /\.close_time\s*=/, "nor in the server file");
+});
+
 test("no write identifies a ledger row by ticker alone", () => {
   const writers = readdirSync(join(ROOT, "src/lib/desk"))
     .filter((f) => f.endsWith(".server.ts") || f === "server-engine.ts")
@@ -1184,7 +1295,11 @@ test("the Lab is off the decision path", () => {
   const block = between(eng, "// THE LAB's exit competition", "if (windowsHuddleDue(");
   assert.match(block, /void \(async \(\) => \{/, "must not be awaited on the tick");
   assert.match(block, /\.catch\(/, "must not throw into the tick");
-  assert.match(block, /replayLive\(snap\.ticker\)/, "reads the window's own replay series");
+  assert.match(
+    block,
+    /replayLive\(snap\.ticker, snap\.close_time\)/,
+    "reads the window's own replay series, by both halves of its identity",
+  );
 });
 
 /**
