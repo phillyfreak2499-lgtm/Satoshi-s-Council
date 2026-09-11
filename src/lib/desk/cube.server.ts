@@ -14,6 +14,14 @@
  * the date it started filling. It appears as a real dimension the moment there
  * is something to cut, and not before.
  *
+ * ERAS ARE NOT POOLED. The rows are split before anything is cut: the current
+ * book (one contract, held to settlement) is what every dimension below is
+ * measured on, and the retired book (multi-leg, exited at a mid price, the rule
+ * until 2026-09-06) is reported once on its own. Those 24 retired calls carry
+ * nearly all of the all-time loss, so pooling them does not merely add noise —
+ * it drags every cut of the current desk downward by a fixed amount and makes
+ * the pooled answer wrong in a consistent direction.
+ *
  * Read-only, non-voting. Nothing here decides, grades, promotes or tunes.
  */
 import { getSql } from "@/lib/db";
@@ -43,6 +51,8 @@ let cache: { at: number; cube: CubeStudy } | null = null;
 export type CubeStudy = Cube & {
   since: string | null;
   until: string | null;
+  /** What every number above `retired_era` is measured on. */
+  era: string;
   at: string;
   /** Restated in the payload so a reader of the raw JSON cannot miss it. */
   authority: { votes: false; tunes_nothing: true; note: string };
@@ -107,7 +117,7 @@ export async function cubeStudy(): Promise<CubeStudy> {
     order by close_time
   `;
 
-  const rows: CubeRow[] = raw.map((r) => {
+  const all: CubeRow[] = raw.map((r) => {
     const t = Date.parse(r.close_time);
     const winner = r.winner === "UP" || r.winner === "DOWN" ? r.winner : null;
     // The side the book BOOKED, not a lean that may have decayed to WAIT by the
@@ -152,17 +162,17 @@ export async function cubeStudy(): Promise<CubeStudy> {
     };
   });
 
+  // The split, before any cut. A fill that ended anywhere other than 0 or 100
+  // did not settle, whatever its leg count, so that — not the leg count — is the
+  // line. Unfilled windows belong to the current book: the chair was reading
+  // them under today's rules and declining to pay.
+  const retired = all.filter((r) => r.entry != null && !r.settled);
+  const rows = all.filter((r) => r.entry == null || r.settled);
+
   const dims: CubeDim[] = [
     cubeDim("side", rows, (r) => r.side),
-    // The single largest split in the book, and it is a change of RULES rather
-    // than a property of the market: the desk used to add legs and exit at a
-    // mark, and now takes one contract and holds it to settlement. A position
-    // that ended anywhere other than 0 or 100 did not settle, whatever its leg
-    // count, so that — not the leg count — is the line.
-    cubeDim("book style", rows, (r) =>
-      r.entry == null ? null : r.settled ? "one contract, held to settlement" : "exited early (retired)",
-    ),
     cubeDim("price paid", rows, (r) => priceBand(r.entry)),
+    // Floor eras live INSIDE the current book: 70¢ then 80¢, same mechanics.
     cubeDim("floor era", rows, (r) => eraOf(r.close_time)),
     cubeDim("confidence", rows, (r) => confBand(r.conf)),
     cubeDim("margin over bar", rows, (r) => marginBand(r.score, r.bar)),
@@ -205,11 +215,12 @@ export async function cubeStudy(): Promise<CubeStudy> {
     );
   }
 
-  const base = buildCube(rows, dims, notYet);
+  const base = buildCube(rows, dims, notYet, retired);
   const study: CubeStudy = {
     ...base,
     since: rows.length ? new Date(rows[0]!.close_time).toISOString() : null,
     until: rows.length ? new Date(rows[rows.length - 1]!.close_time).toISOString() : null,
+    era: "one contract, held to settlement",
     at: new Date().toISOString(),
     authority: {
       votes: false,
@@ -217,7 +228,8 @@ export async function cubeStudy(): Promise<CubeStudy> {
       note:
         "A way of looking at the ledger, not evidence. Read look_elsewhere before any cell: it says how many " +
         "chances the data was given to look good. A cell worth acting on has to survive on windows recorded " +
-        "AFTER it was noticed, which is the one test this table cannot run on itself.",
+        "AFTER it was noticed, which is the one test this table cannot run on itself. Every cut above covers " +
+        "the CURRENT book only; the retired early-exit era is in retired_era and is never pooled with it.",
     },
   };
   cache = { at: Date.now(), cube: study };

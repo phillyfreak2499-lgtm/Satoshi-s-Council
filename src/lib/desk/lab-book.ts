@@ -63,6 +63,35 @@ export function priceCents(v: unknown): number {
   return c > 0 && c < 100 ? c : 0;
 }
 
+/**
+ * The smallest size a level can hold and still be real.
+ *
+ * WHY THIS EXISTS. A level's size is maintained by adding signed deltas to a
+ * running total. Kalshi quantities are decimals — 0.01 granularity, values like
+ * 9837.79 — and decimals do not sum exactly in binary floating point. So a level
+ * that is cancelled down to nothing lands on 1e-13 rather than on 0, and a guard
+ * of `size > 0` keeps it. The book then holds a phantom level at a real price
+ * with no size behind it.
+ *
+ * That is not hypothetical. Of 22,402 resting sizes the lag study recorded,
+ * 20,028 — 89.4% — were below 1e-6, in a tight cluster from 1e-18 to 2e-11, with
+ * NOTHING between 2e-11 and the smallest real quantity of 0.01. Two clusters
+ * either side of an empty gap is arithmetic residue, not a market.
+ *
+ * The damage ran downstream: a phantom could be returned as the best bid or ask,
+ * depth summed dust, and TAPE 2.0's normalised order-flow imbalance divided by
+ * that dust and reported values around 1e17 for a quantity that is a share.
+ *
+ * 1e-6 sits five orders of magnitude below the smallest real quantity and five
+ * above the largest residue observed, so it cannot discard a real level.
+ */
+export const QTY_EPS = 1e-6;
+
+/** A level worth keeping: a real, finite size rather than the residue of one. */
+export function hasSize(n: unknown): boolean {
+  return typeof n === "number" && Number.isFinite(n) && n >= QTY_EPS;
+}
+
 export function qtyOf(v: unknown): number {
   const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -96,7 +125,7 @@ function loadSide(map: Map<number, number>, rows: unknown, convert: boolean): vo
     if (!Array.isArray(row) || row.length < 2) continue;
     let px = priceCents(row[0]);
     const sz = qtyOf(row[1]);
-    if (!px || !sz) continue;
+    if (!px || !hasSize(sz)) continue;
     if (convert) px = tenths(100 - px);
     map.set(px, sz);
   }
@@ -143,7 +172,9 @@ export function applyDelta(b: LabBook, msg: Record<string, unknown>, t: number):
   if (side === "no" && b.yesLeg) price = tenths(100 - price);
   const map = side === "yes" ? b.yes : b.no;
   const size = Math.max(0, (map.get(price) ?? 0) + delta);
-  if (size > 0) map.set(price, size);
+  // A level cancelled to nothing rarely lands on exactly 0; keeping the residue
+  // would leave a phantom level at a real price. See QTY_EPS.
+  if (hasSize(size)) map.set(price, size);
   else map.delete(price);
   b.upd_t = t;
   return { side, price, size, delta };
@@ -153,7 +184,7 @@ function top(map: Map<number, number>): [number, number] {
   let px = 0;
   let sz = 0;
   for (const [p, s] of map) {
-    if (s > 0 && p > px) {
+    if (hasSize(s) && p > px) {
       px = p;
       sz = s;
     }
@@ -207,11 +238,11 @@ export type YesView = { bids: Level[]; asks: Level[] };
  */
 export function yesView(b: LabBook): YesView {
   const bids: Level[] = [];
-  for (const [price, size] of b.yes) if (size > 0) bids.push({ price, size });
+  for (const [price, size] of b.yes) if (hasSize(size)) bids.push({ price, size });
   bids.sort((x, y) => y.price - x.price);
   const asks: Level[] = [];
   for (const [noPrice, size] of b.no) {
-    if (size <= 0) continue;
+    if (!hasSize(size)) continue;
     const price = tenths(100 - noPrice);
     if (price > 0 && price < 100) asks.push({ price, size });
   }

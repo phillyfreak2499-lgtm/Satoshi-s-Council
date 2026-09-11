@@ -1,5 +1,5 @@
 /**
- * Guards on the two values this desk has frozen by decision, not by accident.
+ * Guards on the values this desk has frozen by decision, not by accident.
  *
  * TAKER v1 is a prospective experiment: tuning any of its constants mid-flight
  * destroys the out-of-sample record it exists to produce. It is frozen, full
@@ -12,10 +12,37 @@
  * that the shadow floor cannot book, and that the two are not quietly the same
  * number. A floor change is a decision for the owner to make and is expected
  * to come with an update here; TAKER's constants changing is simply a bug.
+ *
+ * PHASE 2 RESEARCH IS FROZEN AS OF 2026-09-11, for the same reason TAKER is.
+ *
+ * Every Phase 2 study produced a first reading on data that already existed,
+ * and those readings are now known. Moving a bucket edge, a minimum sample, a
+ * shrinkage weight or a verdict threshold AFTER seeing them turns a prospective
+ * study into a retrospective one: whatever the next sample says, the definition
+ * that produced it was chosen partly because of how the last sample looked. The
+ * evidence would then be worth nothing, and worse, it would look like evidence.
+ *
+ * So these constants are pinned here and may change only for a PROVEN
+ * CORRECTNESS BUG — a formula that computes something other than what its name
+ * and doc say. "A different bucket edge would read better" is not a bug. When a
+ * genuine bug is fixed, the record gathered under the old definition has to be
+ * discarded or reported separately; it cannot be pooled.
+ *
+ * Adding a NEW comparison (a benchmark column, another breakdown) is not a
+ * change to a frozen definition and is allowed. Changing what an existing number
+ * means is not.
  */
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TAKER_DEADBAND, TAKER_FROZEN_AT, TAKER_FULL_AT, TAKER_MIN_TRADES, takerSignal } from "./taker.ts";
+import { MIN_CELL_N, priceBand, confBand, marginBand, minsBand, spreadBand, touchBand, wilson } from "./cube.ts";
+import { MEANINGFUL_CENTS, markOf } from "./excursion.ts";
+import { DUPLICATE_PCT, MIN_SWINGS } from "./redundancy.ts";
+import { MIN_AGAINST, marketSide } from "./seat-signal.ts";
+import { SHRINK_K, Z_BUCKET, Z_MAX, calibrated, freshCalib, zBucket } from "./strike2.ts";
+import { MAX_EVENTS, PERSIST_MS, REPLENISH_MS } from "./tape2.ts";
+import { VEL2_HORIZONS } from "./vel2.ts";
 import {
   CHAIR_FLOOR_SINCE_ISO,
   CHAIR_MIN_ASK_CENTS,
@@ -112,4 +139,87 @@ test("reverting the trial is one constant: nothing else encodes the live floor",
   // bookable() must read the constant, never a literal.
   assert.match(src, /cents >= FLOOR_LIVE_CENTS/);
   assert.ok(!/cents >= 80\b/.test(src), "the live floor must not be a literal in the gate");
+});
+
+/* ---------------------------------------------------------------------------
+ * Phase 2, frozen 2026-09-11. See the note at the top of this file for why a
+ * post-hoc edit to any of these would void the evidence it is meant to gather.
+ * ------------------------------------------------------------------------ */
+
+test("STRIKE 2.0's calibration constants are exactly as frozen", () => {
+  assert.equal(Z_BUCKET, 0.25);
+  assert.equal(Z_MAX, 3);
+  assert.equal(SHRINK_K, 10);
+  // And the shrinkage itself: at n = SHRINK_K the bucket and the prior weigh
+  // equally. Changing the blend without changing the constant would be the
+  // quietest way to move the answer.
+  const t = freshCalib();
+  for (let i = 0; i < SHRINK_K; i++) calibrated(t, 1, 0.5); // no-op reads
+  const table = freshCalib();
+  table.set(zBucket(1), { n: SHRINK_K, hits: SHRINK_K });
+  assert.ok(Math.abs(calibrated(table, 1, 0.5) - 0.75) < 1e-9, "the 50/50 blend at n = K moved");
+  // Buckets are signed and clamp at Z_MAX / Z_BUCKET.
+  assert.equal(zBucket(Z_MAX), 12);
+  assert.equal(zBucket(-99), -12);
+});
+
+test("the cube's cell rules are exactly as frozen", () => {
+  assert.equal(MIN_CELL_N, 10);
+  // Wilson at 95%, not 90 or 99: widening the interval would make every cell
+  // fail to clear, narrowing it would manufacture findings.
+  const w = wilson(8, 10);
+  assert.ok(Math.abs(w.lo - 0.4901) < 1e-3 && Math.abs(w.hi - 0.9432) < 1e-3, `interval moved: ${w.lo}-${w.hi}`);
+  // Every band edge. These decide which calls are compared with which.
+  assert.deepEqual(
+    [59.99, 60, 69.99, 70, 79.99, 80, 89.99, 90].map(priceBand),
+    ["<60¢", "60-69¢", "60-69¢", "70-79¢", "70-79¢", "80-89¢", "80-89¢", "90¢+"],
+  );
+  assert.deepEqual([59, 60, 69, 70, 79, 80].map(confBand), ["<60", "60-69", "60-69", "70-79", "70-79", "80+"]);
+  assert.deepEqual(
+    [[0.3, 0.4], [0.45, 0.4], [0.6, 0.4], [0.7, 0.4]].map(([sc, b]) => marginBand(sc!, b!)),
+    ["under bar", "0-0.1 over", "0.1-0.25 over", "0.25+ over"],
+  );
+  assert.deepEqual([59, 120, 300, 600, 720].map(minsBand), ["<2m", "2-4m", "4-8m", "8-12m", "12m+"]);
+  assert.deepEqual([1, 2, 4, 5].map(spreadBand), ["1¢", "2¢", "3-4¢", "5¢+"]);
+  assert.deepEqual([0, 49, 199, 200].map(touchBand), ["empty", "<50", "50-199", "200+"]);
+});
+
+test("MAE/MFE's threshold and marking side are exactly as frozen", () => {
+  assert.equal(MEANINGFUL_CENTS, 5);
+  // Marked at the bid on the side held. Switching to the ask would add the
+  // spread to every MFE and make every exit rule look better than it is.
+  const m = { t: 0, yes_bid: 78, yes_ask: 82 };
+  assert.equal(markOf("UP", m), 78);
+  assert.equal(markOf("DOWN", m), 18);
+});
+
+test("the redundancy study's thresholds are exactly as frozen", () => {
+  assert.equal(MIN_SWINGS, 10);
+  assert.equal(DUPLICATE_PCT, 90);
+});
+
+test("the seat-signal study's threshold and market rule are exactly as frozen", () => {
+  assert.equal(MIN_AGAINST, 15);
+  // The market's side and its implied probability — the benchmark every seat is
+  // judged against. An even price favours nobody.
+  assert.deepEqual(marketSide(85), { side: "UP", prob: 85 });
+  assert.deepEqual(marketSide(15), { side: "DOWN", prob: 85 });
+  assert.equal(marketSide(50), null);
+});
+
+test("TAPE 2.0 and VEL 2.0 measurement windows are exactly as frozen", () => {
+  // The horizons define what "persistent" and "a residual" mean. Sliding them
+  // after seeing a result is the same error as moving a bucket edge.
+  assert.deepEqual(PERSIST_MS, [5000, 15000, 30000, 60000]);
+  assert.deepEqual(VEL2_HORIZONS, [5, 15, 30, 60]);
+  assert.equal(REPLENISH_MS, 10_000);
+  assert.equal(MAX_EVENTS, 4000);
+});
+
+test("the frozen-as-of date is stated in the file that does the freezing", () => {
+  // A frozen definition with no date cannot be audited: there is no way to say
+  // which records were gathered under it.
+  const src = readFileSync(new URL("./frozen.test.ts", import.meta.url), "utf8");
+  assert.match(src, /PHASE 2 RESEARCH IS FROZEN AS OF 2026-09-11/);
+  assert.match(src, /PROVEN\n \* CORRECTNESS BUG/);
 });

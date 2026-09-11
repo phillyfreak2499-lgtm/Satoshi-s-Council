@@ -316,4 +316,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "A seat's hit rate turned out to measure almost nothing. Kalshi's own price is right about four times in five on these windows, so a seat that mostly nods along scores 75-90% without having contributed a thought. The real question is what happens when a seat objects: the price stated a probability, so did it come true? Across 467 graded windows, two seats pass. When DRIFT objects the price is worth about 9 points less than it claims; when CASCADE objects, about 8 points less. Both are worth something even though both lose most of those bets — on a desk that pays the ask, knowing a favourite is overpriced is the edge, and picking the upset is not required. Four seats run backwards: when CHAIN, TAPE, WICK or FADE object, the price turns out MORE right than it said. That is worse than silence. Nothing was reweighted, and these have to hold up on windows recorded from here on.",
   },
+  {
+    slug: "2026-09-11-phantom-levels",
+    body:
+      "Verifying yesterday's replay change turned up a real bug in the desk's copy of the order book, and it had been there a while. A price level's size is kept by adding and subtracting quantities as orders arrive and cancel. Kalshi's quantities are decimals, and decimals do not add up exactly in binary — so a level cancelled down to nothing lands on a millionth of a millionth rather than on zero, and the book kept it as a real level at a real price with nothing behind it. Of the 22,402 resting sizes the lab had recorded, 20,028 were that kind of residue. It could be reported as the best quote, and the new order-flow reading divided by it and returned numbers around a hundred quadrillion. Levels below a millionth are now dropped — five orders of magnitude under the smallest real order ever seen here, so nothing genuine goes with them. No call, floor, grading rule or past number changed.",
+  },
 ];

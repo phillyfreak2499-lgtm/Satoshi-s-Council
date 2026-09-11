@@ -40,11 +40,11 @@ export const PERSIST_MS = [5_000, 15_000, 30_000, 60_000] as const;
 /** How long a book event stays in the rolling window. The longest thing we ask of it. */
 const EVENT_WINDOW_MS = 60_000;
 /** Hard cap on retained events, so a bot farm quoting at 0.1¢ cannot grow this without bound. */
-const MAX_EVENTS = 4_000;
+export const MAX_EVENTS = 4_000;
 /** Hard cap on retained imbalance samples (one a second over the longest window, with slack). */
 const MAX_SAMPLES = 240;
 /** A level counts as depleted when it empties; replenishment within this window is "it came back". */
-const REPLENISH_MS = 10_000;
+export const REPLENISH_MS = 10_000;
 
 /** What a book delta actually proves: size was added, or size was pulled. Never "a trade happened". */
 export type BookEventKind = "add" | "cancel";
@@ -250,10 +250,23 @@ export function ofi(st: Tape2State, now: number, windowMs = 15_000): number {
   return round2(up - down);
 }
 
+/**
+ * The least depth this will divide by. A share of nothing is not a share, and a
+ * denominator near zero turns a small flow into an enormous number — which is
+ * exactly what happened in production before the book stopped storing
+ * cancelled-to-residue levels (see QTY_EPS in lab-book.ts): depth summed dust
+ * around 1e-13 and this function reported values around 1e17.
+ *
+ * The book no longer produces those levels, so this is a second line rather than
+ * the fix. It stays because a ratio with an unbounded denominator is a trap, and
+ * an honest zero is better than a number that looks like a signal.
+ */
+export const MIN_OFI_DEPTH = 1e-6;
+
 /** OFI as a share of the depth it is moving against, so a quiet book is not flattered by raw size. */
 export function normalizedOfi(st: Tape2State, view: YesView, now: number, windowMs = 15_000): number {
   const depth = depthOf(view.bids, 5) + depthOf(view.asks, 5);
-  if (!(depth > 0)) return 0;
+  if (!(depth >= MIN_OFI_DEPTH)) return 0;
   return round4(ofi(st, now, windowMs) / depth);
 }
 

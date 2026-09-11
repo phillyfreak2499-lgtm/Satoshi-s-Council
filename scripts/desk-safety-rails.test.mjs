@@ -392,3 +392,80 @@ test("the lab records the new measurements without letting them into its fair va
   assert.match(lab, /export function tape2Now\(ticker: string\): Tape2Features \| null/);
   assert.match(lab, /export function vel2Now\(ticker: string\): Vel2Features \| null/);
 });
+
+test("the incumbent STRIKE is compared honestly: a threshold gets no Brier score", () => {
+  const srv = read("src/lib/desk/strike2.server.ts");
+  const arm = srv.slice(srv.indexOf("function incumbentArm"), srv.indexOf("function round1"));
+  // It never produced a probability, so scoring one would be scoring a number
+  // the desk invented on its behalf and then judged it by.
+  // Checked as a CALL, not as a word: the note itself explains that it has no
+  // Brier score, so a whole-text match trips on its own disclaimer.
+  assert.ok(!/\bbrier\s*\(/i.test(arm), "the incumbent is being Brier-scored against a probability it never produced");
+  assert.match(arm, /A threshold, not a probability, so it has no Brier score/);
+  // The only honest comparison: its hit rate against what the market charged for
+  // the same side at the same instant.
+  assert.match(arm, /edge: round1\(hit - said\)/);
+  assert.match(arm, /saidSum \+= side === "UP" \? mid : 100 - mid;/);
+  // Silence is counted, not dropped: a threshold sits out most windows and a
+  // hit rate over only the ones it liked would look far better than it is.
+  assert.match(arm, /quiet \+= 1;/);
+  assert.match(srv, /Near zero means it is repeating the price\./);
+});
+
+test("the cube keeps the retired era out of every cut", () => {
+  const srv = read("src/lib/desk/cube.server.ts");
+  // Split before anything is measured, on settlement rather than leg count.
+  assert.match(srv, /const retired = all\.filter\(\(r\) => r\.entry != null && !r\.settled\);/);
+  assert.match(srv, /const rows = all\.filter\(\(r\) => r\.entry == null \|\| r\.settled\);/);
+  // Every dimension is built on `rows`, never on `all`.
+  const dimBlock = srv.slice(srv.indexOf("const dims: CubeDim[] = ["), srv.indexOf("// Decision-state cuts"));
+  assert.ok(!/cubeDim\([^,]+, all,/.test(dimBlock), "a dimension is cut over the pooled rows");
+  // And the retired block is reported once, out of the dimension list.
+  assert.match(srv, /buildCube\(rows, dims, notYet, retired\)/);
+  const cube = read("src/lib/desk/cube.ts");
+  assert.match(cube, /retired_era: \{ cell: CubeCell; why: string \} \| null;/);
+  // Short single-line fragments: these sentences wrap across comment lines.
+  assert.match(cube, /so pooling them/);
+  assert.match(cube, /makes the current desk look far worse than it is/);
+  assert.match(srv, /pooling them does not merely add noise/);
+});
+
+test("Phase 2 research definitions are frozen with a date and a bug-only exception", () => {
+  const frozen = read("src/lib/desk/frozen.test.ts");
+  assert.match(frozen, /PHASE 2 RESEARCH IS FROZEN AS OF 2026-09-11/);
+  assert.match(frozen, /may change only for a PROVEN/);
+  // Every Phase 2 constant that decides what a number MEANS is pinned there.
+  for (const c of ["Z_BUCKET", "Z_MAX", "SHRINK_K", "MIN_CELL_N", "MEANINGFUL_CENTS", "MIN_SWINGS", "DUPLICATE_PCT", "MIN_AGAINST", "PERSIST_MS", "VEL2_HORIZONS"]) {
+    assert.ok(frozen.includes(c), `${c} is not pinned in frozen.test.ts`);
+  }
+  // And the bands, which decide which calls are compared with which.
+  for (const b of ["priceBand", "confBand", "marginBand", "minsBand", "spreadBand", "touchBand"]) {
+    assert.ok(frozen.includes(b), `${b}'s edges are not pinned`);
+  }
+});
+
+test("the local book cannot hold a level with no size behind it", () => {
+  // The bug: decimal quantities do not sum exactly, so a level cancelled to
+  // nothing lands on ~1e-13 and a `size > 0` test keeps it. In production 89.4%
+  // of recorded resting sizes were residue like that, and TAPE 2.0's normalised
+  // OFI divided by it and reported ~1e17 for a quantity that is a share.
+  const book = read("src/lib/desk/lab-book.ts");
+  assert.match(book, /export const QTY_EPS = 1e-6;/);
+  assert.match(book, /export function hasSize\(n: unknown\): boolean/);
+  // Every place a level is stored or read must go through it — a single
+  // surviving `size > 0` puts the phantoms back.
+  assert.match(book, /if \(hasSize\(size\)\) map\.set\(price, size\);/);
+  assert.match(book, /if \(!px \|\| !hasSize\(sz\)\) continue;/);
+  assert.match(book, /if \(hasSize\(s\) && p > px\)/);
+  assert.match(book, /for \(const \[price, size\] of b\.yes\) if \(hasSize\(size\)\)/);
+  assert.match(book, /if \(!hasSize\(size\)\) continue;/);
+  // And no bare positivity test is left guarding a size.
+  assert.ok(!/if \(size > 0\)/.test(book), "a bare `size > 0` size guard is back");
+  assert.ok(!/if \(s > 0 && p > px\)/.test(book), "top() is back to a bare positivity test");
+
+  // The ratio that blew up keeps its own floor, because an unbounded
+  // denominator is a trap even once the book is clean.
+  const tape = read("src/lib/desk/tape2.ts");
+  assert.match(tape, /export const MIN_OFI_DEPTH = 1e-6;/);
+  assert.match(tape, /if \(!\(depth >= MIN_OFI_DEPTH\)\) return 0;/);
+});

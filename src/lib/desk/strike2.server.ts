@@ -48,9 +48,42 @@ export type Strike2Arm = {
   by_mins: Strike2Group[];
 };
 
+/**
+ * The incumbent STRIKE skill, scored on the same windows as its replacement.
+ *
+ * It is a THRESHOLD, not a probability — it fires past 0.7 sigma and votes the
+ * in-the-money side — so it cannot be Brier-scored against the others without
+ * inventing a probability for it, which would be scoring a number it never
+ * produced. What it can honestly be asked is the question a threshold can
+ * answer: on the windows it spoke, how often was the side it named the one that
+ * won, and what was the market charging for that side at the time?
+ *
+ * If the incumbent's hit rate merely tracks the market's implied probability, it
+ * is repeating the price. The gap between the two is the only place it can be
+ * adding anything.
+ */
+export type IncumbentArm = {
+  /** Windows where the incumbent named a side. */
+  n: number;
+  /** How often that side won, 0-100. */
+  hit: number | null;
+  /** Mean probability the market implied for the SAME side at the same instant. */
+  market_said: number | null;
+  /** hit − market_said. Positive: it named sides the market underpriced. */
+  edge: number | null;
+  /** Windows it sat out — a threshold is silent far more often than it speaks. */
+  quiet: number;
+  note: string;
+};
+
 export type Strike2Study = {
   /** One row per settled window — independent observations. */
   windows: Strike2Arm | null;
+  /**
+   * The incumbent STRIKE on the same windows. Present so the replacement is
+   * judged against what it would replace, not only against the market.
+   */
+  incumbent: IncumbentArm | null;
   /** Every few seconds of every window — correlated, read for shape only. */
   tape: Strike2Arm | null;
   /** Why an arm is missing, when one is. */
@@ -96,13 +129,58 @@ type SampleRow = {
   taken_at: string;
   mins_left: number;
   market: { fair_yes?: number; yes_mid?: number; yes_ask?: number; no_ask?: number } | null;
+  features: Record<string, unknown> | null;
   winner: string | null;
 };
 
+/**
+ * The incumbent's record. `features.STRIKE` is its signed evidence at the same
+ * instant as the price: positive leans UP, negative DOWN, zero is silence.
+ */
+function incumbentArm(rows: readonly SampleRow[]): IncumbentArm | null {
+  let n = 0;
+  let hits = 0;
+  let saidSum = 0;
+  let quiet = 0;
+  for (const r of rows) {
+    const winner = r.winner === "UP" || r.winner === "DOWN" ? r.winner : null;
+    const mid = Number(r.market?.yes_mid);
+    if (!winner || !Number.isFinite(mid) || mid <= 0 || mid >= 100) continue;
+    const ev = Number(r.features?.STRIKE);
+    if (!Number.isFinite(ev) || ev === 0) {
+      quiet += 1;
+      continue;
+    }
+    const side = ev > 0 ? "UP" : "DOWN";
+    n += 1;
+    if (side === winner) hits += 1;
+    // What the market charged for the side the incumbent named.
+    saidSum += side === "UP" ? mid : 100 - mid;
+  }
+  if (!n) return null;
+  const hit = (hits / n) * 100;
+  const said = saidSum / n;
+  return {
+    n,
+    hit: round1(hit),
+    market_said: round1(said),
+    edge: round1(hit - said),
+    quiet,
+    note:
+      "A threshold, not a probability, so it has no Brier score — scoring one would mean inventing a number " +
+      "it never produced. `edge` is the only honest comparison: how often the side it named won, against what " +
+      "the market was charging for that same side. Near zero means it is repeating the price.",
+  };
+}
+
+function round1(n: number): number {
+  return Number.isFinite(n) ? Math.round(n * 10) / 10 : 0;
+}
+
 /** desk_samples → one independent row per window. */
-async function windowRows(db: Awaited<ReturnType<typeof getSql>>): Promise<Strike2Row[]> {
+async function windowRows(db: Awaited<ReturnType<typeof getSql>>): Promise<{ rows: Strike2Row[]; raw: SampleRow[] }> {
   const rows = await db<SampleRow>`
-    select ticker, close_time, taken_at, mins_left, market, winner
+    select ticker, close_time, taken_at, mins_left, market, features, winner
     from desk_samples
     where winner in ('UP','DOWN')
     order by close_time
@@ -128,7 +206,7 @@ async function windowRows(db: Awaited<ReturnType<typeof getSql>>): Promise<Strik
       ...(Number.isFinite(mins) ? { mins_left: mins } : {}),
     });
   }
-  return out;
+  return { rows: out, raw: rows };
 }
 
 type ReplayRow = {
@@ -192,12 +270,16 @@ export async function strike2Study(): Promise<Strike2Study> {
   const db = await getSql();
   const notes: string[] = [];
   let windows: Strike2Arm | null = null;
+  let incumbent: IncumbentArm | null = null;
   let tape: Strike2Arm | null = null;
 
   try {
-    const rows = await windowRows(db);
+    const { rows, raw } = await windowRows(db);
     windows = armOf(rows);
     if (!windows) notes.push("windows arm: no graded desk_samples row carries a usable fair value yet");
+    // Scored on the same rows, so the two are comparable on sample as well as method.
+    incumbent = incumbentArm(raw);
+    if (!incumbent) notes.push("incumbent STRIKE: it has not named a side on any graded window in this set");
   } catch (err) {
     notes.push(`windows arm failed: ${short(err)}`);
   }
@@ -224,8 +306,16 @@ export async function strike2Study(): Promise<Strike2Study> {
     );
   }
 
+  if (incumbent) {
+    notes.push(
+      `incumbent STRIKE spoke on ${incumbent.n} of ${incumbent.n + incumbent.quiet} windows and sat out the rest; ` +
+        `it is a threshold, so its ${incumbent.hit}% is a hit rate and not a calibration.`,
+    );
+  }
+
   const study: Strike2Study = {
     windows,
+    incumbent,
     tape,
     notes,
     authority: {
