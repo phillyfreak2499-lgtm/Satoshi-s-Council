@@ -38,6 +38,7 @@ import {
   whalePrintRecords,
 } from "./lab.server";
 import { recordPrints } from "./absorption.server";
+import { recordPathParity, sampleKey } from "./path-parity.server";
 import { activeChampion, recordExitArena } from "./policy-lab.server";
 import { pointsFromReplay } from "./exit-arena";
 import {
@@ -1171,6 +1172,7 @@ async function tick(e: Eng) {
     });
     noteV2(e, snap, votes, chair);
     noteTaker(e, snap, chair);
+    notePathParity(e, snap, chair);
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window
     // rollover the OLD window grades from its own last live-book tick.
     const prev = { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
@@ -1191,6 +1193,67 @@ async function tick(e: Eng) {
     e.lastTickAt = Date.now();
   } finally {
     e.inFlight = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PATH PARITY (shadow, measurement only): what the desk's index-based d30/d60/d120
+// read versus what the clock says, recorded side by side.
+//
+// The offsets are labelled as seconds but indexed into an array whose slots are
+// normally ONE MINUTE of Kalshi candle. `back` slots back crosses `back - 1` gaps, so
+// "d60" typically spans FIVE minutes, not six and not sixty seconds. Nothing here
+// changes that. It writes both readings, the reason each is what it is, and the
+// coverage facts, so the decision to migrate the four consumers can rest on a
+// distribution instead of an example — and so that migrating, which would redefine
+// every calibration record fitted against the old numbers, stays an explicit decision
+// with its own research-era boundary.
+//
+// Strictly one-way: `recordPathParity` returns void, so there is no result for this
+// tick to branch on. No seat, threshold, Chair input, learned weight or skill status
+// reads any of it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The window-minute last written, so the tick loop does not re-insert on every pass.
+ * The loop runs at `pollMs` — 4s normally, 2.5s in beast — so that would otherwise be
+ * 15 to 24 redundant sample-sets a minute.
+ *
+ * Process-local on purpose: it is an efficiency guard, not the correctness guarantee.
+ * Correctness is the deterministic sample key plus ON CONFLICT DO NOTHING, which also
+ * survives a restart mid-minute.
+ */
+let lastParityBucket = "";
+
+function notePathParity(e: Eng, snap: Snapshot, chair: ChairResult) {
+  try {
+    const bucket = sampleKey(snap.ticker, snap.close_time, snap.as_of, "all");
+    if (bucket === lastParityBucket) return;
+    lastParityBucket = bucket;
+    // `.catch` is not decoration: `recordPathParity` is async, so anything it throws
+    // BEFORE its own try block would reject this floating promise and surface as an
+    // unhandled rejection rather than as a caught error. Same idiom as recordReplay.
+    void recordPathParity({
+      ticker: snap.ticker,
+      closeMs: snap.close_time,
+      atMs: snap.as_of,
+      path: snap.yes_mid_path,
+      points: snap.yes_mid_path_pts,
+      candle_ts: snap.candle_ts,
+      phase: snap.phase,
+      secs_left: snap.secs_left,
+      // Context for the research read only. The shadow never writes back to the Chair.
+      chair_decision: chair.lean,
+    }).catch((err) => {
+      noteErr(e, "path-parity", err instanceof Error ? err.message : String(err));
+    });
+  } catch (err) {
+    // A measurement must not be able to disturb the desk it measures. Routed through
+    // noteErr rather than `e.lastError =` because the tick clears lastError a few
+    // lines later in its own happy path, which would erase the breadcrumb; noteErr
+    // also pushes onto the durable error ring, so a failing shadow write is visible
+    // instead of only showing up as missing rows.
+    noteErr(e, "path-parity", err instanceof Error ? err.message : String(err));
   }
 }
 

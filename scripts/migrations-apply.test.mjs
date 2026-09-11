@@ -479,3 +479,338 @@ test("0026 normalises observations that predate fill_key, inventing nothing", as
   assert.equal(again.rows[0].n, 1, "a re-run does not duplicate the fill");
   await db.close();
 });
+
+test("0027 stores the three legacy outcomes as three distinct rows", async () => {
+  // The whole point of the shadow table: "0", NULL and NaN must not arrive in the
+  // database meaning the same thing. A flat tape, production's short-path zero and a
+  // non-finite reading are three different operational facts.
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  const close = "2026-09-11T16:00:00.000Z";
+  await db.query(
+    `insert into desk_ledger (ticker, close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents)
+     values ('KXBTC15M-26SEP111200-00', $1, 'UP', 'UP', 80, 100, 18)`,
+    [close],
+  );
+
+  const row = (key, horizon, legacy, legacyState, trueD, trueState, divState) =>
+    db.query(
+      `insert into desk_path_parity (
+         sample_key, ticker, close_time, sampled_at, sample_minute,
+         horizon, want_ms, legacy_back,
+         legacy_delta, legacy_state, true_delta, true_state,
+         signed_divergence, abs_divergence, divergence_state,
+         available_ms, coverage_ok, source_mix, points_used, research_version
+       ) values ($1, 'KXBTC15M-26SEP111200-00', $2, $2, 1, $3, 60000, 6,
+                 $4, $5, $6, $7, null, null, $8, 600000, true, 'candle', 11, 'path-1')`,
+      [key, close, horizon, legacy, legacyState, trueD, trueState, divState],
+    );
+
+  // A genuinely flat tape and production's short-path branch are both the NUMBER 0.
+  await row("k-flat", "d60", 0, "numeric", 1, "numeric", "measured");
+  await row("k-short", "d30", 0, "short-path", 1, "numeric", "measured");
+  // A NaN cannot be stored as a number, so the delta is NULL and the state says why.
+  await row("k-nan", "d120", null, "non-finite", 1, "numeric", "legacy-non-finite");
+
+  const { rows } = await db.query(
+    `select sample_key, legacy_delta, legacy_state, divergence_state
+       from desk_path_parity order by sample_key`,
+  );
+  assert.equal(rows.length, 3);
+  const by = Object.fromEntries(rows.map((r) => [r.sample_key, r]));
+
+  assert.equal(Number(by["k-flat"].legacy_delta), 0);
+  assert.equal(Number(by["k-short"].legacy_delta), 0, "the zero consumers actually receive");
+  assert.equal(by["k-nan"].legacy_delta, null);
+
+  const states = rows.map((r) => r.legacy_state);
+  assert.equal(new Set(states).size, 3, "three outcomes stayed three outcomes");
+
+  // The counter the operator wants, as a query.
+  const { rows: counted } = await db.query(
+    `select count(*)::int as n from desk_path_parity where legacy_state = 'non-finite'`,
+  );
+  assert.equal(counted[0].n, 1);
+
+  await db.close();
+});
+
+test("0027's research view excludes quarantined windows on the same rule", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  // One valid window and one quarantined. The quality is set explicitly rather than
+  // relying on 0024's one-time UPDATE: that stamp runs at migration time, so a row
+  // inserted afterwards takes the 'valid' default. The stamp has its own test above;
+  // this one is about whether the VIEW honours the flag.
+  const good = "2026-09-11T16:00:00.000Z";
+  const bad = "2026-09-10T08:00:00.000Z";
+  for (const [t, close, quality] of [
+    ["KXBTC15M-26SEP111200-00", good, "valid"],
+    ["KXBTC15M-26SEP100400-00", bad, "excluded"],
+  ]) {
+    await db.query(
+      `insert into desk_ledger
+         (ticker, close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents,
+          research_quality, research_quality_rule)
+       values ($1, $2, 'UP', 'UP', 80, 100, 18, $3, $4)`,
+      [t, close, quality, quality === "excluded" ? "2026-09-10-ticker-reuse" : ""],
+    );
+    await db.query(
+      `insert into desk_path_parity (
+         sample_key, ticker, close_time, sampled_at, sample_minute,
+         horizon, want_ms, legacy_back, legacy_delta, legacy_state,
+         true_delta, true_state, divergence_state,
+         available_ms, coverage_ok, source_mix, points_used, research_version
+       ) values ($1 || '|d60', $1, $2, $2, 1, 'd60', 60000, 6, 5, 'numeric',
+                 1, 'numeric', 'measured', 600000, true, 'candle', 11, 'path-1')`,
+      [t, close],
+    );
+  }
+
+  const { rows: all } = await db.query(`select count(*)::int as n from desk_path_parity`);
+  assert.equal(all[0].n, 2, "both rows are kept for forensics");
+
+  const { rows: view } = await db.query(
+    `select ticker from desk_path_parity_research order by ticker`,
+  );
+  assert.equal(view.length, 1, "only the valid window is countable");
+  assert.equal(view[0].ticker, "KXBTC15M-26SEP111200-00");
+
+  await db.close();
+});
+
+test("0027 stores overshoot and end-staleness, the two facts that qualify a reading", async () => {
+  // A true-time reading is not the number on its label. `overshoot_ms` says how far
+  // the measured span sat from the requested horizon; `newest_age_ms` says how stale
+  // the reading's END was at the decision tick. Without both, a row looks like a
+  // measurement of the present over the requested interval, when it may be neither.
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  const close = "2026-09-11T16:00:00.000Z";
+  await db.query(
+    `insert into desk_ledger (ticker, close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents)
+     values ('KXBTC15M-26SEP111200-00', $1, 'UP', 'UP', 80, 100, 18)`,
+    [close],
+  );
+
+  // The real candle-feed shape: a 30s request lands on a 60s span (100% overshoot),
+  // and the index offset labelled d30 spans 3 minutes.
+  await db.query(
+    `insert into desk_path_parity (
+       sample_key, ticker, close_time, sampled_at, sample_minute,
+       horizon, want_ms, legacy_back, legacy_delta, legacy_state,
+       true_delta, true_state, divergence_state,
+       span_ms, overshoot_ms, legacy_span_ms, legacy_overshoot_ms,
+       available_ms, coverage_ok, newest_t, newest_age_ms,
+       source_mix, points_used, research_version
+     ) values ('k30', 'KXBTC15M-26SEP111200-00', $1, $1, 1, 'd30', 30000, 4, 3, 'numeric',
+               1, 'numeric', 'measured',
+               60000, 30000, 180000, 150000,
+               600000, true, $1, 55000, 'candle', 11, 'path-1')`,
+    [close],
+  );
+
+  const { rows } = await db.query(
+    `select want_ms, span_ms, overshoot_ms, legacy_span_ms, legacy_overshoot_ms, newest_age_ms
+       from desk_path_parity where sample_key = 'k30'`,
+  );
+  const r = rows[0];
+  assert.equal(Number(r.want_ms), 30000);
+  assert.equal(Number(r.span_ms), 60000, "what was actually measured");
+  assert.notEqual(Number(r.span_ms), Number(r.want_ms), "never assume the span is the request");
+  assert.equal(Number(r.overshoot_ms), Number(r.span_ms) - Number(r.want_ms));
+  assert.equal(Number(r.overshoot_ms), 30000, "100% overshoot: 30s is unsupportable here");
+  assert.equal(Number(r.legacy_overshoot_ms), Number(r.legacy_span_ms) - Number(r.want_ms));
+  assert.equal(Number(r.newest_age_ms), 55000, "the reading ended 55s before the tick");
+
+  // Overshoot is queryable directly, which is the question a consumer flip turns on.
+  const { rows: unsupportable } = await db.query(
+    `select horizon from desk_path_parity where overshoot_ms >= want_ms`,
+  );
+  assert.deepEqual(
+    unsupportable.map((x) => x.horizon),
+    ["d30"],
+    "a horizon whose overshoot is at least its own length is not honestly supportable",
+  );
+
+  await db.close();
+});
+
+test("0027 self-heals a database that applied an earlier version of the same file", async () => {
+  // THE SILENT FAILURE THIS PREVENTS. `scripts/migrate.mjs` records applied files by
+  // NAME, and `create table if not exists` is a no-op once the table exists. So a
+  // column added to 0027 after it had already been applied somewhere would never
+  // arrive — and the shadow writer's errors are deliberately silent, so every row
+  // would be lost with no error anywhere. Each column is therefore also added
+  // idempotently, and this proves it by simulating the older table shape.
+  const db = await freshDb();
+  const names = await files();
+  await applyAll(
+    db,
+    names.filter((n) => n !== "0027_desk_path_parity.sql"),
+  );
+
+  // The first-committed shape of the table: no overshoot, no staleness, no alignment.
+  await db.exec(`
+    create table desk_path_parity (
+      sample_key text primary key,
+      ticker text not null,
+      close_time timestamptz not null,
+      sampled_at timestamptz not null,
+      sample_minute bigint not null,
+      horizon text not null,
+      want_ms integer not null,
+      legacy_back integer not null,
+      legacy_delta double precision,
+      legacy_state text not null,
+      true_delta double precision,
+      true_state text not null,
+      signed_divergence double precision,
+      abs_divergence double precision,
+      divergence_state text not null,
+      span_ms integer,
+      legacy_span_ms integer,
+      available_ms integer not null,
+      coverage_ok boolean not null,
+      source_mix text not null,
+      points_used integer not null,
+      points_dropped_non_finite integer not null default 0,
+      points_dropped_non_positive integer not null default 0,
+      points_collapsed_duplicate integer not null default 0,
+      candle_rows_priced integer not null default 0,
+      candle_rows_timed integer not null default 0,
+      candle_ts_fields text not null default '',
+      candle_ts_absent integer not null default 0,
+      candle_ts_bad integer not null default 0,
+      window_phase text not null default '',
+      secs_left integer,
+      chair_decision text not null default '',
+      research_version text not null,
+      created_at timestamptz not null default now()
+    );
+  `);
+
+  // Now apply the current 0027 on top. The create is a no-op; the alters must land.
+  const sql = await readFile(join(MIGRATIONS, "0027_desk_path_parity.sql"), "utf8");
+  await db.exec(sql);
+
+  const { rows } = await db.query(
+    `select column_name from information_schema.columns
+      where table_name = 'desk_path_parity' order by 1`,
+  );
+  const cols = rows.map((r) => r.column_name);
+  for (const c of [
+    "overshoot_ms",
+    "legacy_overshoot_ms",
+    "legacy_span_aligned",
+    "newest_t",
+    "newest_age_ms",
+    "candle_ts_start_adjusted",
+    "anchor_t",
+    "anchor_age_ms",
+    "decision_overshoot_ms",
+    "decision_fidelity",
+  ]) {
+    assert.ok(cols.includes(c), `${c} never arrived: the writer would fail silently`);
+  }
+
+  // And every column the writer names must now exist, which is the real guarantee.
+  const writer = readFileSync(join(ROOT, "src/lib/desk/path-parity.server.ts"), "utf8");
+  const i = writer.indexOf("insert into desk_path_parity (");
+  const j = writer.indexOf(") values (", i);
+  const named = writer
+    .slice(i + "insert into desk_path_parity (".length, j)
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x && !x.startsWith("--"));
+  for (const c of named) {
+    assert.ok(cols.includes(c), `writer names "${c}" but the healed table has no such column`);
+  }
+
+  await db.close();
+});
+
+test("0027 keeps a shifted interval distinguishable from a fresh one at the DB level", async () => {
+  // The distinction that span_ms alone cannot carry. Both rows below have
+  // span_ms = 60000 and overshoot_ms = 0. One is the last 60 seconds; the other is a
+  // 60-second interval that ended a minute before the decision. If the schema could not
+  // tell them apart, a zero span overshoot would later be read as exact horizon coverage.
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  const close = "2026-09-11T16:00:00.000Z";
+  await db.query(
+    `insert into desk_ledger (ticker, close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents)
+     values ('KXBTC15M-26SEP111200-00', $1, 'UP', 'UP', 80, 100, 18)`,
+    [close],
+  );
+
+  const put = (key, newestAge, anchorAge, decOver, fidelity) =>
+    db.query(
+      `insert into desk_path_parity (
+         sample_key, ticker, close_time, sampled_at, sample_minute,
+         horizon, want_ms, legacy_back, legacy_delta, legacy_state,
+         true_delta, true_state, divergence_state,
+         span_ms, overshoot_ms, available_ms, coverage_ok,
+         newest_age_ms, anchor_age_ms, decision_overshoot_ms, decision_fidelity,
+         source_mix, points_used, research_version
+       ) values ($1, 'KXBTC15M-26SEP111200-00', $2, $2, 1, 'd60', 60000, 6, 5, 'numeric',
+                 1, 'numeric', 'measured',
+                 60000, 0, 600000, true,
+                 $3, $4, $5, $6, 'candle', 11, 'path-1')`,
+      [key, close, newestAge, anchorAge, decOver, fidelity],
+    );
+
+  // as_of = 120s, newest = 60s, anchor = 0s: a valid 60s move over t-120s..t-60s.
+  await put("shifted", 60000, 120000, 60000, "end-shifted");
+  // as_of = 120s, newest = 120s, anchor = 60s: genuinely the last 60 seconds.
+  await put("fresh", 0, 60000, 0, "decision-aligned");
+
+  const { rows } = await db.query(
+    `select sample_key, span_ms, overshoot_ms, newest_age_ms, anchor_age_ms,
+            decision_overshoot_ms, decision_fidelity
+       from desk_path_parity order by sample_key`,
+  );
+  const by = Object.fromEntries(rows.map((r) => [r.sample_key, r]));
+
+  // Identical on span coverage…
+  assert.equal(Number(by.shifted.span_ms), Number(by.fresh.span_ms));
+  assert.equal(Number(by.shifted.overshoot_ms), Number(by.fresh.overshoot_ms));
+  // …and opposite on decision fidelity.
+  assert.notEqual(Number(by.shifted.anchor_age_ms), Number(by.fresh.anchor_age_ms));
+  assert.notEqual(by.shifted.decision_fidelity, by.fresh.decision_fidelity);
+
+  // The identities a reader is told they can rely on, checked in SQL.
+  for (const r of rows) {
+    assert.equal(
+      Number(r.anchor_age_ms),
+      Number(r.newest_age_ms) + Number(r.span_ms),
+      "anchor_age_ms = newest_age_ms + span_ms",
+    );
+    assert.equal(
+      Number(r.decision_overshoot_ms),
+      Number(r.newest_age_ms) + Number(r.overshoot_ms),
+      "decision_overshoot_ms = newest_age_ms + overshoot_ms",
+    );
+  }
+
+  // The query that separates "exact span" from "exact horizon" — the whole point.
+  const { rows: exactSpan } = await db.query(
+    `select sample_key from desk_path_parity where overshoot_ms = 0 order by 1`,
+  );
+  assert.deepEqual(exactSpan.map((r) => r.sample_key), ["fresh", "shifted"]);
+  const { rows: exactHorizon } = await db.query(
+    `select sample_key from desk_path_parity
+      where overshoot_ms = 0 and decision_overshoot_ms = 0 order by 1`,
+  );
+  assert.deepEqual(
+    exactHorizon.map((r) => r.sample_key),
+    ["fresh"],
+    "only one of the two is actually a measurement of the last 60 seconds",
+  );
+
+  await db.close();
+});

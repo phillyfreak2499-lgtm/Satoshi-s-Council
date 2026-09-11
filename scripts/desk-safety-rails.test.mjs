@@ -1180,3 +1180,266 @@ test("the Floor cannot be promoted yet, and the order of authority is recorded",
   assert.doesNotMatch(gatesCode, /getSql|@\/lib\/db|\.server["']/, "the evaluator must stay pure");
   assert.match(gatesCode, /all_required_passed/, "it reports a precondition, not a decision");
 });
+
+/**
+ * The timestamped path is MEASUREMENT ONLY, and that is enforced, not promised.
+ *
+ * The four index-based consumers were deliberately left alone: every calibration
+ * record, seat threshold and learned weight in production was fitted against the old
+ * numbers, so redefining what "d60" means is a separate decision with its own
+ * research-era boundary. This rail fails if someone wires the new reading into a
+ * decision without making that decision explicitly.
+ */
+test("no decision path reads the timestamped path or its parity measurement", () => {
+  const walk = (rel, out = []) => {
+    for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const next = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(next, out);
+      else if (/\.(ts|tsx|mjs)$/.test(e.name) && !e.name.includes(".test.")) out.push(next);
+    }
+    return out;
+  };
+
+  // Where the measurement is allowed to exist at all. Everything else must not name it.
+  const allowed = new Set([
+    "src/lib/desk/path-time.ts", // the pure helper
+    "src/lib/desk/candle-time.ts", // reading the candle's own timestamp
+    "src/lib/desk/path-parity.server.ts", // the shadow write
+    "src/lib/desk/server-feeds.ts", // builds the timestamped twin off the feed
+    "src/lib/desk/live.ts", // carries it onto the snapshot, beside the old array
+    "src/lib/desk/demo.ts", // shapes a synthetic one; the recorder refuses demo
+    "src/lib/desk/types.ts", // the field declarations
+    "src/lib/desk/server-engine.ts", // the one fire-and-forget sample per minute
+    "server/routes/path-parity.get.ts", // the admin-gated read
+  ]);
+
+  // The seats and rules that read the OLD path. None of them may read the new one.
+  const consumers = [
+    "src/lib/desk/dsl.ts",
+    "src/lib/desk/bots.ts",
+    "src/lib/desk/tape.ts",
+    "src/lib/desk/features.ts",
+  ];
+  for (const rel of consumers) {
+    const code = codeOf(rel);
+    assert.match(code, /yes_mid_path/, `${rel} should still read the legacy path`);
+    assert.doesNotMatch(
+      code,
+      /yes_mid_path_pts|moveOver|path-time|desk_path_parity/,
+      `${rel} is a decision path. Migrating it redefines every calibration record ` +
+        `fitted against the index-based d30/d60/d120 and needs its own research era.`,
+    );
+  }
+
+  for (const rel of [...walk("src"), ...walk("server")]) {
+    if (allowed.has(rel)) continue;
+    const code = codeOf(rel);
+    assert.doesNotMatch(
+      code,
+      /yes_mid_path_pts|desk_path_parity|path-parity\.server/,
+      `${rel} reads the shadow measurement. It is measurement only: no seat, DSL rule, ` +
+        `threshold, Chair input, learned weight or skill status may consult it.`,
+    );
+  }
+});
+
+/**
+ * The legacy comparator stays faithful to production, NaN and all.
+ *
+ * Sanitising it would make the shadow rows describe a desk that does not exist, and
+ * the NaN is the interesting part: `Math.abs(NaN) >= k` is false, so a non-finite
+ * reading arrives downstream as a quiet tape rather than as an error.
+ */
+test("the legacy comparator is not sanitised, and the three outcomes stay apart", () => {
+  const code = codeOf("src/lib/desk/path-time.ts");
+
+  // The short-path zero production actually returns.
+  assert.match(code, /if \(path\.length < back\) return 0;/, "production's zero is reproduced");
+
+  // No finite guard may be added to the subtraction itself.
+  const body = code.slice(code.indexOf("export function legacyMove"));
+  const fn = body.slice(0, body.indexOf("\n}"));
+  assert.doesNotMatch(
+    fn,
+    /\?\?\s*0|\|\|\s*0|isFinite\([ab]\)/,
+    "legacyMove must not coerce a non-finite input to 0: production does not, and a " +
+      "cleaned-up comparator would be measuring a desk that does not exist.",
+  );
+
+  // All three legacy outcomes, and all three true-reading outcomes, are named.
+  for (const state of ["numeric", "short-path", "non-finite", "no-coverage", "empty"]) {
+    assert.ok(code.includes(`"${state}"`), `the state "${state}" must be representable`);
+  }
+  // And a null divergence says which side was missing.
+  for (const state of ["legacy-non-finite", "true-unavailable", "both-unavailable", "measured"]) {
+    assert.ok(code.includes(`"${state}"`), `divergence state "${state}" must be representable`);
+  }
+
+  // The shadow table keeps them apart too, including the counter worth watching.
+  const sql = read("migrations/0027_desk_path_parity.sql");
+  // A reading is never stored without the two facts that qualify it: how far the
+  // measured span sat from the requested horizon, and how stale its END was.
+  for (const col of [
+    "overshoot_ms",
+    "legacy_overshoot_ms",
+    "newest_age_ms",
+    "newest_t",
+    // Decision-relative geometry: span length alone cannot say WHERE the interval sits,
+    // and without these a zero span overshoot would later be read as exact horizon
+    // coverage when the whole interval may be shifted into the past.
+    "anchor_t",
+    "anchor_age_ms",
+    "decision_overshoot_ms",
+    "decision_fidelity",
+  ]) {
+    assert.match(
+      sql,
+      new RegExp(`${col}\\s`),
+      `${col} must be stored: without it a row reads as a measurement of the present ` +
+        `over the requested interval, when it may be neither.`,
+    );
+  }
+  // And the helper must not quietly equate the requested horizon with the span.
+  assert.match(
+    code,
+    /overshoot_ms: m\.ok \? m\.span_ms - h\.ms : null/,
+    "overshoot must be span minus request, computed from the real span",
+  );
+  // The decision-relative ages must come from the decision clock, not be inferred from
+  // the span — inferring them would reintroduce the very conflation they exist to stop.
+  assert.match(code, /anchor_age_ms: m\.ok && haveClock \? nowMs! - m\.from_t : null/);
+  // And no tuned freshness cutoff may be smuggled in: fidelity is structural.
+  assert.doesNotMatch(
+    code,
+    /STALE_NEWEST_MS|FRESH_.*_MS\s*=/,
+    "decision fidelity must stay structural; choosing a freshness cutoff is policy",
+  );
+  for (const v of ["decision-aligned", "end-shifted", "end-ahead", "unknown"]) {
+    assert.ok(code.includes(`"${v}"`), `fidelity class "${v}" must be representable`);
+  }
+  assert.match(sql, /legacy_state\s+text not null/, "the legacy outcome is stored, not inferred");
+  assert.match(sql, /true_state\s+text not null/);
+  assert.match(sql, /divergence_state\s+text not null/);
+  assert.match(sql, /desk_path_parity_legacy_state/, "the non-finite counter is indexed");
+});
+
+/**
+ * A candle timestamp is never invented.
+ *
+ * An approximated timestamp would corrupt the one measurement this whole change
+ * exists to take, and a start-of-period timestamp used as an end would shift every
+ * close by a full interval — exactly the class of error being hunted.
+ */
+test("the candle timestamp is read or refused, never approximated", () => {
+  const code = codeOf("src/lib/desk/candle-time.ts");
+  // Start timestamps are adjusted forward and labelled, never silently merged.
+  assert.match(code, /start-adjusted/, "a start-dated row is marked as adjusted");
+  assert.match(code, /CANDLE_END_FIELDS/, "end fields are preferred");
+  // Units are normalised rather than assumed.
+  assert.match(code, /raw >= 1e12/, "a millisecond value is not multiplied again");
+  assert.match(code, /raw >= 1e9/, "a second value is");
+
+  // The feed drops an untimed row rather than dating it from the wall clock.
+  const feeds = codeOf("src/lib/desk/server-feeds.ts");
+  const i = feeds.indexOf("const yes_path_pts");
+  const j = feeds.indexOf("const settles", i);
+  assert.ok(i > 0 && j > i, "the candle block must be findable");
+  const block = feeds.slice(i, j);
+  assert.match(block, /if \(got\.ok\) yes_path_pts\.push/, "only a read timestamp is kept");
+  assert.doesNotMatch(
+    block,
+    /t:\s*(Date\.now\(\)|nowMs)\s*[,}]/,
+    "an untimed candle must be counted and dropped, not stamped with the wall clock",
+  );
+
+  // And the old bare array is still built from the same rows, unchanged.
+  assert.match(block, /yes_path\.push\(px\)/, "the legacy array must keep its contents");
+});
+
+/**
+ * The shadow write cannot steer anything, structurally.
+ *
+ * It returns void, so there is no result for a tick to branch on, and it refuses
+ * demo snapshots, whose spacing is synthetic.
+ */
+test("the shadow write returns nothing and refuses synthetic paths", () => {
+  const code = codeOf("src/lib/desk/path-parity.server.ts");
+  assert.match(
+    code,
+    /export async function recordPathParity\(s: ParitySample\): Promise<void>/,
+    "it must return void: a caller with no result cannot branch on the measurement",
+  );
+  assert.match(code, /DEMO/, "demo paths carry invented spacing and must be refused");
+  assert.match(code, /on conflict \(sample_key\) do nothing/, "a replay must not revise a row");
+
+  // The engine's hook is fire-and-forget and swallows its own failure.
+  const eng = codeOf("src/lib/desk/server-engine.ts");
+  assert.match(eng, /void recordPathParity\(/, "the tick must not await the measurement");
+});
+
+/**
+ * The shadow insert's column list matches its value list, and every column exists.
+ *
+ * This write lives inside a deliberately SILENT catch, so a column/value mismatch or a
+ * typo'd column name would throw, be swallowed, and lose every row with no error
+ * anywhere — a measurement that fails invisibly is worse than one that is absent
+ * loudly. A hand-written 37-column insert is exactly where that drifts, so it is
+ * checked mechanically rather than by eye.
+ */
+test("the path-parity insert cannot drift from its table", () => {
+  const src = read("src/lib/desk/path-parity.server.ts");
+  const i = src.indexOf("insert into desk_path_parity (");
+  const j = src.indexOf(") values (", i);
+  const k = src.indexOf("on conflict", j);
+  assert.ok(i > 0 && j > i && k > j, "the insert must be findable");
+
+  const splitTop = (t) => {
+    const out = [];
+    let depth = 0;
+    let cur = "";
+    for (const ch of t) {
+      if ("({[".includes(ch)) depth++;
+      if (")}]".includes(ch)) depth--;
+      if (ch === "," && depth === 0) {
+        out.push(cur.trim());
+        cur = "";
+      } else cur += ch;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out.filter((x) => x && !x.startsWith("--"));
+  };
+
+  const cols = splitTop(src.slice(i + "insert into desk_path_parity (".length, j));
+  const valsRaw = src.slice(j + ") values (".length, k);
+  const vals = splitTop(valsRaw.slice(0, valsRaw.lastIndexOf(")")));
+  assert.equal(
+    cols.length,
+    vals.length,
+    `${cols.length} columns against ${vals.length} values — the write would throw into a silent catch`,
+  );
+
+  // Every column must actually exist on the table.
+  const sql = read("migrations/0027_desk_path_parity.sql");
+  const body = sql.slice(
+    sql.indexOf("create table if not exists desk_path_parity ("),
+    sql.indexOf("\n);"),
+  );
+  const declared = new Set([...body.matchAll(/^ {2}(\w+)\s/gm)].map((m) => m[1]));
+  for (const c of cols) {
+    assert.ok(declared.has(c), `column "${c}" is written but not declared in 0027`);
+  }
+
+  // Non-finite numbers must not reach an integer column: Postgres rejects NaN, and the
+  // rejection would vanish into the same silent catch.
+  assert.match(
+    src,
+    /function int\(v: number\): number \| null/,
+    "a finite-or-null coercion must exist for numbers that could be NaN",
+  );
+  assert.doesNotMatch(
+    src,
+    /\$\{Math\.round\(s\./,
+    "Math.round on a possibly-NaN input writes NaN to an integer column; use int()",
+  );
+});

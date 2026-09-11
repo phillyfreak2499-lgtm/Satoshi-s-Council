@@ -1,3 +1,4 @@
+import { emptyTally } from "./candle-time";
 import { enrichSnapshot } from "./features";
 import { appendPeriod, deltaOver, FUNDING_PERIOD_MS, OI_PERIOD_MS, spaced, valuesOf, type HistPoint } from "./hist";
 import { clamp, last, round, seeded } from "./math";
@@ -151,6 +152,9 @@ export function newDemoWindow(memory: WindowMemory, remainingMs?: number): DemoS
   };
 }
 
+/** Nominal spacing for demo's synthetic path. Demo has no real sample clock. */
+const DEMO_TICK_MS = 4_000;
+
 export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
   const now = Date.now();
   state.seq += 1;
@@ -292,6 +296,16 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     },
     yes_mid: yesMid,
     yes_mid_path: [...state.yes_path],
+    // Demo data has no real clock behind it, so these timestamps are SYNTHETIC:
+    // the path is spaced at the nominal tick interval ending at now, purely so the
+    // field has the right shape. The shadow recorder refuses demo snapshots, so no
+    // synthetic spacing ever reaches a research row.
+    yes_mid_path_pts: state.yes_path.map((px, i) => ({
+      t: now - (state.yes_path.length - 1 - i) * DEMO_TICK_MS,
+      px,
+      source: "tick" as const,
+    })),
+    candle_ts: emptyTally(),
     funding_rate: state.funding,
     funding_apr: fundingApr(state.funding) || 0,
     funding_time: state.funding_series.at(-1)?.t ?? now,
