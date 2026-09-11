@@ -261,4 +261,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The paper book is trying a higher price floor: it now fills only at 80¢ or better instead of 70¢. That is a price floor, not a confidence level — 80¢ is what the contract costs, not how sure the desk is. The books made the case: the 70–79¢ shelf won about 65% of 29 calls against the 74% it needed, while 80¢ and up was the only part of the book in profit. Thin evidence, so this is a trial, reviewed after three to seven days or 25 fills at the new floor and not touched before then. It wins more often for a smaller prize, which also lifts breakeven from about 72% to about 82% — read the net, not the win rate. Under 80¢ the chair still calls and every seat is still graded; the book just does not pay. The old floor runs beside it as a shadow book on the same windows, shown as research. Old fills are untouched, and going back is one number.",
   },
+  {
+    slug: "2026-09-11-scorecard-honest",
+    body:
+      "The Process Scorecard is back, and it can no longer lie when it breaks. Yesterday's floor-trial change made its query compare a price against an untyped value, so the query failed every time — and the card answered that failure with zeros. The page then said the chair had sat 0% of 0 windows and booked nothing, directly beside totals showing a hundred fills. The query is fixed and counts every graded window again, in both eras: a fill is judged against the floor that applied when it closed, so older fills are not marked down by the newer floor. And a scorecard that cannot be computed is now simply absent, with the reason shown, instead of inventing a perfect record. Zeros from here on mean an empty ledger and nothing else. No call, floor, grading rule or past number changed.",
+  },
 ];
