@@ -90,12 +90,6 @@ export function bundleToSnapshot(
   const yes_mid = yes_bid && yes_ask ? (yes_bid + yes_ask) / 2 : (prev?.yes_mid ?? 50);
   const candlePath = kalshi?.yes_path?.length ? kalshi.yes_path : [];
   const yes_mid_path = candlePath.length >= 4 ? candlePath.slice(-80) : [...(prev?.yes_mid_path ?? []), yes_mid].slice(-80);
-  // The timestamped twin, branched on the SAME condition and the SAME array as the
-  // line above, so the two paths are never built from different sources on one tick.
-  // Deliberately keyed on `candlePath.length`, not on the timestamped array's length:
-  // if candles arrived priced but unreadable for time, production still took the
-  // candle branch, and the honest record of that is a thin timestamped path plus a
-  // `candle_ts` tally explaining why - not a quietly substituted tick path.
   const candlePts = kalshi?.yes_path_pts ?? [];
   const yes_mid_path_pts: PathPoint[] =
     candlePath.length >= 4
@@ -221,6 +215,7 @@ export function bundleToSnapshot(
     liq_short_usd: b.liq_n > 0 ? b.liq_short_usd : (prev?.liq_short_usd ?? 0),
     liq_n: b.liq_n > 0 ? b.liq_n : (prev?.liq_n ?? 0),
     liq_source: b.liq_source && b.liq_source !== "DOWN" ? b.liq_source : (prev?.liq_source && prev.liq_n > 0 ? prev.liq_source : "DOWN"),
+    liq_last_t: b.liq_n > 0 ? b.liq_last_t : (prev?.liq_last_t ?? 0),
     force_n: b.liq_n > 0 ? b.liq_n : (prev?.force_n ?? 0),
     cascade_proxy: false,
     fear_greed: b.fear_greed ?? prev?.fear_greed ?? 50,
