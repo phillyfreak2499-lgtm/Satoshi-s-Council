@@ -242,13 +242,15 @@ test("a payload whose close disagrees with the row is refused", () => {
   assert.equal(mayWriteOfficial(tk, close, { ticker: tk, close_ms: close + CLOSE_TOLERANCE_MS }).ok, true);
 });
 
-test("a silent payload is accepted on the row's own identity, and says so", () => {
+test("a silent payload is accepted while the TICKER is still a witness", () => {
   // The request was addressed BY ticker, so an exchange that echoes nothing is not
-  // evidence of a mismatch. The checks record which witnesses were actually read.
+  // evidence of a mismatch — as long as the ticker itself parses and agrees. The
+  // checks record which witnesses were actually read.
   const tk = "KXBTC15M-26SEP110800-00";
   const close = ms("2026-09-11T12:00:00Z");
   const v = mayWriteOfficial(tk, close, {});
   assert.equal(v.ok, true);
+  assert.equal(v.checks.ticker_time_ok, true, "the ticker carried the witness");
   assert.equal(v.checks.ticker_seen, false, "no ticker was echoed");
   assert.equal(v.checks.close_ok, false, "no close was echoed");
   // But the row's own halves still had to hold.
@@ -259,9 +261,16 @@ test("an unparseable ticker is not a disagreement, and an unusable key is", () =
   // Same rule as the rest of this module: the format is the exchange's, and a
   // renamed series must not stop every official value from ever being recorded.
   const close = ms("2026-09-11T12:00:00Z");
-  const renamed = mayWriteOfficial("BTC-SOMETHING-NEW", close, { ticker: "BTC-SOMETHING-NEW" });
+  // An unparseable ticker degrades to the OTHER witness rather than being fatal in
+  // itself — but it must actually have that other witness. With a payload close that
+  // agrees, the write proceeds; with nothing, it is refused (see the guard tests).
+  const renamed = mayWriteOfficial("BTC-SOMETHING-NEW", close, {
+    ticker: "BTC-SOMETHING-NEW",
+    close_ms: close,
+  });
   assert.equal(renamed.ok, true);
   assert.equal(renamed.checks.ticker_time_ok, null);
+  assert.equal(renamed.checks.close_ok, true, "the payload close carried the witness instead");
 
   const keyless = mayWriteOfficial("", close, {});
   assert.equal(keyless.ok === false && keyless.fault, "unusable-window-key");
@@ -330,4 +339,106 @@ test("an official-value refusal says what was actually withheld", () => {
   assert.notEqual(grading, line);
   // A keyless window still stamps as ??:?? on both.
   assert.match(officialFaultLine("", 0, "unusable-window-key", "d"), /^IDENTITY \?\?:\?\? ∅ /);
+});
+
+
+// ---------------------------------------------------------------------------
+// At least ONE close-time witness. Missing both fails closed.
+// ---------------------------------------------------------------------------
+
+test("a parseable ticker is witness enough when the payload carries no close", () => {
+  const tk = "KXBTC15M-26SEP110800-00";
+  const close = ms("2026-09-11T12:00:00Z");
+  const v = mayWriteOfficial(tk, close, { ticker: tk });
+  assert.equal(v.ok, true);
+  assert.equal(v.checks.ticker_time_ok, true);
+  assert.equal(v.checks.close_ok, false);
+});
+
+test("an agreeing payload close is witness enough when the ticker will not parse", () => {
+  const tk = "BTC-RENAMED-SERIES-2027";
+  const close = ms("2026-09-11T12:00:00Z");
+  const v = mayWriteOfficial(tk, close, { ticker: tk, close_ms: close + 30_000 });
+  assert.equal(v.ok, true);
+  assert.equal(v.checks.ticker_time_ok, null, "the ticker gave nothing");
+  assert.equal(v.checks.close_ok, true, "the payload did");
+});
+
+test("no close-time witness at all refuses the write, echoed ticker or not", () => {
+  // THE DANGER, modelled. One unparseable ticker, two different ledger closes. The
+  // payload echoes the ticker because the REST request supplied it, and carries no
+  // usable close. If an echo counted as a witness, the same official value could be
+  // written to BOTH rows one statement at a time — the narrowed UPDATE stops one
+  // statement touching both, not two statements each touching one.
+  const frozen = "BTC-UNPARSEABLE-FROZEN";
+  const rowA = ms("2026-09-11T12:00:00Z");
+  const rowB = ms("2026-09-11T12:15:00Z");
+
+  for (const [label, close] of [["A", rowA], ["B", rowB]] as const) {
+    const v = mayWriteOfficial(frozen, close, { ticker: frozen });
+    assert.equal(v.ok, false, `row ${label} must be refused`);
+    assert.equal(v.ok === false && v.fault, "official-identity-unverifiable", `row ${label} fault`);
+    assert.equal(v.checks.ticker_time_ok, null, `row ${label}: the ticker gave no witness`);
+    assert.equal(v.checks.close_ok, false, `row ${label}: nor did the payload`);
+    // The echo is recorded as an echo, never as a witness.
+    assert.equal(v.checks.ticker_seen, true, `row ${label}: the ticker WAS echoed`);
+  }
+
+  // An entirely silent payload is the same refusal.
+  assert.equal(
+    mayWriteOfficial(frozen, rowA, {}).ok === false &&
+      (mayWriteOfficial(frozen, rowA, {}) as { fault: string }).fault,
+    "official-identity-unverifiable",
+  );
+
+  // A zero or unparseable payload close is "not carried", not a witness.
+  for (const bad of [0, Number.NaN, Date.parse("") || 0]) {
+    const v = mayWriteOfficial(frozen, rowA, { ticker: frozen, close_ms: bad });
+    assert.equal(v.ok, false, `close_ms=${String(bad)} is not a witness`);
+  }
+});
+
+test("missing every witness is absence of evidence, not a contradiction", () => {
+  // It withholds the value, and it says so — but it must not be dressed up as a
+  // mismatch, because nothing disagreed. Nothing was established.
+  const frozen = "BTC-UNPARSEABLE-FROZEN";
+  const close = ms("2026-09-11T12:00:00Z");
+  const v = mayWriteOfficial(frozen, close, { ticker: frozen });
+  assert.equal(v.ok, false);
+  if (v.ok === false) {
+    assert.notEqual(v.fault, "ticker-close-time-mismatch");
+    assert.notEqual(v.fault, "close-time-mismatch");
+    assert.equal(isInconsistent(v.fault), false, "absent evidence is not an inconsistency");
+    assert.match(v.detail, /no close-time witness/);
+    const line = officialFaultLine(frozen, close, v.fault, v.detail);
+    assert.match(line, /official_value not written/);
+    assert.doesNotMatch(line, /not graded/);
+    assert.doesNotMatch(line, /not taught/);
+  }
+});
+
+test("no allowed verdict ever lacks both close-time witnesses", () => {
+  // The invariant itself, over every combination of the two witnesses.
+  const parseable = "KXBTC15M-26SEP110800-00";
+  const unparseable = "BTC-RENAMED-SERIES-2027";
+  const close = ms("2026-09-11T12:00:00Z");
+  const cases = [
+    { tk: parseable, close_ms: close },
+    { tk: parseable, close_ms: 0 },
+    { tk: unparseable, close_ms: close },
+    { tk: unparseable, close_ms: 0 },
+    { tk: parseable, close_ms: close + 10 * 60_000 },
+    { tk: unparseable, close_ms: close + 10 * 60_000 },
+  ];
+  let allowed = 0;
+  for (const c of cases) {
+    const v = mayWriteOfficial(c.tk, close, { ticker: c.tk, close_ms: c.close_ms });
+    if (!v.ok) continue;
+    allowed += 1;
+    assert.ok(
+      v.checks.ticker_time_ok === true || v.checks.close_ok === true,
+      `allowed with no witness: ticker=${c.tk} close_ms=${c.close_ms}`,
+    );
+  }
+  assert.equal(allowed, 3, "exactly the three witnessed combinations are allowed");
 });

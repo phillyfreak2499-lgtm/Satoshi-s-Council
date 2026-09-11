@@ -77,15 +77,19 @@ export type IdentityFault =
   | "market-ticker-mismatch";
 
 /**
- * Which faults mean the DATA disagrees with itself, as opposed to the result
- * simply not having arrived yet.
+ * Which faults mean the DATA disagrees with itself, as opposed to the evidence simply
+ * not being there.
  *
  * The distinction matters operationally: a window waiting on Kalshi is the
  * ordinary case dozens of times a day and must stay quiet, while an internal
  * contradiction is the 2026-09-10 signature and has to be loud.
+ *
+ * Two faults are absence of evidence rather than contradiction, and both stay quiet:
+ * a window with no settlement yet, and an official value withheld because no
+ * close-time witness could be established. Neither is a disagreement about a fact.
  */
-export function isInconsistent(fault: IdentityFault): boolean {
-  return fault !== "no-settle-for-window";
+export function isInconsistent(fault: OfficialFault): boolean {
+  return fault !== "no-settle-for-window" && fault !== "official-identity-unverifiable";
 }
 
 export type IdentityVerdict<S extends SettleLike> =
@@ -275,9 +279,20 @@ export type OfficialMarketLike = {
   close_ms?: number;
 };
 
+/**
+ * Why an official value was withheld.
+ *
+ * The grading faults all apply here, plus one that grading can never produce: no
+ * close-time witness could be established at all. Kept as its own type rather than
+ * widened into `IdentityFault`, because a fault the grading path cannot emit does not
+ * belong in the union its fault log is typed on — and because the honest name for this
+ * case is "unverifiable", not any kind of "mismatch".
+ */
+export type OfficialFault = IdentityFault | "official-identity-unverifiable";
+
 export type OfficialVerdict =
   | { ok: true; checks: IdentityChecks }
-  | { ok: false; fault: IdentityFault; detail: string; checks: IdentityChecks };
+  | { ok: false; fault: OfficialFault; detail: string; checks: IdentityChecks };
 
 /**
  * May this market payload's official settled value be written onto THIS ledger row?
@@ -310,10 +325,14 @@ export type OfficialVerdict =
  * function never reads a payload field itself, so that discipline belongs to the
  * caller and is asserted by a rail.
  *
- * A payload that carries NEITHER witness is accepted on the row's own identity,
- * because the request was addressed by ticker and a silent exchange is not
- * evidence of a mismatch. That is the deliberate limit of this check: it cannot
- * prove a payload right, only refuse one that contradicts the row.
+ * A silent payload is fine AS LONG AS the ticker itself is a witness: the request was
+ * addressed by ticker and a silent exchange is not evidence of a mismatch. But when the
+ * ticker does not parse either, there is no close-time witness left at all, and that
+ * fails CLOSED — see the guard at the end. An echoed ticker is not a witness, because
+ * the request supplied it.
+ *
+ * That is the deliberate limit of this check: it cannot prove a payload right, only
+ * refuse one that contradicts the row or one the row cannot be tied to.
  *
  * This decides nothing about settlement MEANING. It does not read, interpret or
  * transform `expiration_value`, does not pick a winner, and cannot cause a write
@@ -383,11 +402,36 @@ export function mayWriteOfficial(
     checks.close_ok = true;
   }
 
+  // FAIL CLOSED WITH NO CLOSE WITNESS. At least one of the two independent close-time
+  // witnesses has to succeed: the ticker's own encoded close agreeing with the row, or
+  // a close carried by the payload and agreeing with the row. One is enough; neither
+  // is not.
+  //
+  // The combination this refuses is an unparseable ticker AND a payload carrying no
+  // usable close. A matching payload ticker does not rescue it: the REST request was
+  // ADDRESSED by that ticker, so an echo of it is not evidence. If a future Kalshi
+  // format stops parsing and a stale ticker is carried across several closes,
+  // `/markets/{ticker}` can faithfully echo that stale ticker for every wrong row —
+  // and the narrowed UPDATE only stops one statement from touching them all at once,
+  // not the same wrong value being written to each in turn.
+  //
+  // This is absence of evidence, not a contradiction, and is named accordingly.
+  if (tickerTimeOk !== true && !checks.close_ok) {
+    return {
+      ok: false,
+      fault: "official-identity-unverifiable",
+      detail:
+        `no close-time witness: ticker ${tickerTimeOk === null ? "does not parse" : "disagrees"} ` +
+        `and the payload carried no usable close_time`,
+      checks,
+    };
+  }
+
   return { ok: true, checks };
 }
 
 /** The shared prefix: which window, named the same way on every identity line. */
-function identityStamp(ticker: string, closeMs: number, fault: IdentityFault): string {
+function identityStamp(ticker: string, closeMs: number, fault: OfficialFault): string {
   const hhmm = closeMs > 0 ? new Date(closeMs).toISOString().slice(11, 16) : "??:??";
   return `IDENTITY ${hhmm} ${ticker || "∅"} · ${fault}`;
 }
@@ -413,7 +457,7 @@ export function faultLine(ticker: string, closeMs: number, fault: IdentityFault,
 export function officialFaultLine(
   ticker: string,
   closeMs: number,
-  fault: IdentityFault,
+  fault: OfficialFault,
   detail: string,
 ): string {
   return `${identityStamp(ticker, closeMs, fault)} — official_value not written · ${detail}`;

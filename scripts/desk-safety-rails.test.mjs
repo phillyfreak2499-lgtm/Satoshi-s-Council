@@ -844,6 +844,42 @@ test("no write identifies a ledger row by ticker alone", () => {
   const wi = codeOf("src/lib/desk/window-identity.ts");
   assert.match(wi, /official_value not written/, "the official line names what was withheld");
   assert.match(wi, /not graded, not taught/, "the grading line keeps its own wording");
+  // FAIL CLOSED WITH NO CLOSE WITNESS. An allowed official verdict must never be
+  // reached with both close-time witnesses failing: an unparseable ticker AND a payload
+  // carrying no usable close leaves nothing tying the fetched market to THIS row, and
+  // an echoed ticker is not a witness because the request supplied it. The narrowed
+  // UPDATE stops one statement touching many rows, not the same wrong value reaching
+  // each of them in turn.
+  const mwAt = wi.indexOf("export function mayWriteOfficial");
+  assert.ok(mwAt >= 0, "mayWriteOfficial must exist");
+  const mwEnd = wi.indexOf("\n}", mwAt);
+  const mw = wi.slice(mwAt, mwEnd > mwAt ? mwEnd : undefined);
+  assert.match(
+    mw,
+    /if \(tickerTimeOk !== true && !checks\.close_ok\) \{/,
+    "the zero-witness guard must be present, and must require at least one witness",
+  );
+  // The guard has to sit BEFORE the success return, or it cannot withhold anything.
+  const guardAt = mw.indexOf("if (tickerTimeOk !== true && !checks.close_ok)");
+  const okAt = mw.indexOf("return { ok: true, checks };");
+  assert.ok(guardAt >= 0 && okAt > guardAt, "the guard must precede the ok:true return");
+  // One success return only, so there is no second path around the guard.
+  assert.equal(
+    (mw.match(/return \{ ok: true/g) ?? []).length,
+    1,
+    "exactly one allowed exit, so the guard cannot be bypassed",
+  );
+  // Absence of evidence is not labelled a mismatch.
+  const guardBlock = mw.slice(guardAt, okAt);
+  assert.match(guardBlock, /fault: "official-identity-unverifiable"/, "named for what it is");
+  assert.doesNotMatch(guardBlock, /mismatch/, "nothing disagreed, so it is not a mismatch");
+  // And it is not treated as a contradiction by the loud/quiet predicate.
+  assert.match(
+    wi,
+    /fault !== "no-settle-for-window" && fault !== "official-identity-unverifiable"/,
+    "absent evidence must not read as an inconsistency",
+  );
+
   const ofAt = wi.indexOf("export function officialFaultLine");
   assert.ok(ofAt >= 0, "the official-value line must exist");
   const ofEnd = wi.indexOf("\n}", ofAt);
