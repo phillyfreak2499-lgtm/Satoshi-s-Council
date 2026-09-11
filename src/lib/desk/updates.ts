@@ -291,4 +291,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The floor now shows what a call actually costs, in one row under the chair's read: side, fair value, ask, fee, edge after the fee, the win rate that price needs to stand still, the leftover on the two legs, the size resting at the touch, and the 80¢ floor — with a plain line saying whether the book pays and, if not, what is in the way. Every number is carried from the same frame the desk decided on rather than worked out a second time, and a test holds that line. It also fixed a mislabel: the chair line read \"leftover\" beside a number that was the edge, while the real leftover was not shown at all. Those are now two cells with their own names. And one case the page never admitted — an ask that clears the floor with nothing resting behind it — now says both things: the book would pay, and the touch is empty. No call, floor, grading rule or past number changed.",
   },
+  {
+    slug: "2026-09-11-performance-cube",
+    body:
+      "The books were cut every way that might matter, and the biggest line in them is a rule the desk already retired. Until Sep 6 a call could add legs and be sold at a mid price; since then it is one contract held to settlement. Split there: the retired style booked 24 calls, won 37.5% against the 68.8% those prices needed, and lost 118¢. The current style has booked 80, won 80.0% against 79.7% needed, and is down 15¢ — about a fifth of a cent a call. Nearly all of the all-time loss belongs to a mechanism that no longer runs. The cut also refuses to guess: a position sold at 68¢ says nothing about which side won, so those calls keep their cents and lose their side. Every cell now shows the range around its win rate, the breakeven its own prices demanded, and how many cells that many cuts would make look good by luck alone. Reporting only — nothing changed.",
+  },
 ];
