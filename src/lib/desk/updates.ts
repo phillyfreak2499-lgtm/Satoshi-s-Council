@@ -276,4 +276,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk started measuring the order book properly. TAPE has always read the size at the best bid and ask, but the lab already rebuilds Kalshi's whole book from its live feed, so far more was on the table. Thirty-odd measurements now run every second: how lopsided the book is three and five levels deep, where the size-weighted price sits against the midpoint, whether resting size is being posted or pulled, whether a drained level comes back, how long any of it holds, and how thick the book gets away from the touch. One rule governs all of it — a cancelled order is not a trade. A quote vanishing because someone pulled it means something different from one vanishing because someone bought it, so book pressure and real executions are counted separately. None of it votes: no seat reads it and no skill exists for it yet.",
   },
+  {
+    slug: "2026-09-11-vel-2",
+    body:
+      "VEL stopped assuming one exchange rate between Bitcoin and cents. Its production read converts a BTC move into expected contract cents using a single fixed multiplier, the same one in every window — but a fifty-dollar move is nearly meaningless with ten minutes left and the strike four hundred away, and close to decisive with forty seconds left and the strike five away. A new shadow measurement works out what the move should have been worth from the contract's own sensitivity, which depends on distance to the strike, time remaining and volatility, with no fitted parameters. What is left over after subtracting that is the part of the move the underlying does not explain. It also stops assuming Bitcoin leads: it measures which market actually moved first at four horizons and reports honestly when neither did. Research only; the production read is unchanged and nothing votes on this.",
+  },
 ];

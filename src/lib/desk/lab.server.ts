@@ -48,6 +48,8 @@ import {
   type Tape2Features,
   type Tape2State,
 } from "./tape2";
+import { readClock } from "./clock";
+import { vel2Features, type Vel2Features, type Vel2Sample } from "./vel2";
 import {
   FAST_JUMP_MS,
   FILL_LATENCIES,
@@ -119,6 +121,10 @@ type Lab = {
   tape2Ticker: string;
   /** Last computed feature set, for the lab panel and the replay. */
   tape2Last: Tape2Features | null;
+  /** VEL 2.0 samples for the current window: spot, YES and the clock state that
+   *  sets the contract's sensitivity. Research only. */
+  vel2: Vel2Sample[];
+  vel2Last: Vel2Features | null;
 };
 
 /** How trades are arriving: which direction field carried them, and how late. */
@@ -177,6 +183,8 @@ function lab(): Lab {
     tape2: freshTape2(),
     tape2Ticker: "",
     tape2Last: null,
+    vel2: [],
+    vel2Last: null,
   };
   return g.__desk_lab__;
 }
@@ -535,12 +543,45 @@ function sampleTape2Now(L: Lab, t: number): void {
     L.tape2 = freshTape2();
     L.tape2Ticker = tk;
     L.tape2Last = null;
+    L.vel2 = [];
+    L.vel2Last = null;
   }
   const b = L.books.get(tk);
   if (!bookTrusted(b)) return;
   const view = yesView(b);
   sampleTape2(L.tape2, view, t);
   L.tape2Last = tape2Features(L.tape2, view, t);
+  sampleVel2Now(L, view, t);
+}
+
+/**
+ * One VEL 2.0 sample a second: BTC, the YES midpoint, and the clock state that
+ * sets how much the contract SHOULD move per dollar of BTC. The distance and
+ * sigma come from readClock, the same model the chair's own fair value uses, so
+ * the expected response is not a second opinion invented here.
+ *
+ * The noise floor for "BTC moved" is a fraction of sigma rather than a fixed
+ * number of dollars, because a dollar means something different in a quiet
+ * window than in a violent one.
+ */
+function sampleVel2Now(L: Lab, view: ReturnType<typeof yesView>, t: number): void {
+  const snap = L.getSnap();
+  if (!snap || snap.ticker !== L.tape2Ticker) return;
+  const bid = view.bids[0]?.price ?? 0;
+  const ask = view.asks[0]?.price ?? 0;
+  if (!(bid > 0) || !(ask > 0) || !(snap.spot > 0)) return;
+  const c = readClock(snap);
+  L.vel2.push({ t, spot: snap.spot, yes: (bid + ask) / 2, dist: c.dist, sigma: c.sigma });
+  // 60s is the longest horizon; keep a little slack and cap the array.
+  const cutoff = t - 75_000;
+  L.vel2 = L.vel2.filter((x) => x.t >= cutoff).slice(-200);
+  L.vel2Last = vel2Features(L.vel2, t, Math.max(1, 0.15 * c.sigma));
+}
+
+/** The current expected-response residuals, or null when none measured. Research only. */
+export function vel2Now(ticker: string): Vel2Features | null {
+  const L = lab();
+  return L.tape2Ticker === ticker ? L.vel2Last : null;
 }
 
 /** The current microstructure features, or null when none have been measured. Research only. */
@@ -817,6 +858,9 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
     tape2: L.tape2Last
       ? { ticker: L.tape2Ticker, ...L.tape2Last }
       : { ticker: L.tape2Ticker, note: "no trusted book sampled yet" },
+    // VEL 2.0: the part of the contract's move the underlying does not explain,
+    // at four horizons, plus which market actually moved first. Research only.
+    vel2: L.vel2Last ?? { note: "no samples yet" },
     book_integrity: {
       books: L.books.size,
       trusted: [...L.books.values()].filter((x) => bookTrusted(x)).length,
