@@ -14,7 +14,14 @@
  */
 import { getSql } from "@/lib/db";
 import { sessionOf, phaseOf } from "./math";
-import { FROZEN_AT, researchBoard, researchRow, type ResearchBoard, type ResearchRow } from "./research-status.ts";
+import {
+  FROZEN_AT,
+  researchBoard,
+  researchRow,
+  type ResearchBoard,
+  type ResearchRow,
+} from "./research-status.ts";
+import { QTY_FIX_AT } from "./research-era.ts";
 import { MIN_AGAINST, marketSide } from "./seat-signal.ts";
 
 const TTL_MS = 300_000;
@@ -28,8 +35,10 @@ let cache: { at: number; board: ResearchStudy } | null = null;
 /** The six seats whose first objection reading was surprising, watched not acted on. */
 const WATCHLIST: Record<string, string> = {
   DRIFT: "first read: market overconfident by ~9.5 points when it objects — watching, not rewarded",
-  CASCADE: "first read: market overconfident by ~7.6 points when it objects — watching, not rewarded",
-  CHAIN: "first read: market MORE right than it claims when it objects (~11 points) — watching, not inverted",
+  CASCADE:
+    "first read: market overconfident by ~7.6 points when it objects — watching, not rewarded",
+  CHAIN:
+    "first read: market MORE right than it claims when it objects (~11 points) — watching, not inverted",
   TAPE: "first read: market MORE right than it claims when it objects (~8 points) — watching, not inverted",
   WICK: "first read: market MORE right than it claims when it objects (~7 points) — watching, not inverted",
   FADE: "first read: market MORE right than it claims when it objects (~5 points) — watching, not inverted",
@@ -47,21 +56,55 @@ type SampleRow = {
 const regimeKey = (t: number, mins: number) => `${sessionOf(t)}_${phaseOf(mins)}`;
 
 /** The shadow traces the replay records, and how to read a sample as directional. */
-const TRACES: { col: string; id: string; family: string; note: string; restarted?: boolean; why?: string }[] = [
+const TRACES: {
+  col: string;
+  id: string;
+  family: string;
+  note: string;
+  restarted?: boolean;
+  why?: string;
+}[] = [
   { col: "imb", id: "TAPE2.imb_l5", family: "TAPE 2.0", note: "depth imbalance five levels in" },
-  { col: "micro", id: "TAPE2.micro_minus_mid", family: "TAPE 2.0", note: "size-weighted price against the midpoint" },
+  {
+    col: "micro",
+    id: "TAPE2.micro_minus_mid",
+    family: "TAPE 2.0",
+    note: "size-weighted price against the midpoint",
+  },
   {
     col: "ofi",
     id: "TAPE2.ofi_norm_15s",
     family: "TAPE 2.0",
     note: "normalised order-flow imbalance over 15s",
     restarted: true,
-    why: "divided by residue levels until the book dropped them; every earlier record is unusable and none is pooled",
+    why:
+      "divided by residue levels until the book dropped them at the quantity fix; every earlier record is " +
+      "unusable and none is pooled",
   },
-  { col: "cancel", id: "TAPE2.cancel_share", family: "TAPE 2.0", note: "share of book churn that was cancels" },
-  { col: "tflow", id: "TAPE2.trade_imb_15s", family: "TAPE 2.0", note: "net executed size over 15s" },
-  { col: "resid", id: "VEL2.residual_30s", family: "VEL 2.0", note: "the 30s YES move BTC does not explain" },
-  { col: "lead", id: "VEL2.lead_30s", family: "VEL 2.0", note: "which market moved first over 30s" },
+  {
+    col: "cancel",
+    id: "TAPE2.cancel_share",
+    family: "TAPE 2.0",
+    note: "share of book churn that was cancels",
+  },
+  {
+    col: "tflow",
+    id: "TAPE2.trade_imb_15s",
+    family: "TAPE 2.0",
+    note: "net executed size over 15s",
+  },
+  {
+    col: "resid",
+    id: "VEL2.residual_30s",
+    family: "VEL 2.0",
+    note: "the 30s YES move BTC does not explain",
+  },
+  {
+    col: "lead",
+    id: "VEL2.lead_30s",
+    family: "VEL 2.0",
+    note: "which market moved first over 30s",
+  },
 ];
 
 export async function researchStudy(): Promise<ResearchStudy> {
@@ -101,8 +144,13 @@ export async function researchStudy(): Promise<ResearchStudy> {
         family: t.family,
         n,
         prospective_n: prospective,
-        since: t.restarted ? "2026-09-11T03:02:30Z (recording) / corrected same day" : REPLAY_SHADOW_SINCE,
-        since_why: t.why ?? `recorded from the deploy that added the shadow traces; definitions frozen ${FROZEN_AT}`,
+        // A corrected measurement's clock is the CORRECTION, not the day recording
+        // began. Read from the shared boundary so it cannot drift from the era
+        // split the studies use.
+        since: t.restarted ? QTY_FIX_AT : REPLAY_SHADOW_SINCE,
+        since_why:
+          t.why ??
+          `recorded from the deploy that added the shadow traces; definitions frozen ${FROZEN_AT}`,
         regime_n: regimes,
         directional,
         result: null,
@@ -146,7 +194,8 @@ export async function researchStudy(): Promise<ResearchStudy> {
         n: against,
         prospective_n: prospective,
         since: FROZEN_AT,
-        since_why: "the first reading came from windows before this date and is not evidence for itself",
+        since_why:
+          "the first reading came from windows before this date and is not evidence for itself",
         regime_n: regimes,
         directional: spoke,
         result: null,
@@ -156,6 +205,41 @@ export async function researchStudy(): Promise<ResearchStudy> {
         min: MIN_AGAINST,
       }),
     );
+  }
+
+  // ---- absorption, the next primary hypothesis --------------------------
+  try {
+    const abs = await db<{ n: number; post: number; graded: number }>`
+      select count(*)::int as n,
+             count(*) filter (where era = 'post-qty-fix')::int as post,
+             count(*) filter (where era = 'post-qty-fix' and winner in ('UP','DOWN'))::int as graded
+      from desk_absorption
+    `;
+    const a = abs[0] ?? { n: 0, post: 0, graded: 0 };
+    const byRegime = await db<{ regime: string; n: number }>`
+      select coalesce(regime,'') as regime, count(*)::int as n from desk_absorption
+      where era = 'post-qty-fix' group by 1
+    `;
+    rows.push(
+      researchRow({
+        id: "WHALE2.absorption",
+        family: "WHALE 2.0",
+        n: a.n,
+        prospective_n: a.graded,
+        since: QTY_FIX_AT,
+        since_why:
+          "every measurement depends on order-book sizes, so only prints recorded after the quantity fix count",
+        regime_n: Object.fromEntries(byRegime.filter((r) => r.regime).map((r) => [r.regime, r.n])),
+        directional: a.post,
+        result: null,
+        note:
+          "aggressive size crossed and the price did not respond - judged against the market's own implied " +
+          "probability, not a hit rate",
+      }),
+    );
+  } catch {
+    // The table arrives with migration 0023; before it runs the row is simply
+    // absent, rather than a zero that would read as "measured, found nothing".
   }
 
   const board: ResearchStudy = {
