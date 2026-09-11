@@ -347,6 +347,57 @@ test("invalidate_if is only ever phrased as an exit, never as an entry trigger",
   assert.equal(invalidateLine(whyFacts(chair({ invalidate_if: "" }), "")), "", "absent when unrecorded");
 });
 
+test("the sentence never doubles the word 'if' — the stored value already starts with it", () => {
+  // This shipped to the live Floor as "The read is off if if Quiet-vol floor ... stays
+  // failed" and was caught by a rendered capture, NOT by a test: the old fixture used a
+  // condition without the leading word, so it never exercised the real shape. These are
+  // the ACTUAL return values of chair.ts's invalidatePrint, every one of which begins
+  // with "if".
+  const real = [
+    "if combined ask prints below 98¢ (stale leftover)",
+    "if both sides have no edge vs ask after fee",
+    "if book goes chalk (YES or NO ≥ 99¢)",
+    "if quote age > 25s",
+    "if clock prints ≤ 2.2m left",
+    "if spot reprints through strike",
+    "if YES mid rips +8¢ in 60s",
+    "if Quiet-vol floor stays failed",
+    "if top-3 stay in conflict",
+    "if |score|×agg drops under the bar",
+  ];
+  for (const v of real) {
+    const line = invalidateLine(whyFacts(chair({ invalidate_if: v }), ""));
+    assert.doesNotMatch(line, /\bif\s+if\b/i, `doubled "if" for: ${v}`);
+    assert.equal(line.toLowerCase().split(/\bif\b/).length - 1, 1, `exactly one "if" for: ${v}`);
+    assert.match(line, /^The read is off if \S/, `reads naturally for: ${v}`);
+    // The condition itself survives intact, minus only the joining word.
+    assert.ok(line.endsWith(v.replace(/^if\s+/i, "")), `condition altered for: ${v}`);
+  }
+});
+
+test("a condition that does NOT start with 'if' still reads as one sentence", () => {
+  // Stripping the prefix instead of the leading word would produce "The read is off
+  // spot loses the strike". Normalising both shapes is the only version safe either way.
+  const line = invalidateLine(whyFacts(chair({ invalidate_if: "spot loses the strike" }), ""));
+  assert.equal(line, "The read is off if spot loses the strike");
+});
+
+test("casing and stray whitespace in the stored condition cannot reintroduce the double", () => {
+  for (const v of ["If quote age > 25s", "IF quote age > 25s", "  if   quote age > 25s  "]) {
+    const line = invalidateLine(whyFacts(chair({ invalidate_if: v }), ""));
+    assert.doesNotMatch(line, /\bif\s+if\b/i, `doubled for: ${JSON.stringify(v)}`);
+    assert.match(line, /^The read is off if quote age > 25s$/, `normalised: ${JSON.stringify(v)}`);
+  }
+  // A bare "if" with nothing after it has no condition to state.
+  assert.equal(invalidateLine(whyFacts(chair({ invalidate_if: "if" }), "")), "");
+  assert.equal(invalidateLine(whyFacts(chair({ invalidate_if: "   " }), "")), "");
+});
+
+test("an 'if' later in the condition is left exactly where it is", () => {
+  const line = invalidateLine(whyFacts(chair({ invalidate_if: "if spot stalls, even if volume lifts" }), ""));
+  assert.equal(line, "The read is off if spot stalls, even if volume lifts");
+});
+
 // ---------------------------------------------------------------------------
 // CONFIDENCE — four quantities, four names.
 // ---------------------------------------------------------------------------

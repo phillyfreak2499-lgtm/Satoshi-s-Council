@@ -381,9 +381,29 @@ export function whyFacts(chair: ChairResult, plain: string): WhyFacts {
  * How an `invalidate_if` condition may be described. It is the condition that would
  * END the read, and the brief explicitly forbids reinterpreting it as an entry
  * trigger — so the only wording offered is the one that cannot be read backwards.
+ *
+ * THE STORED VALUE IS ALREADY A FULL CONDITIONAL. Every branch of chair.ts's
+ * `invalidatePrint` returns a clause that begins with "if": "if quote age > 25s",
+ * `if ${failGate.label} stays failed`, and so on. Prepending another produced
+ * "The read is off if if Quiet-vol floor stays failed" on the live Floor — caught in
+ * a rendered capture, not by a test, because the test fixture happened to use a value
+ * without the leading word.
+ *
+ * So the leading "if" is stripped before composing, rather than the prefix being
+ * dropped: dropping it would read "The read is off Quiet-vol floor stays failed" for
+ * any future value that does not start with "if". Normalising both shapes into one
+ * sentence is the only version that cannot break either way. The CONDITION itself is
+ * never touched — only the word joining it to the sentence.
  */
 export function invalidateLine(w: WhyFacts): string {
-  return w.invalidate_if ? `The read is off if ${w.invalidate_if}` : "";
+  const raw = (w.invalidate_if ?? "").trim();
+  if (!raw) return "";
+  // Leading "if" in any casing. `\b` rather than `\s+` so a BARE "if" with no condition
+  // after it is stripped too — `^if\s+` left it in place and produced "The read is off
+  // if if", the same doubling in the degenerate case. The word boundary also means
+  // "iffy volume" is not mistaken for the joining word.
+  const cond = raw.replace(/^if\b\s*/i, "").trim();
+  return cond ? `The read is off if ${cond}` : "";
 }
 
 // ---------------------------------------------------------------------------
