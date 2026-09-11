@@ -1571,6 +1571,19 @@ test("the Floor's order puts WHY first after the call, with prices inside the ca
  * the frame records decision-time market state, so that label must stay unavailable
  * rather than borrow the entry's frozen numbers.
  */
+test("the resting book size is never printed raw", () => {
+  // `touch` is a contract count from Kalshi's fractional-precision book, so the raw
+  // value is 146.24058733173328. `String(eco.touch)` printed all of it. The unit test
+  // covers the formatter; this covers the CALL SITE, which no unit test reaches.
+  const tab = codeOf("src/components/desk/SatoshiTab.tsx");
+  assert.doesNotMatch(
+    tab,
+    /String\(eco\.touch\)/,
+    "a fractional size rendered through String() prints eighteen digits",
+  );
+  assert.match(tab, /fmtContracts\(eco\.touch\)/, "the touch cell must go through the formatter");
+});
+
 test("every surface that prepends a word to invalidate_if uses the one shared rule", () => {
   // Two surfaces do: the Floor's evidence sentence and the Diagnostics field whose LABEL
   // is already the words "invalidate if". Both shipped the value raw and read it doubled

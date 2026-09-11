@@ -57,6 +57,47 @@ export function realAge(s: unknown): number | null {
   return s >= AGE_UNKNOWN_SENTINEL ? null : s;
 }
 
+/**
+ * A resting book size, in CONTRACTS, as a reader can take in at a glance.
+ *
+ * THE UNIT, FROM SOURCE. This is `snap.yes_bid_size` / `snap.no_bid_size` — the size
+ * resting at the best bid on the side a fill would have to take (`economics.ts:72`).
+ * It arrives from Kalshi's FRACTIONAL-PRECISION book: rows are
+ * `[price_dollars, count_fp]` (`lab-book.ts:5-6`), and `kalshi-book.ts:32` carries
+ * `count_fp` through `num()` with no rounding. So a real production value is
+ * `146.24058733173328`, and `String(eco.touch)` printed all eighteen digits of it into
+ * a one-line cell — unreadable, and wide enough to push the row sideways on a phone.
+ *
+ * WHOLE CONTRACTS, BECAUSE THAT IS HOW THE DESK ALREADY RECORDS IT. The same field is
+ * already rounded to a whole contract everywhere else it is used: the research record
+ * writes `touch_size: Math.round(Number(touch) || 0)` (`server-engine.ts:571-573`) and
+ * the quote fingerprint rounds it too (`server-feeds.ts:280`). Displaying it the same
+ * way adds no new convention.
+ *
+ * WHY A POSITIVE SIZE NEVER PRINTS AS "0". `Math.round(0.4)` is 0, and the box's own
+ * caveat reads "at the floor, but nothing resting at the touch" only when
+ * `touch <= 0` (`economics.ts:100`). A rounded-to-zero cell beside "the book pays
+ * this" would contradict itself on screen, so anything resting below one whole
+ * contract reads "<1": small, but not nothing.
+ *
+ * A MISSING SIZE IS NOT A ZERO SIZE. Rule 1 of this module, and the reason the input
+ * is type-tested rather than coerced: `Number(null)` is 0, so a `Number()` first pass
+ * renders "no size reported" as the confident claim "nothing is resting" — the same
+ * collapse the 999 sentinel gets caught for. Unreported reads "—". A non-positive
+ * number does read "0", matching how the box's own `touch <= 0` predicate already
+ * treats it.
+ *
+ * The VALUE is not touched. This is a read-side format; `economicsOf` still carries
+ * the exact number, the `touch <= 0` predicate still tests the exact number, and
+ * nothing here is rounded back into the snapshot.
+ */
+export function fmtContracts(n: unknown): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
+  if (n <= 0) return "0";
+  if (n < 1) return "<1";
+  return Math.round(n).toLocaleString("en-US");
+}
+
 // ---------------------------------------------------------------------------
 // PRICES — four kinds, never conflated.
 // ---------------------------------------------------------------------------

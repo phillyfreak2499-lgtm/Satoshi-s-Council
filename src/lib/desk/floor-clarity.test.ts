@@ -8,6 +8,7 @@ import {
   displayedPriceFacts,
   FEED_GATE_IDS,
   floorLine,
+  fmtContracts,
   freshness,
   invalidateCondition,
   invalidateLine,
@@ -672,4 +673,59 @@ test("invalidateCondition strips only the joining word, and never mutates the in
   for (const empty of ["if", "IF", "  ", "", null, undefined]) {
     assert.equal(invalidateCondition(empty), "", `${JSON.stringify(empty)} has no condition`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// TOUCH is a CONTRACT COUNT from a fractional-precision book.
+// ---------------------------------------------------------------------------
+
+test("a fractional book size never renders as raw floating point", () => {
+  // The exact value seen on screen during visual QA. Kalshi's book carries
+  // `count_fp`, so sizes arrive fractional and `String(...)` printed all of it.
+  const raw = 146.24058733173328;
+  const out = fmtContracts(raw);
+  assert.equal(out, "146");
+  // The guard that matters: no long decimal tail, whatever the rounding rule.
+  assert.doesNotMatch(out, /\./, "a size must not render a decimal point");
+  assert.ok(out.length <= 8, `a size cell must stay narrow, got ${out.length} chars: ${out}`);
+  assert.ok(String(raw).length > 8, "fixture must actually be a long raw value");
+
+  // Whole contracts, matching how the research record and the fingerprint already
+  // round this same field (server-engine.ts:571-573, server-feeds.ts:280).
+  assert.equal(fmtContracts(146.6), "147");
+  assert.equal(fmtContracts(1.4), "1");
+  assert.equal(fmtContracts(220), "220");
+  // Grouped once past a thousand, so a deep book is still readable.
+  assert.equal(fmtContracts(12345.678), "12,346");
+});
+
+test("a size resting below one contract is small, never nothing", () => {
+  // economics.ts only says "nothing resting at the touch" when touch <= 0, so a
+  // rounded-to-zero cell beside "the book pays this" would contradict itself.
+  assert.equal(fmtContracts(0.4), "<1");
+  assert.equal(fmtContracts(0.0001), "<1");
+  assert.equal(fmtContracts(0.9999), "<1");
+  // A true zero is a true zero.
+  assert.equal(fmtContracts(0), "0");
+  // Nothing measured at all. A missing size must NOT read as "nothing resting":
+  // `Number(null)` is 0, so coercing the input would turn "not reported" into the
+  // confident claim that the touch is empty. Rule 1 of this module.
+  for (const bad of [NaN, Infinity, -Infinity, null, undefined, "x", "", "146.2"]) {
+    assert.equal(fmtContracts(bad), "—", `${JSON.stringify(bad)} is not a size`);
+  }
+  // A negative size is not a size the desk claims it could take.
+  assert.equal(fmtContracts(-5), "0");
+});
+
+test("formatting a size is read-side only and decides nothing", () => {
+  // The caveat and the colour in the economics box read the EXACT number
+  // (`touch <= 0`, economics.ts:100) — the formatter must never be what decides.
+  // It takes a value and returns a STRING, so it cannot feed that predicate, and
+  // `economicsOf` carrying the exact size is asserted in economics.test.ts.
+  for (const v of [146.24058733173328, 0.4, 0, -5]) {
+    assert.equal(typeof fmtContracts(v), "string", "the formatter only ever yields text");
+  }
+  // A positive size and a zero size are never formatted to the same string, because
+  // that is the distinction the caveat turns on.
+  assert.notEqual(fmtContracts(0.4), fmtContracts(0));
 });

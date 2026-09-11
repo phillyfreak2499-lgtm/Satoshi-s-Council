@@ -17,7 +17,7 @@ import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from 
 import { bookState, bookableShadow, CHAIR_MIN_ASK_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 import { CallPrices, CompactRecord, EvidenceBlock, LastReplayCard, WhyBlock } from "./FloorClarity";
-import { invalidateCondition, recordCard, whyFacts } from "@/lib/desk/floor-clarity";
+import { fmtContracts, invalidateCondition, recordCard, whyFacts } from "@/lib/desk/floor-clarity";
 import { FLOOR_LIVE_SINCE, openRow } from "@/lib/desk/book-floor";
 import { economicsOf, type Economics } from "@/lib/desk/economics";
 
@@ -108,7 +108,11 @@ function EconomicsBox({ eco }: { eco: Economics }) {
         {cell("edge", eco.side ? signed(eco.edge) : "—", !eco.side ? undefined : eco.edge >= 0 ? "text-up" : "text-down")}
         {cell("needs", eco.side ? `${eco.breakeven.toFixed(0)}%` : "—")}
         {cell("leftover", signed(eco.leftover), eco.leftover < 0 ? "text-wait" : undefined)}
-        {cell("touch", eco.side ? String(eco.touch) : "—", eco.side && eco.touch <= 0 ? "text-wait" : undefined)}
+        {/* Contracts, from Kalshi's fractional-precision book, so the raw value is
+            146.24058733173328. Whole contracts here, exactly as the research record
+            and the quote fingerprint already round it; the VALUE is untouched and the
+            touch <= 0 test below still reads the exact number. */}
+        {cell("touch", eco.side ? fmtContracts(eco.touch) : "—", eco.side && eco.touch <= 0 ? "text-wait" : undefined)}
       </div>
       <div className="mt-2 font-mono text-micro text-muted">
         floor {eco.floor}¢ ·{" "}
