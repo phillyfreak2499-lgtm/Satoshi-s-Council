@@ -8,7 +8,7 @@
  */
 import { runBots } from "./bots";
 import { runChair } from "./chair";
-import { takerFeeCents } from "./clock";
+import { readClock, takerFeeCents } from "./clock";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -27,7 +27,16 @@ import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
 import { BOARD_UPDATE_MAX, DESK_UPDATES } from "./updates";
-import { labDigestBits, labFairState, labSettleReceipt, startLab, labFairNow } from "./lab.server";
+import {
+  labDigestBits,
+  labFairState,
+  labSettleReceipt,
+  startLab,
+  labFairNow,
+  noteDeskState,
+  whalePrintRecords,
+} from "./lab.server";
+import { recordPrints } from "./absorption.server";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
@@ -41,6 +50,7 @@ import {
   extractFeatures,
   fitLogistic,
   predictV2,
+  seatEvidence,
   seatProb,
   settleV2,
   type V2Decision,
@@ -835,6 +845,16 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   void recordReplay(snap.ticker, finish).catch((err) => {
     e.lastError = `replay: ${err instanceof Error ? err.message : String(err)}`;
   });
+  // WHALE 2.0's prospective absorption sample. Measured now, at settle, because
+  // what a print did is a question about the sixty seconds after it — and
+  // written with the outcome already known, so the row is complete or absent
+  // rather than half-filled and waiting.
+  void (async () => {
+    const rows = whalePrintRecords(snap.ticker, snap.close_time);
+    if (rows.length) await recordPrints(rows, finish);
+  })().catch((err) => {
+    e.lastError = `absorption: ${err instanceof Error ? err.message : String(err)}`;
+  });
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
     e.learner = runHuddle(e.learner).learner;
   }
@@ -986,6 +1006,20 @@ async function tick(e: Eng) {
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
+    // Hand the lab this tick's window state so a print landing between ticks
+    // carries real context, with its own staleness recorded. Research only.
+    noteDeskState({
+      t: snap.as_of,
+      // seatEvidence is the same converter desk_samples stores, so the
+      // absorption study's DRIFT and CASCADE bands line up with the ones the
+      // seat-signal study already uses rather than being a second scale.
+      drift: seatEvidence(votes.find((v) => v.seat === "DRIFT")),
+      cascade: seatEvidence(votes.find((v) => v.seat === "CASCADE")),
+      regime: snap.regime_key,
+      fair_yes: snap.fair_yes,
+      dist: readClock(snap).dist,
+      sigma: readClock(snap).sigma,
+    });
     noteV2(e, snap, votes, chair);
     noteTaker(e, snap, chair);
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window

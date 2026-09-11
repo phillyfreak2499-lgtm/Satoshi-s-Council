@@ -326,4 +326,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "WHALE now watches real trades instead of guessing from candle volume. The old seat infers a big player from a bar that traded above its median — which cannot tell one large order from fifty small ones, cannot say who crossed the spread, and never sees the trade itself. Kalshi's feed carries the executions with an aggressor side, so a separate lab reads them: where each print ranks against recent sizes, orders sliced into pieces counted as the one decision they are, which side was aggressive, how far the midpoint moved and how far per contract, whether it kept going or came back — and the one a volume count can never see: size crossing with the price refusing to move, meaning someone is quietly taking the other side. The old seat is untouched and keeps its own record. The two are never merged. Nothing votes on any of it.",
   },
+  {
+    slug: "2026-09-11-absorption-study",
+    body:
+      "The desk is done adding instruments for now and has started collecting evidence on the ones it has. Absorption is the one worth watching: aggressive size crosses the spread and the price refuses to move, which means somebody is quietly taking the other side. Every real trade is now written down with what happened next — over five, fifteen, thirty and sixty seconds, what Bitcoin did in the same moments, how big the order was against the book, and where the price and the clock stood. Buying and selling are kept apart, one big order is kept apart from a burst of them, and nothing is labelled large or absorbed when it is recorded; those lines were fixed in advance and are applied only when reading. The question is not whether the desk would have won. It is whether the result came in more or less often than Kalshi's own price said it would. No answer before thirty clean cases.",
+  },
 ];
