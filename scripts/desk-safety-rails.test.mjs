@@ -1509,3 +1509,74 @@ test("the chair's gate confidence is never rendered as a percentage", () => {
     "chairConfidenceLabel must not append a percent sign",
   );
 });
+
+/**
+ * The Floor's user-facing order, and price provenance kept inside the call.
+ *
+ * Stage 1 requires CALL -> WHY -> BITCOIN VS STRIKE -> EVIDENCE + COUNTER -> YOUR CALL
+ * + LAST REPLAY -> COMPACT RECORD. The first draft rendered the price block as its own
+ * <section> in the Floor's gap-4 list, which made it a distinct card with its own ARIA
+ * landmark sitting between the call and the why — displacing WHY from being the first
+ * explanatory section. Asserted here so a later edit cannot quietly reintroduce that.
+ */
+test("the Floor's order puts WHY first after the call, with prices inside the call", () => {
+  const src = read("src/components/desk/SatoshiTab.tsx");
+  const floor = src.slice(src.indexOf("flex-col gap-4 py-4"));
+
+  // CallPrices must be INSIDE the chair stage, not a sibling of it.
+  const stage = src.indexOf('id="chair-stage"');
+  const prices = src.indexOf("<CallPrices");
+  assert.ok(stage > 0 && prices > stage, "CallPrices must render inside the chair stage");
+  // And it must not be its own landmark section.
+  // codeOf, not read: the explanatory comment inside CallPrices names "<section>" as the
+  // thing it stopped being, and a raw read would match that prose instead of the markup.
+  const comp = codeOf("src/components/desk/FloorClarity.tsx");
+  const block = comp.slice(comp.indexOf("export function CallPrices"), comp.indexOf("export function WhyBlock"));
+  assert.doesNotMatch(
+    block,
+    /<section/,
+    "CallPrices must be a nested div like EconomicsBox, not a section between CALL and WHY",
+  );
+
+  // The top-level order, by first appearance in the Floor's flex list.
+  const order = ["WhyBlock", "ChairEyes", "EvidenceBlock", "ArenaPanel", "LastReplayCard", "CompactRecord"];
+  let at = -1;
+  for (const name of order) {
+    const i = floor.indexOf(`<${name}`);
+    assert.ok(i > 0, `${name} must be on the Floor`);
+    assert.ok(i > at, `${name} is out of order: expected ${order.join(" -> ")}`);
+    at = i;
+  }
+  // The supporting research must follow the record, not precede it.
+  for (const after of ["Chamber", "ChairScoreboard", "GavelList", "SeatsList"]) {
+    assert.ok(
+      floor.indexOf(`<${after}`) > floor.indexOf("<CompactRecord"),
+      `${after} is supporting material and must come after the record`,
+    );
+  }
+
+  // One instance each: a reorder must never become a duplicate.
+  for (const name of [...order, "ChairBoard", "CallPrices", "Chamber", "ChairScoreboard"]) {
+    const n = src.split(`<${name}`).length - 1;
+    assert.equal(n, 1, `${name} is instantiated ${n} times; the Floor must hold exactly one`);
+  }
+});
+
+/**
+ * A locked paper entry is not a decision snapshot.
+ *
+ * server-engine.ts noteCall returns early when `!bookable(cents)` — "the read stands on
+ * screen, the fill waits ... a later tick at the floor can still fill this window" — so
+ * the recorded instant is the FILL's, which can be minutes after the read. Nothing on
+ * the frame records decision-time market state, so that label must stay unavailable
+ * rather than borrow the entry's frozen numbers.
+ */
+test("the decision snapshot never borrows the paper entry's price or instant", () => {
+  const fc = codeOf("src/lib/desk/floor-clarity.ts");
+  const block = fc.slice(fc.indexOf('kind: "decision"'), fc.indexOf('kind: "market"'));
+  assert.match(block, /cents: null/, "a decision price is not recorded anywhere on the frame");
+  assert.match(block, /at: null/, "and neither is a decision instant");
+  assert.doesNotMatch(block, /book\.cents/, "it must not read the fill's price");
+  assert.doesNotMatch(block, /openFill/, "it must not read the fill's timestamp");
+  assert.doesNotMatch(block, /marketCents/, "and it must not read the live ask");
+});

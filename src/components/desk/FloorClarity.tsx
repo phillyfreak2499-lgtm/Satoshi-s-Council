@@ -97,12 +97,14 @@ export function CallPrices({
   const fresh = freshness(snap);
   const feedTone =
     fresh.feed === "LIVE" ? "text-up" : fresh.feed === "STALE" ? "text-wait" : "text-down";
+  // A NESTED DIV, NOT A SIBLING SECTION. This renders INSIDE the Chair stage, directly
+  // under the economics box it complements, exactly as EconomicsBox does. As its own
+  // <section> in the Floor's gap-4 list it became a distinct card with its own ARIA
+  // landmark sitting between the CALL and the WHY — which displaced WHY from being the
+  // first explanatory section after the call. Price provenance belongs to the call
+  // presentation, so it lives in the call block.
   return (
-    <section
-      aria-label="Prices"
-      className="rounded-md border border-border bg-surface px-3 py-2.5"
-      data-floor-prices
-    >
+    <div className="mt-3 rounded-md border border-border bg-bg/40 px-3 py-2.5" data-floor-prices>
       <div className="font-mono text-micro uppercase tracking-widest text-subtle">
         <Tip k="chair.economics">when this was decided, and what is locked</Tip>
       </div>
@@ -127,7 +129,7 @@ export function CallPrices({
         Fair value and the current ask are in &ldquo;what this call costs&rdquo; above — fair
         value is DERIVED by the desk&rsquo;s model, the ask is what the market quotes. {floorLine()}
       </div>
-    </section>
+    </div>
   );
 }
 

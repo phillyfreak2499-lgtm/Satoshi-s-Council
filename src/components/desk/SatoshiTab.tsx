@@ -194,6 +194,18 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
             )}
           </div>
           <EconomicsBox eco={economicsOf(snap, lean)} />
+          {/* Price provenance belongs to the call, not to a section between the call
+              and the why: when this was decided, and what is locked. */}
+          <CallPrices
+            snap={snap}
+            chair={chair}
+            book={book}
+            openFill={(() => {
+              const r = openRow(snap, callLog);
+              return r ? { t: r.t, cents: r.cents } : null;
+            })()}
+            tz={tz}
+          />
         </div>
         <div className="flex flex-wrap items-end gap-6">
           <div>
@@ -680,7 +692,6 @@ export function SatoshiTab({
   const speaking = chair.rows.filter((r) => r.lean === "UP" || r.lean === "DOWN").length;
   // All presentation-only, all from data the Floor already has. No fetch, no timer.
   const book = bookState(snap, chair.lean, callLog);
-  const openFill = openRow(snap, callLog);
   const why = whyFacts(chair, plainLine(chair, snap, book));
   // The record counts the CURRENT floor era only: the brief's 40 windows straddle the
   // 70¢ → 80¢ change, and combining them would merge incompatible strategy eras.
@@ -696,17 +707,9 @@ export function SatoshiTab({
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
       {strip ? <div>{strip}</div> : null}
 
-      {/* The four prices belong to the call area: each says which kind it is and
-          which moment it belongs to, so a fair value can never read as a quote. */}
-      <CallPrices
-        snap={snap}
-        chair={chair}
-        book={book}
-        openFill={openFill ? { t: openFill.t, cents: openFill.cents } : null}
-        tz={settings.tz}
-      />
-
-      {/* 2. WHY — next to the call, from recorded fields only. Previously this lived
+      {/* 2. WHY — the FIRST explanatory section after the call. Price provenance is
+          inside the call block above, so nothing displaces this. */}
+      {/* WHY — next to the call, from recorded fields only. Previously this lived
           in the Diagnostics disclosure, several panes down. */}
       <WhyBlock why={why} chair={chair} />
 

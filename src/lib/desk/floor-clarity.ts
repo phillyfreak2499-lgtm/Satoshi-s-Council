@@ -150,26 +150,31 @@ export function priceFacts(
   return [
     {
       kind: "decision",
+      // ALWAYS UNAVAILABLE, IN EVERY STATE — and that is the honest answer, not a gap
+      // in this module.
+      //
+      // The desk does not record the market at the moment the Chair DECIDED. It records
+      // the price the book PAID. Those are different events and can be minutes apart:
+      // server-engine.ts noteCall returns early when `!bookable(cents)`, with the
+      // comment "the read stands on screen, the fill waits ... a later tick at the floor
+      // can still fill this window". So a read that appears at 65c and fills at 80c
+      // twelve minutes later produces ONE record, stamped at the fill. `noteEntryState`
+      // is likewise described as "the state the desk was in when the book actually
+      // paid", and it lands in the ledger, not on this frame.
+      //
+      // An earlier version of this function labelled the fill's own price and instant
+      // "decision snapshot" because they were frozen. Frozen is not the same as being
+      // the decision: relabelling the entry would have asserted an evaluation time the
+      // desk never captured. The entry is shown as the entry, below, and this stays
+      // unavailable until something genuinely records decision-time market state.
       label: "decision snapshot",
-      // ONLY EVER A FROZEN, RECORDED PRICE. A booked window has one: the fill row's
-      // own price and timestamp. An UNBOOKED window has none — nothing in the frame
-      // freezes a decision price for a window the book did not take, because
-      // `callLog` holds fills only and every `snap.*` price is live. An earlier
-      // version of this function put the CURRENT ask here with a note explaining that
-      // the read is re-taken each tick; that was wrong. A live quote under a label
-      // reading "snapshot" is exactly the substitution this module exists to prevent,
-      // however carefully the note is worded. So: unavailable, with the reason.
-      cents: booked && realCents(book.cents) ? book.cents : null,
-      at: booked && openFill && openFill.t > 0 ? openFill.t : null,
-      note: booked
-        ? "the price the read was taken at — the same instant the book filled"
-        : "the frozen price a decision was taken at, once the book takes one",
-      unavailable_why: booked
-        ? realCents(book.cents)
-          ? ""
-          : "the recorded fill carries no usable price"
-        : "nothing is frozen yet: this window is still open and the book has not filled, " +
-          "so there is no decision price to show. The live ask is in the economics box above.",
+      cents: null,
+      at: null,
+      note: "the market at the moment the Chair decided",
+      unavailable_why:
+        "not recorded: the desk stamps the price the book PAID, not the market when the " +
+        "read was taken, and a read under the floor waits for the ask — so the two can be " +
+        "minutes apart. The locked entry is shown separately; the live ask is above.",
     },
     {
       kind: "market",

@@ -118,14 +118,27 @@ test("the locked paper entry keeps its own price and time, never the current ask
   assert.notEqual(entry.at, market.at, "the entry is four minutes older than the quote");
 });
 
-test("the decision snapshot on a booked window belongs to the fill instant", () => {
+test("a locked paper entry is NOT a decision snapshot, even though it is frozen", () => {
+  // noteCall (server-engine.ts) returns early when !bookable(cents): "the read stands on
+  // screen, the fill waits ... a later tick at the floor can still fill this window". So
+  // the recorded instant is the FILL's and can be minutes after the read. Frozen is not
+  // the same as being the decision, and nothing on the frame records decision-time market
+  // state — so that label stays unavailable while the entry is shown as the entry.
   const fill = { t: T0 - 240_000, cents: 82 };
   const facts = priceFacts(snap(), chair(), booked, fill);
   const decision = by(facts, "decision");
-  assert.equal(decision.cents, 82);
-  assert.equal(decision.at, T0 - 240_000, "not now — the read was taken when it filled");
-  // And it is the same event as the entry, which the display may state.
-  assert.equal(sameEvent(decision, by(facts, "entry")), true);
+  const entry = by(facts, "entry");
+
+  assert.equal(decision.cents, null, "no decision price is recorded anywhere");
+  assert.equal(decision.at, null, "and no decision instant either");
+  assert.match(decision.unavailable_why, /the price the book PAID/);
+  assert.match(decision.unavailable_why, /minutes apart/);
+
+  // The entry keeps its own frozen facts, shown as the entry.
+  assert.equal(entry.cents, 82);
+  assert.equal(entry.at, T0 - 240_000);
+  // And the two are never presented as one event.
+  assert.equal(sameEvent(decision, entry), false);
 });
 
 test("an unbooked window has NO decision snapshot, and says so rather than showing a quote", () => {
@@ -139,7 +152,7 @@ test("an unbooked window has NO decision snapshot, and says so rather than showi
     const market = by(facts, "market");
     assert.equal(decision.cents, null, `${book.kind}: no frozen price exists`);
     assert.equal(decision.at, null, "and no frozen instant either");
-    assert.match(decision.unavailable_why, /nothing is frozen yet/);
+    assert.match(decision.unavailable_why, /not recorded/);
     // Critically: it must NOT have borrowed the live ask.
     if (market.cents != null) {
       assert.notEqual(decision.cents, market.cents, "a live quote must not stand in");
@@ -148,24 +161,29 @@ test("an unbooked window has NO decision snapshot, and says so rather than showi
   }
 });
 
-test("the only decision snapshot that exists comes from the recorded fill", () => {
-  // book.cents and openFill.cents are the SAME recorded row in production: bookState
-  // builds BookState.cents from openRow()'s row, and SatoshiTab passes both from that
-  // one lookup. The fixture mirrors that rather than inventing a mismatch.
-  const fill = { t: T0 - 300_000, cents: booked.kind === "booked" ? booked.cents : 0 };
-  const decision = by(priceFacts(snap(), chair(), booked, fill), "decision");
-  assert.equal(decision.cents, 82, "the fill's own recorded price");
-  assert.equal(decision.at, T0 - 300_000, "the fill's own instant, not now");
-  assert.notEqual(decision.at, T0, "never the current tick");
-  // And it is not the live ask, which has since moved to 88.
-  assert.notEqual(decision.cents, by(priceFacts(snap(), chair(), booked, fill), "market").cents);
+test("the decision snapshot is unavailable in EVERY state, with the same reason", () => {
+  // There is no state in which the desk records decision-time market data, so there is
+  // no state in which this label carries a number.
+  const fill = { t: T0 - 300_000, cents: 82 };
+  for (const [book, f] of [
+    [booked, fill],
+    [filling, null],
+    [floored, null],
+    [waiting, null],
+  ] as const) {
+    const d = by(priceFacts(snap(), chair(book === waiting ? { lean: "WAIT" } : {}), book, f), "decision");
+    assert.equal(d.cents, null, `${book.kind}: no decision price`);
+    assert.equal(d.at, null, `${book.kind}: no decision instant`);
+    assert.match(d.unavailable_why, /not recorded/);
+  }
 });
 
-test("a booked window with an unusable recorded price shows unavailable, not the ask", () => {
+test("a booked window with an unusable recorded price shows no entry, and no ask in its place", () => {
   const odd = { kind: "booked", lean: "UP", cents: 0, ask: 88 } as typeof booked;
-  const decision = by(priceFacts(snap(), chair(), odd, { t: T0 - 1, cents: 0 }), "decision");
-  assert.equal(decision.cents, null);
-  assert.match(decision.unavailable_why, /no usable price/);
+  const entry = by(priceFacts(snap(), chair(), odd, { t: T0 - 1, cents: 0 }), "entry");
+  assert.equal(entry.cents, null, "0c is not a recorded price");
+  assert.match(entry.unavailable_why, /no usable price/);
+  assert.notEqual(entry.cents, 88, "the live ask must not stand in for the entry");
 });
 
 test("a booked window prices the HELD side even after the read moves", () => {
