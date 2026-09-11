@@ -131,8 +131,13 @@ test("prompt is self-contained and carries the guardrails", () => {
   assert.match(READINESS_PROMPT, /incremental/i);
   assert.match(READINESS_PROMPT, /calibrat/i);
   assert.match(READINESS_PROMPT, /separate.*sign-off/i);
-  assert.match(READINESS_PROMPT, /70¢ floor/, "asks where the floor belongs");
+  // The floor arm must name the live constant rather than a number that can go
+  // stale, must know the shadow book exists, and must still compare the shelves.
+  assert.match(READINESS_PROMPT, /FLOOR_LIVE_CENTS/, "names the live floor constant");
+  assert.match(READINESS_PROMPT, /FLOOR_SHADOW_CENTS/, "knows the shadow book exists");
+  assert.match(READINESS_PROMPT, /shadow_entry_cents/, "says where the shadow book is stored");
   assert.match(READINESS_PROMPT, /70–79¢ against 80¢/, "compares the shelves out of sample");
+  assert.match(READINESS_PROMPT, /too thin/i, "requires honesty about a thin sample");
 });
 
 test("frozen_at defaults to the freeze constant and honors an override", () => {

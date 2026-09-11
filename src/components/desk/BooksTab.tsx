@@ -13,6 +13,7 @@ import {
   type Keeper,
   type KeeperStats,
 } from "@/lib/desk/books";
+import { FLOOR_LIVE_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { cn } from "@/lib/utils";
 import { LeanChip, Pane } from "./bits";
 import { Tip } from "./Tip";
@@ -56,7 +57,16 @@ function pct(a: number, b: number): string {
 
 /* ---------- charts ---------- */
 
-function drawCurve(ctx: CanvasRenderingContext2D, w: number, h: number, pts: BooksPoint[], days: BooksDay[], tz: string, since: string) {
+function drawCurve(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  pts: BooksPoint[],
+  days: BooksDay[],
+  tz: string,
+  since: string,
+  trialSince: string | null,
+) {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, w, h);
   const padL = 8;
@@ -166,10 +176,12 @@ function drawCurve(ctx: CanvasRenderingContext2D, w: number, h: number, pts: Boo
     ctx.fillText(d, xx, plotB + 2);
   });
 
-  // the 70¢ floor: where the paper book stopped filling under 70¢, while it is in view
-  const fi = pts.findIndex((p) => p.t >= since);
-  if (fi > 0) {
-    const xx = (x(fi - 1) + x(fi)) / 2;
+  // Both floor boundaries, where they fall in view: the curve should say which
+  // rule the book was playing at any point on it, not only the older one.
+  const mark = (at: string, label: string) => {
+    const i = pts.findIndex((p) => p.t >= at);
+    if (i <= 0) return;
+    const xx = (x(i - 1) + x(i)) / 2;
     ctx.strokeStyle = WAIT;
     ctx.setLineDash([2, 3]);
     ctx.beginPath();
@@ -181,8 +193,10 @@ function drawCurve(ctx: CanvasRenderingContext2D, w: number, h: number, pts: Boo
     ctx.font = FONT_SM;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("70¢ floor", xx + 3, plotT);
-  }
+    ctx.fillText(label, xx + 3, plotT);
+  };
+  mark(since, `${FLOOR_SHADOW_CENTS}¢ floor`);
+  if (trialSince) mark(trialSince, `${FLOOR_LIVE_CENTS}¢ floor`);
 
   // last pill
   const last = pts[pts.length - 1];
@@ -295,8 +309,22 @@ function drawBuckets(ctx: CanvasRenderingContext2D, w: number, h: number, bucket
   });
 }
 
-function CurveChart({ pts, days, tz, since, at }: { pts: BooksPoint[]; days: BooksDay[]; tz: string; since: string; at: number }) {
-  const ref = useDraw((ctx, w, h) => drawCurve(ctx, w, h, pts, days, tz, since), `${at}:${tz}`);
+function CurveChart({
+  pts,
+  days,
+  tz,
+  since,
+  trialSince,
+  at,
+}: {
+  pts: BooksPoint[];
+  days: BooksDay[];
+  tz: string;
+  since: string;
+  trialSince: string | null;
+  at: number;
+}) {
+  const ref = useDraw((ctx, w, h) => drawCurve(ctx, w, h, pts, days, tz, since, trialSince), `${at}:${tz}:${trialSince ?? ""}`);
   return <canvas ref={ref} className="block h-48 w-full rounded-sm" />;
 }
 
@@ -388,7 +416,7 @@ function LabPane({ lab, tz }: { lab: BooksLab | null; tz: string }) {
           <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
             A shock is the settlement index jumping while an ask stayed put; fillable means the stale ask was still there 200 ms later. One paper trade per
             window, bought at that ask and held to settlement after the fee, so a burst of correlated shocks cannot inflate it. This edge lives at 200 ms
-            on the cheap side; the chair ticks every four seconds and books at 70¢ or better, so it is not chasing it. INDEX brings the read to the council
+            on the cheap side; the chair ticks every four seconds and books only at the live {FLOOR_LIVE_CENTS}¢ floor or better, so it is not chasing it. INDEX brings the read to the council
             instead. Nothing trades on it.
           </p>
         </>
@@ -505,8 +533,9 @@ function KeeperPane({ keeper }: { keeper: Keeper }) {
         <KeeperCol label="this week" s={keeper.week} />
       </div>
       <p className="mt-2 font-mono text-micro text-subtle">
-        Sits is how often the chair passed. Confluence is how hard the fills cleared the bar; floor kept is the share booked at the 70¢ floor
-        or better. Max drawdown is the worst peak-to-trough on paper. Every call is graded at its own 15-minute close.
+        Sits is how often the chair passed. Confluence is how hard the fills cleared the bar; floor kept is the share that honoured the floor in
+        force when they closed — {FLOOR_LIVE_CENTS}¢ during the trial, {FLOOR_SHADOW_CENTS}¢ before it. Max drawdown is the worst peak-to-trough on
+        paper. Every call is graded at its own 15-minute close.
       </p>
     </Pane>
   );
@@ -625,7 +654,7 @@ export function BooksTab({ tz }: { tz: string }) {
           <div className="grid grid-cols-2 gap-2">
             <Totals label="today" t={books.today} />
             <Totals label="this week" t={books.week} />
-            <Totals label={<Tip k="books.floor">since the 70¢ floor</Tip>} t={books.floor} />
+            <Totals label={<Tip k="books.floor">{FLOOR_SHADOW_CENTS}¢ era</Tip>} t={books.floor} />
             <Totals label="all-time" t={books.all} />
           </div>
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
@@ -649,7 +678,14 @@ export function BooksTab({ tz }: { tz: string }) {
       )}
 
       <Pane title={<Tip k="books.curve">THE CURVE · 14 DAYS</Tip>}>
-        <CurveChart pts={books.curve} days={books.days} tz={tz} since={books.floor_since} at={books.at} />
+        <CurveChart
+          pts={books.curve}
+          days={books.days}
+          tz={tz}
+          since={books.floor_since}
+          trialSince={books.trial?.since ?? null}
+          at={books.at}
+        />
       </Pane>
 
       <div className="grid gap-3 lg:grid-cols-2">
