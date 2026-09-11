@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ERAS, QTY_FIX_AT, QTY_FIX_MS, eraAt, splitByEra, usableFor } from "./research-era.ts";
+import { readFileSync } from "node:fs";
+import { ERAS, PRINT_CTX_FIX_MS, QTY_FIX_AT, QTY_FIX_MS, eraAt, printCtxUsable, splitByEra, usableFor } from "./research-era.ts";
 
 test("the boundary is the moment the fix reached production", () => {
   assert.equal(QTY_FIX_AT, "2026-09-11T03:47:17.000Z");
@@ -85,4 +86,29 @@ test("an empty history reports zero rather than pretending to a clean sample", (
   const u = usableFor(s, true);
   assert.equal(u.n, 0);
   assert.equal(u.discarded, 0);
+});
+
+test("a print's context has its own boundary, separate from the quantity one", () => {
+  // Different fault, different moment: a print can sit in the clean quantity era
+  // and still carry state that was stamped at settle instead of at the print.
+  assert.equal(printCtxUsable(PRINT_CTX_FIX_MS), true);
+  assert.equal(printCtxUsable(PRINT_CTX_FIX_MS - 1), false);
+  assert.equal(printCtxUsable("2026-09-11T12:00:00Z"), true);
+  // The first recorded window sits after the quantity fix and before this one,
+  // so it passes the first test and must still fail the second.
+  const firstWindow = "2026-09-11T11:15:30Z";
+  assert.equal(eraAt(firstWindow), "post-qty-fix");
+  assert.equal(printCtxUsable(firstWindow), false);
+});
+
+test("an unreadable timestamp is not trusted for context either", () => {
+  assert.equal(printCtxUsable(NaN), false);
+  assert.equal(printCtxUsable("not a date"), false);
+});
+
+test("the context boundary explains what it excludes and why nothing was repaired", () => {
+  const src = readFileSync(new URL("./research-era.ts", import.meta.url), "utf8");
+  assert.match(src, /IDENTICAL/);
+  assert.match(src, /excluded here, not/);
+  assert.match(src, /production data is not edited by hand/);
 });

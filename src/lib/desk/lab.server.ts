@@ -52,7 +52,7 @@ import { readClock } from "./clock";
 import { vel2Features, type Vel2Features, type Vel2Sample } from "./vel2";
 import type { PrintRecord } from "./absorption.server";
 import {
-  cluster as clusterPrints,
+  CLUSTER_MS,
   readPrint,
   whaleReport,
   type MidPoint,
@@ -148,7 +148,7 @@ type Lab = {
    * runs. Replay learned this already and keeps a map; so does this. Entries
    * are deleted when written and pruned by age otherwise.
    */
-  whale: Map<string, { prints: Print[]; mids: MidPoint[]; t: number }>;
+  whale: Map<string, { prints: StampedPrint[]; marks: WhaleMark[]; t: number }>;
   /**
    * The last desk state the engine handed over, with when.
    *
@@ -652,6 +652,34 @@ export function noteDeskState(st: {
   lab().deskState = st;
 }
 
+/**
+ * A print with the state of the world AT THE MOMENT IT LANDED.
+ *
+ * The context has to be captured here and not at settle. The first version read
+ * the lab's live state when the window closed, so all 501 prints of a window
+ * carried one identical order-flow reading, one regime, one spread and one
+ * distance — the conditioning tests, which are the point of the study, were
+ * every one of them reading a single constant. Worse, the fields that depend on
+ * per-window buffers came back empty, because the ticker had already rolled.
+ */
+type StampedPrint = Print & {
+  ofi_norm: number | null;
+  spread: number | null;
+  depth: number | null;
+  touch: number | null;
+  dist: number | null;
+  sigma: number | null;
+  fair_yes: number | null;
+  vel_resid: number | null;
+  drift_ev: number | null;
+  cascade_ev: number | null;
+  seat_age_ms: number | null;
+  regime: string;
+};
+
+/** One instant of the window: the midpoint a print is measured against, and BTC beside it. */
+type WhaleMark = MidPoint & { spot: number | null };
+
 /** How long a print and its midpoint path are kept. Long enough to outlive the follow horizon. */
 const WHALE_KEEP_MS = 120_000;
 /** A window's buffer is dropped this long after its last activity if it never settled. */
@@ -669,19 +697,49 @@ function noteWhalePrint(L: Lab, side: "UP" | "DOWN", size: number, t: number): v
   const tk = currentTicker(L);
   const mid = whaleMidNow(L);
   if (!tk || mid == null) return;
+  const b = L.books.get(tk);
+  const view = b && bookTrusted(b) ? yesView(b) : null;
+  // The size a taker on this side had to get through, and the depth behind it.
+  // An order small against the visible book has a mechanical reason not to move
+  // it, and the study must be able to tell that apart from absorption.
+  const touchLevel = view ? (side === "UP" ? view.asks[0] : view.bids[0]) : null;
+  const depth = view
+    ? [...view.bids.slice(0, 5), ...view.asks.slice(0, 5)].reduce((a, l) => a + l.size, 0)
+    : null;
+  const d = L.deskState;
   const w = whaleFor(L, tk, t);
-  w.prints.push({ t, side, size, mid });
+  w.prints.push({
+    t,
+    side,
+    size,
+    mid,
+    ofi_norm: L.tape2Last?.ofi_norm_15s ?? null,
+    spread: L.tape2Last?.spread ?? null,
+    depth,
+    touch: touchLevel && touchLevel.size > 0 ? touchLevel.size : null,
+    dist: d.dist,
+    sigma: d.sigma,
+    fair_yes: d.fair_yes,
+    vel_resid: L.vel2Last?.h30.ok ? L.vel2Last.h30.residual : null,
+    drift_ev: d.drift,
+    cascade_ev: d.cascade,
+    // How old the desk's read was when this print landed. Not clamped at zero:
+    // a negative value would mean the state arrived after the print, which is a
+    // fault worth seeing rather than hiding behind a 0.
+    seat_age_ms: d.t ? Math.round(t - d.t) : null,
+    regime: d.regime,
+  });
   if (w.prints.length > WHALE_MAX) w.prints = w.prints.slice(-WHALE_MAX);
 }
 
 /** This ticker's buffer, creating it and pruning stale windows on the way. */
-function whaleFor(L: Lab, tk: string, t: number): { prints: Print[]; mids: MidPoint[]; t: number } {
+function whaleFor(L: Lab, tk: string, t: number): { prints: StampedPrint[]; marks: WhaleMark[]; t: number } {
   let w = L.whale.get(tk);
   if (!w) {
     // A window that never settled (a restart mid-window, a feed outage) would
     // otherwise sit here forever.
     for (const [k, v] of L.whale) if (t - v.t > WHALE_WINDOW_KEEP_MS) L.whale.delete(k);
-    w = { prints: [], mids: [], t };
+    w = { prints: [], marks: [], t };
     L.whale.set(tk, w);
   }
   w.t = t;
@@ -703,12 +761,15 @@ function noteWhaleMid(L: Lab, t: number): void {
   const tk = currentTicker(L);
   if (!tk) return;
   const w = whaleFor(L, tk, t);
-  const last = w.mids[w.mids.length - 1];
+  const last = w.marks[w.marks.length - 1];
   if (last && t - last.t < WHALE_MID_MS) return;
   const mid = whaleMidNow(L);
   if (mid == null) return;
-  w.mids.push({ t, mid });
-  if (w.mids.length > WHALE_MAX) w.mids = w.mids.slice(-WHALE_MAX);
+  // BTC is kept on the same mark as the midpoint so "nothing happened" can be
+  // told apart from "nothing happened HERE". Held per window, because the VEL
+  // sample buffer is cleared on the ticker roll and would be empty at settle.
+  w.marks.push({ t, mid, spot: L.vel2[L.vel2.length - 1]?.spot ?? null });
+  if (w.marks.length > WHALE_MAX) w.marks = w.marks.slice(-WHALE_MAX);
 }
 
 /**
@@ -731,16 +792,12 @@ export function whalePrintRecords(ticker: string, closeMs: number): PrintRecord[
   // here would reject every window exactly when it is ready to be written.
   const w = L.whale.get(ticker);
   if (!w || !w.prints.length) return [];
-  const clustered = clusterPrints(w.prints);
-  const b = L.books.get(ticker);
-  const view = b && bookTrusted(b) ? yesView(b) : null;
-  const depth5 = view ? [...view.bids.slice(0, 5), ...view.asks.slice(0, 5)].reduce((a, l) => a + l.size, 0) : null;
+  const clustered = clusterStamped(w.prints);
   const out: PrintRecord[] = [];
   for (let i = 0; i < clustered.length; i++) {
     const c = clustered[i]!;
     const before = clustered.slice(0, i).map((x) => x.size);
-    const r = readPrint(c, w.mids, before);
-    const spot5 = btcMoveOver(L, c.t, 5_000);
+    const r = readPrint(c, w.marks, before);
     out.push({
       ticker,
       close_time: closeMs,
@@ -749,60 +806,81 @@ export function whalePrintRecords(ticker: string, closeMs: number): PrintRecord[
       cluster_n: c.prints,
       size: c.size,
       size_pctile: r.pctile,
-      // Against the touch it crossed and the visible depth: an order small
-      // against the book has a mechanical reason not to move it, and the study
-      // has to be able to tell that apart from absorption.
-      size_vs_touch: touchOn(view, c.side) ? round3(c.size / touchOn(view, c.side)!) : null,
-      size_vs_depth: depth5 && depth5 > 0 ? round3(c.size / depth5) : null,
+      // Every field below comes from the print's OWN stamp, taken when it
+      // landed. Reading the lab's live state here would give one identical
+      // value to every print in the window — which is exactly what the first
+      // version did, and it made all ten conditioning tests meaningless.
+      size_vs_touch: c.touch && c.touch > 0 ? round3(c.size / c.touch) : null,
+      size_vs_depth: c.depth && c.depth > 0 ? round3(c.size / c.depth) : null,
       impact_2s: r.impact,
       impact_per_100: r.impact_per_100,
-      move_5s: midMoveOver(w.mids, c, 5_000),
-      move_15s: midMoveOver(w.mids, c, 15_000),
-      move_30s: midMoveOver(w.mids, c, 30_000),
-      move_60s: midMoveOver(w.mids, c, 60_000),
-      btc_5s: spot5,
-      btc_15s: btcMoveOver(L, c.t, 15_000),
-      btc_30s: btcMoveOver(L, c.t, 30_000),
-      btc_60s: btcMoveOver(L, c.t, 60_000),
-      ofi_norm: L.tape2Last?.ofi_norm_15s ?? null,
+      move_5s: midMoveOver(w.marks, c, 5_000),
+      move_15s: midMoveOver(w.marks, c, 15_000),
+      move_30s: midMoveOver(w.marks, c, 30_000),
+      move_60s: midMoveOver(w.marks, c, 60_000),
+      btc_5s: btcMoveOver(w.marks, c.t, 5_000),
+      btc_15s: btcMoveOver(w.marks, c.t, 15_000),
+      btc_30s: btcMoveOver(w.marks, c.t, 30_000),
+      btc_60s: btcMoveOver(w.marks, c.t, 60_000),
+      ofi_norm: c.ofi_norm,
       replenished: r.replenished,
-      spread: L.tape2Last?.spread ?? null,
-      depth: depth5,
-      dist: L.deskState.dist,
-      sigma: L.deskState.sigma,
+      spread: c.spread,
+      depth: c.depth,
+      dist: c.dist,
+      sigma: c.sigma,
       secs_left: closeMs > c.t ? Math.round((closeMs - c.t) / 100) / 10 : 0,
       market_prob_up: c.mid,
-      regime: L.deskState.regime || "",
-      fair_yes: L.deskState.fair_yes,
-      vel_resid: L.vel2Last?.h30.ok ? L.vel2Last.h30.residual : null,
-      drift_ev: L.deskState.drift,
-      cascade_ev: L.deskState.cascade,
-      seat_age_ms: L.deskState.t ? Math.max(0, Math.round(c.t - L.deskState.t)) : null,
+      regime: c.regime,
+      fair_yes: c.fair_yes,
+      vel_resid: c.vel_resid,
+      drift_ev: c.drift_ev,
+      cascade_ev: c.cascade_ev,
+      seat_age_ms: c.seat_age_ms,
     });
   }
   return out;
 }
 
-/** The resting size on the side a print crossed, from the book as it stands. */
-function touchOn(view: ReturnType<typeof yesView> | null, side: "UP" | "DOWN"): number | null {
-  if (!view) return null;
-  const level = side === "UP" ? view.asks[0] : view.bids[0];
-  return level && level.size > 0 ? level.size : null;
+/**
+ * Cluster same-side prints, carrying the FIRST print's context forward.
+ *
+ * A burst is one decision, made when it starts, so the state that decision was
+ * taken against is the state at its first print. Averaging the context across a
+ * burst would invent a reading nobody ever saw.
+ */
+function clusterStamped(prints: readonly StampedPrint[]): (StampedPrint & { prints: number })[] {
+  const sorted = [...prints].sort((a, b) => a.t - b.t);
+  const out: (StampedPrint & { prints: number })[] = [];
+  for (const p of sorted) {
+    const last = out[out.length - 1];
+    if (last && last.side === p.side && p.t - last.t <= CLUSTER_MS) {
+      last.size += p.size;
+      last.prints += 1;
+      continue;
+    }
+    out.push({ ...p, prints: 1 });
+  }
+  return out;
 }
 
 /** Midpoint move over a horizon, signed the aggressor's way. Null when unmeasurable. */
-function midMoveOver(mids: readonly MidPoint[], c: { t: number; side: "UP" | "DOWN"; mid: number }, ms: number): number | null {
-  const later = mids.find((m) => m.t >= c.t + ms && m.t <= c.t + ms + 5_000);
+function midMoveOver(marks: readonly WhaleMark[], c: { t: number; side: "UP" | "DOWN"; mid: number }, ms: number): number | null {
+  const later = marks.find((m) => m.t >= c.t + ms && m.t <= c.t + ms + 5_000);
   if (!later) return null;
   return Math.round((later.mid - c.mid) * (c.side === "UP" ? 1 : -1) * 100) / 100;
 }
 
-/** BTC move over the same horizon, in dollars, so a flat contract can be told from a flat market. */
-function btcMoveOver(L: Lab, t: number, ms: number): number | null {
-  const at = L.vel2.find((v) => v.t >= t && v.t <= t + 2_000);
-  const later = L.vel2.find((v) => v.t >= t + ms && v.t <= t + ms + 5_000);
+/**
+ * BTC move over the same horizon, in dollars, so a flat contract can be told
+ * apart from a flat market. Read off the window's own marks: the VEL sample
+ * buffer is cleared on the ticker roll and is empty by the time a window
+ * settles, which is why this field came back null for every print.
+ */
+function btcMoveOver(marks: readonly WhaleMark[], t: number, ms: number): number | null {
+  const at = marks.find((m) => m.spot != null && m.t >= t - 2_000 && m.t <= t + 2_000);
+  const later = marks.find((m) => m.spot != null && m.t >= t + ms && m.t <= t + ms + 5_000);
   if (!at || !later) return null;
-  return Math.round((later.spot - at.spot) * 100) / 100;
+  return Math.round((later.spot! - at.spot!) * 100) / 100;
 }
 
 const round3 = (n: number) => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 : 0);
@@ -828,8 +906,8 @@ export function whale2Now(ticker: string): WhaleReport | null {
   const L = lab();
   const w = L.whale.get(ticker);
   if (!w || !w.prints.length) return null;
-  const clustered = clusterPrints(w.prints);
-  const reads = clustered.map((c, i) => readPrint(c, w.mids, clustered.slice(0, i).map((x) => x.size)));
+  const clustered = clusterStamped(w.prints);
+  const reads = clustered.map((c, i) => readPrint(c, w.marks, clustered.slice(0, i).map((x) => x.size)));
   return whaleReport(reads, w.prints.length);
 }
 
@@ -1116,7 +1194,7 @@ export function labSummary(opts: { samples?: boolean } = {}): Record<string, unk
     whale2: whale2Now(tk) ?? {
       note: "no prints recorded on this window yet",
       prints_held: L.whale.get(tk)?.prints.length ?? 0,
-      mid_marks: L.whale.get(tk)?.mids.length ?? 0,
+      mid_marks: L.whale.get(tk)?.marks.length ?? 0,
       windows_buffered: L.whale.size,
     },
     book_integrity: {
