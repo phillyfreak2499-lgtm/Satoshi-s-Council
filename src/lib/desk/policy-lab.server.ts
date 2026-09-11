@@ -97,6 +97,17 @@ const iso = (ms: number | null): string | null => (ms == null || !Number.isFinit
  * Returns how many rows were newly written, so the caller can log a silent
  * no-write rather than assuming it worked.
  */
+/**
+ * The key every candidate's observation references.
+ *
+ * Deterministic, so a write replayed after a restart produces the same key and the
+ * ON CONFLICT guards still recognise it. Derived from the window and the moment of
+ * the fill, which together identify one position.
+ */
+export function fillKeyOf(ticker: string, closeMs: number, entryT: number): string {
+  return `${ticker}|${closeMs}|${entryT}`;
+}
+
 export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVersion): Promise<number> {
   // No position, no exit competition. Not a failure — most windows are WAIT.
   if (!w.entry) return 0;
@@ -107,10 +118,27 @@ export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVer
 
   const db = await getSql();
   const entryFee = takerFeeCents(w.entry.cents);
-  let written = 0;
+  const fillKey = fillKeyOf(w.ticker, w.closeMs, w.entry.t);
 
+  // The source fill FIRST, once. Every observation references it, so two candidates
+  // cannot describe different entries for the same window — there is only one entry
+  // to describe. A foreign key makes that structural rather than conventional, which
+  // is also why this write has to precede the candidates'.
+  await db`
+    insert into desk_policy_fills (
+      fill_key, ticker, close_time, entry_side, entry_t, entry_cents, entry_fee_cents,
+      signal_policy, entry_policy, risk_policy
+    ) values (
+      ${fillKey}, ${w.ticker}, ${new Date(w.closeMs).toISOString()}, ${w.entry.side},
+      ${new Date(w.entry.t).toISOString()}, ${w.entry.cents}, ${entryFee},
+      ${champion.signal_policy}, ${champion.entry_policy}, ${champion.risk_policy}
+    )
+    on conflict (fill_key) do nothing
+  `;
+
+  let written = 0;
   for (const { exit, obs } of rows) {
-    const n = await writeOne(db, w, champion, exit, obs, entryFee);
+    const n = await writeOne(db, w, champion, exit, obs, entryFee, fillKey);
     written += n;
   }
   return written;
@@ -125,6 +153,7 @@ async function writeOne(
   exit: Component,
   obs: Observation,
   entryFee: number,
+  fillKey: string,
 ): Promise<number> {
   const entry = w.entry!;
   // The composition recorded beside the row is the Champion's, with THIS candidate
@@ -133,6 +162,7 @@ async function writeOne(
   const exitPolicy = exit.id;
   const res = await db<{ id: number }>`
     insert into desk_policy_observations (
+      fill_key,
       ticker, close_time, candidate_id, candidate_kind, candidate_version,
       signal_policy, entry_policy, exit_policy, risk_policy,
       entry_side, entry_t, entry_cents, entry_fee_cents,
@@ -140,6 +170,7 @@ async function writeOne(
       mfe_cents, mae_cents, settle_winner, direction_right, net_cents,
       data_invalid, invalid_why, code_version
     ) values (
+      ${fillKey},
       ${w.ticker}, ${new Date(w.closeMs).toISOString()}, ${exit.id}, ${exit.kind}, ${exit.version},
       ${champion.signal_policy}, ${champion.entry_policy}, ${exitPolicy}, ${champion.risk_policy},
       ${entry.side}, ${new Date(entry.t).toISOString()}, ${entry.cents}, ${entryFee},
@@ -213,7 +244,7 @@ export async function labStanding(): Promise<{ champion: FloorPolicyVersion; row
            sum(c.net_cents - h.net_cents)     as delta
       from desk_policy_observations_research c
       join desk_policy_observations_research h
-        on h.ticker = c.ticker and h.close_time = c.close_time and h.candidate_id = 'HOLD_V1'
+        on h.fill_key = c.fill_key and h.candidate_id = 'HOLD_V1'
      where c.candidate_id <> 'HOLD_V1'
      group by c.candidate_id
   `;
