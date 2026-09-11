@@ -12,6 +12,20 @@ export type ReplayCols = {
   downs: number[];
   booked: number[];
   seats: Record<string, number[]>;
+  /**
+   * The shadow microstructure reads at each instant, null wherever the lab was
+   * dark or the feed had not filled a window yet. Research: no seat reads these
+   * and the chair never saw them. Absent entirely on windows recorded before
+   * 2026-09-11, which is why every field is optional.
+   */
+  imb?: (number | null)[];
+  micro?: (number | null)[];
+  ofi?: (number | null)[];
+  cancel?: (number | null)[];
+  tflow?: (number | null)[];
+  resid?: (number | null)[];
+  /** Who moved first over 30s: 1 spot, -1 Kalshi, 0 together, null neither. */
+  lead?: (number | null)[];
 };
 
 export type Replay = {
