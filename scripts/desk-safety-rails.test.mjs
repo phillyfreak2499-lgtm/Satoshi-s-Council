@@ -540,7 +540,10 @@ test("the research board counts prospective sample apart from total, and promote
   assert.match(srv, /watching, not inverted/);
   // The corrected measurement restarts its clock instead of pooling.
   assert.match(srv, /restarted: true/);
-  assert.match(srv, /every earlier record is unusable and none is pooled/);
+  // Single-line fragment: this sentence wraps across a string concatenation.
+  assert.match(srv, /unusable and none is pooled/);
+  // The corrected row's clock reads the shared boundary, not a pasted date.
+  assert.match(srv, /since: t\.restarted \? QTY_FIX_AT : REPLAY_SHADOW_SINCE,/);
 
   const route = read("server/routes/research.get.ts");
   assert.match(route, /adminKeyOk\(key\)/);
