@@ -181,7 +181,7 @@ test("no copy claims a live floor the book does not actually pay", () => {
 test("Phase 2 research has no path to the chair, a seat, or the learner", () => {
   // TAPE 2.0, VEL 2.0 and STRIKE 2.0 are measurement. The guarantee is structural,
   // not a promise in a comment: nothing that decides anything may import them.
-  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server"];
+  const research = ["tape2", "vel2", "strike2", "strike2.server", "cube", "cube.server", "excursion", "excursion.server", "redundancy", "redundancy.server"];
   const deciders = [
     "src/lib/desk/chair.ts",
     "src/lib/desk/bots.ts",
@@ -300,6 +300,33 @@ test("MAE/MFE is descriptive and says so where it could be misread", () => {
   assert.match(srv, /findIndex\(\(v\) => Number\(v\) === 1\)/);
 
   const route = read("server/routes/excursion.get.ts");
+  assert.match(route, /adminKeyOk\(key\)/);
+  assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
+});
+
+test("the redundancy study cannot mute, gag or reweight a seat", () => {
+  const srv = read("src/lib/desk/redundancy.server.ts");
+  for (const banned of [/\binsert into\b/i, /\bupdate \w+ set\b/i, /\bdelete from\b/i, /\bsetKnob\b/, /\bgag\w*\(/, /\bbench\w*\(/, /\bmute\w*\(/]) {
+    assert.ok(!banned.test(srv), `redundancy.server.ts contains ${banned} — it must be read-only`);
+  }
+  assert.match(srv, /votes: false/);
+  assert.match(srv, /mutes_nothing: true/);
+
+  const src = read("src/lib/desk/redundancy.ts");
+  // The tally is a proxy, and the report has to say so where a reader will see it.
+  assert.match(src, /PROXY/);
+  assert.match(src, /prospectively/);
+  assert.match(src, /candidate to run gagged in shadow, not a seat to mute/);
+
+  // The non-voting three and the two shadow seats stay out of the tally, and the
+  // exclusion list is fixed in source rather than read from live skill state —
+  // today's gate does not describe what was eligible last week.
+  for (const id of ["ORBIT", "WIRE", "CHEAP", "INDEX"]) {
+    assert.match(srv, new RegExp(`\\b${id}: "`), `${id} is not excluded from the tally`);
+  }
+  assert.match(srv, /const TALLY = STUDIED\.filter\(\(s\) => !\(s in NOT_HEARD\)\);/);
+
+  const route = read("server/routes/redundancy.get.ts");
   assert.match(route, /adminKeyOk\(key\)/);
   assert.match(route, /return new Response\("not found", \{ status: 404 \}\)/);
 });

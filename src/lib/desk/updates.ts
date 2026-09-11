@@ -306,4 +306,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The books now know what a call was worth while it was still open, not just what it cost and what it settled at. Walking the stored replay of 69 held calls: the 55 winners were up 18¢ at their best on average — and were down 17¢ at their worst. The 14 losers were up 11¢ at their best, and 64% of them were up at least 5¢ at some point. Read carelessly that says cut the losers early. Read properly it says the opposite is just as likely: a rule that cut a loser at its best mark would have cut most of the winners first, because the winners fell further than the losers ever rose. Both numbers are printed together for exactly that reason, and a peak found after the fact is not a level anything can trade at. Fourteen losers is a direction to look, not a finding. Nothing votes on this and no exit rule exists.",
   },
+  {
+    slug: "2026-09-11-seat-redundancy",
+    body:
+      "The desk asked whether twenty seats are twenty pieces of evidence or the same few counted several times. For each seat: drop it from the tally, and on the windows where that changes the answer, is the room more right with it or without it? Over 534 graded windows, five seats change the answer often enough to read. Four earn it clearly — STREAK, CHAIN, CASCADE and STRIKE. One does not: TAPE speaks on 72 windows, is right 40% of the time, and on the 34 windows where it moves the room the room was right 16 times without it against 9 with it. That is not a verdict and TAPE has not been touched. Five seats were tested, so one looking that bad is close to what luck supplies, and the figure is measured on windows that already happened. If TAPE is to lose its voice it has to be run gagged in shadow first and be shown not to be missed. Nothing here changed a seat, a weight or a call.",
+  },
 ];
