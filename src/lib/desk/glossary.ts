@@ -1,4 +1,15 @@
+import { FLOOR_LIVE_CENTS, FLOOR_SHADOW_CENTS } from "./book-floor";
 import type { TabId } from "./types";
+
+/**
+ * The live floor appears in a lot of copy, so it is interpolated from the
+ * constant rather than typed out. When the trial ends, the one constant moves
+ * and every line below follows it — the page cannot go on claiming a floor the
+ * book no longer pays. Lines that describe a PAST era, or that use a price as
+ * fee arithmetic, keep their literal number on purpose.
+ */
+const LIVE = `${FLOOR_LIVE_CENTS}¢`;
+const SHADOW = `${FLOOR_SHADOW_CENTS}¢`;
 
 export type Gloss = { title: string; body: string };
 
@@ -77,15 +88,15 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "keeper.pane": {
     title: "Process scorecard",
-    body: "Not whether the chair won, but whether it played the way it says it does: how often it sits, how hard the calls that filled cleared the confluence bar, whether the fills honoured the 70¢ floor, and the worst run of losses on paper. All from the ledger, after fees, all-time and over the last seven days. Every call is graded at its own 15-minute close, never against a later price.",
+    body: `Not whether the chair won, but whether it played the way it says it does: how often it sits, how hard the calls that filled cleared the confluence bar, whether the fills honoured the floor that applied when they closed, and the worst run of losses on paper. The live floor is ${LIVE} today; fills from before the trial are measured against the ${SHADOW} that applied then, so an older fill is not marked down by a rule that did not exist yet. All from the ledger, after fees, all-time and over the last seven days. Every call is graded at its own 15-minute close, never against a later price.`,
   },
   "keeper.wait": {
     title: "Sits",
-    body: "Share of graded windows the chair took no position on — both the windows it called WAIT and the ones where it had a read but the ask sat under the 70¢ floor. Sitting is the desk's most common outcome on purpose: it acts only when the seats agree hard enough to pay the ask. Sits and fills cover every graded window between them, so the two add up. A high sits number is discipline, not idleness.",
+    body: `Share of graded windows the chair took no position on — both the windows it called WAIT and the ones where it had a read but the ask sat under the live ${LIVE} floor. Sitting is the desk's most common outcome on purpose: it acts only when the seats agree hard enough to pay the ask, and a higher floor means sitting more often. Sits and fills cover every graded window between them, so the two add up. A high sits number is discipline, not idleness.`,
   },
   "keeper.booked": {
     title: "Fills",
-    body: "Windows where the paper book actually took a side at the ask. The average is the price it paid; the chair buys favourites at or above the 70¢ floor, so entries are usually rich.",
+    body: `Windows where the paper book actually took a side at the ask. The average is the price it paid; the chair buys favourites at or above the live ${LIVE} floor, so entries are usually rich.`,
   },
   "keeper.hit": {
     title: "Win rate",
@@ -101,7 +112,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "keeper.conf": {
     title: "Confluence",
-    body: "Average of the chair's score divided by its bar on the windows that filled — how far past the threshold the call was, not just that it cleared it. Floor kept is the share of fills booked at 70¢ or better.",
+    body: `Average of the chair's score divided by its bar on the windows that filled — how far past the threshold the call was, not just that it cleared it. Floor kept is the share of fills that honoured the floor in force when they closed: ${LIVE} during the trial, ${SHADOW} before it.`,
   },
   "books.calib": {
     title: "Did the price tell the truth?",
@@ -112,8 +123,8 @@ export const GLOSS: Record<string, Gloss> = {
     body: "A deliberate, time-boxed experiment, reviewed after three to seven days or 25 live fills at the new floor. The paper book now pays only 80¢ or better. This is a price floor, not a confidence level: 80¢ means the contract costs 80¢, not that the desk is 80% sure. The record that prompted it is that the 70–79¢ shelf won about 65% of 29 calls against the 74% it needed, while 80¢ and up was the only part of the book in profit — a hypothesis on thin evidence, not a proven number, which is why it is a trial with a shadow book beside it and a one-line revert. The trade it makes: win more often for a smaller prize, which also raises the rate needed to break even from about 72% to about 82%. Under 80¢ the chair still reads UP or DOWN and every seat is still graded on it; the book simply does not pay.",
   },
   "books.floor": {
-    title: "Since the 70¢ floor",
-    body: "The record from the moment the paper book stopped filling under 70¢: 3:47 pm Chicago on Sep 8, 2026. All-time keeps every call before that as it was; this card is the book as it plays now, so it is the fairest read of the current rule, and the youngest, so give it windows before trusting it. The same moment is marked on the curve while it is in view.",
+    title: `The ${SHADOW} era`,
+    body: `The record from the moment the paper book stopped filling under ${SHADOW}: 3:47 pm Chicago on Sep 8, 2026. That was the rule until the ${LIVE} trial began — so this card is the ${SHADOW} era, not the book as it plays today. For the current rule read the floor trial card, which puts the live ${LIVE} book beside the ${SHADOW} book on the same windows. All-time keeps every call before either change exactly as it was booked.`,
   },
   "books.needs": {
     title: "Needs — the breakeven win rate",
@@ -125,7 +136,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "books.lab": {
     title: "The lab's stale quotes",
-    body: "Since Sep 6 the lab has watched Kalshi's book while the settlement index moved. A shock is the index jumping while an ask stayed put; fillable means the stale ask was still there 200 milliseconds later. The numbers count one paper trade per window, bought at that ask and held to settlement after the fee, so a burst of correlated shocks cannot inflate them. A measurement of the market, not a strategy: the chair ticks every four seconds and cannot reach a 200-millisecond edge.",
+    body: `Since Sep 6 the lab has watched Kalshi's book while the settlement index moved. A shock is the index jumping while an ask stayed put; fillable means the stale ask was still there 200 milliseconds later. The numbers count one paper trade per window, bought at that ask and held to settlement after the fee, so a burst of correlated shocks cannot inflate them. A measurement of the market, not a strategy, and not part of the chair's book: the chair ticks every four seconds, cannot reach a 200-millisecond edge, and only fills at the live ${LIVE} floor anyway.`,
   },
   "books.replay": {
     title: "Replay",
@@ -534,11 +545,11 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.board": {
     title: "Chair call",
-    body: "The chair's read this window, at the ask in cents. UP 55¢ means YES was 55 cents. WAIT is not a fill, and neither is a read under the 70¢ floor. Score must clear the bar.",
+    body: `The chair's read this window, at the ask in cents. UP 55¢ means YES was 55 cents. WAIT is not a fill, and neither is a read under the live ${LIVE} floor. Score must clear the bar.`,
   },
   "book.floor": {
     title: "80¢ floor (on trial)",
-    body: "The chair's paper book only fills at 80¢ or better, a deliberate time-boxed trial of a higher floor reviewed after three to seven days or 25 fills at the new price. This is a price floor, not a confidence level: 80¢ is what the contract costs, not how sure the desk is. The read still shows and still grades every seat; under the floor nothing is booked and the ledger keeps the read with no entry. Why it moved: the old 70¢ floor still let through the 70–79¢ shelf, which won about 65% of 29 calls against the 74% it needed, while 80¢ and up was the only part of the book in profit. The old floor keeps running beside it as a shadow book so the trial can be judged on the same windows, and reverting is one constant.",
+    body: `The chair's paper book only fills at ${LIVE} or better, a deliberate time-boxed trial of a higher floor reviewed after three to seven days or 25 fills at the new price. This is a price floor, not a confidence level: ${LIVE} is what the contract costs, not how sure the desk is. The read still shows and still grades every seat; under the floor nothing is booked and the ledger keeps the read with no entry. Why it moved: the old ${SHADOW} floor still let through the 70–79¢ shelf, which won about 65% of 29 calls against the 74% it needed, while ${LIVE} and up was the only part of the book in profit. The old floor keeps running beside it as a shadow book so the trial can be judged on the same windows, and reverting is one constant.`,
   },
   "pane.spot-chart": {
     title: "BTC 15m",
@@ -550,7 +561,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "pane.call-log": {
     title: "Call log",
-    body: "Each row is a paper buy at that side’s ask, one position per window, held to settlement: 100 if that side won, 0 if it lost, before fees. Fills only at 70¢ or better. Avg ¢ is the mean of those prints. WAIT does not buy.",
+    body: `Each row is a paper buy at that side’s ask, one position per window, held to settlement: 100 if that side won, 0 if it lost, before fees. Fills only at the live ${LIVE} floor or better. Avg ¢ is the mean of those prints. WAIT does not buy.`,
   },
   "pane.score": {
     title: "Score math",

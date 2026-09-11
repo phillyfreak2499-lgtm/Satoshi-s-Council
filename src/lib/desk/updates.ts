@@ -266,4 +266,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The Process Scorecard is back, and it can no longer lie when it breaks. Yesterday's floor-trial change made its query compare a price against an untyped value, so the query failed every time — and the card answered that failure with zeros. The page then said the chair had sat 0% of 0 windows and booked nothing, directly beside totals showing a hundred fills. The query is fixed and counts every graded window again, in both eras: a fill is judged against the floor that applied when it closed, so older fills are not marked down by the newer floor. And a scorecard that cannot be computed is now simply absent, with the reason shown, instead of inventing a perfect record. Zeros from here on mean an empty ledger and nothing else. No call, floor, grading rule or past number changed.",
   },
+  {
+    slug: "2026-09-11-floor-copy",
+    body:
+      "The page now says 80¢ everywhere it means 80¢. When the floor moved, the constant moved but a dozen labels and tooltips still described the old 70¢ rule in the present tense — the scorecard, the fills and sits explanations, the call chip, the lab aside and the owner's evaluation prompt. Those now read the floor from the same constant the book fills at, so they cannot drift apart again, and a test fails the build if any of them claims a floor the book does not pay. The cumulative curve marks both boundaries instead of only the older one, and the old era's card is labelled as an era rather than as the current rule. Dated notes below are left exactly as written: they were true when posted. No call, floor, grading rule or past number changed.",
+  },
 ];

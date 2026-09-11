@@ -59,7 +59,13 @@ test("the shadow book records, and does so before the live floor has its say", (
   assert.ok(shadowAt > 0, "shadow capture missing");
   assert.ok(gateAt > 0, "live gate missing");
   assert.ok(shadowAt < gateAt, "the shadow entry must be captured before the live floor returns");
-  assert.match(src, /shadow_entry_cents, shadow_ev_cents\)/, "ledger must persist the shadow columns");
+  assert.match(src, /shadow_entry_cents, shadow_ev_cents/, "ledger must persist the shadow columns");
+  // And the research dimensions a performance cube needs, captured at the fill.
+  for (const col of ["entry_regime", "entry_secs_left", "entry_conf", "entry_spread_cents", "entry_touch_size"]) {
+    assert.match(src, new RegExp(col), `ledger must persist ${col}`);
+  }
+  const entryAt = src.indexOf("noteEntryState(e, snap, chair, cents);");
+  assert.ok(entryAt > 0, "entry state must be captured on the decision path");
 });
 
 test("TAKER's frozen constants are still the frozen values", () => {
@@ -138,4 +144,36 @@ test("a bad run cannot invert a seat: the chair flips no signs", () => {
   const fade = read("src/lib/desk/fade.ts");
   assert.match(fade, /Always in \[0, 1\] — a sign is never flipped/);
   assert.ok(!/scale: -/.test(fade), "a fade scale must never be negative");
+});
+
+test("no copy claims a live floor the book does not actually pay", () => {
+  const floor = read("src/lib/desk/book-floor.ts");
+  const live = Number(floor.match(/export const FLOOR_LIVE_CENTS = (\d+);/)[1]);
+  const shadow = Number(floor.match(/export const FLOOR_SHADOW_CENTS = (\d+);/)[1]);
+  assert.ok(live > shadow, "the shadow floor must be the looser one");
+
+  // Unambiguous present-tense claims about where the book fills. An arithmetic
+  // example ("100 contracts at 70¢ pay 147¢") is fine; "fills at 70¢" is not.
+  const claims = [
+    new RegExp(`only fills? at ${shadow}¢`, "i"),
+    new RegExp(`books? at ${shadow}¢ or better`, "i"),
+    new RegExp(`at or above the ${shadow}¢ floor`, "i"),
+    new RegExp(`under the ${shadow}¢ floor`, "i"),
+    new RegExp(`fills? only at ${shadow}¢`, "i"),
+  ];
+  // updates.ts is the dated changelog: a past note describing the old rule is a
+  // record of what was true then and must not be edited.
+  for (const rel of [
+    "src/lib/desk/glossary.ts",
+    "src/lib/desk/readiness.ts",
+    "src/components/desk/BooksTab.tsx",
+    "src/components/desk/SatoshiTab.tsx",
+    "src/components/desk/TopStrip.tsx",
+    "src/lib/desk/chair-words.ts",
+  ]) {
+    const src = read(rel);
+    for (const re of claims) {
+      assert.ok(!re.test(src), `${rel} still claims the live floor is ${shadow}¢ (${re})`);
+    }
+  }
 });

@@ -138,6 +138,11 @@ type Eng = {
   /** 80¢ trial: the first ask per window at which the OLD 70¢ floor would have
    *  filled, keyed by windowKey. Research only — never gates a live fill. */
   shadowFills: Record<string, { lean: "UP" | "DOWN"; cents: number }>;
+  /** The state the desk was in when a fill happened, keyed by windowKey. The
+   *  ledger otherwise only describes the grade frame, so without this a signal
+   *  cannot be sliced by regime, time left, spread or the economics it paid.
+   *  Research only — nothing reads it to decide anything. */
+  entryState: Record<string, EntryState>;
   ledgerFlushing: boolean;
   /** Interior holes found in the recent ledger by the last gap scan (lost windows). */
   ledgerGapCount: number;
@@ -237,6 +242,7 @@ function freshEng(): Eng {
     lastLedgerOkAt: Date.now(),
     ledgerQueue: [],
     shadowFills: {},
+    entryState: {},
     ledgerFlushing: false,
     ledgerGapCount: 0,
     lastGapScanAt: 0,
@@ -285,6 +291,7 @@ async function loadState(e: Eng) {
           last_ledger_ok_at?: number;
           ledger_queue?: unknown;
           shadow_fills?: unknown;
+          entry_state?: unknown;
           ledger_recon_baseline?: number | null;
           readiness_alerted?: boolean;
         }
@@ -307,6 +314,7 @@ async function loadState(e: Eng) {
     // process death comes back here and drains to the ledger on this boot.
     e.ledgerQueue = sanitizeQueue(raw.ledger_queue, Date.now());
     e.shadowFills = sanitizeShadowFills(raw.shadow_fills);
+    e.entryState = sanitizeEntryState(raw.entry_state);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
   } catch (err) {
@@ -333,6 +341,7 @@ async function persistState(e: Eng, force = false) {
       last_ledger_ok_at: e.lastLedgerOkAt,
       ledger_queue: e.ledgerQueue.slice(-OUTBOX_CAP),
       shadow_fills: e.shadowFills,
+      entry_state: e.entryState,
       ledger_recon_baseline: e.reconBaseline,
       readiness_alerted: e.readinessAlerted,
     });
@@ -402,6 +411,44 @@ function decideChair(e: Eng, votes: Vote[], snap: Snapshot, lastLean: Lean): Cha
   return lean === chair.lean ? chair : { ...chair, lean };
 }
 
+/** What the desk looked like at the moment the book paid. Research only. */
+type EntryState = {
+  regime: string;
+  secs_left: number;
+  conf: number;
+  score: number;
+  bar: number;
+  fair_yes: number;
+  spread_cents: number;
+  leftover_cents: number;
+  touch_size: number;
+  fee_cents: number;
+};
+
+/** Keep only well-formed entry states across a restart. */
+function sanitizeEntryState(raw: unknown): Record<string, EntryState> {
+  const out: Record<string, EntryState> = {};
+  if (!raw || typeof raw !== "object") return out;
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== "object") continue;
+    const o = v as Record<string, unknown>;
+    out[k] = {
+      regime: typeof o.regime === "string" ? o.regime : "",
+      secs_left: num(o.secs_left),
+      conf: Math.round(num(o.conf)),
+      score: num(o.score),
+      bar: num(o.bar),
+      fair_yes: num(o.fair_yes),
+      spread_cents: num(o.spread_cents),
+      leftover_cents: num(o.leftover_cents),
+      touch_size: num(o.touch_size),
+      fee_cents: num(o.fee_cents),
+    };
+  }
+  return out;
+}
+
 /** Keep only well-formed shadow entries across a restart. */
 function sanitizeShadowFills(raw: unknown): Record<string, { lean: "UP" | "DOWN"; cents: number }> {
   const out: Record<string, { lean: "UP" | "DOWN"; cents: number }> = {};
@@ -429,6 +476,27 @@ function noteShadowFill(e: Eng, snap: Snapshot, lean: "UP" | "DOWN", cents: numb
   if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.shadowFills[k];
 }
 
+/** Record the decision-time state of a fill, once per window. Research only. */
+function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: number): void {
+  const key = windowKey(snap);
+  if (e.entryState[key]) return;
+  const touch = chair.lean === "UP" ? snap.no_bid_size : snap.yes_bid_size;
+  e.entryState[key] = {
+    regime: snap.regime_key ?? "",
+    secs_left: Math.round((snap.secs_left ?? 0) * 10) / 10,
+    conf: Math.round(chair.confidence ?? 0),
+    score: Math.round((chair.score ?? 0) * 1000) / 1000,
+    bar: Math.round((chair.bar ?? 0) * 1000) / 1000,
+    fair_yes: Math.round((snap.fair_yes ?? 0) * 10) / 10,
+    spread_cents: Math.round((snap.spread_cents ?? 0) * 10) / 10,
+    leftover_cents: Math.round((snap.leftover_cents ?? 0) * 10) / 10,
+    touch_size: Math.round(Number(touch) || 0),
+    fee_cents: takerFeeCents(cents),
+  };
+  const keys = Object.keys(e.entryState);
+  if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
+}
+
 /** One paper position per window, held to settlement. The chair may change
  *  its mind on screen; the ledger does not sell low and buy high for it.
  *  Autopsy of the flip era: 40 of the last 42 logged calls were flips,
@@ -452,6 +520,9 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   // The book's price floor: the read stands on screen, the fill waits. Nothing
   // is positioned, so a later tick at the floor can still fill this window.
   if (!bookable(cents)) return;
+  // The state the desk was in when the book actually paid. The ledger otherwise
+  // only remembers the grade frame, so this is the only chance to record it.
+  noteEntryState(e, snap, chair, cents);
   const flipped = false;
   e.callLog = [
     {
@@ -496,10 +567,13 @@ const LEDGER_COLUMNS =
   "(ticker, close_time, source, winner, chair_lean, chair_conf, score, bar, sit_mass, " +
   "entry_cents, settle_cents, ev_cents, calls, seats, close_dist, close_atr, close_secs, " +
   "settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok, " +
-  "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents)";
+  "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
+  "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
+  "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
-  "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) " +
+  "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -522,6 +596,9 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
   const official = snap.official_settles.find((o) => o.ticker === snap.ticker && o.value != null)?.value ?? null;
   const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish, official);
   const shadow = shadowBits(e, snap, finish);
+  const entryKey = windowKey(snap);
+  const entry = e.entryState[entryKey] ?? null;
+  delete e.entryState[entryKey];
   const rows = e.callLog.filter((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
   const first = rows[rows.length - 1] ?? null; // call log is newest-first
   let ev: number | null = null;
@@ -574,6 +651,16 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     rc.official_value,
     shadow.entry,
     shadow.ev,
+    entry?.regime ?? null,
+    entry?.secs_left ?? null,
+    entry?.conf ?? null,
+    entry?.score ?? null,
+    entry?.bar ?? null,
+    entry?.fair_yes ?? null,
+    entry?.spread_cents ?? null,
+    entry?.leftover_cents ?? null,
+    entry?.touch_size ?? null,
+    entry?.fee_cents ?? null,
   ];
   return { ticker: snap.ticker, close_time: snap.close_time, values };
 }
