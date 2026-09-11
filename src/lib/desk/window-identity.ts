@@ -72,7 +72,9 @@ export type IdentityFault =
   | "close-time-mismatch"
   | "ticker-close-time-mismatch"
   | "window-off-grid"
-  | "unusable-window-key";
+  | "unusable-window-key"
+  /** The market payload fetched for a row describes a DIFFERENT market. */
+  | "market-ticker-mismatch";
 
 /**
  * Which faults mean the DATA disagrees with itself, as opposed to the result
@@ -263,6 +265,116 @@ export function matchSettle<S extends SettleLike>(
       `but the window closes ${new Date(closeMs).toISOString()}`,
     checks,
   };
+}
+
+/** What a fetched market payload claims about itself. Absent fields are "not carried". */
+export type OfficialMarketLike = {
+  /** The ticker the payload names, when it carries one. */
+  ticker?: string;
+  /** The close the payload names, in ms. 0 or absent means not carried. */
+  close_ms?: number;
+};
+
+export type OfficialVerdict =
+  | { ok: true; checks: IdentityChecks }
+  | { ok: false; fault: IdentityFault; detail: string; checks: IdentityChecks };
+
+/**
+ * May this market payload's official settled value be written onto THIS ledger row?
+ *
+ * WHY THIS EXISTS, AND WHY IT IS HERE. `desk_ledger`'s identity is
+ * `unique (ticker, close_time)` (migration 0005), so a ticker is NOT unique to a
+ * row — and on 2026-09-10 nine rows shared one. The official-value backfill asked
+ * Kalshi about a ticker and wrote the answer `where ticker = $1`, which is the same
+ * half-identity that caused that block: right by luck when a ticker happens to name
+ * one window, wrong silently when it does not. Grading has gone through
+ * `matchSettle` since #133; this was the one write left that did not, so the rule
+ * lives beside it rather than as a second opinion in another file.
+ *
+ * THE THREE WITNESSES, in the same order and with the same faults as `matchSettle`:
+ *
+ *   1. The window's own key must be usable and on the quarter-hour grid.
+ *   2. The TICKER's embedded close must agree with the row's close. This alone
+ *      rejects every one of the eight corrupted 2026-09-10 rows. Unparseable is
+ *      NOT a disagreement — see the note at the top of this file.
+ *   3. The payload must describe the market that was asked for: the same ticker
+ *      (when it carries one) and, when it carries a close, one that agrees within
+ *      the same tolerance a settle gets.
+ *
+ * A payload that carries NEITHER witness is accepted on the row's own identity,
+ * because the request was addressed by ticker and a silent exchange is not
+ * evidence of a mismatch. That is the deliberate limit of this check: it cannot
+ * prove a payload right, only refuse one that contradicts the row.
+ *
+ * This decides nothing about settlement MEANING. It does not read, interpret or
+ * transform `expiration_value`, does not pick a winner, and cannot cause a write
+ * that would not otherwise have happened — it can only withhold one. Pure.
+ */
+export function mayWriteOfficial(
+  ticker: string,
+  closeMs: number,
+  market: OfficialMarketLike,
+): OfficialVerdict {
+  const tickerTimeOk = ticker ? tickerAgrees(ticker, closeMs) : null;
+  const grid = onGrid(closeMs);
+  const checks: IdentityChecks = {
+    on_grid: grid,
+    ticker_time_ok: tickerTimeOk,
+    ticker_seen: false,
+    close_ok: false,
+  };
+
+  if (!ticker || !(closeMs > 0)) {
+    return { ok: false, fault: "unusable-window-key", detail: `ticker=${ticker || "∅"} close=${closeMs}`, checks };
+  }
+  if (!grid) {
+    return {
+      ok: false,
+      fault: "window-off-grid",
+      detail: `close ${new Date(closeMs).toISOString()} is ${closeMs % WINDOW_GRID_MS}ms off the 15m grid`,
+      checks,
+    };
+  }
+  // The 2026-09-10 signature: a stale market carried onto later quarter-hours.
+  if (tickerTimeOk === false) {
+    const own = tickerCloseMs(ticker);
+    return {
+      ok: false,
+      fault: "ticker-close-time-mismatch",
+      detail:
+        `${ticker} encodes ${own == null ? "?" : new Date(own).toISOString()} ` +
+        `but the window closes ${new Date(closeMs).toISOString()}`,
+      checks,
+    };
+  }
+
+  const claimed = (market.ticker ?? "").trim();
+  if (claimed && claimed.toUpperCase() !== ticker.trim().toUpperCase()) {
+    return {
+      ok: false,
+      fault: "market-ticker-mismatch",
+      detail: `asked for ${ticker} and the payload names ${claimed}`,
+      checks,
+    };
+  }
+  checks.ticker_seen = claimed.length > 0;
+
+  const claimedClose = Number(market.close_ms ?? 0);
+  if (Number.isFinite(claimedClose) && claimedClose > 0) {
+    if (Math.abs(claimedClose - closeMs) > CLOSE_TOLERANCE_MS) {
+      return {
+        ok: false,
+        fault: "close-time-mismatch",
+        detail:
+          `payload closes ${new Date(claimedClose).toISOString()} ` +
+          `but the window closes ${new Date(closeMs).toISOString()}`,
+        checks,
+      };
+    }
+    checks.close_ok = true;
+  }
+
+  return { ok: true, checks };
 }
 
 /** One line for the settle tape and the diagnostic log. */

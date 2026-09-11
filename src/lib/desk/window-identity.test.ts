@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   CLOSE_TOLERANCE_MS,
   faultLine,
+  isInconsistent,
   matchSettle,
+  mayWriteOfficial,
   onGrid,
   tickerAgrees,
   tickerCloseMs,
@@ -177,4 +179,105 @@ test("the fault line names the window, the fault and why", () => {
   const line = faultLine("KXBTC15M-26SEP100300-00", ms("2026-09-10T08:45:00Z"), "ticker-close-time-mismatch", "x");
   assert.match(line, /^IDENTITY 08:45 KXBTC15M-26SEP100300-00/);
   assert.match(line, /not graded, not taught/);
+});
+
+// ---------------------------------------------------------------------------
+// The official-value write. `desk_ledger` is unique on (ticker, close_time), so a
+// ticker is not a row — and the backfill used to write on the ticker alone.
+// ---------------------------------------------------------------------------
+
+test("the exact row a market belongs to may be written", () => {
+  const tk = "KXBTC15M-26SEP110800-00";
+  const close = ms("2026-09-11T12:00:00Z");
+  const v = mayWriteOfficial(tk, close, { ticker: tk, close_ms: close });
+  assert.equal(v.ok, true);
+  assert.equal(v.checks.on_grid, true);
+  assert.equal(v.checks.ticker_time_ok, true);
+  assert.equal(v.checks.ticker_seen, true);
+  assert.equal(v.checks.close_ok, true);
+});
+
+test("the frozen-ticker block of 2026-09-10 is refused row by row", () => {
+  // The real incident: ONE market, KXBTC15M-26SEP100300-00 (07:00 UTC), whose
+  // settlement reached nine consecutive windows. The 07:00 row is the legitimate
+  // one; the eight after it are the corruption. The ticker's embedded close alone
+  // separates them, with no reference to any list of settles.
+  const stale = "KXBTC15M-26SEP100300-00";
+  const legit = mayWriteOfficial(stale, ms("2026-09-10T07:00:00Z"), {
+    ticker: stale,
+    close_ms: ms("2026-09-10T07:00:00Z"),
+  });
+  assert.equal(legit.ok, true, "the window the ticker actually names is writable");
+
+  const corrupted = [
+    "2026-09-10T07:15:00Z", "2026-09-10T07:30:00Z", "2026-09-10T07:45:00Z", "2026-09-10T08:00:00Z",
+    "2026-09-10T08:15:00Z", "2026-09-10T08:30:00Z", "2026-09-10T08:45:00Z", "2026-09-10T09:00:00Z",
+  ];
+  assert.equal(corrupted.length, 8, "the block is eight rows beyond the legitimate one");
+  for (const iso of corrupted) {
+    // The payload agrees with ITSELF — this is what made the old write look fine.
+    const v = mayWriteOfficial(stale, ms(iso), { ticker: stale, close_ms: ms("2026-09-10T07:00:00Z") });
+    assert.equal(v.ok, false, `${iso} must be refused`);
+    assert.equal(v.ok === false && v.fault, "ticker-close-time-mismatch", `${iso} fault`);
+    assert.equal(v.checks.ticker_time_ok, false);
+  }
+});
+
+test("a payload describing a different market is refused", () => {
+  const tk = "KXBTC15M-26SEP110800-00";
+  const close = ms("2026-09-11T12:00:00Z");
+  const other = mayWriteOfficial(tk, close, { ticker: "KXBTC15M-26SEP110815-15", close_ms: close });
+  assert.equal(other.ok === false && other.fault, "market-ticker-mismatch");
+  // Case and surrounding whitespace are not a disagreement.
+  assert.equal(mayWriteOfficial(tk, close, { ticker: ` ${tk.toLowerCase()} ` }).ok, true);
+});
+
+test("a payload whose close disagrees with the row is refused", () => {
+  const tk = "KXBTC15M-26SEP110800-00";
+  const close = ms("2026-09-11T12:00:00Z");
+  const far = mayWriteOfficial(tk, close, { ticker: tk, close_ms: close + CLOSE_TOLERANCE_MS + 1 });
+  assert.equal(far.ok === false && far.fault, "close-time-mismatch");
+  // The same tolerance a settle gets, not a tighter one.
+  assert.equal(mayWriteOfficial(tk, close, { ticker: tk, close_ms: close + CLOSE_TOLERANCE_MS }).ok, true);
+});
+
+test("a silent payload is accepted on the row's own identity, and says so", () => {
+  // The request was addressed BY ticker, so an exchange that echoes nothing is not
+  // evidence of a mismatch. The checks record which witnesses were actually read.
+  const tk = "KXBTC15M-26SEP110800-00";
+  const close = ms("2026-09-11T12:00:00Z");
+  const v = mayWriteOfficial(tk, close, {});
+  assert.equal(v.ok, true);
+  assert.equal(v.checks.ticker_seen, false, "no ticker was echoed");
+  assert.equal(v.checks.close_ok, false, "no close was echoed");
+  // But the row's own halves still had to hold.
+  assert.equal(mayWriteOfficial(tk, ms("2026-09-11T12:07:00Z"), {}).ok, false);
+});
+
+test("an unparseable ticker is not a disagreement, and an unusable key is", () => {
+  // Same rule as the rest of this module: the format is the exchange's, and a
+  // renamed series must not stop every official value from ever being recorded.
+  const close = ms("2026-09-11T12:00:00Z");
+  const renamed = mayWriteOfficial("BTC-SOMETHING-NEW", close, { ticker: "BTC-SOMETHING-NEW" });
+  assert.equal(renamed.ok, true);
+  assert.equal(renamed.checks.ticker_time_ok, null);
+
+  const keyless = mayWriteOfficial("", close, {});
+  assert.equal(keyless.ok === false && keyless.fault, "unusable-window-key");
+  const zero = mayWriteOfficial("KXBTC15M-26SEP110800-00", 0, {});
+  assert.equal(zero.ok === false && zero.fault, "unusable-window-key");
+  const off = mayWriteOfficial("KXBTC15M-26SEP110800-00", close + 1, {});
+  assert.equal(off.ok === false && off.fault, "window-off-grid");
+});
+
+test("every official refusal is an inconsistency, so none of them can stay quiet", () => {
+  // isInconsistent exempts only "no-settle-for-window", which this check cannot
+  // produce — it is asked about a payload that already arrived.
+  const stale = "KXBTC15M-26SEP100300-00";
+  const v = mayWriteOfficial(stale, ms("2026-09-10T08:45:00Z"), { ticker: stale });
+  assert.equal(v.ok, false);
+  if (v.ok === false) {
+    assert.equal(isInconsistent(v.fault), true);
+    assert.match(faultLine(stale, ms("2026-09-10T08:45:00Z"), v.fault, v.detail), /^IDENTITY 08:45/);
+  }
 });

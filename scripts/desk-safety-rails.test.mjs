@@ -765,12 +765,71 @@ test("a print carries the state of the world at the moment it landed", () => {
  * decision that includes answering "does this count invalid windows?", and an
  * unlisted file failing this test is that question being asked.
  */
+/**
+ * No write may identify a ledger row by ticker alone.
+ *
+ * `desk_ledger` is unique on (ticker, close_time) -- migration 0005 -- so a ticker
+ * is not a row. On 2026-09-10 nine rows shared one, and the official_value backfill
+ * wrote `where ticker = $1 and official_value is null`: correct by luck when a
+ * ticker happens to name one window, silently wrong when it does not. Grading has
+ * gone through the window-identity invariant since #133; this was the one write
+ * left that did not.
+ */
+test("no write identifies a ledger row by ticker alone", () => {
+  const writers = readdirSync(join(ROOT, "src/lib/desk"))
+    .filter((f) => f.endsWith(".server.ts") || f === "server-engine.ts")
+    .map((f) => `src/lib/desk/${f}`);
+
+  let seen = 0;
+  for (const rel of writers) {
+    const src = codeOf(rel);
+    // Every `update desk_ledger ... where ...` statement, to the closing backtick.
+    for (const m of src.matchAll(/update\s+desk_ledger\b[\s\S]*?`/g)) {
+      seen += 1;
+      const stmt = m[0];
+      assert.match(stmt, /\bticker\s*=/, `${rel}: a ledger write must match on ticker`);
+      assert.match(
+        stmt,
+        /\bclose_time\s*=/,
+        `${rel}: this write matches a ledger row by ticker alone. A ticker is not a row ` +
+          `(unique (ticker, close_time)); nine rows shared one on 2026-09-10. Match close_time too.`,
+      );
+    }
+  }
+  assert.ok(seen >= 1, "the official_value write must still exist to be checked");
+
+  // And that one write goes through the shared invariant before it fires, rather
+  // than trusting that asking Kalshi about a ticker returns that ticker's market.
+  const lab = codeOf("src/lib/desk/lab.server.ts");
+  assert.match(lab, /from "\.\/window-identity"/, "the backfill must import the invariant");
+  assert.match(lab, /mayWriteOfficial\(/, "the backfill must consult it");
+  assert.match(
+    lab,
+    /if \(!verdict\.ok\) \{/,
+    "a refused verdict must short-circuit the write, not be logged and ignored",
+  );
+  assert.match(lab, /backfillRefused \+= 1/, "a refusal must leave a durable breadcrumb");
+  // The SELECT has to carry both halves, or the narrow write cannot be expressed.
+  assert.match(lab, /select ticker, \(extract\(epoch from close_time\)/, "select both halves of the identity");
+  // And nothing here may invent a value when identity disagrees.
+  // between() scans for the end marker from the start of the file, so the end marker
+  // has to be something that genuinely follows this function.
+  const fn = between(lab, "async function backfillOfficial", "function currentTicker");
+  assert.doesNotMatch(fn, /official_value = \$\{?v \|\|/, "no fallback value on refusal");
+});
+
 test("research readers exclude the known-invalid windows", () => {
   // Coverage is one question, not twenty-eight: does this query read the bare
   // table? Research reads the desk_ledger_research view, which carries the
   // exclusion once. A new aggregate that reads the view is correct by
   // construction; one that reads desk_ledger must appear in the allowlist below
   // with a reason, which is the point at which someone has to think about it.
+  // A READ exemption is not a WRITE exemption. The official_value backfill was
+  // allowlisted here with a read reason — "must reach every row" — and the file's
+  // one bare-table statement was an UPDATE that identified its row by ticker
+  // alone, which is the 2026-09-10 half-identity. One allowlist cannot sanction
+  // both, so reads and writes are listed separately and a write reason has to say
+  // which columns of the row's identity it matches on.
   const ALLOWED_BARE = {
     "src/lib/desk/server-engine.ts": [
       "the ledger INSERT itself",
@@ -778,8 +837,16 @@ test("research readers exclude the known-invalid windows", () => {
       "the 6h gap scan and the 90d reconciliation — these MUST see every row, or " +
         "each quarantined window reads as a MISSING ledger row and alerts falsely",
     ],
-    "src/lib/desk/lab.server.ts": ["the official_value backfill, which must reach every row"],
+    "src/lib/desk/lab.server.ts": [
+      "the official_value backfill's SELECT, which must reach every row that is " +
+        "still missing its official value",
+    ],
     "src/lib/desk/replay.server.ts": ["the replay viewer: one named window, shown for forensics"],
+  };
+
+  // Writes are listed on their own, and every entry names the identity it matches.
+  const ALLOWED_WRITE = {
+    "src/lib/desk/lab.server.ts": ["official_value, on (ticker, close_time), only when it is null"],
   };
 
   const readers = readdirSync(join(ROOT, "src/lib/desk"))
@@ -796,6 +863,26 @@ test("research readers exclude the known-invalid windows", () => {
       `${rel} reads desk_ledger directly (${bare}x). Research must read ${"desk_ledger_research"}; ` +
         `if this read genuinely needs every row, add it to ALLOWED_BARE with the reason.`,
     );
+  }
+
+  // A write needs its OWN entry. Being allowlisted to read every row has never been
+  // a reason to write to one, and for the official_value backfill that conflation
+  // is exactly how a ticker-only UPDATE sat behind a read justification.
+  for (const rel of readers) {
+    const src = codeOf(rel);
+    if (!/update\s+desk_ledger\b/.test(src)) continue;
+    assert.ok(
+      ALLOWED_WRITE[rel],
+      `${rel} WRITES to desk_ledger. A read entry in ALLOWED_BARE does not cover that; ` +
+        `add it to ALLOWED_WRITE with the identity the write matches on.`,
+    );
+    for (const reason of ALLOWED_WRITE[rel]) {
+      assert.match(
+        reason,
+        /close_time/,
+        `${rel}: a ledger-write reason must name close_time — a ticker is not a row.`,
+      );
+    }
   }
 
   // And the files that DO read research data must be reading the view.
