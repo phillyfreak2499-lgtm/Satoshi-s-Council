@@ -18,8 +18,17 @@
  * The second one deserves care, because it reads like the ask-substitution this
  * study forbids and is not. YES and NO sum to 100, so a buyer bidding X for NO is
  * the same order as a seller offering YES at 100 − X: the NO bid IS the complement
- * of the YES ask. Using the YES *bid* for a NO holding would be the cheat — it
- * would price the side the desk does not hold, and would flatter every DOWN exit.
+ * of the YES ask.
+ *
+ * THE WRONG TURN, NAMED, because someone will eventually try to "fix" this:
+ *
+ *   100 − yes_ask  =  the NO BID   ← what a NO holder can SELL into. Correct.
+ *   100 − yes_bid  =  the NO ASK   ← what a NO buyer would PAY. Wrong here.
+ *
+ * Swapping to `100 − yes_bid` would price every DOWN exit at the wrong side of the
+ * spread, in the flattering direction, and would look like a tidy-up. The test
+ * `a DOWN holding is never priced off the NO ask` exists to fail that change.
+ * Using the YES *bid* directly for a NO holding is the same error by another route.
  *
  * Nothing here uses a midpoint, a chart crossing, a later price applied
  * retroactively, or the ask on the side held. A point whose book is unusable is
