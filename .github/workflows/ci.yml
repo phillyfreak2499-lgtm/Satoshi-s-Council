@@ -1,0 +1,131 @@
+# What a green check means.
+#
+# Until this file existed, CI ran one script that inspects the source tree's
+# shape. A green PR therefore meant "the tree still looks right" and nothing
+# about whether the desk compiled, whether its safety rails still bit, or whether
+# the migrations applied. Every one of those was found by the deploy instead.
+#
+# Each job below is a claim a reviewer can rely on. They run in parallel so the
+# slowest one sets the wall clock, and each installs from the lockfile so CI can
+# never pass on a dependency tree a developer does not have.
+#
+# Deliberately NOT here: a browser smoke. Playwright needs a browser download
+# this repo does not pin for CI, and a suite that fails on a cold cache teaches
+# reviewers to ignore red. The server smoke below covers what matters without it
+# — that the built artifact boots and serves. Browser checks stay local, where
+# scripts/browser-smoke-verdict.test.mjs already guards the verdict logic.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# A force-push should cancel the run it superseded rather than queue behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Production builds with this preset (see render.yaml), so CI does too.
+  # Building the other preset would prove something nobody deploys.
+  NITRO_PRESET: node-server
+
+# The tree check keeps its own workflow (tree.yml): it already publishes the
+# "one-source-tree" check name, and duplicating it here would produce two checks
+# with one name.
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # Errors fail the build; the repo's remaining warnings do not, so this gate
+      # is honest about what it currently enforces rather than red on arrival.
+      - run: npx eslint .
+
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # The whole suite: module tests, the desk safety rails, the research
+      # integrity tests, and the migration apply/idempotency checks (which run
+      # every migrations/*.sql against PGLite, twice).
+      - run: npm test
+
+  build:
+    name: build + server smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # db:migrate inside build skips without DATABASE_URL; the PGLite path in
+      # the test job is what actually exercises the SQL.
+      - run: npm run build
+
+      # The artifact has to boot. A build that compiles and then dies on startup
+      # is the failure this catches, and it is the one a type error cannot.
+      - name: boot the built server and probe it
+        run: |
+          set -euo pipefail
+          PORT=8123 node .output/server/index.mjs > /tmp/server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8123/healthz; then break; fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "::error::server exited during boot"; cat /tmp/server.log; exit 1
+            fi
+            sleep 1
+          done
+
+          echo "--- /healthz ---"
+          body=$(curl -fsS http://127.0.0.1:8123/healthz)
+          test "$body" = "ok" || { echo "::error::/healthz said '$body'"; exit 1; }
+
+          # /status is DEEP health. With no feeds and no ledger history a 503 is
+          # the correct answer, so this asserts it responds with parseable JSON
+          # carrying a verdict — not that the verdict is ok. Asserting 200 here
+          # would be a gate that fails for being honest.
+          echo "--- /status ---"
+          code=$(curl -sS -o /tmp/status.json -w '%{http_code}' http://127.0.0.1:8123/status)
+          echo "status: $code"
+          case "$code" in 200|503) ;; *) echo "::error::/status returned $code"; cat /tmp/status.json; exit 1 ;; esac
+          node -e '
+            const s = require("fs").readFileSync("/tmp/status.json", "utf8");
+            const j = JSON.parse(s);
+            if (typeof j.ok !== "boolean") throw new Error("/status has no ok verdict: " + s.slice(0, 400));
+            if (!Array.isArray(j.reasons)) throw new Error("/status has no reasons array");
+            console.log("verdict ok=" + j.ok + " reasons=" + JSON.stringify(j.reasons));
+          '
+
+          # The front page must render rather than 500.
+          echo "--- / ---"
+          curl -fsS -o /dev/null -w 'home: %{http_code}\n' http://127.0.0.1:8123/

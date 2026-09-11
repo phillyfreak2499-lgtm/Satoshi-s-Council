@@ -79,7 +79,7 @@ async function loadWindows(): Promise<LedgerWindow[]> {
     select close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents, seats
       from (
         select close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents, seats
-          from desk_ledger
+          from desk_ledger_research
          where winner in ('UP','DOWN')
          order by close_time desc
          limit 1500

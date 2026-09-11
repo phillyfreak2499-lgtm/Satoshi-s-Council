@@ -66,19 +66,43 @@ function keeperQuery() {
   return { text, params, ...c };
 }
 
+/**
+ * The ledger surface the scorecard actually reads.
+ *
+ * This file hand-rolls a minimal schema rather than applying migrations/, and that
+ * is how it drifted: the scorecard moved onto the desk_ledger_research view (which
+ * carries the known-invalid-window exclusion) and these fixtures still only had
+ * the bare table. Keeping the view beside the table here means the query under
+ * test runs against the same shape it runs against in production.
+ *
+ * scripts/migrations-apply.test.mjs is what proves the real schema; this is only
+ * enough of it for the query to be exercised.
+ */
+async function ledgerSurface(pg) {
+  await pg.exec(
+    [
+      "create table desk_ledger (",
+      "  id serial primary key,",
+      "  close_time timestamptz not null,",
+      "  winner text,",
+      "  chair_lean text,",
+      "  score double precision,",
+      "  bar double precision,",
+      "  entry_cents double precision,",
+      "  ev_cents double precision,",
+      "  research_quality text not null default 'valid',",
+      "  research_quality_rule text",
+      ")",
+    ].join("\n"),
+  );
+  await pg.exec(`create view desk_ledger_research as
+    select * from desk_ledger where research_quality = 'valid'`);
+}
+
 /** A ledger spanning both floors: two eras, a sit, and a window under each floor. */
 async function seeded(since) {
   const pg = new PGlite();
-  await pg.exec(`create table desk_ledger (
-    id serial primary key,
-    close_time timestamptz not null,
-    winner text,
-    chair_lean text,
-    score double precision,
-    bar double precision,
-    entry_cents double precision,
-    ev_cents double precision
-  )`);
+  await ledgerSurface(pg);
   const t = Date.parse(since);
   const min = (n) => new Date(t + n * 60_000).toISOString();
   // Pre-trial: a 70¢ fill (kept the old floor), a 72¢ fill (kept it), and a sit.
@@ -147,9 +171,7 @@ test("an old fill under the new floor still counts as having kept its own floor"
   const q = keeperQuery();
   const pg = new PGlite();
   try {
-    await pg.exec(`create table desk_ledger (
-      id serial primary key, close_time timestamptz not null, winner text, chair_lean text,
-      score double precision, bar double precision, entry_cents double precision, ev_cents double precision)`);
+    await ledgerSurface(pg);
     const t = Date.parse(q.since);
     // A 71¢ fill from before the trial: under 80, but it kept the 70 that applied.
     await pg.query(
@@ -179,9 +201,7 @@ test("zeros appear only when the ledger is genuinely empty", async () => {
   const q = keeperQuery();
   const pg = new PGlite();
   try {
-    await pg.exec(`create table desk_ledger (
-      id serial primary key, close_time timestamptz not null, winner text, chair_lean text,
-      score double precision, bar double precision, entry_cents double precision, ev_cents double precision)`);
+    await ledgerSurface(pg);
     const { rows } = await pg.query(q.text, q.params);
     assert.equal(rows[0].n_all, 0);
     assert.equal(rows[0].booked_all, 0);

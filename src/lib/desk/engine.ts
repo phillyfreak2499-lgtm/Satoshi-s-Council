@@ -39,7 +39,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
 let flightAt = 0;
 let lastClose = 0;
-let liveHist = { funding: [] as HistPoint[], oi: [] as HistPoint[], oiUsd: [] as HistPoint[] };
+const liveHist = { funding: [] as HistPoint[], oi: [] as HistPoint[], oiUsd: [] as HistPoint[] };
 let pending: {
   ticker: string;
   close_time: number;

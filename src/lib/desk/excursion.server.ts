@@ -41,7 +41,7 @@ export async function excursionStudy(): Promise<ExcursionStudy> {
   const db = await getSql();
   const raw = await db<Row>`
     select l.ticker, l.winner, l.chair_lean, l.entry_cents, l.settle_cents, l.ev_cents, r.cols
-    from desk_ledger l
+    from desk_ledger_research l
     join desk_replay r on r.ticker = l.ticker
     where l.winner in ('UP','DOWN')
       and l.entry_cents is not null

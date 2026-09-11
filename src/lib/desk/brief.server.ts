@@ -127,7 +127,7 @@ async function build(): Promise<Brief> {
   const db = await sql();
   const rows = await db<LedgerRow>`
     select close_time, chair_lean, chair_conf, score, bar, entry_cents, settle_cents, ev_cents, winner
-    from desk_ledger
+    from desk_ledger_research
     order by close_time desc
     limit 40
   `;
@@ -137,7 +137,7 @@ async function build(): Promise<Brief> {
   // held position whose lean decayed would otherwise be tallied as a sit.
   const overnightRows = await db<{ chair_lean: string | null; settle_cents: number | null; winner: string | null }>`
     select chair_lean, settle_cents, winner
-    from desk_ledger
+    from desk_ledger_research
     where close_time > now() - interval '12 hours'
   `;
   let up = 0;

@@ -112,7 +112,7 @@ export async function cubeStudy(): Promise<CubeStudy> {
            entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar,
            entry_fair_yes, entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents,
            seats
-    from desk_ledger
+    from desk_ledger_research
     where winner in ('UP','DOWN')
     order by close_time
   `;

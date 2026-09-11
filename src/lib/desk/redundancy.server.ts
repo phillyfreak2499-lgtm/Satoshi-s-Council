@@ -48,7 +48,7 @@ export async function redundancyStudy(): Promise<RedundancyStudy> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.study;
   const db = await getSql();
   const raw = await db<Row>`
-    select winner, seats from desk_ledger
+    select winner, seats from desk_ledger_research
     where winner in ('UP','DOWN') and seats is not null
     order by close_time
   `;

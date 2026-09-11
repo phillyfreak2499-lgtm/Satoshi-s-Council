@@ -179,7 +179,7 @@ async function deskRows(days: number | null): Promise<ArenaRow[]> {
     select count(*) filter (where entry_cents is not null)::int as n,
            count(*) filter (where entry_cents is not null and ev_cents > 0)::int as wins,
            coalesce(sum(ev_cents) filter (where entry_cents is not null), 0) as net
-      from desk_ledger
+      from desk_ledger_research
      where (${days == null} or close_time > now() - (${days ?? 0} || ' days')::interval)
   `;
   const mk = (name: string, r: { n: number; wins: number; net: number } | undefined): ArenaRow => ({

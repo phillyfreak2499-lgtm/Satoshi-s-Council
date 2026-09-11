@@ -1352,7 +1352,7 @@ export async function labDigestBits(bits: string[]): Promise<void> {
              count(*) filter (where official_value is not null and brti_prints >= 55 and abs(settle_avg - official_value) <= 0.05)::int as exact,
              count(*) filter (where official_value is not null and settle_feed is not null and brti_prints >= 55 and abs(settle_feed - official_value) <= 0.05)::int as feed_exact,
              avg(abs(settle_avg - official_value) * 100) filter (where official_value is not null and brti_prints >= 55) as err_cents
-        from desk_ledger
+        from desk_ledger_research
        where close_time > now() - interval '24 hours'
     `;
     if (rc && rc.n > 0) {

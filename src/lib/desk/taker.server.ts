@@ -33,7 +33,7 @@ export async function takerExperiment(): Promise<TakerReport> {
            l.settle_cents as chair_settle,
            l.winner as chair_winner
     from desk_taker t
-    left join desk_ledger l on l.ticker = t.ticker and l.close_time = t.close_time
+    left join desk_ledger_research l on l.ticker = t.ticker and l.close_time = t.close_time
     order by t.close_time
   `;
   const mapped: TakerRow[] = rows.map((r) => ({

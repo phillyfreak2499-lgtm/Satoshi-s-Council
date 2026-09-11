@@ -75,13 +75,15 @@ export async function weeklyRecap(db: Sql, yesterday: string): Promise<boolean> 
       coalesce(sum(ev_cents), 0)::float as net,
       (count(*) filter (where chair_lean in ('UP','DOWN') and entry_cents is null))::int as floored,
       to_char(${yesterday}::date - 6, 'YYYY-MM-DD') as from_day
-    from desk_ledger
+    from desk_ledger_research
     where (close_time at time zone 'America/Chicago')::date between ${yesterday}::date - 6 and ${yesterday}::date
+     
   `;
   if (!tot || !tot.windows) return false;
   const seatRows = await db<{ seats: Record<string, { hit?: boolean | null }> | null }>`
-    select seats from desk_ledger
+    select seats from desk_ledger_research
     where (close_time at time zone 'America/Chicago')::date between ${yesterday}::date - 6 and ${yesterday}::date
+     
   `;
   const tally: Record<string, { n: number; hits: number }> = {};
   for (const row of seatRows) {
