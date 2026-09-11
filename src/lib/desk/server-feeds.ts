@@ -2,7 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { takerOutcomeSide } from "./kalshi-wire";
 import { asMs, uniqueByT, valuesOf, type HistPoint } from "./hist";
 import { interpretKalshiBook, readSeq } from "./kalshi-book";
+import { candleTs, emptyTally, tally } from "./candle-time";
 import { applyInstrument, funding8h, notionalUsd, pickPrimaryVenue, specTag, volumeUsd } from "./units";
+import type { PathPoint } from "./path-time";
 import type { Candle, LiveBundle, OfficialSettle } from "./types";
 
 const T = 4500;
@@ -280,13 +282,27 @@ async function kalshi(): Promise<KalshiPack | null> {
       const quote_seq = readSeq(bookMeta?.json) || readSeq(tradeMeta?.json);
       const quote_age_s = quote_ts ? Math.max(0, (Date.now() - quote_ts) / 1000) : 999;
 
+      // The bare array production reads today, UNCHANGED: same rows, same order, same
+      // filter. The timestamped copy is built alongside it and replaces nothing.
       const yes_path: number[] = [];
+      const yes_path_pts: PathPoint[] = [];
+      const candle_ts = emptyTally();
       const candleRaw = extras[2].status === "fulfilled" ? extras[2].value : null;
       if (candleRaw && typeof candleRaw === "object") {
         const rows = (candleRaw as { candlesticks?: { price?: { close_dollars?: string } }[] }).candlesticks ?? [];
+        const nowMs = Date.now();
         for (const row of rows) {
           const px = cents(row.price?.close_dollars);
-          if (px > 0) yes_path.push(px);
+          if (!(px > 0)) continue;
+          yes_path.push(px);
+          candle_ts.rows_priced++;
+          // The candle's own period timestamp, normalised to epoch ms. A row whose
+          // timestamp cannot be read is counted and left out of the timestamped path
+          // rather than given a made-up time - an invented timestamp would corrupt
+          // the very measurement this exists to take.
+          const got = candleTs(row, nowMs);
+          tally(candle_ts, got);
+          if (got.ok) yes_path_pts.push({ t: got.t, px, source: "candle" });
         }
       }
 
@@ -327,6 +343,8 @@ async function kalshi(): Promise<KalshiPack | null> {
         trade_n,
         taker_yes,
         yes_path,
+        yes_path_pts,
+        candle_ts,
         settles,
       };
     } catch {

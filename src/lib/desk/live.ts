@@ -1,5 +1,7 @@
 import { enrichSnapshot } from "./features";
 import { appendPeriod, deltaOver, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, valuesOf, type HistPoint } from "./hist";
+import { emptyTally } from "./candle-time";
+import type { PathPoint } from "./path-time";
 import { basisBps, fundingApr } from "./units";
 import type { FeedHealth, GapStatus, LiveBundle, Snapshot, WindowMemory } from "./types";
 
@@ -88,6 +90,18 @@ export function bundleToSnapshot(
   const yes_mid = yes_bid && yes_ask ? (yes_bid + yes_ask) / 2 : (prev?.yes_mid ?? 50);
   const candlePath = kalshi?.yes_path?.length ? kalshi.yes_path : [];
   const yes_mid_path = candlePath.length >= 4 ? candlePath.slice(-80) : [...(prev?.yes_mid_path ?? []), yes_mid].slice(-80);
+  // The timestamped twin, branched on the SAME condition and the SAME array as the
+  // line above, so the two paths are never built from different sources on one tick.
+  // Deliberately keyed on `candlePath.length`, not on the timestamped array's length:
+  // if candles arrived priced but unreadable for time, production still took the
+  // candle branch, and the honest record of that is a thin timestamped path plus a
+  // `candle_ts` tally explaining why - not a quietly substituted tick path.
+  const candlePts = kalshi?.yes_path_pts ?? [];
+  const yes_mid_path_pts: PathPoint[] =
+    candlePath.length >= 4
+      ? candlePts.slice(-80)
+      : [...(prev?.yes_mid_path_pts ?? []), { t: now, px: yes_mid, source: "tick" as const }].slice(-80);
+  const candle_ts = kalshi?.candle_ts ?? emptyTally();
   const imbDen = yes_bid_size + no_bid_size;
   const imbalance = imbDen > 0 ? (yes_bid_size - no_bid_size) / imbDen : 0;
   const imbalance_hist = [...(prev?.imbalance_hist ?? []), imbalance].slice(-20);
@@ -187,6 +201,8 @@ export function bundleToSnapshot(
     },
     yes_mid,
     yes_mid_path,
+    yes_mid_path_pts,
+    candle_ts,
     funding_rate: b.funding_rate ?? prev?.funding_rate ?? 0,
     funding_apr: fundingApr(b.funding_rate ?? prev?.funding_rate ?? 0) || 0,
     funding_time: b.funding_time ?? prev?.funding_time ?? 0,

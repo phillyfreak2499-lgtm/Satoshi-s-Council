@@ -346,4 +346,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The desk's own answer now has a name and a challenger bench. Until today the Floor was an accidental combination: the Council picked a side, the 80¢ floor decided whether to pay, and the position was held to settlement because nothing else had ever been written. None of those three was a choice anything could argue with. They are now named as FLOOR_V1 — Council Chair, 80¢ floor, HOLD — and FLOOR_V1 is the Champion, which is to say nothing about the desk changed. Beside it four frozen alternatives start at zero: cut the position if it has not gained 10¢ within two, three or four minutes, or bank it if the bid ever reaches 90¢. Each is measured on the very same fill the Council actually took, priced only where the held side could genuinely have been sold, fees both ways. None of them can win anything yet, and the bar they must clear is written down before the evidence arrives.",
   },
+  {
+    slug: "2026-09-11-path-horizons",
+    body:
+      "A number the desk calls one minute of movement is usually five. Four seats read the recent price path by counting back a fixed number of slots and call the results d30, d60 and d120 as if a slot were seconds. It is not: the path is normally built from Kalshi's one-minute candles, so the offset named d60 really spans five minutes and d30 three. On the tick-by-tick feed the same offsets span twenty and twelve seconds \u2014 one named quantity, fifteenfold apart, decided only by which feed arrived. Nothing changed today. Every point now carries the timestamp Kalshi gave it, and every reading is written down with three facts kept apart: the span it covered, how old its newest point was when the desk decided, and so whether it describes the last minute or a minute that ended a minute ago. Those are not the same thing, and an exact-looking span can still be the wrong interval.",
+  },
 ];

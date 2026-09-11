@@ -1,4 +1,6 @@
+import type { CandleTsTally } from "./candle-time";
 import type { HistPoint } from "./hist";
+import type { PathPoint } from "./path-time";
 
 export type Lean = "UP" | "DOWN" | "WAIT";
 export type Phase = "ENTRY" | "MID" | "FINAL";
@@ -218,6 +220,15 @@ export type Snapshot = {
   obs: ObsStamp;
   yes_mid: number;
   yes_mid_path: number[];
+  /**
+   * The same path with a real timestamp on every point. MEASUREMENT ONLY - no seat,
+   * DSL rule, threshold, Chair input, learned weight or skill status reads it. It
+   * sits beside `yes_mid_path`; it does not replace it, and migrating the consumers
+   * is a separate decision with its own research-era boundary.
+   */
+  yes_mid_path_pts: PathPoint[];
+  /** What reading the candle timestamps cost on the tick that built the path. */
+  candle_ts: CandleTsTally;
   funding_rate: number;
   funding_apr: number;
   funding_time: number;
@@ -579,6 +590,14 @@ export type LiveBundle = {
     trade_n: number;
     taker_yes: number;
     yes_path: number[];
+    /**
+     * The same candle closes, each carrying the candle's OWN period timestamp in
+     * epoch ms. Measurement only: nothing reads this to make a decision. It exists
+     * alongside `yes_path`, never instead of it.
+     */
+    yes_path_pts: PathPoint[];
+    /** What reading those timestamps cost, so a thin timestamped path is explainable. */
+    candle_ts: CandleTsTally;
     settles: OfficialSettle[];
   } | null;
   funding_rate: number | null;
