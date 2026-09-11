@@ -321,4 +321,9 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "Verifying yesterday's replay change turned up a real bug in the desk's copy of the order book, and it had been there a while. A price level's size is kept by adding and subtracting quantities as orders arrive and cancel. Kalshi's quantities are decimals, and decimals do not add up exactly in binary — so a level cancelled down to nothing lands on a millionth of a millionth rather than on zero, and the book kept it as a real level at a real price with nothing behind it. Of the 22,402 resting sizes the lab had recorded, 20,028 were that kind of residue. It could be reported as the best quote, and the new order-flow reading divided by it and returned numbers around a hundred quadrillion. Levels below a millionth are now dropped — five orders of magnitude under the smallest real order ever seen here, so nothing genuine goes with them. No call, floor, grading rule or past number changed.",
   },
+  {
+    slug: "2026-09-11-whale-real-prints",
+    body:
+      "WHALE now watches real trades instead of guessing from candle volume. The old seat infers a big player from a bar that traded above its median — which cannot tell one large order from fifty small ones, cannot say who crossed the spread, and never sees the trade itself. Kalshi's feed carries the executions with an aggressor side, so a separate lab reads them: where each print ranks against recent sizes, orders sliced into pieces counted as the one decision they are, which side was aggressive, how far the midpoint moved and how far per contract, whether it kept going or came back — and the one a volume count can never see: size crossing with the price refusing to move, meaning someone is quietly taking the other side. The old seat is untouched and keeps its own record. The two are never merged. Nothing votes on any of it.",
+  },
 ];
