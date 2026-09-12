@@ -97,6 +97,43 @@ test("the shadow book records, and does so before the live floor has its say", (
   assert.ok(entryAt > 0, "entry state must be captured on the decision path");
 });
 
+test("S2-10: the paper book refuses a non-positive current edge before any fill is recorded", () => {
+  // The pure guard lives in the book module: it selects the booking side's own edge
+  // and passes only finite, strictly-positive edges — no second fair/fee formula.
+  const floor = read("src/lib/desk/book-floor.ts");
+  assert.match(floor, /export function paperBookEdgeOk\(/, "paperBookEdgeOk must be exported from book-floor");
+  assert.match(
+    floor,
+    /lean === "UP" \? snap\.edge_up : snap\.edge_down/,
+    "the guard must read the booking side's own current edge (edge_up for UP, edge_down for DOWN)",
+  );
+  assert.match(floor, /Number\.isFinite\(edge\) && edge > 0/, "the guard must pass only finite, strictly-positive edges (fail closed)");
+  const gi = floor.indexOf("export function paperBookEdgeOk(");
+  const guard = floor.slice(gi, floor.indexOf("\n}", gi) + 2);
+  assert.ok(
+    !/takerFee|fair_yes|fee_yes|fee_no/.test(guard),
+    "the edge guard must reuse snap.edge_up/edge_down, never recompute fair or fees (no second formula)",
+  );
+
+  // The server paper-book boundary consults the guard — on decideChair's post-stick
+  // chair.lean — AFTER the WAIT early-return and BEFORE any path that records a fill
+  // (shadow capture, live floor, entry-state capture, call-log write). Fail closed
+  // with a bare return; no booking, no mutation.
+  const body = noteCallBody(read("src/lib/desk/server-engine.ts"));
+  assert.match(body, /if \(!paperBookEdgeOk\(snap, chair\.lean\)\) return;/, "noteCall must gate fills on the current-edge guard");
+  const iWait = body.indexOf('if (chair.lean !== "UP" && chair.lean !== "DOWN")');
+  const iGuard = body.indexOf("if (!paperBookEdgeOk(snap, chair.lean)) return;");
+  const iShadow = body.indexOf("noteShadowFill(");
+  const iFloor = body.indexOf("if (!bookable(cents)) return;");
+  const iEntry = body.indexOf("noteEntryState(");
+  const iCallLog = body.indexOf("e.callLog = [");
+  assert.ok(iWait >= 0 && iGuard > iWait, "the edge guard must sit AFTER the WAIT early-return (WAIT is unaffected)");
+  assert.ok(iShadow > iGuard, "the edge guard must run BEFORE the 70¢ shadow capture (both books refuse non-positive edge)");
+  assert.ok(iFloor > iGuard, "the edge guard must run BEFORE the live price floor");
+  assert.ok(iEntry > iGuard, "the edge guard must run BEFORE the entry-state capture");
+  assert.ok(iCallLog > iGuard, "the edge guard must run BEFORE the paper position is written");
+});
+
 test("TAKER's frozen constants are still the frozen values", () => {
   const src = read("src/lib/desk/taker.ts");
   assert.match(src, /export const TAKER_FROZEN_AT = "2026-09-09";/);

@@ -22,7 +22,7 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
-import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS } from "./book-floor";
+import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk } from "./book-floor";
 import { freshLearner } from "./skills";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
@@ -604,6 +604,17 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
     e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
     return;
   }
+  // S2-10: the final paper-book edge guard. runChair's hard edge gate can be undone
+  // downstream — decideChair applies stickLean AFTER it, and stickLean is not
+  // edge-aware — so a side the CURRENT edge gate turned to WAIT can still arrive here
+  // as a sticky UP/DOWN (it did: KXBTC15M-26SEP110445-45, edge_up -1.6, booked). The
+  // paper book — live AND its 70¢ shadow, which differ only by the floor — refuses any
+  // fill whose current booking-side edge is non-positive. This runs before the shadow
+  // capture so neither book records a fill the edge rejects, keeping the two books
+  // separated by the floor alone. It reads the same snap.edge_up/edge_down the Chair's
+  // own gate reads (no second formula), books nothing, and mutates nothing — not the
+  // Chair read, the shown lean, stickLean, holdScore, thresholds, or history.
+  if (!paperBookEdgeOk(snap, chair.lean)) return;
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
   // The 80¢ trial's shadow book: note the first ask this window at which the

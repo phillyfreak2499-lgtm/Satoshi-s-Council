@@ -100,6 +100,31 @@ export function bookableShadow(cents: number): boolean {
 }
 
 /**
+ * The paper book's final edge guard (S2-10).
+ *
+ * A paper fill — the live book AND its 70¢ shadow, which differ ONLY by the price
+ * floor — may be recorded only when the CURRENT snapshot edge for the side being
+ * booked, after fees, is finite and strictly positive. The side edge is exactly the
+ * `snap.edge_up` / `snap.edge_down` the Chair's own edge gate reads (chair.ts); this
+ * re-asserts that one economic test at the book boundary, because a post-stick lean
+ * (server-engine `decideChair` → `stickLean`, which is not edge-aware) can deliver a
+ * side the current edge gate had already turned to WAIT — a stale/sticky lean then
+ * reaching the book after the edge check failed. Receipt that proved it:
+ * KXBTC15M-26SEP110445-45 booked UP at 80¢ with fair 80.4 and fee 2, edge_up -1.6.
+ *
+ * This reads no fair and no fee of its own — no second edge formula — and decides
+ * nothing about direction, size, or the Chair's displayed read. Fail closed: a
+ * non-finite edge blocks the fill. It is a BOOKING invariant, not a Chair rewrite.
+ */
+export function paperBookEdgeOk(
+  snap: Pick<Snapshot, "edge_up" | "edge_down">,
+  lean: "UP" | "DOWN",
+): boolean {
+  const edge = lean === "UP" ? snap.edge_up : snap.edge_down;
+  return Number.isFinite(edge) && edge > 0;
+}
+
+/**
  * The win rate a book of contracts at `ask` needs to stand still after the
  * Kalshi taker fee: a win pays 100 − ask − fee, a loss costs ask + fee, so the
  * break-even rate is (ask + fee)/100. At the trial's floor that is about 82%,
