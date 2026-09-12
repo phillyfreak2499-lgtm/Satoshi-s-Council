@@ -4,6 +4,7 @@ import { emptyTally } from "./candle-time";
 import type { PathPoint } from "./path-time";
 import { basisBps, fundingApr } from "./units";
 import type { FeedHealth, GapStatus, LiveBundle, Snapshot, WindowMemory } from "./types";
+import { liqAgeSeconds } from "./liq-time";
 
 function ageHealth(age: number, liveMax: number): FeedHealth {
   if (!Number.isFinite(age) || age > liveMax * 20) return "DOWN";
@@ -216,6 +217,7 @@ export function bundleToSnapshot(
     liq_n: b.liq_n > 0 ? b.liq_n : (prev?.liq_n ?? 0),
     liq_source: b.liq_source && b.liq_source !== "DOWN" ? b.liq_source : (prev?.liq_source && prev.liq_n > 0 ? prev.liq_source : "DOWN"),
     liq_last_t: b.liq_n > 0 ? b.liq_last_t : (prev?.liq_last_t ?? 0),
+    liq_age_s: liqAgeSeconds(b.liq_n > 0 ? b.liq_last_t : (prev?.liq_last_t ?? 0), now),
     force_n: b.liq_n > 0 ? b.liq_n : (prev?.force_n ?? 0),
     cascade_proxy: false,
     fear_greed: b.fear_greed ?? prev?.fear_greed ?? 50,
