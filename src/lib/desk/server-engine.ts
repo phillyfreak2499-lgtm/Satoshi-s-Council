@@ -964,8 +964,6 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
     settleAll(e.learner, finish);
     reviewSeats(e.learner);
     if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
-  } else {
-    noteErr(e, "grade", `${key} research-quality invalid — learner credit skipped; ledger row kept (${source})`);
   }
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   // Enqueue the ledger row (built now, from this window's state) for a durable,
