@@ -1157,6 +1157,12 @@ test("research readers exclude the known-invalid windows", () => {
         "still missing its official value",
     ],
     "src/lib/desk/replay.server.ts": ["the replay viewer: one named window, shown for forensics"],
+    "src/lib/desk/kalshi-reconcile.server.ts": [
+      "S2-7 independent reconciliation: it must audit EVERY window, including the " +
+        "quarantined/identity-invalid rows, which it classifies as TICKER_CLOSE_MISMATCH. " +
+        "Reading desk_ledger_research would hide exactly the corrupted rows the audit exists " +
+        "to surface. Read-only SELECT; the external truth is fetched from Kalshi, never this table.",
+    ],
   };
 
   // Writes are listed on their own, and every entry names the identity it matches.
@@ -2264,5 +2270,114 @@ test("Stage2 freshness: the live observation clock is truthfully named and read 
     const code = codeOf(`src/lib/desk/${rel}`);
     assert.ok(!code.includes("quote_last_change_at"), `${rel} must not read quote_last_change_at (measurement stays out of decisions)`);
     assert.ok(!code.includes("provider_ts"), `${rel} must not read provider_ts`);
+  }
+});
+
+test("S2-7: historical reconciliation takes external truth from Kalshi, never the ledger, and never writes", () => {
+  const pure = codeOf("src/lib/desk/kalshi-reconcile.ts");
+  const server = codeOf("src/lib/desk/kalshi-reconcile.server.ts");
+
+  // (1) External truth comes from the Kalshi public fetch path.
+  assert.match(server, /kalshi\.com\/trade-api\/v2/, "the server runner fetches the Kalshi public market path");
+  assert.match(server, /\/markets\/\$\{encodeURIComponent\(ticker\)\}/, "it fetches the EXACT market by ticker");
+
+  // (2) The authoritative (external) winner/value are read from the payload `m.`,
+  // never from a desk_ledger field. The internal side is only ever `internal.`.
+  assert.ok(!/external_winner[^=]*=\s*internal\./.test(pure), "external winner is never the ledger winner");
+  assert.match(pure, /function officialWinner\(m: OfficialMarket\)/, "official winner is parsed from the market payload");
+  assert.match(pure, /m\.expiration_value/, "the official underlying is the payload's expiration_value");
+  // The ledger's winner/official_value are the audited side, not the truth side.
+  assert.ok(!/settlement.*desk_ledger|desk_ledger.*as.*external/.test(pure), "no ledger field is treated as external truth");
+
+  // (3) Exact identity: ticker AND close, reusing the repo invariant.
+  assert.match(pure, /from "\.\/window-identity\.ts"/, "identity reuses window-identity");
+  assert.match(pure, /tickerAgrees\(/, "the ticker's embedded close is checked");
+  assert.match(pure, /Math\.abs\(extClose - internal\.close_time_ms\) <= CLOSE_TOLERANCE_MS/, "the payload close must agree within the repo tolerance");
+
+  // (3b) The close witness is `close_time` ONLY. `expiration_time` is a different,
+  // deprecated expiry clock and is NEVER substituted for it — the same rule
+  // mayWriteOfficial enforces. Scoped to closeMsOf so the type/comment elsewhere
+  // naming the field does not mask a reintroduced fallback.
+  const closeFn = pure.match(/function closeMsOf[\s\S]*?\n}/)?.[0] ?? "";
+  assert.ok(closeFn.length > 0, "closeMsOf is present");
+  assert.ok(!/expiration/.test(closeFn), "the close witness reads close_time only — never expiration_time");
+
+  // (3c) A payload with no usable external identity (no ticker, or no close witness
+  // at all) is its own explicit state — never silently a MATCH.
+  assert.match(pure, /EXTERNAL_IDENTITY_UNVERIFIABLE/, "missing external identity is UNVERIFIABLE, not a match");
+  assert.match(pure, /externalTickerOk === true && \(externalCloseOk === true \|\| tickerCloseWitness\)/, "a MATCH requires an exact present ticker AND at least one close witness");
+
+  // (3d) Official-value agreement uses the repo's established 0.05 tolerance
+  // (lab.server.ts settlement receipts), not a looser invented epsilon.
+  assert.match(pure, /VALUE_EPSILON = 0\.05\b/, "official-value tolerance matches the repo's 0.05");
+
+  // (4) No nearest/latest/guessing market selection: the fetch is one EXACT ticker,
+  // never a list query or a nearest/latest heuristic. (The report's earliest/latest
+  // RANGE fields are not market selection.)
+  assert.ok(!server.includes("/markets?"), "no list query — the fetch is the exact /markets/{ticker}");
+  assert.ok(!server.includes("series_ticker"), "no series-list selection");
+  assert.ok(!/\bnearest\b/.test(server), "no nearest-market fallback");
+  assert.ok(!/status=settled|status=closed/.test(server), "no status-list scan to pick a market");
+
+  // (5) + (8) Read-only: SELECT + GET only, no writes, no backfill, in either file.
+  for (const [rel, src] of [["kalshi-reconcile.ts", pure], ["kalshi-reconcile.server.ts", server]]) {
+    for (const w of ["insert into", "update ", "delete from", "alter table", " upsert", "on conflict"]) {
+      assert.ok(!src.toLowerCase().includes(w), `${rel} must not ${w.trim()} (read-only audit)`);
+    }
+  }
+  assert.match(server, /select ticker,/, "the server reads desk_ledger via SELECT only");
+
+  // (6) No Chair/seat/learner/decision imports in either file.
+  for (const [rel, src] of [["kalshi-reconcile.ts", pure], ["kalshi-reconcile.server.ts", server]]) {
+    for (const dep of ["./chair", "./chair-v2", "./bots", "./learner", "./dsl", "./book-floor", "./seats"]) {
+      assert.ok(!src.includes(`"${dep}`), `${rel} must not import ${dep}`);
+    }
+  }
+
+  // (7) No real-order / trading-auth path. Precise checks so legitimate tokens
+  // ("order by", "ctrl.signal") don't false-positive: the reconciler must not import
+  // the auth module, POST, send an Authorization header, or touch an orders endpoint.
+  for (const [rel, src] of [["kalshi-reconcile.ts", pure], ["kalshi-reconcile.server.ts", server]]) {
+    assert.ok(!src.includes("kalshi-auth"), `${rel} must not import the trading-auth module`);
+    assert.ok(!/method:\s*"POST"|getJsonPost/.test(src), `${rel} must not POST`);
+    assert.ok(!/Authorization|KALSHI-ACCESS|signPss|\/orders?\b|\/portfolio\b/i.test(src), `${rel} must not touch an auth/order endpoint`);
+  }
+});
+
+test("S2-7: no decision consumer imports the reconciliation surface", () => {
+  for (const rel of ["bots.ts", "chair.ts", "chair-v2.ts", "features.ts", "dsl.ts", "learner.ts", "book-floor.ts", "server-engine.ts"]) {
+    const code = codeOf(`src/lib/desk/${rel}`);
+    assert.ok(!code.includes("kalshi-reconcile"), `${rel} must not import the S2-7 reconciliation`);
+  }
+});
+
+test("S2-7: the reconciliation is reachable ONLY as a manual, read-only CLI — never auto-invoked by the desk", () => {
+  // (1) The manual entrypoint exists: npm script → the CLI file, which calls the
+  // runner and prints the rendered report.
+  const pkg = JSON.parse(read("package.json"));
+  const cliCmd = pkg.scripts?.["reconcile:kalshi"] ?? "";
+  assert.ok(cliCmd.includes("scripts/reconcile-kalshi.ts"), "npm run reconcile:kalshi invokes the CLI script");
+
+  const cli = codeOf("scripts/reconcile-kalshi.ts");
+  assert.ok(cli.length > 0, "the CLI script exists");
+  assert.match(cli, /runReconciliation/, "the CLI calls runReconciliation()");
+  assert.match(cli, /renderReconReport/, "the CLI prints the rendered report");
+
+  // (2) Read-only: SELECT + public GET only, no writes of any kind.
+  for (const w of ["insert into", "update ", "delete from", "alter table", " upsert", "on conflict"]) {
+    assert.ok(!cli.toLowerCase().includes(w), `the CLI must not ${w.trim()} (read-only audit)`);
+  }
+
+  // (3) No trading-auth / order path — the Kalshi read is the public market data.
+  assert.ok(!cli.includes("kalshi-auth"), "the CLI must not import the trading-auth module");
+  assert.ok(!/method:\s*"POST"|getJsonPost/.test(cli), "the CLI must not POST");
+  assert.ok(!/Authorization|KALSHI-ACCESS|signPss|\/orders?\b|\/portfolio\b/i.test(cli), "the CLI must not touch an auth/order endpoint");
+
+  // (4) Never auto-invoked: no production desk module imports the CLI or calls the
+  // runner, and nothing wires it into tick / a loop / a cron.
+  for (const rel of ["server-engine.ts", "bots.ts", "chair.ts", "chair-v2.ts", "features.ts", "dsl.ts", "learner.ts", "book-floor.ts"]) {
+    const code = codeOf(`src/lib/desk/${rel}`);
+    assert.ok(!code.includes("reconcile-kalshi"), `${rel} must not import the manual reconciliation CLI`);
+    assert.ok(!/runReconciliation/.test(code), `${rel} must not invoke runReconciliation`);
   }
 });
