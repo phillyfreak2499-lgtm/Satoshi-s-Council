@@ -1423,10 +1423,53 @@ test("the Lab is off the decision path", () => {
   const block = between(eng, "// THE LAB's exit competition", "if (windowsHuddleDue(");
   assert.match(block, /void \(async \(\) => \{/, "must not be awaited on the tick");
   assert.match(block, /\.catch\(/, "must not throw into the tick");
-  assert.match(
+
+  // THE ARENA READS THE REPLAY BEFORE PERSISTENCE CONSUMES IT (S2-4).
+  //
+  // recordReplay's `series.take` runs synchronously before its first await, so a
+  // replayLive() call sitting AFTER recordReplay in applyGrade reads null — which is
+  // how every graded Chair-filled window's exit measurement was lost. The read must be
+  // captured before the destructive take, and the arena block must consume that
+  // snapshot rather than re-reading the (by-then-gone) buffer.
+  // Slice applyGrade by hand: between() scans its end marker from the file start, so a
+  // generic "\nfunction " marker would match an earlier declaration.
+  const gradeStart = eng.indexOf("function applyGrade");
+  assert.ok(gradeStart >= 0, "applyGrade must exist");
+  const gradeFn = eng.slice(gradeStart, eng.indexOf("\nfunction ", gradeStart + 1) + 1 || undefined);
+  const captureAt = gradeFn.indexOf("replayLive(snap.ticker, snap.close_time)");
+  const consumeAt = gradeFn.indexOf("recordReplay(snap.ticker, snap.close_time, finish)");
+  assert.ok(captureAt >= 0, "the exit-arena replay must be captured with replayLive by both halves");
+  assert.ok(consumeAt >= 0, "recordReplay must still consume the window");
+  assert.ok(
+    captureAt < consumeAt,
+    "the replay must be captured BEFORE recordReplay's destructive take, or the arena reads null",
+  );
+  // The capture is synchronous — outside any void-ed async — so it runs before the
+  // take, not on a later microtask. It must NOT live inside the exit-arena IIFE.
+  assert.doesNotMatch(
     block,
-    /replayLive\(snap\.ticker, snap\.close_time\)/,
-    "reads the window's own replay series, by both halves of its identity",
+    /replayLive\(/,
+    "the arena block must use the pre-captured snapshot, not re-read the consumed buffer",
+  );
+  assert.match(block, /path: exitReplayPath/, "the arena measures the captured path");
+  // The capture fails CLOSED and never fabricates: a miss yields null, no neighbour.
+  assert.match(
+    gradeFn,
+    /const s = replayLive\(snap\.ticker, snap\.close_time\);\s*\n?\s*return s \? pointsFromReplay\(s\.cols\) : null;/,
+    "the capture returns the exact window's points or null — no fallback replay",
+  );
+  // And only for a booked position, so a Chair sit-out still writes no arena row.
+  assert.match(
+    gradeFn,
+    /booked && booked\.cents > 0\s*\n?\s*\? \(\(\) => \{/,
+    "the capture is gated on a booked position",
+  );
+  // Exactly one destructive consumer of the buffer: recordReplay. The arena never takes.
+  assert.doesNotMatch(gradeFn, /series\.take\(/, "applyGrade must not take the buffer directly");
+  assert.equal(
+    (gradeFn.match(/recordReplay\(/g) ?? []).length,
+    1,
+    "recordReplay is the single destructive consumer, called once",
   );
 });
 
