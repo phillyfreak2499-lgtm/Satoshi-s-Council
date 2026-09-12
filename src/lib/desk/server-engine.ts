@@ -962,6 +962,27 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   void settleHumanCalls(snap.ticker, finish).then((rows) =>
     notifySettle(snap.ticker, finish, chairBits, new Map(rows.map((r) => [r.token, r.cents]))),
   );
+  // THE EXIT ARENA READS THE REPLAY BEFORE PERSISTENCE CONSUMES IT.
+  //
+  // `recordReplay` below removes the graded window's buffer with `series.take`, which
+  // runs SYNCHRONOUSLY before its first `await` — so by the time the exit-arena block
+  // further down calls `replayLive`, the buffer is already gone and it reads null. That
+  // ordering silently lost every graded Chair-filled window's exit-policy measurement
+  // (desk_policy_observations sat at zero). So the arena's view is captured here, from
+  // the exact (ticker, close_time) buffer, WHILE IT STILL EXISTS — and `recordReplay`
+  // remains the single destructive consumer.
+  //
+  // `pointsFromReplay` is the same transform the arena already applied; running it now,
+  // synchronously and before any await, snapshots an immutable path that the take()
+  // below cannot pull out from under it. Only for a booked position, and only when this
+  // exact window has a replay — no neighbour, no fallback, no fabrication.
+  const exitReplayPath =
+    booked && booked.cents > 0
+      ? (() => {
+          const s = replayLive(snap.ticker, snap.close_time);
+          return s ? pointsFromReplay(s.cols) : null;
+        })()
+      : null;
   // The window this grade belongs to, by both halves: applyGrade has already put
   // this close through the identity invariant, so it is the one the buffer is keyed
   // on. A ticker alone could name another close during a frozen feed.
@@ -988,9 +1009,10 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   // and promote nothing. A window the chair sat out writes nothing, because there
   // is no position to exit.
   void (async () => {
-    if (!booked || !(booked.cents > 0)) return;
-    const series = replayLive(snap.ticker, snap.close_time);
-    if (!series) return;
+    // The path was captured above, before recordReplay consumed the buffer. A null
+    // means no booked position or no replay for this exact window — either way, nothing
+    // to measure and nothing written.
+    if (!exitReplayPath || !booked || !(booked.cents > 0)) return;
     const champion = await activeChampion();
     await recordExitArena(
       {
@@ -998,7 +1020,7 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
         closeMs: snap.close_time,
         winner: finish,
         entry: { side: booked.lean, cents: booked.cents, t: booked.t },
-        path: pointsFromReplay(series.cols),
+        path: exitReplayPath,
       },
       champion,
     );
