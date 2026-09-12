@@ -2070,3 +2070,122 @@ test("the decision snapshot never borrows the paper entry's price or instant", (
   assert.doesNotMatch(block, /openFill/, "it must not read the fill's timestamp");
   assert.doesNotMatch(block, /marketCents/, "and it must not read the live ask");
 });
+
+// ---------------------------------------------------------------------------
+// S2-5 — the Chair's decision-time market snapshot (measurement only).
+//
+// These rails protect what a unit test cannot reach through the server import
+// graph: that the decision snapshot is identified by the WINDOW, is insert-once,
+// is captured from the decision tick and never a fill/grade/quote, and that no
+// decision consumer ever reads it back. The event RULE and the field capture are
+// behaviourally tested in src/lib/desk/decision-snapshot.test.ts; the DB identity
+// in scripts/migrations-apply.test.mjs.
+// ---------------------------------------------------------------------------
+
+test("S2-5: the decision snapshot is written once per (ticker, close_time, snapshot_kind)", () => {
+  const src = codeOf("src/lib/desk/decision-snapshot.server.ts");
+  // Exact-window identity, and idempotent: conflict on all three, do nothing.
+  assert.match(
+    src,
+    /on conflict \(ticker, close_time, snapshot_kind\) do nothing/,
+    "the insert must be idempotent on the full window+kind key",
+  );
+  // A conflict must never REWRITE an earlier read.
+  assert.ok(!/do update/i.test(src), "on conflict must not update: a later tick cannot rewrite the first read");
+  // The restart read-back resolves the EXACT window, never the ticker alone.
+  const resolve = src.slice(src.indexOf("async function resolveWindow"), src.indexOf("async function insertRow"));
+  assert.ok(resolve.length > 0, "resolveWindow must exist");
+  assert.match(resolve, /ticker = \$\{ticker\}\s+and\s+close_time = \$\{closeIso\}/, "resolve matches both halves of the window");
+  // Restart recovery depends on reading the PERSISTED opening lean back, so a
+  // FIRST_DIRECTIONAL after an opening WAIT can still fire (and after a directional
+  // opening stays suppressed). If this stops carrying the real lean, M10 breaks.
+  assert.match(resolve, /state\.openingLean = r\.chair_lean/, "resolveWindow recovers the persisted opening lean");
+});
+
+test("S2-5: the writer never re-reads the market, a fill, a grade, or a replay to fill a row", () => {
+  const src = codeOf("src/lib/desk/decision-snapshot.server.ts");
+  // No feed / current-quote fetch inside the persistence writer.
+  for (const banned of ["loadBundle", "bundleToSnapshot", "liveSnap", "fetch(", "server-feeds", '"./live"', "'./live'"]) {
+    assert.ok(!src.includes(banned), `the writer must not re-read the market (${banned})`);
+  }
+  // No later-state source is read to populate a decision row.
+  for (const banned of ["replay.server", "desk_ledger", "entry_", "desk_replay", "desk_samples", "callLog", "official_"]) {
+    assert.ok(!src.includes(banned), `the writer must not read later state (${banned})`);
+  }
+});
+
+test("S2-5: no historical backfill — the migration creates structure only", () => {
+  const sql = read("migrations/0029_desk_decision_snapshots.sql");
+  // Strip SQL line comments so the prose explaining "no backfill" cannot match.
+  const code = sql.replace(/--.*$/gm, " ");
+  assert.ok(!/insert\s+into/i.test(code), "the migration must not INSERT any row");
+  assert.ok(!/\bselect\b/i.test(code) || !/\bfrom\b/i.test(code), "no INSERT-SELECT or read from another table");
+  assert.match(code, /create table if not exists desk_decision_snapshots/i, "it creates the table");
+  assert.match(code, /primary key \(ticker, close_time, snapshot_kind\)/i, "window+kind identity");
+  assert.match(code, /check \(snapshot_kind in \('OPENING', 'FIRST_DIRECTIONAL'\)\)/i, "only the two bounded kinds");
+});
+
+test("S2-5: OPENING is the first read; FIRST_DIRECTIONAL only after an opening WAIT, never duplicated", () => {
+  const src = codeOf("src/lib/desk/decision-snapshot.ts");
+  // OPENING is attempted exactly when none exists yet.
+  assert.match(src, /if \(!f\.openingExists\) \{\s*return \{ insertOpening: true, insertFirstDirectional: false \}/, "OPENING = first read");
+  // FIRST_DIRECTIONAL requires: opening stands (implied), none yet, opening was WAIT, and this tick is directional.
+  assert.match(
+    src,
+    /!f\.firstDirectionalExists &&\s*f\.openingLean === "WAIT" &&\s*isDirectional\(f\.currentLean\)/,
+    "FIRST_DIRECTIONAL is guarded by !exists && openingLean===WAIT && directional",
+  );
+  // The two guards are joined with && (all required), never || — and the rule can
+  // never emit both flags on one tick.
+  assert.ok(!/insertOpening: true, insertFirstDirectional: true/.test(src), "a single tick never writes both kinds");
+});
+
+test("S2-5: the decision snapshot is captured at the decision tick, non-blocking, measurement-only", () => {
+  const src = read("src/lib/desk/server-engine.ts");
+  const code = codeOf("src/lib/desk/server-engine.ts");
+  // Captured from the SAME finalized (snap, chair) pair the tick decided on,
+  // immediately after the call is noted — before any later fill or grade.
+  assert.match(code, /noteCall\(e, snap, chair\);\s*\n\s*noteDecisionSnapshot\(e, snap, chair\);/, "captured at the decision tick, right after noteCall");
+  // The writer is fire-and-forget: voided, with a .catch, never awaited on the tick.
+  assert.match(code, /void recordDecisionSnapshot\(row\)\.catch\(/, "the write is non-blocking with a catch");
+  assert.ok(!/await recordDecisionSnapshot/.test(code), "the decision write is never awaited on the tick");
+  // It is built from the tick's own snap+chair, not re-read.
+  assert.match(code, /decisionSnapshotFrom\(snap, chair\)/, "built from this tick's snap and chair");
+  // Exactly one call site: the fill path and the grade path must not write a
+  // decision snapshot as a substitute for the read.
+  assert.equal((code.match(/recordDecisionSnapshot\(/g) || []).length, 1, "one writer call site only");
+  assert.equal((code.match(/decisionSnapshotFrom\(/g) || []).length, 1, "one capture call site only");
+  const applyGrade = src.slice(src.indexOf("function applyGrade"), src.indexOf("function applyGrade") + 3000);
+  assert.ok(!applyGrade.includes("DecisionSnapshot"), "applyGrade (the grade path) never writes a decision snapshot");
+});
+
+test("S2-5: no decision consumer reads the decision snapshot back", () => {
+  // Reading S2-5 data to alter a decision is the one thing that would turn a
+  // measurement into a feedback loop. Passing FACTS to the writer is fine; an
+  // import of either S2-5 module into a decision consumer is not.
+  for (const rel of [
+    "bots.ts",
+    "chair.ts",
+    "chair-v2.ts",
+    "features.ts",
+    "dsl.ts",
+    "learner.ts",
+    "book-floor.ts",
+  ]) {
+    const code = codeOf(`src/lib/desk/${rel}`);
+    assert.ok(!code.includes("decision-snapshot"), `${rel} must not import the S2-5 decision snapshot`);
+  }
+});
+
+test("S2-5: no provider-origin timestamp is invented; the quote clock is named a last-change clock", () => {
+  const sql = read("migrations/0029_desk_decision_snapshots.sql");
+  const sqlCode = sql.replace(/--.*$/gm, " "); // strip SQL line comments: the prose explains the ban
+  const pure = read("src/lib/desk/decision-snapshot.ts");
+  const writer = read("src/lib/desk/decision-snapshot.server.ts");
+  assert.match(sqlCode, /quote_last_change_at timestamptz/, "the quote clock column is named for what it is");
+  // The known-misnamed provider_ts is never persisted under a provider name.
+  assert.ok(!/provider_ts/.test(sqlCode), "the migration stores no provider_ts column");
+  assert.ok(!/provider_ts/.test(writer.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1")), "the writer reads no provider_ts");
+  // The builder maps snap.quote_ts into the honestly-named field.
+  assert.match(pure, /quote_last_change_ms: finInt\(snap\.quote_ts\)/, "quote_ts is stored as a last-change clock");
+});

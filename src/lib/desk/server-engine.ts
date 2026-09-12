@@ -52,6 +52,7 @@ import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.server";
+import { decisionSnapshotFrom, recordDecisionSnapshot } from "./decision-snapshot.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
 import { weeklyRecap } from "./recap.server";
 import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
@@ -1158,6 +1159,25 @@ function attachLab(snap: Snapshot): Snapshot {
   return snap;
 }
 
+/**
+ * S2-5: hand the already-finalized decision pair to the research writer.
+ *
+ * Capture is synchronous, so the row is THIS tick's `(snap, chair)` and never a
+ * later fill, grade, or quote. The write is fire-and-forget: a failing shadow
+ * write is routed to the durable error ring (noteErr), never thrown into the
+ * tick, and reads nothing back into the Chair or the paper book.
+ */
+function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void {
+  try {
+    const row = decisionSnapshotFrom(snap, chair);
+    void recordDecisionSnapshot(row).catch((err) => {
+      noteErr(e, "decision-snapshot", err instanceof Error ? err.message : String(err));
+    });
+  } catch (err) {
+    noteErr(e, "decision-snapshot", err instanceof Error ? err.message : String(err));
+  }
+}
+
 async function tick(e: Eng) {
   if (e.inFlight) return;
   e.inFlight = true;
@@ -1180,6 +1200,11 @@ async function tick(e: Eng) {
     const chair = decideChair(e, votes, snap, lastSide(e, snap));
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
+    // S2-5: capture the Chair's decision-time market state from THIS exact
+    // finalized (snap, chair) pair, synchronously, before any later fill or grade
+    // can stand in for it. The write is non-blocking and measurement-only; it
+    // reads nothing back into the decision and cannot change what the Chair said.
+    noteDecisionSnapshot(e, snap, chair);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // Hand the lab this tick's window state so a print landing between ticks
     // carries real context, with its own staleness recorded. Research only.
