@@ -2438,3 +2438,77 @@ test("S2-7A: the manual auditor's transport is conservative — low concurrency,
   assert.match(pure, /gate = mine;/, "each start chains onto the shared gate (globally serialized starts)");
   assert.ok(!/let fetchedHere/.test(pure), "no worker-local pacing flag (would allow an initial burst at concurrency > 1)");
 });
+
+test("S2-8: Chair v2 trains and scores on the research-quality-valid population only, stays shadow-only, and invents no QTY cutoff", () => {
+  const eng = codeOf("src/lib/desk/server-engine.ts");
+  const v2 = codeOf("src/lib/desk/chair-v2.ts");
+
+  // (1) Training population. refitV2 selects the newest quality-valid graded samples by
+  // joining the ledger's research view on EXACT (ticker, close_time) identity, and the join
+  // is applied BEFORE the 3000 cap — so a known-invalid window can never take a training slot.
+  const refit = between(eng, "async function refitV2(", "async function refreshV2Stats(");
+  assert.match(
+    refit,
+    /from desk_samples s\s*\n\s*join desk_ledger_research l on l\.ticker = s\.ticker and l\.close_time = s\.close_time/,
+    "refitV2 joins the research view on exact identity",
+  );
+  assert.match(refit, /where s\.winner is not null order by s\.close_time desc limit 3000/, "graded, newest-first, capped at 3000 — after the quality join");
+  assert.equal((refit.match(/from desk_samples/g) || []).length, 1, "refitV2 reads desk_samples exactly once, and that read is the joined one (no unfiltered training query)");
+
+  // Provenance is stamped on the fit (metadata only), derived from the real data/roster.
+  assert.match(refit, /fitted\.population = V2_POPULATION;/, "population provenance is recorded");
+  assert.match(refit, /fitted\.trained_through = newestTrainedMs\(rows\.map\(\(r\) => r\.close_time\)\);/, "trained_through is the newest included sample");
+  assert.match(refit, /fitted\.features_version = v2FeaturesVersion\(\);/, "features_version is recorded from the real roster");
+
+  // (2) v2-side evaluation. brier_v2 / brier_market / ev_v2 / calls_v2 are computed in the
+  // SAME query that joins the research view — the identical population the v1 side reads.
+  const stats = between(eng, "async function refreshV2Stats(", "function v2Frame(");
+  assert.match(stats, /brier_v2[\s\S]*?from desk_samples s\s*\n\s*join desk_ledger_research/, "the v2 metrics are computed over the research-view join");
+  assert.match(stats, /coalesce\(sum\(s\.v2_ev\), 0\) as ev_v2/, "ev_v2 is over the joined valid population");
+  assert.match(stats, /s\.v2_lean in \('UP','DOWN'\)/, "calls_v2 is over the joined valid population");
+  assert.match(stats, /::int as calls_v2/, "calls_v2 is selected in the joined query");
+  assert.match(stats, /coalesce\(sum\(l\.ev_cents\), 0\) as ev_v1/, "the v1 comparison shares that exact query/population");
+  // The raw sample counts (not a v1/v2 comparison) stay raw — this ticket changed eligibility
+  // for the four named metrics only.
+  assert.match(stats, /count\(\*\)::int as n_samples/, "n_samples is still counted");
+  assert.match(stats, /count\(winner\)::int as n_graded/, "n_graded is still counted");
+
+  // (3) The daily digest's v2 scoreboard counts the same valid population (inner join, not left).
+  const digest = between(eng, "async function digestV2Bits(", "const PULSE_MS");
+  assert.match(digest, /join desk_ledger_research l on l\.ticker = s\.ticker and l\.close_time = s\.close_time/, "the digest joins the research view");
+  assert.ok(!/left join desk_ledger_research/.test(digest), "the digest no longer LEFT-joins (which would count invalid windows in the v2 net/calls)");
+
+  // (4) No QTY_FIX / research-era cutoff anywhere in the v2 train/score/digest path. The prior
+  // audit established QTY_FIX_AT is not a v2 boundary; valid pre-fix rows stay eligible.
+  for (const [name, slice] of [["refitV2", refit], ["refreshV2Stats", stats], ["digestV2Bits", digest]]) {
+    assert.ok(!/QTY_FIX|research-era|eraAt|splitByEra/.test(slice), `${name} must not introduce a QTY_FIX / research-era cutoff`);
+  }
+
+  // (5) Provenance is metadata only: the optional fields exist on V2Weights (so pre-S2-8 blobs
+  // still load) and the prediction path never reads them.
+  assert.match(v2, /population\?: string;/, "V2Weights carries an optional population label");
+  assert.match(v2, /trained_through\?: number \| null;/, "V2Weights carries optional trained_through");
+  assert.match(v2, /features_version\?: string;/, "V2Weights carries optional features_version");
+  const predict = between(v2, "export function predictV2(", "export function fitLogistic(");
+  for (const f of ["population", "trained_through", "features_version"]) {
+    assert.ok(!predict.includes(f), `predictV2 must not read provenance field ${f}`);
+  }
+  // features_version is derived from the roster, never a clock.
+  const fv = between(v2, "export function v2FeaturesVersion(", "export function newestTrainedMs(");
+  assert.match(fv, /V2_FEATURES/, "features_version is derived from V2_FEATURES");
+  assert.ok(!/Date\.now|Date\.parse|new Date/.test(fv), "features_version must not embed a timestamp");
+
+  // (6) SHADOW-ONLY. The live chair is v2-free, and the v2 decision functions are invoked only
+  // by the shadow sampler noteV2 — never by the live decision. v2 gains no authority.
+  const chair = codeOf("src/lib/desk/chair.ts");
+  assert.ok(!/v2/i.test(chair), "Chair v1 (chair.ts) contains no v2 reference — v2 has no authority");
+  const note = between(eng, "function noteV2(", "function noteTaker(");
+  assert.ok(note.includes("predictV2(") && note.includes("decideV2("), "noteV2 is the shadow sampler");
+  assert.equal((eng.match(/\bdecideV2\(/g) || []).length, 1, "decideV2 is called exactly once — only in the shadow sampler");
+  assert.equal((eng.match(/\bpredictV2\(/g) || []).length, 1, "predictV2 is called exactly once — only in the shadow sampler");
+
+  // (7) FREEZE. The live chair's authority path is untouched: Chair v1 still reads learner.seat_w,
+  // and this ticket added no migration (desk_samples keeps its schema — no quality column on it).
+  assert.match(chair, /learner\.seat_w/, "Chair v1 still reads learner.seat_w (authority path unchanged)");
+  assert.ok(!/research_quality/.test(read("migrations/0006_desk_samples.sql")), "desk_samples schema is unchanged — no migration was added for this ticket");
+});
