@@ -324,6 +324,8 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     liq_short_usd: liqShort,
     liq_n: liqN,
     liq_source: "demo",
+    liq_last_t: 0,
+    liq_age_s: null,
     force_n: liqN,
     cascade_proxy: false,
     fear_greed: state.fng,
