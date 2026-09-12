@@ -1198,13 +1198,14 @@ async function tick(e: Eng) {
       onLean(e.learner, v.seat, v.lean, snap);
     }
     const chair = decideChair(e, votes, snap, lastSide(e, snap));
+    // S2-5: capture the Chair's decision-time market state from THIS exact
+    // finalized (snap, chair) pair, synchronously, the instant the read exists and
+    // BEFORE the paper-fill path (noteCall) or any later grade can stand in for it.
+    // The write is non-blocking and measurement-only; it reads nothing back into
+    // the decision and cannot change what the Chair said or whether the book fills.
+    noteDecisionSnapshot(e, snap, chair);
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
-    // S2-5: capture the Chair's decision-time market state from THIS exact
-    // finalized (snap, chair) pair, synchronously, before any later fill or grade
-    // can stand in for it. The write is non-blocking and measurement-only; it
-    // reads nothing back into the decision and cannot change what the Chair said.
-    noteDecisionSnapshot(e, snap, chair);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // Hand the lab this tick's window state so a print landing between ticks
     // carries real context, with its own staleness recorded. Research only.

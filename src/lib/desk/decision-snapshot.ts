@@ -179,15 +179,25 @@ function finInt(v: unknown): number | null {
  * -- every DERIVED field is a value liveSnap already computed for this tick.
  */
 export function buildDecisionSnapshotRow(snap: Snapshot, chair: ChairResult): DecisionSnapshotRow {
+  // Unknown-freshness sentinels must not become apparent measurements. From
+  // live.ts: quote_ts is `?? 0` and quote_age_s is `quote_ts > 0 ? real : 999`
+  // (so 999 iff there is no quote clock); quote_seq is `?? 0` and the feed treats
+  // `> 0` as "has a sequence"; print_age_s is `trade_ts ? real : 999`, and a
+  // carried-forward unknown only grows from 999. So an absent clock/sequence/print
+  // is stored as NULL, never as epoch 1970, a fake 999 age, or a fake seq 0.
+  const qts = Number(snap.quote_ts);
+  const hasQuoteClock = Number.isFinite(qts) && qts > 0;
+  const qseq = Number(snap.quote_seq);
+  const pa = Number(snap.print_age_s);
   return {
     ticker: snap.ticker,
     close_time_ms: Number(snap.close_time),
     decision_at_ms: Number(snap.as_of),
     secs_left: fin(snap.secs_left),
-    quote_age_s: fin(snap.quote_age_s),
-    quote_seq: finInt(snap.quote_seq),
-    print_age_s: fin(snap.print_age_s),
-    quote_last_change_ms: finInt(snap.quote_ts),
+    quote_age_s: hasQuoteClock ? fin(snap.quote_age_s) : null,
+    quote_seq: Number.isFinite(qseq) && qseq > 0 ? Math.round(qseq) : null,
+    print_age_s: Number.isFinite(pa) && pa < 999 ? pa : null,
+    quote_last_change_ms: hasQuoteClock ? Math.round(qts) : null,
 
     chair_lean: chair.lean,
     chair_confidence: fin(chair.confidence),

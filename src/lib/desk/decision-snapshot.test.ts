@@ -241,3 +241,28 @@ test("a WAIT read still builds a full row; no directional executable price is in
   assert.equal(r.yes_ask, 62);
   assert.equal(r.no_ask, 40);
 });
+
+// --- Fix 2: unknown freshness sentinels must not become measurements ---------
+
+test("unknown quote clock (quote_ts<=0) stores NULL, not epoch 1970 or 999", () => {
+  const r = buildDecisionSnapshotRow(snap({ quote_ts: 0, quote_age_s: 999 }), chair({}));
+  assert.equal(r.quote_last_change_ms, null, "no epoch 1970");
+  assert.equal(r.quote_age_s, null, "no fake 999 age");
+});
+
+test("a real quote clock is kept", () => {
+  const r = buildDecisionSnapshotRow(snap({ quote_ts: 1_699_999_999_000, quote_age_s: 1.2 }), chair({}));
+  assert.equal(r.quote_last_change_ms, 1_699_999_999_000);
+  assert.equal(r.quote_age_s, 1.2);
+});
+
+test("quote_seq 0 (no sequence) stores NULL, not a fake 0", () => {
+  assert.equal(buildDecisionSnapshotRow(snap({ quote_seq: 0 }), chair({})).quote_seq, null);
+  assert.equal(buildDecisionSnapshotRow(snap({ quote_seq: 42 }), chair({})).quote_seq, 42);
+});
+
+test("print_age_s >= 999 (unknown sentinel) stores NULL; a real age is kept", () => {
+  assert.equal(buildDecisionSnapshotRow(snap({ print_age_s: 999 }), chair({})).print_age_s, null, "the 999 sentinel");
+  assert.equal(buildDecisionSnapshotRow(snap({ print_age_s: 1200 }), chair({})).print_age_s, null, "a carried-forward unknown that grew past 999");
+  assert.equal(buildDecisionSnapshotRow(snap({ print_age_s: 3.4 }), chair({})).print_age_s, 3.4, "a real print age");
+});

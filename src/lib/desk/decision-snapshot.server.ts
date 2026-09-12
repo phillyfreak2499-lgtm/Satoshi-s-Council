@@ -1,107 +1,60 @@
 /**
- * S2-5 decision-snapshot WRITER (server only). Measurement only, structurally so.
+ * S2-5 decision-snapshot WRITER — server adapter (Postgres-backed). Measurement
+ * only, structurally so.
  *
- * One public write, `recordDecisionSnapshot`. It returns void, so there is
- * nothing a caller could branch on, and no seat, DSL rule, threshold, Chair
- * input, learned weight or skill imports it. The data goes one way -- a finalized
- * `(snap, chair)` pair, captured synchronously on the decision tick and handed
- * here as FACTS -- into desk_decision_snapshots. The only consumer is a research
- * query. It cannot steer a decision because there is nothing for a decision to read.
+ * The orchestration (per-window serialization, the frozen first-captured row,
+ * retry, restart read-back) lives in the pure decision-snapshot-writer.ts; this
+ * file is only the durable store behind it: the exact-window lookup and the
+ * idempotent insert. One public write, `recordDecisionSnapshot`, which returns
+ * the writer's promise so the engine's outer `.catch` can OBSERVE a failure and
+ * route it to noteErr — the write no longer swallows its own errors. A research
+ * write that rejects still never throws into the tick, because the engine voids
+ * it with a `.catch`; but a rejection is now visible, and the window is not
+ * marked done, so the next tick retries the same frozen row.
  *
- * WHAT IT PERSISTS, AND WHEN. At most two bounded events per exact window:
- *   OPENING            the first finalized read (UP/DOWN/WAIT), on the first tick
- *                      this process sees a window with no OPENING row yet.
- *   FIRST_DIRECTIONAL  the first later UP/DOWN read, only when the persisted
- *                      OPENING was WAIT.
- * The WHICH-event decision is the pure `decisionSnapshotEvents`; this module only
- * resolves the window's known state and performs the idempotent insert.
- *
- * THE DATABASE IS THE DURABLE AUTHORITY. The primary key
- * (ticker, close_time, snapshot_kind) makes every insert idempotent under
- * `on conflict do nothing`, so a restart, a replay, or a double tick can never
- * create a contradictory duplicate or rewrite an earlier read. Process-local
- * memory is only a cache to avoid re-probing every tick; on a cache miss (first
- * sight, or after a restart) the exact window is read back from the table FIRST,
- * so a FIRST_DIRECTIONAL decision always keys off the persisted OPENING lean --
- * the essential restart property (an opening WAIT survives a restart and a later
- * UP/DOWN still records).
- *
- * IT SWALLOWS ITS OWN ERRORS. A failed research write must never disturb a brain
- * tick, so a throw is caught and the window is NOT marked done -- the next tick
- * retries, and uniqueness makes a retry after a partial success harmless. A
- * transient failure therefore never permanently suppresses a row.
- *
- * NO RE-READ. It never calls a feed, never queries a current quote, never reads a
- * fill, a grade, or a replay point to populate a row. The row is exactly the facts
- * the decision tick already held.
+ * No seat, DSL rule, threshold, Chair input, learned weight or skill imports this;
+ * the data goes one way, into desk_decision_snapshots. It never re-reads the
+ * market, a fill, a grade, or a replay to populate a row.
  */
 import { getSql } from "@/lib/db";
 import {
   buildDecisionSnapshotRow,
   DECISION_RESEARCH_VERSION,
-  decisionSnapshotEvents,
   type DecisionSnapshotRow,
   type SnapshotKind,
-} from "./decision-snapshot";
+} from "./decision-snapshot.ts";
+import { createDecisionWriter, type PersistedWindow } from "./decision-snapshot-writer.ts";
 import type { ChairResult, Lean, Snapshot } from "./types";
 
 export { buildDecisionSnapshotRow, DECISION_RESEARCH_VERSION };
 
-type Sql = Awaited<ReturnType<typeof getSql>>;
-
-/** What this process knows about one live window. The DB, not this, is authoritative. */
-type WindowMem = {
-  openingDone: boolean;
-  openingLean: Lean | null;
-  firstDirectionalDone: boolean;
-};
-
-const mem = new Map<string, WindowMem>();
-/** A handful of live windows, never an all-time ledger. */
-const MEM_MAX = 64;
-
-function memKey(ticker: string, closeMs: number): string {
-  return `${ticker}|${closeMs}`;
-}
-
-function setMem(key: string, state: WindowMem): void {
-  mem.set(key, state);
-  if (mem.size > MEM_MAX) {
-    const oldest = mem.keys().next().value;
-    if (oldest !== undefined) mem.delete(oldest);
-  }
-}
-
-/** Reset point for tests only. Not wired into the engine. */
-export function __resetDecisionMem(): void {
-  mem.clear();
-}
-
 /**
- * Read the exact window's persisted state back from the table.
- *
- * EXACT window only -- `ticker` AND `close_time` -- never ticker alone and never a
- * nearest-close fallback, so one window's reads can never be resolved from another's.
+ * Read the exact window's persisted state back. EXACT window only -- `ticker` AND
+ * `close_time` -- never ticker alone and never a nearest-close fallback, so one
+ * window's reads can never be resolved from another's.
  */
-async function resolveWindow(db: Sql, ticker: string, closeIso: string): Promise<WindowMem> {
+async function lookupWindow(ticker: string, closeMs: number): Promise<PersistedWindow> {
+  const db = await getSql();
+  const closeIso = new Date(closeMs).toISOString();
   const rows = await db<{ snapshot_kind: string; chair_lean: string }>`
     select snapshot_kind, chair_lean
       from desk_decision_snapshots
      where ticker = ${ticker} and close_time = ${closeIso}
   `;
-  const state: WindowMem = { openingDone: false, openingLean: null, firstDirectionalDone: false };
+  const out: PersistedWindow = { openingExists: false, openingLean: null, firstDirectionalExists: false };
   for (const r of rows) {
     if (r.snapshot_kind === "OPENING") {
-      state.openingDone = true;
-      state.openingLean = r.chair_lean as Lean;
+      out.openingExists = true;
+      out.openingLean = r.chair_lean as Lean;
     } else if (r.snapshot_kind === "FIRST_DIRECTIONAL") {
-      state.firstDirectionalDone = true;
+      out.firstDirectionalExists = true;
     }
   }
-  return state;
+  return out;
 }
 
-async function insertRow(db: Sql, row: DecisionSnapshotRow, kind: SnapshotKind): Promise<void> {
+async function insertSnapshot(row: DecisionSnapshotRow, kind: SnapshotKind): Promise<void> {
+  const db = await getSql();
   await db`
     insert into desk_decision_snapshots (
       ticker, close_time, snapshot_kind, decision_at,
@@ -141,70 +94,24 @@ async function insertRow(db: Sql, row: DecisionSnapshotRow, kind: SnapshotKind):
   `;
 }
 
+const writer = createDecisionWriter({ lookupWindow, insertSnapshot });
+
 /**
  * Persist this tick's decision snapshot, if it is one of the two bounded events.
- *
- * Takes FACTS already captured from the finalized `(snap, chair)` pair, never a
- * live object and never a promise to re-read. Returns void: the shadow cannot
- * steer anything because there is nothing to steer on.
+ * Takes FACTS already captured from the finalized `(snap, chair)` pair. Returns
+ * the writer's promise so a failure is observable to the caller; it rejects on a
+ * store failure and never swallows.
  */
-export async function recordDecisionSnapshot(row: DecisionSnapshotRow): Promise<void> {
-  if (!row.ticker || !Number.isFinite(row.close_time_ms) || row.close_time_ms <= 0) return;
-  // decision_at feeds a toISOString that THROWS on a non-finite value; that throw
-  // would land in the silent catch below and lose the row without a trace, so it
-  // is refused up front.
-  if (!Number.isFinite(row.decision_at_ms) || row.decision_at_ms <= 0) return;
-  // Demo snapshots carry synthetic timestamps and must never enter a research table.
-  if (row.ticker.includes("DEMO")) return;
-
-  try {
-    const db = await getSql();
-    const key = memKey(row.ticker, row.close_time_ms);
-    const closeIso = new Date(row.close_time_ms).toISOString();
-
-    let state = mem.get(key);
-    if (!state) {
-      // First sight this process, or after a restart: the table is the authority
-      // on what the opening read was. Probe the exact window once, then cache.
-      state = await resolveWindow(db, row.ticker, closeIso);
-      setMem(key, state);
-    }
-
-    const plan = decisionSnapshotEvents({
-      openingExists: state.openingDone,
-      openingLean: state.openingLean,
-      firstDirectionalExists: state.firstDirectionalDone,
-      currentLean: row.chair_lean,
-    });
-
-    if (plan.insertOpening) {
-      await insertRow(db, row, "OPENING");
-      // The persisted opening lean is the DATABASE's, which on a race or a restart
-      // may not be this tick's. Read it back so FIRST_DIRECTIONAL keys off the
-      // durable truth rather than what this tick happened to attempt.
-      const back = await resolveWindow(db, row.ticker, closeIso);
-      state.openingDone = back.openingDone;
-      state.openingLean = back.openingLean;
-      state.firstDirectionalDone = back.firstDirectionalDone;
-    }
-
-    if (plan.insertFirstDirectional) {
-      await insertRow(db, row, "FIRST_DIRECTIONAL");
-      state.firstDirectionalDone = true;
-    }
-
-    setMem(key, state);
-  } catch {
-    // Deliberately silent, and deliberately does NOT mark the window done: a
-    // research write that can break a brain tick is worse than a missing row, and
-    // a transient failure must leave the next tick free to retry.
-  }
+export function recordDecisionSnapshot(row: DecisionSnapshotRow): Promise<void> {
+  return writer.record(row);
 }
 
-/**
- * Convenience for the engine: capture the finalized pair and fire the write.
- * Synchronous capture (so the row is this exact tick's), async non-blocking write.
- */
+/** Test/operational reset of per-window memory. Not wired into the engine. */
+export function __resetDecisionMem(): void {
+  writer.reset();
+}
+
+/** Capture the finalized pair into a flat row, synchronously, on the decision tick. */
 export function decisionSnapshotFrom(snap: Snapshot, chair: ChairResult): DecisionSnapshotRow {
   return buildDecisionSnapshotRow(snap, chair);
 }
