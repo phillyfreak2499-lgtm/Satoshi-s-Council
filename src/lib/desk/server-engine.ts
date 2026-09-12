@@ -9,6 +9,7 @@
 import { runBots } from "./bots";
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
+import { isCountable } from "./research-quality";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -947,12 +948,25 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   }
   e.gradedKeys = [...e.gradedKeys, key].slice(-GRADED_KEY_CAP);
   e.lastGradeAt = Date.now();
-  e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
-  const gr = gradeWindow(e.learner, snap, votes, chair, finish);
-  e.learner = gr.learner;
-  settleAll(e.learner, finish);
-  reviewSeats(e.learner);
-  if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
+  // S2-9: a research-quality-invalid window (e.g. the quarantined 2026-09-10 stale-ticker
+  // block) must not teach the online learner. The learner is taught by three calls here —
+  // gradeWindow (seat_n/seat_hits/seat_recent/fade/skills/graded_windows/chair record),
+  // settleAll (scalp calibration) and reviewSeats — so a single gate at this boundary is the
+  // only non-scattered way to skip EVERY learner mutation for an invalid window. The check is
+  // the canonical registry on the window's own close time — the same identity
+  // desk_ledger_research / isCountable key on; no QTY_FIX/era cutoff. Prospective only: no
+  // persisted learner state is touched, and the ledger row below is still enqueued so the
+  // quarantined record is preserved — the row stays, it simply earns no learner credit.
+  if (isCountable(snap.close_time)) {
+    e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
+    const gr = gradeWindow(e.learner, snap, votes, chair, finish);
+    e.learner = gr.learner;
+    settleAll(e.learner, finish);
+    reviewSeats(e.learner);
+    if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
+  } else {
+    noteErr(e, "grade", `${key} research-quality invalid — learner credit skipped; ledger row kept (${source})`);
+  }
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   // Enqueue the ledger row (built now, from this window's state) for a durable,
   // verified write off the tick. lastLedgerOkAt only advances once it lands.
