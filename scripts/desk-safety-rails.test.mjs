@@ -2070,3 +2070,147 @@ test("the decision snapshot never borrows the paper entry's price or instant", (
   assert.doesNotMatch(block, /openFill/, "it must not read the fill's timestamp");
   assert.doesNotMatch(block, /marketCents/, "and it must not read the live ask");
 });
+
+// ---------------------------------------------------------------------------
+// S2-5 — the Chair's decision-time market snapshot (measurement only).
+//
+// These rails protect what a unit test cannot reach through the server import
+// graph: that the decision snapshot is identified by the WINDOW, is insert-once,
+// is captured from the decision tick and never a fill/grade/quote, and that no
+// decision consumer ever reads it back. The event RULE and the field capture are
+// behaviourally tested in src/lib/desk/decision-snapshot.test.ts; the DB identity
+// in scripts/migrations-apply.test.mjs.
+// ---------------------------------------------------------------------------
+
+test("S2-5: the decision snapshot is written once per (ticker, close_time, snapshot_kind)", () => {
+  const src = codeOf("src/lib/desk/decision-snapshot.server.ts");
+  assert.match(
+    src,
+    /on conflict \(ticker, close_time, snapshot_kind\) do nothing/,
+    "the insert must be idempotent on the full window+kind key",
+  );
+  // A conflict must never REWRITE an earlier read.
+  assert.ok(!/do update/i.test(src), "on conflict must not update: a later tick cannot rewrite the first read");
+  // The restart read-back resolves the EXACT window, never the ticker alone.
+  const lookup = src.slice(src.indexOf("async function lookupWindow"), src.indexOf("async function insertSnapshot"));
+  assert.ok(lookup.length > 0, "lookupWindow must exist");
+  assert.match(lookup, /ticker = \$\{ticker\}\s+and\s+close_time = \$\{closeIso\}/, "lookup matches both halves of the window");
+  // Restart recovery depends on reading the PERSISTED opening lean back, so a
+  // FIRST_DIRECTIONAL after an opening WAIT can still fire (and after a directional
+  // opening stays suppressed). If this stops carrying the real lean, M10 breaks.
+  assert.match(lookup, /out\.openingLean = r\.chair_lean/, "lookupWindow recovers the persisted opening lean");
+});
+
+test("S2-5: the writer never re-reads the market, a fill, a grade, or a replay to fill a row", () => {
+  for (const rel of ["decision-snapshot.server.ts", "decision-snapshot-writer.ts"]) {
+    const src = codeOf(`src/lib/desk/${rel}`);
+    for (const banned of ["loadBundle", "bundleToSnapshot", "liveSnap", "fetch(", "server-feeds", '"./live"', "'./live'"]) {
+      assert.ok(!src.includes(banned), `${rel} must not re-read the market (${banned})`);
+    }
+    for (const banned of ["replay.server", "desk_ledger", "entry_", "desk_replay", "desk_samples", "callLog", "official_"]) {
+      assert.ok(!src.includes(banned), `${rel} must not read later state (${banned})`);
+    }
+  }
+});
+
+test("S2-5: write failures are observable, never swallowed", () => {
+  // Fix 1: the orchestration must not catch/swallow — a store rejection has to
+  // propagate so the engine's outer .catch routes it to noteErr and the window is
+  // not marked done (retry stays possible).
+  const writer = codeOf("src/lib/desk/decision-snapshot-writer.ts");
+  assert.ok(!/\btry\b/.test(writer), "the writer must not wrap persistence in try/catch");
+  assert.ok(!/\.catch\(|\bcatch\s*\(/.test(writer), "the writer must not swallow a store rejection");
+  // record() returns the promise (so a rejection is observable), serialized per window.
+  assert.match(writer, /return mine;/, "record returns the chained promise so failures are observable");
+  // The server adapter returns the writer's promise rather than voiding it internally.
+  const server = codeOf("src/lib/desk/decision-snapshot.server.ts");
+  assert.match(server, /return writer\.record\(row\);/, "recordDecisionSnapshot returns the writer promise");
+  assert.ok(!/\bcatch\b/.test(server), "the server adapter must not swallow DB errors");
+});
+
+test("S2-5: OPENING is the first CAPTURED read — serialized, frozen, retried", () => {
+  // Fix 3: per-window serialization so DB latency cannot reorder which read is OPENING.
+  const writer = codeOf("src/lib/desk/decision-snapshot-writer.ts");
+  assert.match(writer, /const chains = new Map/, "a per-window serialization chain exists");
+  assert.match(writer, /const prev = chains\.get\(key\) \?\? Promise\.resolve\(\);/, "each write chains off the previous one for the window");
+  assert.match(writer, /prev\.then\(\s*\(\) => persistOne\(row\),\s*\(\) => persistOne\(row\),?\s*\)/, "the next write runs only after the previous settles");
+  // The first-captured OPENING row is frozen and retried verbatim until durable.
+  assert.match(writer, /if \(plan\.insertOpening && !st\.openingRow\) st\.openingRow = row;/, "the first opening row is frozen once");
+  assert.match(writer, /if \(st\.openingRow && !st\.openingDone\)/, "the frozen opening row is retried until durable");
+  // FIRST_DIRECTIONAL gets the same freeze + retry after a durable WAIT opening.
+  assert.match(writer, /if \(fd\.insertFirstDirectional && !st\.firstDirectionalRow\) st\.firstDirectionalRow = row;/, "the first directional row is frozen once");
+  assert.match(writer, /if \(st\.firstDirectionalRow\) \{/, "the frozen directional row is retried until durable");
+});
+
+test("S2-5: no historical backfill — the migration creates structure only", () => {
+  const sql = read("migrations/0029_desk_decision_snapshots.sql");
+  const code = sql.replace(/--.*$/gm, " "); // strip SQL line comments: prose explains the ban
+  assert.ok(!/insert\s+into/i.test(code), "the migration must not INSERT any row");
+  assert.ok(!/\bselect\b/i.test(code) || !/\bfrom\b/i.test(code), "no INSERT-SELECT or read from another table");
+  assert.match(code, /create table if not exists desk_decision_snapshots/i, "it creates the table");
+  assert.match(code, /primary key \(ticker, close_time, snapshot_kind\)/i, "window+kind identity");
+  assert.match(code, /check \(snapshot_kind in \('OPENING', 'FIRST_DIRECTIONAL'\)\)/i, "only the two bounded kinds");
+});
+
+test("S2-5: OPENING is the first read; FIRST_DIRECTIONAL only after an opening WAIT, never duplicated", () => {
+  const src = codeOf("src/lib/desk/decision-snapshot.ts");
+  assert.match(src, /if \(!f\.openingExists\) \{\s*return \{ insertOpening: true, insertFirstDirectional: false \}/, "OPENING = first read");
+  assert.match(
+    src,
+    /!f\.firstDirectionalExists &&\s*f\.openingLean === "WAIT" &&\s*isDirectional\(f\.currentLean\)/,
+    "FIRST_DIRECTIONAL is guarded by !exists && openingLean===WAIT && directional",
+  );
+  assert.ok(!/insertOpening: true, insertFirstDirectional: true/.test(src), "a single tick never writes both kinds");
+});
+
+test("S2-5: unknown freshness sentinels are stored as NULL, never as fact", () => {
+  // Fix 2: from live.ts, quote_ts `?? 0` (and quote_age_s = quote_ts>0?real:999),
+  // quote_seq `?? 0` (feed treats >0 as a real sequence), print_age_s = trade_ts?real:999.
+  const src = codeOf("src/lib/desk/decision-snapshot.ts");
+  assert.match(src, /const hasQuoteClock = Number\.isFinite\(qts\) && qts > 0;/, "quote clock presence is gated on quote_ts > 0");
+  assert.match(src, /quote_last_change_ms: hasQuoteClock \? Math\.round\(qts\) : null,/, "no quote clock → NULL, never epoch 1970");
+  assert.match(src, /quote_age_s: hasQuoteClock \? fin\(snap\.quote_age_s\) : null,/, "no quote clock → NULL age, never 999");
+  assert.match(src, /quote_seq: Number\.isFinite\(qseq\) && qseq > 0 \? Math\.round\(qseq\) : null,/, "seq 0 (no sequence) → NULL, never a fake 0");
+  assert.match(src, /print_age_s: Number\.isFinite\(pa\) && pa < 999 \? pa : null,/, "print age ≥ 999 (unknown) → NULL, never a fake 999");
+});
+
+test("S2-5: the decision snapshot is captured at the decision tick, before the fill path, non-blocking", () => {
+  const src = read("src/lib/desk/server-engine.ts");
+  const code = codeOf("src/lib/desk/server-engine.ts");
+  // Captured from the finalized (snap, chair) pair, AFTER decideChair and BEFORE
+  // the paper-fill path (noteCall), so the read is recorded independent of the fill.
+  const iChair = code.indexOf("decideChair(e, votes, snap, lastSide(e, snap))");
+  const iCap = code.indexOf("noteDecisionSnapshot(e, snap, chair)", iChair);
+  const iCall = code.indexOf("noteCall(e, snap, chair)", iChair);
+  assert.ok(iChair >= 0, "the tick's decideChair call is present");
+  assert.ok(iCap > iChair, "capture happens after the finalized Chair result");
+  assert.ok(iCall > iCap, "capture happens BEFORE noteCall (the paper-fill path)");
+  // Fire-and-forget: voided with a .catch that routes a failure to noteErr; never awaited.
+  assert.match(code, /void recordDecisionSnapshot\(row\)\.catch\(/, "the write is non-blocking with a catch");
+  assert.match(code, /noteErr\(e, "decision-snapshot"/, "a failure is routed to the durable error ring");
+  assert.ok(!/await recordDecisionSnapshot/.test(code), "the decision write is never awaited on the tick");
+  assert.match(code, /decisionSnapshotFrom\(snap, chair\)/, "built from this tick's snap and chair");
+  // Exactly one call site: the fill and grade paths must not write a decision snapshot.
+  assert.equal((code.match(/recordDecisionSnapshot\(/g) || []).length, 1, "one writer call site only");
+  assert.equal((code.match(/decisionSnapshotFrom\(/g) || []).length, 1, "one capture call site only");
+  const applyGrade = src.slice(src.indexOf("function applyGrade"), src.indexOf("function applyGrade") + 3000);
+  assert.ok(!applyGrade.includes("DecisionSnapshot"), "applyGrade (the grade path) never writes a decision snapshot");
+});
+
+test("S2-5: no decision consumer reads the decision snapshot back", () => {
+  for (const rel of ["bots.ts", "chair.ts", "chair-v2.ts", "features.ts", "dsl.ts", "learner.ts", "book-floor.ts"]) {
+    const code = codeOf(`src/lib/desk/${rel}`);
+    assert.ok(!code.includes("decision-snapshot"), `${rel} must not import the S2-5 decision snapshot`);
+  }
+});
+
+test("S2-5: no provider-origin timestamp is invented; the quote clock is named a last-change clock", () => {
+  const sql = read("migrations/0029_desk_decision_snapshots.sql");
+  const sqlCode = sql.replace(/--.*$/gm, " ");
+  const pure = read("src/lib/desk/decision-snapshot.ts");
+  const writer = codeOf("src/lib/desk/decision-snapshot.server.ts");
+  assert.match(sqlCode, /quote_last_change_at timestamptz/, "the quote clock column is named for what it is");
+  assert.ok(!/provider_ts/.test(sqlCode), "the migration stores no provider_ts column");
+  assert.ok(!/provider_ts/.test(writer), "the writer reads no provider_ts");
+  assert.match(pure, /quote_last_change_ms: hasQuoteClock \? Math\.round\(qts\) : null/, "quote_ts is stored as a last-change clock, NULL when absent");
+});

@@ -1041,3 +1041,115 @@ test("both-halves predicates resolve the reuse shape; ticker-only ones do not", 
   assert.equal(lone.rows.length, 0, "a ticker with no replay reads as none");
   await db.close();
 });
+
+/*
+ * S2-5: the Chair's decision-time snapshot is identified by the WINDOW and its
+ * semantic kind, insert-once, and a later tick or a restart can never rewrite it.
+ * The event RULE (which kind a tick writes) is proven purely in
+ * src/lib/desk/decision-snapshot.test.ts; these assert the DATABASE half the rule
+ * relies on: exact (ticker, close_time, snapshot_kind) identity, on-conflict
+ * idempotence, neighbour isolation, and the exact-window read-back a restart uses
+ * to recover the persisted OPENING lean.
+ */
+const DECISION_COLS =
+  "(ticker, close_time, snapshot_kind, decision_at, chair_lean, yes_ask)";
+function decisionInsert(db, ticker, closeIso, kind, lean, yesAsk, decisionIso) {
+  // The writer's exact idempotent insert, minimised to the asserted columns.
+  return db.query(
+    `insert into desk_decision_snapshots ${DECISION_COLS}
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (ticker, close_time, snapshot_kind) do nothing`,
+    [ticker, closeIso, kind, decisionIso, lean, yesAsk],
+  );
+}
+
+test("0029 only permits the two bounded kinds", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  const T = "KXBTC15M-26SEP111800-00";
+  const c = "2026-09-11T18:00:00.000Z";
+  await decisionInsert(db, T, c, "OPENING", "WAIT", 62, "2026-09-11T17:45:01.000Z");
+  await assert.rejects(
+    () => decisionInsert(db, T, c, "MIDWINDOW", "UP", 70, "2026-09-11T17:50:00.000Z"),
+    /check|constraint/i,
+    "a third snapshot_kind must be refused by the check constraint",
+  );
+  await db.close();
+});
+
+test("0029 stores OPENING and FIRST_DIRECTIONAL for one window; duplicates are no-ops", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  const T = "KXBTC15M-26SEP111800-00";
+  const c = "2026-09-11T18:00:00.000Z";
+
+  // M2/M9: a WAIT OPENING persists, and a second OPENING attempt writes nothing.
+  await decisionInsert(db, T, c, "OPENING", "WAIT", 62, "2026-09-11T17:45:01.000Z");
+  await decisionInsert(db, T, c, "OPENING", "UP", 80, "2026-09-11T17:50:00.000Z"); // later, conflicts
+  const opening = await db.query(
+    `select chair_lean, yes_ask from desk_decision_snapshots
+      where ticker=$1 and close_time=$2 and snapshot_kind='OPENING'`,
+    [T, c],
+  );
+  assert.equal(opening.rows.length, 1, "exactly one OPENING row");
+  assert.equal(opening.rows[0].chair_lean, "WAIT", "the first-observed WAIT read is never overwritten");
+  assert.equal(Number(opening.rows[0].yes_ask), 62, "M7: a later quote (80) does not rewrite the 62 it first read");
+
+  // M3/M9: the first directional turn persists once; a later flip's duplicate is a no-op.
+  await decisionInsert(db, T, c, "FIRST_DIRECTIONAL", "UP", 64, "2026-09-11T17:52:00.000Z");
+  await decisionInsert(db, T, c, "FIRST_DIRECTIONAL", "DOWN", 41, "2026-09-11T17:55:00.000Z");
+  const fd = await db.query(
+    `select chair_lean from desk_decision_snapshots
+      where ticker=$1 and close_time=$2 and snapshot_kind='FIRST_DIRECTIONAL'`,
+    [T, c],
+  );
+  assert.equal(fd.rows.length, 1, "exactly one FIRST_DIRECTIONAL row");
+  assert.equal(fd.rows[0].chair_lean, "UP", "the first directional read stands; a later DOWN flip does not replace it");
+
+  const all = await db.query(`select count(*)::int as n from desk_decision_snapshots where ticker=$1 and close_time=$2`, [T, c]);
+  assert.equal(all.rows[0].n, 2, "one window, at most two rows");
+  await db.close();
+});
+
+test("0029 keeps two closes sharing one ticker apart; neither resolves by ticker alone", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  const T = "KXBTC15M-26SEP100300-00"; // the 2026-09-10 reused ticker
+  const c1 = "2026-09-10T03:00:00.000Z";
+  const c2 = "2026-09-10T03:15:00.000Z";
+
+  // M8: c1's OPENING and c2's OPENING coexist; writing c1 never touches c2.
+  await decisionInsert(db, T, c1, "OPENING", "UP", 70, "2026-09-10T02:45:01.000Z");
+  await decisionInsert(db, T, c2, "OPENING", "WAIT", 55, "2026-09-10T03:00:01.000Z");
+  const both = await db.query(
+    `select close_time, chair_lean from desk_decision_snapshots where ticker=$1 order by close_time`,
+    [T],
+  );
+  assert.equal(both.rows.length, 2, "both closes persist under the composite key");
+
+  // The restart read-back is EXACT-window, so c2's lookup never reads c1's lean.
+  const exactC2 = await db.query(
+    `select snapshot_kind, chair_lean from desk_decision_snapshots where ticker=$1 and close_time=$2`,
+    [T, c2],
+  );
+  assert.equal(exactC2.rows.length, 1, "the exact-window probe sees only c2");
+  assert.equal(exactC2.rows[0].chair_lean, "WAIT", "c2's OPENING lean, not c1's");
+
+  // M10/M11 DB half: after a restart the writer recovers the PERSISTED opening lean
+  // for the exact window, which is what lets FIRST_DIRECTIONAL fire (c2 was WAIT) or
+  // stay suppressed (c1 was UP).
+  const c1lean = await db.query(
+    `select chair_lean from desk_decision_snapshots where ticker=$1 and close_time=$2 and snapshot_kind='OPENING'`,
+    [T, c1],
+  );
+  assert.equal(c1lean.rows[0].chair_lean, "UP", "c1's opening was directional → no FIRST_DIRECTIONAL on restart");
+  await db.close();
+});
+
+test("0029 writes no historical rows: the migration creates structure only", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+  const n = await db.query(`select count(*)::int as n from desk_decision_snapshots`);
+  assert.equal(n.rows[0].n, 0, "no INSERT or INSERT-SELECT backfill — the table starts empty");
+  await db.close();
+});
