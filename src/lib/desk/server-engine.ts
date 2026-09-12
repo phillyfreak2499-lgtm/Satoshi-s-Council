@@ -58,14 +58,17 @@ import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
 import { weeklyRecap } from "./recap.server";
 import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
 import {
+  V2_POPULATION,
   V2_SAMPLE_MINS,
   decideV2,
   extractFeatures,
   fitLogistic,
+  newestTrainedMs,
   predictV2,
   seatEvidence,
   seatProb,
   settleV2,
+  v2FeaturesVersion,
   type V2Decision,
   type V2Features,
   type V2Weights,
@@ -1459,12 +1462,22 @@ async function refitV2(e: Eng) {
   e.v2LastFitAt = Date.now();
   try {
     const db = await sql();
-    const rows = await db<{ features: V2Features; winner: string }>`
-      select features, winner from desk_samples
-      where winner is not null order by close_time desc limit 3000
+    // Train on the most recent 3000 RESEARCH-QUALITY-VALID graded samples. desk_samples
+    // carries no quality column, so validity is the ledger's research view joined on exact
+    // (ticker, close_time) identity — the same population the scoreboard scores on, and the
+    // same view the v1 comparison already reads. The join is applied BEFORE the limit, so a
+    // known-invalid window can never consume one of the 3000 training slots.
+    const rows = await db<{ features: V2Features; winner: string; close_time: string }>`
+      select s.features, s.winner, s.close_time from desk_samples s
+      join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
+      where s.winner is not null order by s.close_time desc limit 3000
     `;
     const fitted = fitLogistic(rows.map((r) => ({ x: r.features, y: r.winner === "UP" ? 1 : 0 })));
     if (fitted) {
+      // Provenance — metadata only; never read by predictV2. Describes the fit truthfully.
+      fitted.population = V2_POPULATION;
+      fitted.trained_through = newestTrainedMs(rows.map((r) => r.close_time));
+      fitted.features_version = v2FeaturesVersion();
       e.v2 = fitted;
       await persistState(e, true);
     }
@@ -1479,43 +1492,48 @@ async function refitV2(e: Eng) {
 async function refreshV2Stats(e: Eng) {
   try {
     const db = await sql();
-    const a = await db<{
-      n_samples: number;
-      n_graded: number;
+    // Raw sample bookkeeping (not a v1/v2 comparison): how many samples exist and how
+    // many are graded. Left over the bare table deliberately.
+    const a = await db<{ n_samples: number; n_graded: number }>`
+      select count(*)::int as n_samples, count(winner)::int as n_graded from desk_samples
+    `;
+    // v1 AND v2 metrics over the IDENTICAL research-quality-valid graded population, so the
+    // scoreboard compares the two chairs on the same windows. The formulas are unchanged —
+    // only eligibility moved: desk_samples carries no quality column, so validity is the
+    // ledger's research view joined on exact (ticker, close_time) identity (the join the v1
+    // side already used). brier_market is the market's Brier over that same valid population.
+    const b = await db<{
+      ev_v1: number;
+      calls_v1: number;
       brier_v2: number | null;
       brier_market: number | null;
       ev_v2: number;
       calls_v2: number;
     }>`
       select
-        count(*)::int as n_samples,
-        count(winner)::int as n_graded,
-        avg(case when winner is not null and v2_p is not null
-            then power(v2_p - (case when winner = 'UP' then 1 else 0 end), 2) end) as brier_v2,
-        avg(case when winner is not null
-            then power((market->>'yes_mid')::float / 100 - (case when winner = 'UP' then 1 else 0 end), 2) end) as brier_market,
-        coalesce(sum(v2_ev), 0) as ev_v2,
-        (count(*) filter (where v2_lean in ('UP','DOWN') and winner is not null))::int as calls_v2
-      from desk_samples
-    `;
-    const b = await db<{ ev_v1: number; calls_v1: number }>`
-      select coalesce(sum(l.ev_cents), 0) as ev_v1,
-             (count(*) filter (where l.calls > 0))::int as calls_v1
+        coalesce(sum(l.ev_cents), 0) as ev_v1,
+        (count(*) filter (where l.calls > 0))::int as calls_v1,
+        avg(case when s.v2_p is not null
+            then power(s.v2_p - (case when s.winner = 'UP' then 1 else 0 end), 2) end) as brier_v2,
+        avg(power((s.market->>'yes_mid')::float / 100 - (case when s.winner = 'UP' then 1 else 0 end), 2)) as brier_market,
+        coalesce(sum(s.v2_ev), 0) as ev_v2,
+        (count(*) filter (where s.v2_lean in ('UP','DOWN')))::int as calls_v2
       from desk_samples s
       join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
       where s.winner is not null
     `;
     const x = a[0];
     if (!x) return;
+    const y = b[0];
     e.v2Stats = {
       n_samples: Number(x.n_samples) || 0,
       n_graded: Number(x.n_graded) || 0,
-      brier_v2: x.brier_v2 == null ? null : Number(x.brier_v2),
-      brier_market: x.brier_market == null ? null : Number(x.brier_market),
-      ev_v2: Number(x.ev_v2) || 0,
-      ev_v1: Number(b[0]?.ev_v1) || 0,
-      calls_v2: Number(x.calls_v2) || 0,
-      calls_v1: Number(b[0]?.calls_v1) || 0,
+      brier_v2: y?.brier_v2 == null ? null : Number(y.brier_v2),
+      brier_market: y?.brier_market == null ? null : Number(y.brier_market),
+      ev_v2: Number(y?.ev_v2) || 0,
+      ev_v1: Number(y?.ev_v1) || 0,
+      calls_v2: Number(y?.calls_v2) || 0,
+      calls_v1: Number(y?.calls_v1) || 0,
     };
   } catch (err) {
     e.lastError = `v2 stats: ${err instanceof Error ? err.message : String(err)}`;
@@ -1539,7 +1557,7 @@ async function digestV2Bits(bits: string[]) {
     const rows = await db<{ features: V2Features; winner: string; v2_ev: number | null; v2_lean: string; ev_v1: number | null }>`
       select s.features, s.winner, s.v2_ev, s.v2_lean, l.ev_cents as ev_v1
       from desk_samples s
-      left join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
+      join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
       where s.winner is not null
         and (s.close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date - 1
     `;

@@ -10,8 +10,8 @@
  * live chair; it competes with it on the same windows and the ledger keeps
  * score.
  */
-import { takerFeeCents } from "./clock";
-import { SEAT_IDS, type Lean, type Snapshot, type Vote } from "./types";
+import { takerFeeCents } from "./clock.ts";
+import { SEAT_IDS, type Lean, type Snapshot, type Vote } from "./types.ts";
 
 export const V2_SEATS = SEAT_IDS.filter((s) => s !== "WARDEN");
 export const V2_FEATURES: readonly string[] = [...V2_SEATS, "market", "fair"];
@@ -23,6 +23,11 @@ export const V2_MARGIN_CENTS = 6;
 export const V2_MIN_ENTRY_CENTS = 35;
 /** One sample per window, at the first tick at or under this many minutes left. */
 export const V2_SAMPLE_MINS = 7.5;
+
+/** The population Chair v2 is trained and scored on: research-quality-valid
+ *  windows only. Recorded on the fitted model as provenance; never read by the
+ *  prediction math. */
+export const V2_POPULATION = "research-quality-valid";
 
 /** Shadow scoreboard for v2 against the chair and the market on identical windows. */
 export type V2Stats = {
@@ -56,7 +61,20 @@ export function v2Voice(st: V2Stats | null): number {
 }
 
 export type V2Features = Record<string, number>;
-export type V2Weights = { w: Record<string, number>; b: number; n: number; fitted_at: number; loss: number };
+export type V2Weights = {
+  w: Record<string, number>;
+  b: number;
+  n: number;
+  fitted_at: number;
+  loss: number;
+  /** Provenance — metadata about the fit, never read by prediction math. The
+   *  fields are optional so a model persisted before S2-8 still loads unchanged. */
+  population?: string;
+  /** Newest training sample's close time actually included, epoch ms. */
+  trained_through?: number | null;
+  /** Deterministic fingerprint of the feature roster the fit used. */
+  features_version?: string;
+};
 export type V2Decision = {
   p_up: number;
   lean: Lean;
@@ -64,6 +82,36 @@ export type V2Decision = {
   edge_cents: number | null;
   entry_cents: number | null;
 };
+
+/**
+ * A deterministic fingerprint of the current v2 feature roster, so a persisted
+ * model can be told apart from one fit under a different feature set. Derived
+ * only from V2_FEATURES — no clock, no randomness — so the same roster always
+ * yields the same string and any roster change always changes it. The separator
+ * byte means ["ab","c"] and ["a","bc"] never collide.
+ */
+export function v2FeaturesVersion(): string {
+  let h = 5381;
+  for (const k of V2_FEATURES) {
+    for (let i = 0; i < k.length; i++) h = ((h * 33) ^ k.charCodeAt(i)) >>> 0;
+    h = ((h * 33) ^ 0x7c) >>> 0;
+  }
+  return `fv-${V2_FEATURES.length}-${h.toString(36)}`;
+}
+
+/**
+ * The newest close time among the rows actually fed to the fit, in epoch ms, or
+ * null if none — the honest value for V2Weights.trained_through. Takes the max
+ * rather than the first row, so it does not depend on the caller's ordering.
+ */
+export function newestTrainedMs(closeTimes: ReadonlyArray<string | number | Date>): number | null {
+  let max: number | null = null;
+  for (const c of closeTimes) {
+    const ms = c instanceof Date ? c.getTime() : typeof c === "number" ? c : Date.parse(c);
+    if (Number.isFinite(ms)) max = max == null ? ms : Math.max(max, ms);
+  }
+  return max;
+}
 
 export function sigmoid(z: number): number {
   return 1 / (1 + Math.exp(-z));
