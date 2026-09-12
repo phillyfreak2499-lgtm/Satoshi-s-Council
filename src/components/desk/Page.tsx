@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { gtagEvent } from "@/lib/desk/ga";
 import { SiteHeader } from "./SiteHeader";
 import { Crest } from "./Crest";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,11 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
                 {n.label}
               </Link>
             ))}
-            <Link to="/" className="btn btn-primary btn-sm ml-1">
+            <Link
+              to="/"
+              className="btn btn-primary btn-sm ml-1"
+              onClick={() => gtagEvent("enter_the_floor", { link_text: "Open the floor" })}
+            >
               Open the floor
             </Link>
           </nav>
@@ -42,7 +47,11 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
         <p className="mt-2 font-sans text-body text-muted">{lede}</p>
         <div className="prose-desk mt-8">{children}</div>
         <div className="mt-10 border-t border-border pt-6">
-          <Link to="/" className="btn btn-primary">
+          <Link
+            to="/"
+            className="btn btn-primary"
+            onClick={() => gtagEvent("enter_the_floor", { link_text: "Open the floor" })}
+          >
             Open the floor
           </Link>
           <span className="ml-3 font-mono text-micro text-subtle">The 60-second tour starts on your first visit; replay it from ? in the header.</span>

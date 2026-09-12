@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { gtagEvent } from "@/lib/desk/ga";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,6 +32,7 @@ export function IntroBand({
     const el = document.getElementById("chair-stage");
     if (!el) return;
     e.preventDefault();
+    gtagEvent("enter_the_floor", { link_text: "Enter the floor" });
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     el.focus({ preventScroll: true });
   };

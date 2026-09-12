@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listBoard, postBoard, type BoardKind, type BoardPost } from "@/lib/desk/board";
+import { gtagEvent } from "@/lib/desk/ga";
 import { getAdminKey, type DeskFrame } from "@/lib/desk/engine";
 import { fmtLocal } from "@/lib/desk/market-hours";
 import { cn } from "@/lib/utils";
@@ -111,6 +112,10 @@ function Composer({
           ...(kind === "update" ? { admin_key: getAdminKey() } : {}),
         },
       });
+      // Desk updates are admin ops — not leads. Idea/feedback posts are.
+      if (kind === "idea" || kind === "feedback") {
+        gtagEvent("generate_lead", { board_kind: kind, has_parent: parentId != null });
+      }
       setNote("");
       onPosted();
     } catch (e) {
