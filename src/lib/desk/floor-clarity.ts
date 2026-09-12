@@ -287,11 +287,12 @@ export type Freshness = {
    */
   last_change_age_s: number | null;
   /**
-   * FALSE, today, always — and this is the honest part. `ObsStamp.provider_ts` is
-   * misnamed: live.ts:194 assigns it `quote_ts`, which is the last-CHANGE clock
-   * (`max(trade_ts, changedAt)`), not a provider timestamp for the current reading.
-   * So the desk cannot say when the exchange stamped the quote it is showing, and
-   * this field exists to stop the UI implying otherwise.
+   * FALSE, today, always — and this is the honest part. The only observation clock
+   * the desk carries is `ObsStamp.quote_last_change_at` (live.ts assigns it
+   * `quote_ts`, the last-CHANGE clock `max(trade_ts, changedAt)`) — which is named
+   * for what it is and is NOT a provider timestamp for the current reading. So the
+   * desk cannot say when the exchange stamped the quote it is showing, and this
+   * field exists to stop the UI implying otherwise.
    */
   source_time_available: boolean;
   /** One clause stating what is and is not known about the clock. */

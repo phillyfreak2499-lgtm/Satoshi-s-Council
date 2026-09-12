@@ -104,8 +104,9 @@ export type DecisionSnapshotRow = {
   print_age_s: number | null;
   /**
    * CLOCK: the quote's last-change time (snap.quote_ts). Named for what it is --
-   * a last-change clock, NOT a provider-origin receipt. S2-5 never stores the
-   * misnamed ObsStamp.provider_ts, and never labels a last-change time as provider time.
+   * a last-change clock, NOT a provider-origin receipt. S2-5 never labels a
+   * last-change time as provider time (the live observation carries it truthfully
+   * as ObsStamp.quote_last_change_at).
    */
   quote_last_change_ms: number | null;
 

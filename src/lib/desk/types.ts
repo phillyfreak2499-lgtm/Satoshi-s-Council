@@ -129,7 +129,13 @@ export type GapStatus = "ok" | "gap" | "reconnect" | "held";
 
 /** Every live observation carries these. No timestamp, no row. */
 export type ObsStamp = {
-  provider_ts: number;
+  /**
+   * The quote's last-CHANGE clock (server-feeds `quoteUpdateTs` = max(trade_ts,
+   * changedAt)), NOT a provider event time for the current reading. Named for what
+   * it is: the desk cannot say when the exchange stamped the quote it is showing.
+   * (Was the misnamed `provider_ts`.) Nothing reads this value for a decision.
+   */
+  quote_last_change_at: number;
   receipt_ts: number;
   last_ok_ts: number;
   seq: number;

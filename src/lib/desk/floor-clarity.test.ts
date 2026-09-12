@@ -236,13 +236,14 @@ test("freshness reports a RECEIPT age and refuses to call it the quote's own tim
   assert.match(f.note, /not available from this feed/);
 });
 
-test("source time is unavailable because provider_ts is misnamed — stated, not implied", () => {
-  // live.ts:194 assigns obs.provider_ts = quote_ts, the last-CHANGE clock. So even a
-  // populated provider_ts must not be read as the exchange's stamp.
+test("source time is unavailable: the only obs clock is the last-change clock, truthfully named", () => {
+  // F1: live.ts assigns obs.quote_last_change_at = quote_ts, the last-CHANGE clock —
+  // named for what it is. Even a populated last-change clock must not be read as the
+  // exchange's stamp for the current reading, so source_time_available stays false.
   const f = freshness(
-    snap({ obs: { last_ok_ts: T0 - 1_000, gap: "ok", provider_ts: T0 - 500 } } as Partial<Snapshot>),
+    snap({ obs: { last_ok_ts: T0 - 1_000, gap: "ok", quote_last_change_at: T0 - 500 } } as Partial<Snapshot>),
   );
-  assert.equal(f.source_time_available, false, "a populated provider_ts changes nothing");
+  assert.equal(f.source_time_available, false, "a populated last-change clock changes nothing");
 });
 
 test("time-since-last-change is reported as movement, never as staleness", () => {

@@ -2244,3 +2244,25 @@ test("S2-5: a contradictory (ticker, close) window is refused via the shared tic
   assert.match(nds, /"ticker-close-time-mismatch"/, "names the mismatch");
   assert.match(eng, /lastDecisionIdentityKey/, "the breadcrumb is deduplicated, not spammed every tick");
 });
+
+test("Stage2 freshness: the live observation clock is truthfully named and read by no decision consumer", () => {
+  // Defect A: ObsStamp.provider_ts was the last-CHANGE clock (quote_ts), not a
+  // provider event time. Renamed to quote_last_change_at — truthful, and still read
+  // by nothing that decides. (OfficialSettle.provider_ts is a genuine provider
+  // settlement time and is out of scope; it may keep its name.)
+  const types = codeOf("src/lib/desk/types.ts"); // comment-stripped: the doc prose may mention the old name
+  const obsBlock = types.slice(types.indexOf("export type ObsStamp"), types.indexOf("export type OfficialSettle"));
+  assert.ok(obsBlock.length > 0, "ObsStamp type must exist");
+  assert.ok(!/provider_ts/.test(obsBlock), "ObsStamp must not carry the misnamed provider_ts");
+  assert.match(obsBlock, /quote_last_change_at: number;/, "ObsStamp carries the truthfully-named last-change clock");
+  // The live producer assigns the last-change clock under the truthful name, not provider_ts.
+  const live = codeOf("src/lib/desk/live.ts");
+  assert.match(live, /quote_last_change_at: quote_ts,/, "live.ts assigns quote_ts as the last-change clock, truthfully named");
+  assert.ok(!/obs: \{[\s\S]*?provider_ts/.test(live), "live.ts obs must not reintroduce provider_ts");
+  // Measurement-only: no decision consumer reads the renamed clock (or the old name).
+  for (const rel of ["bots.ts", "chair.ts", "chair-v2.ts", "features.ts", "dsl.ts", "learner.ts", "book-floor.ts"]) {
+    const code = codeOf(`src/lib/desk/${rel}`);
+    assert.ok(!code.includes("quote_last_change_at"), `${rel} must not read quote_last_change_at (measurement stays out of decisions)`);
+    assert.ok(!code.includes("provider_ts"), `${rel} must not read provider_ts`);
+  }
+});
