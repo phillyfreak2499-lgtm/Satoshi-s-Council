@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listBoard, postBoard, type BoardKind, type BoardPost } from "@/lib/desk/board";
+import { gtagEventAfterSuccess } from "@/lib/desk/ga";
 import { getAdminKey, type DeskFrame } from "@/lib/desk/engine";
 import { fmtLocal } from "@/lib/desk/market-hours";
 import { cn } from "@/lib/utils";
@@ -101,16 +102,25 @@ function Composer({
     setStatus("");
     try {
       localStorage.setItem(WHO_KEY, who.trim().slice(0, 24));
-      await postBoard({
-        data: {
-          who: kind === "update" && !who.trim() ? "DESK" : who,
-          body,
-          kind,
-          parent_id: parentId,
-          ...tape(frame),
-          ...(kind === "update" ? { admin_key: getAdminKey() } : {}),
-        },
-      });
+      const post = async () => {
+        await postBoard({
+          data: {
+            who: kind === "update" && !who.trim() ? "DESK" : who,
+            body,
+            kind,
+            parent_id: parentId,
+            ...tape(frame),
+            ...(kind === "update" ? { admin_key: getAdminKey() } : {}),
+          },
+        });
+      };
+      // Desk updates are admin ops — not visitor feedback. Idea/feedback only,
+      // and only after postBoard succeeds.
+      if (kind === "idea" || kind === "feedback") {
+        await gtagEventAfterSuccess("feedback_submitted", post);
+      } else {
+        await post();
+      }
       setNote("");
       onPosted();
     } catch (e) {
