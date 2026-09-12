@@ -1,13 +1,23 @@
 # GA4 custom events (thin instrumentation)
 
-Measurement ID on site: `G-JMQGD1WTVT` (gtag direct in `src/routes/__root.tsx`).
+Measurement ID on site: `G-JMQGD1WTVT` (gtag direct in `src/routes/__root.tsx`). No GTM. No new vendor.
 
-Helper: `src/lib/desk/ga.ts` → `gtagEvent(name, params?)`.
+Helper: `src/lib/desk/ga.ts` → `gtagEvent` / `gtagEventAfterSuccess`.
 
-| Event | When it fires | UI surface |
-| --- | --- | --- |
-| `enter_the_floor` | Click primary CTA | IntroBand **"Enter the floor"**; reading pages **"Open the floor"** (`Page.tsx`) |
-| `generate_lead` | Successful board post | Ideas & feedback composer — **idea** or **feedback** (not DESK updates) |
-| `signup` | Successful paper Arena lock | Arena panel **UP** / **DOWN** lock (`placeCall` succeeds). Account OAuth signup UI is off on Render (`VITE_AUTH_ENABLED=false`); this is the live visitor-join action. |
+## Event matrix
 
-No purchase events. No GTM. No invented metrics — AWO marks key events in GA Admin after they appear.
+| EVENT | TRIGGER | SUCCESS CONDITION | PARAMETERS | KEY EVENT CANDIDATE | NOTES |
+| --- | --- | --- | --- | --- | --- |
+| `enter_the_floor` | Click **"Enter the floor"** (IntroBand) or **"Open the floor"** (reading `Page`) | Intentional CTA click (not page load) | none | yes | Primary navigation CTA only |
+| `feedback_submitted` | Ideas & feedback composer submit | `postBoard` resolves for kind `idea` or `feedback` | none | yes | Not DESK admin updates; not click-before-request; never on fail |
+| `paper_call_locked` | Arena panel human UP/DOWN lock | `placeCall` resolves | none | yes | Human paper lock only — not Chair/Council/WAIT/auto; not signup |
+
+## Removed / never use
+
+- `generate_lead` — renamed to `feedback_submitted`
+- `signup` / `sign_up` — renamed to `paper_call_locked` (Arena is not account signup)
+- `purchase` and other commerce events — out of scope; do not mark in Admin from this PR
+
+## Freezes
+
+Observe-only analytics plumbing. No Chair/Council/seats/learner/Lab/Stage1/Kalshi business logic, auth, DB, migrations, Render, or execution changes.

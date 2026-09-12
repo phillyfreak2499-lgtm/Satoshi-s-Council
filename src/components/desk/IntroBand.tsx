@@ -32,7 +32,7 @@ export function IntroBand({
     const el = document.getElementById("chair-stage");
     if (!el) return;
     e.preventDefault();
-    gtagEvent("enter_the_floor", { link_text: "Enter the floor" });
+    gtagEvent("enter_the_floor");
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     el.focus({ preventScroll: true });
   };

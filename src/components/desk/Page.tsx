@@ -34,7 +34,7 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
             <Link
               to="/"
               className="btn btn-primary btn-sm ml-1"
-              onClick={() => gtagEvent("enter_the_floor", { link_text: "Open the floor" })}
+              onClick={() => gtagEvent("enter_the_floor")}
             >
               Open the floor
             </Link>
@@ -50,7 +50,7 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
           <Link
             to="/"
             className="btn btn-primary"
-            onClick={() => gtagEvent("enter_the_floor", { link_text: "Open the floor" })}
+            onClick={() => gtagEvent("enter_the_floor")}
           >
             Open the floor
           </Link>

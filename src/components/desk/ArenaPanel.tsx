@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { takerFeeCentsExact } from "@/lib/desk/clock";
 import { arenaName, fetchArena, placeCall, setArenaName, type Arena, type HumanCall } from "@/lib/desk/arena";
-import { gtagEvent } from "@/lib/desk/ga";
+import { gtagEventAfterSuccess } from "@/lib/desk/ga";
 import type { Snapshot } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { MinsLeft } from "./bits";
@@ -45,8 +45,9 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
     setBusy(true);
     setErr(null);
     try {
-      await placeCall(lean, conf);
-      gtagEvent("signup", { method: "arena_paper_lock", lean });
+      await gtagEventAfterSuccess("paper_call_locked", async () => {
+        await placeCall(lean, conf);
+      });
       await refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
