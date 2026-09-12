@@ -47,6 +47,7 @@ import {
   type IdentityFault,
   isInconsistent,
   matchSettle,
+  tickerAgrees,
 } from "./window-identity";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
@@ -1167,7 +1168,24 @@ function attachLab(snap: Snapshot): Snapshot {
  * write is routed to the durable error ring (noteErr), never thrown into the
  * tick, and reads nothing back into the Chair or the paper book.
  */
+let lastDecisionIdentityKey = "";
+
 function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void {
+  // Window-identity guard (see decision-snapshot-writer). At a rollover the close
+  // advances to the next window before the feed's ticker catches up, so this tick
+  // can carry (stale ticker, new close) — the same contradiction matchSettle fails
+  // closed on. tickerAgrees === false means the ticker's embedded close positively
+  // disagrees with the row's close; skip the measurement and leave a deduplicated
+  // breadcrumb. `null` (unparseable) is NOT refused. The Chair, seats and paper book
+  // are untouched — this returns out of the helper, not the tick.
+  if (tickerAgrees(snap.ticker, snap.close_time) === false) {
+    const key = `${snap.ticker}|${snap.close_time}`;
+    if (key !== lastDecisionIdentityKey) {
+      lastDecisionIdentityKey = key;
+      noteErr(e, "decision-snapshot-identity", "ticker-close-time-mismatch");
+    }
+    return;
+  }
   try {
     const row = decisionSnapshotFrom(snap, chair);
     void recordDecisionSnapshot(row).catch((err) => {

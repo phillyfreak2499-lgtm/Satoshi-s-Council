@@ -29,6 +29,7 @@
  * through the store before the first write for a window.
  */
 import { decisionSnapshotEvents, type DecisionSnapshotRow, type SnapshotKind } from "./decision-snapshot.ts";
+import { tickerAgrees } from "./window-identity.ts";
 import type { Lean } from "./types.ts";
 
 /** What the store reports about one exact window's persisted rows. */
@@ -138,6 +139,15 @@ export function createDecisionWriter(store: DecisionStore): DecisionWriter {
     if (!row.ticker || !Number.isFinite(row.close_time_ms) || row.close_time_ms <= 0) return Promise.resolve();
     if (!Number.isFinite(row.decision_at_ms) || row.decision_at_ms <= 0) return Promise.resolve();
     if (row.ticker.includes("DEMO")) return Promise.resolve();
+    // Window-identity guard. At a rollover the close advances to the next window
+    // before the feed's ticker catches up, yielding (stale ticker, new close) — a
+    // pair window-identity POSITIVELY disagrees with (the same stale-ticker/new-close
+    // contradiction matchSettle already fails closed on). Refuse to measure a
+    // contradictory window here, before the chain/freeze/insert: no chain, no frozen
+    // OPENING, no row. `null` (ticker unparseable) is NOT refused — matching the
+    // module's philosophy of failing closed only on a known disagreement — and the
+    // real window's tick a few seconds later records normally.
+    if (tickerAgrees(row.ticker, row.close_time_ms) === false) return Promise.resolve();
 
     const key = memKey(row.ticker, row.close_time_ms);
     const prev = chains.get(key) ?? Promise.resolve();
