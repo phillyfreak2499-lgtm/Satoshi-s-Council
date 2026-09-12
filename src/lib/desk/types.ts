@@ -247,6 +247,10 @@ export type Snapshot = {
   liq_short_usd: number;
   liq_n: number;
   liq_source: string;
+  /** Trusted vendor event time of the packed set. 0 = unknown. MEASUREMENT ONLY. */
+  liq_last_t: number;
+  /** Seconds since liq_last_t. null when last_t is 0. May be negative. MEASUREMENT ONLY. */
+  liq_age_s: number | null;
   force_n: number;
   cascade_proxy: boolean;
   fear_greed: number;
@@ -613,6 +617,8 @@ export type LiveBundle = {
   liq_short_usd: number;
   liq_n: number;
   liq_source: string;
+  /** Trusted vendor event time. 0 = unknown. MEASUREMENT ONLY. */
+  liq_last_t: number;
   fear_greed: number | null;
   fear_greed_label: string;
   fng_history: number[];
