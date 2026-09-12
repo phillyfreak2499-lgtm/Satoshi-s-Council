@@ -191,7 +191,8 @@ export function bundleToSnapshot(
     print_age_s,
     last_trade_id,
     obs: {
-      provider_ts: quote_ts,
+      // quote_ts is the last-CHANGE clock, not a provider event time — named truthfully.
+      quote_last_change_at: quote_ts,
       receipt_ts: kalshi?.receipt_ts || b.receipt_ts || now,
       last_ok_ts,
       seq: quote_seq,

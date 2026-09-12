@@ -286,7 +286,7 @@ export function demoTick(state: DemoState, memory: WindowMemory): Snapshot {
     print_age_s: 0.8,
     last_trade_id: `demo-${state.close_time}`,
     obs: {
-      provider_ts: now - 800,
+      quote_last_change_at: now - 800,
       receipt_ts: now,
       last_ok_ts: now,
       seq: state.seq,
