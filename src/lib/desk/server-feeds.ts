@@ -6,6 +6,7 @@ import { candleTs, emptyTally, tally } from "./candle-time";
 import { applyInstrument, funding8h, notionalUsd, pickPrimaryVenue, specTag, volumeUsd } from "./units";
 import type { PathPoint } from "./path-time";
 import type { Candle, LiveBundle, OfficialSettle } from "./types";
+import { trustedLiqLastT } from "./liq-time";
 
 const T = 4500;
 const UA = "SatoshiCouncil/1.0 (paper research)";
@@ -426,7 +427,7 @@ async function okx() {
   }
 }
 
-type LiqEvent = { t: number; usd: number; side: "long" | "short"; venue: string };
+type LiqEvent = { t: number; usd: number; side: "long" | "short"; venue: string; provider_t?: number };
 type LiqPack = { longUsd: number; shortUsd: number; n: number; source: string; last_t: number };
 
 function packLiq(events: LiqEvent[], source: string, windowMs = 15 * 60_000): LiqPack | null {
@@ -435,12 +436,13 @@ function packLiq(events: LiqEvent[], source: string, windowMs = 15 * 60_000): Li
   const seen = new Set<string>();
   const uniq: LiqEvent[] = [];
   for (const e of events) {
+    const provider_t = e.t > 0 && Number.isFinite(e.t) ? e.t : 0;
     const t = e.t > 0 ? e.t : Date.now();
     if (!Number.isFinite(e.usd) || e.usd <= 0) continue;
     const key = `${e.venue ?? ""}|${t}|${e.side}|${Math.round(e.usd)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    uniq.push({ ...e, t });
+    uniq.push({ ...e, t, provider_t });
   }
   uniq.sort((a, b) => a.t - b.t);
   const recent = uniq.filter((e) => e.t >= cutoff);
@@ -452,7 +454,7 @@ function packLiq(events: LiqEvent[], source: string, windowMs = 15 * 60_000): Li
     if (e.side === "long") longUsd += e.usd;
     else shortUsd += e.usd;
   }
-  return { longUsd, shortUsd, n: use.length, source, last_t: use[use.length - 1]!.t };
+  return { longUsd, shortUsd, n: use.length, source, last_t: trustedLiqLastT(use) };
 }
 
 async function bybitLiq(): Promise<LiqEvent[]> {
@@ -746,6 +748,7 @@ async function scrapeBundle(): Promise<LiveBundle> {
     liq_short_usd: liq.shortUsd,
     liq_n: liq.n,
     liq_source: liq.source,
+    liq_last_t: liq.last_t,
     fear_greed: Number.isFinite(sent.value) ? sent.value : null,
     fear_greed_label: sent.label,
     fng_history: sent.hist,
