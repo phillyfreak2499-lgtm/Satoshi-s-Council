@@ -14,9 +14,16 @@
 // (src/lib/db.ts); Vite and tsc resolve it identically.
 import { getSql } from "../db.ts";
 import {
+  type FetchDeps,
   type FetchOutcome,
+  type FetchPacing,
   type LedgerWindow,
+  type MarketAttempt,
+  type OfficialMarket,
   type ReconReport,
+  fetchMarketViaHosts,
+  parseRetryAfterMs,
+  RECONCILE_CONCURRENCY_DEFAULT,
   reconcileWindows,
   summarize,
 } from "./kalshi-reconcile.ts";
@@ -30,37 +37,53 @@ const KALSHI_HOSTS = [
 ];
 const UA = "SatoshiCouncil/1.0 (paper research reconciliation)";
 
+const DEFAULT_TIMEOUT_MS = 4500;
+const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 /**
- * Fetch ONE market by exact ticker from the public API, with host failover. A 404
- * is `not_found`; any other HTTP/timeout/parse failure is `unavailable` — never a
- * mismatch. Returns the raw payload for the pure classifier to judge identity.
+ * ONE real HTTP attempt against `url`, mapped to a MarketAttempt for the pure
+ * orchestrator. 404 → `not_found` (rotate hosts, never backed off); 429/5xx/
+ * timeout/network/malformed → `retryable` (429 carries a parsed `Retry-After`);
+ * 200 with a market object → `ok`. Never throws — a thrown fetch is `retryable`.
+ * Exactly the same exact endpoint as before: `/markets/{ticker}`.
  */
-export async function kalshiFetchMarket(ticker: string, timeoutMs = 4500): Promise<FetchOutcome> {
-  let sawNotFound = false;
-  for (const host of KALSHI_HOSTS) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(`${host}/markets/${encodeURIComponent(ticker)}`, {
-        signal: ctrl.signal,
-        headers: { accept: "application/json", "user-agent": UA },
-      });
-      if (res.status === 404) {
-        sawNotFound = true;
-        continue; // try the next host before concluding the market is absent
-      }
-      if (!res.ok) continue; // transport/5xx/429 → try next host
-      const json = (await res.json()) as { market?: Record<string, unknown> };
-      const market = json?.market;
-      if (!market || typeof market !== "object") continue; // malformed → next host
-      return { ok: true, market };
-    } catch {
-      // timeout/network → try next host
-    } finally {
-      clearTimeout(t);
+async function httpAttempt(url: string, timeoutMs: number): Promise<MarketAttempt> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: "application/json", "user-agent": UA } });
+    if (res.status === 404) return { status: "not_found" };
+    if (res.status === 429) {
+      return { status: "retryable", retryAfterMs: parseRetryAfterMs(res.headers.get("retry-after"), Date.now()) };
     }
+    if (!res.ok) return { status: "retryable", retryAfterMs: null }; // 5xx / other transient
+    const json = (await res.json()) as { market?: Record<string, unknown> };
+    const market = json?.market;
+    if (!market || typeof market !== "object") return { status: "retryable", retryAfterMs: null }; // malformed
+    return { status: "ok", market: market as OfficialMarket };
+  } catch {
+    return { status: "retryable", retryAfterMs: null }; // timeout / network
+  } finally {
+    clearTimeout(t);
   }
-  return { ok: false, reason: sawNotFound ? "not_found" : "unavailable" };
+}
+
+/**
+ * Fetch ONE market by exact ticker from the public API — conservatively. The
+ * judgement (bounded attempt budget, host rotation, backoff, `Retry-After`) lives in
+ * the pure `fetchMarketViaHosts`; this wrapper only injects the real HTTP attempt and
+ * a real sleep. A 404 is `not_found`; an exhausted budget is `unavailable` — never a
+ * mismatch. `attempt`/`sleep` are injectable so tests drive it without the network or
+ * real waiting.
+ */
+export async function kalshiFetchMarket(
+  ticker: string,
+  opts: { timeoutMs?: number; attempt?: FetchDeps["attempt"]; sleep?: FetchDeps["sleep"] } & FetchPacing = {},
+): Promise<FetchOutcome> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const attempt = opts.attempt ?? ((url: string) => httpAttempt(url, timeoutMs));
+  const sleep = opts.sleep ?? realSleep;
+  return fetchMarketViaHosts(KALSHI_HOSTS, ticker, { attempt, sleep }, opts);
 }
 
 /** Read-only SELECT of the windows to audit. `winner` and `official_value` are the
@@ -91,12 +114,15 @@ export async function selectLedgerWindows(days = 90): Promise<LedgerWindow[]> {
  * renderer live in the pure module.
  */
 export async function runReconciliation(
-  opts: { days?: number; concurrency?: number; fetchMarket?: (t: string) => Promise<FetchOutcome> } = {},
+  opts: { days?: number; concurrency?: number; delayMs?: number; fetchMarket?: (t: string) => Promise<FetchOutcome> } = {},
 ): Promise<ReconReport> {
   const days = opts.days ?? 90;
   const rows = await selectLedgerWindows(days);
+  // Conservative by default: sequential (concurrency 1) with inter-market spacing, so
+  // a bulk run never bursts into Kalshi's rate limiter. Callers may override.
   const results = await reconcileWindows(rows, opts.fetchMarket ?? kalshiFetchMarket, {
-    concurrency: opts.concurrency ?? 4,
+    concurrency: opts.concurrency ?? RECONCILE_CONCURRENCY_DEFAULT,
+    delayMs: opts.delayMs,
   });
   const closes = rows.map((r) => r.close_time_ms).filter((n) => Number.isFinite(n));
   return {

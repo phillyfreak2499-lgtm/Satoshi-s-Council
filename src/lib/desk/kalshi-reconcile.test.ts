@@ -10,11 +10,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   classifyReconciliation,
+  fetchMarketViaHosts,
+  INTER_MARKET_DELAY_MS_DEFAULT,
+  parseRetryAfterMs,
   reconcileWindows,
   renderReconReport,
   summarize,
   type FetchOutcome,
   type LedgerWindow,
+  type MarketAttempt,
   type OfficialMarket,
   type ReconReport,
 } from "./kalshi-reconcile.ts";
@@ -293,4 +297,157 @@ test("CLI report: renderReconReport emits a machine-readable JSON line then evid
   assert.ok(body.includes("WINNER_MISMATCH"), "the mismatch is reported with evidence");
   assert.ok(body.includes("EXTERNAL_UNAVAILABLE"), "the unavailable row is reported");
   assert.ok(!/\bMATCH\b\t/.test(body), "the clean MATCH is not listed as a failure");
+});
+
+// ---------------------------------------------------------------------------
+// S2-7A — transport hardening (pacing + bounded retries). The HTTP attempt and
+// the sleep are injected, so these never touch the network and never wait.
+// ---------------------------------------------------------------------------
+
+const HOSTS = ["https://a.example/trade-api/v2", "https://b.example/trade-api/v2", "https://c.example/trade-api/v2"];
+const settled = (): OfficialMarket => market({ result: "yes" });
+
+/** An injected attempt that replays a sequence (repeating the last entry) and records URLs. */
+function attemptsFrom(seq: MarketAttempt[]) {
+  const urls: string[] = [];
+  let i = 0;
+  const attempt = async (url: string): Promise<MarketAttempt> => {
+    urls.push(url);
+    return seq[Math.min(i++, seq.length - 1)]!;
+  };
+  return { attempt, urls };
+}
+function recordSleep() {
+  const calls: number[] = [];
+  return { calls, sleep: async (ms: number): Promise<void> => void calls.push(ms) };
+}
+
+test("T1: one 200 succeeds immediately — no retry, no sleep", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(urls.length, 1);
+  assert.equal(calls.length, 0, "no backoff on a clean success");
+});
+
+test("T2: 429 then 200 succeeds after one retry", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(urls.length, 2);
+  assert.equal(calls.length, 1, "one backoff between the two attempts");
+  assert.equal(calls[0], 400, "first backoff is the base");
+});
+
+test("T3: Retry-After is honored (sleeps the server-provided delay)", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: 1500 }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.deepEqual(calls, [1500], "the Retry-After value is slept, not the exponential default");
+});
+
+test("T4: 503 then 200 succeeds after retry", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test("T5: timeout/network then 200 succeeds after retry", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test("T6: repeated transient failure returns EXTERNAL_UNAVAILABLE, bounded, with exponential backoff", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }]); // always transient
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, false);
+  assert.equal((r as { reason: string }).reason, "unavailable");
+  assert.equal(urls.length, 3, "total attempts are bounded (default 3 per market)");
+  assert.deepEqual(calls, [400, 800], "exponential backoff between attempts, none after the last");
+});
+
+test("T6b: backoff is capped", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: null }]);
+  const { calls, sleep } = recordSleep();
+  await fetchMarketViaHosts(HOSTS, T, { attempt, sleep }, { maxAttempts: 5, baseBackoffMs: 1000, maxBackoffMs: 3000 });
+  assert.deepEqual(calls, [1000, 2000, 3000, 3000], "doubling, then held at the cap");
+});
+
+test("T7: a 404 does not spin — bounded host rotation, no backoff, returns not_found", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "not_found" }]); // every host 404s
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, false);
+  assert.equal((r as { reason: string }).reason, "not_found");
+  assert.equal(urls.length, 3, "tried each host once, no indefinite retry");
+  assert.equal(calls.length, 0, "a 404 is never backed off");
+});
+
+test("T8: the exact market endpoint is unchanged and hosts rotate — no query, no history path", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }]);
+  const { sleep } = recordSleep();
+  await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(urls[0], `${HOSTS[0]}/markets/${encodeURIComponent(T)}`);
+  assert.equal(urls[1], `${HOSTS[1]}/markets/${encodeURIComponent(T)}`, "attempts rotate across hosts");
+  assert.equal(urls[2], `${HOSTS[2]}/markets/${encodeURIComponent(T)}`);
+  for (const u of urls) {
+    assert.ok(u.endsWith(`/markets/${encodeURIComponent(T)}`), "exact /markets/{ticker} endpoint");
+    assert.ok(!u.includes("?"), "no query string");
+    assert.ok(!/history|historical|settlements?/.test(u), "never a historical endpoint");
+  }
+});
+
+test("parseRetryAfterMs: delta-seconds, HTTP-date, and junk", () => {
+  assert.equal(parseRetryAfterMs("2", 0), 2000);
+  assert.equal(parseRetryAfterMs("0", 0), 0);
+  assert.equal(parseRetryAfterMs(null, 0), null);
+  assert.equal(parseRetryAfterMs("", 0), null);
+  assert.equal(parseRetryAfterMs("soon", 0), null);
+  const now = Date.parse("2026-09-12T00:00:00Z");
+  const ms = parseRetryAfterMs(new Date(now + 5000).toUTCString(), now);
+  assert.ok(ms !== null && ms >= 4000 && ms <= 6000, "HTTP-date resolves to ~5s ahead");
+});
+
+test("reconcileWindows defaults to sequential (concurrency 1) and paces between fetches", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const { calls, sleep } = recordSleep();
+  const fetchMarket = async (): Promise<FetchOutcome> => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await Promise.resolve(); // yield so overlapping workers (if any) would be observed
+    inFlight -= 1;
+    return { ok: true, market: settled() };
+  };
+  const rows: LedgerWindow[] = [win({}), win({}), win({})];
+  await reconcileWindows(rows, fetchMarket, { sleep });
+  assert.equal(maxInFlight, 1, "default concurrency is 1 — no overlapping external requests");
+  assert.equal(calls.length, 2, "paced between the 3 fetches (no delay before the first)");
+  assert.ok(calls.every((ms) => ms === INTER_MARKET_DELAY_MS_DEFAULT), "default inter-market spacing");
+});
+
+test("reconcileWindows does not pace for skipped (not-fetched) rows", async () => {
+  const { calls, sleep } = recordSleep();
+  let fetches = 0;
+  const fetchMarket = async (): Promise<FetchOutcome> => {
+    fetches += 1;
+    return { ok: true, market: settled() };
+  };
+  const rows: LedgerWindow[] = [
+    win({ close_time_ms: C + 900_000 }), // stale ticker → skipped, not fetched
+    win({}), // fetched (first real fetch, no leading pace)
+    win({}), // fetched (paced once)
+  ];
+  await reconcileWindows(rows, fetchMarket, { sleep });
+  assert.equal(fetches, 2, "only the two valid rows are fetched");
+  assert.equal(calls.length, 1, "one pace between the two real fetches; the skip costs none");
 });

@@ -2277,9 +2277,11 @@ test("S2-7: historical reconciliation takes external truth from Kalshi, never th
   const pure = codeOf("src/lib/desk/kalshi-reconcile.ts");
   const server = codeOf("src/lib/desk/kalshi-reconcile.server.ts");
 
-  // (1) External truth comes from the Kalshi public fetch path.
+  // (1) External truth comes from the Kalshi public fetch path. The host list lives
+  // in the server; the exact per-market URL is built by the pure orchestrator (S2-7A
+  // moved the request template into kalshi-reconcile.ts so it is unit-testable).
   assert.match(server, /kalshi\.com\/trade-api\/v2/, "the server runner fetches the Kalshi public market path");
-  assert.match(server, /\/markets\/\$\{encodeURIComponent\(ticker\)\}/, "it fetches the EXACT market by ticker");
+  assert.match(pure, /\/markets\/\$\{encodeURIComponent\(ticker\)\}/, "it fetches the EXACT market by ticker");
 
   // (2) The authoritative (external) winner/value are read from the payload `m.`,
   // never from a desk_ledger field. The internal side is only ever `internal.`.
@@ -2380,4 +2382,39 @@ test("S2-7: the reconciliation is reachable ONLY as a manual, read-only CLI — 
     assert.ok(!code.includes("reconcile-kalshi"), `${rel} must not import the manual reconciliation CLI`);
     assert.ok(!/runReconciliation/.test(code), `${rel} must not invoke runReconciliation`);
   }
+});
+
+test("S2-7A: the manual auditor's transport is conservative — low concurrency, paced, bounded retries, Retry-After, no historical endpoint", () => {
+  const pure = codeOf("src/lib/desk/kalshi-reconcile.ts");
+  const server = codeOf("src/lib/desk/kalshi-reconcile.server.ts");
+
+  // (1) Conservative default concurrency (1), used by both the batch and the runner.
+  assert.match(pure, /RECONCILE_CONCURRENCY_DEFAULT = 1\b/, "default reconciliation concurrency is 1");
+  assert.match(pure, /opts\.concurrency \?\? RECONCILE_CONCURRENCY_DEFAULT/, "reconcileWindows uses the conservative default");
+  assert.match(server, /concurrency: opts\.concurrency \?\? RECONCILE_CONCURRENCY_DEFAULT/, "the runner defaults to the conservative concurrency (no hardcoded burst)");
+
+  // (2) Bounded inter-market pacing exists and is injectable for tests.
+  assert.match(pure, /INTER_MARKET_DELAY_MS_DEFAULT = \d+/, "an inter-market delay default exists");
+  assert.match(pure, /delayMs\?: number; sleep\?: \(ms: number\) => Promise<void>/, "reconcileWindows accepts an injectable delay + sleep");
+  assert.match(pure, /await sleep\(delayMs\)/, "the batch paces between fetches");
+
+  // (3) Bounded retries with exponential backoff, and Retry-After honored.
+  assert.match(pure, /function fetchMarketViaHosts\(/, "the conservative fetch orchestrator exists");
+  assert.match(pure, /MAX_ATTEMPTS_PER_MARKET_DEFAULT = [1-4]\b/, "the per-market attempt budget is small and bounded");
+  assert.match(pure, /base \* 2 \*\* i/, "exponential backoff between transient attempts");
+  assert.match(pure, /Math\.min\(cap, base \* 2 \*\* i\)/, "backoff is capped");
+  assert.match(pure, /r\.retryAfterMs != null/, "Retry-After is honored when present");
+  assert.match(pure, /function parseRetryAfterMs\(/, "Retry-After parsing is a pure, tested helper");
+  // A 404 is not retried with backoff: its branch continues without sleeping.
+  assert.match(pure, /if \(r\.status === "not_found"\) \{\s*sawNotFound = true;\s*continue;/, "a 404 rotates hosts without backoff, never spins");
+
+  // (4) The exact endpoint is unchanged and there is no historical endpoint anywhere.
+  assert.match(pure, /\/markets\/\$\{encodeURIComponent\(ticker\)\}/, "the exact /markets/{ticker} endpoint");
+  for (const [rel, src] of [["kalshi-reconcile.ts", pure], ["kalshi-reconcile.server.ts", server]]) {
+    assert.ok(!/\/history\b|historical|\/settlements?\b/.test(src), `${rel} must not use a historical endpoint`);
+  }
+  // (5) The server transport maps 429 to a retry carrying the parsed Retry-After.
+  assert.match(server, /res\.status === 429/, "429 is recognized at the transport edge");
+  assert.match(server, /parseRetryAfterMs\(res\.headers\.get\("retry-after"\)/, "the server parses the Retry-After header");
+  assert.match(server, /fetchMarketViaHosts\(KALSHI_HOSTS/, "the live client delegates to the conservative orchestrator");
 });
