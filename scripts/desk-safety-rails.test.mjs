@@ -2214,3 +2214,33 @@ test("S2-5: no provider-origin timestamp is invented; the quote clock is named a
   assert.ok(!/provider_ts/.test(writer), "the writer reads no provider_ts");
   assert.match(pure, /quote_last_change_ms: hasQuoteClock \? Math\.round\(qts\) : null/, "quote_ts is stored as a last-change clock, NULL when absent");
 });
+
+test("S2-5: a contradictory (ticker, close) window is refused via the shared tickerAgrees invariant", () => {
+  // S2-5 follow-up (rollover identity). The stale-ticker/new-close pair the feed emits
+  // for a tick or two after a window boundary must never be measured — and the refusal
+  // must reuse the repo's existing invariant, never a local parser.
+  const writer = codeOf("src/lib/desk/decision-snapshot-writer.ts");
+  assert.match(writer, /import \{ tickerAgrees \} from "\.\/window-identity\.ts";/, "the writer reuses the shared tickerAgrees");
+  // No local ticker parsing may stand in for the invariant.
+  assert.ok(!writer.includes(".exec("), "no local regex ticker parse in the writer");
+  assert.ok(!writer.includes("tickerCloseMs"), "the writer does not re-implement ticker-time parsing");
+  // The guard refuses ONLY a positive disagreement (=== false), and runs BEFORE the
+  // per-window chain / freeze / insert, so a mismatched pair cannot flow into persistence.
+  const recordBody = writer.slice(writer.indexOf("function record("));
+  const iGuard = recordBody.indexOf("tickerAgrees(row.ticker, row.close_time_ms) === false");
+  const iChain = recordBody.indexOf("chains.get(key)");
+  assert.ok(iGuard >= 0, "the writer guards on tickerAgrees === false");
+  assert.ok(iChain > iGuard, "the identity guard precedes the chain/freeze/insert");
+
+  // The engine capture emits a deduplicated, named breadcrumb and skips — before the writer call.
+  const eng = codeOf("src/lib/desk/server-engine.ts");
+  const nds = eng.slice(eng.indexOf("function noteDecisionSnapshot"), eng.indexOf("async function tick("));
+  assert.ok(nds.length > 0, "noteDecisionSnapshot exists");
+  const iEngGuard = nds.indexOf("tickerAgrees(snap.ticker, snap.close_time) === false");
+  const iRecord = nds.indexOf("recordDecisionSnapshot(row)");
+  assert.ok(iEngGuard >= 0, "the engine guards on the same invariant");
+  assert.ok(iRecord > iEngGuard, "the guard precedes recordDecisionSnapshot (the contradictory tick is skipped)");
+  assert.match(nds, /"decision-snapshot-identity"/, "a named identity breadcrumb scope");
+  assert.match(nds, /"ticker-close-time-mismatch"/, "names the mismatch");
+  assert.match(eng, /lastDecisionIdentityKey/, "the breadcrumb is deduplicated, not spammed every tick");
+});

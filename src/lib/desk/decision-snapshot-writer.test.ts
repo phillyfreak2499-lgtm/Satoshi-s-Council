@@ -13,12 +13,14 @@ import { createDecisionWriter, type DecisionStore, type PersistedWindow } from "
 import type { DecisionSnapshotRow } from "./decision-snapshot.ts";
 import type { Lean } from "./types.ts";
 
+// Ticker and close AGREE: KXBTC15M-26SEP111800-00 encodes 18:00 America/New_York =
+// 22:00Z, so tickerAgrees(T, C) === true and the identity guard lets these through.
 const T = "KXBTC15M-26SEP111800-00";
-const C = 1_700_000_900_000;
+const C = Date.parse("2026-09-11T22:00:00Z");
 
-function row(lean: Lean, at: number, closeMs = C): DecisionSnapshotRow {
+function row(lean: Lean, at: number, closeMs = C, ticker = T): DecisionSnapshotRow {
   // The writer reads only ticker, close_time_ms, decision_at_ms, chair_lean.
-  return { ticker: T, close_time_ms: closeMs, decision_at_ms: at, chair_lean: lean } as DecisionSnapshotRow;
+  return { ticker, close_time_ms: closeMs, decision_at_ms: at, chair_lean: lean } as DecisionSnapshotRow;
 }
 
 function deferred(): { p: Promise<void>; resolve: () => void } {
@@ -177,11 +179,124 @@ test("restart: a persisted directional OPENING produces no FIRST_DIRECTIONAL", a
 test("a neighbouring window is never touched by another window's writes", async () => {
   const store = fakeStore();
   const w = createDecisionWriter(store);
+  // Two real adjacent windows, each with its OWN agreeing ticker (18:00Z→22:00Z and
+  // 18:15Z→22:15Z), so both pass the identity guard.
   const C2 = C + 900_000;
-  await w.record(row("WAIT", 1_000, C));
-  await w.record(row("UP", 1_100, C2));
+  const T2 = "KXBTC15M-26SEP111815-00";
+  await w.record(row("WAIT", 1_000, C, T));
+  await w.record(row("UP", 1_100, C2, T2));
   const c1 = store.rows.filter((r) => r.closeMs === C);
   const c2 = store.rows.filter((r) => r.closeMs === C2);
   assert.deepEqual(c1.map((r) => [r.kind, r.lean]), [["OPENING", "WAIT"]], "c1 has only its WAIT opening");
   assert.deepEqual(c2.map((r) => [r.kind, r.lean]), [["OPENING", "UP"]], "c2 has only its UP opening");
+});
+
+// --- S2-5 follow-up: window-identity guard at rollover ----------------------
+// These exercise the pure writer's identity guard (tickerAgrees === false → skip).
+// Tickers that AGREE with their close pass; a stale-ticker/new-close pair is refused
+// without freezing OPENING; an unparseable ticker is NOT refused.
+
+const STALE = "KXBTC15M-26SEP111800-00"; // encodes 22:00Z
+const NEWCLOSE = C + 900_000; //           22:15Z — disagrees with STALE by 900s
+const FRESH = "KXBTC15M-26SEP111815-00"; // encodes 22:15Z — agrees with NEWCLOSE
+
+test("I1: a stale-ticker / new-close pair is refused — no OPENING, no FIRST_DIRECTIONAL", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  await w.record(row("WAIT", 1_000, NEWCLOSE, STALE)); // tickerAgrees === false
+  await w.record(row("UP", 2_000, NEWCLOSE, STALE)); // still contradictory
+  assert.equal(store.rows.length, 0, "no row persists for a contradictory window");
+  assert.equal(store.inserts.length, 0, "the contradictory pair never reaches an insert");
+});
+
+test("I2: an invalid rollover tick cannot reserve OPENING; the valid ticker records it", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  await w.record(row("WAIT", 1_000, NEWCLOSE, STALE)); // invalid: old ticker + new close
+  await w.record(row("WAIT", 2_000, NEWCLOSE, FRESH)); // valid: correct ticker + new close
+  const openings = store.rows.filter((r) => r.kind === "OPENING");
+  assert.equal(openings.length, 1, "exactly one OPENING for the real window");
+  assert.equal(openings[0]!.ticker, FRESH, "OPENING is the valid-ticker tick, not the stale one");
+  assert.equal(openings[0]!.at, 2_000, "the invalid t1 left no frozen OPENING to win");
+});
+
+test("I3: a correct exact pair still records normally", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  await w.record(row("UP", 1_000, C, T)); // agrees
+  const openings = store.rows.filter((r) => r.kind === "OPENING");
+  assert.equal(openings.length, 1);
+  assert.equal(openings[0]!.lean, "UP");
+});
+
+test("I4: an unparseable ticker is NOT refused (tickerAgrees === null)", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  await w.record(row("WAIT", 1_000, C, "KXBTC15M-—")); // the live.ts dark-ticker fallback
+  const openings = store.rows.filter((r) => r.kind === "OPENING");
+  assert.equal(openings.length, 1, "an unreadable ticker must not be fatal to measurement");
+  assert.equal(openings[0]!.lean, "WAIT");
+});
+
+test("I5: a valid OPENING WAIT still persists", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  await w.record(row("WAIT", 1_000, C, T));
+  assert.deepEqual(
+    store.rows.map((r) => [r.kind, r.lean]),
+    [["OPENING", "WAIT"]],
+  );
+});
+
+test("I6: a valid OPENING WAIT then UP still yields FIRST_DIRECTIONAL", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  await w.record(row("WAIT", 1_000, C, T));
+  await w.record(row("UP", 2_000, C, T));
+  assert.deepEqual(
+    store.rows.map((r) => [r.kind, r.lean]),
+    [["OPENING", "WAIT"], ["FIRST_DIRECTIONAL", "UP"]],
+  );
+});
+
+test("I7: restart with a persisted valid OPENING WAIT still permits FIRST_DIRECTIONAL", async () => {
+  const store = fakeStore();
+  store.rows.push({ ticker: T, closeMs: C, kind: "OPENING", lean: "WAIT", at: 1_000 });
+  const w = createDecisionWriter(store);
+  await w.record(row("UP", 5_000, C, T));
+  assert.equal(store.rows.filter((r) => r.kind === "FIRST_DIRECTIONAL").length, 1);
+});
+
+test("I8: the identity guard keys only on ticker/close, independent of chair_lean", async () => {
+  // A contradictory pair is refused for every lean; a valid pair is accepted for every
+  // lean. The guard never looks at the Chair's decision (I9/I10: Chair/booking untouched).
+  for (const lean of ["WAIT", "UP", "DOWN"] as Lean[]) {
+    const bad = fakeStore();
+    await createDecisionWriter(bad).record(row(lean, 1_000, NEWCLOSE, STALE));
+    assert.equal(bad.rows.length, 0, `contradictory pair refused for lean=${lean}`);
+    const ok = fakeStore();
+    await createDecisionWriter(ok).record(row(lean, 1_000, C, T));
+    assert.equal(ok.rows.length, 1, `valid pair accepted for lean=${lean}`);
+  }
+});
+
+test("production-shaped rollover: 03:30 valid, stale 03:45 refused, correct 03:45 valid → two rows", async () => {
+  const store = fakeStore();
+  const w = createDecisionWriter(store);
+  const close330 = Date.parse("2026-09-12T03:30:00Z");
+  const close345 = Date.parse("2026-09-12T03:45:00Z");
+  const t2330 = "KXBTC15M-26SEP112330-30"; // encodes 03:30Z
+  const t2345 = "KXBTC15M-26SEP112345-45"; // encodes 03:45Z
+  // 03:29:20 — valid OPENING for the 03:30 window
+  await w.record(row("WAIT", Date.parse("2026-09-12T03:29:20.267Z"), close330, t2330));
+  // 03:30:04 — close advanced to 03:45 but ticker still 2330 → refused (the known bad row)
+  await w.record(row("WAIT", Date.parse("2026-09-12T03:30:04.050Z"), close345, t2330));
+  // 03:30:12 — correct 03:45 ticker → valid OPENING for the 03:45 window
+  await w.record(row("WAIT", Date.parse("2026-09-12T03:30:12.005Z"), close345, t2345));
+
+  const openings = store.rows.filter((r) => r.kind === "OPENING");
+  assert.equal(openings.length, 2, "two OPENINGs, not three — the contradictory pair is dropped");
+  const byClose = Object.fromEntries(openings.map((r) => [r.closeMs, r.ticker]));
+  assert.equal(byClose[close330], t2330, "03:30 window → its own 2330 ticker");
+  assert.equal(byClose[close345], t2345, "03:45 window → the correct 2345 ticker, never the stale 2330");
 });
