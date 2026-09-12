@@ -56,6 +56,131 @@ export type FetchOutcome =
   | { ok: true; market: OfficialMarket }
   | { ok: false; reason: "unavailable" | "not_found" };
 
+/**
+ * The result of ONE HTTP attempt against one host, as the server's transport edge
+ * reports it.
+ *   - `ok`          — 200 with a parsed market object.
+ *   - `not_found`   — 404 (rotate hosts, never back off, bounded; a real absence).
+ *   - `retryable`   — 429 / 5xx / timeout / network / malformed: back off and try
+ *                     again. `retryAfterMs` is the server-parsed `Retry-After`, in ms,
+ *                     when the response carried one.
+ *   - `fatal`       — a clear NON-retryable response (a non-429 4xx: 400/401/403/…).
+ *                     Retrying will not help, so the orchestrator stops immediately
+ *                     rather than spinning or storming the other hosts.
+ */
+export type MarketAttempt =
+  | { status: "ok"; market: OfficialMarket }
+  | { status: "not_found" }
+  | { status: "retryable"; retryAfterMs: number | null }
+  | { status: "fatal" };
+
+/** Conservative transport defaults for the MANUAL auditor — deliberately gentle so a
+ *  bulk run never bursts into Kalshi's rate limiter. */
+export const RECONCILE_CONCURRENCY_DEFAULT = 1;
+export const INTER_MARKET_DELAY_MS_DEFAULT = 150;
+export const MAX_ATTEMPTS_PER_MARKET_DEFAULT = 3; // total attempts across hosts, per market
+export const BASE_BACKOFF_MS_DEFAULT = 400;
+export const MAX_BACKOFF_MS_DEFAULT = 8_000;
+/** Honor `Retry-After`, but never stall the auditor on a pathological value. */
+export const RETRY_AFTER_CAP_MS = 60_000;
+
+export type FetchPacing = {
+  maxAttempts?: number;
+  baseBackoffMs?: number;
+  maxBackoffMs?: number;
+};
+
+/** The injected edges the pure orchestrator needs: one HTTP attempt, and a sleep. */
+export type FetchDeps = {
+  attempt: (url: string) => Promise<MarketAttempt>;
+  sleep: (ms: number) => Promise<void>;
+};
+
+/**
+ * Parse a `Retry-After` header value to ms, or null. Kalshi (and HTTP) allow either
+ * delta-seconds (`"2"`) or an HTTP-date. Pure: the caller supplies `nowMs` so the
+ * date form is deterministic and testable. A non-finite/negative result is null.
+ */
+export function parseRetryAfterMs(value: string | null | undefined, nowMs: number): number | null {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (s === "") return null;
+  if (/^\d+$/.test(s)) return Number(s) * 1000;
+  const at = Date.parse(s);
+  if (!Number.isFinite(at)) return null;
+  return Math.max(0, at - nowMs);
+}
+
+/**
+ * Classify an HTTP response's status into a MarketAttempt, independent of the body.
+ * Pure and testable with a mock response.
+ *   - 404                 → `not_found`
+ *   - 429 OR any 5xx      → `retryable`, carrying the parsed `Retry-After` (ms) when
+ *                           the header is present — for EITHER case, not just 429.
+ *   - any other non-ok    → `fatal` (a non-429 4xx: 400/401/403/…).
+ *   - 2xx                 → `null`: the caller must read the body for the market.
+ * `retryAfterMs` is only a hint; the orchestrator still caps it (RETRY_AFTER_CAP_MS).
+ */
+export function classifyHttpStatus(
+  status: number,
+  ok: boolean,
+  retryAfterHeader: string | null,
+  nowMs: number,
+): MarketAttempt | null {
+  if (status === 404) return { status: "not_found" };
+  if (status === 429 || status >= 500) {
+    return { status: "retryable", retryAfterMs: parseRetryAfterMs(retryAfterHeader, nowMs) };
+  }
+  if (!ok) return { status: "fatal" };
+  return null; // 2xx — read the body
+}
+
+/**
+ * Fetch ONE market by exact ticker, conservatively. A bounded TOTAL attempt budget
+ * (default 3) rotates across the hosts — so failover is preserved without turning a
+ * failure into an immediate all-hosts request storm — backing off between transient
+ * attempts (honoring `Retry-After`, else exponential with a cap). A 404 rotates hosts
+ * within the budget but never backs off and never spins. When the budget is spent the
+ * outcome is `unavailable` (or `not_found` if every attempt was a 404). Pure: the HTTP
+ * attempt and the sleep are injected, so tests drive it with fixtures and never wait.
+ */
+export async function fetchMarketViaHosts(
+  hosts: readonly string[],
+  ticker: string,
+  deps: FetchDeps,
+  opts: FetchPacing = {},
+): Promise<FetchOutcome> {
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? MAX_ATTEMPTS_PER_MARKET_DEFAULT);
+  const base = opts.baseBackoffMs ?? BASE_BACKOFF_MS_DEFAULT;
+  const cap = opts.maxBackoffMs ?? MAX_BACKOFF_MS_DEFAULT;
+  const ring = hosts.length > 0 ? hosts : [""];
+  let sawNotFound = false;
+  let sawTransient = false;
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const host = ring[i % ring.length]!;
+    const url = `${host}/markets/${encodeURIComponent(ticker)}`;
+    const r = await deps.attempt(url);
+    if (r.status === "ok") return { ok: true, market: r.market };
+    if (r.status === "fatal") return { ok: false, reason: "unavailable" }; // non-retryable (non-429 4xx): stop, never spin or rotate
+    if (r.status === "not_found") {
+      sawNotFound = true;
+      continue; // rotate to the next host; a 404 is never retried with backoff
+    }
+    // retryable: back off before the next attempt, unless the budget is spent.
+    sawTransient = true;
+    if (i < maxAttempts - 1) {
+      const backoff =
+        r.retryAfterMs != null
+          ? Math.min(r.retryAfterMs, RETRY_AFTER_CAP_MS)
+          : Math.min(cap, base * 2 ** i);
+      await deps.sleep(backoff);
+    }
+  }
+  // `not_found` ONLY when every attempt was a 404. A transient mixed in with 404s —
+  // and no successful payload — is absence-of-a-trustworthy-answer, i.e. `unavailable`.
+  return { ok: false, reason: sawNotFound && !sawTransient ? "not_found" : "unavailable" };
+}
+
 /** The binary-outcome classification (question A). */
 export type WinnerClass =
   | "MATCH"
@@ -384,11 +509,35 @@ export type FetchMarket = (ticker: string) => Promise<FetchOutcome>;
 export async function reconcileWindows(
   rows: readonly LedgerWindow[],
   fetchMarket: FetchMarket,
-  opts: { concurrency?: number } = {},
+  opts: { concurrency?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<ReconResult[]> {
-  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 4, 8));
+  // CONSERVATIVE BY DEFAULT. This is a manual bulk auditor, not a hot path: it runs
+  // sequentially (concurrency 1) and spaces its external fetches, so a full run never
+  // bursts into Kalshi's rate limiter. A caller may raise concurrency, but the ceiling
+  // stays low on purpose.
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? RECONCILE_CONCURRENCY_DEFAULT, 8));
+  const delayMs = Math.max(0, opts.delayMs ?? INTER_MARKET_DELAY_MS_DEFAULT);
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const out: ReconResult[] = new Array(rows.length);
   let next = 0;
+
+  // ONE shared pacing gate across the whole batch. Fetch STARTS are globally spaced
+  // by delayMs regardless of concurrency, so an override above 1 cannot fire an
+  // initial burst: the gate is a single promise chain that every worker acquires
+  // before starting a fetch. The FIRST start takes no leading sleep; each later start
+  // waits delayMs after the previous. Only the START is gated — the fetch itself and
+  // all classification/CPU run concurrently, never serialized by this.
+  let gate: Promise<void> = Promise.resolve();
+  let startedFetches = 0;
+  const paceStart = (): Promise<void> => {
+    const mine = gate.then(async () => {
+      if (startedFetches > 0 && delayMs > 0) await sleep(delayMs);
+      startedFetches += 1;
+    });
+    gate = mine;
+    return mine;
+  };
+
   async function worker(): Promise<void> {
     for (;;) {
       const i = next++;
@@ -396,11 +545,12 @@ export async function reconcileWindows(
       const row = rows[i]!;
       // A row that is internally invalid or missing our outcome is NOT fetched —
       // there is nothing external can decide for it, and we must not let another
-      // market answer for it.
+      // market answer for it. Skipped rows cost no request and no pacing slot.
       if (tickerAgrees(row.ticker, row.close_time_ms) === false || !(row.winner === "UP" || row.winner === "DOWN")) {
         out[i] = classifyReconciliation(row, { ok: false, reason: "unavailable" });
         continue;
       }
+      await paceStart(); // globally spaced fetch start (shared across all workers)
       let fetched: FetchOutcome;
       try {
         fetched = await fetchMarket(row.ticker);

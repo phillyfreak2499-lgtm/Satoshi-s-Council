@@ -9,12 +9,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  classifyHttpStatus,
   classifyReconciliation,
+  fetchMarketViaHosts,
+  INTER_MARKET_DELAY_MS_DEFAULT,
+  parseRetryAfterMs,
   reconcileWindows,
   renderReconReport,
   summarize,
   type FetchOutcome,
   type LedgerWindow,
+  type MarketAttempt,
   type OfficialMarket,
   type ReconReport,
 } from "./kalshi-reconcile.ts";
@@ -293,4 +298,248 @@ test("CLI report: renderReconReport emits a machine-readable JSON line then evid
   assert.ok(body.includes("WINNER_MISMATCH"), "the mismatch is reported with evidence");
   assert.ok(body.includes("EXTERNAL_UNAVAILABLE"), "the unavailable row is reported");
   assert.ok(!/\bMATCH\b\t/.test(body), "the clean MATCH is not listed as a failure");
+});
+
+// ---------------------------------------------------------------------------
+// S2-7A — transport hardening (pacing + bounded retries). The HTTP attempt and
+// the sleep are injected, so these never touch the network and never wait.
+//
+// PRODUCTION REGRESSION CONTEXT (KXBTC15M-26SEP120615-15): in prod a single
+// kalshiFetchMarket() for this ticker returned a finalized 200 payload, while the
+// bulk `npm run reconcile:kalshi` reported EXTERNAL_UNAVAILABLE for it — isolating
+// the defect to bulk transport (concurrency/pacing/backoff), not the endpoint, not
+// egress, not classifier semantics. These tests pin the conservative transport that
+// fixes that, driven entirely by fixtures (the ticker's real outcome is never a
+// hardcoded truth here — it is transport regression context only).
+// ---------------------------------------------------------------------------
+
+const HOSTS = ["https://a.example/trade-api/v2", "https://b.example/trade-api/v2", "https://c.example/trade-api/v2"];
+const REGRESSION_TICKER = "KXBTC15M-26SEP120615-15"; // the proven single-ok / bulk-unavailable case
+const settled = (): OfficialMarket => market({ result: "yes" });
+
+/** An injected attempt that replays a sequence (repeating the last entry) and records URLs. */
+function attemptsFrom(seq: MarketAttempt[]) {
+  const urls: string[] = [];
+  let i = 0;
+  const attempt = async (url: string): Promise<MarketAttempt> => {
+    urls.push(url);
+    return seq[Math.min(i++, seq.length - 1)]!;
+  };
+  return { attempt, urls };
+}
+function recordSleep() {
+  const calls: number[] = [];
+  return { calls, sleep: async (ms: number): Promise<void> => void calls.push(ms) };
+}
+
+test("T1: one 200 succeeds immediately — no retry, no sleep", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(urls.length, 1);
+  assert.equal(calls.length, 0, "no backoff on a clean success");
+});
+
+test("T2: 429 then 200 succeeds after one retry", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(urls.length, 2);
+  assert.equal(calls.length, 1, "one backoff between the two attempts");
+  assert.equal(calls[0], 400, "first backoff is the base");
+});
+
+test("T3: Retry-After is honored (sleeps the server-provided delay)", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: 1500 }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.deepEqual(calls, [1500], "the Retry-After value is slept, not the exponential default");
+});
+
+test("T4: 503 then 200 succeeds after retry", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test("T5: timeout/network then 200 succeeds after retry", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test("T6: repeated transient failure returns EXTERNAL_UNAVAILABLE, bounded, with exponential backoff", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }]); // always transient
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, false);
+  assert.equal((r as { reason: string }).reason, "unavailable");
+  assert.equal(urls.length, 3, "total attempts are bounded (default 3 per market)");
+  assert.deepEqual(calls, [400, 800], "exponential backoff between attempts, none after the last");
+});
+
+test("T6b: backoff is capped", async () => {
+  const { attempt } = attemptsFrom([{ status: "retryable", retryAfterMs: null }]);
+  const { calls, sleep } = recordSleep();
+  await fetchMarketViaHosts(HOSTS, T, { attempt, sleep }, { maxAttempts: 5, baseBackoffMs: 1000, maxBackoffMs: 3000 });
+  assert.deepEqual(calls, [1000, 2000, 3000, 3000], "doubling, then held at the cap");
+});
+
+test("T7: a 404 does not spin — bounded host rotation, no backoff, returns not_found", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "not_found" }]); // every host 404s
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, false);
+  assert.equal((r as { reason: string }).reason, "not_found");
+  assert.equal(urls.length, 3, "tried each host once, no indefinite retry");
+  assert.equal(calls.length, 0, "a 404 is never backed off");
+});
+
+test("T8: the exact market endpoint is unchanged and hosts rotate — no query, no history path", async () => {
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }]);
+  const { sleep } = recordSleep();
+  await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(urls[0], `${HOSTS[0]}/markets/${encodeURIComponent(T)}`);
+  assert.equal(urls[1], `${HOSTS[1]}/markets/${encodeURIComponent(T)}`, "attempts rotate across hosts");
+  assert.equal(urls[2], `${HOSTS[2]}/markets/${encodeURIComponent(T)}`);
+  for (const u of urls) {
+    assert.ok(u.endsWith(`/markets/${encodeURIComponent(T)}`), "exact /markets/{ticker} endpoint");
+    assert.ok(!u.includes("?"), "no query string");
+    assert.ok(!/history|historical|settlements?/.test(u), "never a historical endpoint");
+  }
+});
+
+test("T9: a non-retryable 4xx (400/401/403) is fatal — one attempt, no retry, no spin, no rotation", async () => {
+  for (const _status of [400, 401, 403]) {
+    const { attempt, urls } = attemptsFrom([{ status: "fatal" }]);
+    const { calls, sleep } = recordSleep();
+    const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+    assert.equal(r.ok, false);
+    assert.equal((r as { reason: string }).reason, "unavailable");
+    assert.equal(urls.length, 1, "stops on the first attempt — no retry, no host rotation");
+    assert.equal(calls.length, 0, "a fatal response is never backed off");
+  }
+});
+
+test("T18: production regression fixture — the conservative path handles the proven bulk-failure ticker", async () => {
+  // KXBTC15M-26SEP120615-15: single fetch succeeded in prod while bulk reported
+  // EXTERNAL_UNAVAILABLE. With the hardened path, a transient-then-200 for that exact
+  // ticker retries and resolves (its real outcome is NOT asserted as production truth).
+  const { attempt, urls } = attemptsFrom([{ status: "retryable", retryAfterMs: null }, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, REGRESSION_TICKER, { attempt, sleep });
+  assert.equal(r.ok, true, "a transient blip under bulk load is retried, not collapsed to unavailable");
+  assert.ok(urls[0]!.endsWith(`/markets/${encodeURIComponent(REGRESSION_TICKER)}`), "exact endpoint for the regression ticker");
+  assert.equal(calls.length, 1, "one bounded backoff");
+});
+
+test("parseRetryAfterMs: delta-seconds, HTTP-date, and junk", () => {
+  assert.equal(parseRetryAfterMs("2", 0), 2000);
+  assert.equal(parseRetryAfterMs("0", 0), 0);
+  assert.equal(parseRetryAfterMs(null, 0), null);
+  assert.equal(parseRetryAfterMs("", 0), null);
+  assert.equal(parseRetryAfterMs("soon", 0), null);
+  const now = Date.parse("2026-09-12T00:00:00Z");
+  const ms = parseRetryAfterMs(new Date(now + 5000).toUTCString(), now);
+  assert.ok(ms !== null && ms >= 4000 && ms <= 6000, "HTTP-date resolves to ~5s ahead");
+});
+
+test("reconcileWindows defaults to sequential (concurrency 1) and paces between fetches", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const { calls, sleep } = recordSleep();
+  const fetchMarket = async (): Promise<FetchOutcome> => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await Promise.resolve(); // yield so overlapping workers (if any) would be observed
+    inFlight -= 1;
+    return { ok: true, market: settled() };
+  };
+  const rows: LedgerWindow[] = [win({}), win({}), win({})];
+  await reconcileWindows(rows, fetchMarket, { sleep });
+  assert.equal(maxInFlight, 1, "default concurrency is 1 — no overlapping external requests");
+  assert.equal(calls.length, 2, "paced between the 3 fetches (no delay before the first)");
+  assert.ok(calls.every((ms) => ms === INTER_MARKET_DELAY_MS_DEFAULT), "default inter-market spacing");
+});
+
+test("reconcileWindows does not pace for skipped (not-fetched) rows", async () => {
+  const { calls, sleep } = recordSleep();
+  let fetches = 0;
+  const fetchMarket = async (): Promise<FetchOutcome> => {
+    fetches += 1;
+    return { ok: true, market: settled() };
+  };
+  const rows: LedgerWindow[] = [
+    win({ close_time_ms: C + 900_000 }), // stale ticker → skipped, not fetched
+    win({}), // fetched (first real fetch, no leading pace)
+    win({}), // fetched (paced once)
+  ];
+  await reconcileWindows(rows, fetchMarket, { sleep });
+  assert.equal(fetches, 2, "only the two valid rows are fetched");
+  assert.equal(calls.length, 1, "one pace between the two real fetches; the skip costs none");
+});
+
+// ---------------------------------------------------------------------------
+// S2-7A final-gate transport corrections.
+// ---------------------------------------------------------------------------
+
+const reasonOf = (r: FetchOutcome): string | null => (r.ok ? null : r.reason);
+
+test("C1 — Retry-After is honored on retryable 5xx too (not just 429); absent/malformed → null → exponential", () => {
+  const now = 1_000_000;
+  // 429 + Retry-After → parsed delay
+  assert.deepEqual(classifyHttpStatus(429, false, "1", now), { status: "retryable", retryAfterMs: 1000 });
+  // 503 + Retry-After → parsed delay (the fix: 5xx carries Retry-After too)
+  assert.deepEqual(classifyHttpStatus(503, false, "2", now), { status: "retryable", retryAfterMs: 2000 });
+  // the other retryable 5xx are retryable as well
+  for (const s of [500, 502, 504]) assert.equal(classifyHttpStatus(s, false, null, now)?.status, "retryable");
+  // 503 WITHOUT Retry-After → null (→ exponential backoff in the orchestrator)
+  assert.deepEqual(classifyHttpStatus(503, false, null, now), { status: "retryable", retryAfterMs: null });
+  // malformed Retry-After → null (→ exponential backoff)
+  assert.deepEqual(classifyHttpStatus(503, false, "soon", now), { status: "retryable", retryAfterMs: null });
+  // unchanged: 404 → not_found; non-429 4xx → fatal; 2xx → null (read body)
+  assert.deepEqual(classifyHttpStatus(404, false, null, now), { status: "not_found" });
+  assert.deepEqual(classifyHttpStatus(403, false, null, now), { status: "fatal" });
+  assert.equal(classifyHttpStatus(200, true, null, now), null);
+});
+
+test("C1b — a 5xx Retry-After flows through to the slept delay (end-to-end via the orchestrator)", async () => {
+  // classifyHttpStatus(503, "3") → retryAfterMs 3000; the orchestrator sleeps exactly that.
+  const a503 = classifyHttpStatus(503, false, "3", 0)!;
+  const { attempt } = attemptsFrom([a503, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.deepEqual(calls, [3000], "the 5xx Retry-After is slept, not the exponential default");
+});
+
+test("C2 — inter-market pacing is GLOBAL: concurrency > 1 does not burst the initial starts", async () => {
+  // 4 valid windows → exactly 3 pacing gaps (N-1), INDEPENDENT of concurrency. A
+  // worker-local scheme would skip each worker's first fetch and under-pace at c>1.
+  for (const concurrency of [1, 3]) {
+    const { calls, sleep } = recordSleep();
+    const fetchMarket = async (): Promise<FetchOutcome> => ({ ok: true, market: settled() });
+    const rows: LedgerWindow[] = [win({}), win({}), win({}), win({})];
+    await reconcileWindows(rows, fetchMarket, { concurrency, sleep });
+    assert.equal(calls.length, 3, `4 starts → 3 global pacing gaps at concurrency=${concurrency}`);
+    assert.ok(calls.every((ms) => ms === INTER_MARKET_DELAY_MS_DEFAULT), "each gap is the configured interval");
+  }
+});
+
+test("C3 — mixed 404/transient final reason: not_found only when EVERY attempt was 404", async () => {
+  const nf: MarketAttempt = { status: "not_found" };
+  const tr: MarketAttempt = { status: "retryable", retryAfterMs: null };
+  const run = async (seq: MarketAttempt[]) =>
+    reasonOf(await fetchMarketViaHosts(HOSTS, T, { attempt: attemptsFrom(seq).attempt, sleep: recordSleep().sleep }));
+  assert.equal(await run([nf, nf, nf]), "not_found", "404,404,404 → not_found");
+  assert.equal(await run([nf, tr, tr]), "unavailable", "404,503,503 → unavailable");
+  assert.equal(await run([tr, nf, nf]), "unavailable", "503,404,404 → unavailable");
+  assert.equal(await run([nf, tr, nf]), "unavailable", "404,timeout,404 → unavailable");
 });
