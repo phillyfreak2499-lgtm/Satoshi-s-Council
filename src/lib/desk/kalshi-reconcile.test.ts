@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  classifyHttpStatus,
   classifyReconciliation,
   fetchMarketViaHosts,
   INTER_MARKET_DELAY_MS_DEFAULT,
@@ -483,4 +484,62 @@ test("reconcileWindows does not pace for skipped (not-fetched) rows", async () =
   await reconcileWindows(rows, fetchMarket, { sleep });
   assert.equal(fetches, 2, "only the two valid rows are fetched");
   assert.equal(calls.length, 1, "one pace between the two real fetches; the skip costs none");
+});
+
+// ---------------------------------------------------------------------------
+// S2-7A final-gate transport corrections.
+// ---------------------------------------------------------------------------
+
+const reasonOf = (r: FetchOutcome): string | null => (r.ok ? null : r.reason);
+
+test("C1 — Retry-After is honored on retryable 5xx too (not just 429); absent/malformed → null → exponential", () => {
+  const now = 1_000_000;
+  // 429 + Retry-After → parsed delay
+  assert.deepEqual(classifyHttpStatus(429, false, "1", now), { status: "retryable", retryAfterMs: 1000 });
+  // 503 + Retry-After → parsed delay (the fix: 5xx carries Retry-After too)
+  assert.deepEqual(classifyHttpStatus(503, false, "2", now), { status: "retryable", retryAfterMs: 2000 });
+  // the other retryable 5xx are retryable as well
+  for (const s of [500, 502, 504]) assert.equal(classifyHttpStatus(s, false, null, now)?.status, "retryable");
+  // 503 WITHOUT Retry-After → null (→ exponential backoff in the orchestrator)
+  assert.deepEqual(classifyHttpStatus(503, false, null, now), { status: "retryable", retryAfterMs: null });
+  // malformed Retry-After → null (→ exponential backoff)
+  assert.deepEqual(classifyHttpStatus(503, false, "soon", now), { status: "retryable", retryAfterMs: null });
+  // unchanged: 404 → not_found; non-429 4xx → fatal; 2xx → null (read body)
+  assert.deepEqual(classifyHttpStatus(404, false, null, now), { status: "not_found" });
+  assert.deepEqual(classifyHttpStatus(403, false, null, now), { status: "fatal" });
+  assert.equal(classifyHttpStatus(200, true, null, now), null);
+});
+
+test("C1b — a 5xx Retry-After flows through to the slept delay (end-to-end via the orchestrator)", async () => {
+  // classifyHttpStatus(503, "3") → retryAfterMs 3000; the orchestrator sleeps exactly that.
+  const a503 = classifyHttpStatus(503, false, "3", 0)!;
+  const { attempt } = attemptsFrom([a503, { status: "ok", market: settled() }]);
+  const { calls, sleep } = recordSleep();
+  const r = await fetchMarketViaHosts(HOSTS, T, { attempt, sleep });
+  assert.equal(r.ok, true);
+  assert.deepEqual(calls, [3000], "the 5xx Retry-After is slept, not the exponential default");
+});
+
+test("C2 — inter-market pacing is GLOBAL: concurrency > 1 does not burst the initial starts", async () => {
+  // 4 valid windows → exactly 3 pacing gaps (N-1), INDEPENDENT of concurrency. A
+  // worker-local scheme would skip each worker's first fetch and under-pace at c>1.
+  for (const concurrency of [1, 3]) {
+    const { calls, sleep } = recordSleep();
+    const fetchMarket = async (): Promise<FetchOutcome> => ({ ok: true, market: settled() });
+    const rows: LedgerWindow[] = [win({}), win({}), win({}), win({})];
+    await reconcileWindows(rows, fetchMarket, { concurrency, sleep });
+    assert.equal(calls.length, 3, `4 starts → 3 global pacing gaps at concurrency=${concurrency}`);
+    assert.ok(calls.every((ms) => ms === INTER_MARKET_DELAY_MS_DEFAULT), "each gap is the configured interval");
+  }
+});
+
+test("C3 — mixed 404/transient final reason: not_found only when EVERY attempt was 404", async () => {
+  const nf: MarketAttempt = { status: "not_found" };
+  const tr: MarketAttempt = { status: "retryable", retryAfterMs: null };
+  const run = async (seq: MarketAttempt[]) =>
+    reasonOf(await fetchMarketViaHosts(HOSTS, T, { attempt: attemptsFrom(seq).attempt, sleep: recordSleep().sleep }));
+  assert.equal(await run([nf, nf, nf]), "not_found", "404,404,404 → not_found");
+  assert.equal(await run([nf, tr, tr]), "unavailable", "404,503,503 → unavailable");
+  assert.equal(await run([tr, nf, nf]), "unavailable", "503,404,404 → unavailable");
+  assert.equal(await run([nf, tr, nf]), "unavailable", "404,timeout,404 → unavailable");
 });

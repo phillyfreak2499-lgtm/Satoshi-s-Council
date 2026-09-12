@@ -112,6 +112,30 @@ export function parseRetryAfterMs(value: string | null | undefined, nowMs: numbe
 }
 
 /**
+ * Classify an HTTP response's status into a MarketAttempt, independent of the body.
+ * Pure and testable with a mock response.
+ *   - 404                 → `not_found`
+ *   - 429 OR any 5xx      → `retryable`, carrying the parsed `Retry-After` (ms) when
+ *                           the header is present — for EITHER case, not just 429.
+ *   - any other non-ok    → `fatal` (a non-429 4xx: 400/401/403/…).
+ *   - 2xx                 → `null`: the caller must read the body for the market.
+ * `retryAfterMs` is only a hint; the orchestrator still caps it (RETRY_AFTER_CAP_MS).
+ */
+export function classifyHttpStatus(
+  status: number,
+  ok: boolean,
+  retryAfterHeader: string | null,
+  nowMs: number,
+): MarketAttempt | null {
+  if (status === 404) return { status: "not_found" };
+  if (status === 429 || status >= 500) {
+    return { status: "retryable", retryAfterMs: parseRetryAfterMs(retryAfterHeader, nowMs) };
+  }
+  if (!ok) return { status: "fatal" };
+  return null; // 2xx — read the body
+}
+
+/**
  * Fetch ONE market by exact ticker, conservatively. A bounded TOTAL attempt budget
  * (default 3) rotates across the hosts — so failover is preserved without turning a
  * failure into an immediate all-hosts request storm — backing off between transient
@@ -131,6 +155,7 @@ export async function fetchMarketViaHosts(
   const cap = opts.maxBackoffMs ?? MAX_BACKOFF_MS_DEFAULT;
   const ring = hosts.length > 0 ? hosts : [""];
   let sawNotFound = false;
+  let sawTransient = false;
   for (let i = 0; i < maxAttempts; i += 1) {
     const host = ring[i % ring.length]!;
     const url = `${host}/markets/${encodeURIComponent(ticker)}`;
@@ -142,6 +167,7 @@ export async function fetchMarketViaHosts(
       continue; // rotate to the next host; a 404 is never retried with backoff
     }
     // retryable: back off before the next attempt, unless the budget is spent.
+    sawTransient = true;
     if (i < maxAttempts - 1) {
       const backoff =
         r.retryAfterMs != null
@@ -150,7 +176,9 @@ export async function fetchMarketViaHosts(
       await deps.sleep(backoff);
     }
   }
-  return { ok: false, reason: sawNotFound ? "not_found" : "unavailable" };
+  // `not_found` ONLY when every attempt was a 404. A transient mixed in with 404s —
+  // and no successful payload — is absence-of-a-trustworthy-answer, i.e. `unavailable`.
+  return { ok: false, reason: sawNotFound && !sawTransient ? "not_found" : "unavailable" };
 }
 
 /** The binary-outcome classification (question A). */
@@ -492,21 +520,37 @@ export async function reconcileWindows(
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const out: ReconResult[] = new Array(rows.length);
   let next = 0;
+
+  // ONE shared pacing gate across the whole batch. Fetch STARTS are globally spaced
+  // by delayMs regardless of concurrency, so an override above 1 cannot fire an
+  // initial burst: the gate is a single promise chain that every worker acquires
+  // before starting a fetch. The FIRST start takes no leading sleep; each later start
+  // waits delayMs after the previous. Only the START is gated — the fetch itself and
+  // all classification/CPU run concurrently, never serialized by this.
+  let gate: Promise<void> = Promise.resolve();
+  let startedFetches = 0;
+  const paceStart = (): Promise<void> => {
+    const mine = gate.then(async () => {
+      if (startedFetches > 0 && delayMs > 0) await sleep(delayMs);
+      startedFetches += 1;
+    });
+    gate = mine;
+    return mine;
+  };
+
   async function worker(): Promise<void> {
-    let fetchedHere = false; // pace only BETWEEN this worker's real fetches
     for (;;) {
       const i = next++;
       if (i >= rows.length) return;
       const row = rows[i]!;
       // A row that is internally invalid or missing our outcome is NOT fetched —
       // there is nothing external can decide for it, and we must not let another
-      // market answer for it. Skipped rows cost no request and no pacing delay.
+      // market answer for it. Skipped rows cost no request and no pacing slot.
       if (tickerAgrees(row.ticker, row.close_time_ms) === false || !(row.winner === "UP" || row.winner === "DOWN")) {
         out[i] = classifyReconciliation(row, { ok: false, reason: "unavailable" });
         continue;
       }
-      if (fetchedHere && delayMs > 0) await sleep(delayMs); // inter-market spacing
-      fetchedHere = true;
+      await paceStart(); // globally spaced fetch start (shared across all workers)
       let fetched: FetchOutcome;
       try {
         fetched = await fetchMarket(row.ticker);

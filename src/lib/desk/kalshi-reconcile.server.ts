@@ -21,8 +21,8 @@ import {
   type MarketAttempt,
   type OfficialMarket,
   type ReconReport,
+  classifyHttpStatus,
   fetchMarketViaHosts,
-  parseRetryAfterMs,
   RECONCILE_CONCURRENCY_DEFAULT,
   reconcileWindows,
   summarize,
@@ -52,15 +52,11 @@ async function httpAttempt(url: string, timeoutMs: number): Promise<MarketAttemp
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { accept: "application/json", "user-agent": UA } });
-    if (res.status === 404) return { status: "not_found" };
-    if (res.status === 429) {
-      return { status: "retryable", retryAfterMs: parseRetryAfterMs(res.headers.get("retry-after"), Date.now()) };
-    }
-    // 5xx are transient server errors → retry with backoff. Every OTHER non-ok
-    // status (a non-429 4xx: 400/401/403/…, or a 3xx that slipped through) is a
-    // clear non-retryable response: stop, do not spin.
-    if (res.status >= 500) return { status: "retryable", retryAfterMs: null };
-    if (!res.ok) return { status: "fatal" };
+    // Status → attempt is the pure classifier: 404 → not_found; 429 OR any 5xx →
+    // retryable carrying the parsed Retry-After (honored for BOTH, not just 429);
+    // any other non-ok → fatal. A 2xx returns null so we read the body below.
+    const byStatus = classifyHttpStatus(res.status, res.ok, res.headers.get("retry-after"), Date.now());
+    if (byStatus) return byStatus;
     const json = (await res.json()) as { market?: Record<string, unknown> };
     const market = json?.market;
     if (!market || typeof market !== "object") return { status: "retryable", retryAfterMs: null }; // malformed

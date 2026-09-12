@@ -2413,15 +2413,28 @@ test("S2-7A: the manual auditor's transport is conservative — low concurrency,
   for (const [rel, src] of [["kalshi-reconcile.ts", pure], ["kalshi-reconcile.server.ts", server]]) {
     assert.ok(!/\/history\b|historical|\/settlements?\b/.test(src), `${rel} must not use a historical endpoint`);
   }
-  // (5) The server transport maps 429 to a retry carrying the parsed Retry-After.
-  assert.match(server, /res\.status === 429/, "429 is recognized at the transport edge");
-  assert.match(server, /parseRetryAfterMs\(res\.headers\.get\("retry-after"\)/, "the server parses the Retry-After header");
+  // (5) The server transport delegates status→attempt to the pure classifier (which
+  // reads the Retry-After header) and the conservative orchestrator.
+  assert.match(server, /classifyHttpStatus\(res\.status, res\.ok, res\.headers\.get\("retry-after"\)/, "the server delegates status classification (incl. Retry-After) to the pure classifier");
   assert.match(server, /fetchMarketViaHosts\(KALSHI_HOSTS/, "the live client delegates to the conservative orchestrator");
-
-  // (6) Only transient failures retry. 5xx is retryable; a non-429 4xx is fatal and
-  // stops immediately (no spin). The orchestrator returns unavailable on a fatal.
-  assert.match(server, /res\.status >= 500/, "5xx is treated as transient/retryable");
-  assert.match(server, /if \(!res\.ok\) return \{ status: "fatal" \}/, "a non-429 4xx is fatal (non-retryable)");
-  assert.match(pure, /if \(r\.status === "fatal"\) return \{ ok: false, reason: "unavailable" \}/, "a fatal response stops immediately — never spins or rotates");
   assert.match(server, /catch \{\s*return \{ status: "retryable", retryAfterMs: null \};/, "a thrown fetch (timeout/network) is retryable");
+
+  // (6) Transient policy, pure and testable. 429 OR any 5xx is retryable and carries
+  // the parsed Retry-After (honored for BOTH, not just 429); a non-429 4xx is fatal;
+  // a fatal stops the orchestrator immediately (no spin).
+  assert.match(pure, /function classifyHttpStatus\(/, "the status classifier is a pure, tested helper");
+  assert.match(pure, /status === 429 \|\| status >= 500/, "429 and any 5xx are retryable");
+  assert.match(pure, /return \{ status: "retryable", retryAfterMs: parseRetryAfterMs\(retryAfterHeader, nowMs\) \}/, "retryable carries the parsed Retry-After for 429 AND 5xx");
+  assert.match(pure, /if \(!ok\) return \{ status: "fatal" \}/, "a non-429 4xx is fatal (non-retryable)");
+  assert.match(pure, /if \(r\.status === "fatal"\) return \{ ok: false, reason: "unavailable" \}/, "a fatal response stops immediately — never spins or rotates");
+
+  // (7) Mixed 404/transient final reason: not_found ONLY when every attempt was a 404;
+  // any transient mixed in (no success) is unavailable.
+  assert.match(pure, /reason: sawNotFound && !sawTransient \? "not_found" : "unavailable"/, "not_found requires every attempt to be a 404");
+
+  // (8) Pacing is a single shared gate across the batch (global), not worker-local.
+  assert.match(pure, /let gate: Promise<void> = Promise\.resolve\(\);/, "a single shared pacing gate for the whole batch");
+  assert.match(pure, /const paceStart = \(\): Promise<void> =>/, "a shared paceStart gate regulates fetch starts");
+  assert.match(pure, /gate = mine;/, "each start chains onto the shared gate (globally serialized starts)");
+  assert.ok(!/let fetchedHere/.test(pure), "no worker-local pacing flag (would allow an initial burst at concurrency > 1)");
 });
