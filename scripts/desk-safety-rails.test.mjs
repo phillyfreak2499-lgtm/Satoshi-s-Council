@@ -2512,3 +2512,43 @@ test("S2-8: Chair v2 trains and scores on the research-quality-valid population 
   assert.match(chair, /learner\.seat_w/, "Chair v1 still reads learner.seat_w (authority path unchanged)");
   assert.ok(!/research_quality/.test(read("migrations/0006_desk_samples.sql")), "desk_samples schema is unchanged — no migration was added for this ticket");
 });
+
+test("S2-9: the online learner is gated on research-quality validity at the update boundary, prospective only", () => {
+  const eng = codeOf("src/lib/desk/server-engine.ts");
+
+  // (1) The canonical registry is the authority — isCountable from research-quality, no new registry.
+  assert.match(read("src/lib/desk/server-engine.ts"), /import \{ isCountable \} from "\.\/research-quality"/, "server-engine imports the canonical isCountable");
+
+  // (2) A single gate at the learner-update boundary in applyGrade, keyed on the window's own
+  // close time (the identity desk_ledger_research / isCountable use).
+  const grade = eng.slice(eng.indexOf("function applyGrade("), eng.indexOf("function applyGrade(") + 3500);
+  assert.ok(grade.length > 0, "applyGrade is present");
+  assert.match(grade, /if \(isCountable\(snap\.close_time\)\) \{/, "applyGrade gates the learner teaching on isCountable(snap.close_time)");
+
+  // (3) All THREE learner-teaching calls occur exactly once and are INSIDE the gate (after it),
+  // so an invalid window mutates no learner state: gradeWindow (seat_n/hits/recent/fade/skills/
+  // graded_windows), settleAll (scalp calibration), reviewSeats.
+  const iGate = grade.indexOf("if (isCountable(snap.close_time))");
+  const iGrade = grade.indexOf("gradeWindow(");
+  const iSettle = grade.indexOf("settleAll(");
+  const iReview = grade.indexOf("reviewSeats(");
+  const iLedger = grade.indexOf("enqueueLedger(");
+  assert.equal((grade.match(/\bgradeWindow\(/g) || []).length, 1, "gradeWindow is called exactly once in applyGrade");
+  assert.equal((grade.match(/\bsettleAll\(/g) || []).length, 1, "settleAll is called exactly once in applyGrade");
+  assert.equal((grade.match(/\breviewSeats\(/g) || []).length, 1, "reviewSeats is called exactly once in applyGrade");
+  assert.ok(iGate >= 0 && iGate < iGrade && iGrade < iSettle && iSettle < iReview, "the gate precedes all three learner-teaching calls");
+
+  // (4) Prospective only: the ledger row is still enqueued AFTER the gated block, so a quarantined
+  // window keeps its record (the row stays; it simply earns no learner credit).
+  assert.ok(iLedger > iReview, "the ledger enqueue stays outside/after the gate — the quarantined row is still written");
+
+  // (5) No QTY_FIX / research-era cutoff in the gate path; no learner reset/reconstruction added.
+  assert.ok(!/QTY_FIX|research-era|eraAt|splitByEra/.test(grade), "no QTY_FIX / research-era cutoff in the grade path");
+  assert.ok(!/rebuildSeatWeights\(|seat_n = \{\}|seat_hits = \{\}|seat_recent = \{\}/.test(grade), "applyGrade performs no learner reset/reconstruction");
+
+  // (6) FREEZE. The gate is in the caller; learner.ts and chair.ts are untouched by this ticket —
+  // neither gained a quality/era import, and the learner math constant is unchanged.
+  assert.ok(!/research-quality|research-era|isCountable|QTY_FIX/.test(codeOf("src/lib/desk/learner.ts")), "learner.ts is unchanged — no quality/era cutoff leaked into the learner math");
+  assert.ok(!/research-quality|isCountable/.test(codeOf("src/lib/desk/chair.ts")), "Chair v1 (chair.ts) is untouched by this ticket");
+  assert.match(read("src/lib/desk/math.ts"), /export const WARM_N = 20;/, "learner calibration constant WARM_N is unchanged");
+});

@@ -19,7 +19,6 @@ test("gtagEvent is a no-op when gtag is missing", () => {
   // @ts-expect-error test shim
   globalThis.window = { gtag: undefined };
   assert.doesNotThrow(() => gtagEvent("enter_the_floor"));
-  // @ts-expect-error restore
   globalThis.window = prev;
 });
 
@@ -40,7 +39,6 @@ test("gtagEvent forwards only the event name (no params / no PII)", () => {
     ["event", "feedback_submitted"],
     ["event", "paper_call_locked"],
   ]);
-  // @ts-expect-error restore
   globalThis.window = prev;
 });
 
@@ -59,7 +57,6 @@ test("gtagEventAfterSuccess fires only after work resolves", async () => {
   });
   assert.equal(ran, true);
   assert.deepEqual(calls, [["event", "paper_call_locked"]]);
-  // @ts-expect-error restore
   globalThis.window = prev;
 });
 
@@ -80,7 +77,6 @@ test("gtagEventAfterSuccess does not fire when work rejects", async () => {
     /post failed/,
   );
   assert.deepEqual(calls, []);
-  // @ts-expect-error restore
   globalThis.window = prev;
 });
 
@@ -93,7 +89,6 @@ test("gtagEvent never throws even if gtag throws", () => {
     },
   };
   assert.doesNotThrow(() => gtagEvent("enter_the_floor"));
-  // @ts-expect-error restore
   globalThis.window = prev;
 });
 
@@ -110,6 +105,5 @@ test("no auto paper_call_locked without an explicit success helper call", () => 
   const name: GaEventName = "paper_call_locked";
   assert.equal(name, "paper_call_locked");
   assert.deepEqual(calls, []);
-  // @ts-expect-error restore
   globalThis.window = prev;
 });
