@@ -8,12 +8,15 @@
  * or auth path. The external truth comes exclusively from the Kalshi public
  * market-data endpoints — never from a desk_ledger field.
  */
-import { getSql } from "@/lib/db";
+// Relative import (not the usual `@/lib/db`) on purpose: the read-only audit CLI
+// (scripts/reconcile-kalshi.ts) loads this module under `node --experimental-strip-types`,
+// which resolves relative `.ts` paths but not the tsconfig `@/` alias. Same target
+// (src/lib/db.ts); Vite and tsc resolve it identically.
+import { getSql } from "../db.ts";
 import {
   type FetchOutcome,
   type LedgerWindow,
-  type ReconResult,
-  type ReconSummary,
+  type ReconReport,
   reconcileWindows,
   summarize,
 } from "./kalshi-reconcile.ts";
@@ -81,18 +84,11 @@ export async function selectLedgerWindows(days = 90): Promise<LedgerWindow[]> {
   }));
 }
 
-export type ReconReport = {
-  period_days: number;
-  earliest_ms: number | null;
-  latest_ms: number | null;
-  summary: ReconSummary;
-  results: ReconResult[];
-};
-
 /**
  * Run the independent reconciliation over the requested window. SELECT + external
  * GET only. `fetchMarket` is injectable so tests drive it with fixtures and the
- * live path stays the one public client above.
+ * live path stays the one public client above. The `ReconReport` shape and its
+ * renderer live in the pure module.
  */
 export async function runReconciliation(
   opts: { days?: number; concurrency?: number; fetchMarket?: (t: string) => Promise<FetchOutcome> } = {},

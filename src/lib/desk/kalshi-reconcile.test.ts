@@ -11,10 +11,12 @@ import { test } from "node:test";
 import {
   classifyReconciliation,
   reconcileWindows,
+  renderReconReport,
   summarize,
   type FetchOutcome,
   type LedgerWindow,
   type OfficialMarket,
+  type ReconReport,
 } from "./kalshi-reconcile.ts";
 
 const T = "KXBTC15M-26SEP111800-00"; // encodes 2026-09-11 18:00 ET = 22:00Z
@@ -78,6 +80,40 @@ test("R5b: the NEXT window's close (15 min away) is not 'near enough' — the to
   assert.equal(r.witnesses.external_close_ok, false);
 });
 
+test("R5c: payload carries no ticker → EXTERNAL_IDENTITY_UNVERIFIABLE, never MATCH (even with a matching close)", () => {
+  const r = classifyReconciliation(win({}), ok(market({ ticker: undefined })));
+  assert.equal(r.winner_class, "EXTERNAL_IDENTITY_UNVERIFIABLE");
+  assert.equal(r.witnesses.external_ticker_ok, null);
+  assert.equal(r.external_winner, null, "no outcome is adopted from a market that names no ticker");
+});
+
+test("R5d: payload carries neither ticker nor close → EXTERNAL_IDENTITY_UNVERIFIABLE", () => {
+  const r = classifyReconciliation(win({}), ok(market({ ticker: undefined, close_time: undefined })));
+  assert.equal(r.winner_class, "EXTERNAL_IDENTITY_UNVERIFIABLE");
+});
+
+test("R5e: expiration_time is NOT a close witness — a payload whose only time is a contradicting expiration_time is not a mismatch, and matches on the exact ticker", () => {
+  // close_time absent, expiration_time wildly different. If expiration_time were
+  // (wrongly) used as the close, this would be EXTERNAL_IDENTITY_MISMATCH.
+  const r = classifyReconciliation(win({}), ok(market({ close_time: undefined, expiration_time: "2026-09-11T23:30:00Z" })));
+  assert.equal(r.winner_class, "MATCH", "expiration_time is ignored; the exact ticker's encoded close is the witness");
+  assert.equal(r.witnesses.external_close_ok, null, "no external close witness was established");
+});
+
+test("R5f: exact payload ticker with absent close_time → MATCH via the internal ticker-close witness", () => {
+  const r = classifyReconciliation(win({}), ok(market({ close_time: undefined })));
+  assert.equal(r.winner_class, "MATCH");
+  assert.equal(r.witnesses.external_ticker_ok, true);
+  assert.equal(r.witnesses.external_close_ok, null);
+});
+
+test("R5g: unparseable internal ticker + absent external close_time → EXTERNAL_IDENTITY_UNVERIFIABLE (fail closed, no witness of either kind)", () => {
+  const U = "RENAMEDSERIES"; // carries no embedded close
+  const r = classifyReconciliation(win({ ticker: U }), ok(market({ ticker: U, close_time: undefined })));
+  assert.equal(r.witnesses.ticker_embedded_close_ok, null, "the internal ticker does not parse");
+  assert.equal(r.winner_class, "EXTERNAL_IDENTITY_UNVERIFIABLE");
+});
+
 test("R6: official source says not settled → EXTERNAL_UNSETTLED, not a mismatch", () => {
   const r = classifyReconciliation(win({}), ok({ ticker: T, close_time: Ciso, status: "active" }));
   assert.equal(r.winner_class, "EXTERNAL_UNSETTLED");
@@ -94,7 +130,9 @@ test("R8: external exists but internal winner absent → INTERNAL_OUTCOME_MISSIN
 });
 
 test("R9: official underlying value match (only when external exposes a value)", () => {
-  const r = classifyReconciliation(win({ winner: "UP", official_value: 64000.2 }), ok(market({ result: "yes", expiration_value: 64000.4 })));
+  // Within the repo's 0.05 tolerance: a 0.02 gap is a MATCH, and external_value is
+  // the payload's value, never ours.
+  const r = classifyReconciliation(win({ winner: "UP", official_value: 64000.38 }), ok(market({ result: "yes", expiration_value: 64000.4 })));
   assert.equal(r.winner_class, "MATCH");
   assert.equal(r.value_class, "OFFICIAL_VALUE_MATCH");
   assert.equal(r.external_value, 64000.4);
@@ -115,6 +153,28 @@ test("R11: winner verifiable but external underlying absent → value UNVERIFIAB
 test("R11b: external value present but we never recorded one → UNVERIFIABLE, never derived from our side", () => {
   const r = classifyReconciliation(win({ winner: "UP", official_value: null }), ok(market({ result: "yes", expiration_value: 64000 })));
   assert.equal(r.value_class, "OFFICIAL_VALUE_UNVERIFIABLE");
+});
+
+// Official-value tolerance is the repo's established 0.05 (lab.server.ts), not a
+// looser invention. These pin both sides of the boundary without rounding.
+test("R9-tol-a: official value gap 0.04 (< 0.05) → OFFICIAL_VALUE_MATCH", () => {
+  const r = classifyReconciliation(win({ winner: "UP", official_value: 64000 }), ok(market({ result: "yes", expiration_value: 64000.04 })));
+  assert.equal(r.value_class, "OFFICIAL_VALUE_MATCH");
+});
+
+test("R9-tol-b: official value gap 0.05 → OFFICIAL_VALUE_MATCH (the boundary is inclusive, <= 0.05)", () => {
+  const r = classifyReconciliation(win({ winner: "UP", official_value: 64000.05 }), ok(market({ result: "yes", expiration_value: 64000.1 })));
+  assert.equal(r.value_class, "OFFICIAL_VALUE_MATCH");
+});
+
+test("R9-tol-c: official value gap 0.06 (> 0.05) → OFFICIAL_VALUE_MISMATCH", () => {
+  const r = classifyReconciliation(win({ winner: "UP", official_value: 64000 }), ok(market({ result: "yes", expiration_value: 64000.06 })));
+  assert.equal(r.value_class, "OFFICIAL_VALUE_MISMATCH");
+});
+
+test("R9-tol-d: a materially different official value → OFFICIAL_VALUE_MISMATCH", () => {
+  const r = classifyReconciliation(win({ winner: "UP", official_value: 64000 }), ok(market({ result: "yes", expiration_value: 64050 })));
+  assert.equal(r.value_class, "OFFICIAL_VALUE_MISMATCH");
 });
 
 test("R12: external truth is the fixture, not the ledger — mutating our winner changes only our side", () => {
@@ -202,4 +262,35 @@ test("an internally-invalid or winner-missing row is never fetched (no external 
   assert.equal(calls, 0, "neither invalid nor outcome-missing rows hit the external API");
   assert.equal(res[0]!.winner_class, "TICKER_CLOSE_MISMATCH");
   assert.equal(res[1]!.winner_class, "INTERNAL_OUTCOME_MISSING");
+});
+
+test("CLI report: renderReconReport emits a machine-readable JSON line then evidence for every non-MATCH", () => {
+  const results = [
+    classifyReconciliation(win({ winner: "UP" }), ok(market({ result: "yes" }))), // MATCH
+    classifyReconciliation(win({ winner: "UP" }), ok(market({ result: "no" }))), // WINNER_MISMATCH
+    classifyReconciliation(win({ winner: "UP" }), { ok: false, reason: "unavailable" }), // EXTERNAL_UNAVAILABLE
+  ];
+  const report: ReconReport = {
+    period_days: 90,
+    earliest_ms: C,
+    latest_ms: C,
+    summary: summarize(results),
+    results,
+  };
+  const text = renderReconReport(report);
+  const [first, ...rest] = text.split("\n");
+
+  // (1) first line is the whole report as parseable JSON.
+  const parsed = JSON.parse(first!) as ReconReport;
+  assert.equal(parsed.summary.winner_matches, 1);
+  assert.equal(parsed.summary.winner_mismatches, 1);
+  assert.equal(parsed.summary.external_unavailable, 1);
+  assert.equal(parsed.results.length, 3);
+
+  // (2) evidence lines carry the exact note for each non-MATCH outcome, and none
+  // for the MATCH.
+  const body = rest.join("\n");
+  assert.ok(body.includes("WINNER_MISMATCH"), "the mismatch is reported with evidence");
+  assert.ok(body.includes("EXTERNAL_UNAVAILABLE"), "the unavailable row is reported");
+  assert.ok(!/\bMATCH\b\t/.test(body), "the clean MATCH is not listed as a failure");
 });

@@ -63,6 +63,9 @@ export type WinnerClass =
   | "EXTERNAL_UNAVAILABLE"
   | "EXTERNAL_UNSETTLED"
   | "EXTERNAL_IDENTITY_MISMATCH"
+  /** The payload carried no usable external market identity (no ticker, or no
+   *  close witness at all). Absence of evidence — never a MATCH, never a mismatch. */
+  | "EXTERNAL_IDENTITY_UNVERIFIABLE"
   | "TICKER_CLOSE_MISMATCH"
   | "INTERNAL_OUTCOME_MISSING"
   | "INVALID_INTERNAL_WINDOW";
@@ -89,9 +92,13 @@ export type ReconResult = {
   note: string;
 };
 
-/** Value-comparison tolerance: the official underlying is a settled BRTI average in
- *  dollars, so a sub-dollar epsilon absorbs rounding without hiding a real gap. */
-export const VALUE_EPSILON = 0.5;
+/** Value-comparison tolerance for the official underlying. Reuses the repo's
+ *  established official-value agreement semantics: `lab.server.ts` counts a settle
+ *  as "exact" when `abs(settle_avg - official_value) <= 0.05` (the settlement-receipt
+ *  math and its SQL both use 0.05). We match that exactly rather than inventing a
+ *  looser definition of "match"; it is tight enough that a real underlying gap is a
+ *  mismatch, not rounding. */
+export const VALUE_EPSILON = 0.05;
 
 const SETTLED_STATUSES = new Set(["settled", "finalized", "determined", "closed_settled"]);
 
@@ -106,12 +113,18 @@ function officialWinner(m: OfficialMarket): "UP" | "DOWN" | null {
   return null;
 }
 
-/** Parse a close-ish timestamp field to ms, or null. Kalshi sends ISO strings. */
+/**
+ * The payload's trading-close clock, in ms, or null. ONLY `close_time` is read.
+ *
+ * `expiration_time` is a DIFFERENT, deprecated expiry clock (Kalshi distinguishes
+ * the two and they can differ) and is NEVER substituted for it — the same rule the
+ * official-value path enforces in window-identity (`mayWriteOfficial`). A payload
+ * that carries no `close_time` simply has no external close witness; the row's
+ * ticker-encoded close must then stand as the witness, exactly as that path does.
+ */
 function closeMsOf(m: OfficialMarket): number | null {
   const c = Date.parse(String(m.close_time ?? "")) || 0;
-  if (c > 0) return c;
-  const e = Date.parse(String(m.expiration_time ?? "")) || 0;
-  return e > 0 ? e : null;
+  return c > 0 ? c : null;
 }
 
 function finite(v: unknown): number | null {
@@ -171,23 +184,39 @@ export function classifyReconciliation(internal: LedgerWindow, fetched: FetchOut
   }
   const m = fetched.market;
 
-  // (4) EXTERNAL identity, fail closed. The payload must name the SAME market and
-  // its close must agree with the exact row close within the repo's tolerance.
-  const extTicker = String(m.ticker ?? "");
+  // (4) EXTERNAL identity, fail closed. The payload must name the SAME market —
+  // a ticker that is PRESENT and exactly equal to the requested/internal ticker —
+  // and, when it carries a close, that close (from `close_time` ONLY, never
+  // `expiration_time`) must agree with the exact row close within tolerance.
+  const extTicker = String(m.ticker ?? "").trim();
   const externalTickerOk = extTicker.length > 0 ? extTicker === internal.ticker : null;
   const extClose = closeMsOf(m);
   const externalCloseOk = extClose == null ? null : Math.abs(extClose - internal.close_time_ms) <= CLOSE_TOLERANCE_MS;
   const witnesses = { ...base.witnesses, external_ticker_ok: externalTickerOk, external_close_ok: externalCloseOk };
 
+  // A payload that names a DIFFERENT market is a positive disagreement.
   if (externalTickerOk === false) {
     return { ...base, witnesses, winner_class: "EXTERNAL_IDENTITY_MISMATCH", note: reproNote(internal, extTicker, `payload names a different market (${extTicker})`) };
   }
+  // A payload whose own close contradicts the row close is a positive disagreement.
   if (externalCloseOk === false) {
-    return { ...base, witnesses, winner_class: "EXTERNAL_IDENTITY_MISMATCH", note: reproNote(internal, extTicker, `payload close ${m.close_time ?? m.expiration_time} outside tolerance of the row close`) };
+    return { ...base, witnesses, winner_class: "EXTERNAL_IDENTITY_MISMATCH", note: reproNote(internal, extTicker, `payload close ${m.close_time} outside tolerance of the row close`) };
   }
-  // The payload ticker (when present) must also not encode a contradicting close.
-  if (externalTickerOk === true && tickerAgrees(extTicker, internal.close_time_ms) === false) {
-    return { ...base, witnesses, winner_class: "EXTERNAL_IDENTITY_MISMATCH", note: reproNote(internal, extTicker, "payload ticker encodes a contradicting close") };
+
+  // A MATCH requires a MEANINGFUL external identity, never missing evidence:
+  //   (a) the payload ticker is present and exactly equal (externalTickerOk === true), AND
+  //   (b) at least one close witness holds — the payload's own close_time agrees,
+  //       or (when the payload carries no close) the internal ticker's encoded close
+  //       agrees with the row (ticker_embedded_close_ok === true).
+  // A payload with no ticker, or with neither close witness, is absence of evidence,
+  // not a verdict — and must never be allowed to produce MATCH.
+  const tickerCloseWitness = base.witnesses.ticker_embedded_close_ok === true;
+  if (!(externalTickerOk === true && (externalCloseOk === true || tickerCloseWitness))) {
+    const why =
+      externalTickerOk !== true
+        ? "payload carries no ticker — no external market identity"
+        : "payload carries no close witness and the internal ticker does not establish one";
+    return { ...base, witnesses, winner_class: "EXTERNAL_IDENTITY_UNVERIFIABLE", note: reproNote(internal, extTicker || null, why) };
   }
 
   // (5) SETTLED state. Not-yet-settled is not a mismatch.
@@ -232,6 +261,7 @@ export type ReconSummary = {
   winner_matches: number;
   winner_mismatches: number;
   identity_invalid: number; // TICKER_CLOSE_MISMATCH + EXTERNAL_IDENTITY_MISMATCH
+  external_identity_unverifiable: number; // payload had no usable external identity (absence of evidence)
   external_unavailable: number;
   external_unsettled: number;
   internal_missing: number;
@@ -251,6 +281,7 @@ export function summarize(results: ReconResult[]): ReconSummary {
     winner_matches: 0,
     winner_mismatches: 0,
     identity_invalid: 0,
+    external_identity_unverifiable: 0,
     external_unavailable: 0,
     external_unsettled: 0,
     internal_missing: 0,
@@ -276,6 +307,9 @@ export function summarize(results: ReconResult[]): ReconSummary {
       case "EXTERNAL_IDENTITY_MISMATCH":
         s.identity_invalid++;
         break;
+      case "EXTERNAL_IDENTITY_UNVERIFIABLE":
+        s.external_identity_unverifiable++;
+        break;
       case "EXTERNAL_UNAVAILABLE":
         s.external_unavailable++;
         break;
@@ -295,6 +329,47 @@ export function summarize(results: ReconResult[]): ReconSummary {
     if (r.winner_class !== "MATCH") s.failures.push(r);
   }
   return s;
+}
+
+/**
+ * The report shape the server runner produces and the CLI prints. Pure data —
+ * defined here (not in the server adapter) so the renderer and its test stay pure.
+ */
+export type ReconReport = {
+  period_days: number;
+  earliest_ms: number | null;
+  latest_ms: number | null;
+  summary: ReconSummary;
+  results: ReconResult[];
+};
+
+/**
+ * Render a reconciliation report for a CLI or log: first a single machine-readable
+ * JSON line (the whole report), then human-readable evidence for EVERY non-MATCH
+ * outcome — each with its exact reproduction note. Pure; no I/O, no process exit.
+ * The caller decides exit status (a mismatch is a finding, not an execution error).
+ */
+export function renderReconReport(report: ReconReport): string {
+  const s = report.summary;
+  const range =
+    report.earliest_ms != null && report.latest_ms != null
+      ? ` [${new Date(report.earliest_ms).toISOString()} .. ${new Date(report.latest_ms).toISOString()}]`
+      : "";
+  const lines: string[] = [
+    JSON.stringify(report),
+    `# reconciled ${s.rows_examined} window(s) over ${report.period_days}d${range}`,
+    `# winner: ${s.winner_matches} match / ${s.winner_mismatches} mismatch · ` +
+      `value: ${s.official_value_matches} match / ${s.official_value_mismatches} mismatch / ${s.official_value_unverifiable} unverifiable`,
+    `# identity_invalid ${s.identity_invalid} · identity_unverifiable ${s.external_identity_unverifiable} · ` +
+      `unsettled ${s.external_unsettled} · unavailable ${s.external_unavailable} · internal_missing ${s.internal_missing}`,
+  ];
+  if (s.failures.length === 0) {
+    lines.push("# no non-MATCH outcomes");
+  } else {
+    lines.push(`# ${s.failures.length} non-MATCH outcome(s), with evidence:`);
+    for (const f of s.failures) lines.push(`${f.winner_class}\t${f.value_class}\t${f.note}`);
+  }
+  return lines.join("\n");
 }
 
 export type FetchMarket = (ticker: string) => Promise<FetchOutcome>;

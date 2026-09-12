@@ -2294,6 +2294,23 @@ test("S2-7: historical reconciliation takes external truth from Kalshi, never th
   assert.match(pure, /tickerAgrees\(/, "the ticker's embedded close is checked");
   assert.match(pure, /Math\.abs\(extClose - internal\.close_time_ms\) <= CLOSE_TOLERANCE_MS/, "the payload close must agree within the repo tolerance");
 
+  // (3b) The close witness is `close_time` ONLY. `expiration_time` is a different,
+  // deprecated expiry clock and is NEVER substituted for it — the same rule
+  // mayWriteOfficial enforces. Scoped to closeMsOf so the type/comment elsewhere
+  // naming the field does not mask a reintroduced fallback.
+  const closeFn = pure.match(/function closeMsOf[\s\S]*?\n}/)?.[0] ?? "";
+  assert.ok(closeFn.length > 0, "closeMsOf is present");
+  assert.ok(!/expiration/.test(closeFn), "the close witness reads close_time only — never expiration_time");
+
+  // (3c) A payload with no usable external identity (no ticker, or no close witness
+  // at all) is its own explicit state — never silently a MATCH.
+  assert.match(pure, /EXTERNAL_IDENTITY_UNVERIFIABLE/, "missing external identity is UNVERIFIABLE, not a match");
+  assert.match(pure, /externalTickerOk === true && \(externalCloseOk === true \|\| tickerCloseWitness\)/, "a MATCH requires an exact present ticker AND at least one close witness");
+
+  // (3d) Official-value agreement uses the repo's established 0.05 tolerance
+  // (lab.server.ts settlement receipts), not a looser invented epsilon.
+  assert.match(pure, /VALUE_EPSILON = 0\.05\b/, "official-value tolerance matches the repo's 0.05");
+
   // (4) No nearest/latest/guessing market selection: the fetch is one EXACT ticker,
   // never a list query or a nearest/latest heuristic. (The report's earliest/latest
   // RANGE fields are not market selection.)
@@ -2331,5 +2348,36 @@ test("S2-7: no decision consumer imports the reconciliation surface", () => {
   for (const rel of ["bots.ts", "chair.ts", "chair-v2.ts", "features.ts", "dsl.ts", "learner.ts", "book-floor.ts", "server-engine.ts"]) {
     const code = codeOf(`src/lib/desk/${rel}`);
     assert.ok(!code.includes("kalshi-reconcile"), `${rel} must not import the S2-7 reconciliation`);
+  }
+});
+
+test("S2-7: the reconciliation is reachable ONLY as a manual, read-only CLI — never auto-invoked by the desk", () => {
+  // (1) The manual entrypoint exists: npm script → the CLI file, which calls the
+  // runner and prints the rendered report.
+  const pkg = JSON.parse(read("package.json"));
+  const cliCmd = pkg.scripts?.["reconcile:kalshi"] ?? "";
+  assert.ok(cliCmd.includes("scripts/reconcile-kalshi.ts"), "npm run reconcile:kalshi invokes the CLI script");
+
+  const cli = codeOf("scripts/reconcile-kalshi.ts");
+  assert.ok(cli.length > 0, "the CLI script exists");
+  assert.match(cli, /runReconciliation/, "the CLI calls runReconciliation()");
+  assert.match(cli, /renderReconReport/, "the CLI prints the rendered report");
+
+  // (2) Read-only: SELECT + public GET only, no writes of any kind.
+  for (const w of ["insert into", "update ", "delete from", "alter table", " upsert", "on conflict"]) {
+    assert.ok(!cli.toLowerCase().includes(w), `the CLI must not ${w.trim()} (read-only audit)`);
+  }
+
+  // (3) No trading-auth / order path — the Kalshi read is the public market data.
+  assert.ok(!cli.includes("kalshi-auth"), "the CLI must not import the trading-auth module");
+  assert.ok(!/method:\s*"POST"|getJsonPost/.test(cli), "the CLI must not POST");
+  assert.ok(!/Authorization|KALSHI-ACCESS|signPss|\/orders?\b|\/portfolio\b/i.test(cli), "the CLI must not touch an auth/order endpoint");
+
+  // (4) Never auto-invoked: no production desk module imports the CLI or calls the
+  // runner, and nothing wires it into tick / a loop / a cron.
+  for (const rel of ["server-engine.ts", "bots.ts", "chair.ts", "chair-v2.ts", "features.ts", "dsl.ts", "learner.ts", "book-floor.ts"]) {
+    const code = codeOf(`src/lib/desk/${rel}`);
+    assert.ok(!code.includes("reconcile-kalshi"), `${rel} must not import the manual reconciliation CLI`);
+    assert.ok(!/runReconciliation/.test(code), `${rel} must not invoke runReconciliation`);
   }
 });
