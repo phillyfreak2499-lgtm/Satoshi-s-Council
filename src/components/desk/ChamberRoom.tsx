@@ -9,7 +9,7 @@ const CAST = [
   ["WARDEN", "Integrity", "Speaks on real Kalshi feed-health transitions."],
   ["ALCHEMIST", "Research", "Speaks from frozen, prospective Lab specimen milestones."],
   ["WRENCH", "Infrastructure", "Silent — no public infrastructure trigger yet."],
-  ["SWEEP", "Conditions", "Silent — no public regime trigger yet."],
+  ["SWEEP", "Conditions", "Speaks when the daily evidence sweep flags or clears a seat condition."],
   ["COACH", "Seat behavior", "Silent — no public team trigger yet."],
 ] as const;
 
@@ -29,7 +29,7 @@ function exchangeKey(s: ChamberStatement): string {
 
 function exchangeLabel(row: ChamberStatement): string {
   const e = row.evidence;
-  return e.ticker || e.candidate_label || e.candidate_id || "desk event";
+  return e.ticker || e.candidate_label || e.candidate_id || e.seat || "desk event";
 }
 
 function groupExchanges(rows: ChamberStatement[]): Exchange[] {
@@ -57,7 +57,7 @@ function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
   }
   return (
     <span className="grid size-[30px] shrink-0 place-items-center rounded-sm border border-border bg-canvas font-mono text-[11px] font-bold text-subtle" aria-hidden="true">
-      {speaker === "ALCHEMIST" ? "A" : "W"}
+      {speaker === "ALCHEMIST" ? "A" : speaker === "SWEEP" ? "S" : "W"}
     </span>
   );
 }
@@ -92,6 +92,17 @@ function Evidence({ statement }: { statement: ChamberStatement }) {
               <div><dt className="inline text-muted">paired vs {e.control_id || "control"} </dt><dd className="inline tabular">{e.paired_n != null ? `${e.paired_n} windows` : "—"}{e.paired_delta != null ? ` · ${e.paired_delta >= 0 ? "+" : ""}${e.paired_delta}¢ avg` : ""}</dd></div>
               {e.frozen_at ? <div><dt className="inline text-muted">frozen </dt><dd className="inline tabular">{new Date(e.frozen_at).toISOString()}</dd></div> : null}
               <div><dt className="inline text-muted">authority </dt><dd className="inline">{e.paper_only ? "paper-only" : "—"} · {e.authority || "none"}</dd></div>
+            </>
+          ) : e.kind === "seat-audit" ? (
+            <>
+              <div><dt className="inline text-muted">seat </dt><dd className="inline">{e.seat || "—"}</dd></div>
+              <div><dt className="inline text-muted">transition </dt><dd className="inline">{e.action || "—"}</dd></div>
+              <div><dt className="inline text-muted">raw reads </dt><dd className="inline tabular">{e.reads ?? "—"}</dd></div>
+              <div><dt className="inline text-muted">heard reads </dt><dd className="inline tabular">{e.spoke ?? "—"}{e.gagged != null ? ` · ${e.gagged} held back` : ""}</dd></div>
+              <div><dt className="inline text-muted">mid-window sample </dt><dd className="inline tabular">{e.mid_n ?? "—"}{e.mid_hit_pct != null ? ` · ${e.mid_hit_pct}% right` : ""}</dd></div>
+              <div><dt className="inline text-muted">ask economics </dt><dd className="inline tabular">{e.mid_cents != null ? `${e.mid_cents >= 0 ? "+" : ""}${e.mid_cents}¢ avg` : "—"}</dd></div>
+              <div><dt className="inline text-muted">graded </dt><dd className="inline tabular">{e.grade_n ?? "—"}</dd></div>
+              <div><dt className="inline text-muted">authority </dt><dd className="inline">none · observation only</dd></div>
             </>
           ) : (
             <>
