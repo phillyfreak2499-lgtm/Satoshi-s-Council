@@ -29,3 +29,23 @@ test("the stage has an honest quiet state and reduced-motion treatment", () => {
   assert.match(room, /No evidence-backed dispatch/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
+
+test("the cinematic room is shelved without deleting its restoration path", () => {
+  assert.match(room, /const SHOW_CINEMATIC_ROOM = false/);
+  assert.match(room, /SHOW_CINEMATIC_ROOM \? <RoomStage/);
+  assert.match(room, /function RoomStage/);
+  assert.match(room, /CAMERA_VIEWS/);
+});
+
+test("live exchanges use distinct compact speaker portraits instead of letter tiles", () => {
+  assert.match(room, /className="chamber-speaker-mark"/);
+  assert.match(room, /className="chamber-speaker-portrait"/);
+  assert.match(room, /<Radar className="chamber-speaker-glyph"/);
+  assert.doesNotMatch(room, /speaker === "ALCHEMIST" \? "A"/);
+  assert.match(css, /CHAMBER CONVERSATION MODE/);
+  assert.match(css, /url\("\/chamber\/cast-v1\.webp"\)/);
+  assert.match(css, /data-speaker="ALCHEMIST"/);
+  assert.match(css, /data-speaker="WARDEN"/);
+  assert.match(css, /data-speaker="SWEEP"/);
+});
+
