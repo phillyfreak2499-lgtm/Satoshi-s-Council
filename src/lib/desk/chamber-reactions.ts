@@ -6,7 +6,7 @@
  */
 import type { PublicSystemEvent } from "./system-events.ts";
 
-export type ChamberSpeaker = "SATOSHI" | "WARDEN" | "ALCHEMIST";
+export type ChamberSpeaker = "SATOSHI" | "WARDEN" | "ALCHEMIST" | "SWEEP";
 
 export type ChamberStatement = {
   event_key: string;
@@ -17,7 +17,7 @@ export type ChamberStatement = {
   source_type: string;
   source_id: string;
   evidence: {
-    kind: "chair-wait" | "chair-directional" | "system-health" | "experiment";
+    kind: "chair-wait" | "chair-directional" | "system-health" | "experiment" | "seat-audit";
     wait_reason: string;
     ticker: string;
     close_time: number | null;
@@ -41,6 +41,15 @@ export type ChamberStatement = {
     frozen_at: string;
     paper_only: boolean;
     authority: string;
+    seat?: string;
+    action?: string;
+    reads?: number | null;
+    spoke?: number | null;
+    gagged?: number | null;
+    mid_n?: number | null;
+    mid_hit_pct?: number | null;
+    mid_cents?: number | null;
+    grade_n?: number | null;
   };
 };
 
@@ -210,6 +219,42 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
         frozen_at: asString(ev.payload.frozen_at),
         paper_only: ev.payload.paper_only === true,
         authority: asString(ev.payload.authority),
+      },
+    };
+  }
+
+  if (ev.event_type === "DESK_UPDATE" && ev.character === "SWEEP" && ev.payload.kind === "sweep-seat-audit") {
+    return {
+      event_key: ev.event_key,
+      event_type: ev.event_type,
+      speaker: "SWEEP",
+      text,
+      occurred_at: ev.occurred_at,
+      source_type: ev.source_type,
+      source_id: ev.source_id,
+      evidence: {
+        kind: "seat-audit",
+        ...baseEvidence(ev),
+        wait_reason: "",
+        quorum: null,
+        score: null,
+        bar: null,
+        failed_hard: [],
+        feed: "",
+        receipt_age_s: null,
+        last_change_age_s: null,
+        gap: "",
+        lean: "",
+        entry_cents: null,
+        seat: asString(ev.payload.seat),
+        action: asString(ev.payload.action),
+        reads: asNum(ev.payload.reads),
+        spoke: asNum(ev.payload.spoke),
+        gagged: asNum(ev.payload.gagged),
+        mid_n: asNum(ev.payload.mid_n),
+        mid_hit_pct: asNum(ev.payload.mid_hit_pct),
+        mid_cents: asNum(ev.payload.mid_cents),
+        grade_n: asNum(ev.payload.grade_n),
       },
     };
   }

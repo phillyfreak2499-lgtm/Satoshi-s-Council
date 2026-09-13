@@ -12,7 +12,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 const codeOf = (rel) =>
   read(rel)
-    .replace(/\/[\s\S]*?\*\//g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const BANNED_DECISION = [
@@ -51,6 +51,7 @@ test("no decision-path module imports the system-event writer in Phase 1A", () =
     "system-events.test.ts",
     "board.ts",
     "chamber-wait.server.ts",
+    "chamber-sweep.server.ts",
     "chamber-speech.ts",
   ]);
   for (const name of files) {
@@ -102,7 +103,7 @@ test("8 existing direct DESK automation is unaffected", () => {
   assert.doesNotMatch(recap, /assertPublicBoardWho/);
 });
 
-test("Chamber observer remains the only authorized Chamber producer", () => {
+test("Chair Chamber observer remains an authorized contained producer", () => {
   const producer = read("src/lib/desk/chamber-wait.server.ts");
   const producerCode = producer.slice(producer.indexOf("async function safeRecord"));
   assert.match(producer, /from "\.\/system-events\.server"/);
@@ -162,6 +163,7 @@ test("Chair and chair-v2 cannot import Chamber writers", () => {
     assert.doesNotMatch(src, /chamber-wait/);
     assert.doesNotMatch(src, /chamber-health/);
     assert.doesNotMatch(src, /chamber-lab/);
+    assert.doesNotMatch(src, /chamber-sweep/);
     assert.doesNotMatch(src, /chamber-reactions/);
     assert.doesNotMatch(src, /observeChairWaitMilestone/);
   }
@@ -173,6 +175,7 @@ test("server-engine may observe but cannot import recordSystemEvent", () => {
   assert.doesNotMatch(src, /from "\.\/system-events\.server"/);
   assert.doesNotMatch(src, /from "\.\/chamber-reactions"/);
   assert.doesNotMatch(src, /chamber-lab/);
+  assert.doesNotMatch(src, /chamber-sweep/);
   assert.doesNotMatch(src, /listChamberSpeech/);
   assert.match(src, /from "\.\/chamber-wait\.server"/);
   const iFn = src.indexOf("function noteDecisionSnapshot");
@@ -201,6 +204,7 @@ test("paper-book modules cannot import Chamber reaction or producer code", () =>
     assert.doesNotMatch(src, /chamber-wait/);
     assert.doesNotMatch(src, /chamber-health/);
     assert.doesNotMatch(src, /chamber-lab/);
+    assert.doesNotMatch(src, /chamber-sweep/);
     assert.doesNotMatch(src, /chamber-reactions/);
     assert.doesNotMatch(src, /recordSystemEvent/);
   }
@@ -221,29 +225,37 @@ test("Chamber UI is read-only — no system-event write", () => {
   assert.match(codeOf("src/lib/desk/chamber-speech.ts"), /listPublicSystemEvents\(20\)/);
 });
 
-test("Chamber speakers are evidence-backed SATOSHI + WARDEN + ALCHEMIST only", () => {
+test("Chamber speakers are evidence-backed SATOSHI + WARDEN + ALCHEMIST + SWEEP only", () => {
   const code = codeOf("src/lib/desk/chamber-reactions.ts");
   assert.match(code, /speaker:\s*"SATOSHI"/);
   assert.match(code, /speaker:\s*"WARDEN"/);
   assert.match(code, /speaker:\s*"ALCHEMIST"/);
+  assert.match(code, /speaker:\s*"SWEEP"/);
   assert.match(code, /ev\.event_type === "CHAIR_WAIT_MILESTONE"/);
   assert.match(code, /ev\.event_type === "SYSTEM_HEALTH_ALERT"/);
   assert.match(code, /ev\.event_type === "SYSTEM_HEALTH_RECOVERED"/);
   assert.match(code, /ev\.event_type === "EXPERIMENT_STARTED"/);
   assert.match(code, /ev\.event_type === "EXPERIMENT_EVIDENCE_MILESTONE"/);
+  assert.match(code, /ev\.event_type === "DESK_UPDATE" && ev\.character === "SWEEP" && ev\.payload\.kind === "sweep-seat-audit"/);
   assert.doesNotMatch(code, /ev\.event_type === "EXPERIMENT_REVIEW_READY"/);
   assert.doesNotMatch(code, /ev\.event_type === "EXPERIMENT_REJECTED"/);
-  for (const who of ["WRENCH", "SWEEP", "COACH", "DESK"]) {
+  for (const who of ["WRENCH", "COACH", "DESK"]) {
     assert.doesNotMatch(code, new RegExp(`speaker:\\s*"${who}"`), `${who} must not speak`);
   }
   const wait = codeOf("src/lib/desk/chamber-wait.ts");
   const health = codeOf("src/lib/desk/chamber-health.ts");
   const lab = codeOf("src/lib/desk/chamber-lab.ts");
+  const sweep = codeOf("src/lib/desk/chamber-sweep.ts");
   assert.match(wait, /character:\s*"SATOSHI"/);
   assert.match(health, /character:\s*"WARDEN"/);
   assert.match(lab, /character:\s*"ALCHEMIST"/);
+  assert.match(sweep, /character:\s*"SWEEP"/);
+  assert.match(sweep, /authority:\s*"none"/);
   assert.doesNotMatch(health, /recordSystemEvent/);
   assert.doesNotMatch(lab, /recordSystemEvent/);
+  assert.doesNotMatch(sweep, /recordSystemEvent/);
   assert.doesNotMatch(health, /from "\.\/chair/);
   assert.doesNotMatch(health, /from "\.\/learner/);
+  assert.doesNotMatch(sweep, /from "\.\/chair/);
+  assert.doesNotMatch(sweep, /from "\.\/learner/);
 });
