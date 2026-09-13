@@ -22,7 +22,7 @@ export async function currentLabExperimentEvents(): Promise<SystemEventInput[]> 
       ...labExperimentEvents({
         candidate_id: candidate.id,
         label: candidate.label,
-        control: candidate.control === true,
+        control: false,
         frozen_at: candidate.frozen_at,
         why: candidate.why,
         n: row.n,
