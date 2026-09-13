@@ -12,7 +12,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 const codeOf = (rel) =>
   read(rel)
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const BANNED_DECISION = [
@@ -51,6 +51,7 @@ test("no decision-path module imports the system-event writer in Phase 1A", () =
     "system-events.test.ts",
     "board.ts",
     "chamber-wait.server.ts",
+    "chamber-speech.ts",
   ]);
   for (const name of files) {
     if (allowed.has(name)) continue;
@@ -106,13 +107,23 @@ test("PR156: chamber-wait.server.ts is the only authorized Chamber producer", ()
   const producerCode = codeOf("src/lib/desk/chamber-wait.server.ts");
   assert.match(producer, /from "\.\/system-events\.server"/);
   assert.match(producerCode, /recordSystemEvent/);
-  assert.match(producerCode, /listPublicSystemEvents/);
   assert.match(producerCode, /export async function observeChairWaitMilestone/);
-  assert.match(producer, /createServerFn\(\{\s*method:\s*"GET"\s*\)/);
   assert.doesNotMatch(producerCode, /method:\s*"POST"/);
+  assert.doesNotMatch(producerCode, /createServerFn/);
+  assert.doesNotMatch(producerCode, /listPublicSystemEvents/);
   assert.match(producerCode, /try/);
   assert.match(producerCode, /return await recordSystemEvent\(input\)/);
   assert.match(codeOf("src/lib/desk/chamber-wait.ts"), /if \(!why\.wait_reason\) return null/);
+});
+
+test("PR156: chamber-speech.ts is the read-only GET surface", () => {
+  const speech = read("src/lib/desk/chamber-speech.ts");
+  const speechCode = codeOf("src/lib/desk/chamber-speech.ts");
+  assert.match(speech, /createServerFn\(\{\s*method:\s*"GET"\s*\}\)/);
+  assert.match(speechCode, /listPublicSystemEvents\(20\)/);
+  assert.doesNotMatch(speechCode, /method:\s*"POST"/);
+  assert.doesNotMatch(speechCode, /recordSystemEvent/);
+  assert.doesNotMatch(speechCode, /observeChairWaitMilestone/);
 });
 
 test("PR156: Chair and chair-v2 cannot import Chamber writers", () => {
@@ -156,7 +167,9 @@ test("PR156: Chamber UI is read-only — no system-event write", () => {
     assert.doesNotMatch(code, /createServerFn/);
   }
   assert.match(read("src/components/desk/Chamber.tsx"), /ChamberSpeech/);
-  assert.match(codeOf("src/lib/desk/chamber-wait.server.ts"), /listPublicSystemEvents\(20\)/);
+  assert.match(read("src/components/desk/ChamberSpeech.tsx"), /from "@\/lib\/desk\/chamber-speech"/);
+  assert.doesNotMatch(read("src/components/desk/ChamberSpeech.tsx"), /chamber-wait\.server/);
+  assert.match(codeOf("src/lib/desk/chamber-speech.ts"), /listPublicSystemEvents\(20\)/);
 });
 
 test("PR156: the only Chamber speaker is SATOSHI", () => {

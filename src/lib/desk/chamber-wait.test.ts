@@ -59,6 +59,23 @@ const waiting: BookState = { kind: "wait" };
 const hardLaw: Gate = { id: "law", label: "lockdown", pass: false, hard: true, value: "held" };
 const feedWarden: Gate = { id: "warden", label: "warden", pass: false, hard: true, value: "frozen" };
 
+type WaitPayload = {
+  wait_reason?: unknown;
+  ticker?: unknown;
+  close_time?: unknown;
+  text?: unknown;
+  score?: unknown;
+  bar?: unknown;
+  failed_hard?: unknown;
+  quorum?: unknown;
+};
+
+function payloadOf(ev: { payload?: unknown } | null | undefined): WaitPayload {
+  const p = ev?.payload;
+  if (p && typeof p === "object" && !Array.isArray(p)) return p as WaitPayload;
+  return {};
+}
+
 function asPublic(input: ReturnType<typeof maybeChairWaitEvent>): PublicSystemEvent {
   assert.ok(input, "expected an event");
   const ev = validateSystemEvent(input!);
@@ -86,11 +103,11 @@ test("A. WAIT + valid wait_reason builds CHAIR_WAIT_MILESTONE", () => {
   assert.equal(ev!.source_type, "window");
   assert.equal(ev!.source_id, `${TICKER}:${CLOSE}`);
   assert.equal(ev!.event_key, chairWaitEventKey(TICKER, CLOSE, "under-bar"));
-  assert.equal(ev!.payload.wait_reason, "under-bar");
-  assert.equal(ev!.payload.ticker, TICKER);
-  assert.equal(ev!.payload.close_time, CLOSE);
-  assert.equal(ev!.payload.score, 1);
-  assert.equal(ev!.payload.bar, 2);
+  assert.equal(payloadOf(ev!).wait_reason, "under-bar");
+  assert.equal(payloadOf(ev!).ticker, TICKER);
+  assert.equal(payloadOf(ev!).close_time, CLOSE);
+  assert.equal(payloadOf(ev!).score, 1);
+  assert.equal(payloadOf(ev!).bar, 2);
   validateSystemEvent(ev!);
 });
 
@@ -140,8 +157,8 @@ test("H. SATOSHI text exactly matches existing plainLine output", () => {
   const s = snap();
   const ev = maybeChairWaitEvent(c, s, waiting);
   assert.ok(ev);
-  assert.equal(ev!.payload.text, plainLine(c, s, waiting));
-  assert.match(String(ev!.payload.text), /desk waits/);
+  assert.equal(payloadOf(ev!).text, plainLine(c, s, waiting));
+  assert.match(String(payloadOf(ev!).text), /desk waits/);
 });
 
 test("I. reaction for wait milestone is SATOSHI", () => {
@@ -176,7 +193,7 @@ test("L. public event can be returned through Chamber read path", () => {
   assert.equal(ev!.public, true);
   const stmt = statementFromEvent(asPublic(ev));
   assert.ok(stmt);
-  assert.equal(stmt!.text, ev!.payload.text);
+  assert.equal(stmt!.text, payloadOf(ev!).text);
   assert.deepEqual(stmt!.evidence.quorum, { up: 9, down: 3, wait: 9 });
 });
 
@@ -205,16 +222,16 @@ test("M. private event cannot appear through Chamber read path", () => {
 
 test("feed-condition and hard-gate WAIT reasons still speak", () => {
   const feed = maybeChairWaitEvent(chair({ gates: [feedWarden], score: 3, bar: 2 }), snap(), waiting);
-  assert.equal(feed?.payload.wait_reason, "feed-condition");
-  assert.deepEqual(feed?.payload.failed_hard, ["warden"]);
+  assert.equal(payloadOf(feed).wait_reason, "feed-condition");
+  assert.deepEqual(payloadOf(feed).failed_hard, ["warden"]);
   const hard = maybeChairWaitEvent(chair({ gates: [hardLaw], score: 3, bar: 2 }), snap(), waiting);
-  assert.equal(hard?.payload.wait_reason, "hard-gate");
-  assert.deepEqual(hard?.payload.failed_hard, ["law"]);
+  assert.equal(payloadOf(hard).wait_reason, "hard-gate");
+  assert.deepEqual(payloadOf(hard).failed_hard, ["law"]);
 });
 
 test("no-edge WAIT still builds when the bar is cleared", () => {
   const ev = maybeChairWaitEvent(chair({ gates: [], score: 3, bar: 2 }), snap(), waiting);
-  assert.equal(ev?.payload.wait_reason, "no-edge");
+  assert.equal(payloadOf(ev).wait_reason, "no-edge");
 });
 
 test("unusable ticker or close_time produces no event", () => {
@@ -230,7 +247,7 @@ test("bookState wait on a WAIT lean is what the producer stores text against", (
   const book = bookState(s, c.lean, []);
   assert.equal(book.kind, "wait");
   const ev = maybeChairWaitEvent(c, s, book);
-  assert.equal(ev!.payload.text, plainLine(c, s, book));
+  assert.equal(payloadOf(ev!).text, plainLine(c, s, book));
 });
 
 test("empty stored text is silent", () => {
