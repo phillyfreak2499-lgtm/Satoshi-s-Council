@@ -14,6 +14,15 @@ const CAST = [
   ["COACH", "Seat behavior", "Silent — no public team trigger yet."],
 ] as const;
 
+const CAMERA_VIEWS = [
+  ["overview", "Overview"],
+  ["chair", "Chair"],
+  ["lab", "Lab"],
+  ["operations", "Operations"],
+] as const;
+
+type CameraView = (typeof CAMERA_VIEWS)[number][0];
+
 type Exchange = {
   key: string;
   label: string;
@@ -147,12 +156,13 @@ function Statement({ statement }: { statement: ChamberStatement }) {
 
 
 function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded: boolean }) {
+  const [view, setView] = useState<CameraView>("overview");
   const speaker = latest?.speaker ?? null;
   const roomState = !loaded ? "LISTENING" : speaker ? "EVENT RECEIVED" : "QUIET";
   const status = latest ? `${latest.speaker} · ${latest.evidence.kind.replaceAll("-", " ")}` : "No evidence-backed dispatch";
 
   return (
-    <section className="chamber-stage" aria-labelledby="room-stage-heading" data-speaker={speaker ?? "QUIET"}>
+    <section className="chamber-stage" aria-labelledby="room-stage-heading" data-speaker={speaker ?? "QUIET"} data-view={view}>
       <div className="chamber-stage-scan" aria-hidden="true" />
       <div className="chamber-stage-head">
         <div>
@@ -165,8 +175,28 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
         </div>
       </div>
 
+      <div className="chamber-camera" role="group" aria-label="Council room camera">
+        <span className="chamber-camera-label">Camera</span>
+        {CAMERA_VIEWS.map(([id, label]) => (
+          <button
+            className="chamber-camera-button"
+            type="button"
+            aria-pressed={view === id}
+            onClick={() => setView(id)}
+            key={id}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="chamber-world">
-        <div className="chamber-wing chamber-wing-lab">
+        <div className="chamber-scene">
+          <div className="chamber-figure chamber-figure-alchemist" aria-hidden="true" />
+          <div className="chamber-figure chamber-figure-satoshi" aria-hidden="true" />
+          <div className="chamber-figure chamber-figure-warden" aria-hidden="true" />
+
+          <div className="chamber-wing chamber-wing-lab">
           <span>THE LAB</span>
           <small>RESEARCH</small>
         </div>
@@ -199,6 +229,8 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
         </div>
 
         <div className="chamber-floor-seal" aria-hidden="true">₿</div>
+
+        </div>
 
         <div className="chamber-dispatch" aria-live="polite">
           <div className="chamber-dispatch-meta">{status}</div>
