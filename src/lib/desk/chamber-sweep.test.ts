@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { statementFromEvent } from "./chamber-reactions";
-import { sweepCrewEvent } from "./chamber-sweep";
-import { validateSystemEvent } from "./system-events";
+import { statementFromEvent } from "./chamber-reactions.ts";
+import { sweepCrewEvent } from "./chamber-sweep.ts";
+import { validateSystemEvent } from "./system-events.ts";
 
 test("SWEEP maps a persisted flag transition to a public desk update", () => {
   const ev = sweepCrewEvent({
