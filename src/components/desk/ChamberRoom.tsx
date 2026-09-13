@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
 import { SEAT_IDS } from "@/lib/desk/types";
@@ -20,6 +21,9 @@ const CAMERA_VIEWS = [
   ["lab", "Lab"],
   ["operations", "Operations"],
 ] as const;
+
+// Presentation pause: keep the complete room implementation ready for the next visual pass.
+const SHOW_CINEMATIC_ROOM = false;
 
 type CameraView = (typeof CAMERA_VIEWS)[number][0];
 
@@ -62,12 +66,15 @@ function groupExchanges(rows: ChamberStatement[]): Exchange[] {
 }
 
 function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
-  if (speaker === "SATOSHI") {
-    return <Crest size={30} figure className="shrink-0" title="SATOSHI" />;
-  }
+  const hasPortrait = speaker !== "SWEEP";
+
   return (
-    <span className="grid size-[30px] shrink-0 place-items-center rounded-sm border border-border bg-canvas font-mono text-[11px] font-bold text-subtle" aria-hidden="true">
-      {speaker === "ALCHEMIST" ? "A" : speaker === "SWEEP" ? "S" : "W"}
+    <span className="chamber-speaker-mark" data-speaker={speaker} aria-hidden="true">
+      {hasPortrait ? (
+        <span className="chamber-speaker-portrait" />
+      ) : (
+        <Radar className="chamber-speaker-glyph" strokeWidth={1.6} />
+      )}
     </span>
   );
 }
@@ -351,7 +358,7 @@ export function ChamberRoom() {
           </p>
         </section>
 
-        <RoomStage latest={rows[0] ?? null} loaded={loaded} />
+        {SHOW_CINEMATIC_ROOM ? <RoomStage latest={rows[0] ?? null} loaded={loaded} /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section aria-labelledby="exchange-heading">
