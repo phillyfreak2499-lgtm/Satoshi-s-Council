@@ -91,3 +91,19 @@ test("the Council ring reads as occupied stations without inventing state", () =
   assert.match(css, /@media \(max-aspect-ratio: 1 \/ 1\)/);
   assert.doesNotMatch(room, /Math\.random|mockSeat|fakeVote/);
 });
+
+
+test("the institution pass establishes research and operations architecture without fake telemetry", () => {
+  assert.match(room, /className="chamber-intro/);
+  assert.match(room, /className="chamber-institution-mark"/);
+  assert.match(room, /className="chamber-throne-platform"/);
+  assert.match(room, /className="chamber-motto chamber-motto-left"/);
+  assert.match(room, /className="chamber-bay chamber-bay-lab"/);
+  assert.match(room, /className="chamber-bay chamber-bay-ops"/);
+  assert.match(room, /<span \/><span \/><span \/><span \/><span \/><span \/>/);
+  assert.match(css, /CHAMBER INSTITUTION PASS/);
+  assert.match(css, /\.chamber-stage\[data-view="lab"\] \.chamber-bay-lab/);
+  assert.match(css, /\.chamber-stage\[data-view="operations"\] \.chamber-bay-ops/);
+  assert.match(css, /@media \(min-width: 900px\)[\s\S]*?\.chamber-intro/);
+  assert.doesNotMatch(room, /fakeMetric|mockTelemetry|inventedReadout/);
+});
