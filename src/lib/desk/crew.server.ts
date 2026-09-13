@@ -201,6 +201,11 @@ export async function sweepRun(learner: Learner, now = Date.now()): Promise<stri
     C.lastSweepDay = day;
     C.lastSweepLine = flagged.length ? `SWEEP flags: ${flagged.join(", ")}` : "SWEEP: no flags";
     C.cache = null;
+    // Chamber speech is downstream of the persisted crew log. Do not await it:
+    // a presentation failure must never make the daily audit fail.
+    void import("./chamber-sweep.server")
+      .then(({ observeSweepCrewEvents }) => observeSweepCrewEvents())
+      .catch(() => {});
     return C.lastSweepLine;
   } catch (err) {
     C.lastError = `sweep: ${err instanceof Error ? err.message : String(err)}`;
