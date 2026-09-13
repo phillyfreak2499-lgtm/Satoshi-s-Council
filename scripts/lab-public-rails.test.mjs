@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -41,4 +41,13 @@ test("Lab route and room are read-only presentation", () => {
     assert.doesNotMatch(src, /method:\s*"POST"/);
     assert.doesNotMatch(src, /promoteToLive/);
   }
+});
+
+test("Nitro cannot shadow the public /lab page", () => {
+  assert.equal(existsSync(join(process.cwd(), "server/routes/lab.get.ts")), false);
+
+  const adminStanding = read("server/routes/lab/standing.get.ts");
+  assert.match(adminStanding, /adminKeyOk/);
+  assert.match(adminStanding, /labStanding/);
+  assert.match(adminStanding, /promotes_nothing:\s*true/);
 });
