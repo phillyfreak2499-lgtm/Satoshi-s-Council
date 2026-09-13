@@ -1515,3 +1515,30 @@ html[data-motion="reduce"] .chamber-figure,
 html[data-motion="reduce"] .chamber-camera-button {
   transition: none;
 }
+
+
+/* --- CHAMBER ARCHITECTURE: empty generated shell beneath canonical UI seats --- */
+.chamber-world::before {
+  display: none;
+}
+.chamber-scene::before,
+.chamber-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.chamber-scene::before {
+  z-index: 0;
+  background:
+    linear-gradient(to bottom, rgb(4 6 7 / 0.08), rgb(4 6 7 / 0.25) 42%, rgb(4 6 7 / 0.7) 100%),
+    radial-gradient(ellipse 34% 28% at 50% 18%, color-mix(in srgb, var(--room-light) 17%, transparent), transparent 76%),
+    url("/chamber/architecture-v1.webp") center center / cover no-repeat;
+  filter: saturate(0.68) brightness(0.7) contrast(1.13);
+}
+.chamber-scene::after {
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 0.38), transparent 19%, transparent 81%, rgb(0 0 0 / 0.38)),
+    radial-gradient(ellipse 58% 58% at 50% 54%, transparent 34%, rgb(0 0 0 / 0.3) 100%);
+}
