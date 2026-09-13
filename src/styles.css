@@ -1521,7 +1521,7 @@ html[data-motion="reduce"] .chamber-camera-button {
 }
 
 
-/* --- CHAMBER ARCHITECTURE: empty generated shell beneath canonical UI seats --- */
+/* --- CHAMBER ARCHITECTURE: inhabited generated shell beneath canonical UI seats --- */
 .chamber-world::before {
   display: none;
 }
@@ -1537,8 +1537,8 @@ html[data-motion="reduce"] .chamber-camera-button {
   background:
     linear-gradient(to bottom, rgb(4 6 7 / 0.08), rgb(4 6 7 / 0.25) 42%, rgb(4 6 7 / 0.7) 100%),
     radial-gradient(ellipse 34% 28% at 50% 18%, color-mix(in srgb, var(--room-light) 17%, transparent), transparent 76%),
-    url("/chamber/architecture-v1.webp") center center / cover no-repeat;
-  filter: saturate(0.68) brightness(0.7) contrast(1.13);
+    url("/chamber/architecture-v2.webp") center center / cover no-repeat;
+  filter: saturate(0.72) brightness(0.82) contrast(1.1);
 }
 .chamber-scene::after {
   z-index: 1;
@@ -1908,8 +1908,8 @@ html[data-motion="reduce"] .chamber-seat {
     radial-gradient(ellipse 58% 58% at 50% 54%, transparent 34%, rgb(0 0 0 / 0.3) 100%),
     linear-gradient(to bottom, rgb(4 6 7 / 0.08), rgb(4 6 7 / 0.25) 42%, rgb(4 6 7 / 0.7) 100%),
     radial-gradient(ellipse 34% 28% at 50% 18%, color-mix(in srgb, var(--room-light) 17%, transparent), transparent 76%),
-    url("/chamber/architecture-v1.webp") center center / cover no-repeat;
-  filter: saturate(0.68) brightness(0.7) contrast(1.13);
+    url("/chamber/architecture-v2.webp") center center / cover no-repeat;
+  filter: saturate(0.72) brightness(0.82) contrast(1.1);
 }
 
 .chamber-scene::before,
@@ -1933,7 +1933,7 @@ html[data-motion="reduce"] .chamber-seat {
   background:
     radial-gradient(ellipse 22% 34% at 18% 36%, rgb(112 91 139 / 0.075), transparent 76%),
     radial-gradient(ellipse 22% 34% at 82% 36%, rgb(75 139 143 / 0.08), transparent 76%),
-    linear-gradient(to bottom, transparent 34%, rgb(2 5 6 / 0.2) 53%, rgb(2 4 5 / 0.62) 100%);
+    linear-gradient(to bottom, transparent 34%, rgb(2 5 6 / 0.14) 56%, rgb(2 4 5 / 0.45) 100%);
 }
 
 .chamber-seat {
@@ -1965,7 +1965,7 @@ html[data-motion="reduce"] .chamber-seat {
     radial-gradient(circle at 50% 18%, #242c2e 0 13%, #090c0d 14% 21%, transparent 22%),
     linear-gradient(145deg, #182023, #07090a 72%) center bottom / 100% 73% no-repeat;
   clip-path: polygon(39% 0, 61% 0, 73% 29%, 92% 48%, 100% 100%, 0 100%, 8% 48%, 27% 29%);
-  opacity: 0.78;
+  opacity: 0.34;
   filter: drop-shadow(0 7px 7px rgb(0 0 0 / 0.62));
   transform: translateX(-50%);
 }
