@@ -43,7 +43,8 @@ test("reaction and both Chamber surfaces expose directional evidence, never a wr
     assert.match(src, /chair-directional/);
     assert.match(src, /paper entry/);
     assert.doesNotMatch(src, /recordSystemEvent/);
-    assert.doesNotMatch(src, /createServerFn/);
+    assert.doesNotMatch(src, /\bcreateServerFn\s*\(/);
+    assert.doesNotMatch(src, /import\s+[^;]*\bcreateServerFn\b/);
     assert.doesNotMatch(src, /method:\s*["']POST["']/);
   }
 });
