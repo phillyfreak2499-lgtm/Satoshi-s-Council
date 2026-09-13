@@ -107,3 +107,11 @@ test("the institution pass establishes research and operations architecture with
   assert.match(css, /@media \(min-width: 900px\)[\s\S]*?\.chamber-intro/);
   assert.doesNotMatch(room, /fakeMetric|mockTelemetry|inventedReadout/);
 });
+
+
+test("the Lab and Operations cameras preserve subject headroom", () => {
+  assert.match(
+    css,
+    /\.chamber-stage\[data-view="lab"\] \.chamber-figure-alchemist,\s*\.chamber-stage\[data-view="operations"\] \.chamber-figure-warden\s*\{\s*top:\s*15%/
+  );
+});
