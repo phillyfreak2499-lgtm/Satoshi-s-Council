@@ -67,7 +67,7 @@ test("the spatial pass anchors the 21 seats and protects portrait composition", 
   assert.match(room, /Council seat \$\{seatNumber\}/);
   assert.match(css, /\.chamber-seat-ring::before/);
   assert.match(css, /rotateZ\(var\(--seat-turn\)\)/);
-  assert.match(css, /@media \(max-aspect-ratio: 4 \/ 5\)/);
+  assert.match(css, /@media \(max-aspect-ratio: 1 \/ 1\)/);
   assert.match(css, /\.chamber-stage-foot span:nth-child\(2\)/);
   assert.match(css, /\.chamber-seat-name\s*\{\s*display:\s*none/);
 });
@@ -77,4 +77,17 @@ test("camera pans keep the architectural shell fixed to the viewport", () => {
   assert.match(css, /\.chamber-world::before\s*\{[\s\S]*?display:\s*block/);
   assert.match(css, /\.chamber-world::before\s*\{[\s\S]*?architecture-v1\.webp/);
   assert.match(css, /\.chamber-scene::before,\s*\.chamber-scene::after\s*\{\s*background:\s*none/);
+});
+
+
+test("the Council ring reads as occupied stations without inventing state", () => {
+  assert.match(room, /const activeSeat = latest\?\.evidence\.seat/);
+  assert.match(room, /data-active=\{activeSeat === String\(seat\)\.toUpperCase\(\)/);
+  assert.match(room, /"--seat-top": `\$\{23 \+ 54 \* arcDepth\}%`/);
+  assert.match(css, /\.chamber-seat::before/);
+  assert.match(css, /\.chamber-seat::after/);
+  assert.match(css, /\.chamber-seat\[data-active="true"\]/);
+  assert.match(css, /\.chamber-world::after/);
+  assert.match(css, /@media \(max-aspect-ratio: 1 \/ 1\)/);
+  assert.doesNotMatch(room, /Math\.random|mockSeat|fakeVote/);
 });
