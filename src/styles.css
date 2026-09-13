@@ -1560,3 +1560,332 @@ html[data-motion="reduce"] .chamber-camera-button {
 .chamber-dais-name {
   margin-top: 0;
 }
+
+
+/* --- CHAMBER DEPTH PASS: architectural scale, council stations, portrait framing --- */
+.chamber-vault,
+.chamber-aisle {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.chamber-vault {
+  top: 0;
+  left: 50%;
+  width: 38%;
+  height: 50%;
+  background:
+    linear-gradient(90deg, transparent 0 7%, rgb(218 191 126 / 0.07) 7% 7.6%, transparent 7.6% 92.4%, rgb(218 191 126 / 0.07) 92.4% 93%, transparent 93%),
+    radial-gradient(ellipse 36% 48% at 50% 9%, color-mix(in srgb, var(--room-light) 16%, transparent), transparent 76%);
+  clip-path: polygon(24% 0, 76% 0, 100% 100%, 0 100%);
+  opacity: 0.72;
+  transform: translateX(-50%);
+}
+
+.chamber-aisle {
+  bottom: -18%;
+  left: 50%;
+  width: 34%;
+  height: 76%;
+  border-right: 1px solid rgb(218 191 126 / 0.08);
+  border-left: 1px solid rgb(218 191 126 / 0.08);
+  background:
+    linear-gradient(90deg, transparent, rgb(218 191 126 / 0.025) 24%, rgb(218 191 126 / 0.07) 50%, rgb(218 191 126 / 0.025) 76%, transparent),
+    repeating-linear-gradient(0deg, transparent 0 13%, rgb(255 255 255 / 0.035) 13.2% 13.7%, transparent 13.9% 22%);
+  clip-path: polygon(43% 0, 57% 0, 100% 100%, 0 100%);
+  opacity: 0.72;
+  transform: translateX(-50%);
+}
+
+.chamber-figure {
+  top: 9%;
+  width: clamp(100px, 16%, 230px);
+  opacity: 0.74;
+}
+
+.chamber-figure-alchemist {
+  left: 7%;
+}
+
+.chamber-figure-satoshi {
+  top: 5%;
+  width: clamp(124px, 18.5%, 268px);
+}
+
+.chamber-figure-warden {
+  right: 7%;
+}
+
+.chamber-wing {
+  top: 13%;
+  width: 14%;
+  min-width: 92px;
+  padding: 8px 10px 7px;
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: linear-gradient(90deg, rgb(7 10 12 / 0.72), rgb(7 10 12 / 0.28));
+  box-shadow: none;
+  backdrop-filter: blur(4px);
+}
+
+.chamber-wing-lab {
+  left: 24%;
+  border-left: 2px solid #86749e;
+}
+
+.chamber-wing-ops {
+  right: 24%;
+  border-right: 2px solid #5b9ea2;
+  background: linear-gradient(-90deg, rgb(7 10 12 / 0.72), rgb(7 10 12 / 0.28));
+}
+
+.chamber-seat-ring::before,
+.chamber-seat-ring::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.chamber-seat-ring::before {
+  top: 26%;
+  right: 5.5%;
+  bottom: 2%;
+  left: 5.5%;
+  border: 1px solid rgb(218 191 126 / 0.1);
+  border-top-color: transparent;
+  border-radius: 0 0 50% 50% / 0 0 62% 62%;
+  box-shadow:
+    inset 0 -18px 38px rgb(218 191 126 / 0.025),
+    0 18px 44px rgb(0 0 0 / 0.36);
+}
+
+.chamber-seat-ring::after {
+  top: 35%;
+  right: 12%;
+  bottom: 10%;
+  left: 12%;
+  border: 1px solid rgb(255 255 255 / 0.045);
+  border-top-color: transparent;
+  border-radius: 0 0 50% 50% / 0 0 65% 65%;
+}
+
+.chamber-seat {
+  z-index: var(--seat-z);
+  width: clamp(42px, 5.7vw, 70px);
+  min-height: clamp(31px, 4.2vw, 48px);
+  padding: 5px 5px 6px;
+  border-color: rgb(255 255 255 / 0.09);
+  border-top-color: rgb(255 255 255 / 0.2);
+  border-bottom-color: rgb(218 191 126 / 0.11);
+  background:
+    linear-gradient(90deg, transparent, rgb(218 191 126 / 0.045) 50%, transparent),
+    linear-gradient(155deg, #182024, #080b0d 72%);
+  clip-path: polygon(12% 0, 88% 0, 100% 70%, 82% 100%, 18% 100%, 0 70%);
+  transform:
+    translate(-50%, -50%)
+    rotateZ(var(--seat-turn))
+    perspective(170px)
+    rotateX(16deg)
+    scale(var(--seat-scale));
+  transform-origin: 50% 72%;
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.045),
+    0 13px 22px rgb(0 0 0 / 0.52);
+  transition:
+    opacity 360ms ease,
+    filter 360ms ease;
+}
+
+.chamber-seat-screen {
+  position: relative;
+  display: block;
+  width: 62%;
+  height: clamp(5px, 0.7vw, 8px);
+  margin: 0 auto 4px;
+  border: 1px solid rgb(118 165 165 / 0.15);
+  background: linear-gradient(180deg, rgb(96 136 136 / 0.13), rgb(30 47 50 / 0.08));
+  box-shadow: inset 0 0 7px rgb(84 151 151 / 0.09);
+}
+
+.chamber-seat-lamp {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 2px;
+  margin: 0;
+  background: #718084;
+  box-shadow: 0 0 7px rgb(115 159 162 / 0.3);
+  transform: translate(-50%, -50%);
+}
+
+.chamber-seat-label {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+}
+
+.chamber-seat-id {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: clamp(5px, 0.52vw, 7px);
+  line-height: 1;
+  color: color-mix(in srgb, var(--room-light) 44%, transparent);
+}
+
+.chamber-seat-name {
+  min-width: 0;
+  font-size: clamp(6px, 0.66vw, 8px);
+}
+
+.chamber-stage[data-view="chair"] .chamber-seat,
+.chamber-stage[data-view="lab"] .chamber-seat,
+.chamber-stage[data-view="operations"] .chamber-seat {
+  opacity: 0.28;
+  filter: brightness(0.68) saturate(0.55);
+}
+
+.chamber-dispatch {
+  bottom: 3%;
+  width: min(720px, 76%);
+  padding: 10px 14px 11px;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--room-light) 56%, transparent);
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  background: linear-gradient(90deg, rgb(5 7 8 / 0.9), rgb(5 7 8 / 0.72) 76%, rgb(5 7 8 / 0.16));
+  box-shadow: 0 14px 38px rgb(0 0 0 / 0.34);
+  backdrop-filter: blur(5px);
+}
+
+@media (max-aspect-ratio: 4 / 5) {
+  .chamber-camera {
+    min-height: 40px;
+    padding: 5px 12px;
+  }
+
+  .chamber-camera-label {
+    display: none;
+  }
+
+  .chamber-camera-button {
+    min-height: 34px;
+    padding: 6px 9px;
+  }
+
+  .chamber-world {
+    min-height: clamp(470px, 70vh, 680px);
+  }
+
+  .chamber-vault {
+    width: 52%;
+  }
+
+  .chamber-figure {
+    top: 13%;
+    width: clamp(94px, 18%, 148px);
+  }
+
+  .chamber-figure-alchemist {
+    left: 3%;
+  }
+
+  .chamber-figure-satoshi {
+    top: 8%;
+    width: clamp(120px, 23%, 190px);
+  }
+
+  .chamber-figure-warden {
+    right: 3%;
+  }
+
+  .chamber-wing {
+    top: 19%;
+    width: auto;
+    min-width: 0;
+    max-width: 120px;
+    padding: 6px 8px;
+  }
+
+  .chamber-wing-lab {
+    left: 2%;
+  }
+
+  .chamber-wing-ops {
+    right: 2%;
+  }
+
+  .chamber-wing small {
+    display: none;
+  }
+
+  .chamber-seat {
+    width: clamp(32px, 4.8vw, 50px);
+    min-height: 27px;
+    padding: 4px 3px 5px;
+  }
+
+  .chamber-seat-name {
+    display: none;
+  }
+
+  .chamber-seat-id {
+    font-size: 6px;
+  }
+
+  .chamber-dispatch {
+    bottom: 2.25%;
+    width: 88%;
+    padding: 9px 12px 10px;
+  }
+
+  .chamber-stage-foot {
+    justify-content: space-between;
+  }
+
+  .chamber-stage-foot span:nth-child(2),
+  .chamber-stage-foot span:nth-child(3) {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .chamber-world {
+    min-height: 440px;
+  }
+
+  .chamber-stage-state {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  .chamber-figure {
+    width: clamp(88px, 25%, 116px);
+  }
+
+  .chamber-figure-satoshi {
+    width: clamp(110px, 31%, 142px);
+  }
+
+  .chamber-seat {
+    width: 32px;
+  }
+
+  .chamber-dispatch p {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chamber-seat {
+    transition: none;
+  }
+}
+
+html[data-motion="reduce"] .chamber-seat {
+  transition: none;
+}
