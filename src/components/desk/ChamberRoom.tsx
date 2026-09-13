@@ -160,6 +160,7 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
   const speaker = latest?.speaker ?? null;
   const roomState = !loaded ? "LISTENING" : speaker ? "EVENT RECEIVED" : "QUIET";
   const status = latest ? `${latest.speaker} · ${latest.evidence.kind.replaceAll("-", " ")}` : "No evidence-backed dispatch";
+  const activeSeat = latest?.evidence.seat?.toUpperCase() ?? null;
 
   return (
     <section className="chamber-stage" aria-labelledby="room-stage-heading" data-speaker={speaker ?? "QUIET"} data-view={view}>
@@ -221,7 +222,7 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
             const seatNumber = String(index + 1).padStart(2, "0");
             const style = {
               "--seat-left": `${50 + 43 * Math.cos(angle)}%`,
-              "--seat-top": `${25 + 58 * arcDepth}%`,
+              "--seat-top": `${23 + 54 * arcDepth}%`,
               "--seat-delay": `${index * 8}ms`,
               "--seat-scale": (0.74 + 0.26 * arcDepth).toFixed(3),
               "--seat-turn": `${((index - centerIndex) * 1.8).toFixed(1)}deg`,
@@ -233,6 +234,7 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
                 style={style}
                 role="listitem"
                 aria-label={`${seat}, Council seat ${seatNumber}`}
+                data-active={activeSeat === String(seat).toUpperCase() ? "true" : undefined}
                 key={seat}
                 title={`${seatNumber} · ${seat}`}
               >

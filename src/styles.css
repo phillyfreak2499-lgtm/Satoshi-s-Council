@@ -1761,7 +1761,7 @@ html[data-motion="reduce"] .chamber-camera-button {
   backdrop-filter: blur(5px);
 }
 
-@media (max-aspect-ratio: 4 / 5) {
+@media (max-aspect-ratio: 1 / 1) {
   .chamber-camera {
     min-height: 40px;
     padding: 5px 12px;
@@ -1916,4 +1916,174 @@ html[data-motion="reduce"] .chamber-seat {
 .chamber-scene::after {
   background: none;
   filter: none;
+}
+
+
+/* --- CHAMBER COUNCIL PASS: inhabited stations and controlled light --- */
+.chamber-scene {
+  z-index: 2;
+}
+
+.chamber-world::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 22% 34% at 18% 36%, rgb(112 91 139 / 0.075), transparent 76%),
+    radial-gradient(ellipse 22% 34% at 82% 36%, rgb(75 139 143 / 0.08), transparent 76%),
+    linear-gradient(to bottom, transparent 34%, rgb(2 5 6 / 0.2) 53%, rgb(2 4 5 / 0.62) 100%);
+}
+
+.chamber-seat {
+  width: clamp(46px, 5.8vw, 76px);
+  height: clamp(38px, 4.8vw, 58px);
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: none;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.chamber-seat::before,
+.chamber-seat::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.chamber-seat::before {
+  z-index: 1;
+  top: -28%;
+  left: 50%;
+  width: 42%;
+  height: 66%;
+  background:
+    radial-gradient(circle at 50% 18%, #242c2e 0 13%, #090c0d 14% 21%, transparent 22%),
+    linear-gradient(145deg, #182023, #07090a 72%) center bottom / 100% 73% no-repeat;
+  clip-path: polygon(39% 0, 61% 0, 73% 29%, 92% 48%, 100% 100%, 0 100%, 8% 48%, 27% 29%);
+  opacity: 0.78;
+  filter: drop-shadow(0 7px 7px rgb(0 0 0 / 0.62));
+  transform: translateX(-50%);
+}
+
+.chamber-seat::after {
+  z-index: 2;
+  top: 42%;
+  right: 5%;
+  bottom: 0;
+  left: 5%;
+  border-top: 1px solid rgb(255 255 255 / 0.13);
+  border-bottom: 1px solid rgb(218 191 126 / 0.1);
+  background:
+    linear-gradient(90deg, transparent, rgb(218 191 126 / 0.04) 50%, transparent),
+    linear-gradient(155deg, #151b1d, #07090a 76%);
+  clip-path: polygon(7% 0, 93% 0, 100% 68%, 82% 100%, 18% 100%, 0 68%);
+  box-shadow: 0 10px 16px rgb(0 0 0 / 0.48);
+}
+
+.chamber-seat-screen {
+  position: absolute;
+  z-index: 4;
+  top: 22%;
+  left: 8%;
+  width: 84%;
+  height: 31%;
+  margin: 0;
+  border: 1px solid rgb(105 151 153 / 0.2);
+  border-top-color: rgb(153 194 195 / 0.25);
+  background:
+    linear-gradient(180deg, rgb(87 132 134 / 0.19), rgb(21 35 37 / 0.11)),
+    repeating-linear-gradient(90deg, transparent 0 17%, rgb(118 167 168 / 0.06) 18% 19%, transparent 20% 34%);
+  clip-path: polygon(7% 0, 93% 0, 100% 100%, 0 100%);
+  box-shadow:
+    inset 0 0 8px rgb(79 141 143 / 0.11),
+    0 4px 8px rgb(0 0 0 / 0.36);
+  transform: perspective(130px) rotateX(24deg);
+  transform-origin: 50% 100%;
+}
+
+.chamber-seat-label {
+  position: absolute;
+  z-index: 5;
+  right: 11%;
+  bottom: 8%;
+  left: 11%;
+  min-height: 24%;
+  padding: 2px 3px;
+  justify-content: center;
+  background: rgb(6 9 10 / 0.42);
+}
+
+.chamber-seat-id {
+  color: color-mix(in srgb, var(--room-light) 58%, transparent);
+}
+
+.chamber-seat[data-active="true"]::before {
+  opacity: 0.96;
+  filter:
+    drop-shadow(0 7px 7px rgb(0 0 0 / 0.62))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--room-light) 22%, transparent));
+}
+
+.chamber-seat[data-active="true"] .chamber-seat-screen,
+.chamber-seat[data-active="true"] .chamber-seat-lamp {
+  border-color: color-mix(in srgb, var(--room-light) 52%, transparent);
+  background-color: color-mix(in srgb, var(--room-light) 34%, #172022);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--room-light) 26%, transparent);
+}
+
+.chamber-seat:nth-child(3n + 1)::before {
+  transform: translateX(-50%) rotate(-1.5deg) scale(0.94);
+}
+
+.chamber-seat:nth-child(3n + 2)::before {
+  transform: translateX(-50%) rotate(1.5deg) scale(0.97);
+}
+
+@media (max-aspect-ratio: 1 / 1) {
+  .chamber-wing {
+    top: 15%;
+    max-width: 112px;
+  }
+
+  .chamber-wing-lab {
+    left: 22%;
+  }
+
+  .chamber-wing-ops {
+    right: 22%;
+  }
+
+  .chamber-seat {
+    width: clamp(34px, 4.6vw, 48px);
+    height: clamp(31px, 4vw, 40px);
+  }
+
+  .chamber-seat::before {
+    top: -25%;
+    width: 46%;
+    height: 64%;
+  }
+
+  .chamber-seat-label {
+    right: 8%;
+    bottom: 6%;
+    left: 8%;
+    min-height: 27%;
+  }
+}
+
+@media (max-width: 640px) {
+  .chamber-wing {
+    display: none;
+  }
+
+  .chamber-seat {
+    width: 32px;
+    height: 30px;
+  }
 }
