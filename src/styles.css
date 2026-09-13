@@ -1535,16 +1535,16 @@ html[data-motion="reduce"] .chamber-camera-button {
 .chamber-scene::before {
   z-index: 0;
   background:
-    linear-gradient(to bottom, rgb(4 6 7 / 0.08), rgb(4 6 7 / 0.25) 42%, rgb(4 6 7 / 0.7) 100%),
+    linear-gradient(to bottom, rgb(4 6 7 / 0.02), rgb(4 6 7 / 0.08) 48%, rgb(4 6 7 / 0.24) 100%),
     radial-gradient(ellipse 34% 28% at 50% 18%, color-mix(in srgb, var(--room-light) 17%, transparent), transparent 76%),
     url("/chamber/architecture-v2.webp") center center / cover no-repeat;
-  filter: saturate(0.72) brightness(0.82) contrast(1.1);
+  filter: saturate(0.82) brightness(1.03) contrast(1.08);
 }
 .chamber-scene::after {
   z-index: 1;
   background:
-    linear-gradient(90deg, rgb(0 0 0 / 0.38), transparent 19%, transparent 81%, rgb(0 0 0 / 0.38)),
-    radial-gradient(ellipse 58% 58% at 50% 54%, transparent 34%, rgb(0 0 0 / 0.3) 100%);
+    linear-gradient(90deg, rgb(0 0 0 / 0.2), transparent 19%, transparent 81%, rgb(0 0 0 / 0.2)),
+    radial-gradient(ellipse 58% 58% at 50% 54%, transparent 42%, rgb(0 0 0 / 0.16) 100%);
 }
 
 
@@ -1904,12 +1904,12 @@ html[data-motion="reduce"] .chamber-seat {
   display: block;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgb(0 0 0 / 0.38), transparent 19%, transparent 81%, rgb(0 0 0 / 0.38)),
-    radial-gradient(ellipse 58% 58% at 50% 54%, transparent 34%, rgb(0 0 0 / 0.3) 100%),
-    linear-gradient(to bottom, rgb(4 6 7 / 0.08), rgb(4 6 7 / 0.25) 42%, rgb(4 6 7 / 0.7) 100%),
+    linear-gradient(90deg, rgb(0 0 0 / 0.2), transparent 19%, transparent 81%, rgb(0 0 0 / 0.2)),
+    radial-gradient(ellipse 58% 58% at 50% 54%, transparent 42%, rgb(0 0 0 / 0.16) 100%),
+    linear-gradient(to bottom, rgb(4 6 7 / 0.02), rgb(4 6 7 / 0.08) 48%, rgb(4 6 7 / 0.24) 100%),
     radial-gradient(ellipse 34% 28% at 50% 18%, color-mix(in srgb, var(--room-light) 17%, transparent), transparent 76%),
     url("/chamber/architecture-v2.webp") center center / cover no-repeat;
-  filter: saturate(0.72) brightness(0.82) contrast(1.1);
+  filter: saturate(0.82) brightness(1.03) contrast(1.08);
 }
 
 .chamber-scene::before,
@@ -1933,7 +1933,7 @@ html[data-motion="reduce"] .chamber-seat {
   background:
     radial-gradient(ellipse 22% 34% at 18% 36%, rgb(112 91 139 / 0.075), transparent 76%),
     radial-gradient(ellipse 22% 34% at 82% 36%, rgb(75 139 143 / 0.08), transparent 76%),
-    linear-gradient(to bottom, transparent 34%, rgb(2 5 6 / 0.14) 56%, rgb(2 4 5 / 0.45) 100%);
+    linear-gradient(to bottom, transparent 40%, rgb(2 5 6 / 0.06) 62%, rgb(2 4 5 / 0.22) 100%);
 }
 
 .chamber-seat {
