@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as ArenaRouteImport } from './routes/arena'
+import { Route as ChamberRouteImport } from './routes/chamber'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as LegalRouteImport } from './routes/legal'
 import { Route as SeatIdRouteImport } from './routes/seat.$id'
@@ -30,6 +31,11 @@ const AboutRoute = AboutRouteImport.update({
 const ArenaRoute = ArenaRouteImport.update({
   id: '/arena',
   path: '/arena',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChamberRoute = ChamberRouteImport.update({
+  id: '/chamber',
+  path: '/chamber',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaqRoute = FaqRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/arena': typeof ArenaRoute
+  '/chamber': typeof ChamberRoute
   '/faq': typeof FaqRoute
   '/legal': typeof LegalRoute
   '/seat/$id': typeof SeatIdRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/arena': typeof ArenaRoute
+  '/chamber': typeof ChamberRoute
   '/faq': typeof FaqRoute
   '/legal': typeof LegalRoute
   '/seat/$id': typeof SeatIdRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/arena': typeof ArenaRoute
+  '/chamber': typeof ChamberRoute
   '/faq': typeof FaqRoute
   '/legal': typeof LegalRoute
   '/seat/$id': typeof SeatIdRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/arena'
+    | '/chamber'
     | '/faq'
     | '/legal'
     | '/seat/$id'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/arena'
+    | '/chamber'
     | '/faq'
     | '/legal'
     | '/seat/$id'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/arena'
+    | '/chamber'
     | '/faq'
     | '/legal'
     | '/seat/$id'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ArenaRoute: typeof ArenaRoute
+  ChamberRoute: typeof ChamberRoute
   FaqRoute: typeof FaqRoute
   LegalRoute: typeof LegalRoute
   SeatIdRoute: typeof SeatIdRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/arena'
       fullPath: '/arena'
       preLoaderRoute: typeof ArenaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chamber': {
+      id: '/chamber'
+      path: '/chamber'
+      fullPath: '/chamber'
+      preLoaderRoute: typeof ChamberRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/faq': {
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ArenaRoute: ArenaRoute,
+  ChamberRoute: ChamberRoute,
   FaqRoute: FaqRoute,
   LegalRoute: LegalRoute,
   SeatIdRoute: SeatIdRoute,
