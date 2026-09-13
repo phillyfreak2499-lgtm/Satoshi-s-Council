@@ -192,6 +192,8 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
 
       <div className="chamber-world">
         <div className="chamber-scene">
+          <div className="chamber-vault" aria-hidden="true" />
+          <div className="chamber-aisle" aria-hidden="true" />
           <div className="chamber-figure chamber-figure-alchemist" aria-hidden="true" />
           <div className="chamber-figure chamber-figure-satoshi" aria-hidden="true" />
           <div className="chamber-figure chamber-figure-warden" aria-hidden="true" />
@@ -214,15 +216,33 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
         <div className="chamber-seat-ring" role="list" aria-label="The 21 Council seats">
           {SEAT_IDS.map((seat, index) => {
             const angle = (15 + (150 * index) / Math.max(1, SEAT_IDS.length - 1)) * (Math.PI / 180);
+            const arcDepth = Math.sin(angle);
+            const centerIndex = (SEAT_IDS.length - 1) / 2;
+            const seatNumber = String(index + 1).padStart(2, "0");
             const style = {
               "--seat-left": `${50 + 43 * Math.cos(angle)}%`,
-              "--seat-top": `${25 + 58 * Math.sin(angle)}%`,
+              "--seat-top": `${25 + 58 * arcDepth}%`,
               "--seat-delay": `${index * 8}ms`,
+              "--seat-scale": (0.74 + 0.26 * arcDepth).toFixed(3),
+              "--seat-turn": `${((index - centerIndex) * 1.8).toFixed(1)}deg`,
+              "--seat-z": String(Math.round(40 + 60 * arcDepth)),
             } as CSSProperties;
             return (
-              <div className="chamber-seat" style={style} role="listitem" key={seat} title={seat}>
-                <span className="chamber-seat-lamp" aria-hidden="true" />
-                <span className="chamber-seat-name">{seat}</span>
+              <div
+                className="chamber-seat"
+                style={style}
+                role="listitem"
+                aria-label={`${seat}, Council seat ${seatNumber}`}
+                key={seat}
+                title={`${seatNumber} · ${seat}`}
+              >
+                <span className="chamber-seat-screen" aria-hidden="true">
+                  <span className="chamber-seat-lamp" />
+                </span>
+                <span className="chamber-seat-label">
+                  <span className="chamber-seat-id" aria-hidden="true">{seatNumber}</span>
+                  <span className="chamber-seat-name">{seat}</span>
+                </span>
               </div>
             );
           })}
