@@ -1889,3 +1889,31 @@ html[data-motion="reduce"] .chamber-camera-button {
 html[data-motion="reduce"] .chamber-seat {
   transition: none;
 }
+
+
+/* Live camera QA: keep the architectural shell fixed while the cast pans. */
+.chamber-world {
+  isolation: isolate;
+}
+
+.chamber-world::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 0.38), transparent 19%, transparent 81%, rgb(0 0 0 / 0.38)),
+    radial-gradient(ellipse 58% 58% at 50% 54%, transparent 34%, rgb(0 0 0 / 0.3) 100%),
+    linear-gradient(to bottom, rgb(4 6 7 / 0.08), rgb(4 6 7 / 0.25) 42%, rgb(4 6 7 / 0.7) 100%),
+    radial-gradient(ellipse 34% 28% at 50% 18%, color-mix(in srgb, var(--room-light) 17%, transparent), transparent 76%),
+    url("/chamber/architecture-v1.webp") center center / cover no-repeat;
+  filter: saturate(0.68) brightness(0.7) contrast(1.13);
+}
+
+.chamber-scene::before,
+.chamber-scene::after {
+  background: none;
+  filter: none;
+}
