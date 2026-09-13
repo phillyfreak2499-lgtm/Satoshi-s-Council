@@ -195,6 +195,29 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
         <div className="chamber-scene">
           <div className="chamber-vault" aria-hidden="true" />
           <div className="chamber-aisle" aria-hidden="true" />
+          <div className="chamber-throne-platform" aria-hidden="true" />
+
+          <div className="chamber-institution-mark" aria-hidden="true">
+            <Crest size={82} figure title="Satoshi's Council" />
+          </div>
+
+          <div className="chamber-motto chamber-motto-left" aria-hidden="true">
+            <span>CURIOSITY</span>
+            <span>DISCIPLINE</span>
+            <span>PATIENCE</span>
+            <span>PROGRESS</span>
+          </div>
+          <div className="chamber-motto chamber-motto-right" aria-hidden="true">
+            <span>SAME QUESTIONS</span>
+            <span>BRIGHTER TOMORROW</span>
+          </div>
+
+          <div className="chamber-bay chamber-bay-lab" aria-hidden="true">
+            <span /><span /><span /><span /><span /><span />
+          </div>
+          <div className="chamber-bay chamber-bay-ops" aria-hidden="true">
+            <span /><span /><span /><span /><span /><span />
+          </div>
           <div className="chamber-figure chamber-figure-alchemist" aria-hidden="true" />
           <div className="chamber-figure chamber-figure-satoshi" aria-hidden="true" />
           <div className="chamber-figure chamber-figure-warden" aria-hidden="true" />
@@ -317,7 +340,7 @@ export function ChamberRoom() {
       />
 
       <main id="chamber-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
-        <section className="border-b border-border pb-6">
+        <section className="chamber-intro border-b border-border pb-6">
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">Read only · structured events</div>
           <h1 className="mt-2 font-sans text-display font-medium tracking-tight">THE CHAMBER</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">

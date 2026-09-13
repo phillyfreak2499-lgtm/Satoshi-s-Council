@@ -2087,3 +2087,251 @@ html[data-motion="reduce"] .chamber-seat {
     height: 30px;
   }
 }
+
+
+/* --- CHAMBER INSTITUTION PASS: research bays, wall doctrine, compressed proscenium --- */
+.chamber-intro {
+  padding-bottom: 16px;
+}
+
+.chamber-stage {
+  margin-top: 16px;
+}
+
+.chamber-institution-mark,
+.chamber-motto,
+.chamber-bay {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.chamber-institution-mark {
+  top: -1%;
+  left: 50%;
+  display: grid;
+  width: clamp(64px, 7vw, 92px);
+  aspect-ratio: 1;
+  place-items: center;
+  opacity: 0.12;
+  filter: grayscale(1) sepia(0.2) brightness(1.35) drop-shadow(0 0 18px rgb(199 169 91 / 0.18));
+  transform: translateX(-50%);
+}
+
+.chamber-motto {
+  top: 1.5%;
+  display: flex;
+  width: clamp(70px, 8%, 102px);
+  min-height: 24%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 8px 15px;
+  border: 1px solid rgb(218 191 126 / 0.075);
+  border-top-color: rgb(218 191 126 / 0.16);
+  background:
+    linear-gradient(90deg, transparent, rgb(218 191 126 / 0.035) 50%, transparent),
+    linear-gradient(180deg, rgb(12 15 16 / 0.74), rgb(4 6 7 / 0.16));
+  clip-path: polygon(0 0, 100% 0, 100% 82%, 50% 100%, 0 82%);
+  opacity: 0.52;
+}
+
+.chamber-motto-left {
+  left: 31%;
+}
+
+.chamber-motto-right {
+  right: 31%;
+}
+
+.chamber-motto span {
+  font-family: var(--font-mono);
+  font-size: clamp(5px, 0.56vw, 7px);
+  line-height: 1.25;
+  letter-spacing: 0.09em;
+  text-align: center;
+  color: rgb(207 198 172 / 0.62);
+}
+
+.chamber-bay {
+  --bay-glow: 110 139 142;
+  top: 7%;
+  display: grid;
+  width: 22%;
+  height: 32%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: clamp(3px, 0.45vw, 6px);
+  padding: clamp(6px, 0.8vw, 10px);
+  border: 1px solid rgb(var(--bay-glow) / 0.13);
+  border-top-color: rgb(var(--bay-glow) / 0.24);
+  background:
+    linear-gradient(180deg, rgb(var(--bay-glow) / 0.045), transparent 44%),
+    rgb(4 7 8 / 0.44);
+  box-shadow:
+    inset 0 0 34px rgb(var(--bay-glow) / 0.045),
+    0 18px 36px rgb(0 0 0 / 0.3);
+  opacity: 0.56;
+  transition: opacity 420ms ease, filter 420ms ease;
+}
+
+.chamber-bay-lab {
+  --bay-glow: 129 108 153;
+  left: 1.5%;
+  transform: perspective(420px) rotateY(7deg);
+  transform-origin: left center;
+}
+
+.chamber-bay-ops {
+  --bay-glow: 88 151 154;
+  right: 1.5%;
+  transform: perspective(420px) rotateY(-7deg);
+  transform-origin: right center;
+}
+
+.chamber-bay span {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(var(--bay-glow) / 0.15);
+  background:
+    linear-gradient(145deg, transparent 0 34%, rgb(var(--bay-glow) / 0.16) 35% 37%, transparent 38% 100%),
+    repeating-linear-gradient(0deg, transparent 0 22%, rgb(var(--bay-glow) / 0.08) 23% 25%, transparent 26% 42%),
+    linear-gradient(180deg, rgb(var(--bay-glow) / 0.09), rgb(5 10 11 / 0.42));
+  box-shadow: inset 0 0 12px rgb(var(--bay-glow) / 0.07);
+}
+
+.chamber-bay span::after {
+  content: "";
+  position: absolute;
+  right: 12%;
+  bottom: 12%;
+  left: 12%;
+  height: 1px;
+  background: rgb(var(--bay-glow) / 0.3);
+  box-shadow:
+    0 -5px 0 rgb(var(--bay-glow) / 0.13),
+    0 -10px 0 rgb(var(--bay-glow) / 0.08);
+}
+
+.chamber-bay span:nth-child(2),
+.chamber-bay span:nth-child(5) {
+  background:
+    radial-gradient(circle at 50% 48%, transparent 0 18%, rgb(var(--bay-glow) / 0.16) 19% 21%, transparent 22% 34%, rgb(var(--bay-glow) / 0.08) 35% 37%, transparent 38%),
+    linear-gradient(180deg, rgb(var(--bay-glow) / 0.08), rgb(5 10 11 / 0.42));
+}
+
+.chamber-stage[data-view="lab"] .chamber-bay-lab,
+.chamber-stage[data-view="operations"] .chamber-bay-ops {
+  opacity: 0.9;
+  filter: brightness(1.18) saturate(1.1);
+}
+
+.chamber-stage[data-view="lab"] .chamber-bay-ops,
+.chamber-stage[data-view="operations"] .chamber-bay-lab,
+.chamber-stage[data-view="chair"] .chamber-bay {
+  opacity: 0.2;
+  filter: brightness(0.62) saturate(0.5);
+}
+
+.chamber-throne-platform {
+  position: absolute;
+  z-index: 2;
+  top: 49%;
+  left: 50%;
+  width: clamp(240px, 38%, 500px);
+  height: 17%;
+  pointer-events: none;
+  border-top: 1px solid rgb(218 191 126 / 0.14);
+  background:
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 0.055) 0 1px, transparent 1px 26%),
+    linear-gradient(90deg, transparent, rgb(218 191 126 / 0.06) 50%, transparent),
+    linear-gradient(180deg, rgb(17 21 22 / 0.72), rgb(4 6 7 / 0.2));
+  clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+  opacity: 0.7;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.4);
+  transform: translateX(-50%) perspective(320px) rotateX(58deg);
+  transform-origin: 50% 0;
+}
+
+@media (min-width: 900px) {
+  .chamber-intro {
+    display: grid;
+    grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.28fr);
+    grid-template-rows: auto auto auto;
+    column-gap: clamp(32px, 5vw, 72px);
+    align-items: start;
+  }
+
+  .chamber-intro > :first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .chamber-intro > h1 {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    margin-top: 6px;
+  }
+
+  .chamber-intro > p:nth-of-type(1) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin-top: 0;
+  }
+
+  .chamber-intro > p:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 3;
+    margin-top: 7px;
+  }
+}
+
+@media (max-aspect-ratio: 1 / 1) {
+  .chamber-institution-mark {
+    width: clamp(56px, 8vw, 72px);
+    opacity: 0.09;
+  }
+
+  .chamber-motto {
+    display: none;
+  }
+
+  .chamber-bay {
+    top: 9%;
+    width: 25%;
+    height: 27%;
+    opacity: 0.46;
+  }
+}
+
+@media (max-width: 640px) {
+  .chamber-intro {
+    padding-bottom: 13px;
+  }
+
+  .chamber-stage {
+    margin-top: 13px;
+  }
+
+  .chamber-bay {
+    top: 12%;
+    width: 28%;
+    height: 23%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chamber-bay span:nth-child(5),
+  .chamber-bay span:nth-child(6) {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chamber-bay {
+    transition: none;
+  }
+}
+
+html[data-motion="reduce"] .chamber-bay {
+  transition: none;
+}
