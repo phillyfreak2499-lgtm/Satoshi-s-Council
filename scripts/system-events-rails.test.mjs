@@ -138,14 +138,15 @@ test("PR156: Chair and chair-v2 cannot import Chamber writers", () => {
 
 test("PR156: server-engine may observe but cannot import recordSystemEvent", () => {
   const src = read("src/lib/desk/server-engine.ts");
-  const code = codeOf("src/lib/desk/server-engine.ts");
   assert.doesNotMatch(src, /recordSystemEvent/);
   assert.doesNotMatch(src, /from "\.\/system-events\.server"/);
   assert.doesNotMatch(src, /from "\.\/chamber-reactions"/);
   assert.doesNotMatch(src, /listChamberSpeech/);
   assert.match(src, /from "\.\/chamber-wait\.server"/);
-  const nds = code.slice(code.indexOf("function noteDecisionSnapshot"), code.indexOf("async function tick("));
-  assert.ok(nds.length > 0, "noteDecisionSnapshot exists");
+  const iFn = src.indexOf("function noteDecisionSnapshot");
+  const iTick = src.indexOf("async function tick(", iFn);
+  assert.ok(iFn >= 0 && iTick > iFn, "noteDecisionSnapshot exists before tick");
+  const nds = src.slice(iFn, iTick);
   const iGuard = nds.indexOf("tickerAgrees(snap.ticker, snap.close_time) === false");
   const iReturn = nds.indexOf("return;", iGuard);
   const iObs = nds.indexOf("observeChairWaitMilestone");
