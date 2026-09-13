@@ -2548,3 +2548,79 @@ html[data-motion="reduce"] .chamber-world::before {
     top: 31%;
   }
 }
+
+
+/* --- CHAMBER PORTRAIT INTEGRATION: seat the cast and give the wall an identity --- */
+@media (max-aspect-ratio: 1 / 1) {
+  .chamber-institution-mark {
+    top: 4.5%;
+    display: grid;
+    width: 64px;
+    opacity: 1;
+    filter: none;
+  }
+
+  .chamber-institution-mark > * {
+    opacity: 0.2;
+    filter: grayscale(1) sepia(0.18) brightness(1.35) drop-shadow(0 0 18px rgb(199 169 91 / 0.16));
+  }
+
+  .chamber-institution-mark::after {
+    content: "SATOSHI’S COUNCIL";
+    position: absolute;
+    top: calc(100% + 9px);
+    left: 50%;
+    width: max-content;
+    color: rgb(207 198 172 / 0.42);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    white-space: nowrap;
+    transform: translateX(-50%);
+  }
+
+  .chamber-institution-mark::before {
+    content: "";
+    position: absolute;
+    top: calc(100% + 30px);
+    left: 50%;
+    width: 156px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgb(199 169 91 / 0.3) 20% 80%, transparent);
+    transform: translateX(-50%);
+  }
+
+  .chamber-dais {
+    display: none;
+  }
+
+  .chamber-figure {
+    top: 19.5%;
+    width: 7.5%;
+    opacity: 0.42;
+  }
+
+  .chamber-figure-satoshi {
+    top: 17.5%;
+    width: 9.5%;
+    opacity: 0.9;
+  }
+
+  .chamber-stage[data-view="lab"] .chamber-figure-alchemist,
+  .chamber-stage[data-view="operations"] .chamber-figure-warden {
+    top: 19.5%;
+  }
+
+  .chamber-stage[data-view="overview"] .chamber-figure-alchemist,
+  .chamber-stage[data-view="overview"] .chamber-figure-warden {
+    opacity: 0;
+  }
+
+  .chamber-seat-screen {
+    opacity: 0;
+  }
+
+  .chamber-seat[data-active="true"] .chamber-seat-screen {
+    opacity: 1;
+  }
+}

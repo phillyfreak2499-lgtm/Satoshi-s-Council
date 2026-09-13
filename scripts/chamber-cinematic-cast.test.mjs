@@ -139,3 +139,14 @@ test("portrait side-camera subjects stay seated in their bays", () => {
     /@media \(max-aspect-ratio: 1 \/ 1\)[\s\S]*?\.chamber-stage\[data-view="lab"\] \.chamber-figure-alchemist,\s*\.chamber-stage\[data-view="operations"\] \.chamber-figure-warden\s*\{\s*top:\s*31%/
   );
 });
+
+
+test("portrait cast is seated and decorative UI stays subordinate to evidence", () => {
+  assert.match(css, /CHAMBER PORTRAIT INTEGRATION/);
+  assert.match(css, /\.chamber-institution-mark::after\s*\{[\s\S]*?SATOSHI’S COUNCIL/);
+  assert.match(css, /\.chamber-dais\s*\{\s*display:\s*none/);
+  assert.match(css, /\.chamber-figure-satoshi\s*\{[\s\S]*?top:\s*17\.5%;[\s\S]*?width:\s*9\.5%/);
+  assert.match(css, /\.chamber-stage\[data-view="overview"\] \.chamber-figure-alchemist,[\s\S]*?\.chamber-figure-warden\s*\{\s*opacity:\s*0/);
+  assert.match(css, /\.chamber-seat-screen\s*\{\s*opacity:\s*0/);
+  assert.match(css, /\.chamber-seat\[data-active="true"\] \.chamber-seat-screen\s*\{\s*opacity:\s*1/);
+});
