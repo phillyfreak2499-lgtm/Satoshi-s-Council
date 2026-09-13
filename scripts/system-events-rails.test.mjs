@@ -45,7 +45,13 @@ test("the system-event writer does not import or call decision logic", () => {
 test("no decision-path module imports the system-event writer in Phase 1A", () => {
   const desk = join(ROOT, "src/lib/desk");
   const files = readdirSync(desk).filter((n) => n.endsWith(".ts") || n.endsWith(".tsx"));
-  const allowed = new Set(["system-events.ts", "system-events.server.ts", "system-events.test.ts", "board.ts"]);
+  const allowed = new Set([
+    "system-events.ts",
+    "system-events.server.ts",
+    "system-events.test.ts",
+    "board.ts",
+    "chamber-wait.server.ts",
+  ]);
   for (const name of files) {
     if (allowed.has(name)) continue;
     const src = read(join("src/lib/desk", name));
@@ -93,4 +99,75 @@ test("8 existing direct DESK automation is unaffected", () => {
   assert.doesNotMatch(recap, /recordSystemEvent/);
   assert.doesNotMatch(engine, /assertPublicBoardWho/);
   assert.doesNotMatch(recap, /assertPublicBoardWho/);
+});
+
+test("PR156: chamber-wait.server.ts is the only authorized Chamber producer", () => {
+  const producer = read("src/lib/desk/chamber-wait.server.ts");
+  const producerCode = codeOf("src/lib/desk/chamber-wait.server.ts");
+  assert.match(producer, /from "\.\/system-events\.server"/);
+  assert.match(producerCode, /recordSystemEvent/);
+  assert.match(producerCode, /listPublicSystemEvents/);
+  assert.match(producerCode, /export async function observeChairWaitMilestone/);
+  assert.match(producer, /createServerFn\(\{\s*method:\s*"GET"\s*\)/);
+  assert.doesNotMatch(producerCode, /method:\s*"POST"/);
+  assert.match(producerCode, /try/);
+  assert.match(producerCode, /return await recordSystemEvent\(input\)/);
+  assert.match(codeOf("src/lib/desk/chamber-wait.ts"), /if \(!why\.wait_reason\) return null/);
+});
+
+test("PR156: Chair and chair-v2 cannot import Chamber writers", () => {
+  for (const rel of ["src/lib/desk/chair.ts", "src/lib/desk/chair-v2.ts"]) {
+    const src = read(rel);
+    assert.doesNotMatch(src, /recordSystemEvent/);
+    assert.doesNotMatch(src, /chamber-wait/);
+    assert.doesNotMatch(src, /chamber-reactions/);
+    assert.doesNotMatch(src, /observeChairWaitMilestone/);
+  }
+});
+
+test("PR156: server-engine may observe but cannot import recordSystemEvent", () => {
+  const src = read("src/lib/desk/server-engine.ts");
+  assert.doesNotMatch(src, /recordSystemEvent/);
+  assert.doesNotMatch(src, /from "\.\/system-events\.server"/);
+  assert.doesNotMatch(src, /from "\.\/chamber-reactions"/);
+});
+
+test("PR156: paper-book modules cannot import Chamber reaction or producer code", () => {
+  for (const rel of [
+    "src/lib/desk/book-floor.ts",
+    "src/lib/desk/paper-book-edge.test.ts",
+    "src/lib/desk/books.ts",
+    "src/lib/desk/books.server.ts",
+  ]) {
+    const src = read(rel);
+    assert.doesNotMatch(src, /chamber-wait/);
+    assert.doesNotMatch(src, /chamber-reactions/);
+    assert.doesNotMatch(src, /recordSystemEvent/);
+  }
+});
+
+test("PR156: Chamber UI is read-only — no system-event write", () => {
+  for (const rel of ["src/components/desk/Chamber.tsx", "src/components/desk/ChamberSpeech.tsx"]) {
+    const src = read(rel);
+    const code = codeOf(rel);
+    assert.doesNotMatch(src, /recordSystemEvent/);
+    assert.doesNotMatch(src, /observeChairWaitMilestone/);
+    assert.doesNotMatch(code, /method:\s*"POST"/);
+    assert.doesNotMatch(code, /createServerFn/);
+  }
+  assert.match(read("src/components/desk/Chamber.tsx"), /ChamberSpeech/);
+  assert.match(codeOf("src/lib/desk/chamber-wait.server.ts"), /listPublicSystemEvents\(20\)/);
+});
+
+test("PR156: the only Chamber speaker is SATOSHI", () => {
+  const code = codeOf("src/lib/desk/chamber-reactions.ts");
+  assert.match(code, /speaker:\s*"SATOSHI"/);
+  assert.match(code, /ev\.character !== "SATOSHI"/);
+  for (const who of ["WARDEN", "ALCHEMIST", "WRENCH", "SWEEP", "COACH", "DESK"]) {
+    assert.doesNotMatch(code, new RegExp(`"${who}"`), `reaction must not name ${who}`);
+  }
+  const producer = codeOf("src/lib/desk/chamber-wait.ts");
+  assert.match(producer, /character:\s*"SATOSHI"/);
+  assert.doesNotMatch(producer, /character:\s*"WARDEN"/);
+  assert.doesNotMatch(producer, /character:\s*"ALCHEMIST"/);
 });
