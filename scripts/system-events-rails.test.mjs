@@ -146,11 +146,19 @@ test("ALCHEMIST polling is detached and sparse", () => {
   assert.match(producer, /seenLabEventKeys/);
 });
 
+test("Chamber history cannot be monopolized by one noisy speaker", () => {
+  const reader = codeOf("src/lib/desk/system-events.server.ts");
+  assert.match(reader, /export async function listPublicChamberEvents/);
+  assert.match(reader, /row_number\(\) over \(partition by character/);
+  assert.match(reader, /character in \('SATOSHI', 'WARDEN', 'ALCHEMIST', 'SWEEP'\)/);
+  assert.match(reader, /speaker_rank <=/);
+});
+
 test("Chamber speech remains a read-only GET surface", () => {
   const speech = read("src/lib/desk/chamber-speech.ts");
   const speechCode = codeOf("src/lib/desk/chamber-speech.ts");
   assert.match(speech, /createServerFn\(\{\s*method:\s*"GET"\s*\}\)/);
-  assert.match(speechCode, /listPublicSystemEvents\(20\)/);
+  assert.match(speechCode, /listPublicChamberEvents\(5\)/);
   assert.doesNotMatch(speechCode, /method:\s*"POST"/);
   assert.doesNotMatch(speechCode, /recordSystemEvent/);
   assert.doesNotMatch(speechCode, /observeChairWaitMilestone/);
@@ -222,7 +230,7 @@ test("Chamber UI is read-only — no system-event write", () => {
   assert.match(read("src/components/desk/Chamber.tsx"), /ChamberSpeech/);
   assert.match(read("src/components/desk/ChamberSpeech.tsx"), /from "@\/lib\/desk\/chamber-speech"/);
   assert.doesNotMatch(read("src/components/desk/ChamberSpeech.tsx"), /chamber-wait\.server/);
-  assert.match(codeOf("src/lib/desk/chamber-speech.ts"), /listPublicSystemEvents\(20\)/);
+  assert.match(codeOf("src/lib/desk/chamber-speech.ts"), /listPublicChamberEvents\(5\)/);
 });
 
 test("Chamber speakers are evidence-backed SATOSHI + WARDEN + ALCHEMIST + SWEEP only", () => {
