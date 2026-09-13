@@ -32,6 +32,7 @@ export function chairWaitEventKey(ticker: string, closeTime: number, waitReason:
  *   - lean is not WAIT
  *   - whyFacts.wait_reason is empty
  *   - ticker / close_time are unusable
+ *   - ticker is a DEMO window
  *
  * The SATOSHI line is stored on the payload because reconstructing plainLine
  * later needs snap + book, which this event must not dump.
@@ -45,6 +46,7 @@ export function maybeChairWaitEvent(
   const ticker = String(snap.ticker ?? "").trim();
   const closeTime = Number(snap.close_time);
   if (!ticker || !Number.isFinite(closeTime) || closeTime <= 0) return null;
+  if (ticker.includes("DEMO")) return null;
 
   const why = whyFacts(chair, "");
   if (!why.wait_reason) return null;
