@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { statementFromEvent } from "./chamber-reactions";
 import { sweepCrewEvent } from "./chamber-sweep";
+import { validateSystemEvent } from "./system-events";
 
 test("SWEEP maps a persisted flag transition to a public desk update", () => {
   const ev = sweepCrewEvent({
@@ -23,6 +25,18 @@ test("SWEEP maps a persisted flag transition to a public desk update", () => {
   assert.equal(payload.mid_n, 40);
   assert.equal(payload.mid_cents, 2.2);
   assert.equal(payload.authority, "none");
+
+  const record = validateSystemEvent(ev);
+  const statement = statementFromEvent({
+    ...record,
+    occurred_at: record.occurred_at.toISOString(),
+  });
+  assert.ok(statement);
+  assert.equal(statement.speaker, "SWEEP");
+  assert.equal(statement.evidence.kind, "seat-audit");
+  assert.equal(statement.evidence.seat, "CARRY");
+  assert.equal(statement.evidence.mid_n, 40);
+  assert.equal(statement.evidence.mid_cents, 2.2);
 });
 
 test("SWEEP maps clear transitions and rejects non-transition chatter", () => {
