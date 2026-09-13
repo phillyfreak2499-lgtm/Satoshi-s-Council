@@ -55,14 +55,19 @@ export function ChamberSpeech() {
         <div className="min-w-0 flex-1">
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">{speech.speaker}</div>
           <p className="mt-0.5 font-sans text-ui text-fg">{speech.text}</p>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="mt-1 min-h-11 font-mono text-micro uppercase tracking-widest text-muted hover:text-fg sm:min-h-0"
-            aria-expanded={open}
-          >
-            Evidence
-          </button>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="min-h-11 font-mono text-micro uppercase tracking-widest text-muted hover:text-fg sm:min-h-0"
+              aria-expanded={open}
+            >
+              Evidence
+            </button>
+            <a href="/chamber" className="min-h-11 font-mono text-micro uppercase tracking-widest text-muted hover:text-fg sm:min-h-0 sm:leading-none">
+              Enter the Chamber →
+            </a>
+          </div>
           {open ? (
             <dl className="mt-1 space-y-0.5 font-mono text-micro text-subtle">
               {e.kind === "chair-wait" ? (
