@@ -2342,3 +2342,15 @@ html[data-motion="reduce"] .chamber-bay {
 .chamber-stage[data-view="operations"] .chamber-figure-warden {
   top: 15%;
 }
+
+/* --- CHAMBER DIRECT PLATE: keep the inhabited room above the legacy world paint --- */
+.chamber-world {
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 0.08), transparent 16%, transparent 84%, rgb(0 0 0 / 0.08)),
+    radial-gradient(ellipse 42% 34% at 50% 30%, color-mix(in srgb, var(--room-light) 8%, transparent), transparent 78%),
+    url("/chamber/architecture-v2.webp") center 56% / cover no-repeat;
+}
+
+.chamber-world::before {
+  display: none;
+}
