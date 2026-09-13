@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
+import { SEAT_IDS } from "@/lib/desk/types";
 import { SiteHeader } from "./SiteHeader";
 import { Crest } from "./Crest";
 
@@ -144,6 +145,77 @@ function Statement({ statement }: { statement: ChamberStatement }) {
   );
 }
 
+
+function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded: boolean }) {
+  const speaker = latest?.speaker ?? null;
+  const roomState = !loaded ? "LISTENING" : speaker ? "EVENT RECEIVED" : "QUIET";
+  const status = latest ? `${latest.speaker} · ${latest.evidence.kind.replaceAll("-", " ")}` : "No evidence-backed dispatch";
+
+  return (
+    <section className="chamber-stage" aria-labelledby="room-stage-heading" data-speaker={speaker ?? "QUIET"}>
+      <div className="chamber-stage-scan" aria-hidden="true" />
+      <div className="chamber-stage-head">
+        <div>
+          <div className="chamber-stage-kicker">Institution view · observational</div>
+          <h2 id="room-stage-heading" className="chamber-stage-title">Council room</h2>
+        </div>
+        <div className="chamber-stage-state">
+          <span className="chamber-stage-state-dot" aria-hidden="true" />
+          {roomState}
+        </div>
+      </div>
+
+      <div className="chamber-world">
+        <div className="chamber-wing chamber-wing-lab">
+          <span>THE LAB</span>
+          <small>RESEARCH</small>
+        </div>
+        <div className="chamber-wing chamber-wing-ops">
+          <span>OPERATIONS</span>
+          <small>INTEGRITY</small>
+        </div>
+
+        <div className="chamber-dais">
+          <div className="chamber-dais-mark"><Crest size={38} figure title="SATOSHI" /></div>
+          <div className="chamber-dais-name">SATOSHI</div>
+          <div className="chamber-dais-role">CHAIR</div>
+        </div>
+
+        <div className="chamber-seat-ring" role="list" aria-label="The 21 Council seats">
+          {SEAT_IDS.map((seat, index) => {
+            const angle = (15 + (150 * index) / Math.max(1, SEAT_IDS.length - 1)) * (Math.PI / 180);
+            const style = {
+              "--seat-left": `${50 + 43 * Math.cos(angle)}%`,
+              "--seat-top": `${25 + 58 * Math.sin(angle)}%`,
+              "--seat-delay": `${index * 8}ms`,
+            } as CSSProperties;
+            return (
+              <div className="chamber-seat" style={style} role="listitem" key={seat} title={seat}>
+                <span className="chamber-seat-lamp" aria-hidden="true" />
+                <span className="chamber-seat-name">{seat}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="chamber-floor-seal" aria-hidden="true">₿</div>
+
+        <div className="chamber-dispatch" aria-live="polite">
+          <div className="chamber-dispatch-meta">{status}</div>
+          <p>{latest?.text ?? (loaded ? "The room is quiet." : "Listening for structured events…")}</p>
+        </div>
+      </div>
+
+      <div className="chamber-stage-foot">
+        <span>21 COUNCIL SEATS</span>
+        <span>LAB · LEFT WING</span>
+        <span>OPERATIONS · RIGHT WING</span>
+        <span>READ ONLY</span>
+      </div>
+    </section>
+  );
+}
+
 export function ChamberRoom() {
   const [rows, setRows] = useState<ChamberStatement[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -201,6 +273,8 @@ export function ChamberRoom() {
             Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
           </p>
         </section>
+
+        <RoomStage latest={rows[0] ?? null} loaded={loaded} />
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section aria-labelledby="exchange-heading">
