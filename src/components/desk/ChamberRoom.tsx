@@ -7,7 +7,7 @@ import { Crest } from "./Crest";
 const CAST = [
   ["SATOSHI", "Chair", "Speaks from finalized Chair milestones and recorded paper calls."],
   ["WARDEN", "Integrity", "Speaks on real Kalshi feed-health transitions."],
-  ["ALCHEMIST", "Research", "Silent — no public experiment trigger yet."],
+  ["ALCHEMIST", "Research", "Speaks from frozen, prospective Lab specimen milestones."],
   ["WRENCH", "Infrastructure", "Silent — no public infrastructure trigger yet."],
   ["SWEEP", "Conditions", "Silent — no public regime trigger yet."],
   ["COACH", "Seat behavior", "Silent — no public team trigger yet."],
@@ -22,7 +22,14 @@ type Exchange = {
 
 function exchangeKey(s: ChamberStatement): string {
   const e = s.evidence;
-  return e.ticker && e.close_time ? `window:${e.ticker}:${e.close_time}` : `event:${s.event_key}`;
+  if (e.ticker && e.close_time) return `window:${e.ticker}:${e.close_time}`;
+  if (e.candidate_id) return `experiment:${e.candidate_id}`;
+  return `event:${s.event_key}`;
+}
+
+function exchangeLabel(row: ChamberStatement): string {
+  const e = row.evidence;
+  return e.ticker || e.candidate_label || e.candidate_id || "desk event";
 }
 
 function groupExchanges(rows: ChamberStatement[]): Exchange[] {
@@ -36,7 +43,7 @@ function groupExchanges(rows: ChamberStatement[]): Exchange[] {
     }
     map.set(key, {
       key,
-      label: row.evidence.ticker || "desk event",
+      label: exchangeLabel(row),
       latest: row.occurred_at,
       statements: [row],
     });
@@ -50,7 +57,7 @@ function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
   }
   return (
     <span className="grid size-[30px] shrink-0 place-items-center rounded-sm border border-border bg-canvas font-mono text-[11px] font-bold text-subtle" aria-hidden="true">
-      W
+      {speaker === "ALCHEMIST" ? "A" : "W"}
     </span>
   );
 }
@@ -76,6 +83,15 @@ function Evidence({ statement }: { statement: ChamberStatement }) {
             <>
               <div><dt className="inline text-muted">side </dt><dd className="inline">{e.lean || "—"}</dd></div>
               <div><dt className="inline text-muted">paper entry </dt><dd className="inline tabular">{e.entry_cents != null ? `${e.entry_cents}¢` : "—"}</dd></div>
+            </>
+          ) : e.kind === "experiment" ? (
+            <>
+              <div><dt className="inline text-muted">specimen </dt><dd className="inline">{e.candidate_label || e.candidate_id || "—"}</dd></div>
+              <div><dt className="inline text-muted">countable sample </dt><dd className="inline tabular">{e.sample_n ?? "—"}</dd></div>
+              {e.milestone != null ? <div><dt className="inline text-muted">milestone </dt><dd className="inline tabular">{e.milestone}</dd></div> : null}
+              <div><dt className="inline text-muted">paired vs {e.control_id || "control"} </dt><dd className="inline tabular">{e.paired_n != null ? `${e.paired_n} windows` : "—"}{e.paired_delta != null ? ` · ${e.paired_delta >= 0 ? "+" : ""}${e.paired_delta}¢ avg` : ""}</dd></div>
+              {e.frozen_at ? <div><dt className="inline text-muted">frozen </dt><dd className="inline tabular">{new Date(e.frozen_at).toISOString()}</dd></div> : null}
+              <div><dt className="inline text-muted">authority </dt><dd className="inline">{e.paper_only ? "paper-only" : "—"} · {e.authority || "none"}</dd></div>
             </>
           ) : (
             <>
@@ -169,7 +185,7 @@ export function ChamberRoom() {
             Watch the organization react to what the desk actually observed. Every line below comes from a persisted system event and carries its evidence with it.
           </p>
           <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
-            Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
+            Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
           </p>
         </section>
 

@@ -116,6 +116,35 @@ test("Chamber observer remains the only authorized Chamber producer", () => {
   assert.match(codeOf("src/lib/desk/chamber-wait.ts"), /if \(!why\.wait_reason\) return null/);
 });
 
+test("ALCHEMIST Lab reader has evidence access but no event-writer or promotion authority", () => {
+  const server = read("src/lib/desk/chamber-lab.server.ts");
+  const pure = read("src/lib/desk/chamber-lab.ts");
+  assert.match(server, /labStanding/);
+  assert.match(server, /EXIT_CANDIDATES/);
+  assert.doesNotMatch(server, /system-events\.server/);
+  assert.doesNotMatch(server, /recordSystemEvent/);
+  assert.doesNotMatch(server, /evaluateComponentGates/);
+  assert.doesNotMatch(server, /promoteToLive/);
+  assert.doesNotMatch(pure, /getSql/);
+  assert.doesNotMatch(pure, /promotion-gates/);
+  assert.doesNotMatch(pure, /from "\.\/chair/);
+  assert.doesNotMatch(pure, /from "\.\/learner/);
+  assert.doesNotMatch(pure, /book-floor/);
+  assert.match(pure, /paper_only:\s*true/);
+  assert.match(pure, /authority:\s*"none"/);
+});
+
+test("ALCHEMIST polling is detached and sparse", () => {
+  const producer = read("src/lib/desk/chamber-wait.server.ts");
+  assert.match(producer, /LAB_POLL_MS = 60_000/);
+  assert.match(
+    producer,
+    /void observeLabMilestones\(Number\(snap\.as_of\) \|\| Date\.now\(\)\)\.catch\(\(\) => \{\}\);/,
+  );
+  assert.doesNotMatch(producer, /await observeLabMilestones/);
+  assert.match(producer, /seenLabEventKeys/);
+});
+
 test("Chamber speech remains a read-only GET surface", () => {
   const speech = read("src/lib/desk/chamber-speech.ts");
   const speechCode = codeOf("src/lib/desk/chamber-speech.ts");
@@ -132,6 +161,7 @@ test("Chair and chair-v2 cannot import Chamber writers", () => {
     assert.doesNotMatch(src, /recordSystemEvent/);
     assert.doesNotMatch(src, /chamber-wait/);
     assert.doesNotMatch(src, /chamber-health/);
+    assert.doesNotMatch(src, /chamber-lab/);
     assert.doesNotMatch(src, /chamber-reactions/);
     assert.doesNotMatch(src, /observeChairWaitMilestone/);
   }
@@ -142,6 +172,7 @@ test("server-engine may observe but cannot import recordSystemEvent", () => {
   assert.doesNotMatch(src, /recordSystemEvent/);
   assert.doesNotMatch(src, /from "\.\/system-events\.server"/);
   assert.doesNotMatch(src, /from "\.\/chamber-reactions"/);
+  assert.doesNotMatch(src, /chamber-lab/);
   assert.doesNotMatch(src, /listChamberSpeech/);
   assert.match(src, /from "\.\/chamber-wait\.server"/);
   const iFn = src.indexOf("function noteDecisionSnapshot");
@@ -169,13 +200,14 @@ test("paper-book modules cannot import Chamber reaction or producer code", () =>
     const src = read(rel);
     assert.doesNotMatch(src, /chamber-wait/);
     assert.doesNotMatch(src, /chamber-health/);
+    assert.doesNotMatch(src, /chamber-lab/);
     assert.doesNotMatch(src, /chamber-reactions/);
     assert.doesNotMatch(src, /recordSystemEvent/);
   }
 });
 
 test("Chamber UI is read-only — no system-event write", () => {
-  for (const rel of ["src/components/desk/Chamber.tsx", "src/components/desk/ChamberSpeech.tsx"]) {
+  for (const rel of ["src/components/desk/Chamber.tsx", "src/components/desk/ChamberSpeech.tsx", "src/components/desk/ChamberRoom.tsx"]) {
     const src = read(rel);
     const code = codeOf(rel);
     assert.doesNotMatch(src, /recordSystemEvent/);
@@ -189,21 +221,29 @@ test("Chamber UI is read-only — no system-event write", () => {
   assert.match(codeOf("src/lib/desk/chamber-speech.ts"), /listPublicSystemEvents\(20\)/);
 });
 
-test("Chamber speakers are evidence-backed SATOSHI + WARDEN only", () => {
+test("Chamber speakers are evidence-backed SATOSHI + WARDEN + ALCHEMIST only", () => {
   const code = codeOf("src/lib/desk/chamber-reactions.ts");
   assert.match(code, /speaker:\s*"SATOSHI"/);
   assert.match(code, /speaker:\s*"WARDEN"/);
+  assert.match(code, /speaker:\s*"ALCHEMIST"/);
   assert.match(code, /ev\.event_type === "CHAIR_WAIT_MILESTONE"/);
   assert.match(code, /ev\.event_type === "SYSTEM_HEALTH_ALERT"/);
   assert.match(code, /ev\.event_type === "SYSTEM_HEALTH_RECOVERED"/);
-  for (const who of ["ALCHEMIST", "WRENCH", "SWEEP", "COACH", "DESK"]) {
+  assert.match(code, /ev\.event_type === "EXPERIMENT_STARTED"/);
+  assert.match(code, /ev\.event_type === "EXPERIMENT_EVIDENCE_MILESTONE"/);
+  assert.doesNotMatch(code, /ev\.event_type === "EXPERIMENT_REVIEW_READY"/);
+  assert.doesNotMatch(code, /ev\.event_type === "EXPERIMENT_REJECTED"/);
+  for (const who of ["WRENCH", "SWEEP", "COACH", "DESK"]) {
     assert.doesNotMatch(code, new RegExp(`speaker:\\s*"${who}"`), `${who} must not speak`);
   }
   const wait = codeOf("src/lib/desk/chamber-wait.ts");
   const health = codeOf("src/lib/desk/chamber-health.ts");
+  const lab = codeOf("src/lib/desk/chamber-lab.ts");
   assert.match(wait, /character:\s*"SATOSHI"/);
   assert.match(health, /character:\s*"WARDEN"/);
+  assert.match(lab, /character:\s*"ALCHEMIST"/);
   assert.doesNotMatch(health, /recordSystemEvent/);
+  assert.doesNotMatch(lab, /recordSystemEvent/);
   assert.doesNotMatch(health, /from "\.\/chair/);
   assert.doesNotMatch(health, /from "\.\/learner/);
 });
