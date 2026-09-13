@@ -4,7 +4,7 @@
  * the book's state, and never invents a reason the code did not have.
  */
 import type { ChairResult, Snapshot } from "./types";
-import { CHAIR_MIN_ASK_CENTS, type BookState } from "./book-floor";
+import { CHAIR_MIN_ASK_CENTS, type BookState } from "./book-floor.ts";
 
 const seats = (n: number) => `${n} seat${n === 1 ? "" : "s"}`;
 const sideOf = (lean: "UP" | "DOWN") => (lean === "UP" ? "YES" : "NO");

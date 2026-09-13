@@ -55,6 +55,7 @@ import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.serv
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.server";
 import { decisionSnapshotFrom, recordDecisionSnapshot } from "./decision-snapshot.server";
+import { observeChairWaitMilestone } from "./chamber-wait.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
 import { weeklyRecap } from "./recap.server";
 import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
@@ -1212,6 +1213,7 @@ function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void 
     }
     return;
   }
+  void observeChairWaitMilestone(snap, chair, e.callLog).catch(() => {});
   try {
     const row = decisionSnapshotFrom(snap, chair);
     void recordDecisionSnapshot(row).catch((err) => {
