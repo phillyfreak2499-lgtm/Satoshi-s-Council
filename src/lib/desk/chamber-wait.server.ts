@@ -2,7 +2,7 @@
  * Chamber server observer.
  *
  * One already-finalized (snap, chair) pair can produce display-only system events:
- * - SATOSHI: a real Chair WAIT milestone;
+ * - SATOSHI: a real paper-book directional call or Chair WAIT milestone;
  * - WARDEN: a real Kalshi feed-health transition.
  *
  * Nothing here mutates Snapshot, Chair, gates, seats, learner, or paper book.
@@ -10,6 +10,7 @@
  * No public POST. No write createServerFn.
  */
 import { bookState, type BookState } from "./book-floor";
+import { maybeChairDirectionalEvent } from "./chamber-directional";
 import { maybeWardenHealthEvent, type WardenFeedState } from "./chamber-health";
 import { maybeChairWaitEvent } from "./chamber-wait";
 import { recordSystemEvent } from "./system-events.server";
@@ -35,6 +36,10 @@ async function safeRecord(input: SystemEventInput | null): Promise<RecordEventRe
  * Observe a finalized (snap, chair) pair. Safe to void from the engine.
  * Duplicate event_key is a no-op via the Phase 1A unique key.
  *
+ * Directional speech is sourced from callLog, so it can only appear after the
+ * paper book has actually recorded a call. Because noteCall runs after this observer,
+ * a fresh call becomes visible on the next tick; the observer never races ahead of it.
+ *
  * The process-local WARDEN state is only a chatter suppressor. It is updated before
  * persistence so overlapping async observers cannot emit the same transition twice;
  * the database event_key remains the correctness/idempotency backstop.
@@ -50,7 +55,9 @@ export async function observeChairWaitMilestone(
   kalshiFeedState = health.state;
   const healthResult = await safeRecord(health.event);
 
+  const directionalResult = await safeRecord(maybeChairDirectionalEvent(snap, callLog));
+
   const waitInput = maybeChairWaitEvent(chair, snap, waitBook(snap, chair, callLog));
   const waitResult = await safeRecord(waitInput);
-  return waitResult ?? healthResult;
+  return waitResult ?? directionalResult ?? healthResult;
 }
