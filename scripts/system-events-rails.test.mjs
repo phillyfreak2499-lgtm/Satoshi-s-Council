@@ -104,7 +104,7 @@ test("8 existing direct DESK automation is unaffected", () => {
 
 test("Chamber observer remains the only authorized Chamber producer", () => {
   const producer = read("src/lib/desk/chamber-wait.server.ts");
-  const producerCode = codeOf("src/lib/desk/chamber-wait.server.ts");
+  const producerCode = producer.slice(producer.indexOf("async function safeRecord"));
   assert.match(producer, /from "\.\/system-events\.server"/);
   assert.match(producerCode, /recordSystemEvent/);
   assert.match(producerCode, /export async function observeChairWaitMilestone/);
