@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { assertPublicBoardWho } from "./system-events";
 
 export type BoardKind = "idea" | "feedback" | "update";
 
@@ -91,11 +92,14 @@ export const postBoard = createServerFn({ method: "POST" })
     if (!body) throw new Error("Write a note first.");
     const parent = data.parent_id && data.parent_id > 0 ? Math.round(data.parent_id) : null;
     let kind: BoardKind = parent || data.kind === "feedback" ? "feedback" : "idea";
+    let systemUpdate = false;
     if (!parent && data.kind === "update") {
       const { adminKeyOk } = await import("./admin.server");
       if (!adminKeyOk(data.admin_key)) throw new Error("Updates are desk-admin only.");
       kind = "update";
+      systemUpdate = true;
     }
+    assertPublicBoardWho(who, systemUpdate);
     const lean = clean(data.lean, 8);
     const ticker = clean(data.ticker, 48);
     const conf = Math.max(0, Math.min(100, Math.round(Number(data.conf) || 0)));
