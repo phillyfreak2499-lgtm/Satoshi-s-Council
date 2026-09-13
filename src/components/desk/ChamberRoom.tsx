@@ -165,6 +165,7 @@ export function ChamberRoom() {
           <nav aria-label="Desk rooms" className="flex items-center gap-1">
             <a href="/" className="btn btn-secondary btn-sm">Floor</a>
             <a href="/chamber" className="btn btn-secondary btn-sm" aria-current="page">Chamber</a>
+            <a href="/lab" className="btn btn-secondary btn-sm">Lab</a>
             <a href="/arena" className="btn btn-secondary btn-sm">The Pit</a>
             <a href="/about" className="btn btn-secondary btn-sm">How it works</a>
           </nav>
@@ -172,6 +173,7 @@ export function ChamberRoom() {
         menu={[
           { label: "THE FLOOR", href: "/", hint: "live desk" },
           { label: "THE CHAMBER", href: "/chamber", hint: "current room", active: true },
+          { label: "THE LAB", href: "/lab", hint: "research" },
           { label: "THE PIT", href: "/arena", hint: "competition" },
           { label: "How it works", href: "/about", hint: "page" },
         ]}

@@ -1,0 +1,169 @@
+import { useEffect, useState } from "react";
+import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } from "@/lib/desk/lab-public";
+import { SiteHeader } from "./SiteHeader";
+
+function cents(v: number | null): string {
+  if (v == null) return "—";
+  return `${v > 0 ? "+" : ""}${v}¢`;
+}
+
+function progress(row: PublicLabSpecimen): number {
+  if (!(row.sample_gate.required > 0)) return 0;
+  return Math.max(0, Math.min(100, (row.sample_gate.current / row.sample_gate.required) * 100));
+}
+
+function Specimen({ row, controlId }: { row: PublicLabSpecimen; controlId: string }) {
+  return (
+    <article className="rounded-md border border-border bg-surface p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">Specimen · {row.id}</div>
+          <h2 className="mt-1 font-sans text-title font-medium text-fg">{row.label}</h2>
+        </div>
+        <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold tracking-widest text-muted">
+          {row.status}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">{row.hypothesis}</p>
+
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Sample</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{row.sample_n}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Net</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{cents(row.net_cents)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Avg / obs</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{cents(row.avg_cents)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Worst</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{cents(row.worst_cents)}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 border-t border-border pt-4">
+        <div className="flex items-center justify-between gap-3 font-mono text-micro text-subtle">
+          <span>Prospective sample gate</span>
+          <span className="tabular">{row.sample_gate.current} / {row.sample_gate.required}</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-canvas" aria-hidden="true">
+          <div className="h-full bg-muted" style={{ width: `${progress(row)}%` }} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 border-t border-border pt-4 font-mono text-micro text-subtle sm:grid-cols-2">
+        <div>profitable / losing <span className="text-muted">{row.profitable} / {row.losing}</span></div>
+        <div>frozen <span className="text-muted">{new Date(row.frozen_at).toISOString()}</span></div>
+        {!row.control ? (
+          <>
+            <div>paired vs {controlId} <span className="text-muted">{row.paired_n} windows</span></div>
+            <div>paired delta <span className="text-muted">{cents(row.paired_delta)} avg</span></div>
+          </>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+export function LabRoom() {
+  const [data, setData] = useState<PublicLabSnapshot | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const pull = async () => {
+      try {
+        const next = await publicLabSnapshot();
+        if (mounted) setData(next);
+      } finally {
+        if (mounted) setLoaded(true);
+      }
+    };
+    void pull();
+    const timer = window.setInterval(() => void pull(), 30_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return (
+    <div className="min-h-dvh bg-bg text-fg">
+      <a href="#lab-main" className="skip-link">Skip to content</a>
+      <SiteHeader
+        nav={
+          <nav aria-label="Desk rooms" className="flex items-center gap-1">
+            <a href="/" className="btn btn-secondary btn-sm">Floor</a>
+            <a href="/chamber" className="btn btn-secondary btn-sm">Chamber</a>
+            <a href="/lab" className="btn btn-secondary btn-sm" aria-current="page">Lab</a>
+            <a href="/arena" className="btn btn-secondary btn-sm">The Pit</a>
+          </nav>
+        }
+        menu={[
+          { label: "THE FLOOR", href: "/", hint: "live desk" },
+          { label: "THE CHAMBER", href: "/chamber", hint: "organization" },
+          { label: "THE LAB", href: "/lab", hint: "research", active: true },
+          { label: "THE PIT", href: "/arena", hint: "competition" },
+          { label: "How it works", href: "/about", hint: "page" },
+        ]}
+      />
+
+      <main id="lab-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
+        <section className="border-b border-border pb-6">
+          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">ALCHEMIST · prospective research</div>
+          <h1 className="mt-2 font-sans text-display font-medium tracking-tight">THE LAB</h1>
+          <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
+            Where frozen ideas compete before they earn any right to challenge the Council. These are real prospective paper-research specimens, measured against the same booked opportunities.
+          </p>
+          <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+            Nothing here can change the Chair, enter the Council, alter the paper book, or promote itself. Evidence is collected first; any future authority requires a separate documented review.
+          </p>
+        </section>
+
+        {!loaded ? (
+          <div className="mt-6 rounded-md border border-border bg-surface p-5 font-mono text-ui text-muted">Opening the specimen ledger…</div>
+        ) : !data ? (
+          <div className="mt-6 rounded-md border border-border bg-surface p-5 font-mono text-ui text-muted">The Lab ledger is unavailable.</div>
+        ) : (
+          <>
+            <section className="mt-6 grid gap-3 sm:grid-cols-3" aria-label="Lab governance">
+              <div className="rounded-md border border-border bg-canvas p-4">
+                <div className="font-mono text-micro uppercase tracking-widest text-subtle">Champion</div>
+                <div className="mt-1 font-mono text-ui text-fg">{data.champion.policy_id} · v{data.champion.version}</div>
+              </div>
+              <div className="rounded-md border border-border bg-canvas p-4">
+                <div className="font-mono text-micro uppercase tracking-widest text-subtle">Minimum sample</div>
+                <div className="mt-1 font-mono text-ui tabular text-fg">{data.governance.sample_min} prospective fills</div>
+              </div>
+              <div className="rounded-md border border-border bg-canvas p-4">
+                <div className="font-mono text-micro uppercase tracking-widest text-subtle">Authority</div>
+                <div className="mt-1 font-mono text-ui text-fg">paper-only · none</div>
+              </div>
+            </section>
+
+            <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="font-mono text-micro uppercase tracking-widest text-subtle">Frozen DNA · live evidence</div>
+                <h2 className="mt-1 font-sans text-title font-medium">Specimen ledger</h2>
+              </div>
+              <div className="font-mono text-micro text-subtle">as of {new Date(data.at).toLocaleTimeString()}</div>
+            </div>
+
+            <section className="mt-3 grid gap-4" aria-label="Lab specimens">
+              {data.specimens.map((row) => <Specimen key={row.id} row={row} controlId={data.control_id} />)}
+            </section>
+
+            <section className="mt-6 rounded-md border border-border bg-canvas p-4 font-mono text-micro leading-relaxed text-subtle">
+              Review gates are frozen outside the specimens. Current component minimums include {data.governance.sample_min} prospective fills, {data.governance.days_min} calendar days, and {data.governance.paired_control_losses_min} paired control-loss windows. Meeting a count is not promotion; all applicable evidence gates must be reviewed separately.
+            </section>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
