@@ -1,5 +1,5 @@
 /**
- * Chamber PR 1 — server observer + read-only speech surface.
+ * Chamber PR 1 — server observer.
  *
  * observeChairWaitMilestone records one CHAIR_WAIT_MILESTONE after the Chair
  * has already decided. It never mutates the Chair result. Failures are
@@ -7,11 +7,9 @@
  *
  * No public POST. No write createServerFn.
  */
-import { createServerFn } from "@tanstack/react-start";
 import { bookState, type BookState } from "./book-floor";
-import { statementFromEvent, type ChamberStatement } from "./chamber-reactions";
 import { maybeChairWaitEvent } from "./chamber-wait";
-import { listPublicSystemEvents, recordSystemEvent } from "./system-events.server";
+import { recordSystemEvent } from "./system-events.server";
 import type { RecordEventResult } from "./system-events";
 import type { CallLogRow, ChairResult, Snapshot } from "./types";
 
@@ -37,14 +35,3 @@ export async function observeChairWaitMilestone(
     return null;
   }
 }
-
-/** Read-only. Newest public SATOSHI wait line first. */
-export const listChamberSpeech = createServerFn({ method: "GET" }).handler(async (): Promise<ChamberStatement[]> => {
-  const rows = await listPublicSystemEvents(20);
-  const out: ChamberStatement[] = [];
-  for (const row of rows) {
-    const stmt = statementFromEvent(row);
-    if (stmt) out.push(stmt);
-  }
-  return out;
-});

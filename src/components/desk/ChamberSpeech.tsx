@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { listChamberSpeech } from "@/lib/desk/chamber-wait.server";
+import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
 import { Crest } from "./Crest";
 
