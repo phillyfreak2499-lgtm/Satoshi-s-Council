@@ -5,6 +5,7 @@ import fs from "node:fs";
 const room = fs.readFileSync("src/components/desk/ChamberRoom.tsx", "utf8");
 const css = fs.readFileSync("src/styles.css", "utf8");
 const castPath = "public/chamber/cast-v1.webp";
+const architecturePath = "public/chamber/architecture-v1.webp";
 
 test("the cinematic cast asset is present and performance-budgeted", () => {
   assert.equal(fs.existsSync(castPath), true);
@@ -14,6 +15,18 @@ test("the cinematic cast asset is present and performance-budgeted", () => {
   assert.ok(cast.byteLength > 20_000, "cast art unexpectedly small");
   assert.ok(cast.byteLength < 150_000, "cast art exceeds the 150 KB room budget");
   assert.match(css, /url\(["']\/chamber\/cast-v1\.webp["']\)/);
+});
+
+
+test("the room plate is an optimized decorative architecture layer", () => {
+  assert.equal(fs.existsSync(architecturePath), true);
+  const plate = fs.readFileSync(architecturePath);
+  assert.equal(plate.subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(plate.subarray(8, 12).toString("ascii"), "WEBP");
+  assert.ok(plate.byteLength > 40_000, "room plate unexpectedly small");
+  assert.ok(plate.byteLength < 150_000, "room plate exceeds the 150 KB room budget");
+  assert.match(css, /url\(["']\/chamber\/architecture-v1\.webp["']\)/);
+  assert.match(css, /\.chamber-scene::before/);
 });
 
 test("camera cuts are explicit presentation controls", () => {
