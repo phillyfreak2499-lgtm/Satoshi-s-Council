@@ -55,3 +55,19 @@ test("the cinematic layer stays downstream and motion-safe", () => {
   assert.doesNotMatch(room, /recordSystemEvent|system-events\.server|method:\s*["']POST["']/);
   assert.doesNotMatch(room, /runChair|noteCall|paperBookEdgeOk|promoteToLive/);
 });
+
+
+test("the spatial pass anchors the 21 seats and protects portrait composition", () => {
+  assert.match(room, /className="chamber-vault"/);
+  assert.match(room, /className="chamber-aisle"/);
+  assert.match(room, /--seat-scale/);
+  assert.match(room, /--seat-turn/);
+  assert.match(room, /--seat-z/);
+  assert.match(room, /className="chamber-seat-screen"/);
+  assert.match(room, /Council seat \$\{seatNumber\}/);
+  assert.match(css, /\.chamber-seat-ring::before/);
+  assert.match(css, /rotateZ\(var\(--seat-turn\)\)/);
+  assert.match(css, /@media \(max-aspect-ratio: 4 \/ 5\)/);
+  assert.match(css, /\.chamber-stage-foot span:nth-child\(2\)/);
+  assert.match(css, /\.chamber-seat-name\s*\{\s*display:\s*none/);
+});
