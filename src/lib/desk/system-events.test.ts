@@ -97,16 +97,41 @@ test("public Board cannot impersonate reserved identities", () => {
   }
 });
 
-test("ordinary human Board identity still works", () => {
+test("1 ordinary human Board post is allowed", () => {
   for (const who of ["Zach", "anon", "TEAS2PLEASE", "SatoshiFan", "pit-boss"]) {
     assert.equal(isReservedBoardIdentity(who), false, who);
     assertPublicBoardWho(who);
   }
 });
 
-test("admin/system DESK update path is allowed to wear DESK", () => {
+test("2 ordinary user DESK is rejected", () => {
+  assert.throws(() => assertPublicBoardWho("DESK"), /reserved/);
+  assert.throws(() => assertPublicBoardWho("desk"), /reserved/);
+});
+
+test("3 valid admin DESK update is allowed", () => {
   assertPublicBoardWho("DESK", true);
-  assertPublicBoardWho("SATOSHI", true);
+  assertPublicBoardWho("desk", true);
+});
+
+test("4 valid admin SATOSHI update is rejected", () => {
+  assert.throws(() => assertPublicBoardWho("SATOSHI", true), /reserved/);
+});
+
+test("5 valid admin ALCHEMIST update is rejected", () => {
+  assert.throws(() => assertPublicBoardWho("ALCHEMIST", true), /reserved/);
+  assert.throws(() => assertPublicBoardWho("THE ALCHEMIST", true), /reserved/);
+});
+
+test("6 valid admin WARDEN/WRENCH/SWEEP/COACH updates are rejected", () => {
+  for (const who of ["WARDEN", "WRENCH", "SWEEP", "COACH"]) {
+    assert.throws(() => assertPublicBoardWho(who, true), /reserved/, who);
+  }
+});
+
+test("7 PIT CREW remains rejected on public and admin paths", () => {
+  assert.throws(() => assertPublicBoardWho("PIT CREW"), /reserved/);
+  assert.throws(() => assertPublicBoardWho("PIT_CREW", true), /reserved/);
 });
 
 test("reserved list includes the group label even though it is not an author", () => {

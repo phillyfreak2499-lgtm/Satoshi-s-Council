@@ -146,10 +146,15 @@ export function isReservedBoardIdentity(who: string): boolean {
 
 /**
  * Public Board posters may not wear a canonical character or the Pit Crew
- * group label. The admin DESK-update path is the one exception.
+ * group label.
+ *
+ * The one Board-POST exception is a valid admin kind:update wearing DESK —
+ * the legacy changelog voice. SATOSHI / ALCHEMIST / pit-crew names stay
+ * rejected even with the admin key. Direct syncUpdates / weeklyRecap
+ * inserts do not go through this function.
  */
-export function assertPublicBoardWho(who: string, systemUpdate = false): void {
-  if (systemUpdate) return;
+export function assertPublicBoardWho(who: string, adminDeskUpdate = false): void {
+  if (adminDeskUpdate && normalizeBoardWho(who) === "DESK") return;
   if (isReservedBoardIdentity(who)) {
     throw new Error("That name is reserved for the desk.");
   }

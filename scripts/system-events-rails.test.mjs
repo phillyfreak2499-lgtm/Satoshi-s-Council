@@ -73,3 +73,24 @@ test("board.ts rejects reserved public identities and still posts ideas", () => 
   assert.match(src, /systemUpdate/);
   assert.match(src, /from "\.\/system-events"/);
 });
+
+test("admin Board update is DESK-only — not a general reserved-name bypass", () => {
+  const src = codeOf("src/lib/desk/system-events.ts");
+  const fn = src.indexOf("export function assertPublicBoardWho");
+  assert.ok(fn >= 0, "assertPublicBoardWho missing");
+  const body = src.slice(fn, src.indexOf("export function", fn + 10) === -1 ? src.indexOf("function asOccurredAt", fn) : src.indexOf("export function", fn + 10));
+  assert.match(body, /normalizeBoardWho\(who\) === "DESK"/);
+  assert.doesNotMatch(body, /if \(adminDeskUpdate\) return/);
+  assert.doesNotMatch(body, /if \(systemUpdate\) return/);
+});
+
+test("8 existing direct DESK automation is unaffected", () => {
+  const engine = read("src/lib/desk/server-engine.ts");
+  const recap = read("src/lib/desk/recap.server.ts");
+  assert.match(engine, /values \('DESK', \$\{body\}, 'update'/);
+  assert.match(recap, /values \('DESK', \$\{body\}, 'update'/);
+  assert.doesNotMatch(engine, /recordSystemEvent/);
+  assert.doesNotMatch(recap, /recordSystemEvent/);
+  assert.doesNotMatch(engine, /assertPublicBoardWho/);
+  assert.doesNotMatch(recap, /assertPublicBoardWho/);
+});
