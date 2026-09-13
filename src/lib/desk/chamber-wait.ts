@@ -5,8 +5,8 @@
  * does not recompute a lean, does not touch the learner, Floor, or book.
  * whyFacts / plainLine are presentation of recorded fields only.
  */
-import { plainLine } from "./chair-words";
-import { whyFacts } from "./floor-clarity";
+import { plainLine } from "./chair-words.ts";
+import { whyFacts } from "./floor-clarity.ts";
 import type { BookState } from "./book-floor";
 import type { SystemEventInput } from "./system-events";
 import type { ChairResult, Snapshot } from "./types";
