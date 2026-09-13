@@ -6,7 +6,7 @@
  */
 import type { PublicSystemEvent } from "./system-events.ts";
 
-export type ChamberSpeaker = "SATOSHI" | "WARDEN";
+export type ChamberSpeaker = "SATOSHI" | "WARDEN" | "ALCHEMIST";
 
 export type ChamberStatement = {
   event_key: string;
@@ -17,7 +17,7 @@ export type ChamberStatement = {
   source_type: string;
   source_id: string;
   evidence: {
-    kind: "chair-wait" | "chair-directional" | "system-health";
+    kind: "chair-wait" | "chair-directional" | "system-health" | "experiment";
     wait_reason: string;
     ticker: string;
     close_time: number | null;
@@ -31,6 +31,16 @@ export type ChamberStatement = {
     gap: string;
     lean: string;
     entry_cents: number | null;
+    candidate_id: string;
+    candidate_label: string;
+    sample_n: number | null;
+    paired_n: number | null;
+    paired_delta: number | null;
+    milestone: number | null;
+    control_id: string;
+    frozen_at: string;
+    paper_only: boolean;
+    authority: string;
   };
 };
 
@@ -61,6 +71,16 @@ function baseEvidence(ev: PublicSystemEvent) {
   return {
     ticker: asString(ev.payload.ticker),
     close_time: asNum(ev.payload.close_time),
+    candidate_id: "",
+    candidate_label: "",
+    sample_n: null,
+    paired_n: null,
+    paired_delta: null,
+    milestone: null,
+    control_id: "",
+    frozen_at: "",
+    paper_only: false,
+    authority: "",
   };
 }
 
@@ -149,6 +169,47 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
         gap: asString(ev.payload.gap),
         lean: "",
         entry_cents: null,
+      },
+    };
+  }
+
+  if (
+    (ev.event_type === "EXPERIMENT_STARTED" || ev.event_type === "EXPERIMENT_EVIDENCE_MILESTONE") &&
+    ev.character === "ALCHEMIST"
+  ) {
+    return {
+      event_key: ev.event_key,
+      event_type: ev.event_type,
+      speaker: "ALCHEMIST",
+      text,
+      occurred_at: ev.occurred_at,
+      source_type: ev.source_type,
+      source_id: ev.source_id,
+      evidence: {
+        kind: "experiment",
+        ticker: "",
+        close_time: null,
+        wait_reason: "",
+        quorum: null,
+        score: null,
+        bar: null,
+        failed_hard: [],
+        feed: "",
+        receipt_age_s: null,
+        last_change_age_s: null,
+        gap: "",
+        lean: "",
+        entry_cents: null,
+        candidate_id: asString(ev.payload.candidate_id),
+        candidate_label: asString(ev.payload.candidate_label),
+        sample_n: asNum(ev.payload.sample_n),
+        paired_n: asNum(ev.payload.paired_n),
+        paired_delta: asNum(ev.payload.paired_delta),
+        milestone: asNum(ev.payload.milestone),
+        control_id: asString(ev.payload.control_id),
+        frozen_at: asString(ev.payload.frozen_at),
+        paper_only: ev.payload.paper_only === true,
+        authority: asString(ev.payload.authority),
       },
     };
   }
