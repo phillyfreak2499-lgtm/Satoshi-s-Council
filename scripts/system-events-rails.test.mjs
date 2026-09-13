@@ -137,7 +137,10 @@ test("ALCHEMIST Lab reader has evidence access but no event-writer or promotion 
 test("ALCHEMIST polling is detached and sparse", () => {
   const producer = read("src/lib/desk/chamber-wait.server.ts");
   assert.match(producer, /LAB_POLL_MS = 60_000/);
-  assert.match(producer, /void observeLabMilestones\([^)]*\)\.catch\(/);
+  assert.match(
+    producer,
+    /void observeLabMilestones\(Number\(snap\.as_of\) \|\| Date\.now\(\)\)\.catch\(\(\) => \{\}\);/,
+  );
   assert.doesNotMatch(producer, /await observeLabMilestones/);
   assert.match(producer, /seenLabEventKeys/);
 });
