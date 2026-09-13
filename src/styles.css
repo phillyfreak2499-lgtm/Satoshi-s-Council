@@ -2539,3 +2539,12 @@ html[data-motion="reduce"] .chamber-bay {
 html[data-motion="reduce"] .chamber-world::before {
   transition: none;
 }
+
+
+/* Portrait camera cuts keep the live side subjects seated in their architectural bays. */
+@media (max-aspect-ratio: 1 / 1) {
+  .chamber-stage[data-view="lab"] .chamber-figure-alchemist,
+  .chamber-stage[data-view="operations"] .chamber-figure-warden {
+    top: 31%;
+  }
+}

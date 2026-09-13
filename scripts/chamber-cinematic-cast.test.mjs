@@ -131,3 +131,11 @@ test("the portrait Chamber uses one mobile room plate and quiet canonical lamps"
   assert.match(css, /\.chamber-seat-screen\s*\{[\s\S]*?width:\s*7px;[\s\S]*?height:\s*7px/);
   assert.match(css, /\.chamber-seat\[data-active="true"\] \.chamber-seat-screen/);
 });
+
+
+test("portrait side-camera subjects stay seated in their bays", () => {
+  assert.match(
+    css,
+    /@media \(max-aspect-ratio: 1 \/ 1\)[\s\S]*?\.chamber-stage\[data-view="lab"\] \.chamber-figure-alchemist,\s*\.chamber-stage\[data-view="operations"\] \.chamber-figure-warden\s*\{\s*top:\s*31%/
+  );
+});
