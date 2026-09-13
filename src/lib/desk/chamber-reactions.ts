@@ -1,20 +1,23 @@
 /**
- * Chamber PR 1 — pure reaction helper.
+ * Chamber reaction mapper.
  *
- * CHAIR_WAIT_MILESTONE → one SATOSHI statement.
- * No WARDEN, no ALCHEMIST, no LLM, no second speaker.
- * Text is the stored plainLine() result — never paraphrased.
+ * It translates immutable public system events into display-only statements.
+ * The text is always stored on the event payload; this layer never invents prose.
  */
-import type { PublicSystemEvent } from "./system-events";
+import type { PublicSystemEvent } from "./system-events.ts";
+
+export type ChamberSpeaker = "SATOSHI" | "WARDEN";
 
 export type ChamberStatement = {
   event_key: string;
-  speaker: "SATOSHI";
+  event_type: PublicSystemEvent["event_type"];
+  speaker: ChamberSpeaker;
   text: string;
   occurred_at: string;
   source_type: string;
   source_id: string;
   evidence: {
+    kind: "chair-wait" | "system-health";
     wait_reason: string;
     ticker: string;
     close_time: number | null;
@@ -22,6 +25,10 @@ export type ChamberStatement = {
     score: number | null;
     bar: number | null;
     failed_hard: string[];
+    feed: string;
+    receipt_age_s: number | null;
+    last_change_age_s: number | null;
+    gap: string;
   };
 };
 
@@ -48,28 +55,70 @@ function asIds(v: unknown): string[] {
   return v.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, 12);
 }
 
-/** Map one public event to a SATOSHI line. Any other type/speaker is silent. */
+function baseEvidence(ev: PublicSystemEvent) {
+  return {
+    ticker: asString(ev.payload.ticker),
+    close_time: asNum(ev.payload.close_time),
+  };
+}
+
+/** Map one public event to a deterministic Chamber line. Unsupported events stay silent. */
 export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | null {
-  if (ev.event_type !== "CHAIR_WAIT_MILESTONE") return null;
-  if (ev.character !== "SATOSHI") return null;
   const text = asString(ev.payload.text).trim();
   if (!text) return null;
-  const wait_reason = asString(ev.payload.wait_reason);
-  return {
-    event_key: ev.event_key,
-    speaker: "SATOSHI",
-    text,
-    occurred_at: ev.occurred_at,
-    source_type: ev.source_type,
-    source_id: ev.source_id,
-    evidence: {
-      wait_reason,
-      ticker: asString(ev.payload.ticker),
-      close_time: asNum(ev.payload.close_time),
-      quorum: asQuorum(ev.payload.quorum),
-      score: asNum(ev.payload.score),
-      bar: asNum(ev.payload.bar),
-      failed_hard: asIds(ev.payload.failed_hard),
-    },
-  };
+
+  if (ev.event_type === "CHAIR_WAIT_MILESTONE" && ev.character === "SATOSHI") {
+    return {
+      event_key: ev.event_key,
+      event_type: ev.event_type,
+      speaker: "SATOSHI",
+      text,
+      occurred_at: ev.occurred_at,
+      source_type: ev.source_type,
+      source_id: ev.source_id,
+      evidence: {
+        kind: "chair-wait",
+        ...baseEvidence(ev),
+        wait_reason: asString(ev.payload.wait_reason),
+        quorum: asQuorum(ev.payload.quorum),
+        score: asNum(ev.payload.score),
+        bar: asNum(ev.payload.bar),
+        failed_hard: asIds(ev.payload.failed_hard),
+        feed: "",
+        receipt_age_s: null,
+        last_change_age_s: null,
+        gap: "",
+      },
+    };
+  }
+
+  if (
+    (ev.event_type === "SYSTEM_HEALTH_ALERT" || ev.event_type === "SYSTEM_HEALTH_RECOVERED") &&
+    ev.character === "WARDEN"
+  ) {
+    return {
+      event_key: ev.event_key,
+      event_type: ev.event_type,
+      speaker: "WARDEN",
+      text,
+      occurred_at: ev.occurred_at,
+      source_type: ev.source_type,
+      source_id: ev.source_id,
+      evidence: {
+        kind: "system-health",
+        ...baseEvidence(ev),
+        wait_reason: "",
+        quorum: null,
+        score: null,
+        bar: null,
+        failed_hard: [],
+        feed: asString(ev.payload.feed),
+        receipt_age_s: asNum(ev.payload.receipt_age_s),
+        last_change_age_s: asNum(ev.payload.last_change_age_s),
+        gap: asString(ev.payload.gap),
+      },
+    };
+  }
+
+  return null;
 }
