@@ -115,3 +115,19 @@ test("the Lab and Operations cameras preserve subject headroom", () => {
     /\.chamber-stage\[data-view="lab"\] \.chamber-figure-alchemist,\s*\.chamber-stage\[data-view="operations"\] \.chamber-figure-warden\s*\{\s*top:\s*15%/
   );
 });
+
+
+test("the portrait Chamber uses one mobile room plate and quiet canonical lamps", () => {
+  const portraitPath = "public/chamber/architecture-mobile-v1.webp";
+  assert.equal(fs.existsSync(portraitPath), true);
+  const plate = fs.readFileSync(portraitPath);
+  assert.equal(plate.subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(plate.subarray(8, 12).toString("ascii"), "WEBP");
+  assert.ok(plate.byteLength > 40_000, "portrait plate unexpectedly small");
+  assert.ok(plate.byteLength < 150_000, "portrait plate exceeds the 150 KB room budget");
+  assert.match(css, /url\(["']\/chamber\/architecture-mobile-v1\.webp["']\)/);
+  assert.match(css, /@media \(max-aspect-ratio: 1 \/ 1\)[\s\S]*?height:\s*clamp\(620px,\s*145vw,\s*1380px\)/);
+  assert.match(css, /\.chamber-seat::before,[\s\S]*?\.chamber-seat-label\s*\{\s*display:\s*none/);
+  assert.match(css, /\.chamber-seat-screen\s*\{[\s\S]*?width:\s*7px;[\s\S]*?height:\s*7px/);
+  assert.match(css, /\.chamber-seat\[data-active="true"\] \.chamber-seat-screen/);
+});

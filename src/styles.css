@@ -2354,3 +2354,188 @@ html[data-motion="reduce"] .chamber-bay {
 .chamber-world::before {
   display: none;
 }
+
+
+/* --- CHAMBER PORTRAIT PLATE: one deep room, canonical state reduced to light --- */
+@media (max-aspect-ratio: 1 / 1) {
+  .chamber-world {
+    height: clamp(620px, 145vw, 1380px);
+    min-height: 0;
+    background: #040607;
+  }
+
+  .chamber-world::before {
+    inset: -1px;
+    display: block;
+    background:
+      linear-gradient(to bottom, rgb(2 4 5 / 0.01), transparent 52%, rgb(2 4 5 / 0.08) 100%),
+      radial-gradient(ellipse 52% 28% at 50% 37%, color-mix(in srgb, var(--room-light) 7%, transparent), transparent 78%),
+      url("/chamber/architecture-mobile-v1.webp") center 44% / cover no-repeat;
+    filter: saturate(0.88) brightness(1.08) contrast(1.06);
+    transform: translate3d(0, 0, 0) scale(1.01);
+    transform-origin: 50% 35%;
+    transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .chamber-world::after {
+    background:
+      linear-gradient(90deg, rgb(0 0 0 / 0.16), transparent 16%, transparent 84%, rgb(0 0 0 / 0.16)),
+      linear-gradient(to bottom, transparent 68%, rgb(2 4 5 / 0.16) 100%);
+  }
+
+  .chamber-scene {
+    transform: translate3d(0, 0, 0) scale(1);
+    transform-origin: 50% 35%;
+  }
+
+  .chamber-stage[data-view="chair"] .chamber-world::before,
+  .chamber-stage[data-view="chair"] .chamber-scene {
+    transform: translate3d(0, 0, 0) scale(1.14);
+    transform-origin: 50% 35%;
+  }
+
+  .chamber-stage[data-view="lab"] .chamber-world::before,
+  .chamber-stage[data-view="lab"] .chamber-scene {
+    transform: translate3d(12%, 0, 0) scale(1.14);
+    transform-origin: 28% 35%;
+  }
+
+  .chamber-stage[data-view="operations"] .chamber-world::before,
+  .chamber-stage[data-view="operations"] .chamber-scene {
+    transform: translate3d(-12%, 0, 0) scale(1.14);
+    transform-origin: 72% 35%;
+  }
+
+  .chamber-vault,
+  .chamber-aisle,
+  .chamber-throne-platform,
+  .chamber-institution-mark,
+  .chamber-motto,
+  .chamber-bay,
+  .chamber-wing,
+  .chamber-floor-seal {
+    display: none;
+  }
+
+  .chamber-figure {
+    top: 31%;
+    width: 11%;
+    opacity: 0.5;
+    filter: grayscale(0.14) brightness(0.8) contrast(1.08) drop-shadow(0 14px 18px rgb(0 0 0 / 0.72));
+  }
+
+  .chamber-figure-alchemist {
+    left: 5.5%;
+  }
+
+  .chamber-figure-satoshi {
+    top: 28%;
+    width: 13.5%;
+    opacity: 0.82;
+  }
+
+  .chamber-figure-warden {
+    right: 5.5%;
+  }
+
+  .chamber-dais {
+    top: 23.5%;
+    width: clamp(74px, 13%, 112px);
+    padding: 5px 7px 6px;
+    border-color: color-mix(in srgb, var(--room-light) 32%, transparent);
+    background: rgb(5 8 9 / 0.74);
+    box-shadow: 0 12px 30px rgb(0 0 0 / 0.38);
+    backdrop-filter: blur(3px);
+  }
+
+  .chamber-dais-name {
+    font-size: 8px;
+  }
+
+  .chamber-dais-role {
+    font-size: 7px;
+  }
+
+  .chamber-seat-ring::before,
+  .chamber-seat-ring::after,
+  .chamber-seat::before,
+  .chamber-seat::after,
+  .chamber-seat-label {
+    display: none;
+  }
+
+  .chamber-seat {
+    top: calc(var(--seat-top) + 9%);
+    width: 20px;
+    height: 20px;
+    min-height: 0;
+    overflow: visible;
+    pointer-events: none;
+    opacity: 1;
+    filter: none;
+    transform: translate(-50%, -50%) scale(var(--seat-scale));
+  }
+
+  .chamber-seat-screen {
+    top: 50%;
+    left: 50%;
+    display: block;
+    width: 7px;
+    height: 7px;
+    margin: 0;
+    border: 1px solid rgb(150 178 178 / 0.14);
+    border-radius: 1px;
+    background: rgb(82 105 106 / 0.2);
+    box-shadow: 0 0 7px rgb(79 131 132 / 0.13);
+    opacity: 0.62;
+    transform: translate(-50%, -50%);
+  }
+
+  .chamber-seat-lamp {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: #68787a;
+    box-shadow: 0 0 5px rgb(112 151 152 / 0.28);
+  }
+
+  .chamber-seat[data-active="true"] .chamber-seat-screen {
+    border-color: color-mix(in srgb, var(--room-light) 64%, transparent);
+    background: color-mix(in srgb, var(--room-light) 28%, #172022);
+    box-shadow: 0 0 13px color-mix(in srgb, var(--room-light) 44%, transparent);
+    opacity: 1;
+  }
+
+  .chamber-seat[data-active="true"] .chamber-seat-lamp {
+    background: color-mix(in srgb, var(--room-light) 82%, white);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--room-light) 66%, transparent);
+  }
+
+  .chamber-dispatch {
+    bottom: 1.25%;
+    width: 86%;
+    padding: 7px 10px 8px;
+    background: linear-gradient(90deg, rgb(4 7 8 / 0.84), rgb(4 7 8 / 0.66) 78%, rgb(4 7 8 / 0.12));
+    backdrop-filter: blur(3px);
+  }
+
+  .chamber-dispatch-meta {
+    font-size: 7px;
+  }
+
+  .chamber-dispatch p {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chamber-world::before {
+    transition: none;
+  }
+}
+
+html[data-motion="reduce"] .chamber-world::before {
+  transition: none;
+}
