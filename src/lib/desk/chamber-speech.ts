@@ -7,11 +7,11 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { statementFromEvent, type ChamberStatement } from "./chamber-reactions";
-import { listPublicSystemEvents } from "./system-events.server";
+import { listPublicChamberEvents } from "./system-events.server";
 
-/** Read-only. Newest public SATOSHI wait line first. */
+/** Read-only. Up to five latest persisted statements per active speaker. */
 export const listChamberSpeech = createServerFn({ method: "GET" }).handler(async (): Promise<ChamberStatement[]> => {
-  const rows = await listPublicSystemEvents(20);
+  const rows = await listPublicChamberEvents(5);
   const out: ChamberStatement[] = [];
   for (const row of rows) {
     const stmt = statementFromEvent(row);
