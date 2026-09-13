@@ -71,3 +71,10 @@ test("the spatial pass anchors the 21 seats and protects portrait composition", 
   assert.match(css, /\.chamber-stage-foot span:nth-child\(2\)/);
   assert.match(css, /\.chamber-seat-name\s*\{\s*display:\s*none/);
 });
+
+
+test("camera pans keep the architectural shell fixed to the viewport", () => {
+  assert.match(css, /\.chamber-world::before\s*\{[\s\S]*?display:\s*block/);
+  assert.match(css, /\.chamber-world::before\s*\{[\s\S]*?architecture-v1\.webp/);
+  assert.match(css, /\.chamber-scene::before,\s*\.chamber-scene::after\s*\{\s*background:\s*none/);
+});
