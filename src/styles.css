@@ -2335,3 +2335,10 @@ html[data-motion="reduce"] .chamber-seat {
 html[data-motion="reduce"] .chamber-bay {
   transition: none;
 }
+
+
+/* Live camera QA: preserve the Lab and Operations subject headroom. */
+.chamber-stage[data-view="lab"] .chamber-figure-alchemist,
+.chamber-stage[data-view="operations"] .chamber-figure-warden {
+  top: 15%;
+}
