@@ -12,16 +12,17 @@ test("SWEEP maps a persisted flag transition to a public desk update", () => {
     evidence: { reads: 44, spoke: 48, mid_n: 40, mid_hit_pct: 68, mid_cents: 2.2, grade_n: 48 },
   });
   assert.ok(ev);
+  const payload = ev.payload as Record<string, unknown>;
   assert.equal(ev.event_key, "DESK_UPDATE:SWEEP:sweep-2026-09-13-CARRY-GOLD");
   assert.equal(ev.event_type, "DESK_UPDATE");
   assert.equal(ev.character, "SWEEP");
   assert.equal(ev.source_type, "desk_update");
   assert.equal(ev.public, true);
-  assert.equal(ev.payload?.seat, "CARRY");
-  assert.equal(ev.payload?.action, "flag");
-  assert.equal(ev.payload?.mid_n, 40);
-  assert.equal(ev.payload?.mid_cents, 2.2);
-  assert.equal(ev.payload?.authority, "none");
+  assert.equal(payload.seat, "CARRY");
+  assert.equal(payload.action, "flag");
+  assert.equal(payload.mid_n, 40);
+  assert.equal(payload.mid_cents, 2.2);
+  assert.equal(payload.authority, "none");
 });
 
 test("SWEEP maps clear transitions and rejects non-transition chatter", () => {
@@ -34,7 +35,7 @@ test("SWEEP maps clear transitions and rejects non-transition chatter", () => {
     evidence: { mid_n: 280, mid_hit_pct: 76, mid_cents: 0 },
   });
   assert.ok(clear);
-  assert.equal(clear.payload?.action, "clear");
+  assert.equal((clear.payload as Record<string, unknown>).action, "clear");
 
   assert.equal(
     sweepCrewEvent({
