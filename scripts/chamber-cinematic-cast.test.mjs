@@ -41,6 +41,9 @@ test("camera cuts are explicit presentation controls", () => {
   assert.match(css, /\.chamber-stage\[data-view="chair"\]/);
   assert.match(css, /\.chamber-stage\[data-view="lab"\]/);
   assert.match(css, /\.chamber-stage\[data-view="operations"\]/);
+  assert.match(css, /translate3d\(40%, 0, 0\)/);
+  assert.match(css, /translate3d\(-40%, 0, 0\)/);
+  assert.match(css, /\.chamber-dais-mark\s*\{\s*display:\s*none/);
 });
 
 test("the cinematic layer stays downstream and motion-safe", () => {
