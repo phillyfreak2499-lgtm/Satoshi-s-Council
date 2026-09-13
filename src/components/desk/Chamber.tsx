@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SEAT_IDS, type Lean, type SeatId, type SeatRow } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
 import { cn } from "@/lib/utils";
+import { ChamberSpeech } from "./ChamberSpeech";
 import { Tip } from "./Tip";
 
 const TONE: Record<Lean, string> = { UP: "text-up", DOWN: "text-down", WAIT: "text-wait" };
@@ -141,6 +142,7 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
           {speakingIds.length} speaking · {sittingIds.length} sitting
         </span>
       </div>
+      <ChamberSpeech />
       {speakingIds.length ? (
         <div role="list" aria-label="Seats speaking a direction" className={gridCls}>
           {speakingIds.map(cell)}
