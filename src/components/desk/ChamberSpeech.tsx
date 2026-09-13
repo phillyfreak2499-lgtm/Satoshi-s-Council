@@ -75,6 +75,11 @@ export function ChamberSpeech() {
                   <dt className="inline text-muted">reason </dt>
                   <dd className="inline">{e.wait_reason || "—"}</dd>
                 </div>
+              ) : e.kind === "chair-directional" ? (
+                <>
+                  <div><dt className="inline text-muted">side </dt><dd className="inline">{e.lean || "—"}</dd></div>
+                  <div><dt className="inline text-muted">paper entry </dt><dd className="inline tabular">{e.entry_cents != null ? `${e.entry_cents}¢` : "—"}</dd></div>
+                </>
               ) : (
                 <>
                   <div>

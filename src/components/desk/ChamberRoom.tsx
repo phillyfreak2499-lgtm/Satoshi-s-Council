@@ -5,7 +5,7 @@ import { SiteHeader } from "./SiteHeader";
 import { Crest } from "./Crest";
 
 const CAST = [
-  ["SATOSHI", "Chair", "Speaks from finalized Chair milestones."],
+  ["SATOSHI", "Chair", "Speaks from finalized Chair milestones and recorded paper calls."],
   ["WARDEN", "Integrity", "Speaks on real Kalshi feed-health transitions."],
   ["ALCHEMIST", "Research", "Silent — no public experiment trigger yet."],
   ["WRENCH", "Infrastructure", "Silent — no public infrastructure trigger yet."],
@@ -72,6 +72,11 @@ function Evidence({ statement }: { statement: ChamberStatement }) {
         <dl className="mt-2 grid gap-x-4 gap-y-1 border-l border-border pl-3 font-mono text-micro text-subtle sm:grid-cols-2">
           {e.kind === "chair-wait" ? (
             <div><dt className="inline text-muted">reason </dt><dd className="inline">{e.wait_reason || "—"}</dd></div>
+          ) : e.kind === "chair-directional" ? (
+            <>
+              <div><dt className="inline text-muted">side </dt><dd className="inline">{e.lean || "—"}</dd></div>
+              <div><dt className="inline text-muted">paper entry </dt><dd className="inline tabular">{e.entry_cents != null ? `${e.entry_cents}¢` : "—"}</dd></div>
+            </>
           ) : (
             <>
               <div><dt className="inline text-muted">feed </dt><dd className="inline">{e.feed || "—"}</dd></div>

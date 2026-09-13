@@ -17,7 +17,7 @@ export type ChamberStatement = {
   source_type: string;
   source_id: string;
   evidence: {
-    kind: "chair-wait" | "system-health";
+    kind: "chair-wait" | "chair-directional" | "system-health";
     wait_reason: string;
     ticker: string;
     close_time: number | null;
@@ -29,6 +29,8 @@ export type ChamberStatement = {
     receipt_age_s: number | null;
     last_change_age_s: number | null;
     gap: string;
+    lean: string;
+    entry_cents: number | null;
   };
 };
 
@@ -88,6 +90,35 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
         receipt_age_s: null,
         last_change_age_s: null,
         gap: "",
+        lean: "",
+        entry_cents: null,
+      },
+    };
+  }
+
+  if (ev.event_type === "CHAIR_DIRECTIONAL" && ev.character === "SATOSHI") {
+    return {
+      event_key: ev.event_key,
+      event_type: ev.event_type,
+      speaker: "SATOSHI",
+      text,
+      occurred_at: ev.occurred_at,
+      source_type: ev.source_type,
+      source_id: ev.source_id,
+      evidence: {
+        kind: "chair-directional",
+        ...baseEvidence(ev),
+        wait_reason: "",
+        quorum: null,
+        score: null,
+        bar: null,
+        failed_hard: [],
+        feed: "",
+        receipt_age_s: null,
+        last_change_age_s: null,
+        gap: "",
+        lean: asString(ev.payload.lean),
+        entry_cents: asNum(ev.payload.entry_cents),
       },
     };
   }
@@ -116,6 +147,8 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
         receipt_age_s: asNum(ev.payload.receipt_age_s),
         last_change_age_s: asNum(ev.payload.last_change_age_s),
         gap: asString(ev.payload.gap),
+        lean: "",
+        entry_cents: null,
       },
     };
   }
