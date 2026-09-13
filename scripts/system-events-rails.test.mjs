@@ -138,9 +138,23 @@ test("PR156: Chair and chair-v2 cannot import Chamber writers", () => {
 
 test("PR156: server-engine may observe but cannot import recordSystemEvent", () => {
   const src = read("src/lib/desk/server-engine.ts");
+  const code = codeOf("src/lib/desk/server-engine.ts");
   assert.doesNotMatch(src, /recordSystemEvent/);
   assert.doesNotMatch(src, /from "\.\/system-events\.server"/);
   assert.doesNotMatch(src, /from "\.\/chamber-reactions"/);
+  assert.doesNotMatch(src, /listChamberSpeech/);
+  assert.match(src, /from "\.\/chamber-wait\.server"/);
+  const nds = code.slice(code.indexOf("function noteDecisionSnapshot"), code.indexOf("async function tick("));
+  assert.ok(nds.length > 0, "noteDecisionSnapshot exists");
+  const iGuard = nds.indexOf("tickerAgrees(snap.ticker, snap.close_time) === false");
+  const iReturn = nds.indexOf("return;", iGuard);
+  const iObs = nds.indexOf("observeChairWaitMilestone");
+  const iRecord = nds.indexOf("recordDecisionSnapshot(row)");
+  assert.ok(iGuard >= 0 && iReturn > iGuard, "identity reject+return present");
+  assert.ok(iObs > iReturn, "observer is after tickerAgrees false return");
+  assert.ok(iRecord > iObs, "decision snapshot persistence still follows observer");
+  assert.match(nds, /void observeChairWaitMilestone\(snap, chair, e\.callLog\)\.catch\(/);
+  assert.doesNotMatch(nds, /await observeChairWaitMilestone/);
 });
 
 test("PR156: paper-book modules cannot import Chamber reaction or producer code", () => {
