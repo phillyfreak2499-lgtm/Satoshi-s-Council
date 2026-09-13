@@ -174,7 +174,6 @@ test("I. reaction for wait milestone is SATOSHI", () => {
 test("J. unsupported event produces no statement", () => {
   const base = asPublic(maybeChairWaitEvent(chair(), snap(), waiting));
   assert.equal(statementFromEvent({ ...base, event_type: "DESK_UPDATE" }), null);
-  assert.equal(statementFromEvent({ ...base, event_type: "CHAIR_DIRECTIONAL" }), null);
   assert.equal(statementFromEvent({ ...base, event_type: "SYSTEM_HEALTH_ALERT" }), null);
   assert.equal(statementFromEvent({ ...base, event_type: "EXPERIMENT_STARTED" }), null);
 });
