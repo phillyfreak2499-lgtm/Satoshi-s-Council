@@ -2589,3 +2589,51 @@ test("S2-9: the online learner is gated on research-quality validity at the upda
   assert.ok(!/research-quality|isCountable/.test(codeOf("src/lib/desk/chair.ts")), "Chair v1 (chair.ts) is untouched by this ticket");
   assert.match(read("src/lib/desk/math.ts"), /export const WARM_N = 20;/, "learner calibration constant WARM_N is unchanged");
 });
+
+/** Every .ts/.tsx under `dir`, as repo-relative forward-slash paths. */
+function sourcesUnder(dir) {
+  const out = [];
+  const walk = (abs) => {
+    for (const ent of readdirSync(abs, { withFileTypes: true })) {
+      const p = join(abs, ent.name);
+      if (ent.isDirectory()) walk(p);
+      else if (/\.(ts|tsx)$/.test(ent.name)) out.push(p.slice(ROOT.length + 1).split("\\").join("/"));
+    }
+  };
+  walk(join(ROOT, dir));
+  return out;
+}
+
+test("the Chamber is a consumer, never a dependency: 3D stays in its folder and touches no desk engine", () => {
+  // 1 · No 3D library is imported anywhere but the Chamber's own component folder, so
+  //     deleting the Chamber leaves the Floor's bundle and behaviour untouched.
+  for (const rel of sourcesUnder("src")) {
+    if (/from\s+["'](three|@react-three\/)/.test(codeOf(rel))) {
+      assert.ok(rel.startsWith("src/components/chamber/"), `${rel} imports a 3D library outside the Chamber`);
+    }
+  }
+  // 2 · The Chamber reads nothing from the research engine and writes nothing anywhere:
+  //     no engine/store/server-engine/learner/lab/pit/arena/push/db imports, no network I/O
+  //     at all in Phase 0 (fixtures only), and no write verb.
+  const files = [
+    ...sourcesUnder("src/components/chamber"),
+    ...sourcesUnder("src/lib/chamber"),
+    "src/routes/chamber.tsx",
+  ].filter((f) => !f.endsWith(".test.ts"));
+  assert.ok(files.length >= 6, "chamber sources missing");
+  const FORBIDDEN =
+    /from\s+["'](?:@\/lib\/desk\/|\.\.\/desk\/|\.\/desk\/|(?:\.\.\/)+lib\/desk\/)(engine|store|server-engine|learner|persist|lab\.server|pit\.server|arena\.server|push\.server|books\.server|crew\.server|hits\.server|site\.server|brief\.server|policy-lab\.server|absorption\.server|replay\.server)\b/;
+  for (const rel of files) {
+    const code = codeOf(rel);
+    assert.ok(!FORBIDDEN.test(code), `${rel} imports the desk engine / a server module`);
+    assert.ok(!/from\s+["'](?:@\/lib\/db|(?:\.\.\/)+lib\/db)\b/.test(code), `${rel} imports the database`);
+    assert.ok(!/\bfetch\s*\(|XMLHttpRequest|WebSocket\(/.test(code), `${rel} performs network I/O — Phase 0 is fixtures-only`);
+    assert.ok(!/method:\s*["'](POST|PUT|PATCH|DELETE)/i.test(code), `${rel} contains a write verb`);
+  }
+  // 3 · The route never renders on the server (no WebGL in SSR) and the doctrine carve-out exists.
+  assert.match(read("src/routes/chamber.tsx"), /ssr:\s*false/, "the /chamber route must opt out of SSR");
+  const doctrine = read("docs/CHAMBER_VISUAL_DOCTRINE.md");
+  for (const must of ["zero research / decision authority", "Paper-only", "depend on WebGL", "Ambient visual life may be fictional", "does not rewrite"]) {
+    assert.ok(doctrine.includes(must), `doctrine must state: ${must}`);
+  }
+});
