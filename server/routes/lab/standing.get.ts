@@ -11,22 +11,22 @@
  *  far less. Collapsing those into one "win rate" is how a loss-reducer gets
  *  mistaken for a bad predictor.
  *
- *  Read-only research. Nothing here votes, promotes, or places an order — the
- *  desk is paper only. Wrong or missing key → 404. */
-export default async function lab(event: { url: URL; req: { headers: Headers } }) {
+ *  Read-only research at /lab/standing. Nothing here votes, promotes, or places an
+ *  order — the desk is paper only. Wrong or missing key → 404. */
+export default async function labStandingAdmin(event: { url: URL; req: { headers: Headers } }) {
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body, null, 2), {
       status,
       headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
     });
   try {
-    const { adminKeyOk } = await import("../../src/lib/desk/admin.server");
+    const { adminKeyOk } = await import("../../../src/lib/desk/admin.server");
     const key = event.url.searchParams.get("key") ?? event.req.headers.get("x-desk-admin") ?? "";
     if (!adminKeyOk(key)) return new Response("not found", { status: 404 });
 
-    const { labStanding } = await import("../../src/lib/desk/policy-lab.server");
-    const { policyLine } = await import("../../src/lib/desk/floor-policy");
-    const { COMPONENT_MIN } = await import("../../src/lib/desk/promotion-gates");
+    const { labStanding } = await import("../../../src/lib/desk/policy-lab.server");
+    const { policyLine } = await import("../../../src/lib/desk/floor-policy");
+    const { COMPONENT_MIN } = await import("../../../src/lib/desk/promotion-gates");
 
     const s = await labStanding();
     return json({
