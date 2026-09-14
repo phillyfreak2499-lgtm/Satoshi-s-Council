@@ -25,7 +25,7 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
           >
             Open the floor
           </Link>
-          <span className="ml-3 font-mono text-micro text-subtle">The 60-second tour starts on your first visit; replay it from ? in the header.</span>
+          <span className="ml-3 font-mono text-micro text-subtle">The 60-second tour starts on your first visit to the Floor.</span>
         </div>
       </main>
       <footer className="border-t border-border px-4 py-3 font-mono text-micro text-subtle">
