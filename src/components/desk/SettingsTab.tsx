@@ -4,7 +4,7 @@ import { recencyRate, skillCounts } from "@/lib/desk/skills";
 import { ledgerRows } from "@/lib/desk/ledger";
 import { FULL_N, WARM_N, calibNOf, seatCalib, wilsonLower } from "@/lib/desk/math";
 import { THRESH_SPECS } from "@/lib/desk/thresholds";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   acceptCandidateNow,
   dismissCandidate,
@@ -24,38 +24,146 @@ import { DisplayPanel } from "./DisplayPanel";
 import { ArenaAdminPanel } from "./ArenaAdminPanel";
 import { ReadinessPanel } from "./ReadinessPanel";
 
-function AdminKeyField() {
-  const [key, setKey] = useState(getAdminKey);
+async function ownerKeyIsValid(key: string): Promise<boolean> {
+  if (!key) return false;
+  const r = await fetch(`/readiness?key=${encodeURIComponent(key)}`, {
+    headers: { accept: "application/json" },
+  });
+  return r.ok;
+}
+
+function OwnerAccess({
+  unlocked,
+  onUnlocked,
+}: {
+  unlocked: boolean;
+  onUnlocked: (unlocked: boolean) => void;
+}) {
+  const [key, setKey] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = getAdminKey();
+    if (!saved) return;
+    let alive = true;
+    setKey(saved);
+    setChecking(true);
+    ownerKeyIsValid(saved)
+      .then((valid) => {
+        if (!alive) return;
+        if (valid) {
+          onUnlocked(true);
+          setMsg("owner key verified");
+        } else {
+          setAdminKey("");
+          onUnlocked(false);
+          setMsg("saved owner key is no longer valid");
+        }
+      })
+      .catch(() => {
+        if (alive) setMsg("could not verify owner access");
+      })
+      .finally(() => {
+        if (alive) setChecking(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [onUnlocked]);
+
+  const unlock = async () => {
+    const candidate = key.trim();
+    setChecking(true);
+    setMsg(null);
+    try {
+      if (!(await ownerKeyIsValid(candidate))) throw new Error("owner key not recognized");
+      setAdminKey(candidate);
+      onUnlocked(true);
+      setMsg("owner key verified");
+    } catch (e) {
+      setAdminKey("");
+      onUnlocked(false);
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const lock = () => {
+    setAdminKey("");
+    setKey("");
+    setMsg(null);
+    onUnlocked(false);
+  };
+
   return (
-    <label className="mb-2 block font-mono text-ui text-muted">
-      Admin key
-      <input
-        type="password"
-        value={key}
-        onChange={(e) => {
-          setKey(e.target.value);
-          setAdminKey(e.target.value.trim());
-        }}
-        placeholder="desk controls stay read-only without it"
-        autoComplete="off"
-        className="mt-1 w-full rounded-sm border border-border bg-bg px-2 py-1.5 font-mono text-data text-fg"
-      />
-      <div className="mt-1 font-mono text-micro text-subtle">
-        Live is one shared desk for every visitor. Bar, mutes, beast, huddle, candidates and
-        Clear write to it — only with this key. Demo is your own sandbox and needs no key.
-      </div>
-    </label>
+    <section className="rounded-md border border-border bg-surface p-3 lg:col-span-2">
+      <details open={unlocked}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-mono text-ui text-muted">
+          <span>Owner controls</span>
+          <span className={unlocked ? "text-up" : "text-subtle"}>
+            {unlocked ? "verified" : "locked"}
+          </span>
+        </summary>
+        {unlocked ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <p className="font-mono text-micro text-subtle">
+              Shared-desk controls are visible in this browser only while the owner key is verified.
+            </p>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={lock}>
+              lock owner controls
+            </button>
+          </div>
+        ) : (
+          <form
+            className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-[1fr_auto]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void unlock();
+            }}
+          >
+            <label className="font-mono text-ui text-muted">
+              Owner key
+              <input
+                type="password"
+                value={key}
+                onChange={(event) => setKey(event.target.value)}
+                placeholder="required for shared-desk controls"
+                autoComplete="off"
+                className="mt-1 w-full rounded-sm border border-border bg-bg px-2 py-1.5 font-mono text-data text-fg"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={checking || !key.trim()}
+              className="btn btn-secondary self-end"
+            >
+              {checking ? "checking…" : "unlock"}
+            </button>
+            {msg ? (
+              <div className="font-mono text-micro text-muted sm:col-span-2">{msg}</div>
+            ) : null}
+          </form>
+        )}
+      </details>
+    </section>
   );
 }
 
 export function SettingsTab({ settings, learner }: { settings: SettingsT; learner: Learner }) {
+  const [ownerMode, setOwnerMode] = useState(false);
+
   return (
     <div data-tour="tour-settings" className="grid gap-3 p-3 lg:grid-cols-2">
-      <ReadinessPanel />
-      <AlertsPanel />
+      <AlertsPanel ownerMode={ownerMode} />
       <DisplayPanel />
-      <ArenaAdminPanel />
-      <section className="rounded-md border border-border bg-surface p-3">
+      <OwnerAccess unlocked={ownerMode} onUnlocked={setOwnerMode} />
+      {ownerMode ? (
+        <>
+          <ReadinessPanel />
+          <ArenaAdminPanel />
+          <section className="rounded-md border border-border bg-surface p-3">
         <h3 className="mb-3 font-mono text-micro uppercase tracking-widest text-subtle">Council</h3>
         <label className="mb-2 block font-mono text-ui text-muted">
           Poll interval
@@ -89,7 +197,6 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
             sees the same desk. Demo is your own private sandbox in this browser.
           </div>
         </label>
-        <AdminKeyField />
         <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
           Adaptive confluence bar
           <input
@@ -456,6 +563,8 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
           </table>
         </div>
       </section>
+        </>
+      ) : null}
     </div>
   );
 }
