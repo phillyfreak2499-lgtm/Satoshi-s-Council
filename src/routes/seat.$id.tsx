@@ -10,6 +10,7 @@ import { GLOSS } from "@/lib/desk/glossary";
 import { wilsonLower } from "@/lib/desk/math";
 import { readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { ogSeatImage } from "@/lib/desk/site";
+import { cn } from "@/lib/utils";
 import { publicSeatSnapshot } from "@/lib/desk/seat-public";
 
 function isSeat(id: string): id is SeatId {
@@ -18,6 +19,14 @@ function isSeat(id: string): id is SeatId {
 
 function deskOf(id: SeatId): string {
   return (Object.entries(TAB_SEATS).find(([, ids]) => ids.includes(id))?.[0] as string | undefined) ?? "structure";
+}
+
+function skillTone(status: string): string {
+  if (status === "LIVE") return "border-up/40 bg-up/10 text-up";
+  if (status === "SHADOW") return "border-wait/40 bg-wait/10 text-wait";
+  if (status === "BENCH") return "border-border-strong bg-surface-3 text-muted";
+  if (status === "MUTED") return "border-down/40 bg-down/10 text-down";
+  return "border-border bg-surface-2 text-fg";
 }
 
 /** One seat on its own page: its live card, its graded record and its skills. Paper only. */
@@ -97,7 +106,9 @@ function SeatPage() {
               {skills.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-baseline gap-x-2">
                   <span className="text-fg">{s.id.split(".")[1]}</span>
-                  <span className="text-wait">{s.status}</span>
+                  <span className={cn("inline-flex rounded-sm border px-1.5 py-0.5 font-semibold tracking-wide", skillTone(s.status))}>
+                    {s.status}
+                  </span>
                   <span>
                     {s.n ? `${s.hits}/${s.n}` : "ungraded"}
                   </span>

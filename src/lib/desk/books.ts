@@ -1,4 +1,4 @@
-/** Client side of the books: the shapes GET /books returns and one fetcher. */
+/** Client side of the books: the shapes GET /api/books returns and one fetcher. */
 export type BooksCall = { lean: "UP" | "DOWN" | null; entry: number; settle: number | null; ev: number | null };
 
 export type BooksWindow = {
@@ -91,7 +91,7 @@ export type KeeperStats = {
 export type Keeper = { all: KeeperStats; week: KeeperStats };
 
 export async function fetchBooks(): Promise<Books> {
-  const r = await fetch("/books", { headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+  const r = await fetch("/api/books", { headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
   const j = (await r.json()) as Books & { error?: string };
   if (!r.ok || j.error) throw new Error(j.error || `books ${r.status}`);
   return j;

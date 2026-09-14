@@ -605,8 +605,8 @@ function LastWindow({ wnd, tz, onReplay }: { wnd: BooksWindow; tz: string; onRep
   );
 }
 
-export function BooksTab({ tz }: { tz: string }) {
-  const [books, setBooks] = useState<Books | null>(null);
+export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }) {
+  const [books, setBooks] = useState<Books | null>(initial ?? null);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   useEffect(() => {

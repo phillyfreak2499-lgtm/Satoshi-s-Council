@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Page } from "@/components/desk/Page";
@@ -12,7 +13,7 @@ export const Route = createFileRoute("/faq")({
   component: Faq,
 });
 
-const QA: { q: string; a: string }[] = [
+const QA: { q: string; a: ReactNode }[] = [
   {
     q: "What is a seat?",
     a: "One specialist with one job. WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Twenty-one of them sit at five desks; eighteen vote UP, DOWN or WAIT with a confidence, while three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew that inform the chair. Each shows its hypothesis, evidence and counter.",
@@ -20,6 +21,14 @@ const QA: { q: string; a: string }[] = [
   {
     q: "Why does the desk say WAIT so often?",
     a: "Because a 15-minute Bitcoin window is close to a coin flip most of the time, and the price already knows it. The chair only calls a side when the seats agree hard enough to be worth the ask plus the fee. WAIT is the honest answer more often than not, and the books show what happens when it speaks.",
+  },
+  {
+    q: "How is the paper book doing?",
+    a: (
+      <>
+        Open <a href="/books" className="text-fg underline underline-offset-2">the Books</a>. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the live 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. It is a record, not a promised edge.
+      </>
+    ),
   },
   {
     q: "The chair shows UP or DOWN but the log has no fill. Why?",
@@ -54,7 +63,7 @@ const QA: { q: string; a: string }[] = [
 function Faq() {
   return (
     <Page title="Questions people ask" lede="Short answers. Anything you still wonder about, post it on the BOARD from the floor.">
-      <Accordion.Root type="multiple" className="grid gap-2">
+      <Accordion.Root type="multiple" defaultValue={["q0", "q1"]} className="grid gap-2">
         {QA.map((item, i) => (
           <Accordion.Item key={i} value={`q${i}`} className="rounded-md border border-border bg-surface">
             <Accordion.Header>
@@ -69,6 +78,12 @@ function Faq() {
           </Accordion.Item>
         ))}
       </Accordion.Root>
+      <nav className="mt-8 grid gap-2 sm:grid-cols-2" aria-label="Follow the evidence">
+        <a href="/books" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Books</strong><span className="block font-mono text-micro text-muted">paper P&amp;L and replays</span></a>
+        <a href="/board" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Board</strong><span className="block font-mono text-micro text-muted">updates, ideas, and feedback</span></a>
+        <a href="/chamber" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Chamber</strong><span className="block font-mono text-micro text-muted">what the desk said and why</span></a>
+        <a href="/lab" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Lab</strong><span className="block font-mono text-micro text-muted">prospective experiments</span></a>
+      </nav>
     </Page>
   );
 }
