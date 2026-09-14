@@ -40,6 +40,9 @@ export type SatoshiPaint = {
   closeTime: number;
   candles: Array<{ t: number; close: number }>;
   settled: "" | "UP" | "DOWN";
+  lastSettled: "" | "UP" | "DOWN";
+  lastSettledAt: number;
+  lastSettledTicker: string;
   votes: Array<{ seat: string; lean: Lean; confidence: number }>;
 };
 
@@ -127,7 +130,11 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     settleAvg: satoshi.settleAvg ?? 0,
     locked: satoshi.locked,
     history: flightHistory,
+    ticker: satoshi.ticker,
     settled: satoshi.settled,
+    lastSettled: satoshi.lastSettled,
+    lastSettledAt: satoshi.lastSettledAt,
+    lastSettledTicker: satoshi.lastSettledTicker,
     paperCall: stance,
     confidence: satoshi.confidence,
     score: satoshi.score,
