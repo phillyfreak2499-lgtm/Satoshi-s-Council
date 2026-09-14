@@ -1,3 +1,4 @@
+import { BoardModeration } from "./BoardModeration";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { listBoard, postBoard, type BoardKind, type BoardPost } from "@/lib/desk/board";
 import { gtagEventAfterSuccess } from "@/lib/desk/ga";
@@ -144,6 +145,7 @@ function Composer({
   const sending = useRef(false);
   useEffect(() => setWho(loadWho()), []);
   const [note, setNote] = useState("");
+  const [website, setWebsite] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -160,6 +162,7 @@ function Composer({
           data: {
             who: kind === "update" && !who.trim() ? "DESK" : who,
             body,
+            website,
             kind,
             parent_id: parentId,
             ...tape(frame),
@@ -193,6 +196,7 @@ function Composer({
         void send();
       }}
     >
+      <div hidden aria-hidden="true"><label htmlFor={`${formId}-website`}>Leave empty</label><input id={`${formId}-website`} name="website" value={website} onChange={(e) => setWebsite(e.target.value)} tabIndex={-1} autoComplete="off" /></div>
       <label htmlFor={`${formId}-name`} className="block font-mono text-micro text-muted">Your name <span className="text-subtle">(optional)</span></label>
       <input
         id={`${formId}-name`}
@@ -228,7 +232,7 @@ function Composer({
                 : "Feedback on the tape"
         }
       />
-      <p id={`${formId}-hint`} className="font-mono text-micro text-subtle">Up to 400 characters. Enter adds a line.<span className="hidden sm:inline"> Ctrl/⌘ + Enter posts.</span></p>
+      <p id={`${formId}-hint`} className="font-mono text-micro text-subtle">Up to 400 characters. Enter adds a line. No spam or impersonation. Posts may be hidden by the desk.<span className="hidden sm:inline"> Ctrl/⌘ + Enter posts.</span></p>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
@@ -342,6 +346,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       </section>
 
       {err ? <p role="status" className="font-mono text-micro text-wait">{err}</p> : null}
+      {admin ? <BoardModeration onChanged={() => void pull()} /> : null}
       {!loaded ? <p role="status" className="font-mono text-micro text-muted">Loading the shared Board…</p> : null}
 
       {updates.length > 0 ? (
@@ -380,7 +385,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       <div className="grid gap-3 lg:grid-cols-2">
         <section id="board-ideas" className="scroll-mt-20">
           <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Ideas · {ideas.length}</h3>
-          {!ideas.length ? (
+          {!loaded && !err ? null : !ideas.length ? (
             <p className="font-mono text-micro text-muted">{loaded && !err ? "No ideas yet. First one on the tape." : "Ideas will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
@@ -409,7 +414,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
         </section>
         <section id="board-feedback" className="scroll-mt-20">
           <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Feedback · {notes.length}</h3>
-          {!notes.length ? (
+          {!loaded && !err ? null : !notes.length ? (
             <p className="font-mono text-micro text-muted">{loaded && !err ? "No open feedback yet. Reply on an idea, or post Feedback above." : "Feedback will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">

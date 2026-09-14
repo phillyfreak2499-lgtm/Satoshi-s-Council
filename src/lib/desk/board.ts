@@ -70,7 +70,7 @@ export const listBoard = createServerFn({ method: "GET" }).handler(async () => {
     ticker: string;
     conf: number;
     created_at: string | Date;
-  }>`select id, who, body, kind, parent_id, lean, ticker, conf, created_at from board order by id desc limit 120`;
+  }>`select id, who, body, kind, parent_id, lean, ticker, conf, created_at from board b where not b.hidden and not exists (select 1 from board parent where parent.id = b.parent_id and parent.hidden) order by id desc limit 120`;
   return rows.map(asPost).reverse();
 });
 
@@ -85,9 +85,11 @@ export const postBoard = createServerFn({ method: "POST" })
       ticker?: string;
       conf?: number;
       admin_key?: string;
+      website?: string;
     }) => data,
   )
   .handler(async ({ data }) => {
+    if (data.website) throw new Error("Could not accept this post.");
     const who = clean(data.who, 24) || "anon";
     const body = cleanBoardBody(data.body);
     if (!body) throw new Error("Write a note first.");
@@ -106,16 +108,13 @@ export const postBoard = createServerFn({ method: "POST" })
     const conf = Math.max(0, Math.min(100, Math.round(Number(data.conf) || 0)));
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
-    const recent = await sql<{ created_at: string | Date }>`
-      select created_at from board where who = ${who} order by id desc limit 1
-    `;
-    if (recent[0]) {
-      const last = new Date(recent[0].created_at).getTime();
-      if (Date.now() - last < 8000) throw new Error("Wait a few seconds.");
-    }
     if (parent) {
-      const found = await sql<{ id: number }>`select id from board where id = ${parent} limit 1`;
+      const found = await sql<{ id: number }>`select id from board where id = ${parent} and not hidden and parent_id is null limit 1`;
       if (!found[0]) throw new Error("That idea is gone.");
+    }
+    if (!systemUpdate) {
+      const { requestNetworkKey, reserveBoardPost } = await import("./board-controls.server");
+      await reserveBoardPost(sql, await requestNetworkKey());
     }
     const rows = await sql<{
       id: number;
@@ -133,4 +132,34 @@ export const postBoard = createServerFn({ method: "POST" })
       returning id, who, body, kind, parent_id, lean, ticker, conf, created_at
     `;
     return asPost(rows[0]!);
+  });
+
+
+export type ModerationPost = BoardPost & { hidden: boolean; moderation_reason: string | null };
+
+export const listBoardModeration = createServerFn({ method: "POST" })
+  .validator((data: { admin_key: string }) => data)
+  .handler(async ({ data }): Promise<ModerationPost[]> => {
+    const { adminKeyOk } = await import("./admin.server");
+    if (!adminKeyOk(data.admin_key)) throw new Error("Board moderation is desk-admin only.");
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql<Parameters<typeof asPost>[0] & { hidden: boolean; moderation_reason: string | null }>`
+      select id, who, body, kind, parent_id, lean, ticker, conf, created_at, hidden, moderation_reason
+      from board order by id desc limit 120
+    `;
+    return rows.map((row) => ({ ...asPost(row), hidden: row.hidden, moderation_reason: row.moderation_reason }));
+  });
+
+export const moderateBoard = createServerFn({ method: "POST" })
+  .validator((data: { admin_key: string; id: number; hidden: boolean; reason: string }) => data)
+  .handler(async ({ data }) => {
+    const { adminKeyOk } = await import("./admin.server");
+    if (!adminKeyOk(data.admin_key)) throw new Error("Board moderation is desk-admin only.");
+    const reason = clean(data.reason, 200);
+    if (!Number.isSafeInteger(data.id) || data.id <= 0 || typeof data.hidden !== "boolean" || !reason) throw new Error("Choose a post and enter a moderation reason.");
+    const { getSql } = await import("@/lib/db");
+    const { setBoardVisibility } = await import("./board-controls.server");
+    await setBoardVisibility(await getSql(), data.id, data.hidden, reason);
+    return { ok: true };
   });
