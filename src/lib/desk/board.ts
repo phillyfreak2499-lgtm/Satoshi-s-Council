@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { cleanBoardBody } from "./public-room-view";
 import { assertPublicBoardWho } from "./system-events";
 
 export type BoardKind = "idea" | "feedback" | "update";
@@ -88,7 +89,7 @@ export const postBoard = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const who = clean(data.who, 24) || "anon";
-    const body = clean(data.body, 400);
+    const body = cleanBoardBody(data.body);
     if (!body) throw new Error("Write a note first.");
     const parent = data.parent_id && data.parent_id > 0 ? Math.round(data.parent_id) : null;
     let kind: BoardKind = parent || data.kind === "feedback" ? "feedback" : "idea";

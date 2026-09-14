@@ -14,7 +14,7 @@ const security = read("server/middleware/security-headers.ts");
 test("the Board separates and paginates public threads", () => {
   assert.match(board, /const PAGE_SIZE = 6/);
   assert.match(board, /function BoardPager/);
-  assert.match(board, /<details className="rounded-md border border-border bg-canvas">/);
+  assert.match(board, /<details id="board-updates"/);
   assert.match(board, /Desk updates · \{updates\.length\}/);
   assert.match(board, /Ideas · \{ideas\.length\}/);
   assert.match(board, /Feedback · \{notes\.length\}/);
@@ -44,7 +44,8 @@ test("the Lab leads with comparison and stable humanized ages", () => {
   assert.doesNotMatch(lab.slice(lab.indexOf("function ageLabel"), lab.indexOf("function LabSummary")), /Date\.now/);
   assert.match(lab, /Comparison first/);
   assert.match(lab, /What the ledger says/);
-  assert.match(lab, /Highest observed avg/);
+  assert.match(lab, /Paired difference vs/);
+  assert.match(lab, /labComparisons\(data.specimens, data.control_id\)/);
   assert.match(lab, /count only · not promotion/);
   assert.match(lab, /ageLabel\(row\.frozen_at, asOf\)/);
 });

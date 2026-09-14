@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Crest } from "./Crest";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ export type MenuItem = { label: string; hint?: string; href?: string; onSelect?:
  */
 const FOLD = {
   sm: { nav: "hidden min-w-0 items-center gap-1 sm:flex", button: "btn btn-secondary btn-sm sm:hidden", panel: "sm:hidden" },
+  xl: { nav: "hidden min-w-0 items-center gap-1 xl:flex", button: "btn btn-secondary btn-sm xl:hidden", panel: "xl:hidden" },
   lg: { nav: "hidden min-w-0 items-center gap-1 lg:flex", button: "btn btn-secondary btn-sm lg:hidden", panel: "lg:hidden" },
 } as const;
 
@@ -33,11 +34,15 @@ export function SiteHeader({
   fold?: keyof typeof FOLD;
 }) {
   const [open, setOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const f = FOLD[fold];
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        menuButton.current?.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -66,6 +71,7 @@ export function SiteHeader({
           {menu?.length ? (
             <button
               type="button"
+              ref={menuButton}
               className={f.button}
               aria-expanded={open}
               aria-controls="site-menu"
@@ -77,12 +83,12 @@ export function SiteHeader({
         </div>
       </div>
       {open && menu?.length ? (
-        <nav id="site-menu" aria-label="Site menu" className={cn("gutter absolute inset-x-0 top-full border-b border-border bg-surface py-2 shadow-[0_24px_60px_rgba(0,0,0,0.5)]", f.panel)}>
+        <nav id="site-menu" aria-label="Site menu" className={cn("gutter absolute inset-x-0 top-full max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-b border-border bg-surface py-2 shadow-[0_24px_60px_rgba(0,0,0,0.5)]", f.panel)}>
           <ul className="grid gap-1">
             {menu.map((m) => (
               <li key={m.label}>
                 {m.href ? (
-                  <a href={m.href} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
+                  <a href={m.href} aria-current={m.active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
                     {m.label}
                     {m.hint ? <span className="font-mono text-micro text-subtle">{m.hint}</span> : null}
                   </a>
