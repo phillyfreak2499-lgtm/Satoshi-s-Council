@@ -361,11 +361,17 @@ test("placeholder og:image appends site.color when it is 6-digit hex", () => {
 });
 
 test("document title entities are not double-escaped on og:title", () => {
-  const out = injectGrokPwaHead(
+  const ampersand = injectGrokPwaHead(
     "<html><head><title>Cats &amp; Dogs</title></head></html>",
   );
-  assert.match(out, /property="og:title" content="Cats &amp; Dogs"/);
-  assert.doesNotMatch(out, /Cats &amp;amp; Dogs/);
+  assert.match(ampersand, /property="og:title" content="Cats &amp; Dogs"/);
+  assert.doesNotMatch(ampersand, /Cats &amp;amp; Dogs/);
+
+  const apostrophe = injectGrokPwaHead(
+    "<html><head><title>Satoshi&#x27;s Council</title></head></html>",
+  );
+  assert.match(apostrophe, /property="og:title" content="Satoshi&#39;s Council"/);
+  assert.doesNotMatch(apostrophe, /Satoshi&amp;#x27;s Council/);
 });
 
 test("site.json title wins over the host slug", () => {
@@ -462,9 +468,10 @@ test("strips install params from the app link", () => {
   assert.equal(stripInstallParams("/app?install=1&platform=ios&tab=2"), "/app?tab=2");
 });
 
-test("names the install page from host slug", () => {
-  assert.equal(appNameFromHost("localhost:8080"), "Grok App");
-  assert.equal(appNameFromHost("172.17.154.217:8080"), "Grok App");
+test("uses the Council name off grok.me and a published slug on grok.me", () => {
+  assert.equal(appNameFromHost("localhost:8080"), "Satoshi's Council");
+  assert.equal(appNameFromHost("172.17.154.217:8080"), "Satoshi's Council");
+  assert.equal(appNameFromHost("satoshiscouncil.com"), "Satoshi's Council");
   assert.equal(appNameFromHost("wild-race.grok.me"), "Wild Race");
 });
 
@@ -488,10 +495,14 @@ test("escapes host-derived values in the install page", () => {
 });
 
 test("renders the manifest with the per-app name", () => {
-  const manifest = JSON.parse(renderWebManifest("wild-race.grok.me"));
-  assert.equal(manifest.name, "Wild Race");
-  assert.equal(manifest.short_name, "Wild Race");
-  assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
+  const published = JSON.parse(renderWebManifest("wild-race.grok.me"));
+  assert.equal(published.name, "Wild Race");
+  assert.equal(published.short_name, "Wild Race");
+
+  const council = JSON.parse(renderWebManifest("satoshiscouncil.com"));
+  assert.equal(council.name, "Satoshi's Council");
+  assert.equal(council.short_name, "Satoshi's Council");
+  assert.equal(council.icons[0].src, "/__grok/icon-180.png");
 });
 
 // Tripwires: the deployed-app path only works if Nitro scans server/ — an
