@@ -4,10 +4,12 @@ import type { RoomFactory, RoomWorld } from "../world";
 type RoadPoint = { p: number; value: number };
 type GhostPoint = { p: number; value: number };
 type PriorRun = { ticker: string; grip: number; rails: number; at: number };
+type ScreenRoadPoint = { x: number; y: number; lane: number };
 
 const RUN_STORE = "atelier:arcade:last-run";
 
 const ORANGE = "#f7931a";
+const GOLD = "#e8b14d";
 const BLUE = "#61b8df";
 const RED = "#cf514d";
 const CREAM = "#eee8dc";
@@ -79,42 +81,158 @@ function hud(
 function laneWidth(h: number, p: number, value: number, strike: number) {
   const secondsAtPoint = 900 * (1 - p);
   const distance = Math.abs(value - strike);
-  if (secondsAtPoint > 420) return h * 0.13;
-  if (secondsAtPoint > 60) return h * (0.071 + clamp(distance / 170, 0, 1) * 0.052);
-  return h * (0.052 + clamp(distance / 120, 0, 1) * 0.036);
+  if (secondsAtPoint > 420) return h * 0.14;
+  if (secondsAtPoint > 60) return h * (0.078 + clamp(distance / 170, 0, 1) * 0.052);
+  return h * (0.058 + clamp(distance / 120, 0, 1) * 0.038);
 }
 
-function drawCar(
+function traceRoadShape(
+  ctx: CanvasRenderingContext2D,
+  upper: ScreenRoadPoint[],
+  lower: ScreenRoadPoint[],
+  offsetY = 0,
+) {
+  if (upper.length === 0 || lower.length === 0) return;
+  ctx.beginPath();
+  ctx.moveTo(upper[0]!.x, upper[0]!.y + offsetY);
+  for (const point of upper) ctx.lineTo(point.x, point.y + offsetY);
+  for (let index = lower.length - 1; index >= 0; index -= 1) {
+    const point = lower[index]!;
+    ctx.lineTo(point.x, point.y + offsetY);
+  }
+  ctx.closePath();
+}
+
+function traceRoadLine(ctx: CanvasRenderingContext2D, points: ScreenRoadPoint[]) {
+  if (points.length === 0) return;
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+}
+
+function drawRoadster(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   size: number,
+  angle: number,
   offRoad: boolean,
   phase: number,
+  rush: number,
 ) {
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(Math.sin(phase * 4.1) * (offRoad ? 0.04 : 0.012));
-  ctx.shadowColor = offRoad ? RED : ORANGE;
-  ctx.shadowBlur = size * (offRoad ? 1.2 : 0.72);
-  ctx.fillStyle = offRoad ? "#a93836" : ORANGE;
+  ctx.rotate(angle + Math.sin(phase * 4.1) * (offRoad ? 0.035 : 0.007));
+
+  const wake = ctx.createLinearGradient(-size * 2.8, 0, -size * 0.45, 0);
+  wake.addColorStop(0, "rgba(247,147,26,0)");
+  wake.addColorStop(0.68, `rgba(247,147,26,${0.08 + rush * 0.025})`);
+  wake.addColorStop(1, offRoad ? "rgba(207,81,77,0.64)" : "rgba(247,147,26,0.48)");
+  ctx.fillStyle = wake;
   ctx.beginPath();
-  ctx.moveTo(size * 0.64, 0);
-  ctx.lineTo(size * 0.36, -size * 0.42);
-  ctx.lineTo(-size * 0.36, -size * 0.46);
-  ctx.lineTo(-size * 0.7, -size * 0.25);
-  ctx.lineTo(-size * 0.7, size * 0.25);
-  ctx.lineTo(-size * 0.36, size * 0.46);
-  ctx.lineTo(size * 0.36, size * 0.42);
+  ctx.moveTo(-size * (2.1 + rush * 0.18), -size * 0.22);
+  ctx.lineTo(-size * 0.44, -size * 0.31);
+  ctx.lineTo(-size * 0.44, size * 0.31);
+  ctx.lineTo(-size * (2.1 + rush * 0.18), size * 0.22);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowColor = "rgba(0,0,0,0.92)";
+  ctx.shadowBlur = size * 0.45;
+  ctx.fillStyle = "#010203";
+  ctx.fillRect(-size * 0.46, -size * 0.61, size * 0.38, size * 0.18);
+  ctx.fillRect(size * 0.22, -size * 0.58, size * 0.33, size * 0.17);
+  ctx.fillRect(-size * 0.46, size * 0.43, size * 0.38, size * 0.18);
+  ctx.fillRect(size * 0.22, size * 0.41, size * 0.33, size * 0.17);
+  ctx.shadowBlur = 0;
+
+  const body = ctx.createLinearGradient(-size * 0.75, -size * 0.5, size * 0.82, size * 0.42);
+  if (offRoad) {
+    body.addColorStop(0, "#4f1114");
+    body.addColorStop(0.52, "#bd403b");
+    body.addColorStop(1, "#5c1719");
+  } else {
+    body.addColorStop(0, "#6f3008");
+    body.addColorStop(0.34, "#f7931a");
+    body.addColorStop(0.68, "#ffcb66");
+    body.addColorStop(1, "#7a3508");
+  }
+  ctx.shadowColor = offRoad ? RED : ORANGE;
+  ctx.shadowBlur = size * (offRoad ? 0.95 : 0.62);
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.94, 0);
+  ctx.lineTo(size * 0.63, -size * 0.35);
+  ctx.lineTo(size * 0.12, -size * 0.49);
+  ctx.lineTo(-size * 0.62, -size * 0.4);
+  ctx.lineTo(-size * 0.78, -size * 0.24);
+  ctx.lineTo(-size * 0.78, size * 0.24);
+  ctx.lineTo(-size * 0.62, size * 0.4);
+  ctx.lineTo(size * 0.12, size * 0.49);
+  ctx.lineTo(size * 0.63, size * 0.35);
   ctx.closePath();
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.fillStyle = "#111820";
-  ctx.fillRect(-size * 0.24, -size * 0.31, size * 0.3, size * 0.62);
-  ctx.fillStyle = CREAM;
-  ctx.globalAlpha = 0.82;
-  ctx.fillRect(size * 0.36, -size * 0.25, size * 0.1, size * 0.16);
-  ctx.fillRect(size * 0.36, size * 0.09, size * 0.1, size * 0.16);
+
+  const canopy = ctx.createLinearGradient(-size * 0.2, -size * 0.3, size * 0.4, size * 0.26);
+  canopy.addColorStop(0, "#07111a");
+  canopy.addColorStop(0.48, "#17384a");
+  canopy.addColorStop(0.72, "#8fc6d9");
+  canopy.addColorStop(1, "#09131a");
+  ctx.fillStyle = canopy;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.38, 0);
+  ctx.lineTo(size * 0.12, -size * 0.29);
+  ctx.lineTo(-size * 0.28, -size * 0.25);
+  ctx.lineTo(-size * 0.4, 0);
+  ctx.lineTo(-size * 0.28, size * 0.25);
+  ctx.lineTo(size * 0.12, size * 0.29);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,240,208,0.72)";
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.58, -size * 0.31);
+  ctx.lineTo(size * 0.58, -size * 0.25);
+  ctx.stroke();
+
+  ctx.fillStyle = "#fff3d4";
+  ctx.shadowColor = "#fff3d4";
+  ctx.shadowBlur = size * 0.38;
+  ctx.fillRect(size * 0.62, -size * 0.27, size * 0.2, size * 0.12);
+  ctx.fillRect(size * 0.62, size * 0.15, size * 0.2, size * 0.12);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = offRoad ? RED : ORANGE;
+  ctx.shadowColor = offRoad ? RED : ORANGE;
+  ctx.shadowBlur = size * 0.4;
+  ctx.fillRect(-size * 0.83, -size * 0.25, size * 0.11, size * 0.14);
+  ctx.fillRect(-size * 0.83, size * 0.11, size * 0.11, size * 0.14);
+  ctx.restore();
+}
+
+function drawCabinetFinish(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.save();
+  ctx.globalAlpha = 0.035;
+  ctx.fillStyle = "#fff";
+  for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
+  ctx.globalAlpha = 1;
+  const vignette = ctx.createRadialGradient(
+    w * 0.52,
+    h * 0.46,
+    0,
+    w * 0.52,
+    h * 0.46,
+    Math.max(w, h) * 0.7,
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(0.62, "rgba(0,0,0,0.08)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.72)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }
 
@@ -125,6 +243,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let mode = "watch";
   let assist = true;
   let glow = 1;
+  let rush = 1.8;
   let spot = 0;
   let strike = 0;
   let settleAvg = 0;
@@ -165,6 +284,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
     mode = str(next, "mode", mode);
     assist = str(next, "assist", assist ? "on" : "off") === "on";
     glow = num(next, "cabinet", glow);
+    rush = num(next, "rush", rush);
     strike = num(next, "strike", strike);
     locked = num(next, "locked", locked);
     seconds = num(next, "seconds", seconds);
@@ -265,53 +385,99 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       const left = w * 0.065;
       const right = w * 0.935;
       const progress = clamp(1 - seconds / 900, 0, 1);
-      const carX = left + (right - left) * progress;
       const finalMinute = seconds <= 60;
       const openRoad = seconds > 420;
       const phaseWord = finalMinute ? "GHOST LAP" : openRoad ? "OPEN ROAD" : "PINCH";
-      const allPoints = road.filter((point) => point.p <= progress + 0.015);
-      if (spot > 0) allPoints.push({ p: progress, value: spot });
+      const tape = road.filter((point) => point.p <= progress + 0.015);
+      if (spot > 0) tape.push({ p: progress, value: spot });
+
+      const cameraLens = 0.32;
+      const cameraStart = Math.max(0, progress - cameraLens);
+      const cameraSpan = Math.max(0.025, progress - cameraStart);
+      const launch = clamp(progress / 0.14, 0, 1);
+      const carX = left + (right - left) * (0.14 + launch * 0.58);
+      const visibleTape = tape.filter((point) => point.p >= cameraStart - 0.025);
+      const rangePoints = visibleTape.length > 1 ? visibleTape : tape;
       const maxDistance = Math.max(
-        160,
-        ...allPoints.map((point) => Math.abs(point.value - strike) * 1.22),
+        150,
+        ...rangePoints.map((point) => Math.abs(point.value - strike) * 1.22),
         settleAvg > 0 ? Math.abs(settleAvg - strike) * 1.22 : 0,
       );
-      const range = clamp(maxDistance, 160, 900);
+      const range = clamp(maxDistance, 150, 850);
       const center = h * 0.51;
-      const toY = (value: number) => center - clamp((value - strike) / range, -1, 1) * h * (finalMinute ? 0.38 : 0.31);
+      const toY = (value: number) =>
+        center - clamp((value - strike) / range, -1, 1) * h * (finalMinute ? 0.36 : 0.3);
+      const roadX = (p: number) => left + ((p - cameraStart) / cameraSpan) * (carX - left);
       const strikeY = strike > 0 ? toY(strike) : center;
       roadY = spot > 0 && strike > 0 ? toY(spot) : center;
       lane = laneWidth(h, progress, spot, strike);
-      if (!(carY > 0) || mode === "watch" && Math.abs(carY - roadY) > h * 0.4) carY = roadY;
-      const shake = clamp(Math.abs(velocity) / 80, 0, 1) * Math.sin(phase * 24) * h * 0.004;
+      if (!(carY > 0) || (mode === "watch" && Math.abs(carY - roadY) > h * 0.4)) carY = roadY;
+
+      const roadPhase = phase * clamp(rush, 0.65, 3);
+      const speedEnergy = clamp(0.36 + rush * 0.2 + Math.abs(velocity) / 150, 0.4, 1.35);
+      const shake = clamp(Math.abs(velocity) / 80, 0, 1) * Math.sin(phase * 24) * h * 0.003;
+      const screenRoad: ScreenRoadPoint[] = visibleTape.map((point) => ({
+        x: roadX(point.p),
+        y: toY(point.value),
+        lane: laneWidth(h, point.p, point.value, strike),
+      }));
+
+      if (screenRoad.length === 1) {
+        screenRoad.unshift({ x: left, y: screenRoad[0]!.y, lane: screenRoad[0]!.lane });
+      }
 
       const background = ctx.createLinearGradient(0, 0, 0, h);
-      background.addColorStop(0, "#05070b");
-      background.addColorStop(0.58, finalMinute ? "#071824" : "#0a0c10");
-      background.addColorStop(1, "#020304");
+      background.addColorStop(0, finalMinute ? "#020913" : "#030507");
+      background.addColorStop(0.48, finalMinute ? "#07131d" : "#0b0d0f");
+      background.addColorStop(1, "#010203");
       ctx.fillStyle = background;
+      ctx.fillRect(0, 0, w, h);
+
+      const horizonGlow = ctx.createRadialGradient(carX, roadY, 0, carX, roadY, short * 0.55);
+      horizonGlow.addColorStop(
+        0,
+        finalMinute ? "rgba(97,184,223,0.12)" : `rgba(247,147,26,${0.08 * glow})`,
+      );
+      horizonGlow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = horizonGlow;
       ctx.fillRect(0, 0, w, h);
 
       ctx.save();
       ctx.translate(0, shake);
-      ctx.strokeStyle = finalMinute ? "rgba(97,184,223,0.12)" : "rgba(247,147,26,0.075)";
+
+      const gridGap = Math.max(42, short * 0.092);
+      const gridShift = (roadPhase * short * 0.11) % gridGap;
+      ctx.strokeStyle = finalMinute ? "rgba(97,184,223,0.065)" : "rgba(232,177,77,0.052)";
       ctx.lineWidth = 1;
-      for (let x = left; x <= right; x += Math.max(34, short * 0.085)) {
+      for (let x = left - gridGap + gridShift; x <= right + gridGap; x += gridGap) {
         ctx.beginPath();
-        ctx.moveTo(x, h * 0.12);
-        ctx.lineTo(x, h * 0.9);
+        ctx.moveTo(x, h * 0.15);
+        ctx.lineTo(x, h * 0.88);
         ctx.stroke();
       }
-      for (let y = h * 0.18; y <= h * 0.86; y += Math.max(34, short * 0.085)) {
+      for (let y = h * 0.2; y <= h * 0.84; y += gridGap) {
         ctx.beginPath();
         ctx.moveTo(left, y);
         ctx.lineTo(right, y);
         ctx.stroke();
       }
 
+      for (let index = 0; index < 26; index += 1) {
+        const pace = 0.08 + (index % 7) * 0.013;
+        const travel = (roadPhase * pace + index * 0.149) % 1;
+        const x = right - travel * (right - left);
+        const y = h * (0.18 + ((index * 37) % 67) / 100);
+        const length = short * (0.012 + (index % 5) * 0.006) * speedEnergy;
+        const streak = ctx.createLinearGradient(x - length, 0, x, 0);
+        streak.addColorStop(0, "rgba(232,177,77,0)");
+        streak.addColorStop(1, finalMinute ? "rgba(97,184,223,0.16)" : "rgba(232,177,77,0.13)");
+        ctx.fillStyle = streak;
+        ctx.fillRect(x - length, y, length, Math.max(1, short * 0.0015));
+      }
+
       ctx.save();
       ctx.setLineDash([short * 0.018, short * 0.014]);
-      ctx.strokeStyle = "rgba(247,147,26,0.5)";
+      ctx.strokeStyle = "rgba(232,177,77,0.54)";
       ctx.lineWidth = Math.max(1.4, short * 0.0025);
       ctx.beginPath();
       ctx.moveTo(left, strikeY);
@@ -319,111 +485,152 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       ctx.stroke();
       ctx.restore();
 
-      if (allPoints.length > 0 && strike > 0) {
-        const upper = allPoints.map((point) => ({
-          x: left + (right - left) * point.p,
-          y: toY(point.value) - laneWidth(h, point.p, point.value, strike) * 0.5,
-        }));
-        const lower = allPoints.map((point) => ({
-          x: left + (right - left) * point.p,
-          y: toY(point.value) + laneWidth(h, point.p, point.value, strike) * 0.5,
-        }));
+      if (screenRoad.length > 1 && strike > 0) {
+        const upper = screenRoad.map((point) => ({ ...point, y: point.y - point.lane * 0.5 }));
+        const lower = screenRoad.map((point) => ({ ...point, y: point.y + point.lane * 0.5 }));
 
-        ctx.fillStyle = "rgba(199,66,62,0.4)";
-        ctx.beginPath();
-        ctx.moveTo(upper[0]!.x, upper[0]!.y - short * 0.018);
-        for (const point of upper) ctx.lineTo(point.x, point.y - short * 0.018);
-        for (let index = lower.length - 1; index >= 0; index -= 1) {
-          const point = lower[index]!;
-          ctx.lineTo(point.x, point.y + short * 0.018);
-        }
-        ctx.closePath();
+        ctx.fillStyle = "rgba(43,8,10,0.78)";
+        traceRoadShape(ctx, upper, lower, short * 0.026);
+        ctx.shadowColor = RED;
+        ctx.shadowBlur = short * 0.018;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = "rgba(117,27,28,0.34)";
+        traceRoadShape(ctx, upper, lower, short * 0.012);
         ctx.fill();
 
         const roadFill = ctx.createLinearGradient(0, center - lane, 0, center + lane);
-        roadFill.addColorStop(0, "#273039");
-        roadFill.addColorStop(0.5, "#11171d");
-        roadFill.addColorStop(1, "#242d34");
+        roadFill.addColorStop(0, "#313941");
+        roadFill.addColorStop(0.15, "#171d22");
+        roadFill.addColorStop(0.52, "#090d11");
+        roadFill.addColorStop(0.86, "#1d242a");
+        roadFill.addColorStop(1, "#07090b");
         ctx.fillStyle = roadFill;
-        ctx.beginPath();
-        ctx.moveTo(upper[0]!.x, upper[0]!.y);
-        for (const point of upper) ctx.lineTo(point.x, point.y);
-        for (let index = lower.length - 1; index >= 0; index -= 1) {
-          const point = lower[index]!;
-          ctx.lineTo(point.x, point.y);
-        }
-        ctx.closePath();
+        traceRoadShape(ctx, upper, lower);
         ctx.fill();
 
-        ctx.strokeStyle = `rgba(247,147,26,${0.52 * glow})`;
-        ctx.lineWidth = clamp(short * 0.004, 2, 7);
+        ctx.save();
+        traceRoadShape(ctx, upper, lower);
+        ctx.clip();
+        const surfaceSheen = ctx.createLinearGradient(left, 0, carX, 0);
+        surfaceSheen.addColorStop(0, "rgba(255,255,255,0.015)");
+        surfaceSheen.addColorStop(0.72, "rgba(247,147,26,0.055)");
+        surfaceSheen.addColorStop(1, "rgba(255,219,154,0.14)");
+        ctx.fillStyle = surfaceSheen;
+        ctx.fillRect(left, 0, carX - left, h);
+
+        ctx.setLineDash([short * 0.032, short * 0.052]);
+        ctx.lineDashOffset = -roadPhase * short * 0.19;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(244,231,205,0.34)";
+        ctx.lineWidth = clamp(short * 0.004, 2, 6);
+        traceRoadLine(ctx, screenRoad);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.lineCap = "round";
         ctx.lineJoin = "round";
+        ctx.strokeStyle = `rgba(247,147,26,${0.62 * glow})`;
+        ctx.lineWidth = clamp(short * 0.0035, 2, 6);
         ctx.shadowColor = ORANGE;
-        ctx.shadowBlur = short * 0.012 * glow;
-        ctx.beginPath();
-        allPoints.forEach((point, index) => {
-          const x = left + (right - left) * point.p;
-          const y = toY(point.value);
-          if (index === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
+        ctx.shadowBlur = short * 0.014 * glow;
+        traceRoadLine(ctx, screenRoad);
         ctx.stroke();
         ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = "rgba(207,81,77,0.72)";
+        ctx.lineWidth = clamp(short * 0.003, 1.5, 5);
+        traceRoadLine(ctx, upper);
+        ctx.stroke();
+        traceRoadLine(ctx, lower);
+        ctx.stroke();
       }
 
       if (progress < 0.995) {
+        const beam = ctx.createLinearGradient(carX, 0, right, 0);
+        beam.addColorStop(0, finalMinute ? "rgba(97,184,223,0.13)" : "rgba(247,147,26,0.12)");
+        beam.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = beam;
+        ctx.beginPath();
+        ctx.moveTo(carX, roadY - lane * 0.45);
+        ctx.lineTo(right, roadY - lane * 0.16);
+        ctx.lineTo(right, roadY + lane * 0.16);
+        ctx.lineTo(carX, roadY + lane * 0.45);
+        ctx.closePath();
+        ctx.fill();
+
         ctx.save();
-        ctx.setLineDash([short * 0.009, short * 0.015]);
-        ctx.strokeStyle = "rgba(237,232,220,0.13)";
+        ctx.setLineDash([short * 0.012, short * 0.021]);
+        ctx.lineDashOffset = -roadPhase * short * 0.14;
+        ctx.strokeStyle = "rgba(237,232,220,0.22)";
         ctx.lineWidth = Math.max(1, short * 0.002);
         ctx.beginPath();
         ctx.moveTo(carX + short * 0.07, roadY);
         ctx.lineTo(right, roadY);
         ctx.stroke();
         ctx.restore();
-        hud(ctx, "TAPE AHEAD UNWRITTEN", right, roadY + tiny * 1.1, "right", tiny, CREAM, 0.34);
+        hud(ctx, "TAPE AHEAD UNWRITTEN", right, roadY + tiny * 1.1, "right", tiny, CREAM, 0.42);
       }
 
       let ghostY = 0;
       if (finalMinute && settleAvg > 0 && locked > 0 && strike > 0) {
-        const visibleGhost = ghostRoad.length > 1
-          ? ghostRoad
-          : [{ p: Math.max(14 / 15, progress - 0.035), value: settleAvg }, { p: progress, value: settleAvg }];
+        const visibleGhost =
+          ghostRoad.length > 1
+            ? ghostRoad.filter((point) => point.p >= cameraStart - 0.025)
+            : [
+                { p: Math.max(14 / 15, progress - 0.035), value: settleAvg },
+                { p: progress, value: settleAvg },
+              ];
+        const ghostScreen = visibleGhost.map((point) => ({
+          x: roadX(point.p),
+          y: toY(point.value),
+          lane: lane * 0.54,
+        }));
+        if (ghostScreen.length === 1) ghostScreen.unshift({ ...ghostScreen[0]!, x: left });
         ctx.save();
-        ctx.strokeStyle = "rgba(97,184,223,0.68)";
-        ctx.lineWidth = clamp(short * 0.012, 5, 17);
+        ctx.strokeStyle = "rgba(29,83,111,0.72)";
+        ctx.lineWidth = clamp(short * 0.022, 9, 28);
         ctx.lineJoin = "round";
+        ctx.lineCap = "round";
         ctx.shadowColor = BLUE;
-        ctx.shadowBlur = short * 0.025;
-        ctx.beginPath();
-        visibleGhost.forEach((point, index) => {
-          const x = left + (right - left) * point.p;
-          const y = toY(point.value);
-          if (index === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
+        ctx.shadowBlur = short * 0.03;
+        traceRoadLine(ctx, ghostScreen);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(148,224,255,0.82)";
+        ctx.lineWidth = clamp(short * 0.0045, 2, 7);
+        ctx.setLineDash([short * 0.026, short * 0.03]);
+        ctx.lineDashOffset = -roadPhase * short * 0.22;
+        traceRoadLine(ctx, ghostScreen);
         ctx.stroke();
         ctx.restore();
         ghostY = toY(settleAvg);
-        hud(ctx, "BLUE LANE SETTLES", right, ghostY + tiny * 1.2, "right", tiny, BLUE, 0.72);
+        hud(ctx, "BLUE LANE SETTLES", right, ghostY + tiny * 1.2, "right", tiny, BLUE, 0.78);
       }
 
       if (spot > 0 && strike > 0) {
-        drawCar(ctx, carX, carY, clamp(short * 0.046, 24, 62), offRoad, phase);
+        let angle = 0;
+        if (screenRoad.length > 1) {
+          const before = screenRoad[screenRoad.length - 2]!;
+          angle = clamp(Math.atan2(roadY - before.y, Math.max(1, carX - before.x)), -0.28, 0.28);
+        }
+        drawRoadster(ctx, carX, carY, clamp(short * 0.054, 28, 72), angle, offRoad, phase, rush);
         if (offRoad) {
-          ctx.fillStyle = "rgba(207,81,77,0.72)";
-          for (let index = 0; index < 8; index += 1) {
-            const scatter = (index + 1) / 8;
-            ctx.fillRect(
-              carX - short * (0.04 + scatter * 0.08),
-              carY + Math.sin(phase * 13 + index) * short * 0.02,
-              short * 0.006,
-              short * 0.003,
-            );
+          ctx.fillStyle = "rgba(255,179,88,0.82)";
+          ctx.shadowColor = RED;
+          ctx.shadowBlur = short * 0.01;
+          for (let index = 0; index < 11; index += 1) {
+            const scatter = (index + 1) / 11;
+            const sx = carX - short * (0.045 + scatter * 0.15);
+            const sy = carY + Math.sin(phase * 15 + index * 2.1) * short * (0.012 + scatter * 0.03);
+            ctx.fillRect(sx, sy, short * (0.005 + scatter * 0.005), Math.max(1, short * 0.002));
           }
+          ctx.shadowBlur = 0;
         }
       }
       ctx.restore();
+
+      drawCabinetFinish(ctx, w, h);
 
       const grip = driveTime > 0 ? Math.round((gripTime / driveTime) * 100) : null;
       const onGhost = ghostY > 0 && Math.abs(carY - ghostY) <= lane * 0.58;
@@ -433,16 +640,34 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         lastSettledTicker === priorRun.ticker &&
         (lastSettled === "UP" || lastSettled === "DOWN") &&
         Math.abs(Date.now() - lastSettledAt) <= 2 * 60 * 1000;
-      hud(ctx, mode === "drive" ? "DRIVE" : "WATCH", left, h * 0.055, "left", small, ORANGE, 0.92);
-      hud(ctx, phaseWord, w * 0.5, h * 0.055, "center", small, finalMinute ? BLUE : CREAM, 0.86);
-      hud(ctx, `FUEL ${clock}`, right, h * 0.055, "right", small, CREAM, 0.86);
+      hud(ctx, mode === "drive" ? "DRIVE" : "WATCH", left, h * 0.055, "left", small, ORANGE, 0.94);
+      hud(ctx, phaseWord, w * 0.5, h * 0.055, "center", small, finalMinute ? BLUE : CREAM, 0.88);
+      hud(ctx, `FUEL ${clock}`, right, h * 0.055, "right", small, CREAM, 0.88);
 
-      hud(ctx, "GRIP", left, h * 0.12, "left", tiny, CREAM, 0.42);
-      hud(ctx, grip == null ? "—" : `${grip}%`, left, h * 0.12 + tiny * 1.35, "left", small, offRoad ? RED : CREAM, 0.9);
-      hud(ctx, "RAILS", left, h * 0.12 + tiny * 3.8, "left", tiny, CREAM, 0.42);
-      hud(ctx, String(rails), left, h * 0.12 + tiny * 5.15, "left", small, rails ? RED : CREAM, 0.86);
+      hud(ctx, "GRIP", left, h * 0.12, "left", tiny, CREAM, 0.46);
+      hud(
+        ctx,
+        grip == null ? "—" : `${grip}%`,
+        left,
+        h * 0.12 + tiny * 1.35,
+        "left",
+        small,
+        offRoad ? RED : CREAM,
+        0.92,
+      );
+      hud(ctx, "RAILS", left, h * 0.12 + tiny * 3.8, "left", tiny, CREAM, 0.46);
+      hud(
+        ctx,
+        String(rails),
+        left,
+        h * 0.12 + tiny * 5.15,
+        "left",
+        small,
+        rails ? RED : CREAM,
+        0.88,
+      );
 
-      hud(ctx, "LANDING", right, h * 0.12, "right", tiny, CREAM, 0.42);
+      hud(ctx, "LANDING", right, h * 0.12, "right", tiny, CREAM, 0.46);
       hud(
         ctx,
         finalMinute && ghostY > 0 ? (onGhost ? "ON GHOST" : "OFF GHOST") : "—",
@@ -451,9 +676,9 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         "right",
         small,
         onGhost ? BLUE : finalMinute ? RED : CREAM,
-        0.9,
+        0.92,
       );
-      hud(ctx, "CONTRACT", right, h * 0.12 + tiny * 3.8, "right", tiny, CREAM, 0.42);
+      hud(ctx, "CONTRACT", right, h * 0.12 + tiny * 3.8, "right", tiny, CREAM, 0.46);
       hud(
         ctx,
         settled === "UP" || settled === "DOWN" ? `SETTLED ${settled}` : "OPEN",
@@ -462,28 +687,88 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         "right",
         small,
         settled === "UP" ? "#52c58b" : settled === "DOWN" ? RED : CREAM,
-        0.88,
+        0.9,
       );
 
-      hud(ctx, "STRIKE GUARDRAIL", left, strikeY + tiny * 0.65, "left", tiny, ORANGE, 0.48);
-      if (mode === "watch") hud(ctx, "TOUCH THE ROAD TO DRIVE", w * 0.5, h * 0.9, "center", tiny, CREAM, 0.48);
-      else hud(ctx, assist ? "ASSIST ON · DRAG OR ↑↓" : "EXPERT · DRAG OR ↑↓", w * 0.5, h * 0.9, "center", tiny, CREAM, 0.48);
+      hud(ctx, "STRIKE GUARDRAIL", left, strikeY + tiny * 0.65, "left", tiny, GOLD, 0.54);
+      const driveHelp =
+        mode === "watch"
+          ? "TOUCH THE ROAD TO DRIVE"
+          : assist
+            ? "ASSIST ON · DRAG OR ↑↓"
+            : "EXPERT · DRAG OR ↑↓";
+      hud(ctx, driveHelp, w * 0.5, h * 0.875, "center", tiny, CREAM, 0.52);
+      hud(
+        ctx,
+        `CHASE CAMERA · ROAD RUSH ${rush.toFixed(1)}×`,
+        w * 0.5,
+        h * 0.91,
+        "center",
+        tiny,
+        GOLD,
+        0.44,
+      );
 
       if (seconds <= 0) {
-        ctx.fillStyle = "rgba(2,3,4,0.78)";
-        ctx.fillRect(0, h * 0.36, w, h * 0.3);
-        hud(ctx, "CHECKERED", w * 0.5, h * 0.4, "center", clamp(short * 0.04, 24, 54), CREAM, 0.94);
-        hud(ctx, grip == null ? "DRIVE: WATCHED" : `DRIVE: ${grip}% GRIP`, w * 0.5, h * 0.49, "center", small, ORANGE, 0.9);
-        hud(ctx, settled ? `CONTRACT: SETTLED ${settled}` : "CONTRACT: AWAITING OFFICIAL SETTLEMENT", w * 0.5, h * 0.55, "center", small, settled === "UP" ? "#52c58b" : settled === "DOWN" ? RED : CREAM, 0.86);
+        ctx.fillStyle = "rgba(2,3,4,0.82)";
+        ctx.fillRect(0, h * 0.34, w, h * 0.34);
+        hud(
+          ctx,
+          "CHECKERED",
+          w * 0.5,
+          h * 0.39,
+          "center",
+          clamp(short * 0.04, 24, 54),
+          CREAM,
+          0.94,
+        );
+        hud(
+          ctx,
+          grip == null ? "DRIVE: WATCHED" : `DRIVE: ${grip}% GRIP`,
+          w * 0.5,
+          h * 0.49,
+          "center",
+          small,
+          ORANGE,
+          0.9,
+        );
+        hud(
+          ctx,
+          settled ? `CONTRACT: SETTLED ${settled}` : "CONTRACT: AWAITING OFFICIAL SETTLEMENT",
+          w * 0.5,
+          h * 0.55,
+          "center",
+          small,
+          settled === "UP" ? "#52c58b" : settled === "DOWN" ? RED : CREAM,
+          0.86,
+        );
       } else if (finalMinute && ghostY > 0 && seconds <= 8 && !onGhost && mode === "drive") {
         hud(ctx, "MISSED LANDING", w * 0.5, h * 0.78, "center", small, RED, 0.9);
       }
 
       if (flagReplay && priorRun) {
-        ctx.fillStyle = "rgba(2,3,4,0.86)";
-        ctx.fillRect(0, h * 0.34, w, h * 0.34);
-        hud(ctx, "CHECKERED · LAST WINDOW", w * 0.5, h * 0.39, "center", clamp(short * 0.032, 20, 44), CREAM, 0.94);
-        hud(ctx, `DRIVE: ${priorRun.grip}% GRIP · ${priorRun.rails} RAILS`, w * 0.5, h * 0.49, "center", small, ORANGE, 0.9);
+        ctx.fillStyle = "rgba(2,3,4,0.9)";
+        ctx.fillRect(0, h * 0.33, w, h * 0.36);
+        hud(
+          ctx,
+          "CHECKERED · LAST WINDOW",
+          w * 0.5,
+          h * 0.39,
+          "center",
+          clamp(short * 0.032, 20, 44),
+          CREAM,
+          0.94,
+        );
+        hud(
+          ctx,
+          `DRIVE: ${priorRun.grip}% GRIP · ${priorRun.rails} RAILS`,
+          w * 0.5,
+          h * 0.49,
+          "center",
+          small,
+          ORANGE,
+          0.9,
+        );
         hud(
           ctx,
           `CONTRACT: SETTLED ${lastSettled}`,
@@ -498,9 +783,18 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       }
 
       if (!(spot > 0) || !(strike > 0)) {
-        ctx.fillStyle = "rgba(2,3,4,0.76)";
+        ctx.fillStyle = "rgba(2,3,4,0.78)";
         ctx.fillRect(0, 0, w, h);
-        hud(ctx, !(strike > 0) ? "WAITING FOR GUARDRAIL" : "WAITING FOR THE PRINT", w * 0.5, h * 0.48, "center", small, CREAM, 0.76);
+        hud(
+          ctx,
+          !(strike > 0) ? "WAITING FOR GUARDRAIL" : "WAITING FOR THE PRINT",
+          w * 0.5,
+          h * 0.48,
+          "center",
+          small,
+          CREAM,
+          0.78,
+        );
       }
     },
   };
