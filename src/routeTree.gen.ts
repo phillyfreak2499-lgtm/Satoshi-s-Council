@@ -18,7 +18,10 @@ import { Route as ChamberRouteImport } from './routes/chamber'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as LegalRouteImport } from './routes/legal'
+import { Route as TrainingRouteImport } from './routes/training'
 import { Route as SeatIdRouteImport } from './routes/seat.$id'
+import { Route as TrainingIndexRouteImport } from './routes/training.index'
+import { Route as TrainingCoachRouteImport } from './routes/training.$coach'
 import { Route as WindowTickerRouteImport } from './routes/window.$ticker'
 
 const IndexRoute = IndexRouteImport.update({
@@ -66,10 +69,25 @@ const LegalRoute = LegalRouteImport.update({
   path: '/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrainingRoute = TrainingRouteImport.update({
+  id: '/training',
+  path: '/training',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SeatIdRoute = SeatIdRouteImport.update({
   id: '/seat/$id',
   path: '/seat/$id',
   getParentRoute: () => rootRouteImport,
+} as any)
+const TrainingIndexRoute = TrainingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TrainingRoute,
+} as any)
+const TrainingCoachRoute = TrainingCoachRouteImport.update({
+  id: '/$coach',
+  path: '/$coach',
+  getParentRoute: () => TrainingRoute,
 } as any)
 const WindowTickerRoute = WindowTickerRouteImport.update({
   id: '/window/$ticker',
@@ -87,8 +105,11 @@ export interface FileRoutesByFullPath {
   '/faq': typeof FaqRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
+  '/training': typeof TrainingRouteWithChildren
   '/seat/$id': typeof SeatIdRoute
+  '/training/$coach': typeof TrainingCoachRoute
   '/window/$ticker': typeof WindowTickerRoute
+  '/training/': typeof TrainingIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -101,7 +122,9 @@ export interface FileRoutesByTo {
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
   '/seat/$id': typeof SeatIdRoute
+  '/training/$coach': typeof TrainingCoachRoute
   '/window/$ticker': typeof WindowTickerRoute
+  '/training': typeof TrainingIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,8 +137,11 @@ export interface FileRoutesById {
   '/faq': typeof FaqRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
+  '/training': typeof TrainingRouteWithChildren
   '/seat/$id': typeof SeatIdRoute
+  '/training/$coach': typeof TrainingCoachRoute
   '/window/$ticker': typeof WindowTickerRoute
+  '/training/': typeof TrainingIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -129,8 +155,11 @@ export interface FileRouteTypes {
     | '/faq'
     | '/lab'
     | '/legal'
+    | '/training'
     | '/seat/$id'
+    | '/training/$coach'
     | '/window/$ticker'
+    | '/training/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -143,7 +172,9 @@ export interface FileRouteTypes {
     | '/lab'
     | '/legal'
     | '/seat/$id'
+    | '/training/$coach'
     | '/window/$ticker'
+    | '/training'
   id:
     | '__root__'
     | '/'
@@ -155,8 +186,11 @@ export interface FileRouteTypes {
     | '/faq'
     | '/lab'
     | '/legal'
+    | '/training'
     | '/seat/$id'
+    | '/training/$coach'
     | '/window/$ticker'
+    | '/training/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -169,6 +203,7 @@ export interface RootRouteChildren {
   FaqRoute: typeof FaqRoute
   LabRoute: typeof LabRoute
   LegalRoute: typeof LegalRoute
+  TrainingRoute: typeof TrainingRouteWithChildren
   SeatIdRoute: typeof SeatIdRoute
   WindowTickerRoute: typeof WindowTickerRoute
 }
@@ -238,12 +273,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LegalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/training': {
+      id: '/training'
+      path: '/training'
+      fullPath: '/training'
+      preLoaderRoute: typeof TrainingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/seat/$id': {
       id: '/seat/$id'
       path: '/seat/$id'
       fullPath: '/seat/$id'
       preLoaderRoute: typeof SeatIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/training/': {
+      id: '/training/'
+      path: '/'
+      fullPath: '/training/'
+      preLoaderRoute: typeof TrainingIndexRouteImport
+      parentRoute: typeof TrainingRoute
+    }
+    '/training/$coach': {
+      id: '/training/$coach'
+      path: '/$coach'
+      fullPath: '/training/$coach'
+      preLoaderRoute: typeof TrainingCoachRouteImport
+      parentRoute: typeof TrainingRoute
     }
     '/window/$ticker': {
       id: '/window/$ticker'
@@ -255,6 +311,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface TrainingRouteChildren {
+  TrainingCoachRoute: typeof TrainingCoachRoute
+  TrainingIndexRoute: typeof TrainingIndexRoute
+}
+
+const TrainingRouteChildren: TrainingRouteChildren = {
+  TrainingCoachRoute: TrainingCoachRoute,
+  TrainingIndexRoute: TrainingIndexRoute,
+}
+
+const TrainingRouteWithChildren = TrainingRoute._addFileChildren(
+  TrainingRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
@@ -265,6 +335,7 @@ const rootRouteChildren: RootRouteChildren = {
   FaqRoute: FaqRoute,
   LabRoute: LabRoute,
   LegalRoute: LegalRoute,
+  TrainingRoute: TrainingRouteWithChildren,
   SeatIdRoute: SeatIdRoute,
   WindowTickerRoute: WindowTickerRoute,
 }

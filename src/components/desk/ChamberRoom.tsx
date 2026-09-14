@@ -376,6 +376,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
           <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
             Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
           </p>
+          <a href="/training/wick" className="btn btn-secondary mt-4">Train with WICK ↗</a>
         </section>
 
         {SHOW_CINEMATIC_ROOM ? <RoomStage latest={rows[0] ?? null} loaded={loaded} /> : null}
@@ -458,3 +459,4 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
     </div>
   );
 }
+

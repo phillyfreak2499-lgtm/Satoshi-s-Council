@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Crest } from "./Crest";
 import { cn } from "@/lib/utils";
 
-export type MenuItem = { label: string; hint?: string; href?: string; onSelect?: () => void; active?: boolean };
+export type MenuItem = { label: string; hint?: string; href?: string; onSelect?: () => void; active?: boolean; group?: string };
 
 /**
  * One header for every page: crest and wordmark on the left, the page's own
@@ -85,8 +85,9 @@ export function SiteHeader({
       {open && menu?.length ? (
         <nav id="site-menu" aria-label="Site menu" className={cn("gutter absolute inset-x-0 top-full max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-b border-border bg-surface py-2 shadow-[0_24px_60px_rgba(0,0,0,0.5)]", f.panel)}>
           <ul className="grid gap-1">
-            {menu.map((m) => (
+            {menu.map((m, index) => (
               <li key={m.label}>
+                {m.group && m.group !== menu[index - 1]?.group ? <div className="px-2 pb-1 pt-3 font-mono text-micro uppercase tracking-widest text-subtle">{m.group}</div> : null}
                 {m.href ? (
                   <a href={m.href} aria-current={m.active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
                     {m.label}
@@ -113,3 +114,4 @@ export function SiteHeader({
     </header>
   );
 }
+
