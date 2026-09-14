@@ -1,4 +1,4 @@
-export type RoomId = "field" | "flow" | "wave";
+export type RoomId = "field" | "flow" | "wave" | "ceiling";
 
 export type EnumParam = {
   key: string;
@@ -82,6 +82,20 @@ export const ROOMS: RoomMeta[] = [
       { key: "wave", kind: "range", label: "Length", min: 12, max: 70, step: 1, def: 28, format: fmt },
       { key: "speed", kind: "range", label: "Speed", min: 0.2, max: 2.4, step: 0.05, def: 1.4, format: fmt },
       { key: "contrast", kind: "range", label: "Ink", min: 0.4, max: 1.6, step: 0.05, def: 1, format: fmt },
+    ],
+  },
+  {
+    id: "ceiling",
+    index: "04",
+    word: "Ceiling",
+    name: "Cloud Ceiling",
+    glow: "#f7931a",
+    meta: "Live BTC vs strike · final-minute BRTI average",
+    fine: "A night-flight view of the live Bitcoin print against the locked strike. In Final Approach, the translucent settlement ghost follows the BRTI prints already observed in the 60-second average.",
+    hint: "The live plane can cross the deck and still lose. In the final minute, the settlement ghost is the aircraft that matters.",
+    params: [
+      { key: "clouds", kind: "range", label: "Clouds", min: 0.55, max: 1.45, step: 0.05, def: 1, format: fmt },
+      { key: "trail", kind: "range", label: "Contrail", min: 0.6, max: 1.6, step: 0.05, def: 1, format: fmt },
     ],
   },
 ];
