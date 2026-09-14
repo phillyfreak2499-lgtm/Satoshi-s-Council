@@ -27,7 +27,11 @@ function parseRoad(raw: string): RoadPoint[] {
     .filter((point) => Number.isFinite(point.p) && Number.isFinite(point.value))
     .map((point) => ({ p: clamp(point.p, 0, 1), value: point.value }))
     .sort((a, b) => a.p - b.p)
-    .slice(-24);
+    .slice(-180);
+}
+
+function signedDollars(value: number) {
+  return `${value >= 0 ? "+" : "−"}$${Math.round(Math.abs(value)).toLocaleString("en-US")}`;
 }
 
 function readPriorRun(currentTicker: string): PriorRun | null {
@@ -140,6 +144,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let resetMode = false;
   let roadRaw = "";
   let road: RoadPoint[] = [];
+  let liveRoad: RoadPoint[] = [];
   let ghostRoad: GhostPoint[] = [];
   let lastGhost = 0;
   let steer = 0.5;
@@ -154,6 +159,10 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let velocity = 0;
   let lastSpotAt = 0;
   let lastPersist = 0;
+  let cameraCenter = 0;
+  let cameraRange = 54;
+  let targetCameraCenter = 0;
+  let targetCameraRange = 54;
 
   const apply = (next: Params) => {
     const nextTicker = str(next, "ticker", ticker);
@@ -161,6 +170,11 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       ticker = nextTicker;
       priorRun = readPriorRun(ticker);
       resetMode = priorRun != null;
+      liveRoad = [];
+      ghostRoad = [];
+      lastGhost = 0;
+      cameraCenter = 0;
+      targetCameraCenter = 0;
     }
     mode = str(next, "mode", mode);
     assist = str(next, "assist", assist ? "on" : "off") === "on";
@@ -188,6 +202,14 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         const elapsed = clamp(now - lastSpotAt, 0.08, 6);
         velocity = velocity * 0.72 + ((nextSpot - spot) / elapsed) * 0.28;
       }
+      const tickProgress = clamp(1 - seconds / 900, 0, 1);
+      const lastRoadPoint = liveRoad[liveRoad.length - 1];
+      if (!lastRoadPoint || tickProgress - lastRoadPoint.p >= 1 / 4500) {
+        liveRoad.push({ p: tickProgress, value: nextSpot });
+      } else {
+        liveRoad[liveRoad.length - 1] = { p: tickProgress, value: nextSpot };
+      }
+      liveRoad = liveRoad.slice(-240);
       spot = nextSpot;
       lastSpotAt = now;
     } else {
@@ -224,6 +246,11 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
     },
     step(dt) {
       phase += dt;
+      if (targetCameraCenter > 0) {
+        if (!(cameraCenter > 0)) cameraCenter = targetCameraCenter;
+        cameraCenter += (targetCameraCenter - cameraCenter) * (1 - Math.exp(-5.5 * dt));
+      }
+      cameraRange += (targetCameraRange - cameraRange) * (1 - Math.exp(-4.2 * dt));
       if (resetMode) {
         resetMode = false;
         mode = "watch";
@@ -265,25 +292,50 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       const left = w * 0.065;
       const right = w * 0.935;
       const progress = clamp(1 - seconds / 900, 0, 1);
-      const carX = left + (right - left) * progress;
       const finalMinute = seconds <= 60;
       const openRoad = seconds > 420;
       const phaseWord = finalMinute ? "GHOST LAP" : openRoad ? "OPEN ROAD" : "PINCH";
-      const allPoints = road.filter((point) => point.p <= progress + 0.015);
+      const viewSeconds = finalMinute ? 45 : openRoad ? 120 : 75;
+      const viewSpan = viewSeconds / 900;
+      let viewStart = Math.max(0, progress - viewSpan * 0.72);
+      let viewEnd = viewStart + viewSpan;
+      if (viewEnd > 1) {
+        viewEnd = 1;
+        viewStart = Math.max(0, viewEnd - viewSpan);
+      }
+      const toX = (p: number) => left + ((p - viewStart) / Math.max(0.0001, viewEnd - viewStart)) * (right - left);
+      const carX = clamp(toX(progress), left, right);
+      const allPoints = [...road, ...liveRoad]
+        .filter((point) => point.p >= viewStart - viewSpan * 0.08 && point.p <= progress + 0.004)
+        .sort((a, b) => a.p - b.p);
       if (spot > 0) allPoints.push({ p: progress, value: spot });
-      const maxDistance = Math.max(
-        160,
-        ...allPoints.map((point) => Math.abs(point.value - strike) * 1.22),
-        settleAvg > 0 ? Math.abs(settleAvg - strike) * 1.22 : 0,
+      if (allPoints.length === 1) allPoints.unshift({ p: viewStart, value: allPoints[0]!.value });
+
+      const localExtent = Math.max(7, ...allPoints.map((point) => Math.abs(point.value - spot)));
+      const strikeDistance = spot > 0 && strike > 0 ? Math.abs(spot - strike) : 0;
+      const includeStrike = strikeDistance <= 110;
+      targetCameraCenter = spot > 0
+        ? includeStrike && strike > 0
+          ? (spot + strike) * 0.5
+          : spot
+        : strike;
+      targetCameraRange = clamp(
+        Math.max(20, localExtent * 1.5, Math.abs(velocity) * 0.7, includeStrike ? strikeDistance * 0.62 : 0),
+        20,
+        145,
       );
-      const range = clamp(maxDistance, 160, 900);
+      if (!(cameraCenter > 0)) cameraCenter = targetCameraCenter;
       const center = h * 0.51;
-      const toY = (value: number) => center - clamp((value - strike) / range, -1, 1) * h * (finalMinute ? 0.38 : 0.31);
-      const strikeY = strike > 0 ? toY(strike) : center;
-      roadY = spot > 0 && strike > 0 ? toY(spot) : center;
+      const toY = (value: number) => center - ((value - cameraCenter) / Math.max(16, cameraRange)) * h * 0.34;
+      const topTrack = h * 0.185;
+      const bottomTrack = h * 0.84;
+      const rawStrikeY = strike > 0 ? toY(strike) : center;
+      const strikeOffscreen = rawStrikeY < topTrack || rawStrikeY > bottomTrack;
+      const strikeY = clamp(rawStrikeY, topTrack, bottomTrack);
+      roadY = spot > 0 && strike > 0 ? clamp(toY(spot), topTrack, bottomTrack) : center;
       lane = laneWidth(h, progress, spot, strike);
       if (!(carY > 0) || mode === "watch" && Math.abs(carY - roadY) > h * 0.4) carY = roadY;
-      const shake = clamp(Math.abs(velocity) / 80, 0, 1) * Math.sin(phase * 24) * h * 0.004;
+      const shake = clamp(Math.abs(velocity) / 48, 0, 1) * Math.sin(phase * 26) * h * 0.005;
 
       const background = ctx.createLinearGradient(0, 0, 0, h);
       background.addColorStop(0, "#05070b");
@@ -296,7 +348,9 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       ctx.translate(0, shake);
       ctx.strokeStyle = finalMinute ? "rgba(97,184,223,0.12)" : "rgba(247,147,26,0.075)";
       ctx.lineWidth = 1;
-      for (let x = left; x <= right; x += Math.max(34, short * 0.085)) {
+      const gridGap = Math.max(34, short * 0.085);
+      const gridShift = (phase * short * 0.16) % gridGap;
+      for (let x = left - gridShift; x <= right; x += gridGap) {
         ctx.beginPath();
         ctx.moveTo(x, h * 0.12);
         ctx.lineTo(x, h * 0.9);
@@ -317,15 +371,29 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       ctx.moveTo(left, strikeY);
       ctx.lineTo(right, strikeY);
       ctx.stroke();
+      if (strikeOffscreen) {
+        ctx.fillStyle = "rgba(247,147,26,0.78)";
+        ctx.beginPath();
+        if (rawStrikeY < topTrack) {
+          ctx.moveTo(right - tiny * 0.7, strikeY + tiny * 0.8);
+          ctx.lineTo(right, strikeY);
+          ctx.lineTo(right + tiny * 0.7, strikeY + tiny * 0.8);
+        } else {
+          ctx.moveTo(right - tiny * 0.7, strikeY - tiny * 0.8);
+          ctx.lineTo(right, strikeY);
+          ctx.lineTo(right + tiny * 0.7, strikeY - tiny * 0.8);
+        }
+        ctx.fill();
+      }
       ctx.restore();
 
       if (allPoints.length > 0 && strike > 0) {
         const upper = allPoints.map((point) => ({
-          x: left + (right - left) * point.p,
+          x: toX(point.p),
           y: toY(point.value) - laneWidth(h, point.p, point.value, strike) * 0.5,
         }));
         const lower = allPoints.map((point) => ({
-          x: left + (right - left) * point.p,
+          x: toX(point.p),
           y: toY(point.value) + laneWidth(h, point.p, point.value, strike) * 0.5,
         }));
 
@@ -362,7 +430,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         ctx.shadowBlur = short * 0.012 * glow;
         ctx.beginPath();
         allPoints.forEach((point, index) => {
-          const x = left + (right - left) * point.p;
+          const x = toX(point.p);
           const y = toY(point.value);
           if (index === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -386,8 +454,9 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
 
       let ghostY = 0;
       if (finalMinute && settleAvg > 0 && locked > 0 && strike > 0) {
-        const visibleGhost = ghostRoad.length > 1
-          ? ghostRoad
+        const ghostInView = ghostRoad.filter((point) => point.p >= viewStart - viewSpan * 0.08);
+        const visibleGhost = ghostInView.length > 1
+          ? ghostInView
           : [{ p: Math.max(14 / 15, progress - 0.035), value: settleAvg }, { p: progress, value: settleAvg }];
         ctx.save();
         ctx.strokeStyle = "rgba(97,184,223,0.68)";
@@ -397,7 +466,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         ctx.shadowBlur = short * 0.025;
         ctx.beginPath();
         visibleGhost.forEach((point, index) => {
-          const x = left + (right - left) * point.p;
+          const x = toX(point.p);
           const y = toY(point.value);
           if (index === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -435,6 +504,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         Math.abs(Date.now() - lastSettledAt) <= 2 * 60 * 1000;
       hud(ctx, mode === "drive" ? "DRIVE" : "WATCH", left, h * 0.055, "left", small, ORANGE, 0.92);
       hud(ctx, phaseWord, w * 0.5, h * 0.055, "center", small, finalMinute ? BLUE : CREAM, 0.86);
+      hud(ctx, `CHASE ${viewSeconds}s · ZOOM ±$${Math.round(cameraRange)}`, w * 0.5, h * 0.09, "center", tiny, CREAM, 0.38);
       hud(ctx, `FUEL ${clock}`, right, h * 0.055, "right", small, CREAM, 0.86);
 
       hud(ctx, "GRIP", left, h * 0.12, "left", tiny, CREAM, 0.42);
@@ -465,7 +535,18 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         0.88,
       );
 
-      hud(ctx, "STRIKE GUARDRAIL", left, strikeY + tiny * 0.65, "left", tiny, ORANGE, 0.48);
+      hud(
+        ctx,
+        strikeOffscreen
+          ? `GUARDRAIL ${signedDollars(strike - spot)} ${rawStrikeY < topTrack ? "↑" : "↓"}`
+          : "STRIKE GUARDRAIL",
+        left,
+        strikeY + (rawStrikeY > bottomTrack ? -tiny * 1.7 : tiny * 0.65),
+        "left",
+        tiny,
+        ORANGE,
+        0.56,
+      );
       if (mode === "watch") hud(ctx, "TOUCH THE ROAD TO DRIVE", w * 0.5, h * 0.9, "center", tiny, CREAM, 0.48);
       else hud(ctx, assist ? "ASSIST ON · DRAG OR ↑↓" : "EXPERT · DRAG OR ↑↓", w * 0.5, h * 0.9, "center", tiny, CREAM, 0.48);
 
