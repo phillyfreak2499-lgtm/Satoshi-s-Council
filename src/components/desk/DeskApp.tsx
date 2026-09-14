@@ -55,11 +55,20 @@ const MORE: { id: TabId; label: string; hint: string }[] = [
   { id: "settings", label: "SETTINGS", hint: "demo, alerts, display" },
 ];
 const NUDGE_KEY = "satoshi-desk-nudge-v1";
+const INTRO_KEY = "satoshi-desk-intro-v1";
 const LINKABLE_TABS = new Set<TabId>(["satoshi", "structure", "tape", "derivs", "book", "context", "books", "board", "crew", "atelier", "settings"]);
 
 function nudgeOff(): boolean {
   try {
     return localStorage.getItem(NUDGE_KEY) === "off";
+  } catch {
+    return false;
+  }
+}
+
+function introOff(): boolean {
+  try {
+    return localStorage.getItem(INTRO_KEY) === "off";
   } catch {
     return false;
   }
@@ -126,9 +135,10 @@ export function DeskApp() {
   const [welcomeOn, setWelcomeOn] = useState(false);
   const [paletteOn, setPaletteOn] = useState(false);
   const [nudge, setNudge] = useState(false);
-  // Read in the effect below, never during render: welcomeSeen() touches localStorage
-  // and would otherwise differ between the server and the first client paint.
+  // Read in the effect below, never during render: these touch localStorage and
+  // would otherwise differ between the server and the first client paint.
   const [returning, setReturning] = useState(false);
+  const [introHidden, setIntroHidden] = useState(false);
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
   const setSeatView = (v: SeatView) => {
     setSeatViewState(v);
@@ -147,6 +157,7 @@ export function DeskApp() {
     setSeatViewState(readSeatView());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
     setReturning(welcomeSeen());
+    setIntroHidden(introOff());
     beacon("desk_view", true);
   }, []);
   useEffect(() => {
@@ -389,15 +400,16 @@ export function DeskApp() {
         </div>
       ) : null}
 
-      {tab === "satoshi" ? (
+      {tab === "satoshi" && !returning && !introHidden ? (
         <IntroBand
           demo={frame.settings.source === "demo"}
           nudge={nudge && !tourOn}
-          returning={returning}
           onTour={startTour}
-          onDismissNudge={() => {
+          onDismiss={() => {
+            setIntroHidden(true);
             setNudge(false);
             try {
+              localStorage.setItem(INTRO_KEY, "off");
               localStorage.setItem(NUDGE_KEY, "off");
             } catch {
               /* private mode */
