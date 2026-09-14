@@ -7,6 +7,11 @@ function cents(v: number | null): string {
   return `${v > 0 ? "+" : ""}${v}¢`;
 }
 
+function pct(v: number | null): string {
+  if (v == null) return "—";
+  return `${(v * 100).toFixed(1)}%`;
+}
+
 function progress(row: PublicLabSpecimen): number {
   if (!(row.sample_gate.required > 0)) return 0;
   return Math.max(0, Math.min(100, (row.sample_gate.current / row.sample_gate.required) * 100));
@@ -67,6 +72,107 @@ function Specimen({ row, controlId }: { row: PublicLabSpecimen; controlId: strin
         ) : null}
       </div>
     </article>
+  );
+}
+
+function SeatTimingStudy({
+  data,
+}: {
+  data: NonNullable<PublicLabSnapshot["seat_timing"]>;
+}) {
+  const rows = data.seats.filter((row) =>
+    row.horizons.some((horizon) => horizon.raw_n >= 20),
+  );
+
+  return (
+    <section
+      className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5"
+      aria-labelledby="seat-timing-title"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
+            Replay study · fixed horizons
+          </div>
+          <h2 id="seat-timing-title" className="mt-1 font-sans text-title font-medium text-fg">
+            Seat timing calibration
+          </h2>
+        </div>
+        <div className="font-mono text-micro tabular text-subtle">
+          {data.windows} valid complete replays · latest cap {data.window_cap}
+        </div>
+      </div>
+
+      <p className="mt-3 max-w-[90ch] font-sans text-ui leading-relaxed text-muted">
+        Raw is every directional read the specialist saw, including reads withheld by the whisper filter.
+        Heard is only votes that reached the Chair. Accuracy is measured against official settlement.
+      </p>
+      <p className="mt-2 max-w-[90ch] font-mono text-micro leading-relaxed text-subtle">
+        Descriptive replay evidence only; not used by Chair, learner, or promotion.
+      </p>
+
+      {rows.length ? (
+        <div className="mt-4 overflow-x-auto rounded-sm border border-border">
+          <table className="w-full min-w-[960px] border-collapse text-left">
+            <thead className="bg-canvas">
+              <tr>
+                <th
+                  scope="col"
+                  className="border-b border-border px-3 py-3 font-mono text-micro uppercase tracking-widest text-subtle"
+                >
+                  Seat
+                </th>
+                {data.horizons.map((horizon) => (
+                  <th
+                    key={horizon.seconds}
+                    scope="col"
+                    className="border-b border-l border-border px-3 py-3 font-mono text-micro font-normal text-subtle"
+                  >
+                    <span className="block uppercase tracking-widest text-muted">
+                      {horizon.label} before close
+                    </span>
+                    <span className="mt-1 block tabular">n={horizon.sampled_windows} windows sampled</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.seat} className="border-b border-border last:border-b-0">
+                  <th scope="row" className="px-3 py-3 font-mono text-ui font-medium text-fg">
+                    {row.seat}
+                  </th>
+                  {row.horizons.map((horizon) => (
+                    <td
+                      key={horizon.seconds}
+                      className="border-l border-border px-3 py-3 font-mono text-micro tabular"
+                    >
+                      <div className="text-fg">
+                        raw {pct(horizon.raw_rate)}
+                        <span className="ml-2 text-subtle">n={horizon.raw_n}</span>
+                      </div>
+                      <div className="mt-1 text-muted">
+                        heard {pct(horizon.heard_rate)}
+                        <span className="ml-2 text-subtle">n={horizon.heard_n}</span>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-sm border border-border bg-canvas p-4 font-mono text-micro text-subtle">
+          No seat has reached the 20-observation display threshold at a fixed horizon.
+        </div>
+      )}
+
+      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        Seats appear after at least 20 raw observations at one horizon. This display threshold is not
+        a research or promotion gate. As of {new Date(data.at).toLocaleString()}.
+      </p>
+    </section>
   );
 }
 
@@ -157,6 +263,19 @@ export function LabRoom() {
             <section className="mt-3 grid gap-4" aria-label="Lab specimens">
               {data.specimens.map((row) => <Specimen key={row.id} row={row} controlId={data.control_id} />)}
             </section>
+
+            {data.seat_timing ? (
+              <SeatTimingStudy data={data.seat_timing} />
+            ) : (
+              <section className="mt-6 rounded-md border border-border bg-canvas p-4">
+                <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+                  Seat timing calibration
+                </div>
+                <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+                  The optional replay aggregate is temporarily unavailable. The specimen ledger above is unaffected.
+                </p>
+              </section>
+            )}
 
             <section className="mt-6 rounded-md border border-border bg-canvas p-4 font-mono text-micro leading-relaxed text-subtle">
               Review gates are frozen outside the specimens. Current component minimums include {data.governance.sample_min} prospective fills, {data.governance.days_min} calendar days, and {data.governance.paired_control_losses_min} paired control-loss windows. Meeting a count is not promotion; all applicable evidence gates must be reviewed separately.
