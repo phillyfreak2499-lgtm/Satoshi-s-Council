@@ -20,12 +20,94 @@ function utcClock(value: string): string {
   }
 }
 
+function ageLabel(value: string, asOf: string): string {
+  const then = new Date(value).getTime();
+  const now = new Date(asOf).getTime();
+  if (!Number.isFinite(then) || !Number.isFinite(now)) return value;
+  const minutes = Math.max(0, Math.floor((now - then) / 60_000));
+  if (minutes < 1) return "less than a minute ago";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function LabSummary({ data }: { data: PublicLabSnapshot }) {
+  const ranked = data.specimens
+    .filter((row) => row.avg_cents != null)
+    .slice()
+    .sort((a, b) => (b.avg_cents ?? -Infinity) - (a.avg_cents ?? -Infinity));
+  const leader = ranked[0] ?? null;
+  const control = data.specimens.find((row) => row.id === data.control_id) ?? null;
+  const delta =
+    leader?.avg_cents != null && control?.avg_cents != null
+      ? leader.avg_cents - control.avg_cents
+      : null;
+  const gateReady = data.specimens.filter(
+    (row) =>
+      row.sample_gate.required > 0 &&
+      row.sample_gate.current >= row.sample_gate.required,
+  ).length;
+
+  return (
+    <section
+      className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5"
+      aria-labelledby="lab-summary-title"
+    >
+      <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
+        Comparison first
+      </div>
+      <h2 id="lab-summary-title" className="mt-1 font-sans text-title font-medium text-fg">
+        What the ledger says
+      </h2>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+            Highest observed avg
+          </div>
+          <div className="mt-1 font-sans text-ui text-fg">{leader?.label ?? "No measured specimen"}</div>
+          <div className="mt-1 font-mono text-micro tabular text-muted">
+            {leader ? `${cents(leader.avg_cents)} over ${leader.sample_n} observations` : "waiting for evidence"}
+          </div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+            Vs frozen control
+          </div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{cents(delta)}</div>
+          <div className="mt-1 font-mono text-micro text-muted">
+            leader minus {control?.label ?? data.control_id}
+          </div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+            Sample gate reached
+          </div>
+          <div className="mt-1 font-mono text-data tabular text-fg">
+            {gateReady} / {data.specimens.length}
+          </div>
+          <div className="mt-1 font-mono text-micro text-muted">count only · not promotion</div>
+        </div>
+      </div>
+      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        This is a quick comparison of recorded paper evidence, not a recommendation or a winner declaration. Frozen rules and full specimen details remain below.
+      </p>
+    </section>
+  );
+}
+
 function progress(row: PublicLabSpecimen): number {
   if (!(row.sample_gate.required > 0)) return 0;
   return Math.max(0, Math.min(100, (row.sample_gate.current / row.sample_gate.required) * 100));
 }
 
-function Specimen({ row, controlId }: { row: PublicLabSpecimen; controlId: string }) {
+function Specimen({ row, controlId, asOf }: { row: PublicLabSpecimen; controlId: string; asOf: string }) {
   return (
     <article className="rounded-md border border-border bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -71,7 +153,7 @@ function Specimen({ row, controlId }: { row: PublicLabSpecimen; controlId: strin
 
       <div className="mt-4 grid gap-2 border-t border-border pt-4 font-mono text-micro text-subtle sm:grid-cols-2">
         <div>profitable / losing <span className="text-muted">{row.profitable} / {row.losing}</span></div>
-        <div>frozen <span className="text-muted">{new Date(row.frozen_at).toISOString()}</span></div>
+        <div>frozen <span className="text-muted">{ageLabel(row.frozen_at, asOf)}</span></div>
         {!row.control ? (
           <>
             <div>paired vs {controlId} <span className="text-muted">{row.paired_n} windows</span></div>
@@ -244,6 +326,8 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
               </div>
             </section>
 
+            <LabSummary data={data} />
+
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <div className="font-mono text-micro uppercase tracking-widest text-subtle">Frozen DNA · live evidence</div>
@@ -253,7 +337,9 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             </div>
 
             <section className="mt-3 grid gap-4" aria-label="Lab specimens">
-              {data.specimens.map((row) => <Specimen key={row.id} row={row} controlId={data.control_id} />)}
+              {data.specimens.map((row) => (
+                <Specimen key={row.id} row={row} controlId={data.control_id} asOf={data.at} />
+              ))}
             </section>
 
             {data.seat_timing ? (

@@ -32,6 +32,7 @@ type Exchange = {
   label: string;
   latest: string;
   statements: ChamberStatement[];
+  repeats?: Exchange[];
 };
 
 function exchangeKey(s: ChamberStatement): string {
@@ -76,6 +77,27 @@ function groupExchanges(rows: ChamberStatement[]): Exchange[] {
     });
   }
   return [...map.values()];
+}
+
+function waitFingerprint(exchange: Exchange): string | null {
+  if (exchange.statements.length !== 1) return null;
+  const statement = exchange.statements[0];
+  if (statement.speaker !== "SATOSHI" || statement.evidence.kind !== "chair-wait") return null;
+  return (statement.evidence.wait_reason || statement.text).trim().toLowerCase();
+}
+
+function compactRepeatedWaits(exchanges: Exchange[]): Exchange[] {
+  const compact: Exchange[] = [];
+  for (const exchange of exchanges) {
+    const fingerprint = waitFingerprint(exchange);
+    const previous = compact[compact.length - 1];
+    if (fingerprint && previous && waitFingerprint(previous) === fingerprint) {
+      previous.repeats = [...(previous.repeats ?? []), exchange];
+    } else {
+      compact.push({ ...exchange });
+    }
+  }
+  return compact;
 }
 
 function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
@@ -335,7 +357,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
     };
   }, []);
 
-  const exchanges = useMemo(() => groupExchanges(rows), [rows]);
+  const exchanges = useMemo(() => compactRepeatedWaits(groupExchanges(rows)), [rows]);
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -388,6 +410,20 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
                     <div className="space-y-5">
                       {exchange.statements.map((statement) => <Statement key={statement.event_key} statement={statement} />)}
                     </div>
+                    {exchange.repeats?.length ? (
+                      <details className="mt-4 border-t border-border pt-3">
+                        <summary className="min-h-11 cursor-pointer list-none py-2 font-mono text-micro uppercase tracking-widest text-muted marker:content-none sm:min-h-0">
+                          {exchange.repeats.length} earlier identical WAIT {exchange.repeats.length === 1 ? "dispatch" : "dispatches"} · full evidence
+                        </summary>
+                        <div className="mt-3 space-y-5">
+                          {exchange.repeats.flatMap((repeated) =>
+                            repeated.statements.map((statement) => (
+                              <Statement key={statement.event_key} statement={statement} />
+                            )),
+                          )}
+                        </div>
+                      </details>
+                    ) : null}
                   </section>
                 ))}
               </div>
