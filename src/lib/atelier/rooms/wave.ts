@@ -16,6 +16,7 @@ export const createWave: RoomFactory = (iw, ih, seed, params): RoomWorld => {
   let call = callOf(params);
   let remain = 1;
   let clock = "0:03";
+  let phase = 0;
   let sources: Src[] = [];
   let lowW = 160;
   let lowH = 200;
@@ -46,56 +47,56 @@ export const createWave: RoomFactory = (iw, ih, seed, params): RoomWorld => {
   prep();
 
   return {
-    resize(nw, nh) {
-      w = nw;
-      h = nh;
+    resize(nextWidth, nextHeight) {
+      w = nextWidth;
+      h = nextHeight;
       prep();
     },
-    reseed(s) {
-      seed = s;
+    reseed(nextSeed) {
+      seed = nextSeed;
       place();
     },
-    setParams(p: Params) {
-      wavelength = num(p, "wave", wavelength);
-      speed = num(p, "speed", speed);
-      contrast = num(p, "contrast", contrast);
-      call = callOf(p);
-      remain = num(p, "remain", remain);
-      clock = typeof p.clock === "string" ? p.clock : clock;
+    setParams(next: Params) {
+      wavelength = num(next, "wave", wavelength);
+      speed = num(next, "speed", speed);
+      contrast = num(next, "contrast", contrast);
+      call = callOf(next);
+      remain = num(next, "remain", remain);
+      clock = typeof next.clock === "string" ? next.clock : clock;
     },
     pointer(x, y, kind) {
       if (kind !== "down") return;
       sources.push({ x: x / w, y: y / h });
       if (sources.length > 6) sources.shift();
     },
-    step() {},
-    draw(ctx, _w, _h, t) {
+    step(dt) {
+      phase += dt * speed * 4;
+    },
+    draw(ctx) {
       if (!img || !octx || !off) return;
       const data = img.data;
       const freq = (Math.PI * 2) / Math.max(6, wavelength);
-      const phase = (t / 1000) * speed * 4;
-      const nsrc = sources.length || 1;
-      const k = contrast;
-      for (let yy = 0; yy < lowH; yy++) {
-        for (let xx = 0; xx < lowW; xx++) {
+      const sourceCount = sources.length || 1;
+      for (let yy = 0; yy < lowH; yy += 1) {
+        for (let xx = 0; xx < lowW; xx += 1) {
           const u = xx / (lowW - 1);
           const v = yy / (lowH - 1);
           let sum = 0;
-          for (const s of sources) {
-            const dx = (u - s.x) * 2;
-            const dy = (v - s.y) * 2.4;
-            const dist = Math.sqrt(dx * dx + dy * dy) * 80;
-            sum += Math.sin(dist * freq - phase);
+          for (const source of sources) {
+            const dx = (u - source.x) * 2;
+            const dy = (v - source.y) * 2.4;
+            const distance = Math.sqrt(dx * dx + dy * dy) * 80;
+            sum += Math.sin(distance * freq - phase);
           }
-          let n = (sum / nsrc) * k;
-          n = (n + 1) * 0.5;
-          n = n < 0 ? 0 : n > 1 ? 1 : n;
-          const col = sampleCall(n, call);
-          const i = (yy * lowW + xx) * 4;
-          data[i] = col[0];
-          data[i + 1] = col[1];
-          data[i + 2] = col[2];
-          data[i + 3] = 255;
+          let strength = (sum / sourceCount) * contrast;
+          strength = (strength + 1) * 0.5;
+          strength = strength < 0 ? 0 : strength > 1 ? 1 : strength;
+          const color = sampleCall(strength, call);
+          const index = (yy * lowW + xx) * 4;
+          data[index] = color[0];
+          data[index + 1] = color[1];
+          data[index + 2] = color[2];
+          data[index + 3] = 255;
         }
       }
       octx.putImageData(img, 0, 0);

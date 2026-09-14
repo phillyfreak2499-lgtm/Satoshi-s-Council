@@ -2697,3 +2697,382 @@ html[data-motion="reduce"] .chamber-world::before {
   filter: drop-shadow(0 0 7px var(--speaker-glow));
 }
 
+/* --- SIGNAL GALLERY v4: a live paper call rendered as ambient display art. --- */
+.atelier-shell {
+  height: clamp(600px, 72dvh, 900px);
+  min-height: 600px;
+}
+
+.atelier {
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 48% 34% at 50% 18%, color-mix(in srgb, var(--glow) 8%, transparent), transparent 72%),
+    radial-gradient(ellipse 76% 70% at 50% 105%, rgb(0 0 0 / 0.86), transparent 66%),
+    linear-gradient(180deg, #151514, #070808);
+}
+
+.atelier-spot {
+  opacity: 0.72;
+  background:
+    radial-gradient(ellipse 36% 24% at 50% 10%, rgb(255 246 222 / 0.13), transparent 72%),
+    linear-gradient(90deg, rgb(0 0 0 / 0.32), transparent 18% 82%, rgb(0 0 0 / 0.32)),
+    linear-gradient(to bottom, rgb(0 0 0 / 0.08), transparent 28% 72%, rgb(0 0 0 / 0.58));
+}
+
+.atelier-mast {
+  padding: 14px 18px 8px;
+  padding-top: max(14px, env(safe-area-inset-top));
+}
+
+.atelier-mark {
+  color: color-mix(in srgb, var(--glow) 74%, var(--color-paper-deep));
+}
+
+.atelier-live {
+  margin-right: 138px;
+}
+
+.atelier-live-clock {
+  color: var(--color-paper-deep);
+}
+
+.atelier-dock {
+  top: max(8px, env(safe-area-inset-top));
+  right: 10px;
+}
+
+.atelier-iconbtn {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(7 8 8 / 0.64);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+.atelier-stage {
+  padding: 8px 24px 24px;
+}
+
+.atelier-piece {
+  width: min(510px, 76cqw, calc((100cqh - 60px) * 0.8));
+  height: min(100%, calc(100cqh - 20px));
+  justify-content: center;
+}
+
+.atelier-frame {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.06);
+  box-shadow:
+    0 0 0 7px rgb(7 7 7 / 0.82),
+    0 0 0 8px rgb(255 255 255 / 0.05),
+    0 44px 100px rgb(0 0 0 / 0.68),
+    0 0 170px color-mix(in srgb, var(--glow) 24%, transparent);
+}
+
+.atelier-frame::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(255 255 255 / 0.045);
+  box-shadow: inset 0 0 46px rgb(0 0 0 / 0.18);
+  content: "";
+  pointer-events: none;
+}
+
+.atelier-tooth {
+  opacity: 0.16;
+}
+
+.atelier-signal {
+  position: absolute;
+  z-index: 5;
+  bottom: 18px;
+  left: 18px;
+  width: min(338px, calc(100% - 36px));
+  padding: 13px 14px 12px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--glow) 8%, transparent), transparent 48%),
+    rgb(6 8 8 / 0.78);
+  color: var(--color-cream);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 18px 48px rgb(0 0 0 / 0.42);
+  backdrop-filter: blur(15px) saturate(1.2);
+}
+
+.atelier-signal::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--glow);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--glow) 74%, transparent);
+  content: "";
+}
+
+.atelier-signal-topline,
+.atelier-signal-meta,
+.atelier-signal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.atelier-signal-topline {
+  color: var(--color-dim);
+}
+
+.atelier-signal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-paper-deep);
+}
+
+.atelier-signal-status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--glow);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--glow) 72%, transparent);
+}
+
+.atelier[data-feed="aging"] .atelier-signal-status i {
+  background: var(--color-dim);
+  box-shadow: none;
+}
+
+.atelier-signal-call {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.atelier-signal-call strong {
+  color: var(--glow);
+  font-family: var(--font-sans);
+  font-size: clamp(30px, 4vw, 44px);
+  font-weight: 520;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+  text-shadow: 0 0 28px color-mix(in srgb, var(--glow) 30%, transparent);
+}
+
+.atelier-signal-call time {
+  color: var(--color-cream);
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.atelier-signal-meter {
+  height: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.09);
+}
+
+.atelier-signal-meter span {
+  display: block;
+  height: 100%;
+  background: var(--glow);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--glow) 70%, transparent);
+  transition: width 800ms var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.atelier-signal-meta {
+  margin-top: 6px;
+  color: var(--color-mute);
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.atelier-signal-tape {
+  display: flex;
+  gap: 3px;
+  height: 5px;
+  margin-top: 10px;
+}
+
+.atelier-signal-tape i {
+  display: block;
+  min-width: 3px;
+  flex: 1 1 0;
+  background: var(--color-dim);
+  opacity: 0.22;
+}
+
+.atelier-signal-tape i[data-stance="hold"] {
+  background: var(--down);
+}
+
+.atelier-signal-tape i[data-stance="wait"] {
+  background: var(--wait);
+}
+
+.atelier-signal-tape i[data-stance="up"] {
+  background: var(--up);
+}
+
+.atelier-signal-tape i.live {
+  opacity: 1;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.atelier-signal-foot {
+  margin-top: 8px;
+  color: var(--color-dim);
+  letter-spacing: 0.05em;
+}
+
+.atelier-signal-foot span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atelier-signal-foot span:last-child {
+  flex: 0 0 auto;
+}
+
+.atelier-room-copy {
+  margin: 0;
+  color: var(--color-mute);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.atelier.is-full {
+  background: #050606;
+}
+
+.atelier.is-full .atelier-mast,
+.atelier.is-full .atelier-spot,
+.atelier.is-full .atelier-bounce {
+  display: none;
+}
+
+.atelier.is-full .atelier-stage {
+  padding: 0;
+}
+
+.atelier.is-full .atelier-piece {
+  width: 100%;
+  height: 100%;
+}
+
+.atelier.is-full .atelier-frame {
+  border: 0;
+  box-shadow: none;
+}
+
+.atelier.is-full .atelier-frame::after {
+  border: 0;
+  box-shadow: inset 0 0 90px rgb(0 0 0 / 0.16);
+}
+
+.atelier.is-full .atelier-dock {
+  opacity: 0.48;
+  transition: opacity 180ms ease;
+}
+
+.atelier.is-full .atelier-dock:hover,
+.atelier.is-full .atelier-dock:focus-within {
+  opacity: 1;
+}
+
+.atelier.is-full .atelier-signal {
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: max(24px, env(safe-area-inset-left));
+  width: min(390px, calc(100% - 48px));
+  padding: 16px 17px 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--glow) 10%, transparent), transparent 52%),
+    rgb(4 6 6 / 0.7);
+}
+
+.atelier.is-full .atelier-signal-call strong {
+  font-size: clamp(42px, 7vw, 76px);
+}
+
+.atelier.is-full .atelier-signal-call time {
+  font-size: clamp(20px, 2.2vw, 28px);
+}
+
+@media (max-width: 720px) {
+  .atelier-shell {
+    height: max(600px, calc(100dvh - 190px));
+  }
+
+  .atelier-stage {
+    padding: 4px 12px 18px;
+  }
+
+  .atelier-piece {
+    width: min(390px, 90cqw, calc((100cqh - 42px) * 0.8));
+  }
+
+  .atelier-frame {
+    box-shadow:
+      0 0 0 4px rgb(7 7 7 / 0.82),
+      0 0 0 5px rgb(255 255 255 / 0.045),
+      0 32px 74px rgb(0 0 0 / 0.62),
+      0 0 110px color-mix(in srgb, var(--glow) 20%, transparent);
+  }
+
+  .atelier-live {
+    margin-right: 132px;
+  }
+
+  .atelier-signal {
+    bottom: 12px;
+    left: 12px;
+    width: calc(100% - 24px);
+  }
+
+  .atelier-signal-call strong {
+    font-size: 32px;
+  }
+
+  .atelier-signal-meta span:last-child,
+  .atelier-signal-foot span:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .atelier-mark-rest,
+  .atelier-live-clock {
+    display: none;
+  }
+
+  .atelier-live {
+    margin-right: 130px;
+  }
+
+  .atelier-signal-topline > span:last-child,
+  .atelier-signal-foot span:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atelier-signal-meter span,
+  .atelier.is-full .atelier-dock {
+    transition: none;
+  }
+}
+
+html[data-motion="reduce"] .atelier-signal-meter span,
+html[data-motion="reduce"] .atelier.is-full .atelier-dock {
+  transition: none;
+}

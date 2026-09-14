@@ -292,6 +292,8 @@ export type Snapshot = {
   lab_locked: number;
   /** Age of that fair value in seconds (999 when the lab is dark). */
   lab_age_s: number;
+  /** Observed BRTI final-minute print average. Display-only; never read by seats or Chair. */
+  lab_settle_avg?: number | null;
 };
 
 export type ShadowLean = {
