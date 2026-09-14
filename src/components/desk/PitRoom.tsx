@@ -265,7 +265,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
       <GlobalHeader
         action={{ label: "Arena tour", hint: "60-second guide", onSelect: startTour }}
       />
-      <div className="gutter mx-auto flex max-w-md flex-col gap-3 pb-10 pt-3 sm:max-w-lg">
+      <div className="gutter mx-auto flex max-w-md flex-col gap-3 pb-10 pt-3 sm:max-w-lg lg:max-w-3xl">
         <p className="font-mono text-micro text-muted">
           Paper calls only. Not advice. Not Kalshi orders.
         </p>

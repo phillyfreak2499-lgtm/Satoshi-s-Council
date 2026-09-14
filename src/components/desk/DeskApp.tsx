@@ -17,7 +17,7 @@ import { Tour } from "./Tour";
 import { Toaster, toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrustStrip, Welcome } from "./Welcome";
-import { applyDisplayPrefs, markWelcomeSeen, readSeatView, setSeatView as saveSeatView, TRUST_CHIPS, welcomeSeen, type SeatView } from "./prefs";
+import { applyDisplayPrefs, markWelcomeSeen, readFloorDensity, readSeatView, setFloorDensity as saveFloorDensity, setSeatView as saveSeatView, TRUST_CHIPS, welcomeSeen, type FloorDensity, type SeatView } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
 import { SITE_DESTINATIONS } from "@/lib/desk/navigation";
 import { Palette } from "./Palette";
@@ -139,9 +139,14 @@ export function DeskApp() {
   const [returning, setReturning] = useState(false);
   const [introHidden, setIntroHidden] = useState(false);
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
+  const [floorDensity, setFloorDensityState] = useState<FloorDensity>("quiet");
   const setSeatView = (v: SeatView) => {
     setSeatViewState(v);
     saveSeatView(v);
+  };
+  const setFloorDensity = (v: FloorDensity) => {
+    setFloorDensityState(v);
+    saveFloorDensity(v);
   };
 
   useEffect(() => {
@@ -154,6 +159,7 @@ export function DeskApp() {
   useEffect(() => {
     applyDisplayPrefs();
     setSeatViewState(readSeatView());
+    setFloorDensityState(readFloorDensity());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
     setReturning(welcomeSeen());
     setIntroHidden(introOff());
@@ -451,6 +457,8 @@ export function DeskApp() {
             v2={frame.v2}
             onOpenArena={() => setTab("arena")}
             onOpenBooks={() => setTab("books")}
+            density={floorDensity}
+            onDensityChange={setFloorDensity}
             strip={
               <TopStrip
                 floor
