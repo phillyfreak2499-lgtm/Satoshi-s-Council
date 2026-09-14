@@ -101,7 +101,7 @@ export function PitTour({
     : null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="How the pit works">
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="How the Arena works">
       <button type="button" className="absolute inset-0 bg-bg/70" aria-label="Skip" onClick={finish} />
       {highlight ? <div className="pointer-events-none absolute rounded-md ring-1 ring-fg/80" style={highlight} /> : null}
       <div className="absolute inset-x-3 bottom-3 mx-auto max-w-md rounded-md border border-border bg-surface p-3" onClick={(e) => e.stopPropagation()}>
