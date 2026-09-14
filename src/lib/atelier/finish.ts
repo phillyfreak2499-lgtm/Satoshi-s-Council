@@ -1,18 +1,18 @@
 export function makeGrain(w: number, h: number) {
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const g = c.getContext("2d");
-  if (!g) return c;
-  const img = g.createImageData(w, h);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = (Math.random() * 255) | 0;
-    d[i] = d[i + 1] = d[i + 2] = n;
-    d[i + 3] = 40;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const context = canvas.getContext("2d");
+  if (!context) return canvas;
+  const image = context.createImageData(w, h);
+  const data = image.data;
+  for (let index = 0; index < data.length; index += 4) {
+    const noise = (Math.random() * 255) | 0;
+    data[index] = data[index + 1] = data[index + 2] = noise;
+    data[index + 3] = 40;
   }
-  g.putImageData(img, 0, 0);
-  return c;
+  context.putImageData(image, 0, 0);
+  return canvas;
 }
 
 let grain: HTMLCanvasElement | null = null;
@@ -33,10 +33,17 @@ export function finishPaper(
     ctx.drawImage(grainCanvas(), 0, 0, w, h);
     ctx.globalAlpha = 1;
   }
-  const vig = ctx.createRadialGradient(w * 0.5, h * 0.45, w * 0.2, w * 0.5, h * 0.5, w * 0.78);
-  vig.addColorStop(0, "rgba(0,0,0,0)");
-  vig.addColorStop(1, "rgba(0,0,0,0.28)");
-  ctx.fillStyle = vig;
+  const vignette = ctx.createRadialGradient(
+    w * 0.5,
+    h * 0.45,
+    w * 0.2,
+    w * 0.5,
+    h * 0.5,
+    w * 0.78,
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, w, h);
 }
 
@@ -92,11 +99,11 @@ export function paintWindow(
   const cx = opts.cx ?? w * 0.5;
   const cy = opts.cy ?? h * 0.5;
   const radius = opts.radius ?? Math.min(w, h) * 0.12;
-  const lw = Math.max(1.2, w * 0.0036);
+  const lineWidth = Math.max(1.2, w * 0.0036);
   const start = -Math.PI / 2;
 
   ctx.strokeStyle = "rgba(255,248,230,0.14)";
-  ctx.lineWidth = lw;
+  ctx.lineWidth = lineWidth;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
@@ -104,21 +111,20 @@ export function paintWindow(
   const tick = Math.max(3, w * 0.01);
   ctx.strokeStyle = "rgba(255,248,230,0.28)";
   ctx.lineWidth = Math.max(1, w * 0.0022);
-  for (let i = 0; i < 4; i++) {
-    const a = start + (i * Math.PI) / 2;
-    const c = Math.cos(a);
-    const s = Math.sin(a);
+  for (let index = 0; index < 4; index += 1) {
+    const angle = start + (index * Math.PI) / 2;
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
     ctx.beginPath();
-    ctx.moveTo(cx + c * (radius - tick), cy + s * (radius - tick));
-    ctx.lineTo(cx + c * (radius + tick * 0.55), cy + s * (radius + tick * 0.55));
+    ctx.moveTo(cx + cosine * (radius - tick), cy + sine * (radius - tick));
+    ctx.lineTo(cx + cosine * (radius + tick * 0.55), cy + sine * (radius + tick * 0.55));
     ctx.stroke();
   }
 
   if (remain > 0.001) {
-    const pulse = remain < 0.18 ? 0.55 + 0.45 * Math.sin(performance.now() / 180) : 1;
     ctx.strokeStyle = glow;
-    ctx.globalAlpha = 0.82 * pulse;
-    ctx.lineWidth = lw * 1.15;
+    ctx.globalAlpha = 0.82;
+    ctx.lineWidth = lineWidth * 1.15;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, start, start + remain * Math.PI * 2);
     ctx.stroke();
