@@ -1306,6 +1306,16 @@ test("pending windows are persisted and restored", () => {
   assert.match(src, /pending: e\.pending\.slice\(-PENDING_CAP\)/, "persistState must write pending");
   assert.match(src, /sanitizePending<PendingWindow>\(raw\.pending/, "loadState must restore pending");
   assert.match(src, /identity_faults: e\.identityFaults/, "the fault log must outlive the process");
+
+  // Merely including pending in the periodic state blob is not enough. PR #178
+  // deployed across the 22:00 UTC rollover and exposed the gap: the window was
+  // added in memory, but the process restarted before the throttled save ran.
+  const settle = between(codeOf("src/lib/desk/server-engine.ts"), "async function settleIfNeeded(", "async function liveSnap(");
+  const iAdd = settle.indexOf("e.pending = addKeyed(");
+  const iPersist = settle.indexOf("await persistState(e, true)", iAdd);
+  assert.ok(iAdd >= 0, "the unresolved window must still enter the pending set");
+  assert.ok(iPersist > iAdd, "the pending decision must be durably awaited at the settlement boundary");
+  assert.match(src, /await settleIfNeeded\(e, snap, votes, chair, prev\)/, "the tick must wait for that durability boundary");
 });
 
 /**
