@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import { fetchRack, lockCall, type Rack } from "@/lib/desk/pit";
-import { SiteHeader } from "./SiteHeader";
+import { GlobalHeader } from "./GlobalHeader";
 import { beacon } from "@/lib/desk/beacon";
 import {
   currentPrefs,
@@ -261,24 +261,8 @@ export function PitRoom() {
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
-      <SiteHeader
-        nav={
-          <>
-            <span className="font-mono text-micro uppercase tracking-widest text-subtle">THE PIT</span>
-            <button type="button" onClick={startTour} className="btn btn-sm text-muted hover:text-fg">
-              how it works
-            </button>
-            <a href="/" className="btn btn-primary btn-sm">
-              Open the floor
-            </a>
-          </>
-        }
-        menu={[
-          { label: "How it works", hint: "the pit tour", onSelect: startTour },
-          { label: "Open the floor", href: "/" },
-          { label: "How the desk works", href: "/about", hint: "page" },
-          { label: "Paper only", href: "/legal", hint: "page" },
-        ]}
+      <GlobalHeader
+        action={{ label: "Arena tour", hint: "60-second guide", onSelect: startTour }}
       />
       <div className="gutter mx-auto flex max-w-md flex-col gap-3 pb-10 pt-3 sm:max-w-lg">
         <p className="font-mono text-micro text-muted">
@@ -366,7 +350,7 @@ export function PitRoom() {
                 type="submit"
                 className="min-h-12 rounded-sm bg-fg px-4 font-mono text-ui font-medium text-bg hover:bg-chip"
               >
-                Join the pit
+                Enter the Arena
               </button>
               <span className="font-mono text-micro text-subtle">
                 no login — the callsign lives in this browser
@@ -521,9 +505,9 @@ export function PitRoom() {
         {/* pit bar */}
         <section data-pit="pit" className="rounded-md border border-border bg-surface px-3 py-2">
           <div className="flex items-baseline justify-between font-mono">
-            <span className="text-micro uppercase tracking-widest text-subtle">pit</span>
+            <span className="text-micro uppercase tracking-widest text-subtle">arena</span>
             <span key={tick} className="pit-tick text-ui tabular text-fg">
-              PIT — {rack?.n_locked ?? 0} LOCKED
+              ARENA — {rack?.n_locked ?? 0} LOCKED
             </span>
           </div>
           {rack?.split ? (
