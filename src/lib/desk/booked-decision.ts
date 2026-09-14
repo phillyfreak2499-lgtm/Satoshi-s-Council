@@ -49,7 +49,9 @@ function buildSha(v: unknown): string {
 }
 
 /** Restore entry facts after a deployment without inventing missing values. */
-export function sanitizeBookedDecisionState(raw: unknown): Record<string, BookedDecisionState> {
+export function sanitizeBookedDecisionState(
+  raw: unknown,
+): Record<string, BookedDecisionState> {
   const out: Record<string, BookedDecisionState> = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
@@ -88,7 +90,8 @@ export function bookedDecisionAtGrade(
   entry: BookedDecisionState | null | undefined,
 ): BookedDecisionAtGrade | null {
   const matching = calls.filter(
-    (call) => call.ticker === ticker && Math.abs(call.close_time - closeTime) < 90_000,
+    (call) =>
+      call.ticker === ticker && Math.abs(call.close_time - closeTime) < 90_000,
   );
   const call = matching[matching.length - 1] ?? null; // call log is newest-first
   if (!call) return null;

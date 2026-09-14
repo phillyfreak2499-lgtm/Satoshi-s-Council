@@ -10,7 +10,13 @@ import { runBots } from "./bots";
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
 import { isCountable } from "./research-quality";
-import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
+import {
+  appendPeriod,
+  FUNDING_PERIOD_MS,
+  nativePeriodMs,
+  OI_PERIOD_MS,
+  type HistPoint,
+} from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
   acceptCandidate,
@@ -22,7 +28,12 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
-import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk } from "./book-floor";
+import {
+  bookable,
+  bookableShadow,
+  CHAIR_MIN_ASK_CENTS,
+  paperBookEdgeOk,
+} from "./book-floor";
 import {
   bookedDecisionAtGrade,
   sanitizeBookedDecisionState,
@@ -56,14 +67,32 @@ import {
   tickerAgrees,
 } from "./window-identity";
 import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
-import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
+import {
+  ensureLedgerBoot,
+  ledgerCitesFor,
+  ledgerRun,
+} from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
-import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.server";
-import { decisionSnapshotFrom, recordDecisionSnapshot } from "./decision-snapshot.server";
+import {
+  noteReplay,
+  pruneReplays,
+  recordReplay,
+  replayLive,
+} from "./replay.server";
+import {
+  decisionSnapshotFrom,
+  recordDecisionSnapshot,
+} from "./decision-snapshot.server";
 import { observeChairWaitMilestone } from "./chamber-wait.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
 import { weeklyRecap } from "./recap.server";
-import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
+import {
+  applyWatchdog,
+  freshWatchdog,
+  watchdogDecision,
+  watchdogPayload,
+  type WatchdogState,
+} from "./push-rules";
 import {
   V2_POPULATION,
   V2_SAMPLE_MINS,
@@ -85,7 +114,17 @@ import {
   type V2Stats,
   v2Voice,
 } from "./chair-v2";
-import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
+import type {
+  CallLogRow,
+  ChairResult,
+  Learner,
+  Lean,
+  SeatId,
+  SeatKnobs,
+  Settings,
+  Snapshot,
+  Vote,
+} from "./types";
 import type { Sql } from "@/lib/db";
 import { takerEvCents, takerSignal } from "./taker";
 import {
@@ -207,7 +246,13 @@ type Eng = {
 
 /** A window graded once its official Kalshi result arrives; held in a bounded
  *  collection so a second pending window can never overwrite the first (G5). */
-type PendingWindow = { ticker: string; close_time: number; snap: Snapshot; votes: Vote[]; chair: ChairResult };
+type PendingWindow = {
+  ticker: string;
+  close_time: number;
+  snap: Snapshot;
+  votes: Vote[];
+  chair: ChairResult;
+};
 
 /** A window whose identity did not hold, with the witnesses that caught it. */
 type IdentityFaultRecord = {
@@ -233,7 +278,12 @@ function sanitizeIdentityFaults(raw: unknown): IdentityFaultRecord[] {
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
     const f = r as Partial<IdentityFaultRecord>;
-    if (typeof f.key !== "string" || typeof f.ticker !== "string" || typeof f.fault !== "string") continue;
+    if (
+      typeof f.key !== "string" ||
+      typeof f.ticker !== "string" ||
+      typeof f.fault !== "string"
+    )
+      continue;
     if (typeof f.close_time !== "number") continue;
     out.push({
       key: f.key,
@@ -241,7 +291,12 @@ function sanitizeIdentityFaults(raw: unknown): IdentityFaultRecord[] {
       close_time: f.close_time,
       fault: f.fault as IdentityFault,
       detail: typeof f.detail === "string" ? f.detail : "",
-      checks: (f.checks ?? { on_grid: false, ticker_time_ok: null, ticker_seen: false, close_ok: false }) as IdentityChecks,
+      checks: (f.checks ?? {
+        on_grid: false,
+        ticker_time_ok: null,
+        ticker_seen: false,
+        close_ok: false,
+      }) as IdentityChecks,
       at: Number(f.at) || 0,
     });
   }
@@ -360,7 +415,9 @@ async function sql() {
 async function loadState(e: Eng) {
   try {
     const db = await sql();
-    const rows = await db<{ state: unknown }>`select state from desk_state where id = ${STATE_ID} limit 1`;
+    const rows = await db<{
+      state: unknown;
+    }>`select state from desk_state where id = ${STATE_ID} limit 1`;
     const raw = rows[0]?.state as
       | {
           learner?: Partial<Learner>;
@@ -382,15 +439,26 @@ async function loadState(e: Eng) {
     if (!raw) return;
     e.learner = mergeLearner(raw.learner ?? null);
     e.callLog = Array.isArray(raw.call_log)
-      ? raw.call_log.filter((r) => r && (r.lean === "UP" || r.lean === "DOWN") && r.cents > 0).slice(0, 80)
+      ? raw.call_log
+          .filter(
+            (r) => r && (r.lean === "UP" || r.lean === "DOWN") && r.cents > 0,
+          )
+          .slice(0, 80)
       : [];
-    e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
+    e.settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      ...(raw.settings ?? {}),
+      source: "live",
+    };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
     e.lastCall = raw.last_call ?? null;
     if (raw.v2 && raw.v2.w && typeof raw.v2.b === "number") e.v2 = raw.v2;
     // Restore the recorded-window clock so a restart (or a crash loop) keeps its
     // real age instead of resetting the watchdog's grace to now.
-    if (typeof raw.last_ledger_ok_at === "number" && raw.last_ledger_ok_at > 0) {
+    if (
+      typeof raw.last_ledger_ok_at === "number" &&
+      raw.last_ledger_ok_at > 0
+    ) {
       e.lastLedgerOkAt = raw.last_ledger_ok_at;
     }
     // Durable outbox: any grade calculated + force-persisted before the last
@@ -408,9 +476,12 @@ async function loadState(e: Eng) {
     e.pending = sanitizePending<PendingWindow>(raw.pending, PENDING_CAP);
     e.identityFaults = sanitizeIdentityFaults(raw.identity_faults);
     e.gradedKeys = Array.isArray(raw.graded_keys)
-      ? raw.graded_keys.filter((k): k is string => typeof k === "string").slice(-GRADED_KEY_CAP)
+      ? raw.graded_keys
+          .filter((k): k is string => typeof k === "string")
+          .slice(-GRADED_KEY_CAP)
       : [];
-    if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
+    if (typeof raw.ledger_recon_baseline === "number")
+      e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
@@ -463,7 +534,10 @@ async function syncUpdates(e: Eng) {
   try {
     const db = await sql();
     for (const u of DESK_UPDATES) {
-      const body = u.body.replace(/\s+/g, " ").trim().slice(0, BOARD_UPDATE_MAX);
+      const body = u.body
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, BOARD_UPDATE_MAX);
       await db`
         insert into board (who, body, kind, lean, ticker, conf, slug)
         values ('DESK', ${body}, 'update', '', '', 0, ${u.slug})
@@ -492,34 +566,50 @@ function stickyVotes(e: Eng, votes: Vote[], snap: Snapshot): Vote[] {
     const { lean, st } = stickLean(e.sticks[v.seat], v.lean, snap.as_of);
     e.sticks[v.seat] = st;
     if (lean === v.lean) return v;
-    return { ...v, lean, reasoning: `${v.reasoning} · hold ${st.shown} (${st.pendingN}/2 ${st.pending ?? "—"})` };
+    return {
+      ...v,
+      lean,
+      reasoning: `${v.reasoning} · hold ${st.shown} (${st.pendingN}/2 ${st.pending ?? "—"})`,
+    };
   });
 }
 
 function lastSide(e: Eng, snap: Snapshot): Lean {
-  if (e.lastChair && e.prevSnap && windowKey(e.prevSnap) === windowKey(snap)) return e.lastChair.lean;
+  if (e.lastChair && e.prevSnap && windowKey(e.prevSnap) === windowKey(snap))
+    return e.lastChair.lean;
   return "WAIT";
 }
 
-function decideChair(e: Eng, votes: Vote[], snap: Snapshot, lastLean: Lean): ChairResult {
+function decideChair(
+  e: Eng,
+  votes: Vote[],
+  snap: Snapshot,
+  lastLean: Lean,
+): ChairResult {
   // LEDGER's promoted patterns that fire on this window — appended to the
   // chair's read as labelled evidence only; they change no gate, side or size.
   const cites = ledgerCitesFor(votes);
-  const chair = softenTimeGates(runChair(votes, snap, e.learner, e.settings, lastLean, cites), snap);
+  const chair = softenTimeGates(
+    runChair(votes, snap, e.learner, e.settings, lastLean, cites),
+    snap,
+  );
   const { lean, st } = stickLean(e.sticks[CHAIR_SCALP], chair.lean, snap.as_of);
   e.sticks[CHAIR_SCALP] = st;
   return lean === chair.lean ? chair : { ...chair, lean };
 }
 
 /** Keep only well-formed shadow entries across a restart. */
-function sanitizeShadowFills(raw: unknown): Record<string, { lean: "UP" | "DOWN"; cents: number }> {
+function sanitizeShadowFills(
+  raw: unknown,
+): Record<string, { lean: "UP" | "DOWN"; cents: number }> {
   const out: Record<string, { lean: "UP" | "DOWN"; cents: number }> = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!v || typeof v !== "object") continue;
     const lean = (v as { lean?: unknown }).lean;
     const cents = Number((v as { cents?: unknown }).cents);
-    if ((lean !== "UP" && lean !== "DOWN") || !(cents > 0) || !(cents < 100)) continue;
+    if ((lean !== "UP" && lean !== "DOWN") || !(cents > 0) || !(cents < 100))
+      continue;
     out[k] = { lean, cents };
   }
   return out;
@@ -528,23 +618,36 @@ function sanitizeShadowFills(raw: unknown): Record<string, { lean: "UP" | "DOWN"
 /** The shadow book's entry for this window: the FIRST ask the old floor would
  *  have taken, recorded once. A later, richer tick never overwrites it, because
  *  the old book would already have been positioned by then. */
-function noteShadowFill(e: Eng, snap: Snapshot, lean: "UP" | "DOWN", cents: number): void {
+function noteShadowFill(
+  e: Eng,
+  snap: Snapshot,
+  lean: "UP" | "DOWN",
+  cents: number,
+): void {
   const key = windowKey(snap);
   if (e.shadowFills[key]) return;
   if (!bookableShadow(cents)) return;
   e.shadowFills[key] = { lean, cents: Math.round(cents * 10) / 10 };
   // Bound the map: a handful of live windows, never an all-time ledger.
   const keys = Object.keys(e.shadowFills);
-  if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.shadowFills[k];
+  if (keys.length > 12)
+    for (const k of keys.slice(0, keys.length - 12)) delete e.shadowFills[k];
 }
 
 /** Record the decision-time state of a fill, once per window. Research only. */
 function runningBuildSha(): string {
-  const sha = String(process.env.RENDER_GIT_COMMIT ?? "").trim().toLowerCase();
+  const sha = String(process.env.RENDER_GIT_COMMIT ?? "")
+    .trim()
+    .toLowerCase();
   return /^[0-9a-f]{7,40}$/.test(sha) ? sha : "";
 }
 
-function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: number): void {
+function noteEntryState(
+  e: Eng,
+  snap: Snapshot,
+  chair: ChairResult,
+  cents: number,
+): void {
   if (chair.lean !== "UP" && chair.lean !== "DOWN") return;
   const key = windowKey(snap);
   if (e.entryState[key]) return;
@@ -564,7 +667,8 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: numbe
     build_sha: runningBuildSha(),
   };
   const keys = Object.keys(e.entryState);
-  if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
+  if (keys.length > 12)
+    for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
 }
 
 /** One paper position per window, held to settlement. The chair may change
@@ -573,11 +677,19 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: numbe
  *  41 of 42 positions were sold on a flip, net -83¢ — the left tail was
  *  the churn, not the calls. */
 function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
-  if (e.lastCall && e.lastCall.ticker === snap.ticker && e.lastCall.close_time === snap.close_time) {
+  if (
+    e.lastCall &&
+    e.lastCall.ticker === snap.ticker &&
+    e.lastCall.close_time === snap.close_time
+  ) {
     if (e.lastCall.lean === "UP" || e.lastCall.lean === "DOWN") return; // already positioned: hold
   }
   if (chair.lean !== "UP" && chair.lean !== "DOWN") {
-    e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
+    e.lastCall = {
+      ticker: snap.ticker,
+      close_time: snap.close_time,
+      lean: chair.lean,
+    };
     return;
   }
   // S2-10: the final paper-book edge guard. runChair's hard edge gate can be undone
@@ -618,15 +730,25 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
     },
     ...e.callLog,
   ].slice(0, 80);
-  e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
+  e.lastCall = {
+    ticker: snap.ticker,
+    close_time: snap.close_time,
+    lean: chair.lean,
+  };
   notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
 }
 
-function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" | "DOWN") {
+function settleCallLog(
+  e: Eng,
+  ticker: string,
+  close_time: number,
+  winner: "UP" | "DOWN",
+) {
   e.callLog = e.callLog.map((r) => {
     if (r.settle != null) return r;
     const sameTicker = ticker && r.ticker === ticker;
-    const sameClose = close_time > 0 && Math.abs(r.close_time - close_time) < 90_000;
+    const sameClose =
+      close_time > 0 && Math.abs(r.close_time - close_time) < 90_000;
     if (!sameTicker && !sameClose) return r;
     return { ...r, settle: r.lean === winner ? 100 : 0 };
   });
@@ -644,10 +766,16 @@ function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" 
  * A contradiction is recorded and alerted; a result that has not arrived yet is
  * the ordinary pending case and stays quiet.
  */
-function officialHit(e: Eng, snap: Snapshot, ticker: string, close_time: number) {
+function officialHit(
+  e: Eng,
+  snap: Snapshot,
+  ticker: string,
+  close_time: number,
+) {
   const v = matchSettle(snap.official_settles, ticker, close_time);
   if (v.ok) return v.settle;
-  if (isInconsistent(v.fault)) noteIdentityFault(e, ticker, close_time, v.fault, v.detail, v.checks);
+  if (isInconsistent(v.fault))
+    noteIdentityFault(e, ticker, close_time, v.fault, v.detail, v.checks);
   return undefined;
 }
 
@@ -662,9 +790,10 @@ function noteIdentityFault(
 ) {
   const key = `${ticker}|${close_time}|${fault}`;
   if (e.identityFaults.some((f) => f.key === key)) return; // one record per window per fault
-  e.identityFaults = [...e.identityFaults, { key, ticker, close_time, fault, detail, checks, at: Date.now() }].slice(
-    -IDENTITY_FAULT_CAP,
-  );
+  e.identityFaults = [
+    ...e.identityFaults,
+    { key, ticker, close_time, fault, detail, checks, at: Date.now() },
+  ].slice(-IDENTITY_FAULT_CAP);
   const line = faultLine(ticker, close_time, fault, detail);
   e.learner.settle_tape = [line, ...e.learner.settle_tape].slice(0, 48);
   noteErr(e, "identity", line);
@@ -694,25 +823,55 @@ const LEDGER_INSERT =
 /** The 80¢ trial's shadow row: what the old 70¢ floor would have made on this
  *  window. Entry was captured live during the window; the outcome is known now.
  *  Research only — it is not added to any live total. */
-function shadowBits(e: Eng, snap: Snapshot, finish: "UP" | "DOWN"): { entry: number | null; ev: number | null } {
+function shadowBits(
+  e: Eng,
+  snap: Snapshot,
+  finish: "UP" | "DOWN",
+): { entry: number | null; ev: number | null } {
   const key = windowKey(snap);
   const sh = e.shadowFills[key];
   delete e.shadowFills[key];
   if (!sh) return { entry: null, ev: null };
   const settle = sh.lean === finish ? 100 : 0;
-  const ev = Math.round((settle - sh.cents - takerFeeCents(sh.cents)) * 10) / 10;
+  const ev =
+    Math.round((settle - sh.cents - takerFeeCents(sh.cents)) * 10) / 10;
   return { entry: sh.cents, ev };
 }
 
-function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string): LedgerRow {
-  const official = snap.official_settles.find((o) => o.ticker === snap.ticker && o.value != null)?.value ?? null;
-  const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish, official);
+function buildLedgerRow(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+  finish: "UP" | "DOWN",
+  source: string,
+): LedgerRow {
+  const official =
+    snap.official_settles.find(
+      (o) => o.ticker === snap.ticker && o.value != null,
+    )?.value ?? null;
+  const rc = labSettleReceipt(
+    snap.ticker,
+    snap.close_time,
+    snap.strike,
+    finish,
+    official,
+  );
   const shadow = shadowBits(e, snap, finish);
   const entryKey = windowKey(snap);
   const entry = e.entryState[entryKey] ?? null;
-  const booked = bookedDecisionAtGrade(e.callLog, snap.ticker, snap.close_time, entry);
+  const booked = bookedDecisionAtGrade(
+    e.callLog,
+    snap.ticker,
+    snap.close_time,
+    entry,
+  );
   delete e.entryState[entryKey];
-  const rows = e.callLog.filter((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
+  const rows = e.callLog.filter(
+    (r) =>
+      r.ticker === snap.ticker &&
+      Math.abs(r.close_time - snap.close_time) < 90_000,
+  );
   const first = rows[rows.length - 1] ?? null; // call log is newest-first
   let ev: number | null = null;
   if (rows.length) {
@@ -723,7 +882,16 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     }
     ev = Math.round(ev * 10) / 10;
   }
-  const seats: Record<string, { lean: string; conf: number; hit: boolean | null; raw_lean: string; raw_conf: number }> = {};
+  const seats: Record<
+    string,
+    {
+      lean: string;
+      conf: number;
+      hit: boolean | null;
+      raw_lean: string;
+      raw_conf: number;
+    }
+  > = {};
   for (const v of votes) {
     if (v.seat === "WARDEN") continue;
     seats[v.seat] = {
@@ -810,17 +978,28 @@ async function flushLedger(e: Eng): Promise<void> {
     const db = await sql();
     const io = ledgerIO(db);
     const start = Date.now();
-    const due = e.ledgerQueue.filter((j) => j.nextAt <= Date.now()).slice(0, LEDGER_DRAIN_MAX);
+    const due = e.ledgerQueue
+      .filter((j) => j.nextAt <= Date.now())
+      .slice(0, LEDGER_DRAIN_MAX);
     for (const j of due) {
       if (Date.now() - start > 20_000) break; // bound one drain even if the DB is timing out every op
       const out = await persistOnce(j, io, Date.now());
       const res = afterPersist(e.ledgerQueue, out);
       e.ledgerQueue = res.queue;
       if (res.verified) e.lastLedgerOkAt = Date.now();
-      else noteErr(e, "ledger", `${j.key} · ${out.job.lastErr ?? "retry"} (attempt ${out.job.attempts})`);
+      else
+        noteErr(
+          e,
+          "ledger",
+          `${j.key} · ${out.job.lastErr ?? "retry"} (attempt ${out.job.attempts})`,
+        );
     }
   } catch (err) {
-    noteErr(e, "ledger flush", err instanceof Error ? err.message : String(err));
+    noteErr(
+      e,
+      "ledger flush",
+      err instanceof Error ? err.message : String(err),
+    );
   } finally {
     e.ledgerFlushing = false;
   }
@@ -834,7 +1013,14 @@ async function maybeDigest(e: Eng) {
   e.lastDigestCheckAt = Date.now();
   try {
     const db = await sql();
-    const agg = await db<{ day: string; windows: number; calls: number; wins: number; net_ev: number | null; floored: number }>`
+    const agg = await db<{
+      day: string;
+      windows: number;
+      calls: number;
+      wins: number;
+      net_ev: number | null;
+      floored: number;
+    }>`
       select
         to_char((now() at time zone 'America/Chicago')::date - 1, 'YYYY-MM-DD') as day,
         count(*)::int as windows,
@@ -848,7 +1034,9 @@ async function maybeDigest(e: Eng) {
     `;
     const a = agg[0];
     if (!a || !a.windows) return;
-    const dayRows = await db<{ seats: Record<string, { hit?: boolean | null }> }>`
+    const dayRows = await db<{
+      seats: Record<string, { hit?: boolean | null }>;
+    }>`
       select seats from desk_ledger_research
       where (close_time at time zone 'America/Chicago')::date
           = (now() at time zone 'America/Chicago')::date - 1
@@ -876,10 +1064,14 @@ async function maybeDigest(e: Eng) {
         : "no fills — the council sat",
     ];
     if (a.floored) {
-      bits.push(`${a.floored} read${a.floored === 1 ? "" : "s"} held under the ${CHAIR_MIN_ASK_CENTS}¢ floor`);
+      bits.push(
+        `${a.floored} read${a.floored === 1 ? "" : "s"} held under the ${CHAIR_MIN_ASK_CENTS}¢ floor`,
+      );
     }
     if (best && worst && best[0] !== worst[0]) {
-      bits.push(`best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`);
+      bits.push(
+        `best seat ${best[0]} ${best[1].hits}/${best[1].n}, toughest ${worst[0]} ${worst[1].hits}/${worst[1].n}`,
+      );
     }
     await digestV2Bits(bits);
     const arenaLine = await arenaDigestLine();
@@ -900,7 +1092,10 @@ async function maybeDigest(e: Eng) {
     const labBits: string[] = [];
     await labDigestBits(labBits);
     if (labBits.length) {
-      const labBody = `${a.day} in the lab: ${labBits.join(" · ")}`.slice(0, 900);
+      const labBody = `${a.day} in the lab: ${labBits.join(" · ")}`.slice(
+        0,
+        900,
+      );
       await db`
         insert into board (who, body, kind, lean, ticker, conf, slug)
         values ('DESK', ${labBody}, 'update', '', '', 0, ${`lab-${a.day}`})
@@ -925,7 +1120,14 @@ async function maybeDigest(e: Eng) {
   }
 }
 
-function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string) {
+function applyGrade(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+  finish: "UP" | "DOWN",
+  source: string,
+) {
   // A window teaches once, ever. The ledger dedupes its own row with ON CONFLICT,
   // but the learner has no such protection: a second call would settle scalps and
   // advance streak state a second time from one result. Ordering alone is not
@@ -934,7 +1136,11 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   // rather than inferred, and it is persisted so it survives the process.
   const key = jobKey(snap.ticker, snap.close_time);
   if (e.gradedKeys.includes(key)) {
-    noteErr(e, "grade", `${key} already graded — second attempt ignored (${source})`);
+    noteErr(
+      e,
+      "grade",
+      `${key} already graded — second attempt ignored (${source})`,
+    );
     return;
   }
   e.gradedKeys = [...e.gradedKeys, key].slice(-GRADED_KEY_CAP);
@@ -949,26 +1155,49 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
   // persisted learner state is touched, and the ledger row below is still enqueued so the
   // quarantined record is preserved — the row stays, it simply earns no learner credit.
   if (isCountable(snap.close_time)) {
-    e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
+    e.learner.settle_tape = e.learner.settle_tape.filter(
+      (l) => !l.startsWith("PENDING "),
+    );
     const gr = gradeWindow(e.learner, snap, votes, chair, finish);
     e.learner = gr.learner;
     settleAll(e.learner, finish);
     reviewSeats(e.learner);
-    if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
+    if (e.learner.settle_tape[0])
+      e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
   }
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   // Enqueue the ledger row (built now, from this window's state) for a durable,
   // verified write off the tick. lastLedgerOkAt only advances once it lands.
-  e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source), Date.now());
+  e.ledgerQueue = enqueueLedger(
+    e.ledgerQueue,
+    buildLedgerRow(e, snap, votes, chair, finish, source),
+    Date.now(),
+  );
   void gradeV2(e, snap, finish);
   void gradeTaker(e, snap, finish); // shadow seat, recorded only — no chair/learner effect
-  const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
+  const booked = e.callLog.find(
+    (r) =>
+      r.ticker === snap.ticker &&
+      Math.abs(r.close_time - snap.close_time) < 90_000,
+  );
   const chairBits =
     booked && booked.settle != null
-      ? { entry: booked.cents, settle: booked.settle, ev: Math.round((booked.settle - booked.cents - takerFeeCents(booked.cents)) * 10) / 10 }
+      ? {
+          entry: booked.cents,
+          settle: booked.settle,
+          ev:
+            Math.round(
+              (booked.settle - booked.cents - takerFeeCents(booked.cents)) * 10,
+            ) / 10,
+        }
       : null;
   void settleHumanCalls(snap.ticker, finish).then((rows) =>
-    notifySettle(snap.ticker, finish, chairBits, new Map(rows.map((r) => [r.token, r.cents]))),
+    notifySettle(
+      snap.ticker,
+      finish,
+      chairBits,
+      new Map(rows.map((r) => [r.token, r.cents])),
+    ),
   );
   // THE EXIT ARENA READS THE REPLAY BEFORE PERSISTENCE CONSUMES IT.
   //
@@ -1045,14 +1274,19 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
 function markPending(e: Eng, snap: Snapshot) {
   const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);
   const line = `PENDING ${hhmm} ${snap.ticker} · awaiting Kalshi result — bots not taught`;
-  e.learner.settle_tape = [line, ...e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "))].slice(0, 48);
+  e.learner.settle_tape = [
+    line,
+    ...e.learner.settle_tape.filter((l) => !l.startsWith("PENDING ")),
+  ].slice(0, 48);
 }
 
 function resolvePending(e: Eng, snap: Snapshot) {
   if (!e.pending.length) return;
   // Every pending window whose official result has arrived grades now; the rest
   // stay pending. Resolving one can no longer drop the others (the G5 fix).
-  const { resolved, remaining } = partitionResolved(e.pending, (p) => Boolean(officialHit(e, snap, p.ticker, p.close_time)));
+  const { resolved, remaining } = partitionResolved(e.pending, (p) =>
+    Boolean(officialHit(e, snap, p.ticker, p.close_time)),
+  );
   if (!resolved.length) return;
   e.pending = remaining;
   for (const p of resolved) {
@@ -1066,13 +1300,29 @@ function gradeableBook(snap: Snapshot): boolean {
   return !(snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN");
 }
 
-function noteGradeCand(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
-  if (e.gradeCand && e.gradeCand.snap.close_time !== snap.close_time) e.gradeCand = null;
+function noteGradeCand(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+) {
+  if (e.gradeCand && e.gradeCand.snap.close_time !== snap.close_time)
+    e.gradeCand = null;
   if (gradeableBook(snap)) e.gradeCand = { snap, votes, chair };
 }
 
-function gradeSource(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
-  if (!gradeableBook(snap) && e.gradeCand && e.gradeCand.snap.close_time === snap.close_time) return e.gradeCand;
+function gradeSource(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+) {
+  if (
+    !gradeableBook(snap) &&
+    e.gradeCand &&
+    e.gradeCand.snap.close_time === snap.close_time
+  )
+    return e.gradeCand;
   return { snap, votes, chair };
 }
 
@@ -1090,9 +1340,9 @@ function settleIfNeeded(
   resolvePending(e, snap);
   const rolled = Boolean(
     prev.snap &&
-      prev.chair &&
-      snap.close_time !== prev.snap.close_time &&
-      prev.snap.close_time <= snap.as_of + 60_000,
+    prev.chair &&
+    snap.close_time !== prev.snap.close_time &&
+    prev.snap.close_time <= snap.as_of + 60_000,
   );
   const deathTick = snap.secs_left <= 0.4;
   if (!deathTick && !rolled) return;
@@ -1121,7 +1371,13 @@ function settleIfNeeded(
   }
   e.pending = addKeyed(
     e.pending,
-    { ticker: w.ticker, close_time: w.close_time, snap: s.snap, votes: s.votes, chair: s.chair },
+    {
+      ticker: w.ticker,
+      close_time: w.close_time,
+      snap: s.snap,
+      votes: s.votes,
+      chair: s.chair,
+    },
     PENDING_CAP,
   );
   markPending(e, s.snap);
@@ -1144,17 +1400,29 @@ async function liveSnap(e: Eng): Promise<Snapshot> {
   if ((bundle.oi_series?.length ?? 0) >= 2) {
     e.liveHist.oi = bundle.oi_series;
   } else if (bundle.open_interest != null) {
-    e.liveHist.oi = appendPeriod(e.liveHist.oi, bundle.as_of, bundle.open_interest, OI_PERIOD_MS);
+    e.liveHist.oi = appendPeriod(
+      e.liveHist.oi,
+      bundle.as_of,
+      bundle.open_interest,
+      OI_PERIOD_MS,
+    );
     bundle.oi_series = e.liveHist.oi;
     bundle.oi_history = e.liveHist.oi.map((p) => p.v);
   }
   if ((bundle.oi_usd_series?.length ?? 0) >= 2) {
     e.liveHist.oiUsd = bundle.oi_usd_series;
   } else if (bundle.oi_usd != null) {
-    e.liveHist.oiUsd = appendPeriod(e.liveHist.oiUsd, bundle.as_of, bundle.oi_usd, OI_PERIOD_MS);
+    e.liveHist.oiUsd = appendPeriod(
+      e.liveHist.oiUsd,
+      bundle.as_of,
+      bundle.oi_usd,
+      OI_PERIOD_MS,
+    );
     bundle.oi_usd_series = e.liveHist.oiUsd;
   }
-  return attachLab(bundleToSnapshot(bundle, e.learner.window_memory, e.prevSnap));
+  return attachLab(
+    bundleToSnapshot(bundle, e.learner.window_memory, e.prevSnap),
+  );
 }
 
 /** The lab's settlement-rule fair value rides on the snapshot so INDEX reads it like any seat reads a feed. */
@@ -1176,7 +1444,11 @@ function attachLab(snap: Snapshot): Snapshot {
  */
 let lastDecisionIdentityKey = "";
 
-function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void {
+function noteDecisionSnapshot(
+  e: Eng,
+  snap: Snapshot,
+  chair: ChairResult,
+): void {
   // Window-identity guard (see decision-snapshot-writer). At a rollover the close
   // advances to the next window before the feed's ticker catches up, so this tick
   // can carry (stale ticker, new close) — the same contradiction matchSettle fails
@@ -1196,10 +1468,18 @@ function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void 
   try {
     const row = decisionSnapshotFrom(snap, chair);
     void recordDecisionSnapshot(row).catch((err) => {
-      noteErr(e, "decision-snapshot", err instanceof Error ? err.message : String(err));
+      noteErr(
+        e,
+        "decision-snapshot",
+        err instanceof Error ? err.message : String(err),
+      );
     });
   } catch (err) {
-    noteErr(e, "decision-snapshot", err instanceof Error ? err.message : String(err));
+    noteErr(
+      e,
+      "decision-snapshot",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
@@ -1212,7 +1492,8 @@ async function tick(e: Eng) {
       e.learner = runHuddle(e.learner).learner;
     }
     const snap = await liveSnap(e);
-    if (!e.learner.window_memory.entry_spot) e.learner.window_memory.entry_spot = snap.spot;
+    if (!e.learner.window_memory.entry_spot)
+      e.learner.window_memory.entry_spot = snap.spot;
     e.learner.window_memory.path_since_entry = [
       ...e.learner.window_memory.path_since_entry,
       snap.spot - e.learner.window_memory.entry_spot,
@@ -1231,7 +1512,13 @@ async function tick(e: Eng) {
     noteDecisionSnapshot(e, snap, chair);
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     noteCall(e, snap, chair);
-    noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
+    noteReplay(
+      snap,
+      votes,
+      chair,
+      e.callLog.some((r) => r.ticker === snap.ticker),
+      labFairNow(snap.ticker),
+    );
     // Hand the lab this tick's window state so a print landing between ticks
     // carries real context, with its own staleness recorded. Research only.
     noteDeskState({
@@ -1321,7 +1608,11 @@ function notePathParity(e: Eng, snap: Snapshot, chair: ChairResult) {
       // Context for the research read only. The shadow never writes back to the Chair.
       chair_decision: chair.lean,
     }).catch((err) => {
-      noteErr(e, "path-parity", err instanceof Error ? err.message : String(err));
+      noteErr(
+        e,
+        "path-parity",
+        err instanceof Error ? err.message : String(err),
+      );
     });
   } catch (err) {
     // A measurement must not be able to disturb the desk it measures. Routed through
@@ -1370,7 +1661,13 @@ function noteV2(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
 function noteTaker(e: Eng, snap: Snapshot, chair: ChairResult) {
   try {
     const key = windowKey(snap);
-    if (e.takerSampled !== key && snap.mins_left <= V2_SAMPLE_MINS && snap.mins_left > 2.2 && snap.yes_ask > 0 && gradeableBook(snap)) {
+    if (
+      e.takerSampled !== key &&
+      snap.mins_left <= V2_SAMPLE_MINS &&
+      snap.mins_left > 2.2 &&
+      snap.yes_ask > 0 &&
+      gradeableBook(snap)
+    ) {
       e.takerSampled = key;
       void recordTaker(e, snap, chair);
     }
@@ -1382,7 +1679,12 @@ function noteTaker(e: Eng, snap: Snapshot, chair: ChairResult) {
 async function recordTaker(e: Eng, snap: Snapshot, chair: ChairResult) {
   try {
     const call = takerSignal(snap.kalshi_taker_yes, snap.kalshi_trade_n);
-    const entry = call.lean === "UP" ? snap.yes_ask : call.lean === "DOWN" ? snap.no_ask : null;
+    const entry =
+      call.lean === "UP"
+        ? snap.yes_ask
+        : call.lean === "DOWN"
+          ? snap.no_ask
+          : null;
     const db = await sql();
     await db`
       insert into desk_taker
@@ -1401,7 +1703,11 @@ async function recordTaker(e: Eng, snap: Snapshot, chair: ChairResult) {
 async function gradeTaker(e: Eng, snap: Snapshot, finish: "UP" | "DOWN") {
   try {
     const db = await sql();
-    const rows = await db<{ id: number; lean: string; entry_cents: number | null }>`
+    const rows = await db<{
+      id: number;
+      lean: string;
+      entry_cents: number | null;
+    }>`
       select id, lean, entry_cents from desk_taker
       where ticker = ${snap.ticker} and winner is null
         and abs(extract(epoch from (close_time - ${new Date(snap.close_time).toISOString()}::timestamptz))) < 90
@@ -1409,14 +1715,25 @@ async function gradeTaker(e: Eng, snap: Snapshot, finish: "UP" | "DOWN") {
     `;
     const row = rows[0];
     if (!row) return;
-    const ev = takerEvCents(row.lean as Lean, row.entry_cents, finish, takerFeeCents);
+    const ev = takerEvCents(
+      row.lean as Lean,
+      row.entry_cents,
+      finish,
+      takerFeeCents,
+    );
     await db`update desk_taker set winner = ${finish}, ev_cents = ${ev}, graded_at = now() where id = ${row.id}`;
   } catch (err) {
     e.lastError = `taker grade: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
-async function recordV2Sample(e: Eng, snap: Snapshot, chair: ChairResult, f: V2Features, d: V2Decision) {
+async function recordV2Sample(
+  e: Eng,
+  snap: Snapshot,
+  chair: ChairResult,
+  f: V2Features,
+  d: V2Decision,
+) {
   try {
     const db = await sql();
     const market = JSON.stringify({
@@ -1441,7 +1758,11 @@ async function recordV2Sample(e: Eng, snap: Snapshot, chair: ChairResult, f: V2F
 async function gradeV2(e: Eng, snap: Snapshot, finish: "UP" | "DOWN") {
   try {
     const db = await sql();
-    const rows = await db<{ id: number; v2_lean: string; v2_entry: number | null }>`
+    const rows = await db<{
+      id: number;
+      v2_lean: string;
+      v2_entry: number | null;
+    }>`
       select id, v2_lean, v2_entry from desk_samples
       where ticker = ${snap.ticker} and winner is null
         and abs(extract(epoch from (close_time - ${new Date(snap.close_time).toISOString()}::timestamptz))) < 90
@@ -1471,12 +1792,18 @@ async function refitV2(e: Eng) {
     // (ticker, close_time) identity — the same population the scoreboard scores on, and the
     // same view the v1 comparison already reads. The join is applied BEFORE the limit, so a
     // known-invalid window can never consume one of the 3000 training slots.
-    const rows = await db<{ features: V2Features; winner: string; close_time: string }>`
+    const rows = await db<{
+      features: V2Features;
+      winner: string;
+      close_time: string;
+    }>`
       select s.features, s.winner, s.close_time from desk_samples s
       join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
       where s.winner is not null order by s.close_time desc limit 3000
     `;
-    const fitted = fitLogistic(rows.map((r) => ({ x: r.features, y: r.winner === "UP" ? 1 : 0 })));
+    const fitted = fitLogistic(
+      rows.map((r) => ({ x: r.features, y: r.winner === "UP" ? 1 : 0 })),
+    );
     if (fitted) {
       // Provenance — metadata only; never read by predictV2. Describes the fit truthfully.
       fitted.population = V2_POPULATION;
@@ -1551,14 +1878,26 @@ function v2Frame(e: Eng): V2Frame {
         .slice(0, 5)
         .map(([k, v]) => [k, Math.round(v * 100) / 100] as [string, number])
     : [];
-  return { live: e.v2Live, weights_n: e.v2?.n ?? 0, fitted_at: e.v2?.fitted_at ?? 0, stats: e.v2Stats, top };
+  return {
+    live: e.v2Live,
+    weights_n: e.v2?.n ?? 0,
+    fitted_at: e.v2?.fitted_at ?? 0,
+    stats: e.v2Stats,
+    top,
+  };
 }
 
 /** Yesterday's shadow-chair scoreboard and sharpest seats, for the digest. */
 async function digestV2Bits(bits: string[]) {
   try {
     const db = await sql();
-    const rows = await db<{ features: V2Features; winner: string; v2_ev: number | null; v2_lean: string; ev_v1: number | null }>`
+    const rows = await db<{
+      features: V2Features;
+      winner: string;
+      v2_ev: number | null;
+      v2_lean: string;
+      ev_v1: number | null;
+    }>`
       select s.features, s.winner, s.v2_ev, s.v2_lean, l.ev_cents as ev_v1
       from desk_samples s
       join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
@@ -1568,7 +1907,9 @@ async function digestV2Bits(bits: string[]) {
     if (!rows.length) return;
     const ev2 = rows.reduce((t, r) => t + (Number(r.v2_ev) || 0), 0);
     const ev1 = rows.reduce((t, r) => t + (Number(r.ev_v1) || 0), 0);
-    const calls2 = rows.filter((r) => r.v2_lean === "UP" || r.v2_lean === "DOWN").length;
+    const calls2 = rows.filter(
+      (r) => r.v2_lean === "UP" || r.v2_lean === "DOWN",
+    ).length;
     bits.push(
       `shadow chair v2: ${calls2} call${calls2 === 1 ? "" : "s"}, net ${ev2 >= 0 ? "+" : ""}${ev2.toFixed(1)}¢ vs chair ${ev1 >= 0 ? "+" : ""}${ev1.toFixed(1)}¢`,
     );
@@ -1587,12 +1928,19 @@ async function digestV2Bits(bits: string[]) {
       .map(([k, t]) => [k, t.sum / t.n] as [string, number])
       .sort((x, y) => x[1] - y[1]);
     if (ranked.length) {
-      bits.push(`sharpest seats by Brier: ${ranked.slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(", ")}`);
+      bits.push(
+        `sharpest seats by Brier: ${ranked
+          .slice(0, 2)
+          .map(([k, v]) => `${k} ${v.toFixed(2)}`)
+          .join(", ")}`,
+      );
     }
     const st = eng().v2Stats;
     if (st) {
       const g = v2Gates(st);
-      bits.push(`v2 promotion gate ${g.met}/3: samples ${st.n_graded}/${V2_GATE_SAMPLES} · calls ${st.calls_v2}/${V2_GATE_CALLS} · Brier ${g.brierOk ? "beats" : "trails"} market · net ${st.ev_v2 >= 0 ? "+" : ""}${st.ev_v2.toFixed(0)}¢`);
+      bits.push(
+        `v2 promotion gate ${g.met}/3: samples ${st.n_graded}/${V2_GATE_SAMPLES} · calls ${st.calls_v2}/${V2_GATE_CALLS} · Brier ${g.brierOk ? "beats" : "trails"} market · net ${st.ev_v2 >= 0 ? "+" : ""}${st.ev_v2.toFixed(0)}¢`,
+      );
     }
   } catch {
     /* digest is best-effort */
@@ -1613,7 +1961,10 @@ function pulseCents(v: unknown): number {
 async function pulseGet(url: string): Promise<unknown> {
   const r = await fetch(url, {
     signal: AbortSignal.timeout(3_000),
-    headers: { accept: "application/json", "user-agent": "SatoshiCouncil/1.0 (paper research)" },
+    headers: {
+      accept: "application/json",
+      "user-agent": "SatoshiCouncil/1.0 (paper research)",
+    },
   });
   if (!r.ok) throw new Error(`${r.status}`);
   return r.json();
@@ -1632,10 +1983,13 @@ async function pulseTick(e: Eng) {
       pulseGet(`${host}/markets?status=open&series_ticker=KXBTC15M&limit=1`),
     ]);
     const spot =
-      cb.status === "fulfilled" ? Number((cb.value as { price?: string }).price) : NaN;
+      cb.status === "fulfilled"
+        ? Number((cb.value as { price?: string }).price)
+        : NaN;
     const row =
       mk.status === "fulfilled"
-        ? ((mk.value as { markets?: Record<string, unknown>[] }).markets ?? [])[0]
+        ? ((mk.value as { markets?: Record<string, unknown>[] }).markets ??
+            [])[0]
         : undefined;
     if (Number.isFinite(spot) && row?.ticker) {
       e.pulse = {
@@ -1647,7 +2001,8 @@ async function pulseTick(e: Eng) {
         yes_ask: pulseCents(row.yes_ask_dollars ?? row.yes_ask),
         no_bid: pulseCents(row.no_bid_dollars ?? row.no_bid),
         no_ask: pulseCents(row.no_ask_dollars ?? row.no_ask),
-        close_time: Date.parse(String(row.close_time ?? row.expiration_time ?? "")) || 0,
+        close_time:
+          Date.parse(String(row.close_time ?? row.expiration_time ?? "")) || 0,
         strike: Number(row.floor_strike ?? 0) || 0,
         stale: false,
       };
@@ -1655,13 +2010,18 @@ async function pulseTick(e: Eng) {
       e.pulseBackoffUntil = 0;
     } else {
       throw new Error(
-        cb.status === "rejected" ? `coinbase ${cb.reason}` : mk.status === "rejected" ? `kalshi ${mk.reason}` : "empty",
+        cb.status === "rejected"
+          ? `coinbase ${cb.reason}`
+          : mk.status === "rejected"
+            ? `kalshi ${mk.reason}`
+            : "empty",
       );
     }
   } catch {
     e.pulseFails += 1;
     if (e.pulse) e.pulse = { ...e.pulse, fetched_at: Date.now(), stale: true };
-    e.pulseBackoffUntil = Date.now() + Math.min(10_000, PULSE_MS * 2 ** Math.min(3, e.pulseFails));
+    e.pulseBackoffUntil =
+      Date.now() + Math.min(10_000, PULSE_MS * 2 ** Math.min(3, e.pulseFails));
   } finally {
     e.pulseInFlight = false;
   }
@@ -1704,8 +2064,10 @@ export function ensureServerEngine(): void {
     restartTimer(e);
     // The pulse loop's lifecycle lives here and only here — restartTimer
     // (beast toggles) must never double-start it.
-    if (!e.pulseTimer) e.pulseTimer = setInterval(() => void pulseTick(e), PULSE_MS);
-    if (!e.watchdogTimer) e.watchdogTimer = setInterval(() => watchdogTick(e), WATCHDOG_CHECK_MS);
+    if (!e.pulseTimer)
+      e.pulseTimer = setInterval(() => void pulseTick(e), PULSE_MS);
+    if (!e.watchdogTimer)
+      e.watchdogTimer = setInterval(() => watchdogTick(e), WATCHDOG_CHECK_MS);
     void refitV2(e);
     void tick(e);
     try {
@@ -1736,7 +2098,9 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
       select (extract(epoch from close_time) * 1000)::bigint as ms
       from desk_ledger where close_time > now() - interval '6 hours' order by close_time
     `;
-    e.ledgerGapCount = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n))).length;
+    e.ledgerGapCount = ledgerGaps(
+      rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)),
+    ).length;
   } catch (err) {
     noteErr(e, "gap scan", err instanceof Error ? err.message : String(err));
   }
@@ -1767,7 +2131,9 @@ async function reconcile(e: Eng): Promise<void> {
       select (extract(epoch from close_time) * 1000)::bigint as ms
       from desk_ledger where close_time > now() - interval '90 days' order by close_time
     `;
-    const holes = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)));
+    const holes = ledgerGaps(
+      rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)),
+    );
     e.reconHoles = holes.length;
     e.reconMissing = holes.slice(-8);
     if (e.reconBaseline == null) {
@@ -1775,7 +2141,11 @@ async function reconcile(e: Eng): Promise<void> {
     } else if (holes.length > e.reconBaseline) {
       const delta = holes.length - e.reconBaseline;
       e.reconBaseline = holes.length;
-      noteErr(e, "reconcile", `${delta} newly-missing ledger window(s); ${holes.length} total over 90d`);
+      noteErr(
+        e,
+        "reconcile",
+        `${delta} newly-missing ledger window(s); ${holes.length} total over 90d`,
+      );
       try {
         const { notifyWatchdog } = await import("./push.server");
         notifyWatchdog({
@@ -1825,16 +2195,23 @@ function watchdogTick(e: Eng) {
   void scanLedgerGaps(e);
   try {
     const now = Date.now();
-    const d = watchdogDecision({ now, lastGradeAt: e.lastLedgerOkAt, state: e.watchdog });
+    const d = watchdogDecision({
+      now,
+      lastGradeAt: e.lastLedgerOkAt,
+      state: e.watchdog,
+    });
     if (d.kind === "quiet") return;
     e.watchdog = applyWatchdog(e.watchdog, d, now, e.lastLedgerOkAt);
     const s = e.prevSnap;
-    const undeliverable = e.alertOwnerSubs <= 0 ? " · NO OWNER SUBSCRIBER (see /status)" : "";
+    const undeliverable =
+      e.alertOwnerSubs <= 0 ? " · NO OWNER SUBSCRIBER (see /status)" : "";
     notifyWatchdog(
       watchdogPayload(d, {
         lastGradeAt: e.lastLedgerOkAt,
         lastError: `${e.lastError ?? "no error logged"}${undeliverable}`,
-        feeds: s ? `spot ${s.health.spot} · kalshi ${s.health.kalshi}` : "no snapshot yet",
+        feeds: s
+          ? `spot ${s.health.spot} · kalshi ${s.health.kalshi}`
+          : "no snapshot yet",
         tickAgeS: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
       }),
     );
@@ -1846,7 +2223,11 @@ function watchdogTick(e: Eng) {
 /** The honest deep-health verdict, for the external monitor at GET /status.
  *  Data/engine health flips the 200/503; alert-channel health rides along as a
  *  separate section that never flips the status. */
-export async function getHealth(): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+export async function getHealth(): Promise<{
+  ok: boolean;
+  status: number;
+  body: Record<string, unknown>;
+}> {
   const e = eng();
   ensureServerEngine();
   const now = Date.now();
@@ -1877,15 +2258,35 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       tick_age_s: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
       last_recorded_age_s: Math.round((now - e.lastLedgerOkAt) / 1000),
       ledger_queue: e.ledgerQueue.length,
-      ledger_queue_oldest_s: Math.round(oldestQueueAgeMs(e.ledgerQueue, now) / 1000),
+      ledger_queue_oldest_s: Math.round(
+        oldestQueueAgeMs(e.ledgerQueue, now) / 1000,
+      ),
       ledger_gaps: e.ledgerGapCount,
-      reconcile: { window_days: 90, holes: e.reconHoles, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
-      feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
-      alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
+      reconcile: {
+        window_days: 90,
+        holes: e.reconHoles,
+        missing_recent: e.reconMissing,
+        checked_at: e.reconAt || null,
+      },
+      feeds: s
+        ? {
+            spot: s.health.spot,
+            kalshi: s.health.kalshi,
+            derivs: s.health.derivs,
+          }
+        : null,
+      alerts: {
+        deliverable: alerts.deliverable,
+        owner_subs: e.alertOwnerSubs,
+        note: alerts.note,
+      },
       // The grading race, both halves: windows decided but not yet settled, and
       // windows refused because their identity did not hold. A non-empty
       // identity list is the 2026-09-10 failure mode recurring.
-      pending_windows: e.pending.map((p) => ({ ticker: p.ticker, close_time: p.close_time })),
+      pending_windows: e.pending.map((p) => ({
+        ticker: p.ticker,
+        close_time: p.close_time,
+      })),
       identity_faults: e.identityFaults.slice(-5).map((f) => ({
         ticker: f.ticker,
         close_time: f.close_time,
@@ -1906,7 +2307,12 @@ export function getServerSnap(): Snapshot | null {
 /** Live ledger integrity for the readiness gate: recent-scan holes, the 90-day
  *  reconciliation count, and how many holes are NEW beyond the accepted baseline
  *  (the only ones that mean a real loss). Read-only. */
-export function getReadinessIntegrity(): { gaps: number; recon_holes: number; recon_baseline: number | null; recon_new_holes: number } {
+export function getReadinessIntegrity(): {
+  gaps: number;
+  recon_holes: number;
+  recon_baseline: number | null;
+  recon_new_holes: number;
+} {
   const e = eng();
   const base = e.reconBaseline;
   return {
@@ -1947,7 +2353,9 @@ export async function getServerFrame(): Promise<ServerFrame> {
   if (e.ready) await e.ready;
   return {
     as_of: Date.now(),
-    tick_age_s: e.lastTickAt ? Math.round((Date.now() - e.lastTickAt) / 100) / 10 : -1,
+    tick_age_s: e.lastTickAt
+      ? Math.round((Date.now() - e.lastTickAt) / 100) / 10
+      : -1,
     snap: e.prevSnap,
     votes: e.lastVotes,
     chair: e.lastChair,
@@ -1974,7 +2382,12 @@ export function currentSnap(): Snapshot | null {
 export const __test = { freshEng, settleIfNeeded, noteCall };
 
 export type DeskOp =
-  | { op: "settings"; patch: Partial<Pick<Settings, "bar_override" | "adaptive_bar" | "mutes" | "beast">> }
+  | {
+      op: "settings";
+      patch: Partial<
+        Pick<Settings, "bar_override" | "adaptive_bar" | "mutes" | "beast">
+      >;
+    }
   | { op: "clear_calls" }
   | { op: "huddle" }
   | { op: "accept_candidate" }
@@ -1994,13 +2407,18 @@ export async function applyDeskOp(op: DeskOp): Promise<{ ok: true }> {
         if (OK_SETTINGS.has(k)) patch[k] = v;
       }
       if ("mutes" in patch) {
-        patch.mutes = Array.isArray(patch.mutes) ? (patch.mutes.filter(Boolean) as SeatId[]).slice(0, 32) : [];
+        patch.mutes = Array.isArray(patch.mutes)
+          ? (patch.mutes.filter(Boolean) as SeatId[]).slice(0, 32)
+          : [];
       }
       if ("bar_override" in patch && patch.bar_override != null) {
         const n = Number(patch.bar_override);
-        patch.bar_override = Number.isFinite(n) ? Math.min(0.72, Math.max(0.24, n)) : null;
+        patch.bar_override = Number.isFinite(n)
+          ? Math.min(0.72, Math.max(0.24, n))
+          : null;
       }
-      const beastChanged = "beast" in patch && Boolean(patch.beast) !== e.settings.beast;
+      const beastChanged =
+        "beast" in patch && Boolean(patch.beast) !== e.settings.beast;
       e.settings = { ...e.settings, ...patch, source: "live" };
       if (beastChanged) restartTimer(e);
       break;
@@ -2025,7 +2443,12 @@ export async function applyDeskOp(op: DeskOp): Promise<{ ok: true }> {
     }
   }
   if (e.prevSnap && e.lastVotes.length) {
-    e.lastChair = decideChair(e, e.lastVotes, e.prevSnap, e.lastChair?.lean ?? "WAIT");
+    e.lastChair = decideChair(
+      e,
+      e.lastVotes,
+      e.prevSnap,
+      e.lastChair?.lean ?? "WAIT",
+    );
   }
   await persistState(e, true);
   return { ok: true };

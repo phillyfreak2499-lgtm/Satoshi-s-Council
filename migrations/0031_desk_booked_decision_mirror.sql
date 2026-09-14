@@ -20,6 +20,11 @@ create view desk_ledger_research as
 
 -- A prospective mirror grade of the booked decision. This is queryable evidence,
 -- not learner state: nothing writes its result back into the live desk.
+--
+-- Read the ledger directly with the canonical quality predicate instead of
+-- depending on desk_ledger_research. Older migrations deliberately refresh that
+-- select-* view when the full directory is replayed; keeping this mirror as a
+-- sibling makes the migration directory idempotent.
 create view desk_booked_chair_mirror as
   select
     ticker,
@@ -39,8 +44,9 @@ create view desk_booked_chair_mirror as
       else null
     end as brier,
     ev_cents
-  from desk_ledger_research
-  where entry_lean in ('UP', 'DOWN')
+  from desk_ledger
+  where research_quality = 'valid'
+    and entry_lean in ('UP', 'DOWN')
     and entry_cents is not null
     and settle_cents is not null
     and winner in ('UP', 'DOWN');
