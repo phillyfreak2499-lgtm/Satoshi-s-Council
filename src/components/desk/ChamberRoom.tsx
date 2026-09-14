@@ -1,3 +1,5 @@
+import { utcStamp } from "@/lib/desk/display-evidence";
+import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
@@ -185,7 +187,7 @@ function Statement({ statement }: { statement: ChamberStatement }) {
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span className="font-mono text-micro font-bold uppercase tracking-[0.16em] text-fg">{statement.speaker}</span>
             <time className="font-mono text-micro tabular text-subtle" dateTime={statement.occurred_at}>
-              {new Date(statement.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              {utcStamp(statement.occurred_at)}
             </time>
           </div>
           <p className="mt-1 max-w-[72ch] font-sans text-body leading-relaxed text-fg">{statement.text}</p>
@@ -452,6 +454,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
           </aside>
         </div>
       </main>
+      <PaperDisclaimer />
     </div>
   );
 }

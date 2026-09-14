@@ -1,3 +1,5 @@
+import { sampleRate, DISPLAY_SAMPLE_MIN } from "@/lib/desk/display-evidence";
+import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useEffect, useState } from "react";
 import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } from "@/lib/desk/lab-public";
 import { GlobalHeader } from "./GlobalHeader";
@@ -8,10 +10,6 @@ function cents(v: number | null): string {
   return `${v > 0 ? "+" : ""}${v}¢`;
 }
 
-function pct(v: number | null): string {
-  if (v == null) return "—";
-  return `${(v * 100).toFixed(1)}%`;
-}
 
 function utcClock(value: string): string {
   try {
@@ -174,7 +172,7 @@ function SeatTimingStudy({
         Heard is only votes that reached the Chair. Accuracy is measured against official settlement.
       </p>
       <p className="mt-2 max-w-[90ch] font-mono text-micro leading-relaxed text-subtle">
-        Descriptive replay evidence only; not used by Chair, learner, or promotion.
+        Rates appear after 20 observations in each column. Smaller samples remain visible as counts. Descriptive replay evidence only; not used by Chair, learner, or promotion.
       </p>
 
       {rows.length ? (
@@ -213,13 +211,11 @@ function SeatTimingStudy({
                       key={horizon.seconds}
                       className="border-l border-border px-3 py-3 font-mono text-micro tabular"
                     >
-                      <div className="text-fg">
-                        raw {pct(horizon.raw_rate)}
-                        <span className="ml-2 text-subtle">n={horizon.raw_n}</span>
+                      <div className={horizon.raw_n < DISPLAY_SAMPLE_MIN ? "text-subtle" : "text-fg"}>
+                        raw {sampleRate(horizon.raw_rate, horizon.raw_n)}
                       </div>
                       <div className="mt-1 text-muted">
-                        heard {pct(horizon.heard_rate)}
-                        <span className="ml-2 text-subtle">n={horizon.heard_n}</span>
+                        heard {sampleRate(horizon.heard_rate, horizon.heard_n)}
                       </div>
                     </td>
                   ))}
@@ -344,6 +340,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
           </>
         )}
       </main>
+      <PaperDisclaimer />
     </div>
   );
 }

@@ -1064,7 +1064,13 @@ export function MetaFooter({
   tape: string[];
   settling?: boolean;
 }) {
-  const left = Math.max(0, Math.round((lockdown_until - Date.now()) / 1000));
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const left = now == null ? null : Math.max(0, Math.round((lockdown_until - now) / 1000));
   return (
     <div className="border-t border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 font-mono text-data">
@@ -1090,7 +1096,7 @@ export function MetaFooter({
           </span>
           <span className={lockdown ? "text-down" : "text-muted"}>
             {law_wrongs} consecutive wrongs · lock {lockdown ? "ON" : "off"}
-            {lockdown && left > 0 ? ` ${left}s` : ""}
+            {lockdown && left != null && left > 0 ? ` ${left}s` : ""}
           </span>
         </div>
       </div>

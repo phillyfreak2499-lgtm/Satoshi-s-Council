@@ -1,3 +1,4 @@
+import { humanRanks } from "@/lib/desk/display-evidence";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import type { PublicArenaSnapshot } from "@/lib/desk/arena-public";
@@ -254,10 +255,11 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
   };
 
   const humans = board?.week ?? [];
+  const ranks = humanRanks(humans);
   const rows: BoardRow[] = [
     ...humans.map((r) => ({ ...r, desk: false })),
     ...(board?.desk_week ?? []).map((r) => ({ ...r, desk: true })),
-  ].sort((a, b) => Number(Boolean(a.warming)) - Number(Boolean(b.warming)) || b.net - a.net);
+  ];
   const me = rack?.me ?? null;
 
   return (
@@ -551,7 +553,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
                   · {me.wins}–{me.losses} ·{" "}
                   <span className={me.net >= 0 ? "text-up" : "text-down"}>{fmtC(me.net)}</span> net
                   after fees
-                  {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} this week` : ""}
+                  {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} in the last 7 days` : ""}
                 </>
               ) : (
                 " · no settled locks yet"
@@ -589,13 +591,13 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
           {/* week board */}
           <section className="rounded-md border border-border bg-surface px-3 py-2">
             <div className="flex items-baseline justify-between font-mono">
-              <span className="text-micro uppercase tracking-widest text-subtle">this week</span>
+              <span className="text-micro uppercase tracking-widest text-subtle">last 7 days</span>
               <span className="text-micro text-subtle">
-                net ¢ after fees · paper · ranked after 3 settled
+                net ¢ after fees · paper · ranked after 3 settled · small sample below 20
               </span>
             </div>
             {!humans.length ? (
-              <div className="mt-2 font-mono text-micro text-muted">Nobody has locked this week. Be first.</div>
+              <div className="mt-2 font-mono text-micro text-muted">Nobody has locked in the last 7 days. Be first.</div>
             ) : null}
             <table className="mt-2 w-full font-mono text-micro">
               <thead className="text-subtle">
@@ -609,7 +611,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
               </thead>
               <tbody>
                 {rows.length ? (
-                  rows.map((r, i) => (
+                  rows.map((r) => (
                     <tr
                       key={`${r.desk ? "d" : "h"}:${r.name}`}
                       className={cn(
@@ -618,9 +620,9 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
                         r.desk && "text-muted",
                       )}
                     >
-                      <td className="py-1.5 pr-2 tabular">{r.warming ? "—" : i + 1}</td>
+                      <td className="py-1.5 pr-2 tabular">{r.desk ? "ref" : ranks.get(r.name) ?? "—"}</td>
                       <td className="py-1.5 pr-2">
-                        {r.name}
+                        {r.name}{r.desk ? " · benchmark" : ""}
                         {r.me ? <span className="text-subtle"> (you)</span> : null}
                         {r.warming ? <span className="text-subtle"> warming up</span> : null}
                         {r.since ? <div className="text-micro text-subtle">since {fmtSince(r.since)}</div> : null}
@@ -648,7 +650,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
                 ) : (
                   <tr>
                     <td colSpan={5} className="py-2 text-subtle">
-                      {board ? "no graded windows this week yet" : "loading the board…"}
+                      {board ? "no graded windows in the last 7 days yet" : "loading the board…"}
                     </td>
                   </tr>
                 )}
@@ -673,3 +675,4 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
     </div>
   );
 }
+

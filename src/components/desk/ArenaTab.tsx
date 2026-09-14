@@ -1,3 +1,4 @@
+import { humanRanks, sampleRate } from "@/lib/desk/display-evidence";
 import { useEffect, useState } from "react";
 import { arenaName, fetchArena, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import { fmtLocal } from "@/lib/desk/market-hours";
@@ -7,7 +8,7 @@ import { Tip } from "./Tip";
 
 function fmtSince(iso: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+    return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" }).format(new Date(iso));
   } catch {
     return iso.slice(5, 10);
   }
@@ -18,9 +19,8 @@ function fmtC(n: number): string {
 }
 
 function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: ArenaRow[] }) {
-  const merged = [...rows.map((r) => ({ ...r, kind: "human" as const })), ...desk.map((r) => ({ ...r, kind: "desk" as const }))].sort(
-    (a, b) => Number(Boolean(a.warming)) - Number(Boolean(b.warming)) || b.net - a.net,
-  );
+  const ranks = humanRanks(rows);
+  const merged = [...rows.map((r) => ({ ...r, kind: "human" as const })), ...desk.map((r) => ({ ...r, kind: "desk" as const }))];
   return (
     <Pane title={title}>
       {merged.length ? (
@@ -36,17 +36,17 @@ function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: A
             </tr>
           </thead>
           <tbody>
-            {merged.map((r, i) => (
+            {merged.map((r) => (
               <tr key={`${r.kind}-${r.name}`} className={cn("border-t border-border/60", r.me ? "bg-surface-2 text-fg" : r.kind === "desk" ? "text-muted" : "text-fg")}>
-                <td >{r.warming ? "—" : i + 1}</td>
+                <td >{r.kind === "desk" ? "ref" : ranks.get(r.name) ?? "—"}</td>
                 <td className="font-semibold">
-                  {r.name}
+                  {r.name}{r.kind === "desk" ? " · benchmark" : ""}
                   {r.me ? <span className="ml-1 text-subtle">(you)</span> : null}
                   {r.warming ? <span className="ml-1 font-normal text-subtle">warming up</span> : null}
                   {r.since ? <span className="ml-1 font-normal text-subtle">since {fmtSince(r.since)}</span> : null}
                 </td>
                 <td >{r.n}</td>
-                <td >{r.hit_pct == null ? "—" : `${r.hit_pct}%`}</td>
+                <td >{sampleRate(r.hit_pct == null ? null : r.hit_pct / 100, r.n)}</td>
                 <td className={cn(r.net > 0 ? "text-up" : r.net < 0 ? "text-down" : "")}>{fmtC(r.net)}</td>
                 <td className="text-subtle">{r.avg_conf == null ? "—" : `${r.avg_conf}%`}</td>
               </tr>
@@ -88,12 +88,12 @@ export function ArenaTab({ tz, onCall }: { tz: string; onCall: () => void }) {
   const me = arena.me;
   const name = arenaName();
   const calib =
-    me && me.n >= 5 && me.avg_conf != null && me.hit_pct != null
+    me && me.n >= 20 && me.avg_conf != null && me.hit_pct != null
       ? me.hit_pct >= me.avg_conf + 5
-        ? "you are better than you say — trust your reads more"
+        ? "the observed hit rate is above the average stated confidence"
         : me.hit_pct <= me.avg_conf - 10
-          ? "you say more than you hit — dial the slider down"
-          : "your confidence matches your record"
+          ? "the observed hit rate is below the average stated confidence"
+          : "the two observed rates are close"
       : null;
 
   return (
@@ -116,10 +116,10 @@ export function ArenaTab({ tz, onCall }: { tz: string; onCall: () => void }) {
         ) : (
           <div className="grid gap-1 font-mono text-ui text-fg">
             <div>
-              <span className="font-semibold">{me.name}</span> · {me.n} settled · {me.wins} won · {me.hit_pct ?? "—"}% right ·{" "}
+              <span className="font-semibold">{me.name}</span> · {me.n} settled · {me.wins} won · {sampleRate(me.hit_pct == null ? null : me.hit_pct / 100, me.n)} ·{" "}
               <span className={me.net >= 0 ? "text-up" : "text-down"}>{fmtC(me.net)}</span> after fees
               {me.open ? ` · ${me.open} open` : ""}
-              {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} this week` : ""}
+              {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} in the last 7 days` : ""}
             </div>
             {calib && (
               <div className="font-mono text-micro text-muted">
@@ -162,7 +162,7 @@ export function ArenaTab({ tz, onCall }: { tz: string; onCall: () => void }) {
         )}
       </Pane>
       <div className="grid gap-3 lg:grid-cols-2">
-        <Board title="LEADERBOARD · THIS WEEK" rows={arena.week} desk={arena.desk_week} />
+        <Board title="LEADERBOARD · LAST 7 DAYS" rows={arena.week} desk={arena.desk_week} />
         <Board title="LEADERBOARD · ALL-TIME" rows={arena.all} desk={arena.desk_all} />
       </div>
       <div className="font-mono text-micro text-subtle">

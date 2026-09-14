@@ -15,13 +15,13 @@ export function siteOrigin(req: { headers: Headers }): string {
   const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "satoshiscouncil.com").split(",")[0]!.trim();
   return `https://${host.replace(/^https?:\/\//, "")}`;
 }
-
 export function xmlEscape(s: string): string {
   return s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]!);
 }
 
 export const STATIC_PAGES: { path: string; changefreq: string; priority: string }[] = [
   { path: "/", changefreq: "always", priority: "1.0" },
+  ...["/books", "/board", "/chamber", "/lab"].map((path) => ({ path, changefreq: "hourly", priority: "0.8" })),
   { path: "/arena", changefreq: "always", priority: "0.9" },
   { path: "/about", changefreq: "monthly", priority: "0.6" },
   { path: "/faq", changefreq: "monthly", priority: "0.6" },
@@ -56,7 +56,7 @@ export function feedTitle(p: FeedPost): string {
 export function buildFeed(origin: string, posts: FeedPost[], now = new Date()): string {
   const updated = posts[0]?.created_at ?? now.toISOString();
   const entries = posts.map((p) => {
-    const link = `${origin}/#board`;
+    const link = `${origin}/board`;
     return [
       "  <entry>",
       `    <title>${xmlEscape(feedTitle(p))}</title>`,

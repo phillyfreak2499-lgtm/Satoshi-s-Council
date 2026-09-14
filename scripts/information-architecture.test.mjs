@@ -22,7 +22,7 @@ test("the Board separates and paginates public threads", () => {
   assert.match(board, /pageRows\(newestNotes, feedbackPage\)/);
 });
 
-test("Books gain section anchors and readable phone cards", () => {
+test("Books gain section anchors and one responsive window table", () => {
   assert.match(books, /aria-label="Paper book sections"/);
   for (const id of [
     "books-overview",
@@ -34,8 +34,10 @@ test("Books gain section anchors and readable phone cards", () => {
   ]) {
     assert.match(books, new RegExp(`id="${id}"`));
   }
-  assert.match(books, /className="grid gap-2 sm:hidden"/);
-  assert.match(books, /className="hidden overflow-x-auto sm:block"/);
+  assert.equal((books.match(/className="books-window-table /g) || []).length, 1);
+  assert.doesNotMatch(books, /className="grid gap-2 sm:hidden"/);
+  assert.match(books, /data-label="Close"/);
+  assert.match(read("src/styles.css"), /\.books-window-table/);
   assert.match(books, /open replay/);
 });
 

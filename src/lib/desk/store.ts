@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   getFrame,
   startEngine,
@@ -9,14 +9,24 @@ import {
 
 let started = false;
 
+export const InitialDeskFrame = createContext<DeskFrame | null>(null);
+
 export function useDesk(): DeskFrame {
-  const [frame, setFrame] = useState<DeskFrame>(() => getFrame());
+  const initial = useContext(InitialDeskFrame);
+  const [frame, setFrame] = useState<DeskFrame>(() => initial ?? getFrame());
   useEffect(() => {
+    const unsub = subscribe((next) => setFrame((current) =>
+      !next.snap && current.snap && next.settings.source === "live"
+        ? { ...current, lastError: next.lastError }
+        : next,
+    ));
     if (!started) {
       started = true;
       startEngine();
     }
-    const unsub = subscribe(setFrame);
+    // Demo may emit synchronously during startEngine; subscribe before starting.
+    const current = getFrame();
+    if (current.snap) setFrame(current);
     return () => {
       unsub();
     };

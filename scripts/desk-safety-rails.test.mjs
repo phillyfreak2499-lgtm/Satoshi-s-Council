@@ -1183,6 +1183,9 @@ test("research readers exclude the known-invalid windows", () => {
   // both, so reads and writes are listed separately and a write reason has to say
   // which columns of the row's identity it matches on.
   const ALLOWED_BARE = {
+    "src/lib/desk/books.server.ts": [
+      "timestamp-only coverage scan must include quarantined rows so they are not falsely labeled missing; all research totals still use desk_ledger_research",
+    ],
     "src/lib/desk/server-engine.ts": [
       "the ledger INSERT itself",
       "the durable-write read-back, which must see the row it just wrote",

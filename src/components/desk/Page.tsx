@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { gtagEvent } from "@/lib/desk/ga";
 import { GlobalHeader } from "./GlobalHeader";
-import { Crest } from "./Crest";
+import { PaperDisclaimer } from "./PaperDisclaimer";
 import { cn } from "@/lib/utils";
 
 /** Shared chrome for reading pages, with the same wayfinding as every room. */
@@ -28,15 +28,7 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
           <span className="ml-3 font-mono text-micro text-subtle">The 60-second tour starts on your first visit to the Floor.</span>
         </div>
       </main>
-      <footer className="border-t border-border px-4 py-3 font-mono text-micro text-subtle">
-        <div className="mx-auto flex max-w-4xl items-center gap-2">
-          <Crest size={16} className="shrink-0 opacity-80" />
-          Paper research desk · Bitcoin only · Not financial advice · Not affiliated with Kalshi ·{" "}
-          <Link to="/legal" className="underline-offset-2 hover:text-fg hover:underline">
-            what paper means
-          </Link>
-        </div>
-      </footer>
+      <PaperDisclaimer />
     </div>
   );
 }

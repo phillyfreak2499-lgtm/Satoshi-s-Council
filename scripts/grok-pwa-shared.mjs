@@ -465,7 +465,8 @@ export function injectGrokPwaHead(html, ctx = {}) {
   // A page may bring its own card and description; keep them through the rewrite.
   const pageImage = pageMetaContent(html, "og:image");
   const pageDescription = pageMetaContent(html, "og:description");
-  let next = stripShareMetaTags(html);
+  const routeShare = ["og:title", "og:description", "og:url", "og:image"].every((key) => pageMetaContent(html, key));
+  let next = routeShare ? html : stripShareMetaTags(html);
 
   const missing = grokPwaHeadTags(appName)
     .filter(([key]) => {
@@ -477,7 +478,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
 
   next = insertAfterHeadOpen(
     next,
-    grokOgHeadTags({ host, appName, site, documentTitle, cwd, pageImage, pageDescription }).join(""),
+    routeShare ? "" : grokOgHeadTags({ host, appName, site, documentTitle, cwd, pageImage, pageDescription }).join(""),
   );
 
   if (!next.includes("/grok-app-builder/extensions.js")) {

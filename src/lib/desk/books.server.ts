@@ -1,3 +1,4 @@
+import { ledgerGaps } from "./reliability";
 /**
  * The desk's books (server only): what the chair's paper calls have made
  * or lost, window by window, straight from the ledger. Read-only. A call
@@ -145,6 +146,8 @@ export type Books = {
   buckets: BooksBucket[];
   heat: BooksHeatCell[];
   windows: BooksWindow[];
+  /** Missing interior ledger slots over the last 90 days; never included in totals. */
+  missing_windows?: string[];
   lab: BooksLab | null;
   at: number;
 };
@@ -369,6 +372,13 @@ async function build(): Promise<Books> {
       /* arena tables not migrated yet: the books still read */
     }
   }
+  // The raw ledger distinguishes genuinely absent windows from records excluded
+  // by research quality. Match the integrity monitor's interior-gap definition.
+  const coverage = await db<{ ms: number }>`
+    select (extract(epoch from close_time) * 1000)::bigint as ms
+    from desk_ledger where close_time > now() - interval '90 days' order by close_time
+  `;
+  const missingWindows = ledgerGaps(coverage.map((r) => Number(r.ms)), { maxReport: 10_000 }).map((ms) => new Date(ms).toISOString());
   const windows = rows.map((r) => toWindow(r, arena));
   const trial = await floorTrial(db);
   const keeper = await keeperCard(db);
@@ -389,6 +399,7 @@ async function build(): Promise<Books> {
     buckets,
     heat: heat.map((h) => ({ ...h, net: Math.round(h.net * 10) / 10 })),
     windows,
+    missing_windows: missingWindows,
     lab,
     at: Date.now(),
   };

@@ -1,17 +1,10 @@
+import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { LabRoom } from "@/components/desk/LabRoom";
 import { publicLabSnapshot } from "@/lib/desk/lab-public";
 
 export const Route = createFileRoute("/lab")({
-  head: () => ({
-    meta: [
-      { title: "The Lab · Satoshi's Council" },
-      {
-        name: "description",
-        content: "Follow frozen paper-research specimens as they collect prospective evidence before any documented review.",
-      },
-    ],
-  }),
+  head: () => pageHead("/lab", "Lab · Satoshi's Council", "Compare frozen paper experiments on matched observations, with visible sample sizes and research gates. No live orders."),
   loader: () => publicLabSnapshot(),
   component: LabPage,
 });
