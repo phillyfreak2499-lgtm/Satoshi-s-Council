@@ -18,7 +18,7 @@ import { formatSeed, nextSeed } from "@/lib/atelier/rng";
 import { useStudio } from "@/lib/atelier/studio";
 import type { CallLogRow, Lean } from "@/lib/desk/types";
 
-const STORE = "atelier:v4";
+const STORE = "atelier:v5";
 const WINDOW_MS = 15 * 60 * 1000;
 
 export type SatoshiPaint = {
@@ -32,6 +32,13 @@ export type SatoshiPaint = {
   brainAge: number | null;
   source: string;
   log: CallLogRow[];
+  spot: number;
+  strike: number;
+  yesMid: number;
+  settleAvg: number | null;
+  locked: number;
+  closeTime: number;
+  candles: Array<{ t: number; close: number }>;
 };
 
 function emptyBag(): Record<RoomId, Params> {
@@ -51,6 +58,10 @@ function hashWindow(value: string) {
 
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value));
+}
+
+function toMillis(value: number) {
+  return value > 0 && value < 10_000_000_000 ? value * 1000 : value;
 }
 
 export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
@@ -76,6 +87,20 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     () => (seed ^ hashWindow(satoshi.ticker || "15m")) >>> 0,
     [seed, satoshi.ticker],
   );
+  const flightHistory = useMemo(() => {
+    if (!(satoshi.closeTime > 0)) return "";
+    const close = toMillis(satoshi.closeTime);
+    const open = close - WINDOW_MS;
+    return satoshi.candles
+      .map((candle) => ({
+        p: clamp01((toMillis(candle.t) - open) / WINDOW_MS),
+        value: candle.close,
+      }))
+      .filter((point) => point.value > 0)
+      .slice(-24)
+      .map((point) => `${point.p.toFixed(4)}:${point.value.toFixed(2)}`)
+      .join(",");
+  }, [satoshi.candles, satoshi.closeTime]);
 
   roomRef.current = roomId;
   fullRef.current = full;
@@ -86,6 +111,13 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     stance,
     remain: Math.max(0, 1 - progress),
     clock: formatRemain(remaining),
+    seconds: remaining / 1000,
+    spot: satoshi.spot,
+    strike: satoshi.strike,
+    yesMid: satoshi.yesMid,
+    settleAvg: satoshi.settleAvg ?? 0,
+    locked: satoshi.locked,
+    history: flightHistory,
   };
 
   const glow = CALL_GLOW[stance];
@@ -117,6 +149,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     try {
       const raw =
         localStorage.getItem(STORE) ??
+        localStorage.getItem("atelier:v4") ??
         localStorage.getItem("atelier:v3") ??
         localStorage.getItem("atelier:v2");
       if (!raw) return;
@@ -205,7 +238,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
         if (fullRef.current && !document.fullscreenElement) setFull(false);
         return;
       }
-      if (event.key >= "1" && event.key <= "3") {
+      if (event.key >= "1" && event.key <= String(ROOMS.length)) {
         const nextRoom = ROOMS[Number(event.key) - 1];
         if (nextRoom) setRoomId(nextRoom.id);
       } else if (event.key === "r" || event.key === "R") {
@@ -461,7 +494,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
             </button>
           </div>
 
-          <p className="atelier-hint">{room.hint} · F display · 1–3 rooms · R new edition</p>
+          <p className="atelier-hint">{room.hint} · F display · 1–4 rooms · R new edition</p>
         </aside>
       ) : null}
     </div>
