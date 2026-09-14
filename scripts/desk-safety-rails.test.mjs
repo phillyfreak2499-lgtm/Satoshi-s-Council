@@ -2637,7 +2637,7 @@ test("public Settings hides shared-desk controls until the owner key is verified
   assert.match(ownerView, /Seat weights/, "verified owners retain research diagnostics");
 
   const gate = between(settings, "async function ownerKeyIsValid", "export function SettingsTab");
-  assert.match(gate, /fetch\(\`\/readiness\?key=/, "the server verifies the owner key");
+  assert.match(gate, /fetch\(`\/readiness\?key=/, "the server verifies the owner key");
   assert.match(gate, /return r\.ok;/, "controls unlock only after a successful verification response");
 
   const alerts = read("src/components/desk/AlertsPanel.tsx");
