@@ -2612,3 +2612,38 @@ test("the client desk restores browser state only after hydration", () => {
   assert.match(start, /const persisted = loadPersisted\(\);/, "saved learner state is restored after mount");
   assert.match(start, /callLog = loadCallLog\(settings\.source\);/, "saved calls are restored after mount");
 });
+
+
+test("public Settings hides shared-desk controls until the owner key is verified", () => {
+  const settings = read("src/components/desk/SettingsTab.tsx");
+  const publicView = between(
+    settings,
+    '<div data-tour="tour-settings"',
+    "{ownerMode ? (",
+  );
+  assert.match(publicView, /<AlertsPanel ownerMode=\{ownerMode\}/, "viewer alerts stay public");
+  assert.match(publicView, /<DisplayPanel \/>/, "viewer display preferences stay public");
+  assert.match(publicView, /<OwnerAccess /, "owner access is a collapsed gate");
+  assert.doesNotMatch(
+    publicView,
+    /Poll interval|Data source|Adaptive confluence bar|Bar override|Mute seats|Seat weights|Adaptive thresholds|Skill library|Pattern ledger|ArenaAdminPanel|ReadinessPanel/,
+    "operator controls must not render in the public settings view",
+  );
+
+  const ownerView = between(settings, "{ownerMode ? (", "</>\n      ) : null}");
+  assert.match(ownerView, /ReadinessPanel/, "verified owners retain readiness");
+  assert.match(ownerView, /ArenaAdminPanel/, "verified owners retain Arena controls");
+  assert.match(ownerView, /Poll interval/, "verified owners retain shared-desk controls");
+  assert.match(ownerView, /Seat weights/, "verified owners retain research diagnostics");
+
+  const gate = between(settings, "async function ownerKeyIsValid", "export function SettingsTab");
+  assert.match(gate, /fetch\(\`\/readiness\?key=/, "the server verifies the owner key");
+  assert.match(gate, /return r\.ok;/, "controls unlock only after a successful verification response");
+
+  const alerts = read("src/components/desk/AlertsPanel.tsx");
+  assert.match(
+    alerts,
+    /\{ownerMode \? \([\s\S]*Desk watchdog[\s\S]*\) : null\}/,
+    "the owner watchdog stays inside verified owner mode",
+  );
+});
