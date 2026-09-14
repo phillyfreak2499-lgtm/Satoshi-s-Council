@@ -435,32 +435,52 @@ export function ReplayPane({
 
   return (
     <Pane title={title}>
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-micro text-muted">
-        {r.winner ? <LeanChip lean={r.winner} /> : null}
-        <span>strike {fmtPx(r.strike)}</span>
-        <span>settled {fmtPx(r.official)}</span>
-        {r.call ? (
-          <span className="flex items-center gap-1 tabular text-muted">
-            chair booked {side ? <LeanChip lean={side} /> : null}
-            <span className={cn(r.call.ev == null ? "text-muted" : r.call.ev > 0 ? "text-up" : r.call.ev < 0 ? "text-down" : "text-muted")}>
-              {r.call.entry.toFixed(0)}¢ → {r.call.settle == null ? "open" : `${r.call.settle.toFixed(0)}¢`} · {fmtC(r.call.ev)}
-            </span>
-          </span>
-        ) : (
-          <span className="text-subtle">chair sat out</span>
-        )}
-        {r.partial ? <span className="text-wait">partial: the recorder joined this window late</span> : null}
-        {onClose ? (
-          <>
-            <a href={pageHref} target="_blank" rel="noopener" className="btn btn-secondary btn-sm ml-auto">
-              open as a page ↗
-            </a>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
-              close
-            </button>
-          </>
-        ) : null}
+      <div className="mb-3 grid gap-2 font-mono text-micro sm:grid-cols-3">
+        <div className="rounded-md border border-border bg-surface-2/50 p-2">
+          <div className="uppercase tracking-widest text-subtle">Settlement result</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-muted">
+            {r.winner ? <LeanChip lean={r.winner} /> : <span>pending</span>}
+            <span>average {fmtPx(r.official)}</span>
+            <span className="text-subtle">vs strike {fmtPx(r.strike)}</span>
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-surface-2/50 p-2">
+          <div className="uppercase tracking-widest text-subtle">Booked decision</div>
+          {r.call ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 tabular text-muted">
+              {side ? <LeanChip lean={side} /> : <span>position</span>}
+              <span className={cn(r.call.ev == null ? "text-muted" : r.call.ev > 0 ? "text-up" : r.call.ev < 0 ? "text-down" : "text-muted")}>
+                {r.call.entry.toFixed(0)}¢ → {r.call.settle == null ? "open" : `${r.call.settle.toFixed(0)}¢`} · {fmtC(r.call.ev)}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-1 text-subtle">No position · chair sat out</div>
+          )}
+        </div>
+        <div className="rounded-md border border-border bg-surface-2/50 p-2">
+          <div className="uppercase tracking-widest text-subtle">Frame at cursor</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-muted">
+            <LeanChip lean={lean} />
+            <span>{fmtLeft(left)} left</span>
+            <span className="text-subtle">moves as you scrub</span>
+          </div>
+        </div>
       </div>
+      {r.partial || onClose ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-micro">
+          {r.partial ? <span className="text-wait">partial: the recorder joined this window late</span> : null}
+          {onClose ? (
+            <>
+              <a href={pageHref} target="_blank" rel="noopener" className="btn btn-secondary btn-sm ml-auto">
+                open as a page ↗
+              </a>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+                close
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <PriceChart r={r} cursor={i} />
       <div className="mt-1">
         <MindChart r={r} cursor={i} />
@@ -509,7 +529,7 @@ export function ReplayPane({
       </div>
       <div className="mt-2 grid gap-x-4 gap-y-1 font-mono text-micro text-muted sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <span className="text-subtle">clock</span> {fmtLeft(left)} left
+          <span className="text-subtle">frame clock</span> {fmtLeft(left)} left
         </div>
         <div>
           <span className="text-subtle">btc</span> <span className="text-fg">{fmtPx(spot)}</span>{" "}
@@ -520,7 +540,7 @@ export function ReplayPane({
           <span className="text-subtle">fair</span> <span className="text-wait">{c.fair[i] == null ? "—" : `${c.fair[i]?.toFixed(1)}¢`}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
-          <span className="text-subtle">chair</span> <LeanChip lean={lean} /> {lean !== "WAIT" ? <span>{c.conf[i]}</span> : null}
+          <span className="text-subtle">frame read</span> <LeanChip lean={lean} /> {lean !== "WAIT" ? <span>{c.conf[i]}</span> : null}
           <span className="text-subtle">· floor</span> <span className="text-up">{c.ups[i]} UP</span> <span className="text-down">{c.downs[i]} DOWN</span>
         </div>
         <div className="sm:col-span-2 lg:col-span-4">

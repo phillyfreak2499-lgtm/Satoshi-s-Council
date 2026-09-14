@@ -58,6 +58,13 @@ function About() {
         Because it argues out loud. Every call comes with the hypothesis, the evidence, the counter and the thing that would invalidate it, and every call is
         graded where you can see it. Hover or tap any dotted label on the floor for a one-line definition.
       </P>
+      <H2>Follow the evidence</H2>
+      <nav className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Evidence rooms">
+        <a href="/books" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Books</strong><span className="block font-mono text-micro text-muted">paper P&amp;L and window replays</span></a>
+        <a href="/board" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Board</strong><span className="block font-mono text-micro text-muted">desk updates and public feedback</span></a>
+        <a href="/chamber" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Chamber</strong><span className="block font-mono text-micro text-muted">evidence-backed desk speech</span></a>
+        <a href="/lab" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Lab</strong><span className="block font-mono text-micro text-muted">frozen rules and live samples</span></a>
+      </nav>
     </Page>
   );
 }
