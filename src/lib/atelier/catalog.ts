@@ -1,4 +1,11 @@
-export type RoomId = "field" | "flow" | "wave" | "ceiling" | "arcade" | "council";
+export type RoomId =
+  | "field"
+  | "flow"
+  | "wave"
+  | "ceiling"
+  | "arcade"
+  | "council"
+  | "forge";
 
 export type EnumParam = {
   key: string;
@@ -143,6 +150,20 @@ export const ROOMS: RoomMeta[] = [
     params: [
       { key: "orbit", kind: "range", label: "Orbit", min: 0.7, max: 1.3, step: 0.05, def: 1, format: fmt },
       { key: "trails", kind: "range", label: "Connections", min: 0.25, max: 1.35, step: 0.05, def: 0.85, format: fmt },
+    ],
+  },
+  {
+    id: "forge",
+    index: "07",
+    word: "Forge",
+    name: "Gavel Foundry",
+    glow: "#c4a574",
+    meta: "Live decision pressure · Chair-held gavel",
+    fine: "Every specialist read feeds the furnace. The weighted score heats the bar, but only SATOSHI's published UP, DOWN, or WAIT controls the gavel. A hot furnace can still end in WAIT.",
+    hint: "The dashed mold is score versus bar, never win probability. Heat and sparks are visual only; this room cannot vote or place an order.",
+    params: [
+      { key: "heat", kind: "range", label: "Furnace heat", min: 0.55, max: 1.5, step: 0.05, def: 1, format: fmt },
+      { key: "sparks", kind: "range", label: "Sparks", min: 0, max: 1.4, step: 0.05, def: 0.85, format: fmt },
     ],
   },
 ];
