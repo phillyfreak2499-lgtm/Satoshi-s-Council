@@ -63,7 +63,9 @@ test("Cloud Ceiling tells the final-minute settlement truth", () => {
   assert.match(ceiling, /finishAtmosphere/);
   assert.match(ceiling, /globalCompositeOperation = "screen"/);
   assert.match(ceiling, /lineDashOffset = -phase/);
-  assert.match(ceiling, /cloud-ceiling-v2\.jpg/);
+  assert.match(ceiling, /cloud-ceiling-v2\.webp/);
+  assert.match(ceiling, /cloud-ceiling-portrait-v2\.webp/);
+  assert.match(ceiling, /w \/ Math\.max\(1, h\) < 1\.2/);
   assert.match(ceiling, /ctx\.drawImage\(/);
   assert.match(ceiling, /reflectedLight/);
 });
@@ -138,4 +140,3 @@ test("the Gallery remains a read-only paper presentation", () => {
   assert.doesNotMatch(source, /runChair|noteCall|paperBookEdgeOk|promoteToLive/);
   assert.doesNotMatch(source, /method:\s*["']POST["']|fetch\(|\/api\//);
 });
-

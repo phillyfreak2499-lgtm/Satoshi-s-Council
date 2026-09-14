@@ -213,11 +213,15 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
   let h = ih;
   let seed = initialSeed;
   let clouds = makeClouds(seed);
-  let cloudPlate: HTMLImageElement | null = null;
+  let cloudPlateWide: HTMLImageElement | null = null;
+  let cloudPlateTall: HTMLImageElement | null = null;
   if (typeof Image !== "undefined") {
-    cloudPlate = new Image();
-    cloudPlate.decoding = "async";
-    cloudPlate.src = "/atelier/cloud-ceiling-v2.jpg";
+    cloudPlateWide = new Image();
+    cloudPlateWide.decoding = "async";
+    cloudPlateWide.src = "/atelier/cloud-ceiling-v2.webp";
+    cloudPlateTall = new Image();
+    cloudPlateTall.decoding = "async";
+    cloudPlateTall.src = "/atelier/cloud-ceiling-portrait-v2.webp";
   }
   let phase = 0;
   let cloudAmount = 1;
@@ -329,18 +333,22 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, w, h);
 
-      const plateReady = Boolean(cloudPlate?.complete && cloudPlate.naturalWidth > 0);
+      const cloudPlate = w / Math.max(1, h) < 1.2 ? cloudPlateTall : cloudPlateWide;
+      const sourceWidth = cloudPlate?.naturalWidth || cloudPlate?.width || 0;
+      const sourceHeight = cloudPlate?.naturalHeight || cloudPlate?.height || 0;
+      const plateReady = Boolean(cloudPlate?.complete && sourceWidth > 0 && sourceHeight > 0);
       if (plateReady && cloudPlate) {
-        const scale = Math.max(w / cloudPlate.naturalWidth, h / cloudPlate.naturalHeight) * 1.025;
-        const imageWidth = cloudPlate.naturalWidth * scale;
-        const imageHeight = cloudPlate.naturalHeight * scale;
+        const scale = Math.max(w / sourceWidth, h / sourceHeight) * 1.08;
+        const imageWidth = sourceWidth * scale;
+        const imageHeight = sourceHeight * scale;
         const drift = Math.sin(phase * 0.018) * w * 0.008;
+        const imageTop = clamp(deckY - imageHeight * 0.515, h - imageHeight, 0);
         ctx.save();
-        ctx.globalAlpha = 0.97;
+        ctx.globalAlpha = 0.98;
         ctx.drawImage(
           cloudPlate,
           (w - imageWidth) * 0.5 + drift,
-          (h - imageHeight) * 0.5,
+          imageTop,
           imageWidth,
           imageHeight,
         );
@@ -692,4 +700,3 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
     },
   };
 };
-
