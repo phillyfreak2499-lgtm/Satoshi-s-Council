@@ -18,7 +18,7 @@ import { formatSeed, nextSeed } from "@/lib/atelier/rng";
 import { useStudio } from "@/lib/atelier/studio";
 import type { CallLogRow, Lean } from "@/lib/desk/types";
 
-const STORE = "atelier:v6";
+const STORE = "atelier:v7";
 const WINDOW_MS = 15 * 60 * 1000;
 
 export type SatoshiPaint = {
@@ -172,6 +172,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     try {
       const raw =
         localStorage.getItem(STORE) ??
+        localStorage.getItem("atelier:v6") ??
         localStorage.getItem("atelier:v5") ??
         localStorage.getItem("atelier:v4") ??
         localStorage.getItem("atelier:v3") ??
@@ -562,3 +563,4 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     </div>
   );
 }
+

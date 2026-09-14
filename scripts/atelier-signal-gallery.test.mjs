@@ -8,6 +8,7 @@ const field = readFileSync("src/lib/atelier/rooms/field.ts", "utf8");
 const ceiling = readFileSync("src/lib/atelier/rooms/ceiling.ts", "utf8");
 const arcade = readFileSync("src/lib/atelier/rooms/arcade.ts", "utf8");
 const council = readFileSync("src/lib/atelier/rooms/council.ts", "utf8");
+const forge = readFileSync("src/lib/atelier/rooms/forge.ts", "utf8");
 const rooms = readFileSync("src/lib/atelier/rooms/index.ts", "utf8");
 const catalog = readFileSync("src/lib/atelier/catalog.ts", "utf8");
 const wave = readFileSync("src/lib/atelier/rooms/wave.ts", "utf8");
@@ -59,10 +60,12 @@ test("Cloud Ceiling tells the final-minute settlement truth", () => {
   assert.match(ceiling, /WAITING FOR BRTI PRINTS/);
   assert.match(ceiling, /CEILING BROKEN/);
   assert.match(ceiling, /REJECTED/);
+  assert.match(ceiling, /finishAtmosphere/);
+  assert.match(ceiling, /globalCompositeOperation = "screen"/);
+  assert.match(ceiling, /lineDashOffset = -phase/);
   assert.match(ceiling, /cloud-ceiling-v2\.jpg/);
-  assert.match(ceiling, /drawCloudRange\(0\.76, 1\.01/);
-  assert.match(ceiling, /const mirrorTop/);
   assert.match(ceiling, /ctx\.drawImage\(/);
+  assert.match(ceiling, /reflectedLight/);
 });
 
 test("Tape Arcade keeps player skill separate from settlement", () => {
@@ -79,13 +82,29 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(arcade, /DRIVE: \$\{priorRun\.grip\}% GRIP/);
   assert.match(arcade, /lastSettledTicker === priorRun\.ticker/);
   assert.match(arcade, /sessionStorage\.setItem\(RUN_STORE/);
-  assert.match(arcade, /const viewSeconds = finalMinute \? 45 : openRoad \? 120 : 75/);
+  assert.match(arcade, /TAPE AHEAD UNWRITTEN/);
+  assert.match(arcade, /const cameraSeconds = finalMinute \? 45 : openRoad \? 120 : 75/);
+  assert.match(arcade, /const cameraLens = cameraSeconds \/ 900/);
   assert.match(arcade, /liveRoad\.push/);
-  assert.match(arcade, /CHASE \$\{viewSeconds\}s · ZOOM/);
+  assert.match(arcade, /CHASE CAMERA \$\{cameraSeconds\}s · ZOOM/);
   assert.match(arcade, /GUARDRAIL \$\{signedDollars/);
   assert.match(gallery, /\.slice\(-180\)/);
+  assert.match(arcade, /lineDashOffset = -roadPhase/);
+  assert.match(catalog, /key: "rush"/);
+  assert.match(catalog, /Road rush changes presentation speed only/);
   assert.doesNotMatch(arcade, /boost|power-up|extra lives|betting/i);
   assert.match(styles, /atelier\[data-room="arcade"\] \.atelier-frame canvas/);
+});
+
+test("Gavel Foundry follows the published Chair without gaining authority", () => {
+  assert.match(catalog, /name: "Gavel Foundry"/);
+  assert.match(rooms, /forge: createForge/);
+  assert.match(forge, /PUBLISHED \$\{chairCall\}/);
+  assert.match(forge, /GAVEL HELD/);
+  assert.match(forge, /GAVEL RELEASED/);
+  assert.match(forge, /SCORE RING · NOT WIN PROBABILITY/);
+  assert.match(forge, /DISPLAY ONLY · CANNOT VOTE OR PLACE ORDERS/);
+  assert.doesNotMatch(forge, /runChair|noteCall|paperBookEdgeOk|promoteToLive|fetch\(/);
 });
 
 test("Council Constellation renders all existing votes without authority", () => {
@@ -115,7 +134,8 @@ test("the new veil uses distinct call climates and motion can freeze", () => {
 });
 
 test("the Gallery remains a read-only paper presentation", () => {
-  const source = `${gallery}\n${tab}\n${field}\n${wave}\n${ceiling}\n${arcade}\n${council}`;
+  const source = `${gallery}\n${tab}\n${field}\n${wave}\n${ceiling}\n${arcade}\n${council}\n${forge}`;
   assert.doesNotMatch(source, /runChair|noteCall|paperBookEdgeOk|promoteToLive/);
   assert.doesNotMatch(source, /method:\s*["']POST["']|fetch\(|\/api\//);
 });
+
