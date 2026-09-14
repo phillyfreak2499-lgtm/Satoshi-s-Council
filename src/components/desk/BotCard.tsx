@@ -47,6 +47,7 @@ export function BotCard({
             ▸
           </span>
         </button>
+        {seat === "WICK" ? <a href="/training/wick" className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with WICK ↗</a> : null}
       </article>
     );
   }
@@ -90,6 +91,7 @@ export function BotCard({
           </div>
         </div>
         <Eyes seat={seat} snap={snap} vote={vote} />
+        {seat === "WICK" ? <a href="/training/wick" className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with WICK ↗</a> : null}
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 p-3">
         <div className="flex items-center gap-2">

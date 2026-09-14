@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TAB_SEATS } from "@/lib/desk/seats";
-import { SiteHeader } from "./SiteHeader";
+import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
 import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
@@ -19,22 +19,17 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrustStrip, Welcome } from "./Welcome";
 import { applyDisplayPrefs, markWelcomeSeen, readFloorDensity, readSeatView, setFloorDensity as saveFloorDensity, setSeatView as saveSeatView, TRUST_CHIPS, welcomeSeen, type FloorDensity, type SeatView } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
-import { SITE_DESTINATIONS } from "@/lib/desk/navigation";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
 import { BoardTab } from "./Feedback";
-import { useBoardUnread } from "./use-board-unread";
 import { AtelierTab } from "./AtelierTab";
 import { CrewTab } from "./CrewTab";
 import { ArenaTab } from "./ArenaTab";
 import { BooksTab } from "./BooksTab";
 
-const PRIMARY: { id: TabId; label: string; href?: string }[] = [
-  { id: "satoshi", label: "FLOOR" },
-  { id: "structure", label: "DESKS" },
-  { id: "arena", label: "ARENA", href: "/arena" },
-  { id: "books", label: "BOOKS" },
-  { id: "board", label: "BOARD" },
+const PRIMARY: { id: TabId; label: string }[] = [
+  { id: "satoshi", label: "Overview" },
+  { id: "structure", label: "Specialists" },
 ];
 // One shape for every primary nav item — the tab buttons (FLOOR, DESKS, BOOKS,
 // BOARD) and the ARENA room link alike — so every word sits at the same size in
@@ -83,13 +78,13 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          aria-label="More tabs and pages"
+          aria-label="Floor tools"
           className={cn(
             "flex min-h-11 shrink-0 items-center gap-1 rounded-sm px-2.5 font-mono text-micro tracking-wide",
             cur ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
           )}
         >
-          {cur ? cur.label : "MORE"} <span aria-hidden="true">▾</span>
+          {cur ? cur.label : "Desk tools"} <span aria-hidden="true">▾</span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -107,17 +102,6 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
           <DropdownMenu.Item onSelect={onTour} className={item}>
             Replay the 60-second tour<span className="text-subtle">?</span>
           </DropdownMenu.Item>
-          <DropdownMenu.Separator className="my-1 h-px bg-border" />
-          {SITE_DESTINATIONS.filter(
-            ({ href }) => href !== "/" && href !== "/arena" && href !== "/books" && href !== "/board",
-          ).map(({ href, label, hint }) => (
-            <DropdownMenu.Item key={href} asChild className={item}>
-              <a href={href}>
-                {label}
-                <span className="text-subtle">{hint}</span>
-              </a>
-            </DropdownMenu.Item>
-          ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -127,7 +111,6 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
 export function DeskApp() {
   const frame = useDesk();
   const [tab, setTab] = useState<TabId>("satoshi");
-  const boardUnread = useBoardUnread(tab === "board");
   const [focus, setFocus] = useState<SeatId | null>(null);
   const [tourOn, setTourOn] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -244,21 +227,6 @@ export function DeskApp() {
     beacon("tour_start");
   };
   const desk = DESKS.find((d) => d.id === tab) ?? null;
-  const navRef = useRef<HTMLElement>(null);
-  const [navMore, setNavMore] = useState(false);
-  useEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const check = () => setNavMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-    check();
-    el.addEventListener("scroll", check, { passive: true });
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", check);
-      ro.disconnect();
-    };
-  }, []);
 
   const seats =
     tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board" && tab !== "crew" && tab !== "arena" && tab !== "books"
@@ -270,87 +238,15 @@ export function DeskApp() {
       <a href="#floor-main" className="skip-link">
         Skip to the floor
       </a>
-      <SiteHeader
-        fold="lg"
-        tour="tour-header"
-        onBrand={() => setTab("satoshi")}
-        nav={
-          <>
-            <button
-              type="button"
-              aria-label="Search the desk (Command or Control K)"
-              title="Search the desk · ⌘K"
-              onClick={() => setPaletteOn(true)}
-              className="btn btn-sm text-muted hover:text-fg"
-            >
-              <span aria-hidden="true">⌘K</span>
-              <span className="sr-only lg:not-sr-only">search</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Replay the 60-second tour"
-              title="Replay the 60-second tour"
-              onClick={startTour}
-              className="btn btn-icon btn-sm text-muted hover:text-fg"
-            >
-              ?
-            </button>
-            <div className="relative min-w-0 max-w-full">
-              {navMore ? <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-r from-transparent to-bg" /> : null}
-              {navMore ? <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 font-mono text-micro text-subtle">›</span> : null}
-              <nav ref={navRef} className="nav-scroll flex max-w-full items-center gap-1 overflow-x-auto" aria-label="Council tabs">
-                {PRIMARY.map((t) => {
-                  const active = t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id;
-                  if (t.href) {
-                    return (
-                      <a key={t.id} href={t.href} className={cn(NAV_TAB, NAV_TAB_IDLE)}>
-                        <Tip k={`tab.${t.id}`} hoverOnly>
-                          {t.label}
-                        </Tip>
-                      </a>
-                    );
-                  }
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setTab(t.id)}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}
-                    >
-                      <Tip k={t.id === "structure" ? "tab.floor" : `tab.${t.id}`} hoverOnly>
-                        {t.label}
-                      </Tip>
-                      {t.id === "board" && boardUnread > 0 ? (
-                        <span
-                          aria-label={`${boardUnread} new`}
-                          className="rounded-sm bg-wait/20 px-1 font-mono text-micro tabular text-wait"
-                        >
-                          {boardUnread}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-                <MoreMenu tab={tab} onTab={setTab} onTour={startTour} onSearch={() => setPaletteOn(true)} />
-              </nav>
-            </div>
-          </>
-        }
-        menu={[
-          ...PRIMARY.map((t) =>
-            t.href
-              ? { label: t.label, href: t.href, hint: "room" }
-              : { label: t.label, onSelect: () => setTab(t.id), active: t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id },
-          ),
-          ...MORE.map((m) => ({ label: m.label, hint: m.hint, onSelect: () => setTab(m.id), active: tab === m.id })),
-          ...SITE_DESTINATIONS.filter(
-            ({ href }) => href !== "/" && href !== "/arena" && href !== "/books" && href !== "/board",
-          ).map(({ menuLabel, href, hint }) => ({ label: menuLabel, href, hint })),
-          { label: "Search the desk", hint: "⌘K", onSelect: () => setPaletteOn(true) },
-          { label: "Replay the 60-second tour", hint: "?", onSelect: startTour },
-        ]}
-      />
+      <GlobalHeader tour="tour-header" action={{ label: "Search", hint: "⌘K", onSelect: () => setPaletteOn(true) }} />
+      <nav aria-label="Floor views" className="gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1">
+        <span className="mr-2 font-mono text-micro uppercase tracking-widest text-subtle">Floor</span>
+        {PRIMARY.map((item) => {
+          const active = item.id === "structure" ? DESK_IDS.has(tab) : tab === item.id;
+          return <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-current={active ? "page" : undefined} className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}>{item.label}</button>;
+        })}
+        <MoreMenu tab={tab} onTab={setTab} onTour={startTour} onSearch={() => setPaletteOn(true)} />
+      </nav>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">
         <TrustStrip className="hidden sm:flex" />
@@ -577,3 +473,4 @@ export function DeskApp() {
     </div>
   );
 }
+

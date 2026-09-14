@@ -9,7 +9,7 @@ const read = (path) => readFileSync(join(ROOT, path), "utf8");
 
 test("every public room and reading page uses one navigation map", () => {
   const map = read("src/lib/desk/navigation.ts");
-  for (const path of ["/", "/chamber", "/lab", "/arena", "/about", "/faq", "/legal"]) {
+  for (const path of ["/", "/training", "/chamber", "/lab", "/arena", "/about", "/faq", "/legal"]) {
     assert.match(map, new RegExp(`href: "${path === "/" ? "\\/" : path}"`), `${path} is in the public navigation`);
   }
 
@@ -18,6 +18,7 @@ test("every public room and reading page uses one navigation map", () => {
     "src/components/desk/LabRoom.tsx",
     "src/components/desk/PitRoom.tsx",
     "src/components/desk/Page.tsx",
+    "src/components/desk/DeskApp.tsx",
   ]) {
     const source = read(path);
     assert.match(source, /<GlobalHeader/, `${path} uses the shared header`);
@@ -25,7 +26,6 @@ test("every public room and reading page uses one navigation map", () => {
   }
 
   for (const path of [
-    "src/components/desk/DeskApp.tsx",
     "src/components/desk/Palette.tsx",
   ]) {
     assert.match(read(path), /SITE_DESTINATIONS/, `${path} consumes the same destination map`);
@@ -48,3 +48,4 @@ test("Arena is the one public name for the paper-call room", () => {
   assert.match(visibleSources, /Arena · Satoshi's Council/);
   assert.match(visibleSources, /Enter the Arena/);
 });
+
