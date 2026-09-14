@@ -573,7 +573,15 @@ export function labFairNow(ticker: string): number | null {
   return Math.round(L.fair.p_up * 1000) / 10;
 }
 
-export type LabFairState = { yes_cents: number; locked: number; age_s: number; mean: number; sd: number };
+export type LabFairState = {
+  yes_cents: number;
+  locked: number;
+  age_s: number;
+  mean: number;
+  sd: number;
+  /** Observed BRTI print average for the active final minute. Presentation only. */
+  settle_avg: number | null;
+};
 
 /** The settlement-rule fair value as the INDEX seat reads it: YES cents, locked final-minute prints, and its age. */
 export function labFairState(ticker: string): LabFairState | null {
@@ -581,12 +589,19 @@ export function labFairState(ticker: string): LabFairState | null {
   if (!L.fair || L.fairTicker !== ticker) return null;
   const age = (Date.now() - L.fairT) / 1000;
   if (age > 30) return null;
+  const snap = L.getSnap();
+  const observed =
+    snap && snap.ticker === ticker && snap.secs_left <= 60
+      ? settlePrints(L.brti, snap.close_time)
+      : null;
+  const settleAvg = observed && observed.k > 0 ? observed.sum / observed.k : null;
   return {
     yes_cents: Math.round(L.fair.p_up * 1000) / 10,
     locked: Math.max(0, Math.min(60, Math.round(L.fair.k))),
     age_s: Math.round(age * 10) / 10,
     mean: L.fair.mean,
     sd: L.fair.sd,
+    settle_avg: settleAvg,
   };
 }
 
