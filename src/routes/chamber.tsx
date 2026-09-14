@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ChamberRoom } from "@/components/desk/ChamberRoom";
+import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 
 export const Route = createFileRoute("/chamber")({
   head: () => ({
@@ -11,9 +12,10 @@ export const Route = createFileRoute("/chamber")({
       },
     ],
   }),
+  loader: () => listChamberSpeech(),
   component: ChamberPage,
 });
 
 function ChamberPage() {
-  return <ChamberRoom />;
+  return <ChamberRoom initial={Route.useLoaderData()} />;
 }
