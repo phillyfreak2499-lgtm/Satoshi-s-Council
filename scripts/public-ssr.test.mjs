@@ -19,7 +19,7 @@ test("public evidence routes load their first paint on the server", () => {
   for (const [path, loader, data] of cases) {
     const source = read(path);
     assert.match(source, new RegExp(`loader:[\\s\\S]*${loader}`), `${path} calls its server loader`);
-    assert.match(source, new RegExp(data.replace(/[.*+?^$\{\}()|[\]\\]/g, "\\$&")), `${path} hands loader data to the page`);
+    assert.match(source, new RegExp(data.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${path} hands loader data to the page`);
   }
 });
 
