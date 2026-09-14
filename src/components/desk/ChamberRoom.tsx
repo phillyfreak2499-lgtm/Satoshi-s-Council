@@ -46,6 +46,19 @@ function exchangeLabel(row: ChamberStatement): string {
   return e.ticker || e.candidate_label || e.candidate_id || e.seat || "desk event";
 }
 
+function utcDate(value: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return value.slice(0, 10);
+  }
+}
+
 function groupExchanges(rows: ChamberStatement[]): Exchange[] {
   const map = new Map<string, Exchange>();
   for (const row of rows) {
@@ -300,9 +313,9 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
   );
 }
 
-export function ChamberRoom() {
-  const [rows, setRows] = useState<ChamberStatement[]>([]);
-  const [loaded, setLoaded] = useState(false);
+export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) {
+  const [rows, setRows] = useState<ChamberStatement[]>(initial);
+  const [loaded, setLoaded] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -369,7 +382,7 @@ export function ChamberRoom() {
                         {exchange.statements.length > 1 ? "Exchange" : "Dispatch"} · <span className="break-all text-muted">{exchange.label}</span>
                       </div>
                       <time className="font-mono text-micro tabular text-subtle" dateTime={exchange.latest}>
-                        {new Date(exchange.latest).toLocaleDateString()}
+                        {utcDate(exchange.latest)}
                       </time>
                     </div>
                     <div className="space-y-5">
