@@ -5,6 +5,7 @@ const MOTION_KEY = "ui.motion";
 const PIT_TOUR_KEY = "satoshi-pit-tour-v1";
 const SEATS_KEY = "ui.seats";
 const FLOOR_DENSITY_KEY = "ui.floor-density";
+const FLOOR_ROOM_KEY = "ui.floor-room-hidden";
 
 export const TRUST_CHIPS = ["Paper only", "Bitcoin only", "15-minute windows", "No live trades", "Not financial advice"];
 
@@ -73,4 +74,12 @@ export function pitTourSeen(): boolean {
 
 export function markPitTourSeen(): void {
   set(PIT_TOUR_KEY, "done");
+}
+
+/** Collapse only the decorative room; the live Chair call remains visible. */
+export function readFloorRoomHidden(): boolean {
+  return get(FLOOR_ROOM_KEY) === "hidden";
+}
+export function setFloorRoomHidden(hidden: boolean): void {
+  set(FLOOR_ROOM_KEY, hidden ? "hidden" : "");
 }
