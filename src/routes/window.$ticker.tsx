@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Page } from "@/components/desk/Page";
 import { ReplayPane } from "@/components/desk/ReplayPane";
 import { ogWindowImage } from "@/lib/desk/site";
@@ -18,7 +18,6 @@ function browserTz(): string {
 function WindowPage() {
   const { ticker } = Route.useParams();
   const [msg, setMsg] = useState<string | null>(null);
-  const ok = TICKER_RE.test(ticker);
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
     try {
@@ -38,11 +37,7 @@ function WindowPage() {
       title="Window replay"
       lede="One Bitcoin 15-minute window, replayed: what the seats saw and said, the chair's read, and Kalshi's official settlement value. Paper only."
     >
-      {ok ? (
-        <ReplayPane ticker={ticker} tz={browserTz()} />
-      ) : (
-        <div className="font-mono text-ui text-muted">That is not a window ticker.</div>
-      )}
+      <ReplayPane ticker={ticker} tz={browserTz()} />
       <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-micro text-muted">
         <button
           type="button"
@@ -65,6 +60,9 @@ function WindowPage() {
 }
 
 export const Route = createFileRoute("/window/$ticker")({
+  beforeLoad: ({ params }) => {
+    if (!TICKER_RE.test(params.ticker)) throw notFound();
+  },
   head: ({ params }) => ({
     meta: [
       { title: `Window replay · ${params.ticker} · Satoshi's Council` },

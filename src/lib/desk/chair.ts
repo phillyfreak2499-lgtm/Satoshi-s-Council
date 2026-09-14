@@ -700,8 +700,8 @@ export function runChair(
     knn_note: knnNote,
     wait_note:
       (learner.chair_wait_n ?? 0) > 0
-        ? `WAIT saved ${learner.chair_wait_good}/${learner.chair_wait_n} (both sides ≤ 0¢ after fee)`
-        : "WAIT not graded yet",
+        ? `WAIT recorded ${learner.chair_wait_n} times; abstentions are not scored as directional hits.`
+        : "WAIT has not been recorded yet.",
     walk: walkForward(learner.wf_chair),
     quorum,
     rows,

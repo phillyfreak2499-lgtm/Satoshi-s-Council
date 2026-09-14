@@ -6,6 +6,7 @@ import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type His
 import { bundleToSnapshot } from "./live";
 import { DEFAULT_SETTINGS, loadCallLog, loadLearner, loadPersisted, saveCallLog, savePersisted } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
+import { freshLearner } from "./skills";
 import { bookable } from "./book-floor";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
@@ -32,7 +33,9 @@ export type DeskFrame = {
 };
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
-let learner: Learner = loadPersisted().learner;
+// The server and the browser must render the same first frame. Persisted browser
+// state is restored by startEngine() after hydration.
+let learner: Learner = freshLearner();
 let demo: DemoState | null = null;
 let prevSnap: Snapshot | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -49,7 +52,7 @@ let pending: {
   since: number;
 } | null = null;
 let gradeCand: { snap: Snapshot; votes: Vote[]; chair: ChairResult } | null = null;
-let callLog: CallLogRow[] = loadCallLog(settings.source);
+let callLog: CallLogRow[] = [];
 let lastCall: { ticker: string; close_time: number; lean: Lean } | null = null;
 let sticks: Partial<Record<string, Stick>> = {};
 let stickWindow = "";

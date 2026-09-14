@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Page } from "@/components/desk/Page";
 import { BotCard } from "@/components/desk/BotCard";
 import { LeanChip } from "@/components/desk/bits";
@@ -25,15 +25,7 @@ function SeatPage() {
   const id = raw.toUpperCase();
   const frame = useDesk();
   const [msg, setMsg] = useState<string | null>(null);
-  if (!isSeat(id)) {
-    return (
-      <Page title="No such seat" lede="The desk has twenty-one seats; that is not one of them.">
-        <a href="/" className="btn btn-secondary">
-          open the floor
-        </a>
-      </Page>
-    );
-  }
+  if (!isSeat(id)) throw notFound();
   const meta = SEAT_BY_ID[id];
   const gloss = GLOSS[`seat.${id}`];
   const vote = frame.votes.find((v) => v.seat === id);
@@ -129,6 +121,9 @@ function SeatPage() {
 }
 
 export const Route = createFileRoute("/seat/$id")({
+  beforeLoad: ({ params }) => {
+    if (!isSeat(params.id.toUpperCase())) throw notFound();
+  },
   head: ({ params }) => {
     const id = params.id.toUpperCase();
     const meta = isSeat(id) ? SEAT_BY_ID[id] : null;
