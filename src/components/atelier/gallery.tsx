@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minimize2, Settings, X } from "lucide-react";
+import { Maximize2, Minimize2, RefreshCw, Settings, X } from "lucide-react";
 import {
   formatRemain,
   leanToStance,
@@ -18,26 +18,47 @@ import { formatSeed, nextSeed } from "@/lib/atelier/rng";
 import { useStudio } from "@/lib/atelier/studio";
 import type { CallLogRow, Lean } from "@/lib/desk/types";
 
-const STORE = "atelier:v3";
+const STORE = "atelier:v4";
 const WINDOW_MS = 15 * 60 * 1000;
 
 export type SatoshiPaint = {
   lean: Lean;
   remainingMs: number;
   ticker: string;
+  phase: string;
+  confidence: number;
+  score: number;
+  bar: number;
+  brainAge: number | null;
+  source: string;
   log: CallLogRow[];
 };
 
 function emptyBag(): Record<RoomId, Params> {
   const bag = {} as Record<RoomId, Params>;
-  for (const r of ROOMS) bag[r.id] = defaultParams(r);
+  for (const room of ROOMS) bag[room.id] = defaultParams(room);
   return bag;
 }
 
+function hashWindow(value: string) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
 export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bounceRef = useRef<HTMLCanvasElement>(null);
   const roomRef = useRef<RoomId>("field");
+  const fullRef = useRef(false);
   const [roomId, setRoomId] = useState<RoomId>("field");
   const [seed, setSeed] = useState(20260905);
   const [paused, setPaused] = useState(false);
@@ -49,10 +70,15 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
 
   const stance = leanToStance(satoshi.lean);
   const remaining = Math.max(0, satoshi.remainingMs);
-  const progress = 1 - remaining / WINDOW_MS;
+  const progress = clamp01(1 - remaining / WINDOW_MS);
   const tape = tapeFromLog(satoshi.log, stance, satoshi.ticker);
+  const artSeed = useMemo(
+    () => (seed ^ hashWindow(satoshi.ticker || "15m")) >>> 0,
+    [seed, satoshi.ticker],
+  );
 
   roomRef.current = roomId;
+  fullRef.current = full;
   const room = roomById(roomId);
   const params: Params = {
     ...(bag[roomId] ?? defaultParams(room)),
@@ -63,6 +89,12 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
   };
 
   const glow = CALL_GLOW[stance];
+  const word = stanceWord(stance);
+  const confidence = Math.min(100, Math.max(0, Math.round(satoshi.confidence)));
+  const voteStrength = satoshi.bar > 0 ? clamp01(Math.abs(satoshi.score) / satoshi.bar) : 0;
+  const liveSource = satoshi.source === "live";
+  const feedFresh = liveSource && satoshi.brainAge != null && satoshi.brainAge < 20;
+  const feedLabel = liveSource ? (feedFresh ? "Live feed" : "Feed aging") : "Demo feed";
 
   const setParam = useCallback((key: string, value: string | number) => {
     if (key === "stance" || key === "call") return;
@@ -75,7 +107,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
 
   const host = useMemo(() => ({ setParam }), [setParam]);
 
-  useStudio(canvasRef, bounceRef, roomId, params, seed, paused, host);
+  useStudio(canvasRef, bounceRef, roomId, params, artSeed, paused, host);
 
   useEffect(() => {
     setReady(true);
@@ -83,27 +115,36 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORE) ?? localStorage.getItem("atelier:v2");
+      const raw =
+        localStorage.getItem(STORE) ??
+        localStorage.getItem("atelier:v3") ??
+        localStorage.getItem("atelier:v2");
       if (!raw) return;
-      const saved = JSON.parse(raw) as { room?: string; seed?: number; bag?: Record<string, Params> };
-      if (saved.room && ROOMS.some((r) => r.id === saved.room)) setRoomId(saved.room as RoomId);
+      const saved = JSON.parse(raw) as {
+        room?: string;
+        seed?: number;
+        bag?: Record<string, Params>;
+      };
+      if (saved.room && ROOMS.some((candidate) => candidate.id === saved.room)) {
+        setRoomId(saved.room as RoomId);
+      }
       if (typeof saved.seed === "number") setSeed(saved.seed >>> 0);
       if (saved.bag) {
         setBag((prev) => {
           const next = { ...prev };
-          for (const r of ROOMS) {
-            if (saved.bag && saved.bag[r.id]) {
-              const merged = { ...next[r.id], ...saved.bag[r.id] };
+          for (const candidate of ROOMS) {
+            if (saved.bag && saved.bag[candidate.id]) {
+              const merged = { ...next[candidate.id], ...saved.bag[candidate.id] };
               delete merged.stance;
               delete merged.call;
-              next[r.id] = merged;
+              next[candidate.id] = merged;
             }
           }
           return next;
         });
       }
     } catch {
-      /* ignore */
+      /* ignore invalid local preferences */
     }
   }, []);
 
@@ -111,68 +152,107 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     try {
       localStorage.setItem(STORE, JSON.stringify({ room: roomId, seed, bag }));
     } catch {
-      /* ignore */
+      /* ignore storage failures */
     }
   }, [roomId, seed, bag]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      if (e.key === "Escape") {
+    const onFullscreenChange = () => {
+      setFull(document.fullscreenElement === rootRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFull = useCallback(async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        setFull(false);
+      }
+      return;
+    }
+
+    if (fullRef.current) {
+      setFull(false);
+      return;
+    }
+
+    const root = rootRef.current;
+    if (!root?.requestFullscreen) {
+      setFull(true);
+      return;
+    }
+
+    try {
+      await root.requestFullscreen();
+      setFull(true);
+    } catch {
+      setFull(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (event.key === "Escape") {
         if (settings) {
           setSettings(false);
           return;
         }
-        if (full) setFull(false);
+        if (fullRef.current && !document.fullscreenElement) setFull(false);
         return;
       }
-      if (e.key >= "1" && e.key <= "3") {
-        const r = ROOMS[Number(e.key) - 1];
-        if (r) setRoomId(r.id);
-      } else if (e.key === "r" || e.key === "R") {
-        setSeed((s) => nextSeed(s));
-      } else if (e.key === " ") {
-        e.preventDefault();
-        setPaused((p) => !p);
-      } else if (e.key === "f" || e.key === "F") {
-        setFull((v) => !v);
-      } else if (e.key === "," || e.key === "s" || e.key === "S") {
-        if (e.key === "s" && (e.metaKey || e.ctrlKey)) return;
-        setSettings((v) => !v);
+      if (event.key >= "1" && event.key <= "3") {
+        const nextRoom = ROOMS[Number(event.key) - 1];
+        if (nextRoom) setRoomId(nextRoom.id);
+      } else if (event.key === "r" || event.key === "R") {
+        setSeed((current) => nextSeed(current));
+      } else if (event.key === " ") {
+        event.preventDefault();
+        setPaused((current) => !current);
+      } else if (event.key === "f" || event.key === "F") {
+        void toggleFull();
+      } else if (event.key === "," || event.key === "s" || event.key === "S") {
+        if (event.key === "s" && (event.metaKey || event.ctrlKey)) return;
+        setSettings((current) => !current);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [settings, full]);
+  }, [settings, toggleFull]);
 
   const copySeed = async () => {
     try {
-      await navigator.clipboard.writeText(formatSeed(seed));
+      await navigator.clipboard.writeText(formatSeed(artSeed));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
-      /* ignore */
+      /* ignore clipboard failures */
     }
   };
 
   const recent = tape.slice(-12);
-  const word = stanceWord(stance);
 
   return (
     <div
+      ref={rootRef}
       className={`atelier${full ? " is-full" : ""}${settings ? " is-sheet" : ""}`}
       id="room"
+      data-stance={stance}
+      data-feed={feedFresh ? "fresh" : liveSource ? "aging" : "demo"}
       style={{ ["--glow" as string]: glow }}
     >
       <div className="atelier-spot" />
       <header className="atelier-mast">
         <div className="atelier-mark">
-          Atelier <span className="atelier-mark-rest">· SATOSHI</span>
+          Signal Gallery <span className="atelier-mark-rest">· SATOSHI</span>
         </div>
         <div className="atelier-live" aria-live="polite">
           <span className="atelier-live-word">{word}</span>
-          <span className="atelier-sr">{formatRemain(remaining)}</span>
+          <span className="atelier-live-clock">{formatRemain(remaining)}</span>
         </div>
       </header>
 
@@ -181,10 +261,22 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
           type="button"
           className="atelier-iconbtn"
           aria-pressed={full}
-          aria-label={full ? "Exit full screen" : "Full screen art"}
-          onClick={() => setFull((v) => !v)}
+          aria-label={full ? "Exit display mode" : "Enter display mode"}
+          onClick={() => void toggleFull()}
         >
-          {full ? <Minimize2 size={16} strokeWidth={1.75} /> : <Maximize2 size={16} strokeWidth={1.75} />}
+          {full ? (
+            <Minimize2 size={16} strokeWidth={1.75} />
+          ) : (
+            <Maximize2 size={16} strokeWidth={1.75} />
+          )}
+        </button>
+        <button
+          type="button"
+          className="atelier-iconbtn"
+          aria-label="Regenerate artwork"
+          onClick={() => setSeed((current) => nextSeed(current))}
+        >
+          <RefreshCw size={16} strokeWidth={1.75} />
         </button>
         <button
           type="button"
@@ -192,8 +284,8 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
           aria-pressed={settings}
           aria-haspopup="dialog"
           aria-expanded={settings}
-          aria-label="Settings"
-          onClick={() => setSettings((v) => !v)}
+          aria-label="Gallery settings"
+          onClick={() => setSettings((current) => !current)}
         >
           <Settings size={16} strokeWidth={1.75} />
         </button>
@@ -206,30 +298,63 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
               ref={canvasRef}
               width={800}
               height={1000}
-              aria-label={`${room.name} of SATOSHI ${word}`}
+              aria-label={`${room.name} showing SATOSHI ${word}`}
             />
             <div className="atelier-tooth" />
             <div className="atelier-bounce" aria-hidden="true">
               <canvas ref={bounceRef} width={800} height={1000} />
             </div>
           </div>
-          <div className="atelier-plaque">
-            <div className="title">
-              {room.index} · {room.name} · {word}
-            </div>
-            <div className="meta">
-              SATOSHI · {satoshi.ticker || "15m paper"} · not a trade
-            </div>
-            <div className="fine">{room.fine}</div>
-          </div>
         </div>
       </div>
+
+      <section
+        className="atelier-signal"
+        aria-label={`SATOSHI ${word}, ${formatRemain(remaining)} remaining`}
+      >
+        <div className="atelier-signal-topline">
+          <span className="atelier-signal-status">
+            <i aria-hidden="true" />
+            {feedLabel}
+          </span>
+          <span>
+            {room.index} / {room.name}
+          </span>
+        </div>
+        <div className="atelier-signal-call">
+          <strong>{word}</strong>
+          <time>{formatRemain(remaining)}</time>
+        </div>
+        <div className="atelier-signal-meter" aria-hidden="true">
+          <span style={{ width: `${Math.round(voteStrength * 100)}%` }} />
+        </div>
+        <div className="atelier-signal-meta">
+          <span>gate confidence {confidence}</span>
+          <span>
+            weighted vote {Math.abs(satoshi.score).toFixed(2)} / {Math.max(0, satoshi.bar).toFixed(2)}
+          </span>
+        </div>
+        <div className="atelier-signal-tape" aria-label="Recent SATOSHI calls">
+          {recent.map((call, index) => (
+            <i
+              key={`${call.label}-${call.at}-${index}`}
+              data-stance={call.stance}
+              className={index === recent.length - 1 ? "live" : undefined}
+              title={`${call.label} ${stanceWord(call.stance)}`}
+            />
+          ))}
+        </div>
+        <div className="atelier-signal-foot">
+          <span title={satoshi.ticker}>{satoshi.ticker || "15m paper"}</span>
+          <span>{satoshi.phase || "—"} · paper only · not a trade</span>
+        </div>
+      </section>
 
       {ready && settings ? (
         <button
           type="button"
           className="atelier-scrim"
-          aria-label="Close settings"
+          aria-label="Close gallery settings"
           onClick={() => setSettings(false)}
         />
       ) : null}
@@ -239,16 +364,16 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
           className={`atelier-sheet${settings ? " is-open" : ""}`}
           role="dialog"
           aria-modal="true"
-          aria-label="Settings"
+          aria-label="Gallery settings"
           aria-hidden={!settings}
           inert={!settings}
         >
           <div className="atelier-sheet-head">
-            <div className="atelier-sheet-title">Settings</div>
+            <div className="atelier-sheet-title">Gallery settings</div>
             <button
               type="button"
               className="atelier-iconbtn"
-              aria-label="Close settings"
+              aria-label="Close gallery settings"
               onClick={() => setSettings(false)}
             >
               <X size={16} strokeWidth={1.75} />
@@ -257,17 +382,17 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
 
           <div className="atelier-tape" aria-label="Satoshi call tape">
             <div className="atelier-tape-bars">
-              {recent.map((c, i) => (
+              {recent.map((call, index) => (
                 <i
-                  key={`${c.label}-${c.at}-${i}`}
-                  data-stance={c.stance}
-                  className={i === recent.length - 1 ? "live" : undefined}
-                  title={`${c.label} ${stanceWord(c.stance)}`}
+                  key={`${call.label}-${call.at}-${index}`}
+                  data-stance={call.stance}
+                  className={index === recent.length - 1 ? "live" : undefined}
+                  title={`${call.label} ${stanceWord(call.stance)}`}
                 />
               ))}
             </div>
             <div className="atelier-tape-track" aria-hidden="true">
-              <span style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }} />
+              <span style={{ width: `${Math.round(progress * 100)}%` }} />
             </div>
           </div>
 
@@ -275,37 +400,39 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
             <span>Room</span>
           </div>
           <div className="atelier-pills" role="tablist" aria-label="Rooms">
-            {ROOMS.map((r) => (
+            {ROOMS.map((candidate) => (
               <button
-                key={r.id}
+                key={candidate.id}
                 type="button"
                 className="atelier-pill"
                 role="tab"
-                aria-pressed={r.id === roomId}
-                onClick={() => setRoomId(r.id)}
+                aria-pressed={candidate.id === roomId}
+                onClick={() => setRoomId(candidate.id)}
               >
-                {r.word.toUpperCase()}
+                {candidate.word.toUpperCase()}
               </button>
             ))}
           </div>
 
+          <p className="atelier-room-copy">{room.fine}</p>
+
           <div className="atelier-params">
-            {room.params.map((p) =>
-              p.kind === "enum" ? null : (
-                <label key={p.key} className="atelier-param">
+            {room.params.map((param) =>
+              param.kind === "enum" ? null : (
+                <label key={param.key} className="atelier-param">
                   <span className="atelier-param-label">
-                    <span>{p.label}</span>
+                    <span>{param.label}</span>
                     <span className="atelier-param-val">
-                      {p.format ? p.format(Number(params[p.key])) : params[p.key]}
+                      {param.format ? param.format(Number(params[param.key])) : params[param.key]}
                     </span>
                   </span>
                   <input
                     type="range"
-                    min={p.min}
-                    max={p.max}
-                    step={p.step}
-                    value={Number(params[p.key])}
-                    onChange={(e) => setParam(p.key, Number(e.target.value))}
+                    min={param.min}
+                    max={param.max}
+                    step={param.step}
+                    value={Number(params[param.key])}
+                    onChange={(event) => setParam(param.key, Number(event.target.value))}
                     suppressHydrationWarning
                   />
                 </label>
@@ -314,23 +441,27 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
           </div>
 
           <div className="atelier-pills">
-            <button type="button" className="atelier-pill" onClick={() => setSeed((s) => nextSeed(s))}>
-              Reseed
+            <button
+              type="button"
+              className="atelier-pill"
+              onClick={() => setSeed((current) => nextSeed(current))}
+            >
+              New edition
             </button>
             <button
               type="button"
               className="atelier-pill"
               aria-pressed={paused}
-              onClick={() => setPaused((p) => !p)}
+              onClick={() => setPaused((current) => !current)}
             >
               {paused ? "Live" : "Pause"}
             </button>
-            <button type="button" className="atelier-seed" onClick={copySeed} aria-label="Copy seed">
-              {copied ? "Copied" : formatSeed(seed)}
+            <button type="button" className="atelier-seed" onClick={copySeed} aria-label="Copy art seed">
+              {copied ? "Copied" : formatSeed(artSeed)}
             </button>
           </div>
 
-          <p className="atelier-hint">{room.hint} · F full · 1–3 rooms · Esc close</p>
+          <p className="atelier-hint">{room.hint} · F display · 1–3 rooms · R new edition</p>
         </aside>
       ) : null}
     </div>
