@@ -46,11 +46,7 @@ export type Overnight = {
   btc_lo: number | null;
   btc_hi: number | null;
   /** The most recent completed Chair decision/window (the "last huddle"). */
-  last: {
-    t: string;
-    lean: "UP" | "DOWN" | "WAIT";
-    settle: number | null;
-  } | null;
+  last: { t: string; lean: "UP" | "DOWN" | "WAIT"; settle: number | null } | null;
 };
 
 export type Brief = { gavel: GavelRow[]; overnight: Overnight; at: number };
@@ -77,15 +73,14 @@ function iso(v: Date | string): string {
 
 function toGavel(r: LedgerRow): GavelRow {
   const winner = r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null;
-  const entryLean =
-    r.entry_lean === "UP" ? "UP" : r.entry_lean === "DOWN" ? "DOWN" : null;
+  const entryLean = r.entry_lean === "UP" ? "UP" : r.entry_lean === "DOWN" ? "DOWN" : null;
   const booked = r.entry_cents != null;
   // A booked row is one historical decision, so its side, confidence, score,
   // and bar must all come from the entry frame. Older rows have no prospective
   // receipt and retain the legacy grade-frame fallback.
-  const conf = booked ? (r.entry_conf ?? r.chair_conf) : r.chair_conf;
-  const score = booked ? (r.entry_score ?? r.score) : r.score;
-  const bar = booked ? (r.entry_bar ?? r.bar) : r.bar;
+  const conf = booked ? r.entry_conf ?? r.chair_conf : r.chair_conf;
+  const score = booked ? r.entry_score ?? r.score : r.score;
+  const bar = booked ? r.entry_bar ?? r.bar : r.bar;
   return {
     t: iso(r.close_time),
     // The side the chair actually booked and held to settlement — not the
@@ -103,15 +98,11 @@ function toGavel(r: LedgerRow): GavelRow {
 }
 
 /** BTC 12h open→now and the 12h low/high, from the current snapshot's hourly candles. Null when the history is not there. */
-function btcOvernight(): Pick<
-  Overnight,
-  "btc_open" | "btc_now" | "btc_lo" | "btc_hi"
-> {
+function btcOvernight(): Pick<Overnight, "btc_open" | "btc_now" | "btc_lo" | "btc_hi"> {
   const snap = currentSnap();
   const now = snap && snap.spot > 0 ? snap.spot : null;
   const bars = (snap?.candles_1h ?? []).filter((c) => c.closed && c.close > 0);
-  if (!snap || bars.length < 12)
-    return { btc_open: null, btc_now: now, btc_lo: null, btc_hi: null };
+  if (!snap || bars.length < 12) return { btc_open: null, btc_now: now, btc_lo: null, btc_hi: null };
   const cutoff = snap.as_of - 12 * 60 * 60_000;
   const window = bars.filter((c) => c.t >= cutoff);
   const use = window.length >= 2 ? window : bars.slice(-12);
@@ -158,11 +149,7 @@ async function build(): Promise<Brief> {
 
   // What the chair DID over the last 12 hours, not its grade-frame lean: a
   // held position whose lean decayed would otherwise be tallied as a sit.
-  const overnightRows = await db<{
-    chair_lean: string | null;
-    settle_cents: number | null;
-    winner: string | null;
-  }>`
+  const overnightRows = await db<{ chair_lean: string | null; settle_cents: number | null; winner: string | null }>`
     select chair_lean, settle_cents, winner
     from desk_ledger_research
     where close_time > now() - interval '12 hours'
@@ -183,20 +170,11 @@ async function build(): Promise<Brief> {
     if (g.lean === "WAIT") waitStreak += 1;
     else break;
   }
-  const last = gavel[0]
-    ? { t: gavel[0].t, lean: gavel[0].lean, settle: gavel[0].settle }
-    : null;
+  const last = gavel[0] ? { t: gavel[0].t, lean: gavel[0].lean, settle: gavel[0].settle } : null;
 
   return {
     gavel,
-    overnight: {
-      up,
-      down,
-      wait,
-      wait_streak: waitStreak,
-      ...btcOvernight(),
-      last,
-    },
+    overnight: { up, down, wait, wait_streak: waitStreak, ...btcOvernight(), last },
     at: Date.now(),
   };
 }

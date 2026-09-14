@@ -13,10 +13,9 @@ test("the booked decision receipt is captured at entry and persisted at grade", 
   assert.match(engine, /sanitizeBookedDecisionState\(raw\.entry_state\)/);
   assert.match(engine, /lean:\s*chair\.lean/);
   assert.match(engine, /build_sha:\s*runningBuildSha\(\)/);
-  assert.ok(
-    compact(engine).includes(
-      "bookedDecisionAtGrade(e.callLog,snap.ticker,snap.close_time,entry,)",
-    ),
+  assert.match(
+    compact(engine),
+    /bookedDecisionAtGrade\(e\.callLog,snap\.ticker,snap\.close_time,entry,?\)/,
   );
   assert.match(engine, /entry_lean, entry_build_sha/);
   assert.match(engine, /booked\?\.lean \?\? null/);
@@ -31,11 +30,12 @@ test("GAVEL pairs a booked side with the booked score frame", () => {
   assert.match(brief, /entry_bar/);
   assert.match(brief, /const booked = r\.entry_cents != null/);
   const source = compact(brief);
-  assert.ok(
-    source.includes("booked?(r.entry_conf??r.chair_conf):r.chair_conf"),
+  assert.match(
+    source,
+    /booked\?\(?r\.entry_conf\?\?r\.chair_conf\)?:r\.chair_conf/,
   );
-  assert.ok(source.includes("booked?(r.entry_score??r.score):r.score"));
-  assert.ok(source.includes("booked?(r.entry_bar??r.bar):r.bar"));
+  assert.match(source, /booked\?\(?r\.entry_score\?\?r\.score\)?:r\.score/);
+  assert.match(source, /booked\?\(?r\.entry_bar\?\?r\.bar\)?:r\.bar/);
 });
 
 test("the mirror is prospective, quality-filtered, and disconnected from decisions", () => {

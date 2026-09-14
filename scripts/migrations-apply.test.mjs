@@ -46,9 +46,7 @@ async function applyAll(db, names) {
     try {
       await db.exec(sql);
     } catch (err) {
-      assert.fail(
-        `${name} failed to apply: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      assert.fail(`${name} failed to apply: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
@@ -61,17 +59,8 @@ test("every migration applies to an empty database", async () => {
   );
   const tables = rows.map((r) => r.table_name);
   // A spot check that the schema is actually there, not that the files merely parsed.
-  for (const t of [
-    "desk_ledger",
-    "desk_samples",
-    "desk_replay",
-    "desk_state",
-    "desk_absorption",
-  ]) {
-    assert.ok(
-      tables.includes(t),
-      `${t} missing after migration; got ${tables.join(", ")}`,
-    );
+  for (const t of ["desk_ledger", "desk_samples", "desk_replay", "desk_state", "desk_absorption"]) {
+    assert.ok(tables.includes(t), `${t} missing after migration; got ${tables.join(", ")}`);
   }
   await db.close();
 });
@@ -96,11 +85,7 @@ test("research_quality defaults to valid so nothing is silently dropped", async 
   assert.equal(rows.length, 2, "both quality columns must exist");
   const q = rows.find((r) => r.column_name === "research_quality");
   assert.equal(q.is_nullable, "NO", "a row with no verdict would be ambiguous");
-  assert.match(
-    String(q.column_default),
-    /valid/,
-    "existing and future rows count unless excluded",
-  );
+  assert.match(String(q.column_default), /valid/, "existing and future rows count unless excluded");
   await db.close();
 });
 
@@ -112,32 +97,12 @@ test("the quarantine stamps the bad range and only the bad range", async () => {
   // Three windows: the legitimate 07:00, one inside the bad block, one after it.
   const insert = `insert into desk_ledger (ticker, close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents)
                   values ($1, $2, 'UP', 'WAIT', $3, $4, $5)`;
-  await db.query(insert, [
-    "KXBTC15M-26SEP100300-00",
-    "2026-09-10T07:00:00Z",
-    87,
-    100,
-    12,
-  ]);
-  await db.query(insert, [
-    "KXBTC15M-26SEP100300-00",
-    "2026-09-10T08:45:00Z",
-    50,
-    100,
-    44,
-  ]);
-  await db.query(insert, [
-    "KXBTC15M-26SEP110800-00",
-    "2026-09-11T12:00:00Z",
-    76,
-    100,
-    22,
-  ]);
+  await db.query(insert, ["KXBTC15M-26SEP100300-00", "2026-09-10T07:00:00Z", 87, 100, 12]);
+  await db.query(insert, ["KXBTC15M-26SEP100300-00", "2026-09-10T08:45:00Z", 50, 100, 44]);
+  await db.query(insert, ["KXBTC15M-26SEP110800-00", "2026-09-11T12:00:00Z", 76, 100, 22]);
 
   // Re-apply the quality migration, as a restore or a hand-run would.
-  await db.exec(
-    await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"),
-  );
+  await db.exec(await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"));
 
   const { rows } = await db.query(
     `select to_char(close_time at time zone 'UTC','YYYY-MM-DD HH24:MI') as close_utc,
@@ -147,11 +112,7 @@ test("the quarantine stamps the bad range and only the bad range", async () => {
   assert.equal(rows.length, 3);
 
   assert.equal(rows[0].close_utc, "2026-09-10 07:00");
-  assert.equal(
-    rows[0].research_quality,
-    "valid",
-    "the 07:00 settlement really was its own",
-  );
+  assert.equal(rows[0].research_quality, "valid", "the 07:00 settlement really was its own");
 
   assert.equal(rows[1].close_utc, "2026-09-10 08:45");
   assert.equal(rows[1].research_quality, "excluded");
@@ -170,11 +131,7 @@ test("the quarantine stamps the bad range and only the bad range", async () => {
   const { rows: counted } = await db.query(
     "select count(*)::int as n from desk_ledger where research_quality = 'valid'",
   );
-  assert.equal(
-    counted[0].n,
-    2,
-    "the excluded window must not reach an aggregate",
-  );
+  assert.equal(counted[0].n, 2, "the excluded window must not reach an aggregate");
   await db.close();
 });
 
@@ -208,15 +165,10 @@ test("the research view exists, excludes, and has not drifted from the table", a
                   values ($1, $2, 'UP', 'WAIT')`;
   await db.query(insert, ["KXBTC15M-26SEP100300-00", "2026-09-10T08:30:00Z"]);
   await db.query(insert, ["KXBTC15M-26SEP110800-00", "2026-09-11T12:00:00Z"]);
-  await db.exec(
-    await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"),
-  );
+  await db.exec(await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"));
 
-  const all = (await db.query("select count(*)::int as n from desk_ledger"))
-    .rows[0].n;
-  const research = (
-    await db.query("select count(*)::int as n from desk_ledger_research")
-  ).rows[0].n;
+  const all = (await db.query("select count(*)::int as n from desk_ledger")).rows[0].n;
+  const research = (await db.query("select count(*)::int as n from desk_ledger_research")).rows[0].n;
   assert.equal(all, 2, "both rows remain in the table, for forensics");
   assert.equal(research, 1, "only the valid row is visible to research");
   await db.close();
@@ -228,18 +180,9 @@ test("the two migrations spell the evidence predicate identically", () => {
   // risk is drift: the Lab counting a different set of windows than the rest of
   // research. Both must match VALID_ONLY_SQL in research-quality.ts exactly.
   const PREDICATE = "research_quality = 'valid'";
-  const q = readFileSync(
-    join(MIGRATIONS, "0024_desk_ledger_quality.sql"),
-    "utf8",
-  );
-  const lab = readFileSync(
-    join(MIGRATIONS, "0025_desk_policy_lab.sql"),
-    "utf8",
-  );
-  const registry = readFileSync(
-    join(ROOT, "src/lib/desk/research-quality.ts"),
-    "utf8",
-  );
+  const q = readFileSync(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8");
+  const lab = readFileSync(join(MIGRATIONS, "0025_desk_policy_lab.sql"), "utf8");
+  const registry = readFileSync(join(ROOT, "src/lib/desk/research-quality.ts"), "utf8");
   assert.ok(q.includes(PREDICATE), "0024 must use the predicate");
   assert.ok(lab.includes(PREDICATE), "0025 must use the identical predicate");
   assert.ok(
@@ -247,11 +190,7 @@ test("the two migrations spell the evidence predicate identically", () => {
     "the registry must declare the same predicate the migrations apply",
   );
   // And 0025 must NOT depend on 0024's view, or 0024 stops being re-runnable.
-  assert.doesNotMatch(
-    lab,
-    /join\s+desk_ledger_research/,
-    "0025 must stand alone",
-  );
+  assert.doesNotMatch(lab, /join\s+desk_ledger_research/, "0025 must stand alone");
 });
 
 test("the Lab seeds FLOOR_V1 as the only Champion and starts every candidate at zero", async () => {
@@ -273,14 +212,8 @@ test("the Lab seeds FLOOR_V1 as the only Champion and starts every candidate at 
 
   // No observation exists yet: every candidate's prospective N starts at zero, and
   // no historical window has been backfilled into it.
-  const obs = await db.query(
-    "select count(*)::int as n from desk_policy_observations",
-  );
-  assert.equal(
-    obs.rows[0].n,
-    0,
-    "prospective N must start at zero for every candidate",
-  );
+  const obs = await db.query("select count(*)::int as n from desk_policy_observations");
+  assert.equal(obs.rows[0].n, 0, "prospective N must start at zero for every candidate");
   await db.close();
 });
 
@@ -332,18 +265,12 @@ test("an observation is written once per candidate per window and never overwrit
     "select exit_reason, net_cents from desk_policy_observations where candidate_id = 'HOLD_V1'",
   );
   assert.equal(rows.rows.length, 1, "one observation per candidate per window");
-  assert.equal(
-    rows.rows[0].exit_reason,
-    "SETTLEMENT",
-    "the recorded result is not revised",
-  );
+  assert.equal(rows.rows[0].exit_reason, "SETTLEMENT", "the recorded result is not revised");
   assert.equal(Number(rows.rows[0].net_cents), 18);
 
   // A different candidate on the same window is a separate observation.
   await db.query(ins, ["PROVE180_V1", "DEADLINE", -9]);
-  const all = await db.query(
-    "select count(*)::int as n from desk_policy_observations",
-  );
+  const all = await db.query("select count(*)::int as n from desk_policy_observations");
   assert.equal(all.rows[0].n, 2);
   await db.close();
 });
@@ -372,51 +299,21 @@ test("the Lab research view excludes quarantined windows and DATA_INVALID rows",
   // A good window, a quarantined window, and a good window whose book was unusable.
   await db.query(led, ["GOOD-1", "2026-09-11T13:00:00Z"]);
   await mkFill("GOOD-1", "2026-09-11T13:00:00Z");
-  await db.query(obs, [
-    "GOOD-1",
-    "2026-09-11T13:00:00Z",
-    "SETTLEMENT",
-    18,
-    false,
-  ]);
+  await db.query(obs, ["GOOD-1", "2026-09-11T13:00:00Z", "SETTLEMENT", 18, false]);
   await db.query(led, ["BAD-1", "2026-09-10T08:30:00Z"]);
   await mkFill("BAD-1", "2026-09-10T08:30:00Z");
-  await db.query(obs, [
-    "BAD-1",
-    "2026-09-10T08:30:00Z",
-    "SETTLEMENT",
-    18,
-    false,
-  ]);
+  await db.query(obs, ["BAD-1", "2026-09-10T08:30:00Z", "SETTLEMENT", 18, false]);
   await db.query(led, ["GOOD-2", "2026-09-11T13:15:00Z"]);
   await mkFill("GOOD-2", "2026-09-11T13:15:00Z");
-  await db.query(obs, [
-    "GOOD-2",
-    "2026-09-11T13:15:00Z",
-    "DATA_INVALID",
-    null,
-    true,
-  ]);
+  await db.query(obs, ["GOOD-2", "2026-09-11T13:15:00Z", "DATA_INVALID", null, true]);
   // Re-apply the quality stamp, as the real deploy does.
-  await db.exec(
-    await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"),
-  );
+  await db.exec(await readFile(join(MIGRATIONS, "0024_desk_ledger_quality.sql"), "utf8"));
 
-  const all = await db.query(
-    "select count(*)::int as n from desk_policy_observations",
-  );
-  const research = await db.query(
-    "select count(*)::int as n from desk_policy_observations_research",
-  );
-  assert.equal(
-    all.rows[0].n,
-    3,
-    "all three rows remain readable for forensics",
-  );
+  const all = await db.query("select count(*)::int as n from desk_policy_observations");
+  const research = await db.query("select count(*)::int as n from desk_policy_observations_research");
+  assert.equal(all.rows[0].n, 3, "all three rows remain readable for forensics");
   assert.equal(research.rows[0].n, 1, "only the good, priceable window counts");
-  const kept = await db.query(
-    "select ticker from desk_policy_observations_research",
-  );
+  const kept = await db.query("select ticker from desk_policy_observations_research");
   assert.equal(kept.rows[0].ticker, "GOOD-1");
   await db.close();
 });
@@ -483,16 +380,15 @@ test("all candidates reference ONE source fill, and a dangling reference is refu
 
   // An observation cannot reference a fill that was never recorded.
   await assert.rejects(
-    obs.call(null, "GHOST_V1", "SETTLEMENT", 0) &&
-      db.query(
-        `insert into desk_policy_observations
+    obs.call(null, "GHOST_V1", "SETTLEMENT", 0) && db.query(
+      `insert into desk_policy_observations
          (fill_key, ticker, close_time, candidate_id, candidate_kind, candidate_version,
           signal_policy, entry_policy, exit_policy, risk_policy,
           entry_side, entry_t, entry_cents, entry_fee_cents, exit_reason)
        values ('NO-SUCH-FILL',$1,$2,'ORPHAN_V1','exit',1,'CHAIR_V1','ENTRY_80_V1','ORPHAN_V1','RISK_NONE_V1',
                'UP','2026-09-11T12:50:00Z',80,2,'SETTLEMENT')`,
-        [TK, CLOSE],
-      ),
+      [TK, CLOSE],
+    ),
     "a dangling fill reference must be refused",
   );
   await db.close();
@@ -524,19 +420,13 @@ test("0026 normalises observations that predate fill_key, inventing nothing", as
   const db = await freshDb();
   const names = await files();
   const upTo25 = names.filter((n) => n < "0026");
-  assert.ok(
-    upTo25.length < names.length,
-    "0026 must exist and be excluded here",
-  );
+  assert.ok(upTo25.length < names.length, "0026 must exist and be excluded here");
   await applyAll(db, upTo25);
 
   const TK = "KXBTC15M-26SEP110900-00";
   const CLOSE = "2026-09-11T13:00:00Z";
   const ENTRY = "2026-09-11T12:50:00Z";
-  await db.query(
-    `insert into desk_ledger (ticker, close_time, winner, chair_lean) values ($1,$2,'UP','UP')`,
-    [TK, CLOSE],
-  );
+  await db.query(`insert into desk_ledger (ticker, close_time, winner, chair_lean) values ($1,$2,'UP','UP')`, [TK, CLOSE]);
   for (const [cand, reason, net] of [
     ["HOLD_V1", "SETTLEMENT", -82],
     ["PROVE180_V1", "DEADLINE", -11],
@@ -552,9 +442,7 @@ test("0026 normalises observations that predate fill_key, inventing nothing", as
   }
 
   // Now apply 0026 on a NON-empty table.
-  await db.exec(
-    await readFile(join(MIGRATIONS, "0026_desk_policy_fills.sql"), "utf8"),
-  );
+  await db.exec(await readFile(join(MIGRATIONS, "0026_desk_policy_fills.sql"), "utf8"));
 
   // One fill row, derived from what the observations already carried.
   const fills = await db.query(
@@ -564,11 +452,7 @@ test("0026 normalises observations that predate fill_key, inventing nothing", as
   const f = fills.rows[0];
   assert.equal(f.ticker, TK);
   assert.equal(f.entry_side, "UP");
-  assert.equal(
-    Number(f.entry_cents),
-    82,
-    "the price already on the rows, not a guess",
-  );
+  assert.equal(Number(f.entry_cents), 82, "the price already on the rows, not a guess");
   assert.equal(Number(f.entry_fee_cents), 2);
   // And the key is exactly what the writer computes, so a replayed write matches.
   assert.equal(f.fill_key, `${TK}|${Date.parse(CLOSE)}|${Date.parse(ENTRY)}`);
@@ -587,19 +471,11 @@ test("0026 normalises observations that predate fill_key, inventing nothing", as
     `select is_nullable from information_schema.columns
       where table_name = 'desk_policy_observations' and column_name = 'fill_key'`,
   );
-  assert.equal(
-    col.rows[0].is_nullable,
-    "NO",
-    "the constraint is applied after normalising",
-  );
+  assert.equal(col.rows[0].is_nullable, "NO", "the constraint is applied after normalising");
 
   // Re-applying is still safe.
-  await db.exec(
-    await readFile(join(MIGRATIONS, "0026_desk_policy_fills.sql"), "utf8"),
-  );
-  const again = await db.query(
-    "select count(*)::int as n from desk_policy_fills",
-  );
+  await db.exec(await readFile(join(MIGRATIONS, "0026_desk_policy_fills.sql"), "utf8"));
+  const again = await db.query("select count(*)::int as n from desk_policy_fills");
   assert.equal(again.rows[0].n, 1, "a re-run does not duplicate the fill");
   await db.close();
 });
@@ -635,15 +511,7 @@ test("0027 stores the three legacy outcomes as three distinct rows", async () =>
   await row("k-flat", "d60", 0, "numeric", 1, "numeric", "measured");
   await row("k-short", "d30", 0, "short-path", 1, "numeric", "measured");
   // A NaN cannot be stored as a number, so the delta is NULL and the state says why.
-  await row(
-    "k-nan",
-    "d120",
-    null,
-    "non-finite",
-    1,
-    "numeric",
-    "legacy-non-finite",
-  );
+  await row("k-nan", "d120", null, "non-finite", 1, "numeric", "legacy-non-finite");
 
   const { rows } = await db.query(
     `select sample_key, legacy_delta, legacy_state, divergence_state
@@ -653,11 +521,7 @@ test("0027 stores the three legacy outcomes as three distinct rows", async () =>
   const by = Object.fromEntries(rows.map((r) => [r.sample_key, r]));
 
   assert.equal(Number(by["k-flat"].legacy_delta), 0);
-  assert.equal(
-    Number(by["k-short"].legacy_delta),
-    0,
-    "the zero consumers actually receive",
-  );
+  assert.equal(Number(by["k-short"].legacy_delta), 0, "the zero consumers actually receive");
   assert.equal(by["k-nan"].legacy_delta, null);
 
   const states = rows.map((r) => r.legacy_state);
@@ -691,12 +555,7 @@ test("0027's research view excludes quarantined windows on the same rule", async
          (ticker, close_time, winner, chair_lean, entry_cents, settle_cents, ev_cents,
           research_quality, research_quality_rule)
        values ($1, $2, 'UP', 'UP', 80, 100, 18, $3, $4)`,
-      [
-        t,
-        close,
-        quality,
-        quality === "excluded" ? "2026-09-10-ticker-reuse" : "",
-      ],
+      [t, close, quality, quality === "excluded" ? "2026-09-10-ticker-reuse" : ""],
     );
     await db.query(
       `insert into desk_path_parity (
@@ -710,9 +569,7 @@ test("0027's research view excludes quarantined windows on the same rule", async
     );
   }
 
-  const { rows: all } = await db.query(
-    `select count(*)::int as n from desk_path_parity`,
-  );
+  const { rows: all } = await db.query(`select count(*)::int as n from desk_path_parity`);
   assert.equal(all[0].n, 2, "both rows are kept for forensics");
 
   const { rows: view } = await db.query(
@@ -763,26 +620,11 @@ test("0027 stores overshoot and end-staleness, the two facts that qualify a read
   const r = rows[0];
   assert.equal(Number(r.want_ms), 30000);
   assert.equal(Number(r.span_ms), 60000, "what was actually measured");
-  assert.notEqual(
-    Number(r.span_ms),
-    Number(r.want_ms),
-    "never assume the span is the request",
-  );
+  assert.notEqual(Number(r.span_ms), Number(r.want_ms), "never assume the span is the request");
   assert.equal(Number(r.overshoot_ms), Number(r.span_ms) - Number(r.want_ms));
-  assert.equal(
-    Number(r.overshoot_ms),
-    30000,
-    "100% overshoot: 30s is unsupportable here",
-  );
-  assert.equal(
-    Number(r.legacy_overshoot_ms),
-    Number(r.legacy_span_ms) - Number(r.want_ms),
-  );
-  assert.equal(
-    Number(r.newest_age_ms),
-    55000,
-    "the reading ended 55s before the tick",
-  );
+  assert.equal(Number(r.overshoot_ms), 30000, "100% overshoot: 30s is unsupportable here");
+  assert.equal(Number(r.legacy_overshoot_ms), Number(r.legacy_span_ms) - Number(r.want_ms));
+  assert.equal(Number(r.newest_age_ms), 55000, "the reading ended 55s before the tick");
 
   // Overshoot is queryable directly, which is the question a consumer flip turns on.
   const { rows: unsupportable } = await db.query(
@@ -852,10 +694,7 @@ test("0027 self-heals a database that applied an earlier version of the same fil
   `);
 
   // Now apply the current 0027 on top. The create is a no-op; the alters must land.
-  const sql = await readFile(
-    join(MIGRATIONS, "0027_desk_path_parity.sql"),
-    "utf8",
-  );
+  const sql = await readFile(join(MIGRATIONS, "0027_desk_path_parity.sql"), "utf8");
   await db.exec(sql);
 
   const { rows } = await db.query(
@@ -875,17 +714,11 @@ test("0027 self-heals a database that applied an earlier version of the same fil
     "decision_overshoot_ms",
     "decision_fidelity",
   ]) {
-    assert.ok(
-      cols.includes(c),
-      `${c} never arrived: the writer would fail silently`,
-    );
+    assert.ok(cols.includes(c), `${c} never arrived: the writer would fail silently`);
   }
 
   // And every column the writer names must now exist, which is the real guarantee.
-  const writer = readFileSync(
-    join(ROOT, "src/lib/desk/path-parity.server.ts"),
-    "utf8",
-  );
+  const writer = readFileSync(join(ROOT, "src/lib/desk/path-parity.server.ts"), "utf8");
   const i = writer.indexOf("insert into desk_path_parity (");
   const j = writer.indexOf(") values (", i);
   const named = writer
@@ -894,10 +727,7 @@ test("0027 self-heals a database that applied an earlier version of the same fil
     .map((x) => x.trim())
     .filter((x) => x && !x.startsWith("--"));
   for (const c of named) {
-    assert.ok(
-      cols.includes(c),
-      `writer names "${c}" but the healed table has no such column`,
-    );
+    assert.ok(cols.includes(c), `writer names "${c}" but the healed table has no such column`);
   }
 
   await db.close();
@@ -950,10 +780,7 @@ test("0027 keeps a shifted interval distinguishable from a fresh one at the DB l
   assert.equal(Number(by.shifted.span_ms), Number(by.fresh.span_ms));
   assert.equal(Number(by.shifted.overshoot_ms), Number(by.fresh.overshoot_ms));
   // …and opposite on decision fidelity.
-  assert.notEqual(
-    Number(by.shifted.anchor_age_ms),
-    Number(by.fresh.anchor_age_ms),
-  );
+  assert.notEqual(Number(by.shifted.anchor_age_ms), Number(by.fresh.anchor_age_ms));
   assert.notEqual(by.shifted.decision_fidelity, by.fresh.decision_fidelity);
 
   // The identities a reader is told they can rely on, checked in SQL.
@@ -974,10 +801,7 @@ test("0027 keeps a shifted interval distinguishable from a fresh one at the DB l
   const { rows: exactSpan } = await db.query(
     `select sample_key from desk_path_parity where overshoot_ms = 0 order by 1`,
   );
-  assert.deepEqual(
-    exactSpan.map((r) => r.sample_key),
-    ["fresh", "shifted"],
-  );
+  assert.deepEqual(exactSpan.map((r) => r.sample_key), ["fresh", "shifted"]);
   const { rows: exactHorizon } = await db.query(
     `select sample_key from desk_path_parity
       where overshoot_ms = 0 and decision_overshoot_ms = 0 order by 1`,
@@ -1032,27 +856,13 @@ test("two closes sharing one ticker both persist; an exact duplicate does not", 
 
   await ins(C1);
   await ins(C2);
-  const both = await db.query(
-    `select close_time from desk_replay where ticker = $1 order by close_time`,
-    [T],
-  );
-  assert.equal(
-    both.rows.length,
-    2,
-    "BOTH closes persist — neither displaced the other",
-  );
+  const both = await db.query(`select close_time from desk_replay where ticker = $1 order by close_time`, [T]);
+  assert.equal(both.rows.length, 2, "BOTH closes persist — neither displaced the other");
 
   // The exact same window again is still a single immutable row.
   await ins(C1);
-  const again = await db.query(
-    `select count(*)::int as n from desk_replay where ticker = $1`,
-    [T],
-  );
-  assert.equal(
-    again.rows[0].n,
-    2,
-    "an exact duplicate adds nothing and overwrites nothing",
-  );
+  const again = await db.query(`select count(*)::int as n from desk_replay where ticker = $1`, [T]);
+  assert.equal(again.rows[0].n, 2, "an exact duplicate adds nothing and overwrites nothing");
   await db.close();
 });
 
@@ -1063,10 +873,7 @@ test("today's production rows migrate with no loss and no invented close_time", 
   const db = await freshDb();
   const names = await files();
   const before = names.filter((n) => n < "0028_");
-  assert.ok(
-    before.length > 0 && before.length < names.length,
-    "there is a pre-0028 prefix to seed on",
-  );
+  assert.ok(before.length > 0 && before.length < names.length, "there is a pre-0028 prefix to seed on");
   await applyAll(db, before);
 
   const pre = await db.query(
@@ -1074,11 +881,7 @@ test("today's production rows migrate with no loss and no invented close_time", 
        from pg_constraint c join pg_class t on t.oid = c.conrelid
       where t.relname = 'desk_replay' and c.contype = 'p'`,
   );
-  assert.equal(
-    pre.rows[0].def,
-    "PRIMARY KEY (ticker)",
-    "seeded under the ticker-only key",
-  );
+  assert.equal(pre.rows[0].def, "PRIMARY KEY (ticker)", "seeded under the ticker-only key");
 
   const seed = [
     ["KXBTC15M-26SEP111800-00", "2026-09-11T22:00:00Z"],
@@ -1092,9 +895,7 @@ test("today's production rows migrate with no loss and no invented close_time", 
       [t, c],
     );
   }
-  const countBefore = (
-    await db.query(`select count(*)::int as n from desk_replay`)
-  ).rows[0].n;
+  const countBefore = (await db.query(`select count(*)::int as n from desk_replay`)).rows[0].n;
   const digest = async () =>
     (
       await db.query(
@@ -1111,39 +912,22 @@ test("today's production rows migrate with no loss and no invented close_time", 
        from pg_constraint c join pg_class t on t.oid = c.conrelid
       where t.relname = 'desk_replay' and c.contype = 'p'`,
   );
-  assert.equal(
-    post.rows[0].def,
-    "PRIMARY KEY (ticker, close_time)",
-    "identity is now the window",
-  );
+  assert.equal(post.rows[0].def, "PRIMARY KEY (ticker, close_time)", "identity is now the window");
   assert.equal(
     (await db.query(`select count(*)::int as n from desk_replay`)).rows[0].n,
     countBefore,
     "no row was lost",
   );
-  assert.deepEqual(
-    await digest(),
-    rowsBefore,
-    "and not one recorded value changed",
-  );
+  assert.deepEqual(await digest(), rowsBefore, "and not one recorded value changed");
   assert.equal(
-    (
-      await db.query(
-        `select count(*)::int as n from desk_replay where close_time is null`,
-      )
-    ).rows[0].n,
+    (await db.query(`select count(*)::int as n from desk_replay where close_time is null`)).rows[0].n,
     0,
     "no close_time was invented or nulled",
   );
   // The close_time index survives, and the ticker-only lookup is still index-led.
-  const idx = await db.query(
-    `select indexname from pg_indexes where tablename = 'desk_replay' order by 1`,
-  );
+  const idx = await db.query(`select indexname from pg_indexes where tablename = 'desk_replay' order by 1`);
   const names2 = idx.rows.map((r) => r.indexname);
-  assert.ok(
-    names2.includes("desk_replay_close_idx"),
-    "the close_time index is untouched",
-  );
+  assert.ok(names2.includes("desk_replay_close_idx"), "the close_time index is untouched");
   await db.close();
 });
 
@@ -1164,10 +948,7 @@ test("both-halves predicates resolve the reuse shape; ticker-only ones do not", 
   const T = "KXBTC15M-26SEP100300-00";
   const C1 = "2026-09-10T07:00:00Z";
   const C2 = "2026-09-10T07:15:00Z";
-  for (const [c, ev] of [
-    [C1, 7],
-    [C2, -3],
-  ]) {
+  for (const [c, ev] of [[C1, 7], [C2, -3]]) {
     await db.query(
       `insert into desk_ledger (ticker, close_time, source, winner, chair_lean, entry_cents, settle_cents, ev_cents, calls)
        values ($1, $2, 'kalshi-result', 'UP', 'UP', 80, 100, $3, 1)`,
@@ -1189,11 +970,7 @@ test("both-halves predicates resolve the reuse shape; ticker-only ones do not", 
     [T],
   );
   assert.equal(viewer.rows.length, 1, "one replay, one joined row");
-  assert.equal(
-    viewer.rows[0].rc,
-    viewer.rows[0].lc,
-    "joined to its own window",
-  );
+  assert.equal(viewer.rows[0].rc, viewer.rows[0].lc, "joined to its own window");
   assert.equal(Number(viewer.rows[0].ev_cents), 7, "c1's numbers, not c2's");
   // Ticker-only would have produced two rows, one of them the wrong window.
   const viewerBad = await db.query(
@@ -1201,11 +978,7 @@ test("both-halves predicates resolve the reuse shape; ticker-only ones do not", 
        left join desk_ledger l on l.ticker = r.ticker where r.ticker = $1`,
     [T],
   );
-  assert.equal(
-    viewerBad.rows.length,
-    2,
-    "ticker-only multiplies — this is what was fixed",
-  );
+  assert.equal(viewerBad.rows.length, 2, "ticker-only multiplies — this is what was fixed");
 
   // 4 · BOOKS flag: true for the exact window only.
   const flags = await db.query(
@@ -1225,11 +998,7 @@ test("both-halves predicates resolve the reuse shape; ticker-only ones do not", 
        from desk_ledger l where l.ticker = $1 order by l.close_time`,
     [T],
   );
-  assert.deepEqual(
-    flagsBad.rows.map((r) => r.replay),
-    [true, true],
-    "ticker-only lights both",
-  );
+  assert.deepEqual(flagsBad.rows.map((r) => r.replay), [true, true], "ticker-only lights both");
 
   // 5 · EXCURSION: one replay cannot multiply across the ledger rows sharing a ticker.
   const exc = await db.query(
@@ -1253,37 +1022,22 @@ test("both-halves predicates resolve the reuse shape; ticker-only ones do not", 
      values ($1, $2, 79900, 'UP', 3, 4000, false, '{"t0":1,"t":[0,4,8]}'::jsonb)`,
     [T, C2],
   );
-  for (const [want, strike] of [
-    [C1, 78100],
-    [C2, 79900],
-  ]) {
+  for (const [want, strike] of [[C1, 78100], [C2, 79900]]) {
     const pit = await db.query(
       `select r.strike from desk_ledger l
          left join desk_replay r on r.ticker = l.ticker and r.close_time = l.close_time
         where l.ticker = $1 and l.close_time = $2 limit 1`,
       [T, want],
     );
-    assert.equal(
-      Number(pit.rows[0].strike),
-      strike,
-      `the strike of ${want}, not the other close`,
-    );
+    assert.equal(Number(pit.rows[0].strike), strike, `the strike of ${want}, not the other close`);
   }
 
   // 7 · PUBLIC ticker-only probe: two closes for one ticker must read as ambiguous.
-  const probe = await db.query(
-    `select close_time from desk_replay where ticker = $1 limit 2`,
-    [T],
-  );
-  assert.equal(
-    probe.rows.length,
-    2,
-    "the probe sees two — replayFor's `!== 1` then refuses",
-  );
-  const lone = await db.query(
-    `select close_time from desk_replay where ticker = $1 limit 2`,
-    ["KXBTC15M-26SEP100245-45"],
-  );
+  const probe = await db.query(`select close_time from desk_replay where ticker = $1 limit 2`, [T]);
+  assert.equal(probe.rows.length, 2, "the probe sees two — replayFor's `!== 1` then refuses");
+  const lone = await db.query(`select close_time from desk_replay where ticker = $1 limit 2`, [
+    "KXBTC15M-26SEP100245-45",
+  ]);
   assert.equal(lone.rows.length, 0, "a ticker with no replay reads as none");
   await db.close();
 });
@@ -1314,26 +1068,9 @@ test("0029 only permits the two bounded kinds", async () => {
   await applyAll(db, await files());
   const T = "KXBTC15M-26SEP111800-00";
   const c = "2026-09-11T18:00:00.000Z";
-  await decisionInsert(
-    db,
-    T,
-    c,
-    "OPENING",
-    "WAIT",
-    62,
-    "2026-09-11T17:45:01.000Z",
-  );
+  await decisionInsert(db, T, c, "OPENING", "WAIT", 62, "2026-09-11T17:45:01.000Z");
   await assert.rejects(
-    () =>
-      decisionInsert(
-        db,
-        T,
-        c,
-        "MIDWINDOW",
-        "UP",
-        70,
-        "2026-09-11T17:50:00.000Z",
-      ),
+    () => decisionInsert(db, T, c, "MIDWINDOW", "UP", 70, "2026-09-11T17:50:00.000Z"),
     /check|constraint/i,
     "a third snapshot_kind must be refused by the check constraint",
   );
@@ -1347,76 +1084,29 @@ test("0029 stores OPENING and FIRST_DIRECTIONAL for one window; duplicates are n
   const c = "2026-09-11T18:00:00.000Z";
 
   // M2/M9: a WAIT OPENING persists, and a second OPENING attempt writes nothing.
-  await decisionInsert(
-    db,
-    T,
-    c,
-    "OPENING",
-    "WAIT",
-    62,
-    "2026-09-11T17:45:01.000Z",
-  );
-  await decisionInsert(
-    db,
-    T,
-    c,
-    "OPENING",
-    "UP",
-    80,
-    "2026-09-11T17:50:00.000Z",
-  ); // later, conflicts
+  await decisionInsert(db, T, c, "OPENING", "WAIT", 62, "2026-09-11T17:45:01.000Z");
+  await decisionInsert(db, T, c, "OPENING", "UP", 80, "2026-09-11T17:50:00.000Z"); // later, conflicts
   const opening = await db.query(
     `select chair_lean, yes_ask from desk_decision_snapshots
       where ticker=$1 and close_time=$2 and snapshot_kind='OPENING'`,
     [T, c],
   );
   assert.equal(opening.rows.length, 1, "exactly one OPENING row");
-  assert.equal(
-    opening.rows[0].chair_lean,
-    "WAIT",
-    "the first-observed WAIT read is never overwritten",
-  );
-  assert.equal(
-    Number(opening.rows[0].yes_ask),
-    62,
-    "M7: a later quote (80) does not rewrite the 62 it first read",
-  );
+  assert.equal(opening.rows[0].chair_lean, "WAIT", "the first-observed WAIT read is never overwritten");
+  assert.equal(Number(opening.rows[0].yes_ask), 62, "M7: a later quote (80) does not rewrite the 62 it first read");
 
   // M3/M9: the first directional turn persists once; a later flip's duplicate is a no-op.
-  await decisionInsert(
-    db,
-    T,
-    c,
-    "FIRST_DIRECTIONAL",
-    "UP",
-    64,
-    "2026-09-11T17:52:00.000Z",
-  );
-  await decisionInsert(
-    db,
-    T,
-    c,
-    "FIRST_DIRECTIONAL",
-    "DOWN",
-    41,
-    "2026-09-11T17:55:00.000Z",
-  );
+  await decisionInsert(db, T, c, "FIRST_DIRECTIONAL", "UP", 64, "2026-09-11T17:52:00.000Z");
+  await decisionInsert(db, T, c, "FIRST_DIRECTIONAL", "DOWN", 41, "2026-09-11T17:55:00.000Z");
   const fd = await db.query(
     `select chair_lean from desk_decision_snapshots
       where ticker=$1 and close_time=$2 and snapshot_kind='FIRST_DIRECTIONAL'`,
     [T, c],
   );
   assert.equal(fd.rows.length, 1, "exactly one FIRST_DIRECTIONAL row");
-  assert.equal(
-    fd.rows[0].chair_lean,
-    "UP",
-    "the first directional read stands; a later DOWN flip does not replace it",
-  );
+  assert.equal(fd.rows[0].chair_lean, "UP", "the first directional read stands; a later DOWN flip does not replace it");
 
-  const all = await db.query(
-    `select count(*)::int as n from desk_decision_snapshots where ticker=$1 and close_time=$2`,
-    [T, c],
-  );
+  const all = await db.query(`select count(*)::int as n from desk_decision_snapshots where ticker=$1 and close_time=$2`, [T, c]);
   assert.equal(all.rows[0].n, 2, "one window, at most two rows");
   await db.close();
 });
@@ -1429,33 +1119,13 @@ test("0029 keeps two closes sharing one ticker apart; neither resolves by ticker
   const c2 = "2026-09-10T03:15:00.000Z";
 
   // M8: c1's OPENING and c2's OPENING coexist; writing c1 never touches c2.
-  await decisionInsert(
-    db,
-    T,
-    c1,
-    "OPENING",
-    "UP",
-    70,
-    "2026-09-10T02:45:01.000Z",
-  );
-  await decisionInsert(
-    db,
-    T,
-    c2,
-    "OPENING",
-    "WAIT",
-    55,
-    "2026-09-10T03:00:01.000Z",
-  );
+  await decisionInsert(db, T, c1, "OPENING", "UP", 70, "2026-09-10T02:45:01.000Z");
+  await decisionInsert(db, T, c2, "OPENING", "WAIT", 55, "2026-09-10T03:00:01.000Z");
   const both = await db.query(
     `select close_time, chair_lean from desk_decision_snapshots where ticker=$1 order by close_time`,
     [T],
   );
-  assert.equal(
-    both.rows.length,
-    2,
-    "both closes persist under the composite key",
-  );
+  assert.equal(both.rows.length, 2, "both closes persist under the composite key");
 
   // The restart read-back is EXACT-window, so c2's lookup never reads c1's lean.
   const exactC2 = await db.query(
@@ -1463,11 +1133,7 @@ test("0029 keeps two closes sharing one ticker apart; neither resolves by ticker
     [T, c2],
   );
   assert.equal(exactC2.rows.length, 1, "the exact-window probe sees only c2");
-  assert.equal(
-    exactC2.rows[0].chair_lean,
-    "WAIT",
-    "c2's OPENING lean, not c1's",
-  );
+  assert.equal(exactC2.rows[0].chair_lean, "WAIT", "c2's OPENING lean, not c1's");
 
   // M10/M11 DB half: after a restart the writer recovers the PERSISTED opening lean
   // for the exact window, which is what lets FIRST_DIRECTIONAL fire (c2 was WAIT) or
@@ -1476,25 +1142,15 @@ test("0029 keeps two closes sharing one ticker apart; neither resolves by ticker
     `select chair_lean from desk_decision_snapshots where ticker=$1 and close_time=$2 and snapshot_kind='OPENING'`,
     [T, c1],
   );
-  assert.equal(
-    c1lean.rows[0].chair_lean,
-    "UP",
-    "c1's opening was directional → no FIRST_DIRECTIONAL on restart",
-  );
+  assert.equal(c1lean.rows[0].chair_lean, "UP", "c1's opening was directional → no FIRST_DIRECTIONAL on restart");
   await db.close();
 });
 
 test("0029 writes no historical rows: the migration creates structure only", async () => {
   const db = await freshDb();
   await applyAll(db, await files());
-  const n = await db.query(
-    `select count(*)::int as n from desk_decision_snapshots`,
-  );
-  assert.equal(
-    n.rows[0].n,
-    0,
-    "no INSERT or INSERT-SELECT backfill — the table starts empty",
-  );
+  const n = await db.query(`select count(*)::int as n from desk_decision_snapshots`);
+  assert.equal(n.rows[0].n, 0, "no INSERT or INSERT-SELECT backfill — the table starts empty");
   await db.close();
 });
 
@@ -1515,26 +1171,15 @@ test("0031 records only prospective, valid booked-decision mirrors", async () =>
     [legacyTicker, legacyClose],
   );
 
-  await applyAll(
-    db,
-    names.filter((name) => name >= "0031_"),
-  );
+  await applyAll(db, names.filter((name) => name >= "0031_"));
 
   const legacy = await db.query(
     `select entry_lean, entry_build_sha from desk_ledger
       where ticker = $1 and close_time = $2`,
     [legacyTicker, legacyClose],
   );
-  assert.equal(
-    legacy.rows[0].entry_lean,
-    null,
-    "the migration does not reconstruct a side",
-  );
-  assert.equal(
-    legacy.rows[0].entry_build_sha,
-    null,
-    "the migration does not invent provenance",
-  );
+  assert.equal(legacy.rows[0].entry_lean, null, "the migration does not reconstruct a side");
+  assert.equal(legacy.rows[0].entry_build_sha, null, "the migration does not invent provenance");
 
   const build = "0123456789abcdef0123456789abcdef01234567";
   await db.query(
@@ -1561,11 +1206,7 @@ test("0031 records only prospective, valid booked-decision mirrors", async () =>
     `select ticker, entry_build_sha, lean, confidence, score, bar, hit, brier, ev_cents
        from desk_booked_chair_mirror order by close_time`,
   );
-  assert.equal(
-    mirror.rows.length,
-    1,
-    "legacy, WAIT, and excluded rows cannot enter the mirror",
-  );
+  assert.equal(mirror.rows.length, 1, "legacy, WAIT, and excluded rows cannot enter the mirror");
   assert.equal(mirror.rows[0].ticker, "VALID-BOOKED");
   assert.equal(mirror.rows[0].entry_build_sha, build);
   assert.equal(mirror.rows[0].lean, "UP");

@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  bookedDecisionAtGrade,
-  sanitizeBookedDecisionState,
-} from "./booked-decision.ts";
+import { bookedDecisionAtGrade, sanitizeBookedDecisionState } from "./booked-decision.ts";
 
 const ticker = "KXBTC15M-26SEP131900-00";
 const close = Date.parse("2026-09-13T23:00:00Z");
@@ -34,12 +31,7 @@ test("a deployment round-trip preserves the exact booked decision", () => {
   const restored = sanitizeBookedDecisionState(
     JSON.parse(JSON.stringify({ [`${ticker}:${close}`]: entry() })),
   );
-  const got = bookedDecisionAtGrade(
-    calls,
-    ticker,
-    close,
-    restored[`${ticker}:${close}`],
-  );
+  const got = bookedDecisionAtGrade(calls, ticker, close, restored[`${ticker}:${close}`]);
   assert.deepEqual(got, {
     lean: "UP",
     cents: 84,
@@ -51,9 +43,7 @@ test("a deployment round-trip preserves the exact booked decision", () => {
 });
 
 test("an older in-flight entry still uses the canonical call side", () => {
-  const restored = sanitizeBookedDecisionState({
-    k: entry({ lean: undefined, build_sha: undefined }),
-  });
+  const restored = sanitizeBookedDecisionState({ k: entry({ lean: undefined, build_sha: undefined }) });
   const got = bookedDecisionAtGrade(
     [{ ticker, close_time: close, lean: "DOWN", cents: 81 }],
     ticker,
@@ -66,30 +56,12 @@ test("an older in-flight entry still uses the canonical call side", () => {
 });
 
 test("a neighbouring window cannot donate a booked decision", () => {
-  const calls = [
-    { ticker, close_time: close + 15 * 60_000, lean: "UP" as const, cents: 84 },
-  ];
-  assert.equal(
-    bookedDecisionAtGrade(
-      calls,
-      ticker,
-      close,
-      sanitizeBookedDecisionState({ k: entry() }).k,
-    ),
-    null,
-  );
+  const calls = [{ ticker, close_time: close + 15 * 60_000, lean: "UP" as const, cents: 84 }];
+  assert.equal(bookedDecisionAtGrade(calls, ticker, close, sanitizeBookedDecisionState({ k: entry() }).k), null);
 });
 
 test("entry state without a held call is not a mirror grade", () => {
-  assert.equal(
-    bookedDecisionAtGrade(
-      [],
-      ticker,
-      close,
-      sanitizeBookedDecisionState({ k: entry() }).k,
-    ),
-    null,
-  );
+  assert.equal(bookedDecisionAtGrade([], ticker, close, sanitizeBookedDecisionState({ k: entry() }).k), null);
 });
 
 test("malformed deployment provenance is withheld", () => {
