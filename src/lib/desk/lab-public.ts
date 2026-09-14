@@ -8,6 +8,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { EXIT_CANDIDATES, controlFor } from "./floor-policy";
 import { labStanding } from "./policy-lab.server";
+import {
+  seatHorizonSnapshot,
+  type PublicSeatHorizonSnapshot,
+} from "./horizon-calibration.server";
 import { COMPONENT_MIN } from "./promotion-gates";
 
 export type PublicLabSpecimen = {
@@ -33,6 +37,7 @@ export type PublicLabSnapshot = {
   champion: { policy_id: string; version: number };
   control_id: string;
   specimens: PublicLabSpecimen[];
+  seat_timing: PublicSeatHorizonSnapshot | null;
   governance: {
     paper_only: true;
     authority: "none";
@@ -44,7 +49,10 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const standing = await labStanding();
+    const [standing, seatTiming] = await Promise.all([
+      labStanding(),
+      seatHorizonSnapshot().catch(() => null),
+    ]);
     const byId = new Map(standing.rows.map((row) => [row.candidate_id, row]));
     const control = controlFor("exit");
 
@@ -75,6 +83,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       champion: { policy_id: standing.champion.policy_id, version: standing.champion.version },
       control_id: control?.id ?? "HOLD_V1",
       specimens,
+      seat_timing: seatTiming,
       governance: {
         paper_only: true,
         authority: "none",
