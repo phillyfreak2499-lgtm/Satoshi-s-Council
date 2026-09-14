@@ -3,7 +3,7 @@ import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
 import { SEAT_IDS } from "@/lib/desk/types";
-import { SiteHeader } from "./SiteHeader";
+import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
 
 const CAST = [
@@ -327,24 +327,7 @@ export function ChamberRoom() {
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <a href="#chamber-main" className="skip-link">Skip to content</a>
-      <SiteHeader
-        nav={
-          <nav aria-label="Desk rooms" className="flex items-center gap-1">
-            <a href="/" className="btn btn-secondary btn-sm">Floor</a>
-            <a href="/chamber" className="btn btn-secondary btn-sm" aria-current="page">Chamber</a>
-            <a href="/lab" className="btn btn-secondary btn-sm">Lab</a>
-            <a href="/arena" className="btn btn-secondary btn-sm">The Pit</a>
-            <a href="/about" className="btn btn-secondary btn-sm">How it works</a>
-          </nav>
-        }
-        menu={[
-          { label: "THE FLOOR", href: "/", hint: "live desk" },
-          { label: "THE CHAMBER", href: "/chamber", hint: "current room", active: true },
-          { label: "THE LAB", href: "/lab", hint: "research" },
-          { label: "THE PIT", href: "/arena", hint: "competition" },
-          { label: "How it works", href: "/about", hint: "page" },
-        ]}
-      />
+      <GlobalHeader />
 
       <main id="chamber-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
         <section className="chamber-intro border-b border-border pb-6">
