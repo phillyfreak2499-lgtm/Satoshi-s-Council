@@ -1,4 +1,5 @@
-/** Client side of window replay: the shape GET /replay returns and one fetcher. */
+/** Window replay shape plus server-render and browser-refresh readers. */
+import { createServerFn } from "@tanstack/react-start";
 export type ReplayCols = {
   t0: number;
   t: number[];
@@ -40,6 +41,17 @@ export type Replay = {
   official: number | null;
   call: { entry: number; settle: number | null; ev: number | null } | null;
 };
+
+export const loadReplay = createServerFn({ method: "GET" })
+  .validator((data: { ticker: string }) => data)
+  .handler(async ({ data }): Promise<Replay | null> => {
+    const ticker = data.ticker.trim();
+    if (!ticker) return null;
+    const engine = await import("./server-engine");
+    engine.ensureServerEngine();
+    const { replayFor } = await import("./replay.server");
+    return replayFor(ticker);
+  });
 
 export async function fetchReplay(ticker: string): Promise<Replay> {
   const r = await fetch(`/replay?ticker=${encodeURIComponent(ticker)}`, {
