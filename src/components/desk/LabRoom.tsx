@@ -12,6 +12,14 @@ function pct(v: number | null): string {
   return `${(v * 100).toFixed(1)}%`;
 }
 
+function utcClock(value: string): string {
+  try {
+    return `${new Date(value).toISOString().slice(11, 19)} UTC`;
+  } catch {
+    return value;
+  }
+}
+
 function progress(row: PublicLabSpecimen): number {
   if (!(row.sample_gate.required > 0)) return 0;
   return Math.max(0, Math.min(100, (row.sample_gate.current / row.sample_gate.required) * 100));
@@ -176,9 +184,9 @@ function SeatTimingStudy({
   );
 }
 
-export function LabRoom() {
-  const [data, setData] = useState<PublicLabSnapshot | null>(null);
-  const [loaded, setLoaded] = useState(false);
+export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
+  const [data, setData] = useState<PublicLabSnapshot | null>(initial ?? null);
+  const [loaded, setLoaded] = useState(initial !== undefined);
 
   useEffect(() => {
     let mounted = true;
@@ -241,7 +249,7 @@ export function LabRoom() {
                 <div className="font-mono text-micro uppercase tracking-widest text-subtle">Frozen DNA · live evidence</div>
                 <h2 className="mt-1 font-sans text-title font-medium">Specimen ledger</h2>
               </div>
-              <div className="font-mono text-micro text-subtle">as of {new Date(data.at).toLocaleTimeString()}</div>
+              <div className="font-mono text-micro text-subtle">as of {utcClock(data.at)}</div>
             </div>
 
             <section className="mt-3 grid gap-4" aria-label="Lab specimens">
