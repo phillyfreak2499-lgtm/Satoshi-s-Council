@@ -6,6 +6,7 @@ export function AtelierTab() {
   const lean = frame.chair?.lean ?? "WAIT";
   const remainingMs = Math.max(0, (frame.snap?.secs_left ?? 15 * 60) * 1000);
   const ticker = frame.snap?.ticker ?? "15m";
+  const settled = frame.snap?.official_settles.find((result) => result.ticker === ticker)?.lean ?? "";
 
   return (
     <div className="atelier-shell">
@@ -28,6 +29,12 @@ export function AtelierTab() {
           locked: frame.snap?.lab_locked ?? 0,
           closeTime: frame.snap?.close_time ?? 0,
           candles: frame.snap?.candles_1m ?? [],
+          settled,
+          votes: frame.votes.map((vote) => ({
+            seat: vote.seat,
+            lean: vote.lean,
+            confidence: vote.confidence,
+          })),
         }}
       />
     </div>
