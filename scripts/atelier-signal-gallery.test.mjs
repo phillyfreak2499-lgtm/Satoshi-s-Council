@@ -73,7 +73,7 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(styles, /atelier\[data-room="arcade"\] \.atelier-frame canvas/);
 });
 
-test("Council Constellation renders the existing votes without authority", () => {
+test("Council Constellation renders all existing votes without authority", () => {
   assert.match(catalog, /name: "Council Constellation"/);
   assert.match(rooms, /council: createCouncil/);
   assert.match(council, /COUNCIL CONSTELLATION/);
