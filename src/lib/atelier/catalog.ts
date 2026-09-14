@@ -137,7 +137,7 @@ export const ROOMS: RoomMeta[] = [
     word: "Council",
     name: "Council Constellation",
     glow: "#d4a02a",
-    meta: "18-seat star map · live agreement and dissent",
+    meta: "Live seat star map · agreement and dissent",
     fine: "The specialist seats become a live constellation around the Chair. Speaking UP and DOWN seats flare in their own hemispheres; WAIT stays dim and amber. The horizon ring is score versus bar, never win probability.",
     hint: "Every star is one seat. Brightness is confidence; color is the spoken paper lean; the center is the Chair.",
     params: [

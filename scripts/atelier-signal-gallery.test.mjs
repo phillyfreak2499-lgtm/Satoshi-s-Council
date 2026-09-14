@@ -43,6 +43,8 @@ test("the Gallery receives display-only facts from the existing desk frame", () 
   assert.match(tab, /locked: frame\.snap\?\.lab_locked/);
   assert.match(tab, /votes: frame\.votes\.map/);
   assert.match(tab, /official_settles\.find/);
+  assert.match(tab, /lastOfficial/);
+  assert.match(tab, /lastSettledTicker/);
 });
 
 test("Cloud Ceiling tells the final-minute settlement truth", () => {
@@ -69,11 +71,15 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(arcade, /BLUE LANE SETTLES/);
   assert.match(arcade, /CONTRACT: SETTLED/);
   assert.match(arcade, /AWAITING OFFICIAL SETTLEMENT/);
+  assert.match(arcade, /CHECKERED · LAST WINDOW/);
+  assert.match(arcade, /DRIVE: \$\{priorRun\.grip\}% GRIP/);
+  assert.match(arcade, /lastSettledTicker === priorRun\.ticker/);
+  assert.match(arcade, /sessionStorage\.setItem\(RUN_STORE/);
   assert.doesNotMatch(arcade, /boost|power-up|extra lives|betting/i);
   assert.match(styles, /atelier\[data-room="arcade"\] \.atelier-frame canvas/);
 });
 
-test("Council Constellation renders the existing votes without authority", () => {
+test("Council Constellation renders all existing votes without authority", () => {
   assert.match(catalog, /name: "Council Constellation"/);
   assert.match(rooms, /council: createCouncil/);
   assert.match(council, /COUNCIL CONSTELLATION/);

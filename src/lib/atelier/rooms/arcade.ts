@@ -3,6 +3,9 @@ import type { RoomFactory, RoomWorld } from "../world";
 
 type RoadPoint = { p: number; value: number };
 type GhostPoint = { p: number; value: number };
+type PriorRun = { ticker: string; grip: number; rails: number; at: number };
+
+const RUN_STORE = "atelier:arcade:last-run";
 
 const ORANGE = "#f7931a";
 const BLUE = "#61b8df";
@@ -25,6 +28,32 @@ function parseRoad(raw: string): RoadPoint[] {
     .map((point) => ({ p: clamp(point.p, 0, 1), value: point.value }))
     .sort((a, b) => a.p - b.p)
     .slice(-24);
+}
+
+function readPriorRun(currentTicker: string): PriorRun | null {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(RUN_STORE) ?? "null") as PriorRun | null;
+    if (
+      !parsed ||
+      !parsed.ticker ||
+      parsed.ticker === currentTicker ||
+      !Number.isFinite(parsed.grip) ||
+      !Number.isFinite(parsed.rails)
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function rememberRun(run: PriorRun) {
+  try {
+    sessionStorage.setItem(RUN_STORE, JSON.stringify(run));
+  } catch {
+    /* the cabinet still plays when browser storage is unavailable */
+  }
 }
 
 function hud(
@@ -102,7 +131,13 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let locked = 0;
   let seconds = 900;
   let clock = "15:00";
+  let ticker = "";
   let settled = "";
+  let lastSettled = "";
+  let lastSettledAt = 0;
+  let lastSettledTicker = "";
+  let priorRun: PriorRun | null = null;
+  let resetMode = false;
   let roadRaw = "";
   let road: RoadPoint[] = [];
   let ghostRoad: GhostPoint[] = [];
@@ -118,8 +153,15 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let previousOffRoad = false;
   let velocity = 0;
   let lastSpotAt = 0;
+  let lastPersist = 0;
 
   const apply = (next: Params) => {
+    const nextTicker = str(next, "ticker", ticker);
+    if (nextTicker && nextTicker !== ticker) {
+      ticker = nextTicker;
+      priorRun = readPriorRun(ticker);
+      resetMode = priorRun != null;
+    }
     mode = str(next, "mode", mode);
     assist = str(next, "assist", assist ? "on" : "off") === "on";
     glow = num(next, "cabinet", glow);
@@ -128,6 +170,9 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
     seconds = num(next, "seconds", seconds);
     clock = str(next, "clock", clock);
     settled = str(next, "settled", settled);
+    lastSettled = str(next, "lastSettled", lastSettled);
+    lastSettledAt = num(next, "lastSettledAt", lastSettledAt);
+    lastSettledTicker = str(next, "lastSettledTicker", lastSettledTicker);
     steer = clamp(num(next, "steer", steer), 0.06, 0.94);
 
     const nextRaw = str(next, "history", roadRaw);
@@ -179,6 +224,13 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
     },
     step(dt) {
       phase += dt;
+      if (resetMode) {
+        resetMode = false;
+        mode = "watch";
+        steer = 0.5;
+        host.setParam("mode", "watch");
+        host.setParam("steer", steer);
+      }
       if (mode === "watch") {
         carY += (roadY - carY) * (1 - Math.exp(-9 * dt));
       } else {
@@ -196,6 +248,15 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         if (offRoad && !previousOffRoad) rails += 1;
       }
       previousOffRoad = offRoad;
+      if (mode === "drive" && driveTime > 0 && phase - lastPersist >= 0.5 && ticker) {
+        lastPersist = phase;
+        rememberRun({
+          ticker,
+          grip: Math.round((gripTime / driveTime) * 100),
+          rails,
+          at: Date.now(),
+        });
+      }
     },
     draw(ctx) {
       const short = Math.min(w, h);
@@ -366,6 +427,12 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
 
       const grip = driveTime > 0 ? Math.round((gripTime / driveTime) * 100) : null;
       const onGhost = ghostY > 0 && Math.abs(carY - ghostY) <= lane * 0.58;
+      const flagReplay =
+        seconds >= 890 &&
+        priorRun != null &&
+        lastSettledTicker === priorRun.ticker &&
+        (lastSettled === "UP" || lastSettled === "DOWN") &&
+        Math.abs(Date.now() - lastSettledAt) <= 2 * 60 * 1000;
       hud(ctx, mode === "drive" ? "DRIVE" : "WATCH", left, h * 0.055, "left", small, ORANGE, 0.92);
       hud(ctx, phaseWord, w * 0.5, h * 0.055, "center", small, finalMinute ? BLUE : CREAM, 0.86);
       hud(ctx, `FUEL ${clock}`, right, h * 0.055, "right", small, CREAM, 0.86);
@@ -410,6 +477,24 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         hud(ctx, settled ? `CONTRACT: SETTLED ${settled}` : "CONTRACT: AWAITING OFFICIAL SETTLEMENT", w * 0.5, h * 0.55, "center", small, settled === "UP" ? "#52c58b" : settled === "DOWN" ? RED : CREAM, 0.86);
       } else if (finalMinute && ghostY > 0 && seconds <= 8 && !onGhost && mode === "drive") {
         hud(ctx, "MISSED LANDING", w * 0.5, h * 0.78, "center", small, RED, 0.9);
+      }
+
+      if (flagReplay && priorRun) {
+        ctx.fillStyle = "rgba(2,3,4,0.86)";
+        ctx.fillRect(0, h * 0.34, w, h * 0.34);
+        hud(ctx, "CHECKERED · LAST WINDOW", w * 0.5, h * 0.39, "center", clamp(short * 0.032, 20, 44), CREAM, 0.94);
+        hud(ctx, `DRIVE: ${priorRun.grip}% GRIP · ${priorRun.rails} RAILS`, w * 0.5, h * 0.49, "center", small, ORANGE, 0.9);
+        hud(
+          ctx,
+          `CONTRACT: SETTLED ${lastSettled}`,
+          w * 0.5,
+          h * 0.55,
+          "center",
+          small,
+          lastSettled === "UP" ? "#52c58b" : RED,
+          0.9,
+        );
+        hud(ctx, "GREEN FLAG · NEW ROAD OPEN", w * 0.5, h * 0.63, "center", tiny, CREAM, 0.58);
       }
 
       if (!(spot > 0) || !(strike > 0)) {

@@ -1,5 +1,6 @@
 import { Gallery } from "@/components/atelier/gallery";
 import { useDesk } from "@/lib/desk/store";
+import type { OfficialSettle } from "@/lib/desk/types";
 
 export function AtelierTab() {
   const frame = useDesk();
@@ -7,6 +8,10 @@ export function AtelierTab() {
   const remainingMs = Math.max(0, (frame.snap?.secs_left ?? 15 * 60) * 1000);
   const ticker = frame.snap?.ticker ?? "15m";
   const settled = frame.snap?.official_settles.find((result) => result.ticker === ticker)?.lean ?? "";
+  const lastOfficial = frame.snap?.official_settles.reduce<OfficialSettle | null>(
+    (latest, result) => (!latest || result.close_time > latest.close_time ? result : latest),
+    null,
+  );
 
   return (
     <div className="atelier-shell">
@@ -30,6 +35,9 @@ export function AtelierTab() {
           closeTime: frame.snap?.close_time ?? 0,
           candles: frame.snap?.candles_1m ?? [],
           settled,
+          lastSettled: lastOfficial?.lean ?? "",
+          lastSettledAt: lastOfficial?.close_time ?? 0,
+          lastSettledTicker: lastOfficial?.ticker ?? "",
           votes: frame.votes.map((vote) => ({
             seat: vote.seat,
             lean: vote.lean,
