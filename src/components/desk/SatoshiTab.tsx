@@ -149,7 +149,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
       tabIndex={-1}
       data-tour="tour-satoshi"
       className={cn(
-        "stage-anchor rounded-md border bg-surface p-4 outline-none sm:p-6",
+        "council-chair-board stage-anchor rounded-md border bg-surface p-4 outline-none sm:p-6",
         lean === "UP" ? "border-up/40 shadow-[0_0_0_1px_rgba(61,207,138,0.12)]" : lean === "DOWN" ? "border-down/40 shadow-[0_0_0_1px_rgba(239,107,115,0.12)]" : "border-border",
       )}
     >
@@ -717,8 +717,23 @@ export function SatoshiTab({
     <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
       {density === "full" ? <OvernightRibbon brief={brief} tz={settings.tz} /> : null}
 
-      {/* 1. CALL — the dominant element, with its concise reason and economics. */}
-      <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
+      {/* 1. CALL — the dominant element, seated inside the Council's actual
+          chamber rather than a generic dashboard surface. The environment is
+          presentation only; the call and every number remain live DOM content. */}
+      <section
+        className="council-floor-room"
+        data-lean={chair.lean.toLowerCase()}
+        aria-label="The Council chamber floor"
+      >
+        <div className="council-floor-room-art" aria-hidden="true" />
+        <div className="council-floor-room-label" aria-hidden="true">
+          <span>The Council Floor</span>
+          <span>21 stations · Chair center</span>
+        </div>
+        <div className="council-floor-room-call">
+          <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
+        </div>
+      </section>
       {density === "full" && strip ? <div>{strip}</div> : null}
 
       {/* 2. WHY — the FIRST explanatory section after the call. Price provenance is
