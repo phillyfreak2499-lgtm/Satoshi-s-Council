@@ -1,47 +1,18 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { gtagEvent } from "@/lib/desk/ga";
-import { SiteHeader } from "./SiteHeader";
+import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
 import { cn } from "@/lib/utils";
 
-const NAV: { to: "/about" | "/faq" | "/legal"; label: string }[] = [
-  { to: "/about", label: "How it works" },
-  { to: "/faq", label: "FAQ" },
-  { to: "/legal", label: "Paper only" },
-];
-
-/** Chrome for the reading pages: brand, three quiet links, one way onto the floor. */
+/** Shared chrome for reading pages, with the same wayfinding as every room. */
 export function Page({ title, lede, children, wide = false }: { title: string; lede: string; children: ReactNode; wide?: boolean }) {
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
       <a href="#page-main" className="skip-link">
         Skip to content
       </a>
-      <SiteHeader
-        nav={
-          <nav aria-label="Reading pages" className="flex flex-wrap items-center gap-1">
-            {NAV.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                className="flex min-h-11 items-center rounded-md px-2 font-mono text-micro tracking-wide text-muted hover:bg-surface-2 hover:text-fg"
-                activeProps={{ className: "bg-surface-2 text-fg" }}
-              >
-                {n.label}
-              </Link>
-            ))}
-            <Link
-              to="/"
-              className="btn btn-primary btn-sm ml-1"
-              onClick={() => gtagEvent("enter_the_floor")}
-            >
-              Open the floor
-            </Link>
-          </nav>
-        }
-        menu={[...NAV.map((n) => ({ label: n.label, href: n.to, hint: "page" })), { label: "Open the floor", href: "/" }, { label: "THE PIT", href: "/arena", hint: "room" }]}
-      />
+      <GlobalHeader />
       <main id="page-main" className={cn("gutter mx-auto w-full flex-1 py-8", wide ? "max-w-5xl" : "max-w-[72ch]")}>
         <h1 className="font-sans text-display font-medium tracking-tight text-fg">{title}</h1>
         <p className="mt-2 font-sans text-body text-muted">{lede}</p>
