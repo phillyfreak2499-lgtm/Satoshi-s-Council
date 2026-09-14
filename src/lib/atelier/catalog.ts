@@ -1,4 +1,4 @@
-export type RoomId = "field" | "flow" | "wave" | "ceiling";
+export type RoomId = "field" | "flow" | "wave" | "ceiling" | "arcade" | "council";
 
 export type EnumParam = {
   key: string;
@@ -96,6 +96,53 @@ export const ROOMS: RoomMeta[] = [
     params: [
       { key: "clouds", kind: "range", label: "Clouds", min: 0.55, max: 1.45, step: 0.05, def: 1, format: fmt },
       { key: "trail", kind: "range", label: "Contrail", min: 0.6, max: 1.6, step: 0.05, def: 1, format: fmt },
+    ],
+  },
+  {
+    id: "arcade",
+    index: "05",
+    word: "Arcade",
+    name: "Tape Arcade",
+    glow: "#f7931a",
+    meta: "Live tape road · steerable paper cabinet",
+    fine: "The Bitcoin print pours the road in real time. Watch as a passenger or touch the cabinet to drive. GRIP scores the hands; the contract result stays separate and follows the BRTI settlement average.",
+    hint: "Drag vertically to steer. Winning the drive is not winning the contract. GRIP is skill; settlement is weather.",
+    params: [
+      {
+        key: "mode",
+        kind: "enum",
+        label: "Mode",
+        options: [
+          { value: "watch", label: "Watch" },
+          { value: "drive", label: "Drive" },
+        ],
+        def: "watch",
+      },
+      {
+        key: "assist",
+        kind: "enum",
+        label: "Assist magnet",
+        options: [
+          { value: "on", label: "On" },
+          { value: "off", label: "Expert off" },
+        ],
+        def: "on",
+      },
+      { key: "cabinet", kind: "range", label: "Cabinet glow", min: 0.6, max: 1.5, step: 0.05, def: 1, format: fmt },
+    ],
+  },
+  {
+    id: "council",
+    index: "06",
+    word: "Council",
+    name: "Council Constellation",
+    glow: "#d4a02a",
+    meta: "18-seat star map · live agreement and dissent",
+    fine: "The specialist seats become a live constellation around the Chair. Speaking UP and DOWN seats flare in their own hemispheres; WAIT stays dim and amber. The horizon ring is score versus bar, never win probability.",
+    hint: "Every star is one seat. Brightness is confidence; color is the spoken paper lean; the center is the Chair.",
+    params: [
+      { key: "orbit", kind: "range", label: "Orbit", min: 0.7, max: 1.3, step: 0.05, def: 1, format: fmt },
+      { key: "trails", kind: "range", label: "Connections", min: 0.25, max: 1.35, step: 0.05, def: 0.85, format: fmt },
     ],
   },
 ];
