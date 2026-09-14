@@ -381,7 +381,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         ctx.lineTo(right, roadY);
         ctx.stroke();
         ctx.restore();
-        hud(ctx, "TRACK UNBUILT", right, roadY + tiny * 1.1, "right", tiny, CREAM, 0.28);
+        hud(ctx, "TAPE AHEAD UNWRITTEN", right, roadY + tiny * 1.1, "right", tiny, CREAM, 0.34);
       }
 
       let ghostY = 0;
