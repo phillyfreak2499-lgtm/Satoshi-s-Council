@@ -9,6 +9,8 @@ import {
   EXIT_PROVE180_V1,
   EXIT_PROVE240_V1,
   EXIT_TAKE90_V1,
+  EXIT_TAKE90_V2,
+  exitCandidatesForEntry,
   ENTRY_80_V1,
   FLOOR_V1,
   RISK_NONE_V1,
@@ -39,6 +41,7 @@ test("FREEZE: every component's parameters are exactly as defined", () => {
     PROVE180_V1: "PROVE180_V1|exit|horizon_s=180,target_cents=10",
     PROVE240_V1: "PROVE240_V1|exit|horizon_s=240,target_cents=10",
     TAKE90_V1: "TAKE90_V1|exit|take_cents=90",
+    TAKE90_V2: "TAKE90_V2|exit|min_net_cents=0,take_cents=90",
     RISK_NONE_V1: "RISK_NONE_V1|risk|contracts=1",
   };
   assert.equal(COMPONENTS.length, Object.keys(EXPECTED).length, "a component was added or removed");
@@ -107,15 +110,15 @@ test("HOLD is the permanent control and is not a challenger", () => {
   assert.equal(EXIT_HOLD_V1.control, true);
   assert.equal(controlFor("exit")?.id, "HOLD_V1");
   assert.equal(EXIT_CANDIDATES.filter((x) => x.control).length, 1, "exactly one control");
-  for (const x of [EXIT_PROVE120_V1, EXIT_PROVE180_V1, EXIT_PROVE240_V1, EXIT_TAKE90_V1]) {
+  for (const x of [EXIT_PROVE120_V1, EXIT_PROVE180_V1, EXIT_PROVE240_V1, EXIT_TAKE90_V1, EXIT_TAKE90_V2]) {
     assert.notEqual(x.control, true);
   }
 });
 
-test("the exit competition has the control plus the four named candidates", () => {
+test("the exit competition has the control plus the five named candidates", () => {
   assert.deepEqual(
     EXIT_CANDIDATES.map((x) => x.id),
-    ["HOLD_V1", "PROVE120_V1", "PROVE180_V1", "PROVE240_V1", "TAKE90_V1"],
+    ["HOLD_V1", "PROVE120_V1", "PROVE180_V1", "PROVE240_V1", "TAKE90_V1", "TAKE90_V2"],
   );
 });
 
@@ -123,7 +126,7 @@ test("no parameter-mined variants are registered", () => {
   // The families present are exactly the four hypotheses plus the control. A
   // PROVE145 or a +8¢ variant appearing here without being asked for is the
   // failure mode this guards.
-  const exitFamilies = EXIT_CANDIDATES.map((x) => x.family).sort();
+  const exitFamilies = [...new Set(EXIT_CANDIDATES.map((x) => x.family))].sort();
   assert.deepEqual(exitFamilies, ["HOLD", "PROVE120", "PROVE180", "PROVE240", "TAKE90"]);
 });
 
@@ -234,4 +237,16 @@ test("the status vocabulary covers every state the board needs", () => {
     "RETIRED",
   ];
   assert.equal(new Set(all).size, 10);
+});
+
+test("TAKE90 V2 starts a separate prospective bucket at its frozen entry time", () => {
+  const start = Date.parse(EXIT_TAKE90_V2.frozen_at);
+  assert.equal(fingerprint(EXIT_TAKE90_V1), "TAKE90_V1|exit|take_cents=90");
+  assert.notEqual(fingerprint(EXIT_TAKE90_V1), fingerprint(EXIT_TAKE90_V2));
+  assert.equal(exitCandidatesForEntry(start - 1).some((x) => x.id === EXIT_TAKE90_V2.id), false);
+  assert.equal(exitCandidatesForEntry(start - 1).some((x) => x.id === EXIT_TAKE90_V1.id), true);
+  assert.equal(exitCandidatesForEntry(start).some((x) => x.id === EXIT_TAKE90_V2.id), true);
+  assert.deepEqual(exitCandidatesForEntry(Number.NaN), []);
+  assert.deepEqual(exitCandidatesForEntry(Infinity), []);
+  assert.equal(FLOOR_V1.exit_policy, EXIT_HOLD_V1.id);
 });
