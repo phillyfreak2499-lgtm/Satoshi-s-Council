@@ -36,7 +36,7 @@ test("public SSR readers are GET-only and expose no Arena identity", () => {
   assert.match(arena, /rackFor\(null\)/, "SSR rack has no device token");
   assert.match(arena, /arenaSummary\(null\)/, "SSR board has no device token");
   assert.doesNotMatch(arena, /arenaToken\(|arenaName\(/);
-  assert.doesNotMatch(seat, /return\s+\{[\s\S]*learner\s*[:,]/, "seat pages return a bounded summary, not the learner");
+  assert.doesNotMatch(seat, /^\s+learner(?:\s*:|\s*,\s*$)/m, "seat pages return a bounded summary, not the learner");
 });
 
 test("persisted data seeds each component instead of a loading shell", () => {
