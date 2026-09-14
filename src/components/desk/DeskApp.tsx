@@ -19,6 +19,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrustStrip, Welcome } from "./Welcome";
 import { applyDisplayPrefs, markWelcomeSeen, readSeatView, setSeatView as saveSeatView, TRUST_CHIPS, welcomeSeen, type SeatView } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
+import { SITE_DESTINATIONS } from "@/lib/desk/navigation";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
 import { BoardTab } from "./Feedback";
@@ -107,15 +108,13 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
             Replay the 60-second tour<span className="text-subtle">?</span>
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
-          {[
-            ["/about", "How it works"],
-            ["/faq", "FAQ"],
-            ["/legal", "Paper only"],
-          ].map(([href, label]) => (
+          {SITE_DESTINATIONS.filter(
+            ({ href }) => href !== "/" && href !== "/arena",
+          ).map(({ href, label, hint }) => (
             <DropdownMenu.Item key={href} asChild className={item}>
               <a href={href}>
                 {label}
-                <span className="text-subtle">page</span>
+                <span className="text-subtle">{hint}</span>
               </a>
             </DropdownMenu.Item>
           ))}
@@ -339,11 +338,11 @@ export function DeskApp() {
               : { label: t.label, onSelect: () => setTab(t.id), active: t.id === "structure" ? DESK_IDS.has(tab) : tab === t.id },
           ),
           ...MORE.map((m) => ({ label: m.label, hint: m.hint, onSelect: () => setTab(m.id), active: tab === m.id })),
+          ...SITE_DESTINATIONS.filter(
+            ({ href }) => href !== "/" && href !== "/arena",
+          ).map(({ menuLabel, href, hint }) => ({ label: menuLabel, href, hint })),
           { label: "Search the desk", hint: "⌘K", onSelect: () => setPaletteOn(true) },
           { label: "Replay the 60-second tour", hint: "?", onSelect: startTour },
-          { label: "How it works", href: "/about", hint: "page" },
-          { label: "FAQ", href: "/faq", hint: "page" },
-          { label: "Paper only", href: "/legal", hint: "page" },
         ]}
       />
 
