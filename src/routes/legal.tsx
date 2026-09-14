@@ -7,6 +7,7 @@ export const Route = createFileRoute("/legal")({
       { title: "Paper only · Satoshi's Council" },
       { name: "description", content: "Satoshi's Council is a paper-only research desk. No orders, no accounts, no advice, no affiliation with Kalshi." },
     ],
+    links: [{ rel: "canonical", href: "https://satoshiscouncil.com/legal" }],
   }),
   component: Legal,
 });
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/legal")({
 function Legal() {
   return (
     <Page title="Paper only, in plain words" lede="The short version: nothing on this site places a trade, holds money or tells you what to do with yours.">
+      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 14, 2026 · United States audience</p>
       <H2>No orders, no accounts</H2>
       <P>
         Satoshi&apos;s Council never sends an order to any exchange or market. It has no accounts, deposits, wallets or payment flows. The calls, the ledger,
@@ -33,6 +35,17 @@ function Legal() {
       <P>
         Prices, books and derivatives come from public feeds that can lag, pause or fail. The strip shows each feed&apos;s health; a seat that cannot see
         sits. Figures shown as PAPER are computed from those feeds and can differ from what a real order would have done.
+      </P>
+      <H2>Analytics and fonts</H2>
+      <P>
+        The site uses Google Analytics 4 to understand aggregate visits and feature use, and Google Fonts to serve Geist and IBM Plex Mono. Those providers
+        may receive ordinary request details such as an IP address, browser information and the page requested. The desk does not send them an exchange
+        account, wallet or real-money trading history because it has none.
+      </P>
+      <H2>Audience and jurisdiction</H2>
+      <P>
+        This notice is written for a United States audience. The law where you access the site still applies, and nothing here overrides local restrictions.
+        The site does not accept wagers, open brokerage accounts or choose a trading venue for you. Do not use it where access would be unlawful.
       </P>
       <H2>Your data</H2>
       <P>

@@ -86,7 +86,11 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
             Watch the floor
           </button>
         </div>
-        <p className="mt-3 font-mono text-micro text-subtle">Esc opens the floor. Replay the tour any time from ? in the header. Hover or tap a dotted label for a definition.</p>
+        <p className="mt-3 font-mono text-micro text-subtle">
+          <span className="sm:hidden">Tap × or Watch the floor to close. </span>
+          <span className="hidden sm:inline">Esc opens the floor. </span>
+          Replay the tour any time from ? in the header. Hover or tap a dotted label for a definition.
+        </p>
       </div>
     </>,
     document.body,

@@ -4,6 +4,7 @@ const WELCOME_KEY = "satoshi-desk-welcome-v1";
 const MOTION_KEY = "ui.motion";
 const PIT_TOUR_KEY = "satoshi-pit-tour-v1";
 const SEATS_KEY = "ui.seats";
+const FLOOR_DENSITY_KEY = "ui.floor-density";
 
 export const TRUST_CHIPS = ["Paper only", "Bitcoin only", "15-minute windows", "No live trades", "Not financial advice"];
 
@@ -54,6 +55,15 @@ export function readSeatView(): SeatView {
 }
 export function setSeatView(v: SeatView): void {
   set(SEATS_KEY, v === "all" ? "all" : "");
+}
+
+/** Quiet is the first-visit/mobile default; Full restores the complete evidence desk. */
+export type FloorDensity = "quiet" | "full";
+export function readFloorDensity(): FloorDensity {
+  return get(FLOOR_DENSITY_KEY) === "full" ? "full" : "quiet";
+}
+export function setFloorDensity(v: FloorDensity): void {
+  set(FLOOR_DENSITY_KEY, v === "full" ? "full" : "");
 }
 
 export function pitTourSeen(): boolean {

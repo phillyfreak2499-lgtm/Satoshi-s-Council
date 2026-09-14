@@ -20,6 +20,7 @@ import { CallPrices, CompactRecord, EvidenceBlock, LastReplayCard, WhyBlock } fr
 import { fmtContracts, invalidateCondition, recordCard, whyFacts } from "@/lib/desk/floor-clarity";
 import { FLOOR_LIVE_SINCE, openRow } from "@/lib/desk/book-floor";
 import { economicsOf, type Economics } from "@/lib/desk/economics";
+import type { FloorDensity } from "./prefs";
 
 /**
  * The ask for a side, from the one function the book marks with. This used to be
@@ -665,6 +666,8 @@ export function SatoshiTab({
   v2,
   onOpenArena,
   onOpenBooks,
+  density,
+  onDensityChange,
   strip,
 }: {
   snap: Snapshot;
@@ -676,6 +679,8 @@ export function SatoshiTab({
   onOpenArena?: () => void;
   /** Switch to the BOOKS tab. The record card links there rather than embedding it. */
   onOpenBooks?: () => void;
+  density: FloorDensity;
+  onDensityChange: (density: FloorDensity) => void;
   /** The decision-metrics strip, shown right under the chair stage. */
   strip?: ReactNode;
 }) {
@@ -710,11 +715,11 @@ export function SatoshiTab({
   const rows = chair.rows.filter((r) => (view === "all" ? true : view === "speaking" ? r.lean === "UP" || r.lean === "DOWN" : r.status === "LIVE"));
   return (
     <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
-      <OvernightRibbon brief={brief} tz={settings.tz} />
+      {density === "full" ? <OvernightRibbon brief={brief} tz={settings.tz} /> : null}
 
       {/* 1. CALL — the dominant element, with its concise reason and economics. */}
       <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
-      {strip ? <div>{strip}</div> : null}
+      {density === "full" && strip ? <div>{strip}</div> : null}
 
       {/* 2. WHY — the FIRST explanatory section after the call. Price provenance is
           inside the call block above, so nothing displaces this. */}
@@ -725,6 +730,32 @@ export function SatoshiTab({
       {/* 3. BITCOIN VS STRIKE / WINDOW — moved up from below the 21-seat Chamber. */}
       <ChairEyes snap={snap} />
 
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2.5" aria-label="Floor density">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+            {density === "quiet" ? "Quiet Floor" : "Full Floor"}
+          </div>
+          <p className="mt-0.5 font-sans text-ui text-muted">
+            Quiet keeps the call, reason, clock and live Bitcoin-vs-strike view. Full adds evidence, record, council and diagnostics.
+          </p>
+        </div>
+        <div role="group" aria-label="Choose Floor density" className="flex gap-1">
+          {(["quiet", "full"] as const).map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={density === choice}
+              onClick={() => onDensityChange(choice)}
+              className={cn("btn btn-sm", density === choice ? "btn-secondary text-fg" : "text-muted hover:text-fg")}
+            >
+              {choice === "quiet" ? "Quiet" : "Full desk"}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {density === "full" ? (
+        <>
       {/* 4. EVIDENCE + COUNTERARGUMENT, including what would END the read. */}
       <EvidenceBlock why={why} />
 
@@ -1012,6 +1043,8 @@ export function SatoshiTab({
       </div>
         </div>
       </details>
+        </>
+      ) : null}
     </div>
   );
 }
