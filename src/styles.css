@@ -3091,3 +3091,17 @@ html[data-motion="reduce"] .atelier.is-full .atelier-dock {
 .atelier.is-full[data-room="council"] .atelier-piece {
   width: 100%;
 }
+
+
+/* Gallery rooms that tell a left-to-right market story use the desktop width. */
+@media (min-width: 900px) {
+  .atelier[data-room="ceiling"] .atelier-piece,
+  .atelier[data-room="arcade"] .atelier-piece {
+    width: min(1040px, 92cqw, calc((100cqh - 42px) * 1.777));
+  }
+
+  .atelier[data-room="ceiling"] .atelier-frame,
+  .atelier[data-room="arcade"] .atelier-frame {
+    aspect-ratio: 16 / 9;
+  }
+}
