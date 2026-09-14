@@ -28,7 +28,8 @@ function parseVotes(raw: string, previous: SeatStar[], random: () => number): Se
     .split(";")
     .map((entry) => {
       const [seat = "—", rawLean = "WAIT", rawConfidence = "0"] = entry.split("|");
-      const lean = rawLean === "UP" || rawLean === "DOWN" ? rawLean : "WAIT";
+      const lean: SeatStar["lean"] =
+        rawLean === "UP" || rawLean === "DOWN" ? rawLean : "WAIT";
       const old = prior.get(seat);
       return {
         seat,
