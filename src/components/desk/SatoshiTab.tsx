@@ -21,6 +21,7 @@ import { fmtContracts, invalidateCondition, recordCard, whyFacts } from "@/lib/d
 import { FLOOR_LIVE_SINCE, openRow } from "@/lib/desk/book-floor";
 import { economicsOf, type Economics } from "@/lib/desk/economics";
 import type { FloorDensity } from "./prefs";
+import { CouncilFloorRoom } from "./CouncilFloorRoom";
 
 /**
  * The ask for a side, from the one function the book marks with. This used to be
@@ -720,20 +721,9 @@ export function SatoshiTab({
       {/* 1. CALL — the dominant element, seated inside the Council's actual
           chamber rather than a generic dashboard surface. The environment is
           presentation only; the call and every number remain live DOM content. */}
-      <section
-        className="council-floor-room"
-        data-lean={chair.lean.toLowerCase()}
-        aria-label="The Council chamber floor"
-      >
-        <div className="council-floor-room-art" aria-hidden="true" />
-        <div className="council-floor-room-label" aria-hidden="true">
-          <span>The Council Floor</span>
-          <span>21 stations · Chair center</span>
-        </div>
-        <div className="council-floor-room-call">
-          <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
-        </div>
-      </section>
+      <CouncilFloorRoom lean={chair.lean}>
+        <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
+      </CouncilFloorRoom>
       {density === "full" && strip ? <div>{strip}</div> : null}
 
       {/* 2. WHY — the FIRST explanatory section after the call. Price provenance is
