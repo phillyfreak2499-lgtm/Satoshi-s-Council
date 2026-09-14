@@ -26,7 +26,10 @@ function contrast(a, b) {
 test("small interface text meets its minimum size and token contrast", () => {
   const css = read("src/styles.css");
   assert.match(css, /--text-micro:\s*12px/);
-  assert.doesNotMatch(css, /\.table-research th\s*\{[\s\S]*?font-size:\s*11px/);
+  const tableHeaderRule = css.match(/\.table-research th\s*\{([^}]*)\}/);
+  assert.ok(tableHeaderRule, "missing .table-research th rule");
+  assert.match(tableHeaderRule[1], /font-size:\s*12px/);
+  assert.doesNotMatch(tableHeaderRule[1], /font-size:\s*11px/);
   const raised = token(css, "raised");
   assert.ok(contrast(token(css, "text-3"), raised) >= 4.5, "subtle text must pass AA on raised panels");
   assert.ok(contrast(token(css, "down"), raised) >= 4.5, "DOWN text must pass AA on raised panels");
