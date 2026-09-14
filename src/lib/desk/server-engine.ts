@@ -7,6 +7,7 @@
  * Demo mode never touches this — it stays a per-browser sandbox.
  */
 import { runBots } from "./bots";
+import { checkpointActiveWindow, restoreActiveWindow, type ActiveWindow } from "./active-window";
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
 import { isCountable } from "./research-quality";
@@ -127,6 +128,8 @@ const DEFAULT_SERVER_SETTINGS: Settings = {
 };
 
 type Eng = {
+  recoveredWindow: ActiveWindow | null;
+  stateWrite: Promise<void>;
   started: boolean;
   ready: Promise<void> | null;
   settings: Settings;
@@ -282,6 +285,8 @@ const g = globalThis as typeof globalThis & { __satoshiServerEngine__?: Eng };
 
 function freshEng(): Eng {
   return {
+    recoveredWindow: null,
+    stateWrite: Promise.resolve(),
     started: false,
     ready: null,
     settings: { ...DEFAULT_SERVER_SETTINGS },
@@ -377,6 +382,7 @@ async function loadState(e: Eng) {
           pending?: unknown;
           identity_faults?: unknown;
           graded_keys?: unknown;
+          active_window?: unknown;
         }
       | undefined;
     if (!raw) return;
@@ -410,6 +416,7 @@ async function loadState(e: Eng) {
     e.gradedKeys = Array.isArray(raw.graded_keys)
       ? raw.graded_keys.filter((k): k is string => typeof k === "string").slice(-GRADED_KEY_CAP)
       : [];
+    e.recoveredWindow = restoreActiveWindow(raw.active_window, e.gradedKeys);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
   } catch (err) {
@@ -421,7 +428,6 @@ async function persistState(e: Eng, force = false) {
   if (!force && Date.now() - e.lastPersistAt < PERSIST_EVERY_MS) return;
   e.lastPersistAt = Date.now();
   try {
-    const db = await sql();
     const state = JSON.stringify({
       learner: sliceLearner(e.learner),
       call_log: e.callLog.slice(0, 80),
@@ -444,11 +450,25 @@ async function persistState(e: Eng, force = false) {
       pending: e.pending.slice(-PENDING_CAP),
       identity_faults: e.identityFaults.slice(-IDENTITY_FAULT_CAP),
       graded_keys: e.gradedKeys.slice(-GRADED_KEY_CAP),
+      // A restart can straddle close BEFORE the pending-settlement list exists.
+      // Persist the observed grading input while the window is still open.
+      active_window: checkpointActiveWindow(
+        e.prevSnap && e.lastChair ? gradeSource(e, e.prevSnap, e.lastVotes, e.lastChair) : e.recoveredWindow,
+        e.gradedKeys,
+        e.pending,
+      ),
     });
-    await db`
-      insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
-      on conflict (id) do update set state = ${state}::jsonb, updated_at = now()
-    `;
+    // Tick, watchdog and grading saves may overlap. Write in capture order so
+    // an older in-flight save cannot resurrect a completed checkpoint/outbox.
+    const write = e.stateWrite.catch(() => {}).then(async () => {
+      const db = await sql();
+      await db`
+        insert into desk_state (id, state, updated_at) values (${STATE_ID}, ${state}::jsonb, now())
+        on conflict (id) do update set state = ${state}::jsonb, updated_at = now()
+      `;
+    });
+    e.stateWrite = write;
+    await write;
   } catch (err) {
     e.lastError = `state save: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -1086,6 +1106,18 @@ function gradeSource(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) 
   return { snap, votes, chair };
 }
 
+/** Boot recovery is used only by settlement, never as a fresh feed or Chair read. */
+function previousDecision(e: Eng) {
+  if (e.prevSnap && e.lastChair) return { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
+  const saved = e.recoveredWindow;
+  if (saved) {
+    // Keep the last live-book candidate if the first resumed tick is chalk.
+    if (!e.gradeCand && gradeableBook(saved.snap)) e.gradeCand = saved;
+    return { snap: saved.snap, votes: saved.votes, chair: saved.chair };
+  }
+  return { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
+}
+
 /** A window settles on a death tick (≤0.4s left) or — the common case with a
  *  4s poll against a 3s bundle cache — on ROLLOVER: the first tick whose
  *  close_time moved past the previous window. Without the rollover path,
@@ -1266,7 +1298,7 @@ async function tick(e: Eng) {
     notePathParity(e, snap, chair);
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window
     // rollover the OLD window grades from its own last live-book tick.
-    const prev = { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
+    const prev = previousDecision(e);
     await settleIfNeeded(e, snap, votes, chair, prev);
     noteGradeCand(e, snap, votes, chair);
     if (!e.learner.window_memory.entry_lean && chair.lean !== "WAIT") {
@@ -1275,6 +1307,7 @@ async function tick(e: Eng) {
     e.prevSnap = snap;
     e.lastVotes = votes;
     e.lastChair = chair;
+    e.recoveredWindow = null;
     e.lastError = null;
     e.lastTickAt = Date.now();
     await persistState(e);
