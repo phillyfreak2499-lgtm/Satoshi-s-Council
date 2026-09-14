@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { GLOSS } from "@/lib/desk/glossary";
 import { SEATS } from "@/lib/desk/seats";
+import { SITE_DESTINATIONS } from "@/lib/desk/navigation";
 import type { SeatId, TabId } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 
@@ -26,12 +27,9 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
   { id: "settings", label: "SETTINGS", hint: "demo or live, alerts, display" },
 ];
 
-const PAGES: { href: string; label: string; hint: string }[] = [
-  { href: "/arena", label: "ARENA · THE PIT", hint: "lock one paper call on the live window, see how the room leans" },
-  { href: "/about", label: "How it works", hint: "read, vote, grade — in three steps" },
-  { href: "/faq", label: "FAQ", hint: "what a seat is, why WAIT, what paper means" },
-  { href: "/legal", label: "Paper only", hint: "no orders, no accounts, no advice" },
-];
+const PAGES: { href: string; label: string; hint: string }[] = SITE_DESTINATIONS.filter(
+  ({ href }) => href !== "/",
+).map(({ href, label, hint }) => ({ href, label, hint }));
 
 function score(q: string, text: string): number {
   const t = text.toLowerCase();
