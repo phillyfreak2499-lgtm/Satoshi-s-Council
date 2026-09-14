@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Page } from "@/components/desk/Page";
 import { ReplayPane } from "@/components/desk/ReplayPane";
-import { ogWindowImage } from "@/lib/desk/site";
+import { ogWindowImage, pageHead } from "@/lib/desk/site";
 import { loadReplay } from "@/lib/desk/replay";
 
 const TICKER_RE = /^[A-Z0-9-]{4,40}$/;
@@ -73,17 +73,6 @@ export const Route = createFileRoute("/window/$ticker")({
     if (!replay) throw notFound();
     return replay;
   },
-  head: ({ params }) => ({
-    meta: [
-      { title: `Window replay · ${params.ticker} · Satoshi's Council` },
-      {
-        name: "description",
-        content:
-          "A paper-only replay of one Bitcoin 15-minute window: what the seats saw and said, the chair's read, and Kalshi's official settlement value. Nothing here was a live order. Not advice.",
-      },
-      { property: "og:description", content: "One Bitcoin 15-minute window, replayed on paper: the price against the strike, the chair's read, and Kalshi's official settlement value." },
-      { property: "og:image", content: ogWindowImage(params.ticker) },
-    ],
-  }),
+  head: ({ params }) => pageHead(`/window/${encodeURIComponent(params.ticker)}`, `Window replay · ${params.ticker} · Satoshi's Council`, "Replay one Bitcoin paper window: recorded prices, specialist reads, the chair’s call and official settlement. Not financial advice.", ogWindowImage(params.ticker)),
   component: WindowPage,
 });

@@ -9,7 +9,7 @@ import { SEAT_IDS, type SeatId } from "@/lib/desk/types";
 import { GLOSS } from "@/lib/desk/glossary";
 import { wilsonLower } from "@/lib/desk/math";
 import { readScalp, scalpAvg } from "@/lib/desk/scalp";
-import { ogSeatImage } from "@/lib/desk/site";
+import { ogSeatImage, pageHead } from "@/lib/desk/site";
 import { cn } from "@/lib/utils";
 import { publicSeatSnapshot } from "@/lib/desk/seat-public";
 
@@ -151,14 +151,7 @@ export const Route = createFileRoute("/seat/$id")({
     const id = params.id.toUpperCase();
     const meta = isSeat(id) ? SEAT_BY_ID[id] : null;
     const gloss = isSeat(id) ? GLOSS[`seat.${id}`] : undefined;
-    return {
-      meta: [
-        { title: meta ? `${id} (${meta.callsign}) · Satoshi's Council` : "No such seat · Satoshi's Council" },
-        { name: "description", content: gloss?.body ?? "One of the twenty-one seats on a paper-only Bitcoin 15-minute research desk." },
-        { property: "og:description", content: gloss?.body ?? "One of the twenty-one seats on a paper-only Bitcoin 15-minute research desk." },
-        ...(meta ? [{ property: "og:image", content: ogSeatImage(id) }] : []),
-      ],
-    };
+    return pageHead(`/seat/${id}`, meta ? `${id} (${meta.callsign}) · Satoshi's Council` : "No such seat · Satoshi's Council", gloss?.body ?? "One specialist on a paper-only Bitcoin research desk.", ogSeatImage(id));
   },
   component: SeatPage,
 });

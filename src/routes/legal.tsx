@@ -1,14 +1,9 @@
+import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { H2, P, Page } from "@/components/desk/Page";
 
 export const Route = createFileRoute("/legal")({
-  head: () => ({
-    meta: [
-      { title: "Paper only · Satoshi's Council" },
-      { name: "description", content: "Satoshi's Council is a paper-only research desk. No orders, no accounts, no advice, no affiliation with Kalshi." },
-    ],
-    links: [{ rel: "canonical", href: "https://satoshiscouncil.com/legal" }],
-  }),
+  head: () => pageHead("/legal", "Paper only · Satoshi's Council", "Satoshi’s Council is a paper-only research desk. No live orders, no accounts, no financial advice, and no affiliation with Kalshi."),
   component: Legal,
 });
 
@@ -48,6 +43,11 @@ function Legal() {
         The site does not accept wagers, open brokerage accounts or choose a trading venue for you. Do not use it where access would be unlawful.
       </P>
       <H2>Your data</H2>
+      <P>
+        Board posts are public. The desk can hide or restore posts, retaining their original text and an internal moderation reason.
+        To limit spam, the Board keeps a one-way network identifier and recent posting counts; it does not store your raw IP address in that record.
+        Inactive rate-limit records are removed after seven days when new posts are processed.
+      </P>
       <P>
         Arena callsigns and alert subscriptions are tied to a random token stored in your own browser; there are no logins. Push alerts go only to a
         browser that turned them on in SETTINGS and can be turned off there.

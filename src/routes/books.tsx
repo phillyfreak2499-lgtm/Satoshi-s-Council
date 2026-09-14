@@ -1,3 +1,4 @@
+import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { BooksTab } from "@/components/desk/BooksTab";
 import { Page } from "@/components/desk/Page";
@@ -7,12 +8,7 @@ const BOOK_TZ = "America/Chicago";
 
 export const Route = createFileRoute("/books")({
   loader: () => publicBooksSnapshot(),
-  head: () => ({
-    meta: [
-      { title: "Paper books · Satoshi's Council" },
-      { name: "description", content: "The Council's paper-only Bitcoin 15-minute record, with labeled time ranges, fees, floor trials, and window replays." },
-    ],
-  }),
+  head: () => pageHead("/books", "Books · Satoshi's Council", "Review recorded paper results, overlapping time periods, missing windows and fee-adjusted comparisons. Bitcoin research only."),
   component: BooksPage,
 });
 

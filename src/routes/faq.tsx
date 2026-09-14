@@ -1,15 +1,11 @@
+import { pageHead } from "@/lib/desk/site";
 import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Page } from "@/components/desk/Page";
 
 export const Route = createFileRoute("/faq")({
-  head: () => ({
-    meta: [
-      { title: "FAQ · Satoshi's Council" },
-      { name: "description", content: "What a seat is, why the desk says WAIT so often, what paper means, whether money is at risk, and why it is Bitcoin only." },
-    ],
-  }),
+  head: () => pageHead("/faq", "Frequently asked questions · Satoshi's Council", "Understand paper calls, fees, settlement, research samples and the Council. Nothing here places a live order."),
   component: Faq,
 });
 

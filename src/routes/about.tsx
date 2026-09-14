@@ -1,13 +1,9 @@
+import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { H2, P, Page } from "@/components/desk/Page";
 
 export const Route = createFileRoute("/about")({
-  head: () => ({
-    meta: [
-      { title: "How the desk works · Satoshi's Council" },
-      { name: "description", content: "Twenty-one specialist seats read Bitcoin every 15 minutes; SATOSHI chairs the vote; every window is graded on paper. Nothing here places a live trade." },
-    ],
-  }),
+  head: () => pageHead("/about", "About · Satoshi's Council", "Meet the twenty-one specialist seats and learn how the Bitcoin 15-minute paper research desk works."),
   component: About,
 });
 
