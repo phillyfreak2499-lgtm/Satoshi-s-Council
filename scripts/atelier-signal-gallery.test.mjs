@@ -80,7 +80,7 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(arcade, /lastSettledTicker === priorRun\.ticker/);
   assert.match(arcade, /sessionStorage\.setItem\(RUN_STORE/);
   assert.match(arcade, /TAPE AHEAD UNWRITTEN/);
-  assert.match(arcade, /const cameraLens = 0\.32/);
+  assert.match(arcade, /const cameraLens = 0\.24/);
   assert.match(arcade, /CHASE CAMERA · ROAD RUSH/);
   assert.match(arcade, /lineDashOffset = -roadPhase/);
   assert.match(catalog, /key: "rush"/);

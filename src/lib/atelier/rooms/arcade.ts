@@ -126,91 +126,150 @@ function drawRoadster(
   ctx.translate(x, y);
   ctx.rotate(angle + Math.sin(phase * 4.1) * (offRoad ? 0.035 : 0.007));
 
-  const wake = ctx.createLinearGradient(-size * 2.8, 0, -size * 0.45, 0);
+  const wake = ctx.createLinearGradient(-size * 3.3, 0, -size * 0.75, 0);
   wake.addColorStop(0, "rgba(247,147,26,0)");
-  wake.addColorStop(0.68, `rgba(247,147,26,${0.08 + rush * 0.025})`);
-  wake.addColorStop(1, offRoad ? "rgba(207,81,77,0.64)" : "rgba(247,147,26,0.48)");
+  wake.addColorStop(0.66, `rgba(247,147,26,${0.045 + rush * 0.018})`);
+  wake.addColorStop(1, offRoad ? "rgba(207,81,77,0.48)" : "rgba(247,147,26,0.28)");
   ctx.fillStyle = wake;
   ctx.beginPath();
-  ctx.moveTo(-size * (2.1 + rush * 0.18), -size * 0.22);
-  ctx.lineTo(-size * 0.44, -size * 0.31);
-  ctx.lineTo(-size * 0.44, size * 0.31);
-  ctx.lineTo(-size * (2.1 + rush * 0.18), size * 0.22);
+  ctx.moveTo(-size * (2.45 + rush * 0.2), -size * 0.16);
+  ctx.lineTo(-size * 0.88, -size * 0.25);
+  ctx.lineTo(-size * 0.88, size * 0.25);
+  ctx.lineTo(-size * (2.45 + rush * 0.2), size * 0.16);
   ctx.closePath();
   ctx.fill();
 
   ctx.shadowColor = "rgba(0,0,0,0.92)";
-  ctx.shadowBlur = size * 0.45;
-  ctx.fillStyle = "#010203";
-  ctx.fillRect(-size * 0.46, -size * 0.61, size * 0.38, size * 0.18);
-  ctx.fillRect(size * 0.22, -size * 0.58, size * 0.33, size * 0.17);
-  ctx.fillRect(-size * 0.46, size * 0.43, size * 0.38, size * 0.18);
-  ctx.fillRect(size * 0.22, size * 0.41, size * 0.33, size * 0.17);
+  ctx.shadowBlur = size * 0.52;
+  ctx.fillStyle = "rgba(0,0,0,0.82)";
+  ctx.beginPath();
+  ctx.ellipse(0, size * 0.18, size * 1.24, size * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.shadowBlur = 0;
 
-  const body = ctx.createLinearGradient(-size * 0.75, -size * 0.5, size * 0.82, size * 0.42);
+  ctx.fillStyle = "#020304";
+  ctx.fillRect(-size * 0.88, -size * 0.65, size * 0.46, size * 0.2);
+  ctx.fillRect(size * 0.38, -size * 0.65, size * 0.5, size * 0.2);
+  ctx.fillRect(-size * 0.88, size * 0.45, size * 0.46, size * 0.2);
+  ctx.fillRect(size * 0.38, size * 0.45, size * 0.5, size * 0.2);
+
+  ctx.fillStyle = "#56616a";
+  ctx.globalAlpha = 0.54;
+  ctx.fillRect(-size * 0.77, -size * 0.67, size * 0.22, size * 0.035);
+  ctx.fillRect(size * 0.51, -size * 0.67, size * 0.23, size * 0.035);
+  ctx.fillRect(-size * 0.77, size * 0.635, size * 0.22, size * 0.035);
+  ctx.fillRect(size * 0.51, size * 0.635, size * 0.23, size * 0.035);
+  ctx.globalAlpha = 1;
+
+  const body = ctx.createLinearGradient(-size * 1.15, -size * 0.5, size * 1.36, size * 0.46);
   if (offRoad) {
-    body.addColorStop(0, "#4f1114");
-    body.addColorStop(0.52, "#bd403b");
-    body.addColorStop(1, "#5c1719");
+    body.addColorStop(0, "#321012");
+    body.addColorStop(0.44, "#9f3936");
+    body.addColorStop(0.7, "#e16758");
+    body.addColorStop(1, "#351011");
   } else {
-    body.addColorStop(0, "#6f3008");
-    body.addColorStop(0.34, "#f7931a");
-    body.addColorStop(0.68, "#ffcb66");
-    body.addColorStop(1, "#7a3508");
+    body.addColorStop(0, "#281408");
+    body.addColorStop(0.28, "#8b460e");
+    body.addColorStop(0.54, "#ef941d");
+    body.addColorStop(0.72, "#ffd17a");
+    body.addColorStop(1, "#552608");
   }
   ctx.shadowColor = offRoad ? RED : ORANGE;
-  ctx.shadowBlur = size * (offRoad ? 0.95 : 0.62);
+  ctx.shadowBlur = size * (offRoad ? 0.62 : 0.34);
   ctx.fillStyle = body;
   ctx.beginPath();
-  ctx.moveTo(size * 0.94, 0);
-  ctx.lineTo(size * 0.63, -size * 0.35);
-  ctx.lineTo(size * 0.12, -size * 0.49);
-  ctx.lineTo(-size * 0.62, -size * 0.4);
-  ctx.lineTo(-size * 0.78, -size * 0.24);
-  ctx.lineTo(-size * 0.78, size * 0.24);
-  ctx.lineTo(-size * 0.62, size * 0.4);
-  ctx.lineTo(size * 0.12, size * 0.49);
-  ctx.lineTo(size * 0.63, size * 0.35);
+  ctx.moveTo(size * 1.42, 0);
+  ctx.bezierCurveTo(size * 1.25, -size * 0.23, size * 0.98, -size * 0.34, size * 0.7, -size * 0.4);
+  ctx.lineTo(size * 0.16, -size * 0.55);
+  ctx.lineTo(-size * 0.54, -size * 0.5);
+  ctx.lineTo(-size * 1.05, -size * 0.35);
+  ctx.lineTo(-size * 1.18, -size * 0.18);
+  ctx.lineTo(-size * 1.18, size * 0.18);
+  ctx.lineTo(-size * 1.05, size * 0.35);
+  ctx.lineTo(-size * 0.54, size * 0.5);
+  ctx.lineTo(size * 0.16, size * 0.55);
+  ctx.lineTo(size * 0.7, size * 0.4);
+  ctx.bezierCurveTo(size * 0.98, size * 0.34, size * 1.25, size * 0.23, size * 1.42, 0);
   ctx.closePath();
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  const canopy = ctx.createLinearGradient(-size * 0.2, -size * 0.3, size * 0.4, size * 0.26);
-  canopy.addColorStop(0, "#07111a");
-  canopy.addColorStop(0.48, "#17384a");
-  canopy.addColorStop(0.72, "#8fc6d9");
-  canopy.addColorStop(1, "#09131a");
-  ctx.fillStyle = canopy;
+  ctx.strokeStyle = offRoad ? "rgba(255,177,160,0.62)" : "rgba(255,225,166,0.62)";
+  ctx.lineWidth = Math.max(1, size * 0.026);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(29,17,10,0.62)";
   ctx.beginPath();
-  ctx.moveTo(size * 0.38, 0);
-  ctx.lineTo(size * 0.12, -size * 0.29);
-  ctx.lineTo(-size * 0.28, -size * 0.25);
-  ctx.lineTo(-size * 0.4, 0);
-  ctx.lineTo(-size * 0.28, size * 0.25);
-  ctx.lineTo(size * 0.12, size * 0.29);
+  ctx.moveTo(-size * 1.08, -size * 0.28);
+  ctx.lineTo(-size * 0.5, -size * 0.39);
+  ctx.lineTo(-size * 0.5, size * 0.39);
+  ctx.lineTo(-size * 1.08, size * 0.28);
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(255,240,208,0.72)";
-  ctx.lineWidth = Math.max(1, size * 0.035);
+  const hood = ctx.createLinearGradient(size * 0.2, -size * 0.32, size * 1.25, size * 0.28);
+  hood.addColorStop(0, "rgba(88,43,10,0.64)");
+  hood.addColorStop(0.52, "rgba(255,194,92,0.74)");
+  hood.addColorStop(1, "rgba(75,31,7,0.74)");
+  ctx.fillStyle = hood;
   ctx.beginPath();
-  ctx.moveTo(-size * 0.58, -size * 0.31);
-  ctx.lineTo(size * 0.58, -size * 0.25);
+  ctx.moveTo(size * 1.24, 0);
+  ctx.lineTo(size * 0.84, -size * 0.26);
+  ctx.lineTo(size * 0.25, -size * 0.3);
+  ctx.lineTo(size * 0.32, size * 0.3);
+  ctx.lineTo(size * 0.84, size * 0.26);
+  ctx.closePath();
+  ctx.fill();
+
+  const canopy = ctx.createLinearGradient(-size * 0.38, -size * 0.24, size * 0.22, size * 0.2);
+  canopy.addColorStop(0, "#07111a");
+  canopy.addColorStop(0.44, "#133544");
+  canopy.addColorStop(0.72, "#74aebe");
+  canopy.addColorStop(1, "#061017");
+  ctx.fillStyle = canopy;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.25, 0);
+  ctx.lineTo(size * 0.02, -size * 0.24);
+  ctx.lineTo(-size * 0.47, -size * 0.2);
+  ctx.lineTo(-size * 0.62, 0);
+  ctx.lineTo(-size * 0.47, size * 0.2);
+  ctx.lineTo(size * 0.02, size * 0.24);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(220,239,243,0.48)";
+  ctx.lineWidth = Math.max(1, size * 0.022);
   ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255,235,195,0.7)";
+  ctx.lineWidth = Math.max(1, size * 0.027);
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.96, -size * 0.3);
+  ctx.lineTo(size * 1.08, -size * 0.24);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(6,8,9,0.72)";
+  ctx.lineWidth = Math.max(1, size * 0.038);
+  for (let index = 0; index < 4; index += 1) {
+    const ventX = -size * (0.92 - index * 0.1);
+    ctx.beginPath();
+    ctx.moveTo(ventX, -size * 0.21);
+    ctx.lineTo(ventX, size * 0.21);
+    ctx.stroke();
+  }
 
   ctx.fillStyle = "#fff3d4";
   ctx.shadowColor = "#fff3d4";
-  ctx.shadowBlur = size * 0.38;
-  ctx.fillRect(size * 0.62, -size * 0.27, size * 0.2, size * 0.12);
-  ctx.fillRect(size * 0.62, size * 0.15, size * 0.2, size * 0.12);
+  ctx.shadowBlur = size * 0.22;
+  ctx.fillRect(size * 1.08, -size * 0.22, size * 0.17, size * 0.09);
+  ctx.fillRect(size * 1.08, size * 0.13, size * 0.17, size * 0.09);
   ctx.shadowBlur = 0;
 
-  ctx.fillStyle = offRoad ? RED : ORANGE;
-  ctx.shadowColor = offRoad ? RED : ORANGE;
-  ctx.shadowBlur = size * 0.4;
-  ctx.fillRect(-size * 0.83, -size * 0.25, size * 0.11, size * 0.14);
-  ctx.fillRect(-size * 0.83, size * 0.11, size * 0.11, size * 0.14);
+  ctx.fillStyle = offRoad ? "#ff7668" : "#dc493b";
+  ctx.shadowColor = offRoad ? RED : "#dc493b";
+  ctx.shadowBlur = size * 0.24;
+  ctx.fillRect(-size * 1.19, -size * 0.23, size * 0.1, size * 0.13);
+  ctx.fillRect(-size * 1.19, size * 0.1, size * 0.1, size * 0.13);
   ctx.restore();
 }
 
@@ -391,11 +450,11 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       const tape = road.filter((point) => point.p <= progress + 0.015);
       if (spot > 0) tape.push({ p: progress, value: spot });
 
-      const cameraLens = 0.32;
+      const cameraLens = 0.24;
       const cameraStart = Math.max(0, progress - cameraLens);
       const cameraSpan = Math.max(0.025, progress - cameraStart);
       const launch = clamp(progress / 0.14, 0, 1);
-      const carX = left + (right - left) * (0.14 + launch * 0.58);
+      const carX = left + (right - left) * (0.12 + launch * 0.54);
       const visibleTape = tape.filter((point) => point.p >= cameraStart - 0.025);
       const rangePoints = visibleTape.length > 1 ? visibleTape : tape;
       const maxDistance = Math.max(
@@ -539,8 +598,18 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        ctx.strokeStyle = "rgba(207,81,77,0.72)";
-        ctx.lineWidth = clamp(short * 0.003, 1.5, 5);
+        ctx.save();
+        ctx.setLineDash([short * 0.026, short * 0.044]);
+        ctx.lineDashOffset = -roadPhase * short * 0.3;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(255,241,211,0.68)";
+        ctx.lineWidth = clamp(short * 0.0018, 1.25, 3.2);
+        traceRoadLine(ctx, screenRoad);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.strokeStyle = "rgba(189,76,61,0.54)";
+        ctx.lineWidth = clamp(short * 0.0022, 1.25, 3.8);
         traceRoadLine(ctx, upper);
         ctx.stroke();
         traceRoadLine(ctx, lower);
@@ -614,7 +683,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
           const before = screenRoad[screenRoad.length - 2]!;
           angle = clamp(Math.atan2(roadY - before.y, Math.max(1, carX - before.x)), -0.28, 0.28);
         }
-        drawRoadster(ctx, carX, carY, clamp(short * 0.054, 28, 72), angle, offRoad, phase, rush);
+        drawRoadster(ctx, carX, carY, clamp(short * 0.068, 34, 88), angle, offRoad, phase, rush);
         if (offRoad) {
           ctx.fillStyle = "rgba(255,179,88,0.82)";
           ctx.shadowColor = RED;
