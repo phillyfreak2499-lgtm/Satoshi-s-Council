@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { listBoard, postBoard, type BoardKind, type BoardPost } from "@/lib/desk/board";
 import { gtagEventAfterSuccess } from "@/lib/desk/ga";
 import { getAdminKey, type DeskFrame } from "@/lib/desk/engine";
@@ -6,6 +6,7 @@ import { fmtLocal } from "@/lib/desk/market-hours";
 import { cn } from "@/lib/utils";
 import { LeanChip } from "./bits";
 import { SEEN_KEY } from "./use-board-unread";
+import { pageIndex } from "@/lib/desk/public-room-view";
 
 const WHO_KEY = "satoshi-desk-v1-board-who";
 const PAGE_SIZE = 6;
@@ -15,37 +16,41 @@ function pageCount(rows: BoardPost[]): number {
 }
 
 function pageRows(rows: BoardPost[], page: number): BoardPost[] {
-  return rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const current = pageIndex(rows.length, page, PAGE_SIZE);
+  return rows.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
 }
 
 function BoardPager({
   page,
   pages,
   onPage,
+  label,
 }: {
   page: number;
   pages: number;
   onPage: (page: number) => void;
+  label: string;
 }) {
   if (pages <= 1) return null;
+  page = pageIndex(pages, page, 1);
   return (
-    <nav className="mt-3 flex items-center justify-between gap-3" aria-label="Board pages">
+    <nav className="mt-3 flex items-center justify-between gap-3" aria-label={`${label} pages`}>
       <button
         type="button"
         className="btn btn-sm text-muted hover:text-fg"
         disabled={page === 0}
-        onClick={() => onPage(page - 1)}
+        onClick={() => { onPage(page - 1); document.getElementById(`board-${label.toLowerCase()}`)?.scrollIntoView({ block: "start" }); }}
       >
         ← Newer
       </button>
-      <span className="font-mono text-micro tabular text-subtle">
+      <span aria-live="polite" className="font-mono text-micro tabular text-subtle">
         page {page + 1} / {pages}
       </span>
       <button
         type="button"
         className="btn btn-sm text-muted hover:text-fg"
         disabled={page + 1 >= pages}
-        onClick={() => onPage(page + 1)}
+        onClick={() => { onPage(page + 1); document.getElementById(`board-${label.toLowerCase()}`)?.scrollIntoView({ block: "start" }); }}
       >
         Older →
       </button>
@@ -87,7 +92,7 @@ function PostCard({
         <span className="font-mono text-micro text-fg">{p.who}</span>
         <span className="font-mono text-micro tabular text-subtle">{fmtLocal(p.t, tz)}</span>
       </div>
-      <p className="mt-1 font-sans text-body text-fg">{p.body}</p>
+      <p className="mt-1 whitespace-pre-wrap break-words font-sans text-body text-fg">{p.body}</p>
       {(p.lean || p.ticker) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {p.lean === "UP" || p.lean === "DOWN" || p.lean === "WAIT" ? <LeanChip lean={p.lean} /> : null}
@@ -112,7 +117,7 @@ function PostCard({
                 <span className="font-mono text-micro text-fg">{r.who}</span>
                 <span className="font-mono text-micro tabular text-subtle">{fmtLocal(r.t, tz)}</span>
               </div>
-              <p className="mt-0.5 font-sans text-ui text-fg">{r.body}</p>
+              <p className="mt-0.5 whitespace-pre-wrap break-words font-sans text-ui text-fg">{r.body}</p>
             </li>
           ))}
         </ul>
@@ -134,18 +139,22 @@ function Composer({
   onPosted: () => void;
   onCancel?: () => void;
 }) {
-  const [who, setWho] = useState(loadWho);
+  const [who, setWho] = useState("");
+  const formId = useId();
+  const sending = useRef(false);
+  useEffect(() => setWho(loadWho()), []);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
 
   const send = async () => {
     const body = note.trim();
-    if (!body || busy) return;
+    if (!body || sending.current) return;
+    sending.current = true;
     setBusy(true);
     setStatus("");
     try {
-      localStorage.setItem(WHO_KEY, who.trim().slice(0, 24));
+      try { localStorage.setItem(WHO_KEY, who.trim().slice(0, 24)); } catch { /* Name saving is optional. */ }
       const post = async () => {
         await postBoard({
           data: {
@@ -166,10 +175,12 @@ function Composer({
         await post();
       }
       setNote("");
+      setStatus("Posted. Your message is on the Board.");
       onPosted();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Could not post.");
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   };
@@ -182,7 +193,9 @@ function Composer({
         void send();
       }}
     >
+      <label htmlFor={`${formId}-name`} className="block font-mono text-micro text-muted">Your name <span className="text-subtle">(optional)</span></label>
       <input
+        id={`${formId}-name`}
         value={who}
         onChange={(e) => setWho(e.target.value)}
         className="input input-sm w-full font-mono"
@@ -190,11 +203,14 @@ function Composer({
         maxLength={24}
         autoComplete="nickname"
       />
+      <label htmlFor={`${formId}-message`} className="block font-mono text-micro text-muted">{parentId ? "Your reply" : kind === "idea" ? "Your idea" : kind === "update" ? "Desk update" : "Your feedback"}</label>
       <textarea
+        id={`${formId}-message`}
+        aria-describedby={`${formId}-hint`}
         value={note}
         onChange={(e) => setNote(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) {
             e.preventDefault();
             void send();
           }
@@ -212,6 +228,7 @@ function Composer({
                 : "Feedback on the tape"
         }
       />
+      <p id={`${formId}-hint`} className="font-mono text-micro text-subtle">Up to 400 characters. Enter adds a line.<span className="hidden sm:inline"> Ctrl/⌘ + Enter posts.</span></p>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
@@ -230,7 +247,7 @@ function Composer({
           </button>
         ) : null}
       </div>
-      {status ? <p className="font-mono text-micro text-wait">{status}</p> : null}
+      {status ? <p role="status" className="font-mono text-micro text-wait">{status}</p> : null}
     </form>
   );
 }
@@ -240,6 +257,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
   const [kind, setKind] = useState<BoardKind>("idea");
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const [updatePage, setUpdatePage] = useState(0);
   const [ideaPage, setIdeaPage] = useState(0);
   const [feedbackPage, setFeedbackPage] = useState(0);
@@ -250,9 +268,11 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       const rows = await listBoard();
       setPosts(rows);
       setErr("");
-      localStorage.setItem(SEEN_KEY, String(rows.length));
+      try { localStorage.setItem(SEEN_KEY, String(rows.length)); } catch { /* Reading does not require storage. */ }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Board is down.");
+    } finally {
+      setLoaded(true);
     }
   };
 
@@ -302,6 +322,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
             <button
               key={id}
               type="button"
+              aria-pressed={kind === id}
               onClick={() => setKind(id)}
               className={cn(
                 "min-h-11 rounded-sm px-3 py-1.5 font-mono text-micro sm:min-h-0",
@@ -312,13 +333,19 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
             </button>
           ))}
         </div>
-        <Composer frame={frame} kind={kind} parentId={null} onPosted={() => void pull()} />
+        <Composer frame={frame} kind={kind} parentId={null} onPosted={() => {
+          if (kind === "idea") setIdeaPage(0);
+          else if (kind === "feedback") setFeedbackPage(0);
+          else setUpdatePage(0);
+          void pull();
+        }} />
       </section>
 
-      {err ? <p className="font-mono text-micro text-wait">{err}</p> : null}
+      {err ? <p role="status" className="font-mono text-micro text-wait">{err}</p> : null}
+      {!loaded ? <p role="status" className="font-mono text-micro text-muted">Loading the shared Board…</p> : null}
 
       {updates.length > 0 ? (
-        <details className="rounded-md border border-border bg-canvas">
+        <details id="board-updates" className="scroll-mt-20 rounded-md border border-border bg-canvas">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 font-mono text-micro uppercase tracking-widest text-subtle marker:content-none">
             <span>Desk updates · {updates.length}</span>
             <span aria-hidden="true">▸</span>
@@ -345,16 +372,16 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
                 </div>
               ))}
             </div>
-            <BoardPager page={updatePage} pages={pageCount(newestUpdates)} onPage={setUpdatePage} />
+            <BoardPager label="Updates" page={updatePage} pages={pageCount(newestUpdates)} onPage={setUpdatePage} />
           </div>
         </details>
       ) : null}
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <section>
+        <section id="board-ideas" className="scroll-mt-20">
           <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Ideas · {ideas.length}</h3>
           {!ideas.length ? (
-            <p className="font-mono text-micro text-muted">No ideas yet. First one on the tape.</p>
+            <p className="font-mono text-micro text-muted">{loaded && !err ? "No ideas yet. First one on the tape." : "Ideas will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
               {pageRows(newestIdeas, ideaPage).map((p) => (
@@ -376,20 +403,20 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
                     ) : null}
                   </div>
                 ))}
-              <BoardPager page={ideaPage} pages={pageCount(newestIdeas)} onPage={setIdeaPage} />
+              <BoardPager label="Ideas" page={ideaPage} pages={pageCount(newestIdeas)} onPage={setIdeaPage} />
             </div>
           )}
         </section>
-        <section>
+        <section id="board-feedback" className="scroll-mt-20">
           <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Feedback · {notes.length}</h3>
           {!notes.length ? (
-            <p className="font-mono text-micro text-muted">No open feedback yet. Reply on an idea, or post Feedback above.</p>
+            <p className="font-mono text-micro text-muted">{loaded && !err ? "No open feedback yet. Reply on an idea, or post Feedback above." : "Feedback will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
               {pageRows(newestNotes, feedbackPage).map((p) => (
                 <PostCard key={p.id} p={p} tz={tz} />
               ))}
-              <BoardPager page={feedbackPage} pages={pageCount(newestNotes)} onPage={setFeedbackPage} />
+              <BoardPager label="Feedback" page={feedbackPage} pages={pageCount(newestNotes)} onPage={setFeedbackPage} />
             </div>
           )}
         </section>

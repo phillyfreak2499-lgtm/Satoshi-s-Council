@@ -22,7 +22,7 @@ export function GlobalHeader({ action }: { action?: HeaderAction }) {
 
   return (
     <SiteHeader
-      fold="lg"
+      fold="xl"
       nav={
         <nav aria-label="Site sections" className="flex items-center gap-1">
           {SITE_DESTINATIONS.map((item) => {

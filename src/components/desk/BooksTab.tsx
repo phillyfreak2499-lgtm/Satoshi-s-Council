@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchBooks,
   type BooksLab,
@@ -609,6 +609,25 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
   const [books, setBooks] = useState<Books | null>(initial ?? null);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const replayPanel = useRef<HTMLElement>(null);
+  const replayOpener = useRef<HTMLElement | null>(null);
+  const openReplay = (ticker: string) => {
+    replayOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSel(ticker);
+    if (sel === ticker) {
+      replayPanel.current?.focus({ preventScroll: true });
+      replayPanel.current?.scrollIntoView({ block: "start" });
+    }
+  };
+  const closeReplay = () => {
+    setSel(null);
+    replayOpener.current?.focus();
+  };
+  useEffect(() => {
+    if (!sel) return;
+    replayPanel.current?.focus({ preventScroll: true });
+    replayPanel.current?.scrollIntoView({ block: "start" });
+  }, [sel]);
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -666,7 +685,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
 
       <section id="books-overview" className="grid scroll-mt-20 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {books.last ? (
-          <LastWindow wnd={books.last} tz={tz} onReplay={setSel} />
+          <LastWindow wnd={books.last} tz={tz} onReplay={openReplay} />
         ) : (
           <Pane title={<Tip k="books.last">LAST WINDOW</Tip>}>
             <div className="font-mono text-micro text-muted">no graded windows yet</div>
@@ -728,10 +747,14 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         <LabPane lab={books.lab} tz={tz} />
       </section>
 
-      {sel ? <ReplayPane ticker={sel} tz={tz} onClose={() => setSel(null)} /> : null}
+      {sel ? (
+        <section id="books-replay" ref={replayPanel} tabIndex={-1} aria-label="Window replay" className="scroll-mt-20 outline-none">
+          <ReplayPane ticker={sel} tz={tz} onClose={closeReplay} />
+        </section>
+      ) : null}
 
       <section id="books-windows" className="scroll-mt-20">
-        <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· click a window with ▶ to replay it</span></span>}>
+        <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· open a window with ▶ to replay it</span></span>}>
           <div className="grid gap-2 sm:hidden">
             {books.windows.map((w) => (
               <button
@@ -739,12 +762,14 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
                 type="button"
                 disabled={!w.replay}
                 aria-label={`${fmtWhen(w.close_time, tz)} · ${w.winner}${w.replay ? " · open replay" : ""}`}
+                aria-expanded={w.replay ? sel === w.ticker : undefined}
+                aria-controls={sel === w.ticker ? "books-replay" : undefined}
                 className={cn(
                   "rounded-sm border border-border bg-canvas p-3 text-left font-mono text-micro",
                   w.replay ? "hover:bg-surface-2" : "cursor-default",
                   sel === w.ticker && "bg-surface-2",
                 )}
-                onClick={() => (w.replay ? setSel(sel === w.ticker ? null : w.ticker) : undefined)}
+                onClick={() => { if (w.replay) openReplay(w.ticker); }}
               >
                 <span className="flex items-center justify-between gap-3">
                   <span className="text-muted">{w.replay ? "▶ " : "· "}{fmtWhen(w.close_time, tz)}</span>
@@ -778,12 +803,21 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
               {books.windows.map((w) => (
                 <tr
                   key={w.ticker}
-                  className={cn("border-t border-border/50", w.replay && "cursor-pointer hover:bg-surface-2/40", sel === w.ticker && "bg-surface-2/60")}
-                  onClick={() => (w.replay ? setSel(sel === w.ticker ? null : w.ticker) : undefined)}
+                  className={cn("border-t border-border/50", w.replay && "hover:bg-surface-2/40", sel === w.ticker && "bg-surface-2/60")}
                 >
                   <td className="whitespace-nowrap text-muted">
-                    <span className={cn("mr-1", w.replay ? "text-fg" : "text-subtle/40")}>{w.replay ? "▶" : "·"}</span>
-                    {fmtWhen(w.close_time, tz)}
+                    {w.replay ? (
+                      <button
+                        type="button"
+                        className="min-h-11 rounded-sm py-2 text-left text-fg hover:underline"
+                        aria-label={`${fmtWhen(w.close_time, tz)} · open replay`}
+                        aria-expanded={sel === w.ticker}
+                        aria-controls={sel === w.ticker ? "books-replay" : undefined}
+                        onClick={() => openReplay(w.ticker)}
+                      >
+                        <span aria-hidden="true" className="mr-1">▶</span>{fmtWhen(w.close_time, tz)}
+                      </button>
+                    ) : <span>· {fmtWhen(w.close_time, tz)}</span>}
                   </td>
                   <td >
                     <LeanChip lean={w.winner} />

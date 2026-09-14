@@ -28,7 +28,7 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
 ];
 
 const PAGES: { href: string; label: string; hint: string }[] = SITE_DESTINATIONS.filter(
-  ({ href }) => href !== "/",
+  ({ href }) => href !== "/" && href !== "/books" && href !== "/board",
 ).map(({ href, label, hint }) => ({ href, label, hint }));
 
 function score(q: string, text: string): number {

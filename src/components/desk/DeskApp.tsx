@@ -109,7 +109,7 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           {SITE_DESTINATIONS.filter(
-            ({ href }) => href !== "/" && href !== "/arena",
+            ({ href }) => href !== "/" && href !== "/arena" && href !== "/books" && href !== "/board",
           ).map(({ href, label, hint }) => (
             <DropdownMenu.Item key={href} asChild className={item}>
               <a href={href}>
@@ -345,7 +345,7 @@ export function DeskApp() {
           ),
           ...MORE.map((m) => ({ label: m.label, hint: m.hint, onSelect: () => setTab(m.id), active: tab === m.id })),
           ...SITE_DESTINATIONS.filter(
-            ({ href }) => href !== "/" && href !== "/arena",
+            ({ href }) => href !== "/" && href !== "/arena" && href !== "/books" && href !== "/board",
           ).map(({ menuLabel, href, hint }) => ({ label: menuLabel, href, hint })),
           { label: "Search the desk", hint: "⌘K", onSelect: () => setPaletteOn(true) },
           { label: "Replay the 60-second tour", hint: "?", onSelect: startTour },

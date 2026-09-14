@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } from "@/lib/desk/lab-public";
 import { GlobalHeader } from "./GlobalHeader";
+import { evidenceAge, labComparisons } from "@/lib/desk/public-room-view";
 
 function cents(v: number | null): string {
   if (v == null) return "—";
@@ -21,82 +22,57 @@ function utcClock(value: string): string {
 }
 
 function ageLabel(value: string, asOf: string): string {
-  const then = new Date(value).getTime();
-  const now = new Date(asOf).getTime();
-  if (!Number.isFinite(then) || !Number.isFinite(now)) return value;
-  const minutes = Math.max(0, Math.floor((now - then) / 60_000));
-  if (minutes < 1) return "less than a minute ago";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 14) return `${days}d ago`;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
+  return evidenceAge(value, asOf);
 }
 
 function LabSummary({ data }: { data: PublicLabSnapshot }) {
-  const ranked = data.specimens
-    .filter((row) => row.avg_cents != null)
-    .slice()
-    .sort((a, b) => (b.avg_cents ?? -Infinity) - (a.avg_cents ?? -Infinity));
-  const leader = ranked[0] ?? null;
-  const control = data.specimens.find((row) => row.id === data.control_id) ?? null;
-  const delta =
-    leader?.avg_cents != null && control?.avg_cents != null
-      ? leader.avg_cents - control.avg_cents
-      : null;
-  const gateReady = data.specimens.filter(
-    (row) =>
-      row.sample_gate.required > 0 &&
-      row.sample_gate.current >= row.sample_gate.required,
-  ).length;
-
+  const { control, candidates, comparisons, reached } = labComparisons(data.specimens, data.control_id);
+  const paired = comparisons.filter((item) => item.delta != null).length;
   return (
-    <section
-      className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5"
-      aria-labelledby="lab-summary-title"
-    >
-      <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
-        Comparison first
-      </div>
-      <h2 id="lab-summary-title" className="mt-1 font-sans text-title font-medium text-fg">
-        What the ledger says
-      </h2>
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="lab-summary-title">
+      <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">Comparison first</div>
+      <h2 id="lab-summary-title" className="mt-1 font-sans text-title font-medium text-fg">What the ledger says</h2>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-sm border border-border bg-canvas p-3">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            Highest observed avg
-          </div>
-          <div className="mt-1 font-sans text-ui text-fg">{leader?.label ?? "No measured specimen"}</div>
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Frozen control</div>
+          <div className="mt-1 font-sans text-ui text-fg">{control?.label ?? data.control_id}</div>
           <div className="mt-1 font-mono text-micro tabular text-muted">
-            {leader ? `${cents(leader.avg_cents)} over ${leader.sample_n} observations` : "waiting for evidence"}
+            {control ? `${cents(control.avg_cents)} / observation · n=${control.sample_n}` : "waiting for control evidence"}
           </div>
         </div>
         <div className="rounded-sm border border-border bg-canvas p-3">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            Vs frozen control
-          </div>
-          <div className="mt-1 font-mono text-data tabular text-fg">{cents(delta)}</div>
-          <div className="mt-1 font-mono text-micro text-muted">
-            leader minus {control?.label ?? data.control_id}
-          </div>
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Matched comparisons</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{paired} / {candidates.length}</div>
+          <div className="mt-1 font-mono text-micro text-muted">candidates with shared-window evidence</div>
         </div>
         <div className="rounded-sm border border-border bg-canvas p-3">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            Sample gate reached
-          </div>
-          <div className="mt-1 font-mono text-data tabular text-fg">
-            {gateReady} / {data.specimens.length}
-          </div>
-          <div className="mt-1 font-mono text-micro text-muted">count only · not promotion</div>
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Sample gate reached</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{reached} / {candidates.length}</div>
+          <div className="mt-1 font-mono text-micro text-muted">candidate count only · not promotion</div>
         </div>
       </div>
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
-        This is a quick comparison of recorded paper evidence, not a recommendation or a winner declaration. Frozen rules and full specimen details remain below.
+      <div className="mt-4 border-t border-border pt-4">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+          Paired difference vs {control?.label ?? data.control_id}
+        </div>
+        <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+          {comparisons.map(({ row, delta }) => (
+            <li key={row.id}>
+              <a href={`#lab-specimen-${row.id}`} className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-canvas px-3 py-2 text-muted hover:bg-surface-2 hover:text-fg">
+                <span className="font-mono text-ui">{row.label}</span>
+                <span className="font-mono text-micro tabular">
+                  <span className="text-fg">{cents(delta)}</span>
+                  {delta != null ? ` · ${row.paired_n} paired windows` : " · awaiting matched evidence"}
+                  <span aria-hidden="true"> ↗</span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="mt-3 font-mono text-micro leading-relaxed text-muted">
+        Each difference uses only windows shared by that candidate and the control. Separate averages can cover different windows.
+        These are observed paper results, not a recommendation or a winner declaration.
       </p>
     </section>
   );
@@ -109,7 +85,7 @@ function progress(row: PublicLabSpecimen): number {
 
 function Specimen({ row, controlId, asOf }: { row: PublicLabSpecimen; controlId: string; asOf: string }) {
   return (
-    <article className="rounded-md border border-border bg-surface p-4 sm:p-5">
+    <article id={`lab-specimen-${row.id}`} className="scroll-mt-20 rounded-md border border-border bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">Specimen · {row.id}</div>
@@ -260,7 +236,7 @@ function SeatTimingStudy({
 
       <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
         Seats appear after at least 20 raw observations at one horizon. This display threshold is not
-        a research or promotion gate. As of {new Date(data.at).toLocaleString()}.
+        a research or promotion gate. As of <time dateTime={data.at}>{new Date(data.at).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")}</time>.
       </p>
     </section>
   );
@@ -269,13 +245,19 @@ function SeatTimingStudy({
 export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
   const [data, setData] = useState<PublicLabSnapshot | null>(initial ?? null);
   const [loaded, setLoaded] = useState(initial !== undefined);
+  const [refreshFailed, setRefreshFailed] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     const pull = async () => {
       try {
         const next = await publicLabSnapshot();
-        if (mounted) setData(next);
+        if (mounted) {
+          setData(next);
+          setRefreshFailed(false);
+        }
+      } catch {
+        if (mounted) setRefreshFailed(true);
       } finally {
         if (mounted) setLoaded(true);
       }
@@ -294,6 +276,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
       <GlobalHeader />
 
       <main id="lab-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
+        {refreshFailed ? <p role="status" className="mb-4 rounded-md border border-border bg-surface p-3 font-mono text-micro text-wait">{data ? "Refresh paused. Showing the last recorded snapshot; retrying automatically." : "The Lab could not load. Retrying automatically."}</p> : null}
         <section className="border-b border-border pb-6">
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">ALCHEMIST · prospective research</div>
           <h1 className="mt-2 font-sans text-display font-medium tracking-tight">THE LAB</h1>

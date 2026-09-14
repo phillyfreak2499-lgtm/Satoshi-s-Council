@@ -1,5 +1,7 @@
 export type SitePath =
   | "/"
+  | "/books"
+  | "/board"
   | "/chamber"
   | "/lab"
   | "/arena"
@@ -16,6 +18,8 @@ export type SiteDestination = {
 
 export const SITE_DESTINATIONS: readonly SiteDestination[] = [
   { href: "/", label: "Floor", menuLabel: "FLOOR", hint: "live desk" },
+  { href: "/books", label: "Books", menuLabel: "BOOKS", hint: "paper results and replays" },
+  { href: "/board", label: "Board", menuLabel: "BOARD", hint: "ideas, feedback and updates" },
   { href: "/chamber", label: "Chamber", menuLabel: "CHAMBER", hint: "evidence-backed reactions" },
   { href: "/lab", label: "Lab", menuLabel: "LAB", hint: "prospective research" },
   { href: "/arena", label: "Arena", menuLabel: "ARENA", hint: "paper-call room" },
