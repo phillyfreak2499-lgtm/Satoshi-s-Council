@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const DEFAULT_APP_NAME = "Grok App";
+export const DEFAULT_APP_NAME = "Satoshi\'s Council";
 export const OG_SERVICE_URL_DEFAULT = "https://og.grok.me";
 export const OG_SITE_REL_PATH = "src/lib/og/site.json";
 
@@ -40,6 +40,12 @@ export function escapeHtml(value) {
 /** Inverse of escapeHtml. Decode &amp; last so a single pass undoes one encode. */
 function unescapeHtml(value) {
   return String(value)
+    .replace(/&#(x?)([0-9a-f]+);/gi, (entity, radixFlag, digits) => {
+      const point = Number.parseInt(digits, radixFlag ? 16 : 10);
+      return Number.isInteger(point) && point >= 0 && point <= 0x10ffff
+        ? String.fromCodePoint(point)
+        : entity;
+    })
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
     .replaceAll("&quot;", '"')
