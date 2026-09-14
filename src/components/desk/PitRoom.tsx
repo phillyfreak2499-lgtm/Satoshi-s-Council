@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
+import type { PublicArenaSnapshot } from "@/lib/desk/arena-public";
 import { fetchRack, lockCall, type Rack } from "@/lib/desk/pit";
 import { GlobalHeader } from "./GlobalHeader";
 import { beacon } from "@/lib/desk/beacon";
@@ -90,17 +91,17 @@ async function shareText(text: string): Promise<"shared" | "copied" | "failed"> 
 }
 
 /** THE PIT: one page, one lock per window, paper only. */
-export function PitRoom() {
+export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
   const [name, setName] = useState("");
   const [draft, setDraft] = useState("");
-  const [rack, setRack] = useState<Rack | null>(null);
+  const [rack, setRack] = useState<Rack | null>(initial?.rack ?? null);
   const [rackErr, setRackErr] = useState<string | null>(null);
-  const [board, setBoard] = useState<Arena | null>(null);
+  const [board, setBoard] = useState<Arena | null>(initial?.board ?? null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(initial?.rack.at ?? 0);
   const [tick, setTick] = useState(0);
-  const prevN = useRef<number | null>(null);
+  const prevN = useRef<number | null>(initial?.rack.n_locked ?? null);
   const [alert, setAlert] = useState<"off" | "on" | "busy" | "none">("none");
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const prefsRef = useRef<PushPrefs | null>(null);

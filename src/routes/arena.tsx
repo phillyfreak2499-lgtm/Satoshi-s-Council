@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PitRoom } from "@/components/desk/PitRoom";
+import { publicArenaSnapshot } from "@/lib/desk/arena-public";
 
 export const Route = createFileRoute("/arena")({
   head: () => ({
@@ -11,5 +12,11 @@ export const Route = createFileRoute("/arena")({
       },
     ],
   }),
-  component: PitRoom,
+  loader: () => publicArenaSnapshot(),
+  component: ArenaPage,
 });
+
+
+function ArenaPage() {
+  return <PitRoom initial={Route.useLoaderData()} />;
+}

@@ -346,16 +346,28 @@ function Lanes({ r, cursor }: { r: Replay; cursor: number }) {
 }
 
 /** onClose is the in-desk close button; without it the pane stands alone on its own page. */
-export function ReplayPane({ ticker, tz, onClose }: { ticker: string; tz: string; onClose?: () => void }) {
+export function ReplayPane({
+  ticker,
+  tz,
+  onClose,
+  initial,
+}: {
+  ticker: string;
+  tz: string;
+  onClose?: () => void;
+  initial?: Replay | null;
+}) {
   const pageHref = `/window/${encodeURIComponent(ticker)}`;
-  const [r, setR] = useState<Replay | null>(null);
+  const [r, setR] = useState<Replay | null>(initial ?? null);
   const [err, setErr] = useState<string | null>(null);
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(() =>
+    Math.max(0, (initial?.cols.t.length ?? 1) - 1),
+  );
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    setR(null);
+    setR((current) => (current?.ticker === ticker ? current : null));
     setErr(null);
     setPlaying(false);
     fetchReplay(ticker)

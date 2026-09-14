@@ -7,6 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { takerFeeCentsExact } from "./clock";
+import type { Arena } from "./arena";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -194,11 +195,11 @@ async function deskRows(days: number | null): Promise<ArenaRow[]> {
   return [mk("SATOSHI (the chair)", chair)];
 }
 
-export async function arenaSummary(tokenRaw: unknown): Promise<unknown> {
+export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
   const token = cleanToken(tokenRaw);
   const db = await sql();
   const [week, all, desk7, deskAll] = await Promise.all([humanRows(7, token), humanRows(null, token), deskRows(7), deskRows(null)]);
-  let me: unknown = null;
+  let me: Arena["me"] = null;
   if (token) {
     const player = await db<{ name: string }>`select name from desk_players where token = ${token}`;
     if (player.length) {

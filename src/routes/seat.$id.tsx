@@ -10,6 +10,7 @@ import { GLOSS } from "@/lib/desk/glossary";
 import { wilsonLower } from "@/lib/desk/math";
 import { readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { ogSeatImage } from "@/lib/desk/site";
+import { publicSeatSnapshot } from "@/lib/desk/seat-public";
 
 function isSeat(id: string): id is SeatId {
   return (SEAT_IDS as readonly string[]).includes(id);
@@ -24,17 +25,23 @@ function SeatPage() {
   const { id: raw } = Route.useParams();
   const id = raw.toUpperCase();
   const frame = useDesk();
+  const initial = Route.useLoaderData();
   const [msg, setMsg] = useState<string | null>(null);
   if (!isSeat(id)) throw notFound();
   const meta = SEAT_BY_ID[id];
   const gloss = GLOSS[`seat.${id}`];
-  const vote = frame.votes.find((v) => v.seat === id);
+  const live = frame.snap != null;
+  const snap = frame.snap ?? initial.snap;
+  const vote = live ? frame.votes.find((v) => v.seat === id) : initial.vote;
   const learner = frame.learner;
-  const n = learner.seat_n[id] ?? 0;
-  const hits = learner.seat_hits[id] ?? 0;
-  const recent = learner.seat_recent?.[id] ?? [];
-  const avg = scalpAvg(readScalp(learner, id).legs);
-  const skills = Object.values(learner.skills).filter((s) => s.owner === id);
+  const n = live ? (learner.seat_n[id] ?? 0) : initial.n;
+  const hits = live ? (learner.seat_hits[id] ?? 0) : initial.hits;
+  const recent = live ? (learner.seat_recent?.[id] ?? []) : initial.recent;
+  const avg = live ? scalpAvg(readScalp(learner, id).legs) : initial.avg_cents;
+  const calls = live ? (learner.seat_calls?.[id] ?? 0) : initial.calls;
+  const skills = live
+    ? Object.values(learner.skills).filter((skill) => skill.owner === id)
+    : initial.skills;
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
     try {
@@ -51,8 +58,8 @@ function SeatPage() {
   };
   return (
     <Page title={`${id} (${meta.callsign})`} lede={gloss?.body ?? meta.eyes}>
-      {frame.snap && vote ? (
-        <BotCard seat={id} snap={frame.snap} vote={vote} />
+      {snap && vote ? (
+        <BotCard seat={id} snap={snap} vote={vote} />
       ) : (
         <div className="rounded-md border border-border bg-surface p-3 font-mono text-micro text-muted">waiting for the desk's next frame…</div>
       )}
@@ -67,7 +74,7 @@ function SeatPage() {
             <div className="font-mono text-ui text-muted">no graded reads yet</div>
           )}
           <div className="mt-1 font-mono text-micro text-muted">
-            avg {avg == null ? "—" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`} · {learner.seat_calls?.[id] ?? 0} calls
+            avg {avg == null ? "—" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`} · {calls} calls
             {vote ? (
               <>
                 {" · now "}
@@ -123,6 +130,11 @@ function SeatPage() {
 export const Route = createFileRoute("/seat/$id")({
   beforeLoad: ({ params }) => {
     if (!isSeat(params.id.toUpperCase())) throw notFound();
+  },
+  loader: async ({ params }) => {
+    const snapshot = await publicSeatSnapshot({ data: { id: params.id } });
+    if (!snapshot) throw notFound();
+    return snapshot;
   },
   head: ({ params }) => {
     const id = params.id.toUpperCase();

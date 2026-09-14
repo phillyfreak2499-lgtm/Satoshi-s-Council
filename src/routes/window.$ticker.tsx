@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Page } from "@/components/desk/Page";
 import { ReplayPane } from "@/components/desk/ReplayPane";
 import { ogWindowImage } from "@/lib/desk/site";
+import { loadReplay } from "@/lib/desk/replay";
 
 const TICKER_RE = /^[A-Z0-9-]{4,40}$/;
 
@@ -17,7 +18,11 @@ function browserTz(): string {
 /** One graded window on its own page, so a replay can be shared by link. Paper only. */
 function WindowPage() {
   const { ticker } = Route.useParams();
+  const replay = Route.useLoaderData();
   const [msg, setMsg] = useState<string | null>(null);
+  const [tz, setTz] = useState("America/Chicago");
+
+  useEffect(() => setTz(browserTz()), []);
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
     try {
@@ -37,7 +42,7 @@ function WindowPage() {
       title="Window replay"
       lede="One Bitcoin 15-minute window, replayed: what the seats saw and said, the chair's read, and Kalshi's official settlement value. Paper only."
     >
-      <ReplayPane ticker={ticker} tz={browserTz()} />
+      <ReplayPane ticker={ticker} tz={tz} initial={replay} />
       <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-micro text-muted">
         <button
           type="button"
@@ -62,6 +67,11 @@ function WindowPage() {
 export const Route = createFileRoute("/window/$ticker")({
   beforeLoad: ({ params }) => {
     if (!TICKER_RE.test(params.ticker)) throw notFound();
+  },
+  loader: async ({ params }) => {
+    const replay = await loadReplay({ data: { ticker: params.ticker } });
+    if (!replay) throw notFound();
+    return replay;
   },
   head: ({ params }) => ({
     meta: [
