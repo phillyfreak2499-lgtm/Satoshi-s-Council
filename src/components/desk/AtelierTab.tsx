@@ -14,6 +14,12 @@ export function AtelierTab() {
           lean,
           remainingMs,
           ticker,
+          phase: frame.snap?.phase ?? "—",
+          confidence: frame.chair?.confidence ?? 0,
+          score: frame.chair?.score ?? 0,
+          bar: frame.chair?.bar ?? 0,
+          brainAge: frame.brain_age_s,
+          source: frame.settings.source,
           log: frame.call_log ?? [],
         }}
       />
