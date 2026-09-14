@@ -925,7 +925,14 @@ async function maybeDigest(e: Eng) {
   }
 }
 
-function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string) {
+async function applyGrade(
+  e: Eng,
+  snap: Snapshot,
+  votes: Vote[],
+  chair: ChairResult,
+  finish: "UP" | "DOWN",
+  source: string,
+): Promise<void> {
   // A window teaches once, ever. The ledger dedupes its own row with ON CONFLICT,
   // but the learner has no such protection: a second call would settle scalps and
   // advance streak state a second time from one result. Ordering alone is not
@@ -1039,7 +1046,10 @@ function applyGrade(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, f
     e.learner = runHuddle(e.learner).learner;
   }
   e.learner.window_memory.entry_spot = 0;
-  void persistState(e, true);
+  // This is the durability boundary for the learner claim and ledger outbox.
+  // Await it: a deploy after grading must not terminate the process while the
+  // only copy of the completed window is still an unobserved promise.
+  await persistState(e, true);
 }
 
 function markPending(e: Eng, snap: Snapshot) {
@@ -1048,7 +1058,7 @@ function markPending(e: Eng, snap: Snapshot) {
   e.learner.settle_tape = [line, ...e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "))].slice(0, 48);
 }
 
-function resolvePending(e: Eng, snap: Snapshot) {
+async function resolvePending(e: Eng, snap: Snapshot): Promise<void> {
   if (!e.pending.length) return;
   // Every pending window whose official result has arrived grades now; the rest
   // stay pending. Resolving one can no longer drop the others (the G5 fix).
@@ -1057,7 +1067,7 @@ function resolvePending(e: Eng, snap: Snapshot) {
   e.pending = remaining;
   for (const p of resolved) {
     const hit = officialHit(e, snap, p.ticker, p.close_time);
-    if (hit) applyGrade(e, p.snap, p.votes, p.chair, hit.lean, "kalshi-result");
+    if (hit) await applyGrade(e, p.snap, p.votes, p.chair, hit.lean, "kalshi-result");
   }
 }
 
@@ -1080,14 +1090,14 @@ function gradeSource(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) 
  *  4s poll against a 3s bundle cache — on ROLLOVER: the first tick whose
  *  close_time moved past the previous window. Without the rollover path,
  *  grading depends on a tick landing inside the final 400ms, which is luck. */
-function settleIfNeeded(
+async function settleIfNeeded(
   e: Eng,
   snap: Snapshot,
   votes: Vote[],
   chair: ChairResult,
   prev: { snap: Snapshot | null; votes: Vote[]; chair: ChairResult | null },
-) {
-  resolvePending(e, snap);
+): Promise<void> {
+  await resolvePending(e, snap);
   const rolled = Boolean(
     prev.snap &&
       prev.chair &&
@@ -1116,7 +1126,7 @@ function settleIfNeeded(
     // end, so removing afterwards wrote a state where an already-graded window
     // was still waiting. A crash in that gap re-graded it on the next boot.
     e.pending = removeKeyed(e.pending, w.ticker, w.close_time); // clear only this window, not others
-    applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
+    await applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
     return;
   }
   e.pending = addKeyed(
@@ -1125,6 +1135,10 @@ function settleIfNeeded(
     PENDING_CAP,
   );
   markPending(e, s.snap);
+  // A deploy can land in the seconds between rollover and Kalshi's result.
+  // This await is what makes pending recovery real rather than best-effort: the
+  // exact decision is in desk_state before this settlement boundary completes.
+  await persistState(e, true);
 }
 
 async function liveSnap(e: Eng): Promise<Snapshot> {
@@ -1252,7 +1266,7 @@ async function tick(e: Eng) {
     // Settle BEFORE rolling the grade candidate and prev pointers: on a window
     // rollover the OLD window grades from its own last live-book tick.
     const prev = { snap: e.prevSnap, votes: e.lastVotes, chair: e.lastChair };
-    settleIfNeeded(e, snap, votes, chair, prev);
+    await settleIfNeeded(e, snap, votes, chair, prev);
     noteGradeCand(e, snap, votes, chair);
     if (!e.learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       e.learner.window_memory.entry_lean = chair.lean;
