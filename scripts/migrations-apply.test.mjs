@@ -1153,3 +1153,68 @@ test("0029 writes no historical rows: the migration creates structure only", asy
   assert.equal(n.rows[0].n, 0, "no INSERT or INSERT-SELECT backfill — the table starts empty");
   await db.close();
 });
+
+test("0031 records only prospective, valid booked-decision mirrors", async () => {
+  const db = await freshDb();
+  const names = await files();
+  const before = names.filter((name) => name < "0031_");
+  await applyAll(db, before);
+
+  const legacyTicker = "KXBTC15M-26SEP131900-00";
+  const legacyClose = "2026-09-13T23:00:00Z";
+  await db.query(
+    `insert into desk_ledger
+       (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar,
+        entry_cents, entry_conf, entry_score, entry_bar, settle_cents, ev_cents)
+     values ($1, $2, 'kalshi-result', 'UP', 'WAIT', 70, 0, 0.61,
+             84, 82, 0.71, 0.60, 100, 14)`,
+    [legacyTicker, legacyClose],
+  );
+
+  await applyAll(db, names.filter((name) => name >= "0031_"));
+
+  const legacy = await db.query(
+    `select entry_lean, entry_build_sha from desk_ledger
+      where ticker = $1 and close_time = $2`,
+    [legacyTicker, legacyClose],
+  );
+  assert.equal(legacy.rows[0].entry_lean, null, "the migration does not reconstruct a side");
+  assert.equal(legacy.rows[0].entry_build_sha, null, "the migration does not invent provenance");
+
+  const build = "0123456789abcdef0123456789abcdef01234567";
+  await db.query(
+    `insert into desk_ledger
+       (ticker, close_time, source, winner, chair_lean, chair_conf, score, bar,
+        entry_lean, entry_build_sha, entry_cents, entry_conf, entry_score, entry_bar,
+        settle_cents, ev_cents)
+     values
+       ('VALID-BOOKED', '2026-09-14T00:00:00Z', 'kalshi-result', 'UP', 'WAIT', 70, 0, 0.61,
+        'UP', $1, 84, 82, 0.71, 0.60, 100, 14),
+       ('VALID-WAIT', '2026-09-14T00:15:00Z', 'kalshi-result', 'DOWN', 'WAIT', 70, 0, 0.61,
+        null, $1, null, null, null, null, null, null),
+       ('EXCLUDED-BOOKED', '2026-09-14T00:30:00Z', 'kalshi-result', 'UP', 'WAIT', 70, 0, 0.61,
+        'UP', $1, 84, 82, 0.71, 0.60, 100, 14)`,
+    [build],
+  );
+  await db.query(
+    `update desk_ledger
+        set research_quality = 'excluded', research_quality_rule = 'test'
+      where ticker = 'EXCLUDED-BOOKED'`,
+  );
+
+  const mirror = await db.query(
+    `select ticker, entry_build_sha, lean, confidence, score, bar, hit, brier, ev_cents
+       from desk_booked_chair_mirror order by close_time`,
+  );
+  assert.equal(mirror.rows.length, 1, "legacy, WAIT, and excluded rows cannot enter the mirror");
+  assert.equal(mirror.rows[0].ticker, "VALID-BOOKED");
+  assert.equal(mirror.rows[0].entry_build_sha, build);
+  assert.equal(mirror.rows[0].lean, "UP");
+  assert.equal(Number(mirror.rows[0].confidence), 82);
+  assert.equal(Number(mirror.rows[0].score), 0.71);
+  assert.equal(Number(mirror.rows[0].bar), 0.6);
+  assert.equal(mirror.rows[0].hit, true);
+  assert.ok(Math.abs(Number(mirror.rows[0].brier) - 0.0324) < 1e-9);
+  assert.equal(Number(mirror.rows[0].ev_cents), 14);
+  await db.close();
+});

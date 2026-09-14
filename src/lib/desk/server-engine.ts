@@ -23,6 +23,11 @@ import {
 import { mergeLearner, sliceLearner } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk } from "./book-floor";
+import {
+  bookedDecisionAtGrade,
+  sanitizeBookedDecisionState,
+  type BookedDecisionState,
+} from "./booked-decision";
 import { freshLearner } from "./skills";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
@@ -176,7 +181,7 @@ type Eng = {
    *  ledger otherwise only describes the grade frame, so without this a signal
    *  cannot be sliced by regime, time left, spread or the economics it paid.
    *  Research only — nothing reads it to decide anything. */
-  entryState: Record<string, EntryState>;
+  entryState: Record<string, BookedDecisionState>;
   ledgerFlushing: boolean;
   /** Interior holes found in the recent ledger by the last gap scan (lost windows). */
   ledgerGapCount: number;
@@ -392,7 +397,7 @@ async function loadState(e: Eng) {
     // process death comes back here and drains to the ledger on this boot.
     e.ledgerQueue = sanitizeQueue(raw.ledger_queue, Date.now());
     e.shadowFills = sanitizeShadowFills(raw.shadow_fills);
-    e.entryState = sanitizeEntryState(raw.entry_state);
+    e.entryState = sanitizeBookedDecisionState(raw.entry_state);
     // Windows that closed before the last process death and were still waiting
     // on Kalshi's official result. Restored as the decision they were, so the
     // grade is the one the desk actually earned rather than one today's learner
@@ -506,44 +511,6 @@ function decideChair(e: Eng, votes: Vote[], snap: Snapshot, lastLean: Lean): Cha
   return lean === chair.lean ? chair : { ...chair, lean };
 }
 
-/** What the desk looked like at the moment the book paid. Research only. */
-type EntryState = {
-  regime: string;
-  secs_left: number;
-  conf: number;
-  score: number;
-  bar: number;
-  fair_yes: number;
-  spread_cents: number;
-  leftover_cents: number;
-  touch_size: number;
-  fee_cents: number;
-};
-
-/** Keep only well-formed entry states across a restart. */
-function sanitizeEntryState(raw: unknown): Record<string, EntryState> {
-  const out: Record<string, EntryState> = {};
-  if (!raw || typeof raw !== "object") return out;
-  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (!v || typeof v !== "object") continue;
-    const o = v as Record<string, unknown>;
-    out[k] = {
-      regime: typeof o.regime === "string" ? o.regime : "",
-      secs_left: num(o.secs_left),
-      conf: Math.round(num(o.conf)),
-      score: num(o.score),
-      bar: num(o.bar),
-      fair_yes: num(o.fair_yes),
-      spread_cents: num(o.spread_cents),
-      leftover_cents: num(o.leftover_cents),
-      touch_size: num(o.touch_size),
-      fee_cents: num(o.fee_cents),
-    };
-  }
-  return out;
-}
-
 /** Keep only well-formed shadow entries across a restart. */
 function sanitizeShadowFills(raw: unknown): Record<string, { lean: "UP" | "DOWN"; cents: number }> {
   const out: Record<string, { lean: "UP" | "DOWN"; cents: number }> = {};
@@ -572,11 +539,18 @@ function noteShadowFill(e: Eng, snap: Snapshot, lean: "UP" | "DOWN", cents: numb
 }
 
 /** Record the decision-time state of a fill, once per window. Research only. */
+function runningBuildSha(): string {
+  const sha = String(process.env.RENDER_GIT_COMMIT ?? "").trim().toLowerCase();
+  return /^[0-9a-f]{7,40}$/.test(sha) ? sha : "";
+}
+
 function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: number): void {
+  if (chair.lean !== "UP" && chair.lean !== "DOWN") return;
   const key = windowKey(snap);
   if (e.entryState[key]) return;
   const touch = chair.lean === "UP" ? snap.no_bid_size : snap.yes_bid_size;
   e.entryState[key] = {
+    lean: chair.lean,
     regime: snap.regime_key ?? "",
     secs_left: Math.round((snap.secs_left ?? 0) * 10) / 10,
     conf: Math.round(chair.confidence ?? 0),
@@ -587,6 +561,7 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: numbe
     leftover_cents: Math.round((snap.leftover_cents ?? 0) * 10) / 10,
     touch_size: Math.round(Number(touch) || 0),
     fee_cents: takerFeeCents(cents),
+    build_sha: runningBuildSha(),
   };
   const keys = Object.keys(e.entryState);
   if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
@@ -705,11 +680,12 @@ const LEDGER_COLUMNS =
   "settle_avg, settle_last, brti_prints, settle_gap, fair_pre, rule_avg_ok, rule_last_ok, " +
   "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
   "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
-  "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents)";
+  "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents, " +
+  "entry_lean, entry_build_sha)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
   "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
-  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39) " +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -734,6 +710,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
   const shadow = shadowBits(e, snap, finish);
   const entryKey = windowKey(snap);
   const entry = e.entryState[entryKey] ?? null;
+  const booked = bookedDecisionAtGrade(e.callLog, snap.ticker, snap.close_time, entry);
   delete e.entryState[entryKey];
   const rows = e.callLog.filter((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
   const first = rows[rows.length - 1] ?? null; // call log is newest-first
@@ -797,6 +774,8 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     entry?.leftover_cents ?? null,
     entry?.touch_size ?? null,
     entry?.fee_cents ?? null,
+    booked?.lean ?? null,
+    booked?.build_sha ?? null,
   ];
   return { ticker: snap.ticker, close_time: snap.close_time, values };
 }
