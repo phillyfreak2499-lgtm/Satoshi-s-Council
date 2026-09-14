@@ -1177,6 +1177,7 @@ function attachLab(snap: Snapshot): Snapshot {
   snap.lab_fair_yes = f ? f.yes_cents : null;
   snap.lab_locked = f ? f.locked : 0;
   snap.lab_age_s = f ? f.age_s : 999;
+  snap.lab_settle_avg = f ? f.settle_avg : null;
   return snap;
 }
 
