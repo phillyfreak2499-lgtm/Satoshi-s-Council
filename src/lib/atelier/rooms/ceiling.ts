@@ -213,6 +213,12 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
   let h = ih;
   let seed = initialSeed;
   let clouds = makeClouds(seed);
+  let cloudPlate: HTMLImageElement | null = null;
+  if (typeof Image !== "undefined") {
+    cloudPlate = new Image();
+    cloudPlate.decoding = "async";
+    cloudPlate.src = "/atelier/cloud-ceiling-v2.jpg";
+  }
   let phase = 0;
   let cloudAmount = 1;
   let trailAmount = 1;
@@ -292,6 +298,8 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       phase += dt;
     },
     draw(ctx) {
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
       const deckY = h * 0.55;
       const left = w * 0.075;
       const right = w * 0.925;
@@ -320,6 +328,30 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       sky.addColorStop(1, "#020407");
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, w, h);
+
+      const plateReady = Boolean(cloudPlate?.complete && cloudPlate.naturalWidth > 0);
+      if (plateReady && cloudPlate) {
+        const scale = Math.max(w / cloudPlate.naturalWidth, h / cloudPlate.naturalHeight) * 1.025;
+        const imageWidth = cloudPlate.naturalWidth * scale;
+        const imageHeight = cloudPlate.naturalHeight * scale;
+        const drift = Math.sin(phase * 0.018) * w * 0.008;
+        ctx.save();
+        ctx.globalAlpha = 0.97;
+        ctx.drawImage(
+          cloudPlate,
+          (w - imageWidth) * 0.5 + drift,
+          (h - imageHeight) * 0.5,
+          imageWidth,
+          imageHeight,
+        );
+        const grade = ctx.createLinearGradient(0, 0, 0, h);
+        grade.addColorStop(0, "rgba(0,7,16,0.16)");
+        grade.addColorStop(0.5, "rgba(0,5,12,0.01)");
+        grade.addColorStop(1, "rgba(0,2,7,0.24)");
+        ctx.fillStyle = grade;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+      }
 
       const moon = ctx.createRadialGradient(
         w * 0.78,
@@ -354,6 +386,7 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
 
       ctx.save();
       ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = plateReady ? 0.1 + tight * 0.08 : 1;
       for (let index = 0; index < clouds.length; index += 1) {
         const cloud = clouds[index]!;
         if (tight < 0.28 && index % 3 === 0) continue;
@@ -496,6 +529,27 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       }
 
       if (spot > 0 && strike > 0) {
+        if (plateReady) {
+          const mirrorY = h * 0.765 + Math.max(0, h * 0.68 - planeY) * 0.1;
+          const reflectedLight = ctx.createRadialGradient(
+            planeX,
+            mirrorY,
+            0,
+            planeX,
+            mirrorY,
+            short * 0.1,
+          );
+          reflectedLight.addColorStop(0, "rgba(247,147,26,0.2)");
+          reflectedLight.addColorStop(0.3, "rgba(247,147,26,0.07)");
+          reflectedLight.addColorStop(1, "rgba(247,147,26,0)");
+          ctx.fillStyle = reflectedLight;
+          ctx.fillRect(
+            planeX - short * 0.1,
+            mirrorY - short * 0.035,
+            short * 0.2,
+            short * 0.07,
+          );
+        }
         aircraft(
           ctx,
           planeX,
@@ -638,3 +692,4 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
     },
   };
 };
+

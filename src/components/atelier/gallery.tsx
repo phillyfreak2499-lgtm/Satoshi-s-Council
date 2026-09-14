@@ -102,7 +102,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
         value: candle.close,
       }))
       .filter((point) => point.value > 0)
-      .slice(-24)
+      .slice(-180)
       .map((point) => `${point.p.toFixed(4)}:${point.value.toFixed(2)}`)
       .join(",");
   }, [satoshi.candles, satoshi.closeTime]);
@@ -563,3 +563,4 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     </div>
   );
 }
+

@@ -29,7 +29,11 @@ function parseRoad(raw: string): RoadPoint[] {
     .filter((point) => Number.isFinite(point.p) && Number.isFinite(point.value))
     .map((point) => ({ p: clamp(point.p, 0, 1), value: point.value }))
     .sort((a, b) => a.p - b.p)
-    .slice(-24);
+    .slice(-180);
+}
+
+function signedDollars(value: number) {
+  return `${value >= 0 ? "+" : "−"}$${Math.round(Math.abs(value)).toLocaleString("en-US")}`;
 }
 
 function readPriorRun(currentTicker: string): PriorRun | null {
@@ -318,6 +322,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let resetMode = false;
   let roadRaw = "";
   let road: RoadPoint[] = [];
+  let liveRoad: RoadPoint[] = [];
   let ghostRoad: GhostPoint[] = [];
   let lastGhost = 0;
   let steer = 0.5;
@@ -332,6 +337,10 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
   let velocity = 0;
   let lastSpotAt = 0;
   let lastPersist = 0;
+  let cameraCenter = 0;
+  let cameraRange = 54;
+  let targetCameraCenter = 0;
+  let targetCameraRange = 54;
 
   const apply = (next: Params) => {
     const nextTicker = str(next, "ticker", ticker);
@@ -339,6 +348,11 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       ticker = nextTicker;
       priorRun = readPriorRun(ticker);
       resetMode = priorRun != null;
+      liveRoad = [];
+      ghostRoad = [];
+      lastGhost = 0;
+      cameraCenter = 0;
+      targetCameraCenter = 0;
     }
     mode = str(next, "mode", mode);
     assist = str(next, "assist", assist ? "on" : "off") === "on";
@@ -367,6 +381,14 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         const elapsed = clamp(now - lastSpotAt, 0.08, 6);
         velocity = velocity * 0.72 + ((nextSpot - spot) / elapsed) * 0.28;
       }
+      const tickProgress = clamp(1 - seconds / 900, 0, 1);
+      const lastRoadPoint = liveRoad[liveRoad.length - 1];
+      if (!lastRoadPoint || tickProgress - lastRoadPoint.p >= 1 / 4500) {
+        liveRoad.push({ p: tickProgress, value: nextSpot });
+      } else {
+        liveRoad[liveRoad.length - 1] = { p: tickProgress, value: nextSpot };
+      }
+      liveRoad = liveRoad.slice(-240);
       spot = nextSpot;
       lastSpotAt = now;
     } else {
@@ -403,6 +425,11 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
     },
     step(dt) {
       phase += dt;
+      if (targetCameraCenter > 0) {
+        if (!(cameraCenter > 0)) cameraCenter = targetCameraCenter;
+        cameraCenter += (targetCameraCenter - cameraCenter) * (1 - Math.exp(-5.5 * dt));
+      }
+      cameraRange += (targetCameraRange - cameraRange) * (1 - Math.exp(-4.2 * dt));
       if (resetMode) {
         resetMode = false;
         mode = "watch";
@@ -447,28 +474,47 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       const finalMinute = seconds <= 60;
       const openRoad = seconds > 420;
       const phaseWord = finalMinute ? "GHOST LAP" : openRoad ? "OPEN ROAD" : "PINCH";
-      const tape = road.filter((point) => point.p <= progress + 0.015);
+      const tape = [...road, ...liveRoad]
+        .filter((point) => point.p <= progress + 0.004)
+        .sort((a, b) => a.p - b.p);
       if (spot > 0) tape.push({ p: progress, value: spot });
 
-      const cameraLens = 0.24;
+      const cameraSeconds = finalMinute ? 45 : openRoad ? 120 : 75;
+      const cameraLens = cameraSeconds / 900;
       const cameraStart = Math.max(0, progress - cameraLens);
       const cameraSpan = Math.max(0.025, progress - cameraStart);
       const launch = clamp(progress / 0.14, 0, 1);
       const carX = left + (right - left) * (0.12 + launch * 0.54);
-      const visibleTape = tape.filter((point) => point.p >= cameraStart - 0.025);
+      const visibleTape = tape.filter((point) => point.p >= cameraStart - cameraLens * 0.1);
       const rangePoints = visibleTape.length > 1 ? visibleTape : tape;
-      const maxDistance = Math.max(
-        150,
-        ...rangePoints.map((point) => Math.abs(point.value - strike) * 1.22),
-        settleAvg > 0 ? Math.abs(settleAvg - strike) * 1.22 : 0,
+      const localExtent = Math.max(
+        7,
+        ...rangePoints.map((point) => Math.abs(point.value - spot)),
+        settleAvg > 0 ? Math.abs(settleAvg - spot) : 0,
       );
-      const range = clamp(maxDistance, 150, 850);
+      const strikeDistance = spot > 0 && strike > 0 ? Math.abs(spot - strike) : 0;
+      const includeStrike = strikeDistance <= 110;
+      targetCameraCenter = spot > 0
+        ? includeStrike && strike > 0
+          ? (spot + strike) * 0.5
+          : spot
+        : strike;
+      targetCameraRange = clamp(
+        Math.max(20, localExtent * 1.5, Math.abs(velocity) * 0.7, includeStrike ? strikeDistance * 0.62 : 0),
+        20,
+        145,
+      );
+      if (!(cameraCenter > 0)) cameraCenter = targetCameraCenter;
       const center = h * 0.51;
       const toY = (value: number) =>
-        center - clamp((value - strike) / range, -1, 1) * h * (finalMinute ? 0.36 : 0.3);
+        center - ((value - cameraCenter) / Math.max(16, cameraRange)) * h * 0.34;
       const roadX = (p: number) => left + ((p - cameraStart) / cameraSpan) * (carX - left);
-      const strikeY = strike > 0 ? toY(strike) : center;
-      roadY = spot > 0 && strike > 0 ? toY(spot) : center;
+      const topTrack = h * 0.185;
+      const bottomTrack = h * 0.84;
+      const rawStrikeY = strike > 0 ? toY(strike) : center;
+      const strikeOffscreen = rawStrikeY < topTrack || rawStrikeY > bottomTrack;
+      const strikeY = clamp(rawStrikeY, topTrack, bottomTrack);
+      roadY = spot > 0 && strike > 0 ? clamp(toY(spot), topTrack, bottomTrack) : center;
       lane = laneWidth(h, progress, spot, strike);
       if (!(carY > 0) || (mode === "watch" && Math.abs(carY - roadY) > h * 0.4)) carY = roadY;
 
@@ -542,6 +588,21 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       ctx.moveTo(left, strikeY);
       ctx.lineTo(right, strikeY);
       ctx.stroke();
+      if (strikeOffscreen) {
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(232,177,77,0.84)";
+        ctx.beginPath();
+        if (rawStrikeY < topTrack) {
+          ctx.moveTo(right - tiny * 0.7, strikeY + tiny * 0.8);
+          ctx.lineTo(right, strikeY);
+          ctx.lineTo(right + tiny * 0.7, strikeY + tiny * 0.8);
+        } else {
+          ctx.moveTo(right - tiny * 0.7, strikeY - tiny * 0.8);
+          ctx.lineTo(right, strikeY);
+          ctx.lineTo(right + tiny * 0.7, strikeY - tiny * 0.8);
+        }
+        ctx.fill();
+      }
       ctx.restore();
 
       if (screenRoad.length > 1 && strike > 0) {
@@ -646,7 +707,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       if (finalMinute && settleAvg > 0 && locked > 0 && strike > 0) {
         const visibleGhost =
           ghostRoad.length > 1
-            ? ghostRoad.filter((point) => point.p >= cameraStart - 0.025)
+            ? ghostRoad.filter((point) => point.p >= cameraStart - cameraLens * 0.1)
             : [
                 { p: Math.max(14 / 15, progress - 0.035), value: settleAvg },
                 { p: progress, value: settleAvg },
@@ -759,7 +820,18 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
         0.9,
       );
 
-      hud(ctx, "STRIKE GUARDRAIL", left, strikeY + tiny * 0.65, "left", tiny, GOLD, 0.54);
+      hud(
+        ctx,
+        strikeOffscreen
+          ? `GUARDRAIL ${signedDollars(strike - spot)} ${rawStrikeY < topTrack ? "↑" : "↓"}`
+          : "STRIKE GUARDRAIL",
+        left,
+        strikeY + (rawStrikeY > bottomTrack ? -tiny * 1.7 : tiny * 0.65),
+        "left",
+        tiny,
+        GOLD,
+        0.58,
+      );
       const driveHelp =
         mode === "watch"
           ? "TOUCH THE ROAD TO DRIVE"
@@ -769,7 +841,7 @@ export const createArcade: RoomFactory = (iw, ih, _seed, params, host): RoomWorl
       hud(ctx, driveHelp, w * 0.5, h * 0.875, "center", tiny, CREAM, 0.52);
       hud(
         ctx,
-        `CHASE CAMERA · ROAD RUSH ${rush.toFixed(1)}×`,
+        `CHASE CAMERA ${cameraSeconds}s · ZOOM ±$${Math.round(cameraRange)} · ROAD RUSH ${rush.toFixed(1)}×`,
         w * 0.5,
         h * 0.91,
         "center",

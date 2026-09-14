@@ -63,6 +63,9 @@ test("Cloud Ceiling tells the final-minute settlement truth", () => {
   assert.match(ceiling, /finishAtmosphere/);
   assert.match(ceiling, /globalCompositeOperation = "screen"/);
   assert.match(ceiling, /lineDashOffset = -phase/);
+  assert.match(ceiling, /cloud-ceiling-v2\.jpg/);
+  assert.match(ceiling, /ctx\.drawImage\(/);
+  assert.match(ceiling, /reflectedLight/);
 });
 
 test("Tape Arcade keeps player skill separate from settlement", () => {
@@ -80,8 +83,12 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(arcade, /lastSettledTicker === priorRun\.ticker/);
   assert.match(arcade, /sessionStorage\.setItem\(RUN_STORE/);
   assert.match(arcade, /TAPE AHEAD UNWRITTEN/);
-  assert.match(arcade, /const cameraLens = 0\.24/);
-  assert.match(arcade, /CHASE CAMERA · ROAD RUSH/);
+  assert.match(arcade, /const cameraSeconds = finalMinute \? 45 : openRoad \? 120 : 75/);
+  assert.match(arcade, /const cameraLens = cameraSeconds \/ 900/);
+  assert.match(arcade, /liveRoad\.push/);
+  assert.match(arcade, /CHASE CAMERA \$\{cameraSeconds\}s · ZOOM/);
+  assert.match(arcade, /GUARDRAIL \$\{signedDollars/);
+  assert.match(gallery, /\.slice\(-180\)/);
   assert.match(arcade, /lineDashOffset = -roadPhase/);
   assert.match(catalog, /key: "rush"/);
   assert.match(catalog, /Road rush changes presentation speed only/);
@@ -131,3 +138,4 @@ test("the Gallery remains a read-only paper presentation", () => {
   assert.doesNotMatch(source, /runChair|noteCall|paperBookEdgeOk|promoteToLive/);
   assert.doesNotMatch(source, /method:\s*["']POST["']|fetch\(|\/api\//);
 });
+
