@@ -157,9 +157,10 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.board">Chair call</Tip>
           </div>
-          <div className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
+          <h1 className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
+            <span className="sr-only">Chair call: </span>
             {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
-          </div>
+          </h1>
           <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-fg" data-plain-line>
             {plainLine(chair, snap, book)}
           </p>
@@ -169,7 +170,12 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
                   lean !== book.lean ? " The read has moved since; one position per window means the book does not sell low to buy high." : ""
                 }`
               : lean === "WAIT"
-                ? "The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk's most common call, on purpose."
+                ? (
+                    <>
+                      <strong className="font-medium text-wait">Why WAIT:</strong>{" "}
+                      The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk&apos;s most common call, on purpose.
+                    </>
+                  )
                 : book.kind === "floor"
                   ? `Paper only: the book fills at ${CHAIR_MIN_ASK_CENTS}¢ or better — a time-boxed trial of a higher floor. ${side} is ${book.ask.toFixed(0)}¢, so this read stays unbooked unless the ask reaches the floor before the window closes. The read still stands and every seat is still graded on it.`
                   : `Paper only: booked at the ${side} ask if it fills, graded on Kalshi's official settlement value.`}
@@ -1025,7 +1031,6 @@ export function MetaFooter({
   tape: string[];
   settling?: boolean;
 }) {
-  const q = chair?.quorum ?? { up: 0, down: 0, wait: 0 };
   const left = Math.max(0, Math.round((lockdown_until - Date.now()) / 1000));
   return (
     <div className="border-t border-border bg-surface">
@@ -1034,11 +1039,17 @@ export function MetaFooter({
           <span className="text-micro uppercase text-subtle">
             <Tip k="footer.quorum">Quorum </Tip>
           </span>
-          <span className="text-up">UP {q.up}</span>
-          <span className="text-subtle"> · </span>
-          <span className="text-down">DOWN {q.down}</span>
-          <span className="text-subtle"> · </span>
-          <span className="text-wait">WAIT {q.wait}</span>
+          {chair ? (
+            <>
+              <span className="text-up">UP {chair.quorum.up}</span>
+              <span className="text-subtle"> · </span>
+              <span className="text-down">DOWN {chair.quorum.down}</span>
+              <span className="text-subtle"> · </span>
+              <span className="text-wait">WAIT {chair.quorum.wait}</span>
+            </>
+          ) : (
+            <span className="text-muted">waiting for the current-window vote</span>
+          )}
         </div>
         <div>
           <span className="text-micro uppercase text-subtle">

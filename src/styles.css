@@ -8,14 +8,14 @@
   --raised: #1a1d26;
   --text: #f3efe6;
   --text-2: #9a958b;
-  --text-3: #6b675f;
+  --text-3: #8a857b;
   --gold: #c4a574;
   --gold-dim: #8a7349;
   --up: #3fae7a;
-  --down: #d15b4a;
+  --down: #d66353;
   --wait: #c4a574;
   --live: #5ba8b5;
-  --danger: #d15b4a;
+  --danger: var(--down);
   --hairline: rgba(255, 255, 255, 0.06);
   --hairline-strong: rgba(255, 255, 255, 0.1);
   --radius: 8px;
@@ -67,9 +67,9 @@
   --color-cream: var(--text);
   --color-dim: var(--text-3);
 
-  /* The type scale: 11 / 13 / 16 / 22 / 40 / 72, nothing in between. */
-  --text-micro: 11px;
-  --text-micro--line-height: 16px;
+  /* The type scale: 12 / 13 / 16 / 22 / 40 / 72, nothing in between. */
+  --text-micro: 12px;
+  --text-micro--line-height: 18px;
   --text-data: 13px;
   --text-data--line-height: 20px;
   --text-ui: 13px;
@@ -265,7 +265,7 @@
     text-align: left;
     padding: 8px 8px 8px 0;
     border-bottom: 1px solid var(--hairline-strong);
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }

@@ -47,8 +47,8 @@ const QA: { q: string; a: ReactNode }[] = [
     a: "The desk is built around one market: Kalshi's 15-minute Bitcoin contract, which settles on the average of the final minute's sixty BRTI prints. Every seat, every grade and every replay assumes that window. There is no ETH and no basket.",
   },
   {
-    q: "What do LIVE, SHADOW, BENCH, UNCALIBRATED and MUTED mean?",
-    a: "They are the states of a seat's skills. LIVE counts toward the vote. SHADOW is graded but not counted. BENCH is resting after a bad run. UNCALIBRATED has not been graded enough times yet. MUTED was switched off by a person. All of it moves on the graded record, not on opinion.",
+    q: "What do the seat and skill status labels mean?",
+    a: "There are two layers. A seat status says how the chair hears a specialist: LIVE votes normally; UNCALIBRATED is still earning history; MUTED is owner-silenced; FADED is discounted; FOLDED or DOWN does not vote; VETO is a hard block; INVERT is retired and never flips a side. A skill status says where one rule sits: CANDIDATE is proposed, SHADOW is being evaluated, LIVE is eligible to speak, and BENCH is parked. WAIT and SIT are current-window reads, not status levels.",
   },
   {
     q: "Where do the prices come from?",

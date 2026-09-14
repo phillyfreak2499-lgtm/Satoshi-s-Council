@@ -47,7 +47,9 @@ Main table, one row per live seat:
 
 Rank | Seat | Callsign | Lean | Conf | Skill used | Base w | Listen | Health | Signed | Contribution | Shadow lean | Why (one line) | Status
 
-Status = LIVE / MUTED / FADED / INVERT / FOLDED / VETO / DOWN / UNCALIBRATED
+Seat status = LIVE / MUTED / FADED / INVERT / FOLDED / VETO / DOWN / UNCALIBRATED.
+Skill status = CANDIDATE / SHADOW / LIVE / BENCH.
+WAIT and SIT are current-window reads, not status levels.
 Shadow lean = what the seat’s SHADOW skill would have said (weight 0). Blank if none.
 Skill used = the LIVE skill id that fired, or SIT.
 Signed = +conf_w if UP, −conf_w if DOWN, 0 if WAIT.

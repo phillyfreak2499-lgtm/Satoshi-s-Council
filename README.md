@@ -12,7 +12,7 @@ it onto this tree.
 ## What this is
 
 - **Bitcoin only.** Kalshi 15-minute up/down contracts. Paper ledger.
-- **20 seats** — tape, structure, WICK patterns, book/clock, funding/OI/vol, plus SATOSHI chair.
+- **21 seats: 18 vote, 3 pit crew** — specialist market reads, with WARDEN, ORBIT, and WIRE providing non-voting operational context; SATOSHI chairs.
 - **Skill engine** — LIVE / SHADOW / BENCH / UNCALIBRATED / MUTED, Wilson + Brier + EV grading.
 - **Demo + live split** — demo ticks and live Kalshi/spot do not share learner state.
 - **Chair math** — sit-mass, disagreement tax, learnable seat weights, LAW dimmer, invert hysteresis, hypothesis/invalidate.
