@@ -17,7 +17,7 @@ import { Tip } from "./Tip";
 /** SETTINGS → Alerts: opt in to a push when the chair books a call and,
  *  if wanted, when a window settles. Per browser; nothing is sent until a
  *  visitor turns it on here. */
-export function AlertsPanel() {
+export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
   const [prefs, setPrefs] = useState<PushPrefs | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -61,7 +61,7 @@ export function AlertsPanel() {
   const applyOwner = async (on: boolean) => {
     const key = getAdminKey();
     if (!key) {
-      setMsg("enter the admin key above first");
+      setMsg("unlock owner controls first");
       return;
     }
     setBusy(true);
@@ -109,17 +109,20 @@ export function AlertsPanel() {
               onChange={(e) => void apply({ on_call: onCall, on_settle: e.target.checked })}
             />
           </label>
-          <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
-            <span>
-              <Tip k="settings.watchdog">Desk watchdog</Tip> <span className="text-subtle">· owner, needs the admin key</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={owner}
-              disabled={busy || !ready || blocked || !prefs}
-              onChange={(e) => void applyOwner(e.target.checked)}
-            />
-          </label>
+          {ownerMode ? (
+            <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
+              <span>
+                <Tip k="settings.watchdog">Desk watchdog</Tip>{" "}
+                <span className="text-subtle">· owner only</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={owner}
+                disabled={busy || !ready || blocked || !prefs}
+                onChange={(e) => void applyOwner(e.target.checked)}
+              />
+            </label>
+          ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <button
               type="button"
