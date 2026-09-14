@@ -702,7 +702,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         </section>
       ) : null}
 
-      <section id="books-overview" className="grid scroll-mt-20 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <section id="books-overview" className="grid grid-cols-1 scroll-mt-20 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {books.last ? (
           <LastWindow wnd={books.last} tz={tz} onReplay={openReplay} />
         ) : (
@@ -724,7 +724,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         </Pane>
       </section>
 
-      <section id="books-process" className="grid scroll-mt-20 gap-3">
+      <section id="books-process" className="grid grid-cols-1 scroll-mt-20 gap-3">
         {books.trial ? <TrialPane trial={books.trial} tz={tz} /> : null}
 
         {books.keeper ? (
@@ -755,7 +755,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         </Pane>
       </section>
 
-      <section id="books-calibration" className="grid scroll-mt-20 gap-3 lg:grid-cols-2">
+      <section id="books-calibration" className="grid grid-cols-1 scroll-mt-20 gap-3 lg:grid-cols-2">
         <Pane title={<Tip k="books.calib">DID THE PRICE TELL THE TRUTH?</Tip>}>
           <BucketChart buckets={books.buckets} at={books.at} />
           <p className="mt-1 font-mono text-micro text-subtle">grey = price paid · gold = breakeven after the fee · green or red = the shelf cleared it or fell short</p>

@@ -177,6 +177,9 @@ export default defineConfig(({ command, isPreview }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
+            // Work around Rolldown's invalid SSR namespace chunk (nitrojs/nitro#4533).
+            // Only the server bundle is inlined; browser chunks remain separate.
+            inlineDynamicImports: true,
           }),
         ]
       : []),

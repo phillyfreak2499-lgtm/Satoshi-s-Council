@@ -3,10 +3,10 @@ import type { DeskFrame } from "./engine";
 
 /** A read-only snapshot for the homepage; never seed shared client state on the server. */
 export const publicHomeSnapshot = createServerFn({ method: "GET" }).handler(async (): Promise<DeskFrame | null> => {
-  const { getServerFrame } = await import("./server-engine");
-  const { DEFAULT_SETTINGS } = await import("./persist");
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    const { getServerFrame } = await import("./server-engine");
+    const { DEFAULT_SETTINGS } = await import("./persist");
     const frame = await Promise.race([
       getServerFrame(),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 2500); }),

@@ -88,6 +88,7 @@ jobs:
       # db:migrate inside build skips without DATABASE_URL; the PGLite path in
       # the test job is what actually exercises the SQL.
       - run: npm run build
+      - run: node scripts/check-server-output.mjs
 
       # The artifact has to boot. A build that compiles and then dies on startup
       # is the failure this catches, and it is the one a type error cannot.
