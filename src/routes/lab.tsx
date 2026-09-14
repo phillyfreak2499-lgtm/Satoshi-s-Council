@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LabRoom } from "@/components/desk/LabRoom";
+import { publicLabSnapshot } from "@/lib/desk/lab-public";
 
 export const Route = createFileRoute("/lab")({
   head: () => ({
@@ -11,9 +12,10 @@ export const Route = createFileRoute("/lab")({
       },
     ],
   }),
+  loader: () => publicLabSnapshot(),
   component: LabPage,
 });
 
 function LabPage() {
-  return <LabRoom />;
+  return <LabRoom initial={Route.useLoaderData()} />;
 }
