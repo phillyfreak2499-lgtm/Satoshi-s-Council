@@ -2599,3 +2599,16 @@ test("S2-9: the online learner is gated on research-quality validity at the upda
   assert.ok(!/research-quality|isCountable/.test(codeOf("src/lib/desk/chair.ts")), "Chair v1 (chair.ts) is untouched by this ticket");
   assert.match(read("src/lib/desk/math.ts"), /export const WARM_N = 20;/, "learner calibration constant WARM_N is unchanged");
 });
+
+
+test("the client desk restores browser state only after hydration", () => {
+  const eng = codeOf("src/lib/desk/engine.ts");
+  const initial = between(eng, "let settings: Settings", "const listeners =");
+  assert.match(initial, /let learner: Learner = freshLearner\(\);/, "the first learner frame is deterministic");
+  assert.match(initial, /let callLog: CallLogRow\[\] = \[\];/, "the first call-log frame is deterministic");
+  assert.doesNotMatch(initial, /loadPersisted\(|loadCallLog\(/, "module initialization must not read browser storage");
+
+  const start = between(eng, "export function startEngine()", "export function stopEngine()");
+  assert.match(start, /const persisted = loadPersisted\(\);/, "saved learner state is restored after mount");
+  assert.match(start, /callLog = loadCallLog\(settings\.source\);/, "saved calls are restored after mount");
+});
