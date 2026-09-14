@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } from "@/lib/desk/lab-public";
-import { SiteHeader } from "./SiteHeader";
+import { GlobalHeader } from "./GlobalHeader";
 
 function cents(v: number | null): string {
   if (v == null) return "—";
@@ -201,23 +201,7 @@ export function LabRoom() {
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <a href="#lab-main" className="skip-link">Skip to content</a>
-      <SiteHeader
-        nav={
-          <nav aria-label="Desk rooms" className="flex items-center gap-1">
-            <a href="/" className="btn btn-secondary btn-sm">Floor</a>
-            <a href="/chamber" className="btn btn-secondary btn-sm">Chamber</a>
-            <a href="/lab" className="btn btn-secondary btn-sm" aria-current="page">Lab</a>
-            <a href="/arena" className="btn btn-secondary btn-sm">The Pit</a>
-          </nav>
-        }
-        menu={[
-          { label: "THE FLOOR", href: "/", hint: "live desk" },
-          { label: "THE CHAMBER", href: "/chamber", hint: "organization" },
-          { label: "THE LAB", href: "/lab", hint: "research", active: true },
-          { label: "THE PIT", href: "/arena", hint: "competition" },
-          { label: "How it works", href: "/about", hint: "page" },
-        ]}
-      />
+      <GlobalHeader />
 
       <main id="lab-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
         <section className="border-b border-border pb-6">
