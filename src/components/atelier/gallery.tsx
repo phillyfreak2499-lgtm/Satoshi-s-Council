@@ -18,7 +18,7 @@ import { formatSeed, nextSeed } from "@/lib/atelier/rng";
 import { useStudio } from "@/lib/atelier/studio";
 import type { CallLogRow, Lean } from "@/lib/desk/types";
 
-const STORE = "atelier:v5";
+const STORE = "atelier:v6";
 const WINDOW_MS = 15 * 60 * 1000;
 
 export type SatoshiPaint = {
@@ -39,6 +39,8 @@ export type SatoshiPaint = {
   locked: number;
   closeTime: number;
   candles: Array<{ t: number; close: number }>;
+  settled: "" | "UP" | "DOWN";
+  votes: Array<{ seat: string; lean: Lean; confidence: number }>;
 };
 
 function emptyBag(): Record<RoomId, Params> {
@@ -101,6 +103,13 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
       .map((point) => `${point.p.toFixed(4)}:${point.value.toFixed(2)}`)
       .join(",");
   }, [satoshi.candles, satoshi.closeTime]);
+  const councilState = useMemo(
+    () =>
+      satoshi.votes
+        .map((vote) => `${vote.seat}|${vote.lean}|${Math.round(vote.confidence)}`)
+        .join(";"),
+    [satoshi.votes],
+  );
 
   roomRef.current = roomId;
   fullRef.current = full;
@@ -118,6 +127,13 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     settleAvg: satoshi.settleAvg ?? 0,
     locked: satoshi.locked,
     history: flightHistory,
+    settled: satoshi.settled,
+    paperCall: stance,
+    confidence: satoshi.confidence,
+    score: satoshi.score,
+    bar: satoshi.bar,
+    phase: satoshi.phase,
+    votes: councilState,
   };
 
   const glow = CALL_GLOW[stance];
@@ -149,6 +165,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     try {
       const raw =
         localStorage.getItem(STORE) ??
+        localStorage.getItem("atelier:v5") ??
         localStorage.getItem("atelier:v4") ??
         localStorage.getItem("atelier:v3") ??
         localStorage.getItem("atelier:v2");
@@ -238,6 +255,22 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
         if (fullRef.current && !document.fullscreenElement) setFull(false);
         return;
       }
+      if (roomRef.current === "arcade" && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        const direction = event.key === "ArrowUp" ? -1 : 1;
+        setBag((prev) => {
+          const current = Number(prev.arcade?.steer ?? 0.5);
+          return {
+            ...prev,
+            arcade: {
+              ...prev.arcade,
+              mode: "drive",
+              steer: clamp01(current + direction * 0.07),
+            },
+          };
+        });
+        return;
+      }
       if (event.key >= "1" && event.key <= String(ROOMS.length)) {
         const nextRoom = ROOMS[Number(event.key) - 1];
         if (nextRoom) setRoomId(nextRoom.id);
@@ -275,6 +308,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
       className={`atelier${full ? " is-full" : ""}${settings ? " is-sheet" : ""}`}
       id="room"
       data-stance={stance}
+      data-room={roomId}
       data-feed={feedFresh ? "fresh" : liveSource ? "aging" : "demo"}
       style={{ ["--glow" as string]: glow }}
     >
@@ -451,7 +485,26 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
 
           <div className="atelier-params">
             {room.params.map((param) =>
-              param.kind === "enum" ? null : (
+              param.kind === "enum" ? (
+                <div key={param.key} className="atelier-param">
+                  <span className="atelier-param-label">
+                    <span>{param.label}</span>
+                  </span>
+                  <div className="atelier-pills" role="group" aria-label={param.label}>
+                    {param.options.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className="atelier-pill"
+                        aria-pressed={params[param.key] === option.value}
+                        onClick={() => setParam(param.key, option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
                 <label key={param.key} className="atelier-param">
                   <span className="atelier-param-label">
                     <span>{param.label}</span>
@@ -494,7 +547,9 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
             </button>
           </div>
 
-          <p className="atelier-hint">{room.hint} · F display · 1–4 rooms · R new edition</p>
+          <p className="atelier-hint">
+            {room.hint} · F display · 1–{ROOMS.length} rooms · R new edition
+          </p>
         </aside>
       ) : null}
     </div>

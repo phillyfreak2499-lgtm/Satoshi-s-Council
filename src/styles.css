@@ -3076,3 +3076,18 @@ html[data-motion="reduce"] .atelier-signal-meter span,
 html[data-motion="reduce"] .atelier.is-full .atelier-dock {
   transition: none;
 }
+
+/* --- INTERACTIVE GALLERY ROOMS v6 --- */
+.atelier[data-room="arcade"] .atelier-frame canvas {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.atelier[data-room="arcade"] .atelier-piece {
+  width: min(620px, 84cqw, calc((100cqh - 46px) * 0.92));
+}
+
+.atelier.is-full[data-room="arcade"] .atelier-piece,
+.atelier.is-full[data-room="council"] .atelier-piece {
+  width: 100%;
+}
