@@ -530,7 +530,7 @@ function KeeperPane({ keeper }: { keeper: Keeper }) {
     <Pane title={<Tip k="keeper.pane">PROCESS SCORECARD</Tip>}>
       <div className="grid gap-2 sm:grid-cols-2">
         <KeeperCol label="all-time" s={keeper.all} />
-        <KeeperCol label="this week" s={keeper.week} />
+        <KeeperCol label="last 7 days" s={keeper.week} />
       </div>
       <p className="mt-2 font-mono text-micro text-subtle">
         Sits is how often the chair passed. Confluence is how hard the fills cleared the bar; floor kept is the share that honoured the floor in
@@ -659,6 +659,12 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
     );
   }
 
+  const missing = books.missing_windows ?? [];
+  const oldest = books.windows.at(-1)?.close_time;
+  const newest = books.windows[0]?.close_time;
+  const windowRows = [...books.windows, ...missing.filter((close) => oldest && newest && close >= oldest && close <= newest).map((close_time) => ({ close_time, missing: true as const }))]
+    .sort((a, b) => b.close_time.localeCompare(a.close_time));
+
   return (
     <div className="grid gap-3">
       <nav
@@ -671,7 +677,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           ["#books-curve", "Curve"],
           ["#books-calibration", "Calibration"],
           ["#books-lab", "Lab"],
-          ["#books-windows", "Last 40"],
+          ["#books-windows", "Recent windows"],
         ].map(([href, label]) => (
           <a
             key={href}
@@ -682,6 +688,19 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           </a>
         ))}
       </nav>
+
+      {missing.length > 0 ? (
+        <section aria-label="Missing ledger windows" className="rounded-md border border-wait/40 bg-wait/10 p-3">
+          <p className="font-mono text-ui text-wait">{missing.length} missing {missing.length === 1 ? "window" : "windows"} in the last 90 days of recorded coverage</p>
+          <p className="mt-1 font-mono text-micro text-muted">These gaps have no recorded grading result. They are not WAITs, wins, losses, or zero-profit trades.</p>
+          <details className="mt-2 font-mono text-micro text-muted">
+            <summary className="min-h-11 cursor-pointer py-2">Show missing closes · {tz}</summary>
+            <ul className="max-h-60 overflow-y-auto">{missing.slice(-100).reverse().map((close) => <li key={close} className="py-1"><time dateTime={close}>{fmtWhen(close, tz)}</time> · missing data</li>)}</ul>
+            {missing.length > 100 ? <p>Showing the most recent 100 missing closes.</p> : null}
+          </details>
+          <a href="/status" className="font-mono text-micro underline underline-offset-2">View data status</a>
+        </section>
+      ) : null}
 
       <section id="books-overview" className="grid scroll-mt-20 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {books.last ? (
@@ -694,10 +713,13 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         <Pane title={<Tip k="tab.books">THE BOOKS</Tip>}>
           <div className="grid grid-cols-2 gap-2">
             <Totals label="today" t={books.today} />
-            <Totals label="this week" t={books.week} />
-            <Totals label={<Tip k="books.floor">{FLOOR_SHADOW_CENTS}¢ era</Tip>} t={books.floor} />
+            <Totals label="last 7 days" t={books.week} />
+            <Totals label="since floor introduced" t={books.floor} />
             <Totals label="all-time" t={books.all} />
           </div>
+          <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+            Overlapping periods, not separate books. The floor period starts {fmtWhen(books.floor_since, tz)} and includes the later {FLOOR_LIVE_CENTS}¢ trial. Trial results are already in these totals; the shadow comparison is never added. Today uses America/Chicago; row times use {tz}.
+          </p>
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
         </Pane>
       </section>
@@ -754,39 +776,10 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
       ) : null}
 
       <section id="books-windows" className="scroll-mt-20">
-        <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· open a window with ▶ to replay it</span></span>}>
-          <div className="grid gap-2 sm:hidden">
-            {books.windows.map((w) => (
-              <button
-                key={w.ticker}
-                type="button"
-                disabled={!w.replay}
-                aria-label={`${fmtWhen(w.close_time, tz)} · ${w.winner}${w.replay ? " · open replay" : ""}`}
-                aria-expanded={w.replay ? sel === w.ticker : undefined}
-                aria-controls={sel === w.ticker ? "books-replay" : undefined}
-                className={cn(
-                  "rounded-sm border border-border bg-canvas p-3 text-left font-mono text-micro",
-                  w.replay ? "hover:bg-surface-2" : "cursor-default",
-                  sel === w.ticker && "bg-surface-2",
-                )}
-                onClick={() => { if (w.replay) openReplay(w.ticker); }}
-              >
-                <span className="flex items-center justify-between gap-3">
-                  <span className="text-muted">{w.replay ? "▶ " : "· "}{fmtWhen(w.close_time, tz)}</span>
-                  <LeanChip lean={w.winner} />
-                </span>
-                <span className="mt-2 flex flex-wrap items-center justify-between gap-2 text-muted">
-                  <span>settled <span className="text-fg">{fmtPx(w.official ?? w.settle_avg)}</span></span>
-                  <CallCell c={w.call} />
-                </span>
-                <span className="mt-2 block text-subtle">
-                  paper {w.call ? fmtC(w.call.ev) : "no fill"} · seats {w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"} · reads {w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[640px] font-mono text-micro">
+        <Pane title={<span>RECENT WINDOWS <span className="font-normal text-subtle">· open a window with ▶ to replay it</span></span>}>
+          <div className="overflow-x-auto">
+          <table role="table" className="books-window-table w-full font-mono text-micro">
+            <caption className="sr-only">Recent paper windows, including missing ledger slots. Times in {tz}.</caption>
             <thead>
               <tr className="text-left">
                 <th >close</th>
@@ -800,12 +793,18 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
               </tr>
             </thead>
             <tbody>
-              {books.windows.map((w) => (
+              {windowRows.map((w) => "missing" in w ? (
+                <tr key={w.close_time} role="row" className="border-t border-wait/40 bg-wait/10">
+                  <td role="cell" data-label="Close" className="py-3 text-muted">{fmtWhen(w.close_time, tz)}</td>
+                  <td role="cell" colSpan={7} className="books-missing-cell py-3 text-wait">Missing ledger data · result and paper profit unavailable. Excluded from totals.</td>
+                </tr>
+              ) : (
                 <tr
-                  key={w.ticker}
+                  key={`${w.ticker}:${w.close_time}`}
+                  role="row"
                   className={cn("border-t border-border/50", w.replay && "hover:bg-surface-2/40", sel === w.ticker && "bg-surface-2/60")}
                 >
-                  <td className="whitespace-nowrap text-muted">
+                  <td role="cell" data-label="Close" className="whitespace-nowrap text-muted">
                     {w.replay ? (
                       <button
                         type="button"
@@ -819,17 +818,17 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
                       </button>
                     ) : <span>· {fmtWhen(w.close_time, tz)}</span>}
                   </td>
-                  <td >
+                  <td role="cell" data-label="Result">
                     <LeanChip lean={w.winner} />
                   </td>
-                  <td className="tabular text-muted">{fmtPx(w.official ?? w.settle_avg)}</td>
-                  <td >
+                  <td role="cell" data-label="Settled" className="tabular text-muted">{fmtPx(w.official ?? w.settle_avg)}</td>
+                  <td role="cell" data-label="Chair">
                     <CallCell c={w.call} />
                   </td>
-                  <td className={cn("text-right tabular", tone(w.call?.ev))}>{w.call ? fmtC(w.call.ev) : ""}</td>
-                  <td className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
-                  <td className="text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
-                  <td className={cn("py-1 text-right tabular", w.arena ? tone(w.arena.net) : "text-subtle")}>
+                  <td role="cell" data-label="Paper cents" className={cn("text-right tabular", tone(w.call?.ev))}>{w.call ? fmtC(w.call.ev) : "no fill"}</td>
+                  <td role="cell" data-label="Seats" className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
+                  <td role="cell" data-label="Reads" className="text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
+                  <td role="cell" data-label="Arena" className={cn("py-1 text-right tabular", w.arena ? tone(w.arena.net) : "text-subtle")}>
                     {w.arena ? `${w.arena.n} · ${fmtC(w.arena.net)}` : "—"}
                   </td>
                 </tr>

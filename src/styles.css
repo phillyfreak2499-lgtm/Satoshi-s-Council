@@ -3105,3 +3105,14 @@ html[data-motion="reduce"] .atelier.is-full .atelier-dock {
     aspect-ratio: 16 / 9;
   }
 }
+
+
+/* One ledger table serves phones and larger screens; no duplicate window tree. */
+@media (max-width: 639px) {
+  .books-window-table, .books-window-table tbody { display: block; width: 100%; }
+  .books-window-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .books-window-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .5rem 1rem; padding: .75rem; margin-bottom: .5rem; border: 1px solid var(--color-border); border-radius: .25rem; }
+  .books-window-table td { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem; padding: 0; text-align: left; }
+  .books-window-table td::before { content: attr(data-label); color: var(--color-muted); }
+  .books-window-table td:first-child, .books-window-table .books-missing-cell { grid-column: 1 / -1; }
+}
