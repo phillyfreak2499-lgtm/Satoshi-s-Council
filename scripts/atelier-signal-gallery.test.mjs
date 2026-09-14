@@ -60,6 +60,9 @@ test("Cloud Ceiling tells the final-minute settlement truth", () => {
   assert.match(ceiling, /WAITING FOR BRTI PRINTS/);
   assert.match(ceiling, /CEILING BROKEN/);
   assert.match(ceiling, /REJECTED/);
+  assert.match(ceiling, /finishAtmosphere/);
+  assert.match(ceiling, /globalCompositeOperation = "screen"/);
+  assert.match(ceiling, /lineDashOffset = -phase/);
 });
 
 test("Tape Arcade keeps player skill separate from settlement", () => {
@@ -77,6 +80,11 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(arcade, /lastSettledTicker === priorRun\.ticker/);
   assert.match(arcade, /sessionStorage\.setItem\(RUN_STORE/);
   assert.match(arcade, /TAPE AHEAD UNWRITTEN/);
+  assert.match(arcade, /const cameraLens = 0\.32/);
+  assert.match(arcade, /CHASE CAMERA · ROAD RUSH/);
+  assert.match(arcade, /lineDashOffset = -roadPhase/);
+  assert.match(catalog, /key: "rush"/);
+  assert.match(catalog, /Road rush changes presentation speed only/);
   assert.doesNotMatch(arcade, /boost|power-up|extra lives|betting/i);
   assert.match(styles, /atelier\[data-room="arcade"\] \.atelier-frame canvas/);
 });
