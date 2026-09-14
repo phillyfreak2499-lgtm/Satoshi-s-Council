@@ -91,11 +91,15 @@ test("Tape Arcade keeps player skill separate from settlement", () => {
   assert.match(arcade, /CHASE CAMERA \$\{cameraSeconds\}s · ZOOM/);
   assert.match(arcade, /GUARDRAIL \$\{signedDollars/);
   assert.match(gallery, /\.slice\(-180\)/);
+  assert.match(gallery, /point\.p >= 0/);
+  assert.match(gallery, /point\.p <= 1/);
   assert.match(arcade, /lineDashOffset = -roadPhase/);
   assert.match(catalog, /key: "rush"/);
   assert.match(catalog, /Road rush changes presentation speed only/);
   assert.doesNotMatch(arcade, /boost|power-up|extra lives|betting/i);
   assert.match(styles, /atelier\[data-room="arcade"\] \.atelier-frame canvas/);
+  assert.match(styles, /atelier\[data-room="ceiling"\] \.atelier-frame/);
+  assert.match(styles, /aspect-ratio:\s*16 \/ 9/);
 });
 
 test("Gavel Foundry follows the published Chair without gaining authority", () => {

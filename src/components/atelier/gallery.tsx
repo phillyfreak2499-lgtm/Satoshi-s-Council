@@ -98,10 +98,16 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     const open = close - WINDOW_MS;
     return satoshi.candles
       .map((candle) => ({
-        p: clamp01((toMillis(candle.t) - open) / WINDOW_MS),
+        p: (toMillis(candle.t) - open) / WINDOW_MS,
         value: candle.close,
       }))
-      .filter((point) => point.value > 0)
+      .filter(
+        (point) =>
+          Number.isFinite(point.p) &&
+          point.p >= 0 &&
+          point.p <= 1 &&
+          point.value > 0,
+      )
       .slice(-180)
       .map((point) => `${point.p.toFixed(4)}:${point.value.toFixed(2)}`)
       .join(",");
@@ -563,4 +569,3 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
     </div>
   );
 }
-
