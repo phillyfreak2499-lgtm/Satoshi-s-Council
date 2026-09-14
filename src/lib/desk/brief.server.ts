@@ -57,7 +57,11 @@ type LedgerRow = {
   chair_conf: number | null;
   score: number | null;
   bar: number | null;
+  entry_lean: string | null;
   entry_cents: number | null;
+  entry_conf: number | null;
+  entry_score: number | null;
+  entry_bar: number | null;
   settle_cents: number | null;
   ev_cents: number | null;
   winner: string | null;
@@ -69,15 +73,23 @@ function iso(v: Date | string): string {
 
 function toGavel(r: LedgerRow): GavelRow {
   const winner = r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null;
+  const entryLean = r.entry_lean === "UP" ? "UP" : r.entry_lean === "DOWN" ? "DOWN" : null;
+  const booked = r.entry_cents != null;
+  // A booked row is one historical decision, so its side, confidence, score,
+  // and bar must all come from the entry frame. Older rows have no prospective
+  // receipt and retain the legacy grade-frame fallback.
+  const conf = booked ? r.entry_conf ?? r.chair_conf : r.chair_conf;
+  const score = booked ? r.entry_score ?? r.score : r.score;
+  const bar = booked ? r.entry_bar ?? r.bar : r.bar;
   return {
     t: iso(r.close_time),
     // The side the chair actually booked and held to settlement — not the
     // grade-frame lean, which can decay to WAIT while a position was live.
-    // A genuine WAIT window (nothing booked) still shows WAIT.
-    lean: chairDecisionOf(r.chair_lean, r.settle_cents, winner),
-    conf: Math.round(Number(r.chair_conf ?? 0)),
-    score: Number(r.score ?? 0),
-    bar: Number(r.bar ?? 0),
+    // entry_lean is prospective; chairDecisionOf keeps older rows readable.
+    lean: entryLean ?? chairDecisionOf(r.chair_lean, r.settle_cents, winner),
+    conf: Math.round(Number(conf ?? 0)),
+    score: Number(score ?? 0),
+    bar: Number(bar ?? 0),
     entry: r.entry_cents != null ? Number(r.entry_cents) : null,
     settle: r.settle_cents != null ? Number(r.settle_cents) : null,
     ev: r.ev_cents == null ? null : Math.round(Number(r.ev_cents) * 10) / 10,
@@ -126,7 +138,9 @@ export async function deskBrief(): Promise<Brief> {
 async function build(): Promise<Brief> {
   const db = await sql();
   const rows = await db<LedgerRow>`
-    select close_time, chair_lean, chair_conf, score, bar, entry_cents, settle_cents, ev_cents, winner
+    select close_time, chair_lean, chair_conf, score, bar,
+           entry_lean, entry_cents, entry_conf, entry_score, entry_bar,
+           settle_cents, ev_cents, winner
     from desk_ledger_research
     order by close_time desc
     limit 40

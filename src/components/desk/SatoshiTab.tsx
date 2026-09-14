@@ -542,8 +542,8 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
               <tr>
                 <th className="pl-3">time</th>
                 <th>call</th>
-                <th className="num"><Tip k="strip.conf">gate conf</Tip></th>
-                <th className="num">score / bar</th>
+                <th className="num"><Tip k="strip.conf">decision conf</Tip></th>
+                <th className="num">decision score / bar</th>
                 <th className="num pr-3">settled</th>
               </tr>
             </thead>
@@ -557,13 +557,12 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
                       <span className={cn("font-medium", g.lean === "UP" ? "text-up" : g.lean === "DOWN" ? "text-down" : "text-wait")}>{g.lean}</span>
                     </td>
                     {/*
-                      NOT a percentage. `chair_conf` is the Chair's GATE confidence:
-                      chair.ts:521-525 sets it from the weighted vote and, when gates
-                      fail, clamps it to 70-92 by a COUNT of failed gates. A calibrated
-                      probability is never clamped by a gate count, so the percent sign
-                      this column used to carry read "76% chance of winning" for a
-                      number that means nothing of the kind. Presentation only — the
-                      calculation is untouched.
+                      NOT a percentage. A filled row uses the gate confidence captured
+                      when the paper book paid; a no-fill row uses the final grade frame.
+                      Both are Chair GATE confidence: chair.ts derives the value from the
+                      weighted vote and can clamp it by failed-gate count. A calibrated
+                      probability is never clamped that way, so no percent sign belongs
+                      here. Presentation only — the calculation is untouched.
                     */}
                     <td className="num tabular text-muted">{g.conf}</td>
                     <td className="num tabular text-muted">
