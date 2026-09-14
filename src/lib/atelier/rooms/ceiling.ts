@@ -3,7 +3,15 @@ import { mulberry32 } from "../rng";
 import type { RoomFactory, RoomWorld } from "../world";
 
 type TrailPoint = { p: number; value: number };
-type CloudCell = { x: number; y: number; rx: number; ry: number; alpha: number };
+type CloudCell = {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  alpha: number;
+  depth: number;
+  tone: number;
+};
 
 const ORANGE = "#f7931a";
 const YES_GREEN = "#52c58b";
@@ -31,12 +39,14 @@ function parseTrail(raw: string): TrailPoint[] {
 
 function makeClouds(seed: number): CloudCell[] {
   const random = mulberry32(seed ^ 0x6c8e9cf5);
-  return Array.from({ length: 34 }, () => ({
+  return Array.from({ length: 46 }, () => ({
     x: random(),
     y: random() * 2 - 1,
     rx: 0.035 + random() * 0.085,
     ry: 0.018 + random() * 0.042,
     alpha: 0.35 + random() * 0.65,
+    depth: 0.25 + random() * 0.75,
+    tone: random(),
   }));
 }
 
@@ -76,36 +86,125 @@ function aircraft(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  ctx.globalAlpha = ghost ? 0.42 : 0.98;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = ghost ? size * 0.7 : size * 1.1;
-  ctx.fillStyle = color;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = Math.max(1.5, size * 0.09);
+  ctx.globalAlpha = ghost ? 0.38 : 0.99;
+
+  const wake = ctx.createLinearGradient(-size * 2.5, 0, -size * 0.55, 0);
+  wake.addColorStop(0, "rgba(247,147,26,0)");
+  wake.addColorStop(0.72, ghost ? "rgba(237,242,244,0.04)" : "rgba(247,147,26,0.11)");
+  wake.addColorStop(1, ghost ? "rgba(237,242,244,0.2)" : "rgba(247,147,26,0.52)");
+  ctx.fillStyle = wake;
   ctx.beginPath();
-  ctx.moveTo(size * 1.12, 0);
-  ctx.lineTo(size * 0.22, -size * 0.13);
-  ctx.lineTo(-size * 0.42, -size * 0.82);
-  ctx.lineTo(-size * 0.72, -size * 0.76);
-  ctx.lineTo(-size * 0.42, -size * 0.08);
-  ctx.lineTo(-size * 0.92, -size * 0.2);
-  ctx.lineTo(-size * 1.02, 0);
-  ctx.lineTo(-size * 0.92, size * 0.2);
-  ctx.lineTo(-size * 0.42, size * 0.08);
-  ctx.lineTo(-size * 0.72, size * 0.76);
-  ctx.lineTo(-size * 0.42, size * 0.82);
-  ctx.lineTo(size * 0.22, size * 0.13);
+  ctx.moveTo(-size * 2.35, -size * 0.08);
+  ctx.lineTo(-size * 0.48, -size * 0.16);
+  ctx.lineTo(-size * 0.48, size * 0.16);
+  ctx.lineTo(-size * 2.35, size * 0.08);
   ctx.closePath();
   ctx.fill();
+
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = size * 0.55;
+  ctx.beginPath();
+  ctx.ellipse(-size * 0.08, size * 0.16, size * 0.94, size * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const wing = ctx.createLinearGradient(0, -size, 0, size);
+  wing.addColorStop(0, ghost ? "#dce4e8" : "#6f7b83");
+  wing.addColorStop(0.48, ghost ? "#f5f7f8" : "#d0d6d8");
+  wing.addColorStop(1, ghost ? "#82919a" : "#3c474f");
+  ctx.fillStyle = wing;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.35, -size * 0.09);
+  ctx.lineTo(-size * 0.2, -size * 0.92);
+  ctx.lineTo(-size * 0.55, -size * 0.86);
+  ctx.lineTo(-size * 0.34, -size * 0.08);
+  ctx.lineTo(-size * 0.34, size * 0.08);
+  ctx.lineTo(-size * 0.55, size * 0.86);
+  ctx.lineTo(-size * 0.2, size * 0.92);
+  ctx.lineTo(size * 0.35, size * 0.09);
+  ctx.closePath();
+  ctx.fill();
+
+  const fuselage = ctx.createLinearGradient(0, -size * 0.25, 0, size * 0.25);
+  fuselage.addColorStop(0, ghost ? "#f7f9fa" : "#f1e5cc");
+  fuselage.addColorStop(0.32, ghost ? "#cfd8dc" : "#dba34d");
+  fuselage.addColorStop(0.62, ghost ? "#768994" : "#6f3b11");
+  fuselage.addColorStop(1, ghost ? "#33424b" : "#24170d");
+  ctx.shadowColor = color;
+  ctx.shadowBlur = ghost ? size * 0.46 : size * 0.72;
+  ctx.fillStyle = fuselage;
+  ctx.beginPath();
+  ctx.moveTo(size * 1.2, 0);
+  ctx.bezierCurveTo(size * 0.9, -size * 0.2, size * 0.2, -size * 0.19, -size * 0.66, -size * 0.12);
+  ctx.lineTo(-size * 1.03, -size * 0.32);
+  ctx.lineTo(-size * 0.87, -size * 0.05);
+  ctx.lineTo(-size * 0.87, size * 0.05);
+  ctx.lineTo(-size * 1.03, size * 0.32);
+  ctx.lineTo(-size * 0.66, size * 0.12);
+  ctx.bezierCurveTo(size * 0.2, size * 0.19, size * 0.9, size * 0.2, size * 1.2, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const canopy = ctx.createLinearGradient(0, -size * 0.18, 0, size * 0.18);
+  canopy.addColorStop(0, ghost ? "rgba(255,255,255,0.62)" : "#b7d8e2");
+  canopy.addColorStop(0.5, ghost ? "rgba(121,151,165,0.72)" : "#1e4b5d");
+  canopy.addColorStop(1, ghost ? "rgba(39,59,68,0.74)" : "#07141c");
+  ctx.fillStyle = canopy;
+  ctx.beginPath();
+  ctx.ellipse(size * 0.52, 0, size * 0.31, size * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = ghost ? "rgba(255,255,255,0.54)" : "rgba(255,234,191,0.68)";
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.56, -size * 0.12);
+  ctx.lineTo(size * 0.91, -size * 0.08);
+  ctx.stroke();
+
   if (gear) {
-    ctx.shadowBlur = 0;
+    ctx.strokeStyle = ghost ? "rgba(237,242,244,0.62)" : "rgba(183,193,198,0.72)";
+    ctx.lineWidth = Math.max(1.2, size * 0.055);
     ctx.beginPath();
-    ctx.moveTo(-size * 0.05, size * 0.15);
-    ctx.lineTo(-size * 0.12, size * 0.55);
-    ctx.moveTo(size * 0.36, size * 0.1);
-    ctx.lineTo(size * 0.32, size * 0.48);
+    ctx.moveTo(-size * 0.08, size * 0.17);
+    ctx.lineTo(-size * 0.14, size * 0.48);
+    ctx.moveTo(size * 0.42, size * 0.13);
+    ctx.lineTo(size * 0.38, size * 0.43);
     ctx.stroke();
+    ctx.fillStyle = "#050607";
+    ctx.beginPath();
+    ctx.arc(-size * 0.14, size * 0.51, size * 0.085, 0, Math.PI * 2);
+    ctx.arc(size * 0.38, size * 0.46, size * 0.075, 0, Math.PI * 2);
+    ctx.fill();
   }
+
+  ctx.fillStyle = ghost ? WHITE : ORANGE;
+  ctx.shadowColor = ghost ? WHITE : ORANGE;
+  ctx.shadowBlur = size * 0.35;
+  ctx.fillRect(-size * 0.92, -size * 0.08, size * 0.1, size * 0.16);
+  ctx.restore();
+}
+
+function finishAtmosphere(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.save();
+  ctx.globalAlpha = 0.026;
+  ctx.fillStyle = "#fff";
+  for (let y = 0; y < h; y += 5) ctx.fillRect(0, y, w, 1);
+  ctx.globalAlpha = 1;
+  const vignette = ctx.createRadialGradient(
+    w * 0.52,
+    h * 0.46,
+    0,
+    w * 0.52,
+    h * 0.46,
+    Math.max(w, h) * 0.72,
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(0.68, "rgba(0,0,0,0.08)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.68)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }
 
@@ -215,51 +314,126 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       const tiny = clamp(short * 0.0135, 10, 18);
 
       const sky = ctx.createLinearGradient(0, 0, 0, h);
-      sky.addColorStop(0, "#03070d");
-      sky.addColorStop(0.5, "#091521");
-      sky.addColorStop(1, "#05080c");
+      sky.addColorStop(0, "#01050a");
+      sky.addColorStop(0.46, "#07121d");
+      sky.addColorStop(0.72, "#0b1821");
+      sky.addColorStop(1, "#020407");
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, w, h);
 
+      const moon = ctx.createRadialGradient(
+        w * 0.78,
+        h * 0.22,
+        0,
+        w * 0.78,
+        h * 0.22,
+        short * 0.34,
+      );
+      moon.addColorStop(0, "rgba(191,218,229,0.12)");
+      moon.addColorStop(0.24, "rgba(108,151,170,0.055)");
+      moon.addColorStop(1, "rgba(5,13,20,0)");
+      ctx.fillStyle = moon;
+      ctx.fillRect(0, 0, w, h * 0.62);
+
+      ctx.save();
+      for (let index = 0; index < 34; index += 1) {
+        const sx = ((index * 0.618033 + seed * 0.000071) % 1) * w;
+        const sy = (0.08 + ((index * 0.371 + seed * 0.000043) % 1) * 0.34) * h;
+        const twinkle = 0.12 + ((index * 17) % 9) * 0.018 + Math.sin(phase * 0.55 + index) * 0.035;
+        ctx.fillStyle = `rgba(211,228,235,${twinkle})`;
+        ctx.fillRect(sx, sy, Math.max(1, short * 0.0015), Math.max(1, short * 0.0015));
+      }
+      ctx.restore();
+
       const lowFog = ctx.createLinearGradient(0, deckY, 0, h);
-      lowFog.addColorStop(0, `rgba(115,132,143,${0.06 + tight * 0.11})`);
-      lowFog.addColorStop(1, "rgba(11,15,19,0.72)");
+      lowFog.addColorStop(0, `rgba(120,145,158,${0.045 + tight * 0.095})`);
+      lowFog.addColorStop(0.36, `rgba(68,87,99,${0.13 + tight * 0.1})`);
+      lowFog.addColorStop(1, "rgba(5,9,13,0.84)");
       ctx.fillStyle = lowFog;
       ctx.fillRect(0, deckY, w, h - deckY);
 
       ctx.save();
+      ctx.globalCompositeOperation = "screen";
       for (let index = 0; index < clouds.length; index += 1) {
         const cloud = clouds[index]!;
         if (tight < 0.28 && index % 3 === 0) continue;
-        const drift = Math.sin(phase * 0.035 + index * 1.7) * w * 0.006;
-        const cx = cloud.x * w + drift;
-        const cy = deckY + cloud.y * h * (0.014 + tight * 0.045);
-        const rx = cloud.rx * w * cloudAmount * (0.8 + tight * 0.42);
-        const ry = cloud.ry * h * cloudAmount * (0.62 + tight * 0.76);
-        const fog = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
-        const alpha = cloud.alpha * (0.08 + tight * 0.27);
-        fog.addColorStop(0, `rgba(238,243,245,${alpha})`);
-        fog.addColorStop(0.58, `rgba(189,201,207,${alpha * 0.48})`);
-        fog.addColorStop(1, "rgba(153,168,177,0)");
+        const drift = (phase * (0.0014 + cloud.depth * 0.0018) + cloud.x) % 1.16;
+        const cx = (drift - 0.08) * w;
+        const cy = deckY + cloud.y * h * (0.025 + tight * 0.052) + cloud.depth * h * 0.035;
+        const rx = cloud.rx * w * cloudAmount * (0.72 + cloud.depth * 0.6 + tight * 0.28);
+        const ry = cloud.ry * h * cloudAmount * (0.58 + cloud.depth * 0.7 + tight * 0.52);
+        const alpha = cloud.alpha * cloud.depth * (0.075 + tight * 0.2);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(Math.max(1, rx), Math.max(1, ry));
+        const fog = ctx.createRadialGradient(0, -0.18, 0.04, 0, 0, 1);
+        fog.addColorStop(0, `rgba(231,240,244,${alpha * (0.72 + cloud.tone * 0.28)})`);
+        fog.addColorStop(0.42, `rgba(154,176,187,${alpha * 0.7})`);
+        fog.addColorStop(0.76, `rgba(72,92,104,${alpha * 0.34})`);
+        fog.addColorStop(1, "rgba(32,45,54,0)");
         ctx.fillStyle = fog;
         ctx.beginPath();
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       }
       ctx.restore();
 
+      for (let index = 0; index < 18; index += 1) {
+        const travel = (phase * (0.025 + (index % 5) * 0.005) + index * 0.173) % 1;
+        const sx = right - travel * (right - left);
+        const sy = h * (0.26 + ((index * 29) % 54) / 100);
+        const streak = ctx.createLinearGradient(sx - short * 0.045, 0, sx, 0);
+        streak.addColorStop(0, "rgba(178,207,219,0)");
+        streak.addColorStop(1, "rgba(178,207,219,0.08)");
+        ctx.fillStyle = streak;
+        ctx.fillRect(sx - short * 0.045, sy, short * 0.045, Math.max(1, short * 0.0012));
+      }
+
+      finishAtmosphere(ctx, w, h);
+
+      const deckGlow = ctx.createLinearGradient(0, deckY - short * 0.04, 0, deckY + short * 0.04);
+      deckGlow.addColorStop(0, "rgba(237,242,244,0)");
+      deckGlow.addColorStop(0.5, `rgba(197,216,224,${0.035 + tight * 0.08})`);
+      deckGlow.addColorStop(1, "rgba(237,242,244,0)");
+      ctx.fillStyle = deckGlow;
+      ctx.fillRect(left, deckY - short * 0.04, right - left, short * 0.08);
+
       ctx.save();
       ctx.setLineDash([short * 0.012, short * 0.014]);
+      ctx.lineDashOffset = -phase * short * 0.035;
       ctx.lineWidth = Math.max(1, short * 0.002);
       ctx.strokeStyle = `rgba(237,242,244,${0.32 + tight * 0.4})`;
+      ctx.shadowColor = WHITE;
+      ctx.shadowBlur = short * 0.008;
       ctx.beginPath();
       ctx.moveTo(left, deckY);
       ctx.lineTo(right, deckY);
       ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(202,219,226,0.16)";
+      for (let index = 0; index <= 12; index += 1) {
+        const tx = left + ((right - left) * index) / 12;
+        const tick = index % 3 === 0 ? short * 0.018 : short * 0.009;
+        ctx.beginPath();
+        ctx.moveTo(tx, deckY - tick);
+        ctx.lineTo(tx, deckY + tick);
+        ctx.stroke();
+      }
       ctx.restore();
 
       label(ctx, "LOCKED STRIKE", left, deckY + tiny * 0.7, "left", tiny, 0.5 + tight * 0.25);
-      if (strike > 0) label(ctx, `$${Math.round(strike).toLocaleString("en-US")}`, right, deckY + tiny * 0.7, "right", tiny, 0.72);
+      if (strike > 0)
+        label(
+          ctx,
+          `$${Math.round(strike).toLocaleString("en-US")}`,
+          right,
+          deckY + tiny * 0.7,
+          "right",
+          tiny,
+          0.72,
+        );
 
       const points = trail.filter((point) => point.p <= flightProgress + 0.02);
       if (spot > 0) points.push({ p: flightProgress, value: spot });
@@ -267,12 +441,39 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       gradient.addColorStop(0, trailColor);
       gradient.addColorStop(1, tipColor);
       ctx.save();
+      ctx.strokeStyle = "rgba(2,5,8,0.82)";
+      ctx.lineWidth = clamp(short * 0.014 * trailAmount, 6, 18);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        const x = left + (right - left) * point.p;
+        const y = strike > 0 ? toY(point.value) : deckY;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      if (points.length > 1) ctx.stroke();
+
       ctx.strokeStyle = gradient;
-      ctx.lineWidth = clamp(short * 0.0055 * trailAmount, 2.2, 8);
+      ctx.lineWidth = clamp(short * 0.006 * trailAmount, 2.5, 9);
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.shadowColor = trailColor;
-      ctx.shadowBlur = short * 0.012;
+      ctx.shadowBlur = short * 0.018;
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        const x = left + (right - left) * point.p;
+        const y = strike > 0 ? toY(point.value) : deckY;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      if (points.length > 1) ctx.stroke();
+
+      ctx.setLineDash([short * 0.018, short * 0.026]);
+      ctx.lineDashOffset = -phase * short * 0.055;
+      ctx.strokeStyle = "rgba(240,246,248,0.36)";
+      ctx.lineWidth = clamp(short * 0.0018 * trailAmount, 1, 3);
+      ctx.shadowBlur = 0;
       ctx.beginPath();
       points.forEach((point, index) => {
         const x = left + (right - left) * point.p;
@@ -287,11 +488,24 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       if (points.length > 1) {
         const before = points[points.length - 2]!;
         const tailY = strike > 0 ? toY(before.value) : planeY;
-        angle = clamp(Math.atan2(planeY - tailY, Math.max(1, planeX - (left + (right - left) * before.p))), -0.42, 0.42);
+        angle = clamp(
+          Math.atan2(planeY - tailY, Math.max(1, planeX - (left + (right - left) * before.p))),
+          -0.42,
+          0.42,
+        );
       }
 
       if (spot > 0 && strike > 0) {
-        aircraft(ctx, planeX, planeY, angle, clamp(short * 0.034, 18, 48), ORANGE, false, finalApproach);
+        aircraft(
+          ctx,
+          planeX,
+          planeY,
+          angle,
+          clamp(short * 0.043, 24, 58),
+          ORANGE,
+          false,
+          finalApproach,
+        );
       }
 
       const hasGhost = finalApproach && locked > 0 && settleAvg > 0 && strike > 0;
@@ -306,8 +520,25 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
         ctx.lineTo(planeX - short * 0.05, ghostY);
         ctx.stroke();
         ctx.restore();
-        aircraft(ctx, planeX - short * 0.045, ghostY, 0, clamp(short * 0.031, 17, 44), WHITE, true, true);
-        label(ctx, "SETTLEMENT GHOST", planeX - short * 0.055, ghostY + small * 1.35, "right", tiny, 0.52);
+        aircraft(
+          ctx,
+          planeX - short * 0.045,
+          ghostY,
+          0,
+          clamp(short * 0.031, 17, 44),
+          WHITE,
+          true,
+          true,
+        );
+        label(
+          ctx,
+          "SETTLEMENT GHOST",
+          planeX - short * 0.055,
+          ghostY + small * 1.35,
+          "right",
+          tiny,
+          0.52,
+        );
       }
 
       if (finalApproach) {
@@ -336,24 +567,57 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
         ctx.restore();
       }
 
-      if (lineHunt) label(ctx, "TURBULENCE · ALTIMETER HUNTING", w * 0.5, h * 0.15, "center", tiny, 0.72);
+      if (lineHunt)
+        label(ctx, "TURBULENCE · ALTIMETER HUNTING", w * 0.5, h * 0.15, "center", tiny, 0.72);
 
       label(ctx, "ALT", left, h * 0.075, "left", tiny, 0.45);
-      label(ctx, strike > 0 && spot > 0 ? money(altitude) : "—", left, h * 0.075 + tiny * 1.3, "left", small, 0.9);
+      label(
+        ctx,
+        strike > 0 && spot > 0 ? money(altitude) : "—",
+        left,
+        h * 0.075 + tiny * 1.3,
+        "left",
+        small,
+        0.9,
+      );
       label(ctx, "IAS", left, h * 0.075 + tiny * 3.4, "left", tiny, 0.45);
-      label(ctx, lastSpotAt > 0 ? `${velocity >= 0 ? "+" : "−"}$${Math.round(Math.abs(velocity))}/s` : "—", left, h * 0.075 + tiny * 4.7, "left", small, 0.82);
+      label(
+        ctx,
+        lastSpotAt > 0 ? `${velocity >= 0 ? "+" : "−"}$${Math.round(Math.abs(velocity))}/s` : "—",
+        left,
+        h * 0.075 + tiny * 4.7,
+        "left",
+        small,
+        0.82,
+      );
 
       label(ctx, "FUEL", right, h * 0.075, "right", tiny, 0.45);
       label(ctx, clock, right, h * 0.075 + tiny * 1.3, "right", small, 0.9);
       label(ctx, "ODDS", right, h * 0.075 + tiny * 3.4, "right", tiny, 0.45);
-      label(ctx, `YES MID ${Math.round(yesMid)}¢`, right, h * 0.075 + tiny * 4.7, "right", small, 0.82);
+      label(
+        ctx,
+        `YES MID ${Math.round(yesMid)}¢`,
+        right,
+        h * 0.075 + tiny * 4.7,
+        "right",
+        small,
+        0.82,
+      );
 
       const stateWord = altitude >= 0 ? "CLEAR AIR" : "IN THE SOUP";
       label(ctx, stateWord, left, h * 0.92, "left", tiny, 0.56);
       if (finalApproach) {
         const ghostAlt = hasGhost ? money(settleAvg - strike) : "—";
         label(ctx, `AVG ALT ${ghostAlt}`, right, h * 0.89, "right", tiny, hasGhost ? 0.82 : 0.55);
-        label(ctx, hasGhost ? `${Math.round(locked)}/60 BRTI PRINTS OBSERVED` : "WAITING FOR BRTI PRINTS", right, h * 0.92, "right", tiny, 0.48);
+        label(
+          ctx,
+          hasGhost ? `${Math.round(locked)}/60 BRTI PRINTS OBSERVED` : "WAITING FOR BRTI PRINTS",
+          right,
+          h * 0.92,
+          "right",
+          tiny,
+          0.48,
+        );
       } else {
         label(ctx, "SETTLEMENT GHOST ENTERS AT 01:00", right, h * 0.92, "right", tiny, 0.42);
       }
@@ -361,7 +625,15 @@ export const createCeiling: RoomFactory = (iw, ih, initialSeed, params): RoomWor
       if (!(spot > 0) || !(strike > 0)) {
         ctx.fillStyle = "rgba(3,7,13,0.72)";
         ctx.fillRect(0, 0, w, h);
-        label(ctx, !(strike > 0) ? "WAITING FOR LOCKED STRIKE" : "WAITING FOR BTC PRINT", w * 0.5, h * 0.48, "center", small, 0.78);
+        label(
+          ctx,
+          !(strike > 0) ? "WAITING FOR LOCKED STRIKE" : "WAITING FOR BTC PRINT",
+          w * 0.5,
+          h * 0.48,
+          "center",
+          small,
+          0.78,
+        );
       }
     },
   };
