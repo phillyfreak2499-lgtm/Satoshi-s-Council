@@ -26,7 +26,7 @@ import {
   type PricePoint,
   type Side,
 } from "./exit-arena";
-import { EXIT_CANDIDATES, FLOOR_V1, type Component, type FloorPolicyVersion } from "./floor-policy";
+import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, type Component, type FloorPolicyVersion } from "./floor-policy";
 
 /**
  * The research version stamped on every observation.
@@ -113,7 +113,8 @@ export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVer
   if (!w.entry) return 0;
   if (!w.ticker || !(w.closeMs > 0)) return 0;
 
-  const rows = runArena(EXIT_CANDIDATES, w.entry, w.path, w.winner);
+  // A recovered older fill cannot seed a newly defined candidate's evidence.
+  const rows = runArena(exitCandidatesForEntry(w.entry.t), w.entry, w.path, w.winner);
   if (!rows.length) return 0;
 
   const db = await getSql();

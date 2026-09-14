@@ -57,6 +57,7 @@ import {
   EXIT_PROVE180_V1,
   EXIT_PROVE240_V1,
   EXIT_TAKE90_V1,
+  EXIT_TAKE90_V2,
   type Component,
 } from "./floor-policy.ts";
 
@@ -219,9 +220,15 @@ export function simulateExit(
 
   if (exit.id === EXIT_HOLD_V1.id) return settled("SETTLEMENT", null, pts);
 
-  if (exit.id === EXIT_TAKE90_V1.id) {
+  if (exit.id === EXIT_TAKE90_V1.id || exit.id === EXIT_TAKE90_V2.id) {
     const take = Number(exit.params.take_cents);
-    const hit = pts.find((p) => p.px >= take);
+    const hit = pts.find((p) => {
+      if (p.px < take) return false;
+      if (exit.id === EXIT_TAKE90_V1.id) return true; // preserve the frozen comparator
+      // Use the same rounded net and both fees that sold() will record.
+      const net = r1(p.px - entry.cents - entryFee - takerFeeCents(p.px));
+      return net > Number(exit.params.min_net_cents);
+    });
     if (!hit) return settled("SETTLEMENT", null, pts);
     return sold(hit, "TARGET", null, pts.filter((p) => p.t <= hit.t));
   }
@@ -289,10 +296,11 @@ export function pointsFromReplay(cols: {
   return out;
 }
 
-/** The four PROVE/TAKE entrants, for callers that want them without the control. */
+/** The PROVE/TAKE challengers, for callers that want them without the control. */
 export const CHALLENGER_EXITS: readonly Component[] = Object.freeze([
   EXIT_PROVE120_V1,
   EXIT_PROVE180_V1,
   EXIT_PROVE240_V1,
   EXIT_TAKE90_V1,
+  EXIT_TAKE90_V2,
 ]);

@@ -173,6 +173,20 @@ export const EXIT_TAKE90_V1 = c({
     "not a favourite: it banks small wins and keeps every full loss.",
 });
 
+/** A separate trial: a target crossing must also realize a profit after both fees. */
+export const EXIT_TAKE90_V2 = c({
+  id: "TAKE90_V2",
+  family: "TAKE90",
+  version: 2,
+  kind: "exit",
+  label: "TAKE-90 net profit",
+  params: { take_cents: 90, min_net_cents: 0 },
+  frozen_at: "2026-09-14T16:44:11.000Z",
+  why:
+    "sell at the first held-side bid at least 90¢ that also earns a positive net profit after entry and exit fees; " +
+    "otherwise hold. A separate paper trial: full settlement losses remain possible.",
+});
+
 // ---------------------------------------------------------------------------
 // RISK — position sizing and veto. Nothing competes here yet.
 // ---------------------------------------------------------------------------
@@ -197,6 +211,7 @@ export const COMPONENTS: readonly Component[] = Object.freeze([
   EXIT_PROVE180_V1,
   EXIT_PROVE240_V1,
   EXIT_TAKE90_V1,
+  EXIT_TAKE90_V2,
   RISK_NONE_V1,
 ]);
 
@@ -204,6 +219,12 @@ export const COMPONENTS: readonly Component[] = Object.freeze([
 export const EXIT_CANDIDATES: readonly Component[] = Object.freeze(
   COMPONENTS.filter((x) => x.kind === "exit"),
 );
+
+/** Only entries at or after a candidate's definition can start prospective evidence. */
+export function exitCandidatesForEntry(entryT: number): readonly Component[] {
+  if (!Number.isFinite(entryT)) return [];
+  return EXIT_CANDIDATES.filter((x) => entryT >= Date.parse(x.frozen_at));
+}
 
 export function componentById(id: string): Component | null {
   return COMPONENTS.find((x) => x.id === id) ?? null;

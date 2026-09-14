@@ -16,6 +16,7 @@ import {
   EXIT_PROVE180_V1,
   EXIT_PROVE240_V1,
   EXIT_TAKE90_V1,
+  EXIT_TAKE90_V2,
   EXIT_CANDIDATES,
   SIGNAL_CHAIR_V1,
 } from "./floor-policy.ts";
@@ -286,7 +287,7 @@ test("a proven position that holds to settlement reports the full interval", () 
 test("every candidate is handed the identical entry", () => {
   const path = [at(40, 84, 86), at(200, 70, 72)];
   const rows = runArena(EXIT_CANDIDATES, entryUp, path, "UP");
-  assert.equal(rows.length, 5, "HOLD plus four challengers");
+  assert.equal(rows.length, 6, "HOLD plus five challengers");
   // Same entry price and fee underlie every observation: a candidate cannot have
   // chosen a cheaper fill. Checked through the one number they all share.
   for (const r of rows) {
@@ -341,10 +342,64 @@ test("sampling density cannot change an elapsed-time verdict", () => {
   assert.equal(simulateExit(EXIT_PROVE120_V1, entryUp, late60, "UP").exit_reason, "DEADLINE");
 });
 
-test("the challenger list is the four named candidates", () => {
+test("the challenger list is the five named candidates", () => {
   assert.deepEqual(
     CHALLENGER_EXITS.map((x) => x.id),
-    ["PROVE120_V1", "PROVE180_V1", "PROVE240_V1", "TAKE90_V1"],
+    ["PROVE120_V1", "PROVE180_V1", "PROVE240_V1", "TAKE90_V1", "TAKE90_V2"],
   );
   assert.equal(CHALLENGER_EXITS.some((x) => x.control), false, "the control is not a challenger");
+});
+
+test("TAKE90 V2 waits past a losing or break-even target; V1 remains unchanged", () => {
+  const entry: Entry = { side: "UP", cents: 93, t: T0 };
+  const path = [at(4, 92, 94), at(8, 95, 96), at(12, 96, 97), at(16, 10, 12)];
+  const old = simulateExit(EXIT_TAKE90_V1, entry, path, "DOWN");
+  const revised = simulateExit(EXIT_TAKE90_V2, entry, path, "DOWN");
+  assert.equal(old.net_cents, -3);
+  assert.equal(old.exit_t, T0 + 4_000);
+  assert.equal(revised.exit_cents, 96);
+  assert.equal(revised.net_cents, 1);
+  assert.equal(revised.exit_t, T0 + 12_000);
+  assert.equal(revised.direction_right, false);
+  assert.equal(revised.mae_cents, -1, "post-exit collapse is excluded");
+});
+
+test("TAKE90 V2 requires both a 90 bid and a positive net profit", () => {
+  const path = [at(4, 89, 91), at(8, 90, 92)];
+  const out = simulateExit(EXIT_TAKE90_V2, entryUp, path, "DOWN");
+  assert.equal(out.exit_t, T0 + 8_000);
+  assert.equal(out.net_cents, 7);
+});
+
+test("TAKE90 V2 uses the held DOWN side's bid and both fees", () => {
+  const entry: Entry = { side: "DOWN", cents: 93, t: T0 };
+  const path = [at(4, 7, 9), at(8, 4, 5), at(12, 3, 4)];
+  const out = simulateExit(EXIT_TAKE90_V2, entry, path, "UP");
+  assert.equal(out.exit_cents, 96);
+  assert.equal(out.exit_t, T0 + 12_000);
+  assert.equal(out.net_cents, 1);
+  assert.equal(out.direction_right, false);
+});
+
+test("TAKE90 V2 can still suffer a full settlement loss without a profitable exit", () => {
+  const entry: Entry = { side: "UP", cents: 93, t: T0 };
+  const out = simulateExit(EXIT_TAKE90_V2, entry, [at(4, 94, 95), at(8, 10, 12)], "DOWN");
+  assert.equal(out.exit_reason, "SETTLEMENT");
+  assert.equal(out.net_cents, -94);
+  assert.equal(out.exit_t, null);
+});
+
+test("TAKE90 V2 does not use pre-entry, crossed or absent quotes", () => {
+  const path = [at(-4, 96, 97), at(4, 96, 90), at(8, 0, 0), at(12, 89, 91)];
+  const out = simulateExit(EXIT_TAKE90_V2, entryUp, path, "DOWN");
+  assert.equal(out.exit_reason, "SETTLEMENT");
+  assert.equal(out.net_cents, -82);
+  assert.equal(simulateExit(EXIT_TAKE90_V2, entryUp, [], "DOWN").data_invalid, true);
+});
+
+test("TAKE90 V2 never labels a rounded zero net as a profit", () => {
+  const entry: Entry = { side: "UP", cents: 93.98, t: T0 };
+  const out = simulateExit(EXIT_TAKE90_V2, entry, [at(4, 96, 97), at(8, 97, 98)], "UP");
+  assert.equal(out.exit_cents, 97);
+  assert.equal(out.net_cents, 1);
 });
