@@ -1064,7 +1064,13 @@ export function MetaFooter({
   tape: string[];
   settling?: boolean;
 }) {
-  const left = Math.max(0, Math.round((lockdown_until - Date.now()) / 1000));
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const left = now == null ? "—" : Math.max(0, Math.round((lockdown_until - now) / 1000));
   return (
     <div className="border-t border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 font-mono text-data">

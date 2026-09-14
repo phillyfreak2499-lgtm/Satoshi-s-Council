@@ -1,3 +1,4 @@
+import { sampleRate } from "@/lib/desk/display-evidence";
 import { useEffect, useState } from "react";
 import { takerFeeCentsExact } from "@/lib/desk/clock";
 import { arenaName, fetchArena, placeCall, setArenaName, type Arena, type HumanCall } from "@/lib/desk/arena";
@@ -13,7 +14,8 @@ function fmtC(n: number): string {
 
 /** The visitor's own paper call on the live window: one raised command bar under the tape. Same POST, same one-call lock. */
 export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: boolean; onOpenArena: () => void }) {
-  const [name, setName] = useState(arenaName);
+  const [name, setName] = useState("");
+  useEffect(() => setName(arenaName()), []);
   const [draft, setDraft] = useState("");
   const [conf, setConf] = useState(60);
   const [busy, setBusy] = useState(false);
@@ -96,8 +98,8 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
               <span className="text-fg">{name}</span>
               {me && me.n > 0 ? (
                 <>
-                  {" "}· {me.n} settled · {me.hit_pct}% right · <span className={me.net >= 0 ? "text-up" : "text-down"}>{fmtC(me.net)}</span>
-                  {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} this week` : ""}
+                  {" "}· {me.n} settled · {sampleRate(me.hit_pct == null ? null : me.hit_pct / 100, me.n)} · <span className={me.net >= 0 ? "text-up" : "text-down"}>{fmtC(me.net)}</span>
+                  {me.rank_week ? ` · #${me.rank_week} of ${me.players_week} in the last 7 days` : ""}
                 </>
               ) : (
                 " · no settled calls yet"
@@ -160,3 +162,4 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
     </section>
   );
 }
+

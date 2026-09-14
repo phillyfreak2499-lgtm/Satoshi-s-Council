@@ -56,7 +56,7 @@ function useTickText(compute: () => string): string {
   return useSyncExternalStore(
     tickSubscribe,
     () => ref.current(),
-    () => ref.current(),
+    () => "—",
   );
 }
 
