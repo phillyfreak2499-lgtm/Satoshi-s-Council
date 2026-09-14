@@ -123,4 +123,12 @@ test("route metadata survives the share injector without entity double escaping"
   assert.ok(result.includes('name="twitter:title"'));
   assert.ok(!result.includes("&amp;#x27;"));
   assert.equal(head.links[0].href, "https://satoshiscouncil.com/lab");
+  assert.equal(site.pageHead("/legal", "Legal", "Paper research terms").links[0].href, "https://satoshiscouncil.com/legal");
+});
+
+test("Books raw-ledger exception reads only timestamps for gap detection", () => {
+  const source = readFileSync(new URL("../src/lib/desk/books.server.ts", import.meta.url), "utf8");
+  const coverage = source.match(/const coverage = await db[\s\S]*?`([\s\S]*?)`;/)?.[1];
+  assert.ok(coverage);
+  assert.match(coverage, /^\s*select \(extract\(epoch from close_time\) \* 1000\)::bigint as ms\s+from desk_ledger where close_time > now\(\) - interval '90 days' order by close_time\s*$/);
 });
