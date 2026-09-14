@@ -476,8 +476,8 @@ test("uses the Council name off grok.me and a published slug on grok.me", () => 
 });
 
 test("rejects hosts that are not plain slugs", () => {
-  assert.equal(appNameFromHost("<script>alert(1)</script>"), "Grok App");
-  assert.equal(appNameFromHost('"><img src=x onerror=1>.grok.me'), "Grok App");
+  assert.equal(appNameFromHost("<script>alert(1)</script>"), "Satoshi's Council");
+  assert.equal(appNameFromHost('"><img src=x onerror=1>.grok.me'), "Satoshi's Council");
 });
 
 test("renders install page markup", () => {
