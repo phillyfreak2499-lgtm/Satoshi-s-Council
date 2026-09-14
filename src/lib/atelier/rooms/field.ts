@@ -1,107 +1,211 @@
 import { num, str, type Params } from "../catalog";
 import { finishPaper, paintWindow } from "../finish";
+import { mulberry32 } from "../rng";
 import type { RoomFactory, RoomWorld } from "../world";
 
-const STATES: Record<string, { y: number; glow: string; dim: [number, number] }> = {
-  hold: { y: 0.18, glow: "#c43a2a", dim: [0.05, 0.32] },
-  wait: { y: 0.48, glow: "#d4a02a", dim: [0.36, 0.62] },
-  up: { y: 0.82, glow: "#3ad056", dim: [0.68, 0.98] },
+type Palette = {
+  y: number;
+  glow: string;
+  base: string;
+  top: string;
+  middle: string;
+  bottom: string;
+  veil: string;
+  pale: string;
+  direction: number;
 };
 
-export const createField: RoomFactory = (iw, ih, _seed, params, _host): RoomWorld => {
+type Dust = {
+  x: number;
+  y: number;
+  radius: number;
+  alpha: number;
+  drift: number;
+};
+
+const STATES: Record<string, Palette> = {
+  hold: {
+    y: 0.68,
+    glow: "#d15b4a",
+    base: "#070606",
+    top: "#2a0b09",
+    middle: "#7b1d16",
+    bottom: "#160807",
+    veil: "#ef765f",
+    pale: "#f1c09f",
+    direction: 1,
+  },
+  wait: {
+    y: 0.5,
+    glow: "#d4a02a",
+    base: "#080806",
+    top: "#171309",
+    middle: "#7d5d20",
+    bottom: "#151108",
+    veil: "#e7b84d",
+    pale: "#f4ddb0",
+    direction: 0.28,
+  },
+  up: {
+    y: 0.32,
+    glow: "#3fae7a",
+    base: "#050807",
+    top: "#07140e",
+    middle: "#145f40",
+    bottom: "#082419",
+    veil: "#58cf94",
+    pale: "#b9edd2",
+    direction: -1,
+  },
+};
+
+function makeDust(seed: number): Dust[] {
+  const random = mulberry32(seed ^ 0x9e3779b9);
+  return Array.from({ length: 120 }, () => ({
+    x: random(),
+    y: random(),
+    radius: 0.3 + random() * 1.25,
+    alpha: 0.04 + random() * 0.13,
+    drift: 0.3 + random() * 0.8,
+  }));
+}
+
+export const createField: RoomFactory = (iw, ih, initialSeed, params): RoomWorld => {
   let w = iw;
   let h = ih;
-  let stance = str(params, "stance", "up");
+  let seed = initialSeed;
+  let stance = str(params, "stance", "wait");
   let bloomAmt = num(params, "bloom", 1);
-  let grainAmt = num(params, "grain", 0.28);
-  let targetY = STATES[stance]?.y ?? 0.82;
+  let grainAmt = num(params, "grain", 0.22);
+  let targetY = STATES[stance]?.y ?? STATES.wait.y;
   let orbY = targetY;
   let remain = 1;
   let clock = "0:03";
+  let phase = 0;
+  let dust = makeDust(seed);
 
-  const apply = (p: Params) => {
-    stance = str(p, "stance", stance);
-    bloomAmt = num(p, "bloom", bloomAmt);
-    grainAmt = num(p, "grain", grainAmt);
+  const apply = (next: Params) => {
+    stance = str(next, "stance", stance);
+    bloomAmt = num(next, "bloom", bloomAmt);
+    grainAmt = num(next, "grain", grainAmt);
     targetY = STATES[stance]?.y ?? targetY;
-    remain = num(p, "remain", remain);
-    clock = str(p, "clock", clock);
+    remain = num(next, "remain", remain);
+    clock = str(next, "clock", clock);
   };
 
   return {
-    resize(nw, nh) {
-      w = nw;
-      h = nh;
+    resize(nextWidth, nextHeight) {
+      w = nextWidth;
+      h = nextHeight;
     },
-    reseed() {},
+    reseed(nextSeed) {
+      seed = nextSeed;
+      dust = makeDust(seed);
+    },
     setParams: apply,
     pointer() {},
     step(dt) {
-      orbY += (targetY - orbY) * (1 - Math.exp(-9.5 * dt));
+      phase += dt;
+      orbY += (targetY - orbY) * (1 - Math.exp(-4.5 * dt));
     },
-    draw(ctx, w, h, t) {
-      const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0.0, "#7a1410");
-      g.addColorStop(0.16, "#b01c16");
-      g.addColorStop(0.3, "#c44a14");
-      g.addColorStop(0.46, "#d8ae2e");
-      g.addColorStop(0.58, "#8a9a22");
-      g.addColorStop(0.74, "#1f9a3a");
-      g.addColorStop(1.0, "#0c4a22");
-      ctx.fillStyle = g;
+    draw(ctx) {
+      const palette = STATES[stance] ?? STATES.wait;
+      const vertical = ctx.createLinearGradient(0, 0, 0, h);
+      vertical.addColorStop(0, palette.top);
+      vertical.addColorStop(0.48, palette.middle);
+      vertical.addColorStop(1, palette.bottom);
+      ctx.fillStyle = vertical;
       ctx.fillRect(0, 0, w, h);
 
-      const live = STATES[stance]?.dim ?? STATES.up.dim;
-      const veil = ctx.createLinearGradient(0, 0, 0, h);
-      veil.addColorStop(0, "rgba(0,0,0,0.42)");
-      veil.addColorStop(Math.max(0, live[0] - 0.08), "rgba(0,0,0,0.42)");
-      veil.addColorStop(live[0], "rgba(0,0,0,0)");
-      veil.addColorStop(live[1], "rgba(0,0,0,0)");
-      veil.addColorStop(Math.min(1, live[1] + 0.08), "rgba(0,0,0,0.38)");
-      veil.addColorStop(1, "rgba(0,0,0,0.42)");
-      ctx.fillStyle = veil;
+      const roomLight = ctx.createRadialGradient(w * 0.5, h * 0.45, 0, w * 0.5, h * 0.45, w * 0.78);
+      roomLight.addColorStop(0, palette.glow + "24");
+      roomLight.addColorStop(0.48, palette.glow + "0a");
+      roomLight.addColorStop(1, palette.base + "00");
+      ctx.fillStyle = roomLight;
       ctx.fillRect(0, 0, w, h);
 
-      const breathe = 0.5 + 0.5 * Math.sin(t / 900);
-      const ox = w * 0.5;
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      for (let layer = 0; layer < 7; layer += 1) {
+        const points: Array<[number, number]> = [];
+        const baseY = h * (0.14 + layer * 0.12);
+        const amplitude = h * (0.018 + layer * 0.0035);
+        const frequency = 1.2 + layer * 0.19;
+        const offset = phase * palette.direction * (0.2 + layer * 0.027) + layer * 1.37;
+        const thickness = h * (0.052 + layer * 0.006);
+
+        for (let step = 0; step <= 14; step += 1) {
+          const x = (step / 14) * w;
+          const y =
+            baseY +
+            Math.sin((step / 14) * Math.PI * 2 * frequency + offset) * amplitude +
+            Math.sin((step / 14) * Math.PI * 4 - offset * 0.56) * amplitude * 0.36;
+          points.push([x, y]);
+        }
+
+        const ribbon = ctx.createLinearGradient(0, baseY - thickness, w, baseY + thickness);
+        ribbon.addColorStop(0, palette.glow + "05");
+        ribbon.addColorStop(0.42, palette.veil + "24");
+        ribbon.addColorStop(0.72, palette.pale + "16");
+        ribbon.addColorStop(1, palette.glow + "04");
+        ctx.globalAlpha = 0.28 + layer * 0.035;
+        ctx.fillStyle = ribbon;
+        ctx.beginPath();
+        ctx.moveTo(points[0]![0], points[0]![1] - thickness);
+        for (const [x, y] of points) ctx.lineTo(x, y - thickness * 0.5);
+        for (let index = points.length - 1; index >= 0; index -= 1) {
+          const [x, y] = points[index]!;
+          ctx.lineTo(x, y + thickness * 0.5);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+
+      const breathe = 0.5 + 0.5 * Math.sin(phase * 0.72);
+      const ox = w * (0.5 + Math.sin(phase * 0.11) * 0.022);
       const oy = orbY * h;
-      const r = w * (0.1 + 0.012 * breathe) * bloomAmt;
-      const glow = STATES[stance]?.glow ?? "#3ad056";
+      const shortSide = Math.min(w, h);
+      const coreRadius = shortSide * (0.018 + 0.003 * breathe) * bloomAmt;
 
-      const wash = ctx.createRadialGradient(ox, oy, 0, ox, oy, w * 0.72);
-      wash.addColorStop(0, glow + "66");
-      wash.addColorStop(0.35, glow + "22");
-      wash.addColorStop(1, "rgba(0,0,0,0)");
+      const wash = ctx.createRadialGradient(ox, oy, 0, ox, oy, shortSide * 0.44 * bloomAmt);
+      wash.addColorStop(0, palette.pale + "8a");
+      wash.addColorStop(0.08, palette.glow + "58");
+      wash.addColorStop(0.36, palette.glow + "24");
+      wash.addColorStop(1, palette.glow + "00");
       ctx.fillStyle = wash;
       ctx.fillRect(0, 0, w, h);
 
-      const bloom = ctx.createRadialGradient(ox, oy, 0, ox, oy, r * 4.2);
-      bloom.addColorStop(0, "rgba(255,248,210,0.95)");
-      bloom.addColorStop(0.12, "rgba(255,236,160,0.75)");
-      bloom.addColorStop(0.28, glow + "aa");
-      bloom.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = bloom;
-      ctx.beginPath();
-      ctx.arc(ox, oy, r * 4.2, 0, Math.PI * 2);
-      ctx.fill();
-
-      const core = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
-      core.addColorStop(0, "#fffdf2");
-      core.addColorStop(0.35, "#ffe9a8");
-      core.addColorStop(1, glow);
+      const core = ctx.createRadialGradient(ox, oy, 0, ox, oy, coreRadius * 5.2);
+      core.addColorStop(0, "rgba(255,253,239,0.98)");
+      core.addColorStop(0.11, palette.pale + "ec");
+      core.addColorStop(0.34, palette.glow + "a8");
+      core.addColorStop(1, palette.glow + "00");
       ctx.fillStyle = core;
       ctx.beginPath();
-      ctx.arc(ox, oy, r, 0, Math.PI * 2);
+      ctx.arc(ox, oy, coreRadius * 5.2, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      for (const speck of dust) {
+        const driftY = (speck.y + phase * 0.0025 * speck.drift * -palette.direction + 1) % 1;
+        ctx.globalAlpha = speck.alpha * (0.68 + 0.32 * breathe);
+        ctx.fillStyle = palette.pale;
+        ctx.beginPath();
+        ctx.arc(speck.x * w, driftY * h, speck.radius * Math.max(1, w / 900), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
 
       finishPaper(ctx, w, h, grainAmt);
       paintWindow(ctx, w, h, {
         remain,
         label: clock,
-        glow,
+        glow: palette.glow,
         cx: ox,
         cy: oy,
-        radius: r * 1.62,
+        radius: shortSide * 0.17,
         mode: "orbit",
       });
     },
