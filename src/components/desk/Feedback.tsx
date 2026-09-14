@@ -8,6 +8,50 @@ import { LeanChip } from "./bits";
 import { SEEN_KEY } from "./use-board-unread";
 
 const WHO_KEY = "satoshi-desk-v1-board-who";
+const PAGE_SIZE = 6;
+
+function pageCount(rows: BoardPost[]): number {
+  return Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+}
+
+function pageRows(rows: BoardPost[], page: number): BoardPost[] {
+  return rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+}
+
+function BoardPager({
+  page,
+  pages,
+  onPage,
+}: {
+  page: number;
+  pages: number;
+  onPage: (page: number) => void;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="mt-3 flex items-center justify-between gap-3" aria-label="Board pages">
+      <button
+        type="button"
+        className="btn btn-sm text-muted hover:text-fg"
+        disabled={page === 0}
+        onClick={() => onPage(page - 1)}
+      >
+        ← Newer
+      </button>
+      <span className="font-mono text-micro tabular text-subtle">
+        page {page + 1} / {pages}
+      </span>
+      <button
+        type="button"
+        className="btn btn-sm text-muted hover:text-fg"
+        disabled={page + 1 >= pages}
+        onClick={() => onPage(page + 1)}
+      >
+        Older →
+      </button>
+    </nav>
+  );
+}
 
 function loadWho() {
   if (typeof window === "undefined") return "";
@@ -196,6 +240,9 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
   const [kind, setKind] = useState<BoardKind>("idea");
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [updatePage, setUpdatePage] = useState(0);
+  const [ideaPage, setIdeaPage] = useState(0);
+  const [feedbackPage, setFeedbackPage] = useState(0);
   const tz = frame.settings.tz || "America/Chicago";
 
   const pull = async () => {
@@ -218,6 +265,9 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
   const updates = useMemo(() => posts.filter((p) => p.kind === "update" && !p.parent_id), [posts]);
   const ideas = useMemo(() => posts.filter((p) => p.kind === "idea" && !p.parent_id), [posts]);
   const notes = useMemo(() => posts.filter((p) => p.kind === "feedback" && !p.parent_id), [posts]);
+  const newestUpdates = useMemo(() => updates.slice().reverse(), [updates]);
+  const newestIdeas = useMemo(() => ideas.slice().reverse(), [ideas]);
+  const newestNotes = useMemo(() => notes.slice().reverse(), [notes]);
   const admin = Boolean(getAdminKey());
   const kids = useMemo(() => {
     const m = new Map<number, BoardPost[]>();
@@ -268,15 +318,14 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       {err ? <p className="font-mono text-micro text-wait">{err}</p> : null}
 
       {updates.length > 0 ? (
-        <section>
-          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">
-            Desk updates
-          </h3>
-          <div className="space-y-3">
-            {updates
-              .slice()
-              .reverse()
-              .map((p) => (
+        <details className="rounded-md border border-border bg-canvas">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 font-mono text-micro uppercase tracking-widest text-subtle marker:content-none">
+            <span>Desk updates · {updates.length}</span>
+            <span aria-hidden="true">▸</span>
+          </summary>
+          <div className="border-t border-border p-3">
+            <div className="space-y-3">
+              {pageRows(newestUpdates, updatePage).map((p) => (
                 <div key={p.id}>
                   <PostCard p={p} tz={tz} replies={kids.get(p.id)} onReply={(id) => setReplyTo(id)} />
                   {replyTo === p.id ? (
@@ -295,21 +344,20 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
                   ) : null}
                 </div>
               ))}
+            </div>
+            <BoardPager page={updatePage} pages={pageCount(newestUpdates)} onPage={setUpdatePage} />
           </div>
-        </section>
+        </details>
       ) : null}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <section>
-          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Ideas</h3>
+          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Ideas · {ideas.length}</h3>
           {!ideas.length ? (
             <p className="font-mono text-micro text-muted">No ideas yet. First one on the tape.</p>
           ) : (
             <div className="space-y-3">
-              {ideas
-                .slice()
-                .reverse()
-                .map((p) => (
+              {pageRows(newestIdeas, ideaPage).map((p) => (
                   <div key={p.id}>
                     <PostCard p={p} tz={tz} replies={kids.get(p.id)} onReply={(id) => setReplyTo(id)} />
                     {replyTo === p.id ? (
@@ -328,21 +376,20 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
                     ) : null}
                   </div>
                 ))}
+              <BoardPager page={ideaPage} pages={pageCount(newestIdeas)} onPage={setIdeaPage} />
             </div>
           )}
         </section>
         <section>
-          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Feedback</h3>
+          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Feedback · {notes.length}</h3>
           {!notes.length ? (
             <p className="font-mono text-micro text-muted">No open feedback yet. Reply on an idea, or post Feedback above.</p>
           ) : (
             <div className="space-y-3">
-              {notes
-                .slice()
-                .reverse()
-                .map((p) => (
-                  <PostCard key={p.id} p={p} tz={tz} />
-                ))}
+              {pageRows(newestNotes, feedbackPage).map((p) => (
+                <PostCard key={p.id} p={p} tz={tz} />
+              ))}
+              <BoardPager page={feedbackPage} pages={pageCount(newestNotes)} onPage={setFeedbackPage} />
             </div>
           )}
         </section>

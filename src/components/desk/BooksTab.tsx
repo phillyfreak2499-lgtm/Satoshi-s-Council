@@ -642,7 +642,29 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
 
   return (
     <div className="grid gap-3">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <nav
+        className="flex flex-wrap gap-1 rounded-md border border-border bg-canvas p-2"
+        aria-label="Paper book sections"
+      >
+        {[
+          ["#books-overview", "Overview"],
+          ["#books-process", "Process"],
+          ["#books-curve", "Curve"],
+          ["#books-calibration", "Calibration"],
+          ["#books-lab", "Lab"],
+          ["#books-windows", "Last 40"],
+        ].map(([href, label]) => (
+          <a
+            key={href}
+            href={href}
+            className="btn btn-sm text-muted hover:text-fg"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+
+      <section id="books-overview" className="grid scroll-mt-20 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {books.last ? (
           <LastWindow wnd={books.last} tz={tz} onReplay={setSel} />
         ) : (
@@ -659,11 +681,12 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           </div>
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
         </Pane>
-      </div>
+      </section>
 
-      {books.trial ? <TrialPane trial={books.trial} tz={tz} /> : null}
+      <section id="books-process" className="grid scroll-mt-20 gap-3">
+        {books.trial ? <TrialPane trial={books.trial} tz={tz} /> : null}
 
-      {books.keeper ? (
+        {books.keeper ? (
         <KeeperPane keeper={books.keeper} />
       ) : (
         <Pane title={<Tip k="keeper.pane">PROCESS SCORECARD</Tip>}>
@@ -675,9 +698,11 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
             <div className="mt-1 truncate font-mono text-micro text-subtle">{books.keeper_error}</div>
           ) : null}
         </Pane>
-      )}
+        )}
+      </section>
 
-      <Pane title={<Tip k="books.curve">THE CURVE · 14 DAYS</Tip>}>
+      <section id="books-curve" className="scroll-mt-20">
+        <Pane title={<Tip k="books.curve">THE CURVE · 14 DAYS</Tip>}>
         <CurveChart
           pts={books.curve}
           days={books.days}
@@ -686,9 +711,10 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           trialSince={books.trial?.since ?? null}
           at={books.at}
         />
-      </Pane>
+        </Pane>
+      </section>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <section id="books-calibration" className="grid scroll-mt-20 gap-3 lg:grid-cols-2">
         <Pane title={<Tip k="books.calib">DID THE PRICE TELL THE TRUTH?</Tip>}>
           <BucketChart buckets={books.buckets} at={books.at} />
           <p className="mt-1 font-mono text-micro text-subtle">grey = price paid · gold = breakeven after the fee · green or red = the shelf cleared it or fell short</p>
@@ -696,14 +722,45 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         <Pane title={<Tip k="books.heat">HOURS</Tip>}>
           <Heat cells={books.heat} />
         </Pane>
-      </div>
+      </section>
 
-      <LabPane lab={books.lab} tz={tz} />
+      <section id="books-lab" className="scroll-mt-20">
+        <LabPane lab={books.lab} tz={tz} />
+      </section>
 
       {sel ? <ReplayPane ticker={sel} tz={tz} onClose={() => setSel(null)} /> : null}
 
-      <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· click a window with ▶ to replay it</span></span>}>
-        <div className="overflow-x-auto">
+      <section id="books-windows" className="scroll-mt-20">
+        <Pane title={<span>LAST 40 WINDOWS <span className="font-normal text-subtle">· click a window with ▶ to replay it</span></span>}>
+          <div className="grid gap-2 sm:hidden">
+            {books.windows.map((w) => (
+              <button
+                key={w.ticker}
+                type="button"
+                disabled={!w.replay}
+                aria-label={`${fmtWhen(w.close_time, tz)} · ${w.winner}${w.replay ? " · open replay" : ""}`}
+                className={cn(
+                  "rounded-sm border border-border bg-canvas p-3 text-left font-mono text-micro",
+                  w.replay ? "hover:bg-surface-2" : "cursor-default",
+                  sel === w.ticker && "bg-surface-2",
+                )}
+                onClick={() => (w.replay ? setSel(sel === w.ticker ? null : w.ticker) : undefined)}
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-muted">{w.replay ? "▶ " : "· "}{fmtWhen(w.close_time, tz)}</span>
+                  <LeanChip lean={w.winner} />
+                </span>
+                <span className="mt-2 flex flex-wrap items-center justify-between gap-2 text-muted">
+                  <span>settled <span className="text-fg">{fmtPx(w.official ?? w.settle_avg)}</span></span>
+                  <CallCell c={w.call} />
+                </span>
+                <span className="mt-2 block text-subtle">
+                  paper {w.call ? fmtC(w.call.ev) : "no fill"} · seats {w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"} · reads {w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[640px] font-mono text-micro">
             <thead>
               <tr className="text-left">
@@ -745,8 +802,9 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
               ))}
             </tbody>
           </table>
-        </div>
-      </Pane>
+          </div>
+        </Pane>
+      </section>
     </div>
   );
 }
