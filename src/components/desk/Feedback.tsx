@@ -292,7 +292,8 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
   const newestUpdates = useMemo(() => updates.slice().reverse(), [updates]);
   const newestIdeas = useMemo(() => ideas.slice().reverse(), [ideas]);
   const newestNotes = useMemo(() => notes.slice().reverse(), [notes]);
-  const admin = Boolean(getAdminKey());
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => setAdmin(Boolean(getAdminKey())), [frame]);
   const kids = useMemo(() => {
     const m = new Map<number, BoardPost[]>();
     for (const p of posts) {

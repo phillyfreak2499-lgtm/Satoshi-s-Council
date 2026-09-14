@@ -128,4 +128,8 @@ jobs:
 
           # The front page must render rather than 500.
           echo "--- / ---"
-          curl -fsS -o /dev/null -w 'home: %{http_code}\n' http://127.0.0.1:8123/
+          if ! curl -fsS -o /tmp/home.html -w 'home: %{http_code}\n' http://127.0.0.1:8123/; then
+            echo "::error::homepage failed to render"
+            cat /tmp/server.log
+            exit 1
+          fi

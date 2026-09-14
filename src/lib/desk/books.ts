@@ -72,6 +72,8 @@ export type Books = {
   buckets: BooksBucket[];
   heat: BooksHeatCell[];
   windows: BooksWindow[];
+  /** Missing ledger windows in the last 90 days; excluded from research totals. */
+  missing_windows?: string[];
   lab: BooksLab | null;
   at: number;
 };

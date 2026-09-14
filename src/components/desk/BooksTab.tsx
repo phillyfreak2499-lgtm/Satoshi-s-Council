@@ -666,7 +666,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
     .sort((a, b) => b.close_time.localeCompare(a.close_time));
 
   return (
-    <div className="grid gap-3">
+    <div className="books-content grid min-w-0 grid-cols-1 gap-3">
       <nav
         className="flex flex-wrap gap-1 rounded-md border border-border bg-canvas p-2"
         aria-label="Paper book sections"
