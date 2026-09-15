@@ -68,7 +68,7 @@ async function insertSnapshot(row: DecisionSnapshotRow, kind: SnapshotKind): Pro
       fair_yes, lab_fair_yes, yes_mid, spread_cents, combined_ask_cents, leftover_cents,
       edge_up, edge_down, fee_yes, fee_no,
       regime_key, clock_key, atr, imbalance, range_pos,
-      research_version
+      higher_context, research_version
     ) values (
       ${row.ticker}, ${new Date(row.close_time_ms).toISOString()}, ${kind},
       ${new Date(row.decision_at_ms).toISOString()},
@@ -88,6 +88,7 @@ async function insertSnapshot(row: DecisionSnapshotRow, kind: SnapshotKind): Pro
       ${row.combined_ask_cents}, ${row.leftover_cents},
       ${row.edge_up}, ${row.edge_down}, ${row.fee_yes}, ${row.fee_no},
       ${row.regime_key}, ${row.clock_key}, ${row.atr}, ${row.imbalance}, ${row.range_pos},
+      ${row.higher_context == null ? null : JSON.stringify(row.higher_context)}::jsonb,
       ${DECISION_RESEARCH_VERSION}
     )
     on conflict (ticker, close_time, snapshot_kind) do nothing
