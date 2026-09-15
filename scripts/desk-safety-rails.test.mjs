@@ -1183,6 +1183,10 @@ test("research readers exclude the known-invalid windows", () => {
   // both, so reads and writes are listed separately and a write reason has to say
   // which columns of the row's identity it matches on.
   const ALLOWED_BARE = {
+    "src/lib/desk/skill-score-audit.server.ts": [
+      "read-only grading receipts must retain excluded inputs and their credit-skip reason; " +
+        "the count is receipts, never research wins, EV or learner credit. No operating consumer.",
+    ],
     "src/lib/desk/books.server.ts": [
       "timestamp-only coverage scan must include quarantined rows so they are not falsely labeled missing; all research totals still use desk_ledger_research",
     ],
