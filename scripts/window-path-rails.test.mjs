@@ -6,8 +6,11 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 
 test("window path research is pure and has no decision consumer", () => {
   const pure = read("src/lib/desk/window-path.ts");
-  assert.doesNotMatch(pure, /^import\s/m, "the calculator remains a pure leaf");
-  assert.doesNotMatch(pure, /Chair|Vote|Learner|SeatId|fetch\(|getSql|process\.env/);
+  const code = pure
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/.*$/gm, " ");
+  assert.doesNotMatch(code, /^import\s/m, "the calculator remains a pure leaf");
+  assert.doesNotMatch(code, /Chair|Vote|Learner|SeatId|fetch\(|getSql|process\.env/);
 
   for (const rel of [
     "bots.ts",
