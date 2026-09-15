@@ -659,7 +659,7 @@ async function scrapeBundle(): Promise<LiveBundle> {
     }),
     binanceKlines("5m", 36).catch(() => ({ candles: [] as Candle[], source: "DOWN" })),
     binanceKlines("15m", 24).catch(() => ({ candles: [] as Candle[], source: "DOWN" })),
-    binanceKlines("1h", 24).catch(() => ({ candles: [] as Candle[], source: "DOWN" })),
+    binanceKlines("1h", 30).catch(() => ({ candles: [] as Candle[], source: "DOWN" })),
     kalshi().catch((e) => {
       errors.kalshi = String(e);
       return null;
