@@ -11,6 +11,7 @@ import { checkpointActiveWindow, restoreActiveWindow, type ActiveWindow } from "
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
 import { isCountable } from "./research-quality";
+import { beginSkillScoreAudit, finishSkillScoreAudit, withSkillAuditColumn, type SkillScoreAudit } from "./skill-score-audit";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -766,11 +767,11 @@ const LEDGER_COLUMNS =
   "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
   "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
   "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents, " +
-  "entry_lean, entry_build_sha)";
+  "entry_lean, entry_build_sha, skill_score_audit)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
   "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
-  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41) " +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -789,7 +790,7 @@ function shadowBits(e: Eng, snap: Snapshot, finish: "UP" | "DOWN"): { entry: num
   return { entry: sh.cents, ev };
 }
 
-function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string): LedgerRow {
+function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult, finish: "UP" | "DOWN", source: string, scoreAudit: SkillScoreAudit | null = null): LedgerRow {
   const official = snap.official_settles.find((o) => o.ticker === snap.ticker && o.value != null)?.value ?? null;
   const rc = labSettleReceipt(snap.ticker, snap.close_time, snap.strike, finish, official);
   const shadow = shadowBits(e, snap, finish);
@@ -861,6 +862,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     entry?.fee_cents ?? null,
     booked?.lean ?? null,
     booked?.build_sha ?? null,
+    scoreAudit == null ? null : JSON.stringify(scoreAudit),
   ];
   return { ticker: snap.ticker, close_time: snap.close_time, values };
 }
@@ -869,7 +871,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
 function ledgerIO(db: Sql): PersistIO {
   return {
     write: async (r) => {
-      await db.query(LEDGER_INSERT, r.values);
+      await db.query(LEDGER_INSERT, withSkillAuditColumn(r.values));
     },
     verify: async (r) => {
       const rows = await db.query<{ n: number }>(
@@ -1031,6 +1033,11 @@ async function applyGrade(
   }
   e.gradedKeys = [...e.gradedKeys, key].slice(-GRADED_KEY_CAP);
   e.lastGradeAt = Date.now();
+  // Measurement only: freeze the actual inputs before grading, then compare
+  // actual increments before reviewSeats can change a skill's status.
+  let scoreAudit = beginSkillScoreAudit(e.learner, snap, votes, finish, {
+    countable: isCountable(snap.close_time), source, build_sha: runningBuildSha(), graded_at: e.lastGradeAt,
+  });
   // S2-9: a research-quality-invalid window (e.g. the quarantined 2026-09-10 stale-ticker
   // block) must not teach the online learner. The learner is taught by three calls here —
   // gradeWindow (seat_n/seat_hits/seat_recent/fade/skills/graded_windows/chair record),
@@ -1044,14 +1051,17 @@ async function applyGrade(
     e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
     const gr = gradeWindow(e.learner, snap, votes, chair, finish);
     e.learner = gr.learner;
+    scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
     settleAll(e.learner, finish);
     reviewSeats(e.learner);
     if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
+  } else {
+    scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
   }
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   // Enqueue the ledger row (built now, from this window's state) for a durable,
   // verified write off the tick. lastLedgerOkAt only advances once it lands.
-  e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source), Date.now());
+  e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source, scoreAudit), Date.now());
   void gradeV2(e, snap, finish);
   void gradeTaker(e, snap, finish); // shadow seat, recorded only — no chair/learner effect
   const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);

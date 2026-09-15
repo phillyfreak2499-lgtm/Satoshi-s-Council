@@ -12,6 +12,7 @@ import { readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { ogSeatImage, pageHead } from "@/lib/desk/site";
 import { cn } from "@/lib/utils";
 import { publicSeatSnapshot } from "@/lib/desk/seat-public";
+import { SkillScoreAudit } from "@/components/desk/SkillScoreAudit";
 
 function isSeat(id: string): id is SeatId {
   return (SEAT_IDS as readonly string[]).includes(id);
@@ -121,6 +122,7 @@ function SeatPage() {
           )}
         </div>
       </section>
+      <SkillScoreAudit skills={skills} audit={initial.score_audit} at={snap?.as_of} />
       <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-micro text-muted">
         <button type="button" onClick={() => void share()} className="btn btn-secondary">
           share this seat
