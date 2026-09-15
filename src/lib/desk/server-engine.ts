@@ -1120,7 +1120,7 @@ async function applyGrade(
         entry: { side: booked.lean, cents: booked.cents, t: booked.t },
         path: exitReplayPath,
       },
-      champion,
+      { ...champion, prospective_start_at: new Date(Math.max(Date.parse(champion.prospective_start_at), e.selectiveStart)).toISOString() },
     );
   })().catch((err) => {
     e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
