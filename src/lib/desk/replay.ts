@@ -1,5 +1,6 @@
 /** Window replay shape plus server-render and browser-refresh readers. */
 import { createServerFn } from "@tanstack/react-start";
+import type { WindowPathStats } from "./window-path";
 export type ReplayCols = {
   t0: number;
   t: number[];
@@ -38,6 +39,8 @@ export type Replay = {
   step_ms: number;
   partial: boolean;
   cols: ReplayCols;
+  /** Measurement-only; never consumed by seats or either Chair. */
+  path: WindowPathStats | null;
   official: number | null;
   call: { entry: number; settle: number | null; ev: number | null } | null;
 };
