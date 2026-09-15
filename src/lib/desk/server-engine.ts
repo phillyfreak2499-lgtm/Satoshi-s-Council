@@ -12,6 +12,7 @@ import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
 import { isCountable } from "./research-quality";
 import { beginSkillScoreAudit, finishSkillScoreAudit, withSkillAuditColumn, type SkillScoreAudit } from "./skill-score-audit";
+import { captureEntrySkillRoster, withEntrySkillRosterColumn } from "./entry-skill-roster";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -599,7 +600,7 @@ function runningBuildSha(): string {
   return /^[0-9a-f]{7,40}$/.test(sha) ? sha : "";
 }
 
-function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: number): void {
+function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[], cents: number): void {
   if (chair.lean !== "UP" && chair.lean !== "DOWN") return;
   const key = windowKey(snap);
   if (e.entryState[key]) return;
@@ -617,6 +618,7 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: numbe
     touch_size: Math.round(Number(touch) || 0),
     fee_cents: takerFeeCents(cents),
     build_sha: runningBuildSha(),
+    entry_roster: captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha()),
   };
   const keys = Object.keys(e.entryState);
   if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
@@ -627,7 +629,7 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: numbe
  *  Autopsy of the flip era: 40 of the last 42 logged calls were flips,
  *  41 of 42 positions were sold on a flip, net -83¢ — the left tail was
  *  the churn, not the calls. */
-async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
+async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[]) {
   if (hasPaperPosition(e.riskCalls, snap)) return;
   if (e.lastCall && e.lastCall.ticker === snap.ticker && e.lastCall.close_time === snap.close_time) {
     if (e.lastCall.lean === "UP" || e.lastCall.lean === "DOWN") return; // already positioned: hold
@@ -661,7 +663,7 @@ async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   if (!bookable(cents)) return;
   // The state the desk was in when the book actually paid. The ledger otherwise
   // only remembers the grade frame, so this is the only chance to record it.
-  noteEntryState(e, snap, chair, cents);
+  noteEntryState(e, snap, chair, votes, cents);
   const flipped = false;
   e.callLog = [
     {
@@ -767,11 +769,11 @@ const LEDGER_COLUMNS =
   "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
   "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
   "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents, " +
-  "entry_lean, entry_build_sha, skill_score_audit)";
+  "entry_lean, entry_build_sha, skill_score_audit, entry_skill_roster)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
   "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
-  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb) " +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb,$43::jsonb) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -863,6 +865,9 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     booked?.lean ?? null,
     booked?.build_sha ?? null,
     scoreAudit == null ? null : JSON.stringify(scoreAudit),
+    booked && entry?.entry_roster && entry.entry_roster.ticker === snap.ticker &&
+      entry.entry_roster.close_time_ms === snap.close_time && entry.entry_roster.side === booked.lean
+      ? JSON.stringify(entry.entry_roster) : null,
   ];
   return { ticker: snap.ticker, close_time: snap.close_time, values };
 }
@@ -871,7 +876,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
 function ledgerIO(db: Sql): PersistIO {
   return {
     write: async (r) => {
-      await db.query(LEDGER_INSERT, withSkillAuditColumn(r.values));
+      await db.query(LEDGER_INSERT, withEntrySkillRosterColumn(withSkillAuditColumn(r.values)));
     },
     verify: async (r) => {
       const rows = await db.query<{ n: number }>(
@@ -1354,7 +1359,7 @@ async function tick(e: Eng) {
     // the decision and cannot change what the Chair said or whether the book fills.
     noteDecisionSnapshot(e, snap, chair);
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
-    await noteCall(e, snap, chair);
+    await noteCall(e, snap, chair, votes);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // Hand the lab this tick's window state so a print landing between ticks
     // carries real context, with its own staleness recorded. Research only.

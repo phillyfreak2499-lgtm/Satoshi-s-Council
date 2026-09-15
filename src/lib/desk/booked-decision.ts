@@ -5,6 +5,7 @@
  * facts already captured by the server. Nothing here can vote, gate, book,
  * settle, tune, or teach the learner.
  */
+import type { EntrySkillRoster } from "./entry-skill-roster";
 export type BookedDecisionState = {
   /** Added prospectively; null keeps an older in-flight state readable. */
   lean: "UP" | "DOWN" | null;
@@ -20,6 +21,8 @@ export type BookedDecisionState = {
   fee_cents: number | null;
   /** The Render commit that made the booked decision, when available. */
   build_sha: string;
+  /** Same-tick card roster, captured only after a bookable paper fill. */
+  entry_roster?: EntrySkillRoster | null;
 };
 
 type BookedCallLike = {
@@ -48,6 +51,16 @@ function buildSha(v: unknown): string {
   return /^[0-9a-f]{7,40}$/.test(s) ? s : "";
 }
 
+function roster(raw: unknown): EntrySkillRoster | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Partial<EntrySkillRoster>;
+  if (r.version !== "ENTRY_SKILL_ROSTER_V1" || r.scope !== "booked_paper_entry" ||
+      (r.side !== "UP" && r.side !== "DOWN") || typeof r.ticker !== "string" ||
+      !Number.isFinite(r.close_time_ms) || !Number.isFinite(r.entry_at_ms) ||
+      !Array.isArray(r.chair_rows) || !Array.isArray(r.seat_reads)) return null;
+  return r as EntrySkillRoster;
+}
+
 /** Restore entry facts after a deployment without inventing missing values. */
 export function sanitizeBookedDecisionState(raw: unknown): Record<string, BookedDecisionState> {
   const out: Record<string, BookedDecisionState> = {};
@@ -69,6 +82,7 @@ export function sanitizeBookedDecisionState(raw: unknown): Record<string, Booked
       touch_size: finite(row.touch_size),
       fee_cents: finite(row.fee_cents),
       build_sha: buildSha(row.build_sha),
+      entry_roster: roster(row.entry_roster),
     };
   }
   return out;
