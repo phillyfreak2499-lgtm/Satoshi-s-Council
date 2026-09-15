@@ -26,6 +26,7 @@
 import { tape2Now, vel2Now } from "./lab.server";
 import { openSlot, REPLAY_STEP_MS, WindowStore, type WindowSeries } from "./replay-window";
 import { lookupOneWindow, payloadKey } from "./replay-lookup";
+import { measureWindowPath, type WindowPathStats } from "./window-path";
 import type { ChairResult, Snapshot, Vote } from "./types";
 import { SEAT_IDS } from "./types";
 
@@ -218,11 +219,19 @@ export async function recordReplay(ticker: string, closeMs: number, winner: "UP"
   if (!s) return;
   if (s.cols.t.length < 3) return;
   const partial = s.cols.t0 - (s.close_time - WINDOW_MS) > 60_000;
+  const pathStats = measureWindowPath({
+    t0: s.cols.t0,
+    t: s.cols.t,
+    spot: s.cols.spot,
+    strike: s.strike,
+    close_time: s.close_time,
+  });
   const db = await sql();
   await db`
-    insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols)
+    insert into desk_replay (ticker, close_time, strike, winner, n, step_ms, partial, cols, path_stats)
     values (${ticker}, ${new Date(s.close_time).toISOString()}, ${s.strike > 0 ? s.strike : null}, ${winner},
-            ${s.cols.t.length}, ${REPLAY_STEP_MS}, ${partial}, ${JSON.stringify(s.cols)}::jsonb)
+            ${s.cols.t.length}, ${REPLAY_STEP_MS}, ${partial}, ${JSON.stringify(s.cols)}::jsonb,
+            ${pathStats == null ? null : JSON.stringify(pathStats)}::jsonb)
     on conflict (ticker, close_time) do nothing
   `;
 }
@@ -241,6 +250,8 @@ export type Replay = {
   step_ms: number;
   partial: boolean;
   cols: ReplayCols;
+  /** Measurement-only spot-path summary computed after grade. */
+  path: WindowPathStats | null;
   official: number | null;
   call: { entry: number; settle: number | null; ev: number | null } | null;
 };
@@ -315,12 +326,13 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
         step_ms: number;
         partial: boolean;
         cols: ReplayCols;
+        path_stats: WindowPathStats | null;
         official_value: number | null;
         entry_cents: number | null;
         settle_cents: number | null;
         ev_cents: number | null;
       }>`
-        select r.ticker, r.close_time, r.strike, r.winner, r.n, r.step_ms, r.partial, r.cols,
+        select r.ticker, r.close_time, r.strike, r.winner, r.n, r.step_ms, r.partial, r.cols, r.path_stats,
                l.official_value, l.entry_cents, l.settle_cents, l.ev_cents
         from desk_replay r
         left join desk_ledger l on l.ticker = r.ticker and l.close_time = r.close_time
@@ -338,6 +350,7 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
         step_ms: r.step_ms,
         partial: r.partial,
         cols: r.cols,
+        path: r.path_stats,
         official: r.official_value,
         call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents } : null,
       } satisfies Replay;
