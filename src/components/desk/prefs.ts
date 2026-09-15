@@ -6,8 +6,15 @@ const PIT_TOUR_KEY = "satoshi-pit-tour-v1";
 const SEATS_KEY = "ui.seats";
 const FLOOR_DENSITY_KEY = "ui.floor-density";
 const FLOOR_ROOM_KEY = "ui.floor-room-hidden";
+const FLOOR_MODE_KEY = "ui.floor-mode";
 
-export const TRUST_CHIPS = ["Paper only", "Bitcoin only", "15-minute windows", "No live trades", "Not financial advice"];
+export const TRUST_CHIPS = [
+  "Paper only",
+  "Bitcoin only",
+  "15-minute windows",
+  "No live trades",
+  "Not financial advice",
+];
 
 function get(k: string): string {
   try {
@@ -82,4 +89,13 @@ export function readFloorRoomHidden(): boolean {
 }
 export function setFloorRoomHidden(hidden: boolean): void {
   set(FLOOR_ROOM_KEY, hidden ? "hidden" : "");
+}
+
+/** The existing Pro Floor remains the default, including for old bookmarks. */
+export type FloorMode = "pro" | "guided";
+export function readFloorMode(): FloorMode {
+  return get(FLOOR_MODE_KEY) === "guided" ? "guided" : "pro";
+}
+export function setFloorMode(mode: FloorMode): void {
+  set(FLOOR_MODE_KEY, mode === "guided" ? "guided" : "");
 }

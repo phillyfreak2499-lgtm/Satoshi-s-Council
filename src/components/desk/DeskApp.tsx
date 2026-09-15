@@ -9,6 +9,7 @@ import { SEAT_IDS, type SeatId, type TabId } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
+import { GuidedFloor } from "./GuidedFloor";
 import { IntroBand } from "./IntroBand";
 import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
@@ -17,7 +18,21 @@ import { Tour } from "./Tour";
 import { Toaster, toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrustStrip, Welcome } from "./Welcome";
-import { applyDisplayPrefs, markWelcomeSeen, readFloorDensity, readSeatView, setFloorDensity as saveFloorDensity, setSeatView as saveSeatView, TRUST_CHIPS, welcomeSeen, type FloorDensity, type SeatView } from "./prefs";
+import {
+  applyDisplayPrefs,
+  markWelcomeSeen,
+  readFloorDensity,
+  readFloorMode,
+  readSeatView,
+  setFloorDensity as saveFloorDensity,
+  setFloorMode as saveFloorMode,
+  setSeatView as saveSeatView,
+  TRUST_CHIPS,
+  welcomeSeen,
+  type FloorDensity,
+  type FloorMode,
+  type SeatView,
+} from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
@@ -34,13 +49,22 @@ const PRIMARY: { id: TabId; label: string }[] = [
 // One shape for every primary nav item — the tab buttons (FLOOR, DESKS, BOOKS,
 // BOARD) and the ARENA room link alike — so every word sits at the same size in
 // the same box, whether it is a <button> or an <a>.
-const NAV_TAB = "flex min-h-11 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-micro tracking-wide";
+const NAV_TAB =
+  "flex min-h-11 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-micro tracking-wide";
 const NAV_TAB_IDLE = "border-transparent text-muted hover:bg-surface-2 hover:text-fg";
 const NAV_TAB_ON = "border-border-strong bg-surface-2 text-fg";
 const DESKS: { id: TabId; label: string; intro: string }[] = [
-  { id: "structure", label: "STRUCTURE", intro: "candles and swings · WICK, DRIFT, STREAK, EXHAUST" },
+  {
+    id: "structure",
+    label: "STRUCTURE",
+    intro: "candles and swings · WICK, DRIFT, STREAK, EXHAUST",
+  },
   { id: "tape", label: "TAPE", intro: "order flow and the Kalshi book · PULSE, TAPE, WHALE, VEL" },
-  { id: "derivs", label: "DERIVS", intro: "funding, open interest, liquidations · CARRY, CHAIN, CASCADE, VOLT" },
+  {
+    id: "derivs",
+    label: "DERIVS",
+    intro: "funding, open interest, liquidations · CARRY, CHAIN, CASCADE, VOLT",
+  },
   { id: "book", label: "BOOK", intro: "the odds themselves · ODDS, STRIKE, CHEAP, FADE, INDEX" },
   { id: "context", label: "CONTEXT", intro: "clock and regime · ORBIT, CLOCK, WIRE, WARDEN" },
 ];
@@ -52,7 +76,19 @@ const MORE: { id: TabId; label: string; hint: string }[] = [
 ];
 const NUDGE_KEY = "satoshi-desk-nudge-v1";
 const INTRO_KEY = "satoshi-desk-intro-v1";
-const LINKABLE_TABS = new Set<TabId>(["satoshi", "structure", "tape", "derivs", "book", "context", "books", "board", "crew", "atelier", "settings"]);
+const LINKABLE_TABS = new Set<TabId>([
+  "satoshi",
+  "structure",
+  "tape",
+  "derivs",
+  "book",
+  "context",
+  "books",
+  "board",
+  "crew",
+  "atelier",
+  "settings",
+]);
 
 function nudgeOff(): boolean {
   try {
@@ -70,9 +106,20 @@ function introOff(): boolean {
   }
 }
 
-function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: TabId) => void; onTour: () => void; onSearch: () => void }) {
+function MoreMenu({
+  tab,
+  onTab,
+  onTour,
+  onSearch,
+}: {
+  tab: TabId;
+  onTab: (t: TabId) => void;
+  onTour: () => void;
+  onSearch: () => void;
+}) {
   const cur = MORE.find((m) => m.id === tab);
-  const item = "flex min-h-10 cursor-pointer select-none items-center justify-between gap-3 rounded-sm px-2 font-mono text-micro text-fg outline-none data-[highlighted]:bg-surface-2";
+  const item =
+    "flex min-h-10 cursor-pointer select-none items-center justify-between gap-3 rounded-sm px-2 font-mono text-micro text-fg outline-none data-[highlighted]:bg-surface-2";
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -88,7 +135,11 @@ function MoreMenu({ tab, onTab, onTour, onSearch }: { tab: TabId; onTab: (t: Tab
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" sideOffset={6} className="z-50 min-w-60 rounded-md border border-border bg-surface p-1 shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={6}
+          className="z-50 min-w-60 rounded-md border border-border bg-surface p-1 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+        >
           {MORE.map((m) => (
             <DropdownMenu.Item key={m.id} onSelect={() => onTab(m.id)} className={item}>
               {m.label}
@@ -123,6 +174,13 @@ export function DeskApp() {
   const [introHidden, setIntroHidden] = useState(false);
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
   const [floorDensity, setFloorDensityState] = useState<FloorDensity>("quiet");
+  const [floorMode, setFloorModeState] = useState<FloorMode>("pro");
+  const setFloorMode = (mode: FloorMode) => {
+    setFloorModeState(mode);
+    saveFloorMode(mode);
+    setTab("satoshi");
+    if (mode === "guided") setWelcomeOn(false);
+  };
   const setSeatView = (v: SeatView) => {
     setSeatViewState(v);
     saveSeatView(v);
@@ -143,6 +201,7 @@ export function DeskApp() {
     applyDisplayPrefs();
     setSeatViewState(readSeatView());
     setFloorDensityState(readFloorDensity());
+    setFloorModeState(readFloorMode());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
     setReturning(welcomeSeen());
     setIntroHidden(introOff());
@@ -153,10 +212,10 @@ export function DeskApp() {
   }, [paletteOn]);
   useEffect(() => {
     if (!hasSnap) return;
-    if (tourSeen() || welcomeSeen()) return;
+    if (floorMode === "guided" || tourSeen() || welcomeSeen()) return;
     const t = window.setTimeout(() => setWelcomeOn(true), 600);
     return () => window.clearTimeout(t);
-  }, [hasSnap]);
+  }, [hasSnap, floorMode]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -184,10 +243,15 @@ export function DeskApp() {
 
   const jump = (seat: SeatId) => {
     const dest =
-      (Object.entries(TAB_SEATS) as [Exclude<TabId, "satoshi" | "atelier" | "settings" | "board" | "crew" | "arena" | "books">, SeatId[]][]).find(
-        ([, ids]) => ids.includes(seat),
-      )?.[0] ?? "structure";
+      (
+        Object.entries(TAB_SEATS) as [
+          Exclude<TabId, "satoshi" | "atelier" | "settings" | "board" | "crew" | "arena" | "books">,
+          SeatId[],
+        ][]
+      ).find(([, ids]) => ids.includes(seat))?.[0] ?? "structure";
     setFocus(seat);
+    setFloorModeState("pro");
+    saveFloorMode("pro");
     setTab(dest);
   };
 
@@ -197,8 +261,14 @@ export function DeskApp() {
     try {
       const sp = new URLSearchParams(window.location.search);
       const t = sp.get("tab");
-      if (t && t !== "arena" && LINKABLE_TABS.has(t as TabId)) setTab(t as TabId);
       const s = sp.get("seat")?.toUpperCase();
+      if (t && t !== "arena" && LINKABLE_TABS.has(t as TabId)) {
+        setTab(t as TabId);
+        setFloorModeState("pro");
+      } else if (!s && sp.get("view") === "guided") {
+        setFloorModeState("guided");
+        saveFloorMode("guided");
+      }
       if (s && (SEAT_IDS as readonly string[]).includes(s)) jump(s as SeatId);
     } catch {
       /* no window */
@@ -211,13 +281,16 @@ export function DeskApp() {
       const u = new URL(window.location.href);
       if (tab === "satoshi") u.searchParams.delete("tab");
       else u.searchParams.set("tab", tab);
+      if (floorMode === "guided" && tab === "satoshi") u.searchParams.set("view", "guided");
+      else u.searchParams.delete("view");
       u.searchParams.delete("seat");
       const next = `${u.pathname}${u.search}${u.hash}`;
-      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(null, "", next);
+      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
+        window.history.replaceState(null, "", next);
     } catch {
       /* no window */
     }
-  }, [tab]);
+  }, [tab, floorMode]);
 
   const startTour = () => {
     setWelcomeOn(false);
@@ -229,7 +302,13 @@ export function DeskApp() {
   const desk = DESKS.find((d) => d.id === tab) ?? null;
 
   const seats =
-    tab !== "satoshi" && tab !== "atelier" && tab !== "settings" && tab !== "board" && tab !== "crew" && tab !== "arena" && tab !== "books"
+    tab !== "satoshi" &&
+    tab !== "atelier" &&
+    tab !== "settings" &&
+    tab !== "board" &&
+    tab !== "crew" &&
+    tab !== "arena" &&
+    tab !== "books"
       ? TAB_SEATS[tab]
       : [];
 
@@ -238,25 +317,81 @@ export function DeskApp() {
       <a href="#floor-main" className="skip-link">
         Skip to the floor
       </a>
-      <GlobalHeader tour="tour-header" action={{ label: "Search", hint: "⌘K", onSelect: () => setPaletteOn(true) }} />
-      <nav aria-label="Floor views" className="gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1">
-        <span className="mr-2 font-mono text-micro uppercase tracking-widest text-subtle">Floor</span>
-        {PRIMARY.map((item) => {
-          const active = item.id === "structure" ? DESK_IDS.has(tab) : tab === item.id;
-          return <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-current={active ? "page" : undefined} className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}>{item.label}</button>;
-        })}
-        <MoreMenu tab={tab} onTab={setTab} onTour={startTour} onSearch={() => setPaletteOn(true)} />
+      <GlobalHeader
+        tour="tour-header"
+        action={{ label: "Search", hint: "⌘K", onSelect: () => setPaletteOn(true) }}
+      />
+      <nav
+        aria-label="Floor views"
+        className="gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
+      >
+        <span className="mr-2 font-mono text-micro uppercase tracking-widest text-subtle">
+          Floor
+        </span>
+        {floorMode === "guided" ? (
+          <>
+            <button type="button" aria-current="page" className={cn(NAV_TAB, NAV_TAB_ON)}>
+              Guided
+            </button>
+            <button
+              type="button"
+              onClick={() => setFloorMode("pro")}
+              className={cn(NAV_TAB, NAV_TAB_IDLE)}
+            >
+              Pro Floor
+            </button>
+          </>
+        ) : (
+          <>
+            {PRIMARY.map((item) => {
+              const active = item.id === "structure" ? DESK_IDS.has(tab) : tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+            <MoreMenu
+              tab={tab}
+              onTab={setTab}
+              onTour={startTour}
+              onSearch={() => setPaletteOn(true)}
+            />
+            <button
+              type="button"
+              onClick={() => setFloorMode("guided")}
+              className={cn(NAV_TAB, NAV_TAB_IDLE)}
+            >
+              Guided Floor
+            </button>
+          </>
+        )}
       </nav>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">
         <TrustStrip className="hidden sm:flex" />
-        <p className="min-w-0 truncate font-mono text-micro text-subtle sm:hidden">{TRUST_CHIPS.join(" · ")}</p>
+        <p className="min-w-0 truncate font-mono text-micro text-subtle sm:hidden">
+          {TRUST_CHIPS.join(" · ")}
+        </p>
         <Tip k="beta.disclaimer" className="hidden sm:inline">
-          <span className="font-mono text-micro text-muted">Every UP / DOWN / WAIT is practice. Nothing here places a live trade, and none of it is advice.</span>
+          <span className="font-mono text-micro text-muted">
+            Every UP / DOWN / WAIT is practice. Nothing here places a live trade, and none of it is
+            advice.
+          </span>
         </Tip>
-        {nudge && !tourOn && tab !== "satoshi" ? (
+        {floorMode === "pro" && nudge && !tourOn && tab !== "satoshi" ? (
           <span className="ml-auto hidden items-center gap-1 sm:flex">
-            <button type="button" onClick={startTour} className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-fg hover:bg-surface-2">
+            <button
+              type="button"
+              onClick={startTour}
+              className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-fg hover:bg-surface-2"
+            >
               New here? Take the 60-second tour
             </button>
             <button
@@ -279,8 +414,13 @@ export function DeskApp() {
       </div>
 
       {desk ? (
-        <div className="nav-scroll flex items-center gap-1 overflow-x-auto border-b border-border bg-surface px-3" aria-label="Seat desks">
-          <span className="mr-1 shrink-0 font-mono text-micro uppercase tracking-widest text-subtle">desks</span>
+        <div
+          className="nav-scroll flex items-center gap-1 overflow-x-auto border-b border-border bg-surface px-3"
+          aria-label="Seat desks"
+        >
+          <span className="mr-1 shrink-0 font-mono text-micro uppercase tracking-widest text-subtle">
+            desks
+          </span>
           {DESKS.map((d) => (
             <button
               key={d.id}
@@ -289,7 +429,9 @@ export function DeskApp() {
               aria-current={tab === d.id ? "page" : undefined}
               className={cn(
                 "flex min-h-11 shrink-0 items-center rounded-md border px-2.5 font-mono text-micro tracking-wide",
-                tab === d.id ? "border-border-strong bg-surface-2 text-fg" : "border-transparent text-muted hover:bg-surface-2 hover:text-fg",
+                tab === d.id
+                  ? "border-border-strong bg-surface-2 text-fg"
+                  : "border-transparent text-muted hover:bg-surface-2 hover:text-fg",
               )}
             >
               <Tip k={`tab.${d.id}`} hoverOnly>
@@ -297,11 +439,13 @@ export function DeskApp() {
               </Tip>
             </button>
           ))}
-          <span className="ml-auto hidden shrink-0 font-mono text-micro text-subtle lg:block">{desk.intro}</span>
+          <span className="ml-auto hidden shrink-0 font-mono text-micro text-subtle lg:block">
+            {desk.intro}
+          </span>
         </div>
       ) : null}
 
-      {tab === "satoshi" && !returning && !introHidden ? (
+      {floorMode === "pro" && tab === "satoshi" && !returning && !introHidden ? (
         <IntroBand
           demo={frame.settings.source === "demo"}
           nudge={nudge && !tourOn}
@@ -341,9 +485,23 @@ export function DeskApp() {
         </div>
       )}
 
-      <main id="floor-main" className={cn("min-h-0 flex-1", tab === "atelier" ? "overflow-hidden" : "overflow-auto")}>
-        {!frame.snap && tab !== "atelier" && tab !== "board" && tab !== "settings" && <FloorSkeleton demo={frame.settings.source === "demo"} />}
-        {frame.snap && tab === "satoshi" && frame.chair && (
+      <main
+        id="floor-main"
+        className={cn("min-h-0 flex-1", tab === "atelier" ? "overflow-hidden" : "overflow-auto")}
+      >
+        {!frame.snap && tab !== "atelier" && tab !== "board" && tab !== "settings" && (
+          <FloorSkeleton demo={frame.settings.source === "demo"} />
+        )}
+        {frame.snap && tab === "satoshi" && frame.chair && floorMode === "guided" && (
+          <GuidedFloor
+            snap={frame.snap}
+            chair={frame.chair}
+            callLog={frame.call_log}
+            demo={frame.settings.source === "demo"}
+            onPro={() => setFloorMode("pro")}
+          />
+        )}
+        {frame.snap && tab === "satoshi" && frame.chair && floorMode === "pro" && (
           <SatoshiTab
             snap={frame.snap}
             chair={frame.chair}
@@ -378,7 +536,9 @@ export function DeskApp() {
             <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-micro text-subtle">
               <span className="min-w-0">{desk ? `${desk.label} · ${desk.intro}` : ""}</span>
               <span className="flex items-center gap-2">
-                <span className="hidden lg:inline">snapshot {new Date(frame.snap.as_of).toISOString()} · shared across this tab</span>
+                <span className="hidden lg:inline">
+                  snapshot {new Date(frame.snap.as_of).toISOString()} · shared across this tab
+                </span>
                 <button
                   type="button"
                   aria-pressed={seatView === "all"}
@@ -413,20 +573,25 @@ export function DeskApp() {
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
       </main>
 
-      <MetaFooter
-        chair={frame.chair}
-        law_wrongs={frame.learner.law_wrongs}
-        lockdown={frame.learner.lockdown}
-        lockdown_until={frame.learner.lockdown_until}
-        tape={frame.learner.settle_tape}
-        settling={frame.settling}
-      />
+      {floorMode === "pro" && (
+        <MetaFooter
+          chair={frame.chair}
+          law_wrongs={frame.learner.law_wrongs}
+          lockdown={frame.learner.lockdown}
+          lockdown_until={frame.learner.lockdown_until}
+          tape={frame.learner.settle_tape}
+          settling={frame.settling}
+        />
+      )}
       <footer
         data-tour="tour-footer"
         className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3 py-1.5 font-mono text-micro text-subtle"
       >
         <Crest size={16} className="shrink-0 opacity-80" />
-        <span>Paper research desk · Bitcoin only · Not financial advice · Not affiliated with Kalshi · No real money.</span>
+        <span>
+          Paper research desk · Bitcoin only · Not financial advice · Not affiliated with Kalshi ·
+          No real money.
+        </span>
         <span className="ml-auto flex flex-wrap gap-x-3">
           <a href="/about" className="min-h-8 leading-8 hover:text-fg">
             How it works
@@ -437,7 +602,11 @@ export function DeskApp() {
           <a href="/legal" className="min-h-8 leading-8 hover:text-fg">
             Paper only
           </a>
-          <button type="button" onClick={() => setPaletteOn(true)} className="min-h-8 hover:text-fg">
+          <button
+            type="button"
+            onClick={() => setPaletteOn(true)}
+            className="min-h-8 hover:text-fg"
+          >
             Glossary ⌘K
           </button>
         </span>
@@ -446,12 +615,19 @@ export function DeskApp() {
         open={tourOn}
         step={tourStep}
         tab={tab}
-        onTab={setTab}
+        onTab={(t) => {
+          setFloorModeState("pro");
+          saveFloorMode("pro");
+          setTab(t);
+        }}
         onStep={setTourStep}
         onClose={() => setTourOn(false)}
         onDone={() => {
           beacon("tour_done");
-          toast("You're on the floor.", { description: "The chair's call is up top. Hover or tap any dotted label for a definition." });
+          toast("You're on the floor.", {
+            description:
+              "The chair's call is up top. Hover or tap any dotted label for a definition.",
+          });
         }}
       />
       <Welcome
@@ -468,9 +644,22 @@ export function DeskApp() {
           setNudge(!tourSeen() && !nudgeOff());
         }}
       />
-      <Palette open={paletteOn} onOpenChange={setPaletteOn} onTab={setTab} onJump={jump} onTour={startTour} />
-      <Toaster theme="dark" position="bottom-center" toastOptions={{ className: "font-mono text-ui" }} />
+      <Palette
+        open={paletteOn}
+        onOpenChange={setPaletteOn}
+        onTab={(t) => {
+          setFloorModeState("pro");
+          saveFloorMode("pro");
+          setTab(t);
+        }}
+        onJump={jump}
+        onTour={startTour}
+      />
+      <Toaster
+        theme="dark"
+        position="bottom-center"
+        toastOptions={{ className: "font-mono text-ui" }}
+      />
     </div>
   );
 }
-
