@@ -13,6 +13,8 @@ import { ogSeatImage, pageHead } from "@/lib/desk/site";
 import { cn } from "@/lib/utils";
 import { publicSeatSnapshot } from "@/lib/desk/seat-public";
 import { SkillScoreAudit } from "@/components/desk/SkillScoreAudit";
+import { RETIRED_SEATS } from "@/lib/desk/crew";
+import { CLOSED_DIRECTIONAL_CARDS } from "@/lib/desk/council-authority";
 
 function isSeat(id: string): id is SeatId {
   return (SEAT_IDS as readonly string[]).includes(id);
@@ -68,6 +70,12 @@ function SeatPage() {
   };
   return (
     <Page title={`${id} (${meta.callsign})`} lede={gloss?.body ?? meta.eyes}>
+      {RETIRED_SEATS[id] ? (
+        <div className="mb-3 rounded-md border border-border-strong bg-surface-2 p-3 font-mono text-micro text-muted">
+          <strong className="mr-2 text-fg">RETIRED</strong>
+          This seat no longer supports paper calls. Its historical record and paper research reads remain visible.
+        </div>
+      ) : null}
       {snap && vote ? (
         <BotCard seat={id} snap={snap} vote={vote} />
       ) : (
@@ -110,6 +118,7 @@ function SeatPage() {
                   <span className={cn("inline-flex rounded-sm border px-1.5 py-0.5 font-semibold tracking-wide", skillTone(s.status))}>
                     {s.status}
                   </span>
+                  {CLOSED_DIRECTIONAL_CARDS.has(s.id) ? <span className="text-subtle">retired rule</span> : null}
                   <span>
                     {s.n ? `${s.hits}/${s.n}` : "ungraded"}
                   </span>

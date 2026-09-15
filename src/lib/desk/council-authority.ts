@@ -44,6 +44,7 @@ export function directionalHoldReason(
   regimeKey: string,
 ): string | null {
   if (vote.lean === "WAIT") return null;
+  if (CLOSED_DIRECTIONAL_CARDS.has(vote.skill_used)) return "retired directional rule";
   const card = learner.skills[vote.skill_used];
   if (!card || card.status !== "LIVE" || vote.skill_status !== "LIVE")
     return "no LIVE predictive card";

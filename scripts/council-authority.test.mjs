@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { applyAuthorityReview, admitCouncilVotes, directionalHoldReason } from "../src/lib/desk/council-authority.ts";
+import { applyAuthorityReview, admitCouncilVotes, directionalHoldReason, CLOSED_DIRECTIONAL_CARDS } from "../src/lib/desk/council-authority.ts";
 
 const card = (over = {}) => ({
   status: "LIVE", n: 75, ev_n: 75, wilson: 0.8, ev: 2,
@@ -23,6 +23,19 @@ test("only an eligible mature LIVE predictive card may speak directionally", () 
   assert.match(directionalHoldReason(vote(), { skills: { "DRIFT.read": card({ wilson: 0.59 }) } }, "ASIA_FINAL"), /Wilson/);
   assert.match(directionalHoldReason(vote(), { skills: { "DRIFT.read": card({ ev: 1 }) } }, "ASIA_FINAL"), /EV/);
   assert.equal(directionalHoldReason(vote({ lean: "WAIT" }), learner, "EUROPE_MID"), null);
+});
+
+test("reviewed retired rules cannot regain paper-call authority through a future LIVE label", () => {
+  const ids = ["ODDS.cheap_yes", "CHEAP.value", "FADE.60s_rip", "VEL.spot_lead"];
+  assert.deepEqual(CLOSED_DIRECTIONAL_CARDS, new Set(ids));
+  for (const id of ids) {
+    const learner = { skills: { [id]: card({ status: "LIVE", n: 200, ev_n: 200, wilson: 0.9, ev: 8 }) } };
+    const read = vote({ skill_used: id, skill_status: "LIVE" });
+    assert.match(directionalHoldReason(read, learner, "ASIA_FINAL"), /retired directional rule/);
+    assert.equal(admitCouncilVotes([read], learner, "ASIA_FINAL")[0].lean, "WAIT");
+  }
+  assert.equal(directionalHoldReason(vote({ skill_used: "VEL.spot_lead", lean: "WAIT" }),
+    { skills: {} }, "ASIA_FINAL"), null, "WAIT research remains available");
 });
 
 test("a perfect late pocket cannot license an unseen regime", () => {
