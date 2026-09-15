@@ -22,12 +22,13 @@
  * (ticker, close_time, snapshot_kind) stays the final authority on idempotence.
  * Nothing here reads a fill, a grade, a replay point, or a current quote.
  */
+import { measureHigherTimeframeContext, type HigherTimeframeContext } from "./higher-timeframe-context";
 import type { ChairResult, Lean, Snapshot } from "./types";
 
 export type SnapshotKind = "OPENING" | "FIRST_DIRECTIONAL";
 
 /** Stamped on every row. Bumped by hand only when the measurement itself changes. */
-export const DECISION_RESEARCH_VERSION = "decision-1";
+export const DECISION_RESEARCH_VERSION = "decision-2";
 
 /** What the caller already knows about an exact window before this tick. */
 export type DecisionWindowFacts = {
@@ -81,7 +82,7 @@ export function decisionSnapshotEvents(f: DecisionWindowFacts): DecisionSnapshot
  * tick's `(snap, chair)` pair. Flat and server-agnostic so the tick can build it
  * synchronously and hand FACTS (never a live object) to the async writer.
  *
- * Every field is already trustworthy at the decision tick. Timestamps are raw
+ * Every input is already present at the decision tick. Timestamps are raw
  * epoch ms here; the writer converts to timestamptz. `snapshot_kind` is NOT part
  * of this type -- the writer decides the kind from the event plan above, so the
  * same captured pair can become OPENING or FIRST_DIRECTIONAL without rebuilding.
@@ -157,6 +158,9 @@ export type DecisionSnapshotRow = {
   atr: number | null;
   imbalance: number | null;
   range_pos: number | null;
+
+  // LAB_DERIVED (numeric context only; measurement authority, never a Chair input)
+  higher_context: HigherTimeframeContext;
 };
 
 /** Finite number, or null. Postgres integer columns reject NaN; doubles keep it, but a
@@ -176,8 +180,10 @@ function finInt(v: unknown): number | null {
  * Capture one decision tick's `(snap, chair)` pair into a flat research row.
  *
  * PURE: it reads only the already-finalized snap and chair. It does not re-read
- * the market, does not consult a fill or a grade, and invents no new calculation
- * -- every DERIVED field is a value liveSnap already computed for this tick.
+ * the market and does not consult a fill or a grade. Ordinary DERIVED fields
+ * are values liveSnap already computed for this tick.
+ * `higher_context` is the one LAB_DERIVED payload: a pure summary of this same
+ * tick's already-captured hourly candles and returns, explicitly non-voting.
  */
 export function buildDecisionSnapshotRow(snap: Snapshot, chair: ChairResult): DecisionSnapshotRow {
   // Unknown-freshness sentinels must not become apparent measurements. From
@@ -244,5 +250,13 @@ export function buildDecisionSnapshotRow(snap: Snapshot, chair: ChairResult): De
     atr: fin(snap.atr),
     imbalance: fin(snap.imbalance),
     range_pos: fin(snap.range_pos),
+    higher_context: measureHigherTimeframeContext({
+      as_of_ms: Number(snap.as_of),
+      spot: Number(snap.spot),
+      ret_15m: Number(snap.ret15),
+      ret_30m: Number(snap.ret30),
+      ret_1h: Number(snap.ret1h),
+      candles_1h: snap.candles_1h ?? [],
+    }),
   };
 }
