@@ -1,5 +1,6 @@
 import { SKILL_RULES } from "./dsl";
 import { freshLearner, seedGate, SKILL_SEEDS } from "./skills";
+import { applyAuthorityReview } from "./council-authority";
 import { mergeThresholds } from "./thresholds";
 import type { CallLogRow, DataSource, Learner, SeatId, Settings } from "./types";
 
@@ -35,7 +36,10 @@ export function sliceLearner(learner: Learner): Learner {
 
 export function mergeLearner(saved?: Partial<Learner> | null): Learner {
   const base = freshLearner();
-  if (!saved) return base;
+  if (!saved) {
+    applyAuthorityReview(base);
+    return base;
+  }
   const learner: Learner = { ...base, ...saved };
   const savedSkills = saved.skills ?? {};
   learner.skills = { ...base.skills };
@@ -89,6 +93,7 @@ export function mergeLearner(saved?: Partial<Learner> | null): Learner {
     if (card.ev_n == null) card.ev_n = 0;
     if (card.ev == null) card.ev = 0;
   }
+  applyAuthorityReview(learner);
   return learner;
 }
 

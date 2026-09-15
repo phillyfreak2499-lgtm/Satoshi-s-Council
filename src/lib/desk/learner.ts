@@ -5,6 +5,7 @@ import { binKey, calibNOf, clamp, EDGE_FLOOR, FULL_N, mean, REVIEW_EVERY, round,
 import { rememberTape } from "./memory";
 import { readScalp, scalpAvg } from "./scalp";
 import { promoteEligible } from "./skill-gate";
+import { CLOSED_DIRECTIONAL_CARDS } from "./council-authority";
 import { SEATS } from "./seats";
 import {
   benchThreshold,
@@ -416,6 +417,9 @@ function spawnRethink(learner: Learner, owner: SeatId, avg: number): string | nu
   return id;
 }
 
+/** Frozen until probability scoring and owner promotion review are verifiable. */
+export const AUTO_SKILL_PROMOTION_ENABLED = false;
+
 function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
   const notes: string[] = [];
   const mine = Object.values(learner.skills).filter((s) => s.owner === owner);
@@ -430,7 +434,9 @@ function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
   // n >= 8 alone is the weakest promotion in the desk, and it fires exactly when
   // a seat has just failed its edge floor — the moment of least reliable
   // information. A card on a research hold is never swapped in here.
-  const promote = shadow.find((s) => (s.n >= 8 || s.ev_n >= 8) && promoteEligible(s));
+  const promote = AUTO_SKILL_PROMOTION_ENABLED
+    ? shadow.find((s) => (s.n >= 8 || s.ev_n >= 8) && promoteEligible(s))
+    : undefined;
   if (promote) {
     promote.status = "LIVE";
     notes.push(`live ${promote.id}`);
@@ -510,7 +516,7 @@ export function runHuddle(learner: Learner): { learner: Learner; line: string } 
         card.status = "BENCH";
         bench.push(`${card.id} L20 ${(l20 * 100).toFixed(0)}% ev ${card.ev.toFixed(0)}¢`);
       }
-    } else if (card.status === "BENCH") {
+    } else if (card.status === "BENCH" && !CLOSED_DIRECTIONAL_CARDS.has(card.id)) {
       if (card.last20.length >= 8 && l20 >= 0.55) {
         card.status = "SHADOW";
         unbench.push(`${card.id} L20 ${(l20 * 100).toFixed(0)}%`);
@@ -530,6 +536,7 @@ export function runHuddle(learner: Learner): { learner: Learner; line: string } 
     const lastMe = recencyRate(card);
     const pocketN = Object.values(card.pocket).reduce((s, p) => s + p.n, 0);
     if (
+      AUTO_SKILL_PROMOTION_ENABLED &&
       card.n >= promoNeed.n &&
       pocketN >= promoNeed.n &&
       card.wilson >= promoNeed.wilson &&

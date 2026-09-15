@@ -3,7 +3,7 @@ import { directionalConf, last, round, SPEAK_CONF } from "./math";
 import { lastMark, MARK_LABEL, readWick, type WickMark } from "./patterns";
 import { patternTrust, rememberPatterns } from "./ledger";
 import { voteEligible } from "./skill-gate";
-import { liveSkills, shadowSkills, skillScore } from "./skills";
+import { liveSkills, skillScore } from "./skills";
 import {
   clockPrior,
   detectQuiet,
@@ -198,7 +198,7 @@ function pickLiveAndPaper(
   // A card on a research hold is evaluated and graded like any other — it rides
   // the paper list below — but it is not in the pool the chair can be given, so
   // a new or high-stakes hypothesis earns its authority before it has any.
-  const pool = [...liveSkills(learner, seat), ...shadowSkills(learner, seat)].filter((s) =>
+  const pool = liveSkills(learner, seat).filter((s) =>
     voteEligible(s, ctx.snap.regime_key),
   );
   const parentN = learner.seat_n[seat] ?? 0;

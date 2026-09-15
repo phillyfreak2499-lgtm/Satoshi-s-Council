@@ -6,6 +6,7 @@ import { readScalp, scalpAvg } from "./scalp";
 import { fadeVerdict } from "./fade";
 import { binKey, calibNOf, clamp, listenCalib, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { holdScore } from "./stick";
+import { admitCouncilVotes } from "./council-authority";
 import type {
   ChairResult,
   FeedHealth,
@@ -87,6 +88,10 @@ export function runChair(
    *  labelled evidence only — never touches the gates, side, size or floor. */
   cites: readonly LedgerCite[] = [],
 ): ChairResult {
+  // The Chair's displayed rows, score, conflict, quorum and final paper-book
+  // guard must all agree on the same authorized speakers. Sticky seat or Chair
+  // leans cannot turn a SHADOW research read into a booking-side quorum.
+  votes = admitCouncilVotes(votes, learner, snap.regime_key);
   const muted = new Set(settings.mutes);
   const now = snap.as_of;
   const lockdown =

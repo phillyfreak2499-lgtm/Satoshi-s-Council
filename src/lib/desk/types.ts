@@ -510,6 +510,8 @@ export type SeatKnobs = {
 
 export type Learner = {
   skills: Record<string, SkillCard>;
+  /** One-time owner review of saved authority labels; does not reset evidence. */
+  authority_review_version?: string;
   knobs: Record<string, SeatKnobs>;
   seat_n: Record<string, number>;
   seat_hits: Record<string, number>;
