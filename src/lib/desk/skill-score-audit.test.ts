@@ -7,6 +7,7 @@ import { centsOf, takerFeeCents } from "./clock.ts";
 import { directionalConf, wilsonLower } from "./math.ts";
 import { beginSkillScoreAudit, finishSkillScoreAudit, SCORE_AUDIT_START, SCORE_AUDIT_SKILLS, withSkillAuditColumn } from "./skill-score-audit.ts";
 import { withEntrySkillRosterColumn } from "./entry-skill-roster.ts";
+import { withEntrySkillQualityColumn } from "./entry-skill-quality.ts";
 import type { ChairResult, Learner, SkillCard, Snapshot, Vote } from "./types";
 
 const root = new URL("../../../", import.meta.url);
@@ -158,13 +159,13 @@ test("the deployed ledger insert preserves old rows and stores new receipts atom
     values[0] = snap().ticker; values[1] = new Date(snap().close_time).toISOString(); values[2] = "kalshi-result";
     values[3] = "UP"; values[4] = "WAIT"; values[12] = 0; values[13] = "{}";
     values[5] = 70; values[6] = 0; values[7] = 0.5; values[8] = 1;
-    await db.query(sql, withEntrySkillRosterColumn([...values, JSON.stringify(audit)]));
-    await db.query(sql, withEntrySkillRosterColumn([...values, null])); // retry never overwrites the first receipt
+    await db.query(sql, withEntrySkillQualityColumn(withEntrySkillRosterColumn([...values, JSON.stringify(audit)])));
+    await db.query(sql, withEntrySkillQualityColumn(withEntrySkillRosterColumn([...values, null]))); // retry never overwrites the first receipt
     const saved = await db.query<{ skill_score_audit: unknown; entry_skill_roster: unknown }>("select skill_score_audit,entry_skill_roster from desk_ledger where ticker=$1", [snap().ticker]);
     assert.deepEqual(saved.rows[0]!.skill_score_audit, audit);
     assert.equal(saved.rows[0]!.entry_skill_roster, null, "an earlier score receipt cannot invent an entry roster");
     values[0] = "AUDIT-RESTORED";
-    await db.query(sql, withEntrySkillRosterColumn(withSkillAuditColumn(values)));
+    await db.query(sql, withEntrySkillQualityColumn(withEntrySkillRosterColumn(withSkillAuditColumn(values))));
     const restored = await db.query<{ skill_score_audit: unknown }>("select skill_score_audit from desk_ledger where ticker='AUDIT-RESTORED'");
     assert.equal(restored.rows[0]!.skill_score_audit, null);
     const reader = readFileSync(new URL("src/lib/desk/skill-score-audit.server.ts", root), "utf8");

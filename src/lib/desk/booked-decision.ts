@@ -54,7 +54,9 @@ function buildSha(v: unknown): string {
 function roster(raw: unknown): EntrySkillRoster | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Partial<EntrySkillRoster>;
-  if (r.version !== "ENTRY_SKILL_ROSTER_V1" || r.scope !== "booked_paper_entry" ||
+  if (((r as { version?: string }).version !== "ENTRY_SKILL_ROSTER_V1" && r.version !== "ENTRY_SKILL_ROSTER_V2") ||
+      (r.version === "ENTRY_SKILL_ROSTER_V2" && (!r.book || typeof r.book !== "object")) ||
+      r.scope !== "booked_paper_entry" ||
       (r.side !== "UP" && r.side !== "DOWN") || typeof r.ticker !== "string" ||
       !Number.isFinite(r.close_time_ms) || !Number.isFinite(r.entry_at_ms) ||
       !Array.isArray(r.chair_rows) || !Array.isArray(r.seat_reads)) return null;
