@@ -8,7 +8,7 @@
 import type { EvidenceFamily } from "./seats";
 import type { SeatId } from "./types";
 
-export type FeatureAuthority = "live" | "shadow" | "measurement" | "retired";
+export type FeatureAuthority = "live" | "shadow" | "measurement" | "missing" | "retired";
 export type FeatureTimeframe =
   | "tick"
   | "1m"
@@ -79,10 +79,10 @@ export const FEATURE_REGISTRY: readonly FeatureRegistryEntry[] = [
   f({ id: "context.fear_greed", label: "Fear and Greed context", family: "context", owner: "WIRE", source: "sentiment feed", timeframe: "daily", authority: "measurement", chair_visible: false, consumers: ["WIRE pit tag"], stale_after_ms: 172_800_000, note: "Presentation context only after WIRE moved to pit crew." }),
   f({ id: "context.regime_tag", label: "Desk regime tag", family: "context", owner: "ORBIT", source: "session + phase", timeframe: "session", authority: "measurement", chair_visible: false, consumers: ["ORBIT pit tag", "research stratification"], stale_after_ms: null, note: "Research grouping and presentation only after ORBIT moved to pit crew." }),
 
-  f({ id: "candidate.path_strike_crossings", label: "Strike-crossing count", family: "candle", owner: "WICK", source: "timestamped spot path", timeframe: "window", authority: "retired", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a complete feature yet; reserved candidate identifier." }),
-  f({ id: "candidate.path_time_above", label: "Time above and below strike", family: "candle", owner: "WICK", source: "timestamped spot path", timeframe: "window", authority: "retired", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a complete feature yet; reserved candidate identifier." }),
-  f({ id: "candidate.path_smoothness", label: "Window path smoothness", family: "candle", owner: "DRIFT", source: "timestamped spot path", timeframe: "window", authority: "retired", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a complete feature yet; reserved candidate identifier." }),
-  f({ id: "candidate.regime_4h", label: "Four-hour regime", family: "context", owner: "EXHAUST", source: "spot candles", timeframe: "session", authority: "retired", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a registered decision feature yet." }),
+  f({ id: "candidate.path_strike_crossings", label: "Strike-crossing count", family: "candle", owner: "WICK", source: "timestamped spot path", timeframe: "window", authority: "missing", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a complete feature yet; reserved candidate identifier." }),
+  f({ id: "candidate.path_time_above", label: "Time above and below strike", family: "candle", owner: "WICK", source: "timestamped spot path", timeframe: "window", authority: "missing", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a complete feature yet; reserved candidate identifier." }),
+  f({ id: "candidate.path_smoothness", label: "Window path smoothness", family: "candle", owner: "DRIFT", source: "timestamped spot path", timeframe: "window", authority: "missing", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a complete feature yet; reserved candidate identifier." }),
+  f({ id: "candidate.regime_4h", label: "Four-hour regime", family: "context", owner: "EXHAUST", source: "spot candles", timeframe: "session", authority: "missing", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a registered decision feature yet." }),
 ] as const;
 
 const PIT_CREW = new Set<SeatId>(["WARDEN", "ORBIT", "WIRE"]);
@@ -103,8 +103,8 @@ export function validateFeatureRegistry(
       errors.push(`${row.id}: a live feature must have an accountable owner`);
     if (row.owner && PIT_CREW.has(row.owner) && row.chair_visible)
       errors.push(`${row.id}: pit-crew owner ${row.owner} cannot be Chair-visible`);
-    if (row.authority === "retired" && row.consumers.length)
-      errors.push(`${row.id}: retired/reserved features cannot have consumers`);
+    if ((row.authority === "retired" || row.authority === "missing") && row.consumers.length)
+      errors.push(`${row.id}: missing or retired features cannot have consumers`);
   }
   return errors;
 }
@@ -123,6 +123,7 @@ export function featureRegistryReport(now = Date.now()): FeatureRegistryReport {
     live: 0,
     shadow: 0,
     measurement: 0,
+    missing: 0,
     retired: 0,
   };
   for (const row of FEATURE_REGISTRY) tally[row.authority] += 1;
@@ -135,7 +136,7 @@ export function featureRegistryReport(now = Date.now()): FeatureRegistryReport {
     errors,
     note:
       "Read-only authority inventory. This report cannot promote a feature, alter a seat, " +
-      "change Chair inputs, or create a call. RETIRED candidate rows are reserved/missing work, " +
+      "change Chair inputs, or create a call. MISSING rows are reserved research work, " +
       "not previously-live features.",
   };
 }
