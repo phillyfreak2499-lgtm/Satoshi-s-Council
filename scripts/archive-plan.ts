@@ -13,9 +13,11 @@
  *   import server-engine, Chair, seats, grading, or pruneReplays
  *   write into desk_archive_manifest (that is a later phase)
  *   attach a disk or talk to object storage
+ *   honor --apply / --upload / --delete / --purge (those exit nonzero)
  */
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
-  ARCHIVE_TABLES,
   DEMO_NOW_MS,
   DEMO_SOURCE,
   demoRows,
@@ -24,6 +26,18 @@ import {
   type ArchiveTable,
   type PlannerRow,
 } from "../src/lib/desk/archive-planner.ts";
+
+export const FORBIDDEN_WRITE_FLAGS = ["--apply", "--upload", "--delete", "--purge"] as const;
+
+/** First forbidden write flag on argv, or null. `--apply=1` counts as `--apply`. */
+export function rejectedWriteFlag(argv: readonly string[]): string | null {
+  const forbidden = new Set<string>(FORBIDDEN_WRITE_FLAGS);
+  for (const raw of argv) {
+    const flag = (raw.split("=")[0] ?? raw).trim();
+    if (forbidden.has(flag)) return flag;
+  }
+  return null;
+}
 
 function wantsDemo(argv: readonly string[]): boolean {
   return argv.includes("--demo");
@@ -41,50 +55,51 @@ function sourceIdentityFromUrl(url: string): string {
 
 async function inspectDatabase(url: string): Promise<PlannerRow[]> {
   const pg = await import("pg");
-  const pool = new pg.default.Pool({ connectionString: url, max: 1 });
+  const Pool = pg.Pool ?? pg.default?.Pool;
+  const pool = new Pool({ connectionString: url, max: 1 });
   const client = await pool.connect();
   const rows: PlannerRow[] = [];
   try {
     const queries: Array<{ table: ArchiveTable; sql: string }> = [
       {
         table: "desk_path_parity",
-        sql: `select ticker, close_time,
-                     pg_column_size(desk_path_parity) as estimated_bytes,
+        sql: `select p.ticker, p.close_time,
+                     pg_column_size(p.*) as estimated_bytes,
                      l.research_quality
-                from desk_path_parity
+                from desk_path_parity p
                 left join desk_ledger l
-                  on l.ticker = desk_path_parity.ticker
-                 and l.close_time = desk_path_parity.close_time`,
+                  on l.ticker = p.ticker
+                 and l.close_time = p.close_time`,
       },
       {
         table: "desk_lag_events",
-        sql: `select ticker, t, pg_column_size(desk_lag_events) as estimated_bytes
-                from desk_lag_events`,
+        sql: `select e.ticker, e.t, pg_column_size(e.*) as estimated_bytes
+                from desk_lag_events e`,
       },
       {
         table: "desk_absorption",
-        sql: `select ticker, close_time, t,
-                     pg_column_size(desk_absorption) as estimated_bytes,
+        sql: `select a.ticker, a.close_time, a.t,
+                     pg_column_size(a.*) as estimated_bytes,
                      l.research_quality
-                from desk_absorption
+                from desk_absorption a
                 left join desk_ledger l
-                  on l.ticker = desk_absorption.ticker
-                 and l.close_time = desk_absorption.close_time`,
+                  on l.ticker = a.ticker
+                 and l.close_time = a.close_time`,
       },
       {
         table: "desk_basis_minutes",
-        sql: `select minute as t, pg_column_size(desk_basis_minutes) as estimated_bytes
-                from desk_basis_minutes`,
+        sql: `select b.minute as t, pg_column_size(b.*) as estimated_bytes
+                from desk_basis_minutes b`,
       },
       {
         table: "desk_replay",
-        sql: `select ticker, close_time,
-                     coalesce(pg_column_size(cols), 0) as estimated_bytes,
+        sql: `select r.ticker, r.close_time,
+                     coalesce(pg_column_size(r.cols), 0) as estimated_bytes,
                      l.research_quality
-                from desk_replay
+                from desk_replay r
                 left join desk_ledger l
-                  on l.ticker = desk_replay.ticker
-                 and l.close_time = desk_replay.close_time`,
+                  on l.ticker = r.ticker
+                 and l.close_time = r.close_time`,
       },
     ];
     for (const q of queries) {
@@ -111,8 +126,20 @@ function printPlan(plan: ArchivePlan): void {
   process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
 }
 
-async function main(): Promise<number> {
-  const argv = process.argv.slice(2);
+function refuseWrite(flag: string): number {
+  process.stderr.write(
+    JSON.stringify({
+      ok: false,
+      error: `${flag} is refused. Phase 1 is inspect-only: no upload, no delete, no purge, no apply, no manifest write.`,
+    }) + "\n",
+  );
+  return 1;
+}
+
+export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
+  const forbidden = rejectedWriteFlag(argv);
+  if (forbidden) return refuseWrite(forbidden);
+
   if (wantsDemo(argv)) {
     printPlan(planArchive(demoRows(), { nowMs: DEMO_NOW_MS, sourceIdentity: DEMO_SOURCE }));
     return 0;
@@ -136,14 +163,18 @@ async function main(): Promise<number> {
     sourceIdentity: sourceIdentityFromUrl(url),
   });
   printPlan(plan);
-  void ARCHIVE_TABLES;
   return 0;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(JSON.stringify({ ok: false, error: message }) + "\n");
-    process.exit(1);
-  });
+const invokedAsScript =
+  Boolean(process.argv[1]) && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1]);
+
+if (invokedAsScript) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(JSON.stringify({ ok: false, error: message }) + "\n");
+      process.exit(1);
+    });
+}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -21,6 +22,7 @@ import {
   utcDayStamp,
   type PlannerRow,
 } from "./archive-planner.ts";
+import { FORBIDDEN_WRITE_FLAGS, rejectedWriteFlag } from "../../../scripts/archive-plan.ts";
 import { qualityOf } from "./research-quality.ts";
 import { seriesKey } from "./replay-window.ts";
 
@@ -30,6 +32,7 @@ const SRC = "pg:test";
 const REUSE = "KXBTC15M-26SEP100300-00";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const CLI = join(ROOT, "scripts", "archive-plan.ts");
 
 function plan(rows: PlannerRow[]) {
   return planArchive(rows, { nowMs: NOW, sourceIdentity: SRC });
@@ -260,4 +263,47 @@ test("demo fixtures produce a readable dry-run without writes", () => {
   const replay = report.tables.find((t) => t.table === "desk_replay")!;
   assert.equal(replay.outside_window_row_count, 1);
   assert.ok(replay.proposed_partitions.every((p) => p.object_key.includes("desk_replay")));
+});
+
+test("CLI live inspect sizes rows with alias.* and replay cols, never a bare table name", () => {
+  const src = readFileSync(CLI, "utf8");
+  assert.match(src, /pg_column_size\(p\.\*\)/);
+  assert.match(src, /pg_column_size\(e\.\*\)/);
+  assert.match(src, /pg_column_size\(a\.\*\)/);
+  assert.match(src, /pg_column_size\(b\.\*\)/);
+  assert.match(src, /pg_column_size\(r\.cols\)/);
+  assert.doesNotMatch(src, /pg_column_size\(desk_path_parity\)/);
+  assert.doesNotMatch(src, /pg_column_size\(desk_lag_events\)/);
+  assert.doesNotMatch(src, /pg_column_size\(desk_absorption\)/);
+  assert.doesNotMatch(src, /pg_column_size\(desk_basis_minutes\)/);
+  assert.doesNotMatch(src, /pg_column_size\(desk_replay\)/);
+});
+
+test("write flags are rejected even when paired with --demo", () => {
+  assert.deepEqual([...FORBIDDEN_WRITE_FLAGS], ["--apply", "--upload", "--delete", "--purge"]);
+  assert.equal(rejectedWriteFlag(["--demo"]), null);
+  assert.equal(rejectedWriteFlag([]), null);
+  for (const flag of FORBIDDEN_WRITE_FLAGS) {
+    assert.equal(rejectedWriteFlag([flag]), flag);
+    assert.equal(rejectedWriteFlag(["--demo", flag]), flag);
+    assert.equal(rejectedWriteFlag([`${flag}=1`]), flag);
+  }
+});
+
+test("CLI process exits nonzero for --apply --upload --delete --purge", () => {
+  for (const flag of FORBIDDEN_WRITE_FLAGS) {
+    const r = spawnSync(process.execPath, ["--experimental-strip-types", CLI, flag], {
+      encoding: "utf8",
+      env: { ...process.env, DATABASE_URL: "" },
+    });
+    assert.notEqual(r.status, 0, flag);
+    assert.match(r.stderr, new RegExp(flag.slice(2)), flag);
+    assert.match(r.stderr, /inspect-only|refused/i, flag);
+    assert.doesNotMatch(r.stdout, /"writes":\s*true/);
+  }
+  const demoApply = spawnSync(process.execPath, ["--experimental-strip-types", CLI, "--demo", "--apply"], {
+    encoding: "utf8",
+  });
+  assert.notEqual(demoApply.status, 0);
+  assert.match(demoApply.stderr, /--apply/);
 });
