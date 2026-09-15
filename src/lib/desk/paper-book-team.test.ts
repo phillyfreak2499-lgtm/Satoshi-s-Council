@@ -1,63 +1,62 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BOOK_MIN_SPEAKING, paperBookTeamOk } from "./book-floor.ts";
+import { paperBookTeamOk } from "./book-floor.ts";
+
+/**
+ * Pay-time vote floor — the paper book may not pay unless the CURRENT chair
+ * still has a team on that side. Integration (noteCall calls this after
+ * paperBookEdgeOk and before noteShadowFill / bookable / call-log write)
+ * is pinned structurally in scripts/desk-safety-rails.test.mjs.
+ */
 
 const team = (
-  over: Partial<{
-    hard_fail: boolean;
-    score: number;
-    bar: number;
-    up: number;
-    down: number;
-    wait: number;
-  }> = {},
+  up: number,
+  down: number,
+  extra: Partial<{ hard_fail: boolean; score: number; bar: number; wait: number }> = {},
 ) => ({
-  hard_fail: over.hard_fail ?? false,
-  score: over.score ?? 0.8,
-  bar: over.bar ?? 0.59,
-  quorum: { up: over.up ?? 3, down: over.down ?? 0, wait: over.wait ?? 15 },
+  hard_fail: extra.hard_fail ?? false,
+  score: extra.score ?? 0.8,
+  bar: extra.bar ?? 0.5,
+  quorum: { up, down, wait: extra.wait ?? 15 },
 });
 
-test("BOOK_MIN_SPEAKING is two", () => {
-  assert.equal(BOOK_MIN_SPEAKING, 2);
+test("2+ speaking on UP and net > 0 is eligible", () => {
+  assert.equal(paperBookTeamOk(team(2, 0), "UP"), true);
+  assert.equal(paperBookTeamOk(team(3, 1), "UP"), true);
+  assert.equal(paperBookTeamOk(team(0, 2, { score: -0.8 }), "DOWN"), true);
 });
 
-test("3-0 cleared bar fills UP", () => {
-  assert.equal(paperBookTeamOk(team({ up: 3, down: 0 }), "UP"), true);
+test("empty floor (0-0) does not fill — 7:15 AM 2026-09-15", () => {
+  assert.equal(paperBookTeamOk(team(0, 0, { score: 0.1, bar: 0.59 }), "UP"), false);
 });
 
-test("3-0 cleared bar fills DOWN", () => {
-  assert.equal(paperBookTeamOk(team({ up: 0, down: 3, score: -0.8 }), "DOWN"), true);
+test("0 agree / 1 against does not fill — 7:50 AM 2026-09-15 screenshot", () => {
+  assert.equal(paperBookTeamOk(team(0, 1), "UP"), false);
 });
 
-test("7:15 empty floor 0-0 does not fill", () => {
-  assert.equal(paperBookTeamOk(team({ up: 0, down: 0 }), "UP"), false);
+test("1-1 split does not fill — 7:30 AM 2026-09-15", () => {
+  assert.equal(paperBookTeamOk(team(1, 1), "UP"), false);
 });
 
-test("7:50 0-1 does not fill", () => {
-  assert.equal(paperBookTeamOk(team({ up: 0, down: 1 }), "UP"), false);
+test("a single speaking seat is not a team", () => {
+  assert.equal(paperBookTeamOk(team(1, 0), "UP"), false);
+  assert.equal(paperBookTeamOk(team(0, 1), "DOWN"), false);
 });
 
-test("7:30 1-1 does not fill", () => {
-  assert.equal(paperBookTeamOk(team({ up: 1, down: 1 }), "UP"), false);
+test("hard_fail blocks even a 7-0 room", () => {
+  assert.equal(paperBookTeamOk(team(0, 7, { hard_fail: true, score: -0.8 }), "DOWN"), false);
 });
 
-test("one seat is not a team", () => {
-  assert.equal(paperBookTeamOk(team({ up: 1, down: 0 }), "UP"), false);
+test("score under the bar now does not fill — sticky lean cannot pay", () => {
+  assert.equal(paperBookTeamOk(team(3, 0, { score: 0.2, bar: 0.59 }), "UP"), false);
+  assert.equal(paperBookTeamOk(team(3, 0, { score: 0.59 * 0.35, bar: 0.59 }), "UP"), false);
 });
 
-test("2-1 majority fills", () => {
-  assert.equal(paperBookTeamOk(team({ up: 2, down: 1 }), "UP"), true);
+test("non-finite score or bar fails closed", () => {
+  assert.equal(paperBookTeamOk(team(3, 0, { score: NaN }), "UP"), false);
+  assert.equal(paperBookTeamOk(team(3, 0, { bar: Infinity }), "UP"), false);
 });
 
-test("under bar does not fill", () => {
-  assert.equal(paperBookTeamOk(team({ up: 3, down: 0, score: 0.5, bar: 0.59 }), "UP"), false);
-});
-
-test("hard_fail blocks", () => {
-  assert.equal(paperBookTeamOk(team({ hard_fail: true }), "UP"), false);
-});
-
-test("DOWN is not rescued by UP quorum", () => {
-  assert.equal(paperBookTeamOk(team({ up: 4, down: 0, score: -0.8 }), "DOWN"), false);
+test("12:15 AM 2026-09-15 7-0 DOWN still eligible", () => {
+  assert.equal(paperBookTeamOk(team(0, 7, { score: -0.8, bar: 0.4 }), "DOWN"), true);
 });
