@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Tip } from "./Tip";
+import { RETIRED_SEATS } from "@/lib/desk/crew";
 
 type Report = {
   seat: string;
@@ -191,13 +192,14 @@ export function CrewTab() {
                   </td>
                   <td >{r.grade_n}</td>
                   <td >
+                    {RETIRED_SEATS[r.seat] ? <span className="mr-1 text-subtle">RETIRED</span> : null}
                     {r.flags.length
                       ? r.flags.map((f) => (
                           <span key={f} className={cn("mr-1", FLAG_TONE[f] ?? "")}>
                             {f}
                           </span>
                         ))
-                      : <span className="text-subtle">—</span>}
+                      : RETIRED_SEATS[r.seat] ? null : <span className="text-subtle">—</span>}
                   </td>
                 </tr>
               ))}

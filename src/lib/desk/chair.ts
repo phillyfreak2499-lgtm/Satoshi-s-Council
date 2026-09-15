@@ -6,7 +6,7 @@ import { readScalp, scalpAvg } from "./scalp";
 import { fadeVerdict } from "./fade";
 import { binKey, calibNOf, clamp, listenCalib, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { holdScore } from "./stick";
-import { admitCouncilVotes } from "./council-authority";
+import { admitCouncilVotes, countChairQuorum } from "./council-authority";
 import type {
   ChairResult,
   FeedHealth,
@@ -583,15 +583,7 @@ export function runChair(
       return Math.abs(b.contribution) - Math.abs(a.contribution);
     });
 
-  const directional = votes.filter(
-    (v) => !CHAIR_NON_VOTERS.has(v.seat) && !muted.has(v.seat) && v.lean !== "WAIT",
-  );
-  const quorum = {
-    up: directional.filter((v) => v.lean === "UP").length,
-    down: directional.filter((v) => v.lean === "DOWN").length,
-    wait: votes.filter((v) => !CHAIR_NON_VOTERS.has(v.seat) && !muted.has(v.seat) && v.lean === "WAIT")
-      .length,
-  };
+  const quorum = countChairQuorum(votes, muted, CHAIR_NON_VOTERS);
 
   const topSigned = [...rows]
     .filter((r) => r.lean !== "WAIT" && r.status !== "MUTED")

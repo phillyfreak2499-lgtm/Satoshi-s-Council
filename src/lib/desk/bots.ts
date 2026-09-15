@@ -30,6 +30,7 @@ import type {
   Vote,
 } from "./types";
 import { RETIRED_SEATS } from "./crew";
+import { CLOSED_DIRECTIONAL_CARDS } from "./council-authority";
 
 export type BotCtx = {
   snap: Snapshot;
@@ -199,7 +200,7 @@ function pickLiveAndPaper(
   // the paper list below — but it is not in the pool the chair can be given, so
   // a new or high-stakes hypothesis earns its authority before it has any.
   const pool = liveSkills(learner, seat).filter((s) =>
-    voteEligible(s, ctx.snap.regime_key),
+    !CLOSED_DIRECTIONAL_CARDS.has(s.id) && voteEligible(s, ctx.snap.regime_key),
   );
   const parentN = learner.seat_n[seat] ?? 0;
   const fired: { id: string; score: number; got: Fired }[] = [];

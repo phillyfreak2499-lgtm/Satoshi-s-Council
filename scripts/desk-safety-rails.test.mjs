@@ -156,8 +156,8 @@ test("INDEX carries its 24-in-regime bar on both seeds", () => {
 
 test("a held card cannot be chosen as a seat's vote, and cannot be auto-promoted", () => {
   const bots = read("src/lib/desk/bots.ts");
-  assert.match(bots, /\.filter\(\(s\) =>\s*\n?\s*voteEligible\(s, ctx\.snap\.regime_key\),?\s*\n?\s*\)/,
-    "the selection pool must be filtered by voteEligible");
+  assert.match(bots, /\.filter\(\(s\) =>\s*!CLOSED_DIRECTIONAL_CARDS\.has\(s\.id\) && voteEligible\(s, ctx\.snap\.regime_key\),?\s*\)/,
+    "the selection pool must exclude retired rules and retain voteEligible holds");
   const learner = read("src/lib/desk/learner.ts");
   // Both promoters: the huddle's SHADOW -> LIVE gate and rethinkSeat's n>=8 swap.
   assert.match(learner, /\(s\.n >= 8 \|\| s\.ev_n >= 8\) && promoteEligible\(s\)/);
