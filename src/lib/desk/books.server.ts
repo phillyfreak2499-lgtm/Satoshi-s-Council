@@ -12,6 +12,7 @@ import { ledgerGaps } from "./reliability";
 import { CHAIR_FLOOR_SINCE_ISO, FLOOR_LIVE_CENTS, FLOOR_LIVE_SINCE, FLOOR_SHADOW_CENTS } from "./book-floor";
 import { SELECTIVE_FROZEN_AT } from "./selective-entry";
 import { bookedSideOf } from "./booked-side";
+import { booksSeatEvidence, type RosterReceipt } from "./roster-evidence";
 import { breakevenPct, mergeShelves, type Shelf, type ShelfRow } from "./books-math";
 
 async function sql() {
@@ -37,6 +38,7 @@ export type BooksWindow = {
   call: BooksCall | null;
   /** Seats that spoke a direction at the grade frame, and how many were right. */
   seats: { n: number; right: number };
+  grade_roster?: RosterReceipt | null;
   /** Every directional read including gagged ones, and how many were right. */
   raw: { n: number; right: number };
   /** Human calls on this window from the Arena. */
@@ -178,22 +180,7 @@ function toWindow(r: LedgerRow, arena: Map<string, { n: number; net: number }>):
   if (r.entry_cents != null) {
     call = { lean: bookedSideOf(r.settle_cents, winner), entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents };
   }
-  let sn = 0;
-  let sr = 0;
-  let rn = 0;
-  let rr = 0;
-  for (const v of Object.values(r.seats ?? {})) {
-    if (!v || typeof v !== "object") continue;
-    if (v.hit === true || v.hit === false) {
-      sn++;
-      if (v.hit) sr++;
-    }
-    const raw = v.raw_lean ?? v.lean;
-    if (raw === "UP" || raw === "DOWN") {
-      rn++;
-      if (raw === winner) rr++;
-    }
-  }
+  const evidence = booksSeatEvidence(r.ticker, Date.parse(iso(r.close_time)), winner, r.seats);
   return {
     ticker: r.ticker,
     close_time: iso(r.close_time),
@@ -202,8 +189,9 @@ function toWindow(r: LedgerRow, arena: Map<string, { n: number; net: number }>):
     settle_avg: r.settle_avg,
     prints: r.brti_prints,
     call,
-    seats: { n: sn, right: sr },
-    raw: { n: rn, right: rr },
+    seats: evidence.seats,
+    raw: evidence.raw,
+    grade_roster: evidence.roster,
     arena: arena.get(r.ticker) ?? null,
     replay: r.replay === true,
   };

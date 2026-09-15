@@ -18,7 +18,8 @@ export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): 
     const agree = book.lean === "UP" ? up : down;
     const against = book.lean === "UP" ? down : up;
     const moved = lean !== book.lean ? " The read has moved since, but the position is held to settlement." : "";
-    return `Booked ${book.lean} at ${book.cents.toFixed(0)}¢ with ${seats(agree)} agreeing and ${seats(against)} against, graded at the close.${moved}`;
+    const at = Number.isFinite(snap.as_of) && snap.as_of > 0 ? new Date(snap.as_of).toISOString() : "MISSING";
+    return `Paper entry: ${book.lean} at ${book.cents.toFixed(0)}¢. At observation ${at}, ${seats(agree)} agree with the held side and ${seats(against)} oppose it. Entry-time agreement: MISSING. The position is held to settlement.${moved}`;
   }
 
   if (lean === "UP" || lean === "DOWN") {

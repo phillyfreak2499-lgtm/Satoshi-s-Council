@@ -8,6 +8,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { statementFromEvent, type ChamberStatement } from "./chamber-reactions";
 import { listPublicChamberEvents } from "./system-events.server";
+import { attachBooksRosters } from "./chamber-roster.server";
 
 /** Read-only. Up to five latest persisted statements per active speaker. */
 export const listChamberSpeech = createServerFn({ method: "GET" }).handler(async (): Promise<ChamberStatement[]> => {
@@ -17,5 +18,5 @@ export const listChamberSpeech = createServerFn({ method: "GET" }).handler(async
     const stmt = statementFromEvent(row);
     if (stmt) out.push(stmt);
   }
-  return out;
+  return attachBooksRosters(out);
 });
