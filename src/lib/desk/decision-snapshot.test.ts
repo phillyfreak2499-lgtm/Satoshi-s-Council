@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildDecisionSnapshotRow,
+  DECISION_RESEARCH_VERSION,
   decisionSnapshotEvents,
   type SnapshotKind,
 } from "./decision-snapshot.ts";
@@ -265,4 +266,32 @@ test("print_age_s >= 999 (unknown sentinel) stores NULL; a real age is kept", ()
   assert.equal(buildDecisionSnapshotRow(snap({ print_age_s: 999 }), chair({})).print_age_s, null, "the 999 sentinel");
   assert.equal(buildDecisionSnapshotRow(snap({ print_age_s: 1200 }), chair({})).print_age_s, null, "a carried-forward unknown that grew past 999");
   assert.equal(buildDecisionSnapshotRow(snap({ print_age_s: 3.4 }), chair({})).print_age_s, 3.4, "a real print age");
+});
+
+test("decision rows freeze measurement-only 4h/24h context from the same tick", () => {
+  const hour = 60 * 60_000;
+  const base = Date.parse("2026-09-14T00:00:00Z");
+  const asOf = base + 29.5 * hour;
+  const candles_1h = Array.from({ length: 30 }, (_, i) => ({
+    t: base + i * hour,
+    open: 100 + i,
+    high: 102 + i,
+    low: 99 + i,
+    close: 101 + i,
+    volume: 1_000,
+    closed: i < 29,
+    receipt_ts: asOf,
+    source: "test hourly",
+  }));
+  const r = buildDecisionSnapshotRow(
+    snap({ as_of: asOf, spot: 130, ret15: 0.001, ret30: 0.002, ret1h: 0.003, candles_1h }),
+    chair({}),
+  );
+
+  assert.equal(DECISION_RESEARCH_VERSION, "decision-2");
+  assert.equal(r.higher_context.authority, "measurement");
+  assert.equal(r.higher_context.quality, "complete");
+  assert.equal(r.higher_context.returns.ret_15m, 0.001);
+  assert.ok(Math.abs(r.higher_context.returns.ret_4h! - 5 / 125) < 1e-12);
+  assert.ok(Math.abs(r.higher_context.returns.ret_24h! - 25 / 105) < 1e-12);
 });
