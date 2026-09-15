@@ -26,6 +26,8 @@ export function AtelierTab() {
           bar: frame.chair?.bar ?? 0,
           brainAge: frame.brain_age_s,
           source: frame.settings.source,
+          asOf: frame.snap?.as_of ?? 0,
+          spotAge: frame.snap?.spot_age_s ?? 999,
           log: frame.call_log ?? [],
           spot: frame.snap?.spot ?? 0,
           strike: frame.snap?.strike ?? 0,
@@ -42,6 +44,7 @@ export function AtelierTab() {
             seat: vote.seat,
             lean: vote.lean,
             confidence: vote.confidence,
+            reasoning: vote.reasoning,
           })),
         }}
       />

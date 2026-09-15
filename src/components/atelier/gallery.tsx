@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minimize2, RefreshCw, Settings, X } from "lucide-react";
+import { Image as ImageIcon, Maximize2, Minimize2, RefreshCw, Settings, X } from "lucide-react";
+import { Streamer } from "./streamer";
 import {
   formatRemain,
   leanToStance,
@@ -31,6 +32,8 @@ export type SatoshiPaint = {
   bar: number;
   brainAge: number | null;
   source: string;
+  asOf: number;
+  spotAge: number;
   log: CallLogRow[];
   spot: number;
   strike: number;
@@ -43,7 +46,7 @@ export type SatoshiPaint = {
   lastSettled: "" | "UP" | "DOWN";
   lastSettledAt: number;
   lastSettledTicker: string;
-  votes: Array<{ seat: string; lean: Lean; confidence: number }>;
+  votes: Array<{ seat: string; lean: Lean; confidence: number; reasoning: string }>;
 };
 
 function emptyBag(): Record<RoomId, Params> {
@@ -83,6 +86,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
   const [settings, setSettings] = useState(false);
   const [full, setFull] = useState(false);
   const [ready, setReady] = useState(false);
+  const [concept, setConcept] = useState(false);
 
   const stance = leanToStance(satoshi.lean);
   const remaining = Math.max(0, satoshi.remainingMs);
@@ -221,6 +225,18 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
   }, [roomId, seed, bag]);
 
   useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("room");
+    if (ROOMS.some((candidate) => candidate.id === requested)) setRoomId(requested as RoomId);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", roomId);
+    window.history.replaceState(window.history.state, "", url);
+  }, [roomId, ready]);
+
+  useEffect(() => {
     const onFullscreenChange = () => {
       setFull(document.fullscreenElement === rootRef.current);
     };
@@ -260,7 +276,8 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      if (event.key === " " && target?.closest("button, a")) return;
       if (event.key === "Escape") {
         if (settings) {
           setSettings(false);
@@ -351,14 +368,20 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
             <Maximize2 size={16} strokeWidth={1.75} />
           )}
         </button>
-        <button
+        {roomId === "streamer" ? <button
+          type="button"
+          className="atelier-iconbtn"
+          aria-label={concept ? "Show current broadcast" : "Show concept preview"}
+          aria-pressed={concept}
+          onClick={() => setConcept((current) => !current)}
+        ><ImageIcon size={16} strokeWidth={1.75} /></button> : <button
           type="button"
           className="atelier-iconbtn"
           aria-label="Regenerate artwork"
           onClick={() => setSeed((current) => nextSeed(current))}
         >
           <RefreshCw size={16} strokeWidth={1.75} />
-        </button>
+        </button>}
         <button
           type="button"
           className="atelier-iconbtn"
@@ -373,7 +396,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
       </div>
 
       <div className="atelier-stage">
-        <div className="atelier-piece">
+        {roomId === "streamer" ? <Streamer satoshi={satoshi} concept={concept} /> : <div className="atelier-piece">
           <div className="atelier-frame" id="frame">
             <canvas
               ref={canvasRef}
@@ -386,7 +409,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
               <canvas ref={bounceRef} width={800} height={1000} />
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       <section
@@ -540,7 +563,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
             )}
           </div>
 
-          <div className="atelier-pills">
+          {roomId !== "streamer" && <div className="atelier-pills">
             <button
               type="button"
               className="atelier-pill"
@@ -559,10 +582,10 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
             <button type="button" className="atelier-seed" onClick={copySeed} aria-label="Copy art seed">
               {copied ? "Copied" : formatSeed(artSeed)}
             </button>
-          </div>
+          </div>}
 
           <p className="atelier-hint">
-            {room.hint} · F display · 1–{ROOMS.length} rooms · R new edition
+            {room.hint} · F display · 1–{ROOMS.length} rooms{roomId !== "streamer" ? " · R new edition" : ""}
           </p>
         </aside>
       ) : null}

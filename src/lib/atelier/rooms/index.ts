@@ -8,7 +8,7 @@ import { createFlow } from "./flow";
 import { createForge } from "./forge";
 import { createWave } from "./wave";
 
-export const FACTORIES: Record<RoomId, RoomFactory> = {
+export const FACTORIES: Record<Exclude<RoomId, "streamer">, RoomFactory> = {
   field: createField,
   flow: createFlow,
   wave: createWave,
