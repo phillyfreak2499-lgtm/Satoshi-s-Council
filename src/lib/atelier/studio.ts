@@ -16,14 +16,14 @@ export function useStudio(
   const hostRef = useRef(host);
   const pausedRef = useRef(paused);
   const seedRef = useRef(seed);
-  const roomRef = useRef(roomId);
   paramsRef.current = params;
   hostRef.current = host;
   pausedRef.current = paused;
   seedRef.current = seed;
-  roomRef.current = roomId;
 
   useEffect(() => {
+    if (roomId === "streamer") return;
+    const factory = FACTORIES[roomId];
     const canvas = canvasRef.current;
     const bounce = bounceRef.current;
     if (!canvas) return;
@@ -68,7 +68,7 @@ export function useStudio(
       const { w, h } = fit();
       bw = w;
       bh = h;
-      world = FACTORIES[roomRef.current](w, h, seedRef.current, paramsRef.current, hostProxy);
+      world = factory(w, h, seedRef.current, paramsRef.current, hostProxy);
     };
     make();
 

@@ -5,7 +5,8 @@ export type RoomId =
   | "ceiling"
   | "arcade"
   | "council"
-  | "forge";
+  | "forge"
+  | "streamer";
 
 export type EnumParam = {
   key: string;
@@ -166,6 +167,17 @@ export const ROOMS: RoomMeta[] = [
       { key: "heat", kind: "range", label: "Furnace heat", min: 0.55, max: 1.5, step: 0.05, def: 1, format: fmt },
       { key: "sparks", kind: "range", label: "Sparks", min: 0, max: 1.4, step: 0.05, def: 0.85, format: fmt },
     ],
+  },
+  {
+    id: "streamer",
+    index: "08",
+    word: "Streamer",
+    name: "Streamer",
+    glow: "#d6b06e",
+    meta: "Council Live · Bitcoin broadcast",
+    fine: "A broadcast view of the current Bitcoin window, the Chair's published call, Wick and Drift, and the public audience leaderboard. The image button opens the original concept preview with sample data.",
+    hint: "Enter display mode for a clean broadcast. Chair and specialist reads remain separate; official results decide settlement.",
+    params: [],
   },
 ];
 
