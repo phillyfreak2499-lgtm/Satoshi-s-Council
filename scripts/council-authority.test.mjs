@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { applyAuthorityReview, admitCouncilVotes, directionalHoldReason, CLOSED_DIRECTIONAL_CARDS } from "../src/lib/desk/council-authority.ts";
+import { applyAuthorityReview, admitCouncilVotes, countChairQuorum, directionalHoldReason, CLOSED_DIRECTIONAL_CARDS } from "../src/lib/desk/council-authority.ts";
 
 const card = (over = {}) => ({
   status: "LIVE", n: 75, ev_n: 75, wilson: 0.8, ev: 2,
@@ -60,6 +60,24 @@ test("a sticky or research side is a forced sit with preserved raw grading evide
   assert.equal(results[2], context);
   assert.equal(original.lean, "DOWN", "the learner's original paper read remains unchanged");
   assert.equal(results.filter((v) => v.lean === "DOWN").length, 0, "no false booking-side quorum");
+});
+
+test("forced sits and context seats are absent from the displayed Chair quorum", () => {
+  const votes = [
+    vote({ seat: "DRIFT", lean: "UP", skill_used: "DRIFT.read" }),
+    vote({ seat: "WHALE", lean: "DOWN", skill_used: "WHALE.proxy", skill_status: "SHADOW" }),
+    vote({ seat: "TAPE", lean: "WAIT", skill_used: "SIT" }),
+    vote({ seat: "WARDEN", lean: "WAIT", skill_used: "SIT" }),
+    vote({ seat: "CARRY", lean: "DOWN", skill_used: "CARRY.read" }),
+  ];
+  const learner = { skills: { "DRIFT.read": card(), "WHALE.proxy": card({ status: "SHADOW" }),
+    "CARRY.read": card() } };
+  const admitted = admitCouncilVotes(votes, learner, "ASIA_FINAL");
+  assert.equal(admitted[1].forced_sit, true);
+  assert.deepEqual(countChairQuorum(admitted, new Set(["CARRY"]), new Set(["WARDEN", "ORBIT", "WIRE"])),
+    { up: 1, down: 0, wait: 1 });
+  const chair = source("src/lib/desk/chair.ts");
+  assert.match(chair, /const quorum = countChairQuorum\(votes, muted, CHAIR_NON_VOTERS\);/);
 });
 
 test("saved authority review applies once without resetting evidence or disabling guards", () => {

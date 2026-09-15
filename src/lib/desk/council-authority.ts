@@ -1,4 +1,4 @@
-import type { Learner, Vote } from "./types";
+import type { Learner, SeatId, Vote } from "./types";
 
 /** Owner review of the September 15 public record. Applied once to saved labels;
  * counters, pockets, weights, and historical grades are left intact. */
@@ -78,4 +78,18 @@ export function admitCouncilVotes(votes: Vote[], learner: AuthorityLearner, regi
       reasoning: `${vote.reasoning} · eligibility sit (${reason})`,
     };
   });
+}
+
+/** Display the actual Chair quorum. A forced eligibility sit is not a WAIT vote. */
+export function countChairQuorum(
+  votes: readonly Vote[], muted: ReadonlySet<SeatId>, nonVoters: ReadonlySet<SeatId>,
+): { up: number; down: number; wait: number } {
+  const eligible = votes.filter((vote) =>
+    !nonVoters.has(vote.seat) && !muted.has(vote.seat) && !vote.forced_sit,
+  );
+  return {
+    up: eligible.filter((vote) => vote.lean === "UP").length,
+    down: eligible.filter((vote) => vote.lean === "DOWN").length,
+    wait: eligible.filter((vote) => vote.lean === "WAIT").length,
+  };
 }
