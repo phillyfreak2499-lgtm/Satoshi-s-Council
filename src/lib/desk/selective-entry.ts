@@ -4,27 +4,8 @@ import { takerFeeCents } from "./clock.ts";
 import { EVIDENCE_OF } from "./seats.ts";
 import type { CallLogRow, ChairResult, Snapshot } from "./types";
 
-export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V1";
-export const SELECTIVE_FROZEN_AT = "2026-09-15T14:05:13.000Z";
-export const SELECTIVE_PARAMS = Object.freeze({
-  floor_cents: 80,
-  max_calls_per_day: 3,
-  max_losses_per_day: 1,
-  min_speaking: 3,
-  min_families: 2,
-  max_opposing: 0,
-  min_seconds_left: 180,
-  max_seconds_left: 600,
-  min_edge_cents: 3,
-  min_index_edge_cents: 0,
-  max_spread_cents: 2,
-  max_receipt_age_s: 10,
-  max_spot_age_s: 15,
-  max_index_age_s: 5,
-  confirmation_seconds: 8,
-  confirmation_frames: 3,
-  timezone: "America/Chicago",
-});
+import { SELECTIVE_PARAMS } from "./floor-policy.ts";
+export { SELECTIVE_ENTRY_ID, SELECTIVE_FROZEN_AT, SELECTIVE_PARAMS } from "./floor-policy.ts";
 
 const dayFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SELECTIVE_PARAMS.timezone, year: "numeric", month: "2-digit", day: "2-digit",

@@ -19,6 +19,12 @@ assert.match(engine, /const prev = previousDecision\(e\)/);
 assert.match(engine, /e\.lastChair = chair;\s*e\.recoveredWindow = null/);
 
 const transpile = (source) => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+// Include the actual pure history restorer now used by loadState; never stub away its validation.
+const riskAst = ts.createSourceFile('selective-entry.ts', readFileSync(new URL('../src/lib/desk/selective-entry.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
+const riskSource = riskAst.statements.filter(n =>
+  (ts.isFunctionDeclaration(n) && n.name?.text === 'restoreRiskCalls') ||
+  (ts.isVariableStatement(n) && n.declarationList.declarations.some(d => d.name.getText(riskAst) === 'keyOf'))
+).map(n => n.getText(riskAst).replace(/^export /, '')).join('\n');
 function pureModule(path, dependencies = {}) {
   const module = { exports: {} };
   vm.runInNewContext(transpile(readFileSync(new URL(path, import.meta.url), 'utf8')), {
@@ -76,7 +82,7 @@ function harness(options = {}) {
     captureGrade({snap, votes, chair, winner});
     await persistState(e, true);
   }`;
-  vm.runInContext(transpile(selected + '\n' + gradeStub), context);
+  vm.runInContext(transpile(riskSource + '\n' + selected + '\n' + gradeStub), context);
   return { ...context, writes, grades, durable: () => plain(durable) };
 }
 function setCurrent(e, w) {

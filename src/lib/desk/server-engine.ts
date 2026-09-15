@@ -2086,8 +2086,9 @@ export async function getServerFrame(): Promise<ServerFrame> {
     selective: {
       policy: SELECTIVE_ENTRY_ID, start: e.selectiveStart, params: SELECTIVE_PARAMS, ready: e.riskReady,
       daily: dailyAdmission(e.riskCalls, Date.now()),
-      comparison: { label: "Prospective admission comparison; same current signal before filters; recent retained calls only",
-        selected: paperSummary(e.riskCalls, e.selectiveStart), unfiltered: paperSummary(e.baselineCalls, e.selectiveStart) },
+      comparison: { label: "Prospective admission comparison; same current signal before filters; same retained market windows, up to 160",
+        selected: paperSummary(e.riskCalls.filter(r => hasPaperPosition(e.baselineCalls, r)), e.selectiveStart),
+        unfiltered: paperSummary(e.baselineCalls, e.selectiveStart) },
     },
   };
 }
