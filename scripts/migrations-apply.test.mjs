@@ -1218,3 +1218,26 @@ test("0031 records only prospective, valid booked-decision mirrors", async () =>
   assert.equal(Number(mirror.rows[0].ev_cents), 14);
   await db.close();
 });
+
+test("0038 adds nullable higher-timeframe storage without reconstructing old decisions", async () => {
+  const db = await freshDb();
+  const names = await files();
+  const before = names.filter((name) => name < "0038_");
+  const from0038 = names.filter((name) => name >= "0038_");
+  assert.ok(before.length > 0 && from0038.length > 0, "there is a pre-0038 schema and a 0038 migration");
+  await applyAll(db, before);
+
+  const ticker = "KXBTC15M-26SEP141200-00";
+  const close = "2026-09-14T16:00:00Z";
+  await decisionInsert(db, ticker, close, "OPENING", "WAIT", 55, "2026-09-14T15:45:02Z");
+
+  await applyAll(db, from0038);
+  const { rows } = await db.query(
+    `select higher_context from desk_decision_snapshots
+      where ticker = $1 and close_time = $2 and snapshot_kind = 'OPENING'`,
+    [ticker, close],
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].higher_context, null, "pre-existing decision knowledge stays unknown");
+  await db.close();
+});
