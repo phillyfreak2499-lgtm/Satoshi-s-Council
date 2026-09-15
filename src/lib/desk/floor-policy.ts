@@ -33,6 +33,28 @@
  */
 
 /** Which slot of the Floor policy a component fills. */
+export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V1";
+export const SELECTIVE_FROZEN_AT = "2026-09-15T14:05:13.000Z";
+export const SELECTIVE_PARAMS = Object.freeze({
+  floor_cents: 80,
+  max_calls_per_day: 3,
+  max_losses_per_day: 1,
+  min_speaking: 3,
+  min_families: 2,
+  max_opposing: 0,
+  min_seconds_left: 180,
+  max_seconds_left: 600,
+  min_edge_cents: 3,
+  min_index_edge_cents: 0,
+  max_spread_cents: 2,
+  max_receipt_age_s: 10,
+  max_spot_age_s: 15,
+  max_index_age_s: 5,
+  confirmation_seconds: 8,
+  confirmation_frames: 3,
+  timezone: "America/Chicago",
+});
+
 export type PolicyKind = "signal" | "entry" | "exit" | "risk";
 
 /**
@@ -114,6 +136,17 @@ export const ENTRY_80_V1 = c({
   params: { floor_cents: 80 },
   frozen_at: FROZE,
   why: "the live paper floor as it stands today, mid time-boxed trial against the 70¢ shadow book",
+});
+
+export const ENTRY_SELECTIVE_V1 = c({
+  id: SELECTIVE_ENTRY_ID,
+  family: "ENTRY_SELECTIVE",
+  version: 1,
+  kind: "entry",
+  label: "Selective 80¢ · max 3/day · pause after loss",
+  params: SELECTIVE_PARAMS,
+  frozen_at: SELECTIVE_FROZEN_AT,
+  why: "owner-selected conservative admission: current team, fresh feeds, both price models, confirmation and daily limits; not a statistically proven promotion",
 });
 
 // ---------------------------------------------------------------------------
@@ -206,6 +239,7 @@ export const RISK_NONE_V1 = c({
 export const COMPONENTS: readonly Component[] = Object.freeze([
   SIGNAL_CHAIR_V1,
   ENTRY_80_V1,
+  ENTRY_SELECTIVE_V1,
   EXIT_HOLD_V1,
   EXIT_PROVE120_V1,
   EXIT_PROVE180_V1,
@@ -274,11 +308,19 @@ export const FLOOR_V1: FloorPolicyVersion = Object.freeze({
 /**
  * The fallback the desk must always be able to name.
  *
- * If Champion state cannot be restored or proven, this is what runs. It is
- * FLOOR_V1 deliberately: the composition whose behaviour is the unchanged desk.
- * Never improvise a fallback.
+ * The owner-selected admission policy is also the named fallback. The original
+ * FLOOR_V1 remains frozen above so historical fills retain their original meaning.
  */
-export const SAFE_FALLBACK_POLICY = FLOOR_V1.policy_id;
+export const FLOOR_SELECTIVE_V1: FloorPolicyVersion = Object.freeze({
+  ...FLOOR_V1,
+  policy_id: "FLOOR_SELECTIVE_V1",
+  version: 2,
+  entry_policy: ENTRY_SELECTIVE_V1.id,
+  created_at: SELECTIVE_FROZEN_AT,
+  prospective_start_at: SELECTIVE_FROZEN_AT,
+});
+
+export const SAFE_FALLBACK_POLICY = FLOOR_SELECTIVE_V1.policy_id;
 
 /**
  * Compose a new policy version by replacing ONE component of an existing one.

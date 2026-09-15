@@ -27,8 +27,12 @@ const QA: { q: string; a: ReactNode }[] = [
     ),
   },
   {
+    q: "What does selective mode require?",
+    a: "The shared desk takes at most three paper calls per Central calendar day and pauses after its first loss. It may make no calls. Each new entry needs three healthy supporting seats from at least two evidence groups, no opposing vote, 3–10 minutes remaining, fresh feeds, resting book size and a tight spread. The main model must show at least 3¢ after fees, and a fresh settlement-index estimate must also cover the ask and fee. The setup must survive three observations over at least eight seconds. These are cautious operating rules, not a guarantee of wins. Existing positions still settle normally; independent research continues while the desk waits.",
+  },
+  {
     q: "The chair shows UP or DOWN but the log has no fill. Why?",
-    a: "The price floor. The chair's read and the paper book are two different things. The book fills at 80¢ or better — a time-boxed trial of a higher floor, raised from 70¢ because on the record the chair's cheaper calls lost money. A read under the floor still shows on the strip and still grades the seats; it is booked only if the ask reaches the floor before the window closes. The old 70¢ floor is still counted alongside as a shadow book, so the trial can be judged against the thing it replaced on the same windows. The shadow is research and never gates a fill.",
+    a: "The book needs a real ask at 80¢ or above and every selective-mode check must still pass when it pays. Reaching 80¢ alone is not permission to fill. The shared desk shows WAIT when the current setup, confirmation, feeds or daily limits block entry. A read and a booked position remain separate records, and an existing position stays locked until settlement. The 70¢ shadow comparison is research and never authorizes a fill.",
   },
   {
     q: "What does paper mean?",

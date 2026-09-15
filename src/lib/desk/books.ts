@@ -45,6 +45,7 @@ export type BooksLab = {
 /** The 80¢ floor trial, both books on the same windows. Shadow is research only. */
 export type FloorTrial = {
   since: string;
+  until?: string;
   live_cents: number;
   shadow_cents: number;
   windows: number;

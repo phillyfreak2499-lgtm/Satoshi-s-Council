@@ -505,7 +505,7 @@ function TrialPane({ trial, tz }: { trial: FloorTrial; tz: string }) {
       title={
         <span>
           <Tip k="books.trial">THE {trial.live_cents}¢ FLOOR TRIAL</Tip>{" "}
-          <span className="font-normal text-subtle">· since {fmtDay(trial.since, tz)} · {trial.windows} windows</span>
+          <span className="font-normal text-subtle">· {trial.until ? "archived" : "since"} {fmtDay(trial.since, tz)}{trial.until ? `–${fmtDay(trial.until, tz)}` : ""} · {trial.windows} windows</span>
         </span>
       }
     >
@@ -514,6 +514,7 @@ function TrialPane({ trial, tz }: { trial: FloorTrial; tz: string }) {
         {col("shadow book", trial.shadow, trial.shadow_cents, true)}
       </div>
       <p className="mt-2 font-mono text-micro text-subtle">
+        {trial.until ? "This comparison ended before selective mode. New selective results are recorded separately. " : ""}
         Same windows, two floors. The live book pays {trial.live_cents}¢ or better; the shadow book counts what the old{" "}
         {trial.shadow_cents}¢ floor would have taken, and books nothing. It declined {trial.declined} fill
         {trial.declined === 1 ? "" : "s"} the old floor would have made. A higher floor wins more often for a smaller

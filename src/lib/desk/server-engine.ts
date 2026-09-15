@@ -23,7 +23,11 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
-import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk } from "./book-floor";
+import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk, paperBookTeamOk } from "./book-floor";
+import {
+  dailyAdmission, hasPaperPosition, paperSummary, restoreRiskCalls, selectiveBookOk, selectiveChair,
+  settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, type EntryWatch,
+} from "./selective-entry";
 import {
   bookedDecisionAtGrade,
   sanitizeBookedDecisionState,
@@ -135,6 +139,11 @@ type Eng = {
   settings: Settings;
   learner: Learner;
   callLog: CallLogRow[];
+  riskCalls: CallLogRow[];
+  riskReady: boolean;
+  entryWatch: EntryWatch | null;
+  selectiveStart: number;
+  baselineCalls: CallLogRow[];
   lastCall: { ticker: string; close_time: number; lean: Lean } | null;
   prevSnap: Snapshot | null;
   lastVotes: Vote[];
@@ -292,6 +301,11 @@ function freshEng(): Eng {
     settings: { ...DEFAULT_SERVER_SETTINGS },
     learner: freshLearner(),
     callLog: [],
+    riskCalls: [],
+    riskReady: false,
+    entryWatch: null,
+    selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
+    baselineCalls: [],
     lastCall: null,
     prevSnap: null,
     lastVotes: [],
@@ -383,13 +397,25 @@ async function loadState(e: Eng) {
           identity_faults?: unknown;
           graded_keys?: unknown;
           active_window?: unknown;
+          risk_calls?: unknown;
+          risk_history_valid?: boolean;
+          selective_start?: number;
+          baseline_calls?: unknown;
         }
       | undefined;
-    if (!raw) return;
+    if (!raw) {
+      e.riskReady = true;
+      return;
+    }
     e.learner = mergeLearner(raw.learner ?? null);
     e.callLog = Array.isArray(raw.call_log)
       ? raw.call_log.filter((r) => r && (r.lean === "UP" || r.lean === "DOWN") && r.cents > 0).slice(0, 80)
       : [];
+    const risk = restoreRiskCalls(raw.risk_calls, e.callLog);
+    e.riskCalls = risk.calls;
+    e.riskReady = risk.valid && raw.risk_history_valid !== false;
+    e.baselineCalls = restoreRiskCalls(raw.baseline_calls, []).calls;
+    if (Number.isFinite(raw.selective_start) && raw.selective_start! > 0) e.selectiveStart = raw.selective_start!;
     e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
     e.lastCall = raw.last_call ?? null;
@@ -425,12 +451,16 @@ async function loadState(e: Eng) {
 }
 
 async function persistState(e: Eng, force = false) {
-  if (!force && Date.now() - e.lastPersistAt < PERSIST_EVERY_MS) return;
+  if (!force && Date.now() - e.lastPersistAt < PERSIST_EVERY_MS) return true;
   e.lastPersistAt = Date.now();
   try {
     const state = JSON.stringify({
       learner: sliceLearner(e.learner),
       call_log: e.callLog.slice(0, 80),
+      risk_calls: e.riskCalls,
+      risk_history_valid: e.riskReady,
+      selective_start: e.selectiveStart,
+      baseline_calls: e.baselineCalls,
       settings: {
         bar_override: e.settings.bar_override,
         adaptive_bar: e.settings.adaptive_bar,
@@ -469,8 +499,10 @@ async function persistState(e: Eng, force = false) {
     });
     e.stateWrite = write;
     await write;
+    return true;
   } catch (err) {
     e.lastError = `state save: ${err instanceof Error ? err.message : String(err)}`;
+    return false;
   }
 }
 
@@ -592,7 +624,8 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, cents: numbe
  *  Autopsy of the flip era: 40 of the last 42 logged calls were flips,
  *  41 of 42 positions were sold on a flip, net -83¢ — the left tail was
  *  the churn, not the calls. */
-function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
+async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
+  if (hasPaperPosition(e.riskCalls, snap)) return;
   if (e.lastCall && e.lastCall.ticker === snap.ticker && e.lastCall.close_time === snap.close_time) {
     if (e.lastCall.lean === "UP" || e.lastCall.lean === "DOWN") return; // already positioned: hold
   }
@@ -611,6 +644,8 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
   // own gate reads (no second formula), books nothing, and mutates nothing — not the
   // Chair read, the shown lean, stickLean, holdScore, thresholds, or history.
   if (!paperBookEdgeOk(snap, chair.lean)) return;
+  if (!paperBookTeamOk(chair, chair.lean)) return;
+  if (!selectiveBookOk(snap, chair, { calls: e.riskCalls, ready: e.riskReady, start: e.selectiveStart, watch: e.entryWatch })) return;
   const cents = markSide(snap, chair.lean);
   if (!(cents > 0) || !(cents < 100)) return;
   // The 80¢ trial's shadow book: note the first ask this window at which the
@@ -638,11 +673,19 @@ function noteCall(e: Eng, snap: Snapshot, chair: ChairResult) {
     },
     ...e.callLog,
   ].slice(0, 80);
+  e.riskCalls = restoreRiskCalls(e.riskCalls, [e.callLog[0]!]).calls;
   e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
+  // Save the daily reservation before publishing the new call. A restart must not reset its allowance.
+  if (!(await persistState(e, true))) {
+    e.riskReady = false;
+    return;
+  }
   notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
 }
 
 function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" | "DOWN") {
+  e.riskCalls = settleRiskCalls(e.riskCalls, ticker, close_time, winner);
+  e.baselineCalls = settleRiskCalls(e.baselineCalls, ticker, close_time, winner);
   e.callLog = e.callLog.map((r) => {
     if (r.settle != null) return r;
     const sameTicker = ticker && r.ticker === ticker;
@@ -650,6 +693,26 @@ function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" 
     if (!sameTicker && !sameClose) return r;
     return { ...r, settle: r.lean === winner ? 100 : 0 };
   });
+}
+
+/** Observe the same current signal before selective admission. This is never a public call or an order. */
+function noteUnfilteredCall(e: Eng, snap: Snapshot, chair: ChairResult) {
+  if (snap.close_time - 900_000 < e.selectiveStart || hasPaperPosition(e.baselineCalls, snap)) return;
+  if (chair.lean !== "UP" && chair.lean !== "DOWN") return;
+  if (!paperBookEdgeOk(snap, chair.lean)) return;
+  const cents = markSide(snap, chair.lean);
+  if (!bookable(cents)) return;
+  const row: CallLogRow = { id: `unfiltered-${snap.close_time}-${snap.as_of}`, t: snap.as_of,
+    ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean, cents, settle: null, flipped: false };
+  e.baselineCalls = restoreRiskCalls(e.baselineCalls, [row]).calls;
+}
+
+function applyEntryMode(e: Eng, snap: Snapshot, chair: ChairResult): ChairResult {
+  const result = selectiveChair(snap, chair, {
+    calls: e.riskCalls, ready: e.riskReady, start: e.selectiveStart, watch: e.entryWatch,
+  });
+  e.entryWatch = result.watch;
+  return result.chair;
 }
 
 /**
@@ -1057,7 +1120,7 @@ async function applyGrade(
         entry: { side: booked.lean, cents: booked.cents, t: booked.t },
         path: exitReplayPath,
       },
-      champion,
+      { ...champion, prospective_start_at: new Date(Math.max(Date.parse(champion.prospective_start_at), e.selectiveStart)).toISOString() },
     );
   })().catch((err) => {
     e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
@@ -1269,7 +1332,9 @@ async function tick(e: Eng) {
       if (v.seat === "WARDEN") continue;
       onLean(e.learner, v.seat, v.lean, snap);
     }
-    const chair = decideChair(e, votes, snap, lastSide(e, snap));
+    const rawChair = decideChair(e, votes, snap, lastSide(e, snap));
+    noteUnfilteredCall(e, snap, rawChair);
+    const chair = applyEntryMode(e, snap, rawChair);
     // S2-5: capture the Chair's decision-time market state from THIS exact
     // finalized (snap, chair) pair, synchronously, the instant the read exists and
     // BEFORE the paper-fill path (noteCall) or any later grade can stand in for it.
@@ -1277,7 +1342,7 @@ async function tick(e: Eng) {
     // the decision and cannot change what the Chair said or whether the book fills.
     noteDecisionSnapshot(e, snap, chair);
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
-    noteCall(e, snap, chair);
+    await noteCall(e, snap, chair);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // Hand the lab this tick's window state so a print landing between ticks
     // carries real context, with its own staleness recorded. Research only.
@@ -1987,6 +2052,14 @@ export type ServerFrame = {
   lastError: string | null;
   settling: boolean;
   v2: V2Frame;
+  selective: {
+    policy: string;
+    start: number;
+    params: typeof SELECTIVE_PARAMS;
+    ready: boolean;
+    daily: ReturnType<typeof dailyAdmission>;
+    comparison: { label: string; selected: ReturnType<typeof paperSummary>; unfiltered: ReturnType<typeof paperSummary> };
+  };
 };
 
 export async function getServerFrame(): Promise<ServerFrame> {
@@ -2010,6 +2083,13 @@ export async function getServerFrame(): Promise<ServerFrame> {
     lastError: e.lastError,
     settling: e.pending.length > 0,
     v2: v2Frame(e),
+    selective: {
+      policy: SELECTIVE_ENTRY_ID, start: e.selectiveStart, params: SELECTIVE_PARAMS, ready: e.riskReady,
+      daily: dailyAdmission(e.riskCalls, Date.now()),
+      comparison: { label: "Prospective admission comparison; same current signal before filters; same retained market windows, up to 160",
+        selected: paperSummary(e.riskCalls.filter(r => hasPaperPosition(e.baselineCalls, r)), e.selectiveStart),
+        unfiltered: paperSummary(e.baselineCalls, e.selectiveStart) },
+    },
   };
 }
 
@@ -2074,6 +2154,7 @@ export async function applyDeskOp(op: DeskOp): Promise<{ ok: true }> {
   }
   if (e.prevSnap && e.lastVotes.length) {
     e.lastChair = decideChair(e, e.lastVotes, e.prevSnap, e.lastChair?.lean ?? "WAIT");
+    e.lastChair = applyEntryMode(e, e.prevSnap, e.lastChair);
   }
   await persistState(e, true);
   return { ok: true };
