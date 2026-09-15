@@ -46,7 +46,7 @@ test("pit-crew context and shadow research stay out of the Chair", () => {
 
 test("reserved research questions are named missing, not quietly active", () => {
   const missing = FEATURE_REGISTRY.filter((row) => row.authority === "missing");
-  assert.ok(missing.length >= 4);
+  assert.ok(missing.length >= 1);
   assert.ok(missing.every((row) => !row.chair_visible && row.consumers.length === 0));
 });
 
@@ -81,4 +81,15 @@ test("the admin report is deterministic apart from its supplied clock", () => {
   assert.equal(Object.values(report.tally).reduce((sum, n) => sum + n, 0), FEATURE_REGISTRY.length);
   assert.match(report.note, /cannot promote/i);
   assert.match(report.note, /cannot.*change Chair inputs/i);
+});
+
+
+test("completed path features are measurement-only", () => {
+  for (const id of ["path.strike_crossings", "path.time_above_below", "path.smoothness"]) {
+    const row = FEATURE_REGISTRY.find((candidate) => candidate.id === id);
+    assert.ok(row, id);
+    assert.equal(row.authority, "measurement", id);
+    assert.equal(row.chair_visible, false, id);
+    assert.ok(row.consumers.includes("Window path study"), id);
+  }
 });
