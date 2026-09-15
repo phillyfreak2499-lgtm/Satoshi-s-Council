@@ -46,7 +46,7 @@
  */
 import { takerFeeCents } from "./clock.ts";
 import { markSide } from "./scalp.ts";
-import type { CallLogRow, Lean, Snapshot } from "./types";
+import type { CallLogRow, ChairResult, Lean, Snapshot } from "./types";
 
 /**
  * The live floor: the only ask the paper book will pay. THE ONE CONSTANT TO
@@ -79,6 +79,13 @@ export const CHAIR_FLOOR_SINCE_ISO = "2026-09-08T20:47:00.000Z";
  * without 80 being scattered anywhere.
  */
 export const CHAIR_MIN_ASK_CENTS = FLOOR_LIVE_CENTS;
+
+/**
+ * Minimum speaking seats on the booked side at the tick the book pays.
+ * A price floor is not a team. 1–1 and empty-floor books are how 7:15 / 7:30 /
+ * 7:50 printed this morning.
+ */
+export const BOOK_MIN_SPEAKING = 2;
 
 /** A real, payable price: a fill has to be a price, not a certainty or a hole. */
 function realAsk(cents: number): boolean {
@@ -122,6 +129,45 @@ export function paperBookEdgeOk(
 ): boolean {
   const edge = lean === "UP" ? snap.edge_up : snap.edge_down;
   return Number.isFinite(edge) && edge > 0;
+}
+
+/**
+ * The paper book's team guard (S2-11).
+ *
+ * A sticky chair lean (`holdScore` keeps UP at 35% of the bar; `stickLean` holds
+ * the last shown side for 12s) can still be UP after every seat has sat. The 80¢
+ * price floor then pays that lean. Receipts:
+ *   KXBTC15M-26SEP150815-15  empty floor, booked UP 80¢ → −82
+ *   KXBTC15M-26SEP150830-30  under bar / 1–1, booked UP 82¢ → −84
+ *   KXBTC15M-26SEP150900-00  0 agree / 1 against at 81¢; later +17
+ *
+ * Fail closed on the CURRENT chair, not the lean from minutes ago:
+ *   speaking seats on the booked side ≥ BOOK_MIN_SPEAKING
+ *   those seats strictly outnumber the other side
+ *   score clears the bar on that side now
+ *   hard_fail is off
+ *   quorum counts are finite
+ *
+ * HOLD is unchanged: this only blocks the first fill. A later WAIT does not unwind.
+ */
+export function paperBookTeamOk(
+  chair: Pick<ChairResult, "score" | "bar" | "hard_fail" | "quorum">,
+  lean: "UP" | "DOWN",
+): boolean {
+  const up = chair.quorum?.up;
+  const down = chair.quorum?.down;
+  if (!Number.isFinite(up) || !Number.isFinite(down)) return false;
+  const speakingFor = lean === "UP" ? up : down;
+  const speakingAgainst = lean === "UP" ? down : up;
+  if (speakingFor < BOOK_MIN_SPEAKING) return false;
+  if (speakingFor <= speakingAgainst) return false;
+  if (chair.hard_fail) return false;
+  const score = chair.score;
+  const bar = chair.bar;
+  if (!Number.isFinite(score) || !Number.isFinite(bar) || !(bar > 0)) return false;
+  if (lean === "UP" && !(score >= bar)) return false;
+  if (lean === "DOWN" && !(score <= -bar)) return false;
+  return true;
 }
 
 /**
