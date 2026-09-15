@@ -63,8 +63,46 @@ test("Central calendar boundary respects daylight saving time", () => {
   assert.equal(chicagoDay(Date.parse("2026-12-16T05:59:59Z")), "2026-12-15");
   assert.equal(chicagoDay(Date.parse("2026-12-16T06:00:00Z")), "2026-12-16");
 });
-test("a past window with no result blocks another entry rather than guessing it won", () => {
+test("a current-day past window with no result blocks another entry rather than guessing it won", () => {
   assert.match(dailyAdmission([row(undefined, null)], now).reason!, /previous paper result/);
+});
+
+test("an earlier-day missing grade stays visible and uncounted without stopping every later day", () => {
+  // Recorded public call whose window is also listed missing by /status on Sep 15.
+  const missing: CallLogRow = { t: 1789389418506, id: "1789389900000-DOWN-1789389418506",
+    lean: "DOWN", cents: 85, settle: null, ticker: "KXBTC15M-26SEP140845-45",
+    flipped: false, close_time: 1789389900000 };
+  const before = JSON.stringify(missing);
+  const d = dailyAdmission([missing], Date.parse("2026-09-15T15:35:00Z"));
+  assert.equal(d.reason, null);
+  assert.equal(d.calls, 0); assert.equal(d.wins, 0); assert.equal(d.losses, 0);
+  assert.equal(d.net_cents, 0); assert.equal(d.open_risk_cents, 0);
+  assert.deepEqual(d.missing_prior_days, [{ ticker: missing.ticker, close_time: missing.close_time, status: "MISSING" }]);
+  assert.equal(JSON.stringify(missing), before);
+  assert.equal(restoreRiskCalls([missing], []).calls[0]!.settle, null);
+  assert.equal(selectiveBlock(snap(), chair(), ctx({ calls: [missing] })), null);
+});
+
+test("missing-grade day boundary uses Central time in summer and winter", () => {
+  for (const midnight of [Date.parse("2026-09-16T05:00:00Z"), Date.parse("2026-12-16T06:00:00Z")]) {
+    const missing = { ...row(midnight - 1_800_000, null), close_time: midnight - 900_000 };
+    assert.match(dailyAdmission([missing], midnight - 1).reason!, /previous paper result/);
+    assert.equal(dailyAdmission([missing], midnight).reason, null);
+    assert.equal(dailyAdmission([missing], midnight).missing_prior_days.length, 1);
+    const closingNow = { ...missing, close_time: midnight };
+    assert.match(dailyAdmission([closingNow], midnight).reason!, /previous paper result/);
+    assert.equal(dailyAdmission([closingNow], midnight).missing_prior_days.length, 0);
+  }
+});
+
+test("an older gap cannot hide current unresolved exposure or its admission block", () => {
+  const older = row(now - 86_400_000, null);
+  const today = row(now - 3_600_000, null);
+  const future = row(now, null);
+  const d = dailyAdmission([older, today, future], now);
+  assert.equal(d.missing_prior_days.length, 1);
+  assert.equal(d.open_risk_cents, 168);
+  assert.match(d.reason!, /previous paper result/);
 });
 test("durable risk history survives JSON restart and clearing the display log", () => {
   const calls = [row(undefined, 0), row(now - 2_400_000, 0)];

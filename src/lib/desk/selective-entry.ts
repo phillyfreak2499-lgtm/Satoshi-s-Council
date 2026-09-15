@@ -59,13 +59,19 @@ export function dailyAdmission(rows: CallLogRow[], now: number) {
     if (cents > 0) wins++;
     if (cents < 0) losses++;
   }
-  const openRisk = unique.filter(r => r.settle == null).reduce((sum, r) => sum + Math.ceil((r.cents + takerFeeCents(r.cents)) * 10), 0);
+  // A closed prior-day gap is missing research, not exposure in today's book.
+  // Keep it ungraded and visible; never infer a result to release daily admission.
+  const unresolved = unique.filter(r => r.settle == null);
+  const missingPrior = unresolved.filter(r => day && r.close_time <= now && chicagoDay(r.close_time) < day);
+  const currentRisk = unresolved.filter(r => !missingPrior.includes(r));
+  const openRisk = currentRisk.reduce((sum, r) => sum + Math.ceil((r.cents + takerFeeCents(r.cents)) * 10), 0);
   let reason: string | null = null;
   if (!day) reason = "waiting for a valid clock";
   else if (!history.valid) reason = "waiting for valid durable risk history";
-  else if (unique.some(r => r.settle == null && r.close_time <= now)) reason = "waiting for the previous paper result";
+  else if (currentRisk.some(r => r.close_time <= now)) reason = "waiting for the previous paper result";
   return { calls, wins, losses, net_cents: net / 10, peak_net_cents: peak / 10, low_net_cents: low / 10,
     open_risk_cents: openRisk / 10,
+    missing_prior_days: missingPrior.map(r => ({ ticker: r.ticker, close_time: r.close_time, status: "MISSING" as const })),
     tightened: low <= SELECTIVE_PARAMS.tighten_at_net_cents * 10,
     // A day already red when V2 starts can recover; future green entries reserve their full loss.
     profit_protected: net > 0 && (wins >= SELECTIVE_PARAMS.protect_after_wins || peak >= SELECTIVE_PARAMS.protect_after_net_cents * 10),
