@@ -33,7 +33,18 @@ export function guidedRead(chair: ChairResult, snap: Snapshot, callLog: CallLogR
   }
   if (chair.lean === "WAIT") {
     const blocked = chair.gates.find((g) => g.hard && !g.pass);
-    const note = blocked?.label ? `Check: ${blocked.label}` : "Waiting for a stronger read";
+    const note =
+      blocked?.id === "early" || blocked?.id === "late"
+        ? "Timing check"
+        : blocked?.id === "quote"
+          ? "Fresh market price needed"
+          : blocked?.id === "edge"
+            ? "Price leaves too little room"
+            : blocked?.id === "top3"
+              ? "Leading specialists disagree"
+              : blocked?.id === "law"
+                ? "Safety pause after misses"
+                : "Waiting for a stronger read";
     const why =
       blocked?.id === "early"
         ? "It is early in this 15-minute window. The Council lets more evidence arrive before making a paper call."
@@ -155,7 +166,7 @@ export function GuidedFloor({
                 {read.label}
               </h2>
             </div>
-            <div className="h-20 w-20 shrink-0 sm:h-24 sm:w-24">
+            <div className="h-24 w-24 shrink-0 sm:h-32 sm:w-32">
               <Portrait name="Satoshi" src={portraits.satoshi} />
             </div>
           </div>
@@ -205,7 +216,7 @@ export function GuidedFloor({
             you see right now does not settle it.
           </p>
           <div className="mt-4 flex items-center gap-3 border-t border-border pt-4">
-            <div className="h-14 w-14 shrink-0">
+            <div className="h-24 w-24 shrink-0">
               <Portrait name="Warden" src={portraits.warden} />
             </div>
             <p className="font-sans text-ui text-muted">
@@ -220,7 +231,7 @@ export function GuidedFloor({
         className="rounded-md border border-border bg-surface p-5 sm:p-6"
       >
         <div className="grid items-center gap-5 sm:grid-cols-[auto_1fr]">
-          <div className="h-24 w-24">
+          <div className="h-36 w-36">
             <Portrait name="WICK" src={portraits.wick} />
           </div>
           <div>
@@ -254,7 +265,7 @@ export function GuidedFloor({
 
       <section className="rounded-md border border-border bg-surface p-5">
         <div className="flex items-center gap-3">
-          <div className="h-16 w-16 shrink-0">
+          <div className="h-24 w-24 shrink-0">
             <Portrait name="Alchemist" src={portraits.alchemist} />
           </div>
           <div>
