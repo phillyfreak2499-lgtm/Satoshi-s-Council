@@ -13,7 +13,7 @@
  *   import server-engine, Chair, seats, grading, or pruneReplays
  *   write into desk_archive_manifest (that is a later phase)
  *   attach a disk or talk to object storage
- *   honor --apply / --upload / --delete / --purge (those exit nonzero)
+ *   honor --apply / --upload / --delete / --purge
  */
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,14 +27,12 @@ import {
   type PlannerRow,
 } from "../src/lib/desk/archive-planner.ts";
 
-export const FORBIDDEN_WRITE_FLAGS = ["--apply", "--upload", "--delete", "--purge"] as const;
+export const WRITE_FLAGS = ["--apply", "--upload", "--delete", "--purge"] as const;
 
-/** First forbidden write flag on argv, or null. `--apply=1` counts as `--apply`. */
 export function rejectedWriteFlag(argv: readonly string[]): string | null {
-  const forbidden = new Set<string>(FORBIDDEN_WRITE_FLAGS);
   for (const raw of argv) {
-    const flag = (raw.split("=")[0] ?? raw).trim();
-    if (forbidden.has(flag)) return flag;
+    const flag = raw.split("=")[0] ?? "";
+    if ((WRITE_FLAGS as readonly string[]).includes(flag)) return flag;
   }
   return null;
 }
@@ -104,14 +102,14 @@ async function inspectDatabase(url: string): Promise<PlannerRow[]> {
     ];
     for (const q of queries) {
       const res = await client.query(q.sql);
-      for (const r of res.rows) {
+      for (const row of res.rows) {
         rows.push({
           table: q.table,
-          ticker: r.ticker ?? null,
-          close_time: r.close_time ?? null,
-          t: r.t ?? null,
-          estimated_bytes: r.estimated_bytes == null ? null : Number(r.estimated_bytes),
-          research_quality: r.research_quality ?? null,
+          ticker: row.ticker ?? null,
+          close_time: row.close_time ?? null,
+          t: row.t ?? null,
+          estimated_bytes: row.estimated_bytes == null ? null : Number(row.estimated_bytes),
+          research_quality: row.research_quality ?? null,
         });
       }
     }
@@ -126,19 +124,19 @@ function printPlan(plan: ArchivePlan): void {
   process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
 }
 
-function refuseWrite(flag: string): number {
-  process.stderr.write(
-    JSON.stringify({
-      ok: false,
-      error: `${flag} is refused. Phase 1 is inspect-only: no upload, no delete, no purge, no apply, no manifest write.`,
-    }) + "\n",
-  );
-  return 1;
-}
-
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
-  const forbidden = rejectedWriteFlag(argv);
-  if (forbidden) return refuseWrite(forbidden);
+  const refused = rejectedWriteFlag(argv);
+  if (refused) {
+    process.stderr.write(
+      JSON.stringify({
+        ok: false,
+        error:
+          `Phase 1 archive planner is inspect-only. Refused flag: ${refused}. ` +
+          "No upload, delete, purge, or manifest write. Re-run with --demo or DATABASE_URL.",
+      }) + "\n",
+    );
+    return 1;
+  }
 
   if (wantsDemo(argv)) {
     printPlan(planArchive(demoRows(), { nowMs: DEMO_NOW_MS, sourceIdentity: DEMO_SOURCE }));
@@ -166,10 +164,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   return 0;
 }
 
-const invokedAsScript =
-  Boolean(process.argv[1]) && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1]);
-
-if (invokedAsScript) {
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   main()
     .then((code) => process.exit(code))
     .catch((err: unknown) => {
