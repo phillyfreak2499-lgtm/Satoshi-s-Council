@@ -93,8 +93,8 @@ test("the shadow book records, and does so before the live floor has its say", (
   for (const col of ["entry_regime", "entry_secs_left", "entry_conf", "entry_spread_cents", "entry_touch_size"]) {
     assert.match(src, new RegExp(col), `ledger must persist ${col}`);
   }
-  const entryAt = src.indexOf("noteEntryState(e, snap, chair, cents);");
-  assert.ok(entryAt > 0, "entry state must be captured on the decision path");
+  const entryAt = src.indexOf("noteEntryState(e, snap, chair, votes, cents);");
+  assert.ok(entryAt > gateAt, "same-tick entry state must be captured after the live floor passes");
 });
 
 test("S2-10: the paper book refuses a non-positive current edge before any fill is recorded", () => {
@@ -2241,7 +2241,7 @@ test("S2-5: the decision snapshot is captured at the decision tick, before the f
   // the paper-fill path (noteCall), so the read is recorded independent of the fill.
   const iChair = code.indexOf("decideChair(e, votes, snap, lastSide(e, snap))");
   const iCap = code.indexOf("noteDecisionSnapshot(e, snap, chair)", iChair);
-  const iCall = code.indexOf("noteCall(e, snap, chair)", iChair);
+  const iCall = code.indexOf("noteCall(e, snap, chair, votes)", iChair);
   assert.ok(iChair >= 0, "the tick's decideChair call is present");
   assert.ok(iCap > iChair, "capture happens after the finalized Chair result");
   assert.ok(iCall > iCap, "capture happens BEFORE noteCall (the paper-fill path)");
