@@ -92,7 +92,8 @@ export function measureWindowPath(input: WindowPathInput): WindowPathStats | nul
   let atMs = 0;
   let integratedMs = 0;
   let unmeasuredMs = 0;
-  let grossBps = 0;
+  let grossMove = 0;
+  let largestJump = 0;
   let largestJumpBps = 0;
   let maxGapMs = 0;
   let currentSide: Side = "unknown";
@@ -129,8 +130,10 @@ export function measureWindowPath(input: WindowPathInput): WindowPathStats | nul
 
     const gapMs = rawB.t - rawA.t;
     maxGapMs = Math.max(maxGapMs, gapMs);
-    const jumpBps = Math.abs(rawB.px - rawA.px) / rawA.px * 10_000;
-    grossBps += jumpBps;
+    const jump = Math.abs(rawB.px - rawA.px);
+    const jumpBps = jump / rawA.px * 10_000;
+    grossMove += jump;
+    largestJump = Math.max(largestJump, jump);
     largestJumpBps = Math.max(largestJumpBps, jumpBps);
 
     const dt = end - start;
@@ -201,7 +204,7 @@ export function measureWindowPath(input: WindowPathInput): WindowPathStats | nul
   const firstInWindow = points.find((point) => point.t >= openTime) ?? first;
   const lastInWindow = [...points].reverse().find((point) => point.t <= input.close_time) ?? last;
   const netBps = moveBps(firstInWindow.px, lastInWindow.px);
-  const totalTime = aboveMs + belowMs + atMs + unmeasuredMs;
+  const grossBps = firstInWindow.px > 0 ? grossMove / firstInWindow.px * 10_000 : 0;
 
   return {
     version: WINDOW_PATH_VERSION,
@@ -225,9 +228,9 @@ export function measureWindowPath(input: WindowPathInput): WindowPathStats | nul
     minute_flat: minuteDirections.filter((x) => x === 0).length,
     net_move_bps: r2(netBps),
     gross_move_bps: r2(grossBps),
-    path_efficiency: r3(grossBps > 0 ? Math.abs(netBps) / grossBps : 0),
+    path_efficiency: r3(grossMove > 0 ? Math.abs(lastInWindow.px - firstInWindow.px) / grossMove : 0),
     largest_sample_jump_bps: r2(largestJumpBps),
-    largest_jump_share: r3(grossBps > 0 ? largestJumpBps / grossBps : 0),
+    largest_jump_share: r3(grossMove > 0 ? largestJump / grossMove : 0),
     early_move_bps: thirdMove(points, openTime, 0),
     middle_move_bps: thirdMove(points, openTime, 1),
     final_move_bps: thirdMove(points, openTime, 2),
