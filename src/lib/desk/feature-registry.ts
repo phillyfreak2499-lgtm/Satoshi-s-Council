@@ -16,6 +16,7 @@ export type FeatureTimeframe =
   | "15m"
   | "30m"
   | "1h"
+  | "4h"
   | "window"
   | "session"
   | "daily";
@@ -82,7 +83,9 @@ export const FEATURE_REGISTRY: readonly FeatureRegistryEntry[] = [
   f({ id: "path.strike_crossings", label: "Strike-crossing count", family: "candle", owner: "WICK", source: "graded replay spot path", timeframe: "window", authority: "measurement", chair_visible: false, consumers: ["Window path study", "Replay"], stale_after_ms: null, note: "Computed only after grade from the recorded replay; no decision consumer." }),
   f({ id: "path.time_above_below", label: "Time above and below strike", family: "candle", owner: "WICK", source: "graded replay spot path", timeframe: "window", authority: "measurement", chair_visible: false, consumers: ["Window path study", "Replay"], stale_after_ms: null, note: "Computed only after grade from the recorded replay; no decision consumer." }),
   f({ id: "path.smoothness", label: "Window path smoothness", family: "candle", owner: "DRIFT", source: "graded replay spot path", timeframe: "window", authority: "measurement", chair_visible: false, consumers: ["Window path study", "Replay"], stale_after_ms: null, note: "Computed only after grade from the recorded replay; no decision consumer." }),
-  f({ id: "candidate.regime_4h", label: "Four-hour regime", family: "context", owner: "EXHAUST", source: "spot candles", timeframe: "session", authority: "missing", chair_visible: false, consumers: [], stale_after_ms: null, note: "Not collected as a registered decision feature yet." }),
+  f({ id: "lab.context_4h", label: "Four-hour return and range context", family: "context", owner: "EXHAUST", source: "decision-time hourly spot candles", timeframe: "4h", authority: "measurement", chair_visible: false, consumers: ["Decision snapshots", "Higher-timeframe study"], stale_after_ms: 5_400_000, note: "Raw numeric context with coverage quality; explicitly non-voting." }),
+  f({ id: "lab.context_24h", label: "Twenty-four-hour return and range context", family: "context", owner: "EXHAUST", source: "decision-time hourly spot candles", timeframe: "daily", authority: "measurement", chair_visible: false, consumers: ["Decision snapshots", "Higher-timeframe study"], stale_after_ms: 5_400_000, note: "Raw numeric context with coverage quality; explicitly non-voting." }),
+  f({ id: "candidate.regime_4h", label: "Four-hour regime classifier", family: "context", owner: "EXHAUST", source: "measured 4h context", timeframe: "4h", authority: "missing", chair_visible: false, consumers: [], stale_after_ms: null, note: "Raw context is now measured; no regime label or voting rule has been approved." }),
 ] as const;
 
 const PIT_CREW = new Set<SeatId>(["WARDEN", "ORBIT", "WIRE"]);
