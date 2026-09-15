@@ -9,6 +9,7 @@ import { markSide } from "./scalp.ts";
 import {
   chicagoDay, dailyAdmission, hasPaperPosition, restoreRiskCalls, selectiveBlock, selectiveBookOk,
   selectiveChair, settleRiskCalls, SELECTIVE_PARAMS, type SelectiveContext,
+  profitRiskBlock,
 } from "./selective-entry.ts";
 import type { CallLogRow, ChairResult, SeatId, Snapshot } from "./types";
 
@@ -33,23 +34,27 @@ const row = (t = now - 3_600_000, settle: number | null = 100): CallLogRow => ({
   id: `id-${t}`, ticker: `window-${t}`, t, close_time: t + 900_000, lean: "UP", cents: 82, settle, flipped: false,
 });
 const confirmed = (s = snap()): SelectiveContext => ctx({ watch: {
-  key: `${s.ticker}|${s.close_time}`, side: "UP", since: s.as_of - 8000, last: s.as_of, frames: 3,
+  key: `${s.ticker}|${s.close_time}`, side: "UP", since: s.as_of - 8000, last: s.as_of, frames: 3, mode: "normal",
 } });
 
 test("a supported, fresh, positive-edge entry can pass; confidence is not used as a win probability", () => {
   assert.equal(selectiveBlock(snap(), chair(), ctx()), null);
   assert.equal(selectiveBookOk(snap(), chair({ confidence: 60 }), confirmed()), true);
 });
-test("three wins exhaust the daily allowance; duplicate restored entries count once", () => {
+test("three wins do not impose a daily quota; duplicate restored entries count once", () => {
   const calls = [row(), row(now - 2_400_000), row(now - 1_200_000)];
   assert.equal(dailyAdmission(calls, now).calls, 3);
-  assert.match(dailyAdmission(calls, now).reason!, /daily limit/);
+  assert.equal(dailyAdmission(calls, now).reason, null);
+  assert.equal(selectiveBlock(snap(), chair(), ctx({ calls })), null);
   assert.equal(dailyAdmission([...calls, calls[0]!], now).calls, 3);
 });
-test("first net loss pauses the Central day, even after two subsequent wins", () => {
+test("one loss does not stop the Central day; net cents determine tightening", () => {
   const calls = [row(undefined, 0), row(now - 2_400_000), row(now - 1_200_000)];
   assert.equal(dailyAdmission(calls, now).losses, 1);
-  assert.match(dailyAdmission(calls, now).reason!, /after a loss/);
+  assert.equal(dailyAdmission(calls, now).reason, null);
+  assert.equal(dailyAdmission(calls, now).net_cents, -52);
+  assert.equal(dailyAdmission(calls, now).tightened, false);
+  assert.equal(selectiveBlock(snap(), chair(), ctx({ calls })), null);
   assert.equal(dailyAdmission(calls, now + 86_400_000).reason, null);
 });
 test("Central calendar boundary respects daylight saving time", () => {
@@ -62,11 +67,12 @@ test("a past window with no result blocks another entry rather than guessing it 
   assert.match(dailyAdmission([row(undefined, null)], now).reason!, /previous paper result/);
 });
 test("durable risk history survives JSON restart and clearing the display log", () => {
-  const calls = [row(undefined, 0)];
+  const calls = [row(undefined, 0), row(now - 2_400_000, 0)];
   const restored = restoreRiskCalls(JSON.parse(JSON.stringify(calls)), []);
   assert.equal(restored.valid, true);
-  assert.match(dailyAdmission(restored.calls, now).reason!, /after a loss/);
-  assert.equal(restoreRiskCalls(calls, calls).calls.length, 1);
+  assert.equal(dailyAdmission(restored.calls, now).tightened, true);
+  assert.equal(dailyAdmission(restored.calls, now).net_cents, -168);
+  assert.equal(restoreRiskCalls(calls, calls).calls.length, 2);
   assert.equal(restoreRiskCalls({ broken: true }, []).valid, false);
   assert.equal(restoreRiskCalls([{ ...row(), cents: NaN }], []).valid, false);
   assert.match(selectiveBlock(snap(), chair(), ctx({ ready: false }))!, /durable risk history/);
@@ -195,15 +201,116 @@ test("actual booking records and saves once before notification; clear display c
   assert.equal(e.callLog.length, 0); assert.equal(e.riskCalls.length, 1);
   api.settleCallLog(e, s.ticker, s.close_time, "DOWN");
   assert.equal(e.riskCalls[0]!.settle, 0);
-  assert.match(dailyAdmission(e.riskCalls, s.close_time + 1000).reason!, /after a loss/);
+  assert.equal(dailyAdmission(e.riskCalls, s.close_time + 1000).net_cents, -84);
+  assert.equal(dailyAdmission(e.riskCalls, s.close_time + 1000).reason, null);
 });
 test("failed durable save publishes no call and disables new admission", async () => {
   const { api, events } = bookingHarness(false); const e = engine();
   await api.noteCall(e, snap(), chair());
   assert.deepEqual(events, ["saved"]); assert.equal(e.riskReady, false);
 });
-test("frozen policy prefers fewer calls and contains no zero-loss claim", () => {
-  assert.equal(SELECTIVE_PARAMS.max_calls_per_day, 3);
-  assert.equal(SELECTIVE_PARAMS.max_losses_per_day, 1);
+test("net-based policy has no fixed call quota or one-loss stop", () => {
+  assert.equal("max_calls_per_day" in SELECTIVE_PARAMS, false);
+  assert.equal("max_losses_per_day" in SELECTIVE_PARAMS, false);
+  assert.equal(SELECTIVE_PARAMS.floor_cents, 80);
   assert.equal(Object.isFrozen(SELECTIVE_PARAMS), true);
+});
+
+const history = (prices: number[], results: number[] = prices.map(() => 100)) => prices.map((cents, i) => ({
+  ...row(now - (prices.length - i + 1) * 900_000, results[i]), cents,
+}));
+const tightChair = () => chair({ quorum: { up: 4, down: 0, wait: 14 },
+  rows: [...chair().rows, { ...chair().rows[0]!, seat: "WICK" }] });
+
+test("five small wins cannot be followed by a call that wipes out the green day", () => {
+  const calls = history([90, 90, 90, 90, 90]); // +9¢ each after the paper fee.
+  const d = dailyAdmission(calls, now);
+  assert.equal(d.wins, 5); assert.equal(d.net_cents, 45); assert.equal(d.profit_protected, true);
+  assert.match(selectiveBlock(snap(), chair(), ctx({ calls }))!, /protecting today's profit/);
+  assert.match(profitRiskBlock(d, NaN)!, /valid ask/);
+});
+
+test("five wins with enough reserve allow another call and preserve a positive worst case", () => {
+  const calls = history([80, 80, 80, 80, 80]); // +90¢; candidate 82¢ plus fee costs 84¢.
+  assert.equal(dailyAdmission(calls, now).net_cents, 90);
+  assert.equal(selectiveBlock(snap(), chair(), ctx({ calls })), null);
+  const afterLoss = [...calls, { ...row(now - 900_000, 0), cents: 82 }];
+  assert.equal(dailyAdmission(afterLoss, now).net_cents, 6);
+  assert.match(selectiveBlock(snap(), chair(), ctx({ calls: afterLoss }))!, /protecting today's profit/);
+});
+
+test("+100¢ arms profit protection before five wins; fees and pending exposure are reserved", () => {
+  const d = dailyAdmission(history([73, 73, 73, 73]), now); // Historical prices: 4 × 25¢.
+  assert.equal(d.wins, 4); assert.equal(d.net_cents, 100); assert.equal(d.profit_protected, true);
+  assert.equal(profitRiskBlock(d, 82), null);
+  assert.notEqual(profitRiskBlock({ ...d, open_risk_cents: 18 }, 82), null);
+  assert.notEqual(profitRiskBlock({ ...d, net_cents: 84 }, 82), null); // Flat is not positive.
+  const open = { ...row(now - 1_000, null), close_time: now + 300_000, cents: 82 };
+  assert.equal(dailyAdmission([...history([73, 73, 73, 73]), open], now).open_risk_cents, 84);
+});
+
+test("tightening begins exactly at -100¢ net and survives recovery and a restart", () => {
+  assert.equal(dailyAdmission(history([98.9], [0]), now).tightened, false);
+  assert.equal(dailyAdmission(history([99], [0]), now).tightened, true);
+  const calls = history([82, 82, 80, 80, 80, 80, 80], [0, 0, 100, 100, 100, 100, 100]);
+  const d = dailyAdmission(restoreRiskCalls(JSON.parse(JSON.stringify(calls)), []).calls, now);
+  assert.equal(d.net_cents, -78); assert.equal(d.tightened, true); assert.equal(d.profit_protected, false);
+  assert.equal(dailyAdmission(calls, now + 86_400_000).tightened, false);
+  assert.equal(dailyAdmission(calls, now + 86_400_000).profit_protected, false);
+});
+
+test("after -100¢ strong entries remain possible; ordinary entries fail the tighter team and edges", () => {
+  const context = ctx({ calls: history([82, 82], [0, 0]) });
+  assert.match(selectiveBlock(snap(), chair(), context)!, /four healthy/);
+  assert.equal(selectiveBlock(snap(), tightChair(), context), null);
+  assert.match(selectiveBlock(snap({ edge_up: 4.99 }), tightChair(), context)!, /5¢/);
+  assert.match(selectiveBlock(snap({ lab_fair_yes: 86 }), tightChair(), context)!, /exceed 2¢/);
+});
+
+test("tighter confirmation requires five qualifying observations over twenty seconds", () => {
+  let context = ctx({ calls: history([82, 82], [0, 0]) });
+  for (const elapsed of [0, 5000, 10000, 15000, 20000]) {
+    const s = snap({ as_of: now + elapsed, obs: { ...snap().obs, receipt_ts: now + elapsed - 1000 } });
+    const result = selectiveChair(s, tightChair(), context);
+    assert.equal(result.chair.lean, elapsed === 20000 ? "UP" : "WAIT");
+    context = { ...context, watch: result.watch };
+    assert.equal(selectiveBookOk(s, result.chair, context), elapsed === 20000);
+  }
+  const old = { ...context, watch: { ...context.watch!, mode: "normal" as const } };
+  assert.equal(selectiveChair(snap({ as_of: now + 20000, obs: { ...snap().obs, receipt_ts: now + 19000 } }), tightChair(), old).watch?.frames, 1);
+});
+
+test("many settled calls with sufficient cents are not blocked by a hidden quota", () => {
+  const calls = history(Array(12).fill(80));
+  assert.equal(dailyAdmission(calls, now).calls, 12);
+  assert.equal(selectiveBlock(snap(), chair(), ctx({ calls })), null);
+});
+
+test("production booking boundary enforces profit reserve after confirmation", async () => {
+  const { api, events } = bookingHarness(); const e = engine();
+  e.riskCalls = history([90, 90, 90, 90, 90]);
+  await api.noteCall(e, snap(), chair());
+  assert.equal(e.callLog.length, 0); assert.deepEqual(events, []);
+});
+
+test("production booking after a single loss remains possible when the setup qualifies", async () => {
+  const { api, events } = bookingHarness(); const e = engine();
+  e.riskCalls = history([82], [0]);
+  await api.noteCall(e, snap(), chair());
+  assert.equal(e.callLog.length, 1); assert.deepEqual(events, ["saved", "notified"]);
+});
+
+test("DOWN profit protection reserves the DOWN ask and fee, not the cheap UP quote", () => {
+  const c = chair({ lean: "DOWN", score: -0.8, quorum: { up: 0, down: 3, wait: 15 },
+    rows: chair().rows.map(r => ({ ...r, lean: "DOWN" })) });
+  const s = snap({ no_ask: 82, no_bid: 81, yes_ask: 19, yes_bid: 18, edge_down: 6, lab_fair_yes: 10 });
+  assert.match(selectiveBlock(s, c, ctx({ calls: history([90, 90, 90, 90, 90]) }))!, /protecting today's profit/);
+});
+
+test("a midnight settlement counts cents on the close day, including its fee", () => {
+  const midnight = Date.parse("2026-09-16T05:00:00Z");
+  const call = { ...row(midnight - 300_000), close_time: midnight };
+  const d = dailyAdmission([call], midnight + 1000);
+  assert.equal(d.calls, 0); assert.equal(d.wins, 1); assert.equal(d.net_cents, 16);
+  assert.notEqual(dailyAdmission([call], NaN).reason, null);
 });

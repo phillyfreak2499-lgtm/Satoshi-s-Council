@@ -33,9 +33,9 @@
  */
 
 /** Which slot of the Floor policy a component fills. */
-export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V1";
+export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V2";
 export const SELECTIVE_FROZEN_AT = "2026-09-15T14:05:13.000Z";
-export const SELECTIVE_PARAMS = Object.freeze({
+export const SELECTIVE_V1_PARAMS = Object.freeze({
   floor_cents: 80,
   max_calls_per_day: 3,
   max_losses_per_day: 1,
@@ -52,6 +52,22 @@ export const SELECTIVE_PARAMS = Object.freeze({
   max_index_age_s: 5,
   confirmation_seconds: 8,
   confirmation_frames: 3,
+  timezone: "America/Chicago",
+});
+
+export const SELECTIVE_V2_FROZEN_AT = "2026-09-15T15:05:55.000Z";
+export const SELECTIVE_PARAMS = Object.freeze({
+  floor_cents: 80,
+  min_speaking: 3, min_families: 2, max_opposing: 0,
+  min_seconds_left: 180, max_seconds_left: 600,
+  min_edge_cents: 3, min_index_edge_cents: 0,
+  max_spread_cents: 2, max_receipt_age_s: 10, max_spot_age_s: 15, max_index_age_s: 5,
+  confirmation_seconds: 8, confirmation_frames: 3,
+  tighten_at_net_cents: -100,
+  tight_min_speaking: 4, tight_min_families: 3,
+  tight_min_edge_cents: 5, tight_min_index_edge_cents: 2,
+  tight_confirmation_seconds: 20, tight_confirmation_frames: 5,
+  protect_after_wins: 5, protect_after_net_cents: 100,
   timezone: "America/Chicago",
 });
 
@@ -139,14 +155,21 @@ export const ENTRY_80_V1 = c({
 });
 
 export const ENTRY_SELECTIVE_V1 = c({
-  id: SELECTIVE_ENTRY_ID,
+  id: "ENTRY_SELECTIVE_V1",
   family: "ENTRY_SELECTIVE",
   version: 1,
   kind: "entry",
   label: "Selective 80¢ · max 3/day · pause after loss",
-  params: SELECTIVE_PARAMS,
+  params: SELECTIVE_V1_PARAMS,
   frozen_at: SELECTIVE_FROZEN_AT,
   why: "owner-selected conservative admission: current team, fresh feeds, both price models, confirmation and daily limits; not a statistically proven promotion",
+});
+
+export const ENTRY_SELECTIVE_V2 = c({
+  id: SELECTIVE_ENTRY_ID, family: "ENTRY_SELECTIVE", version: 2, kind: "entry",
+  label: "Selective 80¢ · net-based tightening · protect green days",
+  params: SELECTIVE_PARAMS, frozen_at: SELECTIVE_V2_FROZEN_AT,
+  why: "owner-selected replacement for the call quota and one-loss stop; tighten after -100¢ net and reserve the full possible loss after five wins or +100¢; no proven-performance claim",
 });
 
 // ---------------------------------------------------------------------------
@@ -240,6 +263,7 @@ export const COMPONENTS: readonly Component[] = Object.freeze([
   SIGNAL_CHAIR_V1,
   ENTRY_80_V1,
   ENTRY_SELECTIVE_V1,
+  ENTRY_SELECTIVE_V2,
   EXIT_HOLD_V1,
   EXIT_PROVE120_V1,
   EXIT_PROVE180_V1,
@@ -320,7 +344,13 @@ export const FLOOR_SELECTIVE_V1: FloorPolicyVersion = Object.freeze({
   prospective_start_at: SELECTIVE_FROZEN_AT,
 });
 
-export const SAFE_FALLBACK_POLICY = FLOOR_SELECTIVE_V1.policy_id;
+export const FLOOR_SELECTIVE_V2: FloorPolicyVersion = Object.freeze({
+  ...FLOOR_SELECTIVE_V1, policy_id: "FLOOR_SELECTIVE_V2", version: 3,
+  entry_policy: ENTRY_SELECTIVE_V2.id,
+  created_at: SELECTIVE_V2_FROZEN_AT, prospective_start_at: SELECTIVE_V2_FROZEN_AT,
+});
+
+export const SAFE_FALLBACK_POLICY = FLOOR_SELECTIVE_V2.policy_id;
 
 /**
  * Compose a new policy version by replacing ONE component of an existing one.

@@ -144,7 +144,7 @@ export function TopStrip({
 
   return (
     <div data-tour="tour-strip" className={cn("bg-surface px-3 py-2", floor ? "rounded-md border border-border" : "border-b border-border")}>
-      {!demo ? <p className="mb-2 font-mono text-micro text-muted">Selective mode · up to 3 calls per Central day · pauses after first loss</p> : null}
+      {!demo ? <p className="mb-2 font-mono text-micro text-muted">Selective mode · no daily call quota · tighter after −100¢ net · protects earned profit</p> : null}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {demo ? (

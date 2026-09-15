@@ -400,6 +400,7 @@ async function loadState(e: Eng) {
           risk_calls?: unknown;
           risk_history_valid?: boolean;
           selective_start?: number;
+          selective_policy?: string;
           baseline_calls?: unknown;
         }
       | undefined;
@@ -415,7 +416,7 @@ async function loadState(e: Eng) {
     e.riskCalls = risk.calls;
     e.riskReady = risk.valid && raw.risk_history_valid !== false;
     e.baselineCalls = restoreRiskCalls(raw.baseline_calls, []).calls;
-    if (Number.isFinite(raw.selective_start) && raw.selective_start! > 0) e.selectiveStart = raw.selective_start!;
+    if (raw.selective_policy === SELECTIVE_ENTRY_ID && Number.isFinite(raw.selective_start) && raw.selective_start! > 0) e.selectiveStart = raw.selective_start!;
     e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
     e.lastCall = raw.last_call ?? null;
@@ -460,6 +461,7 @@ async function persistState(e: Eng, force = false) {
       risk_calls: e.riskCalls,
       risk_history_valid: e.riskReady,
       selective_start: e.selectiveStart,
+      selective_policy: SELECTIVE_ENTRY_ID,
       baseline_calls: e.baselineCalls,
       settings: {
         bar_override: e.settings.bar_override,

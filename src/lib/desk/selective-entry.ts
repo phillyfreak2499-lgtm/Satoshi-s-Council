@@ -11,7 +11,7 @@ const dayFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SELECTIVE_PARAMS.timezone, year: "numeric", month: "2-digit", day: "2-digit",
 });
 export function chicagoDay(t: number): string {
-  return Number.isFinite(t) && t > 0 ? dayFormatter.format(new Date(t)) : "";
+  return Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime()) ? dayFormatter.format(new Date(t)) : "";
 }
 const keyOf = (r: Pick<CallLogRow, "ticker" | "close_time">) => `${r.ticker}|${r.close_time}`;
 
@@ -42,17 +42,50 @@ export function hasPaperPosition(rows: CallLogRow[], snap: Pick<Snapshot, "ticke
   return rows.some(r => r.ticker === snap.ticker && r.close_time === snap.close_time);
 }
 
-export function dailyAdmission(rows: CallLogRow[], now: number): { calls: number; losses: number; reason: string | null } {
+export function dailyAdmission(rows: CallLogRow[], now: number) {
   const day = chicagoDay(now);
-  if (!day) return { calls: 0, losses: 0, reason: "waiting for a valid clock" };
-  const calls = new Set(rows.filter(r => chicagoDay(r.t) === day).map(keyOf)).size;
-  const losses = new Set(rows.filter(r => r.settle != null && chicagoDay(r.close_time) === day &&
-    r.settle - r.cents - takerFeeCents(r.cents) < 0).map(keyOf)).size;
+  const history = restoreRiskCalls(rows, []);
+  const unique = history.calls;
+  const calls = day ? unique.filter(r => chicagoDay(r.t) === day).length : 0;
+  // Grade-day cents follow Books. Integer tenths match the paper ledger's rounding.
+  const settled = day ? unique.filter(r => r.settle != null && r.close_time <= now && chicagoDay(r.close_time) === day)
+    .sort((a, b) => a.close_time - b.close_time) : [];
+  let net = 0, peak = 0, low = 0, wins = 0, losses = 0;
+  for (const r of settled) {
+    const cents = Math.round((r.settle! - r.cents - takerFeeCents(r.cents)) * 10);
+    net += cents;
+    peak = Math.max(peak, net);
+    low = Math.min(low, net);
+    if (cents > 0) wins++;
+    if (cents < 0) losses++;
+  }
+  const openRisk = unique.filter(r => r.settle == null).reduce((sum, r) => sum + Math.ceil((r.cents + takerFeeCents(r.cents)) * 10), 0);
   let reason: string | null = null;
-  if (losses >= SELECTIVE_PARAMS.max_losses_per_day) reason = "paused after a loss; resumes next Central day";
-  else if (calls >= SELECTIVE_PARAMS.max_calls_per_day) reason = "three-call daily limit reached; resumes next Central day";
-  else if (rows.some(r => r.settle == null && r.close_time <= now)) reason = "waiting for the previous paper result";
-  return { calls, losses, reason };
+  if (!day) reason = "waiting for a valid clock";
+  else if (!history.valid) reason = "waiting for valid durable risk history";
+  else if (unique.some(r => r.settle == null && r.close_time <= now)) reason = "waiting for the previous paper result";
+  return { calls, wins, losses, net_cents: net / 10, peak_net_cents: peak / 10, low_net_cents: low / 10,
+    open_risk_cents: openRisk / 10,
+    tightened: low <= SELECTIVE_PARAMS.tighten_at_net_cents * 10,
+    // A day already red when V2 starts can recover; future green entries reserve their full loss.
+    profit_protected: net > 0 && (wins >= SELECTIVE_PARAMS.protect_after_wins || peak >= SELECTIVE_PARAMS.protect_after_net_cents * 10),
+    reason };
+}
+
+export function admissionRequirements(daily: ReturnType<typeof dailyAdmission>) {
+  const p = SELECTIVE_PARAMS;
+  return daily.tightened ? {
+    min_speaking: p.tight_min_speaking, min_families: p.tight_min_families,
+    min_edge_cents: p.tight_min_edge_cents, min_index_edge_cents: p.tight_min_index_edge_cents,
+    confirmation_seconds: p.tight_confirmation_seconds, confirmation_frames: p.tight_confirmation_frames,
+  } : p;
+}
+
+export function profitRiskBlock(daily: ReturnType<typeof dailyAdmission>, ask: number): string | null {
+  if (!daily.profit_protected) return null;
+  if (!Number.isFinite(ask) || ask <= 0 || ask >= 100) return "waiting for a valid ask before reserving the possible loss";
+  const remaining = Math.round((daily.net_cents - daily.open_risk_cents) * 10) - Math.ceil((ask + takerFeeCents(ask)) * 10);
+  return remaining <= 0 ? "protecting today's profit: a full loss at this ask plus fees would leave the day flat or red" : null;
 }
 
 export function paperSummary(rows: CallLogRow[], since: number) {
@@ -63,7 +96,7 @@ export function paperSummary(rows: CallLogRow[], since: number) {
     net_cents: Math.round(nets.reduce((sum, n) => sum + n, 0) * 10) / 10 };
 }
 
-export type EntryWatch = { key: string; side: "UP" | "DOWN"; since: number; last: number; frames: number };
+export type EntryWatch = { key: string; side: "UP" | "DOWN"; since: number; last: number; frames: number; mode: "normal" | "tight" };
 export type SelectiveContext = { calls: CallLogRow[]; ready: boolean; start: number; watch: EntryWatch | null };
 
 /** Full revalidation uses the current quote, current team and two distinct models. */
@@ -71,6 +104,7 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   const p = SELECTIVE_PARAMS;
   if (!ctx.ready) return "waiting for durable risk history";
   const daily = dailyAdmission(ctx.calls, snap.as_of);
+  const required = admissionRequirements(daily);
   if (daily.reason) return daily.reason;
   if (snap.close_time - 900_000 < ctx.start) return "starts at the next complete market window";
   if (chair.lean !== "UP" && chair.lean !== "DOWN") return "waiting for a directional setup";
@@ -84,8 +118,9 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
     EVIDENCE_OF[r.seat] !== "context");
   const supporters = new Set(rows.map(r => r.seat));
   const families = new Set(rows.map(r => EVIDENCE_OF[r.seat]));
-  if (supporters.size < p.min_speaking || families.size < p.min_families || against > p.max_opposing) {
-    return "needs three healthy supporters from two evidence groups, with no opposing vote";
+  if (supporters.size < required.min_speaking || families.size < required.min_families || against > p.max_opposing) {
+    return daily.tightened ? "tighter mode: needs four healthy supporters from three evidence groups, with no opposing vote"
+      : "needs three healthy supporters from two evidence groups, with no opposing vote";
   }
   const seconds = (snap.close_time - snap.as_of) / 1000;
   if (!Number.isFinite(seconds) || seconds < p.min_seconds_left || seconds > p.max_seconds_left) {
@@ -106,14 +141,18 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
       ask < p.floor_cents || ask >= 99 || bid < 0 || bid > ask || ask - bid > p.max_spread_cents || touch < 1 ||
       snap.yes_ask + snap.no_ask < 100) return "waiting for a usable 80¢-plus ask, tight spread and resting size";
   const edge = side === "UP" ? snap.edge_up : snap.edge_down;
-  if (!Number.isFinite(edge) || edge < p.min_edge_cents) return "needs at least 3¢ of model edge after fees";
+  const riskReason = profitRiskBlock(daily, ask);
+  if (riskReason) return riskReason;
+  if (!Number.isFinite(edge) || edge < required.min_edge_cents) return `needs at least ${required.min_edge_cents}¢ of model edge after fees`;
   const fair = snap.lab_fair_yes;
   if (fair == null || !Number.isFinite(fair) || fair < 0 || fair > 100 ||
       !Number.isFinite(snap.lab_age_s) || snap.lab_age_s < 0 || snap.lab_age_s > p.max_index_age_s) {
     return "waiting for a fresh settlement-index estimate";
   }
   const indexEdge = (side === "UP" ? fair : 100 - fair) - ask - takerFeeCents(ask);
-  if (!(indexEdge > p.min_index_edge_cents)) return "settlement-index estimate does not cover the ask and fee";
+  if (!(indexEdge > required.min_index_edge_cents)) return daily.tightened
+    ? "tighter mode: settlement-index margin must exceed 2¢ after the ask and fee"
+    : "settlement-index estimate does not cover the ask and fee";
   return null;
 }
 
@@ -121,19 +160,23 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
 export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: SelectiveContext): { chair: ChairResult; watch: EntryWatch | null } {
   if (hasPaperPosition(ctx.calls, snap)) return { chair, watch: null }; // entry rules never sell an existing position
   let reason = selectiveBlock(snap, chair, ctx);
+  const daily = dailyAdmission(ctx.calls, snap.as_of);
+  const required = admissionRequirements(daily);
   let watch: EntryWatch | null = null;
   if (!reason && (chair.lean === "UP" || chair.lean === "DOWN")) {
     const key = `${snap.ticker}|${snap.close_time}`;
     const old = ctx.watch;
-    watch = old && old.key === key && old.side === chair.lean && snap.as_of >= old.last && snap.as_of - old.last <= 10_000
+    const mode = daily.tightened ? "tight" : "normal";
+    watch = old && old.mode === mode && old.key === key && old.side === chair.lean && snap.as_of >= old.last && snap.as_of - old.last <= 10_000
       ? { ...old, last: snap.as_of, frames: old.frames + Number(snap.as_of > old.last) }
-      : { key, side: chair.lean, since: snap.as_of, last: snap.as_of, frames: 1 };
-    if (watch.frames < SELECTIVE_PARAMS.confirmation_frames || snap.as_of - watch.since < SELECTIVE_PARAMS.confirmation_seconds * 1000) {
-      reason = "waiting for three confirming observations over at least eight seconds";
+      : { key, side: chair.lean, since: snap.as_of, last: snap.as_of, frames: 1, mode };
+    if (watch.frames < required.confirmation_frames || snap.as_of - watch.since < required.confirmation_seconds * 1000) {
+      reason = daily.tightened ? "tighter mode: waiting for five confirming observations over at least twenty seconds"
+        : "waiting for three confirming observations over at least eight seconds";
     }
   }
-  const gate = { id: "selective", label: "Selective mode · at most three calls/day · pause after one loss", hard: true, pass: !reason,
-    value: reason ?? "current team, both models, feeds and daily limits passed" };
+  const gate = { id: "selective", label: daily.tightened ? "Tighter mode · daily net reached −100¢" : "Selective mode · no daily call quota · profit protection", hard: true, pass: !reason,
+    value: reason ?? "current team, both models, feeds and daily risk checks passed" };
   const gates = [...chair.gates.filter(g => g.id !== "selective"), gate];
   if (!reason) return { chair: { ...chair, gates }, watch };
   return { watch, chair: { ...chair, lean: "WAIT", gates, hard_fail: true,
@@ -145,6 +188,8 @@ export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: Selectiv
 export function selectiveBookOk(snap: Snapshot, chair: ChairResult, ctx: SelectiveContext): boolean {
   if (selectiveBlock(snap, chair, ctx)) return false;
   const w = ctx.watch;
-  return !!w && w.key === `${snap.ticker}|${snap.close_time}` && w.side === chair.lean && w.last === snap.as_of &&
-    w.frames >= SELECTIVE_PARAMS.confirmation_frames && snap.as_of - w.since >= SELECTIVE_PARAMS.confirmation_seconds * 1000;
+  const daily = dailyAdmission(ctx.calls, snap.as_of);
+  const required = admissionRequirements(daily);
+  return !!w && w.mode === (daily.tightened ? "tight" : "normal") && w.key === `${snap.ticker}|${snap.close_time}` && w.side === chair.lean && w.last === snap.as_of &&
+    w.frames >= required.confirmation_frames && snap.as_of - w.since >= required.confirmation_seconds * 1000;
 }

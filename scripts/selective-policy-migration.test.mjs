@@ -24,6 +24,22 @@ test('selective activation preserves historical policy and is idempotent', async
     assert.equal(new Date(active.prospective_start_at).getTime() % 900000, 0);
     await db.exec(migration);
     assert.deepEqual((await db.query('select * from desk_floor_policy order by policy_id')).rows, first);
+    const nextMigration = await readFile(new URL('../migrations/0033_desk_net_risk_policy.sql', import.meta.url), 'utf8');
+    await db.exec(nextMigration);
+    const next = (await db.query('select * from desk_floor_policy order by policy_id')).rows;
+    assert.equal(next.length, 3);
+    const v2 = next.find(r => r.policy_id === 'FLOOR_SELECTIVE_V2');
+    assert.equal(v2.status, 'CHAMPION');
+    assert.equal(v2.entry_policy, 'ENTRY_SELECTIVE_V2');
+    assert.equal(v2.exit_policy, 'HOLD_V1');
+    assert.equal(new Date(v2.prospective_start_at).getTime() % 900000, 0);
+    assert.equal(next.filter(r => r.status === 'CHAMPION').length, 1);
+    const v1 = next.find(r => r.policy_id === 'FLOOR_SELECTIVE_V1');
+    assert.equal(v1.status, 'RETIRED');
+    assert.equal(v1.entry_policy, active.entry_policy);
+    assert.deepEqual(v1.prospective_start_at, active.prospective_start_at);
+    await db.exec(nextMigration);
+    assert.deepEqual((await db.query('select * from desk_floor_policy order by policy_id')).rows, next);
   } finally {
     await db.close();
   }
