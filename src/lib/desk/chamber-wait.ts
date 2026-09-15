@@ -7,6 +7,7 @@
  */
 import { plainLine } from "./chair-words.ts";
 import { whyFacts } from "./floor-clarity.ts";
+import { chairRoster, quorumCheck } from "./roster-evidence.ts";
 import type { BookState } from "./book-floor";
 import type { SystemEventInput } from "./system-events";
 import type { ChairResult, Snapshot } from "./types";
@@ -51,7 +52,11 @@ export function maybeChairWaitEvent(
   const why = whyFacts(chair, "");
   if (!why.wait_reason) return null;
 
-  const text = plainLine(chair, snap, book);
+  const roster = chairRoster(snap, chair);
+  const checked = quorumCheck(roster, why.quorum);
+  const text = checked.status === "MISMATCH"
+    ? "The Chair is waiting. Agreement claim withheld: counts disagree with the saved seat roster."
+    : plainLine(chair, snap, book);
   if (!text.trim()) return null;
 
   return {
@@ -67,6 +72,7 @@ export function maybeChairWaitEvent(
       ticker,
       close_time: closeTime,
       text,
+      roster,
       quorum: why.quorum,
       score: chair.score,
       bar: chair.bar,

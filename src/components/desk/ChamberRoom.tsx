@@ -1,4 +1,5 @@
 import { utcStamp } from "@/lib/desk/display-evidence";
+import { RosterEvidence } from "./RosterEvidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Radar } from "lucide-react";
@@ -169,7 +170,8 @@ function Evidence({ statement }: { statement: ChamberStatement }) {
           {e.ticker ? <div className="min-w-0"><dt className="inline text-muted">window </dt><dd className="inline break-all">{e.ticker}</dd></div> : null}
           {e.close_time ? <div><dt className="inline text-muted">close </dt><dd className="inline tabular">{new Date(e.close_time).toISOString()}</dd></div> : null}
           {e.failed_hard.length ? <div><dt className="inline text-muted">gates </dt><dd className="inline">{e.failed_hard.join(" · ")}</dd></div> : null}
-          {e.quorum ? <div><dt className="inline text-muted">quorum </dt><dd className="inline">{e.quorum.up} up · {e.quorum.down} down · {e.quorum.wait} wait</dd></div> : null}
+          {e.quorum ? <div><dt className="inline text-muted">quorum at dispatch </dt><dd className="inline">{e.quorum.up} up · {e.quorum.down} down · {e.quorum.wait} wait</dd></div> : null}
+          <RosterEvidence statement={statement} />
           {e.score != null && e.bar != null ? <div><dt className="inline text-muted">score / bar </dt><dd className="inline tabular">{e.score} / {e.bar}</dd></div> : null}
         </dl>
       ) : null}
@@ -459,4 +461,3 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
     </div>
   );
 }
-

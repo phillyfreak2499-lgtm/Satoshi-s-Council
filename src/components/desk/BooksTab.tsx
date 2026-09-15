@@ -595,7 +595,7 @@ function LastWindow({ wnd, tz, onReplay }: { wnd: BooksWindow; tz: string; onRep
             {c ? <span className={cn("tabular", tone(c.ev))}>{fmtC(c.ev)}</span> : null}
           </div>
           <div className="mt-1 text-micro text-muted">
-            {wnd.seats.n ? `${wnd.seats.right} of ${wnd.seats.n} speaking seats right` : "no seat spoke"} · {wnd.raw.n ? `${wnd.raw.right} of ${wnd.raw.n} reads right` : "no reads"}
+            {wnd.seats.n ? `${wnd.seats.right} of ${wnd.seats.n} speaking seats right at grade` : "no seat spoke at grade"} · {wnd.raw.n ? `${wnd.raw.right} of ${wnd.raw.n} reads right` : "no reads"}. These are grade readings; entry-time agreement is MISSING.
           </div>
           <div className="mt-1 text-micro text-muted">
             arena: {wnd.arena ? `${wnd.arena.n} call${wnd.arena.n === 1 ? "" : "s"} · ${fmtC(wnd.arena.net)}` : "no calls"}
@@ -827,7 +827,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
                     <CallCell c={w.call} />
                   </td>
                   <td role="cell" data-label="Paper cents" className={cn("text-right tabular", tone(w.call?.ev))}>{w.call ? fmtC(w.call.ev) : "no fill"}</td>
-                  <td role="cell" data-label="Seats" className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
+                  <td role="cell" data-label="Seats" title="Speaking seats right at grade; not agreement at entry" className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
                   <td role="cell" data-label="Reads" className="text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
                   <td role="cell" data-label="Arena" className={cn("py-1 text-right tabular", w.arena ? tone(w.arena.net) : "text-subtle")}>
                     {w.arena ? `${w.arena.n} · ${fmtC(w.arena.net)}` : "—"}

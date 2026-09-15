@@ -1,3 +1,4 @@
+import { RosterEvidence } from "./RosterEvidence";
 import { useEffect, useState } from "react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
@@ -126,12 +127,13 @@ export function ChamberSpeech() {
               ) : null}
               {q ? (
                 <div>
-                  <dt className="inline text-muted">quorum </dt>
+                  <dt className="inline text-muted">quorum at dispatch </dt>
                   <dd className="inline">
                     {q.up} up · {q.down} down · {q.wait} wait
                   </dd>
                 </div>
               ) : null}
+              <RosterEvidence statement={speech} />
               {score != null && bar != null ? (
                 <div>
                   <dt className="inline text-muted">score </dt>

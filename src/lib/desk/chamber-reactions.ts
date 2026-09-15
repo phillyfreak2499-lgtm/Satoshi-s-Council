@@ -2,9 +2,10 @@
  * Chamber reaction mapper.
  *
  * It translates immutable public system events into display-only statements.
- * The text is always stored on the event payload; this layer never invents prose.
+ * Stored wording is preserved as evidence when a known mixed-clock template is corrected.
  */
 import type { PublicSystemEvent } from "./system-events.ts";
+import { legacyBookedText, quorumCheck, readRoster, type RosterCheck, type RosterReceipt } from "./roster-evidence.ts";
 
 export type ChamberSpeaker = "SATOSHI" | "WARDEN" | "ALCHEMIST" | "SWEEP";
 
@@ -13,6 +14,8 @@ export type ChamberStatement = {
   event_type: PublicSystemEvent["event_type"];
   speaker: ChamberSpeaker;
   text: string;
+  /** Original wording retained when a known legacy mixed-clock sentence is corrected. */
+  original_text?: string;
   occurred_at: string;
   source_type: string;
   source_id: string;
@@ -50,6 +53,11 @@ export type ChamberStatement = {
     mid_hit_pct?: number | null;
     mid_cents?: number | null;
     grade_n?: number | null;
+    roster?: RosterReceipt | null;
+    roster_check?: RosterCheck;
+    books_check?: RosterCheck;
+    books_roster?: RosterReceipt | null;
+    books_seats?: { n: number; right: number };
   };
 };
 
@@ -99,11 +107,18 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
   if (!text) return null;
 
   if (ev.event_type === "CHAIR_WAIT_MILESTONE" && ev.character === "SATOSHI") {
+    const roster = readRoster(ev.payload.roster);
+    const check = roster && (roster.phase !== "observation" || roster.population !== "chair-quorum" || roster.ticker !== ev.payload.ticker || roster.close_time !== ev.payload.close_time || roster.snapshot_at !== Date.parse(ev.occurred_at))
+      ? { status: "MISMATCH" as const, note: "The saved roster belongs to a different window or observation time. Agreement claim withheld." }
+      : quorumCheck(roster, ev.payload.quorum);
+    const corrected = legacyBookedText(text);
+    const display = check.status === "MISMATCH" ? "Agreement claim withheld: the saved counts disagree with the seat roster." : corrected ?? text;
     return {
       event_key: ev.event_key,
       event_type: ev.event_type,
       speaker: "SATOSHI",
-      text,
+      text: display,
+      ...(display !== text ? { original_text: text } : {}),
       occurred_at: ev.occurred_at,
       source_type: ev.source_type,
       source_id: ev.source_id,
@@ -111,7 +126,9 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
         kind: "chair-wait",
         ...baseEvidence(ev),
         wait_reason: asString(ev.payload.wait_reason),
-        quorum: asQuorum(ev.payload.quorum),
+        quorum: check.status === "MISMATCH" ? null : asQuorum(ev.payload.quorum),
+        roster,
+        roster_check: check,
         score: asNum(ev.payload.score),
         bar: asNum(ev.payload.bar),
         failed_hard: asIds(ev.payload.failed_hard),
