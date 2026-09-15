@@ -13,10 +13,9 @@
  *   import server-engine, Chair, seats, grading, or pruneReplays
  *   write into desk_archive_manifest (that is a later phase)
  *   attach a disk or talk to object storage
- *   honor --apply / --upload / --delete / --purge
  */
-import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import {
   DEMO_NOW_MS,
   DEMO_SOURCE,
@@ -27,12 +26,12 @@ import {
   type PlannerRow,
 } from "../src/lib/desk/archive-planner.ts";
 
-export const WRITE_FLAGS = ["--apply", "--upload", "--delete", "--purge"] as const;
+export const REJECTED_WRITE_FLAGS = ["--apply", "--upload", "--delete", "--purge"] as const;
 
 export function rejectedWriteFlag(argv: readonly string[]): string | null {
   for (const raw of argv) {
-    const flag = raw.split("=")[0] ?? "";
-    if ((WRITE_FLAGS as readonly string[]).includes(flag)) return flag;
+    const name = raw.split("=")[0] ?? raw;
+    if ((REJECTED_WRITE_FLAGS as readonly string[]).includes(name)) return name;
   }
   return null;
 }
@@ -124,19 +123,19 @@ function printPlan(plan: ArchivePlan): void {
   process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
 }
 
+function refuseWrite(flag: string): number {
+  process.stderr.write(
+    JSON.stringify({
+      ok: false,
+      error: `Phase 1 is inspect-only. Refusing ${flag}. No upload, no delete, no manifest write.`,
+    }) + "\n",
+  );
+  return 1;
+}
+
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
-  const refused = rejectedWriteFlag(argv);
-  if (refused) {
-    process.stderr.write(
-      JSON.stringify({
-        ok: false,
-        error:
-          `Phase 1 archive planner is inspect-only. Refused flag: ${refused}. ` +
-          "No upload, delete, purge, or manifest write. Re-run with --demo or DATABASE_URL.",
-      }) + "\n",
-    );
-    return 1;
-  }
+  const rejected = rejectedWriteFlag(argv);
+  if (rejected) return refuseWrite(rejected);
 
   if (wantsDemo(argv)) {
     printPlan(planArchive(demoRows(), { nowMs: DEMO_NOW_MS, sourceIdentity: DEMO_SOURCE }));

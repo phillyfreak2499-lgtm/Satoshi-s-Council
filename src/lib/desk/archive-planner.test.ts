@@ -22,7 +22,7 @@ import {
   utcDayStamp,
   type PlannerRow,
 } from "./archive-planner.ts";
-import { rejectedWriteFlag, WRITE_FLAGS } from "../../../scripts/archive-plan.ts";
+import { REJECTED_WRITE_FLAGS, rejectedWriteFlag } from "../../../scripts/archive-plan.ts";
 import { qualityOf } from "./research-quality.ts";
 import { seriesKey } from "./replay-window.ts";
 
@@ -39,14 +39,6 @@ function plan(rows: PlannerRow[]) {
 
 function tablePlan(rows: PlannerRow[], table: PlannerRow["table"]) {
   return plan(rows).tables.find((t) => t.table === table)!;
-}
-
-function runPlan(args: string[]) {
-  return spawnSync(process.execPath, ["--experimental-strip-types", "scripts/archive-plan.ts", ...args], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: { ...process.env, DATABASE_URL: "" },
-  });
 }
 
 test("window identity is ticker plus close_time, never ticker alone", () => {
@@ -272,31 +264,7 @@ test("demo fixtures produce a readable dry-run without writes", () => {
   assert.ok(replay.proposed_partitions.every((p) => p.object_key.includes("desk_replay")));
 });
 
-test("write flags are refused even alongside --demo", () => {
-  assert.deepEqual([...WRITE_FLAGS], ["--apply", "--upload", "--delete", "--purge"]);
-  for (const flag of WRITE_FLAGS) {
-    assert.equal(rejectedWriteFlag([flag]), flag);
-    assert.equal(rejectedWriteFlag(["--demo", flag]), flag);
-    assert.equal(rejectedWriteFlag([`${flag}=true`]), flag);
-  }
-  assert.equal(rejectedWriteFlag(["--demo"]), null);
-  assert.equal(rejectedWriteFlag([]), null);
-});
-
-test("CLI exits nonzero for --apply --upload --delete --purge", () => {
-  for (const flag of WRITE_FLAGS) {
-    const result = runPlan([flag]);
-    assert.notEqual(result.status, 0, flag);
-    assert.match(result.stderr, /inspect-only/i, flag);
-    assert.match(result.stderr, new RegExp(flag.replaceAll("-", "\\-")));
-    assert.doesNotMatch(result.stdout, /"writes":\s*true/);
-  }
-  const withDemo = runPlan(["--demo", "--apply"]);
-  assert.notEqual(withDemo.status, 0);
-  assert.match(withDemo.stderr, /--apply/);
-});
-
-test("live inspect sizes rows with alias.* and replay cols, never table_name", () => {
+test("live byte estimates use row aliases, not bare table names", () => {
   const src = readFileSync(join(ROOT, "scripts/archive-plan.ts"), "utf8");
   assert.match(src, /pg_column_size\(p\.\*\)/);
   assert.match(src, /pg_column_size\(e\.\*\)/);
@@ -309,7 +277,30 @@ test("live inspect sizes rows with alias.* and replay cols, never table_name", (
   assert.doesNotMatch(src, /pg_column_size\(desk_basis_minutes\)/);
 });
 
-test("package.json wires the planner test and archive:plan script", () => {
+test("write flags are rejected by the inspect-only CLI helper", () => {
+  assert.deepEqual([...REJECTED_WRITE_FLAGS], ["--apply", "--upload", "--delete", "--purge"]);
+  assert.equal(rejectedWriteFlag(["--demo"]), null);
+  assert.equal(rejectedWriteFlag(["--apply"]), "--apply");
+  assert.equal(rejectedWriteFlag(["--upload=s3"]), "--upload");
+  assert.equal(rejectedWriteFlag(["--demo", "--delete"]), "--delete");
+  assert.equal(rejectedWriteFlag(["--purge"]), "--purge");
+});
+
+test("CLI process exits nonzero for --apply --upload --delete --purge", () => {
+  const cli = join(ROOT, "scripts/archive-plan.ts");
+  for (const flag of REJECTED_WRITE_FLAGS) {
+    const r = spawnSync(process.execPath, ["--experimental-strip-types", cli, flag], {
+      encoding: "utf8",
+      env: { ...process.env, DATABASE_URL: "" },
+    });
+    assert.notEqual(r.status, 0, flag);
+    assert.match(r.stderr, /inspect-only/i, flag);
+    assert.match(r.stderr, new RegExp(flag.replace(/-/g, "\\-")), flag);
+    assert.doesNotMatch(r.stdout, /"writes":\s*true/);
+  }
+});
+
+test("package.json registers the planner test and archive:plan script", () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
   };
