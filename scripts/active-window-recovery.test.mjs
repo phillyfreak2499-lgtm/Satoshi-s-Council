@@ -49,6 +49,25 @@ const fixture = (changes = {}) => ({
   ...changes,
 });
 
+test('a new admission version starts a fresh window; same-version restart keeps its start and risk history', async () => {
+  const h = harness(); const first = h.freshEng();
+  first.selectiveStart = Date.parse('2026-09-14T12:00:00Z');
+  first.riskCalls = [{ id: 'risk', ticker: TICKER, t: CLOSE - 600000, close_time: CLOSE, lean: 'UP', cents: 82, settle: 0, flipped: false }];
+  await h.persistState(first, true);
+  const same = harness({ durable: h.durable() }); const restored = same.freshEng();
+  await same.loadState(restored);
+  assert.equal(restored.selectiveStart, first.selectiveStart);
+  assert.deepEqual(plain(restored.riskCalls), plain(first.riskCalls));
+  const older = { ...h.durable(), selective_policy: 'ENTRY_SELECTIVE_V1' };
+  const changed = harness({ durable: older }); const upgraded = changed.freshEng();
+  const activation = upgraded.selectiveStart;
+  await changed.loadState(upgraded);
+  assert.equal(upgraded.selectiveStart, activation);
+  assert.equal(activation % 900000, 0);
+  assert.notEqual(activation, first.selectiveStart);
+  assert.deepEqual(plain(upgraded.riskCalls), plain(first.riskCalls));
+});
+
 function harness(options = {}) {
   let durable = options.durable ?? null;
   const writes = [];
@@ -62,7 +81,7 @@ function harness(options = {}) {
     return [];
   };
   const context = vm.createContext({
-    ...reliability, ...active, Date, JSON, Promise,
+    ...reliability, ...active, Date, JSON, Promise, SELECTIVE_ENTRY_ID: 'ENTRY_SELECTIVE_V2',
     sql: async () => db,
     freshLearner: () => ({ window_memory: {}, settle_tape: [] }),
     freshWatchdog: () => ({}),

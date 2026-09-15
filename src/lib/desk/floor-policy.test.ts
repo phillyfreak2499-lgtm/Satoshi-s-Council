@@ -13,7 +13,9 @@ import {
   exitCandidatesForEntry,
   ENTRY_80_V1,
   ENTRY_SELECTIVE_V1,
+  ENTRY_SELECTIVE_V2,
   FLOOR_SELECTIVE_V1,
+  FLOOR_SELECTIVE_V2,
   FLOOR_V1,
   RISK_NONE_V1,
   SAFE_FALLBACK_POLICY,
@@ -39,6 +41,7 @@ test("FREEZE: every component's parameters are exactly as defined", () => {
     CHAIR_V1: "CHAIR_V1|signal|source=runChair",
     ENTRY_80_V1: "ENTRY_80_V1|entry|floor_cents=80",
     ENTRY_SELECTIVE_V1: "ENTRY_SELECTIVE_V1|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_calls_per_day=3,max_index_age_s=5,max_losses_per_day=1,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=3,timezone=America/Chicago",
+    ENTRY_SELECTIVE_V2: "ENTRY_SELECTIVE_V2|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=3,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
     HOLD_V1: "HOLD_V1|exit|",
     PROVE120_V1: "PROVE120_V1|exit|horizon_s=120,target_cents=10",
     PROVE180_V1: "PROVE180_V1|exit|horizon_s=180,target_cents=10",
@@ -93,7 +96,8 @@ test("the named entry policy agrees with the live floor constant", () => {
 });
 
 test("the safe fallback keeps the owner's stricter admission; the original policy remains distinct", () => {
-  assert.equal(SAFE_FALLBACK_POLICY, FLOOR_SELECTIVE_V1.policy_id);
+  assert.equal(SAFE_FALLBACK_POLICY, FLOOR_SELECTIVE_V2.policy_id);
+  assert.equal(FLOOR_SELECTIVE_V2.entry_policy, ENTRY_SELECTIVE_V2.id);
   assert.equal(FLOOR_SELECTIVE_V1.entry_policy, ENTRY_SELECTIVE_V1.id);
   assert.equal(FLOOR_V1.entry_policy, ENTRY_80_V1.id);
 });

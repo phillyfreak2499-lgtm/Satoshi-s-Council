@@ -26,7 +26,7 @@ import {
   type PricePoint,
   type Side,
 } from "./exit-arena";
-import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, FLOOR_SELECTIVE_V1, type Component, type FloorPolicyVersion } from "./floor-policy";
+import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, FLOOR_SELECTIVE_V1, FLOOR_SELECTIVE_V2, type Component, type FloorPolicyVersion } from "./floor-policy";
 
 /**
  * The research version stamped on every observation.
@@ -70,7 +70,7 @@ export async function activeChampion(): Promise<FloorPolicyVersion> {
         from desk_floor_policy where status = 'CHAMPION' limit 1
     `;
     const r = rows[0];
-    if (!r || r.policy_id !== FLOOR_SELECTIVE_V1.policy_id) return FLOOR_SELECTIVE_V1;
+    if (!r || r.policy_id !== FLOOR_SELECTIVE_V2.policy_id) return FLOOR_SELECTIVE_V2;
     return {
       policy_id: r.policy_id,
       version: Number(r.version),
@@ -85,7 +85,7 @@ export async function activeChampion(): Promise<FloorPolicyVersion> {
   } catch {
     // The Champion must always be nameable. If it cannot be read, the answer is
     // the last known-good composition, never an improvised one.
-    return FLOOR_SELECTIVE_V1;
+    return FLOOR_SELECTIVE_V2;
   }
 }
 
@@ -112,6 +112,20 @@ export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVer
   // No position, no exit competition. Not a failure — most windows are WAIT.
   if (!w.entry) return 0;
   if (!w.ticker || !(w.closeMs > 0)) return 0;
+  const db = await getSql();
+  // A held pre-V2 fill keeps its historical policy. Never relabel it as a V2 result.
+  if (champion.policy_id === FLOOR_SELECTIVE_V2.policy_id && w.entry.t < Date.parse(champion.prospective_start_at)) {
+    const [previous] = await db<FloorPolicyVersion>`
+      select policy_id, version, signal_policy, entry_policy, exit_policy, risk_policy,
+             created_at::text, prospective_start_at::text, status
+      from desk_floor_policy
+      where policy_id in ('FLOOR_V1', 'FLOOR_SELECTIVE_V1')
+        and prospective_start_at <= ${new Date(w.entry.t).toISOString()}::timestamptz
+      order by prospective_start_at desc limit 1
+    `;
+    if (!previous) return 0; // Missing policy provenance cannot seed new research evidence.
+    champion = previous;
+  }
   // A position opened before activation still belongs to the original entry policy.
   if (champion.policy_id === FLOOR_SELECTIVE_V1.policy_id && w.entry.t < Date.parse(champion.prospective_start_at)) {
     champion = FLOOR_V1;
@@ -121,7 +135,6 @@ export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVer
   const rows = runArena(exitCandidatesForEntry(w.entry.t), w.entry, w.path, w.winner);
   if (!rows.length) return 0;
 
-  const db = await getSql();
   const entryFee = takerFeeCents(w.entry.cents);
   const fillKey = fillKeyOf(w.ticker, w.closeMs, w.entry.t);
 
