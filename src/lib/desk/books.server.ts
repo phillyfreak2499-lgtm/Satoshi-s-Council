@@ -10,6 +10,7 @@ import { ledgerGaps } from "./reliability";
  * splits at the 70¢ floor. Times are grouped in Chicago, the floor's clock.
  */
 import { CHAIR_FLOOR_SINCE_ISO, FLOOR_LIVE_CENTS, FLOOR_LIVE_SINCE, FLOOR_SHADOW_CENTS } from "./book-floor";
+import { SELECTIVE_FROZEN_AT } from "./selective-entry";
 import { bookedSideOf } from "./booked-side";
 import { breakevenPct, mergeShelves, type Shelf, type ShelfRow } from "./books-math";
 
@@ -117,6 +118,7 @@ export type Keeper = { all: KeeperStats; week: KeeperStats };
  */
 export type FloorTrial = {
   since: string;
+  until?: string;
   live_cents: number;
   shadow_cents: number;
   /** Windows closed since the trial began. */
@@ -415,7 +417,8 @@ async function build(): Promise<Books> {
 async function floorTrial(db: Awaited<ReturnType<typeof sql>>): Promise<FloorTrial | null> {
   try {
     const [r] = await db<Record<string, number | null>>`
-      with t as (select * from desk_ledger_research where close_time >= ${FLOOR_LIVE_SINCE}::timestamptz)
+      with t as (select * from desk_ledger_research where close_time >= ${FLOOR_LIVE_SINCE}::timestamptz
+        and close_time < ${SELECTIVE_FROZEN_AT}::timestamptz)
       select
         count(*)::int as windows,
         (count(*) filter (where winner = 'UP'))::int as ups,
@@ -445,6 +448,7 @@ async function floorTrial(db: Awaited<ReturnType<typeof sql>>): Promise<FloorTri
     });
     return {
       since: FLOOR_LIVE_SINCE,
+      until: SELECTIVE_FROZEN_AT,
       live_cents: FLOOR_LIVE_CENTS,
       shadow_cents: FLOOR_SHADOW_CENTS,
       windows,

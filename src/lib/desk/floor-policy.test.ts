@@ -12,6 +12,8 @@ import {
   EXIT_TAKE90_V2,
   exitCandidatesForEntry,
   ENTRY_80_V1,
+  ENTRY_SELECTIVE_V1,
+  FLOOR_SELECTIVE_V1,
   FLOOR_V1,
   RISK_NONE_V1,
   SAFE_FALLBACK_POLICY,
@@ -36,6 +38,7 @@ test("FREEZE: every component's parameters are exactly as defined", () => {
   const EXPECTED: Record<string, string> = {
     CHAIR_V1: "CHAIR_V1|signal|source=runChair",
     ENTRY_80_V1: "ENTRY_80_V1|entry|floor_cents=80",
+    ENTRY_SELECTIVE_V1: "ENTRY_SELECTIVE_V1|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_calls_per_day=3,max_index_age_s=5,max_losses_per_day=1,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=3,timezone=America/Chicago",
     HOLD_V1: "HOLD_V1|exit|",
     PROVE120_V1: "PROVE120_V1|exit|horizon_s=120,target_cents=10",
     PROVE180_V1: "PROVE180_V1|exit|horizon_s=180,target_cents=10",
@@ -89,8 +92,10 @@ test("the named entry policy agrees with the live floor constant", () => {
   assert.equal(Number(ENTRY_80_V1.params.floor_cents), FLOOR_LIVE_CENTS);
 });
 
-test("the safe fallback is the composition whose behaviour is the unchanged desk", () => {
-  assert.equal(SAFE_FALLBACK_POLICY, FLOOR_V1.policy_id);
+test("the safe fallback keeps the owner's stricter admission; the original policy remains distinct", () => {
+  assert.equal(SAFE_FALLBACK_POLICY, FLOOR_SELECTIVE_V1.policy_id);
+  assert.equal(FLOOR_SELECTIVE_V1.entry_policy, ENTRY_SELECTIVE_V1.id);
+  assert.equal(FLOOR_V1.entry_policy, ENTRY_80_V1.id);
 });
 
 test("a policy resolves to four frozen definitions and reads plainly", () => {

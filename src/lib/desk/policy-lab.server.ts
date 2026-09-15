@@ -26,7 +26,7 @@ import {
   type PricePoint,
   type Side,
 } from "./exit-arena";
-import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, type Component, type FloorPolicyVersion } from "./floor-policy";
+import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, FLOOR_SELECTIVE_V1, type Component, type FloorPolicyVersion } from "./floor-policy";
 
 /**
  * The research version stamped on every observation.
@@ -70,7 +70,7 @@ export async function activeChampion(): Promise<FloorPolicyVersion> {
         from desk_floor_policy where status = 'CHAMPION' limit 1
     `;
     const r = rows[0];
-    if (!r) return FLOOR_V1;
+    if (!r || r.policy_id !== FLOOR_SELECTIVE_V1.policy_id) return FLOOR_SELECTIVE_V1;
     return {
       policy_id: r.policy_id,
       version: Number(r.version),
@@ -85,7 +85,7 @@ export async function activeChampion(): Promise<FloorPolicyVersion> {
   } catch {
     // The Champion must always be nameable. If it cannot be read, the answer is
     // the last known-good composition, never an improvised one.
-    return FLOOR_V1;
+    return FLOOR_SELECTIVE_V1;
   }
 }
 
@@ -112,6 +112,10 @@ export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVer
   // No position, no exit competition. Not a failure — most windows are WAIT.
   if (!w.entry) return 0;
   if (!w.ticker || !(w.closeMs > 0)) return 0;
+  // A position opened before activation still belongs to the original entry policy.
+  if (champion.policy_id === FLOOR_SELECTIVE_V1.policy_id && w.entry.t < Date.parse(champion.prospective_start_at)) {
+    champion = FLOOR_V1;
+  }
 
   // A recovered older fill cannot seed a newly defined candidate's evidence.
   const rows = runArena(exitCandidatesForEntry(w.entry.t), w.entry, w.path, w.winner);
