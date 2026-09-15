@@ -22,7 +22,7 @@
  * (ticker, close_time, snapshot_kind) stays the final authority on idempotence.
  * Nothing here reads a fill, a grade, a replay point, or a current quote.
  */
-import { measureHigherTimeframeContext, type HigherTimeframeContext } from "./higher-timeframe-context";
+import { measureHigherTimeframeContext, type HigherTimeframeContext } from "./higher-timeframe-context.ts";
 import type { ChairResult, Lean, Snapshot } from "./types";
 
 export type SnapshotKind = "OPENING" | "FIRST_DIRECTIONAL";
