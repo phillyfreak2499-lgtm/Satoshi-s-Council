@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { readScalp, scalpAvg } from "./scalp";
 import { SEAT_IDS, type SeatId, type SkillCard, type Snapshot, type Vote } from "./types";
+import type { PublicSkillScoreAudit } from "./skill-score-audit.server";
 
 export type PublicSeatSnapshot = {
   snap: Snapshot | null;
@@ -11,6 +12,7 @@ export type PublicSeatSnapshot = {
   avg_cents: number | null;
   calls: number;
   skills: SkillCard[];
+  score_audit?: PublicSkillScoreAudit | null;
 };
 
 /** Read-only persisted evidence for one public seat page. */
@@ -23,6 +25,8 @@ export const publicSeatSnapshot = createServerFn({ method: "GET" })
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
     const learner = frame.learner;
+    const scoreAudit = seat === "DRIFT" || seat === "PULSE"
+      ? await (await import("./skill-score-audit.server")).skillScoreAuditSnapshot() : null;
 
     return {
       snap: frame.snap,
@@ -33,5 +37,6 @@ export const publicSeatSnapshot = createServerFn({ method: "GET" })
       avg_cents: scalpAvg(readScalp(learner, seat).legs),
       calls: learner.seat_calls?.[seat] ?? 0,
       skills: Object.values(learner.skills).filter((skill) => skill.owner === seat),
+      score_audit: scoreAudit,
     };
   });
