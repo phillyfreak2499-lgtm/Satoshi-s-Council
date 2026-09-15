@@ -6,12 +6,13 @@ import ts from "typescript";
 import { bookable, bookableShadow, paperBookEdgeOk, paperBookTeamOk } from "./book-floor.ts";
 import { takerFeeCents } from "./clock.ts";
 import { markSide } from "./scalp.ts";
+import { captureEntrySkillRoster } from "./entry-skill-roster.ts";
 import {
   chicagoDay, dailyAdmission, hasPaperPosition, restoreRiskCalls, selectiveBlock, selectiveBookOk,
   selectiveChair, settleRiskCalls, SELECTIVE_PARAMS, type SelectiveContext,
   profitRiskBlock,
 } from "./selective-entry.ts";
-import type { CallLogRow, ChairResult, SeatId, Snapshot } from "./types";
+import type { CallLogRow, ChairResult, SeatId, Snapshot, Vote } from "./types";
 
 const now = Date.parse("2026-09-16T15:05:00Z");
 const snap = (extra: Partial<Snapshot> = {}): Snapshot => ({
@@ -202,7 +203,7 @@ function bookingHarness(saveOk = true) {
   assert.equal(functions.length, names.size);
   const events: string[] = [];
   const scope = { bookable, bookableShadow, paperBookEdgeOk, paperBookTeamOk, selectiveBookOk,
-    hasPaperPosition, restoreRiskCalls, settleRiskCalls, markSide, takerFeeCents,
+    hasPaperPosition, restoreRiskCalls, settleRiskCalls, markSide, takerFeeCents, captureEntrySkillRoster,
     process: { env: {} }, persistState: async () => { events.push("saved"); return saveOk; },
     notifyCall: () => events.push("notified"),
   };
@@ -210,7 +211,7 @@ function bookingHarness(saveOk = true) {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText;
   const api = vm.runInNewContext(`${code}\n({noteCall,settleCallLog})`, scope) as {
-    noteCall: (e: ReturnType<typeof engine>, s: Snapshot, c: ChairResult) => Promise<void>;
+    noteCall: (e: ReturnType<typeof engine>, s: Snapshot, c: ChairResult, votes: Vote[]) => Promise<void>;
     settleCallLog: (e: ReturnType<typeof engine>, ticker: string, close: number, winner: string) => void;
   };
   return { api, events };
@@ -220,31 +221,47 @@ const engine = () => ({ callLog: [] as CallLogRow[], riskCalls: [] as CallLogRow
 
 test("actual booking path refuses the single-seat regression with positive model edge", async () => {
   const { api, events } = bookingHarness(); const e = engine();
-  await api.noteCall(e, snap(), chair({ quorum: { up: 1, down: 0, wait: 17 } }));
+  await api.noteCall(e, snap(), chair({ quorum: { up: 1, down: 0, wait: 17 } }), []);
   assert.equal(e.callLog.length, 0); assert.equal(e.riskCalls.length, 0);
   assert.deepEqual(Object.keys(e.shadowFills), []); assert.deepEqual(events, []);
 });
 test("actual booking path rejects a deteriorated index quote after confirmation", async () => {
   const { api, events } = bookingHarness(); const e = engine();
-  await api.noteCall(e, snap({ lab_fair_yes: 80 }), chair());
+  await api.noteCall(e, snap({ lab_fair_yes: 80 }), chair(), []);
   assert.equal(e.callLog.length, 0); assert.deepEqual(events, []);
 });
 test("actual booking records and saves once before notification; clear display cannot reopen the position", async () => {
   const { api, events } = bookingHarness(); const e = engine(); const s = snap();
-  await api.noteCall(e, s, chair());
+  await api.noteCall(e, s, chair(), []);
   assert.equal(e.callLog.length, 1); assert.equal(e.riskCalls.length, 1);
   assert.deepEqual(events, ["saved", "notified"]);
   e.callLog = []; e.lastCall = null;
-  await api.noteCall(e, s, chair());
+  await api.noteCall(e, s, chair(), []);
   assert.equal(e.callLog.length, 0); assert.equal(e.riskCalls.length, 1);
   api.settleCallLog(e, s.ticker, s.close_time, "DOWN");
   assert.equal(e.riskCalls[0]!.settle, 0);
   assert.equal(dailyAdmission(e.riskCalls, s.close_time + 1000).net_cents, -84);
   assert.equal(dailyAdmission(e.riskCalls, s.close_time + 1000).reason, null);
 });
+test("booked receipt uses this tick's card, Chair contribution and entry clock", async () => {
+  const { api } = bookingHarness(); const e = engine(); const s = snap();
+  const v = { seat: "STREAK", skill_used: "STREAK.read", skill_status: "LIVE",
+    lean: "UP", confidence: 68, paper: [] } as unknown as Vote;
+  const c = chair({ rows: [{ ...chair().rows[0]!, seat: "STREAK", skill_used: "STREAK.read",
+    lean: "UP", status: "LIVE", contribution: 0.5 }, ...chair().rows.slice(1)] });
+  await api.noteCall(e, s, c, [v]);
+  const entry = Object.values(e.entryState)[0] as { entry_roster: { entry_at_ms: number;
+    seat_reads: { selected_skill: string; selected_status: string }[];
+    chair_rows: { skill_used: string; contribution: number | null }[] } };
+  assert.equal(e.callLog.length, 1);
+  assert.equal(entry.entry_roster.entry_at_ms, s.as_of);
+  assert.equal(entry.entry_roster.seat_reads[0]!.selected_skill, "STREAK.read");
+  assert.equal(entry.entry_roster.seat_reads[0]!.selected_status, "LIVE");
+  assert.equal(entry.entry_roster.chair_rows[0]!.contribution, 0.5);
+});
 test("failed durable save publishes no call and disables new admission", async () => {
   const { api, events } = bookingHarness(false); const e = engine();
-  await api.noteCall(e, snap(), chair());
+  await api.noteCall(e, snap(), chair(), []);
   assert.deepEqual(events, ["saved"]); assert.equal(e.riskReady, false);
 });
 test("net-based policy has no fixed call quota or one-loss stop", () => {
@@ -327,14 +344,14 @@ test("many settled calls with sufficient cents are not blocked by a hidden quota
 test("production booking boundary enforces profit reserve after confirmation", async () => {
   const { api, events } = bookingHarness(); const e = engine();
   e.riskCalls = history([90, 90, 90, 90, 90]);
-  await api.noteCall(e, snap(), chair());
+  await api.noteCall(e, snap(), chair(), []);
   assert.equal(e.callLog.length, 0); assert.deepEqual(events, []);
 });
 
 test("production booking after a single loss remains possible when the setup qualifies", async () => {
   const { api, events } = bookingHarness(); const e = engine();
   e.riskCalls = history([82], [0]);
-  await api.noteCall(e, snap(), chair());
+  await api.noteCall(e, snap(), chair(), []);
   assert.equal(e.callLog.length, 1); assert.deepEqual(events, ["saved", "notified"]);
 });
 
