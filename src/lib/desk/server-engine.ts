@@ -13,6 +13,7 @@ import { readClock, takerFeeCents } from "./clock";
 import { isCountable } from "./research-quality";
 import { beginSkillScoreAudit, finishSkillScoreAudit, withSkillAuditColumn, type SkillScoreAudit } from "./skill-score-audit";
 import { captureEntrySkillRoster, withEntrySkillRosterColumn } from "./entry-skill-roster";
+import { evaluateEntrySkillQuality, withEntrySkillQualityColumn } from "./entry-skill-quality";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -618,7 +619,7 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
     touch_size: Math.round(Number(touch) || 0),
     fee_cents: takerFeeCents(cents),
     build_sha: runningBuildSha(),
-    entry_roster: captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha()),
+    entry_roster: captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha(), takerFeeCents),
   };
   const keys = Object.keys(e.entryState);
   if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
@@ -769,11 +770,11 @@ const LEDGER_COLUMNS =
   "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
   "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
   "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents, " +
-  "entry_lean, entry_build_sha, skill_score_audit, entry_skill_roster)";
+  "entry_lean, entry_build_sha, skill_score_audit, entry_skill_roster, entry_skill_quality)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
   "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
-  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb,$43::jsonb) " +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb,$43::jsonb,$44::jsonb) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -868,6 +869,11 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     booked && entry?.entry_roster && entry.entry_roster.ticker === snap.ticker &&
       entry.entry_roster.close_time_ms === snap.close_time && entry.entry_roster.side === booked.lean
       ? JSON.stringify(entry.entry_roster) : null,
+    booked && entry?.entry_roster && entry.entry_roster.ticker === snap.ticker &&
+      entry.entry_roster.close_time_ms === snap.close_time && entry.entry_roster.side === booked.lean &&
+      isCountable(snap.close_time)
+      ? (() => { const quality = evaluateEntrySkillQuality(entry.entry_roster, finish, source);
+          return quality == null ? null : JSON.stringify(quality); })() : null,
   ];
   return { ticker: snap.ticker, close_time: snap.close_time, values };
 }
@@ -876,7 +882,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
 function ledgerIO(db: Sql): PersistIO {
   return {
     write: async (r) => {
-      await db.query(LEDGER_INSERT, withEntrySkillRosterColumn(withSkillAuditColumn(r.values)));
+      await db.query(LEDGER_INSERT, withEntrySkillQualityColumn(withEntrySkillRosterColumn(withSkillAuditColumn(r.values))));
     },
     verify: async (r) => {
       const rows = await db.query<{ n: number }>(

@@ -1,7 +1,7 @@
 /** Immutable research receipt for the exact tick that booked a paper position. */
 import type { ChairResult, Snapshot, Vote } from "./types";
 
-export const ENTRY_SKILL_ROSTER_VERSION = "ENTRY_SKILL_ROSTER_V1";
+export const ENTRY_SKILL_ROSTER_VERSION = "ENTRY_SKILL_ROSTER_V2";
 
 export type EntrySkillRoster = {
   version: typeof ENTRY_SKILL_ROSTER_VERSION;
@@ -13,6 +13,8 @@ export type EntrySkillRoster = {
   side: "UP" | "DOWN";
   ask_cents: number;
   fee_cents: number;
+  /** Both sides observed on the same tick. Null means no executable quote. */
+  book: { yes_bid_cents: number | null; yes_ask_cents: number | null; no_bid_cents: number | null; no_ask_cents: number | null; yes_fee_cents: number | null; no_fee_cents: number | null };
   quote_age_s: number | null;
   quote_seq: number | null;
   regime: string;
@@ -25,9 +27,15 @@ function numberOrNull(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+function executableAsk(v: unknown): number | null {
+  const n = numberOrNull(v);
+  return n != null && n > 0 && n < 100 ? n : null;
+}
+
 /** Receives this tick's votes explicitly. The engine's lastVotes are from the previous tick. */
 export function captureEntrySkillRoster(
   snap: Snapshot, chair: ChairResult, votes: readonly Vote[], cents: number, fee: number, buildSha: string,
+  feeForAsk: (ask: number) => number = () => NaN,
 ): EntrySkillRoster | null {
   if (chair.lean !== "UP" && chair.lean !== "DOWN") return null;
   return {
@@ -35,6 +43,12 @@ export function captureEntrySkillRoster(
     confidence_kind: "signal_strength_not_calibrated_probability",
     ticker: snap.ticker, close_time_ms: snap.close_time, entry_at_ms: snap.as_of,
     side: chair.lean, ask_cents: cents, fee_cents: fee,
+    book: {
+      yes_bid_cents: executableAsk(snap.yes_bid), yes_ask_cents: executableAsk(snap.yes_ask),
+      no_bid_cents: executableAsk(snap.no_bid), no_ask_cents: executableAsk(snap.no_ask),
+      yes_fee_cents: executableAsk(snap.yes_ask) == null ? null : numberOrNull(feeForAsk(snap.yes_ask)),
+      no_fee_cents: executableAsk(snap.no_ask) == null ? null : numberOrNull(feeForAsk(snap.no_ask)),
+    },
     quote_age_s: snap.quote_ts > 0 ? numberOrNull(snap.quote_age_s) : null,
     quote_seq: snap.quote_seq > 0 ? snap.quote_seq : null,
     regime: snap.regime_key ?? "", build_sha: buildSha,
