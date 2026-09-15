@@ -244,7 +244,6 @@ function sitUnlessSure(v: Vote, ctx: BotCtx): Vote {
     v.raw_lean = v.lean;
     v.raw_conf = v.confidence;
   }
-  if (v.lean === "WAIT") return v;
   const retired = RETIRED_SEATS[v.seat];
   if (retired) {
     return {
@@ -255,6 +254,7 @@ function sitUnlessSure(v: Vote, ctx: BotCtx): Vote {
       reasoning: `${v.reasoning} · ${retired}`,
     };
   }
+  if (v.lean === "WAIT") return v;
   const k = ctx.learner.knobs?.[v.seat];
   if (k && k.benched_until > ctx.snap.as_of) {
     return {
