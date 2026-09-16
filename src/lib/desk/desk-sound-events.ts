@@ -60,6 +60,8 @@ export function observeDeskSounds(cursor: SoundCursor, frame: SoundFrame, now: n
   const rows = new Map<string, number | null>();
   for (const row of frame.call_log) {
     if (!/^KXBTC15M-/.test(row.ticker) || !finite(row.close_time) || !finite(row.t)
+      || row.close_time < now - 4 * 60 * 60_000 || row.close_time > now + 16 * 60_000
+      || row.t < row.close_time - 15 * 60_000 || row.t >= row.close_time
       || !directional(row.lean) || !finite(row.cents) || row.cents <= 0 || row.cents >= 100
       || !(row.settle === null || row.settle === 0 || row.settle === 100)) continue;
     const key = windowKey(row.ticker, row.close_time);
