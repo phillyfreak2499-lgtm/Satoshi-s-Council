@@ -161,6 +161,10 @@
   background: #f0eee3;
   box-shadow: 0 1px 1px #0008;
 }
+/* The gauge already communicates threshold state. Hide the redundant threshold
+   status pill and the bar-gate pill directly beneath it; independent blockers remain. */
+.chair-signal + .mt-2 > span:first-child { display: none; }
+.chair-signal + .mt-2 > span[title*="bar" i] { display: none; }
 .chair-signal[data-animating="false"] .chair-signal__liquid { animation-play-state: paused; }
 .chair-signal[data-available="false"] .chair-signal__tube { opacity: .35; filter: grayscale(1); }
 .chair-signal[data-reduced="true"] .chair-signal__pause { display: none; }
