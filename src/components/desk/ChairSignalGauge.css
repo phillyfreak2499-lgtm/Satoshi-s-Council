@@ -188,3 +188,10 @@
   .chair-signal__tick, .chair-signal__marker { background: CanvasText; }
   .chair-signal__end { color: CanvasText; }
 }
+
+/* The gauge already communicates the bar gate and its distance. Keep the row
+   beneath it for independent blockers (feed, lock, split, spread, edge, etc.). */
+.chair-signal + .mt-2 > span:first-child,
+.chair-signal + .mt-2 > span[title*="confluence bar"] {
+  display: none;
+}
