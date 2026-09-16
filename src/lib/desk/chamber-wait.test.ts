@@ -14,9 +14,10 @@ import { plainLine } from "./chair-words.ts";
 import { whyFacts } from "./floor-clarity.ts";
 import { booksSeatEvidence, chairRoster, compareRosters, quorumCheck, readRoster } from "./roster-evidence.ts";
 import { withBooksRoster } from "./chamber-roster.ts";
+import { countChairQuorum } from "./council-authority.ts";
 import type { PublicSystemEvent } from "./system-events.ts";
 import { validateSystemEvent } from "./system-events.ts";
-import type { ChairResult, Gate, Snapshot } from "./types.ts";
+import type { ChairResult, Gate, SeatId, Snapshot, Vote } from "./types.ts";
 
 const T0 = Date.parse("2026-09-11T17:05:00Z");
 const TICKER = "KXBTC15M-26SEP111800-00";
@@ -284,6 +285,79 @@ test("roster check survives a stored-event round trip without altering the Chair
   assert.equal(statement.evidence.roster_check?.status, "MATCH");
   assert.deepEqual(statement.evidence.roster?.members.map((m) => m.seat), ["FADE", "STRIKE", "TAPE", "WICK"]);
   assert.deepEqual(c, before);
+});
+
+test("forced sits are not WAIT voters in a saved Chamber roster", () => {
+  const rows = [
+    { seat: "TAPE", lean: "UP", status: "LIVE", forced_sit: false },
+    { seat: "STRIKE", lean: "DOWN", status: "LIVE", folded: true, forced_sit: false },
+    { seat: "FADE", lean: "WAIT", status: "LIVE", forced_sit: false },
+    { seat: "WHALE", lean: "WAIT", status: "LIVE", forced_sit: true },
+    { seat: "WICK", lean: "WAIT", status: "UNCALIBRATED", forced_sit: true },
+    { seat: "ODDS", lean: "DOWN", status: "MUTED", forced_sit: false },
+    { seat: "WARDEN", lean: "WAIT", status: "LIVE", forced_sit: false },
+    { seat: "ORBIT", lean: "WAIT", status: "LIVE", forced_sit: false },
+    { seat: "WIRE", lean: "WAIT", status: "LIVE", forced_sit: false },
+  ] as ChairResult["rows"];
+  const quorum = countChairQuorum(rows as unknown as Vote[], new Set<SeatId>(["ODDS"]),
+    new Set<SeatId>(["WARDEN", "ORBIT", "WIRE"]));
+  assert.deepEqual(quorum, { up: 1, down: 1, wait: 1 });
+  const c = chair({ rows, quorum });
+  const s = snap();
+  const before = structuredClone({ c, s, waiting });
+  const event = asPublic(maybeChairWaitEvent(c, s, waiting));
+  const statement = statementFromEvent(JSON.parse(JSON.stringify(event)))!;
+  assert.equal(statement.evidence.roster_check?.status, "MATCH");
+  assert.deepEqual(statement.evidence.roster?.members, [
+    { seat: "FADE", lean: "WAIT" }, { seat: "STRIKE", lean: "DOWN" }, { seat: "TAPE", lean: "UP" },
+  ]);
+  assert.deepEqual(statement.evidence.quorum, quorum);
+  assert.equal(statement.text, plainLine(c, s, waiting));
+  assert.doesNotMatch(statement.text, /withheld/);
+  assert.deepEqual({ c, s, waiting }, before, "presentation never rewrites the finalized inputs");
+});
+
+test("roster membership matches Chair quorum for every side, status and forced-sit flag", () => {
+  const nonVoters = new Set<SeatId>(["WARDEN", "ORBIT", "WIRE"]);
+  for (const seat of ["TAPE", "WARDEN", "ORBIT", "WIRE"] as const) {
+    for (const lean of ["UP", "DOWN", "WAIT"] as const) {
+      for (const status of ["LIVE", "MUTED", "VETO", "DOWN", "UNCALIBRATED", "FADED"] as const) {
+        for (const forced_sit of [true, false, undefined]) {
+          const row = { seat, lean, status, forced_sit };
+          const muted = new Set<SeatId>(status === "MUTED" ? [seat] : []);
+          const quorum = countChairQuorum([row as Vote], muted, nonVoters);
+          const roster = chairRoster(snap(), chair({ rows: [row] as ChairResult["rows"], quorum }));
+          assert.equal(quorumCheck(roster, quorum).status, "MATCH", JSON.stringify(row));
+        }
+      }
+    }
+  }
+});
+
+test("all forced sits produce an empty verified roster, not missing evidence or WAIT votes", () => {
+  const c = chair({ quorum: { up: 0, down: 0, wait: 0 }, rows: [
+    { seat: "WHALE", lean: "WAIT", status: "LIVE", forced_sit: true },
+    { seat: "WICK", lean: "WAIT", status: "UNCALIBRATED", forced_sit: true },
+  ] as ChairResult["rows"] });
+  const statement = statementFromEvent(asPublic(maybeChairWaitEvent(c, snap(), waiting)))!;
+  assert.deepEqual(statement.evidence.roster?.members, []);
+  assert.deepEqual(statement.evidence.quorum, { up: 0, down: 0, wait: 0 });
+  assert.equal(statement.evidence.roster_check?.status, "MATCH");
+});
+
+test("an already-saved incorrect roster remains withheld and is never silently repaired", () => {
+  const event = asPublic(maybeChairWaitEvent(rosterChair(), snap(), waiting));
+  const roster = readRoster(event.payload.roster)!;
+  event.payload.roster = { ...roster, members: [...roster.members, { seat: "WHALE", lean: "WAIT" }] };
+  event.payload.text = "The Chair is waiting. Agreement claim withheld: counts disagree with the saved seat roster.";
+  const before = structuredClone(event);
+  const statement = statementFromEvent(event)!;
+  assert.equal(statement.evidence.roster_check?.status, "MISMATCH");
+  assert.equal(statement.evidence.quorum, null);
+  assert.match(statement.text, /withheld/);
+  assert.equal(statement.original_text, before.payload.text);
+  assert.deepEqual(statement.evidence.roster, readRoster(event.payload.roster));
+  assert.deepEqual(event, before, "no guessing which historical WAIT member was forced to sit");
 });
 
 test("wrong count or wrong roster clock suppresses the public agreement claim", () => {

@@ -562,6 +562,7 @@ export function runChair(
         seat: a.vote.seat,
         callsign: SEAT_BY_ID[a.vote.seat].callsign,
         lean: a.vote.lean,
+        forced_sit: a.vote.forced_sit === true,
         conf: a.vote.confidence,
         skill_used: a.vote.skill_used,
         base_w: a.base,
