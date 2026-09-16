@@ -1,10 +1,14 @@
 /** Render health check. Also the shared brain's heartbeat: Render pings this
  *  from boot, so kicking the engine here keeps the desk ticking with zero
- *  tabs open. The kick is fire-and-forget — health stays instant and cannot
- *  be failed by feeds or the database. */
+ *  tabs open. Research observers boot BESIDE the engine and have no return path
+ *  into it. Every kick is fire-and-forget — health stays instant and cannot be
+ *  failed by feeds, research, or the database. */
 export default function healthz() {
   void import("../../src/lib/desk/server-engine")
     .then((m) => m.ensureServerEngine())
+    .catch(() => {});
+  void import("../../src/lib/desk/chair-v3-prospective.server")
+    .then((m) => m.ensureChairV3ProspectiveObserver())
     .catch(() => {});
   return new Response("ok", {
     status: 200,

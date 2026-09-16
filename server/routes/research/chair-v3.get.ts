@@ -1,4 +1,4 @@
-/** Admin-only read of Chair v3 shadow research. No writes and no decision authority. */
+/** Admin-only read of Chair v3 shadow research. No decision authority. */
 export default async function chairV3Research(event: { url: URL; req: { headers: Headers } }) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body, null, 2), {
     status,
@@ -8,8 +8,12 @@ export default async function chairV3Research(event: { url: URL; req: { headers:
     const { adminKeyOk } = await import("../../../src/lib/desk/admin.server");
     const key = event.url.searchParams.get("key") ?? event.req.headers.get("x-desk-admin") ?? "";
     if (!adminKeyOk(key)) return new Response("not found", { status: 404 });
-    const { chairV3Snapshot } = await import("../../../src/lib/desk/chair-v3.server");
-    return json(await chairV3Snapshot());
+    const [{ chairV3Snapshot }, { chairV3ProspectiveSnapshot }] = await Promise.all([
+      import("../../../src/lib/desk/chair-v3.server"),
+      import("../../../src/lib/desk/chair-v3-prospective.server"),
+    ]);
+    const [historical, prospective] = await Promise.all([chairV3Snapshot(), chairV3ProspectiveSnapshot()]);
+    return json({ ...historical, prospective });
   } catch (err) {
     return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
   }
