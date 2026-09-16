@@ -450,7 +450,7 @@ function OvernightRibbon({ brief, tz }: { brief: Brief | null; tz: string }) {
 function ChairScoreboard({ v2 }: { v2?: V2Frame | null }) {
   const st = v2?.stats ?? null;
   const cents = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(0)}¢`);
-  const brier = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(3));
+  const brier = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : n.toFixed(3));
   const bothBrier = st && st.brier_v2 != null && st.brier_market != null;
   return (
     <section aria-label="Chair record" className="rounded-md border border-border bg-surface px-3 py-2 font-mono text-micro">
@@ -949,7 +949,7 @@ export function SatoshiTab({
             </div>
             <div>
               conflict-frac {chair.conflict_frac.toFixed(2)} → ×
-              {(1 - 0.7 * chair.conflict_frac).toFixed(3)}
+              {(1 - 0.7 * chair.conflict_frac).toFixed(2)}
             </div>
             <div>confluence bar {chair.bar.toFixed(2)} (floor 0.24 / ceil 0.72)</div>
             <div>aggressiveness ×{chair.aggressiveness.toFixed(2)}</div>
