@@ -28,6 +28,10 @@ export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): 
     if (book.kind === "floor") {
       return `${seats(n)} lean ${lean}, but ${sideOf(lean)} is ${ask.toFixed(0)}¢, under the ${CHAIR_MIN_ASK_CENTS}¢ floor, so nothing is booked.`;
     }
+    const selective = chair.gates.find((g) => g.id === "selective");
+    if (selective && !selective.pass) {
+      return `${seats(n)} lean ${lean} and the Chair read stands, but the paper entry waits: ${selective.value}.`;
+    }
     return `${seats(n)} lean ${lean} and ${sideOf(lean)} at ${ask.toFixed(0)}¢ clears the floor, so the book fills on the next tick.`;
   }
 
