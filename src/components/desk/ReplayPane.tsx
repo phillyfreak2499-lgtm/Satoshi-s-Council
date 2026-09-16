@@ -45,6 +45,19 @@ function bookedSide(c: Replay["cols"]): "UP" | "DOWN" | null {
   return any == null ? null : any > 0 ? "UP" : "DOWN";
 }
 
+/** First directional Chair read actually recorded in the replay. This is a
+ *  prospective frame from the window itself — never reconstructed from the
+ *  winner or settlement. A read can exist even when the paper book SKIPPED it. */
+function firstChairRead(c: Replay["cols"]): { index: number; lean: "UP" | "DOWN"; conf: number } | null {
+  const index = c.lean.findIndex((v) => v !== 0);
+  if (index < 0) return null;
+  return {
+    index,
+    lean: c.lean[index] > 0 ? "UP" : "DOWN",
+    conf: Math.round(c.conf[index] ?? 0),
+  };
+}
+
 function fmtWhen(iso: string, tz: string): string {
   try {
     return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
@@ -277,8 +290,10 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText("chair", w - PAD_R + 4, bandT + bandH / 2);
-  // booked marker
+  // Paper fill marker, or a separate Chair-read/Paper-SKIP marker when the
+  // directional opinion never became a position.
   const b = c.booked.findIndex((v) => v === 1);
+  const read = firstChairRead(c);
   if (b >= 0) {
     ctx.fillStyle = LINE;
     ctx.beginPath();
@@ -290,7 +305,19 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     const bs = bookedSide(c);
-    ctx.fillText(bs ? `booked ${bs}` : "booked", xs[b] + 6, bandT - 1);
+    ctx.fillText(bs ? `chair ${bs} · paper filled` : "paper filled", xs[b] + 6, bandT - 1);
+  } else if (read) {
+    const rx = xs[read.index] ?? xs[0];
+    ctx.fillStyle = read.lean === "UP" ? UP : DOWN;
+    ctx.beginPath();
+    ctx.moveTo(rx, bandT - 1);
+    ctx.lineTo(rx - 4, bandT - 7);
+    ctx.lineTo(rx + 4, bandT - 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`chair ${read.lean} · paper skip`, rx + 6, bandT - 1);
   }
   cursorLine(ctx, xs[cursor] ?? xs[xs.length - 1], plotT, bandT + bandH);
 }
@@ -428,6 +455,11 @@ export function ReplayPane({
   const dist = r.strike ? spot - r.strike : null;
   const lean = c.lean[i] > 0 ? "UP" : c.lean[i] < 0 ? "DOWN" : "WAIT";
   const side = bookedSide(c);
+  const firstRead = firstChairRead(c);
+  const chairSide = side ?? firstRead?.lean ?? null;
+  const firstReadLeft = firstRead
+    ? (closeMs - (c.t0 + (c.t[firstRead.index] ?? 0) * 1000)) / 1000
+    : null;
   const speaking = Object.entries(c.seats)
     .filter(([, lane]) => Math.abs(lane[i] ?? 0) >= 2)
     .map(([id, lane]) => ({ id, up: (lane[i] ?? 0) > 0 }));
@@ -445,16 +477,28 @@ export function ReplayPane({
           </div>
         </div>
         <div className="rounded-md border border-border bg-surface-2/50 p-2">
-          <div className="uppercase tracking-widest text-subtle">Booked decision</div>
+          <div className="uppercase tracking-widest text-subtle">Chair / paper</div>
           {r.call ? (
             <div className="mt-1 flex flex-wrap items-center gap-1.5 tabular text-muted">
-              {side ? <LeanChip lean={side} /> : <span>position</span>}
+              {chairSide ? <LeanChip lean={chairSide} /> : <span>position</span>}
+              <span className="text-up">Paper FILLED</span>
               <span className={cn(r.call.ev == null ? "text-muted" : r.call.ev > 0 ? "text-up" : r.call.ev < 0 ? "text-down" : "text-muted")}>
                 {r.call.entry.toFixed(0)}¢ → {r.call.settle == null ? "open" : `${r.call.settle.toFixed(0)}¢`} · {fmtC(r.call.ev)}
               </span>
             </div>
+          ) : firstRead ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 tabular text-muted">
+              <LeanChip lean={firstRead.lean} />
+              <span className="text-wait">Paper SKIP</span>
+              <span className="text-subtle">
+                first read {firstReadLeft == null ? "—" : `${fmtLeft(firstReadLeft)} left`} · conf {firstRead.conf}
+              </span>
+            </div>
           ) : (
-            <div className="mt-1 text-subtle">No position · chair sat out</div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-subtle">
+              <LeanChip lean="WAIT" />
+              <span>Paper — · no directional Chair read recorded</span>
+            </div>
           )}
         </div>
         <div className="rounded-md border border-border bg-surface-2/50 p-2">
