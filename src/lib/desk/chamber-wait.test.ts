@@ -325,7 +325,7 @@ test("roster membership matches Chair quorum for every side, status and forced-s
         for (const forced_sit of [true, false, undefined]) {
           const row = { seat, lean, status, forced_sit };
           const muted = new Set<SeatId>(status === "MUTED" ? [seat] : []);
-          const quorum = countChairQuorum([row as Vote], muted, nonVoters);
+          const quorum = countChairQuorum([row as unknown as Vote], muted, nonVoters);
           const roster = chairRoster(snap(), chair({ rows: [row] as ChairResult["rows"], quorum }));
           assert.equal(quorumCheck(roster, quorum).status, "MATCH", JSON.stringify(row));
         }
