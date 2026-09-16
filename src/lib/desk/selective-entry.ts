@@ -162,7 +162,11 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   return null;
 }
 
-/** A candidate must survive distinct fresh ticks; a sticky UI lean cannot qualify by itself. */
+/**
+ * Track entry confirmation without rewriting the Chair's opinion. The selective
+ * gate is intentionally soft in Chair state: it controls whether the paper book
+ * may enter, not whether SATOSHI is allowed to say UP or DOWN.
+ */
 export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: SelectiveContext): { chair: ChairResult; watch: EntryWatch | null } {
   if (hasPaperPosition(ctx.calls, snap)) return { chair, watch: null }; // entry rules never sell an existing position
   let reason = selectiveBlock(snap, chair, ctx);
@@ -181,13 +185,10 @@ export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: Selectiv
         : "waiting for three confirming observations over at least eight seconds";
     }
   }
-  const gate = { id: "selective", label: daily.tightened ? "Tighter mode · daily net reached −100¢" : "Selective mode · no daily call quota · profit protection", hard: true, pass: !reason,
+  const gate = { id: "selective", label: daily.tightened ? "Paper entry · tighter mode after −100¢" : "Paper entry · selective mode", hard: false, pass: !reason,
     value: reason ?? "current team, both models, feeds and daily risk checks passed" };
   const gates = [...chair.gates.filter(g => g.id !== "selective"), gate];
-  if (!reason) return { chair: { ...chair, gates }, watch };
-  return { watch, chair: { ...chair, lean: "WAIT", gates, hard_fail: true,
-    decision: `WAIT · ${reason}`, hypothesis: `Selective mode: ${reason}.`,
-    wait_note: reason, calc: `${chair.calc} · SELECTIVE: ${reason}` } };
+  return { watch, chair: { ...chair, gates } };
 }
 
 /** Recheck at the actual write boundary, including the confirmation latch. */
