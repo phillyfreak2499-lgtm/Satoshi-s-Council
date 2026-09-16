@@ -1,16 +1,16 @@
 /**
- * Client side of the fast lane. Polls GET /pulse every ~1.5s in Live mode and
- * feeds LEAF components only — the engine's 4s DeskFrame pipeline never sees
- * it, so the full tree keeps its slow cadence while spot, the book, and the
- * headline charts move. Honesty rules: out-of-order pulses are dropped, and
- * usePulse() returns null the moment the data stops being provably fresh —
- * every consumer must fall back to the frame snapshot on null.
+ * Client side of the fast lane. Polls GET /pulse every ~1s in Live mode and
+ * feeds LEAF components only — the engine's DeskFrame pipeline never sees it,
+ * so faster display updates cannot change a seat, Chair call or paper fill.
+ * Honesty rules: out-of-order pulses are dropped, and usePulse() returns null
+ * the moment the data stops being provably fresh; consumers fall back to the
+ * frame snapshot on null.
  */
 import { useSyncExternalStore } from "react";
 import type { DeskPulse } from "./server-engine";
 
-const POLL_MS = 1_500;
-const FRESH_MS = 6_000;
+const POLL_MS = 1_000;
+const FRESH_MS = 5_000;
 const MAX_FAILS = 3;
 
 let data: DeskPulse | null = null;
