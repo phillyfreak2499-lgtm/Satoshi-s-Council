@@ -1,4 +1,4 @@
-import { chairDecisionOf } from "./booked-side";
+import { chairDecisionOf } from "./booked-side.ts";
 
 export type GavelPaperStatus = "FILLED" | "SKIPPED" | "NONE";
 
