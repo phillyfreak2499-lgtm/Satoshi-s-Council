@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
 import { GuidedFloor } from "./GuidedFloor";
+import { LiveConnectionNotice } from "./LiveConnectionNotice";
 import { CouncilEntrance, CouncilFocusToggle, CouncilGuides } from "./CouncilExperience";
 import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
@@ -423,6 +424,8 @@ export function DeskApp() {
           </span>
         ) : null}
       </div>
+
+      <LiveConnectionNotice frame={frame} />
 
       {desk ? (
         <div
