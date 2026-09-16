@@ -82,7 +82,7 @@
 }
 .chair-signal__zones {
   position: absolute;
-  inset: 1px;
+  inset: 0;
   border-radius: inherit;
   background: linear-gradient(90deg,
     #542735 0%, #b44a61 15%, #d76575 24.999%,
@@ -171,6 +171,11 @@
 @keyframes chair-liquid-back {
   from { transform: translate3d(4%, 0, 0) scaleY(.9); }
   to { transform: translate3d(-5%, -1px, 0) scaleY(.6); }
+}
+@media (max-width: 380px) {
+  .chair-signal__info { display: none; }
+  .chair-signal__tools { gap: 4px; }
+  .chair-signal__head { gap: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chair-signal__liquid { animation: none; }
