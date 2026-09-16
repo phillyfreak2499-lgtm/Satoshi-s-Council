@@ -1,0 +1,185 @@
+/* Liquid-glass instrument. The track retains the old score bar's 12px height.
+   Only the optical layers drift; the indicator has no autonomous animation. */
+.chair-signal {
+  --signal-red: #df6674;
+  --signal-gold: #d3ad68;
+  --signal-green: #51c999;
+  --signal-ink: #edf4f1;
+  position: relative;
+  min-width: 0;
+  margin-top: 1rem;
+}
+.chair-signal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  height: 16px;
+  margin-bottom: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 16px;
+  color: #b7b6b1;
+}
+.chair-signal__tools { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.chair-signal__help { position: static; }
+.chair-signal__help summary {
+  list-style: none;
+  cursor: help;
+  white-space: nowrap;
+  color: #d4c2a1;
+}
+.chair-signal__help summary::-webkit-details-marker { display: none; }
+.chair-signal__info { opacity: .72; margin-left: 4px; }
+.chair-signal__popover {
+  position: absolute;
+  z-index: 30;
+  top: 24px;
+  left: 0;
+  width: min(340px, 100%);
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #5c503b;
+  border-radius: 8px;
+  background: #15181c;
+  color: #e3dfd5;
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: 0 12px 32px #0009;
+}
+.chair-signal__popover p { margin: 0; }
+.chair-signal__popover p + p { margin-top: 6px; color: #b7b6b1; }
+.chair-signal__pause {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #c8bea8;
+  cursor: pointer;
+}
+.chair-signal__pause::before { content: ""; position: absolute; inset: -4px; }
+.chair-signal__pause:hover { background: #d3ad6820; color: #fff0d3; }
+.chair-signal :is(summary, button):focus-visible { outline: 2px solid #dcc18f; outline-offset: 3px; }
+.chair-signal__value { white-space: nowrap; font-variant-numeric: tabular-nums; color: #c9c9c3; }
+.chair-signal__axis { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; height: 12px; }
+.chair-signal__end { font: 12px/12px var(--font-mono, ui-monospace, monospace); letter-spacing: .02em; }
+.chair-signal__end--down { color: #ed8b94; }
+.chair-signal__end--up { color: #76d7af; }
+.chair-signal__instrument { position: relative; height: 12px; min-width: 0; isolation: isolate; }
+.chair-signal__tube {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #111419;
+  box-shadow: 0 0 0 1px #000c, 0 0 0 2px #a8b6ba20, 0 3px 5px #0007, inset 0 1px 2px #000c;
+}
+.chair-signal__zones {
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(90deg,
+    #542735 0%, #b44a61 15%, #d76575 24.999%,
+    #b18c49 25%, #e1b86b 45%, #e8c580 50%, #b18c49 74.999%,
+    #43b78e 75%, #2b886f 88%, #15433c 100%);
+}
+.chair-signal__zones::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #0006, #fff2 24%, transparent 45%, #0005 72%, #ffffff42 100%);
+}
+.chair-signal__liquid {
+  position: absolute;
+  inset: -10px -25%;
+  background:
+    repeating-radial-gradient(ellipse at 18% -40%, transparent 0 23px, #effffb65 24px 25px, transparent 27px 56px),
+    repeating-radial-gradient(ellipse at 71% 140%, transparent 0 35px, #f4ffef45 37px 38px, transparent 40px 69px);
+  mix-blend-mode: screen;
+  opacity: .32;
+  transform: translate3d(-3%, 0, 0) scaleY(.7);
+  animation: chair-liquid-flow 11s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.chair-signal__liquid--back {
+  opacity: .16;
+  background: repeating-radial-gradient(ellipse at 50% 160%, transparent 0 19px, #fff8 21px 22px, transparent 24px 51px);
+  animation: chair-liquid-back 16s ease-in-out infinite alternate;
+}
+.chair-signal__glass {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(100deg, transparent 0 12%, #fff2 17%, transparent 26% 69%, #fff2 77%, transparent 87%),
+    linear-gradient(180deg, #ffffff78 0, #ffffff32 10%, transparent 40%, #0006 74%, #0003 83%, #ffffff4d 100%);
+  box-shadow: inset 0 1px 0 #ffffff42, inset 0 -1px 0 #0008, inset 5px 0 7px #0005, inset -5px 0 7px #0005;
+}
+.chair-signal__tick {
+  position: absolute;
+  z-index: 2;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: #faf0d6cc;
+  box-shadow: 0 0 2px #000c;
+  pointer-events: none;
+}
+.chair-signal__tick--down { left: 25%; }
+.chair-signal__tick--up { left: 75%; }
+.chair-signal__zero { position: absolute; left: 50%; top: 3px; bottom: 3px; width: 1px; background: #2a241c80; }
+.chair-signal__marker {
+  position: absolute;
+  z-index: 3;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  left: clamp(1px, var(--signal-position), calc(100% - 1px));
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, #d6e5e3, #fff, #d6e5e3);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #15232199, 0 0 6px #ffffdf95, 0 0 13px #e7fff22b;
+  transition: left 400ms ease-out;
+  pointer-events: none;
+}
+.chair-signal__marker::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 6px;
+  height: 3px;
+  border-radius: 2px 2px 1px 1px;
+  background: #f0eee3;
+  box-shadow: 0 1px 1px #0008;
+}
+.chair-signal[data-animating="false"] .chair-signal__liquid { animation-play-state: paused; }
+.chair-signal[data-available="false"] .chair-signal__tube { opacity: .35; filter: grayscale(1); }
+.chair-signal[data-reduced="true"] .chair-signal__pause { display: none; }
+@keyframes chair-liquid-flow {
+  from { transform: translate3d(-3%, 0, 0) scaleY(.7); }
+  to { transform: translate3d(5%, 1px, 0) scaleY(1.1); }
+}
+@keyframes chair-liquid-back {
+  from { transform: translate3d(4%, 0, 0) scaleY(.9); }
+  to { transform: translate3d(-5%, -1px, 0) scaleY(.6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chair-signal__liquid { animation: none; }
+  .chair-signal__marker { transition: none; }
+  .chair-signal__pause { display: none; }
+}
+@media (forced-colors: active) {
+  .chair-signal__tube { border: 1px solid CanvasText; }
+  .chair-signal__zones, .chair-signal__liquid, .chair-signal__glass { display: none; }
+  .chair-signal__tick, .chair-signal__marker { background: CanvasText; }
+  .chair-signal__end { color: CanvasText; }
+}
