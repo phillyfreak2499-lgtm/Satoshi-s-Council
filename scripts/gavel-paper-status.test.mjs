@@ -66,7 +66,24 @@ test("an unbooked first directional Chair read is shown as SKIPPED, never as pap
   assert.equal(row.winner, "DOWN");
 });
 
-test("a window with no booked or first-directional read remains the recorded Chair state", () => {
+test("a legacy unbooked directional grade-frame read is also shown as SKIPPED", () => {
+  const row = toGavelRow(base({
+    chair_lean: "UP",
+    chair_conf: 78,
+    score: 0.57,
+    bar: 0.53,
+    first_directional_lean: null,
+  }));
+  assert.equal(row.lean, "UP");
+  assert.equal(row.paper, "SKIPPED");
+  assert.equal(row.conf, 78);
+  assert.equal(row.score, 0.57);
+  assert.equal(row.entry, null);
+  assert.equal(row.settle, null);
+  assert.equal(row.ev, null);
+});
+
+test("a window with no booked or directional read remains WAIT with no paper action", () => {
   const source = base({ winner: "UP" });
   assert.equal(gavelPaperOf(source), "NONE");
   assert.equal(gavelLeanOf(source), "WAIT");
