@@ -2,6 +2,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { CouncilNavigation, type HeaderAction } from "./CouncilNavigation";
 import { DeskSoundControl } from "./DeskSoundControl";
 import { deskSoundViewActive } from "@/lib/desk/desk-sound-events";
+import "./DeskSoundControl.css";
 
 /** One navigation map for every room, including query-based Gallery and Settings. */
 export function GlobalHeader({ action, tour, searchOverride }: { action?: HeaderAction; tour?: string; searchOverride?: string }) {
