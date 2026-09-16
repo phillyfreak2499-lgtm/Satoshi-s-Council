@@ -18,11 +18,11 @@
 .observatory[data-lean="down"] { --floor-state: #eb9a8c; }
 .observatory *, .observatory *::before, .observatory *::after { box-sizing: border-box; }
 .observatory button, .observatory a, .observatory summary { -webkit-tap-highlight-color: transparent; }
-.observatory button, .observatory select { font: inherit; }
+.observatory :is(.obs-focus, .obs-view-switch button, .obs-inspector select) { font: inherit; }
 .observatory button, .observatory summary { cursor: pointer; }
-.observatory a { text-decoration: none; }
+.observatory :is(.obs-primary, .obs-text-link, .obs-footer-brand, .obs-inspector a) { text-decoration: none; }
 .observatory :focus-visible { outline: 2px solid var(--obs-gold); outline-offset: 5px; }
-.observatory svg { width: 19px; height: 19px; flex-shrink: 0; }
+.observatory .obs-icon { width: 19px; height: 19px; flex-shrink: 0; }
 .obs-container { width: min(1320px, calc(100% - 96px)); margin-inline: auto; }
 .obs-skip { position: fixed; top: -100px; left: 24px; z-index: 100; padding: 16px; background: var(--obs-gold); color: #080c10; }
 .obs-skip:focus { top: 12px; }
