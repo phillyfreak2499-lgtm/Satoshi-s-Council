@@ -296,8 +296,8 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
           <WindowChart satoshi={satoshi} fresh={fresh} />
           <div className="streamer-votes">
             <div className="streamer-votes-label">
-              <span className="streamer-eyebrow">Council votes · {total} seats</span>
-              <span>Specialists, separate from the Chair</span>
+              <span className="streamer-eyebrow">Seat readings · {total} stations</span>
+              <span>All stations · not the Chair’s voting quorum</span>
             </div>
             <div className="streamer-vote-bar" aria-hidden="true">
               {(["UP", "WAIT", "DOWN"] as const).map((lean) => (

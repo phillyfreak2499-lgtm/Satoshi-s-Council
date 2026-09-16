@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Crest } from "./Crest";
 import { cn } from "@/lib/utils";
 
-export type MenuItem = { label: string; hint?: string; href?: string; onSelect?: () => void; active?: boolean; group?: string };
+export type MenuItem = { label: string; hint?: string; href?: string; onSelect?: () => void; active?: boolean; group?: string; external?: boolean };
 
 /**
  * One header for every page: crest and wordmark on the left, the page's own
@@ -22,6 +22,7 @@ export function SiteHeader({
   brandHref = "/",
   tour,
   fold = "sm",
+  shortcuts,
 }: {
   /** Desktop navigation, rendered inline. */
   nav?: ReactNode;
@@ -32,6 +33,8 @@ export function SiteHeader({
   tour?: string;
   /** Below this breakpoint the navigation folds into the menu button; a wide nav folds under lg. */
   fold?: keyof typeof FOLD;
+  /** High-value destinations remain one tap away beneath the compact header. */
+  shortcuts?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -49,20 +52,20 @@ export function SiteHeader({
   }, [open]);
   const brand = (
     <>
-      <Crest size={28} title="" />
+      <span className="council-site-seal"><Crest size={32} figure title="" /></span>
       <img src="/wordmark.png" alt="Satoshi's Council" className="h-[26px] w-auto sm:h-7" draggable={false} />
       <span className="font-mono text-micro uppercase tracking-widest text-subtle">Beta</span>
     </>
   );
   return (
-    <header data-tour={tour} className="sticky top-0 z-40 border-b border-border bg-bg/95 backdrop-blur supports-[backdrop-filter]:bg-bg/85">
-      <div className="gutter mx-auto flex h-[var(--header-h)] w-full max-w-[var(--max)] items-center justify-between gap-3">
+    <header data-tour={tour} className="council-site-header sticky top-0 z-40 border-b border-border bg-bg/95 backdrop-blur supports-[backdrop-filter]:bg-bg/85">
+      <div className="council-site-bar gutter mx-auto flex h-[var(--header-h)] w-full max-w-[var(--max)] items-center justify-between gap-3">
         {onBrand ? (
-          <button type="button" onClick={onBrand} className="flex min-h-11 items-center gap-2.5 rounded-md text-left" aria-label="Satoshi's Council — the floor">
+          <button type="button" onClick={onBrand} className="council-site-brand flex min-h-11 items-center gap-2.5 rounded-md text-left" aria-label="Satoshi's Council — the floor">
             {brand}
           </button>
         ) : (
-          <a href={brandHref} className="flex min-h-11 items-center gap-2.5 rounded-md" aria-label="Satoshi's Council — the floor">
+          <a href={brandHref} className="council-site-brand flex min-h-11 items-center gap-2.5 rounded-md" aria-label="Satoshi's Council — the floor">
             {brand}
           </a>
         )}
@@ -82,6 +85,7 @@ export function SiteHeader({
           ) : null}
         </div>
       </div>
+      {shortcuts ? <div className={f.panel}>{shortcuts}</div> : null}
       {open && menu?.length ? (
         <nav id="site-menu" aria-label="Site menu" className={cn("gutter absolute inset-x-0 top-full max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-b border-border bg-surface py-2 shadow-[0_24px_60px_rgba(0,0,0,0.5)]", f.panel)}>
           <ul className="grid gap-1">
@@ -89,7 +93,7 @@ export function SiteHeader({
               <li key={m.label}>
                 {m.group && m.group !== menu[index - 1]?.group ? <div className="px-2 pb-1 pt-3 font-mono text-micro uppercase tracking-widest text-subtle">{m.group}</div> : null}
                 {m.href ? (
-                  <a href={m.href} aria-current={m.active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
+                  <a href={m.href} target={m.external ? "_blank" : undefined} rel={m.external ? "noreferrer" : undefined} aria-current={m.active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
                     {m.label}
                     {m.hint ? <span className="font-mono text-micro text-subtle">{m.hint}</span> : null}
                   </a>
@@ -114,4 +118,3 @@ export function SiteHeader({
     </header>
   );
 }
-

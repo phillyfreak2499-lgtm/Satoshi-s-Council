@@ -20,13 +20,13 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
   { id: "derivs", label: "DERIVS", hint: "funding, open interest, liquidations · CARRY CHAIN CASCADE VOLT" },
   { id: "book", label: "BOOK", hint: "the odds themselves · ODDS STRIKE CHEAP FADE INDEX" },
   { id: "context", label: "CONTEXT", hint: "clock and regime · ORBIT CLOCK WIRE WARDEN" },
-  { id: "atelier", label: "ATELIER", hint: "the gallery" },
+  { id: "atelier", label: "GALLERY", hint: "atelier, visualizations and Streamer" },
   { id: "crew", label: "PIT CREW", hint: "SWEEP, COACH, WRENCH and LEDGER" },
   { id: "settings", label: "SETTINGS", hint: "demo or live, alerts, display" },
 ];
 
 const PAGES: { href: string; label: string; hint: string }[] = SITE_DESTINATIONS.filter(
-  ({ href }) => href !== "/",
+  ({ href }) => href !== "/" && !href.startsWith("/?"),
 ).map(({ href, label, hint }) => ({ href, label, hint }));
 
 function score(q: string, text: string): number {

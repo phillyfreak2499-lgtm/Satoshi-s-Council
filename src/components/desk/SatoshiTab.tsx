@@ -128,7 +128,7 @@ function EconomicsBox({ eco }: { eco: Economics }) {
   );
 }
 
-function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[] }) {
+function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[]; density: FloorDensity }) {
   const [mathOpen, setMathOpen] = useState(false);
   const lean = chair.lean;
   const fill = Math.min(1, Math.abs(chair.score) / Math.max(chair.bar, 0.01));
@@ -154,12 +154,12 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
         lean === "UP" ? "border-up/40 shadow-[0_0_0_1px_rgba(61,207,138,0.12)]" : lean === "DOWN" ? "border-down/40 shadow-[0_0_0_1px_rgba(239,107,115,0.12)]" : "border-border",
       )}
     >
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="council-chair-summary">
         <div className="min-w-0">
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
             <Tip k="pane.board">Chair call</Tip>
           </div>
-          <h1 className={cn("font-sans text-hero font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
+          <h1 className={cn("council-chair-verdict font-sans font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
             <span className="sr-only">Chair call: </span>
             {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
           </h1>
@@ -205,48 +205,48 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
               </>
             )}
           </div>
-          <EconomicsBox eco={economicsOf(snap, lean)} />
-          {/* Price provenance belongs to the call, not to a section between the call
-              and the why: when this was decided, and what is locked. */}
-          <CallPrices
-            snap={snap}
-            chair={chair}
-            book={book}
-            openFill={(() => {
-              const r = openRow(snap, callLog);
-              return r ? { t: r.t, cents: r.cents } : null;
-            })()}
-            tz={tz}
-          />
         </div>
-        <div className="flex flex-wrap items-end gap-6">
-          <div>
-            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-              <Tip k="strip.conf">conf</Tip>
-            </div>
-            <div className="font-mono text-call tabular leading-none">
-              {chair.confidence}
-              <span className="text-ui text-subtle"> conf</span>
-            </div>
-          </div>
-          <div>
-            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-              <Tip k="strip.size">size</Tip>
-            </div>
-            <div className="font-mono text-call tabular leading-none">{chair.size}</div>
-          </div>
-          <div>
+        <div className="council-chair-metrics">
+          <div className="council-chair-clock">
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">clock</div>
-            <div className="font-mono text-call tabular leading-none">
+            <div className="council-chair-clock-value font-mono tabular">
               <MinsLeft closeTime={snap.close_time} />
             </div>
           </div>
           <div>
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">paper</div>
-            <div className={cn("font-mono text-call leading-none", filled ? "text-fg" : "text-subtle")}>{filled ? "FILL" : "NO FILL"}</div>
+            <div className={cn("council-chair-metric-value font-mono", filled ? "text-fg" : "text-subtle")}>{filled ? "FILL" : "NO FILL"}</div>
+          </div>
+          <div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+              <Tip k="strip.conf">conf</Tip>
+            </div>
+            <div className="council-chair-metric-value font-mono tabular">{chair.confidence}</div>
+          </div>
+          <div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+              <Tip k="strip.size">size</Tip>
+            </div>
+            <div className="council-chair-metric-value font-mono tabular">{chair.size}</div>
           </div>
         </div>
       </div>
+      <details className="council-chair-evidence" key={density} open={density === "full"}>
+        <summary>Prices, fees &amp; timestamps</summary>
+        <EconomicsBox eco={economicsOf(snap, lean)} />
+        {/* Price provenance belongs to the call, not to a section between the call
+            and the why: when this was decided, and what is locked. */}
+        <CallPrices
+          snap={snap}
+          chair={chair}
+          book={book}
+          openFill={(() => {
+            const r = openRow(snap, callLog);
+            return r ? { t: r.t, cents: r.cents } : null;
+          })()}
+          tz={tz}
+        />
+      </details>
       <div className="mt-4">
         <div className="mb-1 flex items-center justify-between font-mono text-micro text-subtle">
           <Tip k="strip.score">score vs bar</Tip>
@@ -721,8 +721,8 @@ export function SatoshiTab({
       {/* 1. CALL — the dominant element, seated inside the Council's actual
           chamber rather than a generic dashboard surface. The environment is
           presentation only; the call and every number remain live DOM content. */}
-      <CouncilFloorRoom lean={chair.lean}>
-        <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} />
+      <CouncilFloorRoom lean={chair.lean} density={density}>
+        <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} density={density} />
       </CouncilFloorRoom>
       {density === "full" && strip ? <div>{strip}</div> : null}
 

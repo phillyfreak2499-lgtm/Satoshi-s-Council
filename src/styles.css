@@ -3295,3 +3295,93 @@ html[data-motion="reduce"] .atelier.is-full .atelier-dock {
   .council-floor-room-controls { gap: 0; }
   .council-floor-room[data-room-hidden="true"] { padding: 64px 8px 8px; }
 }
+
+/* Quiet is the working desk; Full keeps the cinematic room above the call. */
+.council-floor-room[data-density="quiet"] {
+  padding-top: 78px;
+}
+.council-floor-room[data-density="quiet"] .council-floor-room-art {
+  height: 260px;
+  opacity: 0.64;
+}
+.council-chair-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.56fr);
+  align-items: start;
+  gap: 24px;
+}
+/* Keep size separate from text-up/down/wait: tailwind-merge treats custom
+   text-hero as a competing text color and otherwise drops the hero size. */
+.council-chair-verdict {
+  margin-top: 6px;
+  font-size: clamp(48px, 6vw, 72px);
+  overflow-wrap: anywhere;
+}
+.council-chair-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px 16px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--floor-state) 22%, var(--color-border));
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.025);
+}
+.council-chair-clock-value {
+  margin-top: 6px;
+  font-size: clamp(30px, 3.5vw, 44px);
+  line-height: 1;
+  white-space: nowrap;
+}
+.council-chair-metric-value {
+  margin-top: 6px;
+  font-size: 20px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.council-chair-evidence {
+  margin-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+.council-chair-evidence > summary {
+  width: fit-content;
+  min-height: 44px;
+  padding-block: 12px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.council-chair-evidence > summary:hover {
+  color: var(--color-fg);
+}
+.council-chair-evidence > summary:focus-visible {
+  outline: 2px solid var(--floor-state);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+@media (max-width: 720px) {
+  .council-floor-room[data-density="quiet"] {
+    padding-top: 68px;
+  }
+  .council-chair-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .council-chair-metrics {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) repeat(2, minmax(0, 0.8fr));
+    gap: 12px;
+    padding: 12px;
+  }
+  .council-chair-clock-value {
+    font-size: 28px;
+  }
+  .council-chair-metric-value {
+    font-size: 18px;
+  }
+}
+@media (max-width: 420px) {
+  .council-chair-metrics {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

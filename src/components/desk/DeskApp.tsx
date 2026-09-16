@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
 import { GuidedFloor } from "./GuidedFloor";
-import { IntroBand } from "./IntroBand";
+import { CouncilEntrance, CouncilFocusToggle, CouncilGuides } from "./CouncilExperience";
 import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
 import { Tip } from "./Tip";
@@ -34,6 +34,7 @@ import {
   type SeatView,
 } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
+import { gtagEvent } from "@/lib/desk/ga";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
 import { BoardTab } from "./Feedback";
@@ -71,7 +72,7 @@ const DESKS: { id: TabId; label: string; intro: string }[] = [
 const DESK_IDS = new Set<TabId>(DESKS.map((d) => d.id));
 const MORE: { id: TabId; label: string; hint: string }[] = [
   { id: "crew", label: "PIT CREW", hint: "SWEEP · COACH · WRENCH · LEDGER" },
-  { id: "atelier", label: "ATELIER", hint: "the gallery" },
+  { id: "atelier", label: "GALLERY", hint: "all visualizations and Streamer" },
   { id: "settings", label: "SETTINGS", hint: "demo, alerts, display" },
 ];
 const NUDGE_KEY = "satoshi-desk-nudge-v1";
@@ -100,7 +101,9 @@ function nudgeOff(): boolean {
 
 function introOff(): boolean {
   try {
-    return localStorage.getItem(INTRO_KEY) === "off";
+    const saved = localStorage.getItem(INTRO_KEY);
+    if (saved === "on") return false;
+    return saved === "off" || welcomeSeen();
   } catch {
     return false;
   }
@@ -170,8 +173,15 @@ export function DeskApp() {
   const [nudge, setNudge] = useState(false);
   // Read in the effect below, never during render: these touch localStorage and
   // would otherwise differ between the server and the first client paint.
-  const [returning, setReturning] = useState(false);
   const [introHidden, setIntroHidden] = useState(false);
+  const setIntroductionHidden = (hidden: boolean) => {
+    setIntroHidden(hidden);
+    if (hidden) setNudge(false);
+    try {
+      localStorage.setItem(INTRO_KEY, hidden ? "off" : "on");
+      if (hidden) localStorage.setItem(NUDGE_KEY, "off");
+    } catch { /* private mode: the choice still works for this visit */ }
+  };
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
   const [floorDensity, setFloorDensityState] = useState<FloorDensity>("quiet");
   const [floorMode, setFloorModeState] = useState<FloorMode>("pro");
@@ -203,7 +213,6 @@ export function DeskApp() {
     setFloorDensityState(readFloorDensity());
     setFloorModeState(readFloorMode());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
-    setReturning(welcomeSeen());
     setIntroHidden(introOff());
     beacon("desk_view", true);
   }, []);
@@ -313,17 +322,18 @@ export function DeskApp() {
       : [];
 
   return (
-    <div className="flex min-h-dvh flex-col bg-bg text-fg">
+    <div className="observatory council-full-site flex min-h-dvh flex-col bg-bg text-fg" data-lean={frame.chair?.lean.toLowerCase() ?? "wait"}>
       <a href="#floor-main" className="skip-link">
         Skip to the floor
       </a>
       <GlobalHeader
         tour="tour-header"
+        searchOverride={tab === "satoshi" ? floorMode === "guided" ? "?view=guided" : "" : `?tab=${tab}`}
         action={{ label: "Search", hint: "⌘K", onSelect: () => setPaletteOn(true) }}
       />
       <nav
         aria-label="Floor views"
-        className="gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
+        className="council-floor-tools gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
       >
         <span className="mr-2 font-mono text-micro uppercase tracking-widest text-subtle">
           Floor
@@ -372,6 +382,7 @@ export function DeskApp() {
             </button>
           </>
         )}
+        {floorMode === "pro" && tab === "satoshi" ? <div className="ml-auto"><CouncilFocusToggle focused={introHidden} onToggle={() => setIntroductionHidden(!introHidden)} /></div> : null}
       </nav>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">
@@ -445,22 +456,8 @@ export function DeskApp() {
         </div>
       ) : null}
 
-      {floorMode === "pro" && tab === "satoshi" && !returning && !introHidden ? (
-        <IntroBand
-          demo={frame.settings.source === "demo"}
-          nudge={nudge && !tourOn}
-          onTour={startTour}
-          onDismiss={() => {
-            setIntroHidden(true);
-            setNudge(false);
-            try {
-              localStorage.setItem(INTRO_KEY, "off");
-              localStorage.setItem(NUDGE_KEY, "off");
-            } catch {
-              /* private mode */
-            }
-          }}
-        />
+      {floorMode === "pro" && tab === "satoshi" && !introHidden ? (
+        <CouncilEntrance onTour={startTour} onEnter={() => gtagEvent("enter_the_floor")} />
       ) : null}
 
       {tab !== "satoshi" ? (
@@ -571,6 +568,7 @@ export function DeskApp() {
         {tab === "arena" && <ArenaTab tz={frame.settings.tz} onCall={() => setTab("satoshi")} />}
         {tab === "books" && <BooksTab tz={frame.settings.tz} />}
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
+        {tab === "satoshi" && floorMode === "pro" && !introHidden ? <div className="obs-container"><CouncilGuides /></div> : null}
       </main>
 
       {floorMode === "pro" && (
