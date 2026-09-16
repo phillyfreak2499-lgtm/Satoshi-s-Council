@@ -19,6 +19,7 @@ let skew = 0;
 let fails = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 let inflight = false;
+let generation = 0;
 const subs = new Set<() => void>();
 
 function notify() {
@@ -28,6 +29,7 @@ function notify() {
 async function poll() {
   if (inflight) return;
   inflight = true;
+  const requestGeneration = generation;
   try {
     const r = await fetch("/pulse", {
       signal: AbortSignal.timeout(5_000),
@@ -35,6 +37,7 @@ async function poll() {
     });
     if (!r.ok) throw new Error(String(r.status));
     const p = (await r.json()) as DeskPulse;
+    if (requestGeneration !== generation) return;
     // Accept only genuinely fresh data. A stale re-serve keeps the last good
     // as_of, so it must never re-stamp receivedAt or the skew — that is how
     // an outage would silently walk every countdown backwards. The 5s slack
@@ -51,10 +54,11 @@ async function poll() {
     fails += 1;
     notify();
   } catch {
+    if (requestGeneration !== generation) return;
     fails += 1;
     notify();
   } finally {
-    inflight = false;
+    if (requestGeneration === generation) inflight = false;
   }
 }
 
@@ -68,6 +72,8 @@ export function startPulse() {
 }
 
 export function stopPulse() {
+  generation += 1;
+  inflight = false;
   if (timer) clearInterval(timer);
   timer = null;
   // Demo mode and closed tabs must not inherit live data or live clock skew.

@@ -22,6 +22,8 @@ export type DeskFrame = {
   learner: Learner;
   ticking: boolean;
   lastError: string | null;
+  /** Browser-to-desk transport failure; separate from errors reported by the desk. */
+  connection_error?: string | null;
   settling: boolean;
   call_log: CallLogRow[];
   /** Seconds since the shared brain's last server tick (live viewer mode only). */
@@ -40,7 +42,8 @@ let demo: DemoState | null = null;
 let prevSnap: Snapshot | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
-let flightAt = 0;
+// A response from a previous source/session must never overwrite the current one.
+let sourceGeneration = 0;
 let lastClose = 0;
 const liveHist = { funding: [] as HistPoint[], oi: [] as HistPoint[], oiUsd: [] as HistPoint[] };
 let pending: {
@@ -110,14 +113,17 @@ async function postDesk(op: Record<string, unknown>) {
   }
 }
 
-async function pullFrame(): Promise<void> {
+async function pullFrame(generation: number): Promise<void> {
   const r = await fetch("/frame", {
     signal: AbortSignal.timeout(12_000),
     headers: { accept: "application/json" },
   });
   if (!r.ok) throw new Error(`desk frame ${r.status}`);
   const f = (await r.json()) as (ServerFrame & { ok?: boolean; error?: string }) | null;
-  if (!f || f.ok === false) throw new Error(f?.error || "desk frame bad");
+  if (!f || f.ok === false || !f.snap || !f.settings || !f.learner || !Array.isArray(f.votes) || !Array.isArray(f.call_log)) {
+    throw new Error(f?.error || "live desk snapshot unavailable");
+  }
+  if (generation !== sourceGeneration || !liveMode()) return;
   prevSnap = f.snap;
   lastVotes = f.votes ?? [];
   lastChair = f.chair;
@@ -125,6 +131,7 @@ async function pullFrame(): Promise<void> {
   callLog = f.call_log ?? [];
   settings = { ...settings, ...f.settings, source: "live" };
   lastError = f.lastError;
+  connectionError = null;
   brainAge = typeof f.tick_age_s === "number" && f.tick_age_s >= 0 ? f.tick_age_s : null;
   v2Frame = f.v2 ?? null;
   frameAt = Date.now();
@@ -179,6 +186,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
     learner,
     ticking: timer != null,
     lastError: lastError,
+    connection_error: connectionError,
     settling: false,
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
@@ -192,6 +200,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
 let lastVotes: Vote[] = [];
 let lastChair: ChairResult | null = null;
 let lastError: string | null = null;
+let connectionError: string | null = null;
 let brainAge: number | null = null;
 let frameAt = 0;
 let v2Frame: V2Frame | null = null;
@@ -418,12 +427,12 @@ function settleIfNeeded(snap: Snapshot, votes: Vote[], chair: ChairResult) {
 }
 
 async function tick() {
-  if (inFlight && Date.now() - flightAt < 15_000) return;
+  if (inFlight) return;
   inFlight = true;
-  flightAt = Date.now();
+  const generation = sourceGeneration;
   try {
     if (liveMode()) {
-      await pullFrame();
+      await pullFrame(generation);
       return;
     }
     maybeHuddle();
@@ -463,26 +472,15 @@ async function tick() {
     settleIfNeeded(snap, votes, chair);
     emit({ settling: pending != null });
   } catch (e) {
-    lastError = e instanceof Error ? e.message : String(e);
-    if (settings.source === "live" && !prevSnap) {
-      settings = { ...settings, source: "demo" };
-      learner = loadLearner("demo");
-      callLog = loadCallLog("demo");
-      lastCall = null;
-      persist(true);
-      restartTimer();
-      try {
-        runDemoOnce();
-        lastError = `${lastError} · live tape down, Demo so the floor ticks`;
-        emit();
-      } catch {
-        emit();
-      }
-    } else {
-      emit();
-    }
+    if (generation !== sourceGeneration) return;
+    const error = e instanceof Error ? e.message : String(e);
+    // A failed live request keeps the last server frame (or the loading view).
+    // Polling retries automatically. Demo is only entered by choosing Demo.
+    if (liveMode()) connectionError = error;
+    else lastError = error;
+    emit();
   } finally {
-    inFlight = false;
+    if (generation === sourceGeneration) inFlight = false;
   }
 }
 
@@ -496,6 +494,7 @@ export function subscribe(fn: (f: DeskFrame) => void) {
     learner,
     ticking: timer != null,
     lastError,
+    connection_error: connectionError,
     settling: false,
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
@@ -553,6 +552,8 @@ function onVis() {
 }
 
 export function startEngine() {
+  sourceGeneration += 1;
+  inFlight = false;
   const persisted = loadPersisted();
   settings = persisted.settings;
   learner = persisted.learner;
@@ -567,14 +568,23 @@ export function startEngine() {
   if (!visBound && typeof document !== "undefined") {
     visBound = true;
     document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("online", retryLiveConnection);
     window.addEventListener("pagehide", () => persist(true));
   }
 }
 
 export function stopEngine() {
+  sourceGeneration += 1;
+  inFlight = false;
   if (timer) clearInterval(timer);
   timer = null;
   stopPulse();
+}
+
+/** Retry promptly after the browser reconnects or a viewer asks; tick deduplicates. */
+export function retryLiveConnection() {
+  if (!liveMode() || !timer || (typeof document !== "undefined" && document.hidden)) return;
+  void tick();
 }
 
 function restartTimer() {
@@ -595,6 +605,13 @@ export function patchSettings(p: Partial<Settings>) {
   if (switching) persist(true);
   settings = { ...settings, ...p };
   if (switching && p.source) {
+    sourceGeneration += 1;
+    inFlight = false;
+    connectionError = null;
+    lastError = null;
+    frameAt = 0;
+    brainAge = null;
+    v2Frame = null;
     learner = loadLearner(p.source);
     callLog = loadCallLog(p.source);
     lastCall = null;
@@ -710,6 +727,7 @@ export function getFrame(): DeskFrame {
     learner,
     ticking: timer != null,
     lastError,
+    connection_error: connectionError,
     settling: false,
     call_log: callLog,
     brain_age_s: settings.source === "live" ? brainAge : null,
