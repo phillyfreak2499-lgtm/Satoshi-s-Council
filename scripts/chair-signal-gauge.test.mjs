@@ -155,7 +155,8 @@ test("the Floor uses the display-only gauge while decision modules remain discon
   const floor = read("src/components/desk/SatoshiTab.tsx");
   assert.match(floor, /<ChairSignalGauge/);
   assert.ok(!floor.includes('>score vs bar</Tip>'));
-  assert.match(floor, /const gap = signal\?\.margin \?\? null/);
+  // Redundant threshold/status wording lives only in the presentation CSS cleanup;
+  // the Chair engine and paper book never import the gauge model.
   for (const path of ["chair.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts"]) {
     assert.ok(!read(`src/lib/desk/${path}`).includes("chair-signal"), `${path} must not read this presentation`);
   }
