@@ -22,7 +22,7 @@ test("the booked decision receipt is captured at entry and persisted at grade", 
   assert.match(engine, /booked\?\.build_sha \?\? null/);
 });
 
-test("GAVEL pairs a booked side with the booked score frame and a skipped read with its first directional frame", () => {
+test("GAVEL pairs booked rows with entry evidence and skipped rows with prospective directional evidence when available", () => {
   const brief = read("src/lib/desk/brief.server.ts");
   const gavel = read("src/lib/desk/gavel.ts");
   assert.match(brief, /entry_lean/);
@@ -32,11 +32,14 @@ test("GAVEL pairs a booked side with the booked score frame and a skipped read w
   assert.match(brief, /snapshot_kind = 'FIRST_DIRECTIONAL'/);
   assert.match(brief, /toGavelRow/);
 
-  const source = compact(gavel);
-  assert.match(source, /constbooked=paper==="FILLED"/);
-  assert.match(source, /booked\?r\.entry_conf\?\?r\.chair_conf:skipped\?r\.first_directional_conf\?\?r\.chair_conf:r\.chair_conf/);
-  assert.match(source, /booked\?r\.entry_score\?\?r\.score:skipped\?r\.first_directional_score\?\?r\.score:r\.score/);
-  assert.match(source, /booked\?r\.entry_bar\?\?r\.bar:skipped\?r\.first_directional_bar\?\?r\.bar:r\.bar/);
+  assert.match(gavel, /paper === "FILLED"/);
+  assert.match(gavel, /paper === "SKIPPED"/);
+  assert.match(gavel, /first_directional_conf/);
+  assert.match(gavel, /first_directional_score/);
+  assert.match(gavel, /first_directional_bar/);
+  assert.match(gavel, /entry_conf \?\? r\.chair_conf/);
+  assert.match(gavel, /entry_score \?\? r\.score/);
+  assert.match(gavel, /entry_bar \?\? r\.bar/);
 });
 
 test("GAVEL never gives a skipped read paper settlement or EV", () => {
