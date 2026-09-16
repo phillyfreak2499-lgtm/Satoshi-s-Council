@@ -52,10 +52,13 @@ export function gavelLeanOf(
 }
 
 export function gavelPaperOf(
-  r: Pick<GavelSourceRow, "entry_cents" | "first_directional_lean">,
+  r: Pick<GavelSourceRow, "entry_cents" | "first_directional_lean" | "chair_lean">,
 ): GavelPaperStatus {
   if (r.entry_cents != null) return "FILLED";
-  return direction(r.first_directional_lean) ? "SKIPPED" : "NONE";
+  // FIRST_DIRECTIONAL is the preferred prospective receipt. Older rows can still
+  // have a directional grade-frame Chair read from before that recorder existed;
+  // that is also a real recorded read, so show SKIP rather than the ambiguous UP · —.
+  return direction(r.first_directional_lean) ?? direction(r.chair_lean) ? "SKIPPED" : "NONE";
 }
 
 function iso(v: Date | string): string {
@@ -67,19 +70,20 @@ export function toGavelRow(r: GavelSourceRow): GavelRow {
   const booked = paper === "FILLED";
   const skipped = paper === "SKIPPED";
   const winner = winnerOf(r.winner);
+  const hasFirstDirectional = direction(r.first_directional_lean) != null;
   const conf = booked
     ? r.entry_conf ?? r.chair_conf
-    : skipped
+    : skipped && hasFirstDirectional
       ? r.first_directional_conf ?? r.chair_conf
       : r.chair_conf;
   const score = booked
     ? r.entry_score ?? r.score
-    : skipped
+    : skipped && hasFirstDirectional
       ? r.first_directional_score ?? r.score
       : r.score;
   const bar = booked
     ? r.entry_bar ?? r.bar
-    : skipped
+    : skipped && hasFirstDirectional
       ? r.first_directional_bar ?? r.bar
       : r.bar;
 
