@@ -28,3 +28,9 @@ test("preview is non-indexable and prohibits data connections", () => {
   assert.match(html, /connect-src 'none'/);
   assert.match(html, /form-action 'none'/);
 });
+
+test("isolated preview scans the original production CSS classes", () => {
+  const css = readFileSync("preview/tailwind.css", "utf8");
+  assert.match(css, /@import "\.\.\/src\/styles\.css"/);
+  assert.match(css, /@source "\.\.\/src"/);
+});

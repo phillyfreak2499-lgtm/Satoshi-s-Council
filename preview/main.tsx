@@ -6,7 +6,7 @@ import { CouncilFloorRoom } from "@/components/desk/CouncilFloorRoom";
 import { Streamer } from "@/components/atelier/streamer";
 import type { Lean } from "@/lib/desk/types";
 import { sample } from "./sample";
-import "@/styles.css";
+import "./tailwind.css";
 import "./preview.css";
 
 declare const __PREVIEW_COMMIT__: string;

@@ -44,6 +44,9 @@ export default defineConfig({
         }, null, 2) });
       },
       generateBundle(_options, bundle) {
+        const css = Object.values(bundle).filter(item => item.type === "asset" && item.fileName.endsWith(".css"))
+          .map(item => String(item.source)).join("\n");
+        if (!/\.sr-only\s*\{/.test(css)) this.error("Preview is missing production Tailwind utilities");
         for (const item of Object.values(bundle)) {
           if (item.type !== "chunk") continue;
           for (const module of Object.keys(item.modules)) {

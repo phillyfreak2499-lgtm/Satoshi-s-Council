@@ -1,0 +1,3 @@
+@import "../src/styles.css";
+/* The isolated Vite root must still scan the original production components. */
+@source "../src";
