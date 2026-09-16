@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SITE_DESTINATIONS, sitePathActive, type SitePath } from "@/lib/desk/navigation";
 import { cn } from "@/lib/utils";
@@ -10,11 +11,12 @@ const SHORTCUTS: readonly SitePath[] = ["/", "/lab", "/?tab=atelier", "/?tab=set
 const linkClass = "council-site-link flex min-h-11 items-center gap-1 rounded-md px-3 font-mono text-micro tracking-wide";
 
 /** Shared by the real app and the isolated design preview. No data fetching. */
-export function CouncilNavigation({ pathname, search = "", action, tour, preview = false }: {
+export function CouncilNavigation({ pathname, search = "", action, tour, preview = false, controls }: {
   pathname: string;
   search?: string;
   action?: HeaderAction;
   tour?: string;
+  controls?: ReactNode;
   /** Preview links explicitly open the existing site; never imitate live rooms. */
   preview?: boolean;
 }) {
@@ -29,7 +31,7 @@ export function CouncilNavigation({ pathname, search = "", action, tour, preview
     return <a key={path} href={hrefFor(path)} target={target} rel={rel} aria-current={active(path) ? "page" : undefined}
       className={cn(linkClass, active(path) ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg")}>{item.label}</a>;
   });
-  return <SiteHeader fold="xl" tour={tour} menu={menu} brandHref={preview ? "/" : undefined}
+  return <SiteHeader fold="xl" tour={tour} menu={menu} brandHref={preview ? "/" : undefined} controls={controls}
     shortcuts={<nav aria-label="Quick access" className="council-site-shortcuts">{links(SHORTCUTS)}</nav>}
     nav={<nav aria-label="Site sections" className="flex items-center gap-1">
       {links(PRIMARY)}
