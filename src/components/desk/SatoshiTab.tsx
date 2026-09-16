@@ -499,15 +499,14 @@ function writeGavelSize(n: GavelSize) {
   }
 }
 
-/** GAVEL — Chair decisions only, WAIT included. Never seat fills. Read at one
- *  contract (the ledger's own unit) or at size, with the fee worked at size. */
+/** GAVEL — Chair reads and the paper book's separate action on each graded window. */
 function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
   const [size, setSize] = useState<GavelSize>(1);
   useEffect(() => {
     setSize(readGavelSize());
   }, []);
   const at = (g: GavelRow): number | null => {
-    if (g.settle == null || g.ev == null) return null;
+    if (g.paper !== "FILLED" || g.settle == null || g.ev == null) return null;
     if (size <= 1 || g.entry == null) return g.ev;
     return evCentsAt(g.entry, g.settle, size);
   };
@@ -523,7 +522,7 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
             <select
               className="rounded-sm border border-border bg-bg px-1 py-0.5 font-mono text-micro text-fg"
               value={size}
-              aria-label="Contracts per decision"
+              aria-label="Contracts per filled paper position"
               onChange={(e) => {
                 const n = Number(e.target.value);
                 if (!isGavelSize(n)) return;
@@ -549,37 +548,48 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
             <thead>
               <tr>
                 <th className="pl-3">time</th>
-                <th>call</th>
-                <th className="num"><Tip k="strip.conf">decision conf</Tip></th>
-                <th className="num">decision score / bar</th>
-                <th className="num pr-3">settled</th>
+                <th>chair</th>
+                <th>paper</th>
+                <th className="num"><Tip k="strip.conf">conf</Tip></th>
+                <th className="num pr-3">score / bar</th>
               </tr>
             </thead>
             <tbody>
               {gavel.map((g, i) => {
                 const v = at(g);
+                const paper =
+                  g.paper === "FILLED"
+                    ? v == null
+                      ? "FILLED"
+                      : `FILLED · ${fmtCentsAt(v, size)}`
+                    : g.paper === "SKIPPED"
+                      ? "SKIP"
+                      : "—";
                 return (
                   <tr key={`${g.t}-${i}`}>
                     <td className="whitespace-nowrap pl-3 text-muted">{hhmm(g.t, tz)}</td>
                     <td>
                       <span className={cn("font-medium", g.lean === "UP" ? "text-up" : g.lean === "DOWN" ? "text-down" : "text-wait")}>{g.lean}</span>
                     </td>
-                    {/*
-                      NOT a percentage. A filled row uses the gate confidence captured
-                      when the paper book paid; a no-fill row uses the final grade frame.
-                      Both are Chair GATE confidence: chair.ts derives the value from the
-                      weighted vote and can clamp it by failed-gate count. A calibrated
-                      probability is never clamped that way, so no percent sign belongs
-                      here. Presentation only — the calculation is untouched.
-                    */}
+                    <td
+                      className={cn(
+                        "whitespace-nowrap font-mono text-micro",
+                        g.paper === "FILLED" ? (v != null && v < 0 ? "text-down" : "text-up") : "text-subtle",
+                      )}
+                      title={
+                        g.paper === "FILLED"
+                          ? "The paper book recorded this Chair read."
+                          : g.paper === "SKIPPED"
+                            ? "The Chair read stood, but the paper book did not record a position."
+                            : "No directional Chair read was recorded for this window."
+                      }
+                    >
+                      {paper}
+                    </td>
                     <td className="num tabular text-muted">{g.conf}</td>
-                    <td className="num tabular text-muted">
+                    <td className="num tabular pr-3 text-muted">
                       {g.score >= 0 ? "+" : ""}
                       {g.score.toFixed(2)} / {g.bar.toFixed(2)}
-                    </td>
-                    <td className={cn("num tabular pr-3", g.settle == null ? "text-subtle" : v != null && v >= 0 ? "text-up" : "text-down")}>
-                      {g.settle == null ? "—" : `${g.settle.toFixed(0)}¢`}
-                      {g.settle != null && v != null ? ` · ${fmtCentsAt(v, size)}` : ""}
                     </td>
                   </tr>
                 );
@@ -588,12 +598,10 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
           </table>
         </div>
       )}
-      {size > 1 ? (
-        <p className="border-t border-border px-3 py-1.5 font-mono text-micro text-subtle">
-          The same fills at {size.toLocaleString("en-US")} contracts: fee at size, rounded once per order, and the ask assumed to hold — real size
-          would walk the book. Paper only.
-        </p>
-      ) : null}
+      <p className="border-t border-border px-3 py-1.5 font-mono text-micro text-subtle">
+        UP/DOWN is the Chair read. FILLED means the paper book recorded it. SKIP means the read stood but no paper position was taken; skipped reads never enter paper P&amp;L.
+        {size > 1 ? ` Filled P&L is shown at ${size.toLocaleString("en-US")} contracts, assuming the ask holds.` : ""}
+      </p>
     </section>
   );
 }
@@ -705,11 +713,8 @@ export function SatoshiTab({
     };
   }, []);
   const speaking = chair.rows.filter((r) => r.lean === "UP" || r.lean === "DOWN").length;
-  // All presentation-only, all from data the Floor already has. No fetch, no timer.
   const book = bookState(snap, chair.lean, callLog);
   const why = whyFacts(chair, plainLine(chair, snap, book));
-  // The record counts the CURRENT floor era only: the brief's 40 windows straddle the
-  // 70¢ → 80¢ change, and combining them would merge incompatible strategy eras.
   const record = recordCard(brief?.gavel ?? [], FLOOR_LIVE_SINCE);
   const lastSettled =
     [...callLog].filter((r) => r.settle != null).sort((a, b) => b.close_time - a.close_time)[0] ?? null;
@@ -718,21 +723,12 @@ export function SatoshiTab({
     <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
       {density === "full" ? <OvernightRibbon brief={brief} tz={settings.tz} /> : null}
 
-      {/* 1. CALL — the dominant element, seated inside the Council's actual
-          chamber rather than a generic dashboard surface. The environment is
-          presentation only; the call and every number remain live DOM content. */}
       <CouncilFloorRoom lean={chair.lean} density={density}>
         <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} density={density} />
       </CouncilFloorRoom>
       {density === "full" && strip ? <div>{strip}</div> : null}
 
-      {/* 2. WHY — the FIRST explanatory section after the call. Price provenance is
-          inside the call block above, so nothing displaces this. */}
-      {/* WHY — next to the call, from recorded fields only. Previously this lived
-          in the Diagnostics disclosure, several panes down. */}
       <WhyBlock why={why} chair={chair} />
-
-      {/* 3. BITCOIN VS STRIKE / WINDOW — moved up from below the 21-seat Chamber. */}
       <ChairEyes snap={snap} />
 
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2.5" aria-label="Floor density">
@@ -761,11 +757,8 @@ export function SatoshiTab({
 
       {density === "full" ? (
         <>
-      {/* 4. EVIDENCE + COUNTERARGUMENT, including what would END the read. */}
       <EvidenceBlock why={why} />
 
-      {/* 5. YOUR CALL + LAST REPLAY. ArenaPanel moved up from the bottom; the replay
-          is a link to the page that already renders it, not a second fetching pane. */}
       <div className="grid gap-3 lg:grid-cols-2">
         <ArenaPanel snap={snap} live={settings.source === "live"} onOpenArena={onOpenArena ?? (() => {})} />
         <LastReplayCard
@@ -777,10 +770,8 @@ export function SatoshiTab({
         />
       </div>
 
-      {/* 6. COMPACT RECORD — one named population, bounded, linking to full BOOKS. */}
       <CompactRecord card={record} onBooks={onOpenBooks ?? (() => {})} />
 
-      {/* Supporting research follows. Same instances as before, moved down. */}
       <Chamber rows={chair.rows} onJump={onJump} />
       <ChairScoreboard v2={v2} />
       <div className="grid gap-3 lg:grid-cols-2">
@@ -1036,10 +1027,6 @@ export function SatoshiTab({
             />
             <Field k="counter" v={chair.counter} />
             <Field k="decision" v={chair.decision} />
-            {/* The LABEL is already "invalidate if", and the stored value starts with
-                "if" — so the raw value rendered as "invalidate if → if quote age > 25s".
-                Same rule as the evidence line, not a second one. The stored value is
-                untouched; this is display only. */}
             <Field k="invalidate if" v={invalidateCondition(chair.invalidate_if)} />
             <Field k="calc" v={<span className="font-mono text-data">{chair.calc}</span>} />
             <Field k="skill / huddle" v={`${chair.last_settle} / ${chair.huddle_line}`} />
