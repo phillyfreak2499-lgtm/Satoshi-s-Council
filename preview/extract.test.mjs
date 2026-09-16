@@ -41,14 +41,14 @@ test("Observatory reuses the real call and retains explicit demo boundaries", ()
   assert.equal((source.match(/<ChairBoard /g) ?? []).length, 1);
   assert.match(source, /SYNTHETIC DATA · NOT A LIVE CALL/);
   assert.match(source, /21 stations does not mean 21 votes/);
-  assert.match(source, /aria-pressed=\{focus\}/);
+  assert.match(source, /<CouncilFocusToggle focused=\{focus\}/);
   assert.match(source, /<details className="obs-inspector">/);
   assert.doesNotMatch(source, /fetch\(|WebSocket|localStorage|beacon\(/);
   assert.match(readFileSync("preview/sample.ts", "utf8"), /source: "demo"/);
 });
 
 test("concept styles are scoped and respect reduced motion", () => {
-  const css = readFileSync("preview/observatory.css", "utf8");
+  const css = readFileSync("src/components/desk/observatory.css", "utf8");
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\.observatory :focus-visible/);
   assert.match(css, /\.obs-skip:focus/);
@@ -63,4 +63,12 @@ test("the immersive route is default and engineering controls stay separate", ()
   assert.match(config, /conceptFiles: Object.fromEntries/);
   assert.match(config, /publicDir: false/);
   assert.match(config, /envDir: false/);
+});
+
+test("the preview uses real navigation and discloses links to the live rooms", () => {
+  const source = readFileSync("preview/Observatory.tsx", "utf8");
+  assert.match(source, /<CouncilNavigation pathname="\/" preview/);
+  assert.match(source, /Room links open the current site in a new tab/);
+  assert.match(source, /<CouncilEntrance/);
+  assert.match(source, /<CouncilGuides/);
 });

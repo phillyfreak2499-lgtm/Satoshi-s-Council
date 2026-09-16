@@ -6,13 +6,13 @@ import ts from "typescript";
 function load(file, bindings = {}) {
   const source = readFileSync(new URL("../" + file, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const exports = {}; vm.runInNewContext(code, { exports, ...bindings }); return exports;
+  const exports = {}; vm.runInNewContext(code, { exports, URLSearchParams, ...bindings }); return exports;
 }
 test("every destination remains reachable once, in an intentional group", () => {
   const { SITE_DESTINATIONS, sitePathActive } = load("src/lib/desk/navigation.ts");
   const paths = Array.from(SITE_DESTINATIONS, (item) => item.href);
   assert.equal(new Set(paths).size, paths.length);
-  assert.deepEqual(paths.slice().sort(), ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal"].sort());
+  assert.deepEqual(paths.slice().sort(), ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/?tab=atelier", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided"].sort());
   assert.equal(sitePathActive("/training/wick", "/training"), true);
   assert.equal(sitePathActive("/training-other", "/training"), false);
   assert.equal(sitePathActive("/window/EXAMPLE", "/books"), true);

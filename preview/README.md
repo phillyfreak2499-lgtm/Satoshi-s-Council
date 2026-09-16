@@ -2,13 +2,21 @@
 
 This branch wraps the actual Chair, price-provenance and Streamer components from
 commit `12c9d12f0787825fc4be5b27e4144232df69eed3` in a new, preview-only composition.
-The production component source is unchanged. This concept is **not part of PR
-#231** and is not a full production clone or trading simulator.
+The original call component source is unchanged. The approved entrance, guide
+cards, styling and full navigation now share source with the staged application
+integration in PR #231. This is still not a full production clone or trading
+simulator; the preview harness and synthetic fixtures are never merged into the app.
 
 The default route is the immersive experience. `/?qa=1` opens the comparison
 workbench, including the original Quiet, Full and Streamer designs. Focus mode
 removes the introduction and character cards while keeping the call accessible.
 The footer's Preview controls change the synthetic call; no engine runs.
+
+The full site navigation is now visible. Lab, Gallery, Books, Chamber and Settings
+are direct desktop links; All sections retains every destination. Phone shortcuts
+include Floor, Lab, Gallery and Settings, plus a complete menu. In this isolated
+preview, these links explicitly open the **current live site in a new tab**. They
+do not pretend to display staged Lab or Settings data.
 
 - Synthetic fixtures only; no production database or credentials.
 - No server process, account routes, live market feeds or analytics.
