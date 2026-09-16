@@ -23,6 +23,7 @@ export function SiteHeader({
   tour,
   fold = "sm",
   shortcuts,
+  controls,
 }: {
   /** Desktop navigation, rendered inline. */
   nav?: ReactNode;
@@ -35,6 +36,8 @@ export function SiteHeader({
   fold?: keyof typeof FOLD;
   /** High-value destinations remain one tap away beneath the compact header. */
   shortcuts?: ReactNode;
+  /** One instance of optional page controls, available at every breakpoint. */
+  controls?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -58,7 +61,7 @@ export function SiteHeader({
     </>
   );
   return (
-    <header data-tour={tour} className="council-site-header sticky top-0 z-40 border-b border-border bg-bg/95 backdrop-blur supports-[backdrop-filter]:bg-bg/85">
+    <header data-tour={tour} data-extra-controls={Boolean(controls)} className="council-site-header sticky top-0 z-40 border-b border-border bg-bg/95 backdrop-blur supports-[backdrop-filter]:bg-bg/85">
       <div className="council-site-bar gutter mx-auto flex h-[var(--header-h)] w-full max-w-[var(--max)] items-center justify-between gap-3">
         {onBrand ? (
           <button type="button" onClick={onBrand} className="council-site-brand flex min-h-11 items-center gap-2.5 rounded-md text-left" aria-label="Satoshi's Council — the floor">
@@ -71,6 +74,7 @@ export function SiteHeader({
         )}
         <div className="flex min-w-0 items-center gap-1">
           {nav ? <div className={f.nav}>{nav}</div> : null}
+          {controls}
           {menu?.length ? (
             <button
               type="button"

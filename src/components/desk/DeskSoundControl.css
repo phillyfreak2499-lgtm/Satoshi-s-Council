@@ -1,0 +1,16 @@
+[data-desk-sound] summary::-webkit-details-marker { display: none; }
+[data-desk-sound] details > div { max-height: calc(100dvh - 120px); overflow-y: auto; }
+@media (max-width: 639px) {
+  .council-site-header[data-extra-controls="true"] .council-site-brand { gap: 0; }
+  .council-site-header[data-extra-controls="true"] .council-site-brand > span { display: none; }
+  .council-site-header[data-extra-controls="true"] .council-site-brand > img {
+    width: clamp(100px, calc(100vw - 192px), 180px);
+    height: auto;
+  }
+  [data-desk-sound] details > div {
+    position: fixed;
+    inset: 72px 12px auto;
+    width: auto;
+    max-width: none;
+  }
+}
