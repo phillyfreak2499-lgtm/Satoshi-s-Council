@@ -157,7 +157,7 @@ export function paperBookEdgeOk(
  * HOLD is unchanged: this only blocks the first fill. A later WAIT does not unwind.
  */
 export function paperBookTeamOk(
-  chair: Pick<ChairResult, "score" | "bar" | "hard_fail" | "quorum" | "gates">,
+  chair: Pick<ChairResult, "score" | "bar" | "hard_fail" | "quorum"> & Partial<Pick<ChairResult, "gates">>,
   lean: "UP" | "DOWN",
 ): boolean {
   const up = chair.quorum?.up;
