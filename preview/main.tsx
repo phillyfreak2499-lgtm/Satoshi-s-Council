@@ -6,6 +6,7 @@ import { CouncilFloorRoom } from "@/components/desk/CouncilFloorRoom";
 import { Streamer } from "@/components/atelier/streamer";
 import type { Lean } from "@/lib/desk/types";
 import { sample } from "./sample";
+import { Observatory } from "./Observatory";
 import "./tailwind.css";
 import "./preview.css";
 
@@ -16,6 +17,7 @@ function ComponentPreview() {
   const lean: Lean = params.get("call") === "UP" ? "UP" : params.get("call") === "DOWN" ? "DOWN" : "WAIT";
   const density = params.get("view") === "full" ? "full" : "quiet";
   const data = useMemo(() => sample(lean), [lean]);
+  if (params.get("view") === "observatory") return <Observatory />;
   return <>
     <div className="preview-notice">DESIGN PREVIEW · SYNTHETIC DATA · NOT A LIVE CALL</div>
     {params.get("view") === "streamer" ? (
@@ -33,21 +35,21 @@ function ComponentPreview() {
 }
 
 function PreviewControls() {
-  const [view, setView] = useState("quiet");
+  const [view, setView] = useState("observatory");
   const [lean, setLean] = useState("WAIT");
   const [width, setWidth] = useState("1280");
   const query = new URLSearchParams({ embedded: "1", view, call: lean });
   return <main className="preview-shell">
     <header className="preview-header">
       <div><p className="preview-kicker">SATOSHI’S COUNCIL · DESIGN QA</p>
-        <h1>Clearer calls. A quieter floor.</h1>
+        <h1>The Observatory. Concept 02.</h1>
         <p>Demo data only. No accounts, API keys, database, analytics or trading connections.</p>
       </div>
-      <a href="https://github.com/phillyfreak2499-lgtm/Satoshi-s-Council/pull/231" target="_blank" rel="noreferrer">Review PR #231 ↗</a>
+      <a href="/">Return to the experience ↗</a>
     </header>
     <div className="preview-controls">
       <label>View<select value={view} onChange={event => setView(event.target.value)}>
-        <option value="quiet">Quiet Floor</option><option value="full">Full Floor</option><option value="streamer">Streamer</option>
+        <option value="observatory">Observatory · Concept 02</option><option value="quiet">Original Quiet Floor</option><option value="full">Original Full Floor</option><option value="streamer">Original Streamer</option>
       </select></label>
       <label>Sample call<select value={lean} onChange={event => setLean(event.target.value)}>
         <option>WAIT</option><option>UP</option><option>DOWN</option>
@@ -56,7 +58,7 @@ function PreviewControls() {
         <option value="1280">Desktop · 1280px</option><option value="820">Tablet · 820px</option>
         <option value="390">Mobile · 390px</option><option value="320">Small mobile · 320px</option>
       </select></label>
-      <span className="preview-version">Source {__PREVIEW_COMMIT__.slice(0, 7)}</span>
+      <span className="preview-version">Component base {__PREVIEW_COMMIT__.slice(0, 7)}</span>
     </div>
     <div className="preview-canvas">
       <iframe key={query.toString()} title="Component preview" src={`/?${query}`} width={width} height="1250" />
@@ -66,5 +68,6 @@ function PreviewControls() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  new URLSearchParams(location.search).has("embedded") ? <ComponentPreview /> : <PreviewControls />,
+  new URLSearchParams(location.search).has("embedded") ? <ComponentPreview />
+    : new URLSearchParams(location.search).has("qa") ? <PreviewControls /> : <Observatory />,
 );

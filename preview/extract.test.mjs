@@ -34,3 +34,33 @@ test("isolated preview scans the original production CSS classes", () => {
   assert.match(css, /@import "\.\.\/src\/styles\.css"/);
   assert.match(css, /@source "\.\.\/src"/);
 });
+
+test("Observatory reuses the real call and retains explicit demo boundaries", () => {
+  const source = readFileSync("preview/Observatory.tsx", "utf8");
+  assert.match(source, /import \{ ChairBoard \} from "@\/components\/desk\/SatoshiTab"/);
+  assert.equal((source.match(/<ChairBoard /g) ?? []).length, 1);
+  assert.match(source, /SYNTHETIC DATA · NOT A LIVE CALL/);
+  assert.match(source, /21 stations does not mean 21 votes/);
+  assert.match(source, /aria-pressed=\{focus\}/);
+  assert.match(source, /<details className="obs-inspector">/);
+  assert.doesNotMatch(source, /fetch\(|WebSocket|localStorage|beacon\(/);
+  assert.match(readFileSync("preview/sample.ts", "utf8"), /source: "demo"/);
+});
+
+test("concept styles are scoped and respect reduced motion", () => {
+  const css = readFileSync("preview/observatory.css", "utf8");
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.observatory :focus-visible/);
+  assert.match(css, /\.obs-skip:focus/);
+  assert.match(css, /\.observatory \.council-chair-board/);
+  assert.doesNotMatch(css, /url\(https?:|animation:[^;]*infinite/);
+});
+
+test("the immersive route is default and engineering controls stay separate", () => {
+  const source = readFileSync("preview/main.tsx", "utf8");
+  assert.match(source, /has\("qa"\) \? <PreviewControls \/> : <Observatory \/>/);
+  const config = readFileSync("preview/vite.config.mjs", "utf8");
+  assert.match(config, /conceptFiles: Object.fromEntries/);
+  assert.match(config, /publicDir: false/);
+  assert.match(config, /envDir: false/);
+});
