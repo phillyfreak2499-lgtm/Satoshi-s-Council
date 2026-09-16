@@ -22,6 +22,8 @@ import { FLOOR_LIVE_SINCE, openRow } from "@/lib/desk/book-floor";
 import { economicsOf, type Economics } from "@/lib/desk/economics";
 import type { FloorDensity } from "./prefs";
 import { CouncilFloorRoom } from "./CouncilFloorRoom";
+import { ChairSignalGauge } from "./ChairSignalGauge";
+import { chairSignalOf, signalDescription } from "@/lib/desk/chair-signal";
 
 /**
  * The ask for a side, from the one function the book marks with. This used to be
@@ -61,7 +63,7 @@ const GATE_CHIP: Record<string, string> = {
   spread: "WIDE SPREAD",
   quiet: "QUIET",
   top3: "SPLIT",
-  bar: "UNDER BAR",
+  bar: "SIGNAL LOW",
   edge: "THIN EDGE",
 };
 
@@ -131,17 +133,16 @@ function EconomicsBox({ eco }: { eco: Economics }) {
 function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[]; density: FloorDensity }) {
   const [mathOpen, setMathOpen] = useState(false);
   const lean = chair.lean;
-  const fill = Math.min(1, Math.abs(chair.score) / Math.max(chair.bar, 0.01));
+  const signal = chairSignalOf(chair);
   const ask = sideAsk(snap, lean);
   const side = lean === "UP" ? "YES" : "NO";
   const book = bookState(snap, lean, callLog);
   const bookSide = book.kind === "booked" ? (book.lean === "UP" ? "YES" : "NO") : side;
   const tone = lean === "UP" ? "text-up" : lean === "DOWN" ? "text-down" : "text-wait";
-  const barTone = lean === "UP" ? "bg-up" : lean === "DOWN" ? "bg-down" : "bg-wait";
   const edge = lean === "UP" ? snap.edge_up : lean === "DOWN" ? snap.edge_down : 0;
   const market = readMarket(snap.as_of, snap.close_time);
-  const gap = Math.abs(chair.score) - chair.bar;
-  const gapClear = gap >= 0;
+  const gap = signal?.margin ?? null;
+  const gapClear = signal?.met ?? false;
   const failedGates = chair.gates.filter((g) => g.hard && !g.pass);
   const filled = book.kind === "booked";
   return (
@@ -247,35 +248,19 @@ function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; cha
           tz={tz}
         />
       </details>
-      <div className="mt-4">
-        <div className="mb-1 flex items-center justify-between font-mono text-micro text-subtle">
-          <Tip k="strip.score">score vs bar</Tip>
-          <span className="tabular">
-            {chair.score >= 0 ? "+" : ""}
-            {chair.score.toFixed(3)} / {chair.bar.toFixed(2)}
-          </span>
-        </div>
-        <div className="relative h-3 w-full overflow-hidden rounded-sm bg-surface-3">
-          <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
-          <div
-            className={cn("absolute inset-y-0 transition-all duration-500 ease-out", barTone)}
-            style={
-              chair.score >= 0
-                ? { left: "50%", width: `${fill * 50}%` }
-                : { right: "50%", width: `${fill * 50}%` }
-            }
-          />
-        </div>
-      </div>
+      <ChairSignalGauge
+        chair={chair}
+        feedHealthy={snap.health.spot !== "DOWN" && snap.health.spot !== "STALE" && snap.health.kalshi !== "DOWN" && snap.health.kalshi !== "STALE"}
+      />
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span
           className={cn(
             "rounded-sm border px-1.5 py-px font-mono text-micro uppercase tracking-wide tabular",
             gapClear ? "border-up/40 bg-up/10 text-up" : "border-wait/40 bg-wait/10 text-wait",
           )}
-          title="How far the score is from the bar it must clear"
+          title={signalDescription(signal)}
         >
-          {gapClear ? "CLEAR" : "SHORT"} {Math.abs(gap).toFixed(2)}
+          {gap == null ? "SIGNAL UNAVAILABLE" : gapClear ? "THRESHOLD MET" : `${Math.abs(gap).toFixed(2)} TO THRESHOLD`}
         </span>
         {failedGates.map((g) => (
           <span key={g.id} className="rounded-sm border border-down/40 bg-down/10 px-1.5 py-px font-mono text-micro uppercase tracking-wide text-down" title={`${g.label}: ${g.value}`}>
@@ -964,7 +949,7 @@ export function SatoshiTab({
             </div>
             <div>
               conflict-frac {chair.conflict_frac.toFixed(2)} → ×
-              {(1 - 0.7 * chair.conflict_frac).toFixed(3)}
+              {(1 - 0.7 * chair.conflict_frac).toFixed(2)}
             </div>
             <div>confluence bar {chair.bar.toFixed(2)} (floor 0.24 / ceil 0.72)</div>
             <div>aggressiveness ×{chair.aggressiveness.toFixed(2)}</div>
