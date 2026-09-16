@@ -62,5 +62,7 @@ test("focus and presentation never replace data or make research decisions", () 
   const styles = read("src/components/desk/observatory.css");
   assert.match(styles, /prefers-reduced-motion: reduce/);
   assert.match(styles, /html\[data-motion="reduce"\]/);
+  assert.match(styles, /\.observatory \.obs-icon \{/);
+  assert.doesNotMatch(styles, /\.observatory (?:svg|button|select|a)\s*\{/);
   assert.doesNotMatch(styles, /(?:#floor-main|\.atelier|\.council-floor-tools|\.council-site-header)[^{]*\{[^}]*display:\s*none/);
 });
