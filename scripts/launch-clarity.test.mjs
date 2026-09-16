@@ -26,7 +26,11 @@ test("Books SSR, Replay truths, Seat chips, and FAQ basics stay explicit", () =>
   const seat = read("src/routes/seat.$id.tsx");
   const faq = read("src/routes/faq.tsx");
   assert.match(books, /useState<Books \| null>\(initial \?\? null\)/);
-  for (const label of ["Settlement result", "Booked decision", "Frame at cursor"]) assert.match(replay, new RegExp(label));
+  for (const label of ["Settlement result", "Chair / paper", "Frame at cursor"]) assert.match(replay, new RegExp(label));
+  assert.match(replay, /Paper FILLED/);
+  assert.match(replay, /Paper SKIP/);
+  assert.match(replay, /Paper — · no directional Chair read recorded/);
+  assert.ok(!replay.includes("No position · chair sat out"));
   assert.match(seat, /skillTone\(s\.status\)/);
   assert.match(seat, /rounded-sm border px-1\.5 py-0\.5/);
   assert.match(faq, /defaultValue=\{\["q0", "q1"\]\}/);
