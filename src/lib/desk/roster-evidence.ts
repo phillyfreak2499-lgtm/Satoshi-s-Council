@@ -42,13 +42,16 @@ export function rosterCounts(r: RosterReceipt): { up: number; down: number; wait
   };
 }
 
-/** Mirrors the already-finalized Chair quorum population; grants no authority. */
+/** Mirrors the already-finalized Chair quorum population; grants no authority.
+ * A forced sit is not a WAIT vote (countChairQuorum excludes it). The finalized
+ * row carries that fact; never infer eligibility from its side, weight or prose.
+ */
 export function chairRoster(snap: Snapshot, chair: ChairResult): RosterReceipt | null {
   if (!Array.isArray(chair.rows)) return null;
   return readRoster({
     ticker: snap.ticker, close_time: snap.close_time, snapshot_at: stamp(snap.as_of) ? snap.as_of : null,
     phase: "observation", population: "chair-quorum",
-    members: chair.rows.filter((r) => !["WARDEN", "ORBIT", "WIRE"].includes(r.seat) && r.status !== "MUTED")
+    members: chair.rows.filter((r) => !["WARDEN", "ORBIT", "WIRE"].includes(r.seat) && r.status !== "MUTED" && !r.forced_sit)
       .map((r) => ({ seat: r.seat, lean: r.lean })),
   });
 }

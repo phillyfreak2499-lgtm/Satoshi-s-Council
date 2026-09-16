@@ -78,6 +78,9 @@ test("forced sits and context seats are absent from the displayed Chair quorum",
     { up: 1, down: 0, wait: 1 });
   const chair = source("src/lib/desk/chair.ts");
   assert.match(chair, /const quorum = countChairQuorum\(votes, muted, CHAIR_NON_VOTERS\);/);
+  const rows = chair.slice(chair.indexOf("const rows: SeatRow[]"), chair.indexOf("const quorum ="));
+  assert.match(rows, /forced_sit:\s*a\.vote\.forced_sit === true/,
+    "the finalized rows must preserve the same forced-sit flag used by quorum for Chamber receipts");
 });
 
 test("saved authority review applies once without resetting evidence or disabling guards", () => {

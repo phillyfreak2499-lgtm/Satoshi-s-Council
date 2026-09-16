@@ -419,6 +419,8 @@ export type SeatRow = {
   seat: SeatId;
   callsign: string;
   lean: Lean;
+  /** Copied from the admitted vote. Forced sits are not members of the Chair quorum. */
+  forced_sit?: boolean;
   conf: number;
   skill_used: string;
   base_w: number;
