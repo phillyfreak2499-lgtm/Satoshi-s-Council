@@ -1,8 +1,8 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import type { Lean } from "@/lib/desk/types";
-import { readFloorRoomHidden, setFloorRoomHidden } from "./prefs";
+import { readFloorRoomHidden, setFloorRoomHidden, type FloorDensity } from "./prefs";
 
-export function CouncilFloorRoom({ lean, children }: { lean: Lean; children: ReactNode }) {
+export function CouncilFloorRoom({ lean, density, children }: { lean: Lean; density: FloorDensity; children: ReactNode }) {
   const [hidden, setHidden] = useState(false);
   const artId = useId();
   useEffect(() => { setHidden(readFloorRoomHidden()); }, []);
@@ -14,7 +14,7 @@ export function CouncilFloorRoom({ lean, children }: { lean: Lean; children: Rea
   }
 
   return (
-    <section className="council-floor-room" data-lean={lean.toLowerCase()} data-room-hidden={hidden} aria-label="The Council chamber floor">
+    <section className="council-floor-room" data-lean={lean.toLowerCase()} data-density={density} data-room-hidden={hidden} aria-label="The Council chamber floor">
       <div id={artId} className="council-floor-room-art" aria-hidden="true" hidden={hidden} />
       <div className="council-floor-room-label">
         <span>The Council Floor</span>
