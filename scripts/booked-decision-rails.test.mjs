@@ -22,20 +22,30 @@ test("the booked decision receipt is captured at entry and persisted at grade", 
   assert.match(engine, /booked\?\.build_sha \?\? null/);
 });
 
-test("GAVEL pairs a booked side with the booked score frame", () => {
+test("GAVEL pairs booked rows with entry evidence and skipped rows with prospective directional evidence when available", () => {
   const brief = read("src/lib/desk/brief.server.ts");
+  const gavel = read("src/lib/desk/gavel.ts");
   assert.match(brief, /entry_lean/);
   assert.match(brief, /entry_conf/);
   assert.match(brief, /entry_score/);
   assert.match(brief, /entry_bar/);
-  assert.match(brief, /const booked = r\.entry_cents != null/);
-  const source = compact(brief);
-  assert.match(
-    source,
-    /booked\?\(?r\.entry_conf\?\?r\.chair_conf\)?:r\.chair_conf/,
-  );
-  assert.match(source, /booked\?\(?r\.entry_score\?\?r\.score\)?:r\.score/);
-  assert.match(source, /booked\?\(?r\.entry_bar\?\?r\.bar\)?:r\.bar/);
+  assert.match(brief, /snapshot_kind = 'FIRST_DIRECTIONAL'/);
+  assert.match(brief, /toGavelRow/);
+
+  assert.match(gavel, /paper === "FILLED"/);
+  assert.match(gavel, /paper === "SKIPPED"/);
+  assert.match(gavel, /first_directional_conf/);
+  assert.match(gavel, /first_directional_score/);
+  assert.match(gavel, /first_directional_bar/);
+  assert.match(gavel, /entry_conf \?\? r\.chair_conf/);
+  assert.match(gavel, /entry_score \?\? r\.score/);
+  assert.match(gavel, /entry_bar \?\? r\.bar/);
+});
+
+test("GAVEL never gives a skipped read paper settlement or EV", () => {
+  const gavel = compact(read("src/lib/desk/gavel.ts"));
+  assert.match(gavel, /settle:booked&&r\.settle_cents!=null\?Number\(r\.settle_cents\):null/);
+  assert.match(gavel, /ev:booked&&r\.ev_cents!=null\?Math\.round\(Number\(r\.ev_cents\)\*10\)\/10:null/);
 });
 
 test("the mirror is prospective, quality-filtered, and disconnected from decisions", () => {
@@ -64,10 +74,12 @@ test("the mirror is prospective, quality-filtered, and disconnected from decisio
   }
 });
 
-test("GAVEL labels historical values as decision-frame evidence", () => {
+test("GAVEL labels Chair evidence separately from paper action", () => {
   const tab = read("src/components/desk/SatoshiTab.tsx");
-  assert.match(tab, /decision conf/);
-  assert.match(tab, /decision score \/ bar/);
+  assert.match(tab, /<th>chair<\/th>/);
+  assert.match(tab, /<th>paper<\/th>/);
+  assert.match(tab, /g\.paper === "SKIPPED"/);
+  assert.match(tab, /skipped reads never enter paper P&amp;L/);
   assert.ok(
     !tab.includes(">gate conf<"),
     "the historical column must not imply every row is a close-frame gate",

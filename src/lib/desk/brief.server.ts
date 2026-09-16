@@ -1,36 +1,20 @@
 /**
  * The first-screen brief (server only): the Chair's recent decisions and an
- * overnight summary, straight from the ledger, plus BTC open→now from the
- * engine's current snapshot. Read-only. Cached 30s.
+ * overnight summary, plus BTC open→now from the engine's current snapshot.
+ * Read-only. Cached 30s.
  *
  * GAVEL is Chair decisions only — every graded window is one row, WAIT
- * included. It is never seat fills. Settlement is shown only for a booked
- * UP/DOWN position; a WAIT window has no Chair position to settle, so its
- * settlement is null and the UI prints "—". Times group in Chicago, the
- * floor's clock.
+ * included. A booked window uses the actual entry-side Chair receipt. An
+ * unbooked directional window uses the persisted FIRST_DIRECTIONAL snapshot.
+ * Paper settlement/P&L exists only when a position was actually booked.
  */
 import { currentSnap } from "./server-engine";
-import { chairDecisionOf } from "./booked-side";
+import { gavelLeanOf, toGavelRow, type GavelRow, type GavelSourceRow } from "./gavel";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
   return getSql();
 }
-
-/** One Chair decision. lean is the Chair's call; settle is its position outcome in cents (100/0) or null for WAIT/no-fill. */
-export type GavelRow = {
-  t: string;
-  lean: "UP" | "DOWN" | "WAIT";
-  conf: number;
-  score: number;
-  bar: number;
-  /** Price paid, cents; null on a WAIT window. */
-  entry: number | null;
-  settle: number | null;
-  ev: number | null;
-  /** The market result for the window (real), shown as faint context, never as a Chair settlement. */
-  winner: "UP" | "DOWN" | null;
-};
 
 export type Overnight = {
   /** Chair decision counts over the last 12h (Chicago). */
@@ -50,52 +34,6 @@ export type Overnight = {
 };
 
 export type Brief = { gavel: GavelRow[]; overnight: Overnight; at: number };
-
-type LedgerRow = {
-  close_time: Date | string;
-  chair_lean: string;
-  chair_conf: number | null;
-  score: number | null;
-  bar: number | null;
-  entry_lean: string | null;
-  entry_cents: number | null;
-  entry_conf: number | null;
-  entry_score: number | null;
-  entry_bar: number | null;
-  settle_cents: number | null;
-  ev_cents: number | null;
-  winner: string | null;
-};
-
-function iso(v: Date | string): string {
-  return v instanceof Date ? v.toISOString() : new Date(v).toISOString();
-}
-
-function toGavel(r: LedgerRow): GavelRow {
-  const winner = r.winner === "UP" ? "UP" : r.winner === "DOWN" ? "DOWN" : null;
-  const entryLean = r.entry_lean === "UP" ? "UP" : r.entry_lean === "DOWN" ? "DOWN" : null;
-  const booked = r.entry_cents != null;
-  // A booked row is one historical decision, so its side, confidence, score,
-  // and bar must all come from the entry frame. Older rows have no prospective
-  // receipt and retain the legacy grade-frame fallback.
-  const conf = booked ? r.entry_conf ?? r.chair_conf : r.chair_conf;
-  const score = booked ? r.entry_score ?? r.score : r.score;
-  const bar = booked ? r.entry_bar ?? r.bar : r.bar;
-  return {
-    t: iso(r.close_time),
-    // The side the chair actually booked and held to settlement — not the
-    // grade-frame lean, which can decay to WAIT while a position was live.
-    // entry_lean is prospective; chairDecisionOf keeps older rows readable.
-    lean: entryLean ?? chairDecisionOf(r.chair_lean, r.settle_cents, winner),
-    conf: Math.round(Number(conf ?? 0)),
-    score: Number(score ?? 0),
-    bar: Number(bar ?? 0),
-    entry: r.entry_cents != null ? Number(r.entry_cents) : null,
-    settle: r.settle_cents != null ? Number(r.settle_cents) : null,
-    ev: r.ev_cents == null ? null : Math.round(Number(r.ev_cents) * 10) / 10,
-    winner,
-  };
-}
 
 /** BTC 12h open→now and the 12h low/high, from the current snapshot's hourly candles. Null when the history is not there. */
 function btcOvernight(): Pick<Overnight, "btc_open" | "btc_now" | "btc_lo" | "btc_hi"> {
@@ -137,34 +75,54 @@ export async function deskBrief(): Promise<Brief> {
 
 async function build(): Promise<Brief> {
   const db = await sql();
-  const rows = await db<LedgerRow>`
-    select close_time, chair_lean, chair_conf, score, bar,
-           entry_lean, entry_cents, entry_conf, entry_score, entry_bar,
-           settle_cents, ev_cents, winner
-    from desk_ledger_research
-    order by close_time desc
+  const rows = await db<GavelSourceRow>`
+    select l.close_time, l.chair_lean, l.chair_conf, l.score, l.bar,
+           l.entry_lean, l.entry_cents, l.entry_conf, l.entry_score, l.entry_bar,
+           l.settle_cents, l.ev_cents, l.winner,
+           fd.chair_lean as first_directional_lean,
+           fd.chair_confidence as first_directional_conf,
+           fd.chair_score as first_directional_score,
+           fd.chair_bar as first_directional_bar
+    from desk_ledger_research l
+    left join desk_decision_snapshots fd
+      on fd.ticker = l.ticker
+     and fd.close_time = l.close_time
+     and fd.snapshot_kind = 'FIRST_DIRECTIONAL'
+    order by l.close_time desc
     limit 40
   `;
-  const gavel = rows.map(toGavel);
+  const gavel = rows.map(toGavelRow);
 
-  // What the chair DID over the last 12 hours, not its grade-frame lean: a
-  // held position whose lean decayed would otherwise be tallied as a sit.
-  const overnightRows = await db<{ chair_lean: string | null; settle_cents: number | null; winner: string | null }>`
-    select chair_lean, settle_cents, winner
-    from desk_ledger_research
-    where close_time > now() - interval '12 hours'
+  // Chair activity is direction, not fill count. A booked row uses its entry side;
+  // otherwise a persisted first directional read counts as the Chair's opinion.
+  // No historical backfill: windows without either remain the recorded WAIT state.
+  const overnightRows = await db<{
+    chair_lean: string | null;
+    entry_lean: string | null;
+    entry_cents: number | null;
+    settle_cents: number | null;
+    winner: string | null;
+    first_directional_lean: string | null;
+  }>`
+    select l.chair_lean, l.entry_lean, l.entry_cents, l.settle_cents, l.winner,
+           fd.chair_lean as first_directional_lean
+    from desk_ledger_research l
+    left join desk_decision_snapshots fd
+      on fd.ticker = l.ticker
+     and fd.close_time = l.close_time
+     and fd.snapshot_kind = 'FIRST_DIRECTIONAL'
+    where l.close_time > now() - interval '12 hours'
   `;
   let up = 0;
   let down = 0;
   let wait = 0;
   for (const r of overnightRows) {
-    const w = r.winner === "UP" || r.winner === "DOWN" ? r.winner : null;
-    const did = chairDecisionOf(r.chair_lean, r.settle_cents, w);
+    const did = gavelLeanOf(r);
     if (did === "UP") up += 1;
     else if (did === "DOWN") down += 1;
     else wait += 1;
   }
-  // Most-recent consecutive WAIT streak, read off the newest-first rows.
+
   let waitStreak = 0;
   for (const g of gavel) {
     if (g.lean === "WAIT") waitStreak += 1;

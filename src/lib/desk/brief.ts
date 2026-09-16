@@ -1,16 +1,6 @@
 /** Client side of the first-screen brief: the shapes GET /brief returns and one fetcher. Mirrors brief.server.ts. */
-export type GavelRow = {
-  t: string;
-  lean: "UP" | "DOWN" | "WAIT";
-  conf: number;
-  score: number;
-  bar: number;
-  /** Price paid, cents; null on a WAIT window. */
-  entry: number | null;
-  settle: number | null;
-  ev: number | null;
-  winner: "UP" | "DOWN" | null;
-};
+import type { GavelRow } from "./gavel";
+export type { GavelPaperStatus, GavelRow } from "./gavel";
 
 export type Overnight = {
   up: number;
