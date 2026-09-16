@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { chairSignalOf, signalDescription, signalReading, type ChairSignalInput } from "@/lib/desk/chair-signal";
+import {
+  CHAIR_DIRECTIONAL_SCALE_MAX,
+  chairSignalOf,
+  signalDescription,
+  signalReading,
+  type ChairSignalInput,
+} from "@/lib/desk/chair-signal";
 import "./ChairSignalGauge.css";
 
 /** A display instrument, not a decision maker. Decorative liquid never moves the marker. */
@@ -33,6 +39,12 @@ export function ChairSignalGauge({ chair, feedHealthy = true }: { chair: ChairSi
     };
   }, []);
 
+  const style = {
+    "--signal-position": `${signal?.position ?? 50}%`,
+    "--signal-threshold-down": `${signal?.thresholdDownPosition ?? 0}%`,
+    "--signal-threshold-up": `${signal?.thresholdUpPosition ?? 100}%`,
+  } as CSSProperties;
+
   return (
     <div
       ref={root}
@@ -41,15 +53,16 @@ export function ChairSignalGauge({ chair, feedHealthy = true }: { chair: ChairSi
       data-reduced={reduced}
       data-animating={visible && !paused && !reduced && feedHealthy && signal != null}
       data-chair-decision={chair.lean}
-      style={{ "--signal-position": `${signal?.position ?? 50}%` } as CSSProperties}
+      style={style}
     >
       <div className="chair-signal__head">
         <div className="chair-signal__tools">
           <details className="chair-signal__help">
-            <summary id={`${id}-label`}>Chair signal<span className="chair-signal__info" aria-hidden="true">ⓘ</span></summary>
+            <summary id={`${id}-label`}>Chair lean<span className="chair-signal__info" aria-hidden="true">ⓘ</span></summary>
             <div className="chair-signal__popover">
-              <p>Red is DOWN. Green is UP. Gold is below the signal threshold. The white marker shows the current signal; the two ticks are the thresholds.</p>
-              <p>Signal = score × aggressiveness. The scale adjusts to the current threshold. Crossing a tick clears the signal check, not every check. The Chair may still WAIT, and paper entry is separate.</p>
+              <p>Red means DOWN lean. Green means UP lean. Gold is balanced. The white marker shows the Chair&apos;s actual signed score on one fixed directional scale.</p>
+              <p>The marker does not move just because the call requirement changes. The two ticks are the current call lines, converted into the same raw-score units from bar ÷ aggressiveness, so those ticks may move as timing and conditions change.</p>
+              <p>Crossing a tick clears the signal check, not every check. The Chair may still WAIT, and paper entry is separate. This scale is directional strength, not win probability.</p>
               <p>{description}</p>
             </div>
           </details>
@@ -66,16 +79,16 @@ export function ChairSignalGauge({ chair, feedHealthy = true }: { chair: ChairSi
             </svg>
           </button>
         </div>
-        <span className="chair-signal__value" title="Effective signal / negative and positive thresholds">{signalReading(signal)}</span>
+        <span className="chair-signal__value" title="Raw Chair lean · raw score needed to clear the current call bar">{signalReading(signal)}</span>
       </div>
       <div
         className="chair-signal__axis"
         role={signal ? "meter" : "img"}
         aria-labelledby={`${id}-label`}
         aria-describedby={`${id}-description`}
-        aria-valuemin={signal ? -2 : undefined}
-        aria-valuemax={signal ? 2 : undefined}
-        aria-valuenow={signal ? Math.max(-2, Math.min(2, signal.ratio)) : undefined}
+        aria-valuemin={signal ? -CHAIR_DIRECTIONAL_SCALE_MAX : undefined}
+        aria-valuemax={signal ? CHAIR_DIRECTIONAL_SCALE_MAX : undefined}
+        aria-valuenow={signal ? Math.max(-CHAIR_DIRECTIONAL_SCALE_MAX, Math.min(CHAIR_DIRECTIONAL_SCALE_MAX, signal.score)) : undefined}
         aria-valuetext={signal ? description : undefined}
       >
         <span className="chair-signal__end chair-signal__end--down" aria-hidden="true">DOWN</span>

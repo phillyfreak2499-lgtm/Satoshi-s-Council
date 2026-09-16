@@ -23,38 +23,65 @@ function load(path, overrides = {}) {
   return module.exports;
 }
 const model = load("src/lib/desk/chair-signal.ts");
-const { chairSignalOf, signalReading, signalDescription } = model;
+const { CHAIR_DIRECTIONAL_SCALE_MAX, chairSignalOf, signalReading, signalDescription } = model;
 const { ChairSignalGauge } = load("src/components/desk/ChairSignalGauge.tsx", { "@/lib/desk/chair-signal": model });
 const input = (score, bar = 0.54, aggressiveness = 1, lean = "WAIT") => ({ score, bar, aggressiveness, lean });
 const render = (chair, extra = {}) => renderToStaticMarkup(createElement(ChairSignalGauge, { chair, ...extra }));
 
-test("the gauge uses the Chair's effective score, not its unadjusted score", () => {
+test("marker shows raw directional lean while the call line uses current aggressiveness", () => {
   const s = chairSignalOf(input(0.494, 0.542, 1.15, "UP"));
   assert.ok(Math.abs(s.effective - 0.5681) < 1e-12);
+  assert.ok(Math.abs(s.rawThreshold - 0.542 / 1.15) < 1e-12);
   assert.equal(s.met, true);
-  assert.ok(s.position > 75);
-  assert.equal(signalReading(s), "+0.568 / ±0.542");
+  assert.ok(Math.abs(s.position - (50 + (0.494 / CHAIR_DIRECTIONAL_SCALE_MAX) * 50)) < 1e-12);
+  assert.ok(s.position > s.thresholdUpPosition);
+  assert.equal(signalReading(s), "lean +0.494 · call ±0.471");
 });
 
-test("both threshold ticks and the neutral center have exact symmetric positions", () => {
+test("the same Chair lean stays in the same place when only call conditions change", () => {
+  const easy = chairSignalOf(input(0.3, 0.24, 1));
+  const hard = chairSignalOf(input(0.3, 0.72, 1));
+  const faster = chairSignalOf(input(0.3, 0.72, 1.15));
+  assert.equal(easy.position, hard.position);
+  assert.equal(hard.position, faster.position);
+  assert.notEqual(easy.thresholdUpPosition, hard.thresholdUpPosition);
+  assert.notEqual(hard.thresholdUpPosition, faster.thresholdUpPosition);
+  assert.ok(easy.thresholdUpPosition < faster.thresholdUpPosition);
+  assert.ok(faster.thresholdUpPosition < hard.thresholdUpPosition);
+});
+
+test("the fixed directional scale is symmetric and uses the full track", () => {
+  assert.equal(CHAIR_DIRECTIONAL_SCALE_MAX, 1.12);
   assert.equal(chairSignalOf(input(0)).position, 50);
-  for (const bar of [0.24, 0.54, 0.72]) {
-    assert.equal(chairSignalOf(input(bar, bar)).position, 75);
-    assert.equal(chairSignalOf(input(-bar, bar)).position, 25);
-    assert.equal(chairSignalOf(input(bar, bar)).met, true);
-    assert.equal(chairSignalOf(input(-bar, bar)).met, true);
-    assert.equal(chairSignalOf(input(bar - 0.000001, bar)).met, false);
-    assert.equal(chairSignalOf(input(-bar + 0.000001, bar)).met, false);
+  assert.equal(chairSignalOf(input(CHAIR_DIRECTIONAL_SCALE_MAX)).position, 100);
+  assert.equal(chairSignalOf(input(-CHAIR_DIRECTIONAL_SCALE_MAX)).position, 0);
+  for (const score of [0.1, 0.4, 0.8]) {
+    const up = chairSignalOf(input(score));
+    const down = chairSignalOf(input(-score));
+    assert.ok(Math.abs(up.position + down.position - 100) < 1e-12);
+    assert.ok(Math.abs(up.thresholdUpPosition + up.thresholdDownPosition - 100) < 1e-12);
   }
 });
 
 test("only marker geometry clips; extreme numeric readings remain honest", () => {
   const s = chairSignalOf(input(4, 0.5));
   assert.equal(s.position, 100);
+  assert.equal(s.score, 4);
   assert.equal(s.effective, 4);
-  assert.match(signalReading(s), /\+4\.000/);
+  assert.match(signalReading(s), /lean \+4\.000/);
   assert.match(signalDescription(s), /numeric reading is not clipped/);
   assert.equal(chairSignalOf(input(-4, 0.5)).position, 0);
+});
+
+test("zero aggressiveness preserves visible lean but makes the call line unreachable", () => {
+  const s = chairSignalOf(input(0.2, 0.5, 0));
+  assert.ok(s.position > 50);
+  assert.equal(s.effective, 0);
+  assert.equal(s.rawThreshold, null);
+  assert.equal(s.thresholdDownPosition, 0);
+  assert.equal(s.thresholdUpPosition, 100);
+  assert.equal(s.met, false);
+  assert.match(signalReading(s), /call unreachable/);
 });
 
 test("missing and invalid values are unavailable, never an invented neutral reading", () => {
@@ -68,7 +95,6 @@ test("missing and invalid values are unavailable, never an invented neutral read
   assert.equal(chairSignalOf(input(0.2, -1)), null);
   assert.equal(chairSignalOf(input(0.2, 0.5, -1)), null);
   assert.equal(chairSignalOf(input(Number.MAX_VALUE, 0.5, Number.MAX_VALUE)), null);
-  assert.equal(chairSignalOf(input(0.2, 0.5, 0)).position, 50);
   const html = render(input(NaN));
   assert.match(html, /Signal unavailable/);
   assert.ok(!html.includes('class="chair-signal__marker"'));
@@ -88,11 +114,12 @@ test("crossing the signal threshold never promotes WAIT or manufactures a fill",
   assert.equal(chairSignalOf(input(0.2, 0.54, 1, "UP")).decision, "UP");
 });
 
-test("SSR gives the gauge a labeled meter, explicit directions, and an animation pause", () => {
+test("SSR exposes directional score as the meter value, not distance-to-call", () => {
   const html = render(input(-0.7));
   assert.match(html, /role="meter"/);
-  assert.match(html, /aria-valuemin="-2"/);
-  assert.match(html, /aria-valuemax="2"/);
+  assert.match(html, /aria-valuemin="-1\.12"/);
+  assert.match(html, /aria-valuemax="1\.12"/);
+  assert.match(html, /aria-valuenow="-0\.7"/);
   assert.match(html, /aria-valuetext=/);
   assert.match(html, /aria-label="Pause liquid animation"/);
   assert.match(html, /aria-pressed="false"/);
@@ -101,10 +128,18 @@ test("SSR gives the gauge a labeled meter, explicit directions, and an animation
   assert.match(html, />UP<\/span>/);
 });
 
-test("the instrument keeps a 12px track and separates optical motion from the marker", () => {
+test("threshold ticks move independently over a continuous directional field", () => {
   const css = read("src/components/desk/ChairSignalGauge.css");
   const component = read("src/components/desk/ChairSignalGauge.tsx");
   assert.match(css, /chair-signal__axis[^}]*height: 12px/s);
+  assert.match(css, /chair-signal__tick--down \{ left: var\(--signal-threshold-down\); \}/);
+  assert.match(css, /chair-signal__tick--up \{ left: var\(--signal-threshold-up\); \}/);
+  assert.ok(!css.includes("chair-signal__tick--down { left: 25%; }"));
+  assert.ok(!css.includes("chair-signal__tick--up { left: 75%; }"));
+  assert.match(css, /Continuous directional field/);
+  assert.match(component, /--signal-threshold-down/);
+  assert.match(component, /--signal-threshold-up/);
+  assert.match(component, /marker does not move just because the call requirement changes/i);
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(css, /animation-play-state: paused/);
   const marker = css.slice(css.indexOf(".chair-signal__marker {"), css.indexOf(".chair-signal__marker::before"));
@@ -116,11 +151,12 @@ test("the instrument keeps a 12px track and separates optical motion from the ma
   assert.ok(!component.includes("setInterval"));
 });
 
-test("the Floor replaces its old bar while decision modules remain disconnected", () => {
+test("the Floor uses the display-only gauge while decision modules remain disconnected", () => {
   const floor = read("src/components/desk/SatoshiTab.tsx");
   assert.match(floor, /<ChairSignalGauge/);
   assert.ok(!floor.includes('>score vs bar</Tip>'));
-  assert.match(floor, /const gap = signal\?\.margin \?\? null/);
+  // Redundant threshold/status wording lives only in the presentation CSS cleanup;
+  // the Chair engine and paper book never import the gauge model.
   for (const path of ["chair.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts"]) {
     assert.ok(!read(`src/lib/desk/${path}`).includes("chair-signal"), `${path} must not read this presentation`);
   }
