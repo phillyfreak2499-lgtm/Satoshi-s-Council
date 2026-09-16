@@ -144,14 +144,20 @@ export function paperBookEdgeOk(
  * Fail closed on the CURRENT chair, not the lean from minutes ago:
  *   speaking seats on the booked side ≥ BOOK_MIN_SPEAKING
  *   those seats strictly outnumber the other side
- *   score clears the bar on that side now
+ *   the Chair's own bar gate passes now
  *   hard_fail is off
  *   quorum counts are finite
+ *
+ * The Chair's bar gate includes its aggressiveness multiplier. Recomputing
+ * `score >= bar` here created a stricter second formula that could reject a
+ * legitimate Chair UP/DOWN after the Chair itself had already cleared its bar.
+ * When a legacy/test Chair has no bar gate, retain the old numeric fallback so
+ * the guard still fails closed rather than silently weakening.
  *
  * HOLD is unchanged: this only blocks the first fill. A later WAIT does not unwind.
  */
 export function paperBookTeamOk(
-  chair: Pick<ChairResult, "score" | "bar" | "hard_fail" | "quorum">,
+  chair: Pick<ChairResult, "score" | "bar" | "hard_fail" | "quorum"> & Partial<Pick<ChairResult, "gates">>,
   lean: "UP" | "DOWN",
 ): boolean {
   const up = chair.quorum?.up;
@@ -162,6 +168,10 @@ export function paperBookTeamOk(
   if (speakingFor < BOOK_MIN_SPEAKING) return false;
   if (speakingFor <= speakingAgainst) return false;
   if (chair.hard_fail) return false;
+
+  const barGate = Array.isArray(chair.gates) ? chair.gates.find((g) => g.id === "bar") : undefined;
+  if (barGate) return barGate.pass;
+
   const score = chair.score;
   const bar = chair.bar;
   if (!Number.isFinite(score) || !Number.isFinite(bar) || !(bar > 0)) return false;

@@ -140,6 +140,12 @@ test("current failed gates block a sticky UP even when its score remains high", 
   assert.notEqual(selectiveBlock(snap(), chair({ hard_fail: true }), ctx()), null);
   assert.notEqual(selectiveBlock(snap(), chair({ gates: [{ id: "bar", label: "bar", hard: true, pass: false, value: "failed" }] }), ctx()), null);
 });
+test("paper team guard honors the Chair's own bar gate instead of recomputing raw score", () => {
+  const passed = { id: "bar", label: "bar", hard: true, pass: true, value: "passed with aggressiveness" };
+  const failed = { ...passed, pass: false, value: "failed" };
+  assert.equal(paperBookTeamOk(chair({ score: 0.49, bar: 0.54, gates: [passed] }), "UP"), true);
+  assert.equal(paperBookTeamOk(chair({ score: 0.80, bar: 0.54, gates: [failed] }), "UP"), false);
+});
 test("no opening chase or final-three-minute entry; remaining time comes from the clock", () => {
   for (const seconds of [601, 179, 86, 0, -1, NaN]) {
     assert.notEqual(selectiveBlock(snap({ close_time: now + seconds * 1000 }), chair(), ctx()), null);
@@ -171,17 +177,20 @@ test("DOWN uses its own ask, YES resting size, own edge and complementary index 
   assert.notEqual(selectiveBlock({ ...s, yes_bid_size: 0 }, c, ctx()), null);
   assert.notEqual(selectiveBlock({ ...s, lab_fair_yes: 90 }, c, ctx()), null);
 });
-test("confirmation requires three distinct observations and eight seconds; any invalid tick resets it", () => {
+test("confirmation gates paper entry without rewriting the Chair's directional read", () => {
   let context = ctx();
   for (const elapsed of [0, 0, 4000]) {
     const s = snap({ as_of: now + elapsed });
     const result = selectiveChair(s, chair(), context);
-    assert.equal(result.chair.lean, "WAIT");
+    assert.equal(result.chair.lean, "UP");
+    assert.equal(result.chair.gates.find(g => g.id === "selective")?.pass, false);
     context = { ...context, watch: result.watch };
   }
   const s = snap({ as_of: now + 8000, obs: { ...snap().obs, receipt_ts: now + 7000 } });
   const admitted = selectiveChair(s, chair(), context);
   assert.equal(admitted.chair.lean, "UP");
+  assert.equal(admitted.chair.gates.find(g => g.id === "selective")?.pass, true);
+  assert.equal(admitted.chair.gates.find(g => g.id === "selective")?.hard, false);
   assert.equal(selectiveBookOk(s, admitted.chair, { ...context, watch: admitted.watch }), true);
   assert.equal(selectiveBookOk({ ...s, lab_fair_yes: 80 }, admitted.chair, { ...context, watch: admitted.watch }), false);
   assert.equal(selectiveChair(s, chair({ lean: "WAIT" }), context).watch, null);
@@ -322,12 +331,13 @@ test("after -100¢ strong entries remain possible; ordinary entries fail the tig
   assert.match(selectiveBlock(snap({ lab_fair_yes: 86 }), tightChair(), context)!, /exceed 2¢/);
 });
 
-test("tighter confirmation requires five qualifying observations over twenty seconds", () => {
+test("tighter confirmation gates the paper book for twenty seconds without silencing the Chair", () => {
   let context = ctx({ calls: history([82, 82], [0, 0]) });
   for (const elapsed of [0, 5000, 10000, 15000, 20000]) {
     const s = snap({ as_of: now + elapsed, obs: { ...snap().obs, receipt_ts: now + elapsed - 1000 } });
     const result = selectiveChair(s, tightChair(), context);
-    assert.equal(result.chair.lean, elapsed === 20000 ? "UP" : "WAIT");
+    assert.equal(result.chair.lean, "UP");
+    assert.equal(result.chair.gates.find(g => g.id === "selective")?.pass, elapsed === 20000);
     context = { ...context, watch: result.watch };
     assert.equal(selectiveBookOk(s, result.chair, context), elapsed === 20000);
   }
