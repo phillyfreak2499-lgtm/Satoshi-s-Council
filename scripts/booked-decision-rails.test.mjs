@@ -79,7 +79,7 @@ test("GAVEL labels Chair evidence separately from paper action", () => {
   assert.match(tab, /<th>chair<\/th>/);
   assert.match(tab, /<th>paper<\/th>/);
   assert.match(tab, /g\.paper === "SKIPPED"/);
-  assert.match(tab, /skipped reads never enter paper P&L/);
+  assert.match(tab, /skipped reads never enter paper P&amp;L/);
   assert.ok(
     !tab.includes(">gate conf<"),
     "the historical column must not imply every row is a close-frame gate",
