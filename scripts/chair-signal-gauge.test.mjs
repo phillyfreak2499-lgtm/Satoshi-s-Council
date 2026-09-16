@@ -121,7 +121,7 @@ test("the Floor replaces its old bar while decision modules remain disconnected"
   assert.match(floor, /<ChairSignalGauge/);
   assert.ok(!floor.includes('>score vs bar</Tip>'));
   assert.match(floor, /const gap = signal\?\.margin \?\? null/);
-  for (const path of ["chair.ts", "server-engine.ts", "selective-entry.ts", "paper-book-team.ts"]) {
+  for (const path of ["chair.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts"]) {
     assert.ok(!read(`src/lib/desk/${path}`).includes("chair-signal"), `${path} must not read this presentation`);
   }
 });
