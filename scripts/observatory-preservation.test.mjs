@@ -64,5 +64,9 @@ test("focus and presentation never replace data or make research decisions", () 
   assert.match(styles, /html\[data-motion="reduce"\]/);
   assert.match(styles, /\.observatory \.obs-icon \{/);
   assert.doesNotMatch(styles, /\.observatory (?:svg|button|select|a)\s*\{/);
+  assert.match(read("src/components/desk/SiteHeader.tsx"), /className="council-site-bar gutter/);
+  assert.match(styles, /\.council-site-header > \.council-site-bar \{ height:/);
+  assert.doesNotMatch(styles, /\.council-site-header > \.gutter\s*\{/,
+    "header bar height must not constrain the full mobile menu");
   assert.doesNotMatch(styles, /(?:#floor-main|\.atelier|\.council-floor-tools|\.council-site-header)[^{]*\{[^}]*display:\s*none/);
 });

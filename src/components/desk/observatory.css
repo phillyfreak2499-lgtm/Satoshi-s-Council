@@ -356,7 +356,7 @@
 
 /* The full application keeps its established rooms and controls. */
 .council-site-header { background: #0b1015f5; border-color: #d6b78324; color: #f0ebdf; }
-.council-site-header > .gutter { height: 82px; }
+.council-site-header > .council-site-bar { height: 82px; }
 .council-site-brand { flex-shrink: 0; gap: 16px; }
 .council-site-brand > img { height: 34px; width: auto; }
 .council-site-brand > span:last-child { font-size: 10px; color: #a59a87; }
@@ -390,7 +390,7 @@ html[data-motion="reduce"] .obs-primary:hover, html[data-motion="reduce"] .obs-g
   .council-full-site .council-chair-summary { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
-  .council-site-header > .gutter { height: 68px; }
+  .council-site-header > .council-site-bar { height: 68px; }
   .council-site-brand { gap: 10px; }
   .council-site-brand > img { height: 28px; }
   .council-site-seal { width: 33px; height: 33px; }

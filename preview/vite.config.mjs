@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const uiFiles = ["src/components/desk/SatoshiTab.tsx", "src/components/desk/CouncilFloorRoom.tsx",
   "src/components/atelier/streamer.tsx", "src/components/atelier/streamer.css", "src/styles.css"];
 const baseCommit = "12c9d12f0787825fc4be5b27e4144232df69eed3";
-const integrationCommit = "1e9a260d49c47e01be8209acc56d953f215f4adc";
+const integrationCommit = "a7d794a1f08eb0322ecf337e0e1940f397f4c16b";
 const conceptFiles = ["preview/Observatory.tsx", "src/components/desk/observatory.css", "src/components/desk/CouncilExperience.tsx", "src/components/desk/CouncilNavigation.tsx", "src/components/desk/SiteHeader.tsx", "src/lib/desk/navigation.ts", "preview/main.tsx", "preview/sample.ts"];
 let building = false;
 
