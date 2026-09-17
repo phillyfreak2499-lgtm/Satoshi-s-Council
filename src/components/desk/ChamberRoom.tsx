@@ -368,10 +368,10 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
       <a href="#chamber-main" className="skip-link">Skip to content</a>
       <GlobalHeader />
 
-      <main id="chamber-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
+      <main id="chamber-main" className="council-reading-page council-page-wide gutter mx-auto w-full py-6 sm:py-8">
         <section className="chamber-intro border-b border-border pb-6">
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">Read only · structured events</div>
-          <h1 className="mt-2 font-sans text-display font-medium tracking-tight">THE CHAMBER</h1>
+          <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">The Chamber</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
             Watch the organization react to what the desk actually observed. Every line below comes from a persisted system event and carries its evidence with it.
           </p>

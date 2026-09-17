@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { LeanChip, Pane } from "./bits";
 import { Tip } from "./Tip";
 import { ReplayPane } from "./ReplayPane";
-import { BG, DOWN, FG, FONT_SM, GRID, INK, LINE, UP, WAIT, fillRound, useDraw } from "./canvas";
+import { BG, DOWN, FG, GRID, INK, LINE, UP, WAIT, fillRound, useDraw } from "./canvas";
 
 function fmtC(n: number | null | undefined, d = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -70,17 +70,18 @@ function drawCurve(
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, w, h);
   const padL = 8;
-  const padR = 48;
+  const padR = 68;
   const padT = 12;
   const stripH = 24;
   const plotT = padT;
   const plotB = h - 16 - stripH;
-  ctx.font = FONT_SM;
+  ctx.font = "12px \"IBM Plex Mono\", monospace";
   ctx.fillStyle = FG;
   if (!pts.length) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("no booked windows in the last fourteen days", w / 2, h / 2);
+    ctx.fillText("no booked windows", w / 2, h / 2 - 9);
+    ctx.fillText("in the last fourteen days", w / 2, h / 2 + 9);
     return;
   }
   const vals = pts.map((p) => p.cum);
@@ -165,19 +166,22 @@ function drawCurve(
     if (d === lastDay) return;
     lastDay = d;
     const xx = x(i);
-    if (xx - lastLabelX < 46) return;
-    lastLabelX = xx;
+    const halfLabel = ctx.measureText(d).width / 2;
+    const labelX = Math.max(halfLabel + 2, Math.min(xx, w - padR - halfLabel));
+    if (labelX - lastLabelX < 58) return;
+    lastLabelX = labelX;
     ctx.strokeStyle = GRID;
     ctx.beginPath();
     ctx.moveTo(xx, plotT);
     ctx.lineTo(xx, plotB);
     ctx.stroke();
     ctx.fillStyle = FG;
-    ctx.fillText(d, xx, plotB + 2);
+    ctx.fillText(d, labelX, plotB + 2);
   });
 
   // Both floor boundaries, where they fall in view: the curve should say which
   // rule the book was playing at any point on it, not only the older one.
+  let previousMarkEnd = -Infinity;
   const mark = (at: string, label: string) => {
     const i = pts.findIndex((p) => p.t >= at);
     if (i <= 0) return;
@@ -190,10 +194,12 @@ function drawCurve(
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = WAIT;
-    ctx.font = FONT_SM;
+    ctx.font = "12px \"IBM Plex Mono\", monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText(label, xx + 3, plotT);
+    const labelX = Math.min(xx + 3, w - ctx.measureText(label).width - 2);
+    ctx.fillText(label, labelX, plotT + (labelX < previousMarkEnd ? 16 : 0));
+    previousMarkEnd = labelX + ctx.measureText(label).width + 6;
   };
   mark(since, `${FLOOR_SHADOW_CENTS}¢ floor`);
   if (trialSince) mark(trialSince, `${FLOOR_LIVE_CENTS}¢ floor`);
@@ -202,7 +208,7 @@ function drawCurve(
   const last = pts[pts.length - 1];
   const text = fmtC(last.cum);
   const color = last.cum > 0 ? UP : last.cum < 0 ? DOWN : FG;
-  ctx.font = FONT_SM;
+  ctx.font = "12px \"IBM Plex Mono\", monospace";
   const tw = ctx.measureText(text).width + 8;
   const px = w - tw - 3;
   const py = Math.max(2, Math.min(y(last.cum) - 7, plotB - 14));
@@ -235,7 +241,7 @@ function drawCurve(
     });
   }
   ctx.fillStyle = FG;
-  ctx.font = FONT_SM;
+  ctx.font = "12px \"IBM Plex Mono\", monospace";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText("day", w - padR + 4, mid);
@@ -250,7 +256,7 @@ function bucketLabel(b: BooksBucket): string {
 function drawBuckets(ctx: CanvasRenderingContext2D, w: number, h: number, buckets: BooksBucket[]) {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, w, h);
-  ctx.font = FONT_SM;
+  ctx.font = "12px \"IBM Plex Mono\", monospace";
   ctx.fillStyle = FG;
   if (!buckets.length) {
     ctx.textAlign = "center";
@@ -261,7 +267,7 @@ function drawBuckets(ctx: CanvasRenderingContext2D, w: number, h: number, bucket
   const padL = 34;
   const padR = 8;
   const padT = 8;
-  const padB = 38; // three lines under the axis: the shelf, how often it won, what it needed
+  const padB = 52; // three comfortably spaced lines below the axis
   const plotT = padT;
   const plotB = h - padB;
   const y = (v: number) => plotB - (Math.max(0, Math.min(100, v)) / 100) * (plotB - plotT);
@@ -299,13 +305,13 @@ function drawBuckets(ctx: CanvasRenderingContext2D, w: number, h: number, bucket
     ctx.lineWidth = 1;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.font = FONT_SM;
+    ctx.font = "12px \"IBM Plex Mono\", monospace";
     ctx.fillStyle = FG;
     ctx.fillText(bucketLabel(b), cx, plotB + 3);
     ctx.fillStyle = cleared ? UP : DOWN;
-    ctx.fillText(`${Math.round(won)}% of ${b.n}`, cx, plotB + 14);
+    ctx.fillText(`${Math.round(won)}% of ${b.n}`, cx, plotB + 19);
     ctx.fillStyle = WAIT;
-    ctx.fillText(`needs ${Math.round(need)}%`, cx, plotB + 25);
+    ctx.fillText(`needs ${Math.round(need)}%`, cx, plotB + 35);
   });
 }
 
@@ -325,12 +331,12 @@ function CurveChart({
   at: number;
 }) {
   const ref = useDraw((ctx, w, h) => drawCurve(ctx, w, h, pts, days, tz, since, trialSince), `${at}:${tz}:${trialSince ?? ""}`);
-  return <canvas ref={ref} className="block h-48 w-full rounded-sm" />;
+  return <canvas ref={ref} className="books-curve block h-64 w-full rounded-sm" />;
 }
 
 function BucketChart({ buckets, at }: { buckets: BooksBucket[]; at: number }) {
   const ref = useDraw((ctx, w, h) => drawBuckets(ctx, w, h, buckets), at);
-  return <canvas ref={ref} className="block h-44 w-full rounded-sm" />;
+  return <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Price calibration chart; scroll horizontally on small screens"><canvas ref={ref} className="books-calibration-chart block h-56 w-full min-w-[620px] rounded-sm" /></div>;
 }
 
 /* ---------- heat ---------- */
@@ -430,9 +436,9 @@ function Totals({ label, t }: { label: ReactNode; t: BooksTotals }) {
   const need = t.breakeven;
   const cleared = t.calls ? t.net >= 0 : null; // the verdict is the cents; needs is the rate they imply
   return (
-    <div className="min-w-0 rounded-sm border border-border/60 p-2">
+    <div className="books-period min-w-0 rounded-sm border border-border/60 p-2">
       <div className="text-subtle text-micro">{label}</div>
-      <div className={cn("font-mono text-call tabular", tone(t.net))}>{fmtC(t.net)}</div>
+      <div className={cn("books-period-value font-mono text-call tabular", tone(t.net))}>{fmtC(t.net)}</div>
       <div className="font-mono text-micro text-muted">
         {t.calls} calls · {t.wins} won
       </div>
@@ -487,7 +493,7 @@ function TrialPane({ trial, tz }: { trial: FloorTrial; tz: string }) {
         <div className="text-subtle text-micro">
           {label} · {cents}¢{research ? " · research" : null}
         </div>
-        <div className={cn("font-mono text-call tabular", research ? "text-muted" : tone(t.net))}>{fmtC(t.net)}</div>
+        <div className={cn("books-period-value font-mono text-call tabular", research ? "text-muted" : tone(t.net))}>{fmtC(t.net)}</div>
         <div className="font-mono text-micro text-muted">
           {t.calls} fills · {t.wins} won
         </div>
@@ -567,7 +573,7 @@ function LastWindow({ wnd, tz, onReplay }: { wnd: BooksWindow; tz: string; onRep
         <span className="inline-flex items-center gap-2">
           <Tip k="books.last">LAST WINDOW</Tip>
           {wnd.replay ? (
-            <button type="button" className="rounded-sm border border-border px-1.5 py-px font-mono text-micro font-normal text-subtle hover:text-fg" onClick={() => onReplay(wnd.ticker)}>
+            <button type="button" className="min-h-11 rounded-sm border border-border px-3 py-2 font-mono text-micro font-normal text-subtle hover:text-fg" onClick={() => onReplay(wnd.ticker)}>
               ▶ replay
             </button>
           ) : null}
@@ -703,7 +709,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         </section>
       ) : null}
 
-      <section id="books-overview" className="grid grid-cols-1 scroll-mt-20 gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <section id="books-overview" className="books-overview grid grid-cols-1 scroll-mt-20 gap-4">
         {books.last ? (
           <LastWindow wnd={books.last} tz={tz} onReplay={openReplay} />
         ) : (
@@ -712,7 +718,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           </Pane>
         )}
         <Pane title={<Tip k="tab.books">THE BOOKS</Tip>}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="books-periods grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Totals label="today" t={books.today} />
             <Totals label="last 7 days" t={books.week} />
             <Totals label="since floor introduced" t={books.floor} />
@@ -756,7 +762,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         </Pane>
       </section>
 
-      <section id="books-calibration" className="grid grid-cols-1 scroll-mt-20 gap-3 lg:grid-cols-2">
+      <section id="books-calibration" className="grid grid-cols-1 scroll-mt-20 gap-4 xl:grid-cols-2">
         <Pane title={<Tip k="books.calib">DID THE PRICE TELL THE TRUTH?</Tip>}>
           <BucketChart buckets={books.buckets} at={books.at} />
           <p className="mt-1 font-mono text-micro text-subtle">grey = price paid · gold = breakeven after the fee · green or red = the shelf cleared it or fell short</p>

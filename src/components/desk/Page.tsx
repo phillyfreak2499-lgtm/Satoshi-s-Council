@@ -13,8 +13,8 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
         Skip to content
       </a>
       <GlobalHeader />
-      <main id="page-main" className={cn("gutter mx-auto w-full flex-1 py-8", wide ? "max-w-5xl" : "max-w-[72ch]")}>
-        <h1 className="font-sans text-display font-medium tracking-tight text-fg">{title}</h1>
+      <main id="page-main" className={cn("council-reading-page gutter mx-auto w-full flex-1 py-8", wide ? "council-page-wide" : "max-w-[72ch]")}>
+        <h1 className="council-page-title font-sans text-display font-medium tracking-tight text-fg">{title}</h1>
         <p className="mt-2 font-sans text-body text-muted">{lede}</p>
         <div className="prose-desk mt-8">{children}</div>
         <div className="mt-10 border-t border-border pt-6">

@@ -21,7 +21,9 @@ test("the Observatory adds wayfinding without dropping any existing destination"
   }
   const shared = read("src/components/desk/CouncilNavigation.tsx");
   assert.match(shared, /const PRIMARY[^;]*"\/lab"[^;]*"\/\?tab=atelier"/);
-  assert.match(shared, /const SHORTCUTS[^;]*"\/lab"[^;]*"\/\?tab=atelier"[^;]*"\/\?tab=settings"/);
+  assert.match(shared, /const PRIMARY[^;]*"\/books"[^;]*"\/chamber"/);
+  assert.match(shared, /const SHORTCUTS = PRIMARY;/);
+  assert.match(shared, /links\(\["\/\?tab=settings"\]\)/);
   assert.match(shared, /const menu: MenuItem\[\] = SITE_DESTINATIONS\.map/);
   assert.match(shared, /All sections/);
   assert.match(read("src/components/desk/GlobalHeader.tsx"), /searchOverride \?\? location.searchStr/);

@@ -4,10 +4,11 @@ import { SITE_DESTINATIONS, sitePathActive, type SitePath } from "@/lib/desk/nav
 import { cn } from "@/lib/utils";
 import { SiteHeader, type MenuItem } from "./SiteHeader";
 import "./observatory.css";
+import "./interface-polish.css";
 
 export type HeaderAction = { label: string; hint?: string; onSelect: () => void };
 const PRIMARY: readonly SitePath[] = ["/", "/lab", "/?tab=atelier", "/books", "/chamber"];
-const SHORTCUTS: readonly SitePath[] = ["/", "/lab", "/?tab=atelier", "/?tab=settings"];
+const SHORTCUTS = PRIMARY;
 const linkClass = "council-site-link flex min-h-11 items-center gap-1 rounded-md px-3 font-mono text-micro tracking-wide";
 
 /** Shared by the real app and the isolated design preview. No data fetching. */

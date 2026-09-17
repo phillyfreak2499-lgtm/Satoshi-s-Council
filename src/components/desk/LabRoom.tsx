@@ -176,9 +176,10 @@ function SeatTimingStudy({
       </p>
 
       {rows.length ? (
-        <div className="mt-4 overflow-x-auto rounded-sm border border-border">
-          <table className="w-full min-w-[960px] border-collapse text-left">
-            <thead className="bg-canvas">
+        <div className="lab-timing-scroll mt-4 overflow-x-auto rounded-sm border border-border">
+          <table role="table" className="lab-timing-table w-full min-w-[960px] border-collapse text-left">
+            <caption className="sr-only">Seat timing calibration: raw and heard accuracy at fixed horizons before close.</caption>
+            <thead role="rowgroup" className="bg-canvas">
               <tr>
                 <th
                   scope="col"
@@ -200,17 +201,22 @@ function SeatTimingStudy({
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {rows.map((row) => (
-                <tr key={row.seat} className="border-b border-border last:border-b-0">
-                  <th scope="row" className="px-3 py-3 font-mono text-ui font-medium text-fg">
+                <tr role="row" key={row.seat} className="border-b border-border last:border-b-0">
+                  <th role="rowheader" scope="row" className="px-3 py-3 font-mono text-ui font-medium text-fg">
                     {row.seat}
                   </th>
                   {row.horizons.map((horizon) => (
                     <td
                       key={horizon.seconds}
+                      role="cell"
+                      data-label={`${data.horizons.find((h) => h.seconds === horizon.seconds)?.label ?? `${horizon.seconds}s`} before close`}
                       className="border-l border-border px-3 py-3 font-mono text-micro tabular"
                     >
+                      <div className="mb-2 text-subtle sm:hidden">
+                        n={data.horizons.find((h) => h.seconds === horizon.seconds)?.sampled_windows ?? "—"} windows sampled
+                      </div>
                       <div className={horizon.raw_n < DISPLAY_SAMPLE_MIN ? "text-subtle" : "text-fg"}>
                         raw {sampleRate(horizon.raw_rate, horizon.raw_n)}
                       </div>
@@ -271,11 +277,11 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
       <a href="#lab-main" className="skip-link">Skip to content</a>
       <GlobalHeader />
 
-      <main id="lab-main" className="gutter mx-auto w-full max-w-[var(--max)] py-6 sm:py-8">
+      <main id="lab-main" className="council-reading-page council-page-wide gutter mx-auto w-full py-6 sm:py-8">
         {refreshFailed ? <p role="status" className="mb-4 rounded-md border border-border bg-surface p-3 font-mono text-micro text-wait">{data ? "Refresh paused. Showing the last recorded snapshot; retrying automatically." : "The Lab could not load. Retrying automatically."}</p> : null}
         <section className="border-b border-border pb-6">
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">ALCHEMIST · prospective research</div>
-          <h1 className="mt-2 font-sans text-display font-medium tracking-tight">THE LAB</h1>
+          <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">The Lab</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
             Where frozen ideas compete before they earn any right to challenge the Council. These are real prospective paper-research specimens, measured against the same booked opportunities.
           </p>

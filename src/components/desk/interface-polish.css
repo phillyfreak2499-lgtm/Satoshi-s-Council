@@ -1,0 +1,106 @@
+/* Shared presentation only. Data, research gates and saved desk preferences stay in their owners. */
+.council-site-header { --header-h: 76px; }
+.council-site-header > .council-site-bar { height: var(--header-h); }
+.council-site-brand { gap: 12px; }
+.council-site-link { font-size: 14px; letter-spacing: 0; padding-inline: 10px; }
+.council-site-shortcuts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.council-site-shortcuts a { padding-inline: 4px; }
+.council-site-header button[aria-controls="site-menu"] { min-height: 44px; padding-inline: 14px; }
+.council-site-header #site-menu { max-height: calc(100dvh - 128px); }
+.council-desk-menu { max-width: calc(100vw - 24px); }
+.council-desk-menu [role^="menuitem"] { min-height: 44px; font-family: var(--font-sans); font-size: 14px; }
+.council-desk-menu [role^="menuitem"] > span { font-size: 12px; }
+.council-full-site .council-floor-tools { gap: 4px; padding-block: 4px; }
+.council-floor-tools > button { font-family: var(--font-sans); font-size: 14px; letter-spacing: 0; }
+
+/* Reading pages share an alignment and heading rhythm with the Floor. */
+.council-page-wide { max-width: 1280px; }
+.council-reading-page { padding-top: 40px; padding-bottom: 48px; }
+.council-page-title { font-family: Georgia, "Times New Roman", serif; font-size: clamp(34px, 4vw, 48px); font-weight: 400; line-height: 1.15; letter-spacing: -.035em; text-wrap: balance; }
+.council-reading-page > p { max-width: 76ch; line-height: 1.7; }
+.council-reading-page :is(section, article)[id], .books-content section[id] { scroll-margin-top: 144px; }
+.council-reading-page :is(p.text-micro, p.text-ui), .books-content p.text-micro, .books-content p {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+#lab-main :is(h2, .text-title), #chamber-main h2 { font-size: 20px; line-height: 1.35; }
+#lab-main > section:last-child { font-family: var(--font-sans); font-size: 15px; line-height: 1.7; }
+#lab-main section[aria-labelledby="lab-summary-title"] > .grid > div {
+  border: 0;
+  border-left: 2px solid var(--hairline-strong);
+  border-radius: 0;
+  background: transparent;
+  padding-block: 4px;
+}
+#lab-main article > dl { padding-block: 16px; border-block: 1px solid var(--hairline); }
+#lab-main article > dl dd { font-size: 17px; }
+
+/* Comfortable reading sizes while keeping prices and short labels in mono. */
+.council-full-site .obs-hero-description { font-size: 16px; max-width: 47ch; line-height: 1.7; }
+.council-full-site :is(.obs-primary, .obs-text-link, .obs-guide summary) { font-size: 14px; }
+.council-full-site :is(.obs-guide-copy > p:not(.obs-eyebrow), .obs-guide details p, .obs-method-heading > p) { font-size: 15px; line-height: 1.75; }
+.council-full-site .obs-guide-copy > p:not(.obs-eyebrow) { min-height: 0; }
+.council-full-site .council-chair-summary p { font-size: 15px; line-height: 1.7; }
+.council-full-site .council-chair-evidence > summary { font-size: 14px; }
+.council-full-site .council-chair-metrics { background: transparent; border: 0; border-left: 1px solid #ffffff18; border-radius: 0; padding-left: 22px; }
+
+/* Books: no stretched last-window card; each period has equal visual weight. */
+.books-content { gap: 20px; }
+.books-content .desk-pane { padding: 20px; }
+.books-content .desk-pane-title { margin-bottom: 16px; color: var(--text); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; letter-spacing: .025em; }
+.books-content .text-micro { font-size: 13px; line-height: 1.6; }
+.books-content .books-period { padding: 16px; background: #0b101580; }
+.books-period > :first-child { min-height: 42px; color: var(--text-2); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; }
+.books-content .books-period-value { margin-block: 4px 10px; font-size: clamp(22px, 2.1vw, 28px); line-height: 1.25; overflow-wrap: anywhere; }
+.books-content nav[aria-label="Paper book sections"] { gap: 4px; padding: 6px; }
+.books-content nav a { min-height: 44px; font-size: 14px; }
+.books-content canvas { margin-block: 8px; }
+.books-calibration-chart { min-width: 620px; }
+.books-content .overflow-x-auto, .lab-timing-scroll, .council-desk-menu, .council-site-header #site-menu { scrollbar-color: #776c57 #11161c; scrollbar-width: thin; }
+.lab-timing-scroll { padding-bottom: 4px; }
+.lab-timing-table th:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.lab-timing-table thead th:first-child { background: var(--page); }
+.lab-timing-table td, .lab-timing-table th { font-size: 13px; }
+
+@media (max-width: 1279px) {
+  .council-site-header { --header-h: 68px; }
+}
+@media (max-width: 800px) {
+  .council-full-site .council-chair-metrics { border-left: 0; border-top: 1px solid #ffffff18; padding: 18px 0 0; }
+}
+@media (max-width: 639px) {
+  /* The mark has the same size on every route, including pages with sound controls. */
+  .council-site-brand { gap: 0; }
+  .council-site-brand > span { display: none; }
+  .council-site-brand > img { width: clamp(116px, calc(100vw - 206px), 176px); height: auto; }
+  .council-site-shortcuts { padding-inline: 8px; }
+  .council-site-shortcuts a { font-size: 13px; }
+  .council-full-site .council-floor-tools { flex-wrap: nowrap; padding-inline: 12px; gap: 2px; }
+  .council-floor-tools > button { font-size: 13px; padding-inline: 10px; }
+  .council-floor-tools > button[aria-label="Floor tools"] { margin-left: auto; }
+  .council-desk-menu [role^="menuitem"] > span { max-width: 52%; text-align: right; }
+  .council-reading-page { padding-top: 28px; }
+  .books-content { gap: 16px; }
+  .books-content .desk-pane { padding: 16px; }
+  .books-content .books-period { padding: 12px; }
+  .books-periods { gap: 8px; }
+  .books-content .books-period .text-micro { font-size: 12px; }
+  .books-period > :first-child { min-height: 42px; font-size: 13px; }
+  .books-content .books-period-value { font-size: 22px; }
+  .books-content .desk-pane-title { flex-wrap: wrap; }
+  .books-content .desk-pane-title > span { flex-wrap: wrap; }
+  .books-content p.text-micro, .books-content p { font-size: 15px; }
+  .council-full-site .obs-hero-content { padding-top: 32px; }
+
+  /* One card per seat replaces the 960px horizontal table on narrow screens. */
+  .lab-timing-scroll { overflow: visible; border: 0; padding-bottom: 0; }
+  .lab-timing-table { display: block; min-width: 0; }
+  .lab-timing-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .lab-timing-table tbody { display: grid; gap: 12px; }
+  .lab-timing-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; }
+  .lab-timing-table tbody th { position: static; grid-column: 1 / -1; border-bottom: 1px solid var(--hairline); padding: 12px; color: var(--gold); }
+  .lab-timing-table td { min-width: 0; border-left: 0; padding: 12px; font-size: 12px; }
+  .lab-timing-table td::before { content: attr(data-label); display: block; margin-bottom: 8px; color: var(--text-2); font-family: var(--font-sans); font-size: 13px; }
+}
