@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { selectOpenKalshiMarket } from "./kalshi-market";
+import { selectOpenKalshiMarket } from "./kalshi-market.ts";
 
 const now = Date.parse("2026-09-17T12:00:05Z");
 
