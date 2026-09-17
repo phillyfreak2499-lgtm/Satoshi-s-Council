@@ -123,14 +123,17 @@ test("risk settlement needs exact window identity and never replaces a known res
   assert.equal(settled[0]!.settle, 0);
   assert.equal(settleRiskCalls(settled, r.ticker, r.close_time, "UP")[0]!.settle, 0);
 });
-test("one or two seats, disagreement, folded or uncalibrated seats cannot manufacture a team", () => {
+test("one seat, disagreement, folded or uncalibrated seats cannot manufacture a team", () => {
   for (const c of [chair({ quorum: { up: 1, down: 0, wait: 17 } }),
-    chair({ rows: chair().rows.slice(0, 2) }), chair({ quorum: { up: 3, down: 1, wait: 14 } }),
+    chair({ quorum: { up: 3, down: 1, wait: 14 } }),
     chair({ rows: chair().rows.map(r => ({ ...r, folded: true })) }),
     chair({ rows: chair().rows.map(r => ({ ...r, status: "UNCALIBRATED" })) }),
     chair({ rows: [chair().rows[0]!, chair().rows[0]!, chair().rows[0]!] })]) {
     assert.notEqual(selectiveBlock(snap(), c, ctx()), null);
   }
+});
+test("two healthy supporters from two evidence groups clear normal quorum", () => {
+  assert.equal(selectiveBlock(snap(), chair({ rows: chair().rows.slice(0, 2) }), ctx()), null);
 });
 test("three correlated candle seats are only one evidence group", () => {
   const rows = (["WICK", "DRIFT", "PULSE"] as SeatId[]).map(seat => ({ ...chair().rows[0]!, seat }));
