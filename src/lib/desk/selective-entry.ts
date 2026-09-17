@@ -126,7 +126,7 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   const families = new Set(rows.map(r => EVIDENCE_OF[r.seat]));
   if (supporters.size < required.min_speaking || families.size < required.min_families || against > p.max_opposing) {
     return daily.tightened ? "tighter mode: needs four healthy supporters from three evidence groups, with no opposing vote"
-      : "needs three healthy supporters from two evidence groups, with no opposing vote";
+      : "needs two healthy supporters from two evidence groups, with no opposing vote";
   }
   const seconds = (snap.close_time - snap.as_of) / 1000;
   if (!Number.isFinite(seconds) || seconds < p.min_seconds_left || seconds > p.max_seconds_left) {

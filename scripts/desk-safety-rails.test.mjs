@@ -1183,6 +1183,9 @@ test("research readers exclude the known-invalid windows", () => {
   // both, so reads and writes are listed separately and a write reason has to say
   // which columns of the row's identity it matches on.
   const ALLOWED_BARE = {
+    "src/lib/desk/call-quality.server.ts": [
+      "read-only coverage of missing and late-quarantined outcomes, matched by ticker AND close_time; qualityEligibility excludes them from every forecast aggregate, while fits and booked totals use the research view",
+    ],
     "src/lib/desk/skill-score-audit.server.ts": [
       "read-only grading receipts must retain excluded inputs and their credit-skip reason; " +
         "the count is receipts, never research wins, EV or learner credit. No operating consumer.",
