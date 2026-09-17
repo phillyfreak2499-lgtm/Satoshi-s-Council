@@ -11,6 +11,7 @@ import { checkpointActiveWindow, restoreActiveWindow, type ActiveWindow } from "
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
 import { isCountable } from "./research-quality";
+import { auditAdmission, type AdmissionAudit } from "./admission-audit";
 import { beginSkillScoreAudit, finishSkillScoreAudit, withSkillAuditColumn, type SkillScoreAudit } from "./skill-score-audit";
 import { captureEntrySkillRoster, withEntrySkillRosterColumn } from "./entry-skill-roster";
 import { evaluateEntrySkillQuality, withEntrySkillQualityColumn } from "./entry-skill-quality";
@@ -146,6 +147,7 @@ type Eng = {
   riskCalls: CallLogRow[];
   riskReady: boolean;
   entryWatch: EntryWatch | null;
+  lastAdmissionAudit: AdmissionAudit | null;
   selectiveStart: number;
   baselineCalls: CallLogRow[];
   lastCall: { ticker: string; close_time: number; lean: Lean } | null;
@@ -308,6 +310,7 @@ function freshEng(): Eng {
     riskCalls: [],
     riskReady: false,
     entryWatch: null,
+    lastAdmissionAudit: null,
     selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
     baselineCalls: [],
     lastCall: null,
@@ -1359,6 +1362,10 @@ async function tick(e: Eng) {
     const rawChair = decideChair(e, votes, snap, lastSide(e, snap));
     noteUnfilteredCall(e, snap, rawChair);
     const chair = applyEntryMode(e, snap, rawChair);
+    // Freeze diagnostics with this decision, before any fill changes risk state.
+    // Failure of optional measurement cannot interrupt a paper decision.
+    let admissionAudit: AdmissionAudit | null = null;
+    try { admissionAudit = auditAdmission(snap, chair, { calls: e.riskCalls, ready: e.riskReady, start: e.selectiveStart, watch: e.entryWatch }); } catch { /* no research receipt */ }
     // S2-5: capture the Chair's decision-time market state from THIS exact
     // finalized (snap, chair) pair, synchronously, the instant the read exists and
     // BEFORE the paper-fill path (noteCall) or any later grade can stand in for it.
@@ -1395,6 +1402,7 @@ async function tick(e: Eng) {
     }
     e.prevSnap = snap;
     e.lastVotes = votes;
+    e.lastAdmissionAudit = admissionAudit;
     e.lastChair = chair;
     e.recoveredWindow = null;
     e.lastError = null;
@@ -2078,6 +2086,7 @@ export type ServerFrame = {
   v2: V2Frame;
   selective: {
     policy: string;
+    audit: AdmissionAudit | null;
     start: number;
     params: typeof SELECTIVE_PARAMS;
     ready: boolean;
@@ -2108,6 +2117,7 @@ export async function getServerFrame(): Promise<ServerFrame> {
     settling: e.pending.length > 0,
     v2: v2Frame(e),
     selective: {
+      audit: e.lastAdmissionAudit,
       policy: SELECTIVE_ENTRY_ID, start: e.selectiveStart, params: SELECTIVE_PARAMS, ready: e.riskReady,
       daily: dailyAdmission(e.riskCalls, Date.now()),
       comparison: { label: "Prospective admission comparison; same current signal before filters; same retained market windows, up to 160",
@@ -2179,6 +2189,8 @@ export async function applyDeskOp(op: DeskOp): Promise<{ ok: true }> {
   if (e.prevSnap && e.lastVotes.length) {
     e.lastChair = decideChair(e, e.lastVotes, e.prevSnap, e.lastChair?.lean ?? "WAIT");
     e.lastChair = applyEntryMode(e, e.prevSnap, e.lastChair);
+    // A settings change is not the decision tick captured by the observer.
+    e.lastAdmissionAudit = null;
   }
   await persistState(e, true);
   return { ok: true };

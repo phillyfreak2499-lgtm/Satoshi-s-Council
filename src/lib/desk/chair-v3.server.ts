@@ -1,5 +1,6 @@
 /** Read-only Chair v3 historical research. Nothing here votes, books, grades, or promotes. */
 import { getSql } from "@/lib/db";
+import { tickerAgrees } from "./window-identity";
 import {
   V3_FEATURES,
   V3_MAX_ADJUSTMENT,
@@ -16,6 +17,7 @@ const ROW_CAP = 1800;
 const CACHE_MS = 10 * 60_000;
 
 type StoredRow = {
+  ticker: string;
   close_ms: number | string;
   winner: string;
   features: Record<string, unknown> | null;
@@ -69,7 +71,7 @@ function asFitRow(r: StoredRow): V3FitRow | null {
   const close = finite(r.close_ms);
   const mid = finite(r.market?.yes_mid);
   const fair = finite(r.market?.fair_yes);
-  if (close == null || mid == null || !(mid > 0 && mid < 100)) return null;
+  if (close == null || tickerAgrees(r.ticker, close) !== true || mid == null || !(mid > 0 && mid < 100)) return null;
   const marketP = mid / 100;
   return {
     close_time: close,
@@ -100,15 +102,17 @@ async function buildSnapshot(): Promise<ChairV3Snapshot> {
   const sql = await getSql();
   const raw = await sql<StoredRow>`
     select
+      ticker,
       (extract(epoch from close_time) * 1000)::bigint as close_ms,
       winner,
       features,
       market
     from (
-      select close_time, winner, features, market
-      from desk_samples
-      where winner in ('UP', 'DOWN')
-      order by close_time desc
+      select s.ticker, s.close_time, l.winner, s.features, s.market
+      from desk_samples s
+      join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
+      where l.winner in ('UP', 'DOWN') and l.source = 'kalshi-result' and s.taken_at < s.close_time
+      order by s.close_time desc
       limit ${ROW_CAP}
     ) q
     order by close_time asc

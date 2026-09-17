@@ -20,11 +20,13 @@ import { tickerAgrees } from "./window-identity";
 
 /** Frozen design boundary. Anything before this remains exploratory history. */
 export const V3_PROSPECTIVE_SINCE = Date.parse("2026-09-16T21:00:00.000Z");
+export const V3_MEASUREMENT_VERSION = "valid-official-v2";
 const OBSERVER_MS = 2_000;
 const TRAIN_CAP = 1_800;
 const SAMPLE_MIN_MINS = 2.2;
 
 type StoredTraining = {
+  ticker: string;
   close_ms: number | string;
   winner: string;
   features: Record<string, unknown> | null;
@@ -67,7 +69,7 @@ function trainingRow(r: StoredTraining): V3FitRow | null {
   const close = num(r.close_ms);
   const mid = num(r.market?.yes_mid);
   const fair = num(r.market?.fair_yes);
-  if (close == null || mid == null || !(mid > 0 && mid < 100)) return null;
+  if (close == null || tickerAgrees(r.ticker, close) !== true || mid == null || !(mid > 0 && mid < 100)) return null;
   const marketP = mid / 100;
   return {
     close_time: close,
@@ -81,14 +83,16 @@ function trainingRow(r: StoredTraining): V3FitRow | null {
 async function weightsBefore(closeMs: number) {
   const db = await getSql();
   const raw = await db<StoredTraining>`
-    select close_ms, winner, features, market from (
+    select ticker, close_ms, winner, features, market from (
       select
-        (extract(epoch from close_time) * 1000)::bigint as close_ms,
-        winner, features, market
-      from desk_samples
-      where winner in ('UP', 'DOWN')
-        and close_time < ${new Date(closeMs).toISOString()}
-      order by close_time desc
+        s.ticker, (extract(epoch from s.close_time) * 1000)::bigint as close_ms,
+        l.winner, s.features, s.market
+      from desk_samples s
+      join desk_ledger_research l on l.ticker = s.ticker and l.close_time = s.close_time
+      where l.winner in ('UP', 'DOWN') and l.source = 'kalshi-result'
+        and s.taken_at < s.close_time and l.graded_at < ${new Date(closeMs).toISOString()}
+        and s.close_time < ${new Date(closeMs).toISOString()}
+      order by s.close_time desc
       limit ${TRAIN_CAP}
     ) q order by close_ms asc
   `;
@@ -105,7 +109,7 @@ async function captureOnce(): Promise<void> {
     // return path into the decision loop.
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
-    const snap = frame.snap;
+    const { snap, votes } = structuredClone({ snap: frame.snap, votes: frame.votes });
     if (!snap || snap.demo || snap.as_of < V3_PROSPECTIVE_SINCE) return;
     if (!snap.ticker || tickerAgrees(snap.ticker, snap.close_time) === false) return;
     if (snap.mins_left > V2_SAMPLE_MINS || snap.mins_left <= SAMPLE_MIN_MINS) return;
@@ -116,21 +120,22 @@ async function captureOnce(): Promise<void> {
     if (st.sampled.has(key)) return;
 
     const marketP = snap.yes_mid / 100;
-    const all = extractFeatures(frame.votes, snap) as Record<string, unknown>;
+    const all = extractFeatures(votes, snap) as Record<string, unknown>;
     const features = v3FeaturesFromStored(all, marketP, snap.fair_yes / 100);
-    const weights = await weightsBefore(snap.close_time);
+    const weights = await weightsBefore(snap.as_of);
     const pred = predictV3(weights, marketP, features);
     const db = await getSql();
     await db`
       insert into desk_v3_samples
         (ticker, close_time, taken_at, secs_left, version,
          market_p, v3_p, raw_v3_p, adjustment_pp, correction_logit,
-         model_n, model_fitted_at, features, build_sha)
-      values
-        (${snap.ticker}, ${new Date(snap.close_time).toISOString()}, ${new Date(snap.as_of).toISOString()}, ${snap.secs_left}, ${V3_VERSION},
+         model_n, model_fitted_at, features, build_sha, measurement_version)
+      select
+         ${snap.ticker}, ${new Date(snap.close_time).toISOString()}::timestamptz, ${new Date(snap.as_of).toISOString()}::timestamptz, ${snap.secs_left}, ${V3_VERSION},
          ${pred.p_market}, ${pred.p_up}, ${pred.raw_p_up}, ${pred.adjustment_pp}, ${pred.correction_logit},
-         ${pred.model_n}, ${weights ? new Date(weights.fitted_at).toISOString() : null}, ${JSON.stringify(features)}::jsonb,
-         ${process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? ""})
+         ${pred.model_n}, ${weights ? new Date(weights.fitted_at).toISOString() : null}::timestamptz, ${JSON.stringify(features)}::jsonb,
+         ${process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? ""}, ${V3_MEASUREMENT_VERSION}
+      where clock_timestamp() < ${new Date(snap.close_time).toISOString()}::timestamptz
       on conflict (ticker, close_time) do nothing
     `;
     st.sampled.add(key);
@@ -174,8 +179,10 @@ export async function chairV3ProspectiveSnapshot() {
       l.winner
     from desk_v3_samples v
     left join desk_ledger_research l
-      on l.ticker = v.ticker and l.close_time = v.close_time
+      on l.ticker = v.ticker and l.close_time = v.close_time and l.source = 'kalshi-result'
     where v.taken_at >= ${new Date(V3_PROSPECTIVE_SINCE).toISOString()}
+      and v.measurement_version = ${V3_MEASUREMENT_VERSION}
+      and v.taken_at < v.close_time
     order by v.close_time asc
   `;
   const graded = rows.filter((r): r is ProspectiveRow & { winner: "UP" | "DOWN" } => r.winner === "UP" || r.winner === "DOWN");
@@ -187,6 +194,8 @@ export async function chairV3ProspectiveSnapshot() {
   const preClose = rows.filter((r) => Number(r.taken_ms) < Number(r.close_ms)).length;
   return {
     since: new Date(V3_PROSPECTIVE_SINCE).toISOString(),
+    measurement_version: V3_MEASUREMENT_VERSION,
+    first_capture: rows.length ? new Date(Number(rows[0]!.taken_ms)).toISOString() : null,
     evidence: "prospective-frozen-before-settlement",
     authority: { live_chair: false, paper_book: false, promotion: false },
     captured: rows.length,

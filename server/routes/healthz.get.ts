@@ -10,6 +10,9 @@ export default function healthz() {
   void import("../../src/lib/desk/chair-v3-prospective.server")
     .then((m) => m.ensureChairV3ProspectiveObserver())
     .catch(() => {});
+  void import("../../src/lib/desk/call-quality.server")
+    .then((m) => m.ensureCallQualityObserver())
+    .catch(() => {});
   return new Response("ok", {
     status: 200,
     headers: {

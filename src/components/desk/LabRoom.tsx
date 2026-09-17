@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } from "@/lib/desk/lab-public";
 import { GlobalHeader } from "./GlobalHeader";
 import { evidenceAge, labComparisons } from "@/lib/desk/public-room-view";
+import { CallQualityStudy } from "./CallQualityStudy";
 
 function cents(v: number | null): string {
   if (v == null) return "—";
@@ -311,6 +312,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
               </div>
             </section>
 
+            <CallQualityStudy data={data.call_quality} />
             <LabSummary data={data} />
 
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">

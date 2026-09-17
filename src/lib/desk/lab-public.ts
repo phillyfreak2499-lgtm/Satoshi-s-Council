@@ -13,6 +13,7 @@ import {
   type PublicSeatHorizonSnapshot,
 } from "./horizon-calibration.server";
 import { COMPONENT_MIN } from "./promotion-gates";
+import { callQualitySnapshot, type CallQualitySnapshot } from "./call-quality.server";
 
 export type PublicLabSpecimen = {
   id: string;
@@ -38,6 +39,7 @@ export type PublicLabSnapshot = {
   control_id: string;
   specimens: PublicLabSpecimen[];
   seat_timing: PublicSeatHorizonSnapshot | null;
+  call_quality: CallQualitySnapshot | null;
   governance: {
     paper_only: true;
     authority: "none";
@@ -49,9 +51,10 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming] = await Promise.all([
+    const [standing, seatTiming, callQuality] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
+      callQualitySnapshot().catch(() => null),
     ]);
     const byId = new Map(standing.rows.map((row) => [row.candidate_id, row]));
     const control = controlFor("exit");
@@ -84,6 +87,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       control_id: control?.id ?? "HOLD_V1",
       specimens,
       seat_timing: seatTiming,
+      call_quality: callQuality,
       governance: {
         paper_only: true,
         authority: "none",
