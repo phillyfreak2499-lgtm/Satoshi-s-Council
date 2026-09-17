@@ -83,6 +83,20 @@ test("bad identity, late persistence, quarantine and missing outcomes cannot ear
   assert.equal(q.qualityEligibility(observation({ source: "proxy" })), "pending");
 });
 
+test("advisory Chair failures stay in the receipt but never inflate blocker counts", () => {
+  const c = chair({ lean: "WAIT", gates: [
+    { id: "early", label: "Early sizing only", pass: false, hard: false },
+    { id: "bar", label: "Confluence bar", pass: false, hard: true },
+  ] });
+  const a = audit.auditAdmission(snap(), c, context());
+  assert.equal(a.checks.find(x => x.id === "chair:early").pass, false);
+  assert.equal(a.checks.find(x => x.id === "chair:early").blocking, false);
+  const r = receipt(); r.audit = a;
+  const group = q.qualityReport([observation({ receipt: r })], close + 1000)[0];
+  assert.ok(!group.blockers.some(x => x.id === "chair:early"));
+  assert.equal(group.blockers.find(x => x.id === "chair:bar").n, 1);
+});
+
 test("candidate prices asks and fees, requires size and fit, and exposes fragile margins", () => {
   assert.equal(q.qualityCandidate(snap(), model()).ask, 82);
   assert.equal(q.qualityCandidate(snap(), model()).fee, 2);

@@ -68,7 +68,7 @@ export function CallQualityStudy({ data }: { data: CallQualitySnapshot | null })
             <p className="mt-3 text-subtle">{g.pending} pending · {g.excluded} excluded · {g.warmup} warm-up grades. Model review: {g.paired}/{data.rules.review_windows} paired forecasts, {g.days}/{data.rules.review_days} days, {g.quoted.n}/{data.rules.review_priced_calls} priced calls.</p>
             <details className="mt-4 border-t border-border pt-3">
               <summary className="cursor-pointer py-2 font-sans text-ui">Why entries were blocked</summary>
-              <p className="mt-2 text-muted">Counts can overlap because every failed check is retained. Hypothetical results use the frozen challenger, available asks and fees. They do not establish that removing a gate would improve the book.</p>
+              <p className="mt-2 text-muted">Counts can overlap because every failed entry check is retained. Advisory checks are saved separately and do not count as blockers. Hypothetical results use the frozen challenger, available asks and fees. They do not establish that removing a gate would improve the book.</p>
               <ul className="mt-3 space-y-2 font-mono text-micro text-muted">
                 {g.blockers.map(b => <li key={b.id}>{b.label}: {b.n} reads · {b.candidate_n} priced challenger calls · {cents(b.candidate_net_cents)}</li>)}
                 {!g.blockers.length ? <li>No graded blocked-entry evidence yet.</li> : null}
