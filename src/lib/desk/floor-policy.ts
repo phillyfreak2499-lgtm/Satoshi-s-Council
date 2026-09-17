@@ -33,7 +33,7 @@
  */
 
 /** Which slot of the Floor policy a component fills. */
-export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V2";
+export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V3";
 export const SELECTIVE_FROZEN_AT = "2026-09-15T14:05:13.000Z";
 export const SELECTIVE_V1_PARAMS = Object.freeze({
   floor_cents: 80,
@@ -56,7 +56,7 @@ export const SELECTIVE_V1_PARAMS = Object.freeze({
 });
 
 export const SELECTIVE_V2_FROZEN_AT = "2026-09-15T15:05:55.000Z";
-export const SELECTIVE_PARAMS = Object.freeze({
+export const SELECTIVE_V2_PARAMS = Object.freeze({
   floor_cents: 80,
   min_speaking: 3, min_families: 2, max_opposing: 0,
   min_seconds_left: 180, max_seconds_left: 600,
@@ -69,6 +69,12 @@ export const SELECTIVE_PARAMS = Object.freeze({
   tight_confirmation_seconds: 20, tight_confirmation_frames: 5,
   protect_after_wins: 5, protect_after_net_cents: 100,
   timezone: "America/Chicago",
+});
+
+export const SELECTIVE_V3_FROZEN_AT = "2026-09-17T12:09:31.000Z";
+export const SELECTIVE_PARAMS = Object.freeze({
+  ...SELECTIVE_V2_PARAMS,
+  min_speaking: 2,
 });
 
 export type PolicyKind = "signal" | "entry" | "exit" | "risk";
@@ -166,10 +172,17 @@ export const ENTRY_SELECTIVE_V1 = c({
 });
 
 export const ENTRY_SELECTIVE_V2 = c({
-  id: SELECTIVE_ENTRY_ID, family: "ENTRY_SELECTIVE", version: 2, kind: "entry",
+  id: "ENTRY_SELECTIVE_V2", family: "ENTRY_SELECTIVE", version: 2, kind: "entry",
   label: "Selective 80¢ · net-based tightening · protect green days",
-  params: SELECTIVE_PARAMS, frozen_at: SELECTIVE_V2_FROZEN_AT,
+  params: SELECTIVE_V2_PARAMS, frozen_at: SELECTIVE_V2_FROZEN_AT,
   why: "owner-selected replacement for the call quota and one-loss stop; tighten after -100¢ net and reserve the full possible loss after five wins or +100¢; no proven-performance claim",
+});
+
+export const ENTRY_SELECTIVE_V3 = c({
+  id: SELECTIVE_ENTRY_ID, family: "ENTRY_SELECTIVE", version: 3, kind: "entry",
+  label: "Selective 80¢ · balanced two-family quorum",
+  params: SELECTIVE_PARAMS, frozen_at: SELECTIVE_V3_FROZEN_AT,
+  why: "owner-selected correction after the V2 three-speaker quorum blocked every observed directional read; preserves the 80¢ floor, two evidence families, zero opposition, edge, freshness and tightened loss-day safeguards",
 });
 
 // ---------------------------------------------------------------------------
@@ -264,6 +277,7 @@ export const COMPONENTS: readonly Component[] = Object.freeze([
   ENTRY_80_V1,
   ENTRY_SELECTIVE_V1,
   ENTRY_SELECTIVE_V2,
+  ENTRY_SELECTIVE_V3,
   EXIT_HOLD_V1,
   EXIT_PROVE120_V1,
   EXIT_PROVE180_V1,
@@ -350,7 +364,13 @@ export const FLOOR_SELECTIVE_V2: FloorPolicyVersion = Object.freeze({
   created_at: SELECTIVE_V2_FROZEN_AT, prospective_start_at: SELECTIVE_V2_FROZEN_AT,
 });
 
-export const SAFE_FALLBACK_POLICY = FLOOR_SELECTIVE_V2.policy_id;
+export const FLOOR_SELECTIVE_V3: FloorPolicyVersion = Object.freeze({
+  ...FLOOR_SELECTIVE_V2, policy_id: "FLOOR_SELECTIVE_V3", version: 4,
+  entry_policy: ENTRY_SELECTIVE_V3.id,
+  created_at: SELECTIVE_V3_FROZEN_AT, prospective_start_at: SELECTIVE_V3_FROZEN_AT,
+});
+
+export const SAFE_FALLBACK_POLICY = FLOOR_SELECTIVE_V3.policy_id;
 
 /**
  * Compose a new policy version by replacing ONE component of an existing one.
