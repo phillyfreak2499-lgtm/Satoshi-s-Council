@@ -3,7 +3,7 @@ import { takerFeeCents } from "./clock.ts";
 import { brier, logLoss, V3_MIN_TRAIN, type V3Features, type V3Prediction, type V3Weights } from "./chair-v3.ts";
 import { isCountable } from "./research-quality.ts";
 import { tickerAgrees } from "./window-identity.ts";
-import type { AdmissionAudit } from "./admission-audit";
+import type { AdmissionAudit, AdmissionCheck } from "./admission-audit";
 import type { ChairResult, Snapshot, Vote } from "./types";
 
 export const CALL_QUALITY_STUDY = "entry-time-v1";
@@ -19,6 +19,9 @@ const side = (s: unknown): s is Side => s === "UP" || s === "DOWN";
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const round = (n: number, d = 4) => Math.round(n * 10 ** d) / 10 ** d;
 const avg = (xs: number[]) => xs.length ? round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+// The first deployment had no Chair authority tags. Preserve those receipts,
+// but count only their explicit admission checks rather than guess hard/soft.
+const failedEntryCheck = (c: AdmissionCheck) => c.pass === false && (c.blocking ?? !c.id.startsWith("chair:"));
 
 /** First observed frame in the 12 seconds BEFORE a checkpoint. No late catch-up. */
 export function qualityHorizon(s: Pick<Snapshot, "as_of" | "close_time" | "demo">, now: number): number | null {
@@ -156,8 +159,8 @@ export function qualityReport(input: QualityObservation[], now: number) {
         market_hit_rate: readings.length ? round(marketHits / readings.length) : null, interval: wilsonInterval(hits, readings.length) };
     });
     const waits = graded.filter(r => !r.receipt.audit.positioned && !r.receipt.audit.eligible);
-    const blockers = [...new Set(waits.flatMap(r => r.receipt.audit.checks.filter(c => c.pass === false && c.blocking !== false).map(c => c.id)))].map(id => {
-      const blocked = waits.filter(r => r.receipt.audit.checks.some(c => c.id === id && c.pass === false && c.blocking !== false));
+    const blockers = [...new Set(waits.flatMap(r => r.receipt.audit.checks.filter(failedEntryCheck).map(c => c.id)))].map(id => {
+      const blocked = waits.filter(r => r.receipt.audit.checks.some(c => c.id === id && failedEntryCheck(c)));
       const quoted = blocked.filter(r => r.receipt.candidate);
       return { id, label: blocked[0]!.receipt.audit.checks.find(c => c.id === id)!.label, n: blocked.length,
         candidate_n: quoted.length, candidate_net_cents: quoted.length ? round(quoted.reduce((a, r) => a + cents(r), 0), 1) : null };

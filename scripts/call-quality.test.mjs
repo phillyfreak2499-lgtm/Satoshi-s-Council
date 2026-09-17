@@ -95,6 +95,10 @@ test("advisory Chair failures stay in the receipt but never inflate blocker coun
   const group = q.qualityReport([observation({ receipt: r })], close + 1000)[0];
   assert.ok(!group.blockers.some(x => x.id === "chair:early"));
   assert.equal(group.blockers.find(x => x.id === "chair:bar").n, 1);
+  for (const check of r.audit.checks) delete check.blocking;
+  const legacy = q.qualityReport([observation({ receipt: r })], close + 1000)[0];
+  assert.ok(!legacy.blockers.some(x => x.id.startsWith("chair:")), "untagged historical Chair checks cannot imply blocking authority");
+  assert.equal(legacy.blockers.find(x => x.id === "direction").n, 1);
 });
 
 test("candidate prices asks and fees, requires size and fit, and exposes fragile margins", () => {
