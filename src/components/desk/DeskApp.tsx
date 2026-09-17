@@ -115,11 +115,17 @@ function MoreMenu({
   onTab,
   onTour,
   onSearch,
+  onGuided,
+  onFocus,
+  focused,
 }: {
   tab: TabId;
   onTab: (t: TabId) => void;
   onTour: () => void;
   onSearch: () => void;
+  onGuided: () => void;
+  onFocus?: () => void;
+  focused: boolean;
 }) {
   const cur = MORE.find((m) => m.id === tab);
   const item =
@@ -142,8 +148,15 @@ function MoreMenu({
         <DropdownMenu.Content
           align="end"
           sideOffset={6}
-          className="z-50 min-w-60 rounded-md border border-border bg-surface p-1 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+          className="council-desk-menu z-50 min-w-60 rounded-md border border-border bg-surface p-1 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
         >
+          <DropdownMenu.Item onSelect={onGuided} className={cn(item, "sm:hidden")}>
+            Guided Floor
+          </DropdownMenu.Item>
+          {onFocus ? <DropdownMenu.CheckboxItem checked={focused} onCheckedChange={onFocus} className={cn(item, "sm:hidden")}>
+            Focus mode <span aria-hidden="true">{focused ? "On" : "Off"}</span>
+          </DropdownMenu.CheckboxItem> : null}
+          <DropdownMenu.Separator className="my-1 h-px bg-border sm:hidden" />
           {MORE.map((m) => (
             <DropdownMenu.Item key={m.id} onSelect={() => onTab(m.id)} className={item}>
               {m.label}
@@ -336,7 +349,7 @@ export function DeskApp() {
         aria-label="Floor views"
         className="council-floor-tools gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
       >
-        <span className="mr-2 font-mono text-micro uppercase tracking-widest text-subtle">
+        <span className="hidden mr-2 font-mono text-micro uppercase tracking-widest text-subtle sm:inline">
           Floor
         </span>
         {floorMode === "guided" ? (
@@ -373,17 +386,20 @@ export function DeskApp() {
               onTab={setTab}
               onTour={startTour}
               onSearch={() => setPaletteOn(true)}
+              onGuided={() => setFloorMode("guided")}
+              onFocus={tab === "satoshi" ? () => setIntroductionHidden(!introHidden) : undefined}
+              focused={introHidden}
             />
             <button
               type="button"
               onClick={() => setFloorMode("guided")}
-              className={cn(NAV_TAB, NAV_TAB_IDLE)}
+              className={cn(NAV_TAB, NAV_TAB_IDLE, "hidden sm:flex")}
             >
               Guided Floor
             </button>
           </>
         )}
-        {floorMode === "pro" && tab === "satoshi" ? <div className="ml-auto"><CouncilFocusToggle focused={introHidden} onToggle={() => setIntroductionHidden(!introHidden)} /></div> : null}
+        {floorMode === "pro" && tab === "satoshi" ? <div className="ml-auto hidden sm:block"><CouncilFocusToggle focused={introHidden} onToggle={() => setIntroductionHidden(!introHidden)} /></div> : null}
       </nav>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">

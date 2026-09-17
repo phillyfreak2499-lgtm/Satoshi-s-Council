@@ -152,6 +152,9 @@ test("the week scope is computed independently of all-time", async () => {
   const q = keeperQuery();
   const pg = await seeded(q.since);
   try {
+    // This case requires six recent windows. The historical floor date ages
+    // out of the seven-day scope, so pin this fixture relative to DB time.
+    await pg.exec("update desk_ledger set close_time = now() - interval '1 day' + id * interval '15 minutes'");
     const { rows } = await pg.query(q.text, q.params);
     const k = rows[0];
     // Everything seeded sits inside the last seven days, so week mirrors all —

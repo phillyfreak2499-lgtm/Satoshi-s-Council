@@ -112,9 +112,9 @@ export function Pane({
   return (
     <section
       data-tour={tour}
-      className={cn("min-w-0 rounded-md border border-border bg-surface p-3", className)}
+      className={cn("desk-pane min-w-0 rounded-md border border-border bg-surface p-3", className)}
     >
-      <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{title}</h3>
+      <h3 className="desk-pane-title mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{title}</h3>
       {children}
     </section>
   );
