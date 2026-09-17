@@ -97,7 +97,7 @@ export function SiteHeader({
               <li key={m.label}>
                 {m.group && m.group !== menu[index - 1]?.group ? <div className="px-2 pb-1 pt-3 font-mono text-micro uppercase tracking-widest text-subtle">{m.group}</div> : null}
                 {m.href ? (
-                  <a href={m.href} target={m.external ? "_blank" : undefined} rel={m.external ? "noreferrer" : undefined} aria-current={m.active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
+                  <a href={m.href} target={m.external ? "_blank" : undefined} rel={m.external ? "noopener noreferrer" : undefined} aria-label={m.external ? `${m.label} (opens in a new tab)` : undefined} aria-current={m.active ? "page" : undefined} onClick={() => setOpen(false)} className={cn("flex min-h-11 items-center justify-between gap-3 rounded-md px-2 font-mono text-ui", m.active ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}>
                     {m.label}
                     {m.hint ? <span className="font-mono text-micro text-subtle">{m.hint}</span> : null}
                   </a>
