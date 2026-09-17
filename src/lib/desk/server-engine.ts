@@ -40,6 +40,7 @@ import { freshLearner } from "./skills";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { loadBundle } from "./server-feeds";
+import { selectOpenKalshiMarket } from "./kalshi-market";
 import { BOARD_UPDATE_MAX, DESK_UPDATES } from "./updates";
 import {
   labDigestBits,
@@ -1765,14 +1766,14 @@ async function pulseTick(e: Eng) {
     const host = e.prevSnap?.kalshi_host || KALSHI_PULSE_HOST;
     const [cb, mk] = await Promise.allSettled([
       pulseGet("https://api.exchange.coinbase.com/products/BTC-USD/ticker"),
-      pulseGet(`${host}/markets?status=open&series_ticker=KXBTC15M&limit=1`),
+      pulseGet(`${host}/markets?status=open&series_ticker=KXBTC15M&limit=8`),
     ]);
     const spot =
       cb.status === "fulfilled" ? Number((cb.value as { price?: string }).price) : NaN;
     const row =
       mk.status === "fulfilled"
-        ? ((mk.value as { markets?: Record<string, unknown>[] }).markets ?? [])[0]
-        : undefined;
+        ? selectOpenKalshiMarket((mk.value as { markets?: Record<string, unknown>[] }).markets)
+        : null;
     if (Number.isFinite(spot) && row?.ticker) {
       e.pulse = {
         as_of: Date.now(),

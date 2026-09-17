@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { takerOutcomeSide } from "./kalshi-wire";
+import { selectOpenKalshiMarket } from "./kalshi-market";
 import { asMs, uniqueByT, valuesOf, type HistPoint } from "./hist";
 import { interpretKalshiBook, readSeq } from "./kalshi-book";
 import { candleTs, emptyTally, tally } from "./candle-time";
@@ -211,10 +212,10 @@ type KalshiPack = NonNullable<LiveBundle["kalshi"]>;
 async function kalshi(): Promise<KalshiPack | null> {
   for (const host of KALSHI_HOSTS) {
     try {
-      const mk = (await getJson(`${host}/markets?status=open&series_ticker=KXBTC15M&limit=1`, 4000)) as {
+      const mk = (await getJson(`${host}/markets?status=open&series_ticker=KXBTC15M&limit=8`, 4000)) as {
         markets?: Record<string, unknown>[];
       };
-      const m = mk.markets?.[0];
+      const m = selectOpenKalshiMarket(mk.markets);
       if (!m) continue;
       const ticker = String(m.ticker ?? "");
       let yes_bid = cents(m.yes_bid_dollars ?? m.yes_bid);

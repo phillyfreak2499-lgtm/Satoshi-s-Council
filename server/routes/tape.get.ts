@@ -1,3 +1,5 @@
+import { selectOpenKalshiMarket } from "@/lib/desk/kalshi-market";
+
 /** Public pulse: what the box can actually see right now.
  *  Micro-cached so outside pollers can't burn the Coinbase per-IP budget
  *  (3 req/s) that the brain and the fast lane share. */
@@ -32,7 +34,7 @@ async function build(): Promise<string> {
   };
   const [cb, kalshi, okx] = await Promise.allSettled([
     grab("https://api.exchange.coinbase.com/products/BTC-USD/ticker"),
-    grab("https://api.elections.kalshi.com/trade-api/v2/markets?status=open&series_ticker=KXBTC15M&limit=1"),
+    grab("https://api.elections.kalshi.com/trade-api/v2/markets?status=open&series_ticker=KXBTC15M&limit=8"),
     grab("https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP"),
   ]);
   const coinbase =
@@ -44,7 +46,7 @@ async function build(): Promise<string> {
       ? ((kalshi.value as { markets?: { ticker?: string; yes_bid_dollars?: string; floor_strike?: number; close_time?: string }[] })
           .markets ?? [])
       : [];
-  const m = markets[0];
+  const m = selectOpenKalshiMarket(markets);
   const funding =
     okx.status === "fulfilled"
       ? Number(((okx.value as { data?: { fundingRate?: string }[] }).data ?? [])[0]?.fundingRate)
