@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { SITE_DESTINATIONS, sitePathActive, type SitePath } from "@/lib/desk/navigation";
+import { SHOP_URL, SITE_DESTINATIONS, sitePathActive, type SiteHref } from "@/lib/desk/navigation";
 import { cn } from "@/lib/utils";
 import { SiteHeader, type MenuItem } from "./SiteHeader";
 import "./observatory.css";
 import "./interface-polish.css";
 
 export type HeaderAction = { label: string; hint?: string; onSelect: () => void };
-const PRIMARY: readonly SitePath[] = ["/", "/lab", "/?tab=atelier", "/books", "/chamber"];
-const SHORTCUTS = PRIMARY;
+const PRIMARY: readonly SiteHref[] = ["/", "/lab", "/?tab=atelier", "/books", "/chamber", SHOP_URL];
+const SHORTCUTS = PRIMARY.filter(href => href !== "/chamber");
 const linkClass = "council-site-link flex min-h-11 items-center gap-1 rounded-md px-3 font-mono text-micro tracking-wide";
 
 /** Shared by the real app and the isolated design preview. No data fetching. */
@@ -21,16 +21,18 @@ export function CouncilNavigation({ pathname, search = "", action, tour, preview
   /** Preview links explicitly open the existing site; never imitate live rooms. */
   preview?: boolean;
 }) {
-  const active = (href: SitePath) => sitePathActive(pathname, href, search);
-  const hrefFor = (href: SitePath) => preview ? `https://satoshiscouncil.com${href}` : href;
-  const target = preview ? "_blank" : undefined;
-  const rel = preview ? "noreferrer" : undefined;
-  const menu: MenuItem[] = SITE_DESTINATIONS.map(item => ({ label: item.menuLabel, href: hrefFor(item.href), hint: item.hint, group: item.group, active: active(item.href), external: preview }));
+  const active = (href: SiteHref) => sitePathActive(pathname, href, search);
+  const hrefFor = (href: SiteHref) => preview && href !== SHOP_URL ? `https://satoshiscouncil.com${href}` : href;
+  const linkProps = (href: SiteHref) => ({ href: hrefFor(href),
+    target: preview || href === SHOP_URL ? "_blank" : undefined,
+    rel: preview || href === SHOP_URL ? "noopener noreferrer" : undefined,
+    "aria-label": href === SHOP_URL ? "Shop (opens in a new tab)" : undefined });
+  const menu: MenuItem[] = SITE_DESTINATIONS.map(item => ({ label: item.menuLabel, href: hrefFor(item.href), hint: item.hint, group: item.group, active: active(item.href), external: preview || item.external }));
   if (action) menu.push({ ...action, group: "This page" });
-  const links = (paths: readonly SitePath[]) => paths.map(path => {
+  const links = (paths: readonly SiteHref[]) => paths.map(path => {
     const item = SITE_DESTINATIONS.find(candidate => candidate.href === path)!;
-    return <a key={path} href={hrefFor(path)} target={target} rel={rel} aria-current={active(path) ? "page" : undefined}
-      className={cn(linkClass, active(path) ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg")}>{item.label}</a>;
+    return <a key={path} {...linkProps(path)} aria-current={active(path) ? "page" : undefined}
+      className={cn(linkClass, active(path) ? "bg-surface-2 text-fg" : path === SHOP_URL ? "text-gold hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg")}>{item.label}{item.external ? <span aria-hidden="true">↗</span> : null}</a>;
   });
   return <SiteHeader fold="xl" tour={tour} menu={menu} brandHref={preview ? "/" : undefined} controls={controls}
     shortcuts={<nav aria-label="Quick access" className="council-site-shortcuts">{links(SHORTCUTS)}</nav>}
@@ -44,7 +46,7 @@ export function CouncilNavigation({ pathname, search = "", action, tour, preview
           {SITE_DESTINATIONS.map((item, index) => <div key={item.href}>
             {index === 0 || item.group !== SITE_DESTINATIONS[index - 1]?.group ? <DropdownMenu.Label className="px-3 pb-1 pt-3 font-mono text-micro uppercase tracking-widest text-subtle">{item.group}</DropdownMenu.Label> : null}
             <DropdownMenu.Item asChild className="flex min-h-11 cursor-pointer items-center justify-between gap-5 rounded-sm px-3 font-mono text-micro outline-none data-[highlighted]:bg-surface-2">
-              <a href={hrefFor(item.href)} target={target} rel={rel} aria-current={active(item.href) ? "page" : undefined}><span>{item.label}</span><span className="text-subtle">{item.hint}</span></a>
+              <a {...linkProps(item.href)} aria-current={active(item.href) ? "page" : undefined}><span>{item.label}</span><span className="text-subtle">{item.hint}</span></a>
             </DropdownMenu.Item>
           </div>)}
         </DropdownMenu.Content></DropdownMenu.Portal>

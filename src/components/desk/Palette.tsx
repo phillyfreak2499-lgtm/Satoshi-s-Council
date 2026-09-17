@@ -10,7 +10,7 @@ type Item =
   | { kind: "tab"; id: TabId; label: string; hint: string }
   | { kind: "seat"; id: SeatId; label: string; hint: string }
   | { kind: "action"; id: string; label: string; hint: string }
-  | { kind: "page"; href: string; label: string; hint: string }
+  | { kind: "page"; href: string; label: string; hint: string; external?: boolean }
   | { kind: "gloss"; id: string; label: string; hint: string; body: string };
 
 const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
@@ -25,9 +25,9 @@ const TAB_ITEMS: { id: TabId; label: string; hint: string }[] = [
   { id: "settings", label: "SETTINGS", hint: "demo or live, alerts, display" },
 ];
 
-const PAGES: { href: string; label: string; hint: string }[] = SITE_DESTINATIONS.filter(
+const PAGES = SITE_DESTINATIONS.filter(
   ({ href }) => href !== "/" && !href.startsWith("/?"),
-).map(({ href, label, hint }) => ({ href, label, hint }));
+).map(({ href, label, hint, external }) => ({ href, label, hint, external }));
 
 function score(q: string, text: string): number {
   const t = text.toLowerCase();
@@ -105,7 +105,10 @@ export function Palette({
     if (it.kind === "tab") onTab(it.id);
     else if (it.kind === "seat") onJump(it.id);
     else if (it.kind === "action" && it.id === "tour") onTour();
-    else if (it.kind === "page") window.location.assign(it.href);
+    else if (it.kind === "page") {
+      if (it.external) window.open(it.href, "_blank", "noopener,noreferrer");
+      else window.location.assign(it.href);
+    }
   };
 
   return (
