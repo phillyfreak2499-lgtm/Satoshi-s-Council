@@ -156,8 +156,8 @@ export function qualityReport(input: QualityObservation[], now: number) {
         market_hit_rate: readings.length ? round(marketHits / readings.length) : null, interval: wilsonInterval(hits, readings.length) };
     });
     const waits = graded.filter(r => !r.receipt.audit.positioned && !r.receipt.audit.eligible);
-    const blockers = [...new Set(waits.flatMap(r => r.receipt.audit.checks.filter(c => c.pass === false).map(c => c.id)))].map(id => {
-      const blocked = waits.filter(r => r.receipt.audit.checks.some(c => c.id === id && c.pass === false));
+    const blockers = [...new Set(waits.flatMap(r => r.receipt.audit.checks.filter(c => c.pass === false && c.blocking !== false).map(c => c.id)))].map(id => {
+      const blocked = waits.filter(r => r.receipt.audit.checks.some(c => c.id === id && c.pass === false && c.blocking !== false));
       const quoted = blocked.filter(r => r.receipt.candidate);
       return { id, label: blocked[0]!.receipt.audit.checks.find(c => c.id === id)!.label, n: blocked.length,
         candidate_n: quoted.length, candidate_net_cents: quoted.length ? round(quoted.reduce((a, r) => a + cents(r), 0), 1) : null };

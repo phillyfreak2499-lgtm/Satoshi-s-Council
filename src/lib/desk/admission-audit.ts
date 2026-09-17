@@ -6,7 +6,7 @@ import { EVIDENCE_OF } from "./seats.ts";
 import { admissionRequirements, dailyAdmission, hasPaperPosition, profitRiskBlock, selectiveBookOk, type SelectiveContext } from "./selective-entry.ts";
 import type { ChairResult, Snapshot } from "./types";
 
-export type AdmissionCheck = { id: string; label: string; pass: boolean | null };
+export type AdmissionCheck = { id: string; label: string; pass: boolean | null; blocking?: boolean };
 export type AdmissionAudit = { checks: AdmissionCheck[]; positioned: boolean; eligible: boolean; mode: "normal" | "tight" };
 
 export function auditAdmission(s: Snapshot, c: ChairResult, ctx: SelectiveContext): AdmissionAudit {
@@ -50,6 +50,6 @@ export function auditAdmission(s: Snapshot, c: ChairResult, ctx: SelectiveContex
       (side === "UP" ? fair! : 100 - fair!) - ask - takerFeeCents(ask) > required.min_index_edge_cents),
     check("confirmation", "Repeated confirming observations", side == null ? null : !!w && w.mode === mode && w.key === `${s.ticker}|${s.close_time}` &&
       w.side === side && w.last === s.as_of && w.frames >= required.confirmation_frames && s.as_of - w.since >= required.confirmation_seconds * 1000),
-    ...c.gates.filter(g => g.id !== "selective").map(g => check(`chair:${g.id}`, g.label, g.pass)),
+    ...c.gates.filter(g => g.id !== "selective").map(g => ({ ...check(`chair:${g.id}`, g.label, g.pass), blocking: g.hard || g.id === "bar" })),
   ] };
 }
