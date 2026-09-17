@@ -1,4 +1,4 @@
-import { tickerCloseMs } from "./window-identity";
+import { tickerCloseMs } from "./window-identity.ts";
 
 export type OpenKalshiMarket = {
   ticker?: unknown;
