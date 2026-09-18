@@ -356,4 +356,20 @@ export const DESK_UPDATES: DeskUpdate[] = [
     body:
       "The floor now says which number is which. A locked paper entry and a live quote looked alike, so each price now carries its kind and the moment it belongs to, and an entry is never redrawn to match a later quote. The reason for the call moved up next to the call instead of sitting four panes down, and when the desk waits it says which kind of waiting \u2014 a gate that failed, a vote that fell short, or nothing worth paying for. Two public pages still said the book fills at 70\u00a2; it has been 80\u00a2 since the trial began. The decisions table showed confidence as a percentage, which read as a chance of winning; it is a margin over a gate and is now shown as one. Tests fail if either drifts back. Nothing about how the desk decides changed."
   },
+  {
+    slug: "2026-09-18-board-open",
+    body: "The Board is open. Posts do not change the Chair or place orders. Paper talk only.",
+  },
+  {
+    slug: "2026-09-18-wait-is-a-decision",
+    body: "WAIT is a decision. When nobody on the floor is speaking, the desk sits. That is the record, not downtime.",
+  },
+  {
+    slug: "2026-09-18-arena-is-paper",
+    body: "The Arena is paper. A callsign can be hidden if it breaks house rules. Paper results stay on the private record.",
+  },
+  {
+    slug: "2026-09-18-start-with-wick",
+    body: "Start with WICK at /training if you want to learn a closed candle before you watch the live floor.",
+  },
 ];

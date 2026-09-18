@@ -256,12 +256,18 @@ function Composer({
   );
 }
 
-export function BoardTab({ frame }: { frame: DeskFrame }) {
-  const [posts, setPosts] = useState<BoardPost[]>([]);
+/** The one line for a Board that did not answer. Neutral, and the poll keeps trying. */
+export const BOARD_DOWN = "the Board is not answering — try again.";
+/** What an empty visitor column says. The composer stays; posting is never hidden. */
+export const BOARD_EMPTY = "No public notes yet. Post one — 400 characters, paper talk only.";
+
+export function BoardTab({ frame, initial }: { frame: DeskFrame; initial?: BoardPost[] | null }) {
+  // A server-rendered Board arrives loaded; null means the server could not read it and the page says so.
+  const [posts, setPosts] = useState<BoardPost[]>(initial ?? []);
   const [kind, setKind] = useState<BoardKind>("idea");
   const [replyTo, setReplyTo] = useState<number | null>(null);
-  const [err, setErr] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [err, setErr] = useState(initial === null ? BOARD_DOWN : "");
+  const [loaded, setLoaded] = useState(initial !== undefined);
   const [updatePage, setUpdatePage] = useState(0);
   const [ideaPage, setIdeaPage] = useState(0);
   const [feedbackPage, setFeedbackPage] = useState(0);
@@ -273,8 +279,8 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       setPosts(rows);
       setErr("");
       try { localStorage.setItem(SEEN_KEY, String(rows.length)); } catch { /* Reading does not require storage. */ }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Board is down.");
+    } catch {
+      setErr(BOARD_DOWN);
     } finally {
       setLoaded(true);
     }
@@ -292,6 +298,8 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
   const newestUpdates = useMemo(() => updates.slice().reverse(), [updates]);
   const newestIdeas = useMemo(() => ideas.slice().reverse(), [ideas]);
   const newestNotes = useMemo(() => notes.slice().reverse(), [notes]);
+  // No visitor posts yet: the DESK notes lead, open, and the two columns say so without a pair of zeros.
+  const quiet = loaded && !err && ideas.length === 0 && notes.length === 0;
   const [admin, setAdmin] = useState(false);
   useEffect(() => setAdmin(Boolean(getAdminKey())), [frame]);
   const kids = useMemo(() => {
@@ -351,7 +359,7 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
       {!loaded ? <p role="status" className="font-mono text-micro text-muted">Loading the shared Board…</p> : null}
 
       {updates.length > 0 ? (
-        <details id="board-updates" className="scroll-mt-20 rounded-md border border-border bg-canvas">
+        <details id="board-updates" open={quiet || undefined} className="scroll-mt-20 rounded-md border border-border bg-canvas">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 font-mono text-micro uppercase tracking-widest text-subtle marker:content-none">
             <span>Desk updates · {updates.length}</span>
             <span aria-hidden="true">▸</span>
@@ -385,9 +393,9 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <section id="board-ideas" className="scroll-mt-20">
-          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Ideas · {ideas.length}</h3>
+          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{ideas.length ? <>Ideas · {ideas.length}</> : "Ideas"}</h3>
           {!loaded && !err ? null : !ideas.length ? (
-            <p className="font-mono text-micro text-muted">{loaded && !err ? "No ideas yet. First one on the tape." : "Ideas will appear when the Board is available."}</p>
+            <p className="font-mono text-micro text-muted">{loaded && !err ? BOARD_EMPTY : "Ideas will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
               {pageRows(newestIdeas, ideaPage).map((p) => (
@@ -414,9 +422,9 @@ export function BoardTab({ frame }: { frame: DeskFrame }) {
           )}
         </section>
         <section id="board-feedback" className="scroll-mt-20">
-          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">Feedback · {notes.length}</h3>
+          <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{notes.length ? <>Feedback · {notes.length}</> : "Feedback"}</h3>
           {!loaded && !err ? null : !notes.length ? (
-            <p className="font-mono text-micro text-muted">{loaded && !err ? "No open feedback yet. Reply on an idea, or post Feedback above." : "Feedback will appear when the Board is available."}</p>
+            <p className="font-mono text-micro text-muted">{loaded && !err ? BOARD_EMPTY : "Feedback will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
               {pageRows(newestNotes, feedbackPage).map((p) => (

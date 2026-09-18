@@ -57,7 +57,8 @@ function asPost(row: {
   };
 }
 
-export const listBoard = createServerFn({ method: "GET" }).handler(async () => {
+/** The visible Board, oldest first. Server only; the server function and the route loader both read through here. */
+export async function readBoard(): Promise<BoardPost[]> {
   const { getSql } = await import("@/lib/db");
   const sql = await getSql();
   const rows = await sql<{
@@ -72,7 +73,9 @@ export const listBoard = createServerFn({ method: "GET" }).handler(async () => {
     created_at: string | Date;
   }>`select id, who, body, kind, parent_id, lean, ticker, conf, created_at from board b where not b.hidden and not exists (select 1 from board parent where parent.id = b.parent_id and parent.hidden) order by id desc limit 120`;
   return rows.map(asPost).reverse();
-});
+}
+
+export const listBoard = createServerFn({ method: "GET" }).handler(async () => readBoard());
 
 export const postBoard = createServerFn({ method: "POST" })
   .validator(
