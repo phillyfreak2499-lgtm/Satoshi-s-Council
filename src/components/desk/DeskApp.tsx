@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import { TAB_SEATS } from "@/lib/desk/seats";
 import { GlobalHeader } from "./GlobalHeader";
-import { Crest } from "./Crest";
+import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
 import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
@@ -11,14 +12,13 @@ import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
 import { GuidedFloor } from "./GuidedFloor";
 import { LiveConnectionNotice } from "./LiveConnectionNotice";
-import { CouncilEntrance, CouncilFocusToggle, CouncilGuides } from "./CouncilExperience";
 import { SettingsTab } from "./SettingsTab";
 import { TopStrip } from "./TopStrip";
 import { Tip } from "./Tip";
 import { Tour } from "./Tour";
 import { Toaster, toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { TrustStrip, Welcome } from "./Welcome";
+import { Welcome } from "./Welcome";
 import {
   applyDisplayPrefs,
   markWelcomeSeen,
@@ -28,14 +28,12 @@ import {
   setFloorDensity as saveFloorDensity,
   setFloorMode as saveFloorMode,
   setSeatView as saveSeatView,
-  TRUST_CHIPS,
   welcomeSeen,
   type FloorDensity,
   type FloorMode,
   type SeatView,
 } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
-import { gtagEvent } from "@/lib/desk/ga";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
 import { BoardTab } from "./Feedback";
@@ -77,7 +75,6 @@ const MORE: { id: TabId; label: string; hint: string }[] = [
   { id: "settings", label: "SETTINGS", hint: "demo, alerts, display" },
 ];
 const NUDGE_KEY = "satoshi-desk-nudge-v1";
-const INTRO_KEY = "satoshi-desk-intro-v1";
 const LINKABLE_TABS = new Set<TabId>([
   "satoshi",
   "structure",
@@ -100,32 +97,20 @@ function nudgeOff(): boolean {
   }
 }
 
-function introOff(): boolean {
-  try {
-    const saved = localStorage.getItem(INTRO_KEY);
-    if (saved === "on") return false;
-    return saved === "off" || welcomeSeen();
-  } catch {
-    return false;
-  }
-}
-
 function MoreMenu({
   tab,
   onTab,
   onTour,
   onSearch,
   onGuided,
-  onFocus,
-  focused,
+  onWelcome,
 }: {
   tab: TabId;
   onTab: (t: TabId) => void;
   onTour: () => void;
   onSearch: () => void;
   onGuided: () => void;
-  onFocus?: () => void;
-  focused: boolean;
+  onWelcome: () => void;
 }) {
   const cur = MORE.find((m) => m.id === tab);
   const item =
@@ -153,9 +138,6 @@ function MoreMenu({
           <DropdownMenu.Item onSelect={onGuided} className={cn(item, "sm:hidden")}>
             Guided Floor
           </DropdownMenu.Item>
-          {onFocus ? <DropdownMenu.CheckboxItem checked={focused} onCheckedChange={onFocus} className={cn(item, "sm:hidden")}>
-            Focus mode <span aria-hidden="true">{focused ? "On" : "Off"}</span>
-          </DropdownMenu.CheckboxItem> : null}
           <DropdownMenu.Separator className="my-1 h-px bg-border sm:hidden" />
           {MORE.map((m) => (
             <DropdownMenu.Item key={m.id} onSelect={() => onTab(m.id)} className={item}>
@@ -167,6 +149,7 @@ function MoreMenu({
           <DropdownMenu.Item onSelect={onSearch} className={item}>
             Search the desk<span className="text-subtle">⌘K</span>
           </DropdownMenu.Item>
+          <DropdownMenu.Item onSelect={onWelcome} className={item}>About this desk</DropdownMenu.Item>
           <DropdownMenu.Item onSelect={onTour} className={item}>
             Replay the 60-second tour<span className="text-subtle">?</span>
           </DropdownMenu.Item>
@@ -178,7 +161,18 @@ function MoreMenu({
 
 export function DeskApp() {
   const frame = useDesk();
-  const [tab, setTab] = useState<TabId>("satoshi");
+  const initialSearch = useRouterState({ select: state => state.location.searchStr });
+  const [tab, setTab] = useState<TabId>(() => {
+    const params = new URLSearchParams(initialSearch);
+    const requested = params.get("tab");
+    if (requested && LINKABLE_TABS.has(requested as TabId)) return requested as TabId;
+    const seat = params.get("seat")?.toUpperCase();
+    if (seat) {
+      const desk = Object.entries(TAB_SEATS).find(([, ids]) => (ids as readonly string[]).includes(seat));
+      if (desk) return desk[0] as TabId;
+    }
+    return "satoshi";
+  });
   const [focus, setFocus] = useState<SeatId | null>(null);
   const [tourOn, setTourOn] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -187,18 +181,9 @@ export function DeskApp() {
   const [nudge, setNudge] = useState(false);
   // Read in the effect below, never during render: these touch localStorage and
   // would otherwise differ between the server and the first client paint.
-  const [introHidden, setIntroHidden] = useState(false);
-  const setIntroductionHidden = (hidden: boolean) => {
-    setIntroHidden(hidden);
-    if (hidden) setNudge(false);
-    try {
-      localStorage.setItem(INTRO_KEY, hidden ? "off" : "on");
-      if (hidden) localStorage.setItem(NUDGE_KEY, "off");
-    } catch { /* private mode: the choice still works for this visit */ }
-  };
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
   const [floorDensity, setFloorDensityState] = useState<FloorDensity>("quiet");
-  const [floorMode, setFloorModeState] = useState<FloorMode>("pro");
+  const [floorMode, setFloorModeState] = useState<FloorMode>(() => new URLSearchParams(initialSearch).get("view") === "guided" ? "guided" : "pro");
   const setFloorMode = (mode: FloorMode) => {
     setFloorModeState(mode);
     saveFloorMode(mode);
@@ -220,25 +205,17 @@ export function DeskApp() {
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [tab, focus]);
 
-  const hasSnap = Boolean(frame.snap);
   useEffect(() => {
     applyDisplayPrefs();
     setSeatViewState(readSeatView());
     setFloorDensityState(readFloorDensity());
     setFloorModeState(readFloorMode());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
-    setIntroHidden(introOff());
     beacon("desk_view", true);
   }, []);
   useEffect(() => {
     if (paletteOn) beacon("palette_open");
   }, [paletteOn]);
-  useEffect(() => {
-    if (!hasSnap) return;
-    if (floorMode === "guided" || tourSeen() || welcomeSeen()) return;
-    const t = window.setTimeout(() => setWelcomeOn(true), 600);
-    return () => window.clearTimeout(t);
-  }, [hasSnap, floorMode]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -302,7 +279,10 @@ export function DeskApp() {
     if (!urlReady.current) return;
     try {
       const u = new URL(window.location.href);
-      if (tab === "satoshi") u.searchParams.delete("tab");
+      if (tab === "satoshi") {
+        if (u.pathname === "/") u.searchParams.set("tab", "satoshi");
+        else u.searchParams.delete("tab");
+      }
       else u.searchParams.set("tab", tab);
       if (floorMode === "guided" && tab === "satoshi") u.searchParams.set("view", "guided");
       else u.searchParams.delete("view");
@@ -387,8 +367,7 @@ export function DeskApp() {
               onTour={startTour}
               onSearch={() => setPaletteOn(true)}
               onGuided={() => setFloorMode("guided")}
-              onFocus={tab === "satoshi" ? () => setIntroductionHidden(!introHidden) : undefined}
-              focused={introHidden}
+              onWelcome={() => setWelcomeOn(true)}
             />
             <button
               type="button"
@@ -399,47 +378,9 @@ export function DeskApp() {
             </button>
           </>
         )}
-        {floorMode === "pro" && tab === "satoshi" ? <div className="ml-auto hidden sm:block"><CouncilFocusToggle focused={introHidden} onToggle={() => setIntroductionHidden(!introHidden)} /></div> : null}
       </nav>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/50 px-3 py-1.5">
-        <TrustStrip className="hidden sm:flex" />
-        <p className="min-w-0 truncate font-mono text-micro text-subtle sm:hidden">
-          {TRUST_CHIPS.join(" · ")}
-        </p>
-        <Tip k="beta.disclaimer" className="hidden sm:inline">
-          <span className="font-mono text-micro text-muted">
-            Every UP / DOWN / WAIT is practice. Nothing here places a live trade, and none of it is
-            advice.
-          </span>
-        </Tip>
-        {floorMode === "pro" && nudge && !tourOn && tab !== "satoshi" ? (
-          <span className="ml-auto hidden items-center gap-1 sm:flex">
-            <button
-              type="button"
-              onClick={startTour}
-              className="min-h-8 rounded-sm border border-border px-2 font-mono text-micro text-fg hover:bg-surface-2"
-            >
-              New here? Take the 60-second tour
-            </button>
-            <button
-              type="button"
-              aria-label="Dismiss"
-              onClick={() => {
-                setNudge(false);
-                try {
-                  localStorage.setItem(NUDGE_KEY, "off");
-                } catch {
-                  /* private mode */
-                }
-              }}
-              className="min-h-8 min-w-8 rounded-sm px-1 font-mono text-micro text-subtle hover:text-fg"
-            >
-              ×
-            </button>
-          </span>
-        ) : null}
-      </div>
+      <div className="company-desk-intro company-container"><div><p className="company-eyebrow">{frame.settings.source === "demo" ? "Demo · Simulated data" : "Bitcoin · 15-minute paper research"}</p><h2>{tab === "satoshi" ? "The live floor." : tab === "atelier" ? "The gallery." : tab === "settings" ? "Your preferences." : desk ? "The specialist desks." : "Inside the research desk."}</h2></div><p>Paper only · No live orders</p>{nudge && !tourOn ? <button type="button" className="company-text-link" onClick={startTour}>Take a quick tour →</button> : null}</div>
 
       <LiveConnectionNotice frame={frame} />
 
@@ -475,11 +416,7 @@ export function DeskApp() {
         </div>
       ) : null}
 
-      {floorMode === "pro" && tab === "satoshi" && !introHidden ? (
-        <CouncilEntrance onTour={startTour} onEnter={() => gtagEvent("enter_the_floor")} />
-      ) : null}
-
-      {tab !== "satoshi" ? (
+      {desk || tab === "crew" ? (
         <TopStrip
           snap={frame.snap}
           chair={frame.chair}
@@ -587,10 +524,9 @@ export function DeskApp() {
         {tab === "arena" && <ArenaTab tz={frame.settings.tz} onCall={() => setTab("satoshi")} />}
         {tab === "books" && <BooksTab tz={frame.settings.tz} />}
         {tab === "settings" && <SettingsTab settings={frame.settings} learner={frame.learner} />}
-        {tab === "satoshi" && floorMode === "pro" && !introHidden ? <div className="obs-container"><CouncilGuides /></div> : null}
       </main>
 
-      {floorMode === "pro" && (
+      {floorMode === "pro" && (tab === "satoshi" || desk || tab === "crew") && (
         <MetaFooter
           chair={frame.chair}
           law_wrongs={frame.learner.law_wrongs}
@@ -600,34 +536,7 @@ export function DeskApp() {
           settling={frame.settling}
         />
       )}
-      <footer
-        data-tour="tour-footer"
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-3 py-1.5 font-mono text-micro text-subtle"
-      >
-        <Crest size={16} className="shrink-0 opacity-80" />
-        <span>
-          Paper research desk · Bitcoin only · Not financial advice · Not affiliated with Kalshi ·
-          No real money.
-        </span>
-        <span className="ml-auto flex flex-wrap gap-x-3">
-          <a href="/about" className="min-h-8 leading-8 hover:text-fg">
-            How it works
-          </a>
-          <a href="/faq" className="min-h-8 leading-8 hover:text-fg">
-            FAQ
-          </a>
-          <a href="/legal" className="min-h-8 leading-8 hover:text-fg">
-            Paper only
-          </a>
-          <button
-            type="button"
-            onClick={() => setPaletteOn(true)}
-            className="min-h-8 hover:text-fg"
-          >
-            Glossary ⌘K
-          </button>
-        </span>
-      </footer>
+      <PaperDisclaimer />
       <Tour
         open={tourOn}
         step={tourStep}

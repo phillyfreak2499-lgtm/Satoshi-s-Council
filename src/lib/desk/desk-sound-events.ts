@@ -93,5 +93,5 @@ export function observeDeskSounds(cursor: SoundCursor, frame: SoundFrame, now: n
 export function deskSoundViewActive(pathname: string, search: string): boolean {
   const params = new URLSearchParams(search);
   const tab = params.get("tab");
-  return pathname === "/" && (tab == null || tab === "satoshi" || tab === "atelier") && !params.has("seat");
+  return (pathname === "/" || pathname === "/desk") && (tab == null || tab === "satoshi" || tab === "atelier") && !params.has("seat");
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { type CallLogRow, type ChairResult, type Lean, type SeatId, type SeatRow, type Settings, type Snapshot } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
-import { Field, LeanChip, MarketChip, MinsLeft, Mono, Pane, StatusChip } from "./bits";
+import { Field, LeanChip, MarketChip, Mono, Pane, StatusChip } from "./bits";
 import { V2_GATE_CALLS, V2_GATE_SAMPLES, V2_MIN_SAMPLES, v2Gates } from "@/lib/desk/chair-v2";
 import type { V2Frame } from "@/lib/desk/server-engine";
 import { ChairEyes } from "./Eyes";
@@ -11,6 +11,7 @@ import { Tip } from "./Tip";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
 import { markSide, readScalp, scalpAvg } from "@/lib/desk/scalp";
+import { useCountdownText } from "@/lib/desk/hooks";
 import { useDesk } from "@/lib/desk/store";
 import { fetchBrief, type Brief, type GavelRow } from "@/lib/desk/brief";
 import { GAVEL_SIZES, evCentsAt, fmtCentsAt, isGavelSize, type GavelSize } from "@/lib/desk/size-view";
@@ -33,20 +34,6 @@ import { chairSignalOf, signalDescription } from "@/lib/desk/chair-signal";
 function sideAsk(snap: Snapshot, lean: Lean) {
   if (lean !== "UP" && lean !== "DOWN") return snap.yes_mid;
   return markSide(snap, lean);
-}
-
-function fmtClock(t: number, tz: string) {
-  try {
-    return new Date(t).toLocaleTimeString("en-US", {
-      timeZone: tz,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return new Date(t).toISOString().slice(11, 19);
-  }
 }
 
 /** A failing hard gate as a short, honest chip. Only gates that exist in live state reach here. */
@@ -130,8 +117,9 @@ function EconomicsBox({ eco }: { eco: Economics }) {
   );
 }
 
-function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[]; density: FloorDensity }) {
+function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: ChairResult; tz: string; callLog: CallLogRow[]; density: FloorDensity }) {
   const [mathOpen, setMathOpen] = useState(false);
+  const countdown = useCountdownText(snap.close_time);
   const lean = chair.lean;
   const signal = chairSignalOf(chair);
   const ask = sideAsk(snap, lean);
@@ -167,22 +155,6 @@ function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; cha
           <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-fg" data-plain-line>
             {plainLine(chair, snap, book)}
           </p>
-          <p className="mt-1 max-w-[52ch] font-sans text-ui leading-snug text-muted">
-            {book.kind === "booked"
-              ? `Paper only: booked ${book.lean} at ${book.cents.toFixed(0)}¢ on the ${bookSide} ask, held to settlement and graded on Kalshi's official value.${
-                  lean !== book.lean ? " The read has moved since; one position per window means the book does not sell low to buy high." : ""
-                }`
-              : lean === "WAIT"
-                ? (
-                    <>
-                      <strong className="font-medium text-wait">Why WAIT:</strong>{" "}
-                      The seats do not agree hard enough to pay the ask, so the paper stays in the pocket. WAIT is the desk&apos;s most common call, on purpose.
-                    </>
-                  )
-                : book.kind === "floor"
-                  ? `Paper only: the book fills at ${CHAIR_MIN_ASK_CENTS}¢ or better — a time-boxed trial of a higher floor. ${side} is ${book.ask.toFixed(0)}¢, so this read stays unbooked unless the ask reaches the floor before the window closes. The read still stands and every seat is still graded on it.`
-                  : `Paper only: booked at the ${side} ask if it fills, graded on Kalshi's official settlement value.`}
-          </p>
           <div className="mt-2 font-mono text-ui text-muted">
             {book.kind === "booked" ? (
               <>
@@ -209,15 +181,20 @@ function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; cha
         </div>
         <div className="council-chair-metrics">
           <div className="council-chair-clock">
-            <div className="font-mono text-micro uppercase tracking-widest text-subtle">clock</div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">Window closes in</div>
             <div className="council-chair-clock-value font-mono tabular">
-              <MinsLeft closeTime={snap.close_time} />
+              <span>{countdown}</span>
             </div>
           </div>
           <div>
-            <div className="font-mono text-micro uppercase tracking-widest text-subtle">paper</div>
-            <div className={cn("council-chair-metric-value font-mono", filled ? "text-fg" : "text-subtle")}>{filled ? "FILL" : "NO FILL"}</div>
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">Paper position</div>
+            <div className={cn("council-chair-metric-value font-mono", filled ? "text-fg" : "text-subtle")}>{filled ? "RECORDED" : "NONE"}</div>
           </div>
+        </div>
+      </div>
+      <details className="council-chair-evidence">
+        <summary>View evidence <span>Prices, fees &amp; timestamps</span></summary>
+        <div className="company-evidence-metrics">
           <div>
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">
               <Tip k="strip.conf">conf</Tip>
@@ -231,9 +208,6 @@ function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; cha
             <div className="council-chair-metric-value font-mono tabular">{chair.size}</div>
           </div>
         </div>
-      </div>
-      <details className="council-chair-evidence" key={density} open={density === "full"}>
-        <summary>Prices, fees &amp; timestamps</summary>
         <EconomicsBox eco={economicsOf(snap, lean)} />
         {/* Price provenance belongs to the call, not to a section between the call
             and the why: when this was decided, and what is locked. */}
@@ -247,7 +221,6 @@ function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; cha
           })()}
           tz={tz}
         />
-      </details>
       <ChairSignalGauge
         chair={chair}
         feedHealthy={snap.health.spot !== "DOWN" && snap.health.spot !== "STALE" && snap.health.kalshi !== "DOWN" && snap.health.kalshi !== "STALE"}
@@ -292,6 +265,7 @@ function ChairBoard({ snap, chair, tz, callLog, density }: { snap: Snapshot; cha
       <div className="mt-2 border-t border-border pt-2">
         <MarketChip m={market} tz={tz} />
       </div>
+      </details>
     </section>
   );
 }
@@ -713,16 +687,16 @@ export function SatoshiTab({
       </CouncilFloorRoom>
       {density === "full" && strip ? <div>{strip}</div> : null}
 
-      <WhyBlock why={why} chair={chair} />
+      <details className="company-decision-notes"><summary>Decision notes and voting context</summary><WhyBlock why={why} chair={chair} /></details>
       <ChairEyes snap={snap} />
 
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2.5" aria-label="Floor density">
         <div>
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            {density === "quiet" ? "Quiet Floor" : "Full Floor"}
+            {density === "quiet" ? "Overview" : "Complete desk"}
           </div>
           <p className="mt-0.5 font-sans text-ui text-muted">
-            Quiet keeps the call, reason, clock and live Bitcoin-vs-strike view. Full adds evidence, record, council and diagnostics.
+            Choose a focused view, or open the complete research desk.
           </p>
         </div>
         <div role="group" aria-label="Choose Floor density" className="flex gap-1">

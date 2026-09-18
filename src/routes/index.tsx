@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { CouncilHome } from "@/components/desk/CouncilHome";
 import { DeskApp } from "@/components/desk/DeskApp";
 import { InitialDeskFrame } from "@/lib/desk/store";
 import { publicHomeSnapshot } from "@/lib/desk/home-public";
@@ -11,5 +12,9 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  return <InitialDeskFrame.Provider value={Route.useLoaderData()}><DeskApp /></InitialDeskFrame.Provider>;
+  const search = useRouterState({ select: state => state.location.searchStr });
+  const query = new URLSearchParams(search);
+  // Existing bookmarks continue to open their original room.
+  const legacyRoom = ["tab", "seat", "view"].some(key => query.has(key));
+  return <InitialDeskFrame.Provider value={Route.useLoaderData()}>{legacyRoom ? <DeskApp /> : <CouncilHome />}</InitialDeskFrame.Provider>;
 }

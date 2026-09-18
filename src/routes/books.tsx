@@ -17,8 +17,8 @@ function BooksPage() {
   return (
     <Page
       wide
-      title="The paper books"
-      lede="Every recorded window, scoped and labeled. Real public prices and fees. No live orders."
+      title="Results, on the record."
+      lede="Explore the paper books: recorded positions, settlement outcomes, and fee-adjusted results. Every period is scoped and labeled."
     >
       <BooksTab tz={BOOK_TZ} initial={initial} />
     </Page>

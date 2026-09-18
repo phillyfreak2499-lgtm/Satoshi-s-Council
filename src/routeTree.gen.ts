@@ -15,6 +15,7 @@ import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as BooksRouteImport } from './routes/books'
 import { Route as ChamberRouteImport } from './routes/chamber'
+import { Route as DeskRouteImport } from './routes/desk'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as LegalRouteImport } from './routes/legal'
@@ -52,6 +53,11 @@ const BooksRoute = BooksRouteImport.update({
 const ChamberRoute = ChamberRouteImport.update({
   id: '/chamber',
   path: '/chamber',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeskRoute = DeskRouteImport.update({
+  id: '/desk',
+  path: '/desk',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaqRoute = FaqRouteImport.update({
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/board': typeof BoardRoute
   '/books': typeof BooksRoute
   '/chamber': typeof ChamberRoute
+  '/desk': typeof DeskRoute
   '/faq': typeof FaqRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/board': typeof BoardRoute
   '/books': typeof BooksRoute
   '/chamber': typeof ChamberRoute
+  '/desk': typeof DeskRoute
   '/faq': typeof FaqRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/board': typeof BoardRoute
   '/books': typeof BooksRoute
   '/chamber': typeof ChamberRoute
+  '/desk': typeof DeskRoute
   '/faq': typeof FaqRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/books'
     | '/chamber'
+    | '/desk'
     | '/faq'
     | '/lab'
     | '/legal'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/books'
     | '/chamber'
+    | '/desk'
     | '/faq'
     | '/lab'
     | '/legal'
@@ -183,6 +194,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/books'
     | '/chamber'
+    | '/desk'
     | '/faq'
     | '/lab'
     | '/legal'
@@ -200,6 +212,7 @@ export interface RootRouteChildren {
   BoardRoute: typeof BoardRoute
   BooksRoute: typeof BooksRoute
   ChamberRoute: typeof ChamberRoute
+  DeskRoute: typeof DeskRoute
   FaqRoute: typeof FaqRoute
   LabRoute: typeof LabRoute
   LegalRoute: typeof LegalRoute
@@ -250,6 +263,13 @@ declare module '@tanstack/react-router' {
       path: '/chamber'
       fullPath: '/chamber'
       preLoaderRoute: typeof ChamberRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desk': {
+      id: '/desk'
+      path: '/desk'
+      fullPath: '/desk'
+      preLoaderRoute: typeof DeskRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/faq': {
@@ -332,6 +352,7 @@ const rootRouteChildren: RootRouteChildren = {
   BoardRoute: BoardRoute,
   BooksRoute: BooksRoute,
   ChamberRoute: ChamberRoute,
+  DeskRoute: DeskRoute,
   FaqRoute: FaqRoute,
   LabRoute: LabRoute,
   LegalRoute: LegalRoute,

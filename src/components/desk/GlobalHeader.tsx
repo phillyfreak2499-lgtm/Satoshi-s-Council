@@ -9,5 +9,5 @@ export function GlobalHeader({ action, tour, searchOverride }: { action?: Header
   const location = useRouterState({ select: state => state.location });
   const search = searchOverride ?? location.searchStr;
   return <CouncilNavigation pathname={location.pathname} search={search} action={action} tour={tour}
-    controls={location.pathname === "/" ? <DeskSoundControl active={deskSoundViewActive(location.pathname, search)} /> : undefined} />;
+    controls={(location.pathname === "/desk" || (location.pathname === "/" && /[?&](tab|view|seat)=/.test(search))) ? <DeskSoundControl active={deskSoundViewActive(location.pathname, search)} /> : undefined} />;
 }

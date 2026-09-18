@@ -20,12 +20,12 @@ test("the Observatory adds wayfinding without dropping any existing destination"
     assert.equal(paths.filter(path => path === href).length, 1, `${href} remains reachable exactly once in the canonical map`);
   }
   const shared = read("src/components/desk/CouncilNavigation.tsx");
-  assert.match(shared, /const PRIMARY[^;]*"\/lab"[^;]*"\/\?tab=atelier"/);
+  assert.match(shared, /const PRIMARY[^;]*"\/desk"[^;]*"\/books"[^;]*"\/chamber"[^;]*"\/lab"[^;]*SHOP_URL/);
   assert.match(shared, /const PRIMARY[^;]*"\/books"[^;]*"\/chamber"/);
-  assert.match(shared, /const SHORTCUTS = PRIMARY\.filter\(href => href !== "\/chamber"\);/);
-  assert.match(shared, /links\(\["\/\?tab=settings"\]\)/);
+  assert.match(shared, /const SHORTCUTS = PRIMARY;/);
+  assert.ok(paths.includes("/?tab=settings"));
   assert.match(shared, /const menu: MenuItem\[\] = SITE_DESTINATIONS\.map/);
-  assert.match(shared, /All sections/);
+  assert.match(shared, /More<span/);
   assert.match(read("src/components/desk/GlobalHeader.tsx"), /searchOverride \?\? location.searchStr/);
 });
 
@@ -52,8 +52,10 @@ test("the full application keeps rooms, floor choices, search, welcome and tours
   assert.match(app, /onDensityChange=\{setFloorDensity\}/);
   assert.match(app, /tab === "atelier" && <AtelierTab \/>/);
   assert.match(app, /tab === "settings" && <SettingsTab settings=\{frame.settings\}/);
-  assert.match(app, /<CouncilEntrance onTour=\{startTour\}/);
-  assert.match(app, /<CouncilFocusToggle focused=\{introHidden\}/);
+  const home = read("src/components/desk/CouncilHome.tsx");
+  assert.match(home, /<CouncilGuides \/>/);
+  assert.match(home, /href="\/desk"/);
+  assert.doesNotMatch(app, /<CouncilEntrance|<CouncilGuides/);
   assert.doesNotMatch(app, /from ["'][^"']*preview\/|DEMO-PREVIEW/);
 });
 
@@ -71,4 +73,18 @@ test("focus and presentation never replace data or make research decisions", () 
   assert.doesNotMatch(styles, /\.council-site-header > \.gutter\s*\{/,
     "header bar height must not constrain the full mobile menu");
   assert.doesNotMatch(styles, /(?:#floor-main|\.atelier|\.council-floor-tools|\.council-site-header)[^{]*\{[^}]*display:\s*none/);
+});
+
+
+test("home and the dedicated floor keep distinct navigation while legacy room bookmarks survive", () => {
+  const { sitePathActive } = navigation();
+  assert.equal(sitePathActive("/", "/"), true);
+  assert.equal(sitePathActive("/desk", "/"), false);
+  assert.equal(sitePathActive("/desk", "/desk"), true);
+  assert.equal(sitePathActive("/", "/desk", "?tab=satoshi"), true);
+  assert.equal(sitePathActive("/", "/", "?tab=satoshi"), false);
+  assert.equal(sitePathActive("/desk", "/?tab=structure", "?tab=tape"), true);
+  assert.equal(sitePathActive("/desk", "/?tab=atelier", "?tab=atelier&room=streamer"), true);
+  assert.equal(sitePathActive("/", "/", "?view=guided"), false);
+  assert.equal(sitePathActive("/desk", "https://satoshis-council-shop.fourthwall.com/"), false);
 });

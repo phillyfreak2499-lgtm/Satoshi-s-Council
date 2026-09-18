@@ -5,10 +5,11 @@ import { cn } from "@/lib/utils";
 import { SiteHeader, type MenuItem } from "./SiteHeader";
 import "./observatory.css";
 import "./interface-polish.css";
+import "./company-design.css";
 
 export type HeaderAction = { label: string; hint?: string; onSelect: () => void };
-const PRIMARY: readonly SiteHref[] = ["/", "/lab", "/?tab=atelier", "/books", "/chamber", SHOP_URL];
-const SHORTCUTS = PRIMARY.filter(href => href !== "/chamber");
+const PRIMARY: readonly SiteHref[] = ["/desk", "/books", "/chamber", "/lab", SHOP_URL];
+const SHORTCUTS = PRIMARY;
 const linkClass = "council-site-link flex min-h-11 items-center gap-1 rounded-md px-3 font-mono text-micro tracking-wide";
 
 /** Shared by the real app and the isolated design preview. No data fetching. */
@@ -40,7 +41,7 @@ export function CouncilNavigation({ pathname, search = "", action, tour, preview
       {links(PRIMARY)}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger className={cn(linkClass, "text-muted hover:bg-surface-2 hover:text-fg")}>
-          All sections<span aria-hidden="true" className="ml-1 text-subtle">▾</span>
+          More<span aria-hidden="true" className="ml-1 text-subtle">▾</span>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal><DropdownMenu.Content align="end" sideOffset={8} className="council-all-sections z-50 max-h-[75dvh] min-w-64 overflow-y-auto rounded-md border border-border bg-surface p-2 shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
           {SITE_DESTINATIONS.map((item, index) => <div key={item.href}>
@@ -51,7 +52,6 @@ export function CouncilNavigation({ pathname, search = "", action, tour, preview
           </div>)}
         </DropdownMenu.Content></DropdownMenu.Portal>
       </DropdownMenu.Root>
-      {links(["/?tab=settings"])}
       {action ? <button type="button" onClick={action.onSelect} className={cn(linkClass, "text-muted hover:bg-surface-2 hover:text-fg")}>{action.label}</button> : null}
     </nav>} />;
 }

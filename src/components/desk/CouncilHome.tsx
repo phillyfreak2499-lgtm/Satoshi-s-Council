@@ -1,0 +1,73 @@
+import { useEffect } from "react";
+import { useDesk } from "@/lib/desk/store";
+import { useCountdownText } from "@/lib/desk/hooks";
+import { bookState } from "@/lib/desk/book-floor";
+import { plainLine } from "@/lib/desk/chair-words";
+import { SHOP_URL } from "@/lib/desk/navigation";
+import { GlobalHeader } from "./GlobalHeader";
+import { CouncilGuides } from "./CouncilExperience";
+import { LiveConnectionNotice } from "./LiveConnectionNotice";
+import { PaperDisclaimer } from "./PaperDisclaimer";
+import { applyDisplayPrefs } from "./prefs";
+
+/** The public introduction reads the same shared frame as the full desk. */
+export function CouncilHome() {
+  const frame = useDesk();
+  const { snap, chair } = frame;
+  const countdown = useCountdownText(snap?.close_time ?? 0);
+  const book = snap && chair ? bookState(snap, chair.lean, frame.call_log) : null;
+  const demo = frame.settings.source === "demo";
+  useEffect(() => { applyDisplayPrefs(); }, []);
+  return <div className="council-home observatory">
+    <a href="#home-main" className="skip-link">Skip to content</a>
+    <GlobalHeader />
+    <main id="home-main">
+      <section className="company-hero" aria-labelledby="home-title">
+        <div className="company-hero-art" aria-hidden="true"><img src="/floor/council-chamber-v1.webp" width="1672" height="941" alt="" fetchPriority="high" /></div>
+        <div className="company-container company-hero-inner">
+          <p className="company-eyebrow">Independent Bitcoin research</p>
+          <h1 id="home-title">A clearer view.<br /><em>A considered call.</em></h1>
+          <p className="company-hero-lede">Follow the Council as it weighs Bitcoin’s next 15 minutes. See the decision, explore the evidence, and judge the record for yourself.</p>
+          <div className="company-actions"><a href="/desk" className="company-button">Enter the live floor <span aria-hidden="true">↗</span></a><a href="/books" className="company-text-link">Explore the results <span aria-hidden="true">→</span></a></div>
+          <p className="company-hero-note">Paper research. Public prices. No live orders.</p>
+        </div>
+      </section>
+
+      <div className="company-container">
+        <LiveConnectionNotice frame={frame} />
+        <section className="company-live" aria-labelledby="home-live-title">
+          <div className="company-live-decision">
+            <p className="company-eyebrow" id="home-live-title">{demo ? "Demo preview" : "From the research floor"}</p>
+            <div className="company-live-call" data-lean={chair?.lean.toLowerCase()}>{chair?.lean ?? "Connecting"}</div>
+            <span className="company-muted">{book?.kind === "booked" ? `${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
+          </div>
+          <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p><a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
+          <dl className="company-live-numbers"><div><dt>Bitcoin spot</dt><dd>{snap ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(snap.spot) : "—"}</dd></div><div><dt>Window closes in</dt><dd>{snap ? countdown : "—"}</dd></div></dl>
+        </section>
+        {snap ? <p className="company-snapshot">{demo ? "Simulated data" : "Snapshot"} · {new Date(snap.as_of).toISOString().slice(11, 19)} UTC · A directional read and a recorded paper fill are different.</p> : null}
+
+        <section className="company-method" aria-labelledby="method-title">
+          <div className="company-section-heading"><div><p className="company-eyebrow">The process</p><h2 id="method-title">Every call has a case.<br /><em>Every result has a record.</em></h2></div><a href="/about" className="company-text-link">How it works <span aria-hidden="true">↗</span></a></div>
+          <div className="company-process-grid">
+            <article><span className="company-step">01 / Observe</span><h3>See the whole picture.</h3><p>Specialist seats read price structure, order flow, derivatives, market odds, and context.</p><a href="/?tab=structure">Explore the specialists <span aria-hidden="true">→</span></a></article>
+            <article><span className="company-step">02 / Decide</span><h3>Know when to wait.</h3><p>The Chair brings the evidence together. A directional read must also clear the paper book’s price and safety rules.</p><a href="/desk">Follow the decision <span aria-hidden="true">→</span></a></article>
+            <article><span className="company-step">03 / Review</span><h3>Let the record speak.</h3><p>Review recorded paper positions, fees, settlement results, and the experiments being tested alongside them.</p><a href="/books">Open the results <span aria-hidden="true">→</span></a></article>
+          </div>
+        </section>
+
+        <CouncilGuides />
+
+        <section className="company-explore" aria-labelledby="explore-title">
+          <div className="company-section-heading"><div><p className="company-eyebrow">Go deeper</p><h2 id="explore-title">The work behind the call.</h2></div></div>
+          <div className="company-editorial-grid">
+            <a href="/lab" className="company-editorial-card"><span className="company-eyebrow">Research / The Lab</span><h3>Evidence before<br />improvement.</h3><p>Follow prospective experiments and compare candidates against a frozen control.</p><span className="company-card-link">Explore the research <span aria-hidden="true">↗</span></span></a>
+            <a href="/chamber" className="company-editorial-card"><span className="company-eyebrow">Council / The Chamber</span><h3>Understand<br />the conversation.</h3><p>Read the Council’s structured commentary and the evidence behind each exchange.</p><span className="company-card-link">Meet the Council <span aria-hidden="true">↗</span></span></a>
+          </div>
+        </section>
+
+        <section className="company-shop" aria-labelledby="shop-title"><div><p className="company-eyebrow">The Council collection</p><h2 id="shop-title">Stillness is a decision.</h2><p>The ideas behind the floor, made to wear and keep.</p></div><a href={SHOP_URL} target="_blank" rel="noopener noreferrer" className="company-button company-button-outline" aria-label="Visit the shop (opens in a new tab)">Visit the shop <span aria-hidden="true">↗</span></a></section>
+      </div>
+    </main>
+    <PaperDisclaimer />
+  </div>;
+}

@@ -19,13 +19,13 @@ export function Page({ title, lede, children, wide = false }: { title: string; l
         <div className="prose-desk mt-8">{children}</div>
         <div className="mt-10 border-t border-border pt-6">
           <Link
-            to="/"
+            to="/desk"
             className="btn btn-primary"
             onClick={() => gtagEvent("enter_the_floor")}
           >
             Open the floor
           </Link>
-          <span className="ml-3 font-mono text-micro text-subtle">The 60-second tour starts on your first visit to the Floor.</span>
+          <span className="ml-3 font-mono text-micro text-subtle">See the current decision and its supporting evidence.</span>
         </div>
       </main>
       <PaperDisclaimer />
