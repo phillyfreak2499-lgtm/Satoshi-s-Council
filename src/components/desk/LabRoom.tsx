@@ -42,6 +42,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
 
   const stale = data.rows.filter((row) => row.health === "stale");
   const fixed = data.rows.filter((row) => row.missing_is_error);
+  const unsampledFixed = fixed.filter((row) => row.health === "no-sample");
 
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="lab-registry-title">
@@ -53,7 +54,11 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
           </h2>
         </div>
         <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold uppercase tracking-widest text-muted">
-          {stale.length ? `${stale.length} stale` : "fixed cadences healthy"}
+          {stale.length
+            ? `${stale.length} stale`
+            : unsampledFixed.length
+              ? `${unsampledFixed.length} awaiting first sample`
+              : "no stale fixed collectors"}
         </span>
       </div>
 
@@ -77,14 +82,18 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
           <div className="mt-1 font-mono text-data tabular text-fg">{data.tally.collecting}</div>
         </div>
         <div className="rounded-sm border border-border bg-canvas p-3">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Stale</div>
-          <div className="mt-1 font-mono text-data tabular text-fg">{data.tally.stale}</div>
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Stale / no sample</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{data.tally.stale} / {unsampledFixed.length}</div>
         </div>
       </div>
 
       {stale.length ? (
         <div role="status" className="mt-4 rounded-sm border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-wait">
           Needs attention: {stale.map((row) => row.label).join(" · ")}
+        </div>
+      ) : unsampledFixed.length ? (
+        <div role="status" className="mt-4 rounded-sm border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-muted">
+          Awaiting first durable sample: {unsampledFixed.map((row) => row.label).join(" · ")}
         </div>
       ) : (
         <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
