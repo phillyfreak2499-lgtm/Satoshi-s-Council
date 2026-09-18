@@ -1,5 +1,5 @@
 export const SHOP_URL = "https://satoshis-council-shop.fourthwall.com/";
-export type SitePath = "/" | "/desk" | "/chamber" | "/training" | "/books" | "/record" | "/lab" | "/arena" | "/board" | "/about" | "/faq" | "/legal"
+export type SitePath = "/" | "/desk" | "/chamber" | "/training" | "/books" | "/record" | "/hour" | "/lab" | "/arena" | "/board" | "/about" | "/faq" | "/legal"
   | "/?tab=atelier" | "/?tab=settings" | "/?tab=crew" | "/?tab=structure" | "/?view=guided";
 export type SiteGroup = "Explore" | "Research" | "Desk tools" | "Help";
 export type SiteHref = SitePath | typeof SHOP_URL;
@@ -14,6 +14,7 @@ export const SITE_DESTINATIONS: readonly SiteDestination[] = [
   { href: SHOP_URL, label: "Shop", menuLabel: "Shop", hint: "official Council merch ↗", group: "Explore", external: true },
   { href: "/books", label: "Results", menuLabel: "Results / Paper books", hint: "paper results and replays", group: "Research" },
   { href: "/record", label: "This week", menuLabel: "Results / This week", hint: "the week on the record", group: "Research" },
+  { href: "/hour", label: "The hour", menuLabel: "Results / The hour", hint: "the hourly Bitcoin book, graded separately", group: "Research" },
   { href: "/lab", label: "Research", menuLabel: "Research / The Lab", hint: "experiments and comparisons", group: "Research" },
   { href: "/arena", label: "Arena", menuLabel: "Arena", hint: "paper calls and rankings", group: "Research" },
   { href: "/?tab=structure", label: "Specialists", menuLabel: "Specialists", hint: "all five specialist desks", group: "Desk tools" },
