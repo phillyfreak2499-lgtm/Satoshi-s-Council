@@ -1,0 +1,281 @@
+/**
+ * Whole-Lab lifecycle inventory.
+ *
+ * This is descriptive metadata only: it cannot vote, book, grade, promote or
+ * tune anything. The matching server module supplies aggregate counts/freshness.
+ */
+export type LabStudyType = "decider" | "measurement" | "manual" | "separate";
+export type LabStudyHealth = "collecting" | "stale" | "manual" | "event-driven" | "no-sample";
+
+export type LabStudySpec = {
+  id: string;
+  label: string;
+  type: LabStudyType;
+  authority: "none";
+  purpose: string;
+  cadence: string;
+  cadence_kind: "window" | "minute" | "event" | "manual" | "hourly";
+  stale_after_ms: number | null;
+  missing_is_error: boolean;
+  visible_at: string;
+};
+
+const MINUTE = 60_000;
+
+export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
+  {
+    id: "chair-v2",
+    label: "Chair v2",
+    type: "decider",
+    authority: "none",
+    purpose: "Same-time shadow probability sample and shared research spine.",
+    cadence: "once per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "desk shadow research",
+  },
+  {
+    id: "chair-v3",
+    label: "Chair v3 prospective",
+    type: "decider",
+    authority: "none",
+    purpose: "Market-prior calibration with a bounded Council correction.",
+    cadence: "once per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "research report",
+  },
+  {
+    id: "taker-v1",
+    label: "TAKER v1",
+    type: "decider",
+    authority: "none",
+    purpose: "Frozen test of whether taker flow adds information beyond Council and market.",
+    cadence: "once per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "TAKER research report",
+  },
+  {
+    id: "forced-v4",
+    label: "Forced direction V4",
+    type: "decider",
+    authority: "none",
+    purpose: "Exactly one UP or DOWN at T−7:30, with WAIT and entry gates forbidden.",
+    cadence: "once per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab",
+  },
+  {
+    id: "policy-exit",
+    label: "Policy Lab / exit arena",
+    type: "decider",
+    authority: "none",
+    purpose: "Compare frozen exit rules on the same paper fills.",
+    cadence: "paper-fill driven",
+    cadence_kind: "event",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "Lab",
+  },
+  {
+    id: "seat-timing",
+    label: "Seat timing calibration",
+    type: "manual",
+    authority: "none",
+    purpose: "Compare raw versus Chair-heard seat accuracy at fixed replay horizons.",
+    cadence: "recomputed from retained replays",
+    cadence_kind: "manual",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "Lab",
+  },
+  {
+    id: "call-quality",
+    label: "Call-quality checkpoints",
+    type: "measurement",
+    authority: "none",
+    purpose: "Measure decision quality at frozen 450s, 300s and 180s checkpoints.",
+    cadence: "3 checkpoints per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab",
+  },
+  {
+    id: "tape2",
+    label: "TAPE 2.0",
+    type: "measurement",
+    authority: "none",
+    purpose: "Record microprice, OFI, cancellations and trade-flow shadow traces.",
+    cadence: "persisted with each graded replay",
+    cadence_kind: "window",
+    stale_after_ms: 40 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Replay / research board",
+  },
+  {
+    id: "vel2",
+    label: "VEL 2.0",
+    type: "measurement",
+    authority: "none",
+    purpose: "Measure spot-versus-market residual and lead/lag.",
+    cadence: "persisted with each graded replay",
+    cadence_kind: "window",
+    stale_after_ms: 40 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Replay / research board",
+  },
+  {
+    id: "strike2",
+    label: "STRIKE 2.0",
+    type: "manual",
+    authority: "none",
+    purpose: "Walk-forward strike-state calibration without lookahead.",
+    cadence: "recomputed from samples and replays",
+    cadence_kind: "manual",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "research report",
+  },
+  {
+    id: "whale2",
+    label: "WHALE 2.0",
+    type: "measurement",
+    authority: "none",
+    purpose: "Describe large-print response and absorption without giving it a vote.",
+    cadence: "trade-event driven",
+    cadence_kind: "event",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "research report",
+  },
+  {
+    id: "absorption",
+    label: "Absorption study",
+    type: "measurement",
+    authority: "none",
+    purpose: "Test whether aggressive flow that fails to move price contains information.",
+    cadence: "trade-event driven",
+    cadence_kind: "event",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "research report",
+  },
+  {
+    id: "path-parity",
+    label: "Path parity",
+    type: "measurement",
+    authority: "none",
+    purpose: "Compare timestamp-correct path horizons with the legacy offset path.",
+    cadence: "roughly once per minute while a window is live",
+    cadence_kind: "minute",
+    stale_after_ms: 10 * MINUTE,
+    missing_is_error: true,
+    visible_at: "research diagnostics",
+  },
+  {
+    id: "decision-snapshots",
+    label: "Decision snapshots",
+    type: "measurement",
+    authority: "none",
+    purpose: "Freeze opening and first-directional Chair state prospectively.",
+    cadence: "1–2 records per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "research diagnostics",
+  },
+  {
+    id: "higher-context",
+    label: "4h / 24h context",
+    type: "measurement",
+    authority: "none",
+    purpose: "Freeze higher-timeframe context beside decision snapshots before proposing a rule.",
+    cadence: "with decision snapshots",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "research diagnostics",
+  },
+  {
+    id: "null-horizon",
+    label: "NULL_HORIZON_V1",
+    type: "manual",
+    authority: "none",
+    purpose: "Falsify horizon-weighted Council behavior against a driftless null.",
+    cadence: "manual on-demand analysis",
+    cadence_kind: "manual",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "manual Lab report",
+  },
+  {
+    id: "index-settlement-fair",
+    label: "Settlement-fair / INDEX",
+    type: "measurement",
+    authority: "none",
+    purpose: "Preserve settlement-rule fair value as shadow evidence with no Chair authority.",
+    cadence: "persisted with each graded replay",
+    cadence_kind: "window",
+    stale_after_ms: 40 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Replay",
+  },
+  {
+    id: "lag-events",
+    label: "Lag-event study",
+    type: "measurement",
+    authority: "none",
+    purpose: "Measure fair-value shock survival, markout and realized paper outcome.",
+    cadence: "fair-value-shock driven",
+    cadence_kind: "event",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "Books / recap",
+  },
+  {
+    id: "basis-minutes",
+    label: "Basis minutes",
+    type: "measurement",
+    authority: "none",
+    purpose: "Measure spot/index basis and settlement-feed health.",
+    cadence: "roughly once per minute",
+    cadence_kind: "minute",
+    stale_after_ms: 10 * MINUTE,
+    missing_is_error: true,
+    visible_at: "research diagnostics",
+  },
+  {
+    id: "hourly-book",
+    label: "Hourly book",
+    type: "separate",
+    authority: "none",
+    purpose: "Keep KXBTCD hourly ladder research separate from the 15-minute Council.",
+    cadence: "hourly",
+    cadence_kind: "hourly",
+    stale_after_ms: 150 * MINUTE,
+    missing_is_error: true,
+    visible_at: "hourly research",
+  },
+]);
+
+export function labStudyHealth(
+  spec: LabStudySpec,
+  sampleN: number,
+  lastEvidenceAt: string | null,
+  nowMs: number,
+): LabStudyHealth {
+  if (spec.cadence_kind === "manual") return "manual";
+  if (spec.cadence_kind === "event") return sampleN > 0 ? "event-driven" : "no-sample";
+  if (!(sampleN > 0) || !lastEvidenceAt) return "no-sample";
+  const at = Date.parse(lastEvidenceAt);
+  if (!Number.isFinite(at)) return "stale";
+  if (spec.stale_after_ms != null && nowMs - at > spec.stale_after_ms) return "stale";
+  return "collecting";
+}
