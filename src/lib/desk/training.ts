@@ -7,3 +7,5 @@ export const TRAINING_COACHES = [
 export function availableCoach(id: string) {
   return TRAINING_COACHES.find((coach) => coach.id === id && coach.available);
 }
+/** Two-digit screen label for the six-screen station grid: 01–06. */
+export const screenNumber = (index: number) => String(index + 1).padStart(2, "0");
