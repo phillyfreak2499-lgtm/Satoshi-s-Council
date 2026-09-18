@@ -518,7 +518,8 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
               </div>
             </section>
 
-            <ResearchRegistry data={data.registry} />\n            <CallQualityStudy data={data.call_quality} />
+            <ResearchRegistry data={data.registry} />
+            <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />
             <LabSummary data={data} />
 
