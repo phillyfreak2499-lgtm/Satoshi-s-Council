@@ -20,8 +20,10 @@ function loadPure() {
 }
 
 test("whole-Lab registry has one unique lifecycle row for every audited research path", () => {
-  const src = read("src/lib/desk/lab-registry.ts");
-  const ids = [...src.matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const v = loadPure();
+  const rows = Array.from(v.LAB_RESEARCH_REGISTRY);
+  const ids = rows.map((row) => row.id);
+  assert.equal(ids.length, 20);
   assert.equal(ids.length, new Set(ids).size, "registry ids must be unique");
   for (const id of [
     "chair-v2", "chair-v3", "taker-v1", "forced-v4", "policy-exit",
@@ -32,7 +34,7 @@ test("whole-Lab registry has one unique lifecycle row for every audited research
   ]) {
     assert.ok(ids.includes(id), `missing lifecycle row: ${id}`);
   }
-  assert.equal((src.match(/authority:\s*"none"/g) ?? []).length, ids.length);
+  assert.ok(rows.every((row) => row.authority === "none"), "every registry row is authority-none");
 });
 
 test("freshness semantics do not mislabel manual or event-driven research as stale", () => {
