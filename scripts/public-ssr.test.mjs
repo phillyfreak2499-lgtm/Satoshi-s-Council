@@ -55,6 +55,14 @@ test("persisted data seeds each component instead of a loading shell", () => {
   assert.doesNotMatch(lab, /toLocaleTimeString\(/, "Lab SSR clock is timezone-stable");
 });
 
+test("the homepage live module never server-renders a dashed close clock", () => {
+  const home = read("src/components/desk/CouncilHome.tsx");
+  assert.match(home, /clockMs\(Math\.max\(0, snap\.close_time - snap\.as_of\)\)/, "the first paint derives the clock from the frame");
+  assert.doesNotMatch(home, /<dd>\{ticking\}<\/dd>/, "the raw tick hook value is never printed directly");
+  assert.doesNotMatch(home, /countdown : "—"/, "no dashed fallback beside the clock label");
+  assert.doesNotMatch(home, /Date\.now\(/, "SSR clock is derived from the snapshot, not the server wall clock");
+});
+
 test("a syntactically valid ticker without a replay reaches the branded 404", () => {
   const route = read("src/routes/window.$ticker.tsx");
   assert.match(route, /const replay = await loadReplay/);
