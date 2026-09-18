@@ -9,9 +9,11 @@ import { CouncilGuides } from "./CouncilExperience";
 import { LiveConnectionNotice } from "./LiveConnectionNotice";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { applyDisplayPrefs } from "./prefs";
+import { utcStamp } from "@/lib/desk/display-evidence";
+import type { BooksWindow } from "@/lib/desk/books";
 
 /** The public introduction reads the same shared frame as the full desk. */
-export function CouncilHome() {
+export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
   const frame = useDesk();
   const { snap, chair } = frame;
   const countdown = useCountdownText(snap?.close_time ?? 0);
@@ -28,7 +30,7 @@ export function CouncilHome() {
           <p className="company-eyebrow">Independent Bitcoin research</p>
           <h1 id="home-title">A clearer view.<br /><em>A considered call.</em></h1>
           <p className="company-hero-lede">Follow the Council as it weighs Bitcoin’s next 15 minutes. See the decision, explore the evidence, and judge the record for yourself.</p>
-          <div className="company-actions"><a href="/desk" className="company-button">Enter the live floor <span aria-hidden="true">↗</span></a><a href="/books" className="company-text-link">Explore the results <span aria-hidden="true">→</span></a></div>
+          <div className="company-actions"><a href="/desk" className="company-button">Enter the live floor <span aria-hidden="true">↗</span></a><a href="/training/wick" className="company-text-link">Start with WICK <span aria-hidden="true">→</span></a></div>
           <p className="company-hero-note">Paper research. Public prices. No live orders.</p>
         </div>
       </section>
@@ -42,9 +44,17 @@ export function CouncilHome() {
             <span className="company-muted">{book?.kind === "booked" ? `${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
           </div>
           <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p><a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
-          <dl className="company-live-numbers"><div><dt>Bitcoin spot</dt><dd>{snap ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(snap.spot) : "—"}</dd></div><div><dt>Window closes in</dt><dd>{snap ? countdown : "—"}</dd></div></dl>
+          {snap ? (
+            <dl className="company-live-numbers"><div><dt>Bitcoin spot</dt><dd>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(snap.spot)}</dd></div><div><dt>Window closes in</dt><dd>{countdown}</dd></div></dl>
+          ) : (
+            <p className="company-muted">Waiting for the next window. The feed reconnects on its own.</p>
+          )}
         </section>
-        {snap ? <p className="company-snapshot">{demo ? "Simulated data" : "Snapshot"} · {new Date(snap.as_of).toISOString().slice(11, 19)} UTC · A directional read and a recorded paper fill are different.</p> : null}
+        <p className="company-snapshot">
+          {snap ? <>{demo ? "Simulated data" : "Snapshot"} · {new Date(snap.as_of).toISOString().slice(11, 19)} UTC · </> : null}
+          {last ? <>Last graded window · <a href={`/window/${encodeURIComponent(last.ticker)}`}>{utcStamp(last.close_time)}</a> settled {last.winner}{last.call ? ` · paper ${last.call.lean ?? "position"} at ${last.call.entry.toFixed(0)}¢, ${last.call.ev == null ? "not yet graded" : `${last.call.ev > 0 ? "+" : ""}${last.call.ev.toFixed(1)}¢ after fee`}` : " · the desk sat"} · </> : null}
+          A directional read and a recorded paper fill are different.
+        </p>
 
         <section className="company-method" aria-labelledby="method-title">
           <div className="company-section-heading"><div><p className="company-eyebrow">The process</p><h2 id="method-title">Every call has a case.<br /><em>Every result has a record.</em></h2></div><a href="/about" className="company-text-link">How it works <span aria-hidden="true">↗</span></a></div>

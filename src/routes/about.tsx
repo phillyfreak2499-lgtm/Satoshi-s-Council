@@ -37,6 +37,9 @@ function About() {
           </li>
         ))}
       </ol>
+      <P>
+        The live floor grades 15-minute Bitcoin windows. The <a href="/training/wick" className="text-fg underline underline-offset-2">apprentice desk</a> teaches the same read without requiring you to sit every window.
+      </P>
       <H2>What the words mean</H2>
       <P>
         A <strong className="text-fg">seat</strong> is one specialist with one job. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs the seats and makes the
