@@ -55,14 +55,50 @@ test("the pure hourly module prints authority none, posture WAIT, and the separa
   }
 });
 
-test("the brain, the Chair, the learner and the 15-minute books never import the hourly book", () => {
+test("the brain, the Chair, the learner and the 15-minute books never import the hourly book or its closer", () => {
   for (const rel of [
     "src/lib/desk/server-engine.ts", "src/lib/desk/chair.ts", "src/lib/desk/learner.ts",
     "src/lib/desk/books.server.ts", "src/lib/desk/book-floor.ts", "src/lib/desk/floor-policy.ts",
     "src/lib/desk/promotion-gates.ts", "src/lib/desk/record.server.ts", "src/lib/desk/record.ts",
   ]) {
-    assert.doesNotMatch(read(rel), /\/hour["']|hour\.server|hour-public|desk_hour_ledger/, `${rel} must not import the hourly book`);
+    assert.doesNotMatch(read(rel), /\/hour["']|hour\.server|hour-public|hour-closer|desk_hour_ledger/, `${rel} must not import the hourly book`);
   }
+});
+
+test("the hourly closer writes only its own table, only WAIT sits, and never imports the Chair, the learner, desk_ledger or the paper book", () => {
+  const server = codeOf("src/lib/desk/hour-closer.server.ts");
+  const pure = codeOf("src/lib/desk/hour-closer.ts");
+  for (const banned of [
+    "desk_ledger ", "desk_ledger_research", "desk_ledger(", "desk_samples", "desk_state", "desk_policy", "desk_replay", "desk_taker",
+    "./server-engine", "./chair\"", "./chair.ts", "./chair-v2", "./chair-v3", "./learner", "./bots", "./book-floor", "./booked-decision", "./paper-book",
+    "./floor-policy", "./promotion-gates", "./skill-gate", "./books.server", "./record", "./hour.server", "./hour-public",
+    "recordSystemEvent", "recordExitArena", "promoteToLive", "persistState", "getServerFrame", "currentSnap",
+  ]) {
+    assert.doesNotMatch(server, new RegExp(esc(banned)), `hour-closer.server must not reference ${banned}`);
+    assert.doesNotMatch(pure, new RegExp(esc(banned)), `hour-closer must not reference ${banned}`);
+  }
+  const inserts = server.match(/insert into\s+(\w+)/g) ?? [];
+  assert.deepEqual(inserts, ["insert into desk_hour_ledger"], "one insert, into the hourly ledger only");
+  assert.doesNotMatch(server, /update desk|delete from/);
+  assert.match(server, /where not exists \(select 1 from desk_hour_ledger h where h\.close_time = /, "one row per closed hour, on any rung");
+  assert.match(server, /on conflict \(ticker, close_time\) do nothing/, "a rerun on the same window writes nothing");
+  assert.match(server, /null, null, null, null, null,/, "entry_side, entry_cents, entry_fee_cents, settle_cents, ev_cents are written as null: no fill is invented");
+  assert.match(server, /status=settled/, "only settled contracts are read");
+  assert.match(pure, /return HOUR_POSTURE\.live_rule \? HOUR_POSTURE\.lean : "WAIT";/, "the posture at close is WAIT until a rule is frozen and live");
+  assert.match(pure, /if \(!settled\.length\) \{[\s\S]*?out\.skipped\.push/, "an unsettled hour is skipped, never guessed");
+  assert.doesNotMatch(pure, /"UP"|"DOWN"/, "a strike ladder, never UP/DOWN");
+  assert.match(server, /catch \(err\)[\s\S]*?st\.error = /, "the closer swallows its own errors");
+  assert.doesNotMatch(server, /await import\("\.\/server-engine"\)/);
+});
+
+test("the closer is kicked from the health check beside the other observers, fire-and-forget, and never from the engine tick", () => {
+  const health = read("server/routes/healthz.get.ts");
+  assert.match(health, /import\("\.\.\/\.\.\/src\/lib\/desk\/hour-closer\.server"\)\s*\.then\(\(m\) => m\.ensureHourCloser\(\)\)\s*\.catch\(\(\) => \{\}\)/);
+  assert.match(health, /void import\("\.\.\/\.\.\/src\/lib\/desk\/hour-closer\.server"\)/, "not awaited: health stays instant");
+  assert.doesNotMatch(read("src/lib/desk/server-engine.ts"), /ensureHourCloser|hour-closer/);
+  const server = codeOf("src/lib/desk/hour-closer.server.ts");
+  assert.match(server, /st\.timer = setInterval\(\(\) => void closeHoursOnce\(\), HOUR_CLOSER_EVERY_MS\)/, "its own timer");
+  assert.match(server, /if \(st\.timer\) return;/, "idempotent boot");
 });
 
 test("the /hour page renders the empty book honestly and links the three rooms, and never says buy or signal", () => {

@@ -162,3 +162,22 @@ test("the brief carries the live window and never mentions the 15-minute contrac
   assert.doesNotMatch(JSON.stringify(b), /"UP"|"DOWN"|buy|signal/i);
   assert.match(b.window.label, /Last 7 days of hourly windows/);
 });
+
+test("a week of WAIT sits only: sits count, fills stay zero, no right WAIT and no wrong fill are invented", () => {
+  const sits = [
+    row({ ticker: "KXBTCD-26SEP1812-T78000", close_time: "2026-09-18T16:00:00.000Z", result: "YES" }),
+    row({ ticker: "KXBTCD-26SEP1811-T78500", close_time: "2026-09-18T15:00:00.000Z", result: "NO" }),
+    row({ ticker: "KXBTCD-26SEP1810-T78000", close_time: "2026-09-18T14:00:00.000Z", result: "YES" }),
+  ];
+  const b = buildHourBrief({ now: NOW, live: null, rows: sits });
+  assert.equal(b.score.windows, 3);
+  assert.equal(b.score.sits, 3);
+  assert.equal(b.score.fills, 0);
+  assert.equal(b.score.wins, 0);
+  assert.equal(b.score.net, 0);
+  assert.equal(b.score.win_rate, null);
+  assert.equal(b.right_wait, null, "a WAIT posture is not a lean, so no sit is shown as right");
+  assert.equal(b.wrong_fill, null);
+  assert.equal(b.authority, "none");
+  assert.equal(b.copy.empty, "No hourly fills yet. The 15-minute floor is a different book.");
+});

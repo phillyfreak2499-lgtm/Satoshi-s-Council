@@ -13,6 +13,10 @@ export default function healthz() {
   void import("../../src/lib/desk/call-quality.server")
     .then((m) => m.ensureCallQualityObserver())
     .catch(() => {});
+  // The hourly closer: a separate book, its own table, its own timer, no path into the floor.
+  void import("../../src/lib/desk/hour-closer.server")
+    .then((m) => m.ensureHourCloser())
+    .catch(() => {});
   return new Response("ok", {
     status: 200,
     headers: {
