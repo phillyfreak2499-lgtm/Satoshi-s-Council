@@ -123,6 +123,7 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
                 <a href="/training/wick" className="text-fg underline underline-offset-4">Start with WICK <span aria-hidden="true">→</span></a>
                 <a href="/books" className="text-fg underline underline-offset-4">Full books <span aria-hidden="true">→</span></a>
               </div>
+              <p className="mt-3 font-mono text-micro text-subtle">A longer Bitcoin clock is graded separately <a href="/hour" className="text-fg underline underline-offset-4">→ /hour</a></p>
             </section>
 
             <details className="mt-6 rounded-md border border-border bg-surface p-4">
