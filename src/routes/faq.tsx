@@ -60,10 +60,13 @@ const QA: { q: string; a: ReactNode }[] = [
   },
 ];
 
+/** The first three answers are open on first paint; every answer is in the HTML, closed ones hidden. */
+const OPEN_FIRST = ["q0", "q1", "q2"];
+
 function Faq() {
   return (
     <Page title="Questions people ask" lede="Short answers. Anything you still wonder about, post it on the BOARD from the floor.">
-      <Accordion.Root type="multiple" defaultValue={["q0", "q1"]} className="grid gap-2">
+      <Accordion.Root type="multiple" defaultValue={OPEN_FIRST} className="grid gap-2">
         {QA.map((item, i) => (
           <Accordion.Item key={i} value={`q${i}`} className="rounded-md border border-border bg-surface">
             <Accordion.Header>
@@ -74,7 +77,7 @@ function Faq() {
                 </span>
               </Accordion.Trigger>
             </Accordion.Header>
-            <Accordion.Content className="px-4 pb-3 font-sans text-body leading-relaxed text-muted">{item.a}</Accordion.Content>
+            <Accordion.Content forceMount className="px-4 pb-3 font-sans text-body leading-relaxed text-muted data-[state=closed]:hidden">{item.a}</Accordion.Content>
           </Accordion.Item>
         ))}
       </Accordion.Root>
