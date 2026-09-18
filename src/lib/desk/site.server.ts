@@ -21,6 +21,7 @@ export function xmlEscape(s: string): string {
 
 export const STATIC_PAGES: { path: string; changefreq: string; priority: string }[] = [
   { path: "/", changefreq: "always", priority: "1.0" },
+  { path: "/desk", changefreq: "always", priority: "0.9" },
   ...["/books", "/board", "/chamber", "/lab"].map((path) => ({ path, changefreq: "hourly", priority: "0.8" })),
   { path: "/training", changefreq: "weekly", priority: "0.8" },
   ...["/training/wick", "/training/tape"].map((path) => ({ path, changefreq: "daily", priority: "0.8" })), 

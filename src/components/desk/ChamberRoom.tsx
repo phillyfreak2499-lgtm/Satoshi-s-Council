@@ -370,7 +370,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
 
       <main id="chamber-main" className="council-reading-page council-page-wide gutter mx-auto w-full py-6 sm:py-8">
         <section className="chamber-intro border-b border-border pb-6">
-          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">The Chamber · Council commentary</div>
+          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">The Chamber · Read only · Council commentary</div>
           <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">Inside the Council.</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
             Follow the Council’s response to what the desk observes. Each exchange is tied to a recorded event, with its supporting evidence available to read.

@@ -693,10 +693,10 @@ export function SatoshiTab({
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2.5" aria-label="Floor density">
         <div>
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            {density === "quiet" ? "Overview" : "Complete desk"}
+            {density === "quiet" ? "Quiet Floor" : "Full Floor"}
           </div>
           <p className="mt-0.5 font-sans text-ui text-muted">
-            Choose a focused view, or open the complete research desk.
+            Quiet keeps the call, reason, clock and live Bitcoin-vs-strike view. Full adds evidence, record, council and diagnostics.
           </p>
         </div>
         <div role="group" aria-label="Choose Floor density" className="flex gap-1">
