@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { BooksTotals, KeeperStats } from "./books.ts";
-import { bestWait, buildWeekRecord, chicagoDate, copyWeek, scoreOf, seatNote, takerFee, wrongFill, type RecordLedgerRow } from "./record.ts";
+import { bestWait, booksColumn, booksParity, buildWeekRecord, chicagoDate, copyWeek, readStamp, scoreNote, scoreOf, seatNote, takerFee, wrongFill, type RecordLedgerRow } from "./record.ts";
 
 const NOW = Date.parse("2026-09-18T15:00:00.000Z");
 const WEEK: BooksTotals = { n: 640, calls: 12, wins: 7, net: 41.5, ups: 320, breakeven: 84.2 };
@@ -153,4 +153,63 @@ test("an empty week is still a brief: sits lead, no fill is invented, and the co
   assert.match(r.copy, /Sits 200 of 200 windows\. Fills 0\. Net 0\.0¢ after fees\./);
   assert.match(r.copy, /No fills this week\. Nothing to grade there\./);
   assert.doesNotMatch(r.copy, /Missing windows/);
+});
+
+test("the record's score is every cell of the books' last-7-days column, read once, from the same object", () => {
+  const b = buildWeekRecord({ now: NOW, rows: [], week: WEEK, keeper: KEEPER, missing_windows: 0, statuses: null });
+  assert.deepEqual(b.books_week, { n: 640, calls: 12, wins: 7, net: 41.5, breakeven: 84.2 });
+  assert.equal(b.score.windows, WEEK.n);
+  assert.equal(b.score.sits, WEEK.n - WEEK.calls);
+  assert.equal(b.score.fills, WEEK.calls);
+  assert.equal(b.score.wins, WEEK.wins);
+  assert.equal(b.score.net, WEEK.net);
+  assert.equal(b.score.needed, WEEK.breakeven);
+  assert.equal(b.score.max_dd, KEEPER.max_dd);
+  assert.equal(booksParity(b.score, b.books_week), true);
+  const note = scoreNote(b);
+  assert.equal(note.same, true);
+  assert.match(note.text, /^Same numbers as the books' last-7-days column, both read at 2026-09-18 15:00 UTC\./);
+  assert.match(note.text, /rolls every 15 minutes/);
+});
+
+test("the record never claims to match the books while net, fills or won differ", () => {
+  const score = scoreOf(WEEK, KEEPER);
+  const drifted: Array<[string, Partial<BooksTotals>]> = [
+    ["net", { net: 259 }],
+    ["fills", { calls: 88 }],
+    ["won", { wins: 78 }],
+    ["windows", { n: 661 }],
+    ["needed", { breakeven: 86 }],
+  ];
+  for (const [what, over] of drifted) {
+    const column = booksColumn({ ...WEEK, ...over });
+    assert.equal(booksParity(score, column), false, `${what} differs, so there is no parity`);
+    const note = scoreNote({ score, books_week: column, at: "2026-09-18T15:00:00.000Z" });
+    assert.equal(note.same, false, what);
+    assert.doesNotMatch(note.text, /Same numbers/, `the page must not say the numbers match when ${what} differs`);
+    assert.match(note.text, /disagree at 2026-09-18 15:00 UTC/);
+    assert.match(note.text, /record \+41\.5¢, 12 fills, 7 won; books /, "both readings are printed, neither is invented");
+  }
+  // The live case that prompted this: the same book, read twelve hours apart, rolled twenty fills out of the window.
+  const morning = scoreOf({ n: 661, calls: 68, wins: 60, net: 152, ups: 330, breakeven: 86 }, null);
+  const lastNight = booksColumn({ n: 661, calls: 88, wins: 78, net: 259, ups: 330, breakeven: 84 });
+  const note = scoreNote({ score: morning, books_week: lastNight, at: "2026-09-18T12:25:00.000Z" });
+  assert.equal(note.same, false);
+  assert.match(note.text, /record \+152\.0¢, 68 fills, 60 won; books \+259\.0¢, 88 calls, 78 won/);
+});
+
+test("the copy dates its read and never repeats a same-numbers claim", () => {
+  const b = buildWeekRecord({ now: NOW, rows: [], week: WEEK, keeper: KEEPER, missing_windows: 0, statuses: null });
+  assert.match(b.copy, /^Read 2026-09-18 15:00 UTC\. The 7-day window rolls every 15 minutes\.$/m);
+  assert.doesNotMatch(b.copy, /[Ss]ame numbers/);
+  assert.equal(readStamp("not a date"), "an unknown minute");
+});
+
+test("an empty week still reads as parity with an empty books column and invents no fill", () => {
+  const empty: BooksTotals = { n: 400, calls: 0, wins: 0, net: 0, ups: 200, breakeven: null };
+  const b = buildWeekRecord({ now: NOW, rows: [], week: empty, keeper: null, missing_windows: 0, statuses: null });
+  assert.equal(b.score.fills, 0);
+  assert.equal(b.wrong_fill, null);
+  assert.equal(booksParity(b.score, b.books_week), true);
+  assert.equal(scoreNote(b).same, true);
 });

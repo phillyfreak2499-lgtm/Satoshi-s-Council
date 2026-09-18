@@ -81,12 +81,17 @@ export type RecordSeatNote = {
   line: string;
 };
 
+/** The books' last-7-days cells the score was read from, kept so the page can prove the two agree. */
+export type BooksColumn = Pick<BooksTotals, "n" | "calls" | "wins" | "net" | "breakeven">;
+
 export type WeekRecord = {
   at: string;
   tz: typeof RECORD_TZ;
   days: typeof RECORD_DAYS;
   window: { from: string; to: string; label: string };
   score: RecordScore;
+  /** The same column /books prints as "last 7 days", at the same read. */
+  books_week: BooksColumn;
   best_wait: RecordWait | null;
   wrong_fill: RecordFill | null;
   seat_note: RecordSeatNote | null;
@@ -127,6 +132,57 @@ export function fmtCents(v: number | null): string {
 
 export function fmtPct(v: number | null): string {
   return v == null ? "—" : `${Math.round(v)}%`;
+}
+
+/** The minute the brief was read, to the minute, in UTC; both pages roll a 7-day window every 15 minutes. */
+export function readStamp(iso: string): string {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? `${d.toISOString().slice(0, 16).replace("T", " ")} UTC` : "an unknown minute";
+}
+
+/** The books' last-7-days column as the record read it: the same cells /books prints, normalised the same way. */
+export function booksColumn(week: BooksTotals): BooksColumn {
+  return {
+    n: Math.max(0, Math.floor(num(week.n) ?? 0)),
+    calls: Math.max(0, Math.floor(num(week.calls) ?? 0)),
+    wins: Math.max(0, Math.floor(num(week.wins) ?? 0)),
+    net: round1(num(week.net) ?? 0),
+    breakeven: num(week.breakeven),
+  };
+}
+
+/** True only when every cell the record prints equals the books' last-7-days column it was read from. */
+export function booksParity(score: RecordScore, week: BooksColumn): boolean {
+  return (
+    score.windows === week.n &&
+    score.fills === week.calls &&
+    score.wins === week.wins &&
+    score.net === week.net &&
+    score.needed === (score.fills ? week.breakeven : null)
+  );
+}
+
+export type ScoreNote = { same: boolean; text: string };
+
+/**
+ * The line under the score. It claims to match the books only when every cell
+ * does, and it dates the read: the 7-day window rolls every 15 minutes, so two
+ * pages read hours apart print two different weeks from the same book.
+ */
+export function scoreNote(r: Pick<WeekRecord, "score" | "books_week" | "at">): ScoreNote {
+  const same = booksParity(r.score, r.books_week);
+  const stamp = readStamp(r.at);
+  if (same) {
+    return {
+      same,
+      text: `Same numbers as the books' last-7-days column, both read at ${stamp}. The window rolls every 15 minutes, so a page left open since another hour prints another week; reload to compare. WAIT is a decision; a sit is not a missed trade.`,
+    };
+  }
+  const w = r.books_week;
+  return {
+    same,
+    text: `This brief and the books' last-7-days column disagree at ${stamp}: record ${fmtCents(r.score.net)}, ${r.score.fills} fills, ${r.score.wins} won; books ${fmtCents(w.net)}, ${w.calls} calls, ${w.wins} won. Trust the books until the next refresh.`,
+  };
 }
 
 export function scoreOf(week: BooksTotals, keeper: KeeperStats | null): RecordScore {
@@ -234,6 +290,7 @@ export function copyWeek(r: Omit<WeekRecord, "copy">): string {
     "The week on the record · Satoshi's Council",
     `${r.window.label}. Paper grades. Public prices. No live orders.`,
     `Sits ${s.sits} of ${s.windows} windows. Fills ${s.fills}.${s.fills ? ` Win rate ${fmtPct(s.win_rate)} vs ${fmtPct(s.needed)} needed.` : ""} Net ${fmtCents(s.net)} after fees.${s.max_dd != null ? ` Max drawdown ${fmtCents(s.max_dd)}.` : ""}`,
+    `Read ${readStamp(r.at)}. The 7-day window rolls every 15 minutes.`,
     r.best_wait ? `One WAIT that was right: ${r.best_wait.reason}` : "No WAIT this week can be shown as a saved loss. Sits are the default answer, not a score.",
     r.wrong_fill
       ? `One fill that was wrong: ${r.wrong_fill.side ?? "a side"} at ${r.wrong_fill.ask.toFixed(0)}¢, ${fmtCents(r.wrong_fill.ev)} after fee.`
@@ -262,6 +319,7 @@ export function buildWeekRecord(input: RecordInput): WeekRecord {
       label: `Last ${RECORD_DAYS} days, ${chicagoDate(from)} to ${chicagoDate(to)}, ${RECORD_TZ}`,
     },
     score: scoreOf(input.week, input.keeper),
+    books_week: booksColumn(input.week),
     best_wait: bestWait(rows),
     wrong_fill: wrongFill(rows),
     seat_note: seatNote(rows, input.statuses),
