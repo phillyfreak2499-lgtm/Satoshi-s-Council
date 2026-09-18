@@ -137,11 +137,12 @@ export const LAB_INVENTORY: readonly LabInventoryItem[] = [
   }),
   x({
     id: "path-parity", label: "Timestamped path parity", family: "data-quality", lifecycle: "ACTIVE",
-    writer_kind: "continuous", storage: "desk_path_parity", freshness_sla_s: 300,
+    writer_kind: "continuous", storage: null, freshness_sla_s: null,
     question: "How far do legacy array-offset d30/d60/d120 reads diverge from timestamp-correct horizons?",
     decision_use: "Make an explicit migrate/keep decision for the affected consumers with a research-era boundary.",
     exit_criterion: "Once the consumer migration decision is made and a new era is frozen, stop the parity recorder after verification.",
     reader: "/path-parity",
+    note: "Freshness stays behind the dedicated path-parity admin reader; the central audit deliberately does not consult this protected one-way measurement.",
   }),
   x({
     id: "exit-arena", label: "Exit policy arena", family: "execution-policy", lifecycle: "ACTIVE",
@@ -169,7 +170,7 @@ export const LAB_INVENTORY: readonly LabInventoryItem[] = [
   }),
   x({
     id: "cube", label: "Performance cube", family: "diagnostic", lifecycle: "DERIVED",
-    writer_kind: "derived", storage: "desk_ledger", freshness_sla_s: null,
+    writer_kind: "derived", storage: "research_ledger", freshness_sla_s: null,
     question: "Where do current-book results differ by side, price, time, regime and seat agreement?",
     decision_use: "Generate hypotheses only; look-elsewhere protection prevents treating slices as findings.",
     exit_criterion: "Keep as a read-only diagnostic while the ledger exists.",
@@ -185,7 +186,7 @@ export const LAB_INVENTORY: readonly LabInventoryItem[] = [
   }),
   x({
     id: "redundancy", label: "Council redundancy", family: "attribution", lifecycle: "DERIVED",
-    writer_kind: "derived", storage: "desk_ledger", freshness_sla_s: null,
+    writer_kind: "derived", storage: "research_ledger", freshness_sla_s: null,
     question: "Which directional seats overlap, and how would past tallies change without one seat?",
     decision_use: "Nominate a seat for a future prospective mute test; never mute from in-sample leave-one-out.",
     exit_criterion: "Keep as a diagnostic while roster changes are versioned.",
