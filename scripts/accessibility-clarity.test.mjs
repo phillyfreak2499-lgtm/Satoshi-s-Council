@@ -38,7 +38,8 @@ test("small interface text meets its minimum size and token contrast", () => {
 test("the Floor has one semantic call heading and no fake zero quorum", () => {
   const floor = read("src/components/desk/SatoshiTab.tsx");
   assert.match(floor, /<h1[^>]*>[\s\S]*Chair call:/);
-  assert.match(floor, /Why WAIT:/);
+  assert.match(floor, /plainLine\(chair, snap, book\)/);
+  assert.doesNotMatch(floor, /Why WAIT:/, "the authoritative current reason replaces a generic WAIT explanation");
   assert.match(floor, /waiting for the current-window vote/);
   assert.doesNotMatch(floor, /chair\?\.quorum\s*\?\?\s*\{\s*up:\s*0/);
 });

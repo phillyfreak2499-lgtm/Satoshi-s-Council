@@ -51,7 +51,7 @@ function WindowPage() {
         >
           share this window
         </button>
-        <a href="/" className="btn btn-secondary">
+        <a href="/desk" className="btn btn-secondary">
           open the floor
         </a>
         {msg ? <span aria-live="polite">{msg}</span> : null}

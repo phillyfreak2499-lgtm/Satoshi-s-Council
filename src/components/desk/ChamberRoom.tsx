@@ -370,10 +370,10 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
 
       <main id="chamber-main" className="council-reading-page council-page-wide gutter mx-auto w-full py-6 sm:py-8">
         <section className="chamber-intro border-b border-border pb-6">
-          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">Read only · structured events</div>
-          <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">The Chamber</h1>
+          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">The Chamber · Read only · Council commentary</div>
+          <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">Inside the Council.</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
-            Watch the organization react to what the desk actually observed. Every line below comes from a persisted system event and carries its evidence with it.
+            Follow the Council’s response to what the desk observes. Each exchange is tied to a recorded event, with its supporting evidence available to read.
           </p>
           <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
             Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.

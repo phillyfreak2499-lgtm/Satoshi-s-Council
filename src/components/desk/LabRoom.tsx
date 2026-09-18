@@ -281,14 +281,14 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
       <main id="lab-main" className="council-reading-page council-page-wide gutter mx-auto w-full py-6 sm:py-8">
         {refreshFailed ? <p role="status" className="mb-4 rounded-md border border-border bg-surface p-3 font-mono text-micro text-wait">{data ? "Refresh paused. Showing the last recorded snapshot; retrying automatically." : "The Lab could not load. Retrying automatically."}</p> : null}
         <section className="border-b border-border pb-6">
-          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">ALCHEMIST · prospective research</div>
-          <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">The Lab</h1>
+          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">The Lab · Prospective research</div>
+          <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">Research, held to evidence.</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
-            Where frozen ideas compete before they earn any right to challenge the Council. These are real prospective paper-research specimens, measured against the same booked opportunities.
+            Follow the experiments being tested alongside the Council. Each candidate is measured against a frozen control using prospective paper-research evidence.
           </p>
-          <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <details className="company-policy"><summary>How research stays separate from live decisions</summary><p className="max-w-[78ch] leading-relaxed">
             Nothing here can change the Chair, enter the Council, alter the paper book, or promote itself. Evidence is collected first; any future authority requires a separate documented review.
-          </p>
+          </p></details>
         </section>
 
         {!loaded ? (

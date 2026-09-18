@@ -12,11 +12,11 @@ test("every destination remains reachable once, in an intentional group", () => 
   const { SITE_DESTINATIONS, sitePathActive } = load("src/lib/desk/navigation.ts");
   const paths = Array.from(SITE_DESTINATIONS, (item) => item.href);
   assert.equal(new Set(paths).size, paths.length);
-  assert.deepEqual(paths.slice().sort(), ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/?tab=atelier", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided", "https://satoshis-council-shop.fourthwall.com/"].sort());
+  assert.deepEqual(paths.slice().sort(), ["/", "/desk", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/?tab=atelier", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided", "https://satoshis-council-shop.fourthwall.com/"].sort());
   assert.equal(sitePathActive("/training/wick", "/training"), true);
   assert.equal(sitePathActive("/training-other", "/training"), false);
   assert.equal(sitePathActive("/window/EXAMPLE", "/books"), true);
-  assert.equal(sitePathActive("/seat/WICK", "/"), true);
+  assert.equal(sitePathActive("/seat/WICK", "/desk"), true);
 });
 test("only available coaches can open a training station", () => {
   const { availableCoach } = load("src/lib/desk/training.ts");
@@ -56,4 +56,3 @@ test("TAPE live lessons pause for stale, future, or invalid book evidence", () =
   for(const edit of [f=>f.as_of=now-21000,f=>f.as_of=now+6000,f=>f.tick_age_s=-1,f=>f.tape.feed_age_s=16,f=>f.tape.health="STALE",f=>f.book.yes_bid_size=-1,f=>f.book.imbalance=2,f=>f.snap.close_time=now-1]){const f=fresh();edit(f);assert.equal(context.isFresh(f),false);}
   const short=fresh();short.book.imbalance_hist=[.5];assert.equal(context.persistence(short),"NEED 4"); const mixed=fresh();mixed.book.imbalance_hist=[.1,.2,-.1,.5];assert.equal(context.persistence(mixed),"MIXED");
 });
-
