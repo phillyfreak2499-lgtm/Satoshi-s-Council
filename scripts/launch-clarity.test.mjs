@@ -33,7 +33,8 @@ test("Books SSR, Replay truths, Seat chips, and FAQ basics stay explicit", () =>
   assert.ok(!replay.includes("No position · chair sat out"));
   assert.match(seat, /skillTone\(s\.status\)/);
   assert.match(seat, /rounded-sm border px-1\.5 py-0\.5/);
-  assert.match(faq, /defaultValue=\{\["q0", "q1"\]\}/);
+  assert.match(faq, /const OPEN_FIRST = \["q0", "q1", "q2"\];/, "the first three answers are open on first paint");
+  assert.match(faq, /defaultValue=\{OPEN_FIRST\}/);
   assert.match(faq, /How is the paper book doing\?/);
 });
 
