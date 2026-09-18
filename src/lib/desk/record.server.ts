@@ -5,7 +5,7 @@
  * scorecard's week column; the picks come from the same research ledger the
  * books read. Nothing here writes, votes, books, or promotes.
  */
-import { booksSummary } from "./books.server";
+import { booksSummary, type Books } from "./books.server";
 import { invalidateCondition } from "./floor-clarity";
 import { buildWeekRecord, RECORD_DAYS, type RecordLedgerRow, type RecordSeatNote, type WeekRecord } from "./record";
 
@@ -50,13 +50,12 @@ async function seatStatuses(): Promise<Record<string, RecordSeatNote["statuses"]
   }
 }
 
-let cache: { at: number; body: WeekRecord } | null = null;
+let cache: { books_at: number; body: WeekRecord } | null = null;
 let inflight: Promise<WeekRecord> | null = null;
 
-async function build(): Promise<WeekRecord> {
+async function build(books: Books): Promise<WeekRecord> {
   const db = await sql();
-  const [books, raw, statuses] = await Promise.all([
-    booksSummary(),
+  const [raw, statuses] = await Promise.all([
     db<Row>`
       select l.ticker, l.close_time, l.winner, l.chair_lean, l.entry_lean,
         l.entry_cents, l.settle_cents, l.ev_cents, l.entry_fee_cents,
@@ -86,7 +85,8 @@ async function build(): Promise<WeekRecord> {
       replay: r.replay === true,
     }));
   const brief = buildWeekRecord({
-    now: Date.now(),
+    // Stamped with the books snapshot's own read time: the minute /books prints these same cells.
+    now: books.at,
     rows,
     week: books.week,
     keeper: books.keeper?.week ?? null,
@@ -110,12 +110,18 @@ async function build(): Promise<WeekRecord> {
   return brief;
 }
 
-/** Cached 30s, like the books it is built from. */
+/**
+ * The brief for the books snapshot the site is printing right now. It is
+ * cached against that snapshot's read time, not on a clock of its own, so
+ * /record and /books fetched in the same minute show the same cells: when the
+ * books refresh, the next /record rebuilds from the same object.
+ */
 export async function weekRecord(): Promise<WeekRecord> {
-  if (cache && Date.now() - cache.at < 30_000) return cache.body;
-  inflight ??= build()
+  const books = await booksSummary();
+  if (cache && cache.books_at === books.at) return cache.body;
+  inflight ??= build(books)
     .then((body) => {
-      cache = { at: Date.now(), body };
+      cache = { books_at: books.at, body };
       return body;
     })
     .finally(() => {
