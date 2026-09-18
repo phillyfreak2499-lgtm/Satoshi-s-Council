@@ -24,6 +24,14 @@ test("V4 freezes one direction at T-7:30 and its output type has no WAIT", () =>
   assert.doesNotMatch(body, /return "WAIT"/);
 });
 
+test("V4 interprets frame market and fair fields as cents even below one cent", () => {
+  assert.match(observer, /const centsProb =/);
+  assert.match(observer, /n \/ 100/);
+  assert.doesNotMatch(observer, /n > 1 \? n \/ 100 : n/);
+  assert.match(observer, /centsProb\(snap\.yes_mid\)/);
+  assert.match(observer, /centsProb\(snap\.fair_yes\)/);
+});
+
 test("V4 direction is frozen before quote economics are read", () => {
   const start = observer.indexOf("async function captureOnce");
   const decision = observer.indexOf("const pred = predictForcedV4", start);
