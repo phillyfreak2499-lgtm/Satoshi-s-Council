@@ -24,6 +24,107 @@ function ageLabel(value: string, asOf: string): string {
   return evidenceAge(value, asOf);
 }
 
+function percent(v: number | null): string {
+  return v == null ? "—" : `${(v * 100).toFixed(1)}%`;
+}
+
+function ForcedV4Study({ data }: { data: PublicLabSnapshot["forced_v4"] }) {
+  if (!data) {
+    return (
+      <section className="mt-6 rounded-md border border-border bg-canvas p-4">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">Forced direction · V4</div>
+        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+          The V4 scorecard is temporarily unavailable. No live decision path depends on it.
+        </p>
+      </section>
+    );
+  }
+
+  const coverage = data.coverage.expected_since_first > 0
+    ? `${data.coverage.captured_since_first} / ${data.coverage.expected_since_first}`
+    : `${data.captured}`;
+  const observer = data.health.last_error
+    ? "observer error"
+    : data.health.started
+      ? "collecting"
+      : "not started";
+
+  return (
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="forced-v4-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
+            Shadow decider · T−7:30
+          </div>
+          <h2 id="forced-v4-title" className="mt-1 font-sans text-title font-medium text-fg">
+            Forced direction · V4
+          </h2>
+        </div>
+        <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold uppercase tracking-widest text-muted">
+          {observer}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[90ch] font-sans text-ui leading-relaxed text-muted">
+        One immutable UP or DOWN call per captured window. WAIT is not an output. Price, fee, Chair stance,
+        confidence, consensus and chalk do not gate the direction; the same-time ask is recorded only after
+        the side is frozen so economics can be measured separately.
+      </p>
+
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Graded</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.graded} / {data.captured}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">V4 accuracy</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{percent(data.accuracy)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Market direction</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{percent(data.market_accuracy)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Chair WAIT cut</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">
+            {percent(data.when_chair_wait.accuracy)} · n={data.when_chair_wait.n}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Quoted net</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">
+            {cents(data.quoted_net_cents)} · n={data.quoted_n}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Coverage</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{coverage}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 grid gap-2 border-t border-border pt-4 font-mono text-micro leading-relaxed text-subtle sm:grid-cols-2">
+        <div>
+          Brier: <span className="text-muted">{data.brier == null ? "—" : data.brier.toFixed(4)}</span>
+          {" · "}market <span className="text-muted">{data.market_brier == null ? "—" : data.market_brier.toFixed(4)}</span>
+        </div>
+        <div>
+          Missing checkpoints: <span className="text-muted">{data.coverage.missing}</span>
+        </div>
+      </div>
+      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        Directional accuracy and Brier use officially graded, research-valid windows. Quoted net is a
+        one-contract paper measurement on windows where the chosen side had a valid same-time ask; it never
+        determines whether V4 is allowed to call. Authority: none.
+      </p>
+      {data.health.last_error ? (
+        <p role="status" className="mt-3 font-mono text-micro text-wait">
+          Observer: {data.health.last_error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function LabSummary({ data }: { data: PublicLabSnapshot }) {
   const { control, candidates, comparisons, reached } = labComparisons(data.specimens, data.control_id);
   const paired = comparisons.filter((item) => item.delta != null).length;
@@ -313,6 +414,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             </section>
 
             <CallQualityStudy data={data.call_quality} />
+            <ForcedV4Study data={data.forced_v4} />
             <LabSummary data={data} />
 
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
