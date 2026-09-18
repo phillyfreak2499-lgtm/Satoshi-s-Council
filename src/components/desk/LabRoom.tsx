@@ -5,6 +5,7 @@ import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } fro
 import { GlobalHeader } from "./GlobalHeader";
 import { evidenceAge, labComparisons } from "@/lib/desk/public-room-view";
 import { CallQualityStudy } from "./CallQualityStudy";
+import { ChairShadowLab } from "./ChairShadowLab";
 
 function cents(v: number | null): string {
   if (v == null) return "—";
@@ -328,6 +329,8 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
                 <Specimen key={row.id} row={row} controlId={data.control_id} asOf={data.at} />
               ))}
             </section>
+
+            <ChairShadowLab v2={data.chair_v2} v3={data.chair_v3} />
 
             {data.seat_timing ? (
               <SeatTimingStudy data={data.seat_timing} />

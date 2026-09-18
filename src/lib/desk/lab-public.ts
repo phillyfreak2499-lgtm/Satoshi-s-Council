@@ -14,6 +14,8 @@ import {
 } from "./horizon-calibration.server";
 import { COMPONENT_MIN } from "./promotion-gates";
 import { callQualitySnapshot, type CallQualitySnapshot } from "./call-quality.server";
+import { chairShadowLabSnapshot } from "./chair-shadow-lab.server";
+import type { ChairV2Card, ChairV3Card } from "./chair-shadow-lab";
 
 export type PublicLabSpecimen = {
   id: string;
@@ -40,6 +42,10 @@ export type PublicLabSnapshot = {
   specimens: PublicLabSpecimen[];
   seat_timing: PublicSeatHorizonSnapshot | null;
   call_quality: CallQualitySnapshot | null;
+  /** Chair v2 / Chair v3 shadow scoreboards (chair-v2.ts / chair-v3.ts). Read-only;
+   *  not the FLOOR_SELECTIVE_V2 / ENTRY_SELECTIVE_V3 entry policies. */
+  chair_v2: ChairV2Card | null;
+  chair_v3: ChairV3Card | null;
   governance: {
     paper_only: true;
     authority: "none";
@@ -51,10 +57,11 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming, callQuality] = await Promise.all([
+    const [standing, seatTiming, callQuality, chairShadow] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
       callQualitySnapshot().catch(() => null),
+      chairShadowLabSnapshot().catch(() => null),
     ]);
     const byId = new Map(standing.rows.map((row) => [row.candidate_id, row]));
     const control = controlFor("exit");
@@ -88,6 +95,8 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       specimens,
       seat_timing: seatTiming,
       call_quality: callQuality,
+      chair_v2: chairShadow?.chair_v2 ?? null,
+      chair_v3: chairShadow?.chair_v3 ?? null,
       governance: {
         paper_only: true,
         authority: "none",
