@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { fmtCents, fmtPct, type WeekRecord } from "@/lib/desk/record";
+import { useEffect, useRef, useState } from "react";
+import { fmtCents, fmtPct, scoreNote, type WeekRecord } from "@/lib/desk/record";
+import { publicWeekRecord } from "@/lib/desk/record-public";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { GlobalHeader } from "./GlobalHeader";
 import { PaperDisclaimer } from "./PaperDisclaimer";
@@ -36,9 +37,39 @@ function Block({ n, title, children }: { n: string; title: string; children: Rea
   );
 }
 
+/** A brief older than this is reread when the tab comes back into view. */
+const REREAD_AFTER_MS = 60_000;
+
 export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
-  const data = initial;
+  const [data, setData] = useState<WeekRecord | null>(initial);
+  const readAt = useRef(initial ? Date.parse(initial.at) : 0);
   const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => {
+    // The 7-day window rolls every 15 minutes. A tab left open since last night
+    // would print last night's week next to a fresh /books, so it rereads when
+    // it comes back into view. Server-rendered output is untouched.
+    let alive = true;
+    const reread = async () => {
+      if (document.visibilityState !== "visible" || Date.now() - readAt.current < REREAD_AFTER_MS) return;
+      try {
+        const next = await publicWeekRecord();
+        if (!alive || !next) return;
+        readAt.current = Date.now();
+        setData(next);
+      } catch {
+        /* keep the brief already on screen; it is dated */
+      }
+    };
+    const onVisible = () => void reread();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
+  const note = data ? scoreNote(data) : null;
   const copy = async () => {
     if (!data) return;
     try {
@@ -72,7 +103,9 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
                 <Stat label="Net after fees" value={fmtCents(data.score.net)} sub="one contract per fill, real ask, real fee" />
                 <Stat label="Max drawdown" value={data.score.max_dd == null ? "—" : data.score.max_dd ? fmtCents(data.score.max_dd) : "0.0¢"} sub={data.score.max_dd == null ? "scorecard unavailable this refresh" : "worst peak to trough this week"} />
               </dl>
-              <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">Same numbers as the books&apos; last-7-days column. WAIT is a decision; a sit is not a missed trade.</p>
+              <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+                {note?.text} <a href="/books" className="text-fg underline underline-offset-4">Books, last 7 days <span aria-hidden="true">→</span></a>
+              </p>
             </Block>
 
             <Block n="02" title="One WAIT that was the right call">
