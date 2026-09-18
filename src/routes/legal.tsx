@@ -50,7 +50,8 @@ function Legal() {
       </P>
       <P>
         Arena callsigns and alert subscriptions are tied to a random token stored in your own browser; there are no logins. Push alerts go only to a
-        browser that turned them on in SETTINGS and can be turned off there.
+        browser that turned them on in SETTINGS and can be turned off there. The desk can hide a callsign that breaks house rules. Paper results
+        stay on the private record.
       </P>
     </Page>
   );

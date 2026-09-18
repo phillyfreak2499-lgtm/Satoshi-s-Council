@@ -56,7 +56,7 @@ export const GLOSS: Record<string, Gloss> = {
   },
   "tab.arena": {
     title: "ARENA — THE PIT",
-    body: "A one-page room for your own paper call on the live window: UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one lock per window, held to settlement. No login — pick a callsign once. The room shows how many have locked; the split appears after you lock. The week board scores humans against SATOSHI and Chair v2 in cents after fees.",
+    body: "A one-page room for your own paper call on the live window: UP or DOWN, booked at the ask plus Kalshi's fee exactly like the chair, one lock per window, held to settlement. No login — pick a callsign once. The room shows how many have locked; the split appears after you lock. The week board scores humans against SATOSHI and Chair v2 in cents after fees. The desk can hide a callsign that breaks house rules. Paper results stay on the private record.",
   },
   "arena.call": {
     title: "Your call",
