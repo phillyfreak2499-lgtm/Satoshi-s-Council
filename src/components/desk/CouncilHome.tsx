@@ -8,13 +8,16 @@ import { SHOP_URL } from "@/lib/desk/navigation";
 import { GlobalHeader } from "./GlobalHeader";
 import { CouncilGuides } from "./CouncilExperience";
 import { LiveConnectionNotice } from "./LiveConnectionNotice";
+import { HomeStill } from "./HomeStill";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { applyDisplayPrefs } from "./prefs";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import type { BooksWindow } from "@/lib/desk/books";
+import type { BooksColumn } from "@/lib/desk/record";
+import { stillFacts } from "@/lib/desk/home-still";
 
 /** The public introduction reads the same shared frame as the full desk. */
-export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
+export function CouncilHome({ last = null, week = null }: { last?: BooksWindow | null; week?: BooksColumn | null }) {
   const frame = useDesk();
   const { snap, chair } = frame;
   const ticking = useCountdownText(snap?.close_time ?? 0);
@@ -24,6 +27,8 @@ export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
   const countdown = ticking === "—" && snap ? clockMs(Math.max(0, snap.close_time - snap.as_of)) : ticking;
   const book = snap && chair ? bookState(snap, chair.lean, frame.call_log) : null;
   const demo = frame.settings.source === "demo";
+  // No paper fill in the live window: stillness still gets a scoreboard, from the books already computed.
+  const still = book !== null && book.kind !== "booked" && stillFacts(last, week).length > 0;
   useEffect(() => { applyDisplayPrefs(); }, []);
   return <div className="council-home observatory">
     <a href="#home-main" className="skip-link">Skip to content</a>
@@ -48,7 +53,7 @@ export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
             <div className="company-live-call" data-lean={chair?.lean.toLowerCase()}>{chair?.lean ?? "Connecting"}</div>
             <span className="company-muted">{book?.kind === "booked" ? `${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
           </div>
-          <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p><a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
+          <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} week={week} /> : null}<div className="company-live-links"><a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a>{still ? <a href="/books" className="company-text-link">Open the results <span aria-hidden="true">→</span></a> : null}</div></div>
           {snap ? (
             <dl className="company-live-numbers"><div><dt>Bitcoin spot</dt><dd>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(snap.spot)}</dd></div><div><dt>Window closes in</dt><dd>{countdown}</dd></div></dl>
           ) : (
@@ -57,7 +62,7 @@ export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
         </section>
         <p className="company-snapshot">
           {snap ? <>{demo ? "Simulated data" : "Snapshot"} · {new Date(snap.as_of).toISOString().slice(11, 19)} UTC · </> : null}
-          {last ? <>Last graded window · <a href={`/window/${encodeURIComponent(last.ticker)}`}>{utcStamp(last.close_time)}</a> settled {last.winner}{last.call ? ` · paper ${last.call.lean ?? "position"} at ${last.call.entry.toFixed(0)}¢, ${last.call.ev == null ? "not yet graded" : `${last.call.ev > 0 ? "+" : ""}${last.call.ev.toFixed(1)}¢ after fee`}` : " · the desk sat"} · </> : null}
+          {last && !still ? <>Last graded window · <a href={`/window/${encodeURIComponent(last.ticker)}`}>{utcStamp(last.close_time)}</a> settled {last.winner}{last.call ? ` · paper ${last.call.lean ?? "position"} at ${last.call.entry.toFixed(0)}¢, ${last.call.ev == null ? "not yet graded" : `${last.call.ev > 0 ? "+" : ""}${last.call.ev.toFixed(1)}¢ after fee`}` : " · the desk sat"} · </> : null}
           A directional read and a recorded paper fill are different.
         </p>
 

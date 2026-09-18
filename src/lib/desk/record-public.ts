@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import type { BooksWindow } from "./books";
-import { RECORD_CACHE_CONTROL, type WeekRecord } from "./record";
+import { booksColumn, RECORD_CACHE_CONTROL, type BooksColumn, type WeekRecord } from "./record";
 
 /** Read-only weekly brief for the public /record page. Never cached: the week rolls every 15 minutes. */
 export const publicWeekRecord = createServerFn({ method: "GET" }).handler(async (): Promise<WeekRecord> => {
@@ -22,4 +22,12 @@ export const publicLastWindow = createServerFn({ method: "GET" }).handler(async 
   engine.ensureServerEngine();
   const { booksSummary } = await import("./books.server");
   return (await booksSummary()).last;
+});
+
+/** The books' last-7-days column, for the homepage's WAIT strip. The same cells /books prints. Read-only. */
+export const publicWeekBooks = createServerFn({ method: "GET" }).handler(async (): Promise<BooksColumn | null> => {
+  const engine = await import("./server-engine");
+  engine.ensureServerEngine();
+  const { booksSummary } = await import("./books.server");
+  return booksColumn((await booksSummary()).week);
 });
