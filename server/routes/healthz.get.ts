@@ -13,6 +13,9 @@ export default function healthz() {
   void import("../../src/lib/desk/call-quality.server")
     .then((m) => m.ensureCallQualityObserver())
     .catch(() => {});
+  void import("../../src/lib/desk/forced-v4.server")
+    .then((m) => m.ensureForcedV4Observer())
+    .catch(() => {});
   // The hourly closer: a separate book, its own table, its own timer, no path into the floor.
   void import("../../src/lib/desk/hour-closer.server")
     .then((m) => m.ensureHourCloser())
