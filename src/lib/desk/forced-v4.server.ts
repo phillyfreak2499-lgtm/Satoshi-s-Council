@@ -172,6 +172,10 @@ async function captureOnce(): Promise<void> {
     const yesAsk = validAsk(snap.yes_ask);
     const noAsk = validAsk(snap.no_ask);
     const entry = pred.side === "UP" ? yesAsk : noAsk;
+    const chairLean =
+      chair?.lean === "UP" || chair?.lean === "DOWN" || chair?.lean === "WAIT"
+        ? chair.lean
+        : "WAIT";
 
     const db = await getSql();
     await db`
@@ -196,7 +200,7 @@ async function captureOnce(): Promise<void> {
         ${weights ? new Date(weights.fitted_at).toISOString() : null}::timestamptz,
         ${pred.correction_logit},
         ${JSON.stringify(features)}::jsonb,
-        ${chair.lean},
+        ${chairLean},
         ${yesAsk},
         ${noAsk},
         ${entry},
