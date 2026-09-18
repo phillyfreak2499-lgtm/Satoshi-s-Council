@@ -77,11 +77,21 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     union all
     select 'tape2', count(*)::int,
       max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay where cols ? 'imb'
+      from desk_replay
+      where jsonb_typeof(cols -> 'imb') = 'array'
+        and exists (
+          select 1 from jsonb_array_elements(cols -> 'imb') as value
+          where value <> 'null'::jsonb
+        )
     union all
     select 'vel2', count(*)::int,
       max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay where cols ? 'resid'
+      from desk_replay
+      where jsonb_typeof(cols -> 'resid') = 'array'
+        and exists (
+          select 1 from jsonb_array_elements(cols -> 'resid') as value
+          where value <> 'null'::jsonb
+        )
     union all
     select 'strike2', count(*)::int,
       max(extract(epoch from created_at) * 1000)::bigint
@@ -113,7 +123,12 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     union all
     select 'index-settlement-fair', count(*)::int,
       max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay where cols ? 'fair'
+      from desk_replay
+      where jsonb_typeof(cols -> 'fair') = 'array'
+        and exists (
+          select 1 from jsonb_array_elements(cols -> 'fair') as value
+          where value <> 'null'::jsonb
+        )
     union all
     select 'lag-events', count(*)::int,
       max(extract(epoch from t) * 1000)::bigint
