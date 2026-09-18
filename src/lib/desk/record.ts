@@ -15,6 +15,8 @@ import { bookedSideOf } from "./booked-side.ts";
 
 export const RECORD_TZ = "America/Chicago";
 export const RECORD_DAYS = 7;
+/** The brief is never stored by a browser or a proxy: every open of /record is this minute's week. */
+export const RECORD_CACHE_CONTROL = "no-store";
 
 export type RecordLedgerRow = {
   ticker: string;
