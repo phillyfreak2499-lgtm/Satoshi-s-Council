@@ -80,11 +80,9 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const prob = (v: unknown): number | null => {
+const centsProb = (v: unknown): number | null => {
   const n = num(v);
-  if (n == null) return null;
-  const p = n > 1 ? n / 100 : n;
-  return p >= 0 && p <= 1 ? p : null;
+  return n != null && n >= 0 && n <= 100 ? n / 100 : null;
 };
 
 function trainingRow(r: StoredTraining): V3FitRow | null {
@@ -160,8 +158,8 @@ async function captureOnce(): Promise<void> {
 
     // No data-health gate: missing specialist evidence becomes zero through the
     // same frozen feature extractor. The market prior falls back to fair, then 50%.
-    const mid = prob(snap.yes_mid);
-    const fair = prob(snap.fair_yes);
+    const mid = centsProb(snap.yes_mid);
+    const fair = centsProb(snap.fair_yes);
     const marketP = mid ?? fair ?? 0.5;
     const all = extractFeatures(votes, snap) as Record<string, unknown>;
     const features = v3FeaturesFromStored(all, marketP, fair);
