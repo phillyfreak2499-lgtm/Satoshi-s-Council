@@ -19,3 +19,13 @@ test("every note has its own slug", () => {
     seen.add(u.slug);
   }
 });
+
+test("the Board is seeded with the desk's own house notes, dated as DESK posts, one slug each", () => {
+  const seeds = DESK_UPDATES.filter((u) => u.slug.startsWith("2026-09-18-"));
+  assert.ok(seeds.length >= 3, `at least three DESK seeds, found ${seeds.length}`);
+  const bodies = seeds.map((u) => u.body);
+  assert.ok(bodies.some((b) => b.startsWith("The Board is open.")));
+  assert.ok(bodies.some((b) => b.startsWith("WAIT is a decision.")));
+  assert.ok(bodies.some((b) => b.startsWith("The Arena is paper.")));
+  for (const b of bodies) assert.doesNotMatch(b, /\bbuy\b|signal|lock this/i, "paper talk only");
+});
