@@ -67,6 +67,9 @@ test("registry server is aggregate read-only and has no actuator path", () => {
   ]) {
     assert.ok(src.includes(table), `missing source table ${table}`);
   }
+  assert.match(src, /jsonb_array_elements\(cols -> 'imb'\)/);
+  assert.match(src, /jsonb_array_elements\(cols -> 'resid'\)/);
+  assert.match(src, /jsonb_array_elements\(cols -> 'fair'\)/);
   assert.doesNotMatch(src, /insert\s+into|update\s+desk_|delete\s+from/i);
   for (const forbidden of [
     "noteCall(", "applyDeskOp", "decideChair(", "runChair(", "selectiveBlock",
@@ -83,6 +86,8 @@ test("public Lab exposes the registry but production decision modules never impo
   assert.match(pub, /registry: PublicLabRegistrySnapshot \| null/);
   assert.match(room, /Research systems health/);
   assert.match(room, /Full inventory/);
+  assert.match(room, /awaiting first sample/);
+  assert.doesNotMatch(room, /fixed cadences healthy/);
 
   for (const path of [
     "src/lib/desk/server-engine.ts",
