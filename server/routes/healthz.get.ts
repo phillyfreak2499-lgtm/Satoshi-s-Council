@@ -13,6 +13,9 @@ export default function healthz() {
   void import("../../src/lib/desk/call-quality.server")
     .then((m) => m.ensureCallQualityObserver())
     .catch(() => {});
+  void import("../../src/lib/desk/lab-v4-v5.server")
+    .then((m) => m.ensureLabV4V5Observer())
+    .catch(() => {});
   return new Response("ok", {
     status: 200,
     headers: {
