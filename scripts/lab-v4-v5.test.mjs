@@ -83,7 +83,7 @@ test("V5 enters only positive expected value after executable spread and fee", (
 
 test("V5 can exit or flip the same one-contract paper position", () => {
   const v = loadPure();
-  const exit = v.profitDecision("UP", 0.5, { yes_bid: 70, yes_ask: 71, no_bid: 28, no_ask: 29 });
+  const exit = v.profitDecision("UP", 0.6, { yes_bid: 62, yes_ask: 63, no_bid: 37, no_ask: 40 });
   assert.equal(exit.action, "EXIT");
   assert.equal(exit.from_side, "UP");
   assert.equal(exit.to_side, null);
@@ -125,7 +125,7 @@ test("the whole-Lab inventory gives every experiment a question, reader and exit
   }).outputText;
   const exports = {};
   vm.runInNewContext(js, { exports, Set, Object, Array, Number, console });
-  assert.deepEqual(exports.validateLabInventory(), []);
+  assert.equal(exports.validateLabInventory().length, 0);
   const ids = exports.LAB_INVENTORY.map((x) => x.id);
   for (const id of ["taker-v1", "chair-v3", "path-parity", "call-quality", "v4-forced", "v5-profit-hunter"]) {
     assert.ok(ids.includes(id), id);
