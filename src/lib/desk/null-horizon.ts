@@ -237,8 +237,10 @@ function emptyCell(arm: NullHorizonArm, seconds: number): ArmCell {
   };
 }
 
+type LiveCell = ArmCell & { _briers: number[]; _mbriers: number[]; _hmm: number[] };
+
 function gradeTake(
-  cell: ArmCell,
+  cell: LiveCell,
   side: "UP" | "DOWN",
   pUp: number,
   winner: "UP" | "DOWN",
@@ -261,9 +263,9 @@ function gradeTake(
   if (path.equity > path.peak) path.peak = path.equity;
   const dd = path.equity - path.peak;
   if (dd < cell.max_dd_cents) cell.max_dd_cents = dd;
-  (cell as ArmCell & { _briers: number[] })._briers.push((pUp - y) ** 2);
-  (cell as ArmCell & { _mbriers: number[] })._mbriers.push((mkt - y) ** 2);
-  (cell as ArmCell & { _hmm: number[] })._hmm.push(hit - (side === "UP" ? mkt : 1 - mkt));
+  cell._briers.push((pUp - y) ** 2);
+  cell._mbriers.push((mkt - y) ** 2);
+  cell._hmm.push(hit - (side === "UP" ? mkt : 1 - mkt));
 }
 
 /** Walk-forward four-arm report. Rows may arrive newest-first; they are sorted. */
@@ -276,7 +278,7 @@ export function buildNullHorizonReport(
     .slice(-WINDOW_CAP);
 
   const arms: NullHorizonArm[] = ["NULL", "HEARD", "RAW", "HORIZON"];
-  const cells = new Map<string, ArmCell & { _briers: number[]; _mbriers: number[]; _hmm: number[] }>();
+  const cells = new Map<string, LiveCell>();
   const paths = new Map<string, { equity: number; peak: number }>();
   const sampled = new Map(HORIZON_DEFS.map((h) => [h.seconds, 0]));
   const books = new Map<string, SeatBook>();
@@ -299,6 +301,10 @@ export function buildNullHorizonReport(
     if (!Number.isFinite(t0) || !Array.isArray(t) || !row.cols?.seats) continue;
     windows += 1;
     const winnerSign = row.winner === "UP" ? 1 : -1;
+    // Seat records learned from this window are applied only after every
+    // horizon in it has been decided, so a later horizon never sees this
+    // window's own outcome through an earlier horizon's read.
+    const learned: { key: string; hit: number }[] = [];
 
     for (const h of HORIZON_DEFS) {
       const index = frameIndex(row, h.seconds);
@@ -333,13 +339,15 @@ export function buildNullHorizonReport(
         const code = Number(values[index]);
         if (code !== 2 && code !== 1 && code !== -1 && code !== -2) continue;
         const hit = Math.sign(code) === winnerSign ? 1 : 0;
-        for (const key of [bookKey(seat, "all"), bookKey(seat, h.seconds)]) {
-          const book = books.get(key) ?? { n: 0, hits: 0 };
-          book.n += 1;
-          book.hits += hit;
-          books.set(key, book);
-        }
+        learned.push({ key: bookKey(seat, "all"), hit }, { key: bookKey(seat, h.seconds), hit });
       }
+    }
+
+    for (const { key, hit } of learned) {
+      const book = books.get(key) ?? { n: 0, hits: 0 };
+      book.n += 1;
+      book.hits += hit;
+      books.set(key, book);
     }
   }
 

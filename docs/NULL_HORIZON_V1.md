@@ -15,6 +15,8 @@ On the same 700 complete replays the Lab already uses, does a horizon-weighted c
 | RAW | Same vote with the whisper off (|code|≥1). |
 | HORIZON | Same raw reads, but each seat's weight is its walk-forward log-odds at *that* horizon only. |
 
+Every vote arm is walk-forward. Seat records learned from a window are applied only after all four of its horizons are decided, so a later horizon never sees that window's own outcome through an earlier read.
+
 ## Shared booking rule
 
 Take the side only when:

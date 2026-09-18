@@ -4,7 +4,7 @@
  * Same join and cap as horizon-calibration.server.ts. No path to the Chair,
  * learner, promotion gates, policy book, or any writer.
  */
-import { getSql } from "@/lib/db";
+import { getSql } from "../db.ts";
 import {
   WINDOW_CAP,
   buildNullHorizonReport,
