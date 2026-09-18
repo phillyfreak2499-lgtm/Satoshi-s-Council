@@ -79,16 +79,35 @@ test("the hourly closer writes only its own table, only WAIT sits, and never imp
   }
   const inserts = server.match(/insert into\s+(\w+)/g) ?? [];
   assert.deepEqual(inserts, ["insert into desk_hour_ledger"], "one insert, into the hourly ledger only");
-  assert.doesNotMatch(server, /update desk|delete from/);
-  assert.match(server, /where not exists \(select 1 from desk_hour_ledger h where h\.close_time = /, "one row per closed hour, on any rung");
+  const updates = server.match(/update\s+(\w+)/g) ?? [];
+  assert.deepEqual(updates, ["update desk_hour_ledger"], "one update, of the hourly ledger only: a wrong rung moved to the right one");
+  assert.doesNotMatch(server, /delete from/);
+  const setClause = server.slice(server.indexOf("update desk_hour_ledger"), server.indexOf("returning id"));
+  assert.doesNotMatch(setClause, /set[\s\S]*\b(entry_side|entry_cents|entry_fee_cents|settle_cents|ev_cents|chair_lean)\s*=/, "a rewrite never touches the lean or a fill column");
+  assert.match(setClause, /ticker <> \$\{row\.ticker\}/, "only a row on a different rung is moved");
+  assert.match(setClause, /entry_side is null and entry_cents is null and entry_fee_cents is null and settle_cents is null and ev_cents is null/, "a row with any fill is never touched");
+  assert.match(server, /where not exists \(select 1 from desk_hour_ledger h where h\.close_time = /, "one row per closed hour");
   assert.match(server, /on conflict \(ticker, close_time\) do nothing/, "a rerun on the same window writes nothing");
   assert.match(server, /null, null, null, null, null,/, "entry_side, entry_cents, entry_fee_cents, settle_cents, ev_cents are written as null: no fill is invented");
-  assert.match(server, /status=settled/, "only settled contracts are read");
   assert.match(pure, /return HOUR_POSTURE\.live_rule \? HOUR_POSTURE\.lean : "WAIT";/, "the posture at close is WAIT until a rule is frozen and live");
-  assert.match(pure, /if \(!settled\.length\) \{[\s\S]*?out\.skipped\.push/, "an unsettled hour is skipped, never guessed");
   assert.doesNotMatch(pure, /"UP"|"DOWN"/, "a strike ladder, never UP/DOWN");
   assert.match(server, /catch \(err\)[\s\S]*?st\.error = /, "the closer swallows its own errors");
   assert.doesNotMatch(server, /await import\("\.\/server-engine"\)/);
+});
+
+test("the closer reads one hour's whole ladder by event, every page, and grades only a complete ladder on the rung nearest the official close", () => {
+  const server = codeOf("src/lib/desk/hour-closer.server.ts");
+  const pure = codeOf("src/lib/desk/hour-closer.ts");
+  assert.match(server, /\/markets\?event_ticker=\$\{encodeURIComponent\(eventTicker\)\}&limit=\$\{PAGE\}/, "one event at a time");
+  assert.match(server, /&cursor=\$\{encodeURIComponent\(cursor\)\}/, "the cursor is followed");
+  assert.doesNotMatch(server, /status=settled|min_close_ts|series_ticker=/, "no series-wide capped list");
+  assert.match(server, /if \(!more\) return \{ markets, complete: false \};/, "a failed page marks the ladder incomplete");
+  assert.match(server, /return \{ markets, complete: cursor == null \};/, "complete only when the cursor ran out");
+  assert.match(pure, /if \(!ladder\.complete\) return skip\("incomplete"\);/, "an incomplete ladder is never graded");
+  assert.match(pure, /return skip\("off-ladder"\);/, "an official close outside the ladder's range is never matched to a far rung");
+  assert.match(pure, /return skip\("no-official"\);/, "no official value, no nearest rung, no row");
+  assert.doesNotMatch(pure, /middle-rung/, "there is no middle-rung guess any more");
+  assert.match(pure, /Math\.abs\(r\.strike - official\) < Math\.abs\(best\.strike - official\)/, "nearest the official close");
 });
 
 test("the closer is kicked from the health check beside the other observers, fire-and-forget, and never from the engine tick", () => {
@@ -99,6 +118,7 @@ test("the closer is kicked from the health check beside the other observers, fir
   const server = codeOf("src/lib/desk/hour-closer.server.ts");
   assert.match(server, /st\.timer = setInterval\(\(\) => void closeHoursOnce\(\), HOUR_CLOSER_EVERY_MS\)/, "its own timer");
   assert.match(server, /if \(st\.timer\) return;/, "idempotent boot");
+  assert.match(server, /if \(st\.busy \|\| st\.audited\) return null;/, "the stored-sit audit runs once per boot and never overlaps a pass");
 });
 
 test("the /hour page renders the empty book honestly and links the three rooms, and never says buy or signal", () => {
