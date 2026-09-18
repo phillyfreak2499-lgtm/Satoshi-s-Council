@@ -155,7 +155,7 @@ async function captureOnce(): Promise<void> {
     if (!snap.ticker || tickerAgrees(snap.ticker, snap.close_time) !== true) return;
     if (!inV4Lock(Number(snap.secs_left))) return;
 
-    const key = ${snap.ticker}|${snap.close_time};
+    const key = `${snap.ticker}|${snap.close_time}`;
     if (st.sampled.has(key)) return;
 
     // No data-health gate: missing specialist evidence becomes zero through the
