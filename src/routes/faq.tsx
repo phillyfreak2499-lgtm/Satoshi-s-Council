@@ -1,5 +1,4 @@
 import { pageHead } from "@/lib/desk/site";
-import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Page } from "@/components/desk/Page";
@@ -9,7 +8,8 @@ export const Route = createFileRoute("/faq")({
   component: Faq,
 });
 
-const QA: { q: string; a: ReactNode }[] = [
+/** Every answer is a plain string, so the first-paint HTML carries it as readable text with no JSX to hydrate. */
+const QA: { q: string; a: string }[] = [
   {
     q: "What is a seat?",
     a: "One specialist with one job. WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Twenty-one of them sit at five desks; eighteen vote UP, DOWN or WAIT with a confidence, while three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew that inform the chair. Each shows its hypothesis, evidence and counter.",
@@ -20,11 +20,7 @@ const QA: { q: string; a: ReactNode }[] = [
   },
   {
     q: "How is the paper book doing?",
-    a: (
-      <>
-        Open <a href="/books" className="text-fg underline underline-offset-2">the Books</a>. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the live 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. It is a record, not a promised edge.
-      </>
-    ),
+    a: "Open the Books at /books. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the live 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. It is a record, not a promised edge.",
   },
   {
     q: "What does selective mode require?",
