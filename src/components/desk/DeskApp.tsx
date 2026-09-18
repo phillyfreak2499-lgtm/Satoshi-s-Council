@@ -229,6 +229,8 @@ export function DeskApp() {
 
   useEffect(() => {
     const go = () => {
+      setWelcomeOn(false);
+      setNudge(false);
       setTourStep(0);
       setTourOn(true);
     };
@@ -270,6 +272,8 @@ export function DeskApp() {
         saveFloorMode("guided");
       }
       if (s && (SEAT_IDS as readonly string[]).includes(s)) jump(s as SeatId);
+      // /floor and other old links open the floor with the tour running.
+      if (sp.get("tour") === "1") window.dispatchEvent(new Event("satoshi-tour"));
     } catch {
       /* no window */
     }
@@ -287,6 +291,7 @@ export function DeskApp() {
       if (floorMode === "guided" && tab === "satoshi") u.searchParams.set("view", "guided");
       else u.searchParams.delete("view");
       u.searchParams.delete("seat");
+      u.searchParams.delete("tour");
       const next = `${u.pathname}${u.search}${u.hash}`;
       if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
         window.history.replaceState(null, "", next);
