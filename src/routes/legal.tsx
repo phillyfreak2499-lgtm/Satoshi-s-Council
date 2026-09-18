@@ -10,7 +10,7 @@ export const Route = createFileRoute("/legal")({
 function Legal() {
   return (
     <Page title="Paper only, in plain words" lede="The short version: nothing on this site places a trade, holds money or tells you what to do with yours.">
-      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 14, 2026 · United States audience</p>
+      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 18, 2026 · United States audience</p>
       <H2>No orders, no accounts</H2>
       <P>
         Satoshi&apos;s Council never sends an order to any exchange or market. It has no accounts, deposits, wallets or payment flows. The calls, the ledger,
@@ -31,11 +31,11 @@ function Legal() {
         Prices, books and derivatives come from public feeds that can lag, pause or fail. The strip shows each feed&apos;s health; a seat that cannot see
         sits. Figures shown as PAPER are computed from those feeds and can differ from what a real order would have done.
       </P>
-      <H2>Analytics and fonts</H2>
+      <H2>Cookies and analytics</H2>
       <P>
-        The site uses Google Analytics 4 to understand aggregate visits and feature use, and Google Fonts to serve Geist and IBM Plex Mono. Those providers
-        may receive ordinary request details such as an IP address, browser information and the page requested. The desk does not send them an exchange
-        account, wallet or real-money trading history because it has none.
+        The site uses Google Analytics 4 for aggregate visits and Google Fonts for Geist and IBM Plex Mono. Ordinary request details (IP, browser, page) go to
+        those providers. There is no advertising cookie wall and no account. The desk does not send them an exchange account, wallet or real-money trading
+        history because it has none.
       </P>
       <H2>Audience and jurisdiction</H2>
       <P>
@@ -52,6 +52,11 @@ function Legal() {
         Arena callsigns and alert subscriptions are tied to a random token stored in your own browser; there are no logins. Push alerts go only to a
         browser that turned them on in SETTINGS and can be turned off there. The desk can hide a callsign that breaks house rules. Paper results
         stay on the private record.
+      </P>
+      <H2>Contact</H2>
+      <P>
+        Questions about the desk: post on the Board at <a href="/board" className="underline underline-offset-2 hover:text-fg">/board</a>. The Board is the
+        only contact. The desk has no mailbox, so there is no address to write to; a public note there reaches the same people and stays on the record.
       </P>
     </Page>
   );

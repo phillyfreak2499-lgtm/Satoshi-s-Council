@@ -8,6 +8,10 @@ export function PaperDisclaimer() {
         Paper research only · Bitcoin only · No live orders · Not financial advice · Not affiliated with Kalshi ·{" "}
         <a href="/legal" className="underline underline-offset-2 hover:text-fg">What paper means</a>
       </p>
+      <p className="company-footer-chrome">
+        Paper only · <a href="/faq" className="underline underline-offset-2 hover:text-fg">FAQ</a> ·{" "}
+        <a href="/legal" className="underline underline-offset-2 hover:text-fg">Legal</a>
+      </p>
       </div>
     </footer>
   );
