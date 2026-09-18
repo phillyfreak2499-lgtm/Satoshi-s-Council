@@ -727,6 +727,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
             Overlapping periods, not separate books. The floor period starts {fmtWhen(books.floor_since, tz)} and includes the later {FLOOR_LIVE_CENTS}¢ trial. Trial results are already in these totals; the shadow comparison is never added. Today uses America/Chicago; row times use {tz}.
           </p>
+          <p className="mt-2 font-mono text-micro"><a href="/record" className="text-fg underline underline-offset-4">Read the week on the record <span aria-hidden="true">→</span></a></p>
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
         </Pane>
       </section>
