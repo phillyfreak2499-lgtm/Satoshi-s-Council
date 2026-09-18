@@ -5,6 +5,9 @@
  * study can be scientifically well-designed and still be operationally dead.
  * Here we answer: what is it for, should it be writing, when did it last write,
  * who reads it, and what closes the experiment?
+ *
+ * Important boundary: protected one-way measurements keep their own dedicated
+ * readers. This aggregate never reaches around those rails just to count rows.
  */
 import { getSql } from "@/lib/db";
 import { LAB_INVENTORY, validateLabInventory, type LabInventoryItem } from "./lab-inventory";
@@ -52,18 +55,16 @@ async function storageStats(): Promise<StorageStat[]> {
     union all
     select 'desk_absorption', count(*)::int, max(t)::text from desk_absorption
     union all
-    select 'desk_path_parity', count(*)::int, max(sampled_at)::text from desk_path_parity
-    union all
     select 'desk_policy_observations', count(*)::int, max(close_time)::text from desk_policy_observations
     union all
     select 'desk_call_quality', count(*)::int, max(recorded_at)::text from desk_call_quality
     union all
     select 'desk_v3_samples', count(*)::int, max(taken_at)::text from desk_v3_samples
     union all
-    select 'desk_ledger', count(*)::int, max(close_time)::text from desk_ledger
+    select 'research_ledger', count(*)::int, max(close_time)::text from desk_ledger_research
     union all
     select 'skill_score_audit', count(*)::int, max(close_time)::text
-      from desk_ledger where skill_score_audit is not null
+      from desk_ledger_research where skill_score_audit is not null
     union all
     select 'desk_v4_frames', count(*)::int, max(taken_at)::text from desk_v4_frames
     union all
