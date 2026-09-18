@@ -1,10 +1,10 @@
 /**
- * The homepage WAIT strip: stillness with a scoreboard.
+ * The homepage WAIT strip: the call, the reason, and one line of proof.
  *
  * Under a WAIT with no paper fill, the homepage prints the last graded
- * window and the books' last-7-days column, both from helpers /books already
- * uses. A missing input is an omitted line, never a dash. The block is
- * homepage-only: /desk and the chair-words sentence are untouched.
+ * window from the helper /books already uses. A missing window is an
+ * omitted line, never a dash. No week net, no win rate, no needed rate:
+ * the front door is not a scoreboard. The block is homepage-only.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -38,62 +38,56 @@ function load(rel, extra = {}) {
   return run(join(process.cwd(), rel));
 }
 
-const { lastWindowFact, weekFact, stillFacts } = load("src/lib/desk/home-still.ts");
+const { lastWindowFact } = load("src/lib/desk/home-still.ts");
 const { HomeStill } = load("src/components/desk/HomeStill.tsx");
 const text = (html) => html.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, "");
 /** Values cross a vm realm; compare structure, not prototypes. */
 const plain = (value) => JSON.parse(JSON.stringify(value));
+/** Anything that would turn the front door into a scoreboard. */
+const SCOREBOARD = /Last 7 days|of \d+ fills?|needs \d+%|breakeven|win rate|Open the results|sat all|no paper fills/i;
 
 const sat = { ticker: "KXBTC-26SEP1817-T115000", close_time: "2026-09-18T22:45:00.000Z", winner: "UP", official: 1, settle_avg: null, prints: null, call: null, seats: { n: 5, right: 3 }, raw: { n: 5, right: 3 }, arena: null, replay: true };
 const filled = { ...sat, winner: "DOWN", call: { lean: "DOWN", entry: 61, settle: 100, ev: 34.6 } };
-const week = { n: 660, calls: 60, wins: 54, net: 230, breakeven: 52.4 };
 
 test("the last window prints a sit or a graded paper fill, never an invented one", () => {
-  assert.deepEqual(plain(lastWindowFact(sat)), { id: "last", label: "Last window", text: "2026-09-18 22:45 UTC · sat · settled UP", href: "/window/KXBTC-26SEP1817-T115000", link: "Open the window" });
+  assert.deepEqual(plain(lastWindowFact(sat)), { label: "Last window", text: "2026-09-18 22:45 UTC · sat · settled UP", href: "/window/KXBTC-26SEP1817-T115000" });
   assert.equal(lastWindowFact(filled).text, "2026-09-18 22:45 UTC · paper DOWN at 61¢, +34.6¢ after fee · settled DOWN");
   assert.equal(lastWindowFact({ ...filled, call: { ...filled.call, ev: null } }).text, "2026-09-18 22:45 UTC · paper DOWN at 61¢, not yet graded · settled DOWN");
+  assert.equal(lastWindowFact({ ...sat, ticker: "" }).href, "/books", "no ticker: the line links to the books");
   assert.equal(lastWindowFact(null), null);
+  assert.equal(lastWindowFact(undefined), null);
   assert.equal(lastWindowFact({ ...sat, close_time: "not a time" }), null);
-  assert.equal(lastWindowFact({ ...sat, ticker: "" }), null);
+  assert.equal(lastWindowFact({ ...sat, winner: "TIE" }), null);
 });
 
-test("the week line is the books' own last-7-days column, with the needed rate only when it exists", () => {
-  assert.deepEqual(plain(weekFact(week)), { id: "week", label: "Last 7 days", text: "+230.0¢ paper · 54 of 60 fills won · needs 52%", href: "/books", link: "Read the record" });
-  assert.equal(weekFact({ ...week, breakeven: null }).text, "+230.0¢ paper · 54 of 60 fills won");
-  assert.equal(weekFact({ n: 660, calls: 0, wins: 0, net: 0, breakeven: null }).text, "sat all 660 windows · no paper fills");
-  assert.equal(weekFact({ n: 12, calls: 1, wins: 0, net: -41.5, breakeven: 61 }).text, "-41.5¢ paper · 0 of 1 fill won · needs 61%");
-  assert.equal(weekFact(null), null);
-  assert.equal(weekFact({ n: 0, calls: 0, wins: 0, net: 0, breakeven: null }), null, "an empty week is omitted, not a zero line");
-  assert.equal(weekFact({ n: 5, calls: 2, wins: 1, net: Number.NaN, breakeven: null }), null);
-});
-
-test("missing facts are omitted; no dash soup", () => {
-  assert.deepEqual(plain(stillFacts(null, null)), []);
-  assert.deepEqual(plain(stillFacts(sat, null).map((f) => f.id)), ["last"]);
-  assert.deepEqual(plain(stillFacts(null, week).map((f) => f.id)), ["week"]);
-  assert.deepEqual(plain(stillFacts(sat, week).map((f) => f.id)), ["last", "week"]);
-  assert.equal(renderToString(React.createElement(HomeStill, { last: null, week: null })), "");
-  const html = renderToString(React.createElement(HomeStill, { last: sat, week }));
+test("a missing window is an omitted line; a present one is a single linked line with no dash", () => {
+  assert.equal(renderToString(React.createElement(HomeStill, { last: null })), "");
+  const html = renderToString(React.createElement(HomeStill, { last: sat }));
+  assert.equal(text(html), "Last window · 2026-09-18 22:45 UTC · sat · settled UP");
   assert.doesNotMatch(text(html), /—/);
-  assert.match(text(html), /Last window · 2026-09-18 22:45 UTC · sat · settled UP Open the window →/);
-  assert.match(text(html), /Last 7 days · \+230\.0¢ paper · 54 of 60 fills won · needs 52% Read the record →/);
-  assert.match(html, /<a href="\/window\/KXBTC-26SEP1817-T115000">/);
-  assert.match(html, /<a href="\/books">/);
+  assert.match(html, /<a href="\/window\/KXBTC-26SEP1817-T115000">2026-09-18 22:45 UTC · sat · settled UP<\/a>/);
+  assert.equal((html.match(/<a /g) ?? []).length, 1, "one link, no second CTA");
 });
 
-test("the strip is homepage-only, shows under an unbooked window, and reuses the public helpers", () => {
+test("no week P&L, win rate or needed rate reaches the homepage block", () => {
+  for (const last of [sat, filled, null]) assert.doesNotMatch(renderToString(React.createElement(HomeStill, { last })), SCOREBOARD);
+  assert.doesNotMatch(read("src/components/desk/HomeStill.tsx"), SCOREBOARD);
+  assert.doesNotMatch(read("src/lib/desk/home-still.ts"), SCOREBOARD);
+  assert.doesNotMatch(read("src/lib/desk/home-still.ts"), /BooksColumn|BooksTotals|week/i, "the helper never reads the week column");
   const home = read("src/components/desk/CouncilHome.tsx");
-  assert.match(home, /const still = book !== null && book\.kind !== "booked" && stillFacts\(last, week\)\.length > 0;/);
-  assert.match(home, /\{still \? <HomeStill last=\{last\} week=\{week\} \/> : null\}/);
-  assert.match(home, /\{still \? <a href="\/books" className="company-text-link">Open the results/);
+  assert.doesNotMatch(home, /week|publicWeekBooks|HomeStill last=\{last\} week/i);
+  assert.doesNotMatch(home.slice(home.indexOf("company-live-context"), home.indexOf("company-live-numbers")), /href="\/books"/, "no second homepage CTA beside the decision");
+  assert.doesNotMatch(read("src/routes/index.tsx"), /publicWeekBooks|week/);
+  assert.doesNotMatch(read("src/lib/desk/record-public.ts"), /publicWeekBooks/, "the week helper added only for the strip is gone");
+});
+
+test("the strip is homepage-only, shows under an unbooked window, and keeps the reason and the /desk link", () => {
+  const home = read("src/components/desk/CouncilHome.tsx");
+  assert.match(home, /const still = book !== null && book\.kind !== "booked" && lastWindowFact\(last\) !== null;/);
+  assert.match(home, /\{still \? <HomeStill last=\{last\} \/> : null\}<a href="\/desk" className="company-text-link">Read the full decision/);
   assert.match(home, /plainLine\(chair, snap, book\)/, "the chair-words sentence stays");
   assert.match(home, /\{last && !still \? <>Last graded window ·/, "the small snapshot line does not repeat the fact");
-  const route = read("src/routes/index.tsx");
-  assert.match(route, /publicWeekBooks\(\)\.catch\(\(\) => null\)/);
-  assert.match(route, /<CouncilHome last=\{last\} week=\{week\} \/>/);
-  const pub = read("src/lib/desk/record-public.ts");
-  assert.match(pub, /export const publicWeekBooks = createServerFn\(\{ method: "GET" \}\)/);
-  assert.match(pub, /return booksColumn\(\(await booksSummary\(\)\)\.week\);/, "the same cells /books prints");
-  assert.doesNotMatch(read("src/components/desk/DeskApp.tsx"), /HomeStill|stillFacts/, "/desk is unchanged");
-  assert.doesNotMatch(read("src/lib/desk/chair-words.ts"), /HomeStill|stillFacts/);
+  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} \/>/);
+  assert.doesNotMatch(read("src/components/desk/DeskApp.tsx"), /HomeStill|lastWindowFact/, "/desk is unchanged");
+  assert.doesNotMatch(read("src/lib/desk/chair-words.ts"), /HomeStill|lastWindowFact/);
 });

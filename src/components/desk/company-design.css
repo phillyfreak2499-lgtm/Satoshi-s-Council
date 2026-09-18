@@ -35,11 +35,9 @@
 .company-live-context { border-inline: 1px solid var(--company-rule); padding-inline: 32px; }
 .company-live-context > p { font-size: 15px; line-height: 1.75; color: #c2c8c9; }
 .company-live-context > a { color: var(--company-gold); margin-top: 5px; }
-.company-live-links { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 5px; }
-.company-live-links > a { color: var(--company-gold); }
-.company-still { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; line-height: 1.7; color: #c2c8c9; font-variant-numeric: tabular-nums; }
+.company-still { margin: 10px 0 0; font-size: 13px; line-height: 1.7; color: #c2c8c9; font-variant-numeric: tabular-nums; }
 .company-still-label { color: var(--company-muted); }
-.company-still a { color: var(--company-gold); white-space: nowrap; }
+.company-still a { color: var(--company-ink); text-decoration: underline; text-underline-offset: 3px; }
 .company-live-numbers { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .company-live-numbers dt { color: var(--company-muted); font-size: 12px; margin-bottom: 12px; }
 .company-live-numbers dd { color: var(--company-ink); font-family: var(--font-mono); font-size: 23px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }

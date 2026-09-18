@@ -54,6 +54,6 @@ test("the shared footer prints Paper only · FAQ · Legal and links /legal, /faq
 test("the homepage and the Live Floor render that footer", () => {
   assert.match(read("src/components/desk/CouncilHome.tsx"), /<PaperDisclaimer \/>/);
   assert.match(read("src/components/desk/DeskApp.tsx"), /<PaperDisclaimer \/>/);
-  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} week=\{week\} \/>/);
+  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} \/>/);
   assert.match(read("src/routes/desk.tsx"), /<DeskApp \/>/);
 });
