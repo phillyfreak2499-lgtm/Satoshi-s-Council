@@ -12,6 +12,12 @@ import { test } from "node:test";
 
 const src = readFileSync(join(process.cwd(), "src/routes/faq.tsx"), "utf8");
 
+test("every answer is a plain string, so the first paint carries it as readable text", () => {
+  assert.match(src, /const QA: \{ q: string; a: string \}\[\] = \[/, "the answer type is string, not a React node");
+  assert.doesNotMatch(src.slice(src.indexOf("const QA"), src.indexOf("const OPEN_FIRST")), /<>|<a |\(\s*\n/, "no JSX fragment or element inside an answer");
+  assert.match(src, /Open the Books at \/books\. Every result is labeled by scope/, "the paper-book answer names /books in plain text");
+});
+
 test("every listed question carries a real answer, and no question was added", () => {
   const body = src.slice(src.indexOf("const QA"), src.indexOf("const OPEN_FIRST"));
   const items = body.split(/\n {2}\{\n/).slice(1);
