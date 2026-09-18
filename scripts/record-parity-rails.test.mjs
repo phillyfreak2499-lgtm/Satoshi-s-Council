@@ -38,3 +38,24 @@ test("the /record page only claims to match the books through the guarded note",
   assert.doesNotMatch(copyFn, /[Ss]ame numbers/, "the copy block never carries the claim");
   assert.match(copyFn, /readStamp\(r\.at\)/, "the copy dates its read instead");
 });
+
+test("/record is never served from a cache, and its first paint is the books snapshot the site is printing right now", () => {
+  assert.match(read("src/lib/desk/record.ts"), /export const RECORD_CACHE_CONTROL = "no-store";/);
+  const route = read("src/routes/record.tsx");
+  assert.match(route, /headers: \(\) => \(\{ "cache-control": RECORD_CACHE_CONTROL \}\)/, "the document response says no-store");
+  const pub = read("src/lib/desk/record-public.ts");
+  assert.match(pub, /setResponseHeader\("cache-control", RECORD_CACHE_CONTROL\)/, "the server function's own response says no-store");
+  const server = read("src/lib/desk/record.server.ts");
+  assert.match(server, /if \(cache && cache\.books_at === books\.at\) return cache\.body;/, "cached against the books snapshot, not on a clock of its own");
+  assert.doesNotMatch(server, /Date\.now\(\) - cache\.at < 30_000/, "no independent 30 s window that could straddle a roll");
+  assert.match(server, /now: books\.at,/, "stamped with the minute the books cells were read");
+  assert.match(server, /async function build\(books: Books\)/, "built from the same object /books prints");
+});
+
+test("an open or restored /record tab corrects itself: reread on mount when stale, on a timer, and on pageshow", () => {
+  const room = read("src/components/desk/RecordRoom.tsx");
+  assert.match(room, /void reread\(\);\n\s+const timer = setInterval\(onVisible, REREAD_AFTER_MS\);/, "reread once on mount, then on a timer");
+  assert.match(room, /window\.addEventListener\("pageshow", onVisible\)/, "a page restored from the back-forward cache rereads");
+  assert.match(room, /readAt\.current = Date\.parse\(next\.at\) \|\| Date\.now\(\)/, "freshness is judged by the brief's own stamp");
+  assert.match(room, /clearInterval\(timer\)/);
+});

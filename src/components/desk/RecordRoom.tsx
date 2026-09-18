@@ -37,7 +37,7 @@ function Block({ n, title, children }: { n: string; title: string; children: Rea
   );
 }
 
-/** A brief older than this is reread when the tab comes back into view. */
+/** A brief older than this is reread: on mount, when the tab comes back into view, and on a timer while it stays open. */
 const REREAD_AFTER_MS = 60_000;
 
 export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
@@ -45,28 +45,38 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
   const readAt = useRef(initial ? Date.parse(initial.at) : 0);
   const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => {
-    // The 7-day window rolls every 15 minutes. A tab left open since last night
-    // would print last night's week next to a fresh /books, so it rereads when
-    // it comes back into view. Server-rendered output is untouched.
+    // The 7-day window rolls every 15 minutes. The first paint is this minute's
+    // week because the page is never cached; if a browser still hands back an
+    // old copy (a back navigation, a restored tab), the brief is reread at once,
+    // and an open tab rereads on a timer and whenever it comes back into view.
     let alive = true;
+    let busy = false;
     const reread = async () => {
-      if (document.visibilityState !== "visible" || Date.now() - readAt.current < REREAD_AFTER_MS) return;
+      if (busy || document.visibilityState !== "visible" || Date.now() - readAt.current < REREAD_AFTER_MS) return;
+      busy = true;
       try {
         const next = await publicWeekRecord();
         if (!alive || !next) return;
-        readAt.current = Date.now();
+        readAt.current = Date.parse(next.at) || Date.now();
         setData(next);
       } catch {
         /* keep the brief already on screen; it is dated */
+      } finally {
+        busy = false;
       }
     };
     const onVisible = () => void reread();
+    void reread();
+    const timer = setInterval(onVisible, REREAD_AFTER_MS);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
+    window.addEventListener("pageshow", onVisible);
     return () => {
       alive = false;
+      clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
+      window.removeEventListener("pageshow", onVisible);
     };
   }, []);
   const note = data ? scoreNote(data) : null;

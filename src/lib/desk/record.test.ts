@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { BooksTotals, KeeperStats } from "./books.ts";
-import { bestWait, booksColumn, booksParity, buildWeekRecord, chicagoDate, copyWeek, readStamp, scoreNote, scoreOf, seatNote, takerFee, wrongFill, type RecordLedgerRow } from "./record.ts";
+import { bestWait, booksColumn, booksParity, buildWeekRecord, chicagoDate, copyWeek, readStamp, RECORD_CACHE_CONTROL, scoreNote, scoreOf, seatNote, takerFee, wrongFill, type RecordLedgerRow } from "./record.ts";
 
 const NOW = Date.parse("2026-09-18T15:00:00.000Z");
 const WEEK: BooksTotals = { n: 640, calls: 12, wins: 7, net: 41.5, ups: 320, breakeven: 84.2 };
@@ -212,4 +212,8 @@ test("an empty week still reads as parity with an empty books column and invents
   assert.equal(b.wrong_fill, null);
   assert.equal(booksParity(b.score, b.books_week), true);
   assert.equal(scoreNote(b).same, true);
+});
+
+test("the brief's cache policy is no-store: a rolling week is never held by a browser or a proxy", () => {
+  assert.equal(RECORD_CACHE_CONTROL, "no-store");
 });
