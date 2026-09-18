@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useDesk } from "@/lib/desk/store";
 import { useCountdownText } from "@/lib/desk/hooks";
+import { clockMs } from "@/lib/desk/math";
 import { bookState } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 import { SHOP_URL } from "@/lib/desk/navigation";
@@ -16,7 +17,11 @@ import type { BooksWindow } from "@/lib/desk/books";
 export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
   const frame = useDesk();
   const { snap, chair } = frame;
-  const countdown = useCountdownText(snap?.close_time ?? 0);
+  const ticking = useCountdownText(snap?.close_time ?? 0);
+  // The shared ticker has no server snapshot, so before hydration it yields a dash.
+  // Print the time left as of the frame instead: deterministic on both sides, so the
+  // first paint never says "Window closes in —", and the live clock takes over on tick.
+  const countdown = ticking === "—" && snap ? clockMs(Math.max(0, snap.close_time - snap.as_of)) : ticking;
   const book = snap && chair ? bookState(snap, chair.lean, frame.call_log) : null;
   const demo = frame.settings.source === "demo";
   useEffect(() => { applyDisplayPrefs(); }, []);
