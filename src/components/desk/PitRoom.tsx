@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { arenaName, fetchArena, setArenaName, type Arena, type ArenaRow } from "@/lib/desk/arena";
 import type { PublicArenaSnapshot } from "@/lib/desk/arena-public";
 import { fetchRack, lockCall, type Rack } from "@/lib/desk/pit";
+import { CALLSIGN_RE, CALLSIGN_REJECT, isBlocked } from "@/lib/desk/callsign-guard";
 import { GlobalHeader } from "./GlobalHeader";
 import { beacon } from "@/lib/desk/beacon";
 import {
@@ -327,7 +328,9 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
               onSubmit={(e) => {
                 e.preventDefault();
                 const v = draft.trim().replace(/\s+/g, " ");
-                if (/^[A-Za-z0-9 _\-.]{2,16}$/.test(v)) {
+                // A faster no; the server's guard is the law on every lock.
+                if (isBlocked(v)) setErr(CALLSIGN_REJECT);
+                else if (CALLSIGN_RE.test(v)) {
                   setArenaName(v);
                   setName(v);
                 } else

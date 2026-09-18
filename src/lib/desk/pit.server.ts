@@ -7,6 +7,7 @@
  * window. Paper only.
  */
 import { RANK_MIN_N, type HumanCall } from "./arena.server";
+import { publicLabel } from "./callsign-guard";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -215,15 +216,15 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
          order by close_time desc
          limit 1
       `,
-      db<{ name: string; n: number; wins: number; losses: number; net: number }>`
-        select p.name,
+      db<{ name: string; hidden_at: Date | string | null; n: number; wins: number; losses: number; net: number }>`
+        select p.name, p.hidden_at,
                count(c.id) filter (where c.winner is not null)::int as n,
                count(c.id) filter (where c.cents > 0)::int as wins,
                count(c.id) filter (where c.winner is not null and c.cents <= 0)::int as losses,
                coalesce(sum(c.cents), 0)::float as net
           from desk_players p left join desk_human_calls c using (token)
          where p.token = ${token}
-         group by p.name
+         group by p.name, p.hidden_at
       `,
       weekRanks(),
     ]);
@@ -246,7 +247,7 @@ export async function rackFor(tokenRaw: unknown): Promise<Rack> {
     const t = tot[0];
     if (t) {
       const rank = ranks.indexOf(token) + 1;
-      me = { name: t.name, n: t.n, wins: t.wins, losses: t.losses, net: Math.round(t.net * 10) / 10, rank_week: rank || null, players_week: ranks.length };
+      me = { name: publicLabel(t.name, { hidden: t.hidden_at != null }), n: t.n, wins: t.wins, losses: t.losses, net: Math.round(t.net * 10) / 10, rank_week: rank || null, players_week: ranks.length };
     }
   }
   return {

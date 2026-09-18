@@ -8,13 +8,13 @@
 import { createHash } from "node:crypto";
 import { takerFeeCentsExact } from "./clock";
 import type { Arena } from "./arena";
+import { CALLSIGN_RE, callsignVerdict, isBlocked, normalize, publicLabel } from "./callsign-guard";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
   return getSql();
 }
 
-const NAME_RE = /^[A-Za-z0-9 _\-.]{2,16}$/;
 const TOKEN_RE = /^[A-Za-z0-9\-_]{16,64}$/;
 const MIN_MINS_LEFT = 0.5;
 /** Settled locks before a callsign is ranked on a board; fewer shows as warming up. */
@@ -48,9 +48,10 @@ export type HumanCall = {
   cents: number | null;
 };
 
+/** The charset check, and never a blocked name: the guard is the law on the write path. */
 export function cleanName(v: unknown): string | null {
   const s = String(v ?? "").trim().replace(/\s+/g, " ");
-  return NAME_RE.test(s) ? s : null;
+  return CALLSIGN_RE.test(s) && !isBlocked(s) ? s : null;
 }
 
 export function cleanToken(v: unknown): string | null {
@@ -65,6 +66,10 @@ export async function placeCall(input: CallInput): Promise<CallResult> {
   if (!lean) return { ok: false, error: "lean must be UP or DOWN", status: 400 };
   const confRaw = Number(input.conf);
   const conf = Number.isFinite(confRaw) ? Math.max(50, Math.min(99, Math.round(confRaw))) : null;
+  // The callsign verdict comes first, before the engine or the database is touched: a
+  // blocked name is refused on create and on rename alike, with the one neutral line.
+  const verdict = callsignVerdict(input.name);
+  if (!verdict.ok) return { ok: false, error: verdict.error, status: verdict.status };
   const { getServerSnap, getPulse } = await import("./server-engine");
   const snap = getServerSnap();
   if (!snap || !snap.ticker || !(snap.close_time > 0)) return { ok: false, error: "no live window yet", status: 503 };
@@ -78,7 +83,7 @@ export async function placeCall(input: CallInput): Promise<CallResult> {
   if (!(ask > 0) || ask >= 99) return { ok: false, error: "no price to buy at right now", status: 409 };
   const fee = takerFeeCentsExact(ask);
   const db = await sql();
-  const name = cleanName(input.name);
+  const name = verdict.name;
   const existing = await db<{ name: string }>`select name from desk_players where token = ${token}`;
   const taken = async (n: string) => {
     const holder = await db<{ token: string }>`select token from desk_players where lower(name) = lower(${n}) limit 1`;
@@ -153,13 +158,15 @@ async function humanRows(days: number | null, token: string | null): Promise<Are
            count(*) filter (where c.winner is not null and c.lean = c.winner)::int as hits
       from desk_human_calls c join desk_players p using (token)
      where c.winner is not null
+       and p.hidden_at is null
        and (${days == null} or c.close_time > now() - (${days ?? 0} || ' days')::interval)
      group by p.token, p.name, p.created_at
     having count(*) filter (where c.winner is not null) > 0
      order by net desc, n desc
      limit 25
   `;
-  const mapped = rows.map((r) => ({
+  // Belt and braces after the SQL filter: a name the guard would refuse is never printed.
+  const mapped = rows.filter((r) => !isBlocked(r.name)).map((r) => ({
     name: r.name,
     n: r.n,
     wins: r.wins,
@@ -170,8 +177,9 @@ async function humanRows(days: number | null, token: string | null): Promise<Are
     warming: r.n < RANK_MIN_N,
     since: r.since instanceof Date ? r.since.toISOString() : r.since ? new Date(r.since).toISOString() : null,
   }));
-  // Ranked callsigns first (by net), then the ones still warming up.
-  return [...mapped.filter((r) => !r.warming), ...mapped.filter((r) => r.warming)];
+  // Ranked callsigns only (by net). A callsign still warming up is not a public row:
+  // it is shown to its own token and to nobody else.
+  return [...mapped.filter((r) => !r.warming), ...mapped.filter((r) => r.warming && r.me)];
 }
 
 async function deskRows(days: number | null): Promise<ArenaRow[]> {
@@ -201,7 +209,7 @@ export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
   const [week, all, desk7, deskAll] = await Promise.all([humanRows(7, token), humanRows(null, token), deskRows(7), deskRows(null)]);
   let me: Arena["me"] = null;
   if (token) {
-    const player = await db<{ name: string }>`select name from desk_players where token = ${token}`;
+    const player = await db<{ name: string; hidden_at: Date | string | null }>`select name, hidden_at from desk_players where token = ${token}`;
     if (player.length) {
       const calls = await db<HumanCall>`
         select ticker, close_time::text as close_time, lean, conf, entry_cents, fee, mins_left, t::text as t, winner, cents
@@ -218,7 +226,7 @@ export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
       `;
       const rank7 = week.findIndex((r) => r.me && !r.warming) + 1;
       me = {
-        name: player[0]!.name,
+        name: publicLabel(player[0]!.name, { hidden: player[0]!.hidden_at != null }),
         calls,
         n: tot?.n ?? 0,
         wins: tot?.wins ?? 0,
@@ -234,7 +242,37 @@ export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
   return { me, week, all, desk_week: desk7, desk_all: deskAll, at: Date.now() };
 }
 
-/** Clear every callsign and paper lock. Admin only; the route checks the key. */
+export type HideResult = { ok: true; hidden: number } | { ok: false; error: string; status: number };
+
+/**
+ * Hide one callsign. Admin only; the route checks the key. The player row and
+ * every paper lock stay; only the public name changes, to paper-<4 hex of the
+ * token's sha256> (8 hex if that label is taken), with hidden_at and a reason.
+ * The name given is never logged or echoed.
+ */
+export async function hideCallsign(nameRaw: unknown): Promise<HideResult> {
+  const name = normalize(nameRaw);
+  if (!name) return { ok: false, error: "name the callsign to hide", status: 400 };
+  const db = await sql();
+  const rows = await db<{ token: string }>`select token from desk_players where lower(name) = ${name} and hidden_at is null limit 1`;
+  if (!rows.length) return { ok: false, error: "no visible callsign by that name", status: 404 };
+  const token = rows[0]!.token;
+  const hex = createHash("sha256").update(token).digest("hex");
+  for (const label of [`paper-${hex.slice(0, 4)}`, `paper-${hex.slice(0, 8)}`]) {
+    try {
+      const done = await db<{ token: string }>`
+        update desk_players set name = ${label}, hidden_at = now(), hidden_reason = 'policy'
+         where token = ${token} and hidden_at is null returning token
+      `;
+      return { ok: true, hidden: done.length };
+    } catch {
+      /* that label is taken: widen it */
+    }
+  }
+  return { ok: false, error: "could not relabel that callsign", status: 500 };
+}
+
+/** Clear every callsign and paper lock. Admin only; the route checks the key. Last resort; hideCallsign is the tool. */
 export async function resetArena(): Promise<{ locks: number; players: number }> {
   const db = await sql();
   const [c] = await db<{ n: number }>`select count(*)::int as n from desk_human_calls`;
@@ -252,6 +290,7 @@ export async function arenaDigestLine(): Promise<string | null> {
       with day as (
         select c.*, p.name from desk_human_calls c join desk_players p using (token)
          where c.winner is not null
+           and p.hidden_at is null
            and (c.close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date - 1
       ), tops as (
         select name, sum(cents) as net from day group by name order by net desc limit 1
@@ -265,7 +304,7 @@ export async function arenaDigestLine(): Promise<string | null> {
     if (!a || !a.n) return null;
     const net = Number(a.net);
     return `arena: ${a.players} player${a.players === 1 ? "" : "s"}, ${a.n} call${a.n === 1 ? "" : "s"}, net ${net >= 0 ? "+" : ""}${net.toFixed(0)}¢${
-      a.top_name ? ` · top ${a.top_name} ${Number(a.top_net) >= 0 ? "+" : ""}${Number(a.top_net).toFixed(0)}¢` : ""
+      a.top_name ? ` · top ${publicLabel(a.top_name)} ${Number(a.top_net) >= 0 ? "+" : ""}${Number(a.top_net).toFixed(0)}¢` : ""
     }`;
   } catch {
     return null;

@@ -2,6 +2,7 @@ import { sampleRate } from "@/lib/desk/display-evidence";
 import { useEffect, useState } from "react";
 import { takerFeeCentsExact } from "@/lib/desk/clock";
 import { arenaName, fetchArena, placeCall, setArenaName, type Arena, type HumanCall } from "@/lib/desk/arena";
+import { CALLSIGN_REJECT, isBlocked } from "@/lib/desk/callsign-guard";
 import { gtagEventAfterSuccess } from "@/lib/desk/ga";
 import type { Snapshot } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
@@ -73,7 +74,13 @@ export function ArenaPanel({ snap, live, onOpenArena }: { snap: Snapshot; live: 
           onSubmit={(e) => {
             e.preventDefault();
             const v = draft.trim();
+            // A faster no; the server's guard is the law on every lock.
+            if (isBlocked(v)) {
+              setErr(CALLSIGN_REJECT);
+              return;
+            }
             if (v.length >= 2) {
+              setErr(null);
               setArenaName(v);
               setName(v);
             }
