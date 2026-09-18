@@ -8,12 +8,18 @@
  * A fill is never invented to have something to show, and an hour whose
  * settlement is not known is skipped and left missing rather than guessed.
  *
+ * One KXBTCD hour is a ladder of well over a hundred strikes, so the closer
+ * works one hour at a time: it names the hour's event, reads that event's
+ * whole ladder, and only then chooses the rung nearest the official close.
+ * An incomplete ladder, a missing official value, or an official value off
+ * the ladder's range is a skip, never a far strike.
+ *
  * The contract is a strike ladder ("$X or above" at the top of the hour,
  * Eastern, on the CF Benchmarks value), never the 15-minute UP/DOWN. Nothing
  * here reads or writes the 15-minute ledger, the Chair, the learner, or any
  * promotion gate. Authority: none. Paper only. No live orders.
  */
-import { HOUR_BOOK_AUTHORITY, HOUR_POSTURE, HOUR_SERIES, hourQuestion, parseHourTicker, type HourMarketRow, type HourTicker } from "./hour.ts";
+import { HOUR_BOOK_AUTHORITY, HOUR_CLOCK_TZ, HOUR_POSTURE, HOUR_SERIES, hourQuestion, parseHourTicker, type HourMarketRow, type HourTicker } from "./hour.ts";
 
 /** How far back a closed hour may be before the closer stops trying to grade it. A restart gap longer than this leaves the hour missing. */
 export const HOUR_CLOSER_LOOKBACK_MS = 3 * 60 * 60 * 1000;
@@ -25,8 +31,10 @@ export const HOUR_CLOSER_FIRST_DELAY_MS = 15_000;
 export const HOUR_CLOSER_SOURCE = "kalshi-settled";
 /** The provider's close may drift this much from the ticker's own clock before the row is distrusted. */
 const CLOSE_TOLERANCE_MS = 60_000;
+const HOUR_MS = 60 * 60 * 1000;
 
 const SETTLED_STATUSES = new Set(["settled", "finalized", "determined", "closed_settled"]);
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 const num = (v: unknown): number | null => {
   if (v == null || v === "") return null;
@@ -58,13 +66,33 @@ export function postureAtClose(): "WAIT" | "YES" | "NO" {
   return HOUR_POSTURE.live_rule ? HOUR_POSTURE.lean : "WAIT";
 }
 
+/** One closed hour, named the way Kalshi names its event: the series plus the Eastern date and hour of the close. */
+export type HourEvent = { event_ticker: string; close_ms: number; close_time: string };
+
+/** `KXBTCD-26SEP1812` for the instant that reads 12:00 on the Eastern wall clock. */
+export function hourEventTicker(closeMs: number): string {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: HOUR_CLOCK_TZ, year: "2-digit", month: "numeric", day: "2-digit", hour: "2-digit", hourCycle: "h23" });
+  const p: Record<string, string> = {};
+  for (const part of f.formatToParts(new Date(closeMs))) p[part.type] = part.value;
+  return `${HOUR_SERIES}-${p.year}${MONTHS[Number(p.month) - 1]}${p.day}${p.hour}`;
+}
+
+/** Every top-of-hour close inside the lookback, newest first. Eastern hours sit on UTC hours, so the clock is exact. */
+export function hourEventsInLookback(now: number, lookbackMs = HOUR_CLOSER_LOOKBACK_MS): HourEvent[] {
+  const out: HourEvent[] = [];
+  for (let t = Math.floor(now / HOUR_MS) * HOUR_MS; t >= now - lookbackMs; t -= HOUR_MS) {
+    out.push({ event_ticker: hourEventTicker(t), close_ms: t, close_time: new Date(t).toISOString() });
+  }
+  return out;
+}
+
 /** One hourly ledger row, exactly as the closer writes it. A sit carries no fill fields. */
 export type HourClose = {
   ticker: string;
   event_ticker: string;
   /** ISO instant of the top-of-hour Eastern close. */
   close_time: string;
-  strike: number | null;
+  strike: number;
   question: string;
   chair_lean: "WAIT" | "YES" | "NO";
   entry_side: null;
@@ -73,62 +101,58 @@ export type HourClose = {
   settle_cents: null;
   ev_cents: null;
   result: "YES" | "NO";
-  official_value: number | null;
+  official_value: number;
   source: typeof HOUR_CLOSER_SOURCE;
   authority: typeof HOUR_BOOK_AUTHORITY;
-  /** How the rung was chosen on the ladder: nearest the official close, or the middle rung when no official value was exposed. */
-  pick: "nearest-official" | "middle-rung";
-  /** How many rungs the hour's ladder had in the settled record. */
+  /** The rung is always the one nearest the official close, chosen over the hour's whole ladder. */
+  pick: "nearest-official";
+  /** How many rungs the hour's ladder had. */
   ladder: number;
 };
 
-export type HourSkip = { event_ticker: string; close_time: string; reason: "unsettled" | "no-result" };
+export type HourSkipReason = "incomplete" | "empty" | "unsettled" | "no-result" | "no-official" | "off-ladder";
+export type HourSkip = { event_ticker: string; close_time: string; reason: HourSkipReason };
+export type HourLadderOutcome = { row: HourClose; skip?: undefined } | { row?: undefined; skip: HourSkip };
 
-export type HourCloserPass = { rows: HourClose[]; skipped: HourSkip[] };
+/** The hour's ladder as the provider handed it over, and whether every page of it arrived. */
+export type HourLadder = { markets: readonly HourMarketRow[]; complete: boolean };
 
-type Rung = { row: HourMarketRow; parsed: HourTicker; ticker: string; strike: number | null };
+type Rung = { row: HourMarketRow; parsed: HourTicker; ticker: string; strike: number };
 
 /**
- * Turn the provider's settled hourly markets into ledger rows: one per closed
- * hour inside the lookback, on the rung nearest the official close (or the
- * middle rung when no official value is exposed). An hour is skipped when it
- * is not settled or carries no result; nothing is guessed.
+ * Grade one closed hour from its whole ladder. The rung is the "at or above"
+ * strike nearest the official close, and only when the ladder is complete,
+ * every rung on it is settled with a result, the official value is known,
+ * and that value lies inside the ladder's range. Anything else is a skip.
  */
-export function closeHourWindows(rows: readonly HourMarketRow[] | undefined, now: number, lookbackMs = HOUR_CLOSER_LOOKBACK_MS): HourCloserPass {
-  const byClose = new Map<number, Rung[]>();
-  for (const row of rows ?? []) {
+export function closeHourLadder(hour: HourEvent, ladder: HourLadder): HourLadderOutcome {
+  const skip = (reason: HourSkipReason): HourLadderOutcome => ({ skip: { event_ticker: hour.event_ticker, close_time: hour.close_time, reason } });
+  if (!ladder.complete) return skip("incomplete");
+  const rungs: Rung[] = [];
+  for (const row of ladder.markets) {
     const ticker = String(row.ticker ?? "");
     const parsed = parseHourTicker(ticker);
-    if (!parsed || parsed.series !== HOUR_SERIES) continue;
+    if (!parsed || parsed.series !== HOUR_SERIES || parsed.close_ms !== hour.close_ms) continue;
     const providerClose = Date.parse(String(row.close_time ?? ""));
     if (Number.isFinite(providerClose) && Math.abs(providerClose - parsed.close_ms) > CLOSE_TOLERANCE_MS) continue;
-    if (parsed.close_ms > now || parsed.close_ms < now - lookbackMs) continue;
-    const list = byClose.get(parsed.close_ms) ?? [];
-    list.push({ row, parsed, ticker, strike: num(row.floor_strike) ?? parsed.strike });
-    byClose.set(parsed.close_ms, list);
+    if (parsed.kind !== "above") continue;
+    const strike = num(row.floor_strike) ?? parsed.strike;
+    if (strike == null) continue;
+    rungs.push({ row, parsed, ticker, strike });
   }
-  const out: HourCloserPass = { rows: [], skipped: [] };
-  for (const [closeMs, rungs] of [...byClose.entries()].sort((a, b) => a[0] - b[0])) {
-    const close_time = new Date(closeMs).toISOString();
-    const event_ticker = String(rungs[0]!.row.event_ticker ?? rungs[0]!.parsed.event_ticker);
-    const settled = rungs.filter((r) => isSettled(r.row) && settledSide(r.row) != null);
-    if (!settled.length) {
-      out.skipped.push({ event_ticker, close_time, reason: rungs.some((r) => isSettled(r.row)) ? "no-result" : "unsettled" });
-      continue;
-    }
-    const official = settled.map((r) => officialValue(r.row)).find((v): v is number => v != null) ?? null;
-    const ladder = settled.filter((r) => r.parsed.kind === "above" && r.strike != null).sort((a, b) => a.strike! - b.strike!);
-    const pool = ladder.length ? ladder : settled.sort((a, b) => (a.strike ?? 0) - (b.strike ?? 0));
-    let choice = pool[Math.floor(pool.length / 2)]!;
-    let pick: HourClose["pick"] = "middle-rung";
-    if (official != null && ladder.length) {
-      choice = ladder.reduce((best, r) => (Math.abs(r.strike! - official) < Math.abs(best.strike! - official) ? r : best));
-      pick = "nearest-official";
-    }
-    out.rows.push({
+  if (!rungs.length) return skip("empty");
+  if (rungs.some((r) => !isSettled(r.row))) return skip("unsettled");
+  if (rungs.some((r) => settledSide(r.row) == null)) return skip("no-result");
+  const official = rungs.map((r) => officialValue(r.row)).find((v): v is number => v != null) ?? null;
+  if (official == null) return skip("no-official");
+  rungs.sort((a, b) => a.strike - b.strike);
+  if (official < rungs[0]!.strike || official > rungs[rungs.length - 1]!.strike) return skip("off-ladder");
+  const choice = rungs.reduce((best, r) => (Math.abs(r.strike - official) < Math.abs(best.strike - official) ? r : best));
+  return {
+    row: {
       ticker: choice.ticker,
-      event_ticker,
-      close_time,
+      event_ticker: hour.event_ticker,
+      close_time: hour.close_time,
       strike: choice.strike,
       question: hourQuestion(choice.row, choice.parsed),
       chair_lean: postureAtClose(),
@@ -141,9 +165,8 @@ export function closeHourWindows(rows: readonly HourMarketRow[] | undefined, now
       official_value: official,
       source: HOUR_CLOSER_SOURCE,
       authority: HOUR_BOOK_AUTHORITY,
-      pick,
-      ladder: pool.length,
-    });
-  }
-  return out;
+      pick: "nearest-official",
+      ladder: rungs.length,
+    },
+  };
 }
