@@ -1746,6 +1746,7 @@ test("no decision path reads the timestamped path or its parity measurement", ()
     "src/lib/desk/types.ts", // the field declarations
     "src/lib/desk/server-engine.ts", // the one fire-and-forget sample per minute
     "server/routes/path-parity.get.ts", // the admin-gated read
+    "src/lib/desk/lab-registry.server.ts", // read-only aggregate freshness/presentation; rails below ban actuators
   ]);
 
   // The seats and rules that read the OLD path. None of them may read the new one.

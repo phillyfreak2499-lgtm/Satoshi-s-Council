@@ -28,6 +28,120 @@ function percent(v: number | null): string {
   return v == null ? "—" : `${(v * 100).toFixed(1)}%`;
 }
 
+function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
+  if (!data) {
+    return (
+      <section className="mt-6 rounded-md border border-border bg-canvas p-4">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">Research systems health</div>
+        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+          The aggregate lifecycle registry is temporarily unavailable. Research collectors continue independently.
+        </p>
+      </section>
+    );
+  }
+
+  const stale = data.rows.filter((row) => row.health === "stale");
+  const fixed = data.rows.filter((row) => row.missing_is_error);
+  const unsampledFixed = fixed.filter((row) => row.health === "no-sample");
+
+  return (
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="lab-registry-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">Lifecycle audit</div>
+          <h2 id="lab-registry-title" className="mt-1 font-sans text-title font-medium text-fg">
+            Research systems health
+          </h2>
+        </div>
+        <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold uppercase tracking-widest text-muted">
+          {stale.length
+            ? `${stale.length} stale`
+            : unsampledFixed.length
+              ? `${unsampledFixed.length} awaiting first sample`
+              : "no stale fixed collectors"}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[90ch] font-sans text-ui leading-relaxed text-muted">
+        Every active Lab question has one lifecycle row: what it is for, whether it has decision authority,
+        how often fresh evidence should arrive, its current sample count, and the latest durable evidence.
+        Event-driven and manual studies are never called stale merely because a timer did not fire.
+      </p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Systems</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{data.rows.length}</div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Fixed cadence</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{fixed.length}</div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Collecting</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{data.tally.collecting}</div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Stale / no sample</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{data.tally.stale} / {unsampledFixed.length}</div>
+        </div>
+      </div>
+
+      {stale.length ? (
+        <div role="status" className="mt-4 rounded-sm border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-wait">
+          Needs attention: {stale.map((row) => row.label).join(" · ")}
+        </div>
+      ) : unsampledFixed.length ? (
+        <div role="status" className="mt-4 rounded-sm border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-muted">
+          Awaiting first durable sample: {unsampledFixed.map((row) => row.label).join(" · ")}
+        </div>
+      ) : (
+        <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+          No fixed-cadence collector is beyond its freshness allowance as of {utcClock(data.at)}.
+        </p>
+      )}
+
+      <details className="mt-4 rounded-sm border border-border bg-canvas">
+        <summary className="cursor-pointer px-3 py-3 font-mono text-micro uppercase tracking-widest text-muted">
+          Full inventory · {data.rows.length} systems
+        </summary>
+        <div className="grid gap-2 border-t border-border p-3">
+          {data.rows.map((row) => {
+            const last = row.last_evidence_at
+              ? ageLabel(row.last_evidence_at, data.at)
+              : row.cadence_kind === "manual"
+                ? "on demand"
+                : "none recorded";
+            return (
+              <article key={row.id} className="rounded-sm border border-border bg-surface p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="font-mono text-ui text-fg">{row.label}</div>
+                    <div className="mt-1 font-mono text-micro uppercase tracking-widest text-subtle">
+                      {row.type} · authority {row.authority}
+                    </div>
+                  </div>
+                  <span className={`font-mono text-micro uppercase tracking-widest ${row.health === "stale" ? "text-wait" : "text-muted"}`}>
+                    {row.health.replace("-", " ")}
+                  </span>
+                </div>
+                <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{row.purpose}</p>
+                <div className="mt-2 font-mono text-micro leading-relaxed text-subtle">
+                  n={row.sample_n} · source evidence {last} · {row.cadence} · visible in {row.visible_at}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </details>
+
+      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        This registry is read-only aggregate telemetry. It cannot change the Chair, paper book, learner, thresholds, or promotion state.
+      </p>
+    </section>
+  );
+}
+
 function ForcedV4Study({ data }: { data: PublicLabSnapshot["forced_v4"] }) {
   if (!data) {
     return (
@@ -413,6 +527,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
               </div>
             </section>
 
+            <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />
             <LabSummary data={data} />
