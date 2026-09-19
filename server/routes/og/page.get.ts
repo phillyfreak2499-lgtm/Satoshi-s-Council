@@ -9,7 +9,7 @@ const PAGES: Record<string, [string, string]> = {
   "/training/wick": ["WICK TRAINING DESK", "CLOSED CANDLES / SIX SCREENS / YOUR PACE"],
   "/lab": ["THE LAB", "FROZEN EXPERIMENTS / MATCHED EVIDENCE"],
   "/arena": ["THE ARENA", "YOUR PAPER CALL / THE ROOM / THE CHAIR"],
-  "/about": ["MEET THE COUNCIL", "TWENTY-ONE SPECIALIST SEATS"],
+  "/about": ["MEET THE COUNCIL", "21 SEATS / 18 VOTE / 3 PIT CREW"],
   "/faq": ["QUESTIONS & ANSWERS", "HOW THE PAPER RESEARCH DESK WORKS"],
   "/legal": ["PAPER ONLY", "NO LIVE ORDERS / NO FINANCIAL ADVICE"],
 };
