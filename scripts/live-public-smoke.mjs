@@ -12,8 +12,8 @@ const surfaces = [
   ["/training/wick", ["WICK"]],
   ["/training/tape", ["TAPE"]],
   ["/legal", ["Paper only, in plain words", "Questions about the desk"]],
-  ["/about", ["How the desk works", "twenty-one"]],
-  ["/faq", ["Questions people ask", "Twenty-one"]],
+  ["/about", ["How the desk works", "21 Council seats", "18 voting specialists", "3 non-voting pit crew"]],
+  ["/faq", ["Questions people ask", "How many Council seats actually vote?", "18 voting specialists", "3 non-voting pit crew"]],
 ];
 
 let failed = false;
