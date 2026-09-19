@@ -67,6 +67,10 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       max(extract(epoch from taken_at) * 1000)::bigint
       from desk_openai_shadow
     union all
+    select 'astra-director', count(*)::int,
+      max(extract(epoch from created_at) * 1000)::bigint
+      from desk_astra_director
+    union all
     select 'policy-exit', count(*)::int,
       max(extract(epoch from created_at) * 1000)::bigint
       from desk_policy_fills
