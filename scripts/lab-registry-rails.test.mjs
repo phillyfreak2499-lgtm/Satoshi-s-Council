@@ -23,10 +23,10 @@ test("whole-Lab registry has one unique lifecycle row for every audited research
   const v = loadPure();
   const rows = Array.from(v.LAB_RESEARCH_REGISTRY);
   const ids = rows.map((row) => row.id);
-  assert.equal(ids.length, 20);
+  assert.equal(ids.length, 21);
   assert.equal(ids.length, new Set(ids).size, "registry ids must be unique");
   for (const id of [
-    "chair-v2", "chair-v3", "taker-v1", "forced-v4", "policy-exit",
+    "chair-v2", "chair-v3", "taker-v1", "forced-v4", "openai-shadow-v1", "policy-exit",
     "seat-timing", "call-quality", "tape2", "vel2", "strike2", "whale2",
     "absorption", "path-parity", "decision-snapshots", "higher-context",
     "null-horizon", "index-settlement-fair", "lag-events", "basis-minutes",
@@ -63,7 +63,7 @@ test("registry server is aggregate read-only and has no actuator path", () => {
   assert.match(src, /select 'chair-v2'/i);
   for (const table of [
     "desk_samples", "desk_v3_samples", "desk_taker", "desk_v4_forced",
-    "desk_policy_fills", "desk_replay", "desk_call_quality", "desk_absorption",
+    "desk_openai_shadow", "desk_policy_fills", "desk_replay", "desk_call_quality", "desk_absorption",
     "desk_path_parity", "desk_decision_snapshots", "desk_lag_events",
     "desk_basis_minutes", "desk_hour_ledger",
   ]) {
