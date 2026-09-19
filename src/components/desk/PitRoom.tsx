@@ -600,7 +600,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
               </span>
             </div>
             {!humans.length ? (
-              <div className="mt-2 font-mono text-micro text-muted">Nobody has locked in the last 7 days. Be first.</div>
+              <div className="mt-2 font-mono text-micro text-muted">No human callsign currently qualifies for the 7-day board. A callsign appears publicly after 3 settled paper calls; no users or rows are seeded.</div>
             ) : null}
             <table className="mt-2 w-full font-mono text-micro">
               <thead className="text-subtle">
