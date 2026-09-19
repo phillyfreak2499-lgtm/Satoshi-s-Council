@@ -96,6 +96,18 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     visible_at: "Lab",
   },
   {
+    id: "openai-luna-v1",
+    label: "OpenAI Luna benchmark V1",
+    type: "decider",
+    authority: "none",
+    purpose: "Low-cost market-aware benchmark using the same frozen packet as Terra.",
+    cadence: "once per 15m window when API is configured",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab",
+  },
+  {
     id: "astra-director",
     label: "Astra research director",
     type: "measurement",

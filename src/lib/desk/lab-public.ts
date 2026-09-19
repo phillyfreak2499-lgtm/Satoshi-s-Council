@@ -17,6 +17,7 @@ import { callQualitySnapshot, type CallQualitySnapshot } from "./call-quality.se
 import { forcedV4Snapshot, type ForcedV4Snapshot } from "./forced-v4.server";
 import { openAIShadowSnapshot, type OpenAIShadowSnapshot } from "./openai-shadow.server";
 import { openAIBlindSnapshot, type OpenAIBlindSnapshot } from "./openai-blind.server";
+import { openAILunaSnapshot, type OpenAILunaSnapshot } from "./openai-luna.server";
 import { labRegistrySnapshot, type PublicLabRegistrySnapshot } from "./lab-registry.server";
 import { astraDirectorSnapshot, type AstraDirectorSnapshot } from "./astra-director.server";
 
@@ -48,6 +49,7 @@ export type PublicLabSnapshot = {
   forced_v4: ForcedV4Snapshot | null;
   openai_shadow: OpenAIShadowSnapshot | null;
   openai_blind: OpenAIBlindSnapshot | null;
+  openai_luna: OpenAILunaSnapshot | null;
   astra_director: AstraDirectorSnapshot | null;
   registry: PublicLabRegistrySnapshot | null;
   governance: {
@@ -61,13 +63,14 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, astraDirector, registry] = await Promise.all([
+    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, openAILuna, astraDirector, registry] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
       callQualitySnapshot().catch(() => null),
       forcedV4Snapshot().catch(() => null),
       openAIShadowSnapshot().catch(() => null),
       openAIBlindSnapshot().catch(() => null),
+      openAILunaSnapshot().catch(() => null),
       astraDirectorSnapshot().catch(() => null),
       labRegistrySnapshot().catch(() => null),
     ]);
@@ -106,6 +109,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       forced_v4: forcedV4,
       openai_shadow: openAIShadow,
       openai_blind: openAIBlind,
+      openai_luna: openAILuna,
       astra_director: astraDirector,
       registry,
       governance: {

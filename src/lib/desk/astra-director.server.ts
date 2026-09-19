@@ -26,6 +26,7 @@ import { forcedV4Snapshot } from "./forced-v4.server";
 import { labRegistrySnapshot } from "./lab-registry.server";
 import { openAIShadowSnapshot } from "./openai-shadow.server";
 import { openAIBlindSnapshot } from "./openai-blind.server";
+import { openAILunaSnapshot } from "./openai-luna.server";
 import { labStanding } from "./policy-lab.server";
 import { evaluateComponentGates, type Pair } from "./promotion-gates";
 import { redundancyStudy } from "./redundancy.server";
@@ -49,7 +50,8 @@ Hard authority limits:
 
 Research task:
 - Compare the newest 384-window block with the preceding block.
-- Look for regime changes, degradation, improvement, redundant seats, stale research, candidate strength/weakness, and disagreement among market-aware AI, market-blind AI, forced-direction research and the live Floor.
+- Look for regime changes, degradation, improvement, redundant seats, stale research, candidate strength/weakness, and disagreement among market-aware Terra, market-blind Terra, low-cost Luna, forced-direction research and the live Floor.
+- When Terra and Luna use the same packet, explicitly assess whether Terra's higher cost is buying enough measurable value to justify keeping it at high frequency.
 - Distinguish in-sample descriptive patterns from prospective evidence.
 - Prefer fewer, stronger findings over a long speculative list.
 - Use LOW/MEDIUM/HIGH confidence conservatively.
@@ -211,13 +213,14 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
   const newest = raw.slice(0, ASTRA_DIRECTOR_WINDOW_BATCH).reverse();
   const prior = raw.slice(ASTRA_DIRECTOR_WINDOW_BATCH, ASTRA_DIRECTOR_WINDOW_BATCH * 2).reverse();
 
-  const [standing, registry, callQuality, forcedV4, openai, blind, cube, redundancy, signal, promotion] = await Promise.all([
+  const [standing, registry, callQuality, forcedV4, openai, blind, luna, cube, redundancy, signal, promotion] = await Promise.all([
     labStanding().catch(() => null),
     labRegistrySnapshot().catch(() => null),
     callQualitySnapshot().catch(() => null),
     forcedV4Snapshot().catch(() => null),
     openAIShadowSnapshot().catch(() => null),
     openAIBlindSnapshot().catch(() => null),
+    openAILunaSnapshot().catch(() => null),
     cubeStudy().catch(() => null),
     redundancyStudy().catch(() => null),
     signalStudy().catch(() => null),
@@ -250,6 +253,7 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
       forced_direction_v4: forcedV4,
       openai_market_aware: openai,
       openai_market_blind: blind,
+      openai_luna_low_cost: luna,
     },
     pattern_studies: {
       performance_cube: cube,
