@@ -24,6 +24,7 @@ export function AtelierTab() {
           confidence: frame.chair?.confidence ?? 0,
           score: frame.chair?.score ?? 0,
           bar: frame.chair?.bar ?? 0,
+          decision: frame.chair?.decision || frame.chair?.wait_note || frame.chair?.hypothesis || "",
           brainAge: frame.brain_age_s,
           source: frame.settings.source,
           asOf: frame.snap?.as_of ?? 0,

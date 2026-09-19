@@ -4,6 +4,7 @@ import { useCountdownText, useTickingAge } from "@/lib/desk/hooks";
 import { pulseSkewMs } from "@/lib/desk/pulse";
 import { streamMillis, streamPoints } from "@/lib/atelier/streamer";
 import type { SatoshiPaint } from "./gallery";
+import { CouncilVoiceButton } from "@/components/desk/CouncilVoiceButton";
 import "./streamer.css";
 
 const CONCEPT = "/atelier/streamer-concept.png";
@@ -38,6 +39,9 @@ function Spotlight({
         <h3>{seat}</h3>
         <strong className="streamer-lean">{vote?.lean ?? "—"}</strong>
         <p>{vote?.reasoning || "Waiting for this seat’s next reading."}</p>
+        {fresh && satoshi.source === "live" ? (
+          <CouncilVoiceButton source="live" speaker={seat} label={"Hear " + seat} className="streamer-voice" />
+        ) : null}
       </div>
     </article>
   );
@@ -228,6 +232,7 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
   const counts = { UP: 0, DOWN: 0, WAIT: 0 };
   for (const vote of satoshi.votes) counts[vote.lean] += 1;
   const total = satoshi.votes.length;
+  const tape = satoshi.votes.find((vote) => vote.seat === "TAPE");
   const closed = satoshi.closeTime > 0 && (countdown === "0:00" || countdown === "00:00");
 
   if (concept)
@@ -279,6 +284,10 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
                   Score {Number.isFinite(satoshi.score) ? Math.abs(satoshi.score).toFixed(2) : "—"}{" "}
                   / bar {Number.isFinite(satoshi.bar) ? satoshi.bar.toFixed(2) : "—"}
                 </small>
+                {satoshi.decision ? <p className="streamer-chair-reason">{satoshi.decision}</p> : null}
+                {fresh && live ? (
+                  <CouncilVoiceButton source="live" speaker="SATOSHI" label="Hear SATOSHI" className="streamer-voice" />
+                ) : null}
               </div>
             </div>
             <div className="streamer-clock">
@@ -312,6 +321,16 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
               ))}
             </div>
           </div>
+          <div className="streamer-tape" data-lean={tape?.lean ?? "WAIT"}>
+            <div>
+              <span className="streamer-eyebrow">Third mic · order book</span>
+              <strong>TAPE · {tape?.lean ?? "—"}</strong>
+              <p>{tape?.reasoning || "Waiting for TAPE’s next fresh book read."}</p>
+            </div>
+            {fresh && live ? (
+              <CouncilVoiceButton source="live" speaker="TAPE" label="Hear TAPE" className="streamer-voice" />
+            ) : null}
+          </div>
         </div>
         <Spotlight seat="DRIFT" satoshi={satoshi} fresh={fresh} />
       </div>
@@ -332,6 +351,7 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
             ? `Last official: ${satoshi.lastSettled} · ${new Date(streamMillis(satoshi.lastSettledAt)).toISOString().slice(11, 16)} UTC`
             : "Awaiting an official result"}
         </span>
+        <span>AI-generated character voices · optional</span>
         <span>Paper only · no real money</span>
       </footer>
     </section>

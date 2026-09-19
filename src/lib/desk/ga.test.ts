@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GA_EVENT_NAMES, gtagEvent, gtagEventAfterSuccess, type GaEventName } from "./ga.ts";
 
-test("final event set is exactly the three allowed names", () => {
+test("final event set is exactly the four allowed names", () => {
   assert.deepEqual([...GA_EVENT_NAMES].sort(), [
     "enter_the_floor",
     "feedback_submitted",
     "paper_call_locked",
+    "character_voice_played",
   ].sort());
   const forbidden = ["signup", "sign_up", "generate_lead", "purchase", "add_to_cart", "begin_checkout"];
   for (const bad of forbidden) {
@@ -34,10 +35,12 @@ test("gtagEvent forwards only the event name (no params / no PII)", () => {
   gtagEvent("enter_the_floor");
   gtagEvent("feedback_submitted");
   gtagEvent("paper_call_locked");
+  gtagEvent("character_voice_played");
   assert.deepEqual(calls, [
     ["event", "enter_the_floor"],
     ["event", "feedback_submitted"],
     ["event", "paper_call_locked"],
+    ["event", "character_voice_played"],
   ]);
   globalThis.window = prev;
 });

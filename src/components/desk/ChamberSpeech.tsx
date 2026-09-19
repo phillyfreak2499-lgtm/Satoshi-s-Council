@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
 import { Crest } from "./Crest";
+import { CouncilVoiceButton } from "./CouncilVoiceButton";
 
 function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
   if (speaker === "SATOSHI") {
@@ -56,7 +57,13 @@ export function ChamberSpeech() {
         <div className="min-w-0 flex-1">
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">{speech.speaker}</div>
           <p className="mt-0.5 font-sans text-ui text-fg">{speech.text}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <CouncilVoiceButton
+              source="chamber"
+              speaker={speech.speaker}
+              eventKey={speech.event_key}
+              label="Hear"
+            />
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
