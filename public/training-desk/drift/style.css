@@ -96,3 +96,54 @@ dialog{border:1px solid #8b917c;background:#111c19;color:var(--ink);padding:26px
   .momentum-glyph{width:35px;padding-right:8px;gap:7px}
   .return-cards{grid-template-columns:1fr}.return-cards section{display:flex;align-items:center;justify-content:space-between;text-align:left;padding:10px 12px}.return-cards strong{margin:0;font-size:18px}.return-cards small{display:none}
 }
+
+
+/* DRIFT's first-view momentum tray: the station's physical teaching tools stay visible above the six monitors. */
+.momentum-tray{
+  position:relative;z-index:4;max-width:1230px;min-height:88px;margin:-6px auto 18px;padding:9px 13px;
+  display:grid;grid-template-columns:minmax(145px,.9fr) 220px minmax(230px,1.35fr) 165px 135px;gap:12px;align-items:center;
+  border:1px solid #334b51;border-top-color:#688087;
+  background:linear-gradient(180deg,#152328e8,#0c171be8);
+  box-shadow:0 10px 22px #0008,inset 0 1px 0 #a7c3c31c;
+  overflow:hidden;
+}
+.momentum-tray:before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,#70a9ad0a,transparent 36%,#d8bc7908 67%,transparent)}
+.tray-title{position:relative;z-index:1;border-right:1px solid #33494f;padding-right:10px}
+.tray-title span{display:block;font:700 9px Consolas,monospace;letter-spacing:.12em;color:#c8d8da}
+.tray-title small{display:block;margin-top:7px;font:6px/1.45 Consolas,monospace;letter-spacing:.08em;color:#718b91}
+.tray-chips{position:relative;z-index:1;display:flex;gap:9px;justify-content:center;align-items:center}
+.tray-chip{
+  width:57px;height:57px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border:3px dashed #83a6a8;background:radial-gradient(circle at 35% 30%,#3b5960,#17272b 64%,#091012 66%);
+  box-shadow:inset 0 0 0 4px #101b1e,0 4px 8px #0008;color:#c9dcdd;transform:rotate(-4deg)
+}
+.tray-chip b{font:700 13px Consolas,monospace}.tray-chip small{margin-top:2px;font:5px Consolas,monospace;letter-spacing:.09em;color:#829ca0}
+.tray-chip-15{border-color:#c4a966;background:radial-gradient(circle at 35% 30%,#65583c,#2a2418 64%,#0d0c08 66%);color:#e3c98b;transform:translateY(-4px) rotate(2deg)}
+.tray-chip-30{border-color:#8595ba;background:radial-gradient(circle at 35% 30%,#424c68,#1b2030 64%,#0b0c12 66%);transform:rotate(5deg)}
+.tray-refs{position:relative;z-index:1;display:flex;justify-content:center;align-items:center;gap:9px;min-width:0}
+.tray-card{width:111px;height:67px;margin:0;padding:5px 6px 14px;background:#c9c6b5;color:#303732;box-shadow:3px 5px 8px #0008;position:relative;overflow:hidden}
+.tray-card>span{display:block;font:4.5px Consolas,monospace;letter-spacing:.07em}
+.tray-card svg{display:block;width:100%;height:37px;margin-top:3px;background:#233238}
+.tray-card path{fill:none;stroke:#d9bd7a;stroke-width:3}
+.tray-card figcaption{position:absolute;left:7px;bottom:4px;font:7px Georgia,serif;letter-spacing:.1em}
+.tray-card-align{transform:rotate(-4deg)}.tray-card-conflict{transform:rotate(5deg);filter:brightness(.91)}.tray-card-conflict path{stroke:#91bbc1}
+.tray-ruler{position:relative;z-index:1;height:28px;border:1px solid #9b8d63;background:#c9b673c7;transform:rotate(-5deg);box-shadow:3px 4px 6px #0006;padding-left:5px}
+.tray-ruler span{display:inline-block;width:1px;height:12px;margin-left:17px;background:#554b2e;vertical-align:top}.tray-ruler span:nth-child(even){height:7px}
+.tray-ruler strong{position:absolute;left:8px;bottom:2px;font:6px Consolas,monospace;letter-spacing:.12em;color:#453e29}
+.tray-sticky{position:relative;z-index:1;padding:10px 9px;background:#bbc18d;color:#263026;transform:rotate(3deg);box-shadow:3px 5px 7px #0008;font:italic 12px/1.2 Georgia,serif;text-align:center}
+.tray-sticky small{display:block;margin-top:5px;font:6px Consolas,monospace;letter-spacing:.06em}
+/* The older lower-surface versions are retired so the props do not appear twice. */
+.desk-surface>.drift-chip-rack,.desk-surface>.drift-photo,.desk-surface>.drift-ruler,.desk-surface>.drift-sticky{display:none}
+
+@media(max-width:1000px){
+  .momentum-tray{grid-template-columns:145px 195px 1fr 120px;min-height:82px;padding:8px 10px}
+  .tray-ruler{display:none}.tray-card{width:91px;height:59px}.tray-card svg{height:31px}
+  .tray-sticky{font-size:10px;padding:9px 6px}
+}
+@media(max-width:700px){
+  .momentum-tray{margin:-4px 0 14px;grid-template-columns:1fr auto;min-height:72px;gap:8px;padding:8px 9px}
+  .tray-title{border-right:0}.tray-title small{font-size:5px}
+  .tray-chips{gap:5px}.tray-chip{width:43px;height:43px;border-width:2px}.tray-chip b{font-size:10px}.tray-chip small{font-size:4px}
+  .tray-refs,.tray-ruler{display:none}.tray-sticky{grid-column:1 / -1;justify-self:end;margin-top:-3px;padding:5px 8px;font-size:9px}
+  .tray-sticky small{font-size:5px;margin-top:2px}
+}
