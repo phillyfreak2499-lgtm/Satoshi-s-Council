@@ -28,6 +28,9 @@ export default function healthz() {
   void import("../../src/lib/desk/astra-director.server")
     .then((m) => m.ensureAstraDirectorObserver())
     .catch(() => {});
+  void import("../../src/lib/desk/lab-registry.server")
+    .then((m) => m.ensureLabRegistryObserver())
+    .catch(() => {});
   // The hourly closer: a separate book, its own table, its own timer, no path into the floor.
   void import("../../src/lib/desk/hour-closer.server")
     .then((m) => m.ensureHourCloser())
