@@ -71,6 +71,10 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       max(extract(epoch from taken_at) * 1000)::bigint
       from desk_openai_blind
     union all
+    select 'openai-luna-v1', count(*)::int,
+      max(extract(epoch from taken_at) * 1000)::bigint
+      from desk_openai_luna
+    union all
     select 'astra-director', count(*)::int,
       max(extract(epoch from created_at) * 1000)::bigint
       from desk_astra_director
