@@ -146,7 +146,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
       <div className="council-chair-summary">
         <div className="min-w-0">
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            <Tip k="pane.board">Chair call</Tip>
+            <Tip k="pane.board">Standing Chair read</Tip>
           </div>
           <h1 className={cn("council-chair-verdict font-sans font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
             <span className="sr-only">Chair call: </span>
@@ -221,6 +221,9 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
           })()}
           tz={tz}
         />
+      <div className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        Current frame · the gauge below moves live. A standing UP/DOWN read may have qualified earlier; use the decision snapshot above for call-time evidence when one is recorded. Paper entry is separate.
+      </div>
       <ChairSignalGauge
         chair={chair}
         feedHealthy={snap.health.spot !== "DOWN" && snap.health.spot !== "STALE" && snap.health.kalshi !== "DOWN" && snap.health.kalshi !== "STALE"}

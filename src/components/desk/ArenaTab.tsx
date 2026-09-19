@@ -54,7 +54,7 @@ function Board({ title, rows, desk }: { title: string; rows: ArenaRow[]; desk: A
           </tbody>
         </table>
       ) : (
-        <div className="font-mono text-micro text-muted">Nobody has a settled call yet. Be first.</div>
+        <div className="font-mono text-micro text-muted">No human callsign qualifies yet. Callsigns rank publicly after 3 settled paper calls; no users or rows are seeded.</div>
       )}
     </Pane>
   );

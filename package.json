@@ -23,7 +23,8 @@
     "format": "prettier --write .",
     "check:migrations": "node --test scripts/migrations-apply.test.mjs",
     "reconcile:kalshi": "node --experimental-strip-types scripts/reconcile-kalshi.ts",
-    "lab:null-horizon": "node --experimental-strip-types scripts/lab-null-horizon.ts"
+    "lab:null-horizon": "node --experimental-strip-types scripts/lab-null-horizon.ts",
+    "smoke:public": "node scripts/live-public-smoke.mjs"
   },
   "engines": {
     "node": ">=22"
