@@ -149,7 +149,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
             <Tip k="pane.board">Standing Chair read</Tip>
           </div>
           <h1 className={cn("council-chair-verdict font-sans font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
-            <span className="sr-only">Standing Chair read: </span>
+            <span className="sr-only">Chair call: </span>
             {lean === "WAIT" ? "WAIT" : `${lean} ${ask.toFixed(0)}¢`}
           </h1>
           <p className="mt-1.5 max-w-[52ch] font-sans text-ui leading-snug text-fg" data-plain-line>
