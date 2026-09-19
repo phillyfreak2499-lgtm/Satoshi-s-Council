@@ -39,6 +39,8 @@ test("Books gain section anchors and one responsive window table", () => {
   assert.match(books, /data-label="Close"/);
   assert.match(read("src/styles.css"), /\.books-window-table/);
   assert.match(books, /open replay/);
+  assert.match(books, /<span className="hidden sm:inline">ARENA ·<\/span>/);
+  assert.match(books, /w\.arena\.n === 1 \? "CALL" : "CALLS"/);
 });
 
 test("the Lab leads with comparison and stable humanized ages", () => {

@@ -837,7 +837,12 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
                   <td role="cell" data-label="Seats" title="Speaking seats right at grade; not agreement at entry" className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
                   <td role="cell" data-label="Reads" className="text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
                   <td role="cell" data-label="Arena" className={cn("py-1 text-right tabular", w.arena ? tone(w.arena.net) : "text-subtle")}>
-                    {w.arena ? `${w.arena.n} · ${fmtC(w.arena.net)}` : "—"}
+                    {w.arena ? (
+                      <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                        <span className="hidden sm:inline">ARENA ·</span>
+                        <span>{w.arena.n} {w.arena.n === 1 ? "CALL" : "CALLS"} · {fmtC(w.arena.net)}</span>
+                      </span>
+                    ) : "—"}
                   </td>
                 </tr>
               ))}
