@@ -383,7 +383,7 @@ async function pendingJob(): Promise<BackgroundJobRow | null> {
   return row ?? null;
 }
 
-async function latestJobForWindow(throughClose: string): Promise<BackgroundJobRow | null> {
+async function latestJob(): Promise<BackgroundJobRow | null> {
   const db = await getSql();
   const [row] = await db<BackgroundJobRow>`
     select id, through_close_time, graded_total, packet, response_id, status,
@@ -391,8 +391,7 @@ async function latestJobForWindow(throughClose: string): Promise<BackgroundJobRo
       from desk_astra_director_jobs
      where study = ${ASTRA_DIRECTOR_STUDY}
        and version = ${ASTRA_DIRECTOR_VERSION}
-       and through_close_time = ${throughClose}::timestamptz
-     order by attempt desc, started_at desc
+     order by started_at desc
      limit 1
   `;
   return row ?? null;
@@ -514,27 +513,45 @@ async function captureIfDue(): Promise<void> {
     const due = await dueState();
     if (!due.due || !due.throughClose) return;
 
-    const latest = await latestJobForWindow(due.throughClose);
-    if (latest && !pendingStatuses.has(latest.status)) {
+    const latest = await latestJob();
+    const latestIsUnresolved =
+      latest != null &&
+      latest.graded_total > due.lastTotal &&
+      latest.status !== "completed";
+
+    if (latestIsUnresolved) {
       const age = Date.now() - new Date(latest.started_at).getTime();
       if (age < RETRY_AFTER_MS) return;
     }
 
-    const packet = await buildPacket(due.gradedTotal, due.throughClose);
+    // A failed/incomplete review must retry the exact same frozen packet rather
+    // than silently rolling forward as new 15m windows grade. Only a brand-new
+    // review may freeze the current through-close packet.
+    const packet = latestIsUnresolved
+      ? latest.packet
+      : await buildPacket(due.gradedTotal, due.throughClose);
+    const throughClose = latestIsUnresolved
+      ? iso(latest.through_close_time)
+      : due.throughClose;
+    const gradedTotal = latestIsUnresolved
+      ? Number(latest.graded_total)
+      : due.gradedTotal;
     const packetJson = JSON.stringify(packet);
     const packetHash = createHash("sha256").update(packetJson).digest("hex");
     const started = await createBackgroundReport(packet, apiKey);
     const status = normalizeStatus(started.body.status);
     const responseId = started.body.id ?? "";
-    const attempt = Math.max(1, Number(latest?.attempt ?? 0) + 1);
+    const attempt = latestIsUnresolved
+      ? Math.max(1, Number(latest?.attempt ?? 0) + 1)
+      : 1;
     const db = await getSql();
     const [job] = await db<BackgroundJobRow>`
       insert into desk_astra_director_jobs (
         study, version, through_close_time, graded_total, packet_hash, packet,
         response_id, status, attempt, build_sha
       ) values (
-        ${ASTRA_DIRECTOR_STUDY}, ${ASTRA_DIRECTOR_VERSION}, ${due.throughClose}::timestamptz,
-        ${due.gradedTotal}, ${packetHash}, ${packetJson}::jsonb, ${responseId},
+        ${ASTRA_DIRECTOR_STUDY}, ${ASTRA_DIRECTOR_VERSION}, ${throughClose}::timestamptz,
+        ${gradedTotal}, ${packetHash}, ${packetJson}::jsonb, ${responseId},
         ${status}, ${attempt}, ${process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? ""}
       )
       returning id, through_close_time, graded_total, packet, response_id, status,

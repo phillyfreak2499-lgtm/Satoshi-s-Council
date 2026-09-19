@@ -112,3 +112,13 @@ test("Lab registry lifecycle scan is warmed off the request path", () => {
   const astraPos = health.indexOf("ensureAstraDirectorObserver");
   assert.ok(registryPos >= 0 && astraPos > registryPos, "registry observer must warm before Astra");
 });
+
+test("failed Astra reviews retry the exact same frozen packet", () => {
+  assert.match(server, /const latest = await latestJob\(\)/);
+  assert.match(server, /latestIsUnresolved/);
+  assert.match(server, /\? latest\.packet/);
+  assert.match(server, /\? iso\(latest\.through_close_time\)/);
+  assert.match(server, /\? Number\(latest\.graded_total\)/);
+  assert.match(server, /latest\.graded_total > due\.lastTotal/);
+  assert.doesNotMatch(server, /latestJobForWindow/);
+});
