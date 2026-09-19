@@ -13,7 +13,8 @@ import {
   type LabStudySpec,
 } from "./lab-registry";
 
-const TTL_MS = 60_000;
+const REFRESH_MS = 5 * 60_000;
+const RETRY_MS = 30_000;
 
 type StatRow = {
   id: string;
@@ -36,15 +37,30 @@ export type PublicLabRegistrySnapshot = {
 
 let cache: { at: number; value: PublicLabRegistrySnapshot } | null = null;
 
+type RegistryObserver = {
+  timer: ReturnType<typeof setInterval> | null;
+  inFlight: boolean;
+  lastError: string | null;
+  lastAttemptAt: number;
+};
+
+const g = globalThis as typeof globalThis & { __labRegistryObserver__?: RegistryObserver };
+function registryObserver(): RegistryObserver {
+  return (g.__labRegistryObserver__ ??= {
+    timer: null,
+    inFlight: false,
+    lastError: null,
+    lastAttemptAt: 0,
+  });
+}
+
 const msExpr = (v: number | string | null | undefined): string | null => {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
 };
 
-export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> {
-  if (cache && Date.now() - cache.at < TTL_MS) return cache.value;
-
+async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> {
   const db = await getSql();
   const stats = await db<StatRow>`
     with replay_stats as materialized (
@@ -216,4 +232,39 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
   };
   cache = { at: now, value };
   return value;
+}
+
+export async function refreshLabRegistrySnapshot(): Promise<void> {
+  const st = registryObserver();
+  const now = Date.now();
+  if (st.inFlight) return;
+  if (st.lastAttemptAt && now - st.lastAttemptAt < RETRY_MS) return;
+  st.inFlight = true;
+  st.lastAttemptAt = now;
+  try {
+    await computeLabRegistrySnapshot();
+    st.lastError = null;
+  } catch (err) {
+    st.lastError = err instanceof Error ? err.message : String(err);
+  } finally {
+    st.inFlight = false;
+  }
+}
+
+export function ensureLabRegistryObserver(): void {
+  const st = registryObserver();
+  if (st.timer) return;
+  st.timer = setInterval(() => void refreshLabRegistrySnapshot(), REFRESH_MS);
+  void refreshLabRegistrySnapshot();
+}
+
+/**
+ * Request-path reader: never performs the expensive lifecycle scan itself.
+ * It serves the most recent successful warm-cache snapshot and lets the
+ * background observer refresh it independently.
+ */
+export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> {
+  if (cache) return cache.value;
+  void refreshLabRegistrySnapshot();
+  throw new Error("Lab registry snapshot is warming");
 }
