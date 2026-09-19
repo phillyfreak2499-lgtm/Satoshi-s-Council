@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import test from "node:test";
+import test from "node:test";\nimport vm from "node:vm";
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), "utf8");
 const html = read("public/training-desk/drift/index.html");
 const js = read("public/training-desk/drift/main.js");
 const css = read("public/training-desk/drift/style.css");
 const route = read("server/routes/training-drift-frame.get.ts");
+
+
+test("DRIFT browser modules are syntactically valid", () => {
+  assert.doesNotThrow(() => new vm.Script(js.replace(/^import .*?;\\n/, "")));
+  const chart = read("public/training-desk/drift/chart.js").replace(/\\bexport\\s+/g, "");
+  assert.doesNotThrow(() => new vm.Script(chart));
+});
 
 test("DRIFT keeps the six-screen school grammar with momentum-specific content", () => {
   for (const label of ["What do you see?", "Let me try", "Ask DRIFT", "The chart", "DRIFT’s notes", "Practice"]) {
