@@ -11,6 +11,7 @@ import {
   OPENAI_BLIND_DEFAULT_MODEL,
   OPENAI_BLIND_LOCK_GRACE_SECS,
   OPENAI_BLIND_LOCK_SECS,
+  OPENAI_BLIND_MAX_CAPTURES,
   OPENAI_BLIND_PROMPT_VERSION,
   OPENAI_BLIND_SCHEMA,
   OPENAI_BLIND_STUDY,
@@ -85,6 +86,7 @@ type Observer = {
   lastError: string | null;
   lastCapturedAt: number;
   lastLatencyMs: number | null;
+  complete: boolean;
 };
 
 const g = globalThis as typeof globalThis & { __openAIBlindObserver__?: Observer };
@@ -96,6 +98,7 @@ function observer(): Observer {
     lastError: null,
     lastCapturedAt: 0,
     lastLatencyMs: null,
+    complete: false,
   });
 }
 
@@ -196,9 +199,18 @@ async function alreadyCaptured(ticker: string, closeTime: number): Promise<boole
   return rows[0]?.present === true;
 }
 
+async function capturedCount(): Promise<number> {
+  const db = await getSql();
+  const [row] = await db<{ n: number }>`
+    select count(*)::int as n from desk_openai_blind
+     where study = ${OPENAI_BLIND_STUDY} and version = ${OPENAI_BLIND_VERSION}
+  `;
+  return Math.max(0, Number(row?.n ?? 0));
+}
+
 async function captureOnce(): Promise<void> {
   const st = observer();
-  if (st.inFlight || Date.now() < OPENAI_BLIND_PROSPECTIVE_SINCE) return;
+  if (st.inFlight || st.complete || Date.now() < OPENAI_BLIND_PROSPECTIVE_SINCE) return;
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -222,6 +234,10 @@ async function captureOnce(): Promise<void> {
     if (st.sampled.has(key)) return;
     if (await alreadyCaptured(snap.ticker, snap.close_time)) {
       st.sampled.add(key);
+      return;
+    }
+    if (await capturedCount() >= OPENAI_BLIND_MAX_CAPTURES) {
+      st.complete = true;
       return;
     }
 
@@ -314,6 +330,8 @@ export function openAIBlindHealth() {
     last_captured_at: st.lastCapturedAt ? new Date(st.lastCapturedAt).toISOString() : null,
     last_latency_ms: st.lastLatencyMs,
     last_error: st.lastError,
+    complete: st.complete,
+    max_captures: OPENAI_BLIND_MAX_CAPTURES,
   };
 }
 
@@ -334,6 +352,7 @@ export type OpenAIBlindSnapshot = {
     chair: false;
   };
   captured: number;
+  max_captures: number;
   graded: number;
   hits: number;
   accuracy: number | null;
@@ -407,6 +426,7 @@ export async function openAIBlindSnapshot(): Promise<OpenAIBlindSnapshot> {
     authority: { live_chair: false, paper_book: false, learner: false, promotion: false, execution: false },
     blindness: { kalshi_prices: false, desk_fair: false, council_votes: false, chair: false },
     captured: rows.length,
+    max_captures: OPENAI_BLIND_MAX_CAPTURES,
     graded: graded.length,
     hits,
     accuracy: graded.length ? round(hits / graded.length) : null,
