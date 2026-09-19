@@ -32,6 +32,7 @@ const { screenNumber } = training;
 const { TrainingHome } = load("src/components/desk/TrainingHome.tsx", {
   "@/lib/desk/training": training,
   "./PaperDisclaimer": { PaperDisclaimer: () => null },
+  "./CouncilVoiceButton": { CouncilVoiceButton: () => null },
 });
 const html = renderToString(React.createElement(TrainingHome));
 const text = html.replace(/<!--.*?-->/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
