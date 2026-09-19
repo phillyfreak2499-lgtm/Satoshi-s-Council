@@ -342,6 +342,132 @@ function OpenAIShadowStudy({ data }: { data: PublicLabSnapshot["openai_shadow"] 
   );
 }
 
+function AstraDirectorStudy({ data }: { data: PublicLabSnapshot["astra_director"] }) {
+  if (!data) {
+    return (
+      <section className="mt-6 rounded-md border border-border bg-canvas p-4">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">Astra research director</div>
+        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+          The periodic deep-review scorecard is temporarily unavailable. It has no live decision authority.
+        </p>
+      </section>
+    );
+  }
+
+  const latest = data.latest;
+  const status = !data.health.configured
+    ? "needs API key"
+    : data.health.last_error
+      ? "review error"
+      : latest
+        ? "report recorded"
+        : "collecting evidence";
+
+  return (
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="astra-director-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
+            Deep governance review · every {data.batch_windows} windows
+          </div>
+          <h2 id="astra-director-title" className="mt-1 font-sans text-title font-medium text-fg">
+            Astra research director
+          </h2>
+        </div>
+        <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold uppercase tracking-widest text-muted">
+          {status}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[90ch] font-sans text-ui leading-relaxed text-muted">
+        Astra periodically compares the newest research block with the prior block, reads the Lab lifecycle,
+        performance, redundancy and seat-signal studies, and can nominate a review or a new shadow test.
+        It cannot promote, demote, reweight, book, or change SATOSHI. Frozen code gates decide eligibility.
+      </p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Next deep review</div>
+          <div className="mt-1 font-mono text-data tabular text-fg">{data.due_in_windows} windows</div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Model</div>
+          <div className="mt-1 font-mono text-ui text-fg">{data.model}</div>
+        </div>
+        <div className="rounded-sm border border-border bg-canvas p-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Authority</div>
+          <div className="mt-1 font-mono text-ui text-fg">report only · no Floor write</div>
+        </div>
+      </div>
+
+      {latest ? (
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-mono text-micro uppercase tracking-widest text-subtle">
+              Latest review · through {new Date(latest.through_close_time).toISOString().slice(0, 16).replace("T", " ")} UTC
+            </div>
+            <span className="font-mono text-micro uppercase tracking-widest text-muted">
+              Floor {latest.report.floor_health.toLowerCase()}
+            </span>
+          </div>
+          <p className="mt-2 max-w-[90ch] font-sans text-ui leading-relaxed text-fg">{latest.report.summary}</p>
+
+          {latest.report.patterns.length ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {latest.report.patterns.slice(0, 6).map((pattern) => (
+                <article key={`${pattern.label}:${pattern.action}`} className="rounded-sm border border-border bg-canvas p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-ui text-fg">{pattern.label}</span>
+                    <span className="font-mono text-micro uppercase tracking-widest text-subtle">
+                      {pattern.action.replace("_", " ")} · {pattern.confidence}
+                    </span>
+                  </div>
+                  <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{pattern.evidence}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {latest.report.lab_actions.length ? (
+            <details className="mt-4 rounded-sm border border-border bg-canvas">
+              <summary className="cursor-pointer px-3 py-3 font-mono text-micro uppercase tracking-widest text-muted">
+                Lab review nominations · {latest.report.lab_actions.length}
+              </summary>
+              <div className="grid gap-2 border-t border-border p-3">
+                {latest.report.lab_actions.map((action) => (
+                  <div key={`${action.candidate_id}:${action.action}`} className="rounded-sm border border-border bg-surface p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-micro">
+                      <span className="text-fg">{action.candidate_id}</span>
+                      <span className="uppercase tracking-widest text-subtle">
+                        {action.action.replace("_", " ")} · {action.gate_status}
+                      </span>
+                    </div>
+                    <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{action.rationale}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
+
+          <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+            {latest.report.executive_note} · API tokens {latest.token_usage.total.toLocaleString()}.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+          The first report runs only after a full {data.batch_windows}-window research block exists. Until then Astra remains idle.
+        </p>
+      )}
+
+      {data.health.last_error ? (
+        <p role="status" className="mt-3 font-mono text-micro text-wait">
+          The last Astra review failed; no Floor behavior changed and the observer will retry after the evidence check.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function LabSummary({ data }: { data: PublicLabSnapshot }) {
   const { control, candidates, comparisons, reached } = labComparisons(data.specimens, data.control_id);
   const paired = comparisons.filter((item) => item.delta != null).length;
@@ -634,6 +760,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />
             <OpenAIShadowStudy data={data.openai_shadow} />
+            <AstraDirectorStudy data={data.astra_director} />
             <LabSummary data={data} />
 
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
