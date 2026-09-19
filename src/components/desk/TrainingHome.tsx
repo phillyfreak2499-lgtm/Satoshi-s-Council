@@ -1,7 +1,7 @@
 import { TRAINING_COACHES, screenNumber } from "@/lib/desk/training";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 
-/** Open stations only. WICK leads; TAPE is second. Seats that are not open yet get one quiet line, not a card. */
+/** Open stations only. WICK leads; the other available coaches follow. Seats that are not open yet get one quiet line, not a card. */
 export function TrainingHome() {
   const wick = TRAINING_COACHES.find((coach) => coach.id === "wick" && coach.available);
   const others = TRAINING_COACHES.filter((coach) => coach.available && coach.id !== "wick");

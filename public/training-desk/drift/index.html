@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex,follow">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10191b">
+  <title>DRIFT’s Station · Your Training Desk</title>
+  <meta name="description" content="Sit at DRIFT’s six-screen momentum desk. Compare 5m, 15m, and 30m movement, ask questions, and practice alignment reads.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23131d20' stroke='%23d8bb79'/%3E%3Cpath d='M6 20c5-1 7-9 12-7s5-3 8-4' fill='none' stroke='%239ac6c8' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="embedded-desk drift-desk">
+<main id="station" aria-label="DRIFT’s six-screen training desk">
+  <header class="hud">
+    <a class="brand" href="/" target="_top"><span class="brand-mark">SC</span><span>SATOSHI’S COUNCIL<small>THE APPRENTICE DESK</small></span></a>
+    <div class="hud-right"><span class="edition">STATION 03</span><button id="sound" class="icon-button" aria-pressed="false" title="Read coach replies aloud">VOICE OFF</button></div>
+  </header>
+
+  <section class="desk-heading">
+    <div>
+      <div class="eyebrow">MOMENTUM ALIGNMENT / PERSONAL TRAINING</div>
+      <h1>DRIFT’S STATION<span class="cursor">_</span></h1>
+      <p>Three clocks. One move. Does it carry?</p>
+    </div>
+    <div class="feed-tag" id="feed-tag"><span class="signal"></span><span id="feed-label">CONNECTING TO THE FLOOR</span><span id="feed-age"></span></div>
+  </section>
+
+  <div class="workstation">
+    <nav class="monitor-wall" aria-label="DRIFT’s six training screens">
+      <button class="monitor monitor-read" id="why" aria-label="What do you see? Open DRIFT’s current momentum observation">
+        <span class="display">
+          <span class="screen-top"><span>01 / OBSERVE</span><span class="status-dot"></span></span>
+          <span class="screen-title">What do you see?</span>
+          <span class="read-layout">
+            <span class="momentum-glyph" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span><span class="micro-label">DRIFT’S RULE</span><strong class="read-mantra">A move is not<br>a trend.</strong></span>
+          </span>
+          <span class="screen-summary" id="read-preview">Waiting for fresh 5m / 15m / 30m evidence.</span>
+          <span class="screen-bottom"><span id="read-status">CHECKING THE FEED</span><span>Read the stack ↗</span></span>
+        </span><span class="bezel"><span>DRIFT / OBSERVATIONS</span><i></i></span>
+      </button>
+
+      <button class="monitor monitor-try" id="challenge" aria-label="Let me try. Open a frozen momentum exercise" aria-describedby="try-status" disabled>
+        <span class="display">
+          <span class="screen-top"><span>02 / DECIDE</span><span class="screen-tag">PAPER ONLY</span></span>
+          <span class="screen-title">Let me try</span>
+          <span class="try-title">Does the move carry?</span>
+          <span class="decision-options drift-options" aria-hidden="true"><span>↑ UP CARRY</span><span>— NO CLEAN DRIFT</span><span>↓ DOWN CARRY</span></span>
+          <span class="screen-summary">Freeze the three clocks. Read alignment before outcome.</span>
+          <span class="screen-bottom"><span id="try-status">WAITING FOR THE FEED</span><span>Take the seat ↗</span></span>
+        </span><span class="bezel"><span>DRIFT / YOUR TURN</span><i></i></span>
+      </button>
+
+      <button class="monitor monitor-chat" id="open-chat" aria-label="Ask DRIFT. Open guided conversation">
+        <span class="display">
+          <span class="screen-top"><span>03 / TALK IT THROUGH</span><span class="screen-tag">GUIDED COACH</span></span>
+          <span class="screen-title">Ask DRIFT</span>
+          <span class="chat-preview"><span class="micro-label">DRIFT ›</span><span id="chat-preview">“Don’t tell me what moved. Tell me whether the move carries.”</span></span>
+          <span class="input-preview">Type your question<span>↵</span></span>
+          <span class="screen-bottom"><span>TEXT + OPTIONAL VOICE</span><span>Start talking ↗</span></span>
+        </span><span class="bezel"><span>DRIFT / DIRECT LINE</span><i></i></span>
+      </button>
+
+      <button class="monitor monitor-chart" id="focus" aria-label="The chart. Open the multi-timeframe momentum chart">
+        <span class="display">
+          <span class="screen-top"><span>04 / MARKET</span><span id="chart-preview-status">CONNECTING</span></span>
+          <span class="screen-title">The chart<span class="title-detail">5M / 15M / 30M</span></span>
+          <canvas id="chart-preview" width="1000" height="430" aria-hidden="true"></canvas>
+          <span class="screen-bottom"><span>THREE HORIZONS / ONE PATH</span><span>Expand chart ↗</span></span>
+        </span><span class="bezel"><span>DRIFT / MOMENTUM MAP</span><i></i></span>
+      </button>
+
+      <button class="monitor monitor-notes" id="notes" aria-label="DRIFT’s notes. Open the momentum notebook">
+        <span class="display">
+          <span class="screen-top"><span>05 / EVIDENCE</span><span id="notes-preview-status">CHECKING</span></span>
+          <span class="screen-title">DRIFT’s notes</span>
+          <span class="notes-grid">
+            <span><span class="micro-label">STRUCTURE</span><strong id="note-decision">—</strong></span>
+            <span><span class="micro-label">PACE</span><strong id="note-location">—</strong></span>
+          </span>
+          <span class="note-excerpt" id="note-excerpt">Alignment, disagreement, acceleration, and what would break the read.</span>
+          <span class="screen-bottom"><span>FROM THE DRIFT SEAT</span><span>Open notebook ↗</span></span>
+        </span><span class="bezel"><span>DRIFT / FIELD NOTES</span><i></i></span>
+      </button>
+
+      <button class="monitor monitor-practice" id="practice" aria-label="Practice. Open illustrated momentum examples" aria-pressed="false">
+        <span class="display">
+          <span class="screen-top"><span>06 / TRAIN</span><span class="screen-tag">ILLUSTRATED / NOT LIVE</span></span>
+          <span class="screen-title">Practice</span>
+          <canvas id="practice-preview" width="1000" height="430" aria-hidden="true"></canvas>
+          <span class="practice-caption">ALIGNMENT · CONFLICT · CHASE RISK<span>LESSON 01</span></span>
+          <span class="screen-bottom"><span id="practice-status">LEARN AT YOUR PACE</span><span id="practice-action">Enter practice ↗</span></span>
+        </span><span class="bezel"><span>DRIFT / TRAINING MODE</span><i></i></span>
+      </button>
+    </nav>
+
+    <div class="desk-surface" aria-hidden="true">
+      <div class="monitor-stand stand-left"></div><div class="monitor-stand stand-middle"></div><div class="monitor-stand stand-right"></div>
+      <div class="keyboard"><div class="keys" id="keyboard-keys"></div><div class="spacebar"></div></div>
+      <div class="mousepad"><div class="mouse"></div></div>
+
+      <div class="drift-chip-rack">
+        <span class="drift-chip chip-5"><b>5M</b><small>IMPULSE</small></span>
+        <span class="drift-chip chip-15"><b>15M</b><small>ANCHOR</small></span>
+        <span class="drift-chip chip-30"><b>30M</b><small>CONTEXT</small></span>
+      </div>
+
+      <div class="drift-photo photo-one">
+        <span>REFERENCE / ILLUSTRATED</span>
+        <svg viewBox="0 0 120 55" role="presentation"><path d="M3 45 C18 42,20 28,33 31 S51 10,64 15 S78 36,91 20 S104 7,117 11"/></svg>
+        <small>ALIGNMENT</small>
+      </div>
+      <div class="drift-photo photo-two">
+        <span>REFERENCE / ILLUSTRATED</span>
+        <svg viewBox="0 0 120 55" role="presentation"><path d="M3 18 C15 8,25 35,37 22 S58 42,72 19 S90 33,117 14"/></svg>
+        <small>CONFLICT</small>
+      </div>
+      <div class="drift-ruler"><i></i><i></i><i></i><i></i><i></i><strong>SLOPE / CARRY</strong></div>
+      <div class="drift-sticky">MOVE ≠ TREND<br><small>CARRY &gt; EXCITEMENT</small></div>
+      <div class="desk-label">SC / MOMENTUM DESK 03</div>
+    </div>
+  </div>
+
+  <section class="coach" aria-label="Latest reply from DRIFT">
+    <div class="coach-top"><span class="audio-wave" aria-hidden="true">▂▅▃▇▃▅▂</span><span class="coach-name">DRIFT</span><span class="talk-state" id="talk-state">ON THE LINE</span></div>
+    <p id="coach-line" aria-live="polite">I’m here. Pick a screen. We read the same move on three clocks before we decide whether it carries.</p>
+  </section>
+  <footer class="footer"><span>BITCOIN ONLY · PAPER RESEARCH · NOT FINANCIAL ADVICE</span><span>GUIDED COACH · MOMENTUM STRUCTURE IS NOT A PROMISE OF THE NEXT RESULT</span></footer>
+</main>
+
+<dialog id="observation-dialog" aria-labelledby="observation-title">
+  <div class="dialog-head"><div><div class="eyebrow">DRIFT’S MONITOR</div><h2 id="observation-title">Read the three clocks</h2></div><button class="close" aria-label="Close observation">×</button></div>
+  <div class="return-cards">
+    <section><label>5 MINUTE</label><strong id="obs-5">—</strong><small>impulse</small></section>
+    <section><label>15 MINUTE</label><strong id="obs-15">—</strong><small>anchor</small></section>
+    <section><label>30 MINUTE</label><strong id="obs-30">—</strong><small>context</small></section>
+  </div>
+  <p class="observation-copy" id="observation-copy">Waiting for a fresh momentum frame.</p>
+  <div class="dialog-bottom"><span id="observation-seat">DRIFT seat —</span><button class="gold-button" data-close>Back to desk</button></div>
+</dialog>
+
+<dialog id="challenge-dialog" aria-labelledby="challenge-title">
+  <div class="dialog-head"><div><div class="eyebrow">YOUR TURN / FROZEN FRAME</div><h2 id="challenge-title">Does this move carry?</h2></div><button class="close" aria-label="Close exercise">×</button></div>
+  <div class="return-cards compact"><section><label>5M</label><strong id="challenge-5">—</strong></section><section><label>15M</label><strong id="challenge-15">—</strong></section><section><label>30M</label><strong id="challenge-30">—</strong></section></div>
+  <p id="challenge-evidence">Read all three horizons before choosing.</p>
+  <div class="call-buttons"><button data-call="UP">↑ UP CARRY</button><button data-call="WAIT">— NO CLEAN DRIFT</button><button data-call="DOWN">↓ DOWN CARRY</button></div>
+  <div class="result" id="challenge-result" hidden></div>
+</dialog>
+
+<dialog id="chat-dialog" aria-labelledby="chat-title">
+  <div class="dialog-head"><div><div class="eyebrow">GUIDED COACH</div><h2 id="chat-title">Ask DRIFT</h2></div><button class="close" aria-label="Close conversation">×</button></div>
+  <div class="chat-history" id="chat-history"><div class="message"><small>DRIFT</small>Ask about alignment, the 5-minute impulse, pullbacks, WAIT, or chase risk.</div></div>
+  <div class="suggestions"><button data-question="What does alignment mean?">What does alignment mean?</button><button data-question="Can 5m fool me?">Can 5m fool me?</button><button data-question="Why would you WAIT?">Why would you WAIT?</button><button data-question="What is chase risk?">What is chase risk?</button></div>
+  <form id="chat-form"><input id="chat-input" autocomplete="off" maxlength="180" placeholder="Ask about this lesson…"><button class="gold-button" type="submit">Ask</button></form>
+</dialog>
+
+<dialog id="screen-dialog" aria-labelledby="screen-title">
+  <div class="dialog-head"><div><div class="eyebrow">DRIFT’S MONITOR</div><h2 id="screen-title">Momentum across three horizons</h2></div><button class="close" aria-label="Close chart">×</button></div>
+  <div class="screen-toolbar"><span id="chart-status">Connecting</span><span>5M / 15M / 30M · same BTC path</span></div>
+  <canvas id="detail-chart" width="1400" height="680" role="img" aria-label="Bitcoin multi-timeframe momentum chart"></canvas>
+  <p id="chart-description" class="description">Each line measures the same price path from a different lookback. The latest return values are shown at the right.</p>
+  <div class="dialog-bottom"><span>Structure lesson only · not a probability forecast</span><button class="gold-button" data-close>Back to desk</button></div>
+</dialog>
+
+<dialog id="notes-dialog" aria-labelledby="notes-title">
+  <div class="dialog-head"><div><div class="eyebrow">DRIFT’S FIELD NOTES</div><h2 id="notes-title">Carry before conviction</h2></div><button class="close" aria-label="Close notes">×</button></div>
+  <div class="note"><label>CURRENT STRUCTURE</label><p id="notes-structure">Waiting for a fresh frame.</p></div>
+  <div class="note"><label>WHY</label><p id="notes-reason">DRIFT compares 5m, 15m, and 30m before trusting a directional move.</p></div>
+  <div class="note"><label>WHAT WOULD CHANGE IT</label><p id="notes-invalidate">A larger timeframe disagreement can turn clean carry into WAIT.</p></div>
+  <div class="note"><label>FOUR THINGS TO REMEMBER</label><ul><li>Alignment beats one isolated impulse.</li><li>5m can lead; 15m and 30m provide context.</li><li>Mixed horizons are information, not failure.</li><li>Chase risk is a teaching caution, not a guarantee of reversal.</li></ul></div>
+</dialog>
+
+<dialog id="practice-dialog" aria-labelledby="practice-title">
+  <div class="dialog-head"><div><div class="eyebrow">ILLUSTRATED PRACTICE / NOT LIVE</div><h2 id="practice-title">Three momentum cases</h2></div><button class="close" aria-label="Close practice">×</button></div>
+  <div class="practice-cases">
+    <article><span>CASE A</span><div><b>5M +0.18%</b><b>15M +0.42%</b><b>30M +0.64%</b></div><strong>ALIGNED UP</strong><p>All three clocks point the same way. Read the structure first; the next settlement is still unknown.</p></article>
+    <article><span>CASE B</span><div><b>5M +0.16%</b><b>15M −0.08%</b><b>30M +0.31%</b></div><strong>NO CLEAN DRIFT</strong><p>The clocks disagree. WAIT can be the correct structure read.</p></article>
+    <article><span>CASE C</span><div><b>5M +0.52%</b><b>15M +0.58%</b><b>30M +0.62%</b></div><strong>CHASE-RISK CHECK</strong><p>Alignment is real, but a very extended short leg deserves a separate caution. This is a teaching flag, not a Council rule.</p></article>
+  </div>
+  <div class="dialog-bottom"><span>Grade the structure, not whether the next window happened to win.</span><button class="gold-button" data-close>Back to desk</button></div>
+</dialog>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>

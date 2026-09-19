@@ -11,6 +11,7 @@ const surfaces = [
   ["/training", ["Start with WICK.", "Paper only. No live orders."]],
   ["/training/wick", ["WICK"]],
   ["/training/tape", ["TAPE"]],
+  ["/training/drift", ["DRIFT"]],
   ["/legal", ["Paper only, in plain words", "Questions about the desk"]],
   ["/about", ["How the desk works", "21 Council seats", "18 voting specialists", "3 non-voting pit crew"]],
   ["/faq", ["Questions people ask", "How many Council seats actually vote?", "18 voting specialists", "3 non-voting pit crew"]],

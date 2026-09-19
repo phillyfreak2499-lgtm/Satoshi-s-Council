@@ -44,7 +44,7 @@ test("screen numbers are two digits from one formatter", () => {
 
 test("every enter link is one text node with a proper apostrophe", () => {
   const links = [...html.matchAll(/<a [^>]*href="\/training\/([a-z]+)"[^>]*>(.*?)<\/a>/g)];
-  assert.deepEqual(links.map((m) => m[1]), ["wick", "tape"], "only open stations are enterable");
+  assert.deepEqual(links.map((m) => m[1]), ["wick", "tape", "drift"], "only open stations are enterable");
   for (const [, id, label] of links) {
     assert.equal(label, `Enter ${id.toUpperCase()}’s station ↗`);
     assert.doesNotMatch(label, /<!--/, "no comment separator inside the label");
@@ -65,5 +65,6 @@ test("no planned-station cards; one quiet line instead", () => {
 test("stations for open coaches still resolve", () => {
   assert.equal(training.availableCoach("wick")?.name, "WICK");
   assert.equal(training.availableCoach("tape")?.name, "TAPE");
+  assert.equal(training.availableCoach("drift")?.name, "DRIFT");
   assert.equal(training.availableCoach("odds"), undefined);
 });

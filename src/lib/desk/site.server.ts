@@ -26,7 +26,7 @@ export const STATIC_PAGES: { path: string; changefreq: string; priority: string 
   { path: "/record", changefreq: "daily", priority: "0.8" },
   { path: "/hour", changefreq: "hourly", priority: "0.7" },
   { path: "/training", changefreq: "weekly", priority: "0.8" },
-  ...["/training/wick", "/training/tape"].map((path) => ({ path, changefreq: "daily", priority: "0.8" })), 
+  ...["/training/wick", "/training/tape", "/training/drift"].map((path) => ({ path, changefreq: "daily", priority: "0.8" })), 
   { path: "/arena", changefreq: "always", priority: "0.9" },
   { path: "/about", changefreq: "monthly", priority: "0.6" },
   { path: "/faq", changefreq: "monthly", priority: "0.6" },
