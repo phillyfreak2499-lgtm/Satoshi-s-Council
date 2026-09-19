@@ -21,10 +21,20 @@ test("Chair ablation has the requested isolated variants", () => {
     "carry_off_when_chain",
     "authority_release",
     "raw_release",
+    "reviewed_paper_rescue",
   ]) assert.ok(pure.includes(id) || server.includes(id), `missing variant ${id}`);
   assert.match(pure, /vote\.seat !== "TAPE"/);
   assert.match(pure, /chainSpeaks/);
   assert.match(pure, /ABLATION_RELEASE::/);
+  assert.match(pure, /ABLATION_SEP15_RESCUE::/);
+  assert.match(pure, /SEP15_REVIEWED_DIRECTIONAL_IDS/);
+});
+
+test("Sep 15 rescue uses only recorded shadow\/bench paper reads on silent seats", () => {
+  assert.match(pure, /if \(isDirectional\(input\.lean\)\) return \{ \.\.\.input \};/);
+  assert.match(pure, /input\.paper/);
+  assert.match(pure, /SEP15_REVIEWED_DIRECTIONAL_IDS\.has\(p\.id\)/);
+  assert.match(pure, /sort\(\(a, b\) => b\.confidence - a\.confidence\)/);
 });
 
 test("Chair ablation is research-only and cannot actuate the Floor", () => {
