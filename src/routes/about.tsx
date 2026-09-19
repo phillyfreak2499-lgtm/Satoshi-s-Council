@@ -48,7 +48,7 @@ function About() {
         ))}
       </ol>
       <P>
-        The live floor grades 15-minute Bitcoin windows. The <a href="/training/wick" className="text-fg underline underline-offset-2">apprentice desk</a> teaches the same read without requiring you to sit every window. A separate <a href="/hour" className="text-fg underline underline-offset-2">hourly book</a> uses the same settlement family and keeps its own record.
+        The <a href="/training/wick" className="text-fg underline underline-offset-2">apprentice desk</a> teaches the same 15-minute read without requiring you to sit every window. The live floor grades 15-minute windows. A separate <a href="/hour" className="text-fg underline underline-offset-2">hourly book</a> uses the same settlement family and keeps its own record.
       </P>
       <H2>What the words mean</H2>
       <P>
