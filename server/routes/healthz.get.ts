@@ -25,11 +25,11 @@ export default function healthz() {
   void import("../../src/lib/desk/openai-luna.server")
     .then((m) => m.ensureOpenAILunaObserver())
     .catch(() => {});
-  void import("../../src/lib/desk/astra-director.server")
-    .then((m) => m.ensureAstraDirectorObserver())
-    .catch(() => {});
   void import("../../src/lib/desk/lab-registry.server")
     .then((m) => m.ensureLabRegistryObserver())
+    .catch(() => {});
+  void import("../../src/lib/desk/astra-director.server")
+    .then((m) => m.ensureAstraDirectorObserver())
     .catch(() => {});
   // The hourly closer: a separate book, its own table, its own timer, no path into the floor.
   void import("../../src/lib/desk/hour-closer.server")
