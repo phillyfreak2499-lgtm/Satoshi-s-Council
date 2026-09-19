@@ -84,6 +84,18 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     visible_at: "Lab",
   },
   {
+    id: "astra-director",
+    label: "Astra research director",
+    type: "measurement",
+    authority: "none",
+    purpose: "Deep periodic audit of Floor and Lab evidence with report-only promotion/demotion nominations.",
+    cadence: "every 384 research-valid graded windows",
+    cadence_kind: "event",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "Lab",
+  },
+  {
     id: "policy-exit",
     label: "Policy Lab / exit arena",
     type: "decider",
