@@ -65,5 +65,6 @@ test("no planned-station cards; one quiet line instead", () => {
 test("stations for open coaches still resolve", () => {
   assert.equal(training.availableCoach("wick")?.name, "WICK");
   assert.equal(training.availableCoach("tape")?.name, "TAPE");
+  assert.equal(training.availableCoach("drift")?.name, "DRIFT");
   assert.equal(training.availableCoach("odds"), undefined);
 });
