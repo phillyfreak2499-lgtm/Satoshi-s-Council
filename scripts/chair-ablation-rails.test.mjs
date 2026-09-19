@@ -30,7 +30,7 @@ test("Chair ablation has the requested isolated variants", () => {
   assert.match(pure, /SEP15_REVIEWED_DIRECTIONAL_IDS/);
 });
 
-test("Sep 15 rescue uses only recorded shadow\/bench paper reads on silent seats", () => {
+test("Sep 15 rescue uses only recorded shadow/bench paper reads on silent seats", () => {
   assert.match(pure, /if \(isDirectional\(input\.lean\)\) return \{ \.\.\.input \};/);
   assert.match(pure, /input\.paper/);
   assert.match(pure, /SEP15_REVIEWED_DIRECTIONAL_IDS\.has\(p\.id\)/);
