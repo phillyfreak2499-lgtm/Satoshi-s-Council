@@ -26,6 +26,8 @@ test("blind packet structurally excludes market, Council and Chair inputs", () =
 
 test("blind and market-aware studies use the same Terra model tier for a clean input ablation", () => {
   assert.match(pure, /OPENAI_BLIND_DEFAULT_MODEL = "gpt-5\.6-terra"/);
+  assert.match(pure, /OPENAI_BLIND_MAX_CAPTURES = 500/);
+  assert.match(server, /capturedCount\(\) >= OPENAI_BLIND_MAX_CAPTURES/);
   assert.match(read("src/lib/desk/openai-shadow.ts"), /OPENAI_SHADOW_DEFAULT_MODEL = "gpt-5\.6-terra"/);
 });
 
