@@ -47,7 +47,7 @@ export function BotCard({
             ▸
           </span>
         </button>
-        {seat === "WICK" || seat === "TAPE" ? <a href={`/training/${seat.toLowerCase()}`} className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with {seat} ↗</a> : null}
+        {seat === "WICK" || seat === "TAPE" || seat === "DRIFT" ? <a href={`/training/${seat.toLowerCase()}`} className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with {seat} ↗</a> : null}
       </article>
     );
   }
