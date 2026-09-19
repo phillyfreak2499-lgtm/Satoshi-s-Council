@@ -1,8 +1,8 @@
 /**
  * Read-only system-event queries.
  *
- * Kept separate from system-events.server.ts so presentation/research consumers
- * can inspect persisted public events without importing the event writer.
+ * Kept separate from the event-writer module so presentation/research consumers
+ * can inspect persisted public events without importing write authority.
  */
 import type { PublicSystemEvent } from "./system-events";
 
