@@ -284,6 +284,7 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
                   Score {Number.isFinite(satoshi.score) ? Math.abs(satoshi.score).toFixed(2) : "—"}{" "}
                   / bar {Number.isFinite(satoshi.bar) ? satoshi.bar.toFixed(2) : "—"}
                 </small>
+                {satoshi.decision ? <p className="streamer-chair-reason">{satoshi.decision}</p> : null}
                 {fresh && live ? (
                   <CouncilVoiceButton source="live" speaker="SATOSHI" label="Hear SATOSHI" className="streamer-voice" />
                 ) : null}
