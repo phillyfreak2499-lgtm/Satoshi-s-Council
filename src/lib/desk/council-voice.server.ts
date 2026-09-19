@@ -18,7 +18,7 @@ import {
   type CouncilVoiceSpeaker,
 } from "./council-voice";
 import { statementFromEvent } from "./chamber-reactions";
-import { listPublicChamberEvents } from "./system-events.server";
+import { listPublicChamberEvents } from "./system-events-read.server";
 
 const MODEL = "gpt-4o-mini-tts";
 const MAX_TEXT = 900;
