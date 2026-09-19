@@ -101,3 +101,15 @@ export async function fetchBooks(): Promise<Books> {
   if (!r.ok || j.error) throw new Error(j.error || `books ${r.status}`);
   return j;
 }
+
+/**
+ * The one sentence every room uses for ledger gaps. A gap is an outage in the
+ * record: not a sit, not a win, not a loss, not 0¢, and never in a total.
+ * Empty when there is nothing to say.
+ */
+export function missingWindowsLine(n: number): string {
+  const count = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  if (count === 0) return "";
+  if (count === 1) return "1 window in the last 90 days has no recorded result. It is an outage, not a sit, and it is not in the totals.";
+  return `${count} windows in the last 90 days have no recorded result. They are outages, not sits, and they are not in the totals.`;
+}

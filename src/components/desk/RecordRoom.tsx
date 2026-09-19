@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fmtCents, fmtPct, scoreNote, type WeekRecord } from "@/lib/desk/record";
 import { publicWeekRecord } from "@/lib/desk/record-public";
 import { utcStamp } from "@/lib/desk/display-evidence";
+import { missingWindowsLine } from "@/lib/desk/books";
 import { GlobalHeader } from "./GlobalHeader";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 
@@ -155,7 +156,7 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
 
             {data.missing_windows > 0 ? (
               <Block n="05" title="Missing windows">
-                <p className="mt-3 font-sans text-ui leading-relaxed text-muted">Missing windows are outages in the record, not WAITs. {data.missing_windows} in the last 90 days. <a href="/books" className="underline underline-offset-4">See the books</a>.</p>
+                <p className="mt-3 font-sans text-ui leading-relaxed text-muted">{missingWindowsLine(data.missing_windows)} <a href="/books" className="underline underline-offset-4">See the books</a>.</p>
               </Block>
             ) : null}
 

@@ -138,7 +138,7 @@ test("the brief labels a Chicago week and carries plain copy without hashtags", 
   assert.match(r.copy, /Sits 628 of 640 windows\. Fills 12\. Win rate 58% vs 84% needed\. Net \+41\.5¢ after fees\. Max drawdown -63\.0¢\./);
   assert.match(r.copy, /One WAIT that was right: The older, lower floor would have filled at 72¢/);
   assert.match(r.copy, /One fill that was wrong: UP at 85¢, -87\.0¢ after fee\./);
-  assert.match(r.copy, /Missing windows are outages in the record, not WAITs \(3 in 90 days\)\./);
+  assert.match(r.copy, /3 windows in the last 90 days have no recorded result\. They are outages, not sits, and they are not in the totals\./);
   assert.match(r.copy, /A directional read and a recorded paper fill are different\./);
   assert.doesNotMatch(r.copy, /#|alpha|lock this|signal|buy/i);
   assert.equal(copyWeek(r), r.copy);
