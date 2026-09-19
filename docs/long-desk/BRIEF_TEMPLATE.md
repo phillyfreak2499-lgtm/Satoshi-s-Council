@@ -10,16 +10,24 @@
 
 Start with an input that is independently meaningful on the ownership horizon and is not a Floor vote.
 
+## Slow checks
+
+- **30d structure:** + / -
+- **90d structure:** + / -
+- **4-week drawdown healing:** + / -
+- **Current:** N / 3
+- **Prior review:** N / 3
+
 ## Observed
 
 - Structure:
-- Tape / participation:
-- Derivatives / leverage:
-- Context:
+- Drawdown / recovery:
+- Leverage / participation context:
+- Other long-clock context:
 
 ## What matters on the long clock
 
-Explain only the evidence that can change ownership behavior on a days-to-weeks-or-longer horizon.
+Explain only evidence that belongs to a days-to-weeks-or-longer horizon.
 
 ## What does not matter
 
@@ -33,24 +41,33 @@ Required sentence:
 
 **HOLD | STAND**
 
-One plain paragraph. No confidence percentage. No implied probability of gain. No sizing.
+Use the v0 state rule. No confidence percentage. No implied probability of gain. No sizing.
+
+For HOLD, state that HOLD is a house research state and is not an entry signal for a non-owner.
+
+For STAND, say whether it is mixed, deteriorating, incomplete, or constructive-but-unconfirmed.
 
 ## What would change the stance
 
-State the invalidation before the next review. It must be observable and testable.
+State the **rule-based state-change condition** before the next review.
+
+Do not invent a one-off price level after seeing the current chart.
 
 ## Stance receipt
 
-- Observed:
-- Long-clock translation:
-- Excluded:
-- Stance:
-- Invalidation:
-- Since / age:
+- 30d:
+- 90d:
+- drawdown healing:
+- current / prior check count:
+- long-clock translation:
+- excluded:
+- stance:
+- state-change condition:
+- since / age:
 
 ## Source snapshot
 
-List source, capture time, and the factual values used.
+List source, capture time, and the factual values used. A reviewer must be able to reproduce the three decisive checks.
 
 ## Reviewer note
 
