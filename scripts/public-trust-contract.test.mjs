@@ -18,13 +18,31 @@ test("public Council copy matches the roster the Chair actually uses", () => {
     "the three pit-crew seats remain outside the vote",
   );
 
+  const publicCopy = read("src/lib/desk/council-public.ts");
   const about = read("src/routes/about.tsx");
   const faq = read("src/routes/faq.tsx");
-  assert.match(about, /twenty-one specialist seats/i);
-  assert.match(about, /Eighteen of the seats vote UP, DOWN or WAIT/);
-  assert.match(about, /three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew/);
-  assert.match(faq, /Twenty-one of them sit at five desks; eighteen vote UP, DOWN or WAIT/);
-  assert.match(faq, /three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew/);
+  const root = read("src/routes/__root.tsx");
+  const og = read("server/routes/og/page.get.ts");
+
+  assert.match(publicCopy, /COUNCIL_TOTAL_SEATS = 21/);
+  assert.match(publicCopy, /COUNCIL_VOTING_SEATS = 18/);
+  assert.match(publicCopy, /COUNCIL_PIT_CREW_SEATS = 3/);
+  for (const id of ["WARDEN", "ORBIT", "WIRE"]) assert.match(publicCopy, new RegExp(id));
+
+  assert.match(about, /COUNCIL_STRUCTURE_SHORT/);
+  assert.match(about, /Only the 18 voting specialists cast UP, DOWN or WAIT votes/);
+  assert.match(about, /WARDEN, ORBIT and WIRE never count as votes/);
+  assert.doesNotMatch(about, /twenty-one specialist seats/i);
+  assert.equal((about.match(/The live floor grades 15-minute/g) ?? []).length, 1, "About does not repeat the live-floor sentence");
+
+  assert.match(faq, /How many Council seats actually vote\?/);
+  assert.match(faq, /Only the 18 voting specialists can cast UP, DOWN or WAIT votes/);
+  assert.match(faq, /The three pit-crew seats never count as votes/);
+  assert.match(faq, /COUNCIL_STRUCTURE_SHORT/);
+  assert.doesNotMatch(faq, /Twenty-one of them sit at five desks/);
+
+  assert.match(root, /The Council has 21 seats: 18 voting specialists and 3 non-voting pit crew/);
+  assert.match(og, /21 SEATS \/ 18 VOTE \/ 3 PIT CREW/);
 });
 
 test("the live Floor separates the standing read from the current signal frame", () => {
