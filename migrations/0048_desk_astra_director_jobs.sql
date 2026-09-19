@@ -21,7 +21,7 @@ create table if not exists desk_astra_director_jobs (
   check (version = 1),
   check (graded_total >= 0),
   check (jsonb_typeof(packet) = 'object'),
-  check (status in ('queued','in_progress','completed','failed','expired','cancelled'))
+  check (status in ('queued','in_progress','completed','failed','incomplete','expired','cancelled'))
 );
 
 create unique index if not exists desk_astra_director_jobs_response_idx
