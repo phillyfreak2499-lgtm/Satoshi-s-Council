@@ -71,8 +71,8 @@ type StoredRow = {
   output_tokens: number | null;
   total_tokens: number | null;
   winner: string | null;
-  aware_p: number | null;
-  aware_side: string | null;
+  terra_p: number | null;
+  terra_side: string | null;
 };
 
 type Observer = {
@@ -369,8 +369,8 @@ export async function openAILunaSnapshot(): Promise<OpenAILunaSnapshot> {
       b.market_p, b.p_up, b.side, b.would_abstain, b.chair_lean,
       b.input_tokens, b.output_tokens, b.total_tokens,
       l.winner,
-      a.p_up as aware_p,
-      a.side as aware_side
+      a.p_up as terra_p,
+      a.side as terra_side
     from desk_openai_luna b
     left join desk_ledger_research l
       on l.ticker = b.ticker and l.close_time = b.close_time and l.source = 'kalshi-result'
@@ -390,12 +390,12 @@ export async function openAILunaSnapshot(): Promise<OpenAILunaSnapshot> {
   const hits = graded.reduce((n, r) => n + openAILunaHit(r.side, r.winner), 0);
   const marketRows = graded.filter((r) => r.market_p != null);
   const paired = graded.filter(
-    (r): r is StoredRow & { winner: OpenAILunaSide; aware_p: number; aware_side: OpenAILunaSide } =>
-      r.aware_p != null && (r.aware_side === "UP" || r.aware_side === "DOWN"),
+    (r): r is StoredRow & { winner: OpenAILunaSide; terra_p: number; terra_side: OpenAILunaSide } =>
+      r.terra_p != null && (r.terra_side === "UP" || r.terra_side === "DOWN"),
   );
-  const disagreements = paired.filter((r) => r.side !== r.aware_side);
-  const blindDisagreeHits = disagreements.reduce((n, r) => n + openAILunaHit(r.side, r.winner), 0);
-  const awareDisagreeHits = disagreements.reduce((n, r) => n + openAILunaHit(r.aware_side, r.winner), 0);
+  const disagreements = paired.filter((r) => r.side !== r.terra_side);
+  const lunaDisagreeHits = disagreements.reduce((n, r) => n + openAILunaHit(r.side, r.winner), 0);
+  const terraDisagreeHits = disagreements.reduce((n, r) => n + openAILunaHit(r.terra_side, r.winner), 0);
 
   const first = rows[0] ?? null;
   let expected = 0;
@@ -426,16 +426,16 @@ export async function openAILunaSnapshot(): Promise<OpenAILunaSnapshot> {
       ? round(avg(marketRows.map((r) => openAILunaBrier(r.market_p ?? 0.5, r.winner))) ?? 0, 6)
       : null,
     terra_brier: paired.length
-      ? round(avg(paired.map((r) => openAILunaBrier(r.aware_p, r.winner))) ?? 0, 6)
+      ? round(avg(paired.map((r) => openAILunaBrier(r.terra_p, r.winner))) ?? 0, 6)
       : null,
     paired_with_terra: paired.length,
     agreement_with_terra: paired.length
-      ? round(paired.filter((r) => r.side === r.aware_side).length / paired.length)
+      ? round(paired.filter((r) => r.side === r.terra_side).length / paired.length)
       : null,
     disagreement: {
       n: disagreements.length,
-      luna_hits: blindDisagreeHits,
-      terra_hits: awareDisagreeHits,
+      luna_hits: lunaDisagreeHits,
+      terra_hits: terraDisagreeHits,
     },
     abstain_n: rows.filter((r) => r.would_abstain).length,
     usage: {
