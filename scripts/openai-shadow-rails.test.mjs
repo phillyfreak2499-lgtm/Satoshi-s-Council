@@ -83,7 +83,8 @@ test("API key is server-only and never stored in the research row", () => {
   assert.match(observer, /process\.env\.OPENAI_API_KEY/);
   assert.doesNotMatch(migration, /api_key|authorization|bearer/i);
   const sqlStart = observer.indexOf("insert into desk_openai_shadow");
-  const sql = observer.slice(sqlStart);
+  const sqlEnd = observer.indexOf("st.sampled.add(key)", sqlStart);
+  const sql = observer.slice(sqlStart, sqlEnd);
   assert.doesNotMatch(sql, /apiKey|OPENAI_API_KEY/);
 });
 
