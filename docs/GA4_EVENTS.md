@@ -11,6 +11,7 @@ Helper: `src/lib/desk/ga.ts` → `gtagEvent` / `gtagEventAfterSuccess`.
 | `enter_the_floor` | Click **"Enter the floor"** (IntroBand) or **"Open the floor"** (reading `Page`) | Intentional CTA click (not page load) | none | yes | Primary navigation CTA only |
 | `feedback_submitted` | Ideas & feedback composer submit | `postBoard` resolves for kind `idea` or `feedback` | none | yes | Not DESK admin updates; not click-before-request; never on fail |
 | `paper_call_locked` | Arena panel human UP/DOWN lock | `placeCall` resolves | none | yes | Human paper lock only — not Chair/Council/WAIT/auto; not signup |
+| `character_voice_played` | Visitor explicitly taps a Council voice control | Browser audio fires `playing` | none | no | Aggregate engagement only; no speaker, text, event key, ticker, or other content is sent |
 
 ## Removed / never use
 
