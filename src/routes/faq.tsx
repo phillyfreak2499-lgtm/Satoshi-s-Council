@@ -2,6 +2,7 @@ import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Page } from "@/components/desk/Page";
+import { COUNCIL_STRUCTURE_SENTENCE, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 
 export const Route = createFileRoute("/faq")({
   head: () => pageHead("/faq", "Frequently asked questions · Satoshi's Council", "Understand paper calls, fees, settlement, research samples and the Council. Nothing here places a live order."),
@@ -11,8 +12,12 @@ export const Route = createFileRoute("/faq")({
 /** Every answer is a plain string, so the first-paint HTML carries it as readable text with no JSX to hydrate. */
 const QA: { q: string; a: string }[] = [
   {
-    q: "What is a seat?",
-    a: "One specialist with one job. WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Twenty-one of them sit at five desks; eighteen vote UP, DOWN or WAIT with a confidence, while three — WARDEN, ORBIT and WIRE — sit as non-voting pit crew that inform the chair. Each shows its hypothesis, evidence and counter.",
+    q: "How many Council seats actually vote?",
+    a: `${COUNCIL_STRUCTURE_SENTENCE} Only the 18 voting specialists can cast UP, DOWN or WAIT votes. The three pit-crew seats never count as votes; they provide guard and context signals. SATOSHI chairs the vote.`,
+  },
+  {
+    q: "What does a Council seat do?",
+    a: "Each seat has one job. WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Voting specialists show a directional read, confidence, evidence and counter when eligible to speak. WARDEN, ORBIT and WIRE are different: they are non-voting pit crew and never add an UP, DOWN or WAIT vote to the tally.",
   },
   {
     q: "Why does the desk say WAIT so often?",
@@ -62,6 +67,9 @@ const OPEN_FIRST = ["q0", "q1", "q2"];
 function Faq() {
   return (
     <Page title="Questions people ask" lede="Short answers. Anything you still wonder about, post it on the BOARD from the floor.">
+      <div className="mb-4 rounded-md border border-border bg-surface px-4 py-3 font-mono text-micro text-subtle" role="note">
+        <strong className="text-fg">Council structure:</strong> {COUNCIL_STRUCTURE_SHORT}. SATOSHI chairs; pit crew inform the Chair but never vote.
+      </div>
       <Accordion.Root type="multiple" defaultValue={OPEN_FIRST} className="grid gap-2">
         {QA.map((item, i) => (
           <Accordion.Item key={i} value={`q${i}`} className="rounded-md border border-border bg-surface">
