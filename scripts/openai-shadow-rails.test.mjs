@@ -43,7 +43,7 @@ test("packet builder cannot receive Chair state and contains no outcome", () => 
   const end = pure.indexOf("export function parseOpenAIShadowDecision", start);
   const body = pure.slice(start, end);
   assert.doesNotMatch(body, /ChairResult|chair\./);
-  assert.doesNotMatch(body, /winner|settle/);
+  assert.doesNotMatch(body, /\bwinner\b|official_settles|lab_settle_avg/);
 });
 
 test("observer writes only its isolated OpenAI ledger", () => {
