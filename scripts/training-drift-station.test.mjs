@@ -12,8 +12,8 @@ const route = read("server/routes/training-drift-frame.get.ts");
 
 
 test("DRIFT browser modules are syntactically valid", () => {
-  assert.doesNotThrow(() => new vm.Script(js.replace(/^import .*?;\\n/, "")));
-  const chart = read("public/training-desk/drift/chart.js").replace(/\\bexport\\s+/g, "");
+  assert.doesNotThrow(() => new vm.Script(js.replace(/^import .*?;\n/, "")));
+  const chart = read("public/training-desk/drift/chart.js").replace(/\bexport\s+/g, "");
   assert.doesNotThrow(() => new vm.Script(chart));
 });
 
