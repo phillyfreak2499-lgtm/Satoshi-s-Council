@@ -25,6 +25,7 @@ import { cubeStudy } from "./cube.server";
 import { forcedV4Snapshot } from "./forced-v4.server";
 import { labRegistrySnapshot } from "./lab-registry.server";
 import { openAIShadowSnapshot } from "./openai-shadow.server";
+import { openAIBlindSnapshot } from "./openai-blind.server";
 import { labStanding } from "./policy-lab.server";
 import { evaluateComponentGates, type Pair } from "./promotion-gates";
 import { redundancyStudy } from "./redundancy.server";
@@ -210,12 +211,13 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
   const newest = raw.slice(0, ASTRA_DIRECTOR_WINDOW_BATCH).reverse();
   const prior = raw.slice(ASTRA_DIRECTOR_WINDOW_BATCH, ASTRA_DIRECTOR_WINDOW_BATCH * 2).reverse();
 
-  const [standing, registry, callQuality, forcedV4, openai, cube, redundancy, signal, promotion] = await Promise.all([
+  const [standing, registry, callQuality, forcedV4, openai, blind, cube, redundancy, signal, promotion] = await Promise.all([
     labStanding().catch(() => null),
     labRegistrySnapshot().catch(() => null),
     callQualitySnapshot().catch(() => null),
     forcedV4Snapshot().catch(() => null),
     openAIShadowSnapshot().catch(() => null),
+    openAIBlindSnapshot().catch(() => null),
     cubeStudy().catch(() => null),
     redundancyStudy().catch(() => null),
     signalStudy().catch(() => null),
@@ -247,6 +249,7 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
       call_quality: callQuality,
       forced_direction_v4: forcedV4,
       openai_market_aware: openai,
+      openai_market_blind: blind,
     },
     pattern_studies: {
       performance_cube: cube,
