@@ -34,7 +34,7 @@ import { signalStudy } from "./seat-signal.server";
 
 const OBSERVER_MS = 60_000;
 const API_REQUEST_TIMEOUT_MS = 30_000;
-const RETRY_AFTER_MS = 15 * 60_000;
+const RETRY_AFTER_MS = 5 * 60_000;
 
 const INSTRUCTIONS = `You are ASTRA_RESEARCH_DIRECTOR_V1 for Satoshi's Council, a paper-only Bitcoin research system.
 
@@ -329,7 +329,7 @@ async function createBackgroundReport(
       background: true,
       store: false,
       reasoning: { effort: "high" },
-      max_output_tokens: 3600,
+      max_output_tokens: 16_000,
       instructions: INSTRUCTIONS,
       input: `Frozen periodic research packet:\n${JSON.stringify(packet)}`,
       text: {
