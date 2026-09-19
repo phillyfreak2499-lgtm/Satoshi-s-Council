@@ -248,6 +248,13 @@
   color: var(--stream-muted);
   font-size: 12px;
 }
+.streamer-chair-reason {
+  max-width: 62ch;
+  margin: 6px 0 0;
+  color: #d8cfbf;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .streamer-clock {
   text-align: right;
 }
