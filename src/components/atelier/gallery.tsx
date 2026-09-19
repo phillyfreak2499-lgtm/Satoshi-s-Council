@@ -30,6 +30,7 @@ export type SatoshiPaint = {
   confidence: number;
   score: number;
   bar: number;
+  decision: string;
   brainAge: number | null;
   source: string;
   asOf: number;
