@@ -12,6 +12,7 @@ import {
   type BooksWindow,
   type Keeper,
   type KeeperStats,
+  missingWindowsLine,
 } from "@/lib/desk/books";
 import { FLOOR_LIVE_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { cn } from "@/lib/utils";
@@ -697,15 +698,14 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
       </nav>
 
       {missing.length > 0 ? (
-        <section aria-label="Missing ledger windows" className="rounded-md border border-wait/40 bg-wait/10 p-3">
-          <p className="font-mono text-ui text-wait">{missing.length} missing {missing.length === 1 ? "window" : "windows"} in the last 90 days of recorded coverage</p>
-          <p className="mt-1 font-mono text-micro text-muted">These gaps have no recorded grading result. They are not WAITs, wins, losses, or zero-profit trades.</p>
-          <details className="mt-2 font-mono text-micro text-muted">
+        <section aria-label="Missing ledger windows" className="rounded-md border border-border bg-surface px-3 py-2">
+          <p className="font-mono text-micro text-muted">{missingWindowsLine(missing.length)}</p>
+          <details className="font-mono text-micro text-subtle">
             <summary className="min-h-11 cursor-pointer py-2">Show missing closes · {tz}</summary>
-            <ul className="max-h-60 overflow-y-auto">{missing.slice(-100).reverse().map((close) => <li key={close} className="py-1"><time dateTime={close}>{fmtWhen(close, tz)}</time> · missing data</li>)}</ul>
+            <ul className="max-h-60 overflow-y-auto">{missing.slice(-100).reverse().map((close) => <li key={close} className="py-1"><time dateTime={close}>{fmtWhen(close, tz)}</time> · no recorded result</li>)}</ul>
             {missing.length > 100 ? <p>Showing the most recent 100 missing closes.</p> : null}
+            <a href="/status" className="underline underline-offset-2">View data status</a>
           </details>
-          <a href="/status" className="font-mono text-micro underline underline-offset-2">View data status</a>
         </section>
       ) : null}
 
@@ -802,9 +802,9 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
             </thead>
             <tbody>
               {windowRows.map((w) => "missing" in w ? (
-                <tr key={w.close_time} role="row" className="border-t border-wait/40 bg-wait/10">
+                <tr key={w.close_time} role="row" className="border-t border-border bg-surface">
                   <td role="cell" data-label="Close" className="py-3 text-muted">{fmtWhen(w.close_time, tz)}</td>
-                  <td role="cell" colSpan={7} className="books-missing-cell py-3 text-wait">Missing ledger data · result and paper profit unavailable. Excluded from totals.</td>
+                  <td role="cell" colSpan={7} className="books-missing-cell py-3 text-subtle">No recorded result · an outage, not a sit · not in the totals</td>
                 </tr>
               ) : (
                 <tr

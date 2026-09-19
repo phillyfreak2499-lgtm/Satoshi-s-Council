@@ -10,7 +10,7 @@
  * An empty week is still a valid brief: it leads with sits and the best WAIT
  * and never invents a fill.
  */
-import type { BooksTotals, KeeperStats } from "./books.ts";
+import { missingWindowsLine, type BooksTotals, type KeeperStats } from "./books.ts";
 import { bookedSideOf } from "./booked-side.ts";
 
 export const RECORD_TZ = "America/Chicago";
@@ -300,7 +300,7 @@ export function copyWeek(r: Omit<WeekRecord, "copy">): string {
         ? "No fill lost this week."
         : "No fills this week. Nothing to grade there.",
     r.seat_note ? `Seat note: ${r.seat_note.line}` : "Seat note: no graded directional reads this week.",
-    r.missing_windows > 0 ? `Missing windows are outages in the record, not WAITs (${r.missing_windows} in 90 days).` : "",
+    missingWindowsLine(r.missing_windows),
     "A directional read and a recorded paper fill are different.",
     "satoshiscouncil.com/record",
   ];
