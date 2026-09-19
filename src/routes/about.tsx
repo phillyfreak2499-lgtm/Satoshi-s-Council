@@ -52,7 +52,7 @@ function About() {
       </P>
       <H2>What the words mean</H2>
       <P>
-        A <strong className="text-fg">seat</strong> is one specialist with one job. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs the seats and makes the
+        A <strong className="text-fg">Council seat</strong> is one specialist role with one job. Eighteen are voting specialists; three are non-voting pit crew. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs eligible voting seats and makes the
         call. A <strong className="text-fg">window</strong> is one 15-minute Kalshi market on Bitcoin: will the final-minute average finish above the strike or
         not. <strong className="text-fg">Paper</strong> means the desk books every call at the real ask, pays the real fee, and settles on the real result, without ever sending an
         order.
