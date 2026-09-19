@@ -92,3 +92,15 @@ test("production decision modules do not import the blind observer", () => {
     assert.ok(!read(path).includes("openai-blind"), `${path} imports openai-blind`);
   }
 });
+
+test("blind observer boots beside the engine and is public aggregate-only in Lab", () => {
+  const health = read("server/routes/healthz.get.ts");
+  const pub = read("src/lib/desk/lab-public.ts");
+  const room = read("src/components/desk/LabRoom.tsx");
+  assert.match(health, /openai-blind\.server/);
+  assert.match(health, /ensureOpenAIBlindObserver/);
+  assert.match(pub, /openAIBlindSnapshot\(\)\.catch\(\(\) => null\)/);
+  assert.match(pub, /openai_blind: OpenAIBlindSnapshot \| null/);
+  assert.match(room, /OpenAI blind analyst/);
+  assert.match(room, /Structurally hidden: Kalshi prices/);
+});
