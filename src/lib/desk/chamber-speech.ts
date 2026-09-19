@@ -7,7 +7,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { statementFromEvent, type ChamberStatement } from "./chamber-reactions";
-import { listPublicChamberEvents } from "./system-events.server";
+import { listPublicChamberEvents } from "./system-events-read.server";
 import { attachBooksRosters } from "./chamber-roster.server";
 
 /** Read-only. Up to five latest persisted statements per active speaker. */
