@@ -6,7 +6,7 @@
  * Output: a structured research report and nominations only.
  *
  * No actuator exists here. This module never imports or calls Chair/booking/
- * learner mutation functions and writes only desk_astra_director.
+ * learner mutation functions and writes only the Astra report/job research ledgers.
  */
 import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
