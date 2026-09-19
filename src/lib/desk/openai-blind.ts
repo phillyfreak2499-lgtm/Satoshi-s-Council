@@ -22,6 +22,7 @@ export const OPENAI_BLIND_PROMPT_VERSION = "blind-marketless-v1";
 export const OPENAI_BLIND_DEFAULT_MODEL = "gpt-5.6-terra";
 export const OPENAI_BLIND_LOCK_SECS = 450;
 export const OPENAI_BLIND_LOCK_GRACE_SECS = 12;
+export const OPENAI_BLIND_MAX_CAPTURES = 500;
 
 export {
   OPENAI_SHADOW_SCHEMA as OPENAI_BLIND_SCHEMA,
