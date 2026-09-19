@@ -88,6 +88,7 @@ const finite = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+const iso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
 
 function responseText(body: ApiResponse): string | null {
   if (typeof body.output_text === "string" && body.output_text.trim()) return body.output_text;
@@ -166,7 +167,7 @@ async function promotionGatePacket() {
   return ids.map((candidateId) => {
     const own = rows.filter((r) => r.candidate_id === candidateId);
     const pairs: Pair[] = own.map((r) => ({
-      day: new Date(r.close_time).toISOString().slice(0, 10),
+      day: iso(r.close_time).slice(0, 10),
       candidate_net: Number(r.candidate_net),
       champion_net: Number(r.champion_net),
       regime: r.regime ?? undefined,
@@ -335,7 +336,7 @@ async function dueState(): Promise<{ due: boolean; gradedTotal: number; throughC
   `;
   const gradedTotal = Number(totals?.n ?? 0);
   const lastTotal = Number(last?.graded_total ?? 0);
-  const throughClose = totals?.through_close ? new Date(totals.through_close).toISOString() : null;
+  const throughClose = totals?.through_close ? iso(totals.through_close) : null;
   return {
     due: Boolean(throughClose) && gradedTotal >= Math.max(ASTRA_DIRECTOR_WINDOW_BATCH, lastTotal + ASTRA_DIRECTOR_WINDOW_BATCH),
     gradedTotal,
@@ -450,8 +451,8 @@ export async function astraDirectorSnapshot(): Promise<AstraDirectorSnapshot> {
     due_in_windows: Math.max(0, ASTRA_DIRECTOR_WINDOW_BATCH - (due.gradedTotal - due.lastTotal)),
     graded_total: due.gradedTotal,
     latest: row ? {
-      created_at: new Date(row.created_at).toISOString(),
-      through_close_time: new Date(row.through_close_time).toISOString(),
+      created_at: iso(row.created_at),
+      through_close_time: iso(row.through_close_time),
       graded_total: Number(row.graded_total),
       report: row.report,
       token_usage: {
