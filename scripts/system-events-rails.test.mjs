@@ -147,8 +147,9 @@ test("ALCHEMIST polling is detached and sparse", () => {
 });
 
 test("Chamber history cannot be monopolized by one noisy speaker", () => {
-  const reader = codeOf("src/lib/desk/system-events.server.ts");
+  const reader = codeOf("src/lib/desk/system-events-read.server.ts");
   assert.match(reader, /export async function listPublicChamberEvents/);
+  assert.doesNotMatch(reader, /recordSystemEvent|insert\s+into/i);
   assert.match(reader, /row_number\(\) over \(partition by character/);
   assert.match(reader, /character in \('SATOSHI', 'WARDEN', 'ALCHEMIST', 'SWEEP'\)/);
   assert.match(reader, /speaker_rank <=/);
@@ -159,6 +160,8 @@ test("Chamber speech remains a read-only GET surface", () => {
   const speechCode = codeOf("src/lib/desk/chamber-speech.ts");
   assert.match(speech, /createServerFn\(\{\s*method:\s*"GET"\s*\}\)/);
   assert.match(speechCode, /listPublicChamberEvents\(5\)/);
+  assert.match(speech, /from "\.\/system-events-read\.server"/);
+  assert.doesNotMatch(speech, /from "\.\/system-events\.server"/);
   assert.doesNotMatch(speechCode, /method:\s*"POST"/);
   assert.doesNotMatch(speechCode, /recordSystemEvent/);
   assert.doesNotMatch(speechCode, /observeChairWaitMilestone/);
