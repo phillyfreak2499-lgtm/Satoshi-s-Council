@@ -199,6 +199,16 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.streamer-voice {
+  margin-top: 12px;
+  border-color: #765f3d !important;
+  background: #0c0f11 !important;
+  color: #d8c8a7 !important;
+}
+.streamer-voice:hover {
+  border-color: #d6b06e !important;
+  color: #fff0ce !important;
+}
 .streamer-center {
   min-width: 0;
   padding: 18px 20px;
@@ -364,6 +374,38 @@
 }
 .streamer-vote-counts b {
   color: var(--stream-lean);
+}
+.streamer-tape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #ffffff16;
+  background: #0b0e10a8;
+}
+.streamer-tape > div {
+  min-width: 0;
+}
+.streamer-tape strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--stream-lean);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+.streamer-tape p {
+  margin: 5px 0 0;
+  color: var(--stream-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.streamer-tape .streamer-voice {
+  flex: none;
+  margin-top: 0;
 }
 .streamer-bottom {
   display: grid;
@@ -578,6 +620,10 @@
   }
   .streamer-price-row b {
     font-size: 14px;
+  }
+  .streamer-tape {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .streamer-bottom {
     grid-template-columns: 1fr;
