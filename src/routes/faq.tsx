@@ -13,7 +13,7 @@ export const Route = createFileRoute("/faq")({
 const QA: { q: string; a: string }[] = [
   {
     q: "How many Council seats actually vote?",
-    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Only the 18 voting specialists can cast UP, DOWN or WAIT votes. WARDEN, ORBIT and WIRE never count as votes; they provide guard and context signals. SATOSHI chairs the vote.`,
+    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Only the 18 voting specialists can cast UP, DOWN or WAIT votes. The three pit-crew seats — WARDEN, ORBIT and WIRE — never count as votes; they provide guard and context signals. SATOSHI chairs the vote.`,
   },
   {
     q: "Why does the desk say WAIT so often?",
