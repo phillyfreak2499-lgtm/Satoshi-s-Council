@@ -342,6 +342,103 @@ function OpenAIShadowStudy({ data }: { data: PublicLabSnapshot["openai_shadow"] 
   );
 }
 
+function OpenAIBlindStudy({ data }: { data: PublicLabSnapshot["openai_blind"] }) {
+  if (!data) {
+    return (
+      <section className="mt-6 rounded-md border border-border bg-canvas p-4">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">OpenAI blind analyst · V1</div>
+        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+          The market-blind scorecard is temporarily unavailable. No live decision path depends on it.
+        </p>
+      </section>
+    );
+  }
+
+  const observer = !data.health.configured
+    ? "needs API key"
+    : data.health.last_error
+      ? "observer error"
+      : data.health.started
+        ? "collecting"
+        : "not started";
+
+  return (
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="openai-blind-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
+            Independent-signal test · T−7:30
+          </div>
+          <h2 id="openai-blind-title" className="mt-1 font-sans text-title font-medium text-fg">
+            OpenAI blind analyst · V1
+          </h2>
+        </div>
+        <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold uppercase tracking-widest text-muted">
+          {observer}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[90ch] font-sans text-ui leading-relaxed text-muted">
+        The same Terra model gets Bitcoin, derivatives and non-market context, but no Kalshi prices,
+        market-implied probability, desk fair value, Council votes or SATOSHI. Market and Chair comparators
+        are attached only after its forecast is frozen. This tests whether the API contributes independent
+        information instead of echoing the desk.
+      </p>
+
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Graded</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.graded} / {data.captured}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Blind accuracy</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{percent(data.accuracy)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Blind Brier</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.brier == null ? "—" : data.brier.toFixed(4)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Market-aware Brier</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.market_aware_brier == null ? "—" : data.market_aware_brier.toFixed(4)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Market Brier</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.market_brier == null ? "—" : data.market_brier.toFixed(4)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Aware agreement</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">
+            {percent(data.agreement_with_market_aware)} · n={data.paired_with_market_aware}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 grid gap-2 border-t border-border pt-4 font-mono text-micro leading-relaxed text-subtle sm:grid-cols-3">
+        <div>
+          Disagreements: <span className="text-muted">{data.disagreement.n}</span>
+        </div>
+        <div>
+          Blind right: <span className="text-muted">{data.disagreement.blind_hits}</span>
+        </div>
+        <div>
+          Market-aware right: <span className="text-muted">{data.disagreement.aware_hits}</span>
+        </div>
+      </div>
+
+      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        Structurally hidden: Kalshi prices · desk fair · Council votes · Chair. Prompt {data.prompt_version}.
+        API tokens {data.usage.total_tokens.toLocaleString()}. Authority: none.
+      </p>
+      {data.health.last_error ? (
+        <p role="status" className="mt-3 font-mono text-micro text-wait">
+          The last blind capture failed; the Floor is unaffected and collection will retry at a later checkpoint.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function AstraDirectorStudy({ data }: { data: PublicLabSnapshot["astra_director"] }) {
   if (!data) {
     return (
@@ -760,6 +857,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />
             <OpenAIShadowStudy data={data.openai_shadow} />
+            <OpenAIBlindStudy data={data.openai_blind} />
             <AstraDirectorStudy data={data.astra_director} />
             <LabSummary data={data} />
 
