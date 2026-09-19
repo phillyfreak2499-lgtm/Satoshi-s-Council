@@ -22,6 +22,7 @@ test("only available coaches can open a training station", () => {
   const { availableCoach } = load("src/lib/desk/training.ts");
   assert.equal(availableCoach("wick").name, "WICK");
   assert.equal(availableCoach("tape").name, "TAPE");
+  assert.equal(availableCoach("drift").name, "DRIFT");
   for (const id of ["odds", "wire", "unknown", "../wick"]) assert.equal(availableCoach(id), undefined);
 });
 test("training feed sends only bounded WICK evidence and handles missing snapshots", async () => {
