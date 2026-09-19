@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import test from "node:test";\nimport vm from "node:vm";
+import test from "node:test";
+import vm from "node:vm";
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), "utf8");
 const html = read("public/training-desk/drift/index.html");
