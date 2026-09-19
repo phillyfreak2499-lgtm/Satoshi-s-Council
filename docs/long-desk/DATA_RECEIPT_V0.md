@@ -1,119 +1,124 @@
 # Long Desk data receipt v0
 
-**Status:** frozen research receipt for the four-Brief experiment  
-**Decision authority:** none outside the Long Desk research branch
+**Status:** FROZEN for Briefs #001–#004  
+**Decision authority:** Long Desk research only
 
-## Source
+## Canonical source
 
-Research reference series:
-
-- Symbol: **BTC-USD**
-- Provider: Yahoo Finance chart endpoint
+- Instrument: **BTC-USD**
+- Provider: **Yahoo Finance chart endpoint**
 - Interval: **1d**
 - Timezone: **UTC**
-- Field used: **daily close**
-- Historical request used for the v0 sanity check:
-  `https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?period1=1725148800&period2=1789862400&interval=1d&events=history`
+- Field: **daily close**
+- Endpoint family: `https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?...&interval=1d&events=history`
 
-This is a reproducible research reference, not an exchange settlement feed and not a Floor input.
+Do not silently substitute another provider for a v0 Brief.
 
-Before public launch, source/licensing and production suitability must be reviewed separately. Do not silently substitute another feed because values look cleaner.
+## Weekly review snapshot
 
-## Weekly snapshot
+Review time: **Monday 00:00 UTC**.
 
-The Long Desk review clock is **Monday 00:00 UTC**.
+Let Monday be review time `R`. The snapshot day `t` is the immediately preceding Sunday UTC calendar date.
 
-The snapshot uses the **completed Sunday UTC daily close** immediately preceding that Monday.
+`C(t)` is the canonical source's completed daily close for that Sunday.
 
-Example:
+A Brief must not score from an intraday / partial Monday bar.
 
-- review: Monday 2026-09-14 00:00 UTC
-- price row: Sunday 2026-09-13 daily close
+## Freshness
 
-No partial current-day bar may be used.
+The weekly score may be produced only after the canonical response contains the expected Sunday row.
 
-## Decisive calculations
+A source is **fresh for review R** when:
 
-Let `C(t)` be the completed daily close at the snapshot day.
+1. the response contains exactly one finite close for the expected Sunday UTC date;
+2. the newest required decisive row is that Sunday or later; and
+3. the fetch is performed after the Monday review boundary, not from a cache captured before Sunday completed.
 
-### 30-day structure
+If the expected Sunday row is not available when the Brief is prepared, the required decisive input is **missing**. Do not substitute Saturday, Monday intraday, an exchange tick, or another provider.
 
-`ret30 = C(t) / C(t - 30 calendar days) - 1`
+## Exact calculations
 
-Positive iff `ret30 > 0`.
+All lookbacks are calendar-day close-to-close calculations on the canonical daily series.
 
-### 90-day structure
+### 30-day return
 
-`ret90 = C(t) / C(t - 90 calendar days) - 1`
+`ret30(t) = C(t) / C(t - 30 days) - 1`
 
-Positive iff `ret90 > 0`.
+30-day check is positive iff:
+
+`ret30(t) > 0`
+
+### 90-day return
+
+`ret90(t) = C(t) / C(t - 90 days) - 1`
+
+90-day check is positive iff:
+
+`ret90(t) > 0`
 
 ### Trailing-365-day closing high
 
-`H365(t) = max daily close from t-364 through t, inclusive`
+`H365(t) = max(C(d))` for every calendar day `d` from `t - 364 days` through `t`, inclusive.
 
-This is explicitly a **closing high**, not an intraday high.
+This is a **closing high**, not an intraday high.
 
-### Current drawdown
+### Drawdown from trailing-365-day high
 
 `DD(t) = C(t) / H365(t) - 1`
 
 ### Four-week-ago drawdown
 
-`DD4W = C(t - 28d) / H365(t - 28d) - 1`
+`DD4W(t) = C(t - 28 days) / H365(t - 28 days) - 1`
 
-### Drawdown healing
+### Drawdown-healing check
 
 Positive iff:
 
-`DD(t) > DD4W`
+`DD(t) > DD4W(t)`
 
 Example: -34% is healing versus -43%.
 
-## Missing-data rule
+## Missing-data behavior
 
-If any required close is absent, non-finite, duplicated ambiguously, or the 365-day window cannot be reconstructed:
+A decisive input is missing if any required close is:
 
-**the decisive check is unavailable and the weekly stance cannot improve.**
+- absent,
+- non-finite,
+- duplicated ambiguously,
+- not fresh under the rule above,
+- or the full trailing-365-day closing-high window cannot be reconstructed.
 
-For v0:
-- STAND remains STAND.
-- HOLD moves to STAND if a decisive input cannot be reproduced.
+Do **not** interpolate or backfill from a different provider.
 
-Do not interpolate a missing decisive close.
+Frozen v0 behavior:
+
+- If current stance is **STAND**, missing decisive data leaves it **STAND**.
+- If current stance is **HOLD**, missing decisive data moves it to **STAND**.
+- A missing-data week cannot count as one of the two consecutive 3/3 reviews needed for STAND → HOLD.
 
 ## Precision
 
-- Compute from full provider values.
-- Display percentages to one decimal place in a Brief.
-- State transitions use the unrounded values.
+- Compute using the provider's full returned values.
+- Transition logic uses unrounded values.
+- Display percentages to one decimal place.
 - Exact zero is not positive.
 
-## What this receipt does not include
+## Context that cannot decide v0
 
-These may appear as descriptive context but are not v0 decisive inputs:
+These may be described, but cannot change a v0 stance:
 
 - 7-day return
-- intraday high/low
+- intraday high / low
 - volume
 - funding
 - open interest
 - Fear & Greed
 - macro events
 
-The current Chair verdict, live seats, Kalshi strike/book, countdown and Floor P&L are prohibited entirely.
+Chair calls, live seats, Kalshi strike / book, countdown, and Floor P&L are prohibited entirely.
 
 ## Change control
 
-Any change to:
-- provider,
-- review clock,
-- close field,
-- lookback length,
-- high definition,
-- missing-data handling,
-- positivity rule
+Changing provider, review clock, close field, lookback, high definition, freshness, missing-data behavior, positivity rule, or transition logic creates a **new version**.
 
-creates a **new receipt version**.
-
-Do not rewrite v0 historical results under a new receipt.
+Briefs #001–#004 stay on v0. Historical results may not be rewritten under a later version.
