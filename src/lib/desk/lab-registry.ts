@@ -72,6 +72,18 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     visible_at: "Lab",
   },
   {
+    id: "openai-shadow-v1",
+    label: "OpenAI shadow analyst V1",
+    type: "decider",
+    authority: "none",
+    purpose: "Prospective market-aware AI probability forecast at T−7:30, scored only in paper research.",
+    cadence: "once per 15m window when API is configured",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab",
+  },
+  {
     id: "policy-exit",
     label: "Policy Lab / exit arena",
     type: "decider",
