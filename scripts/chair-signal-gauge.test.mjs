@@ -107,7 +107,7 @@ test("crossing the signal threshold never promotes WAIT or manufactures a fill",
   assert.equal(s.met, true);
   assert.equal(s.decision, "WAIT");
   const html = render(chair);
-  assert.match(html, /Actual Chair decision: WAIT/);
+  assert.match(html, /Standing Chair read: WAIT/);
   assert.match(html, /paper entry is separate/);
   assert.ok(!html.includes("Paper FILLED"));
   assert.equal(chair.lean, "WAIT");
