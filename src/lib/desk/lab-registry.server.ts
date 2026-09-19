@@ -62,7 +62,7 @@ const msExpr = (v: number | string | null | undefined): string | null => {
 
 async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> {
   const db = await getSql();
-  const stats = await db<StatRow>`
+  const core = await db<StatRow>`
     with replay_stats as materialized (
       select
         count(*)::int as n,
@@ -110,11 +110,6 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
             )
         )::bigint as fair_last_ms
       from desk_replay
-    ),
-    absorption_stats as materialized (
-      select count(*)::int as n,
-        max(extract(epoch from t) * 1000)::bigint as last_ms
-      from desk_absorption
     ),
     decision_stats as materialized (
       select
@@ -172,14 +167,6 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     union all
     select 'strike2', n, last_ms from replay_stats
     union all
-    select 'whale2', n, last_ms from absorption_stats
-    union all
-    select 'absorption', n, last_ms from absorption_stats
-    union all
-    select 'path-parity', count(*)::int,
-      max(extract(epoch from sampled_at) * 1000)::bigint
-      from desk_path_parity
-    union all
     select 'decision-snapshots', n, last_ms from decision_stats
     union all
     select 'higher-context', higher_n, higher_last_ms from decision_stats
@@ -188,6 +175,30 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     union all
     select 'index-settlement-fair', fair_n, fair_last_ms from replay_stats
     union all
+    select 'hourly-book', count(*)::int,
+      max(extract(epoch from recorded_at) * 1000)::bigint
+      from desk_hour_ledger
+  `;
+
+  // Keep the largest ledgers in separate statements. Production enforces a
+  // 15-second statement timeout; each query below is comfortably below it,
+  // while one giant UNION of every exact count can cross the limit.
+  const absorption = await db<StatRow>`
+    with a as (
+      select count(*)::int as n,
+             max(extract(epoch from close_time) * 1000)::bigint as last_ms
+        from desk_absorption
+    )
+    select 'whale2' as id, n, last_ms from a
+    union all
+    select 'absorption', n, last_ms from a
+  `;
+
+  const large = await db<StatRow>`
+    select 'path-parity' as id, count(*)::int as n,
+      max(extract(epoch from sampled_at) * 1000)::bigint as last_ms
+      from desk_path_parity
+    union all
     select 'lag-events', count(*)::int,
       max(extract(epoch from t) * 1000)::bigint
       from desk_lag_events
@@ -195,11 +206,9 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     select 'basis-minutes', count(*)::int,
       max(extract(epoch from minute) * 1000)::bigint
       from desk_basis_minutes
-    union all
-    select 'hourly-book', count(*)::int,
-      max(extract(epoch from recorded_at) * 1000)::bigint
-      from desk_hour_ledger
   `;
+
+  const stats = [...core, ...absorption, ...large];
 
   const now = Date.now();
   const byId = new Map(stats.map((row) => [row.id, row]));
