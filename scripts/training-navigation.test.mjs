@@ -47,6 +47,52 @@ test("TAPE projection bounds book samples and excludes execution claims and unre
   frame={snap:null,votes:[]}; const missing=await (await exports.default()).json(); assert.equal(missing.snap,null); assert.equal(missing.book,null); assert.equal(missing.tape,null);
 });
 
+test("DRIFT projection exposes only bounded momentum teaching evidence", async () => {
+  const source = readFileSync(new URL("../server/routes/training-drift-frame.get.ts", import.meta.url), "utf8")
+    .replace('const { getServerFrame } = await import("../../src/lib/desk/server-engine");', '')
+    .replace('const { readDrift } = await import("../../src/lib/desk/structure");', '');
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  let frame = {
+    as_of: 1,
+    tick_age_s: 0,
+    snap: {
+      ticker: "TEST",
+      close_time: 2,
+      spot: 100,
+      strike: 99,
+      ret5: .001,
+      ret15: .003,
+      ret30: .004,
+      ret1h: .005,
+      candles_1m: Array.from({ length: 90 }, (_, t) => ({ t })),
+    },
+    votes: [{ seat: "DRIFT", lean: "UP", raw_lean: "UP", confidence: 61, health: "LIVE", feed_age_s: 1, evidence: ["aligned"] }, { seat: "TAPE", lean: "DOWN" }],
+    learner: { private: true },
+    chair: { private: true },
+  };
+  const readDrift = () => ({ sign5: "UP", sign15: "UP", sign30: "UP", sign1h: "UP", aligned: true, strong15: true, accel: false, decay: false, pullback: false, stack: true, chop: false, lean: "UP", rsi: 55, volConfirm: true, trend: "UP", ema1mBull: true, ema5mBull: true });
+  const exports = {};
+  vm.runInNewContext(code, { exports, Response, getServerFrame: async () => frame, readDrift });
+  const response = await exports.default();
+  const data = await response.json();
+  assert.equal(data.drift.lean, "UP");
+  assert.equal(data.drift.confidence, 61);
+  assert.equal(data.momentum.aligned, true);
+  assert.equal(data.snap.ret15, .003);
+  assert.equal(data.snap.candles_1m.length, 48);
+  assert.equal(data.snap.candles_1m[0].t, 42);
+  assert.equal(data.tape, undefined);
+  assert.equal(data.learner, undefined);
+  assert.equal(data.chair, undefined);
+  assert.equal(data.votes, undefined);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  frame = { as_of: 1, tick_age_s: 0, snap: null, votes: [] };
+  const missing = await (await exports.default()).json();
+  assert.equal(missing.snap, null);
+  assert.equal(missing.momentum, null);
+  assert.equal(missing.drift, null);
+});
+
 test("TAPE live lessons pause for stale, future, or invalid book evidence", () => {
   const source=readFileSync(new URL("../public/training-desk/tape/main.js",import.meta.url),"utf8");
   const code=source.slice(source.indexOf("function validBook"),source.indexOf("function message"));
