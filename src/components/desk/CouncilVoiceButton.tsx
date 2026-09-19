@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Square, Volume2 } from "lucide-react";
 import type { CouncilVoiceSource, CouncilVoiceSpeaker } from "@/lib/desk/council-voice";
+import { gtagEvent } from "@/lib/desk/ga";
 
 type VoiceState = "idle" | "loading" | "playing" | "error";
 
@@ -59,7 +60,14 @@ export function CouncilVoiceButton({
     activeAudio = audio;
     setState("loading");
 
-    audio.addEventListener("playing", () => setState("playing"), { once: true });
+    audio.addEventListener(
+      "playing",
+      () => {
+        setState("playing");
+        gtagEvent("character_voice_played");
+      },
+      { once: true },
+    );
     audio.addEventListener(
       "ended",
       () => {
