@@ -389,6 +389,7 @@ function OpenAIBlindStudy({ data }: { data: PublicLabSnapshot["openai_blind"] })
         <div>
           <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Graded</dt>
           <dd className="mt-1 font-mono text-ui tabular text-fg">{data.graded} / {data.captured}</dd>
+          <div className="mt-1 font-mono text-micro text-subtle">cap {data.max_captures}</div>
         </div>
         <div>
           <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Blind accuracy</dt>
@@ -427,7 +428,7 @@ function OpenAIBlindStudy({ data }: { data: PublicLabSnapshot["openai_blind"] })
       </div>
 
       <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
-        Structurally hidden: Kalshi prices · desk fair · Council votes · Chair. Prompt {data.prompt_version}.
+        Structurally hidden: Kalshi prices · desk fair · Council votes · Chair. Bounded to {data.max_captures} captures. Prompt {data.prompt_version}.
         API tokens {data.usage.total_tokens.toLocaleString()}. Authority: none.
       </p>
       {data.health.last_error ? (
