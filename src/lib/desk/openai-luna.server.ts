@@ -1,9 +1,9 @@
 /**
  * OPENAI_LUNA_V1 prospective market-aware observer.
  *
- * One same-time paper-research forecast at T-7:30. The model sees no Kalshi
- * prices/fair, Council votes, SATOSHI, or entry economics. Those comparators are
- * recorded only after the Luna forecast is frozen. No decision path imports it.
+ * One same-time paper-research forecast at T-7:30 using the exact market-aware
+ * packet given to Terra. The purpose is cost/performance comparison, not a new
+ * signal definition. No decision path imports it.
  */
 import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
@@ -46,7 +46,7 @@ Research task:
 - conviction is a separate 0-100 self-rated evidence-strength label.
 - strongest_evidence and contradictions must be concise and grounded in supplied fields.
 - would_abstain may be true when evidence is weak, but p_up and side remain mandatory.
-- Output only the required structured object.`
+- Output only the required structured object.`;
 
 type ApiUsage = { input_tokens?: number; output_tokens?: number; total_tokens?: number };
 type ApiResponse = {
@@ -219,8 +219,8 @@ async function captureOnce(): Promise<void> {
   try {
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
-    const frozen = structuredClone({ snap: frame.snap, chair: frame.chair });
-    const { snap, chair } = frozen;
+    const frozen = structuredClone({ snap: frame.snap, chair: frame.chair, votes: frame.votes });
+    const { snap, chair, votes } = frozen;
 
     if (!snap || snap.demo || snap.as_of < OPENAI_LUNA_PROSPECTIVE_SINCE) return;
     if (!snap.ticker || tickerAgrees(snap.ticker, snap.close_time) !== true) return;
@@ -237,9 +237,9 @@ async function captureOnce(): Promise<void> {
       return;
     }
 
-    // Only snap enters the Luna packet builder. Market/Council/Chair comparators below
-    // are read AFTER the model result is frozen.
-    const packet = buildOpenAILunaPacket(snap);
+    // Exact same market-aware input contract as Terra; the only intended
+    // experimental difference is the model tier.
+    const packet = buildOpenAILunaPacket(snap, votes);
     const packetJson = JSON.stringify(packet);
     const inputHash = createHash("sha256").update(packetJson).digest("hex");
     const forecast = await requestForecast(packet, model, apiKey);
