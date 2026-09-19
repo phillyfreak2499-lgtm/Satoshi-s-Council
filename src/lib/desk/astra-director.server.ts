@@ -49,7 +49,7 @@ Hard authority limits:
 
 Research task:
 - Compare the newest 384-window block with the preceding block.
-- Look for regime changes, degradation, improvement, redundant seats, stale research, candidate strength/weakness, and disagreement between market-aware AI, forced-direction research and the live Floor.
+- Look for regime changes, degradation, improvement, redundant seats, stale research, candidate strength/weakness, and disagreement among market-aware AI, market-blind AI, forced-direction research and the live Floor.
 - Distinguish in-sample descriptive patterns from prospective evidence.
 - Prefer fewer, stronger findings over a long speculative list.
 - Use LOW/MEDIUM/HIGH confidence conservatively.
