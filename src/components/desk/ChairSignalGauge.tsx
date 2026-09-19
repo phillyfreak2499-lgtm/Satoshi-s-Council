@@ -63,6 +63,7 @@ export function ChairSignalGauge({ chair, feedHealthy = true }: { chair: ChairSi
               <p>Red means DOWN lean. Green means UP lean. Gold is balanced. The white marker shows the Chair&apos;s actual signed score on one fixed directional scale.</p>
               <p>The marker does not move just because the call requirement changes. The two ticks are the current call lines, converted into the same raw-score units from bar ÷ aggressiveness, so those ticks may move as timing and conditions change.</p>
               <p>Crossing a tick clears the signal check, not every check. The Chair may still WAIT, and paper entry is separate. This scale is directional strength, not win probability.</p>
+              <p>This instrument is the current frame. A standing UP/DOWN read can persist from an earlier qualifying frame, so the live marker can later sit inside a moved threshold without rewriting that earlier read.</p>
               <p>{description}</p>
             </div>
           </details>
