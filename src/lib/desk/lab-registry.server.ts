@@ -47,6 +47,67 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
 
   const db = await getSql();
   const stats = await db<StatRow>`
+    with replay_stats as materialized (
+      select
+        count(*)::int as n,
+        max(extract(epoch from created_at) * 1000)::bigint as last_ms,
+        count(*) filter (
+          where jsonb_typeof(cols -> 'imb') = 'array'
+            and exists (
+              select 1 from jsonb_array_elements(cols -> 'imb') as value
+              where value <> 'null'::jsonb
+            )
+        )::int as tape_n,
+        max(extract(epoch from created_at) * 1000) filter (
+          where jsonb_typeof(cols -> 'imb') = 'array'
+            and exists (
+              select 1 from jsonb_array_elements(cols -> 'imb') as value
+              where value <> 'null'::jsonb
+            )
+        )::bigint as tape_last_ms,
+        count(*) filter (
+          where jsonb_typeof(cols -> 'resid') = 'array'
+            and exists (
+              select 1 from jsonb_array_elements(cols -> 'resid') as value
+              where value <> 'null'::jsonb
+            )
+        )::int as vel_n,
+        max(extract(epoch from created_at) * 1000) filter (
+          where jsonb_typeof(cols -> 'resid') = 'array'
+            and exists (
+              select 1 from jsonb_array_elements(cols -> 'resid') as value
+              where value <> 'null'::jsonb
+            )
+        )::bigint as vel_last_ms,
+        count(*) filter (
+          where jsonb_typeof(cols -> 'fair') = 'array'
+            and exists (
+              select 1 from jsonb_array_elements(cols -> 'fair') as value
+              where value <> 'null'::jsonb
+            )
+        )::int as fair_n,
+        max(extract(epoch from created_at) * 1000) filter (
+          where jsonb_typeof(cols -> 'fair') = 'array'
+            and exists (
+              select 1 from jsonb_array_elements(cols -> 'fair') as value
+              where value <> 'null'::jsonb
+            )
+        )::bigint as fair_last_ms
+      from desk_replay
+    ),
+    absorption_stats as materialized (
+      select count(*)::int as n,
+        max(extract(epoch from t) * 1000)::bigint as last_ms
+      from desk_absorption
+    ),
+    decision_stats as materialized (
+      select
+        count(*)::int as n,
+        max(extract(epoch from receipt_at) * 1000)::bigint as last_ms,
+        count(*) filter (where higher_context is not null)::int as higher_n,
+        max(extract(epoch from receipt_at) * 1000) filter (where higher_context is not null)::bigint as higher_last_ms
+      from desk_decision_snapshots
+    )
     select 'chair-v2' as id, count(*)::int as n,
       max(extract(epoch from taken_at) * 1000)::bigint as last_ms
       from desk_samples
@@ -83,68 +144,33 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       max(extract(epoch from created_at) * 1000)::bigint
       from desk_policy_fills
     union all
-    select 'seat-timing', count(*)::int,
-      max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay
+    select 'seat-timing', n, last_ms from replay_stats
     union all
     select 'call-quality', count(*)::int,
       max(extract(epoch from recorded_at) * 1000)::bigint
       from desk_call_quality
     union all
-    select 'tape2', count(*)::int,
-      max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay
-      where jsonb_typeof(cols -> 'imb') = 'array'
-        and exists (
-          select 1 from jsonb_array_elements(cols -> 'imb') as value
-          where value <> 'null'::jsonb
-        )
+    select 'tape2', tape_n, tape_last_ms from replay_stats
     union all
-    select 'vel2', count(*)::int,
-      max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay
-      where jsonb_typeof(cols -> 'resid') = 'array'
-        and exists (
-          select 1 from jsonb_array_elements(cols -> 'resid') as value
-          where value <> 'null'::jsonb
-        )
+    select 'vel2', vel_n, vel_last_ms from replay_stats
     union all
-    select 'strike2', count(*)::int,
-      max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay
+    select 'strike2', n, last_ms from replay_stats
     union all
-    select 'whale2', count(*)::int,
-      max(extract(epoch from t) * 1000)::bigint
-      from desk_absorption
+    select 'whale2', n, last_ms from absorption_stats
     union all
-    select 'absorption', count(*)::int,
-      max(extract(epoch from t) * 1000)::bigint
-      from desk_absorption
+    select 'absorption', n, last_ms from absorption_stats
     union all
     select 'path-parity', count(*)::int,
       max(extract(epoch from sampled_at) * 1000)::bigint
       from desk_path_parity
     union all
-    select 'decision-snapshots', count(*)::int,
-      max(extract(epoch from receipt_at) * 1000)::bigint
-      from desk_decision_snapshots
+    select 'decision-snapshots', n, last_ms from decision_stats
     union all
-    select 'higher-context', count(*)::int,
-      max(extract(epoch from receipt_at) * 1000)::bigint
-      from desk_decision_snapshots where higher_context is not null
+    select 'higher-context', higher_n, higher_last_ms from decision_stats
     union all
-    select 'null-horizon', count(*)::int,
-      max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay
+    select 'null-horizon', n, last_ms from replay_stats
     union all
-    select 'index-settlement-fair', count(*)::int,
-      max(extract(epoch from created_at) * 1000)::bigint
-      from desk_replay
-      where jsonb_typeof(cols -> 'fair') = 'array'
-        and exists (
-          select 1 from jsonb_array_elements(cols -> 'fair') as value
-          where value <> 'null'::jsonb
-        )
+    select 'index-settlement-fair', fair_n, fair_last_ms from replay_stats
     union all
     select 'lag-events', count(*)::int,
       max(extract(epoch from t) * 1000)::bigint
