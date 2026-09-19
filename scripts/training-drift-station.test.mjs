@@ -27,14 +27,21 @@ test("DRIFT keeps the six-screen school grammar with momentum-specific content",
   assert.match(html, /ILLUSTRATED \/ NOT LIVE/);
 });
 
-test("DRIFT has a visibly distinct physical desk without invented live evidence", () => {
-  for (const prop of ["drift-chip-rack", "drift-photo", "drift-ruler", "drift-sticky"]) assert.ok(html.includes(prop), "missing desk prop " + prop);
+test("DRIFT has a visibly distinct first-view momentum tray without invented live evidence", () => {
+  assert.match(html, /class="momentum-tray"/);
+  assert.match(html, /DRIFT \/ MOMENTUM TOOLS/);
+  for (const prop of ["tray-chips", "tray-card-align", "tray-card-conflict", "tray-ruler", "tray-sticky"]) assert.ok(html.includes(prop), "missing visible momentum prop " + prop);
   for (const chip of ["5M", "15M", "30M"]) assert.ok(html.includes(">" + chip + "<"), "missing timeframe chip " + chip);
   assert.match(html, /REFERENCE \/ ILLUSTRATED/);
+  assert.match(html, /ALIGNMENT/);
+  assert.match(html, /CONFLICT/);
+  assert.match(html, /SLOPE \/ CARRY/);
   assert.match(html, /MOVE ≠ TREND/);
-  assert.match(css, /\.drift-chip/);
-  assert.match(css, /\.drift-photo/);
-  assert.match(css, /\.drift-ruler/);
+  assert.match(css, /\.momentum-tray/);
+  assert.match(css, /\.tray-chip/);
+  assert.match(css, /\.tray-card/);
+  assert.match(css, /\.tray-ruler/);
+  assert.match(css, /\.tray-sticky/);
 });
 
 test("DRIFT live teaching is read-only and pauses around stale evidence", () => {
