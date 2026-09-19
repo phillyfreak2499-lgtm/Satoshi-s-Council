@@ -239,6 +239,109 @@ function ForcedV4Study({ data }: { data: PublicLabSnapshot["forced_v4"] }) {
   );
 }
 
+function OpenAIShadowStudy({ data }: { data: PublicLabSnapshot["openai_shadow"] }) {
+  if (!data) {
+    return (
+      <section className="mt-6 rounded-md border border-border bg-canvas p-4">
+        <div className="font-mono text-micro uppercase tracking-widest text-subtle">OpenAI shadow analyst · V1</div>
+        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+          The OpenAI paper-research scorecard is temporarily unavailable. No live decision path depends on it.
+        </p>
+      </section>
+    );
+  }
+
+  const coverage = data.coverage.expected_since_first > 0
+    ? `${data.coverage.captured_since_first} / ${data.coverage.expected_since_first}`
+    : `${data.captured}`;
+  const observer = !data.health.configured
+    ? "needs API key"
+    : data.health.last_error
+      ? "observer error"
+      : data.health.started
+        ? "collecting"
+        : "not started";
+
+  return (
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="openai-shadow-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
+            Paper-only AI research · T−7:30
+          </div>
+          <h2 id="openai-shadow-title" className="mt-1 font-sans text-title font-medium text-fg">
+            OpenAI shadow analyst · V1
+          </h2>
+        </div>
+        <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro font-bold uppercase tracking-widest text-muted">
+          {observer}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[90ch] font-sans text-ui leading-relaxed text-muted">
+        A frozen same-time packet is sent to {data.model} once per captured window. The model returns a structured
+        P(UP), forced direction, evidence labels, contradictions and an optional abstain flag. It has no web tools,
+        no order tools and no path into SATOSHI, the learner or the paper book.
+      </p>
+
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Graded</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.graded} / {data.captured}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">AI accuracy</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{percent(data.accuracy)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">AI Brier</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.brier == null ? "—" : data.brier.toFixed(4)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Market Brier</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{data.market_brier == null ? "—" : data.market_brier.toFixed(4)}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Chair WAIT cut</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">
+            {percent(data.when_chair_wait.accuracy)} · n={data.when_chair_wait.n}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro uppercase tracking-widest text-subtle">Coverage</dt>
+          <dd className="mt-1 font-mono text-ui tabular text-fg">{coverage}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 grid gap-2 border-t border-border pt-4 font-mono text-micro leading-relaxed text-subtle sm:grid-cols-3">
+        <div>
+          Non-abstain: <span className="text-muted">{percent(data.non_abstain.accuracy)} · n={data.non_abstain.n}</span>
+        </div>
+        <div>
+          Abstained: <span className="text-muted">{data.abstain_n} / {data.captured}</span>
+        </div>
+        <div>
+          API tokens: <span className="text-muted">{data.usage.total_tokens.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+        Prompt {data.prompt_version}. Probability and direction are always scored; the abstain flag is a separate
+        research cut. Model conviction is self-rated and is not treated as calibrated probability. Authority: none.
+      </p>
+      {!data.health.configured ? (
+        <p role="status" className="mt-3 font-mono text-micro text-wait">
+          OPENAI_API_KEY is not configured on the server yet, so the observer is dormant.
+        </p>
+      ) : data.health.last_error ? (
+        <p role="status" className="mt-3 font-mono text-micro text-wait">
+          The last API capture failed; the desk itself is unaffected and the observer will retry on a future checkpoint.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function LabSummary({ data }: { data: PublicLabSnapshot }) {
   const { control, candidates, comparisons, reached } = labComparisons(data.specimens, data.control_id);
   const paired = comparisons.filter((item) => item.delta != null).length;
@@ -530,6 +633,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />
+            <OpenAIShadowStudy data={data.openai_shadow} />
             <LabSummary data={data} />
 
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">

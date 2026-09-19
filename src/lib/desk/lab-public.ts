@@ -15,6 +15,7 @@ import {
 import { COMPONENT_MIN } from "./promotion-gates";
 import { callQualitySnapshot, type CallQualitySnapshot } from "./call-quality.server";
 import { forcedV4Snapshot, type ForcedV4Snapshot } from "./forced-v4.server";
+import { openAIShadowSnapshot, type OpenAIShadowSnapshot } from "./openai-shadow.server";
 import { labRegistrySnapshot, type PublicLabRegistrySnapshot } from "./lab-registry.server";
 
 export type PublicLabSpecimen = {
@@ -43,6 +44,7 @@ export type PublicLabSnapshot = {
   seat_timing: PublicSeatHorizonSnapshot | null;
   call_quality: CallQualitySnapshot | null;
   forced_v4: ForcedV4Snapshot | null;
+  openai_shadow: OpenAIShadowSnapshot | null;
   registry: PublicLabRegistrySnapshot | null;
   governance: {
     paper_only: true;
@@ -55,11 +57,12 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming, callQuality, forcedV4, registry] = await Promise.all([
+    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, registry] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
       callQualitySnapshot().catch(() => null),
       forcedV4Snapshot().catch(() => null),
+      openAIShadowSnapshot().catch(() => null),
       labRegistrySnapshot().catch(() => null),
     ]);
     const byId = new Map(standing.rows.map((row) => [row.candidate_id, row]));
@@ -95,6 +98,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       seat_timing: seatTiming,
       call_quality: callQuality,
       forced_v4: forcedV4,
+      openai_shadow: openAIShadow,
       registry,
       governance: {
         paper_only: true,
