@@ -17,7 +17,8 @@ export default async function councilVoiceRoute(event: { url: URL }) {
     const mod = await import("../../src/lib/desk/council-voice.server");
     const result = await mod.councilVoice({ source, speaker, eventKey });
 
-    return new Response(result.bytes, {
+    const body = Uint8Array.from(result.bytes).buffer;
+    return new Response(body, {
       status: 200,
       headers: {
         "content-type": "audio/mpeg",
