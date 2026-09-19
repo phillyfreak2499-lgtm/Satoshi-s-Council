@@ -21,6 +21,8 @@ test("public Council copy matches the roster the Chair actually uses", () => {
   const publicCopy = read("src/lib/desk/council-public.ts");
   const about = read("src/routes/about.tsx");
   const faq = read("src/routes/faq.tsx");
+  const root = read("src/routes/__root.tsx");
+  const og = read("server/routes/og/page.get.ts");
 
   assert.match(publicCopy, /COUNCIL_TOTAL_SEATS = 21/);
   assert.match(publicCopy, /COUNCIL_VOTING_SEATS = 18/);
@@ -38,6 +40,9 @@ test("public Council copy matches the roster the Chair actually uses", () => {
   assert.match(faq, /The three pit-crew seats never count as votes/);
   assert.match(faq, /COUNCIL_STRUCTURE_SHORT/);
   assert.doesNotMatch(faq, /Twenty-one of them sit at five desks/);
+
+  assert.match(root, /The Council has 21 seats: 18 voting specialists and 3 non-voting pit crew/);
+  assert.match(og, /21 SEATS \/ 18 VOTE \/ 3 PIT CREW/);
 });
 
 test("the live Floor separates the standing read from the current signal frame", () => {
