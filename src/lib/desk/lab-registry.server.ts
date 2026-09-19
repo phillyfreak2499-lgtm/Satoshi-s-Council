@@ -161,6 +161,10 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       max(extract(epoch from recorded_at) * 1000)::bigint
       from desk_call_quality
     union all
+    select 'chair-ablation', count(*)::int,
+      max(extract(epoch from recorded_at) * 1000)::bigint
+      from desk_chair_ablation
+    union all
     select 'tape2', tape_n, tape_last_ms from replay_stats
     union all
     select 'vel2', vel_n, vel_last_ms from replay_stats
