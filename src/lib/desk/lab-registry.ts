@@ -84,6 +84,18 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     visible_at: "Lab",
   },
   {
+    id: "openai-blind-v1",
+    label: "OpenAI blind analyst V1",
+    type: "decider",
+    authority: "none",
+    purpose: "Market-blind Terra forecast at T−7:30 to test signal independent of Kalshi, Council and Chair.",
+    cadence: "once per 15m window when API is configured",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab",
+  },
+  {
     id: "astra-director",
     label: "Astra research director",
     type: "measurement",
