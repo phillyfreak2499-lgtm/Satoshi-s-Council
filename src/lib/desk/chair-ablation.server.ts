@@ -17,6 +17,8 @@ import {
   CHAIR_ABLATION_VERSION,
   carryOffWhenChain,
   releaseDirectionalAuthority,
+  rescueReviewedPaper,
+  reviewedPaperDirectionals,
   tapeOff,
 } from "./chair-ablation";
 import type { ChairResult, Learner, Settings, Snapshot, Vote } from "./types";
@@ -120,6 +122,14 @@ async function capture(): Promise<void> {
     const rawRelease = releaseDirectionalAuthority(votes, learner, true);
     const raw = coreChair(rawRelease.votes, snap, rawRelease.learner, settings);
 
+    const reviewedPaperRescue = rescueReviewedPaper(votes, learner);
+    const reviewed = coreChair(
+      reviewedPaperRescue.votes,
+      snap,
+      reviewedPaperRescue.learner,
+      settings,
+    );
+
     const baseBySeat = new Map(votes.map((vote) => [vote.seat, vote]));
     const authorityHeld = control.rows
       .filter((row) => row.forced_sit && directional(baseBySeat.get(row.seat)?.lean))
@@ -137,6 +147,7 @@ async function capture(): Promise<void> {
       carry_off_when_chain: compactChair(carry),
       authority_release: compactChair(authority),
       raw_release: compactChair(raw),
+      reviewed_paper_rescue: compactChair(reviewed),
     };
     const seatState = {
       post_whisper_directional: votes.filter((vote) => directional(vote.lean)).map((vote) => vote.seat),
@@ -145,6 +156,8 @@ async function capture(): Promise<void> {
       upstream_gagged: upstreamGagged,
       authority_release: authorityRelease.released,
       raw_release: rawRelease.released,
+      reviewed_paper_directional: reviewedPaperDirectionals(votes),
+      reviewed_paper_rescue: reviewedPaperRescue.released,
       chain_directional: votes.some((vote) => vote.seat === "CHAIN" && directional(vote.lean)),
     };
     const market = {
@@ -262,7 +275,7 @@ async function buildSnapshot() {
        and a.close_time >= now() - interval '60 days'
      order by a.close_time, a.horizon desc
   `;
-  const variants = ["control_core", "tape_off", "carry_off_when_chain", "authority_release", "raw_release"];
+  const variants = ["control_core", "tape_off", "carry_off_when_chain", "authority_release", "raw_release", "reviewed_paper_rescue"];
   const byHorizon = HORIZONS.map((horizon) => {
     const own = rows.filter((row) => Number(row.horizon) === horizon);
     return {
