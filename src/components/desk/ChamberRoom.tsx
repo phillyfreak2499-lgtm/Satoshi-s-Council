@@ -8,6 +8,7 @@ import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
 import { SEAT_IDS } from "@/lib/desk/types";
 import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
+import { CouncilVoiceButton } from "./CouncilVoiceButton";
 
 const CAST = [
   ["SATOSHI", "Chair", "Speaks from finalized Chair milestones and recorded paper calls."],
@@ -193,6 +194,15 @@ function Statement({ statement }: { statement: ChamberStatement }) {
             </time>
           </div>
           <p className="mt-1 max-w-[72ch] font-sans text-body leading-relaxed text-fg">{statement.text}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <CouncilVoiceButton
+              source="chamber"
+              speaker={statement.speaker}
+              eventKey={statement.event_key}
+              label="Hear"
+            />
+            <span className="font-mono text-micro text-subtle">AI-generated character voice</span>
+          </div>
           <Evidence statement={statement} />
         </div>
       </div>
@@ -377,6 +387,9 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
           </p>
           <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
             Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
+          </p>
+          <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+            Optional playback uses AI-generated fictional character voices. The recorded text and evidence remain the canonical record.
           </p>
           <a href="/training/wick" className="btn btn-secondary mt-4">Train with WICK ↗</a>
         </section>
