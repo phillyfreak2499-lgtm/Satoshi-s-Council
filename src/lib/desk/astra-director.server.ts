@@ -21,6 +21,7 @@ import {
   type AstraDirectorReport,
 } from "./astra-director";
 import { callQualitySnapshot } from "./call-quality.server";
+import { chairAblationSnapshot } from "./chair-ablation.server";
 import { cubeStudy } from "./cube.server";
 import { forcedV4Snapshot } from "./forced-v4.server";
 import { labRegistrySnapshot } from "./lab-registry.server";
@@ -215,10 +216,11 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
   const newest = raw.slice(0, ASTRA_DIRECTOR_WINDOW_BATCH).reverse();
   const prior = raw.slice(ASTRA_DIRECTOR_WINDOW_BATCH, ASTRA_DIRECTOR_WINDOW_BATCH * 2).reverse();
 
-  const [standing, registry, callQuality, forcedV4, openai, blind, luna, cube, redundancy, signal, promotion] = await Promise.all([
+  const [standing, registry, callQuality, chairAblation, forcedV4, openai, blind, luna, cube, redundancy, signal, promotion] = await Promise.all([
     labStanding().catch(() => null),
     labRegistrySnapshot().catch(() => null),
     callQualitySnapshot().catch(() => null),
+    chairAblationSnapshot().catch(() => null),
     forcedV4Snapshot().catch(() => null),
     openAIShadowSnapshot().catch(() => null),
     openAIBlindSnapshot().catch(() => null),
@@ -252,6 +254,7 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
       deterministic_promotion_gates: promotion,
       registry,
       call_quality: callQuality,
+      chair_ablation: chairAblation,
       forced_direction_v4: forcedV4,
       openai_market_aware: openai,
       openai_market_blind: blind,

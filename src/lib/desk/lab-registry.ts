@@ -156,6 +156,18 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     visible_at: "Lab",
   },
   {
+    id: "chair-ablation",
+    label: "Chair ablation V1",
+    type: "decider",
+    authority: "none",
+    purpose: "Prospectively separate seat influence, September 15 authority filtering, and upstream raw-signal silence.",
+    cadence: "3 checkpoints per 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab / Astra research packet",
+  },
+  {
     id: "tape2",
     label: "TAPE 2.0",
     type: "measurement",
