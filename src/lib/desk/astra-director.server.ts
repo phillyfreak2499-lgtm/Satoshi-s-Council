@@ -6,7 +6,7 @@
  * Output: a structured research report and nominations only.
  *
  * No actuator exists here. This module never imports or calls Chair/booking/
- * learner mutation functions and writes only desk_astra_director.
+ * learner mutation functions and writes only the Astra report/job research ledgers.
  */
 import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
@@ -33,7 +33,8 @@ import { redundancyStudy } from "./redundancy.server";
 import { signalStudy } from "./seat-signal.server";
 
 const OBSERVER_MS = 60_000;
-const REQUEST_TIMEOUT_MS = 120_000;
+const API_REQUEST_TIMEOUT_MS = 30_000;
+const RETRY_AFTER_MS = 15 * 60_000;
 
 const INSTRUCTIONS = `You are ASTRA_RESEARCH_DIRECTOR_V1 for Satoshi's Council, a paper-only Bitcoin research system.
 
@@ -65,6 +66,7 @@ type ApiResponse = {
   output_text?: string;
   output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string; refusal?: string }> }>;
   error?: { message?: string };
+  incomplete_details?: { reason?: string };
   usage?: Usage;
 };
 
@@ -263,10 +265,57 @@ async function buildPacket(gradedTotal: number, throughClose: string) {
   };
 }
 
-async function requestReport(
+type BackgroundJobRow = {
+  id: number;
+  through_close_time: Date | string;
+  graded_total: number;
+  packet: Awaited<ReturnType<typeof buildPacket>>;
+  response_id: string;
+  status: string;
+  attempt: number;
+  started_at: Date | string;
+  last_polled_at: Date | string | null;
+};
+
+const pendingStatuses = new Set(["queued", "in_progress"]);
+const terminalFailureStatuses = new Set(["failed", "incomplete", "expired", "cancelled"]);
+
+function normalizeStatus(value: unknown): string {
+  const status = String(value ?? "in_progress");
+  if (status === "queued" || status === "in_progress" || status === "completed" || terminalFailureStatuses.has(status)) {
+    return status;
+  }
+  return "in_progress";
+}
+
+function validateReport(
+  body: ApiResponse,
+  packet: Awaited<ReturnType<typeof buildPacket>>,
+): { report: AstraDirectorReport; usage: Usage } {
+  const text = responseText(body);
+  if (!text) throw new Error("Astra response contained no structured output");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Astra structured output was not valid JSON");
+  }
+  const report = parseAstraDirectorReport(parsed);
+  if (!report) throw new Error("Astra structured output failed local invariant checks");
+
+  const gateStatus = new Map(packet.lab.deterministic_promotion_gates.map((g) => [g.candidate_id, g.gate_status]));
+  for (const action of report.lab_actions) {
+    if (action.action === "PROMOTION_REVIEW" && gateStatus.get(action.candidate_id) !== "ELIGIBLE") {
+      throw new Error(`Astra nominated ${action.candidate_id} for promotion review without deterministic eligibility`);
+    }
+  }
+  return { report, usage: body.usage ?? {} };
+}
+
+async function createBackgroundReport(
   packet: Awaited<ReturnType<typeof buildPacket>>,
   apiKey: string,
-): Promise<{ report: AstraDirectorReport; responseId: string; usage: Usage; latencyMs: number }> {
+): Promise<{ body: ApiResponse; latencyMs: number }> {
   const started = Date.now();
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -274,9 +323,10 @@ async function requestReport(
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
     },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       model: ASTRA_DIRECTOR_MODEL,
+      background: true,
       store: false,
       reasoning: { effort: "high" },
       max_output_tokens: 3600,
@@ -297,36 +347,133 @@ async function requestReport(
       },
     }),
   });
-
   const body = (await res.json().catch(() => ({}))) as ApiResponse;
   if (!res.ok) {
     throw new Error(`OpenAI Responses API: ${body.error?.message?.slice(0, 320) || `HTTP ${res.status}`}`);
   }
-  if (body.status && body.status !== "completed") throw new Error(`Astra response not completed: ${body.status}`);
-  const text = responseText(body);
-  if (!text) throw new Error("Astra response contained no structured output");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error("Astra structured output was not valid JSON");
-  }
-  const report = parseAstraDirectorReport(parsed);
-  if (!report) throw new Error("Astra structured output failed local invariant checks");
+  if (!body.id) throw new Error("Astra background response did not return an id");
+  return { body, latencyMs: Math.max(0, Date.now() - started) };
+}
 
-  const gateStatus = new Map(packet.lab.deterministic_promotion_gates.map((g) => [g.candidate_id, g.gate_status]));
-  for (const action of report.lab_actions) {
-    if (action.action === "PROMOTION_REVIEW" && gateStatus.get(action.candidate_id) !== "ELIGIBLE") {
-      throw new Error(`Astra nominated ${action.candidate_id} for promotion review without deterministic eligibility`);
+async function pollBackgroundReport(responseId: string, apiKey: string): Promise<ApiResponse> {
+  const res = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}`, {
+    method: "GET",
+    headers: { authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
+  });
+  const body = (await res.json().catch(() => ({}))) as ApiResponse;
+  if (!res.ok) {
+    throw new Error(`OpenAI Responses API poll: ${body.error?.message?.slice(0, 320) || `HTTP ${res.status}`}`);
+  }
+  return body;
+}
+
+async function pendingJob(): Promise<BackgroundJobRow | null> {
+  const db = await getSql();
+  const [row] = await db<BackgroundJobRow>`
+    select id, through_close_time, graded_total, packet, response_id, status,
+           attempt, started_at, last_polled_at
+      from desk_astra_director_jobs
+     where study = ${ASTRA_DIRECTOR_STUDY}
+       and version = ${ASTRA_DIRECTOR_VERSION}
+       and status in ('queued','in_progress')
+     order by started_at desc
+     limit 1
+  `;
+  return row ?? null;
+}
+
+async function latestJobForWindow(throughClose: string): Promise<BackgroundJobRow | null> {
+  const db = await getSql();
+  const [row] = await db<BackgroundJobRow>`
+    select id, through_close_time, graded_total, packet, response_id, status,
+           attempt, started_at, last_polled_at
+      from desk_astra_director_jobs
+     where study = ${ASTRA_DIRECTOR_STUDY}
+       and version = ${ASTRA_DIRECTOR_VERSION}
+       and through_close_time = ${throughClose}::timestamptz
+     order by attempt desc, started_at desc
+     limit 1
+  `;
+  return row ?? null;
+}
+
+async function finalizeJob(job: BackgroundJobRow, body: ApiResponse): Promise<void> {
+  const parsed = validateReport(body, job.packet);
+  const db = await getSql();
+  const latencyMs = Math.max(0, Date.now() - new Date(job.started_at).getTime());
+  await db`
+    insert into desk_astra_director (
+      study, version, prompt_version, model, window_batch, through_close_time,
+      graded_total, packet_hash, packet, report, response_id,
+      input_tokens, output_tokens, total_tokens, latency_ms, build_sha
+    )
+    select
+      ${ASTRA_DIRECTOR_STUDY}, ${ASTRA_DIRECTOR_VERSION}, ${ASTRA_DIRECTOR_PROMPT_VERSION},
+      ${ASTRA_DIRECTOR_MODEL}, ${ASTRA_DIRECTOR_WINDOW_BATCH}, j.through_close_time,
+      j.graded_total, j.packet_hash, j.packet, ${JSON.stringify(parsed.report)}::jsonb,
+      j.response_id, ${finite(parsed.usage.input_tokens)}, ${finite(parsed.usage.output_tokens)},
+      ${finite(parsed.usage.total_tokens)}, ${latencyMs}, j.build_sha
+      from desk_astra_director_jobs j
+     where j.id = ${job.id}
+    on conflict (study, version, through_close_time) do nothing
+  `;
+  await db`
+    update desk_astra_director_jobs
+       set status = 'completed',
+           completed_at = now(),
+           last_polled_at = now(),
+           last_error = null
+     where id = ${job.id}
+  `;
+  const st = observer();
+  st.lastRunAt = Date.now();
+  st.lastLatencyMs = latencyMs;
+  st.lastError = null;
+}
+
+async function processPendingJob(apiKey: string): Promise<boolean> {
+  const job = await pendingJob();
+  if (!job) return false;
+  const body = await pollBackgroundReport(job.response_id, apiKey);
+  const status = normalizeStatus(body.status);
+  const db = await getSql();
+
+  if (status === "completed") {
+    try {
+      await finalizeJob(job, body);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await db`
+        update desk_astra_director_jobs
+           set status = 'failed', last_polled_at = now(), completed_at = now(),
+               last_error = ${msg.slice(0, 1000)}
+         where id = ${job.id}
+      `;
+      observer().lastError = msg;
     }
+    return true;
   }
 
-  return {
-    report,
-    responseId: typeof body.id === "string" ? body.id : "",
-    usage: body.usage ?? {},
-    latencyMs: Math.max(0, Date.now() - started),
-  };
+  if (terminalFailureStatuses.has(status)) {
+    const msg = body.error?.message || body.incomplete_details?.reason || `Astra background response ended as ${status}`;
+    await db`
+      update desk_astra_director_jobs
+         set status = ${status}, last_polled_at = now(), completed_at = now(),
+             last_error = ${msg.slice(0, 1000)}
+       where id = ${job.id}
+    `;
+    observer().lastError = msg;
+    return true;
+  }
+
+  await db`
+    update desk_astra_director_jobs
+       set status = ${status}, last_polled_at = now(), last_error = null
+     where id = ${job.id}
+  `;
+  observer().lastError = null;
+  return true;
 }
 
 async function dueState(): Promise<{ due: boolean; gradedTotal: number; throughClose: string | null; lastTotal: number }> {
@@ -362,32 +509,41 @@ async function captureIfDue(): Promise<void> {
   }
   st.inFlight = true;
   try {
+    if (await processPendingJob(apiKey)) return;
+
     const due = await dueState();
     if (!due.due || !due.throughClose) return;
+
+    const latest = await latestJobForWindow(due.throughClose);
+    if (latest && !pendingStatuses.has(latest.status)) {
+      const age = Date.now() - new Date(latest.started_at).getTime();
+      if (age < RETRY_AFTER_MS) return;
+    }
 
     const packet = await buildPacket(due.gradedTotal, due.throughClose);
     const packetJson = JSON.stringify(packet);
     const packetHash = createHash("sha256").update(packetJson).digest("hex");
-    const result = await requestReport(packet, apiKey);
+    const started = await createBackgroundReport(packet, apiKey);
+    const status = normalizeStatus(started.body.status);
+    const responseId = started.body.id ?? "";
+    const attempt = Math.max(1, Number(latest?.attempt ?? 0) + 1);
     const db = await getSql();
-    await db`
-      insert into desk_astra_director (
-        study, version, prompt_version, model, window_batch, through_close_time,
-        graded_total, packet_hash, packet, report, response_id,
-        input_tokens, output_tokens, total_tokens, latency_ms, build_sha
+    const [job] = await db<BackgroundJobRow>`
+      insert into desk_astra_director_jobs (
+        study, version, through_close_time, graded_total, packet_hash, packet,
+        response_id, status, attempt, build_sha
       ) values (
-        ${ASTRA_DIRECTOR_STUDY}, ${ASTRA_DIRECTOR_VERSION}, ${ASTRA_DIRECTOR_PROMPT_VERSION},
-        ${ASTRA_DIRECTOR_MODEL}, ${ASTRA_DIRECTOR_WINDOW_BATCH}, ${due.throughClose}::timestamptz,
-        ${due.gradedTotal}, ${packetHash}, ${packetJson}::jsonb, ${JSON.stringify(result.report)}::jsonb,
-        ${result.responseId}, ${finite(result.usage.input_tokens)}, ${finite(result.usage.output_tokens)},
-        ${finite(result.usage.total_tokens)}, ${result.latencyMs},
-        ${process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? ""}
+        ${ASTRA_DIRECTOR_STUDY}, ${ASTRA_DIRECTOR_VERSION}, ${due.throughClose}::timestamptz,
+        ${due.gradedTotal}, ${packetHash}, ${packetJson}::jsonb, ${responseId},
+        ${status}, ${attempt}, ${process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? ""}
       )
-      on conflict (study, version, through_close_time) do nothing
+      returning id, through_close_time, graded_total, packet, response_id, status,
+                attempt, started_at, last_polled_at
     `;
-    st.lastRunAt = Date.now();
-    st.lastLatencyMs = result.latencyMs;
+
+    st.lastLatencyMs = started.latencyMs;
     st.lastError = null;
+    if (job && status === "completed") await finalizeJob(job, started.body);
   } catch (err) {
     st.lastError = err instanceof Error ? err.message : String(err);
   } finally {

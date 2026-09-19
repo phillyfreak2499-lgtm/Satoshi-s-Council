@@ -25,6 +25,9 @@ export default function healthz() {
   void import("../../src/lib/desk/openai-luna.server")
     .then((m) => m.ensureOpenAILunaObserver())
     .catch(() => {});
+  void import("../../src/lib/desk/lab-registry.server")
+    .then((m) => m.ensureLabRegistryObserver())
+    .catch(() => {});
   void import("../../src/lib/desk/astra-director.server")
     .then((m) => m.ensureAstraDirectorObserver())
     .catch(() => {});
