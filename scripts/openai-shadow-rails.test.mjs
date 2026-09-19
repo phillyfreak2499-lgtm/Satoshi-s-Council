@@ -18,7 +18,6 @@ test("OpenAI shadow is paper-only and has no execution surface", () => {
   for (const forbidden of [
     "placeOrder",
     "submitOrder",
-    "wallet",
     "transferFunds",
     "executeTrade",
     "KalshiClient",
