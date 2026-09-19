@@ -6,6 +6,7 @@
  * - enter_the_floor — intentional Enter/Open the floor CTA click
  * - feedback_submitted — Ideas & feedback board post succeeded
  * - paper_call_locked — human Arena paper UP/DOWN lock succeeded
+ * - character_voice_played — an optional Council character audio clip actually began playback
  *
  * Never: signup / sign_up / generate_lead / purchase / Chair/Council auto.
  */
@@ -13,6 +14,7 @@ export const GA_EVENT_NAMES = [
   "enter_the_floor",
   "feedback_submitted",
   "paper_call_locked",
+  "character_voice_played",
 ] as const;
 
 export type GaEventName = (typeof GA_EVENT_NAMES)[number];
