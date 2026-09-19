@@ -14,7 +14,7 @@ The Long Desk is a slower Bitcoin ownership-research product that publishes a da
 - A reader must not be able to derive a Long Desk Brief from Floor votes.
 - FLOOR WAIT and LONG DESK STAND are different nouns and must never share a visual component.
 - No brokerage CTA, affiliate URL, live-order path, sizing instruction, or performance promise belongs in this experiment.
-- Until legal review, this experiment may use HOLD / STAND only. ADD remains gated.
+- Long Desk nouns are ADD / HOLD / STAND. The frozen v0 rule can currently produce HOLD or STAND only; it has no ADD transition, and one must not be invented during Briefs #001–#004.
 - Every Brief must state what would invalidate its current stance.
 - Every Brief must say what evidence did not matter on the long clock.
 - The Brief is judged on whether a reader would return for the next one, not on whether a one-week price move made it look smart.
@@ -29,7 +29,7 @@ Each must contain:
 2. Observed evidence.
 3. What matters on the long clock.
 4. What does not matter on the long clock.
-5. HOLD or STAND.
+5. ADD / HOLD / STAND, with the frozen v0 rule currently capable of HOLD / STAND only.
 6. Stance since-date / age.
 7. A named invalidation.
 8. An explicit statement that the Floor may be UP, DOWN, or WAIT and does not determine this stance.
@@ -49,4 +49,4 @@ Stop the product experiment before UI work if any of these happen:
 
 ## Current status
 
-Brief #001 started 2026-09-19. The Floor, Lab, Chair scoring, champion policy, and /desk internals remain untouched.
+Brief #001 started 2026-09-19. Brief #002 is drafted but unscored until Monday 2026-09-21 00:00 UTC. This branch is Step 2 only: prove the Brief. No /long, homepage-door, Floor, Lab, Chair-scoring, champion-policy, Kraken, or other product-expansion work is in scope.
