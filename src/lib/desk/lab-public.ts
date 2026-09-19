@@ -16,6 +16,7 @@ import { COMPONENT_MIN } from "./promotion-gates";
 import { callQualitySnapshot, type CallQualitySnapshot } from "./call-quality.server";
 import { forcedV4Snapshot, type ForcedV4Snapshot } from "./forced-v4.server";
 import { openAIShadowSnapshot, type OpenAIShadowSnapshot } from "./openai-shadow.server";
+import { openAIBlindSnapshot, type OpenAIBlindSnapshot } from "./openai-blind.server";
 import { labRegistrySnapshot, type PublicLabRegistrySnapshot } from "./lab-registry.server";
 import { astraDirectorSnapshot, type AstraDirectorSnapshot } from "./astra-director.server";
 
@@ -46,6 +47,7 @@ export type PublicLabSnapshot = {
   call_quality: CallQualitySnapshot | null;
   forced_v4: ForcedV4Snapshot | null;
   openai_shadow: OpenAIShadowSnapshot | null;
+  openai_blind: OpenAIBlindSnapshot | null;
   astra_director: AstraDirectorSnapshot | null;
   registry: PublicLabRegistrySnapshot | null;
   governance: {
@@ -59,12 +61,13 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, astraDirector, registry] = await Promise.all([
+    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, astraDirector, registry] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
       callQualitySnapshot().catch(() => null),
       forcedV4Snapshot().catch(() => null),
       openAIShadowSnapshot().catch(() => null),
+      openAIBlindSnapshot().catch(() => null),
       astraDirectorSnapshot().catch(() => null),
       labRegistrySnapshot().catch(() => null),
     ]);
@@ -102,6 +105,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       call_quality: callQuality,
       forced_v4: forcedV4,
       openai_shadow: openAIShadow,
+      openai_blind: openAIBlind,
       astra_director: astraDirector,
       registry,
       governance: {

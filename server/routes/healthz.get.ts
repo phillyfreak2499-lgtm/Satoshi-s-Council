@@ -19,6 +19,9 @@ export default function healthz() {
   void import("../../src/lib/desk/openai-shadow.server")
     .then((m) => m.ensureOpenAIShadowObserver())
     .catch(() => {});
+  void import("../../src/lib/desk/openai-blind.server")
+    .then((m) => m.ensureOpenAIBlindObserver())
+    .catch(() => {});
   void import("../../src/lib/desk/astra-director.server")
     .then((m) => m.ensureAstraDirectorObserver())
     .catch(() => {});
