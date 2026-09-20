@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
@@ -23,6 +24,7 @@ function loadHelper(sql) {
     exports,
     require: (key) => {
       if (key === "@/lib/db") return { getSql: async () => sql };
+      if (key === "node:crypto") return { createHash };
       throw new Error(`unexpected dependency ${key}`);
     },
     Date,
@@ -51,6 +53,13 @@ async function fixture() {
   };
   return { pg, sql, jobs: loadHelper(sql) };
 }
+
+test("packet hash is stable across jsonb key reordering", async () => {
+  const { jobs } = await fixture();
+  const a = { z: 1, a: { y: 2, x: [3, { b: 4, a: 5 }] } };
+  const b = { a: { x: [3, { a: 5, b: 4 }], y: 2 }, z: 1 };
+  assert.equal(jobs.openAICaptureHash(a), jobs.openAICaptureHash(b));
+});
 
 const base = (patch = {}) => {
   const close = Date.parse("2099-01-01T00:15:00Z");
