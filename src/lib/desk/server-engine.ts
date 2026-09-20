@@ -109,6 +109,7 @@ import {
   type LedgerRow,
   ledgerGaps,
   oldestQueueAgeMs,
+  recentIdentityFaultCount,
   OUTBOX_CAP,
   partitionResolved,
   PENDING_CAP,
