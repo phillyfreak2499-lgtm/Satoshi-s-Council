@@ -47,6 +47,7 @@ export type OpenAICaptureJob = {
   secs_left: number;
   prompt_version: string;
   model: string;
+  input_hash: string;
   input_packet: unknown;
   market_p: number | null;
   fair_p: number | null;
@@ -108,7 +109,6 @@ export type FreezeOpenAIJob = {
   secs_left: number;
   prompt_version: string;
   model: string;
-  input_hash: string;
   input_packet: unknown;
   market_p: number | null;
   fair_p: number | null;
