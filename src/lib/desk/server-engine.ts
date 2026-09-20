@@ -1180,13 +1180,15 @@ async function resolvePending(e: Eng, snap: Snapshot): Promise<void> {
   // record but retire it without grading or teaching. This keeps a bad feed from
   // wedging the desk's pending state forever.
   for (const p of e.pending) {
-    const verdict = matchSettle(snap.official_settles, p.ticker, p.close_time);
-    if (verdict.ok) {
-      resolved.push({ pending: p, lean: verdict.settle.lean });
+    const hit = officialHit(e, snap, p.ticker, p.close_time);
+    if (hit) {
+      resolved.push({ pending: p, lean: hit.lean });
       continue;
     }
-    if (isInconsistent(verdict.fault)) {
-      noteIdentityFault(e, p.ticker, p.close_time, verdict.fault, verdict.detail, verdict.checks);
+    const identityFault = e.identityFaults.some(
+      (f) => f.ticker === p.ticker && f.close_time === p.close_time && isInconsistent(f.fault),
+    );
+    if (identityFault) {
       retired += 1;
       continue;
     }
