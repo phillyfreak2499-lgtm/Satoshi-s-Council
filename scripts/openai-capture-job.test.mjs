@@ -7,6 +7,12 @@ import { PGlite } from "@electric-sql/pglite";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
+const openDbs = new Set();
+
+test.afterEach(async () => {
+  for (const pg of openDbs) await pg.close();
+  openDbs.clear();
+});
 
 function loadHelper(sql) {
   const exports = {};
@@ -33,6 +39,7 @@ function loadHelper(sql) {
 
 async function fixture() {
   const pg = new PGlite();
+  openDbs.add(pg);
   await pg.exec(read("migrations/0052_openai_capture_jobs.sql"));
   const sql = async (strings, ...values) => {
     let query = "";
