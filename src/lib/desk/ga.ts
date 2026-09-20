@@ -45,10 +45,12 @@ function ensureGtag(): ((...args: unknown[]) => void) | undefined {
   if (!Array.isArray(window.dataLayer)) window.dataLayer = [];
   const queue = window.dataLayer;
 
-  if (typeof window.gtag !== "function") {
-    window.gtag = (...args: unknown[]) => {
+  let g = window.gtag;
+  if (typeof g !== "function") {
+    g = (...args: unknown[]) => {
       queue.push(args);
     };
+    window.gtag = g;
   }
 
   if (typeof document !== "undefined") {
@@ -66,15 +68,15 @@ function ensureGtag(): ((...args: unknown[]) => void) | undefined {
 
   if (!window.__scGa4Configured) {
     try {
-      window.gtag("js", new Date());
-      window.gtag("config", GA_MEASUREMENT_ID, { send_page_view: false });
+      g("js", new Date());
+      g("config", GA_MEASUREMENT_ID, { send_page_view: false });
       window.__scGa4Configured = true;
     } catch {
       return undefined;
     }
   }
 
-  return window.gtag;
+  return g;
 }
 
 /** Emit one explicit page_view for the current route key. Duplicate same-route effects are ignored. */
