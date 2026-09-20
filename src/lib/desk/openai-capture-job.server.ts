@@ -142,14 +142,6 @@ function fromRow(r: JobRow): OpenAICaptureJob {
   };
 }
 
-const SELECT_COLUMNS = `
-  study, version, ticker, close_time, frozen_at, secs_left, prompt_version,
-  model, input_hash, input_packet, market_p, fair_p, chair_lean, yes_ask,
-  no_ask, status, attempts, last_attempt_at, lease_until, last_error,
-  result, response_id, result_at, input_tokens, output_tokens, total_tokens,
-  latency_ms, build_sha
-`;
-
 export async function readOpenAICaptureJob(
   study: OpenAICaptureStudy,
   version: number,
