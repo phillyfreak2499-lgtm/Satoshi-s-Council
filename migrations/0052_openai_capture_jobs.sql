@@ -53,6 +53,7 @@ create table if not exists desk_openai_capture_jobs (
   check (study in ('OPENAI_SHADOW_V1', 'OPENAI_BLIND_V1', 'OPENAI_LUNA_V1')),
   check (version > 0),
   check (frozen_at < close_time),
+  check (created_at < close_time),
   check (secs_left <= 450 and secs_left > 438),
   check (chair_lean in ('UP', 'DOWN', 'WAIT')),
   check (status in ('pending', 'result_ready', 'completed', 'expired')),
