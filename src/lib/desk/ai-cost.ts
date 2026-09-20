@@ -18,7 +18,7 @@ export type AiTokenUsage = {
 
 export type AiCost = {
   usd: number;
-  quality: "exact" | "upper_bound";
+  quality: "exact" | "uncached_estimate";
   regular_input_tokens: number;
   cached_input_tokens: number | null;
   cache_write_tokens: number | null;
@@ -35,8 +35,11 @@ const dollars = (tokens: number, perMillion: number): number =>
  * Calculate standard text-token cost from one API usage receipt.
  *
  * Historical Council rows retain total input/output tokens but not the
- * Responses API input-token breakdown. In that case the honest result is an
- * upper bound that prices every input token at the uncached input rate.
+ * Responses API input-token breakdown. In that case exact billing cannot be
+ * reconstructed: cached reads can be cheaper while cache writes can be more
+ * expensive. The fallback therefore prices all input at the ordinary uncached
+ * input rate and labels the result an uncached estimate — never an exact value
+ * or a guaranteed upper/lower bound.
  *
  * When cached + cache-write counts are retained, input_tokens is treated as the
  * total and the detail counts as its breakdown; impossible breakdowns fail
@@ -63,7 +66,7 @@ export function aiTokenCost(usage: AiTokenUsage, price: AiTokenPrice): AiCost | 
       dollars(usage.output_tokens, price.output_per_million);
     return {
       usd,
-      quality: "upper_bound",
+      quality: "uncached_estimate",
       regular_input_tokens: usage.input_tokens,
       cached_input_tokens: null,
       cache_write_tokens: null,
