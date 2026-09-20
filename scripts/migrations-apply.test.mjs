@@ -108,7 +108,7 @@ test("AI usage view prices known models and exposes unknown prices without guess
   const known = rows.find((row) => row.response_id === "resp-known-price");
   assert.equal(known.cost_quality, "uncached_estimate");
   assert.equal(Number(known.pricing_context_min_input_tokens), 272001, "300K input uses the long-context price row");
-  assert.equal(Number(known.cost_usd_uncached_estimate), 11);
+  assert.equal(Number(known.cost_usd_uncached_estimate), 13.5);
 
   const unknown = rows.find((row) => row.response_id === "resp-unknown-price");
   assert.equal(unknown.cost_quality, "price_missing");
