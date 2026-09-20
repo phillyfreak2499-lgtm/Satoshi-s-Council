@@ -7,6 +7,7 @@
  * close. A pre-close answer can be finalized later because the answer itself is
  * durably timestamped before close.
  */
+import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
 
 export type OpenAICaptureStudy =
@@ -15,6 +16,27 @@ export type OpenAICaptureStudy =
   | "OPENAI_LUNA_V1";
 
 export type OpenAICaptureStatus = "pending" | "result_ready" | "completed" | "expired";
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(input)
+        .sort()
+        .map((key) => [key, canonicalize(input[key])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * jsonb may reorder object keys on round-trip. Hash the semantic JSON shape,
+ * not its incidental property insertion order, so restart verification is stable.
+ */
+export function openAICaptureHash(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex");
+}
 
 export type OpenAICaptureJob = {
   study: OpenAICaptureStudy;
