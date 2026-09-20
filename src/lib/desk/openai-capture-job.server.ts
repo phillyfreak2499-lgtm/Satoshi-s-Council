@@ -150,7 +150,7 @@ const SELECT_COLUMNS = `
   latency_ms, build_sha
 `;
 
-async function exactJob(
+export async function readOpenAICaptureJob(
   study: OpenAICaptureStudy,
   version: number,
   ticker: string,
@@ -194,7 +194,7 @@ export async function freezeOpenAICaptureJob(input: FreezeOpenAIJob): Promise<Op
     )
     on conflict (study, version, ticker, close_time) do nothing
   `;
-  const job = await exactJob(input.study, input.version, input.ticker, input.close_ms);
+  const job = await readOpenAICaptureJob(input.study, input.version, input.ticker, input.close_ms);
   if (!job) throw new Error("capture job missing after freeze");
   return job;
 }
