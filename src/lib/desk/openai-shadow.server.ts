@@ -309,7 +309,6 @@ async function runDurableJob(
 
   try {
     const packet = claimed.input_packet as ReturnType<typeof buildOpenAIShadowPacket>;
-    const packetJson = JSON.stringify(packet);
     const actualHash = openAICaptureHash(packet);
     if (actualHash !== claimed.input_hash) throw new Error("durable OpenAI Shadow packet hash mismatch");
 
@@ -387,7 +386,6 @@ async function captureOnce(): Promise<void> {
     // Freeze the exact model packet and same-time comparators durably BEFORE the
     // request. Blind/Luna will adopt the same handoff only after this pilot proves.
     const packet = buildOpenAIShadowPacket(snap, votes);
-    const packetJson = JSON.stringify(packet);
     const inputHash = openAICaptureHash(packet);
     const chairLean =
       chair?.lean === "UP" || chair?.lean === "DOWN" || chair?.lean === "WAIT"
