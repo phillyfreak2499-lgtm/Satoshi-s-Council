@@ -367,9 +367,21 @@ async function captureOnce(): Promise<void> {
     if (recoveryDue) {
       st.lastRecoveryScanAt = Date.now();
       const recoverable = await nextRecoverableOpenAIJob(OPENAI_SHADOW_STUDY, OPENAI_SHADOW_VERSION);
-      if (recoverable) {
+      if (recoverable?.status === "pending") {
+        // A pre-close request is time-sensitive and already owns the exact frozen
+        // packet for this window. Resume it before looking at a fresh frame.
         await runDurableJob(recoverable, apiKey, st, true);
         return;
+      }
+      if (recoverable?.status === "result_ready") {
+        // Finalizing an answer that was already proven pre-close is not
+        // time-sensitive. Never let a damaged/stale ready row make us miss a new
+        // 12-second live capture lock.
+        try {
+          await runDurableJob(recoverable, apiKey, st, true);
+        } catch (err) {
+          st.lastError = err instanceof Error ? err.message : String(err);
+        }
       }
       st.recoveryComplete = true;
     }
