@@ -172,7 +172,7 @@ export function AiCostPanel() {
           ) : null}
 
           <p className="mt-3 max-w-[90ch] font-mono text-micro leading-relaxed text-subtle">
-            {snap.accounting.note}
+            {snap.accounting.note} This is not the OpenAI invoice.
           </p>
         </>
       ) : null}
