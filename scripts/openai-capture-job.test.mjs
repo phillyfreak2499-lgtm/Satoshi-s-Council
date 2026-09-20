@@ -64,6 +64,10 @@ test("Shadow scans durable recovery before relying on the live frame", () => {
   const frame = capture.indexOf('await import("./server-engine")');
   assert.ok(recovery >= 0 && frame >= 0 && recovery < frame, "durable recovery must precede a fresh live-frame read");
   assert.match(capture, /Date\.now\(\) - st\.lastRecoveryScanAt >= RECOVERY_SCAN_MS/);
+  assert.match(capture, /recoverable\?\.status === "pending"/);
+  assert.match(capture, /recoverable\?\.status === "result_ready"/);
+  const readyBlock = capture.slice(capture.indexOf('recoverable?.status === "result_ready"'), frame);
+  assert.doesNotMatch(readyBlock, /\breturn\b/, "stored ready answers must not starve a fresh live-frame lock");
 });
 
 test("packet hash is stable across jsonb key reordering", async () => {
