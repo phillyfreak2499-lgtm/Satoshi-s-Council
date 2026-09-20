@@ -163,6 +163,39 @@ test("a pre-close result becomes durable before final ledger completion", async 
   assert.equal(await jobs.nextRecoverableOpenAIJob(ready.study, ready.version), null);
 });
 
+test("time-sensitive pending recovery outranks ready-to-finalize work", async () => {
+  const { jobs } = await fixture();
+
+  const readyInput = base({ ticker: "READY-FUTURE" });
+  const readyFrozen = await jobs.freezeOpenAICaptureJob(readyInput);
+  const readyClaimed = await jobs.claimOpenAICaptureJob(readyFrozen);
+  assert.ok(readyClaimed);
+  assert.equal(
+    await jobs.saveOpenAICaptureResult(readyClaimed, {
+      result: { p_up: 0.55, side: "UP" },
+      response_id: "ready",
+      input_tokens: 1,
+      output_tokens: 1,
+      total_tokens: 2,
+      latency_ms: 10,
+    }),
+    true,
+  );
+
+  const laterClose = readyInput.close_ms + 900_000;
+  const pending = await jobs.freezeOpenAICaptureJob(
+    base({
+      ticker: "PENDING-FUTURE",
+      close_ms: laterClose,
+      frozen_ms: laterClose - 445_000,
+    }),
+  );
+
+  const next = await jobs.nextRecoverableOpenAIJob("OPENAI_SHADOW_V1", 1);
+  assert.equal(next.ticker, pending.ticker);
+  assert.equal(next.status, "pending");
+});
+
 test("recovery expires unfulfilled past jobs but keeps pre-close answers finalizable", async () => {
   const { pg, jobs } = await fixture();
   const pastClose = new Date(Date.now() - 60_000);
