@@ -1171,14 +1171,35 @@ function markPending(e: Eng, snap: Snapshot) {
 
 async function resolvePending(e: Eng, snap: Snapshot): Promise<void> {
   if (!e.pending.length) return;
-  // Every pending window whose official result has arrived grades now; the rest
-  // stay pending. Resolving one can no longer drop the others (the G5 fix).
-  const { resolved, remaining } = partitionResolved(e.pending, (p) => Boolean(officialHit(e, snap, p.ticker, p.close_time)));
-  if (!resolved.length) return;
+  const resolved: { pending: PendingWindow; lean: "UP" | "DOWN" }[] = [];
+  const remaining: PendingWindow[] = [];
+  let retired = 0;
+
+  // A missing result is still pending. An identity contradiction is different:
+  // the saved ticker/window pair can never become valid, so preserve its fault
+  // record but retire it without grading or teaching. This keeps a bad feed from
+  // wedging the desk's pending state forever.
+  for (const p of e.pending) {
+    const verdict = matchSettle(snap.official_settles, p.ticker, p.close_time);
+    if (verdict.ok) {
+      resolved.push({ pending: p, lean: verdict.settle.lean });
+      continue;
+    }
+    if (isInconsistent(verdict.fault)) {
+      noteIdentityFault(e, p.ticker, p.close_time, verdict.fault, verdict.detail, verdict.checks);
+      retired += 1;
+      continue;
+    }
+    remaining.push(p);
+  }
+  if (!resolved.length && retired === 0) return;
+
+  // Leave pending before any grade. Force-persist retired faults even when there
+  // is no resolved window whose applyGrade call would otherwise persist state.
   e.pending = remaining;
-  for (const p of resolved) {
-    const hit = officialHit(e, snap, p.ticker, p.close_time);
-    if (hit) await applyGrade(e, p.snap, p.votes, p.chair, hit.lean, "kalshi-result");
+  if (retired > 0) await persistState(e, true);
+  for (const { pending: p, lean } of resolved) {
+    await applyGrade(e, p.snap, p.votes, p.chair, lean, "kalshi-result");
   }
 }
 
@@ -1252,6 +1273,18 @@ async function settleIfNeeded(
     await applyGrade(e, s.snap, s.votes, s.chair, hit.lean, "kalshi-result");
     return;
   }
+  // officialHit records contradictions synchronously. A ticker/window mismatch
+  // is irreconcilable, so keep the forensic fault and do not put that window into
+  // the retry set. It is never graded and the learner is never taught from it.
+  const identityFault = e.identityFaults.some(
+    (f) => f.ticker === w.ticker && f.close_time === w.close_time && isInconsistent(f.fault),
+  );
+  if (identityFault) {
+    e.pending = removeKeyed(e.pending, w.ticker, w.close_time);
+    await persistState(e, true);
+    return;
+  }
+
   e.pending = addKeyed(
     e.pending,
     { ticker: w.ticker, close_time: w.close_time, snap: s.snap, votes: s.votes, chair: s.chair },
