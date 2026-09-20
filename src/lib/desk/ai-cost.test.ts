@@ -33,7 +33,7 @@ test("retained Responses API cache details produce exact token cost", () => {
   assert.ok(out);
   assert.equal(out.quality, "exact");
   assert.equal(out.regular_input_tokens, 500_000);
-  assert.equal(out.usd, 2.53);
+  assert.ok(Math.abs(out.usd - 2.53) < 1e-12);
 });
 
 test("impossible or unsafe usage fails closed", () => {
