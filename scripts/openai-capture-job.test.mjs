@@ -57,10 +57,13 @@ async function fixture() {
 test("Shadow scans durable recovery before relying on the live frame", () => {
   const observer = read("src/lib/desk/openai-shadow.server.ts");
   assert.match(observer, /const RECOVERY_SCAN_MS = 15_000/);
-  const recovery = observer.indexOf("nextRecoverableOpenAIJob");
-  const frame = observer.indexOf('await import("./server-engine")');
+  const start = observer.indexOf("async function captureOnce");
+  const end = observer.indexOf("export function ensureOpenAIShadowObserver", start);
+  const capture = observer.slice(start, end);
+  const recovery = capture.indexOf("await nextRecoverableOpenAIJob");
+  const frame = capture.indexOf('await import("./server-engine")');
   assert.ok(recovery >= 0 && frame >= 0 && recovery < frame, "durable recovery must precede a fresh live-frame read");
-  assert.match(observer, /Date\.now\(\) - st\.lastRecoveryScanAt >= RECOVERY_SCAN_MS/);
+  assert.match(capture, /Date\.now\(\) - st\.lastRecoveryScanAt >= RECOVERY_SCAN_MS/);
 });
 
 test("packet hash is stable across jsonb key reordering", async () => {
