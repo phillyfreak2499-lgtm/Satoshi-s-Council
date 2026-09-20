@@ -84,7 +84,6 @@ const base = (patch = {}) => {
     secs_left: 445,
     prompt_version: "market-aware-v1",
     model: "gpt-test",
-    input_hash: "hash-a",
     input_packet: { protocol: "OPENAI_SHADOW_V1", market: { yes_mid: 60 }, council: [] },
     market_p: 0.6,
     fair_p: 0.62,
@@ -98,12 +97,14 @@ const base = (patch = {}) => {
 
 test("first frozen packet wins and a lease prevents duplicate model requests", async () => {
   const { jobs } = await fixture();
-  const first = await jobs.freezeOpenAICaptureJob(base());
+  const firstInput = base();
+  const first = await jobs.freezeOpenAICaptureJob(firstInput);
   const second = await jobs.freezeOpenAICaptureJob(
-    base({ input_hash: "hash-b", input_packet: { protocol: "later-frame" } }),
+    base({ input_packet: { protocol: "later-frame" } }),
   );
-  assert.equal(first.input_hash, "hash-a");
-  assert.equal(second.input_hash, "hash-a");
+  const expectedHash = jobs.openAICaptureHash(firstInput.input_packet);
+  assert.equal(first.input_hash, expectedHash);
+  assert.equal(second.input_hash, expectedHash);
   assert.equal(second.input_packet.protocol, "OPENAI_SHADOW_V1");
 
   const claimed = await jobs.claimOpenAICaptureJob(first);
