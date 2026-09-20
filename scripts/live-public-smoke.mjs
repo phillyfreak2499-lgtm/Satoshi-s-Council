@@ -43,6 +43,34 @@ for (const [path, must] of surfaces) {
   }
 }
 
+async function booksParity() {
+  const [pageRes, apiRes] = await Promise.all([
+    fetch(`${origin}/books`, { redirect: "follow", signal: AbortSignal.timeout(timeoutMs), headers: { "cache-control": "no-cache" } }),
+    fetch(`${origin}/api/books`, { redirect: "follow", signal: AbortSignal.timeout(timeoutMs), headers: { accept: "application/json", "cache-control": "no-cache" } }),
+  ]);
+  if (!pageRes.ok || !apiRes.ok) return { ok: false, detail: `books HTTP page=${pageRes.status} api=${apiRes.status}` };
+  const [html, api] = await Promise.all([pageRes.text(), apiRes.json()]);
+  const ticker = api?.last?.ticker;
+  const net = Number(api?.week?.net);
+  if (typeof ticker !== "string" || !ticker || !Number.isFinite(net)) return { ok: false, detail: "books API missing parity fields" };
+  const netText = `${net > 0 ? "+" : ""}${net.toFixed(1)}¢`;
+  const missing = [ticker, netText].filter((value) => !html.includes(value));
+  return { ok: missing.length === 0, detail: missing.length ? `SSR missing current ${missing.join(", ")}` : `${ticker} · ${netText}` };
+}
+
+let parity = await booksParity();
+if (!parity.ok) {
+  console.warn(`WARN /books parity first pass: ${parity.detail}; retrying after cache horizon`);
+  await new Promise((resolve) => setTimeout(resolve, 32_000));
+  parity = await booksParity();
+}
+if (!parity.ok) {
+  failed = true;
+  console.error(`FAIL /books parity: ${parity.detail}`);
+} else {
+  console.log(`OK   /books parity: ${parity.detail}`);
+}
+
 try {
   const nav = await fetch(`${origin}/`, { signal: AbortSignal.timeout(timeoutMs) }).then((r) => r.text());
   const m = nav.match(/https:\/\/[^"'<>\s]*fourthwall\.com\/?/i);
