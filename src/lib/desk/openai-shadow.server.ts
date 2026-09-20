@@ -6,7 +6,6 @@
  * forecast, and writes only desk_openai_shadow. There is no return path into the
  * Chair, learner, entry policy, paper book, promotion, wallet, or execution.
  */
-import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
 import {
   OPENAI_SHADOW_DEFAULT_MODEL,
@@ -24,10 +23,22 @@ import {
   type OpenAIShadowDecision,
   type OpenAIShadowSide,
 } from "./openai-shadow";
+import {
+  claimOpenAICaptureJob,
+  completeOpenAICaptureJob,
+  freezeOpenAICaptureJob,
+  nextRecoverableOpenAIJob,
+  noteOpenAICaptureError,
+  openAICaptureHash,
+  readOpenAICaptureJob,
+  saveOpenAICaptureResult,
+  type OpenAICaptureJob,
+} from "./openai-capture-job.server";
 import { tickerAgrees } from "./window-identity";
 
 export const OPENAI_SHADOW_PROSPECTIVE_SINCE = Date.parse("2026-09-19T11:00:00.000Z");
 const OBSERVER_MS = 2_000;
+const RECOVERY_SCAN_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const INSTRUCTIONS = `You are OPENAI_SHADOW_V1, a paper-only research analyst for a Bitcoin 15-minute forecasting experiment.
@@ -90,6 +101,8 @@ type Observer = {
   lastError: string | null;
   lastCapturedAt: number;
   lastLatencyMs: number | null;
+  recoveryComplete: boolean;
+  lastRecoveryScanAt: number;
 };
 
 const g = globalThis as typeof globalThis & { __openAIShadowObserver__?: Observer };
@@ -102,6 +115,8 @@ function observer(): Observer {
     lastError: null,
     lastCapturedAt: 0,
     lastLatencyMs: null,
+    recoveryComplete: false,
+    lastRecoveryScanAt: 0,
   });
 }
 
@@ -138,6 +153,7 @@ function responseText(body: ApiResponse): string | null {
 async function requestForecast(
   packet: ReturnType<typeof buildOpenAIShadowPacket>,
   model: string,
+  promptVersion: string,
   apiKey: string,
 ): Promise<{ decision: OpenAIShadowDecision; responseId: string; usage: ApiUsage; latencyMs: number }> {
   const started = Date.now();
@@ -166,7 +182,7 @@ async function requestForecast(
       },
       metadata: {
         study: OPENAI_SHADOW_STUDY,
-        prompt_version: OPENAI_SHADOW_PROMPT_VERSION,
+        prompt_version: promptVersion,
       },
     }),
   });
@@ -210,6 +226,125 @@ async function alreadyCaptured(ticker: string, closeTime: number): Promise<boole
   return rows[0]?.present === true;
 }
 
+async function finalizeJob(job: OpenAICaptureJob, st: Observer): Promise<void> {
+  const key = `${job.ticker}|${job.close_ms}`;
+  const pred = parseOpenAIShadowDecision(job.result);
+  if (!pred || job.result_ms == null) throw new Error("durable OpenAI Shadow result failed invariant checks");
+
+  const packetJson = JSON.stringify(job.input_packet);
+  const actualHash = openAICaptureHash(job.input_packet);
+  if (actualHash !== job.input_hash) throw new Error("durable OpenAI Shadow packet hash mismatch");
+
+  const entry = pred.side === "UP" ? job.yes_ask : job.no_ask;
+  const db = await getSql();
+  await db`
+    insert into desk_openai_shadow (
+      ticker, close_time, taken_at, secs_left, study, version, prompt_version,
+      model, response_id, input_hash, input_packet, market_p, fair_p, p_up, side,
+      conviction, regime, strongest_evidence, contradictions, data_quality,
+      would_abstain, chair_lean, yes_ask, no_ask, entry_cents,
+      input_tokens, output_tokens, total_tokens, latency_ms, build_sha
+    )
+    select
+      ${job.ticker},
+      ${new Date(job.close_ms).toISOString()}::timestamptz,
+      ${new Date(job.frozen_ms).toISOString()}::timestamptz,
+      ${job.secs_left},
+      ${job.study},
+      ${job.version},
+      ${job.prompt_version},
+      ${job.model},
+      ${job.response_id},
+      ${job.input_hash},
+      ${packetJson}::jsonb,
+      ${job.market_p},
+      ${job.fair_p},
+      ${pred.p_up},
+      ${pred.side},
+      ${pred.conviction},
+      ${pred.regime},
+      ${JSON.stringify(pred.strongest_evidence)}::jsonb,
+      ${JSON.stringify(pred.contradictions)}::jsonb,
+      ${pred.data_quality},
+      ${pred.would_abstain},
+      ${job.chair_lean},
+      ${job.yes_ask},
+      ${job.no_ask},
+      ${entry},
+      ${job.input_tokens},
+      ${job.output_tokens},
+      ${job.total_tokens},
+      ${job.latency_ms ?? 0},
+      ${job.build_sha}
+    where ${new Date(job.result_ms).toISOString()}::timestamptz
+          < ${new Date(job.close_ms).toISOString()}::timestamptz
+    on conflict (ticker, close_time) do nothing
+  `;
+  await completeOpenAICaptureJob(job);
+
+  st.sampled.add(key);
+  st.lastCapturedAt = Date.now();
+  st.lastLatencyMs = job.latency_ms;
+  st.lastError = null;
+}
+
+async function runDurableJob(
+  job: OpenAICaptureJob,
+  apiKey: string,
+  st: Observer,
+  fromRecovery: boolean,
+): Promise<void> {
+  if (job.status === "result_ready") {
+    await finalizeJob(job, st);
+    return;
+  }
+  if (job.status !== "pending") return;
+  if (job.prompt_version !== OPENAI_SHADOW_PROMPT_VERSION) {
+    throw new Error(`refusing pending Shadow job with prompt ${job.prompt_version}`);
+  }
+
+  const claimed = await claimOpenAICaptureJob(job);
+  if (!claimed) {
+    // Another overlapping process owns the short lease. Recovery will check again.
+    st.recoveryComplete = false;
+    return;
+  }
+
+  try {
+    const packet = claimed.input_packet as ReturnType<typeof buildOpenAIShadowPacket>;
+    const actualHash = openAICaptureHash(packet);
+    if (actualHash !== claimed.input_hash) throw new Error("durable OpenAI Shadow packet hash mismatch");
+
+    const forecast = await requestForecast(packet, claimed.model, claimed.prompt_version, apiKey);
+    const saved = await saveOpenAICaptureResult(claimed, {
+      result: forecast.decision,
+      response_id: forecast.responseId,
+      input_tokens: num(forecast.usage.input_tokens),
+      output_tokens: num(forecast.usage.output_tokens),
+      total_tokens: num(forecast.usage.total_tokens),
+      latency_ms: forecast.latencyMs,
+    });
+    if (!saved) throw new Error("OpenAI Shadow answer arrived after close; result was not admitted");
+
+    const ready = await readOpenAICaptureJob(
+      claimed.study,
+      claimed.version,
+      claimed.ticker,
+      claimed.close_ms,
+    );
+    if (!ready || ready.status !== "result_ready") {
+      throw new Error("durable OpenAI Shadow result missing after save");
+    }
+    await finalizeJob(ready, st);
+  } catch (err) {
+    await noteOpenAICaptureError(claimed, err).catch(() => {});
+    st.recoveryComplete = false;
+    throw err;
+  } finally {
+    if (fromRecovery) st.recoveryComplete = false;
+  }
+}
+
 async function captureOnce(): Promise<void> {
   const st = observer();
   if (st.inFlight || Date.now() < OPENAI_SHADOW_PROSPECTIVE_SINCE) return;
@@ -223,6 +358,34 @@ async function captureOnce(): Promise<void> {
 
   st.inFlight = true;
   try {
+    // Drain durable work before consulting a new live frame. Scan immediately
+    // on boot, then periodically so a job frozen by an overlapping old Render
+    // instance after our first scan is still discovered without needing to hit
+    // the original 12-second live lock again.
+    const recoveryDue =
+      !st.recoveryComplete || Date.now() - st.lastRecoveryScanAt >= RECOVERY_SCAN_MS;
+    if (recoveryDue) {
+      st.lastRecoveryScanAt = Date.now();
+      const recoverable = await nextRecoverableOpenAIJob(OPENAI_SHADOW_STUDY, OPENAI_SHADOW_VERSION);
+      if (recoverable?.status === "pending") {
+        // A pre-close request is time-sensitive and already owns the exact frozen
+        // packet for this window. Resume it before looking at a fresh frame.
+        await runDurableJob(recoverable, apiKey, st, true);
+        return;
+      }
+      if (recoverable?.status === "result_ready") {
+        // Finalizing an answer that was already proven pre-close is not
+        // time-sensitive. Never let a damaged/stale ready row make us miss a new
+        // 12-second live capture lock.
+        try {
+          await runDurableJob(recoverable, apiKey, st, true);
+        } catch (err) {
+          st.lastError = err instanceof Error ? err.message : String(err);
+        }
+      }
+      st.recoveryComplete = true;
+    }
+
     // One-way dynamic read. server-engine never imports this observer.
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
@@ -240,72 +403,33 @@ async function captureOnce(): Promise<void> {
       return;
     }
 
-    // The packet builder does not accept Chair state. The comparator is stored
-    // only after the model's result is frozen.
+    // Freeze the exact model packet and same-time comparators durably BEFORE the
+    // request. Blind/Luna will adopt the same handoff only after this pilot proves.
     const packet = buildOpenAIShadowPacket(snap, votes);
-    const packetJson = JSON.stringify(packet);
-    const inputHash = createHash("sha256").update(packetJson).digest("hex");
-    const forecast = await requestForecast(packet, model, apiKey);
-    const pred = forecast.decision;
-
     const chairLean =
       chair?.lean === "UP" || chair?.lean === "DOWN" || chair?.lean === "WAIT"
         ? chair.lean
         : "WAIT";
-    const yesAsk = validAsk(snap.yes_ask);
-    const noAsk = validAsk(snap.no_ask);
-    const entry = pred.side === "UP" ? yesAsk : noAsk;
-    const marketP = probFromCents(snap.yes_mid);
-    const fairP = probFromCents(snap.fair_yes);
 
-    const db = await getSql();
-    await db`
-      insert into desk_openai_shadow (
-        ticker, close_time, taken_at, secs_left, study, version, prompt_version,
-        model, response_id, input_hash, input_packet, market_p, fair_p, p_up, side,
-        conviction, regime, strongest_evidence, contradictions, data_quality,
-        would_abstain, chair_lean, yes_ask, no_ask, entry_cents,
-        input_tokens, output_tokens, total_tokens, latency_ms, build_sha
-      )
-      select
-        ${snap.ticker},
-        ${new Date(snap.close_time).toISOString()}::timestamptz,
-        ${new Date(snap.as_of).toISOString()}::timestamptz,
-        ${Number(snap.secs_left)},
-        ${OPENAI_SHADOW_STUDY},
-        ${OPENAI_SHADOW_VERSION},
-        ${OPENAI_SHADOW_PROMPT_VERSION},
-        ${model},
-        ${forecast.responseId},
-        ${inputHash},
-        ${packetJson}::jsonb,
-        ${marketP},
-        ${fairP},
-        ${pred.p_up},
-        ${pred.side},
-        ${pred.conviction},
-        ${pred.regime},
-        ${JSON.stringify(pred.strongest_evidence)}::jsonb,
-        ${JSON.stringify(pred.contradictions)}::jsonb,
-        ${pred.data_quality},
-        ${pred.would_abstain},
-        ${chairLean},
-        ${yesAsk},
-        ${noAsk},
-        ${entry},
-        ${num(forecast.usage.input_tokens)},
-        ${num(forecast.usage.output_tokens)},
-        ${num(forecast.usage.total_tokens)},
-        ${forecast.latencyMs},
-        ${process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? ""}
-      where clock_timestamp() < ${new Date(snap.close_time).toISOString()}::timestamptz
-      on conflict (ticker, close_time) do nothing
-    `;
+    const job = await freezeOpenAICaptureJob({
+      study: OPENAI_SHADOW_STUDY,
+      version: OPENAI_SHADOW_VERSION,
+      ticker: snap.ticker,
+      close_ms: snap.close_time,
+      frozen_ms: snap.as_of,
+      secs_left: Number(snap.secs_left),
+      prompt_version: OPENAI_SHADOW_PROMPT_VERSION,
+      model,
+      input_packet: packet,
+      market_p: probFromCents(snap.yes_mid),
+      fair_p: probFromCents(snap.fair_yes),
+      chair_lean: chairLean,
+      yes_ask: validAsk(snap.yes_ask),
+      no_ask: validAsk(snap.no_ask),
+      build_sha: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? "",
+    });
 
-    st.sampled.add(key);
-    st.lastCapturedAt = Date.now();
-    st.lastLatencyMs = forecast.latencyMs;
-    st.lastError = null;
+    await runDurableJob(job, apiKey, st, false);
   } catch (err) {
     st.lastError = err instanceof Error ? err.message : String(err);
   } finally {
