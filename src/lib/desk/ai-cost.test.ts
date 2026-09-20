@@ -9,13 +9,13 @@ const terra: AiTokenPrice = {
   output_per_million: 12,
 };
 
-test("historic usage without cache details is labeled an upper bound", () => {
+test("historic usage without cache details is labeled an uncached estimate", () => {
   const out = aiTokenCost(
     { input_tokens: 1_000_000, output_tokens: 100_000, cached_input_tokens: null, cache_write_tokens: null },
     terra,
   );
   assert.ok(out);
-  assert.equal(out.quality, "upper_bound");
+  assert.equal(out.quality, "uncached_estimate");
   assert.equal(out.usd, 3.2);
   assert.equal(out.regular_input_tokens, 1_000_000);
 });

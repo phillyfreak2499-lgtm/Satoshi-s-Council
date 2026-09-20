@@ -20,6 +20,6 @@ test("price book is observability-only and cost math never imports desk authorit
   for (const forbidden of ["chair", "learner", "book-floor", "server-engine", "policy-lab", "arena.server"]) {
     assert.equal(cost.includes(`from "./${forbidden}`), false, forbidden);
   }
-  assert.match(cost, /quality: "exact" \| "upper_bound"/);
+  assert.match(cost, /quality: "exact" \| "uncached_estimate"/);
   assert.match(cost, /cached_input_tokens: number \| null/);
 });
