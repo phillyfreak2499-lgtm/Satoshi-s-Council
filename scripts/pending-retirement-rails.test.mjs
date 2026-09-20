@@ -14,9 +14,9 @@ const between = (text, start, end) => {
 
 test("identity contradictions are retired from pending without a grade", () => {
   const resolve = between(engine, "async function resolvePending", "function gradeableBook");
-  assert.match(resolve, /matchSettle\(snap\.official_settles, p\.ticker, p\.close_time\)/);
-  assert.match(resolve, /if \(isInconsistent\(verdict\.fault\)\)/);
-  assert.match(resolve, /noteIdentityFault\(/);
+  assert.match(resolve, /officialHit\(e, snap, p\.ticker, p\.close_time\)/);
+  assert.match(resolve, /const identityFault = e\.identityFaults\.some/);
+  assert.match(resolve, /isInconsistent\(f\.fault\)/);
   assert.match(resolve, /retired \+= 1/);
   assert.match(resolve, /e\.pending = remaining/);
   assert.match(resolve, /if \(retired > 0\) await persistState\(e, true\)/);
