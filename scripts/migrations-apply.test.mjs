@@ -73,6 +73,50 @@ test("every migration is idempotent: the whole directory applies twice", async (
   await db.close();
 });
 
+test("AI usage view prices known models and exposes unknown prices without guessing", async () => {
+  const db = await freshDb();
+  await applyAll(db, await files());
+
+  await db.exec(`
+    insert into desk_astra_director (
+      study, version, prompt_version, model, window_batch, through_close_time,
+      graded_total, packet_hash, packet, report, response_id,
+      input_tokens, output_tokens, total_tokens, latency_ms, build_sha, created_at
+    ) values
+      (
+        'ASTRA_RESEARCH_DIRECTOR_V1', 1, 'test', 'gpt-6-astra', 384,
+        '2026-09-19T16:00:00Z', 384, 'known-hash', '{}'::jsonb, '{}'::jsonb,
+        'resp-known-price', 300000, 100000, 400000, 1, 'test',
+        '2026-09-19T16:00:00Z'
+      ),
+      (
+        'ASTRA_RESEARCH_DIRECTOR_V1', 1, 'test', 'unknown-model', 384,
+        '2026-09-19T16:15:00Z', 385, 'unknown-hash', '{}'::jsonb, '{}'::jsonb,
+        'resp-unknown-price', 1000, 100, 1100, 1, 'test',
+        '2026-09-19T16:15:00Z'
+      );
+  `);
+
+  const { rows } = await db.query(`
+    select response_id, cost_quality, pricing_context_min_input_tokens,
+           cost_usd_uncached_estimate
+      from ai_usage
+     where response_id in ('resp-known-price','resp-unknown-price')
+     order by response_id
+  `);
+
+  const known = rows.find((row) => row.response_id === "resp-known-price");
+  assert.equal(known.cost_quality, "uncached_estimate");
+  assert.equal(Number(known.pricing_context_min_input_tokens), 272001, "300K input uses the long-context price row");
+  assert.equal(Number(known.cost_usd_uncached_estimate), 11);
+
+  const unknown = rows.find((row) => row.response_id === "resp-unknown-price");
+  assert.equal(unknown.cost_quality, "price_missing");
+  assert.equal(unknown.cost_usd_uncached_estimate, null, "an unknown model is never silently priced at zero");
+
+  await db.close();
+});
+
 test("research_quality defaults to valid so nothing is silently dropped", async () => {
   const db = await freshDb();
   await applyAll(db, await files());
