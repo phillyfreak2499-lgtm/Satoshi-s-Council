@@ -38,6 +38,7 @@ import { tickerAgrees } from "./window-identity";
 
 export const OPENAI_SHADOW_PROSPECTIVE_SINCE = Date.parse("2026-09-19T11:00:00.000Z");
 const OBSERVER_MS = 2_000;
+const RECOVERY_SCAN_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const INSTRUCTIONS = `You are OPENAI_SHADOW_V1, a paper-only research analyst for a Bitcoin 15-minute forecasting experiment.
@@ -101,6 +102,7 @@ type Observer = {
   lastCapturedAt: number;
   lastLatencyMs: number | null;
   recoveryComplete: boolean;
+  lastRecoveryScanAt: number;
 };
 
 const g = globalThis as typeof globalThis & { __openAIShadowObserver__?: Observer };
@@ -114,6 +116,7 @@ function observer(): Observer {
     lastCapturedAt: 0,
     lastLatencyMs: null,
     recoveryComplete: false,
+    lastRecoveryScanAt: 0,
   });
 }
 
@@ -355,9 +358,14 @@ async function captureOnce(): Promise<void> {
 
   st.inFlight = true;
   try {
-    // On a fresh process, drain any durable pre-close request or pre-close answer
-    // before consulting a new live frame. This is the restart-safety path.
-    if (!st.recoveryComplete) {
+    // Drain durable work before consulting a new live frame. Scan immediately
+    // on boot, then periodically so a job frozen by an overlapping old Render
+    // instance after our first scan is still discovered without needing to hit
+    // the original 12-second live lock again.
+    const recoveryDue =
+      !st.recoveryComplete || Date.now() - st.lastRecoveryScanAt >= RECOVERY_SCAN_MS;
+    if (recoveryDue) {
+      st.lastRecoveryScanAt = Date.now();
       const recoverable = await nextRecoverableOpenAIJob(OPENAI_SHADOW_STUDY, OPENAI_SHADOW_VERSION);
       if (recoverable) {
         await runDurableJob(recoverable, apiKey, st, true);
