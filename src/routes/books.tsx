@@ -8,6 +8,9 @@ const BOOK_TZ = "America/Chicago";
 
 export const Route = createFileRoute("/books")({
   loader: () => publicBooksSnapshot(),
+  // The scoreboard changes every settled window. Never let a proxy/browser pin
+  // the SSR first paint behind the client-side /api/books refresh.
+  headers: () => ({ "cache-control": "no-store" }),
   head: () => pageHead("/books", "Books · Satoshi's Council", "Review recorded paper results, overlapping time periods, missing windows and fee-adjusted comparisons. Bitcoin research only."),
   component: BooksPage,
 });
