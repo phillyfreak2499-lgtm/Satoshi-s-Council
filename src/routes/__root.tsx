@@ -1,6 +1,7 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { GaPageViews } from "@/components/analytics/GaPageViews";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Satoshi's Council";
@@ -44,20 +45,27 @@ export const Route = createRootRoute({
   component: () => (
     <html lang="en" className="antialiased" suppressHydrationWarning>
       <head>
-        {/* Google tag (gtag.js) */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-JMQGD1WTVT" />
+        {/* Google tag (gtag.js). Page views are emitted explicitly by GaPageViews. */}
+        <script
+          async
+          data-sc-ga4="loader"
+          src="https://www.googletagmanager.com/gtag/js?id=G-JMQGD1WTVT"
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
+window.gtag = gtag;
 gtag('js', new Date());
 
-gtag('config', 'G-JMQGD1WTVT');`,
+gtag('config', 'G-JMQGD1WTVT', { send_page_view: false });
+window.__scGa4Configured = true;`,
           }}
         />
         <HeadContent />
       </head>
       <body className="bg-bg text-fg">
+        <GaPageViews />
         <PreviewHostBridge />
         <AuthProvider>
           <Outlet />
