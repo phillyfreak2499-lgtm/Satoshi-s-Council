@@ -394,7 +394,6 @@ async function captureOnce(): Promise<void> {
     // Freeze the exact model packet and same-time comparators durably BEFORE the
     // request. Blind/Luna will adopt the same handoff only after this pilot proves.
     const packet = buildOpenAIShadowPacket(snap, votes);
-    const inputHash = openAICaptureHash(packet);
     const chairLean =
       chair?.lean === "UP" || chair?.lean === "DOWN" || chair?.lean === "WAIT"
         ? chair.lean
@@ -409,7 +408,6 @@ async function captureOnce(): Promise<void> {
       secs_left: Number(snap.secs_left),
       prompt_version: OPENAI_SHADOW_PROMPT_VERSION,
       model,
-      input_hash: inputHash,
       input_packet: packet,
       market_p: probFromCents(snap.yes_mid),
       fair_p: probFromCents(snap.fair_yes),
