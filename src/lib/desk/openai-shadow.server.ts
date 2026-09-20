@@ -30,6 +30,7 @@ import {
   freezeOpenAICaptureJob,
   nextRecoverableOpenAIJob,
   noteOpenAICaptureError,
+  readOpenAICaptureJob,
   saveOpenAICaptureResult,
   type OpenAICaptureJob,
 } from "./openai-capture-job.server";
@@ -323,8 +324,13 @@ async function runDurableJob(
     });
     if (!saved) throw new Error("OpenAI Shadow answer arrived after close; result was not admitted");
 
-    const ready = await nextRecoverableOpenAIJob(OPENAI_SHADOW_STUDY, OPENAI_SHADOW_VERSION);
-    if (!ready || ready.ticker !== claimed.ticker || ready.close_ms !== claimed.close_ms || ready.status !== "result_ready") {
+    const ready = await readOpenAICaptureJob(
+      claimed.study,
+      claimed.version,
+      claimed.ticker,
+      claimed.close_ms,
+    );
+    if (!ready || ready.status !== "result_ready") {
       throw new Error("durable OpenAI Shadow result missing after save");
     }
     await finalizeJob(ready, st);
