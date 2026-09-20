@@ -47,7 +47,6 @@ export type OpenAICaptureJob = {
   secs_left: number;
   prompt_version: string;
   model: string;
-  input_hash: string;
   input_packet: unknown;
   market_p: number | null;
   fair_p: number | null;
@@ -201,7 +200,7 @@ export async function freezeOpenAICaptureJob(input: FreezeOpenAIJob): Promise<Op
       ${input.study}, ${input.version}, ${input.ticker},
       ${new Date(input.close_ms).toISOString()},
       ${new Date(input.frozen_ms).toISOString()}, ${input.secs_left},
-      ${input.prompt_version}, ${input.model}, ${input.input_hash},
+      ${input.prompt_version}, ${input.model}, ${openAICaptureHash(input.input_packet)},
       ${JSON.stringify(input.input_packet)}::jsonb,
       ${input.market_p}, ${input.fair_p}, ${input.chair_lean},
       ${input.yes_ask}, ${input.no_ask}, ${input.build_sha}
