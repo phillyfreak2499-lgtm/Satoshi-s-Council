@@ -240,7 +240,7 @@ export async function nextRecoverableOpenAIJob(
          status = 'result_ready'
          or (status = 'pending' and close_time > clock_timestamp())
        )
-     order by case when status = 'result_ready' then 0 else 1 end, close_time asc
+     order by case when status = 'pending' then 0 else 1 end, close_time asc
      limit 1
   `;
   return rows[0] ? fromRow(rows[0]) : null;
