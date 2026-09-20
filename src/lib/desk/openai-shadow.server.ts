@@ -6,7 +6,6 @@
  * forecast, and writes only desk_openai_shadow. There is no return path into the
  * Chair, learner, entry policy, paper book, promotion, wallet, or execution.
  */
-import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
 import {
   OPENAI_SHADOW_DEFAULT_MODEL,
@@ -30,6 +29,7 @@ import {
   freezeOpenAICaptureJob,
   nextRecoverableOpenAIJob,
   noteOpenAICaptureError,
+  openAICaptureHash,
   readOpenAICaptureJob,
   saveOpenAICaptureResult,
   type OpenAICaptureJob,
@@ -229,7 +229,7 @@ async function finalizeJob(job: OpenAICaptureJob, st: Observer): Promise<void> {
   if (!pred || job.result_ms == null) throw new Error("durable OpenAI Shadow result failed invariant checks");
 
   const packetJson = JSON.stringify(job.input_packet);
-  const actualHash = createHash("sha256").update(packetJson).digest("hex");
+  const actualHash = openAICaptureHash(job.input_packet);
   if (actualHash !== job.input_hash) throw new Error("durable OpenAI Shadow packet hash mismatch");
 
   const entry = pred.side === "UP" ? job.yes_ask : job.no_ask;
@@ -310,7 +310,7 @@ async function runDurableJob(
   try {
     const packet = claimed.input_packet as ReturnType<typeof buildOpenAIShadowPacket>;
     const packetJson = JSON.stringify(packet);
-    const actualHash = createHash("sha256").update(packetJson).digest("hex");
+    const actualHash = openAICaptureHash(packet);
     if (actualHash !== claimed.input_hash) throw new Error("durable OpenAI Shadow packet hash mismatch");
 
     const forecast = await requestForecast(packet, claimed.model, claimed.prompt_version, apiKey);
@@ -388,7 +388,7 @@ async function captureOnce(): Promise<void> {
     // request. Blind/Luna will adopt the same handoff only after this pilot proves.
     const packet = buildOpenAIShadowPacket(snap, votes);
     const packetJson = JSON.stringify(packet);
-    const inputHash = createHash("sha256").update(packetJson).digest("hex");
+    const inputHash = openAICaptureHash(packet);
     const chairLean =
       chair?.lean === "UP" || chair?.lean === "DOWN" || chair?.lean === "WAIT"
         ? chair.lean
