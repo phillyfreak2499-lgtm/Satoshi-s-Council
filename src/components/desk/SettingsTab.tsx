@@ -23,6 +23,7 @@ import { AlertsPanel } from "./AlertsPanel";
 import { DisplayPanel } from "./DisplayPanel";
 import { ArenaAdminPanel } from "./ArenaAdminPanel";
 import { ReadinessPanel } from "./ReadinessPanel";
+import { AiCostPanel } from "./AiCostPanel";
 
 async function ownerKeyIsValid(key: string): Promise<boolean> {
   if (!key) return false;
@@ -161,6 +162,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
       <OwnerAccess unlocked={ownerMode} onUnlocked={setOwnerMode} />
       {ownerMode ? (
         <>
+          <AiCostPanel />
           <ReadinessPanel />
           <ArenaAdminPanel />
           <section className="rounded-md border border-border bg-surface p-3">
