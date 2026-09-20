@@ -12,6 +12,7 @@ import {
   removeKeyed,
   sanitizeQueue,
   healthVerdict,
+  IDENTITY_FAULT_RECENT_MS,
   JOB_RETRY_MS,
   jobKey,
   type LedgerJob,
@@ -22,6 +23,7 @@ import {
   oldestQueueAgeMs,
   persistOnce,
   type PersistIO,
+  recentIdentityFaultCount,
   pushErr,
   QUEUE_STUCK_MS,
   TICK_STALL_MS,
@@ -319,6 +321,22 @@ test("a detected ledger hole is unhealthy", () => {
   const v = healthVerdict({ ...healthy, gaps: 2 });
   assert.equal(v.ok, false);
   assert.match(v.reasons.join(" "), /2 ledger windows missing/);
+});
+
+test("a recent identity contradiction is unhealthy but forensic history ages out", () => {
+  const recent = healthVerdict({ ...healthy, recentIdentityFaults: 2 });
+  assert.equal(recent.ok, false);
+  assert.match(recent.reasons.join(" "), /2 recent window identity faults/);
+
+  assert.equal(
+    recentIdentityFaultCount([NOW - IDENTITY_FAULT_RECENT_MS + 1, NOW - IDENTITY_FAULT_RECENT_MS - 1], NOW),
+    1,
+  );
+  assert.equal(
+    healthVerdict({ ...healthy, recentIdentityFaults: recentIdentityFaultCount([NOW - IDENTITY_FAULT_RECENT_MS - 1], NOW) }).ok,
+    true,
+    "old persisted faults remain forensic evidence without permanently failing health",
+  );
 });
 
 test("before boot the service is not a failure", () => {

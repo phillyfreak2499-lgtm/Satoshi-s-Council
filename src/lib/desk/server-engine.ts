@@ -109,6 +109,7 @@ import {
   type LedgerRow,
   ledgerGaps,
   oldestQueueAgeMs,
+  recentIdentityFaultCount,
   OUTBOX_CAP,
   partitionResolved,
   PENDING_CAP,
@@ -1995,6 +1996,7 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
   const e = eng();
   ensureServerEngine();
   const now = Date.now();
+  const recentIdentityFaults = recentIdentityFaultCount(e.identityFaults.map((f) => f.at), now);
   const v = healthVerdict({
     now,
     started: e.started,
@@ -2003,6 +2005,7 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
     lastLedgerOkAt: e.lastLedgerOkAt,
     queueOldestAgeMs: oldestQueueAgeMs(e.ledgerQueue, now),
     gaps: e.ledgerGapCount,
+    recentIdentityFaults,
   });
   let lastSend: string | null = null;
   try {
@@ -2028,15 +2031,25 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
       alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
       // The grading race, both halves: windows decided but not yet settled, and
-      // windows refused because their identity did not hold. A non-empty
-      // identity list is the 2026-09-10 failure mode recurring.
+      // windows refused because their identity did not hold. Faults stay persisted
+      // for forensics; only faults observed inside the current two-window incident
+      // horizon flip deep health. Old Sep-style scars remain visible without making
+      // the recovered desk permanently 503.
       pending_windows: e.pending.map((p) => ({ ticker: p.ticker, close_time: p.close_time })),
+      integrity: {
+        ok: recentIdentityFaults === 0,
+        recent_identity_faults: recentIdentityFaults,
+        historical_identity_faults: Math.max(0, e.identityFaults.length - recentIdentityFaults),
+        recent_window_minutes: 30,
+      },
       identity_faults: e.identityFaults.slice(-5).map((f) => ({
         ticker: f.ticker,
         close_time: f.close_time,
         fault: f.fault,
         detail: f.detail,
         checks: f.checks,
+        observed_at: f.at || null,
+        recent: f.at > 0 && now >= f.at && now - f.at <= 30 * 60_000,
       })),
       recent_errors: e.errors.slice(-5),
     },

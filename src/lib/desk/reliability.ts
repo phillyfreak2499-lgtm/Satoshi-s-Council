@@ -230,6 +230,16 @@ export function ledgerGaps(closeTimesMs: number[], opts?: { windowMs?: number; m
   return holes;
 }
 
+export const IDENTITY_FAULT_RECENT_MS = 30 * 60_000; // two 15-minute windows: current incident, not permanent forensic history
+
+export function recentIdentityFaultCount(
+  faultAts: readonly number[],
+  now: number,
+  recentMs = IDENTITY_FAULT_RECENT_MS,
+): number {
+  return faultAts.filter((at) => Number.isFinite(at) && at > 0 && now >= at && now - at <= recentMs).length;
+}
+
 export type HealthInput = {
   now: number;
   started: boolean;
@@ -238,6 +248,8 @@ export type HealthInput = {
   lastLedgerOkAt: number;
   queueOldestAgeMs: number;
   gaps: number;
+  /** Identity contradictions seen in the current incident window. Historical faults remain forensic only. */
+  recentIdentityFaults?: number;
 };
 
 export type HealthVerdict = { ok: boolean; reasons: string[] };
@@ -263,6 +275,10 @@ export function healthVerdict(i: HealthInput): HealthVerdict {
     reasons.push(`ledger write stuck ${Math.round(i.queueOldestAgeMs / 60_000)} min`);
   }
   if (i.gaps > 0) reasons.push(`${i.gaps} ledger window${i.gaps === 1 ? "" : "s"} missing`);
+  const identityFaults = Math.max(0, Math.floor(i.recentIdentityFaults ?? 0));
+  if (identityFaults > 0) {
+    reasons.push(`${identityFaults} recent window identity fault${identityFaults === 1 ? "" : "s"}`);
+  }
   return { ok: reasons.length === 0, reasons };
 }
 

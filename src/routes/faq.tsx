@@ -21,7 +21,7 @@ const QA: { q: string; a: string }[] = [
   },
   {
     q: "How is the paper book doing?",
-    a: "Open the Books at /books. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the live 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. It is a record, not a promised edge.",
+    a: "Open the Books at /books. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the archived 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. It is a record, not a promised edge.",
   },
   {
     q: "What does selective mode require?",
