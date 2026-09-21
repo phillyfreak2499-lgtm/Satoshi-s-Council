@@ -463,6 +463,7 @@ export function DeskApp() {
           <SatoshiTab
             snap={frame.snap}
             chair={frame.chair}
+            votes={frame.votes}
             settings={frame.settings}
             callLog={frame.call_log}
             onJump={jump}
